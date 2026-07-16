@@ -75,3 +75,9 @@ yarn-error.log*
 
 .vercel
 .env*.local
+
+# Large binaries / installers (keep source; do not sync APKs/EXEs)
+*.apk
+/dist-installer/
+label-worker/installer/dist-installer/
+**/LabelPrinterInstaller.exe
