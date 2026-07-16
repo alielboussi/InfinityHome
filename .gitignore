@@ -1,0 +1,77 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.*
+
+# Vercel
+.vercel/
+
+# VSCode
+.vscode/
+
+# Coverage
+coverage/
+
+# Misc
+*.local
+
+# Supabase generated files (if any)
+supabase/.temp/
+supabase/.output/
+
+# Ignore SQLite DBs (if used)
+*.sqlite
+*.db
+
+# Ignore production secrets
+*.secret
+
+# Ignore IDE settings
+.idea/
+*.iml
+
+# Ignore Windows system files
+Desktop.ini
+
+# Ignore public export artifacts (if any)
+public/exported/
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+.vercel
+.env*.local

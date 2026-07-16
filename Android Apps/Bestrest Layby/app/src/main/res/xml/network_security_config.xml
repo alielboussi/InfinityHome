@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext/mixed content for this host only.
+         If your site is fully HTTPS (including subresources),
+         you can remove this file + the manifest attributes. -->
+    <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">infinity-home-pi.vercel.app</domain>
+    </domain-config>
+</network-security-config>

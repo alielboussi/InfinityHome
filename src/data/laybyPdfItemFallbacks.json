@@ -1,0 +1,1528 @@
+{
+  "mohammad fahme": [
+    {
+      "dmy": "13.01.2025",
+      "isoDate": "2025-01-13",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Recliner 3+2+1+1 Sitting Set",
+          "price": 1900,
+          "amount": 3800,
+          "color": "1- Bordeux 1-Black"
+        },
+        {
+          "qty": 2,
+          "name": "Ombre Bedstead 180*200",
+          "price": 250,
+          "amount": 500,
+          "color": "Brick"
+        },
+        {
+          "qty": 2,
+          "name": "High Bedstead 180*200",
+          "price": 250,
+          "amount": 500,
+          "color": "Blue"
+        }
+      ]
+    },
+    {
+      "dmy": "17.01.2025",
+      "isoDate": "2025-01-17",
+      "items": [
+        {
+          "qty": 6,
+          "name": "Lines Bedstead 160*200",
+          "price": 230,
+          "amount": 1380,
+          "color": null
+        },
+        {
+          "qty": 6,
+          "name": "Lines Bedstead 180*200",
+          "price": 250,
+          "amount": 1500,
+          "color": null
+        },
+        {
+          "qty": 12,
+          "name": "Soho Night Stand",
+          "price": 25,
+          "amount": 300,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "3 Doors Wardrobe",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "4 Doors Wardrobe",
+          "price": 370,
+          "amount": 740,
+          "color": null
+        },
+        {
+          "qty": 40,
+          "name": "Soho Night Stand",
+          "price": 25,
+          "amount": 1000,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "21.01.2025",
+      "isoDate": "2025-01-21",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 375,
+          "amount": 750,
+          "color": "Brown"
+        },
+        {
+          "qty": 2,
+          "name": "Sunflower Bedstead 160*200",
+          "price": 230,
+          "amount": 460,
+          "color": "1-Brown 1-Grey"
+        },
+        {
+          "qty": 5,
+          "name": "Lines Bedstead 180*200",
+          "price": 250,
+          "amount": 1250,
+          "color": "3-Brown 1-Silver 1-Grey"
+        }
+      ]
+    },
+    {
+      "dmy": "24.01.2025",
+      "isoDate": "2025-01-24",
+      "items": [
+        {
+          "qty": 3,
+          "name": "Jhonson 3+2+1+1 Sitting Set",
+          "price": 900,
+          "amount": 2700,
+          "color": "1-Brown 1-Beige 1-Grey"
+        },
+        {
+          "qty": 1,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": "Grey"
+        },
+        {
+          "qty": 1,
+          "name": "Viking 3+2+1+1 Sitting Set",
+          "price": 1150,
+          "amount": 1150,
+          "color": "Brown"
+        },
+        {
+          "qty": 3,
+          "name": "Shoe Rack",
+          "price": 190,
+          "amount": 570,
+          "color": "1-Grey 1-Brown 1-Mahogany"
+        },
+        {
+          "qty": 5,
+          "name": "Bestrest Mattress 180*200",
+          "price": 260,
+          "amount": 1300,
+          "color": "Red"
+        }
+      ]
+    },
+    {
+      "dmy": "29.01.2025",
+      "isoDate": "2025-01-29",
+      "items": [
+        {
+          "qty": 3,
+          "name": "Sunflower Bedstead 180*200",
+          "price": 250,
+          "amount": 750,
+          "color": "Brown"
+        },
+        {
+          "qty": 3,
+          "name": "Bestrest Mattress 180*200",
+          "price": 260,
+          "amount": 780,
+          "color": "Red"
+        },
+        {
+          "qty": 2,
+          "name": "Viking 3+2+1+1 Sitting Set",
+          "price": 1150,
+          "amount": 2300,
+          "color": "1-Brown 1-Grey"
+        },
+        {
+          "qty": 2,
+          "name": "Cairo 3+2+1+1 Sitting Set",
+          "price": 900,
+          "amount": 1800,
+          "color": "1-Grey 1-Brown"
+        },
+        {
+          "qty": 3,
+          "name": "Ruby Bedstead 160*200",
+          "price": 230,
+          "amount": 690,
+          "color": "2-Brown 1-Beige"
+        },
+        {
+          "qty": 3,
+          "name": "Ruby Bedstead 180*200",
+          "price": 250,
+          "amount": 750,
+          "color": "2-Brown 1-Silver"
+        },
+        {
+          "qty": 1,
+          "name": "High Class 3+3+1+1 Sitting Set",
+          "price": 800,
+          "amount": 800,
+          "color": "Grey"
+        }
+      ]
+    },
+    {
+      "dmy": "31.01.2025",
+      "isoDate": "2025-01-31",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Paris 3+2+1+1 Sitting Set",
+          "price": 2000,
+          "amount": 4000,
+          "color": "1-Brown 1-Grey"
+        },
+        {
+          "qty": 3,
+          "name": "High Class 3+3+1+1 Sitting Set",
+          "price": 800,
+          "amount": 2400,
+          "color": "1-Brown 1-Purple 1-Grey"
+        }
+      ]
+    },
+    {
+      "dmy": "06.02.2025",
+      "isoDate": "2025-02-06",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Annie Corner Set",
+          "price": 1000,
+          "amount": 1000,
+          "color": "Grey"
+        },
+        {
+          "qty": 3,
+          "name": "Corner Shelf",
+          "price": 180,
+          "amount": 540,
+          "color": "2-Brown 1-Black"
+        }
+      ]
+    },
+    {
+      "dmy": "19.02.2025",
+      "isoDate": "2025-02-19",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Annie Corner Set",
+          "price": 1000,
+          "amount": 1000,
+          "color": "Brown"
+        },
+        {
+          "qty": 2,
+          "name": "2 Doors Display",
+          "price": 275,
+          "amount": 550,
+          "color": "1-Grey 1-White"
+        },
+        {
+          "qty": 1,
+          "name": "Medusa Bunkbed",
+          "price": 1000,
+          "amount": 1000,
+          "color": "White"
+        }
+      ]
+    },
+    {
+      "dmy": "01.03.2025",
+      "isoDate": "2025-03-01",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 1500,
+          "color": "1-Grey 1-Brown"
+        },
+        {
+          "qty": 2,
+          "name": "L Shape Sofa Set",
+          "price": 300,
+          "amount": 600,
+          "color": "1-Grey 1-Brown"
+        },
+        {
+          "qty": 2,
+          "name": "Sofa 3+2+1+1 Sitting Set",
+          "price": 600,
+          "amount": 1200,
+          "color": "1-Green 1-Beige"
+        }
+      ]
+    },
+    {
+      "dmy": "26.03.2025",
+      "isoDate": "2025-03-26",
+      "items": [
+        {
+          "qty": 7,
+          "name": "L Shape Sitting Set",
+          "price": 300,
+          "amount": 2100,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "L.V Bedstead 180*200",
+          "price": 250,
+          "amount": 250,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Warda Bedstead 180*200",
+          "price": 250,
+          "amount": 250,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "02.04.2025",
+      "isoDate": "2025-04-02",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Sofa 3+2+1+1+Puff Sitting Set",
+          "price": 600,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 3,
+          "name": "L Shape Sitting Set",
+          "price": 300,
+          "amount": 900,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "15.04.2025",
+      "isoDate": "2025-04-15",
+      "items": [
+        {
+          "qty": 6,
+          "name": "L Shape Sofa Set",
+          "price": 300,
+          "amount": 1800,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "02.05.2025",
+      "isoDate": "2025-05-02",
+      "items": [
+        {
+          "qty": 3,
+          "name": "High Class 3+3+1+1 Sitting Set",
+          "price": 800,
+          "amount": 2400,
+          "color": "2-Grey 1-Brown"
+        }
+      ]
+    },
+    {
+      "dmy": "15.05.2025",
+      "isoDate": "2025-05-15",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": "Brown"
+        },
+        {
+          "qty": 2,
+          "name": "Paris 3+2+1+1 Sitting Set",
+          "price": 2000,
+          "amount": 4000,
+          "color": "1-Grey 1-Brown"
+        },
+        {
+          "qty": 2,
+          "name": "Coc Console & Mirror",
+          "price": 290,
+          "amount": 580,
+          "color": null
+        },
+        {
+          "qty": 4,
+          "name": "King Wing Chair",
+          "price": 170,
+          "amount": 680,
+          "color": null
+        },
+        {
+          "qty": 8,
+          "name": "Exclusive Puff",
+          "price": 25,
+          "amount": 200,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "17.05.2025",
+      "isoDate": "2025-05-17",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Recliner 3+2+1+1 Sitting Set",
+          "price": 1800,
+          "amount": 1800,
+          "color": "Brown"
+        },
+        {
+          "qty": 1,
+          "name": "Giza 3+2+1+1 Sitting Set",
+          "price": 1250,
+          "amount": 1250,
+          "color": "Brown"
+        },
+        {
+          "qty": 1,
+          "name": "Paris 3+2+1+1 Sitting Set",
+          "price": 2000,
+          "amount": 2000,
+          "color": "Grey"
+        },
+        {
+          "qty": 7,
+          "name": "Office Chair A052",
+          "price": 150,
+          "amount": 1050,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "27.05.2025",
+      "isoDate": "2025-05-27",
+      "items": [
+        {
+          "qty": 10,
+          "name": "Solar Panels",
+          "price": 85,
+          "amount": 850,
+          "color": null
+        },
+        {
+          "qty": 3,
+          "name": "Solar Indoor Lamps 200w",
+          "price": 40,
+          "amount": 120,
+          "color": null
+        },
+        {
+          "qty": 6,
+          "name": "Rosa Single Chairs",
+          "price": 150,
+          "amount": 900,
+          "color": null
+        },
+        {
+          "qty": 6,
+          "name": "Office Chair DPK108D",
+          "price": 150,
+          "amount": 900,
+          "color": null
+        },
+        {
+          "qty": 7,
+          "name": "Exclusive Puff",
+          "price": 25,
+          "amount": 175,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Berlin 3+2+1+1 Sitting Set",
+          "price": 1050,
+          "amount": 1050,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Viking 3+2+1+1 Sitting Set",
+          "price": 1150,
+          "amount": 1150,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "U Shape Sitting Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "17.06.2025",
+      "isoDate": "2025-06-17",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Romeo 3+2+1+1 Sitting Set",
+          "price": 1200,
+          "amount": 1200,
+          "color": "Brown"
+        },
+        {
+          "qty": 2,
+          "name": "U Shape Sitting Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Royal Love Chair",
+          "price": 275,
+          "amount": 275,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 1500,
+          "color": "1-Gold 1-Grey"
+        },
+        {
+          "qty": 4,
+          "name": "Coc Console + Mirror",
+          "price": 290,
+          "amount": 1160,
+          "color": "1-Brown 1-Black"
+        }
+      ]
+    },
+    {
+      "dmy": "18.06.2025",
+      "isoDate": "2025-06-18",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 1500,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Modern 4 Seater Sofa",
+          "price": 540,
+          "amount": 540,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Luxury Love Chair",
+          "price": 275,
+          "amount": 275,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "U Shape Sofa + Puff",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "19.06.2025",
+      "isoDate": "2025-06-19",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Modern 4 Seater Sofa",
+          "price": 540,
+          "amount": 540,
+          "color": null
+        },
+        {
+          "qty": 3,
+          "name": "U Shape Sofa",
+          "price": 300,
+          "amount": 900,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "01.07.2025",
+      "isoDate": "2025-07-01",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Paris 3+2+1+1 Sitting Set",
+          "price": 1800,
+          "amount": 1800,
+          "color": "Brown"
+        },
+        {
+          "qty": 1,
+          "name": "Giza 3+2+1+1 Sitting Set",
+          "price": 1150,
+          "amount": 1150,
+          "color": "Brown"
+        },
+        {
+          "qty": 30,
+          "name": "Exclusive Puff",
+          "price": 25,
+          "amount": 750,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Sunflower Bedstead 160*200",
+          "price": 230,
+          "amount": 460,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Lines Bedstead 160*200",
+          "price": 230,
+          "amount": 460,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Berlin 3+2+1+1 Sitting Set",
+          "price": 1050,
+          "amount": 2100,
+          "color": "1-Brown 1-Green"
+        },
+        {
+          "qty": 1,
+          "name": "Viking 3+2+1+1 Sitting Set",
+          "price": 1100,
+          "amount": 1100,
+          "color": "Grey"
+        }
+      ]
+    },
+    {
+      "dmy": "11.07.2025",
+      "isoDate": "2025-07-11",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Relax 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": "Brown"
+        },
+        {
+          "qty": 1,
+          "name": "L Shape Sofa + Table #IS",
+          "price": 300,
+          "amount": 300,
+          "color": null
+        },
+        {
+          "qty": 4,
+          "name": "L Shape Sofa #IS",
+          "price": 300,
+          "amount": 1200,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "16.07.2025",
+      "isoDate": "2025-07-16",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Viking 3+2+1+1 Sitting Set",
+          "price": 1100,
+          "amount": 1100,
+          "color": "Brown"
+        },
+        {
+          "qty": 1,
+          "name": "Berlin 3+2+1+1 Sitting Set",
+          "price": 1050,
+          "amount": 1050,
+          "color": "Beige"
+        },
+        {
+          "qty": 4,
+          "name": "L Shape Sofa Set #IS",
+          "price": 300,
+          "amount": 1200,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Armada Bedstead 180*200",
+          "price": 250,
+          "amount": 250,
+          "color": "Brown"
+        },
+        {
+          "qty": 3,
+          "name": "Sunflower Bedstead 180*200",
+          "price": 250,
+          "amount": 750,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "King Wing Chair Single Seater",
+          "price": 190,
+          "amount": 380,
+          "color": null
+        },
+        {
+          "qty": 8,
+          "name": "Sleep Comfort Mattress 180*200",
+          "price": 290,
+          "amount": 2320,
+          "color": "Black"
+        },
+        {
+          "qty": 2,
+          "name": "Olympus Mattress 160*200",
+          "price": 260,
+          "amount": 520,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "24.07.2025",
+      "isoDate": "2025-07-24",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": "Brown"
+        },
+        {
+          "qty": 1,
+          "name": "Luxury 3+3+1+1 Sitting Set",
+          "price": 900,
+          "amount": 900,
+          "color": "Grey"
+        },
+        {
+          "qty": 27,
+          "name": "Soho Night Stand",
+          "price": 25,
+          "amount": 675,
+          "color": null
+        },
+        {
+          "qty": 270,
+          "name": "Fancy Pillows",
+          "price": 2,
+          "amount": 405,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "01.08.2025",
+      "isoDate": "2025-08-01",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Egyptian 3+2+1+1+Coffee Table",
+          "price": 2500,
+          "amount": 2500,
+          "color": "Grey"
+        },
+        {
+          "qty": 4,
+          "name": "Hawaii Single Seater",
+          "price": 190,
+          "amount": 760,
+          "color": null
+        },
+        {
+          "qty": 3,
+          "name": "Bedstead 160*200",
+          "price": 230,
+          "amount": 690,
+          "color": null
+        },
+        {
+          "qty": 6,
+          "name": "Bedstead 180*200",
+          "price": 250,
+          "amount": 1500,
+          "color": null
+        },
+        {
+          "qty": 6,
+          "name": "King Wing Chair",
+          "price": 190,
+          "amount": 1140,
+          "color": null
+        },
+        {
+          "qty": 28,
+          "name": "Soho Night Stand",
+          "price": 25,
+          "amount": 700,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "19.08.2025",
+      "isoDate": "2025-08-19",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Paris 3+2+1+1 Sitting Set",
+          "price": 1800,
+          "amount": 1800,
+          "color": "Brown"
+        },
+        {
+          "qty": 2,
+          "name": "Bedstead 200*200",
+          "price": 400,
+          "amount": 800,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Sleep Comfort Mattress 200*200",
+          "price": 330,
+          "amount": 660,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "08.09.2025",
+      "isoDate": "2025-09-08",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Lara 3+2+1+1 Sitting Set",
+          "price": 1000,
+          "amount": 1000,
+          "color": "Brown"
+        },
+        {
+          "qty": 1,
+          "name": "Viking 3+2+1+1 Sitting Set",
+          "price": 1100,
+          "amount": 1100,
+          "color": "Grey"
+        },
+        {
+          "qty": 2,
+          "name": "Lara Bedstead 180*200",
+          "price": 250,
+          "amount": 500,
+          "color": "1-Brown 1-Beige"
+        },
+        {
+          "qty": 1,
+          "name": "Diamond 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": "Brown"
+        },
+        {
+          "qty": 5,
+          "name": "L V Bedstead 180*200",
+          "price": 250,
+          "amount": 1250,
+          "color": "Brown"
+        }
+      ]
+    },
+    {
+      "dmy": "03.10.2025",
+      "isoDate": "2025-10-03",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Diamond Sitting Set 3+2+1+1",
+          "price": 750,
+          "amount": 1500,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Viking Sitting Set 3+2+1+1",
+          "price": 1100,
+          "amount": 2200,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Giza Sitting Set 3+2+1+1",
+          "price": 1150,
+          "amount": 1150,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "10.10.2025",
+      "isoDate": "2025-10-10",
+      "items": [
+        {
+          "qty": 3,
+          "name": "U Shape Sitting Set",
+          "price": 300,
+          "amount": 900,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Cube Bedstead 200*200",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Lisa Bedstead 200*200",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 5,
+          "name": "Sleep Well Mattress 200*200",
+          "price": 330,
+          "amount": 1650,
+          "color": null
+        },
+        {
+          "qty": 10,
+          "name": "Eva Mattress 180*200",
+          "price": 200,
+          "amount": 2000,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Anatasia Dining Table + 8 Chairs",
+          "price": 1100,
+          "amount": 2200,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Anatasia Dining Table + 6 Chairs",
+          "price": 800,
+          "amount": 1600,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "14.10.2025",
+      "isoDate": "2025-10-14",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Anatasia Dining Table + 6 Chairs",
+          "price": 800,
+          "amount": 800,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Anatasia Dining Table + 8 Chairs",
+          "price": 1100,
+          "amount": 1100,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Sleep Well Mattress 200*200",
+          "price": 330,
+          "amount": 330,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "16.10.2025",
+      "isoDate": "2025-10-16",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Luxury Sitting Set 3+3+1+1",
+          "price": 900,
+          "amount": 1800,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "U Shape Corner Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Lines Bedstead 200*200",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 5,
+          "name": "Sleep Well Mattress 100*200 (25cm)",
+          "price": 120,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 5,
+          "name": "Sleep Well Mattress 140*200 (25cm)",
+          "price": 160,
+          "amount": 800,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "24.10.2025",
+      "isoDate": "2025-10-24",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Viking Sitting Set 3+2+1+1",
+          "price": 1100,
+          "amount": 1100,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Johanson Sitting Set 3+2+1+1",
+          "price": 900,
+          "amount": 900,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "U Shape Sitting Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Double Door Displays",
+          "price": 275,
+          "amount": 550,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Buffet + Mirror",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 3,
+          "name": "Round Dining Table",
+          "price": 175,
+          "amount": 525,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "01.11.2025",
+      "isoDate": "2025-11-01",
+      "items": [
+        {
+          "qty": 2,
+          "name": "U Shape Sitting Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 12,
+          "name": "Eva Mattress 180*200",
+          "price": 200,
+          "amount": 2400,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "04.11.2025",
+      "isoDate": "2025-11-04",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Diamond Sitting Set 3+2+1+1",
+          "price": 750,
+          "amount": 1500,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "U Shape Sitting Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 6,
+          "name": "Office Chair DP-K180D",
+          "price": 190,
+          "amount": 1140,
+          "color": null
+        },
+        {
+          "qty": 11,
+          "name": "Eva Mattress 180*200",
+          "price": 200,
+          "amount": 2200,
+          "color": null
+        },
+        {
+          "qty": 10,
+          "name": "Hawaii Round Chair",
+          "price": 190,
+          "amount": 1900,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "06.11.2025",
+      "isoDate": "2025-11-06",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Diamond Sitting Set 3+2+1+1",
+          "price": 750,
+          "amount": 750,
+          "color": null
+        },
+        {
+          "qty": 10,
+          "name": "Fashion Single Seater",
+          "price": 170,
+          "amount": 1700,
+          "color": null
+        },
+        {
+          "qty": 8,
+          "name": "Eva Mattress 180*200",
+          "price": 200,
+          "amount": 1600,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Unique 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": "Brown"
+        },
+        {
+          "qty": 1,
+          "name": "Unique 3+2+1+1+ Puff Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": "Beige"
+        }
+      ]
+    },
+    {
+      "dmy": "11.11.2025",
+      "isoDate": "2025-11-11",
+      "items": [
+        {
+          "qty": 3,
+          "name": "Viking Sitting Set 3+2+1+1",
+          "price": 1100,
+          "amount": 3300,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "U Shape Sofa Sitting Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Unique 3+2+1+1 Sitting Set",
+          "price": 750,
+          "amount": 750,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "12.11.2025",
+      "isoDate": "2025-11-12",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Luxury 3+3+1+1 Sitting Set",
+          "price": 900,
+          "amount": 1800,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Unique 3+2+1+1 Sitting Set",
+          "price": 700,
+          "amount": 1400,
+          "color": null
+        },
+        {
+          "qty": 15,
+          "name": "Eva Mattress 180*200",
+          "price": 200,
+          "amount": 3000,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "17.11.2025",
+      "isoDate": "2025-11-17",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Viking Sitting Set 3+2+1+1",
+          "price": 1100,
+          "amount": 2200,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Paris Sitting Set 3+2+1+1",
+          "price": 1800,
+          "amount": 1800,
+          "color": null
+        },
+        {
+          "qty": 10,
+          "name": "Solar Panels",
+          "price": 85,
+          "amount": 850,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "24.11.2025",
+      "isoDate": "2025-11-24",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Viking Sitting Set 3+2+1+1",
+          "price": 1100,
+          "amount": 1100,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "U Shape Sitting Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Anatasia Dining Table + 6 Chairs",
+          "price": 800,
+          "amount": 800,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "27.11.2025",
+      "isoDate": "2025-11-27",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Egypt Dining Table + 6 Chairs",
+          "price": 1650,
+          "amount": 1650,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Egypt Sitting Set 3+2+1+1",
+          "price": 2500,
+          "amount": 5000,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Diamond Sitting Set 3+2+1+1",
+          "price": 750,
+          "amount": 1500,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "28.11.2025",
+      "isoDate": "2025-11-28",
+      "items": [
+        {
+          "qty": 2,
+          "name": "U Shape Sofa Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Egypt Dining Table + 6 Chairs",
+          "price": 1650,
+          "amount": 3300,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Unique Sofa Set 3+2+1+1",
+          "price": 750,
+          "amount": 750,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Diamond Sitting Set 3+2+1+1",
+          "price": 750,
+          "amount": 750,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Mae 3+2+1+1 Sitting Set",
+          "price": 1800,
+          "amount": 1800,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "12.12.2025",
+      "isoDate": "2025-12-12",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Viking Sitting Set 3+2+1+1",
+          "price": 1100,
+          "amount": 1100,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Luxury Sitting Set 3+3+1+1",
+          "price": 900,
+          "amount": 900,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Alanya 3+2+1+1 Sitting Set",
+          "price": 850,
+          "amount": 850,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Lara 3+2+1+1 Sitting Set",
+          "price": 850,
+          "amount": 850,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "L Shape Sitting Set",
+          "price": 300,
+          "amount": 600,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "23.12.2025",
+      "isoDate": "2025-12-23",
+      "items": [
+        {
+          "qty": 1,
+          "name": "High Class Sitting Set 3+3+1+1",
+          "price": 1000,
+          "amount": 1000,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "New Sitting Set 3+2+1+1",
+          "price": 750,
+          "amount": 1500,
+          "color": null
+        }
+      ]
+    }
+  ],
+  "mohammad fahme acc(2)": [
+    {
+      "dmy": "05.03.2026",
+      "isoDate": "2026-03-05",
+      "items": [
+        {
+          "qty": 4,
+          "name": "Paris Sitting Set 3+2+1+1",
+          "price": 1800,
+          "amount": 7200,
+          "color": null
+        },
+        {
+          "qty": 10,
+          "name": "Copper Fiber Mattress 160*200",
+          "price": 180,
+          "amount": 1800,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "27.03.2026",
+      "isoDate": "2026-03-27",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Viking 3+2+1+1 Sitting Set",
+          "price": 1100,
+          "amount": 2200,
+          "color": null
+        },
+        {
+          "qty": 1,
+          "name": "Luxury 3+3+1+1 Sitting Set",
+          "price": 900,
+          "amount": 900,
+          "color": null
+        },
+        {
+          "qty": 3,
+          "name": "Grand Luxury Mattress 200*200",
+          "price": 255,
+          "amount": 765,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "08.04.2026",
+      "isoDate": "2026-04-08",
+      "items": [
+        {
+          "qty": 1,
+          "name": "Luxury 3+3+1+1 Sitting Set",
+          "price": 900,
+          "amount": 900,
+          "color": null
+        },
+        {
+          "qty": 3,
+          "name": "Anatasia Dining Table + 8 Chairs",
+          "price": 1100,
+          "amount": 3300,
+          "color": null
+        },
+        {
+          "qty": 2,
+          "name": "Anatasia Dining Table + 6 Chairs",
+          "price": 800,
+          "amount": 1600,
+          "color": null
+        }
+      ]
+    },
+    {
+      "dmy": "24.04.2026",
+      "isoDate": "2026-04-24",
+      "items": [
+        {
+          "qty": 2,
+          "name": "Viking Sitting Set 3+2+1+1",
+          "price": 1100,
+          "amount": 2200,
+          "color": null
+        }
+      ]
+    }
+  ]
+}

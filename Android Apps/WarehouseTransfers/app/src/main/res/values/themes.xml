@@ -1,0 +1,7 @@
+<resources>
+  <style name="Theme.WarehouseTransfers" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <item name="android:statusBarColor">@color/warehouse_black</item>
+    <item name="android:navigationBarColor">@color/warehouse_black</item>
+    <item name="android:windowBackground">@color/warehouse_black</item>
+  </style>
+</resources>

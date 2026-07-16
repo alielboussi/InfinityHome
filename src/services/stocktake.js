@@ -1,0 +1,725 @@
+import supabase from '../supabase';
+import { signInWithEmailPassword } from '../utils/supabaseAuthLogin';
+
+const API_TIMEOUT_MS = 12000;
+
+function currentEmail() {
+  try {
+    const raw = localStorage.getItem('user');
+    const user = raw ? JSON.parse(raw) : null;
+    return String(user?.email || '').trim().toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function cleanTerm(value) {
+  return String(value || '').trim().replace(/[,*%]/g, '');
+}
+
+function isApiUnavailable(err) {
+  const status = Number(err?.status || 0);
+  if (status === 502 || status === 503 || status === 504) return true;
+  const msg = String(err?.message || err?.name || '');
+  return /abort|timeout|failed to fetch|network|gateway|name.?not.?resolved/i.test(msg);
+}
+
+async function fetchJson(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const response = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+      signal: controller?.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok === false) {
+      const err = new Error(data.error || (response.status === 504 ? 'Stocktake API timed out (Vercel).' : 'Request failed.'));
+      err.payload = data;
+      err.status = response.status;
+      throw err;
+    }
+    return data;
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      const timeoutErr = new Error('Stocktake API timed out. Falling back to Supabase when possible.');
+      timeoutErr.status = 504;
+      timeoutErr.isTimeout = true;
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function withApiOrClient(apiCall, clientCall) {
+  try {
+    return await apiCall();
+  } catch (err) {
+    if (!isApiUnavailable(err)) throw err;
+    try {
+      return await clientCall();
+    } catch (clientErr) {
+      const msg = clientErr?.message || err.message || 'Request failed.';
+      throw new Error(
+        /timeout|504|gateway|failed to fetch/i.test(String(err.message || ''))
+          ? `${msg} (Vercel API unreachable — used Supabase fallback)`
+          : msg,
+      );
+    }
+  }
+}
+
+function consolidateCounts(counts) {
+  const byProduct = new Map();
+  (counts || []).forEach((row) => {
+    const productId = row.product_id;
+    if (!productId) return;
+    const prev = byProduct.get(productId) || {
+      product_id: productId,
+      qty: 0,
+      users: [],
+      updated_at: null,
+    };
+    prev.qty += Number(row.qty || 0);
+    if (row.user_email) prev.users.push({ email: row.user_email, qty: Number(row.qty || 0) });
+    if (!prev.updated_at || String(row.updated_at || '') > String(prev.updated_at || '')) {
+      prev.updated_at = row.updated_at;
+    }
+    byProduct.set(productId, prev);
+  });
+  return Array.from(byProduct.values());
+}
+
+async function clientFetchLocations() {
+  const { data, error } = await supabase.from('locations').select('id, name').order('name');
+  if (error) throw error;
+  return { ok: true, rows: data || [] };
+}
+
+async function clientFetchLocationState(locationId) {
+  const { data, error } = await supabase
+    .from('stocktake_location_state')
+    .select('*')
+    .eq('location_id', locationId)
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    ok: true,
+    state: data || { location_id: locationId, initial_completed: false },
+  };
+}
+
+async function clientListEvents(locationId) {
+  const { data, error } = await supabase
+    .from('stocktake_events')
+    .select('*')
+    .eq('location_id', locationId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return { ok: true, rows: data || [] };
+}
+
+async function clientListOpenSessions() {
+  const { data, error } = await supabase
+    .from('stocktake_events')
+    .select('id, location_id, status, counting_enabled, is_initial, created_at, created_by_email')
+    .eq('status', 'counting')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const rows = data || [];
+  const locationIds = [...new Set(rows.map((r) => r.location_id).filter(Boolean))];
+  let locationMap = new Map();
+  if (locationIds.length) {
+    const { data: locs } = await supabase.from('locations').select('id, name').in('id', locationIds);
+    locationMap = new Map((locs || []).map((l) => [l.id, l.name]));
+  }
+  return {
+    ok: true,
+    rows: rows.map((r) => ({
+      ...r,
+      location_name: locationMap.get(r.location_id) || 'Location',
+    })),
+  };
+}
+
+async function clientGetEvent(eventId) {
+  const { data: event, error } = await supabase
+    .from('stocktake_events')
+    .select('*')
+    .eq('id', eventId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!event) throw new Error('Event not found');
+
+  const { data: counts, error: cErr } = await supabase
+    .from('stocktake_counts')
+    .select('product_id, user_email, qty, updated_at, products(name, sku)')
+    .eq('event_id', eventId);
+  if (cErr) throw cErr;
+
+  const consolidated = consolidateCounts(counts).map((row) => {
+    const sample = (counts || []).find((c) => c.product_id === row.product_id);
+    return {
+      ...row,
+      name: sample?.products?.name || null,
+      sku: sample?.products?.sku || null,
+    };
+  });
+
+  return { ok: true, event, consolidated, counts: counts || [] };
+}
+
+async function clientCreateEvent(locationId, notes = '') {
+  const userEmail = currentEmail();
+  const { data: existingOpen } = await supabase
+    .from('stocktake_events')
+    .select('id')
+    .eq('location_id', locationId)
+    .eq('status', 'counting')
+    .limit(1)
+    .maybeSingle();
+  if (existingOpen?.id) {
+    const err = new Error('A counting session is already open for this location. Close it (if empty) or submit it first.');
+    err.status = 409;
+    throw err;
+  }
+
+  const { data: state } = await supabase
+    .from('stocktake_location_state')
+    .select('*')
+    .eq('location_id', locationId)
+    .maybeSingle();
+  const isInitial = !Boolean(state?.initial_completed);
+
+  const { data: event, error } = await supabase
+    .from('stocktake_events')
+    .insert([{
+      location_id: locationId,
+      status: 'counting',
+      counting_enabled: true,
+      is_initial: isInitial,
+      created_by_email: userEmail || null,
+      notes: notes || null,
+    }])
+    .select('*')
+    .single();
+  if (error) throw error;
+
+  await supabase.from('stocktake_gate_audit').insert([{
+    event_id: event.id,
+    location_id: locationId,
+    enabled: true,
+    changed_by_email: userEmail || null,
+  }]);
+
+  return { ok: true, event, initialCompleted: Boolean(state?.initial_completed) };
+}
+
+async function clientCancelEvent(eventId, userEmail = currentEmail()) {
+  const { data: event, error } = await supabase
+    .from('stocktake_events')
+    .select('*')
+    .eq('id', eventId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!event) throw new Error('Event not found');
+  if (event.status !== 'counting') throw new Error('Only an open counting session can be closed this way.');
+
+  const [{ count: countRows }, { count: scanRows }] = await Promise.all([
+    supabase.from('stocktake_counts').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
+    supabase.from('stocktake_set_scans').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
+  ]);
+  if ((countRows || 0) > 0 || (scanRows || 0) > 0) {
+    throw new Error('Counts already exist. Clear counts for a fresh start, or submit the stocktake to finish.');
+  }
+
+  const { data: updated, error: upErr } = await supabase
+    .from('stocktake_events')
+    .update({
+      status: 'cancelled',
+      counting_enabled: false,
+      submitted_at: new Date().toISOString(),
+      submitted_by_email: userEmail || null,
+      notes: [event.notes, 'Cancelled empty session'].filter(Boolean).join(' · '),
+    })
+    .eq('id', eventId)
+    .select('*')
+    .single();
+  if (upErr) throw upErr;
+  return { ok: true, event: updated };
+}
+
+async function clientClearCounts(eventId) {
+  const { error } = await supabase.from('stocktake_counts').delete().eq('event_id', eventId);
+  if (error) throw error;
+  await supabase.from('stocktake_set_scans').delete().eq('event_id', eventId);
+  return { ok: true };
+}
+
+async function clientAddCount(eventId, productId, qty, userEmail = currentEmail()) {
+  const add = Number(qty);
+  if (!Number.isFinite(add) || add <= 0) throw new Error('qty must be > 0');
+  if (!userEmail) throw new Error('userEmail required');
+
+  const { data: event } = await supabase.from('stocktake_events').select('status, counting_enabled').eq('id', eventId).maybeSingle();
+  if (!event || event.status !== 'counting') throw new Error('Counting session is not open.');
+  if (!event.counting_enabled) throw new Error('Counting is paused for this session.');
+
+  const { data: existing } = await supabase
+    .from('stocktake_counts')
+    .select('id, qty')
+    .eq('event_id', eventId)
+    .eq('product_id', productId)
+    .eq('user_email', userEmail)
+    .maybeSingle();
+
+  const nextQty = Number(existing?.qty || 0) + add;
+  const { data: row, error } = await supabase
+    .from('stocktake_counts')
+    .upsert([{
+      event_id: eventId,
+      product_id: productId,
+      user_email: userEmail,
+      qty: nextQty,
+      updated_at: new Date().toISOString(),
+    }], { onConflict: 'event_id,product_id,user_email' })
+    .select('*')
+    .single();
+  if (error) throw error;
+
+  await supabase.from('stocktake_count_log').insert([{
+    event_id: eventId,
+    product_id: productId,
+    user_email: userEmail,
+    qty_added: add,
+    qty_after: nextQty,
+  }]);
+
+  return { ok: true, row };
+}
+
+async function clientFetchMyCounts(eventId, userEmail = currentEmail()) {
+  const { data, error } = await supabase
+    .from('stocktake_counts')
+    .select('product_id, qty, updated_at, products(name, sku)')
+    .eq('event_id', eventId)
+    .eq('user_email', userEmail)
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return {
+    ok: true,
+    rows: (data || []).map((r) => ({
+      product_id: r.product_id,
+      qty: r.qty,
+      updated_at: r.updated_at,
+      name: r.products?.name || null,
+      sku: r.products?.sku || null,
+    })),
+  };
+}
+
+async function resolveLocationProductIds(locationId) {
+  const ids = new Set();
+  const [{ data: linked, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
+    supabase.from('product_locations').select('product_id').eq('location_id', locationId),
+    // All Products shows location stock from inventory — include those too.
+    supabase.from('inventory').select('product_id').eq('location', locationId),
+  ]);
+  if (plErr) throw plErr;
+  if (invErr) throw invErr;
+  (linked || []).forEach((r) => { if (r.product_id) ids.add(String(r.product_id)); });
+  (invRows || []).forEach((r) => { if (r.product_id) ids.add(String(r.product_id)); });
+  return [...ids];
+}
+
+async function clientFetchCatalog(locationId, q = '') {
+  const term = cleanTerm(q);
+  const locationProductIds = await resolveLocationProductIds(locationId);
+  const idSet = new Set(locationProductIds.map(String));
+
+  let products = [];
+  if (locationProductIds.length) {
+    if (term) {
+      // Search products by name/SKU, then keep only those enabled at this location.
+      const like = `%${term}%`;
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, sku, price')
+        .or(`name.ilike.${like},sku.ilike.${like}`)
+        .order('name')
+        .limit(300);
+      if (error) throw error;
+      products = (data || [])
+        .filter((p) => idSet.has(String(p.id)))
+        .slice(0, 80)
+        .map((p) => ({ ...p, type: 'product' }));
+    } else {
+      // Browse: load first chunks of location product IDs.
+      const chunk = locationProductIds.slice(0, 120);
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, sku, price')
+        .in('id', chunk)
+        .order('name')
+        .limit(80);
+      if (error) throw error;
+      products = (data || []).map((p) => ({ ...p, type: 'product' }));
+    }
+  }
+
+  const { data: comboLocs, error: clErr } = await supabase
+    .from('combo_locations')
+    .select('combo_id')
+    .eq('location_id', locationId);
+  if (clErr) throw clErr;
+  const comboIds = [...new Set((comboLocs || []).map((r) => r.combo_id).filter(Boolean))];
+  let sets = [];
+  if (comboIds.length) {
+    let comboQuery = supabase
+      .from('combos')
+      .select('id, combo_name, sku, standard_price, combo_price, promotional_price')
+      .in('id', comboIds)
+      .order('combo_name')
+      .limit(80);
+    if (term) {
+      const like = `%${term}%`;
+      comboQuery = comboQuery.or(`combo_name.ilike.${like},sku.ilike.${like}`);
+    }
+    const { data: combos, error: sErr } = await comboQuery;
+    if (sErr) throw sErr;
+    const { data: items } = await supabase
+      .from('combo_items')
+      .select('combo_id, product_id, quantity')
+      .in('combo_id', comboIds);
+    const byCombo = new Map();
+    (items || []).forEach((row) => {
+      if (!byCombo.has(row.combo_id)) byCombo.set(row.combo_id, []);
+      byCombo.get(row.combo_id).push({ product_id: row.product_id, quantity: Number(row.quantity || 0) });
+    });
+    sets = (combos || []).map((c) => ({
+      id: c.id,
+      name: c.combo_name,
+      sku: c.sku,
+      price: c.standard_price ?? c.combo_price ?? c.promotional_price ?? 0,
+      type: 'set',
+      components: byCombo.get(c.id) || [],
+    }));
+  }
+
+  return { ok: true, products, sets };
+}
+
+async function clientListPeriods(locationId) {
+  const { data, error } = await supabase
+    .from('stock_periods')
+    .select('*')
+    .eq('location_id', locationId)
+    .order('opened_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return { ok: true, rows: data || [] };
+}
+
+export function stocktakeCountSessionKey(eventId) {
+  return `stocktake:countSession:${eventId}`;
+}
+
+/** Email/password via Supabase Auth (localhost + production). */
+export async function stocktakeLogin(email, password) {
+  const result = await signInWithEmailPassword(email, password);
+  if (!result.ok) {
+    const err = new Error(result.error || 'Login failed.');
+    err.payload = result;
+    throw err;
+  }
+  return result;
+}
+
+export async function fetchLocations() {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-locations'),
+    clientFetchLocations,
+  );
+}
+
+export async function fetchLocationState(locationId) {
+  return withApiOrClient(
+    () => fetchJson(`/api/stocktake-location-state?locationId=${encodeURIComponent(locationId)}`),
+    () => clientFetchLocationState(locationId),
+  );
+}
+
+export async function fetchCatalog(locationId, q = '') {
+  // Prefer direct Supabase for catalog — faster and works when Vercel API is down.
+  try {
+    return await clientFetchCatalog(locationId, q);
+  } catch (clientErr) {
+    const params = new URLSearchParams({ locationId, q });
+    try {
+      return await fetchJson(`/api/stocktake-catalog?${params}`, {}, 8000);
+    } catch (apiErr) {
+      throw new Error(clientErr?.message || apiErr?.message || 'Failed to load products.');
+    }
+  }
+}
+
+export async function listEvents(locationId) {
+  return withApiOrClient(
+    () => fetchJson(`/api/stocktake-events-list?locationId=${encodeURIComponent(locationId)}`),
+    () => clientListEvents(locationId),
+  );
+}
+
+export async function listOpenSessions() {
+  // Prefer Supabase so counters can join sessions when Vercel API is down.
+  try {
+    return await clientListOpenSessions();
+  } catch (clientErr) {
+    try {
+      return await fetchJson('/api/stocktake-open-sessions', {}, 8000);
+    } catch (apiErr) {
+      throw new Error(clientErr?.message || apiErr?.message || 'Failed to load open sessions.');
+    }
+  }
+}
+
+export async function getEvent(eventId) {
+  return withApiOrClient(
+    () => fetchJson(`/api/stocktake-event-get?eventId=${encodeURIComponent(eventId)}`),
+    () => clientGetEvent(eventId),
+  );
+}
+
+export async function createEvent(locationId, notes = '') {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-event-create', {
+      method: 'POST',
+      body: JSON.stringify({ locationId, notes, userEmail: currentEmail() }),
+    }),
+    () => clientCreateEvent(locationId, notes),
+  );
+}
+
+export async function setEventGate(eventId, enabled) {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-event-set-gate', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, enabled, userEmail: currentEmail() }),
+    }),
+    async () => {
+      const userEmail = currentEmail();
+      const { data: event, error } = await supabase.from('stocktake_events').select('*').eq('id', eventId).maybeSingle();
+      if (error) throw error;
+      if (!event) throw new Error('Event not found');
+      if (event.status !== 'counting') throw new Error('Gate can only change while event is counting.');
+      const { data: updated, error: upErr } = await supabase
+        .from('stocktake_events')
+        .update({ counting_enabled: Boolean(enabled) })
+        .eq('id', eventId)
+        .select('*')
+        .single();
+      if (upErr) throw upErr;
+      await supabase.from('stocktake_gate_audit').insert([{
+        event_id: eventId,
+        location_id: event.location_id,
+        enabled: Boolean(enabled),
+        changed_by_email: userEmail || null,
+      }]);
+      return { ok: true, event: updated };
+    },
+  );
+}
+
+export async function importCounts(eventId, rows, userEmail = currentEmail()) {
+  // Import is complex (SKU resolution); keep API-first. If API is down, tell user clearly.
+  try {
+    return await fetchJson('/api/stocktake-counts-import', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, rows, userEmail }),
+    });
+  } catch (err) {
+    if (isApiUnavailable(err)) {
+      throw new Error('Excel import needs the Vercel stocktake API. Start counting items in the app, or wait until the API is back.');
+    }
+    throw err;
+  }
+}
+
+export async function clearCounts(eventId, userEmail = currentEmail()) {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-counts-clear', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, userEmail }),
+    }),
+    () => clientClearCounts(eventId),
+  );
+}
+
+export async function cancelEvent(eventId, userEmail = currentEmail()) {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-event-cancel', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, userEmail }),
+    }),
+    () => clientCancelEvent(eventId, userEmail),
+  );
+}
+
+export async function fetchImportTemplate(locationId) {
+  try {
+    return await fetchJson(`/api/stocktake-import-template?locationId=${encodeURIComponent(locationId)}`);
+  } catch (err) {
+    if (!isApiUnavailable(err)) throw err;
+    // Minimal client fallback: location products as SKU/name/qty template rows
+    const catalog = await clientFetchCatalog(locationId, '');
+    return {
+      ok: true,
+      rows: (catalog.products || []).map((p) => ({
+        sku: p.sku || '',
+        name: p.name || '',
+        qty: '',
+      })),
+    };
+  }
+}
+
+export async function addCount(eventId, productId, qty, userEmail = currentEmail()) {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-count-add', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, productId, qty, userEmail }),
+    }),
+    () => clientAddCount(eventId, productId, qty, userEmail),
+  );
+}
+
+export async function fetchMyCounts(eventId, userEmail = currentEmail()) {
+  const params = new URLSearchParams({ eventId, userEmail });
+  return withApiOrClient(
+    () => fetchJson(`/api/stocktake-count-mine?${params}`),
+    () => clientFetchMyCounts(eventId, userEmail),
+  );
+}
+
+export async function scanSet(eventId, comboId, qty, userEmail = currentEmail()) {
+  try {
+    return await fetchJson('/api/stocktake-set-scan', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, comboId, qty, userEmail }),
+    });
+  } catch (err) {
+    if (!isApiUnavailable(err)) throw err;
+    // Expand set components client-side and add counts
+    const { data: comps, error } = await supabase
+      .from('combo_items')
+      .select('product_id, quantity')
+      .eq('combo_id', comboId);
+    if (error) throw error;
+    const sets = Number(qty) || 1;
+    for (const c of comps || []) {
+      const lineQty = sets * Number(c.quantity || 0);
+      if (lineQty > 0) await clientAddCount(eventId, c.product_id, lineQty, userEmail);
+    }
+    const { data: existingScan } = await supabase
+      .from('stocktake_set_scans')
+      .select('id, set_qty')
+      .eq('event_id', eventId)
+      .eq('combo_id', comboId)
+      .eq('user_email', userEmail)
+      .maybeSingle();
+    const nextSetQty = Number(existingScan?.set_qty || 0) + sets;
+    await supabase.from('stocktake_set_scans').upsert([{
+      event_id: eventId,
+      combo_id: comboId,
+      user_email: userEmail,
+      set_qty: nextSetQty,
+      updated_at: new Date().toISOString(),
+    }], { onConflict: 'event_id,combo_id,user_email' });
+    return { ok: true, setQty: nextSetQty };
+  }
+}
+
+export async function createProduct(locationId, payload) {
+  try {
+    return await fetchJson('/api/stocktake-product-create', {
+      method: 'POST',
+      body: JSON.stringify({ locationId, ...payload, userEmail: currentEmail() }),
+    });
+  } catch (err) {
+    if (!isApiUnavailable(err)) throw err;
+    const { data: product, error } = await supabase
+      .from('products')
+      .insert([{
+        name: payload.name,
+        sku: payload.sku || null,
+        price: Number(payload.price || 0),
+      }])
+      .select('id, name, sku, price')
+      .single();
+    if (error) throw error;
+    await supabase.from('product_locations').insert([{
+      product_id: product.id,
+      location_id: locationId,
+    }]);
+    return { ok: true, product };
+  }
+}
+
+export async function createSet(locationId, payload) {
+  try {
+    return await fetchJson('/api/stocktake-set-create', {
+      method: 'POST',
+      body: JSON.stringify({ locationId, ...payload, userEmail: currentEmail() }),
+    });
+  } catch (err) {
+    if (!isApiUnavailable(err)) throw err;
+    throw new Error('Creating sets needs the Vercel stocktake API right now. Try again when the API is back.');
+  }
+}
+
+export async function submitEvent(eventId) {
+  try {
+    return await fetchJson('/api/stocktake-event-submit', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, userEmail: currentEmail() }),
+    });
+  } catch (err) {
+    if (isApiUnavailable(err)) {
+      throw new Error('Submit needs the Vercel stocktake API (updates inventory + periods). Counting still works via Supabase — redeploy/fix Vercel, then submit.');
+    }
+    throw err;
+  }
+}
+
+export async function listPeriods(locationId) {
+  return withApiOrClient(
+    () => fetchJson(`/api/stocktake-periods-list?locationId=${encodeURIComponent(locationId)}`),
+    () => clientListPeriods(locationId),
+  );
+}
+
+export async function getPeriodDetail(periodId) {
+  try {
+    return await fetchJson(`/api/stocktake-period-detail?periodId=${encodeURIComponent(periodId)}`);
+  } catch (err) {
+    if (!isApiUnavailable(err)) throw err;
+    const { data, error } = await supabase.from('stock_periods').select('*').eq('id', periodId).maybeSingle();
+    if (error) throw error;
+    return { ok: true, period: data, rows: [] };
+  }
+}
+
+export async function getPeriodVariance(periodId) {
+  try {
+    return await fetchJson(`/api/stocktake-period-variance?periodId=${encodeURIComponent(periodId)}`);
+  } catch (err) {
+    if (isApiUnavailable(err)) {
+      throw new Error('Variance report needs the Vercel stocktake API. Try again when the deployment is responding.');
+    }
+    throw err;
+  }
+}

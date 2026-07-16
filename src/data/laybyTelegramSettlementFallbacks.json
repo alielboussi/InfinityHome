@@ -1,0 +1,190 @@
+{
+  "madam annie": [
+    {
+      "date": "10/03/2026",
+      "description": "Ref: 4071",
+      "paymentType": "Cash",
+      "amount": 20000
+    },
+    {
+      "date": "16/03/2026",
+      "description": "Ref: 4095",
+      "paymentType": "Cash",
+      "amount": 10000
+    }
+  ],
+  "madam paulin banda": [
+    {
+      "date": "27/03/2026",
+      "description": "Ref: #4223",
+      "paymentType": "Cash",
+      "amount": 6500
+    }
+  ],
+  "dor sisters": [
+    {
+      "date": "16/03/2026",
+      "description": "Ref: #4091",
+      "paymentType": "Cash",
+      "amount": 20000
+    }
+  ],
+  "madam mercy": [
+    {
+      "date": "17/03/2026",
+      "description": "Ref: 4099",
+      "paymentType": "Cash",
+      "amount": 15000
+    },
+    {
+      "date": "30/03/2026",
+      "description": "Ref: 4236",
+      "paymentType": "Cash",
+      "amount": 12000
+    },
+    {
+      "date": "17/04/2026",
+      "description": "Ref: 4277",
+      "paymentType": "Cash",
+      "amount": 12000
+    }
+  ],
+  "mr freddy chalenga": [
+    {
+      "date": "10/01/2026",
+      "description": "Ref: #3899",
+      "paymentType": "Cash",
+      "amount": 20000
+    },
+    {
+      "date": "06/02/2026",
+      "description": "Ref: 3984",
+      "paymentType": "Cash",
+      "amount": 100000
+    },
+    {
+      "date": "28/03/2026",
+      "description": "Ref: 4228",
+      "paymentType": "Cash",
+      "amount": 60000
+    }
+  ],
+  "mrs mirriam chewe": [
+    {
+      "date": "03/02/2026",
+      "description": "Ref: #3974",
+      "paymentType": "Cash",
+      "amount": 40000
+    },
+    {
+      "date": "31/03/2026",
+      "description": "Ref: 4240",
+      "paymentType": "Cash",
+      "amount": 20000
+    }
+  ],
+  "mr claude": [
+    {
+      "date": "02/04/2026",
+      "description": "Ref: #4245",
+      "paymentType": "Cash",
+      "amount": 9950
+    }
+  ],
+  "mr donny": [
+    {
+      "date": "04/04/2026",
+      "description": "Ref: #4252",
+      "paymentType": "Cash",
+      "amount": 10000
+    }
+  ],
+  "mr george simuteka": [
+    {
+      "date": "09/04/2026",
+      "description": "Ref: #4262",
+      "paymentType": "Cash",
+      "amount": 27800
+    }
+  ],
+  "madam mugala": [
+    {
+      "date": "11/04/2026",
+      "description": "Ref: #4266",
+      "paymentType": "Cash",
+      "amount": 10000
+    }
+  ],
+  "mr kayalila rodrick": [
+    {
+      "date": "15/04/2026",
+      "description": "Ref: #4271",
+      "paymentType": "Cash",
+      "amount": 22000
+    }
+  ],
+  "madam michelo": [
+    {
+      "date": "16/04/2026",
+      "description": "Ref: #4275",
+      "paymentType": "Cash",
+      "amount": 5000
+    }
+  ],
+  "mr danny novoa": [
+    {
+      "date": "20/04/2026",
+      "description": "Ref: #4287",
+      "paymentType": "Cash",
+      "amount": 40000
+    }
+  ],
+  "mr clavis": [
+    {
+      "date": "20/04/2026",
+      "description": "Ref: #4289",
+      "paymentType": "Cash",
+      "amount": 5700
+    }
+  ],
+  "mr donald chileshe": [
+    {
+      "date": "21/04/2026",
+      "description": "Ref: #4301",
+      "paymentType": "Cash",
+      "amount": 28500
+    }
+  ],
+  "madam elizabeth": [
+    {
+      "date": "05/05/2026",
+      "description": "Ref: #4327",
+      "paymentType": "Cash",
+      "amount": 5600
+    }
+  ],
+  "mr george haunda": [
+    {
+      "date": "15/05/2026",
+      "description": "Ref: #4353",
+      "paymentType": "Cash",
+      "amount": 12499.98
+    }
+  ],
+  "mr mordecia": [
+    {
+      "date": "19/05/2026",
+      "description": "Ref: #4364",
+      "paymentType": "Cash",
+      "amount": 100000
+    }
+  ],
+  "mrs nyawali": [
+    {
+      "date": "19/05/2026",
+      "description": "Ref: #4370",
+      "paymentType": "Cash",
+      "amount": 10000
+    }
+  ]
+}

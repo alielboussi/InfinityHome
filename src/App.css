@@ -1,0 +1,377 @@
+
+
+:root {
+  --br-bg: #0b0f14;
+  --br-surface: #0c0f14;
+  --br-border: #0af;
+  --br-border-soft: rgba(0, 170, 255, 0.35);
+  --br-glow: 0 0 10px rgba(0, 170, 255, 0.5);
+  --br-text: #e6f7ff;
+  --br-subtle: #bfe9ff;
+}
+
+html, body, #root, .App {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #111;
+  color: #fff;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+/* Universal button style to match quotes board */
+button {
+  background: var(--br-surface) !important;
+  border: 1px solid var(--br-border) !important;
+  color: var(--br-text) !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  font-weight: 600 !important;
+  box-shadow: var(--br-glow) !important;
+  cursor: pointer;
+  font-family: inherit;
+  transition: box-shadow 0.15s ease, transform 0.05s ease;
+}
+
+button:hover {
+  box-shadow: 0 0 0 2px var(--br-border-soft), var(--br-glow);
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Common utility/button classes used across screens */
+.action-button,
+.btn,
+.primary,
+.secondary,
+.danger,
+.gray {
+  background: var(--br-surface) !important;
+  border: 1px solid var(--br-border) !important;
+  color: var(--br-text) !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  font-weight: 600 !important;
+  box-shadow: var(--br-glow) !important;
+  cursor: pointer;
+}
+
+/* Tables: enforce quotes-board look even when local styles exist */
+table { width: 100%; border-collapse: collapse; font-family: inherit; color: var(--br-text); }
+th, td { border: 1px solid var(--br-border-soft) !important; padding: 10px !important; }
+th {
+  background: var(--br-surface) !important;
+  color: var(--br-subtle) !important;
+  box-shadow: var(--br-glow) !important;
+  text-align: left;
+}
+tr:hover td { background: rgba(0, 170, 255, 0.05) !important; }
+
+/* Universal table styling to match quotes board */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: inherit;
+  color: var(--br-text);
+}
+
+.sticky-header-table thead th {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+th, td {
+  border: 1px solid var(--br-border-soft);
+  padding: 10px;
+}
+
+th {
+  background: var(--br-surface);
+  color: var(--br-subtle);
+  box-shadow: var(--br-glow);
+  text-align: left;
+}
+
+tr:hover td {
+  background: rgba(0, 170, 255, 0.05);
+}
+
+.stocktake-count-page,
+.stocktake-summary-page {
+  padding: 16px;
+  background: var(--br-bg);
+  min-height: 100%;
+}
+
+.stocktake-card {
+  background: var(--br-surface);
+  border: 1px solid var(--br-border-soft);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--br-glow);
+}
+
+.stocktake-card-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.stocktake-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.stocktake-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.stocktake-input {
+  background: var(--br-surface);
+  border: 1px solid var(--br-border);
+  color: var(--br-text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-height: 42px;
+}
+
+.stocktake-search-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stocktake-results {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.stocktake-result {
+  text-align: left;
+}
+
+.stocktake-status {
+  margin: 8px 0;
+  color: var(--br-subtle);
+}
+
+.stocktake-error {
+  margin: 8px 0;
+  color: #ff8c8c;
+}
+
+.stocktake-note {
+  color: var(--br-subtle);
+  margin-top: 6px;
+}
+
+.stocktake-actions {
+  margin-top: 12px;
+}
+
+.stocktake-qty-controls {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.stocktake-modal-backdrop {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.stocktake-modal {
+  background: #0b0f14;
+  border: 1px solid var(--br-border);
+  border-radius: 12px;
+  padding: 16px;
+  width: min(420px, 92vw);
+  box-shadow: var(--br-glow);
+}
+
+.stocktake-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.stocktake-modal-note {
+  color: var(--br-subtle);
+  margin: 8px 0;
+}
+
+/* Themed overrides for legacy pages to match quotes-board look */
+.locations-page,
+.categories-page,
+.customers-page-container {
+  background: var(--br-bg) !important;
+  color: var(--br-text) !important;
+}
+
+.location-form input,
+.category-form input,
+.customer-form input,
+.products-container input,
+.products-container select {
+  background: var(--br-surface) !important;
+  border: 1px solid var(--br-border) !important;
+  color: var(--br-text) !important;
+  box-shadow: var(--br-glow) !important;
+}
+
+/* Customers: match Units of Measure input look */
+.customer-form input,
+.customer-form select,
+.customer-search input {
+  background: var(--br-surface) !important;
+  color: var(--br-text) !important;
+  border: 1px solid var(--br-border) !important;
+  box-shadow: var(--br-glow) !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  font-size: 1.05rem !important;
+  appearance: none;
+}
+
+.customer-form input:focus,
+.customer-form select:focus,
+.customer-search input:focus {
+  box-shadow: 0 0 0 2px var(--br-border-soft), var(--br-glow) !important;
+}
+
+.add-btn,
+.save-btn,
+.cancel-btn,
+.edit-btn,
+.delete-btn,
+.back-to-dashboard-btn {
+  background: var(--br-surface) !important;
+  border: 1px solid var(--br-border) !important;
+  color: var(--br-text) !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  font-weight: 600 !important;
+  box-shadow: var(--br-glow) !important;
+  min-height: 40px;
+}
+
+.locations-table,
+.categories-table,
+.customers-table {
+  background: var(--br-surface) !important;
+  color: var(--br-text) !important;
+  box-shadow: var(--br-glow) !important;
+}
+
+.locations-table th, .locations-table td,
+.categories-table th, .categories-table td,
+.customers-table th, .customers-table td {
+  border: 1px solid var(--br-border-soft) !important;
+  padding: 10px !important;
+}
+
+.locations-table th,
+.categories-table th,
+.customers-table th {
+  background: var(--br-surface) !important;
+  color: var(--br-subtle) !important;
+  box-shadow: var(--br-glow) !important;
+}
+
+/* Dashboard container tweaks for Vercel */
+.dashboard-container {
+  padding: 0 8px !important;
+}
+
+@media (max-width: 1200px) {
+  html, body, #root, .App {
+    font-size: 13.5px;
+  }
+}
+
+@media (max-width: 900px) {
+  html, body, #root, .App {
+    font-size: 13px;
+  }
+  .dashboard-container {
+    padding: 0 2px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  html, body, #root, .App {
+    font-size: 12.5px;
+  }
+  .dashboard-container {
+    padding: 0 !important;
+  }
+  .dashboard-buttons, .dashboard-stats {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  .dashboard-buttons button, .dashboard-buttons a {
+    width: 100% !important;
+    font-size: 1rem !important;
+  }
+}
+
+@media (max-width: 500px) {
+  html, body, #root, .App {
+    font-size: 11.5px;
+  }
+  .dashboard-container {
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 1200px) {
+  html, body, #root, .App {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 900px) {
+  html, body, #root, .App {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 700px) {
+  html, body, #root, .App {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 500px) {
+  html, body, #root, .App {
+    font-size: 12px;
+  }
+}

@@ -1,0 +1,14 @@
+Products
+name,sku,sku_type,cost_price,price,promotional_price,promo_start_date,promo_end_date,currency,category_name,unit_of_measure,locations,image_url
+
+Combos
+combo_name,combo_price,standard_price,promotional_price,promo_start_date,promo_end_date,sku,picture_url,items
+
+Locations
+name,address,city
+
+Categories
+name
+
+Units
+name,abbreviation

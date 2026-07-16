@@ -1,0 +1,90 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        { "type": "host", "value": "infinityhome.app" }
+      ],
+      "destination": "https://infinity-home-pi.vercel.app/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        { "type": "host", "value": "www.infinityhome.app" }
+      ],
+      "destination": "https://infinity-home-pi.vercel.app/$1",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    { "source": "/api/stocktake-login", "destination": "/api/stocktake?action=login" },
+    { "source": "/api/auth-profile", "destination": "/api/stocktake?action=auth-profile" },
+    { "source": "/api/stocktake-locations", "destination": "/api/stocktake?action=locations" },
+    { "source": "/api/stocktake-location-state", "destination": "/api/stocktake?action=location-state" },
+    { "source": "/api/stocktake-catalog", "destination": "/api/stocktake?action=catalog" },
+    { "source": "/api/stocktake-events-list", "destination": "/api/stocktake?action=events-list" },
+    { "source": "/api/stocktake-open-sessions", "destination": "/api/stocktake?action=open-sessions" },
+    { "source": "/api/stocktake-event-get", "destination": "/api/stocktake?action=event-get" },
+    { "source": "/api/stocktake-event-create", "destination": "/api/stocktake?action=event-create" },
+    { "source": "/api/stocktake-event-set-gate", "destination": "/api/stocktake?action=event-set-gate" },
+    { "source": "/api/stocktake-count-add", "destination": "/api/stocktake?action=count-add" },
+    { "source": "/api/stocktake-count-mine", "destination": "/api/stocktake?action=count-mine" },
+    { "source": "/api/stocktake-counts-import", "destination": "/api/stocktake?action=counts-import" },
+    { "source": "/api/stocktake-counts-clear", "destination": "/api/stocktake?action=counts-clear" },
+    { "source": "/api/stocktake-import-template", "destination": "/api/stocktake?action=import-template" },
+    { "source": "/api/stocktake-set-scan", "destination": "/api/stocktake?action=set-scan" },
+    { "source": "/api/stocktake-product-create", "destination": "/api/stocktake?action=product-create" },
+    { "source": "/api/stocktake-set-create", "destination": "/api/stocktake?action=set-create" },
+    { "source": "/api/stocktake-event-submit", "destination": "/api/stocktake?action=event-submit" },
+    { "source": "/api/stocktake-event-cancel", "destination": "/api/stocktake?action=event-cancel" },
+    { "source": "/api/stocktake-periods-list", "destination": "/api/stocktake?action=periods-list" },
+    { "source": "/api/stocktake-period-detail", "destination": "/api/stocktake?action=period-detail" },
+    { "source": "/api/stocktake-period-variance", "destination": "/api/stocktake?action=period-variance" },
+
+    { "source": "/api/payments", "destination": "/api/transactions?action=payments" },
+    { "source": "/api/payments-list", "destination": "/api/transactions?action=payments-list" },
+    { "source": "/api/payments-delete", "destination": "/api/transactions?action=payments-delete" },
+    { "source": "/api/layby-statement", "destination": "/api/transactions?action=layby-statement" },
+    { "source": "/api/layby-payments-delete", "destination": "/api/transactions?action=layby-payments-delete" },
+    { "source": "/api/layby-delete-customer", "destination": "/api/transactions?action=layby-delete-customer" },
+    { "source": "/api/quote-convert-layby", "destination": "/api/transactions?action=quote-convert-layby" },
+
+    { "source": "/api/customer-statement", "destination": "/api/customers?action=statement" },
+    { "source": "/api/customer-totals", "destination": "/api/customers?action=totals" },
+
+    { "source": "/api/image-proxy", "destination": "/api/admin?adminAction=image-proxy" },
+    { "source": "/api/pos-catalog", "destination": "/api/admin?adminAction=pos-catalog" },
+    { "source": "/api/quotation-read", "destination": "/api/admin?adminAction=quotation-read" },
+
+    { "source": "/api/label-print-job", "destination": "/api/labels?action=job" },
+    { "source": "/api/label-print-history", "destination": "/api/labels?action=history" },
+
+    { "source": "/api/whatsapp-sale", "destination": "/api/notify?action=whatsapp-sale" },
+    { "source": "/api/whatsapp-layby", "destination": "/api/notify?action=whatsapp-layby" },
+    { "source": "/api/whatsapp-transfer", "destination": "/api/notify?action=whatsapp-transfer" },
+    { "source": "/api/telegram-sale", "destination": "/api/notify?action=whatsapp-sale" },
+    { "source": "/api/telegram-layby", "destination": "/api/notify?action=whatsapp-layby" },
+    { "source": "/api/telegram-transfer", "destination": "/api/notify?action=whatsapp-transfer" },
+
+    { "source": "/api/diag-env", "destination": "/api/health?action=env" },
+    { "source": "/api/diag-tables", "destination": "/api/health?action=tables" },
+    { "source": "/api/diag-checkout", "destination": "/api/health?action=checkout" },
+    { "source": "/api/diag", "destination": "/api/health" },
+
+    { "source": "/api/factory-production-approve", "destination": "/api/admin?adminAction=factory-production-approve" },
+    { "source": "/api/inventory-bulk", "destination": "/api/admin?adminAction=inventory-bulk" },
+    { "source": "/api/product-locations", "destination": "/api/admin?adminAction=product-locations" },
+    { "source": "/api/products-bulk-delete", "destination": "/api/admin?adminAction=products-bulk-delete" },
+    { "source": "/api/quotation-save", "destination": "/api/admin?adminAction=quotation-save" },
+    { "source": "/api/sales-edit", "destination": "/api/admin?adminAction=sales-edit" },
+    { "source": "/api/user-activity", "destination": "/api/admin?adminAction=user-activity" },
+
+    { "source": "/api/opening-stock-entry", "destination": "/api/admin?adminAction=inventory-bulk&action=opening-stock-entry" },
+    { "source": "/api/inventory-snapshot", "destination": "/api/admin?adminAction=inventory-bulk&action=snapshot" },
+    { "source": "/api/combo-locations", "destination": "/api/admin?adminAction=product-locations&action=combo" },
+
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

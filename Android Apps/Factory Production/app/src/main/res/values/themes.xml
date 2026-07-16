@@ -1,0 +1,7 @@
+<resources>
+  <style name="Theme.FactoryProduction" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <item name="android:statusBarColor">@color/factory_black</item>
+    <item name="android:navigationBarColor">@color/factory_black</item>
+    <item name="android:windowBackground">@color/factory_black</item>
+  </style>
+</resources>
