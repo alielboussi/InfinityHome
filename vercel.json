@@ -79,6 +79,7 @@
     { "source": "/api/quotation-save", "destination": "/api/admin?adminAction=quotation-save" },
     { "source": "/api/sales-edit", "destination": "/api/admin?adminAction=sales-edit" },
     { "source": "/api/user-activity", "destination": "/api/admin?adminAction=user-activity" },
+    { "source": "/api/db-backup", "destination": "/api/admin?adminAction=db-backup" },
 
     { "source": "/api/opening-stock-entry", "destination": "/api/admin?adminAction=inventory-bulk&action=opening-stock-entry" },
     { "source": "/api/inventory-snapshot", "destination": "/api/admin?adminAction=inventory-bulk&action=snapshot" },

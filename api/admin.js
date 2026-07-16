@@ -13,6 +13,7 @@ const HANDLER_LOADERS = {
   'quote-convert-layby': () => import('../server/handlers/quote-convert-layby.js'),
   'sales-edit': () => import('../server/handlers/sales-edit.js'),
   'user-activity': () => import('../server/handlers/user-activity.js'),
+  'db-backup': () => import('../server/handlers/db-backup.js'),
 };
 
 function resolveHandler(mod) {

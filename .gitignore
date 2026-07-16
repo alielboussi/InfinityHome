@@ -21,6 +21,7 @@ Thumbs.db
 # Env files
 .env
 .env.*
+vercel.env
 
 # Vercel
 .vercel/
@@ -54,6 +55,9 @@ Desktop.ini
 
 # Ignore public export artifacts (if any)
 public/exported/
+
+# Local full DB backups (may contain customer/sales data)
+/backups/
 
 # testing
 /coverage

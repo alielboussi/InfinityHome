@@ -68,10 +68,10 @@ function resolveAction(req) {
 function resolveSupabaseUrl() {
   const raw = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || '';
   let u = String(raw || '').trim().replace(/\/+$/, '');
-  if (!u) u = 'https://xolmjpsibkwkdllqadee.supabase.co';
+  if (!u) u = 'https://ayuufehhzsrinvtlmyqm.supabase.co';
   if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
   const host = u.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
-  if (!host.endsWith('.supabase.co')) return 'https://xolmjpsibkwkdllqadee.supabase.co';
+  if (!host.endsWith('.supabase.co')) return 'https://ayuufehhzsrinvtlmyqm.supabase.co';
   return u;
 }
 

@@ -35,6 +35,7 @@ import IncompletePackages from './IncompletePackages';
 import IncompleteMobileLocked from './IncompleteMobileLocked';
 import QuotesBoard from './QuotesBoard.js';
 import UserActivityLog from './UserActivityLog';
+import DatabaseBackup from './DatabaseBackup';
 import AppChrome from './AppChrome';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
 import { getCurrentUser, isPathAllowed, getFallbackPathForUser } from './accessControl';
@@ -271,6 +272,7 @@ function App() {
       <Route path="/stock-count" element={<Navigate to="/stocktake" replace />} />
       <Route path="/all-sales" element={<RequireAuth><AllSales /></RequireAuth>} />
         <Route path="/user-activity" element={<RequireAuth><UserActivityLog /></RequireAuth>} />
+        <Route path="/database-backup" element={<RequireAuth><DatabaseBackup /></RequireAuth>} />
   <Route path="/incomplete-packages" element={<IncompletePackages />} />
       {/* Quotationer single entry */}
                   <Route path="/quotes" element={<Navigate to="/quotes-board" replace />} />

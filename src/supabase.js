@@ -3,7 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Known project URL — used when env is missing or accidentally set to the app/API host.
-const KNOWN_SUPABASE_URL = 'https://xolmjpsibkwkdllqadee.supabase.co';
+const KNOWN_SUPABASE_URL = 'https://ayuufehhzsrinvtlmyqm.supabase.co';
 
 // Fetch Supabase credentials from environment variables
 let SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || '';

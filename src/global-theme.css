@@ -10656,6 +10656,84 @@ body.enterprise-theme .user-activity-page {
   background: #f8fafc !important;
 }
 
+.db-backup-notes {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.db-backup-notes p {
+  margin: 0 0 8px;
+  color: #475569;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.db-backup-notes p:last-child {
+  margin-bottom: 0;
+}
+
+.db-backup-section-title {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  color: #111827;
+}
+
+.db-backup-primary-btn {
+  margin-top: 12px;
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+  border-color: #1d4ed8 !important;
+}
+
+.db-backup-primary-btn:hover:not(:disabled) {
+  background: #1e40af !important;
+}
+
+.db-backup-danger-btn {
+  margin-top: 14px;
+}
+
+.db-backup-import-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  max-width: 560px;
+}
+
+.db-backup-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #334155;
+  font-weight: 600;
+}
+
+.db-backup-error {
+  margin: 0;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.db-backup-success {
+  margin: 0;
+  color: #047857;
+  font-weight: 600;
+}
+
+.db-backup-progress {
+  margin: 0;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.db-backup-table-wrap {
+  overflow: auto;
+  max-height: 420px;
+}
+
 body.enterprise-theme .user-activity-filters {
   display: flex;
   align-items: center;

@@ -237,6 +237,7 @@ export function canManageCatalog(user) {
 const ZERO_STOCK_RESET_ROUTE = '/zero-stock-location';
 const ZERO_STOCK_RESET_USER = '1b5e098e-1206-447e-b4bc-6d009b85b5d3';
 const USER_ACTIVITY_ROUTE = '/user-activity';
+const DATABASE_BACKUP_ROUTE = '/database-backup';
 const USER_ACTIVITY_EMAIL = 'alielboussi00@gmail.com';
 const STOCK_CONTROL_EMAIL = 'alielboussi00@gmail.com';
 const QUOTATION_ONLY_UUIDS = new Set([HASSAN_AWAD.id]);
@@ -308,6 +309,10 @@ export function canViewUserActivity(user) {
   return getUserEmail(user) === USER_ACTIVITY_EMAIL;
 }
 
+export function canViewDatabaseBackup(user) {
+  return getUserEmail(user) === USER_ACTIVITY_EMAIL;
+}
+
 export function allowedPathsForUser(user) {
   const uuid = getUserUuid(user);
   const email = getUserEmail(user);
@@ -331,6 +336,9 @@ export function isPathAllowed(user, path) {
   if (p === COMPANY_SETTINGS_ROUTE || p.startsWith(`${COMPANY_SETTINGS_ROUTE}/`)) return false;
   if (p === USER_ACTIVITY_ROUTE || p.startsWith(`${USER_ACTIVITY_ROUTE}/`)) {
     return canViewUserActivity(user);
+  }
+  if (p === DATABASE_BACKUP_ROUTE || p.startsWith(`${DATABASE_BACKUP_ROUTE}/`)) {
+    return canViewDatabaseBackup(user);
   }
   if (STOCK_CONTROL_ROUTES.has(p) && !canViewStockControl(user)) {
     return false;

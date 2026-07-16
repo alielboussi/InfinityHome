@@ -5,7 +5,7 @@ import {
   FaCashRegister, FaReceipt, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags, FaLayerGroup,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase
 } from 'react-icons/fa';
 import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, isQuotationerOnlyUser } from './accessControl';
 
@@ -61,6 +61,7 @@ const NAV_GROUPS = [
     title: 'Administration',
     items: [
       { label: 'User Activity', route: '/user-activity', icon: FaHistory },
+      { label: 'Database Backup', route: '/database-backup', icon: FaDatabase },
     ],
   },
 ];
@@ -146,6 +147,7 @@ const TITLE_MAP = {
   '/warehouse-deliveries-admin': 'Warehouse Deliveries',
   '/company-settings': 'Company Settings',
   '/user-activity': 'User Activity',
+  '/database-backup': 'Database Backup',
   '/incomplete-packages': 'Incomplete Packages',
 };
 
