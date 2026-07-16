@@ -85,3 +85,5 @@ yarn-error.log*
 /dist-installer/
 label-worker/installer/dist-installer/
 **/LabelPrinterInstaller.exe
+
+.vercel
