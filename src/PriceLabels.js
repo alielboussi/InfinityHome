@@ -1,10 +1,14 @@
 /* eslint-disable no-unused-vars */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import supabase from './supabase';
 import { QRCodeSVG } from 'qrcode.react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+import { FaWhatsapp } from 'react-icons/fa';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import BackToDashboard from './BackToDashboard';
 import { logUserActivity } from './utils/userActivityLog';
+import { sendLabelsWhatsApp } from './services/whatsapp';
 
 // PriceLabels: search, select, and print/export two-up A4 labels
 const PriceLabels = () => {
@@ -21,6 +25,8 @@ const PriceLabels = () => {
   const [categoryId, setCategoryId] = useState('');
   const [categoryQty, setCategoryQty] = useState('1');
   const [categoryBulkMessage, setCategoryBulkMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const sendRenderRef = useRef(null);
 
   const fetchLabelData = useCallback(async ({ useCache = false, showLoading = false } = {}) => {
     if (showLoading) setIsRefreshing(true);
@@ -237,6 +243,123 @@ const PriceLabels = () => {
   const pairs = [];
   for (let i = 0; i < expanded.length; i += 2) pairs.push([expanded[i], expanded[i + 1] || null]);
 
+  const waitForLayout = () => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+
+  // Build PDF from the offscreen render, upload it, then post to the WhatsApp group.
+  const sendToWhatsApp = async () => {
+    if (selected.length === 0 || isSending) return;
+    setIsSending(true);
+    try {
+      await waitForLayout();
+      const container = sendRenderRef.current;
+      const labelNodes = container ? Array.from(container.querySelectorAll('.a4-pair')) : [];
+      if (!labelNodes.length) {
+        alert('Nothing to send yet — labels are still rendering. Try again.');
+        return;
+      }
+
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      doc.setProperties({ title: 'Price Printing' });
+
+      const renderNode = async (node) => {
+        try {
+          return await html2canvas(node, {
+            backgroundColor: '#ffffff',
+            useCORS: true,
+            foreignObjectRendering: true,
+            imageTimeout: 0,
+            scale: 2,
+          });
+        } catch (e) {
+          return await html2canvas(node, {
+            backgroundColor: '#ffffff',
+            useCORS: true,
+            allowTaint: true,
+            foreignObjectRendering: false,
+            imageTimeout: 0,
+            scale: 1.5,
+          });
+        }
+      };
+
+      let first = true;
+      for (const node of labelNodes) {
+        // eslint-disable-next-line no-await-in-loop
+        await waitForLayout();
+        // eslint-disable-next-line no-await-in-loop
+        const canvas = await renderNode(node);
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+        if (!first) doc.addPage();
+        first = false;
+        doc.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, pageHeightMm, undefined, 'FAST');
+      }
+
+      const pdfBlob = doc.output('blob');
+      const filename = `${buildPriceLabelsFilename()}.pdf`;
+
+      // Upload through the labels API (private bucket, returns signed URL)
+      const arrayBuffer = await pdfBlob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
+      const pdfBase64 = btoa(binary);
+
+      const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
+      const host = (() => {
+        try { return window?.location?.hostname || ''; } catch { return ''; }
+      })();
+      const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
+      const apiUrl = (!isLocalHost && apiBase) ? `${apiBase}/api/labels` : '/api/labels';
+
+      const resp = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName: filename, folder: 'desktop', pdfBase64 }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      const url = json?.signedUrl || json?.publicUrl || '';
+      if (!resp.ok || !url) {
+        throw new Error(json?.error || `Label upload failed (${resp.status})`);
+      }
+
+      const labelSummary = selected.map((item) => {
+        const name = item.type === 'product' ? item.data?.name : item.data?.combo_name;
+        return `${name || item.type} x${normalizeQty(item.qty)}`;
+      }).join('; ');
+
+      const sendResult = await sendLabelsWhatsApp({
+        pdfUrl: url,
+        pdfFilename: filename,
+        message: `Price labels — ${expanded.length} label${expanded.length === 1 ? '' : 's'}`,
+      });
+      if (!sendResult.ok) {
+        throw new Error(sendResult.error || 'WhatsApp send failed');
+      }
+
+      logUserActivity({
+        actionType: 'price_label_print',
+        actionLabel: 'Price Labels Sent (WhatsApp)',
+        details: `${selected.length} item${selected.length === 1 ? '' : 's'} • ${labelSummary}`,
+        reference: filename,
+        entityType: 'price_label_batch',
+        entityId: String(selected.length),
+      });
+      alert('Sent to the Price Labels WhatsApp group.');
+    } catch (err) {
+      console.error('WhatsApp labels send failed', err);
+      alert(`WhatsApp send failed: ${err?.message || err}`);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   // Always render two halves per sheet; if the second item is null we render an empty placeholder.
   // This guarantees the dashed cut line appears even when only one label is selected.
 
@@ -318,69 +441,61 @@ const PriceLabels = () => {
         <BackToDashboard />
         <h2 style={{ margin: 0 }}>Price Labels</h2>
       </div>
-      <div className="label-search-bar">
-        <input placeholder="Search products or sets..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="label-toolbar">
+        <input
+          className="label-toolbar-search"
+          placeholder="Search products or sets..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
         <button
           type="button"
           className="label-refresh-btn"
           onClick={() => fetchLabelData({ showLoading: true })}
           disabled={isRefreshing}
         >
-          {isRefreshing ? 'Refreshing...' : 'Refresh list'}
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </button>
-      </div>
-
-      <div className="label-category-bulk-bar">
-        <label className="label-category-bulk-item">
-          <span className="label-category-bulk-label">Category</span>
-          <span className="label-category-bulk-control-shell label-category-bulk-control-shell--category">
-            <select
-              className="label-category-bulk-control"
-              value={categoryId}
-              onChange={(e) => {
-                setCategoryId(e.target.value);
-                setCategoryBulkMessage('');
-              }}
-              aria-label="Category for bulk add"
-            >
-              <option value="">Select category</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </span>
-        </label>
-        <label className="label-category-bulk-item label-category-bulk-qty">
-          <span className="label-category-bulk-label">Qty</span>
-          <span className="label-category-bulk-control-shell label-category-bulk-control-shell--qty">
-            <input
-              className="label-category-bulk-control"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="Qty"
-              value={categoryQty}
-              onChange={(e) => {
-                setCategoryQty(e.target.value.replace(/[^\d]/g, ''));
-                setCategoryBulkMessage('');
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addCategoryProducts();
-                }
-              }}
-              aria-label="Quantity for each product in category"
-            />
-          </span>
-        </label>
+        <select
+          className="label-category-bulk-control label-toolbar-category"
+          value={categoryId}
+          onChange={(e) => {
+            setCategoryId(e.target.value);
+            setCategoryBulkMessage('');
+          }}
+          aria-label="Category for bulk add"
+        >
+          <option value="">Select category</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>{cat.name}</option>
+          ))}
+        </select>
+        <input
+          className="label-category-bulk-control label-toolbar-qty"
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="Qty"
+          value={categoryQty}
+          onChange={(e) => {
+            setCategoryQty(e.target.value.replace(/[^\d]/g, ''));
+            setCategoryBulkMessage('');
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addCategoryProducts();
+            }
+          }}
+          aria-label="Quantity for each product in category"
+        />
         <button type="button" className="label-category-bulk-btn" onClick={addCategoryProducts}>
           Add category
         </button>
-        {categoryBulkMessage ? (
-          <span className="label-category-bulk-message" role="status">{categoryBulkMessage}</span>
-        ) : null}
       </div>
+      {categoryBulkMessage ? (
+        <div className="label-category-bulk-message" role="status">{categoryBulkMessage}</div>
+      ) : null}
 
       {search && searchResults.length > 0 && (
         <div className="label-search-results">
@@ -427,8 +542,18 @@ const PriceLabels = () => {
       </div>
 
       <div className="label-actions">
-        <button disabled={selected.length === 0} onClick={() => printWithAutoFilename(false)}>Print</button>
-        <button disabled={selected.length === 0} onClick={() => printWithAutoFilename(true)}>Export as PDF</button>
+        <button disabled={selected.length === 0} onClick={() => printWithAutoFilename(true)}>Save as PDF</button>
+        <button
+          type="button"
+          className="label-whatsapp-btn"
+          disabled={selected.length === 0 || isSending}
+          onClick={sendToWhatsApp}
+          aria-busy={isSending}
+          title="Send to WhatsApp group"
+          aria-label="Send to WhatsApp group"
+        >
+          <FaWhatsapp />
+        </button>
       </div>
 
       {/* Print-only labels */}
@@ -440,6 +565,18 @@ const PriceLabels = () => {
           </div>
         ))}
       </div>
+
+      {/* Offscreen render used only while sending to WhatsApp (html2canvas needs laid-out nodes) */}
+      {isSending && (
+        <section className="labels-a4 plm-hidden-render" ref={sendRenderRef} aria-hidden>
+          {pairs.map((pair, idx) => (
+            <div className="a4-pair" key={idx}>
+              <div className="a4-label"><LabelCard item={pair[0]} /></div>
+              <div className="a4-label"><LabelCard item={pair[1] || null} /></div>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 };

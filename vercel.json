@@ -65,6 +65,7 @@
     { "source": "/api/whatsapp-sale", "destination": "/api/notify?action=whatsapp-sale" },
     { "source": "/api/whatsapp-layby", "destination": "/api/notify?action=whatsapp-layby" },
     { "source": "/api/whatsapp-transfer", "destination": "/api/notify?action=whatsapp-transfer" },
+    { "source": "/api/whatsapp-labels", "destination": "/api/notify?action=whatsapp-labels" },
     { "source": "/api/telegram-sale", "destination": "/api/notify?action=whatsapp-sale" },
     { "source": "/api/telegram-layby", "destination": "/api/notify?action=whatsapp-layby" },
     { "source": "/api/telegram-transfer", "destination": "/api/notify?action=whatsapp-transfer" },

@@ -1,0 +1,21 @@
+WhatsApp groups (WasenderAPI) — from GET https://www.wasenderapi.com/api/groups
+Saved: 2026-07-18
+
+Format: Group Name = Group ID (JID)
+
+Price Labels = 120363410723287387@g.us
+Automated Delivery Reciepts = 120363410583418058@g.us
+Automated Sales Reciepts = 120363420239254016@g.us
+Basyouni & Congo Cash Book = 120363246815974105@g.us
+Lay-Buys = 120363429021437712@g.us
+Mohammad Fahme = 120363372527723284@g.us
+Sales & Deliveries = 120363428119118757@g.us
+
+---
+Vercel env mapping:
+
+WHATSAPP_LABELS_GROUP_ID=120363410723287387@g.us
+WHATSAPP_TRANSFER_GROUP_ID=120363410583418058@g.us
+WHATSAPP_SALES_GROUP_ID=120363420239254016@g.us
+WHATSAPP_LAYBY_GROUP_ID=120363429021437712@g.us
+WHATSAPP_FAHME_GROUP_ID=120363372527723284@g.us

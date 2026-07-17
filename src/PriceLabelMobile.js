@@ -4,6 +4,7 @@ import supabase from './supabase';
 import { QRCodeSVG } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { sendLabelsWhatsApp } from './services/whatsapp';
 
 // Mobile-first Price Labels: search, select, preview, save PDF and share
 export default function PriceLabelMobile() {
@@ -238,37 +239,6 @@ export default function PriceLabelMobile() {
       const filename = `Price_Printing_${datePart}_${timePart}.pdf`;
       const path = `mobile/${filename}`;
 
-      // Prefer sharing the actual PDF file (e.g., to WhatsApp) when the browser supports file sharing
-      const pdfFile = typeof File !== 'undefined' ? new File([pdfBlob], filename, { type: 'application/pdf' }) : null;
-      const tryNativeShare = async () => {
-        if (!pdfFile || !navigator?.share) return false;
-        // Prefer canShare when available to avoid unsupported file errors on some WebViews
-        if (navigator.canShare) {
-          try {
-            if (!navigator.canShare({ files: [pdfFile] })) return false;
-          } catch (_) {
-            // fall through to a best-effort share below
-          }
-        }
-        try {
-          await navigator.share({
-            files: [pdfFile],
-            title: 'Price labels',
-            text: 'Price labels ready to send on WhatsApp',
-          });
-          return true;
-        } catch (shareErr) {
-          if (shareErr?.name === 'AbortError') return false;
-          console.warn('Native share failed', shareErr);
-          return false;
-        }
-      };
-
-      if (await tryNativeShare()) {
-        setIsGenerating(false);
-        return;
-      }
-
       // Upload via serverless endpoint (service role) for private bucket support
       let url = '';
       try {
@@ -334,6 +304,22 @@ export default function PriceLabelMobile() {
           url = signed.signedUrl;
         }
       }
+
+      // Post the PDF to the WhatsApp group (Wasender via /api/whatsapp-labels)
+      const sendResult = await sendLabelsWhatsApp({
+        pdfUrl: url,
+        pdfFilename: filename,
+        message: `Price labels — ${expanded.length} label${expanded.length === 1 ? '' : 's'}`,
+      });
+
+      if (sendResult.ok) {
+        alert('Sent to the Price Labels WhatsApp group.');
+        setIsGenerating(false);
+        return;
+      }
+
+      console.warn('WhatsApp group send failed, falling back to download', sendResult.error);
+      alert(`WhatsApp send failed (${sendResult.error || 'unknown error'}). Downloading the PDF instead.`);
 
       const launchDownload = () => {
         const ua = (navigator && navigator.userAgent ? navigator.userAgent : '').toLowerCase();

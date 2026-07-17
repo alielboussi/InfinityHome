@@ -31,6 +31,8 @@ const RECIPIENT_KEYS = {
 
   transfer: ['WHATSAPP_TRANSFER_RECIPIENTS', 'WHATSAPP_RECIPIENTS'],
 
+  labels: ['WHATSAPP_LABELS_RECIPIENTS', 'WHATSAPP_RECIPIENTS'],
+
 };
 
 
@@ -44,6 +46,8 @@ const GROUP_KEYS = {
   fahme: 'WHATSAPP_FAHME_GROUP_ID',
 
   transfer: 'WHATSAPP_TRANSFER_GROUP_ID',
+
+  labels: 'WHATSAPP_LABELS_GROUP_ID',
 
 };
 
@@ -121,7 +125,7 @@ function getWasenderToken() {
 
 function parseWasenderKinds() {
   const raw = String(process.env.WHATSAPP_WASENDER_KINDS || '').trim().toLowerCase();
-  if (raw === 'all') return ['sale', 'layby', 'transfer'];
+  if (raw === 'all') return ['sale', 'layby', 'transfer', 'labels'];
   if (raw) {
     return raw.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
   }
@@ -1852,6 +1856,52 @@ async function handleWhatsAppLayby(body) {
 
 
 
+async function handleWhatsAppLabels(body) {
+
+  const pdfUrl = String(body.pdfUrl || '').trim();
+
+  if (!pdfUrl) {
+
+    const err = new Error('Missing pdfUrl');
+
+    err.status = 400;
+
+    err.stage = 'validate';
+
+    throw err;
+
+  }
+
+
+
+  const routing = resolveDeliveryTargets('labels', null);
+
+  if (!routing.targets.length) {
+
+    const err = new Error('WhatsApp env not configured (WHATSAPP_LABELS_GROUP_ID or WHATSAPP_LABELS_RECIPIENTS)');
+
+    err.status = 500;
+
+    err.stage = 'env';
+
+    throw err;
+
+  }
+
+
+
+  const filename = String(body.pdfFilename || 'Price_Labels.pdf').trim() || 'Price_Labels.pdf';
+
+  const caption = String(body.message || 'Price labels').trim().slice(0, WHATSAPP_CAPTION_LIMIT);
+
+  const deliveries = await deliverDocument(routing.targets, pdfUrl, filename, routing.mode, routing.provider, caption);
+
+  return { ok: true, deliveries };
+
+}
+
+
+
 async function handleWhatsAppTransfer(body) {
 
   const rawMessage = String(body.message || '').trim();
@@ -1967,6 +2017,18 @@ module.exports = async function handler(req, res) {
     if (action === 'whatsapp-transfer' || action === 'transfer') {
 
       const payload = await handleWhatsAppTransfer(body);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+
+
+    if (action === 'whatsapp-labels' || action === 'labels') {
+
+      const payload = await handleWhatsAppLabels(body);
 
       res.status(200).json(payload);
 
