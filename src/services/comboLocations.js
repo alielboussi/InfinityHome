@@ -145,23 +145,26 @@ export async function upsertComboLocations(rows) {
     }
   }
 
-  const comboIds = [...new Set(payload.map((row) => row.combo_id))];
-  const { data: existing, error: existingErr } = await supabase
-    .from('combo_locations')
-    .select('combo_id, location_id')
-    .in('combo_id', comboIds);
-  if (existingErr) throw wrapLocalDevRlsError(existingErr);
-
-  const existingKeys = new Set((existing || []).map(comboLocationKey));
-  const missing = payload.filter((row) => !existingKeys.has(comboLocationKey(row)));
-  if (!missing.length) return { ok: true, count: 0 };
-
+  const CHUNK = 500;
   try {
-    await insertComboLocations(missing);
+    for (let i = 0; i < payload.length; i += CHUNK) {
+      const chunk = payload.slice(i, i + CHUNK);
+      let { error } = await supabase
+        .from('combo_locations')
+        .upsert(chunk, { onConflict: 'combo_id,location_id' });
+      if (needsManualId(error)) {
+        let nextId = await fetchNextComboLocationId();
+        const rowsWithIds = chunk.map((row) => ({ ...row, id: nextId++ }));
+        ({ error } = await supabase
+          .from('combo_locations')
+          .upsert(rowsWithIds, { onConflict: 'combo_id,location_id' }));
+      }
+      if (error) throw error;
+    }
   } catch (error) {
     throw wrapLocalDevRlsError(error);
   }
-  return { ok: true, count: missing.length };
+  return { ok: true, count: payload.length };
 }
 
 export async function replaceComboLocations(comboId, rows) {

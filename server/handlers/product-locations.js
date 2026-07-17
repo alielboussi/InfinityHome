@@ -73,28 +73,25 @@ async function insertComboRows(supabase, rows) {
   }
 }
 
-/** Bulk-add semantics: insert only pairs that do not already exist. */
-async function addMissingComboRows(supabase, rows) {
+/** Bulk-add semantics: upsert pairs idempotently (avoids unique_combo_location on large batches). */
+async function upsertComboRows(supabase, rows) {
   const uniqueRows = dedupeComboRows(rows);
   if (!uniqueRows.length) return 0;
 
-  const comboIds = [...new Set(uniqueRows.map((row) => coerceNumeric(row.combo_id)))];
-  const existing = [];
-  for (const idChunk of chunkArray(comboIds, 200)) {
-    const { data, error } = await supabase
+  for (const chunk of chunkArray(uniqueRows, 500)) {
+    let { error } = await supabase
       .from('combo_locations')
-      .select('combo_id, location_id')
-      .in('combo_id', idChunk);
+      .upsert(chunk, { onConflict: 'combo_id,location_id' });
+    if (needsManualComboLocationId(error)) {
+      let nextId = await fetchNextComboLocationId(supabase);
+      const rowsWithIds = chunk.map((row) => ({ ...row, id: nextId++ }));
+      ({ error } = await supabase
+        .from('combo_locations')
+        .upsert(rowsWithIds, { onConflict: 'combo_id,location_id' }));
+    }
     if (error) throw error;
-    existing.push(...(data || []));
   }
-
-  const existingKeys = new Set(existing.map(comboLocationKey));
-  const missing = uniqueRows.filter((row) => !existingKeys.has(comboLocationKey(row)));
-  if (!missing.length) return 0;
-
-  await insertComboRows(supabase, missing);
-  return missing.length;
+  return uniqueRows.length;
 }
 
 /** Delete many (entity_id, location_id) pairs efficiently, grouped by location. */
@@ -208,8 +205,8 @@ export default async function handler(req, res) {
 
       if (upsert && cleanRows.length) {
         try {
-          const inserted = await addMissingComboRows(supabase, cleanRows);
-          res.status(200).json({ ok: true, count: inserted });
+          const count = await upsertComboRows(supabase, cleanRows);
+          res.status(200).json({ ok: true, count });
           return;
         } catch (error) {
           res.status(500).json({ ok: false, error: error.message || String(error) });
