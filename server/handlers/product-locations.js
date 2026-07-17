@@ -31,6 +31,12 @@ const needsManualComboLocationId = (error) => {
 
 const comboLocationKey = (row) => `${coerceNumeric(row.combo_id)}::${row.location_id}`;
 
+function chunkArray(list, size) {
+  const chunks = [];
+  for (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));
+  return chunks;
+}
+
 function dedupeComboRows(rows) {
   const seen = new Set();
   const out = [];
@@ -56,13 +62,15 @@ async function fetchNextComboLocationId(supabase) {
 
 async function insertComboRows(supabase, rows) {
   if (!rows.length) return;
-  let { error } = await supabase.from('combo_locations').insert(rows);
-  if (needsManualComboLocationId(error)) {
-    let nextId = await fetchNextComboLocationId(supabase);
-    const rowsWithIds = rows.map((row) => ({ ...row, id: nextId++ }));
-    ({ error } = await supabase.from('combo_locations').insert(rowsWithIds));
+  for (const chunk of chunkArray(rows, 500)) {
+    let { error } = await supabase.from('combo_locations').insert(chunk);
+    if (needsManualComboLocationId(error)) {
+      let nextId = await fetchNextComboLocationId(supabase);
+      const rowsWithIds = chunk.map((row) => ({ ...row, id: nextId++ }));
+      ({ error } = await supabase.from('combo_locations').insert(rowsWithIds));
+    }
+    if (error) throw error;
   }
-  if (error) throw error;
 }
 
 /** Bulk-add semantics: insert only pairs that do not already exist. */
@@ -71,18 +79,58 @@ async function addMissingComboRows(supabase, rows) {
   if (!uniqueRows.length) return 0;
 
   const comboIds = [...new Set(uniqueRows.map((row) => coerceNumeric(row.combo_id)))];
-  const { data: existing, error: existingErr } = await supabase
-    .from('combo_locations')
-    .select('combo_id, location_id')
-    .in('combo_id', comboIds);
-  if (existingErr) throw existingErr;
+  const existing = [];
+  for (const idChunk of chunkArray(comboIds, 200)) {
+    const { data, error } = await supabase
+      .from('combo_locations')
+      .select('combo_id, location_id')
+      .in('combo_id', idChunk);
+    if (error) throw error;
+    existing.push(...(data || []));
+  }
 
-  const existingKeys = new Set((existing || []).map(comboLocationKey));
+  const existingKeys = new Set(existing.map(comboLocationKey));
   const missing = uniqueRows.filter((row) => !existingKeys.has(comboLocationKey(row)));
   if (!missing.length) return 0;
 
   await insertComboRows(supabase, missing);
   return missing.length;
+}
+
+/** Delete many (entity_id, location_id) pairs efficiently, grouped by location. */
+async function deletePairsByLocation(supabase, table, idColumn, rows) {
+  const byLocation = new Map();
+  for (const row of rows) {
+    const locId = row.location_id;
+    const entityId = row[idColumn];
+    if (!locId || entityId == null) continue;
+    if (!byLocation.has(locId)) byLocation.set(locId, []);
+    byLocation.get(locId).push(entityId);
+  }
+
+  let deleted = 0;
+  for (const [locId, ids] of byLocation.entries()) {
+    const uniqueIds = [...new Set(ids)];
+    for (const idChunk of chunkArray(uniqueIds, 200)) {
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .eq('location_id', locId)
+        .in(idColumn, idChunk);
+      if (error) throw error;
+      deleted += idChunk.length;
+    }
+  }
+  return deleted;
+}
+
+async function upsertProductRows(supabase, rows) {
+  for (const chunk of chunkArray(rows, 500)) {
+    const { error } = await supabase
+      .from('product_locations')
+      .upsert(chunk, { onConflict: 'product_id,location_id' });
+    if (error) throw error;
+  }
 }
 
 function resolveAction(req) {
@@ -136,7 +184,7 @@ export default async function handler(req, res) {
     const action = resolveAction(req);
 
     if (action === 'combo') {
-      const { rows, replaceComboId, deleteComboId, upsert } = req.body || {};
+      const { rows, replaceComboId, deleteComboId, upsert, remove } = req.body || {};
       const cleanRows = (Array.isArray(rows) ? rows : [])
         .filter((row) => row?.combo_id && row?.location_id)
         .map((row) => ({
@@ -146,6 +194,17 @@ export default async function handler(req, res) {
 
       const supabase = getSupabaseServiceClient();
       const targetComboId = replaceComboId || deleteComboId || (cleanRows[0]?.combo_id ?? null);
+
+      if (remove && cleanRows.length) {
+        try {
+          const count = await deletePairsByLocation(supabase, 'combo_locations', 'combo_id', cleanRows);
+          res.status(200).json({ ok: true, count });
+          return;
+        } catch (error) {
+          res.status(500).json({ ok: false, error: error.message || String(error) });
+          return;
+        }
+      }
 
       if (upsert && cleanRows.length) {
         try {
@@ -181,7 +240,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const { rows, replaceProductId } = req.body || {};
+    const { rows, replaceProductId, remove } = req.body || {};
     if (!Array.isArray(rows)) {
       res.status(400).json({ ok: false, error: 'Missing rows' });
       return;
@@ -198,6 +257,21 @@ export default async function handler(req, res) {
 
     const supabase = getSupabaseServiceClient();
 
+    if (remove) {
+      if (!cleanRows.length) {
+        res.status(400).json({ ok: false, error: 'No valid rows to remove' });
+        return;
+      }
+      try {
+        const count = await deletePairsByLocation(supabase, 'product_locations', 'product_id', cleanRows);
+        res.status(200).json({ ok: true, count });
+        return;
+      } catch (error) {
+        res.status(500).json({ ok: false, error: error.message || String(error) });
+        return;
+      }
+    }
+
     if (replaceProductId) {
       const { error: delErr } = await supabase
         .from('product_locations')
@@ -210,10 +284,9 @@ export default async function handler(req, res) {
     }
 
     if (cleanRows.length > 0) {
-      const { error } = await supabase
-        .from('product_locations')
-        .upsert(cleanRows, { onConflict: 'product_id,location_id' });
-      if (error) {
+      try {
+        await upsertProductRows(supabase, cleanRows);
+      } catch (error) {
         res.status(500).json({ ok: false, error: error.message || String(error) });
         return;
       }

@@ -5,10 +5,10 @@ import { useNavigate } from 'react-router-dom';
 import supabase from "./supabase";
 import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
-import { deleteComboLocations, replaceComboLocations, upsertComboLocations } from './services/comboLocations';
+import { deleteComboLocations, removeComboLocations, replaceComboLocations, upsertComboLocations } from './services/comboLocations';
 import { getFactoryStorageSummary, getFactoryStorageItems, createFactoryStorageItem, releaseFactoryStorageItem, updateFactoryStorageItem } from './services/factoryStorage';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
-import { syncProductLocations } from './services/productLocations';
+import { removeProductLocations, syncProductLocations } from './services/productLocations';
 import { applyInventoryBulk } from './utils/inventoryApi';
 import { canDeleteProducts, canManageProductInventory, getCurrentUser } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
@@ -1451,9 +1451,17 @@ function ProductsListPage() {
     }))
   ), [filteredProducts]);
 
+  // Keep selections across search/filter changes so users can tick items one-by-one while searching.
   const selectedBulkItems = useMemo(() => (
-    bulkSelectableItems.filter(item => bulkSelectionMap[item.key])
-  ), [bulkSelectableItems, bulkSelectionMap]);
+    Object.entries(bulkSelectionMap)
+      .filter(([, checked]) => checked)
+      .map(([key]) => {
+        const sep = key.indexOf(':');
+        const kind = sep >= 0 ? key.slice(0, sep) : 'prod';
+        const id = sep >= 0 ? key.slice(sep + 1) : key;
+        return { key, id, isCombo: kind === 'combo' };
+      })
+  ), [bulkSelectionMap]);
 
   const selectedProductIds = useMemo(() => (
     Array.from(new Set(selectedBulkItems.filter(item => !item.isCombo).map(item => item.id)))
@@ -1471,16 +1479,7 @@ function ProductsListPage() {
     allBulkKeys.length > 0 && allBulkKeys.every(key => bulkSelectionMap[key])
   ), [allBulkKeys, bulkSelectionMap]);
 
-  useEffect(() => {
-    setBulkSelectionMap(prev => {
-      if (!bulkSelectableItems.length) return {};
-      const next = {};
-      bulkSelectableItems.forEach(item => {
-        if (prev[item.key]) next[item.key] = true;
-      });
-      return next;
-    });
-  }, [bulkSelectableItems]);
+  const needsBulkLocation = bulkAction === 'add_location' || bulkAction === 'remove_location';
 
   const negativeResetTargets = useMemo(() => {
     if (!negativeOnly) return [];
@@ -1544,17 +1543,45 @@ function ProductsListPage() {
           setBulkApplyLoading(false);
           return;
         }
-        for (const productId of productIds) {
-          const rows = bulkLocationIds.map(locId => ({ product_id: productId, location_id: locId }));
-          await syncProductLocations({ rows }, supabase);
+        const productRows = productIds.flatMap((productId) => (
+          bulkLocationIds.map((locId) => ({ product_id: productId, location_id: locId }))
+        ));
+        for (const chunk of chunkArray(productRows, 500)) {
+          await syncProductLocations({ rows: chunk }, supabase);
         }
-        for (const comboId of comboIds) {
-          const rows = bulkLocationIds.map(locId => ({ combo_id: comboId, location_id: locId }));
-          await upsertComboLocations(rows);
+        const comboRows = comboIds.flatMap((comboId) => (
+          bulkLocationIds.map((locId) => ({ combo_id: comboId, location_id: locId }))
+        ));
+        for (const chunk of chunkArray(comboRows, 500)) {
+          await upsertComboLocations(chunk);
         }
         await fetchAll();
         const total = productIds.length + comboIds.length;
         setBulkApplyMessage(`Locations applied to ${total} item${total === 1 ? '' : 's'}.`);
+        return;
+      }
+
+      if (bulkAction === 'remove_location') {
+        if (bulkLocationIds.length === 0) {
+          alert('Select at least one location.');
+          setBulkApplyLoading(false);
+          return;
+        }
+        const productRows = productIds.flatMap((productId) => (
+          bulkLocationIds.map((locId) => ({ product_id: productId, location_id: locId }))
+        ));
+        for (const chunk of chunkArray(productRows, 500)) {
+          await removeProductLocations(chunk, supabase);
+        }
+        const comboRows = comboIds.flatMap((comboId) => (
+          bulkLocationIds.map((locId) => ({ combo_id: comboId, location_id: locId }))
+        ));
+        for (const chunk of chunkArray(comboRows, 500)) {
+          await removeComboLocations(chunk);
+        }
+        await fetchAll();
+        const total = productIds.length + comboIds.length;
+        setBulkApplyMessage(`Locations removed from ${total} item${total === 1 ? '' : 's'}.`);
         return;
       }
 
@@ -1730,7 +1757,13 @@ function ProductsListPage() {
   };
 
   const parseInlinePriceDraft = (draft, allowEmpty) => {
-    const trimmed = String(draft || '').trim().replace(/,/g, '');
+    // Strip currency symbols/labels users may type (K, $, ZMW, etc.)
+    const trimmed = String(draft || '')
+      .trim()
+      .replace(/,/g, '')
+      .replace(/^(kwacha|zmw|zmk|usd|us\$)\s*/i, '')
+      .replace(/^[k$£€]\s*/i, '')
+      .trim();
     if (!trimmed) return allowEmpty ? null : NaN;
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : NaN;
@@ -1903,11 +1936,13 @@ function ProductsListPage() {
   };
 
   useEffect(() => {
-    if (inlinePriceEdit && inlinePriceInputRef.current) {
-      inlinePriceInputRef.current.focus();
-      inlinePriceInputRef.current.select();
-    }
-  }, [inlinePriceEdit]);
+    if (!inlinePriceEdit || !inlinePriceInputRef.current) return;
+    // Only focus/select when starting an edit — not on every keystroke.
+    // Selecting on each draft change was replacing typed digits (225 → 25).
+    inlinePriceInputRef.current.focus();
+    inlinePriceInputRef.current.select();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inlinePriceEdit?.rowKey, inlinePriceEdit?.field]);
 
   const escapeCsv = (value) => {
     const raw = value == null ? '' : String(value);
@@ -2032,46 +2067,66 @@ function ProductsListPage() {
           </button>
           <div className="products-toolbar-control-wrap products-toolbar-bulk-wrap">
             <select
-              value={bulkAction}
-              onChange={(e) => setBulkAction(e.target.value)}
+              value={
+                bulkAction === 'set_field'
+                  ? 'set_field'
+                  : (bulkLocationIds[0]
+                    ? `${bulkAction === 'remove_location' ? 'remove' : 'add'}:${bulkLocationIds[0]}`
+                    : '')
+              }
+              onChange={(e) => {
+                const value = String(e.target.value || '');
+                if (value === 'set_field') {
+                  setBulkAction('set_field');
+                  setBulkLocationIds([]);
+                  return;
+                }
+                if (value.startsWith('add:')) {
+                  const id = value.slice(4);
+                  setBulkAction('add_location');
+                  setBulkLocationIds(id ? [id] : []);
+                  return;
+                }
+                if (value.startsWith('remove:')) {
+                  const id = value.slice(7);
+                  setBulkAction('remove_location');
+                  setBulkLocationIds(id ? [id] : []);
+                  return;
+                }
+                setBulkAction('add_location');
+                setBulkLocationIds([]);
+              }}
               className="products-toolbar-select products-toolbar-bulk-select pos-control"
-              aria-label="Bulk action"
+              aria-label="Bulk add or remove location"
             >
-              <option value="add_location">Bulk: Add Location</option>
-              <option value="set_field">Bulk: Set Field</option>
+              <option value="">Location action…</option>
+              <optgroup label="Add to location">
+                {locations.map((loc) => (
+                  <option key={`add-${loc.id}`} value={`add:${loc.id}`}>{loc.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Remove from location">
+                {locations.map((loc) => (
+                  <option key={`remove-${loc.id}`} value={`remove:${loc.id}`}>{loc.name}</option>
+                ))}
+              </optgroup>
+              <option value="set_field">Set field…</option>
             </select>
           </div>
-          {bulkAction === 'add_location' && (
-            <label className="products-toolbar-control-wrap products-toolbar-location-add-wrap">
-              <span className="products-toolbar-inline-label">Location to add</span>
-              <select
-                value={bulkLocationIds[0] || ''}
-                onChange={(e) => {
-                  const id = String(e.target.value || '').trim();
-                  setBulkLocationIds(id ? [id] : []);
-                }}
-                className="products-toolbar-select pos-control"
-                aria-label="Location to add"
-              >
-                <option value="">Choose location…</option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={String(loc.id)}>{loc.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
           <button
             type="button"
             onClick={handleApplyBulkUpdate}
-            disabled={bulkApplyLoading || selectedBulkItems.length === 0 || (bulkAction === 'add_location' && bulkLocationIds.length === 0)}
+            disabled={bulkApplyLoading || selectedBulkItems.length === 0 || (needsBulkLocation && bulkLocationIds.length === 0)}
             className="products-toolbar-btn products-toolbar-btn--apply"
             title={bulkApplyLoading ? 'Applying…' : `Apply bulk action (${selectedBulkItems.length} selected)`}
           >
             {bulkApplyLoading
               ? 'Applying...'
               : bulkAction === 'add_location'
-                ? `Apply Location (${selectedBulkItems.length})`
-                : `Apply Bulk (${selectedBulkItems.length})`}
+                ? `Add Location (${selectedBulkItems.length})`
+                : bulkAction === 'remove_location'
+                  ? `Remove Location (${selectedBulkItems.length})`
+                  : `Apply Bulk (${selectedBulkItems.length})`}
           </button>
           {canDelete && (
             <button
@@ -2113,7 +2168,7 @@ function ProductsListPage() {
               aria-label="Search products"
             />
           </div>
-          {bulkAction !== 'add_location' && bulkFieldMeta && (
+          {bulkAction === 'set_field' && bulkFieldMeta && (
             <div className="products-toolbar-control-wrap">
               <select
                 value={bulkField}
@@ -2127,7 +2182,7 @@ function ProductsListPage() {
               </select>
             </div>
           )}
-          {bulkAction !== 'add_location' && bulkFieldMeta && (
+          {bulkAction === 'set_field' && bulkFieldMeta && (
             bulkFieldMeta.type === 'select' ? (
               <div className="products-toolbar-control-wrap">
                 <select
@@ -2178,13 +2233,16 @@ function ProductsListPage() {
                         checked={bulkAllSelected}
                         onChange={(e) => {
                           const checked = e.target.checked;
-                          setBulkSelectionMap(() => {
-                            const next = {};
-                            allBulkKeys.forEach(key => { next[key] = checked; });
+                          setBulkSelectionMap((prev) => {
+                            const next = { ...prev };
+                            allBulkKeys.forEach((key) => {
+                              if (checked) next[key] = true;
+                              else delete next[key];
+                            });
                             return next;
                           });
                         }}
-                        aria-label="Select all products"
+                        aria-label="Select all visible products"
                       />
                     </div>
                   </th>
@@ -2249,10 +2307,12 @@ function ProductsListPage() {
                           checked={Object.prototype.hasOwnProperty.call(bulkSelectionMap, bulkKey) ? bulkSelectionMap[bulkKey] : false}
                           onChange={e => {
                             const checked = e.target.checked;
-                            setBulkSelectionMap(prev => ({
-                              ...prev,
-                              [bulkKey]: checked
-                            }));
+                            setBulkSelectionMap(prev => {
+                              const next = { ...prev };
+                              if (checked) next[bulkKey] = true;
+                              else delete next[bulkKey];
+                              return next;
+                            });
                           }}
                           aria-label={`Select ${isCombo ? item.combo_name : item.name}`}
                         />

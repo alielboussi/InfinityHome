@@ -204,3 +204,32 @@ export async function deleteComboLocations(comboId) {
   if (error) throw wrapLocalDevRlsError(error);
   return { ok: true, count: 0 };
 }
+
+/** Remove specific combo↔location links (does not touch other locations). */
+export async function removeComboLocations(rows) {
+  const payload = dedupeComboRows((Array.isArray(rows) ? rows : []).map((row) => ({
+    combo_id: coerceNumeric(row.combo_id),
+    location_id: row.location_id,
+  }))).filter((row) => row.combo_id != null && row.location_id);
+  if (!payload.length) return { ok: true, count: 0 };
+
+  if (shouldUseApi()) {
+    try {
+      return await postComboLocations({ rows: payload, remove: true });
+    } catch (err) {
+      if (process.env.NODE_ENV === 'production' || String(process.env.REACT_APP_FORCE_API || '').trim() === '1') {
+        throw err;
+      }
+    }
+  }
+
+  for (const row of payload) {
+    const { error } = await supabase
+      .from('combo_locations')
+      .delete()
+      .eq('combo_id', row.combo_id)
+      .eq('location_id', row.location_id);
+    if (error) throw wrapLocalDevRlsError(error);
+  }
+  return { ok: true, count: payload.length };
+}

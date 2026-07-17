@@ -4171,42 +4171,16 @@ body {
 .products-toolbar-control-wrap.products-toolbar-bulk-wrap {
   gap: 4px;
   padding: 0;
-}
-
-.products-toolbar-location-add-wrap {
-  width: 7.5cm;
-  flex-basis: 7.5cm;
-  min-width: 7.5cm;
-  max-width: 7.5cm;
-  position: relative;
-  padding-left: 96px;
-}
-
-.products-toolbar-inline-label {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #1f2937;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.products-toolbar-location-add-wrap .products-toolbar-select {
-  padding-left: 8px;
-  font-weight: 600;
+  min-width: 180px;
+  flex: 0 1 220px;
 }
 
 .products-toolbar-bulk-select {
   flex: 1 1 auto;
-  min-width: 0;
-  width: 0;
-  padding-right: 4px !important;
-  -webkit-appearance: none;
-  appearance: none;
-  background-image: none !important;
+  min-width: 160px;
+  width: 100%;
+  padding-right: 24px !important;
+  font-weight: 600;
 }
 
 .products-toolbar-bulk-tick {
@@ -4263,7 +4237,7 @@ body {
   padding-right: 28px;
 }
 
-.products-list-page .products-toolbar-select:not(.products-toolbar-bulk-select) {
+.products-list-page .products-toolbar-select {
   -webkit-appearance: none;
   appearance: none;
   background-color: #ffffff !important;
@@ -4489,13 +4463,15 @@ body {
 
 .products-list-inline-price-input {
   width: 100%;
-  max-width: 88px;
+  max-width: 110px;
+  min-width: 64px;
   box-sizing: border-box;
   font-family: Arial, Helvetica, sans-serif;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 6px;
+  font-weight: 600;
+  line-height: 1.2;
   text-align: center;
-  padding: 2px 4px;
+  padding: 2px 3px;
   border: 1px solid #00b4d8;
   border-radius: 4px;
   color: #000000;

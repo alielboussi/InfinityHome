@@ -67,3 +67,35 @@ export async function syncProductLocations({ rows = [], replaceProductId = null 
   }
   return { ok: true, count: cleanRows.length };
 }
+
+/** Remove specific product↔location links (does not touch other locations). */
+export async function removeProductLocations(rows = [], supabase) {
+  const cleanRows = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row?.product_id && row?.location_id)
+    .map((row) => ({ product_id: row.product_id, location_id: row.location_id }));
+  if (!cleanRows.length) return { ok: true, count: 0 };
+
+  if (shouldUseApi()) {
+    try {
+      return await postProductLocations({ rows: cleanRows, remove: true });
+    } catch (err) {
+      if (process.env.NODE_ENV === 'production' || String(process.env.REACT_APP_FORCE_API || '').trim() === '1') {
+        throw err;
+      }
+    }
+  }
+
+  if (!supabase) {
+    throw new Error('Supabase client required for product_locations fallback.');
+  }
+
+  for (const row of cleanRows) {
+    const { error } = await supabase
+      .from('product_locations')
+      .delete()
+      .eq('product_id', row.product_id)
+      .eq('location_id', row.location_id);
+    if (error) throw error;
+  }
+  return { ok: true, count: cleanRows.length };
+}
