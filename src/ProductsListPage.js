@@ -255,6 +255,7 @@ function ProductsListPage() {
   const [inlinePriceEdit, setInlinePriceEdit] = useState(null);
   const inlinePriceInputRef = useRef(null);
   const inlinePriceDraftRef = useRef('');
+  const inlinePriceSaveLockRef = useRef(false);
   const factoryStorageActorRef = useRef(null);
   const factoryStorageLaunchRef = useRef(false);
   const catalogLoadSeqRef = useRef(0);
@@ -1736,20 +1737,35 @@ function ProductsListPage() {
   };
 
   const saveInlinePrice = async (item, isCombo, field, draft) => {
+    // Prevent Enter+blur (or double-blur) from saving twice. The second save
+    // often had an empty draft and cleared promotional_price back to null.
+    if (inlinePriceSaveLockRef.current) return false;
+    inlinePriceSaveLockRef.current = true;
+
     const allowEmpty = field === 'promotional_price';
     const parsed = parseInlinePriceDraft(draft, allowEmpty);
     if (!allowEmpty && (!Number.isFinite(parsed) || parsed < 0)) {
       alert('Enter a valid price.');
+      inlinePriceSaveLockRef.current = false;
       return false;
     }
     if (allowEmpty && String(draft || '').trim() !== '' && !Number.isFinite(parsed)) {
       alert('Enter a valid promotional price or leave blank to clear.');
+      inlinePriceSaveLockRef.current = false;
       return false;
     }
 
     const itemId = item.id;
     const itemName = isCombo ? item.combo_name : item.name;
     const oldValue = getEditablePriceRaw(item, field, isCombo);
+    const oldParsed = parseInlinePriceDraft(oldValue, allowEmpty);
+    // No-op if unchanged (also blocks the empty blur that follows Enter).
+    if (Object.is(oldParsed, parsed) || (oldParsed == null && parsed == null)) {
+      inlinePriceDraftRef.current = '';
+      setInlinePriceEdit(null);
+      inlinePriceSaveLockRef.current = false;
+      return true;
+    }
 
     // Drop any in-flight catalog fetch so it cannot overwrite this save.
     catalogLoadSeqRef.current += 1;
@@ -1814,6 +1830,8 @@ function ProductsListPage() {
       alert(`Failed to save price: ${err.message || err}`);
       setInlinePriceEdit((prev) => (prev ? { ...prev, saving: false } : prev));
       return false;
+    } finally {
+      inlinePriceSaveLockRef.current = false;
     }
   };
 
@@ -1849,6 +1867,7 @@ function ProductsListPage() {
               }
             }}
             onBlur={async () => {
+              if (inlinePriceSaveLockRef.current) return;
               if (
                 !inlinePriceEdit
                 || inlinePriceEdit.rowKey !== rowKey
