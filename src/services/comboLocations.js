@@ -72,6 +72,20 @@ const needsManualId = (error) => {
     || /duplicate key value violates unique constraint.*combo_locations_pkey/i.test(error.message);
 };
 
+const comboLocationKey = (row) => `${coerceNumeric(row.combo_id)}::${row.location_id}`;
+
+const dedupeComboRows = (rows) => {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const key = comboLocationKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+};
+
 const fetchNextComboLocationId = async () => {
   const { data, error } = await supabase
     .from("combo_locations")
@@ -94,11 +108,12 @@ const coerceNumeric = (value) => {
 export async function insertComboLocations(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return;
 
-  const payload = rows.map((row) => ({
+  const payload = dedupeComboRows(rows.map((row) => ({
     ...row,
     combo_id: coerceNumeric(row.combo_id),
     location_id: row.location_id,
-  }));
+  })));
+  if (!payload.length) return;
 
   let { error } = await supabase.from("combo_locations").insert(payload);
   if (needsManualId(error)) {
@@ -113,11 +128,11 @@ export async function insertComboLocations(rows) {
 }
 
 export async function upsertComboLocations(rows) {
-  const payload = (Array.isArray(rows) ? rows : []).map((row) => ({
+  const payload = dedupeComboRows((Array.isArray(rows) ? rows : []).map((row) => ({
     ...row,
     combo_id: coerceNumeric(row.combo_id),
     location_id: row.location_id,
-  }));
+  })));
   if (!payload.length) return { ok: true, count: 0 };
 
   if (shouldUseApi()) {
@@ -130,16 +145,23 @@ export async function upsertComboLocations(rows) {
     }
   }
 
-  let { error } = await supabase
+  const comboIds = [...new Set(payload.map((row) => row.combo_id))];
+  const { data: existing, error: existingErr } = await supabase
     .from('combo_locations')
-    .upsert(payload, { onConflict: 'combo_id,location_id' });
-  if (needsManualId(error)) {
-    let nextId = await fetchNextComboLocationId();
-    const rowsWithIds = payload.map((row) => ({ ...row, id: nextId++ }));
-    ({ error } = await supabase.from('combo_locations').upsert(rowsWithIds, { onConflict: 'combo_id,location_id' }));
+    .select('combo_id, location_id')
+    .in('combo_id', comboIds);
+  if (existingErr) throw wrapLocalDevRlsError(existingErr);
+
+  const existingKeys = new Set((existing || []).map(comboLocationKey));
+  const missing = payload.filter((row) => !existingKeys.has(comboLocationKey(row)));
+  if (!missing.length) return { ok: true, count: 0 };
+
+  try {
+    await insertComboLocations(missing);
+  } catch (error) {
+    throw wrapLocalDevRlsError(error);
   }
-  if (error) throw wrapLocalDevRlsError(error);
-  return { ok: true, count: payload.length };
+  return { ok: true, count: missing.length };
 }
 
 export async function replaceComboLocations(comboId, rows) {

@@ -29,6 +29,20 @@ const needsManualComboLocationId = (error) => {
     || /duplicate key value violates unique constraint.*combo_locations_pkey/i.test(error.message);
 };
 
+const comboLocationKey = (row) => `${coerceNumeric(row.combo_id)}::${row.location_id}`;
+
+function dedupeComboRows(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const key = comboLocationKey(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
 async function fetchNextComboLocationId(supabase) {
   const { data, error } = await supabase
     .from('combo_locations')
@@ -41,6 +55,7 @@ async function fetchNextComboLocationId(supabase) {
 }
 
 async function insertComboRows(supabase, rows) {
+  if (!rows.length) return;
   let { error } = await supabase.from('combo_locations').insert(rows);
   if (needsManualComboLocationId(error)) {
     let nextId = await fetchNextComboLocationId(supabase);
@@ -48,6 +63,26 @@ async function insertComboRows(supabase, rows) {
     ({ error } = await supabase.from('combo_locations').insert(rowsWithIds));
   }
   if (error) throw error;
+}
+
+/** Bulk-add semantics: insert only pairs that do not already exist. */
+async function addMissingComboRows(supabase, rows) {
+  const uniqueRows = dedupeComboRows(rows);
+  if (!uniqueRows.length) return 0;
+
+  const comboIds = [...new Set(uniqueRows.map((row) => coerceNumeric(row.combo_id)))];
+  const { data: existing, error: existingErr } = await supabase
+    .from('combo_locations')
+    .select('combo_id, location_id')
+    .in('combo_id', comboIds);
+  if (existingErr) throw existingErr;
+
+  const existingKeys = new Set((existing || []).map(comboLocationKey));
+  const missing = uniqueRows.filter((row) => !existingKeys.has(comboLocationKey(row)));
+  if (!missing.length) return 0;
+
+  await insertComboRows(supabase, missing);
+  return missing.length;
 }
 
 function resolveAction(req) {
@@ -113,20 +148,14 @@ export default async function handler(req, res) {
       const targetComboId = replaceComboId || deleteComboId || (cleanRows[0]?.combo_id ?? null);
 
       if (upsert && cleanRows.length) {
-        let { error } = await supabase
-          .from('combo_locations')
-          .upsert(cleanRows, { onConflict: 'combo_id,location_id' });
-        if (needsManualComboLocationId(error)) {
-          let nextId = await fetchNextComboLocationId(supabase);
-          const rowsWithIds = cleanRows.map((row) => ({ ...row, id: nextId++ }));
-          ({ error } = await supabase.from('combo_locations').upsert(rowsWithIds, { onConflict: 'combo_id,location_id' }));
-        }
-        if (error) {
+        try {
+          const inserted = await addMissingComboRows(supabase, cleanRows);
+          res.status(200).json({ ok: true, count: inserted });
+          return;
+        } catch (error) {
           res.status(500).json({ ok: false, error: error.message || String(error) });
           return;
         }
-        res.status(200).json({ ok: true, count: cleanRows.length });
-        return;
       }
 
       if (replaceComboId || deleteComboId) {
