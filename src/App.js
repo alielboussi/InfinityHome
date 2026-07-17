@@ -38,7 +38,7 @@ import UserActivityLog from './UserActivityLog';
 import DatabaseBackup from './DatabaseBackup';
 import AppChrome from './AppChrome';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
-import { getCurrentUser, isPathAllowed, getFallbackPathForUser } from './accessControl';
+import { getCurrentUser, isPathAllowed, getFallbackPathForUser, canViewUserActivity, canViewDatabaseBackup } from './accessControl';
 import { bootstrapAppAuth } from './utils/authSession';
 
 function RouteActivityLogger() {
@@ -79,6 +79,15 @@ function RequireAuth({ children }) {
       if (!user) {
             const next = encodeURIComponent(location?.pathname || '/');
             return <Navigate to={`/login?next=${next}`} replace />;
+      }
+      return children;
+}
+
+// Admin-only pages (User Activity, Database Backup): render only for the allowed account.
+function RequireAdminPage({ check, children }) {
+      const user = getCurrentUser();
+      if (!check(user)) {
+            return <Navigate to={getFallbackPathForUser(user, null)} replace />;
       }
       return children;
 }
@@ -271,8 +280,8 @@ function App() {
       <Route path="/zero-stock-location" element={<ZeroStockLocationReset />} />
       <Route path="/stock-count" element={<Navigate to="/stocktake" replace />} />
       <Route path="/all-sales" element={<RequireAuth><AllSales /></RequireAuth>} />
-        <Route path="/user-activity" element={<RequireAuth><UserActivityLog /></RequireAuth>} />
-        <Route path="/database-backup" element={<RequireAuth><DatabaseBackup /></RequireAuth>} />
+        <Route path="/user-activity" element={<RequireAuth><RequireAdminPage check={canViewUserActivity}><UserActivityLog /></RequireAdminPage></RequireAuth>} />
+        <Route path="/database-backup" element={<RequireAuth><RequireAdminPage check={canViewDatabaseBackup}><DatabaseBackup /></RequireAdminPage></RequireAuth>} />
   <Route path="/incomplete-packages" element={<IncompletePackages />} />
       {/* Quotationer single entry */}
                   <Route path="/quotes" element={<Navigate to="/quotes-board" replace />} />

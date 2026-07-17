@@ -1,5 +1,9 @@
 # Stocktake Flow
 
+## Guides
+- **Procedure (how to run a stocktake):** [`stocktake-procedure.md`](./stocktake-procedure.md) — roles, steps, checklist; no APIs or internals
+- **Technical reference:** [`stocktake-technical.md`](./stocktake-technical.md) — endpoints, tables, submit logic, audit
+
 ## Pages
 - **Stocktake** (`/stocktake`) — control: start/close/clear/submit + periods + Excel import
 - **Count page** (`/stocktake/count`) — **fixed URL** forever; counters sign in and pick an open location session

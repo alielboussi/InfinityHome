@@ -15,6 +15,8 @@ const ACTION_METHOD = {
   'event-set-gate': 'POST',
   'count-add': 'POST',
   'count-mine': 'GET',
+  'count-remove-mine': 'POST',
+  'count-clear-mine': 'POST',
   'counts-import': 'POST',
   'counts-clear': 'POST',
   'import-template': 'GET',
@@ -41,6 +43,8 @@ const ACTION_ALIAS = {
   'stocktake-event-set-gate': 'event-set-gate',
   'stocktake-count-add': 'count-add',
   'stocktake-count-mine': 'count-mine',
+  'stocktake-count-remove-mine': 'count-remove-mine',
+  'stocktake-count-clear-mine': 'count-clear-mine',
   'stocktake-counts-import': 'counts-import',
   'stocktake-counts-clear': 'counts-clear',
   'stocktake-import-template': 'import-template',
@@ -96,6 +100,26 @@ function emailOf(body = {}, query = {}) {
 
 function cleanTerm(value) {
   return String(value || '').trim().replace(/[,*%]/g, '');
+}
+
+async function fetchAllPaged(buildQuery, pageSize = 1000) {
+  const all = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await buildQuery(offset, offset + pageSize - 1);
+    if (error) return { data: null, error };
+    const rows = data || [];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+  return { data: all, error: null };
+}
+
+function chunkArray(list, size) {
+  const chunks = [];
+  for (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));
+  return chunks;
 }
 
 function buildAuthUserPayload(authUser) {
@@ -819,6 +843,69 @@ async function handleCountMine(req, res) {
   });
 }
 
+async function handleCountRemoveMine(req, res) {
+  const body = req.body || {};
+  const eventId = body.eventId;
+  const productId = body.productId;
+  const userEmail = emailOf(body);
+  if (!eventId || !productId || !userEmail) {
+    return res.status(400).json({ ok: false, error: 'eventId, productId and userEmail required' });
+  }
+  try {
+    const sb = getService();
+    await assertCountingAllowed(sb, eventId);
+    const { error: cErr } = await sb
+      .from('stocktake_counts')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('product_id', productId)
+      .eq('user_email', userEmail);
+    if (cErr) throw cErr;
+    await sb
+      .from('stocktake_count_log')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('product_id', productId)
+      .eq('user_email', userEmail);
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || String(err) });
+  }
+}
+
+async function handleCountClearMine(req, res) {
+  const body = req.body || {};
+  const eventId = body.eventId;
+  const userEmail = emailOf(body);
+  if (!eventId || !userEmail) {
+    return res.status(400).json({ ok: false, error: 'eventId and userEmail required' });
+  }
+  try {
+    const sb = getService();
+    await assertCountingAllowed(sb, eventId);
+    const { error: cErr } = await sb
+      .from('stocktake_counts')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('user_email', userEmail);
+    if (cErr) throw cErr;
+    await sb
+      .from('stocktake_count_log')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('user_email', userEmail);
+    const { error: sErr } = await sb
+      .from('stocktake_set_scans')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('user_email', userEmail);
+    if (sErr) throw sErr;
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || String(err) });
+  }
+}
+
 async function handleSetScan(req, res) {
   const body = req.body || {};
   const eventId = body.eventId;
@@ -1276,10 +1363,13 @@ async function handleEventSubmit(req, res) {
   const locationId = event.location_id;
   const now = new Date().toISOString();
 
-  const { data: countRows, error: cErr } = await sb
-    .from('stocktake_counts')
-    .select('product_id, qty')
-    .eq('event_id', eventId);
+  const { data: countRows, error: cErr } = await fetchAllPaged((from, to) =>
+    sb.from('stocktake_counts')
+      .select('product_id, qty')
+      .eq('event_id', eventId)
+      .order('product_id', { ascending: true })
+      .range(from, to)
+  );
   if (cErr) return res.status(500).json({ ok: false, error: cErr.message });
 
   const totals = new Map();
@@ -1287,12 +1377,31 @@ async function handleEventSubmit(req, res) {
     totals.set(r.product_id, (totals.get(r.product_id) || 0) + Number(r.qty || 0));
   });
 
-  const { data: locProducts } = await sb
-    .from('product_locations')
-    .select('product_id')
-    .eq('location_id', locationId);
+  // Location scope: zero any product linked to this location (product_locations OR inventory)
+  // that was not counted. Other locations are never touched.
+  const [{ data: locProducts, error: locErr }, { data: invAtLocation, error: invListErr }] = await Promise.all([
+    fetchAllPaged((from, to) =>
+      sb.from('product_locations')
+        .select('product_id')
+        .eq('location_id', locationId)
+        .order('product_id', { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllPaged((from, to) =>
+      sb.from('inventory')
+        .select('product_id')
+        .eq('location', locationId)
+        .order('product_id', { ascending: true })
+        .range(from, to)
+    ),
+  ]);
+  if (locErr) return res.status(500).json({ ok: false, error: locErr.message });
+  if (invListErr) return res.status(500).json({ ok: false, error: invListErr.message });
   (locProducts || []).forEach((r) => {
-    if (!totals.has(r.product_id)) totals.set(r.product_id, 0);
+    if (r.product_id && !totals.has(r.product_id)) totals.set(r.product_id, 0);
+  });
+  (invAtLocation || []).forEach((r) => {
+    if (r.product_id && !totals.has(r.product_id)) totals.set(r.product_id, 0);
   });
 
   const invPayload = Array.from(totals.entries()).map(([product_id, quantity]) => ({
@@ -1302,9 +1411,19 @@ async function handleEventSubmit(req, res) {
     updated_at: now,
   }));
   if (invPayload.length) {
-    const { error: invErr } = await sb.from('inventory').upsert(invPayload, { onConflict: 'product_id,location' });
-    if (invErr) return res.status(500).json({ ok: false, error: invErr.message });
+    for (const chunk of chunkArray(invPayload, 500)) {
+      const { error: invErr } = await sb.from('inventory').upsert(chunk, { onConflict: 'product_id,location' });
+      if (invErr) return res.status(500).json({ ok: false, error: invErr.message });
+    }
   }
+
+  // Keep count rows + count_log for audit; session is closed so carts stop accepting edits.
+  await sb.from('stocktake_gate_audit').insert([{
+    event_id: eventId,
+    location_id: locationId,
+    enabled: false,
+    changed_by_email: userEmail || null,
+  }]);
 
   const { data: state } = await sb
     .from('stocktake_location_state')
@@ -1541,6 +1660,8 @@ export default async function handler(req, res) {
       case 'event-set-gate': return handleEventSetGate(req, res);
       case 'count-add': return handleCountAdd(req, res);
       case 'count-mine': return handleCountMine(req, res);
+      case 'count-remove-mine': return handleCountRemoveMine(req, res);
+      case 'count-clear-mine': return handleCountClearMine(req, res);
       case 'counts-import': return handleCountsImport(req, res);
       case 'counts-clear': return handleCountsClear(req, res);
       case 'import-template': return handleImportTemplate(req, res);

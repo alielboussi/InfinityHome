@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import { FaQrcode } from 'react-icons/fa';
+import { FaDownload, FaFileImport, FaPlus, FaQrcode, FaTrashAlt } from 'react-icons/fa';
 import supabase from './supabase';
 import {
   addCount,
+  clearMyCounts,
   createProduct,
   createSet,
   fetchCatalog,
@@ -12,6 +13,7 @@ import {
   getEvent,
   importCounts,
   listOpenSessions,
+  removeMyCount,
   scanSet,
 } from './services/stocktake';
 import { downloadStocktakeQtySample, parseStocktakeQtyFile } from './utils/stocktakeQtyImport';
@@ -32,7 +34,7 @@ const SCAN_FORMATS = [
 
 function readCountUser() {
   try {
-    const raw = sessionStorage.getItem('stocktake:countUser');
+    const raw = localStorage.getItem('stocktake:countUser') || sessionStorage.getItem('stocktake:countUser');
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -40,15 +42,43 @@ function readCountUser() {
 }
 
 function writeCountUser(user) {
-  sessionStorage.setItem('stocktake:countUser', JSON.stringify(user));
+  localStorage.setItem('stocktake:countUser', JSON.stringify(user));
+  try { sessionStorage.setItem('stocktake:countUser', JSON.stringify(user)); } catch {}
 }
 
 function clearCountUser() {
+  try { localStorage.removeItem('stocktake:countUser'); } catch {}
   try { sessionStorage.removeItem('stocktake:countUser'); } catch {}
+}
+
+function readStoredEventId() {
+  try {
+    return localStorage.getItem('stocktake:countEventId') || '';
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredEventId(id) {
+  try {
+    if (id) localStorage.setItem('stocktake:countEventId', id);
+    else localStorage.removeItem('stocktake:countEventId');
+  } catch {}
 }
 
 function normalizeCode(value) {
   return String(value || '').trim();
+}
+
+const COUNT_DISPLAY_NAMES = {
+  'alielboussi00@gmail.com': 'Ali El Boussi',
+};
+
+function displayCountUserName(user) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (COUNT_DISPLAY_NAMES[email]) return COUNT_DISPLAY_NAMES[email];
+  const name = String(user?.full_name || '').trim();
+  return name || user?.email || '';
 }
 
 export default function StocktakeCountSessionPage() {
@@ -56,18 +86,19 @@ export default function StocktakeCountSessionPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [openSessions, setOpenSessions] = useState([]);
-  const [eventId, setEventId] = useState('');
+  const [eventId, setEventId] = useState(() => readStoredEventId());
   const [event, setEvent] = useState(null);
   const [cart, setCart] = useState([]);
   const [search, setSearch] = useState('');
   const [catalog, setCatalog] = useState({ products: [], sets: [] });
   const [popupItem, setPopupItem] = useState(null);
   const [popupQty, setPopupQty] = useState('1');
-  const [showMore, setShowMore] = useState(false);
+  const [actionItem, setActionItem] = useState(null);
   const [showProductForm, setShowProductForm] = useState(false);
   const [setFormOpen, setSetFormOpen] = useState(false);
   const [productForm, setProductForm] = useState({ name: '', sku: '', price: '' });
   const [setForm, setSetForm] = useState({ name: '', sku: '', price: '', lines: [{ product_id: '', quantity: 1 }] });
+  const [setPickerProducts, setSetPickerProducts] = useState([]);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -77,6 +108,8 @@ export default function StocktakeCountSessionPage() {
   const scannerRef = useRef(null);
   const scanLockRef = useRef(false);
   const importFileRef = useRef(null);
+  const longPressTimerRef = useRef(null);
+  const longPressTriggeredRef = useRef(false);
 
   const locationId = event?.location_id;
   const canCount = Boolean(eventId && event?.status === 'counting');
@@ -96,10 +129,16 @@ export default function StocktakeCountSessionPage() {
 
     setEventId((prev) => {
       if (prev && rows.some((r) => r.id === prev)) return prev;
+      const stored = readStoredEventId();
+      if (stored && rows.some((r) => r.id === stored)) return stored;
       return rows.length === 1 ? rows[0].id : '';
     });
     return rows;
   }, []);
+
+  useEffect(() => {
+    writeStoredEventId(eventId || '');
+  }, [eventId]);
 
   const refreshEvent = useCallback(async (id) => {
     if (!id) {
@@ -164,7 +203,11 @@ export default function StocktakeCountSessionPage() {
   }, [user, refreshOpenSessions]);
 
   useEffect(() => {
-    if (!user?.email || !eventId) {
+    if (!user?.email) {
+      // Keep session + cart state across sign-out; counts live in DB until /stocktake submit.
+      return undefined;
+    }
+    if (!eventId) {
       setEvent(null);
       setCart([]);
       return undefined;
@@ -210,6 +253,20 @@ export default function StocktakeCountSessionPage() {
     const t = setTimeout(() => setToast(''), 3200);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!setFormOpen || !locationId) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const data = await fetchCatalog(locationId, '');
+        if (alive) setSetPickerProducts(data.products || []);
+      } catch {
+        if (alive) setSetPickerProducts([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [setFormOpen, locationId]);
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current;
@@ -291,12 +348,11 @@ export default function StocktakeCountSessionPage() {
   }, [scannerOpen, refreshCatalog, stopScanner]);
 
   const results = useMemo(() => {
+    if (!search.trim()) return [];
     const products = (catalog.products || []).map((p) => ({ ...p, type: 'product' }));
     const sets = (catalog.sets || []).map((s) => ({ ...s, type: 'set' }));
     return [...sets, ...products];
-  }, [catalog]);
-
-  const selectedSession = openSessions.find((s) => s.id === eventId) || null;
+  }, [catalog, search]);
 
   const applyCountUser = useCallback((profileUser) => {
     const nextUser = {
@@ -405,6 +461,30 @@ export default function StocktakeCountSessionPage() {
     setPopupQty('1');
   };
 
+  const cartByProductId = useMemo(() => {
+    const map = new Map();
+    (cart || []).forEach((row) => map.set(String(row.product_id), row));
+    return map;
+  }, [cart]);
+
+  const beginLongPress = (item) => {
+    longPressTriggeredRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      setActionItem(item);
+    }, 550);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => cancelLongPress(), []);
+
   const handleDownloadSample = async () => {
     if (!locationId) {
       setError('Select a location session first.');
@@ -455,6 +535,38 @@ export default function StocktakeCountSessionPage() {
     }
   };
 
+  const handleClearMyCart = async () => {
+    if (!eventId || !user?.email || cart.length === 0) return;
+    if (!window.confirm('Clear only your counted cart for this session? Other users are not affected.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await clearMyCounts(eventId, user.email);
+      await refreshCart(user.email, eventId);
+      setToast('Your cart was cleared.');
+    } catch (err) {
+      setError(err.message || 'Failed to clear your cart.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRemoveMyProductCount = async (productId) => {
+    if (!eventId || !user?.email || !productId) return;
+    setBusy(true);
+    setError('');
+    try {
+      await removeMyCount(eventId, productId, user.email);
+      await refreshCart(user.email, eventId);
+      setToast('Removed from your cart.');
+      setActionItem(null);
+    } catch (err) {
+      setError(err.message || 'Failed to remove this count.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const confirmPopup = async () => {
     if (!popupItem || !user?.email || !eventId) return;
     const qty = Number(popupQty);
@@ -488,15 +600,17 @@ export default function StocktakeCountSessionPage() {
     setBusy(true);
     setError('');
     try {
-      await createProduct(locationId, {
+      const created = await createProduct(locationId, {
         name: productForm.name,
         sku: productForm.sku,
         price: Number(productForm.price || 0),
       });
+      const term = String(created?.product?.sku || productForm.sku || productForm.name || '').trim();
       setShowProductForm(false);
       setProductForm({ name: '', sku: '', price: '' });
-      await refreshCatalog(search);
-      setToast('Product created. Search for it to add a count.');
+      setSearch(term);
+      await refreshCatalog(term);
+      setToast('Product created. Search updated; your cart was kept.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -509,16 +623,18 @@ export default function StocktakeCountSessionPage() {
     setBusy(true);
     setError('');
     try {
-      await createSet(locationId, {
+      const created = await createSet(locationId, {
         name: setForm.name,
         sku: setForm.sku,
         price: Number(setForm.price || 0),
         components: setForm.lines.filter((l) => l.product_id),
       });
+      const term = String(created?.combo?.sku || created?.set?.sku || setForm.sku || setForm.name || '').trim();
       setSetFormOpen(false);
       setSetForm({ name: '', sku: '', price: '', lines: [{ product_id: '', quantity: 1 }] });
-      await refreshCatalog(search);
-      setToast('Set created. Search for it to add.');
+      setSearch(term);
+      await refreshCatalog(term);
+      setToast('Set created. Search updated; your cart was kept.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -590,73 +706,108 @@ export default function StocktakeCountSessionPage() {
   return (
     <div className="stc-page">
       <div className="stc-card">
-        <div className="stc-header-row">
-          <div className="stc-title">Count stock</div>
+        <div className="stc-header">
           <button
             type="button"
-            className="stc-btn stc-btn-ghost"
-            style={{ width: 'auto', minHeight: 36, padding: '6px 12px', fontSize: 13 }}
+            className="stc-btn stc-btn-ghost stc-signout"
             onClick={() => {
+              // Sign out only clears local login. Counts stay in the open session until /stocktake submit.
               clearCountUser();
               setUser(null);
-              setEventId('');
-              setEvent(null);
-              setCart([]);
             }}
           >
             Sign out
           </button>
+          <div className="stc-title">Count stock</div>
+          <div className="stc-user">{displayCountUserName(user)}</div>
         </div>
-        <div className="stc-user">{user.email}</div>
 
         {waitingForSession ? (
           <div className="stc-warn">
-            No open counting session. Keep this page open — when control starts a session for a location, pick it below and start counting.
+            No open counting session. Keep this page open — when control starts a session for a location, it will appear here.
           </div>
         ) : (
-          <>
+          <div className="stc-location-block">
             <label className="stc-label">Location</label>
-            <select
-              className="stc-select"
-              value={eventId}
-              disabled={busy}
-              onChange={(e) => setEventId(e.target.value)}
-            >
-              {openSessions.length > 1 && <option value="">Select location…</option>}
-              {openSessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.location_name}{s.is_initial ? ' (first stocktake)' : ''}
-                </option>
-              ))}
-            </select>
-            {selectedSession && (
-              <div className="stc-note stc-ok">
-                Counting for {selectedSession.location_name}
+            {openSessions.length === 1 ? (
+              <div className="stc-location-text">
+                {openSessions[0].location_name}
+                {openSessions[0].is_initial ? ' · first stocktake' : ''}
+              </div>
+            ) : (
+              <div className="stc-location-list" role="listbox" aria-label="Open counting locations">
+                {openSessions.map((s) => {
+                  const active = s.id === eventId;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={`stc-location-choice${active ? ' is-active' : ''}`}
+                      disabled={busy}
+                      onClick={() => setEventId(s.id)}
+                    >
+                      {s.location_name}
+                      {s.is_initial ? ' · first' : ''}
+                    </button>
+                  );
+                })}
               </div>
             )}
-          </>
+          </div>
         )}
 
         {error && <div className="stc-error">{error}</div>}
 
         {canCount && (
           <>
-            <div className="stc-actions" style={{ marginTop: 12 }}>
+            <div className="stc-actions-row">
               <button
                 type="button"
-                className="stc-btn stc-btn-ghost"
+                className="stc-tool-btn"
                 disabled={busy || importBusy || !locationId}
                 onClick={handleDownloadSample}
+                title="Download sample Excel"
+                aria-label="Download sample Excel"
               >
-                Download sample Excel
+                <FaDownload />
+                <span>Sample</span>
               </button>
               <button
                 type="button"
-                className="stc-btn"
+                className="stc-tool-btn"
                 disabled={busy || importBusy}
                 onClick={() => importFileRef.current?.click()}
+                title="Import Excel quantity"
+                aria-label="Import Excel quantity"
               >
-                Import Excel qty
+                <FaFileImport />
+                <span>Import</span>
+              </button>
+              <button
+                type="button"
+                className="stc-mini-create"
+                disabled={busy}
+                onClick={() => {
+                  setShowProductForm(true);
+                  setSetFormOpen(false);
+                }}
+              >
+                <FaPlus />
+                <span>Product</span>
+              </button>
+              <button
+                type="button"
+                className="stc-mini-create"
+                disabled={busy}
+                onClick={() => {
+                  setSetFormOpen(true);
+                  setShowProductForm(false);
+                }}
+              >
+                <FaPlus />
+                <span>Set</span>
               </button>
               <input
                 ref={importFileRef}
@@ -666,7 +817,7 @@ export default function StocktakeCountSessionPage() {
                 onChange={(e) => handleImportExcel(e.target.files?.[0])}
               />
             </div>
-            <div className="stc-note" style={{ marginTop: 6 }}>
+            <div className="stc-note stc-note-center">
               Excel needs SKU, Product Name, Quantity. Products/components only (not sets). Qty applies only to this location.
             </div>
 
@@ -699,58 +850,43 @@ export default function StocktakeCountSessionPage() {
               </button>
             </div>
 
-            <div className="stc-results">
-              {results.length === 0 ? (
-                <div className="stc-note" style={{ padding: 12 }}>
-                  {search.trim()
-                    ? 'No matches for this location. Try another name/SKU, or clear search to browse.'
-                    : 'No products linked to this location yet (product_locations or inventory).'}
-                </div>
-              ) : results.map((item) => (
-                <button
-                  key={`${item.type}-${item.id}`}
-                  type="button"
-                  className="stc-result"
-                  disabled={busy}
-                  onClick={() => openPopup(item)}
-                >
-                  {item.type === 'set' && <span className="stc-badge">SET</span>}
-                  {item.name || item.combo_name}
-                  {item.sku ? ` (${item.sku})` : ''}
-                </button>
-              ))}
-            </div>
-            {!search.trim() && results.length > 0 && (
-              <div className="stc-note" style={{ marginTop: 6 }}>
-                Showing first {results.length} items — type a name/SKU to narrow the list.
+            {search.trim() ? (
+              <div className="stc-results">
+                {results.length === 0 ? (
+                  <div className="stc-note" style={{ padding: 12 }}>
+                    No matches for this location. Try another name/SKU.
+                  </div>
+                ) : results.map((item) => (
+                  <button
+                    key={`${item.type}-${item.id}`}
+                    type="button"
+                    className="stc-result"
+                    disabled={busy}
+                    onPointerDown={() => beginLongPress(item)}
+                    onPointerUp={cancelLongPress}
+                    onPointerLeave={cancelLongPress}
+                    onPointerCancel={cancelLongPress}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setActionItem(item);
+                    }}
+                    onClick={() => {
+                      if (longPressTriggeredRef.current) {
+                        longPressTriggeredRef.current = false;
+                        return;
+                      }
+                      openPopup(item);
+                    }}
+                  >
+                    {item.type === 'set' && <span className="stc-badge">SET</span>}
+                    {item.name || item.combo_name}
+                    {item.sku ? ` (${item.sku})` : ''}
+                  </button>
+                ))}
               </div>
-            )}
-
-            <div style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                className="stc-btn stc-btn-ghost"
-                onClick={() => setShowMore((v) => !v)}
-              >
-                {showMore ? 'Hide create options' : 'Create product / set'}
-              </button>
-            </div>
-            {showMore && (
-              <div className="stc-actions">
-                <button type="button" className="stc-btn" disabled={busy} onClick={() => setShowProductForm(true)}>
-                  + Product
-                </button>
-                <button type="button" className="stc-btn" disabled={busy} onClick={() => setSetFormOpen(true)}>
-                  + Set
-                </button>
-                <button
-                  type="button"
-                  className="stc-btn stc-btn-ghost"
-                  disabled={busy || !locationId}
-                  onClick={() => refreshCatalog(search).then(() => setToast('List refreshed.'))}
-                >
-                  Refresh
-                </button>
+            ) : (
+              <div className="stc-note stc-search-hint">
+                Start typing a product name or SKU to show matches.
               </div>
             )}
           </>
@@ -759,8 +895,23 @@ export default function StocktakeCountSessionPage() {
 
       {canCount && (
         <div className="stc-card">
-          <div className="stc-title" style={{ fontSize: '1rem' }}>My counts</div>
-          <div className="stc-note">Saved automatically — safe to refresh.</div>
+          <div className="stc-cart-header">
+            <div>
+              <div className="stc-title" style={{ fontSize: '1rem' }}>My counts</div>
+              <div className="stc-note">Saved automatically — refresh, close and reopen are safe.</div>
+            </div>
+            <button
+              type="button"
+              className="stc-mini-danger"
+              disabled={busy || cart.length === 0}
+              onClick={handleClearMyCart}
+              title="Clear my cart"
+              aria-label="Clear my cart"
+            >
+              <FaTrashAlt />
+              <span>Clear</span>
+            </button>
+          </div>
           <div className="stc-table-wrap">
             <table className="stc-table">
               <thead>
@@ -774,7 +925,17 @@ export default function StocktakeCountSessionPage() {
                 {cart.length === 0 ? (
                   <tr><td colSpan={3}>Nothing counted yet.</td></tr>
                 ) : cart.map((row) => (
-                  <tr key={row.product_id}>
+                  <tr
+                    key={row.product_id}
+                    onPointerDown={() => beginLongPress({ ...row, id: row.product_id, type: 'product' })}
+                    onPointerUp={cancelLongPress}
+                    onPointerLeave={cancelLongPress}
+                    onPointerCancel={cancelLongPress}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setActionItem({ ...row, id: row.product_id, type: 'product' });
+                    }}
+                  >
                     <td>{row.name}{row.sku ? ` (${row.sku})` : ''}</td>
                     <td className="stc-qty">{row.qty}</td>
                     <td>{row.updated_at ? new Date(row.updated_at).toLocaleString() : '—'}</td>
@@ -787,6 +948,50 @@ export default function StocktakeCountSessionPage() {
       )}
 
       {toast && <div className="stc-toast">{toast}</div>}
+
+      {actionItem && (
+        <div className="stc-modal-backdrop">
+          <div className="stc-modal stc-action-modal">
+            <div className="stc-modal-title">Choose action</div>
+            <div className="stc-note">
+              {actionItem.type === 'set' && <span className="stc-badge">SET</span>}
+              {actionItem.name || actionItem.combo_name}
+              {actionItem.sku ? ` (${actionItem.sku})` : ''}
+            </div>
+            <div className="stc-actions stc-actions-2" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="stc-btn stc-btn-primary"
+                disabled={busy}
+                onClick={() => {
+                  setActionItem(null);
+                  openPopup(actionItem);
+                }}
+              >
+                Add qty
+              </button>
+              {actionItem.type === 'product' && cartByProductId.has(String(actionItem.id || actionItem.product_id)) && (
+                <button
+                  type="button"
+                  className="stc-btn stc-btn-danger"
+                  disabled={busy}
+                  onClick={() => handleRemoveMyProductCount(actionItem.id || actionItem.product_id)}
+                >
+                  Remove count
+                </button>
+              )}
+              <button
+                type="button"
+                className="stc-btn stc-btn-ghost"
+                disabled={busy}
+                onClick={() => setActionItem(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {scannerOpen && (
         <div className="stc-modal-backdrop">
@@ -880,7 +1085,7 @@ export default function StocktakeCountSessionPage() {
                   }}
                 >
                   <option value="">Component…</option>
-                  {(catalog.products || []).map((p) => (
+                  {(setPickerProducts.length ? setPickerProducts : catalog.products || []).map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>

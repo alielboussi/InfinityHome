@@ -89,6 +89,7 @@ function mapLogRow(row, usersById = new Map()) {
     entityType: row.entity_type || null,
     entityId: row.entity_id || null,
     route: row.route || null,
+    metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : {},
   };
 }
 
@@ -183,7 +184,7 @@ async function handleGet(req, res) {
 
   const supabase = getSupabaseServiceClient();
   const rawLimit = Number(req.query?.limit || 250);
-  const limit = Number.isFinite(rawLimit) ? Math.max(50, Math.min(500, rawLimit)) : 250;
+  const limit = Number.isFinite(rawLimit) ? Math.max(5, Math.min(500, rawLimit)) : 250;
 
   const { data: users, error: usersError } = await supabase
     .from('users')

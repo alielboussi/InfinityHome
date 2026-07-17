@@ -30,6 +30,8 @@
     { "source": "/api/stocktake-event-set-gate", "destination": "/api/stocktake?action=event-set-gate" },
     { "source": "/api/stocktake-count-add", "destination": "/api/stocktake?action=count-add" },
     { "source": "/api/stocktake-count-mine", "destination": "/api/stocktake?action=count-mine" },
+    { "source": "/api/stocktake-count-remove-mine", "destination": "/api/stocktake?action=count-remove-mine" },
+    { "source": "/api/stocktake-count-clear-mine", "destination": "/api/stocktake?action=count-clear-mine" },
     { "source": "/api/stocktake-counts-import", "destination": "/api/stocktake?action=counts-import" },
     { "source": "/api/stocktake-counts-clear", "destination": "/api/stocktake?action=counts-clear" },
     { "source": "/api/stocktake-import-template", "destination": "/api/stocktake?action=import-template" },

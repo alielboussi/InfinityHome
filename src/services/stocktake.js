@@ -266,6 +266,35 @@ async function clientClearCounts(eventId) {
   return { ok: true };
 }
 
+async function clientRemoveMyCount(eventId, productId, userEmail = currentEmail()) {
+  const { error } = await supabase
+    .from('stocktake_counts')
+    .delete()
+    .eq('event_id', eventId)
+    .eq('product_id', productId)
+    .eq('user_email', userEmail);
+  if (error) throw error;
+  await supabase
+    .from('stocktake_count_log')
+    .delete()
+    .eq('event_id', eventId)
+    .eq('product_id', productId)
+    .eq('user_email', userEmail);
+  return { ok: true };
+}
+
+async function clientClearMyCounts(eventId, userEmail = currentEmail()) {
+  const { error } = await supabase
+    .from('stocktake_counts')
+    .delete()
+    .eq('event_id', eventId)
+    .eq('user_email', userEmail);
+  if (error) throw error;
+  await supabase.from('stocktake_count_log').delete().eq('event_id', eventId).eq('user_email', userEmail);
+  await supabase.from('stocktake_set_scans').delete().eq('event_id', eventId).eq('user_email', userEmail);
+  return { ok: true };
+}
+
 async function clientAddCount(eventId, productId, qty, userEmail = currentEmail()) {
   const add = Number(qty);
   if (!Number.isFinite(add) || add <= 0) throw new Error('qty must be > 0');
@@ -562,6 +591,26 @@ export async function clearCounts(eventId, userEmail = currentEmail()) {
       body: JSON.stringify({ eventId, userEmail }),
     }),
     () => clientClearCounts(eventId),
+  );
+}
+
+export async function removeMyCount(eventId, productId, userEmail = currentEmail()) {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-count-remove-mine', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, productId, userEmail }),
+    }),
+    () => clientRemoveMyCount(eventId, productId, userEmail),
+  );
+}
+
+export async function clearMyCounts(eventId, userEmail = currentEmail()) {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-count-clear-mine', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, userEmail }),
+    }),
+    () => clientClearMyCounts(eventId, userEmail),
   );
 }
 
