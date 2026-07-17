@@ -254,6 +254,7 @@ function ProductsListPage() {
   const [openActionMenuId, setOpenActionMenuId] = useState(null);
   const [inlinePriceEdit, setInlinePriceEdit] = useState(null);
   const inlinePriceInputRef = useRef(null);
+  const inlinePriceDraftRef = useRef('');
   const factoryStorageActorRef = useRef(null);
   const factoryStorageLaunchRef = useRef(false);
   const catalogLoadSeqRef = useRef(0);
@@ -1750,28 +1751,39 @@ function ProductsListPage() {
     const itemName = isCombo ? item.combo_name : item.name;
     const oldValue = getEditablePriceRaw(item, field, isCombo);
 
+    // Drop any in-flight catalog fetch so it cannot overwrite this save.
+    catalogLoadSeqRef.current += 1;
     setInlinePriceEdit((prev) => (prev ? { ...prev, saving: true } : prev));
     try {
       if (isCombo) {
         if (field === 'price') {
-          const { error } = await supabase
+          const { data, error } = await supabase
             .from('combos')
             .update({ standard_price: parsed, combo_price: parsed })
-            .eq('id', itemId);
+            .eq('id', itemId)
+            .select('id, standard_price, combo_price, promotional_price')
+            .maybeSingle();
           if (error) throw error;
+          if (!data) throw new Error('Update was blocked or combo not found.');
         } else {
-          const { error } = await supabase
+          const { data, error } = await supabase
             .from('combos')
             .update({ promotional_price: parsed })
-            .eq('id', itemId);
+            .eq('id', itemId)
+            .select('id, standard_price, combo_price, promotional_price')
+            .maybeSingle();
           if (error) throw error;
+          if (!data) throw new Error('Update was blocked or combo not found.');
         }
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('products')
           .update({ [field]: parsed })
-          .eq('id', itemId);
+          .eq('id', itemId)
+          .select('id, price, promotional_price')
+          .maybeSingle();
         if (error) throw error;
+        if (!data) throw new Error('Update was blocked or product not found.');
       }
 
       clearProductsListCaches();
@@ -1795,6 +1807,7 @@ function ProductsListPage() {
         entityType: isCombo ? 'combo' : 'product',
         entityId: String(itemId),
       });
+      inlinePriceDraftRef.current = '';
       setInlinePriceEdit(null);
       return true;
     } catch (err) {
@@ -1821,14 +1834,18 @@ function ProductsListPage() {
             inputMode="decimal"
             value={inlinePriceEdit.draft}
             disabled={inlinePriceEdit.saving}
-            onChange={(e) => setInlinePriceEdit((prev) => (prev ? { ...prev, draft: e.target.value } : prev))}
+            onChange={(e) => {
+              inlinePriceDraftRef.current = e.target.value;
+              setInlinePriceEdit((prev) => (prev ? { ...prev, draft: e.target.value } : prev));
+            }}
             onKeyDown={async (e) => {
               if (e.key === 'Escape') {
                 e.preventDefault();
+                inlinePriceDraftRef.current = '';
                 setInlinePriceEdit(null);
               } else if (e.key === 'Enter') {
                 e.preventDefault();
-                await saveInlinePrice(item, isCombo, field, inlinePriceEdit.draft);
+                await saveInlinePrice(item, isCombo, field, inlinePriceDraftRef.current);
               }
             }}
             onBlur={async () => {
@@ -1838,7 +1855,7 @@ function ProductsListPage() {
                 || inlinePriceEdit.field !== field
                 || inlinePriceEdit.saving
               ) return;
-              await saveInlinePrice(item, isCombo, field, inlinePriceEdit.draft);
+              await saveInlinePrice(item, isCombo, field, inlinePriceDraftRef.current);
             }}
             className="products-list-inline-price-input"
             aria-label={field === 'price' ? 'Edit price' : 'Edit promotional price'}
@@ -1852,10 +1869,12 @@ function ProductsListPage() {
         className={`${className} products-list-cell-editable`}
         title="Double-click to edit"
         onDoubleClick={() => {
+          const draft = String(getEditablePriceRaw(item, field, isCombo) ?? '');
+          inlinePriceDraftRef.current = draft;
           setInlinePriceEdit({
             rowKey,
             field,
-            draft: String(getEditablePriceRaw(item, field, isCombo) ?? ''),
+            draft,
           });
         }}
       >
