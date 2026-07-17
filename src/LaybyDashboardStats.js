@@ -3,6 +3,7 @@ import supabase from './supabase';
 import { cacheSet } from './utils/staleCache';
 import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { formatLaybyTotalsLine, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
+import { isRealtimeEnabled } from './utils/realtimeConfig';
 
 const LAYBY_ROWS_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -31,6 +32,7 @@ export default function LaybyDashboardStats({ active = true }) {
 
   useEffect(() => {
     if (!active) return undefined;
+    if (!isRealtimeEnabled()) return undefined;
     let timer = null;
     const bump = () => {
       if (timer) clearTimeout(timer);

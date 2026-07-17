@@ -66,26 +66,42 @@ if (process.env.NODE_ENV !== 'production' && SUPABASE_ANON_KEY) {
 }
 
 // Create a Supabase client instance with a default DB schema to avoid
-// "relation does not exist" issues when proxies or environments drop schema headers
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-	// Force PostgREST to use the public schema explicitly on every request.
-	db: { schema: 'public' },
-	global: {
-		headers: {
-			// These headers make the target schema unambiguous even if a proxy
-			// or environment drops the default Accept/Content profile headers.
-			'Accept-Profile': 'public',
-			'Content-Profile': 'public',
+// "relation does not exist" issues when proxies or environments drop schema headers.
+// Reuse a single instance across CRA hot-reloads to avoid the
+// "Multiple GoTrueClient instances detected" warning in development.
+function createSupabaseClient() {
+	return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+		// Force PostgREST to use the public schema explicitly on every request.
+		db: { schema: 'public' },
+		global: {
+			headers: {
+				// These headers make the target schema unambiguous even if a proxy
+				// or environment drops the default Accept/Content profile headers.
+				'Accept-Profile': 'public',
+				'Content-Profile': 'public',
+			},
 		},
-	},
-	auth: {
-    // Be explicit to avoid environments that disable persistence or refresh
-    persistSession: true,
-    autoRefreshToken: true,
-    // Required for Google OAuth return on /login and /stocktake/count (localhost + Vercel).
-    detectSessionInUrl: true,
-    flowType: 'pkce',
-  },
-});
+		auth: {
+			// Stable storage key so a single session is shared across instances.
+			storageKey: 'infinity-home-auth',
+			// Be explicit to avoid environments that disable persistence or refresh
+			persistSession: true,
+			autoRefreshToken: true,
+			// Required for Google OAuth return on /login and /stocktake/count (localhost + Vercel).
+			detectSessionInUrl: true,
+			flowType: 'pkce',
+		},
+	});
+}
+
+let supabase;
+if (typeof window !== 'undefined' && window.__infinityHomeSupabase) {
+	supabase = window.__infinityHomeSupabase;
+} else {
+	supabase = createSupabaseClient();
+	if (typeof window !== 'undefined') {
+		window.__infinityHomeSupabase = supabase;
+	}
+}
 
 export default supabase;

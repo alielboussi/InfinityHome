@@ -1,5 +1,6 @@
 import React from 'react';
 import supabase from '../supabase';
+import { isRealtimeEnabled } from '../utils/realtimeConfig';
 
 /**
  * Subscribe to Supabase realtime for a set of tables and emit a small debounced tick
@@ -21,6 +22,7 @@ export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable
     return () => document.removeEventListener('visibilitychange', handler);
   }, []);
   React.useEffect(() => {
+    if (!isRealtimeEnabled()) return;
     if (!Array.isArray(tables) || tables.length === 0) return;
     if (!isVisible) return; // don't subscribe when tab is hidden
     const channelName = 'rt-' + tables.join(',') + (filtersByTable ? ':' + JSON.stringify(filtersByTable) : '');

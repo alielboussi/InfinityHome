@@ -1,14 +1,18 @@
 import supabase from '../supabase';
 import { getCurrentUser } from '../accessControl';
 
-async function getAuthHeaders() {
+async function getAccessToken() {
   try {
     const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    return data?.session?.access_token || null;
   } catch {
-    return {};
+    return null;
   }
+}
+
+async function getAuthHeaders() {
+  const token = await getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export async function logUserActivity({
@@ -24,6 +28,11 @@ export async function logUserActivity({
   const user = getCurrentUser();
   if (!user?.id && !user?.email) return;
 
+  // Without a Supabase session token the server rejects the request with 401.
+  // Skip silently (e.g. not yet authenticated on this device) to avoid console noise.
+  const token = await getAccessToken();
+  if (!token) return;
+
   const payload = {
     actionType: String(actionType || 'action').trim(),
     actionLabel: String(actionLabel || 'Action').trim(),
@@ -38,7 +47,7 @@ export async function logUserActivity({
   try {
     const headers = {
       'Content-Type': 'application/json',
-      ...(await getAuthHeaders()),
+      Authorization: `Bearer ${token}`,
     };
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 4000) : null;

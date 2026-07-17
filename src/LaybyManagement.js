@@ -19,6 +19,7 @@ import BackToDashboard from './BackToDashboard';
 import { exportAllLaybyPdfsZip, exportLaybySummaryExcel } from './utils/laybyBulkExport';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
 import { isFahme } from './laybyRules';
+import { isRealtimeEnabled } from './utils/realtimeConfig';
 import {
   clearQuoteLaybyPendingWhatsApp,
   isQuoteOriginLayby,
@@ -242,6 +243,7 @@ export default function LaybyManagement() {
   const rtTimerRef = React.useRef(null);
 
   useEffect(() => {
+    if (!isRealtimeEnabled()) return undefined;
     const channel = supabase
       .channel('layby-mgmt-rt-simple')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'laybys' }, () => {

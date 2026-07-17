@@ -7,6 +7,7 @@ import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { fetchLaybyStatement } from './services/laybyStatement';
 import { LAYBY_ROWS_CACHE_KEY } from './utils/laybyRollup';
 import { isFahme } from './laybyRules';
+import { isRealtimeEnabled } from './utils/realtimeConfig';
 
 const formatCurrency = (amount, currency = 'K') => {
   if (amount === null || amount === undefined || amount === '') return '';
@@ -60,6 +61,7 @@ export default function LaybyManagementMobile() {
   const rtTimerRef = React.useRef(null);
 
   useEffect(() => {
+    if (!isRealtimeEnabled()) return undefined;
     const channel = supabase
       .channel('layby-mgmt-mobile-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'laybys' }, () => {
