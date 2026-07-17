@@ -428,11 +428,14 @@ export default function StocktakeControlPage() {
           {activeCounting && (
             <div className="stock-periods-card">
               <div className="stock-periods-section-title">Live totals</div>
+              <div className="stock-periods-note" style={{ marginBottom: 8 }}>
+                Complete sets are grouped from counted components. Leftover parts stay as separate lines. Expand a row for breakdown and who counted.
+              </div>
               <table className="pos-table stock-periods-table sticky-header-table">
                 <thead>
                   <tr>
                     <th style={{ width: 40 }} />
-                    <th>Product</th>
+                    <th>Product / Set</th>
                     <th>SKU</th>
                     <th>Total</th>
                   </tr>
@@ -441,24 +444,110 @@ export default function StocktakeControlPage() {
                   {consolidated.length === 0 ? (
                     <tr><td colSpan={4}>No counts yet.</td></tr>
                   ) : consolidated.map((row) => {
-                    const open = Boolean(expanded[row.product_id]);
+                    const rowKey = row.key || row.product_id;
+                    const open = Boolean(expanded[rowKey]);
+                    const isSet = row.row_type === 'set';
                     return (
-                      <React.Fragment key={row.product_id}>
+                      <React.Fragment key={rowKey}>
                         <tr
+                          className={isSet ? 'stocktake-live-row stocktake-live-row--set' : 'stocktake-live-row'}
                           style={{ cursor: 'pointer' }}
-                          onClick={() => setExpanded((prev) => ({ ...prev, [row.product_id]: !prev[row.product_id] }))}
+                          onClick={() => setExpanded((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }))}
                         >
-                          <td>{open ? '▾' : '▸'}</td>
-                          <td>{row.name || row.product_id}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className={`stocktake-expand-tri${open ? ' is-open' : ''}`}
+                              aria-label={open ? 'Collapse row' : 'Expand row'}
+                              aria-expanded={open}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpanded((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
+                              }}
+                            />
+                          </td>
+                          <td>
+                            {isSet ? (
+                              <span className="stocktake-live-set-label">
+                                <span className="stocktake-live-badge">SET</span>
+                                {row.name || rowKey}
+                              </span>
+                            ) : (
+                              row.name || row.product_id
+                            )}
+                            {!isSet && Number(row.used_in_sets) > 0 && (
+                              <div className="stocktake-live-subnote">
+                                {Number(row.total_counted)} counted · {Number(row.used_in_sets)} in sets · {Number(row.qty)} left
+                              </div>
+                            )}
+                            {isSet && row.source === 'derived' && (
+                              <div className="stocktake-live-subnote">Derived from components</div>
+                            )}
+                          </td>
                           <td>{row.sku || '—'}</td>
-                          <td><strong>{row.qty}</strong></td>
+                          <td>
+                            <strong>{row.qty}</strong>
+                            {isSet ? <span className="stocktake-live-unit"> sets</span> : null}
+                          </td>
                         </tr>
-                        {open && (row.byUser || []).map((u) => (
-                          <tr key={`${row.product_id}-${u.user_email}`}>
+                        {open && isSet && (row.components || []).map((comp) => (
+                          <tr key={`${rowKey}-comp-${comp.product_id}`} className="stocktake-live-detail">
                             <td />
-                            <td colSpan={2} style={{ paddingLeft: 24, fontSize: 13 }}>
+                            <td style={{ paddingLeft: 28 }}>
+                              <span className="stocktake-live-detail-label">Component</span>
+                              {' '}
+                              {comp.name || comp.product_id}
+                              <div className="stocktake-live-subnote">
+                                {Number(comp.need_per_set)} per set × {Number(row.qty)} sets
+                              </div>
+                            </td>
+                            <td>{comp.sku || '—'}</td>
+                            <td>{comp.qty}</td>
+                          </tr>
+                        ))}
+                        {open && isSet && (row.byUser || []).length > 0 && (row.byUser || []).map((u) => (
+                          <tr key={`${rowKey}-user-${u.user_email}`} className="stocktake-live-detail">
+                            <td />
+                            <td colSpan={2} style={{ paddingLeft: 28, fontSize: 13 }}>
+                              <span className="stocktake-live-detail-label">Counted by</span>
+                              {' '}
                               {u.user_email}
                               {u.updated_at ? ` · ${new Date(u.updated_at).toLocaleString()}` : ''}
+                            </td>
+                            <td>{u.qty} sets</td>
+                          </tr>
+                        ))}
+                        {open && isSet && (!(row.byUser || []).length) && (
+                          <tr className="stocktake-live-detail">
+                            <td />
+                            <td colSpan={3} style={{ paddingLeft: 28, fontSize: 13 }}>
+                              No direct set scans — this set total was derived from matching component counts.
+                            </td>
+                          </tr>
+                        )}
+                        {open && isSet && (row.components || []).flatMap((comp) =>
+                          (comp.byUser || []).map((u) => (
+                            <tr key={`${rowKey}-compuser-${comp.product_id}-${u.user_email}`} className="stocktake-live-detail">
+                              <td />
+                              <td colSpan={2} style={{ paddingLeft: 40, fontSize: 12 }}>
+                                {comp.name || comp.product_id}: {u.user_email}
+                                {u.updated_at ? ` · ${new Date(u.updated_at).toLocaleString()}` : ''}
+                              </td>
+                              <td>{u.qty}</td>
+                            </tr>
+                          ))
+                        )}
+                        {open && !isSet && (row.byUser || []).map((u) => (
+                          <tr key={`${rowKey}-${u.user_email}`} className="stocktake-live-detail">
+                            <td />
+                            <td colSpan={2} style={{ paddingLeft: 28, fontSize: 13 }}>
+                              {u.user_email}
+                              {u.updated_at ? ` · ${new Date(u.updated_at).toLocaleString()}` : ''}
+                              {Number(row.used_in_sets) > 0 ? (
+                                <div className="stocktake-live-subnote">
+                                  Of {Number(row.total_counted)} counted for this component, {Number(row.used_in_sets)} went into sets
+                                </div>
+                              ) : null}
                             </td>
                             <td>{u.qty}</td>
                           </tr>

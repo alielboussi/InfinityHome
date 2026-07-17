@@ -1,6 +1,7 @@
 // Stocktake Flow API: auth login + multi-user counting events + period submit.
 import { createClient } from '@supabase/supabase-js';
 import { resolveSessionUserFromAuth } from '../src/accessControl.js';
+import { buildLiveConsolidatedWithSets } from '../src/utils/stocktakeLiveTotals.js';
 
 const ACTION_METHOD = {
   login: 'POST',
@@ -287,23 +288,22 @@ async function handleCatalog(req, res) {
   });
 }
 
-function consolidateCounts(rows) {
-  const byProduct = new Map();
-  (rows || []).forEach((row) => {
-    const pid = row.product_id;
-    if (!byProduct.has(pid)) {
-      byProduct.set(pid, { product_id: pid, qty: 0, byUser: [] });
-    }
-    const entry = byProduct.get(pid);
-    const qty = Number(row.qty || 0);
-    entry.qty += qty;
-    entry.byUser.push({
-      user_email: row.user_email,
-      qty,
-      updated_at: row.updated_at,
-    });
-  });
-  return Array.from(byProduct.values());
+async function loadLocationCombos(sb, locationId) {
+  if (!locationId) return { combos: [], comboItems: [] };
+  const { data: comboLocs, error: clErr } = await sb
+    .from('combo_locations')
+    .select('combo_id')
+    .eq('location_id', locationId);
+  if (clErr) throw clErr;
+  const comboIds = [...new Set((comboLocs || []).map((r) => r.combo_id).filter(Boolean))];
+  if (!comboIds.length) return { combos: [], comboItems: [] };
+  const [{ data: combos, error: cErr }, { data: comboItems, error: iErr }] = await Promise.all([
+    sb.from('combos').select('id, combo_name, sku').in('id', comboIds),
+    sb.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds),
+  ]);
+  if (cErr) throw cErr;
+  if (iErr) throw iErr;
+  return { combos: combos || [], comboItems: comboItems || [] };
 }
 
 async function handleEventsList(req, res) {
@@ -361,16 +361,35 @@ async function handleEventGet(req, res) {
     .eq('event_id', eventId);
   if (cErr) return res.status(500).json({ ok: false, error: cErr.message });
 
-  const consolidated = consolidateCounts(counts).map((row) => {
-    const sample = (counts || []).find((c) => c.product_id === row.product_id);
-    return {
-      ...row,
-      name: sample?.products?.name || null,
-      sku: sample?.products?.sku || null,
-    };
+  let combos = [];
+  let comboItems = [];
+  let setScans = [];
+  try {
+    ({ combos, comboItems } = await loadLocationCombos(sb, event.location_id));
+    const { data: scans, error: sErr } = await sb
+      .from('stocktake_set_scans')
+      .select('combo_id, user_email, set_qty, updated_at')
+      .eq('event_id', eventId);
+    if (sErr) throw sErr;
+    setScans = scans || [];
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message || String(err) });
+  }
+
+  const consolidated = buildLiveConsolidatedWithSets({
+    counts: counts || [],
+    combos,
+    comboItems,
+    setScans,
   });
 
-  res.status(200).json({ ok: true, event, consolidated, counts: counts || [] });
+  res.status(200).json({
+    ok: true,
+    event,
+    consolidated,
+    counts: counts || [],
+    set_scans: setScans,
+  });
 }
 
 async function handleEventCreate(req, res) {

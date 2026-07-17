@@ -1068,12 +1068,16 @@ function ProductsListPage() {
   const [bulkField, setBulkField] = useState('currency');
   const [bulkValue, setBulkValue] = useState('');
   const [bulkLocationIds, setBulkLocationIds] = useState([]);
+  const [bulkLocationMenuOpen, setBulkLocationMenuOpen] = useState(false);
+  const bulkLocationMenuRef = useRef(null);
   const [bulkApplyLoading, setBulkApplyLoading] = useState(false);
   const [bulkApplyMessage, setBulkApplyMessage] = useState('');
   const [bulkSelectionMap, setBulkSelectionMap] = useState({});
   const [bulkImportFile, setBulkImportFile] = useState(null);
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const [bulkImportMessage, setBulkImportMessage] = useState('');
+  /** 'name_asc' | 'no_locations_first' */
+  const [listSortMode, setListSortMode] = useState('name_asc');
 
   const currencyOptions = useMemo(() => ([
     { code: 'K', name: 'K' },
@@ -1442,14 +1446,46 @@ function ProductsListPage() {
     categoryFilter,
   ]);
 
+  const getItemDisplayName = useCallback((item) => (
+    String(item?.__isCombo ? (item.combo_name || '') : (item.name || '')).trim()
+  ), []);
+
+  const getAssignedLocationIdsForItem = useCallback((item) => {
+    if (!item) return [];
+    if (item.__isCombo) {
+      return (comboLocations || [])
+        .filter((cl) => String(cl.combo_id) === String(item.id))
+        .map((cl) => cl.location_id);
+    }
+    return (item.product_locations || []).map((pl) => pl.location_id);
+  }, [comboLocations]);
+
+  const displayedProducts = useMemo(() => {
+    const items = filteredProducts.slice();
+    const byName = (a, b) => getItemDisplayName(a).localeCompare(getItemDisplayName(b), undefined, {
+      sensitivity: 'base',
+      numeric: true,
+    });
+    if (listSortMode === 'no_locations_first') {
+      items.sort((a, b) => {
+        const aEmpty = getAssignedLocationIdsForItem(a).length === 0 ? 0 : 1;
+        const bEmpty = getAssignedLocationIdsForItem(b).length === 0 ? 0 : 1;
+        if (aEmpty !== bEmpty) return aEmpty - bEmpty;
+        return byName(a, b);
+      });
+    } else {
+      items.sort(byName);
+    }
+    return items;
+  }, [filteredProducts, getAssignedLocationIdsForItem, getItemDisplayName, listSortMode]);
 
   const bulkSelectableItems = useMemo(() => (
-    filteredProducts.map(item => ({
+    displayedProducts.map(item => ({
       key: `${item.__isCombo ? 'combo' : 'prod'}:${item.id}`,
       id: String(item.id),
       isCombo: !!item.__isCombo
     }))
-  ), [filteredProducts]);
+  ), [displayedProducts]);
 
   // Keep selections across search/filter changes so users can tick items one-by-one while searching.
   const selectedBulkItems = useMemo(() => (
@@ -1480,6 +1516,46 @@ function ProductsListPage() {
   ), [allBulkKeys, bulkSelectionMap]);
 
   const needsBulkLocation = bulkAction === 'add_location' || bulkAction === 'remove_location';
+
+  useEffect(() => {
+    if (!bulkLocationMenuOpen) return undefined;
+    const onPointerDown = (event) => {
+      const root = bulkLocationMenuRef.current;
+      if (root && !root.contains(event.target)) {
+        setBulkLocationMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setBulkLocationMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [bulkLocationMenuOpen]);
+
+  useEffect(() => {
+    if (!needsBulkLocation) setBulkLocationMenuOpen(false);
+  }, [needsBulkLocation]);
+
+  const toggleBulkLocationId = useCallback((locId) => {
+    const id = String(locId || '');
+    if (!id) return;
+    setBulkLocationIds((prev) => (
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    ));
+  }, []);
+
+  const bulkLocationTriggerLabel = useMemo(() => {
+    if (!bulkLocationIds.length) return 'Select locations…';
+    if (bulkLocationIds.length === 1) {
+      const match = (locations || []).find((loc) => String(loc.id) === String(bulkLocationIds[0]));
+      return match?.name || '1 location';
+    }
+    return `${bulkLocationIds.length} locations`;
+  }, [bulkLocationIds, locations]);
 
   const negativeResetTargets = useMemo(() => {
     if (!negativeOnly) return [];
@@ -1721,13 +1797,13 @@ function ProductsListPage() {
 
   // Format price with currency symbol: K -> 'K xxx,xxx', USD/$ -> '$ xxx,xxx'
   const handleExportProductsExcel = () => {
-    if (!filteredProducts.length) {
+    if (!displayedProducts.length) {
       alert('No products to export.');
       return;
     }
     const stamp = new Date().toISOString().slice(0, 10);
     exportProductsListExcel({
-      items: filteredProducts,
+      items: displayedProducts,
       locations,
       getStockForProduct,
       computeComboMaxQty,
@@ -1952,7 +2028,7 @@ function ProductsListPage() {
 
   const handleExportProductsCsv = () => {
     const header = ['id', 'name', 'sku', 'price', 'promotional_price', 'currency', 'category_id', 'unit_of_measure_id'];
-    const lines = (filteredProducts || []).map(p => [
+    const lines = (displayedProducts || []).map(p => [
       p.id,
       p.name,
       p.sku,
@@ -2067,52 +2143,60 @@ function ProductsListPage() {
           </button>
           <div className="products-toolbar-control-wrap products-toolbar-bulk-wrap">
             <select
-              value={
-                bulkAction === 'set_field'
-                  ? 'set_field'
-                  : (bulkLocationIds[0]
-                    ? `${bulkAction === 'remove_location' ? 'remove' : 'add'}:${bulkLocationIds[0]}`
-                    : '')
-              }
+              value={bulkAction === 'set_field' ? 'set_field' : (bulkAction === 'remove_location' ? 'remove_location' : 'add_location')}
               onChange={(e) => {
-                const value = String(e.target.value || '');
+                const value = String(e.target.value || 'add_location');
                 if (value === 'set_field') {
                   setBulkAction('set_field');
                   setBulkLocationIds([]);
                   return;
                 }
-                if (value.startsWith('add:')) {
-                  const id = value.slice(4);
-                  setBulkAction('add_location');
-                  setBulkLocationIds(id ? [id] : []);
-                  return;
-                }
-                if (value.startsWith('remove:')) {
-                  const id = value.slice(7);
-                  setBulkAction('remove_location');
-                  setBulkLocationIds(id ? [id] : []);
-                  return;
-                }
-                setBulkAction('add_location');
-                setBulkLocationIds([]);
+                setBulkAction(value === 'remove_location' ? 'remove_location' : 'add_location');
               }}
               className="products-toolbar-select products-toolbar-bulk-select pos-control"
-              aria-label="Bulk add or remove location"
+              aria-label="Bulk location action"
             >
-              <option value="">Location action…</option>
-              <optgroup label="Add to location">
-                {locations.map((loc) => (
-                  <option key={`add-${loc.id}`} value={`add:${loc.id}`}>{loc.name}</option>
-                ))}
-              </optgroup>
-              <optgroup label="Remove from location">
-                {locations.map((loc) => (
-                  <option key={`remove-${loc.id}`} value={`remove:${loc.id}`}>{loc.name}</option>
-                ))}
-              </optgroup>
+              <option value="add_location">Add to location…</option>
+              <option value="remove_location">Remove from location…</option>
               <option value="set_field">Set field…</option>
             </select>
           </div>
+          {needsBulkLocation && (
+            <div
+              className="products-toolbar-control-wrap products-toolbar-bulk-locations-wrap"
+              ref={bulkLocationMenuRef}
+            >
+              <button
+                type="button"
+                className="products-toolbar-bulk-locations-trigger"
+                onClick={() => setBulkLocationMenuOpen((open) => !open)}
+                aria-haspopup="listbox"
+                aria-expanded={bulkLocationMenuOpen}
+                aria-label={bulkAction === 'remove_location' ? 'Locations to remove' : 'Locations to add'}
+              >
+                <span>{bulkLocationTriggerLabel}</span>
+                <span className="products-toolbar-bulk-locations-caret" aria-hidden="true" />
+              </button>
+              {bulkLocationMenuOpen && (
+                <div className="products-toolbar-bulk-locations-menu" role="listbox" aria-multiselectable="true">
+                  {(locations || []).map((loc) => {
+                    const id = String(loc.id);
+                    const checked = bulkLocationIds.includes(id);
+                    return (
+                      <label key={id} className="products-toolbar-bulk-locations-option">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleBulkLocationId(id)}
+                        />
+                        <span>{loc.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <button
             type="button"
             onClick={handleApplyBulkUpdate}
@@ -2217,7 +2301,7 @@ function ProductsListPage() {
     <div className="products-list">
         {(loading && products.length === 0 && combos.length === 0) ? (
           <div>Loading...</div>
-        ) : filteredProducts.length === 0 ? (
+        ) : displayedProducts.length === 0 ? (
           <div>No products found.</div>
         ) : (
       <div className="products-list-table-wrap">
@@ -2249,7 +2333,27 @@ function ProductsListPage() {
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '16%'}}>Name</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>SKU</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Category</th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '14%'}}>Location</th>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '14%'}}>
+                    <div className="products-list-location-header">
+                      <span>Location</span>
+                      <button
+                        type="button"
+                        className={`products-list-sort-btn${listSortMode === 'no_locations_first' ? ' is-active' : ''}`}
+                        onClick={() => setListSortMode((mode) => (
+                          mode === 'no_locations_first' ? 'name_asc' : 'no_locations_first'
+                        ))}
+                        title={listSortMode === 'no_locations_first'
+                          ? 'Sorted: No locations first (click for A–Z)'
+                          : 'Sort: No locations first'}
+                        aria-label={listSortMode === 'no_locations_first'
+                          ? 'Sorted by no locations first. Click to sort A to Z by name'
+                          : 'Sort by no locations first'}
+                        aria-pressed={listSortMode === 'no_locations_first'}
+                      >
+                        {listSortMode === 'no_locations_first' ? '▲' : '↕'}
+                      </button>
+                    </div>
+                  </th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>Price</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>Promo</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>Edit</th>
@@ -2257,7 +2361,7 @@ function ProductsListPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((item) => {
+                {displayedProducts.map((item) => {
                   const isCombo = !!item.__isCombo;
                   const aggregateQty = (!isCombo)
                     ? getStockForProductAcrossSelected(item.id)
@@ -2286,18 +2390,27 @@ function ProductsListPage() {
                   const categoryName = categories.find((c) => String(c.id) === String(item.category_id))?.name;
                   const hasCategoryId = item.category_id !== null && item.category_id !== undefined && String(item.category_id) !== '';
                   const categoryMissing = hasCategoryId && !categoryName;
+                  // Show only locations assigned to this item (product_locations / combo_locations),
+                  // not every location in the system — so bulk add/remove is visible in this column.
+                  const HIDDEN_LOCATION_ID = '20abb7a3-9df9-45bd-885e-6440503ea728';
+                  const assignedIdSet = new Set(
+                    getAssignedLocationIdsForItem(item)
+                      .map((id) => normalizeLocationId(id))
+                      .filter(Boolean)
+                  );
                   const locationQtyRows = (locations || [])
-                    .filter(loc => String(loc.id) !== '20abb7a3-9df9-45bd-885e-6440503ea728')
+                    .filter((loc) => String(loc.id) !== HIDDEN_LOCATION_ID)
+                    .filter((loc) => assignedIdSet.has(normalizeLocationId(loc.id)))
                     .map((loc) => {
-                    const qty = isCombo
-                      ? computeComboMaxQty(item.id, loc.id)
-                      : getStockForProduct(item.id, loc.id);
-                    return {
-                      id: loc.id,
-                      name: loc.name,
-                      qty: Number(qty || 0)
-                    };
-                  });
+                      const qty = isCombo
+                        ? computeComboMaxQty(item.id, loc.id)
+                        : getStockForProduct(item.id, loc.id);
+                      return {
+                        id: loc.id,
+                        name: loc.name,
+                        qty: Number(qty || 0),
+                      };
+                    });
                   return (
                     <tr key={isCombo ? `combo-${item.id}` : item.id} style={highlightRow ? { background: '#4d1f1f' } : undefined}>
                       <td className="products-list-cell-bulk">

@@ -1,5 +1,6 @@
 import supabase from '../supabase';
 import { signInWithEmailPassword } from '../utils/supabaseAuthLogin';
+import { buildLiveConsolidatedWithSets } from '../utils/stocktakeLiveTotals';
 
 const API_TIMEOUT_MS = 12000;
 
@@ -72,25 +73,22 @@ async function withApiOrClient(apiCall, clientCall) {
   }
 }
 
-function consolidateCounts(counts) {
-  const byProduct = new Map();
-  (counts || []).forEach((row) => {
-    const productId = row.product_id;
-    if (!productId) return;
-    const prev = byProduct.get(productId) || {
-      product_id: productId,
-      qty: 0,
-      users: [],
-      updated_at: null,
-    };
-    prev.qty += Number(row.qty || 0);
-    if (row.user_email) prev.users.push({ email: row.user_email, qty: Number(row.qty || 0) });
-    if (!prev.updated_at || String(row.updated_at || '') > String(prev.updated_at || '')) {
-      prev.updated_at = row.updated_at;
-    }
-    byProduct.set(productId, prev);
-  });
-  return Array.from(byProduct.values());
+async function clientLoadLocationCombos(locationId) {
+  if (!locationId) return { combos: [], comboItems: [] };
+  const { data: comboLocs, error: clErr } = await supabase
+    .from('combo_locations')
+    .select('combo_id')
+    .eq('location_id', locationId);
+  if (clErr) throw clErr;
+  const comboIds = [...new Set((comboLocs || []).map((r) => r.combo_id).filter(Boolean))];
+  if (!comboIds.length) return { combos: [], comboItems: [] };
+  const [{ data: combos, error: cErr }, { data: comboItems, error: iErr }] = await Promise.all([
+    supabase.from('combos').select('id, combo_name, sku').in('id', comboIds),
+    supabase.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds),
+  ]);
+  if (cErr) throw cErr;
+  if (iErr) throw iErr;
+  return { combos: combos || [], comboItems: comboItems || [] };
 }
 
 async function clientFetchLocations() {
@@ -161,16 +159,24 @@ async function clientGetEvent(eventId) {
     .eq('event_id', eventId);
   if (cErr) throw cErr;
 
-  const consolidated = consolidateCounts(counts).map((row) => {
-    const sample = (counts || []).find((c) => c.product_id === row.product_id);
-    return {
-      ...row,
-      name: sample?.products?.name || null,
-      sku: sample?.products?.sku || null,
-    };
+  const [{ combos, comboItems }, scansRes] = await Promise.all([
+    clientLoadLocationCombos(event.location_id),
+    supabase
+      .from('stocktake_set_scans')
+      .select('combo_id, user_email, set_qty, updated_at')
+      .eq('event_id', eventId),
+  ]);
+  if (scansRes.error) throw scansRes.error;
+  const setScans = scansRes.data || [];
+
+  const consolidated = buildLiveConsolidatedWithSets({
+    counts: counts || [],
+    combos,
+    comboItems,
+    setScans,
   });
 
-  return { ok: true, event, consolidated, counts: counts || [] };
+  return { ok: true, event, consolidated, counts: counts || [], set_scans: setScans };
 }
 
 async function clientCreateEvent(locationId, notes = '') {
