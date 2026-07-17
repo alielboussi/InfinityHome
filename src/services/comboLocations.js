@@ -33,7 +33,8 @@ const wrapLocalDevRlsError = (error) => {
 
 const wrapComboLocationApiError = (error, url) => {
   const message = String(error?.message || error || 'Unknown error');
-  if (isLocalHost() && getApiBase()) {
+  const isRoutingIssue = /Unexpected response from combo locations API|Failed to fetch|NetworkError|Load failed/i.test(message);
+  if (isLocalHost() && getApiBase() && isRoutingIssue) {
     return new Error(`${message}. The configured API host at ${url} is not serving /api/combo-locations to localhost. Redeploy the current codebase to that host, or run vercel dev and point REACT_APP_API_BASE at that local serverless endpoint.`);
   }
   return error instanceof Error ? error : new Error(message);
@@ -67,7 +68,8 @@ async function postComboLocations(payload) {
 
 const needsManualId = (error) => {
   if (!error || !error.message) return false;
-  return /null value in column\s+"id"/i.test(error.message);
+  return /null value in column\s+"id"/i.test(error.message)
+    || /duplicate key value violates unique constraint.*combo_locations_pkey/i.test(error.message);
 };
 
 const fetchNextComboLocationId = async () => {
@@ -108,6 +110,36 @@ export async function insertComboLocations(rows) {
   if (error) {
     throw error;
   }
+}
+
+export async function upsertComboLocations(rows) {
+  const payload = (Array.isArray(rows) ? rows : []).map((row) => ({
+    ...row,
+    combo_id: coerceNumeric(row.combo_id),
+    location_id: row.location_id,
+  }));
+  if (!payload.length) return { ok: true, count: 0 };
+
+  if (shouldUseApi()) {
+    try {
+      return await postComboLocations({ rows: payload, upsert: true });
+    } catch (err) {
+      if (process.env.NODE_ENV === 'production' || String(process.env.REACT_APP_FORCE_API || '').trim() === '1') {
+        throw err;
+      }
+    }
+  }
+
+  let { error } = await supabase
+    .from('combo_locations')
+    .upsert(payload, { onConflict: 'combo_id,location_id' });
+  if (needsManualId(error)) {
+    let nextId = await fetchNextComboLocationId();
+    const rowsWithIds = payload.map((row) => ({ ...row, id: nextId++ }));
+    ({ error } = await supabase.from('combo_locations').upsert(rowsWithIds, { onConflict: 'combo_id,location_id' }));
+  }
+  if (error) throw wrapLocalDevRlsError(error);
+  return { ok: true, count: payload.length };
 }
 
 export async function replaceComboLocations(comboId, rows) {

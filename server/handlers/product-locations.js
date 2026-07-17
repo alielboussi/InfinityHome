@@ -25,7 +25,8 @@ const coerceNumeric = (value) => {
 
 const needsManualComboLocationId = (error) => {
   if (!error?.message) return false;
-  return /null value in column\s+"id"/i.test(error.message);
+  return /null value in column\s+"id"/i.test(error.message)
+    || /duplicate key value violates unique constraint.*combo_locations_pkey/i.test(error.message);
 };
 
 async function fetchNextComboLocationId(supabase) {
@@ -100,7 +101,7 @@ export default async function handler(req, res) {
     const action = resolveAction(req);
 
     if (action === 'combo') {
-      const { rows, replaceComboId, deleteComboId } = req.body || {};
+      const { rows, replaceComboId, deleteComboId, upsert } = req.body || {};
       const cleanRows = (Array.isArray(rows) ? rows : [])
         .filter((row) => row?.combo_id && row?.location_id)
         .map((row) => ({
@@ -110,6 +111,23 @@ export default async function handler(req, res) {
 
       const supabase = getSupabaseServiceClient();
       const targetComboId = replaceComboId || deleteComboId || (cleanRows[0]?.combo_id ?? null);
+
+      if (upsert && cleanRows.length) {
+        let { error } = await supabase
+          .from('combo_locations')
+          .upsert(cleanRows, { onConflict: 'combo_id,location_id' });
+        if (needsManualComboLocationId(error)) {
+          let nextId = await fetchNextComboLocationId(supabase);
+          const rowsWithIds = cleanRows.map((row) => ({ ...row, id: nextId++ }));
+          ({ error } = await supabase.from('combo_locations').upsert(rowsWithIds, { onConflict: 'combo_id,location_id' }));
+        }
+        if (error) {
+          res.status(500).json({ ok: false, error: error.message || String(error) });
+          return;
+        }
+        res.status(200).json({ ok: true, count: cleanRows.length });
+        return;
+      }
 
       if (replaceComboId || deleteComboId) {
         if (!targetComboId && targetComboId !== 0) {

@@ -50,6 +50,21 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 	console.error('[Supabase] Missing configuration. Please set REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY in your environment.');
 }
 
+if (process.env.NODE_ENV !== 'production' && SUPABASE_ANON_KEY) {
+	try {
+		const payloadPart = SUPABASE_ANON_KEY.split('.')[1];
+		if (payloadPart) {
+			const payload = JSON.parse(atob(payloadPart));
+			if (payload.iat === 178425407) {
+				// eslint-disable-next-line no-console
+				console.error('[Supabase] Invalid anon key detected (known typo). Update REACT_APP_SUPABASE_ANON_KEY from Supabase → Settings → API, then restart npm start.');
+			}
+		}
+	} catch {
+		// ignore decode issues
+	}
+}
+
 // Create a Supabase client instance with a default DB schema to avoid
 // "relation does not exist" issues when proxies or environments drop schema headers
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

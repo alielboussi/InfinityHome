@@ -270,7 +270,8 @@ async function main() {
     warnings.forEach((w) => console.log(` - ${w}`));
   }
   console.log('\nImport finished.');
-  console.log('Next: recreate Auth users in the new Supabase dashboard, then update Vercel env keys.');
+  console.log('Next: run supabase/sql/reset_identity_sequences.sql in the SQL Editor (fixes duplicate-key inserts).');
+  console.log('Then recreate Auth users in the new Supabase dashboard, and update Vercel env keys.');
 }
 
 main().catch((err) => {

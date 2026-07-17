@@ -22,6 +22,17 @@ if (/service_role/i.test(process.env.REACT_APP_SUPABASE_ANON_KEY)) {
   console.error('[env:fail] Anon key appears to contain service_role token – aborting.');
   process.exit(1);
 }
+// Guard: known typo from a bad copy/paste during migration (iat 178425407 vs 1784225407)
+try {
+  const payloadPart = String(process.env.REACT_APP_SUPABASE_ANON_KEY || '').split('.')[1];
+  if (payloadPart) {
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64').toString('utf8'));
+    if (payload.iat === 178425407) {
+      console.error('[env:fail] REACT_APP_SUPABASE_ANON_KEY has a known typo (iat 178425407). Copy the anon key again from Supabase → Settings → API.');
+      process.exit(1);
+    }
+  }
+} catch {}
 console.log('[env:ok] Core environment variables present.');
 
 // Optional diagnostics for serverless endpoints (do not fail build if missing)

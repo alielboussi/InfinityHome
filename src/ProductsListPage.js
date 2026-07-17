@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import supabase from "./supabase";
 import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
-import { deleteComboLocations, replaceComboLocations } from './services/comboLocations';
+import { deleteComboLocations, replaceComboLocations, upsertComboLocations } from './services/comboLocations';
 import { getFactoryStorageSummary, getFactoryStorageItems, createFactoryStorageItem, releaseFactoryStorageItem, updateFactoryStorageItem } from './services/factoryStorage';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import { syncProductLocations } from './services/productLocations';
@@ -1544,11 +1544,11 @@ function ProductsListPage() {
         }
         for (const productId of productIds) {
           const rows = bulkLocationIds.map(locId => ({ product_id: productId, location_id: locId }));
-          await syncProductLocations({ rows, replaceProductId: productId }, supabase);
+          await syncProductLocations({ rows }, supabase);
         }
         for (const comboId of comboIds) {
           const rows = bulkLocationIds.map(locId => ({ combo_id: comboId, location_id: locId }));
-          await replaceComboLocations(comboId, rows);
+          await upsertComboLocations(rows);
         }
         await fetchAll();
         const total = productIds.length + comboIds.length;
