@@ -1,6 +1,6 @@
 WhatsApp groups (WasenderAPI) — from GET https://www.wasenderapi.com/api/groups
 Saved: 2026-07-18
-Last updated: 2026-07-18 (redeploy trigger)
+Last updated: 2026-07-18 (branch cleanup: repo now uses sync-light only)
 
 Format: Group Name = Group ID (JID)
 
