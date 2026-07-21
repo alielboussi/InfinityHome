@@ -8,6 +8,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { computeQuotationTotals, computeQuotationDisplayTotal } from '../../src/utils/quotationDisplay.js';
+import { buildQuoteLaybyEditSummary } from '../../src/utils/quoteLaybyEditNotify.js';
 
 function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -113,12 +114,14 @@ async function syncConvertedQuoteToLaybySale(supabase, {
       .eq('id', laybyId)
       .maybeSingle();
     if (laybyErr) throw new Error(`Layby lookup failed: ${laybyErr.message}`);
-    const paidAmount = Number(layby?.paid_amount || 0);
+    const paidFromPayments = await getSalePaidTotal(supabase, saleId);
+    const paidAmount = Math.max(Number(layby?.paid_amount || 0), paidFromPayments);
     const { error: laybyUpdateErr } = await supabase
       .from('laybys')
       .update({
         total_amount: total,
-        status: Math.max(0, total - paidAmount) > 0.009 ? 'active' : 'completed',
+        paid_amount: paidAmount,
+        status: Math.max(0, total - paidAmount) >= 1 ? 'active' : 'completed',
         updated_at: nowIso,
       })
       .eq('id', laybyId);
@@ -362,6 +365,8 @@ export default async function handler(req, res) {
     let quoteId = id || null;
     let responseHeader = null;
     let existingConverted = null;
+    let beforeQuoteSnapshot = null;
+    let beforeItemsSnapshot = null;
     if (!quoteId) {
       // Create
       const header = { ...baseHeader, quote_number: quote_number || 'QT#1' };
@@ -412,6 +417,17 @@ export default async function handler(req, res) {
             res.status(500).json({ ok: false, error: quoteLoadErr.message });
             return;
           }
+          const { data: existingItems, error: itemsLoadErr } = await supabase
+            .from('quotation_items')
+            .select('name_override, product_id, quantity, unit_price, sort_order')
+            .eq('quotation_id', quoteId)
+            .order('sort_order', { ascending: true });
+          if (itemsLoadErr) {
+            res.status(500).json({ ok: false, error: itemsLoadErr.message });
+            return;
+          }
+          beforeQuoteSnapshot = { ...(existingQuote || {}) };
+          beforeItemsSnapshot = existingItems || [];
           const currentTotal = computeQuotationDisplayTotal(existingQuote || existing);
           const paidTotal = await getSalePaidTotal(supabase, existing.sale_id);
           const outstanding = Math.max(0, currentTotal - paidTotal);
@@ -419,10 +435,8 @@ export default async function handler(req, res) {
             res.status(409).json({ ok: false, error: 'Quotation is locked (layby paid in full).' });
             return;
           }
-          if (total < paidTotal - 0.009) {
-            res.status(409).json({ ok: false, error: 'Quote total cannot be less than payments already recorded.' });
-            return;
-          }
+          // Allow lowering quote total below already paid amount.
+          // Converted layby sync will mark the sale/layby as completed when paid >= total.
         } else if (isConverted) {
           res.status(409).json({ ok: false, error: 'Quotation is locked (converted).' });
           return;
@@ -473,7 +487,44 @@ export default async function handler(req, res) {
       }
     }
 
-    res.status(200).json({ ok: true, id: quoteId, quote: { id: quoteId, ...(responseHeader || baseHeader), quote_number: (responseHeader || baseHeader).quote_number || quote_number || null } });
+    let laybyEditNotify = null;
+    if (beforeQuoteSnapshot && existingConverted?.layby_id && existingConverted?.sale_id) {
+      const paidTotal = await getSalePaidTotal(supabase, existingConverted.sale_id);
+      const afterQuote = {
+        ...beforeQuoteSnapshot,
+        ...baseHeader,
+        subtotal,
+        total,
+        discount: Number(quote.discount || 0),
+        vat_apply,
+        vat_rate: vatRate,
+        currency: quote.currency || beforeQuoteSnapshot.currency || 'K',
+      };
+      const summary = buildQuoteLaybyEditSummary({
+        beforeQuote: beforeQuoteSnapshot,
+        afterQuote,
+        beforeItems: beforeItemsSnapshot,
+        afterItems: cleanItems,
+        paidTotal,
+        laybyClosed: Math.max(0, total - paidTotal) < 1,
+        currency: afterQuote.currency || 'K',
+      });
+      laybyEditNotify = {
+        laybyId: existingConverted.layby_id,
+        saleId: existingConverted.sale_id,
+        eventType: 'quote_edit',
+        laybyClosed: summary.laybyClosed,
+        editSummary: summary.lines,
+        quoteNumber: existingConverted.quote_number || quote_number || null,
+      };
+    }
+
+    res.status(200).json({
+      ok: true,
+      id: quoteId,
+      quote: { id: quoteId, ...(responseHeader || baseHeader), quote_number: (responseHeader || baseHeader).quote_number || quote_number || null },
+      laybyEditNotify,
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message || String(e) });
   }

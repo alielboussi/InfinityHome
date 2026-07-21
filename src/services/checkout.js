@@ -5,6 +5,11 @@ import supabase from '../supabase';
 import { resolveSaleActor } from '../accessControl';
 import { applySaleInventoryDeductionViaApi } from '../utils/inventoryApi';
 import { newUuid } from '../utils/uuid';
+import {
+  assertReceiptNumberAvailable,
+  isDuplicateReceiptError,
+  RECEIPT_DUPLICATE_ERROR,
+} from '../utils/receiptNumber';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
@@ -250,65 +255,37 @@ export async function checkout(payload) {
     const salesItemsTable = await resolveTable(db, 'sales_items', ['sale_items', 'sales_item']);
     const salesPaymentsTable = await resolveTable(db, 'sales_payments', ['sale_payments', 'sales_payment']);
 
-    // Duplicate receipt handling (client-side variant)
+    // Reject duplicate receipt numbers (client-side fallback)
     const hasReceipt = typeof sale?.receipt_number === 'string' && sale.receipt_number.trim() !== '';
-    let baseReceipt = hasReceipt ? sale.receipt_number.trim() : '';
-    const normalize = (s) => String(s || '').trim().replace(/^#\s*/, '').replace(/\s+/g, ' ').toLowerCase();
-    let storedReceiptNumber = hasReceipt ? baseReceipt : null;
+    const storedReceiptNumber = hasReceipt ? sale.receipt_number.trim() : null;
     if (hasReceipt) {
-      let existing = [];
       try {
-        const escaped = baseReceipt.replace(/[*,]/g, '');
-        const orExpr = `receipt_number.ilike.*${escaped}*,receipt_number.ilike.*#${escaped}*`;
-        const { data } = await db.from(salesTable).select('receipt_number').or(orExpr);
-        existing = Array.isArray(data) ? data.map(r => r.receipt_number) : [];
-      } catch (_) { existing = []; }
-      const normalizedBase = normalize(baseReceipt);
-      const nums = [];
-      const baseRegex = new RegExp(`^#?\\s*${normalizedBase.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}(?:\\s*\\((\\d+)\\))?$`);
-      for (const r of existing) {
-        const m = normalize(r).match(baseRegex);
-        if (m) {
-          const n = m[1] ? parseInt(m[1], 10) : 0;
-          if (!Number.isNaN(n)) nums.push(n);
-        }
+        await assertReceiptNumberAvailable(db, salesTable, storedReceiptNumber);
+      } catch (dupErr) {
+        return { data: null, error: dupErr };
       }
-      storedReceiptNumber = nums.length === 0 ? baseReceipt : `${baseReceipt} (${Math.max(...nums) + 1})`;
     }
 
-    // Insert sale header (retry on duplicate if user provided a receipt)
-  const tryInsert = async (payload) => db.from(salesTable).insert(payload).select('*').single();
-    const maxRetries = 3;
-    let attempt = 0; let saleRow = null; let lastErr = null;
-    while (true) {
-      const payloadToInsert = hasReceipt ? { ...sale, receipt_number: storedReceiptNumber } : { ...sale, receipt_number: sale?.receipt_number || null };
-      const resIns = await tryInsert(payloadToInsert);
-      if (!resIns.error) { saleRow = resIns.data; break; }
-      lastErr = resIns.error;
+    const payloadToInsert = hasReceipt
+      ? { ...sale, receipt_number: storedReceiptNumber }
+      : { ...sale, receipt_number: sale?.receipt_number || null };
+    const resIns = await db.from(salesTable).insert(payloadToInsert).select('*').single();
+    if (resIns.error) {
       const msg = String(resIns.error?.message || '');
-      // Helpful guidance for a common schema misconfiguration
       if (/null value in column\s+"id"\s+of relation\s+"sales"/i.test(msg)) {
         const hint = 'Checkout failed because public.sales.id does not auto-generate. Apply the SQL patch supabase/sql/patches/006_sales_id_identity.sql (adds identity/sequence-backed default).';
         return { data: null, error: new Error(`${msg}. ${hint}`) };
       }
-      const isDup = resIns.error?.code === '23505' || /duplicate key value|ux_sales_receipt/i.test(msg);
-      if (!hasReceipt || !isDup) {
-        const m = String(lastErr?.message || lastErr || '').toLowerCase();
-        if (/relation .* does not exist|not found|pgrst/i.test(m)) {
-          return { data: null, error: new Error(`Checkout failed: table '${salesTable}' is not available via public schema for ${process.env.REACT_APP_SUPABASE_URL || 'Supabase URL'}. Verify your local .env REACT_APP_SUPABASE_URL/ANON_KEY point to the project that has public.sales and that 'public' is the active profile.`) };
-        }
-        return { data: null, error: new Error(lastErr.message || String(lastErr)) };
+      if (isDuplicateReceiptError(resIns.error)) {
+        return { data: null, error: new Error(RECEIPT_DUPLICATE_ERROR) };
       }
-      attempt += 1; if (attempt > maxRetries) { return { data: null, error: new Error(lastErr.message || String(lastErr)) }; }
-      const m = storedReceiptNumber.match(/^(.*)\((\d+)\)\s*$/);
-      if (m) {
-        const base = m[1].trim().replace(/\s+$/, '');
-        const n = parseInt(m[2], 10) + 1;
-        storedReceiptNumber = `${base} (${n})`;
-      } else {
-        storedReceiptNumber = `${baseReceipt} (2)`;
+      const m = String(resIns.error?.message || resIns.error || '').toLowerCase();
+      if (/relation .* does not exist|not found|pgrst/i.test(m)) {
+        return { data: null, error: new Error(`Checkout failed: table '${salesTable}' is not available via public schema for ${process.env.REACT_APP_SUPABASE_URL || 'Supabase URL'}. Verify your local .env REACT_APP_SUPABASE_URL/ANON_KEY point to the project that has public.sales and that 'public' is the active profile.`) };
       }
+      return { data: null, error: new Error(resIns.error.message || String(resIns.error)) };
     }
+    const saleRow = resIns.data;
 
     const saleId = saleRow?.id;
 

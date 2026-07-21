@@ -18,6 +18,20 @@ function cleanTerm(value) {
   return String(value || '').trim().replace(/[,*%]/g, '');
 }
 
+const LOCATION_PRODUCT_IDS_TTL_MS = 5 * 60 * 1000;
+const CATALOG_CACHE_TTL_MS = 60 * 1000;
+const locationProductIdsCache = new Map();
+const catalogCache = new Map();
+
+function catalogCacheKey(locationId, term) {
+  return `${locationId}|${String(term || '').toLowerCase()}`;
+}
+
+function buildIlikeOrFilter(fields, term) {
+  const like = `%${term}%`;
+  return fields.map((field) => `${field}.ilike.${like}`).join(',');
+}
+
 function isApiUnavailable(err) {
   const status = Number(err?.status || 0);
   if (status === 502 || status === 503 || status === 504) return true;
@@ -358,6 +372,11 @@ async function clientFetchMyCounts(eventId, userEmail = currentEmail()) {
 }
 
 async function resolveLocationProductIds(locationId) {
+  const cached = locationProductIdsCache.get(locationId);
+  if (cached && Date.now() - cached.at < LOCATION_PRODUCT_IDS_TTL_MS) {
+    return cached.ids;
+  }
+
   const ids = new Set();
   const [{ data: linked, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
     supabase.from('product_locations').select('product_id').eq('location_id', locationId),
@@ -368,32 +387,65 @@ async function resolveLocationProductIds(locationId) {
   if (invErr) throw invErr;
   (linked || []).forEach((r) => { if (r.product_id) ids.add(String(r.product_id)); });
   (invRows || []).forEach((r) => { if (r.product_id) ids.add(String(r.product_id)); });
-  return [...ids];
+  const list = [...ids];
+  locationProductIdsCache.set(locationId, { ids: list, at: Date.now() });
+  return list;
+}
+
+async function fetchLocationProductsByTerm(locationProductIds, term) {
+  const orFilter = buildIlikeOrFilter(['name', 'sku'], term);
+
+  if (locationProductIds.length <= 200) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, name, sku, price')
+      .in('id', locationProductIds)
+      .or(orFilter)
+      .order('name')
+      .limit(80);
+    if (error) throw error;
+    return (data || []).map((p) => ({ ...p, type: 'product' }));
+  }
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('id, name, sku, price')
+    .or(orFilter)
+    .order('name')
+    .limit(150);
+  if (error) throw error;
+  const idSet = new Set(locationProductIds.map(String));
+  return (data || [])
+    .filter((p) => idSet.has(String(p.id)))
+    .slice(0, 80)
+    .map((p) => ({ ...p, type: 'product' }));
 }
 
 async function clientFetchCatalog(locationId, q = '') {
   const term = cleanTerm(q);
-  const locationProductIds = await resolveLocationProductIds(locationId);
-  const idSet = new Set(locationProductIds.map(String));
+  const cacheKey = catalogCacheKey(locationId, term);
+  const cached = catalogCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < CATALOG_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const locationProductIdsPromise = resolveLocationProductIds(locationId);
+  const comboLocsPromise = supabase
+    .from('combo_locations')
+    .select('combo_id')
+    .eq('location_id', locationId);
+
+  const [locationProductIds, { data: comboLocs, error: clErr }] = await Promise.all([
+    locationProductIdsPromise,
+    comboLocsPromise,
+  ]);
+  if (clErr) throw clErr;
 
   let products = [];
   if (locationProductIds.length) {
     if (term) {
-      // Search products by name/SKU, then keep only those enabled at this location.
-      const like = `%${term}%`;
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name, sku, price')
-        .or(`name.ilike.${like},sku.ilike.${like}`)
-        .order('name')
-        .limit(300);
-      if (error) throw error;
-      products = (data || [])
-        .filter((p) => idSet.has(String(p.id)))
-        .slice(0, 80)
-        .map((p) => ({ ...p, type: 'product' }));
+      products = await fetchLocationProductsByTerm(locationProductIds, term);
     } else {
-      // Browse: load first chunks of location product IDs.
       const chunk = locationProductIds.slice(0, 120);
       const { data, error } = await supabase
         .from('products')
@@ -406,11 +458,6 @@ async function clientFetchCatalog(locationId, q = '') {
     }
   }
 
-  const { data: comboLocs, error: clErr } = await supabase
-    .from('combo_locations')
-    .select('combo_id')
-    .eq('location_id', locationId);
-  if (clErr) throw clErr;
   const comboIds = [...new Set((comboLocs || []).map((r) => r.combo_id).filter(Boolean))];
   let sets = [];
   if (comboIds.length) {
@@ -426,15 +473,19 @@ async function clientFetchCatalog(locationId, q = '') {
     }
     const { data: combos, error: sErr } = await comboQuery;
     if (sErr) throw sErr;
-    const { data: items } = await supabase
-      .from('combo_items')
-      .select('combo_id, product_id, quantity')
-      .in('combo_id', comboIds);
-    const byCombo = new Map();
-    (items || []).forEach((row) => {
-      if (!byCombo.has(row.combo_id)) byCombo.set(row.combo_id, []);
-      byCombo.get(row.combo_id).push({ product_id: row.product_id, quantity: Number(row.quantity || 0) });
-    });
+    const matchedComboIds = (combos || []).map((c) => c.id).filter(Boolean);
+    let byCombo = new Map();
+    if (matchedComboIds.length) {
+      const { data: items } = await supabase
+        .from('combo_items')
+        .select('combo_id, product_id, quantity')
+        .in('combo_id', matchedComboIds);
+      byCombo = new Map();
+      (items || []).forEach((row) => {
+        if (!byCombo.has(row.combo_id)) byCombo.set(row.combo_id, []);
+        byCombo.get(row.combo_id).push({ product_id: row.product_id, quantity: Number(row.quantity || 0) });
+      });
+    }
     sets = (combos || []).map((c) => ({
       id: c.id,
       name: c.combo_name,
@@ -445,7 +496,21 @@ async function clientFetchCatalog(locationId, q = '') {
     }));
   }
 
-  return { ok: true, products, sets };
+  const payload = { ok: true, products, sets };
+  catalogCache.set(cacheKey, { data: payload, at: Date.now() });
+  return payload;
+}
+
+export function invalidateStocktakeCatalogCache(locationId) {
+  if (!locationId) {
+    catalogCache.clear();
+    locationProductIdsCache.clear();
+    return;
+  }
+  locationProductIdsCache.delete(locationId);
+  for (const key of catalogCache.keys()) {
+    if (key.startsWith(`${locationId}|`)) catalogCache.delete(key);
+  }
 }
 
 async function clientListPeriods(locationId) {

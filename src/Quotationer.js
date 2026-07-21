@@ -10,6 +10,7 @@ import { cacheGet, cacheSet } from './utils/staleCache';
 import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationConverted, isQuotationerOnlyUser, getUserDisplayName } from './accessControl';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
+import { notifyLaybyWhatsApp } from './services/whatsappNotify';
 import {
   computeQuotationDisplayTotal,
   computeQuotationTotals,
@@ -934,6 +935,23 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       const createdQuoteId = out.id;
       if (!createdQuoteId) throw new Error('Quote saved but no id returned');
       if (createdQuoteId && !currentQuoteId) setCurrentQuoteId(createdQuoteId);
+
+      if (out.laybyEditNotify?.laybyId) {
+        try {
+          const notifyResult = await notifyLaybyWhatsApp({
+            laybyId: out.laybyEditNotify.laybyId,
+            saleId: out.laybyEditNotify.saleId,
+            eventType: out.laybyEditNotify.eventType || 'quote_edit',
+            laybyClosed: out.laybyEditNotify.laybyClosed,
+            editSummary: out.laybyEditNotify.editSummary,
+          });
+          if (!notifyResult?.ok) {
+            console.warn('Layby edit WhatsApp failed:', notifyResult?.error || 'unknown error');
+          }
+        } catch (notifyErr) {
+          console.warn('Layby edit WhatsApp failed:', notifyErr?.message || notifyErr);
+        }
+      }
 
       try {
         const selectedCustomer = quoteCustomers.find(c => c.id === (quote.customer_id || quote.customer_id));

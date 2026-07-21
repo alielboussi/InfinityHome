@@ -12,6 +12,7 @@ const HANDLER_LOADERS = {
   'quotation-save': () => import('../server/handlers/quotation-save.js'),
   'quote-convert-layby': () => import('../server/handlers/quote-convert-layby.js'),
   'sales-edit': () => import('../server/handlers/sales-edit.js'),
+  'sales-adjustment': () => import('../server/handlers/sales-adjustment.js'),
   'user-activity': () => import('../server/handlers/user-activity.js'),
   'db-backup': () => import('../server/handlers/db-backup.js'),
 };

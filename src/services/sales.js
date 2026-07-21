@@ -4,9 +4,8 @@ import { checkout as checkoutApi } from './checkout';
 // API/fallback path as full checkout flows.
 
 /**
- * Insert a sale with robust duplicate-receipt handling.
- * If unique constraint ux_sales_receipt_unique_except_fahme blocks the insert,
- * we suffix the provided receipt_number with " (n)" where n is next occurrence count.
+ * Insert a sale via the shared checkout service.
+ * Duplicate receipt numbers are rejected with a clear error.
  * Returns { data, error, storedReceiptNumber } where storedReceiptNumber is the final value used.
  */
 export async function createSale(sale) {

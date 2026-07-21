@@ -244,14 +244,27 @@ async function handleCatalog(req, res) {
   if (productIds.length) {
     if (q) {
       const like = `%${q}%`;
-      const { data, error: pErr } = await sb
-        .from('products')
-        .select('id, name, sku, price, promotional_price, promo_start_date, promo_end_date')
-        .or(`name.ilike.${like},sku.ilike.${like}`)
-        .order('name')
-        .limit(400);
-      if (pErr) return res.status(500).json({ ok: false, error: pErr.message });
-      products = (data || []).filter((p) => productIdSet.has(String(p.id))).slice(0, 80);
+      const orFilter = `name.ilike.${like},sku.ilike.${like}`;
+      if (productIds.length <= 200) {
+        const { data, error: pErr } = await sb
+          .from('products')
+          .select('id, name, sku, price, promotional_price, promo_start_date, promo_end_date')
+          .in('id', productIds)
+          .or(orFilter)
+          .order('name')
+          .limit(80);
+        if (pErr) return res.status(500).json({ ok: false, error: pErr.message });
+        products = data || [];
+      } else {
+        const { data, error: pErr } = await sb
+          .from('products')
+          .select('id, name, sku, price, promotional_price, promo_start_date, promo_end_date')
+          .or(orFilter)
+          .order('name')
+          .limit(150);
+        if (pErr) return res.status(500).json({ ok: false, error: pErr.message });
+        products = (data || []).filter((p) => productIdSet.has(String(p.id))).slice(0, 80);
+      }
     } else {
       const chunk = productIds.slice(0, 120);
       const { data, error: pErr } = await sb
@@ -286,15 +299,18 @@ async function handleCatalog(req, res) {
       comboQuery = comboQuery.or(`combo_name.ilike.${like},sku.ilike.${like}`);
     }
     const { data: combos } = await comboQuery;
-    const { data: items } = await sb
-      .from('combo_items')
-      .select('combo_id, product_id, quantity')
-      .in('combo_id', comboIds);
+    const matchedComboIds = (combos || []).map((c) => c.id).filter(Boolean);
     const byCombo = new Map();
-    (items || []).forEach((row) => {
-      if (!byCombo.has(row.combo_id)) byCombo.set(row.combo_id, []);
-      byCombo.get(row.combo_id).push({ product_id: row.product_id, quantity: Number(row.quantity || 0) });
-    });
+    if (matchedComboIds.length) {
+      const { data: items } = await sb
+        .from('combo_items')
+        .select('combo_id, product_id, quantity')
+        .in('combo_id', matchedComboIds);
+      (items || []).forEach((row) => {
+        if (!byCombo.has(row.combo_id)) byCombo.set(row.combo_id, []);
+        byCombo.get(row.combo_id).push({ product_id: row.product_id, quantity: Number(row.quantity || 0) });
+      });
+    }
     sets = (combos || []).map((c) => ({
       id: c.id,
       name: c.combo_name,

@@ -68,10 +68,28 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
   const onTouchStart = (e) => {
     if (e.touches && e.touches.length > 0) startY = e.touches[0].clientY;
   };
+  const canScrollWithin = (target, dy) => {
+    let node = target;
+    while (node && node !== document.documentElement) {
+      const style = window.getComputedStyle(node);
+      const overflowY = style.overflowY;
+      if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight + 1) {
+        const atTop = node.scrollTop <= 0;
+        const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
+        if (dy > 0 && !atTop) return true;
+        if (dy < 0 && !atBottom) return true;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  };
   const onTouchMove = (e) => {
+    const path = String(window.location.pathname || '').toLowerCase();
+    if (path.startsWith('/stocktake/count')) return;
     const y = (typeof window.scrollY === 'number') ? window.scrollY : (document.documentElement.scrollTop || document.body.scrollTop || 0);
     const currentY = e.touches && e.touches.length > 0 ? e.touches[0].clientY : 0;
     const dy = currentY - startY;
+    if (canScrollWithin(e.target, dy)) return;
     if (y <= 0 && dy > 0) {
       e.preventDefault();
     }

@@ -5,7 +5,7 @@ import {
   FaCashRegister, FaReceipt, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags, FaLayerGroup,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo
 } from 'react-icons/fa';
 import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, isQuotationerOnlyUser } from './accessControl';
 
@@ -24,6 +24,7 @@ const NAV_GROUPS = [
       { label: 'POS', route: '/pos', icon: FaCashRegister },
       { label: 'All Sales', route: '/all-sales', icon: FaReceipt },
       { label: 'Quotes', route: '/quotes-board', icon: FaQuoteRight },
+      { label: 'Reversal', route: '/reversal', icon: FaUndo },
     ],
   },
   {
@@ -121,6 +122,7 @@ const TITLE_MAP = {
   '/pos': 'Point of Sale',
   '/pos-mobile': 'Point of Sale',
   '/all-sales': 'All Sales',
+  '/reversal': 'Reversal',
   '/quotes-board': 'Quotes',
   '/quotationer': 'Create Quote',
   '/sales-report': 'Sales Report',

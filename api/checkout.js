@@ -1,5 +1,5 @@
 // Unified Serverless API: checkout
-// Performs sale header insert with duplicate receipt handling, batch insert of sales_items, and payments insert.
+// Performs sale header insert (rejects duplicate receipt numbers), batch insert of sales_items, and payments insert.
 // Method: POST
 // Body: {
 //   sale: { customer_id, sale_date, total_amount, status, updated_at, location_id, layby_id, currency, discount, receipt_number },
@@ -11,6 +11,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { newUuid } from '../server/lib/uuid.js';
 import { applyInventoryDeduction } from '../server/lib/inventoryDeduction.js';
+import {
+  assertReceiptNumberAvailable,
+  isDuplicateReceiptError,
+  RECEIPT_DUPLICATE_ERROR,
+} from '../src/utils/receiptNumber.js';
 
 const ATOMIC_CHECKOUT_RPC = 'pos_finalize_checkout_atomic';
 
@@ -142,30 +147,16 @@ export default async function handler(req, res) {
   const salesPaymentsTable = await resolveTable(supabase, 'sales_payments', ['sale_payments', 'sales_payment']);
   const tableDebug = { salesTable, salesItemsTable, salesPaymentsTable };
 
-  // 1) Create sale header with duplicate receipt handling (as in sales-create)
+  // 1) Create sale header; reject duplicate receipt numbers
     const hasReceipt = typeof sale?.receipt_number === 'string' && sale.receipt_number.trim() !== '';
-    let baseReceipt = hasReceipt ? sale.receipt_number.trim() : '';
-    const normalize = (s) => String(s || '').trim().replace(/^#\s*/, '').replace(/\s+/g, ' ').toLowerCase();
-    let storedReceiptNumber = hasReceipt ? baseReceipt : null;
+    const storedReceiptNumber = hasReceipt ? sale.receipt_number.trim() : null;
     if (hasReceipt) {
-      let existing = [];
       try {
-        const escaped = baseReceipt.replace(/[*,]/g, '');
-        const orExpr = `receipt_number.ilike.*${escaped}*,receipt_number.ilike.*#${escaped}*`;
-  const { data } = await supabase.from(salesTable).select('receipt_number').or(orExpr);
-        existing = Array.isArray(data) ? data.map(r => r.receipt_number) : [];
-      } catch (_) { existing = []; }
-      const normalizedBase = normalize(baseReceipt);
-      const nums = [];
-      const baseRegex = new RegExp(`^#?\s*${normalizedBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s*\\((\\d+)\\))?$`);
-      for (const r of existing) {
-        const m = normalize(r).match(baseRegex);
-        if (m) {
-          const n = m[1] ? parseInt(m[1], 10) : 0;
-          if (!Number.isNaN(n)) nums.push(n);
-        }
+        await assertReceiptNumberAvailable(supabase, salesTable, storedReceiptNumber);
+      } catch (dupErr) {
+        sendError(409, 'receipt', dupErr);
+        return;
       }
-      storedReceiptNumber = nums.length === 0 ? baseReceipt : `${baseReceipt} (${Math.max(...nums) + 1})`;
     }
 
     const salePayload = hasReceipt
@@ -180,6 +171,10 @@ export default async function handler(req, res) {
 
     if (atomicResult.supported) {
       if (atomicResult.error) {
+        if (isDuplicateReceiptError(atomicResult.error)) {
+          sendError(409, 'receipt', new Error(RECEIPT_DUPLICATE_ERROR));
+          return;
+        }
         sendError(500, 'atomic_checkout', atomicResult.error);
         return;
       }
@@ -220,40 +215,24 @@ export default async function handler(req, res) {
       return;
     }
 
-    const tryInsert = async (payload) => {
-      return await supabase.from(salesTable).insert(payload).select('*').single();
-    };
-    const maxRetries = 5;
-    let attempt = 0; let lastError = null; let saleRow = null;
-    while (true) {
-      const payload = hasReceipt ? { ...sale, receipt_number: storedReceiptNumber } : { ...sale, receipt_number: sale?.receipt_number || null };
-      const resIns = await tryInsert(payload);
-      if (!resIns.error) { saleRow = resIns.data; break; }
-      lastError = resIns.error;
+    const payload = hasReceipt
+      ? { ...sale, receipt_number: storedReceiptNumber }
+      : { ...sale, receipt_number: sale?.receipt_number || null };
+    const resIns = await supabase.from(salesTable).insert(payload).select('*').single();
+    if (resIns.error) {
       const msg = String(resIns.error?.message || '');
       if (/null value in column\s+"id"\s+of relation\s+"sales"/i.test(msg)) {
         sendError(500, 'sales', new Error(`${msg}. Remediation: run supabase/sql/patches/006_sales_id_identity.sql to add identity/default for public.sales.id.`));
         return;
       }
-      const isDup = resIns.error?.code === '23505' || /duplicate key value|ux_sales_receipt/i.test(msg);
-      if (!hasReceipt || !isDup) {
-        sendError(500, 'sales', lastError);
+      if (isDuplicateReceiptError(resIns.error)) {
+        sendError(409, 'receipt', new Error(RECEIPT_DUPLICATE_ERROR));
         return;
       }
-      attempt += 1;
-      if (attempt > maxRetries) {
-        sendError(500, 'sales', lastError);
-        return;
-      }
-      const m = storedReceiptNumber.match(/^(.*)\((\d+)\)\s*$/);
-      if (m) {
-        const base = m[1].trim().replace(/\s+$/, '');
-        const n = parseInt(m[2], 10) + 1;
-        storedReceiptNumber = `${base} (${n})`;
-      } else {
-        storedReceiptNumber = `${baseReceipt} (2)`;
-      }
+      sendError(500, 'sales', resIns.error);
+      return;
     }
+    const saleRow = resIns.data;
 
     const saleId = saleRow?.id;
     const saleCurrency = saleRow?.currency || sale?.currency || null;

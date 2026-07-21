@@ -31,6 +31,7 @@ import StocktakeCountSessionPage from './StocktakeCountSessionPage';
 import ProductsListPage from './ProductsListPage';
 import ZeroStockLocationReset from './ZeroStockLocationReset';
 import AllSales from './AllSales';
+import Reversal from './Reversal';
 import IncompletePackages from './IncompletePackages';
 import IncompleteMobileLocked from './IncompleteMobileLocked';
 import QuotesBoard from './QuotesBoard.js';
@@ -216,6 +217,17 @@ function App() {
             };
       }, []);
 
+      React.useEffect(() => {
+            if (typeof document === 'undefined') return undefined;
+            const isCountRoute = (location.pathname || '').toLowerCase().startsWith('/stocktake/count');
+            document.documentElement.classList.toggle('stocktake-count-route', isCountRoute);
+            document.body.classList.toggle('stocktake-count-route', isCountRoute);
+            return () => {
+                  document.documentElement.classList.remove('stocktake-count-route');
+                  document.body.classList.remove('stocktake-count-route');
+            };
+      }, [location.pathname]);
+
   return (
             <div className={`App${isDashboardTheme ? ' dashboard-theme' : ''}`}>
                                                                                                                                                                   {/* Global authentication gate: force login before any page access */}
@@ -280,6 +292,7 @@ function App() {
       <Route path="/zero-stock-location" element={<ZeroStockLocationReset />} />
       <Route path="/stock-count" element={<Navigate to="/stocktake" replace />} />
       <Route path="/all-sales" element={<RequireAuth><AllSales /></RequireAuth>} />
+      <Route path="/reversal" element={<RequireAuth><Reversal /></RequireAuth>} />
         <Route path="/user-activity" element={<RequireAuth><RequireAdminPage check={canViewUserActivity}><UserActivityLog /></RequireAdminPage></RequireAuth>} />
         <Route path="/database-backup" element={<RequireAuth><RequireAdminPage check={canViewDatabaseBackup}><DatabaseBackup /></RequireAdminPage></RequireAuth>} />
   <Route path="/incomplete-packages" element={<IncompletePackages />} />

@@ -66,6 +66,7 @@
     { "source": "/api/whatsapp-layby", "destination": "/api/notify?action=whatsapp-layby" },
     { "source": "/api/whatsapp-transfer", "destination": "/api/notify?action=whatsapp-transfer" },
     { "source": "/api/whatsapp-labels", "destination": "/api/notify?action=whatsapp-labels" },
+    { "source": "/api/monthly-balance-dues", "destination": "/api/notify?action=monthly-balance-dues" },
     { "source": "/api/telegram-sale", "destination": "/api/notify?action=whatsapp-sale" },
     { "source": "/api/telegram-layby", "destination": "/api/notify?action=whatsapp-layby" },
     { "source": "/api/telegram-transfer", "destination": "/api/notify?action=whatsapp-transfer" },
@@ -81,6 +82,7 @@
     { "source": "/api/products-bulk-delete", "destination": "/api/admin?adminAction=products-bulk-delete" },
     { "source": "/api/quotation-save", "destination": "/api/admin?adminAction=quotation-save" },
     { "source": "/api/sales-edit", "destination": "/api/admin?adminAction=sales-edit" },
+    { "source": "/api/sales-adjustment", "destination": "/api/admin?adminAction=sales-adjustment" },
     { "source": "/api/user-activity", "destination": "/api/admin?adminAction=user-activity" },
     { "source": "/api/db-backup", "destination": "/api/admin?adminAction=db-backup" },
 
@@ -90,5 +92,11 @@
 
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/notify?action=monthly-balance-dues",
+      "schedule": "0 6 30 * *"
+    }
   ]
 }

@@ -12,6 +12,7 @@ import {
   fetchMyCounts,
   getEvent,
   importCounts,
+  invalidateStocktakeCatalogCache,
   listOpenSessions,
   removeMyCount,
   scanSet,
@@ -90,6 +91,8 @@ export default function StocktakeCountSessionPage() {
   const [event, setEvent] = useState(null);
   const [cart, setCart] = useState([]);
   const [search, setSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalog, setCatalog] = useState({ products: [], sets: [] });
   const [popupItem, setPopupItem] = useState(null);
   const [popupQty, setPopupQty] = useState('1');
@@ -232,21 +235,59 @@ export default function StocktakeCountSessionPage() {
   }, [user, eventId, refreshEvent, refreshCart]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     if (!locationId) {
       setCatalog({ products: [], sets: [] });
-      return;
+      setSetPickerProducts([]);
+      return undefined;
     }
     let alive = true;
     (async () => {
       try {
-        await refreshCatalog(search);
-        if (alive) setError((prev) => (/failed to load products/i.test(String(prev || '')) ? '' : prev));
-      } catch (_) {
-        // refreshCatalog already sets error
+        const data = await fetchCatalog(locationId, '');
+        if (!alive) return;
+        setSetPickerProducts(data.products || []);
+      } catch {
+        if (alive) setSetPickerProducts([]);
       }
     })();
     return () => { alive = false; };
-  }, [locationId, search, refreshCatalog]);
+  }, [locationId]);
+
+  useEffect(() => {
+    if (!locationId) {
+      setCatalog({ products: [], sets: [] });
+      setCatalogLoading(false);
+      return undefined;
+    }
+    const q = searchQuery.trim();
+    if (!q) {
+      setCatalog({ products: [], sets: [] });
+      setCatalogLoading(false);
+      return undefined;
+    }
+    if (q.length < 2) {
+      setCatalogLoading(false);
+      return undefined;
+    }
+    let alive = true;
+    setCatalogLoading(true);
+    (async () => {
+      try {
+        await refreshCatalog(q);
+        if (alive) setError((prev) => (/failed to load products/i.test(String(prev || '')) ? '' : prev));
+      } catch (_) {
+        // refreshCatalog already sets error
+      } finally {
+        if (alive) setCatalogLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [locationId, searchQuery, refreshCatalog]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -256,6 +297,7 @@ export default function StocktakeCountSessionPage() {
 
   useEffect(() => {
     if (!setFormOpen || !locationId) return undefined;
+    if (setPickerProducts.length) return undefined;
     let alive = true;
     (async () => {
       try {
@@ -266,7 +308,7 @@ export default function StocktakeCountSessionPage() {
       }
     })();
     return () => { alive = false; };
-  }, [setFormOpen, locationId]);
+  }, [setFormOpen, locationId, setPickerProducts.length]);
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current;
@@ -306,6 +348,7 @@ export default function StocktakeCountSessionPage() {
             if (!code) return;
             scanLockRef.current = true;
             setSearch(code);
+            setSearchQuery(code);
             setScannerOpen(false);
             await stopScanner();
             try {
@@ -348,11 +391,11 @@ export default function StocktakeCountSessionPage() {
   }, [scannerOpen, refreshCatalog, stopScanner]);
 
   const results = useMemo(() => {
-    if (!search.trim()) return [];
+    if (!searchQuery.trim()) return [];
     const products = (catalog.products || []).map((p) => ({ ...p, type: 'product' }));
     const sets = (catalog.sets || []).map((s) => ({ ...s, type: 'set' }));
     return [...sets, ...products];
-  }, [catalog, search]);
+  }, [catalog, searchQuery]);
 
   const applyCountUser = useCallback((profileUser) => {
     const nextUser = {
@@ -608,6 +651,7 @@ export default function StocktakeCountSessionPage() {
       const term = String(created?.product?.sku || productForm.sku || productForm.name || '').trim();
       setShowProductForm(false);
       setProductForm({ name: '', sku: '', price: '' });
+      invalidateStocktakeCatalogCache(locationId);
       setSearch(term);
       await refreshCatalog(term);
       setToast('Product created. Search updated; your cart was kept.');
@@ -632,6 +676,7 @@ export default function StocktakeCountSessionPage() {
       const term = String(created?.combo?.sku || created?.set?.sku || setForm.sku || setForm.name || '').trim();
       setSetFormOpen(false);
       setSetForm({ name: '', sku: '', price: '', lines: [{ product_id: '', quantity: 1 }] });
+      invalidateStocktakeCatalogCache(locationId);
       setSearch(term);
       await refreshCatalog(term);
       setToast('Set created. Search updated; your cart was kept.');
@@ -658,8 +703,8 @@ export default function StocktakeCountSessionPage() {
       <div className="stc-page stc-login">
         <div className="stc-card">
           <h2>Stock count login</h2>
-          <p className="stc-note">
-            Sign in with Google or email/password. Open sessions appear here by location — always use this same page (/stocktake/count).
+          <p className="stc-login-lead">
+            Sign in to count stock. Open sessions for your location appear automatically on this page.
           </p>
           {error && <div className="stc-error">{error}</div>}
           <button
@@ -695,8 +740,8 @@ export default function StocktakeCountSessionPage() {
               {busy ? 'Signing in…' : 'Login with email'}
             </button>
           </form>
-          <p className="stc-note">
-            Uses Supabase Auth (works on localhost and production). Google accounts have no password — use Continue with Google.
+          <p className="stc-note stc-note-muted" style={{ marginTop: 14 }}>
+            Google accounts: use Continue with Google. This page is always /stocktake/count.
           </p>
         </div>
       </div>
@@ -709,7 +754,7 @@ export default function StocktakeCountSessionPage() {
         <div className="stc-header">
           <button
             type="button"
-            className="stc-btn stc-btn-ghost stc-signout"
+            className="stc-signout"
             onClick={() => {
               // Sign out only clears local login. Counts stay in the open session until /stocktake submit.
               clearCountUser();
@@ -762,10 +807,11 @@ export default function StocktakeCountSessionPage() {
 
         {canCount && (
           <>
-            <div className="stc-actions-row">
+            <hr className="stc-divider" />
+            <div className="stc-toolbar">
               <button
                 type="button"
-                className="stc-tool-btn"
+                className="stc-toolbar-btn"
                 disabled={busy || importBusy || !locationId}
                 onClick={handleDownloadSample}
                 title="Download sample Excel"
@@ -776,7 +822,7 @@ export default function StocktakeCountSessionPage() {
               </button>
               <button
                 type="button"
-                className="stc-tool-btn"
+                className="stc-toolbar-btn"
                 disabled={busy || importBusy}
                 onClick={() => importFileRef.current?.click()}
                 title="Import Excel quantity"
@@ -787,7 +833,7 @@ export default function StocktakeCountSessionPage() {
               </button>
               <button
                 type="button"
-                className="stc-mini-create"
+                className="stc-toolbar-btn"
                 disabled={busy}
                 onClick={() => {
                   setShowProductForm(true);
@@ -799,7 +845,7 @@ export default function StocktakeCountSessionPage() {
               </button>
               <button
                 type="button"
-                className="stc-mini-create"
+                className="stc-toolbar-btn"
                 disabled={busy}
                 onClick={() => {
                   setSetFormOpen(true);
@@ -817,11 +863,14 @@ export default function StocktakeCountSessionPage() {
                 onChange={(e) => handleImportExcel(e.target.files?.[0])}
               />
             </div>
-            <div className="stc-note stc-note-center">
-              Excel needs SKU, Product Name, Quantity. Products/components only (not sets). Qty applies only to this location.
-            </div>
+            <details className="stc-help-details">
+              <summary>Excel import format</summary>
+              <p>
+                Columns: SKU, Product Name, Quantity. Products/components only (not sets). Quantities apply only to this location.
+              </p>
+            </details>
 
-            <label className="stc-label">Search or scan SKU</label>
+            <label className="stc-label">Search or scan</label>
             <div className="stc-search-row">
               <input
                 className="stc-input"
@@ -852,10 +901,12 @@ export default function StocktakeCountSessionPage() {
 
             {search.trim() ? (
               <div className="stc-results">
-                {results.length === 0 ? (
-                  <div className="stc-note" style={{ padding: 12 }}>
-                    No matches for this location. Try another name/SKU.
-                  </div>
+                {catalogLoading ? (
+                  <div className="stc-note stc-empty-hint">Searching…</div>
+                ) : searchQuery.trim().length < 2 && results.length === 0 ? (
+                  <div className="stc-note stc-empty-hint">Type at least 2 characters.</div>
+                ) : results.length === 0 ? (
+                  <div className="stc-note stc-empty-hint">No matches for this location.</div>
                 ) : results.map((item) => (
                   <button
                     key={`${item.type}-${item.id}`}
@@ -885,8 +936,8 @@ export default function StocktakeCountSessionPage() {
                 ))}
               </div>
             ) : (
-              <div className="stc-note stc-search-hint">
-                Start typing a product name or SKU to show matches.
+              <div className="stc-note stc-search-hint stc-note-muted">
+                Type a product name or SKU to search.
               </div>
             )}
           </>
@@ -897,8 +948,8 @@ export default function StocktakeCountSessionPage() {
         <div className="stc-card">
           <div className="stc-cart-header">
             <div>
-              <div className="stc-title" style={{ fontSize: '1rem' }}>My counts</div>
-              <div className="stc-note">Saved automatically — refresh, close and reopen are safe.</div>
+              <div className="stc-section-title">My counts</div>
+              <div className="stc-note stc-note-muted">Auto-saved — safe to refresh or close.</div>
             </div>
             <button
               type="button"
@@ -923,7 +974,7 @@ export default function StocktakeCountSessionPage() {
               </thead>
               <tbody>
                 {cart.length === 0 ? (
-                  <tr><td colSpan={3}>Nothing counted yet.</td></tr>
+                  <tr><td colSpan={3} className="stc-note stc-note-muted">Nothing counted yet.</td></tr>
                 ) : cart.map((row) => (
                   <tr
                     key={row.product_id}

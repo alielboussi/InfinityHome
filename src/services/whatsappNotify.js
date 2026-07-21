@@ -75,6 +75,8 @@ export async function notifyLaybyWhatsApp({
   eventType,
   saleId,
   laybySnapshot,
+  laybyClosed,
+  editSummary,
 } = {}) {
   try {
     const resolvedLaybyId = await resolveCustomerLaybyId(laybyId, customerId);
@@ -97,6 +99,8 @@ export async function notifyLaybyWhatsApp({
       saleId,
       pdfUrl: pdf?.url,
       pdfFilename: pdf?.filename,
+      laybyClosed,
+      editSummary,
     });
   } catch (e) {
     console.warn('Layby WhatsApp notify failed:', e?.message || e);

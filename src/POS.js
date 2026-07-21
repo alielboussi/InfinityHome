@@ -24,6 +24,11 @@ import { fetchPosCatalogViaApi, fetchPosLocationsViaApi } from './services/posCa
 import BackToDashboard from './BackToDashboard';
 import { syncProductLocations } from './services/productLocations';
 import { applySaleInventoryDeductionViaApi } from './utils/inventoryApi';
+import {
+  findExistingReceiptSale,
+  formatPosReceiptNumber,
+  RECEIPT_DUPLICATE_ERROR,
+} from './utils/receiptNumber';
 
 const normalizeCurrencyCode = (raw) => {
   if (!raw) return 'K';
@@ -290,6 +295,8 @@ export default function POS({ isMobile = false }) {
   // Multiple payments support: array of { method, amount (string for UI), ref }
   const [paymentLines, setPaymentLines] = useState([{ method: 'Cash', amount: '', ref: '' }]);
   const [receiptNumber, setReceiptNumber] = useState("");
+  const [receiptDuplicateError, setReceiptDuplicateError] = useState("");
+  const receiptDuplicateCheckRef = useRef(0);
   const [customerLaybys, setCustomerLaybys] = useState([]);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [showCustomPriceModal, setShowCustomPriceModal] = useState(false);
@@ -336,6 +343,29 @@ export default function POS({ isMobile = false }) {
   // Dev-only probe to surface local environment misconfigurations
   useEffect(() => { try { probeSupabaseOnce('POS'); } catch {} }, []);
   useEffect(() => { setPosUser(getCurrentUser()); }, []);
+  useEffect(() => {
+    const trimmed = receiptNumber.trim();
+    if (!trimmed) {
+      setReceiptDuplicateError("");
+      return undefined;
+    }
+
+    const checkId = receiptDuplicateCheckRef.current + 1;
+    receiptDuplicateCheckRef.current = checkId;
+    const timer = setTimeout(async () => {
+      const formatted = formatPosReceiptNumber(receiptNumber);
+      try {
+        const existing = await findExistingReceiptSale(supabase, 'sales', formatted);
+        if (receiptDuplicateCheckRef.current !== checkId) return;
+        setReceiptDuplicateError(existing ? RECEIPT_DUPLICATE_ERROR : "");
+      } catch (_) {
+        if (receiptDuplicateCheckRef.current !== checkId) return;
+        setReceiptDuplicateError("");
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [receiptNumber]);
   useEffect(() => {
     const root = posContainerRef.current;
     if (!root) return undefined;
@@ -1072,6 +1102,11 @@ export default function POS({ isMobile = false }) {
       setCheckoutError("Please enter a receipt number.");
       return;
     }
+    if (receiptDuplicateError) {
+      setCheckoutError(receiptDuplicateError);
+      return;
+    }
+    const formattedReceipt = formatPosReceiptNumber(receiptNumber);
     // Prevent selling more than available stock
     for (const item of cart) {
       if (item.isCustom) continue;
@@ -1135,7 +1170,7 @@ export default function POS({ isMobile = false }) {
               currency,
               discountAmount,
               total,
-              receiptNumber: `#${receiptNumber.trim().replace(/^#*/, "")}`,
+              receiptNumber: formattedReceipt,
             },
             existingLaybyId: activeLayby.id,
           });
@@ -1162,7 +1197,7 @@ export default function POS({ isMobile = false }) {
             currency,
             discountAmount,
             total,
-            receiptNumber: `#${receiptNumber.trim().replace(/^#*/, "")}`,
+            receiptNumber: formattedReceipt,
           }
         });
       } catch (err) {
@@ -1187,7 +1222,7 @@ export default function POS({ isMobile = false }) {
           currency,
           discountAmount,
           total,
-          receiptNumber: `#${receiptNumber.trim().replace(/^#*/, "")}`,
+          receiptNumber: formattedReceipt,
         }
       });
     } catch (err) {
@@ -1512,6 +1547,7 @@ export default function POS({ isMobile = false }) {
     setCart([]);
   setPaymentLines([{ method: 'Cash', amount: '', ref: '' }]);
   setReceiptNumber("");
+    setReceiptDuplicateError("");
     setSelectedCustomer("");
     setSearch("");
     setDiscountAll(0);
@@ -1531,6 +1567,7 @@ export default function POS({ isMobile = false }) {
             setCart([]);
             setPaymentLines([{ method: 'Cash', amount: '', ref: '' }]);
             setReceiptNumber('');
+            setReceiptDuplicateError('');
             setSelectedCustomer('');
             setSearch('');
             setDiscountAll(0);
@@ -1998,7 +2035,7 @@ export default function POS({ isMobile = false }) {
         </div>
       </div>
       <div className="pos-control-panel">
-        <div className="pos-control-row pos-control-row-location">
+        <div className="pos-control-row pos-control-row-top">
           <select
             className="pos-control pos-select pos-compact pos-tight pos-loc"
             value={selectedLocation}
@@ -2011,18 +2048,27 @@ export default function POS({ isMobile = false }) {
             <option value="">Select Location</option>
             {locations.map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
           </select>
-        </div>
-
-        <div className="pos-control-row pos-control-row-customer">
-          <div className="pos-control-icon pos-receipt">
-            <span>#</span>
-            <input
-              type="text"
-              placeholder="Receipt Number"
-              value={receiptNumber}
-              onChange={e => setReceiptNumber(e.target.value)}
-              className="pos-control pos-medium pos-full"
-            />
+          <div className="pos-receipt-field">
+            <div className={`pos-control-icon pos-receipt${receiptDuplicateError ? ' is-error' : ''}`}>
+              <span>#</span>
+              <input
+                type="text"
+                placeholder="Receipt Number"
+                value={receiptNumber}
+                onChange={e => {
+                  setReceiptNumber(e.target.value);
+                  if (checkoutError === RECEIPT_DUPLICATE_ERROR) setCheckoutError("");
+                }}
+                className="pos-control pos-medium pos-full"
+                aria-invalid={receiptDuplicateError ? 'true' : 'false'}
+                aria-describedby={receiptDuplicateError ? 'pos-receipt-error' : undefined}
+              />
+            </div>
+            {receiptDuplicateError && (
+              <div id="pos-receipt-error" className="pos-receipt-error" role="alert">
+                {receiptDuplicateError}
+              </div>
+            )}
           </div>
           <div className="pos-date-field">
             <input
@@ -2060,10 +2106,10 @@ export default function POS({ isMobile = false }) {
               aria-hidden="true"
             />
           </div>
-          <div className="pos-currency-switch" role="group" aria-label="Currency">
+          <div className="pos-currency-switch quotes-currency-switch" role="group" aria-label="Currency">
             <button
               type="button"
-              className={normalizeCurrencyCode(currency) === 'K' ? 'active' : ''}
+              className={normalizeCurrencyCode(currency) === 'K' ? 'is-on' : ''}
               onClick={() => setCurrency('K')}
               aria-pressed={normalizeCurrencyCode(currency) === 'K'}
             >
@@ -2071,58 +2117,62 @@ export default function POS({ isMobile = false }) {
             </button>
             <button
               type="button"
-              className={normalizeCurrencyCode(currency) === 'USD' ? 'active' : ''}
+              className={normalizeCurrencyCode(currency) === 'USD' ? 'is-on' : ''}
               onClick={() => setCurrency('USD')}
               aria-pressed={normalizeCurrencyCode(currency) === 'USD'}
             >
               <span className="pos-currency-symbol">$</span>
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowCustomerModal(true)}
-            className="pos-compact pos-add-customer"
-          >
-            + Customer
-          </button>
-          <input
-            type="text"
-            value={customerSearch}
-            onChange={e => setCustomerSearch(e.target.value)}
-            placeholder="Search customer"
-            className="pos-control pos-long pos-search-customer"
-          />
-          <select
-            className="pos-control pos-select pos-compact pos-select-customer"
-            value={selectedCustomer}
-            onChange={e => setSelectedCustomer(e.target.value)}
-          >
-            <option value="">{customerSelectPlaceholder}</option>
-            {filteredCustomersForSelect.map(c => (
-              <option key={c.id} value={c.id} title={`${c.name || ''}${c.phone ? ` (${c.phone})` : ''}`} style={{ whiteSpace: 'normal' }}>
-                {c.name} {c.phone ? `(${c.phone})` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="pos-field-group pos-field-group-customer">
+            <button
+              type="button"
+              onClick={() => setShowCustomerModal(true)}
+              className="pos-toolbar-btn pos-add-customer"
+            >
+              + Customer
+            </button>
+            <input
+              type="text"
+              value={customerSearch}
+              onChange={e => setCustomerSearch(e.target.value)}
+              placeholder="Search customer"
+              className="pos-control pos-search-customer"
+            />
+            <select
+              className="pos-control pos-select pos-select-customer"
+              value={selectedCustomer}
+              onChange={e => setSelectedCustomer(e.target.value)}
+            >
+              <option value="">{customerSelectPlaceholder}</option>
+              {filteredCustomersForSelect.map(c => (
+                <option key={c.id} value={c.id} title={`${c.name || ''}${c.phone ? ` (${c.phone})` : ''}`} style={{ whiteSpace: 'normal' }}>
+                  {c.name} {c.phone ? `(${c.phone})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="pos-control-row pos-control-row-product">
-          {canAdd && (
-            <button
-              type="button"
-              onClick={() => setShowCustomProductModal(true)}
-              className="pos-compact pos-add-custom"
-            >
-              + Product
-            </button>
-          )}
-          <input
-            type="text"
-            placeholder="Search product"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pos-control pos-xlong pos-search-product pos-span-full"
-          />
+          <div className="pos-field-group pos-field-group-product">
+            {canAdd && (
+              <button
+                type="button"
+                onClick={() => setShowCustomProductModal(true)}
+                className="pos-toolbar-btn pos-add-custom"
+              >
+                + Product
+              </button>
+            )}
+            <input
+              type="text"
+              placeholder="Search product"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pos-control pos-search-product"
+            />
+          </div>
         </div>
       </div>
 
@@ -2433,7 +2483,7 @@ export default function POS({ isMobile = false }) {
             <button
               className="checkout-btn"
               onClick={handleCheckout}
-              disabled={checkoutLoading || total <= 0}
+              disabled={checkoutLoading || total <= 0 || Boolean(receiptDuplicateError)}
             >
               {checkoutLoading
                 ? "Processing..."

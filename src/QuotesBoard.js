@@ -4,7 +4,6 @@ import supabase from './supabase';
 import { fromPublic } from './dbSchema';
 import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import { convertQuoteToLayby } from './services/quoteConversion';
-import { scheduleQuoteConvertWhatsAppIfStillPending } from './utils/whatsappQuotePending';
 import { cacheClear } from './utils/staleCache';
 import { LAYBY_ROWS_CACHE_KEY } from './utils/laybyRollup';
 import BackToDashboard from './BackToDashboard';
@@ -184,20 +183,13 @@ export default function QuotesBoard() {
         supabase.from('quotations').select('*').eq('id', q.id).maybeSingle(),
       ]);
       const quote = quoteRow || q;
-      const { sale, laybyId } = await convertQuoteToLayby({
+      await convertQuoteToLayby({
         quote,
         items,
         normalizeItem: normalizeQuoteItemForSale,
         quotationStatus: 'converted',
       });
-      // Defer WhatsApp until down payment is added in Layby Management (or short timeout).
-      if (laybyId) {
-        scheduleQuoteConvertWhatsAppIfStillPending({
-          laybyId,
-          customerId: quote.customer_id,
-          saleId: sale?.id,
-        });
-      }
+      // WhatsApp is sent from Layby Management when the first payment is recorded (not on convert).
       cacheClear(LAYBY_ROWS_CACHE_KEY);
 
       let data = [];

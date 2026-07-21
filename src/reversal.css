@@ -1,0 +1,245 @@
+.reversal-container {
+  padding: 16px 20px 32px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.reversal-header h2 {
+  margin: 8px 0 16px;
+  color: var(--dash-accent, #00b4d8);
+}
+
+.reversal-sale-card {
+  background: var(--dash-surface, #fff);
+  border: 1px solid var(--dash-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.reversal-sale-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 16px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.reversal-op-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.reversal-op-btn {
+  background: #f0f9ff;
+  border: 2px solid #00b4d8;
+  border-radius: 10px;
+  padding: 16px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #0f172a;
+  text-align: center;
+}
+
+.reversal-op-btn:hover,
+.reversal-op-btn.active {
+  background: #00b4d8;
+  color: #fff;
+}
+
+.reversal-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.reversal-items-table th,
+.reversal-items-table td {
+  border-bottom: 1px solid var(--dash-border, #e2e8f0);
+  padding: 8px 6px;
+  text-align: left;
+}
+
+.reversal-items-table tr.selected {
+  background: rgba(0, 180, 216, 0.08);
+}
+
+.reversal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.reversal-preview {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--dash-surface-2, #f8fafc);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.reversal-picker-search {
+  width: 100%;
+  max-width: 420px;
+  padding: 8px 10px;
+  margin: 8px 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--dash-border, #cbd5e1);
+}
+
+.reversal-picker-list {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--dash-border, #e2e8f0);
+  border-radius: 8px;
+}
+
+.reversal-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--dash-border, #f1f5f9);
+}
+
+.reversal-picker-row:last-child {
+  border-bottom: none;
+}
+
+.reversal-status-msg {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.reversal-status-msg.error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.reversal-status-msg.success {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+/* Compact centred receipt popup — 10cm × 8cm */
+.reversal-receipt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.reversal-receipt-modal {
+  width: 10cm;
+  height: 8cm;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  background: #23272f;
+  color: #e0e6ed;
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: auto;
+  flex-shrink: 0;
+}
+
+.reversal-receipt-modal h3 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.reversal-receipt-lead {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.reversal-receipt-field {
+  display: block;
+}
+
+.reversal-receipt-label {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.reversal-receipt-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: #181c23;
+  color: #e0e6ed;
+  font-size: 14px;
+}
+
+.reversal-receipt-input:focus {
+  outline: none;
+  border-color: #00bfff;
+  box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.2);
+}
+
+.reversal-receipt-error {
+  margin-top: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.reversal-receipt-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.reversal-receipt-cancel {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid #475569;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.reversal-receipt-cancel:hover:not(:disabled) {
+  color: #e2e8f0;
+  border-color: #64748b;
+}
+
+.reversal-receipt-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reversal-receipt-actions .allsales-edit-btn {
+  width: auto;
+  min-width: 0;
+  padding: 8px 18px;
+}
