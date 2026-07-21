@@ -3,10 +3,22 @@
 // Load .env.local and .env if present so local builds work without exporting vars in the shell
 try {
   const path = require('path');
+  const fs = require('fs');
   // Prefer .env.local, then .env
   try { require('dotenv').config({ path: path.resolve(process.cwd(), '.env.local'), override: true }); } catch {}
   try { require('dotenv').config({ path: path.resolve(process.cwd(), '.env'), override: false }); } catch {}
 } catch {}
+
+const fs = require('fs');
+const path = require('path');
+
+// Allow Vercel/server env names as aliases for CRA build-time vars.
+if (!process.env.REACT_APP_SUPABASE_URL && process.env.SUPABASE_URL) {
+  process.env.REACT_APP_SUPABASE_URL = String(process.env.SUPABASE_URL).trim();
+}
+if (!process.env.REACT_APP_SUPABASE_ANON_KEY && process.env.SUPABASE_ANON_KEY) {
+  process.env.REACT_APP_SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY).trim();
+}
 
 const required = ['REACT_APP_SUPABASE_URL', 'REACT_APP_SUPABASE_ANON_KEY'];
 let missing = [];
@@ -15,6 +27,7 @@ for (const k of required) {
 }
 if (missing.length) {
   console.error('[env:fail] Missing required env vars: ' + missing.join(', '));
+  console.error('[env:fail] Set REACT_APP_SUPABASE_URL + REACT_APP_SUPABASE_ANON_KEY in Vercel, or SUPABASE_URL + SUPABASE_ANON_KEY.');
   process.exit(1);
 }
 // Guard: ensure no accidental service role key leaked into anon var
@@ -35,6 +48,19 @@ try {
 } catch {}
 console.log('[env:ok] Core environment variables present.');
 
+// CRA runs in a separate process from prebuild; persist vars for react-scripts build.
+try {
+  const productionEnvPath = path.resolve(process.cwd(), '.env.production.local');
+  const productionLines = [
+    `REACT_APP_SUPABASE_URL=${JSON.stringify(String(process.env.REACT_APP_SUPABASE_URL).trim())}`,
+    `REACT_APP_SUPABASE_ANON_KEY=${JSON.stringify(String(process.env.REACT_APP_SUPABASE_ANON_KEY).trim())}`,
+  ];
+  fs.writeFileSync(productionEnvPath, `${productionLines.join('\n')}\n`, 'utf8');
+  console.log('[env:ok] Wrote .env.production.local for CRA build.');
+} catch (err) {
+  console.warn('[env:warn] Could not write .env.production.local: ' + (err?.message || err));
+}
+
 // Optional diagnostics for serverless endpoints (do not fail build if missing)
 const optionalServerVars = [
   // Supabase (server-side)
@@ -52,8 +78,6 @@ if(absent.length) console.log('[env:info] Serverless env missing (ok for local b
 // Vercel Hobby has a small serverless function budget. Keep physical files in
 // api/*.js consolidated; logical endpoints should use vercel.json rewrites.
 try {
-  const fs = require('fs');
-  const path = require('path');
   const apiDir = path.resolve(process.cwd(), 'api');
   const apiFiles = fs.existsSync(apiDir)
     ? fs.readdirSync(apiDir).filter((name) => name.endsWith('.js'))
