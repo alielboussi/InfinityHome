@@ -9,14 +9,36 @@ function safeFilePart(value, fallback = 'Customer') {
   return cleaned || fallback;
 }
 
-export async function uploadPdfToStorage(bucket, filePath, blob) {
-  if (!blob) return null;
+const PDF_UPLOAD_BUCKETS = ['laybypdfs', 'labels'];
+
+async function uploadPdfToBucket(bucket, filePath, blob) {
   const { error: uploadErr } = await supabase.storage
     .from(bucket)
-    .upload(filePath, blob, { upsert: true, contentType: 'application/pdf' });
+    .upload(filePath, blob, { upsert: true, contentType: 'application/pdf', cacheControl: '3600' });
   if (uploadErr) throw uploadErr;
+
+  const { data: signed, error: signErr } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(filePath, 60 * 60, { download: filePath.split('/').pop() || 'document.pdf' });
+  if (!signErr && signed?.signedUrl) return signed.signedUrl;
+
   const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
   return publicUrlData?.publicUrl || null;
+}
+
+export async function uploadPdfToStorage(bucket, filePath, blob) {
+  if (!blob) return null;
+  const buckets = [bucket, ...PDF_UPLOAD_BUCKETS.filter((name) => name !== bucket)];
+  let lastError = null;
+  for (const targetBucket of buckets) {
+    try {
+      const url = await uploadPdfToBucket(targetBucket, filePath, blob);
+      if (url) return url;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('PDF upload failed');
 }
 
 export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySnapshot } = {}) {
@@ -135,7 +157,7 @@ export async function buildPosSalePdfUrlForWhatsApp({ saleId } = {}) {
     };
 
     const pdfLayby = {
-      id: sale.id,
+      id: null,
       sale_id: sale.id,
       customer_id: sale.customer_id,
       customerInfo: customer || {},

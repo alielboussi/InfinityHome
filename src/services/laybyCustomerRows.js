@@ -2,7 +2,7 @@ import supabase from '../supabase';
 import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
-import { computePooledLaybyTotalsByCurrency, filterStatementToOutstandingSales } from '../utils/laybyRollup';
+import { computePooledLaybyTotalsByCurrency, filterStatementToOutstandingSales, resolveNegotiatedGrossSubtotal } from '../utils/laybyRollup';
 import { computeQuotationDisplayTotal, computeSaleLaybyTotalDue, resolveQuoteVatApply } from '../utils/quotationDisplay';
 import { fetchLaybyPaymentsBySaleIds } from './laybyPayments';
 
@@ -362,14 +362,27 @@ export async function fetchLaybyCustomerRows() {
       });
       const fin = saleId ? (financialsBySale.get(saleId) || {}) : {};
       const saleItems = saleId ? (itemsBySale.get(saleId) || []) : [];
+      const paymentAgg = saleId ? (paymentAggBySale.get(saleId) || { paid: 0, paymentDiscount: 0 }) : { paid: 0, paymentDiscount: 0 };
       let totalAmount = Number(layby?.total_amount || 0);
       if (sale) {
         totalAmount = computeSaleLaybyTotalDue({ sale, fin, items: saleItems, linkedQuote });
       } else if (linkedQuote) {
         totalAmount = computeQuotationDisplayTotal(linkedQuote);
       }
+      const discountAmount = Number(sale?.discount ?? fin?.discount_amount ?? linkedQuote?.discount ?? 0);
+      const itemSubtotal = saleItems.reduce(
+        (sum, item) => sum + Number(item?.quantity || 0) * Number(item?.unit_price || 0),
+        0,
+      );
+      const grossTotal = resolveNegotiatedGrossSubtotal({
+        itemSubtotal,
+        subtotalBeforeDiscount: Number(fin?.subtotal_before_discount || linkedQuote?.subtotal || 0),
+        saleDiscount: discountAmount,
+        canonicalTotal: Number(sale?.total_amount || totalAmount),
+      });
       const paidAmount = Number(layby?.paid_amount || 0);
-      const dueAmount = Math.max(0, totalAmount - paidAmount);
+      const paymentDiscountAmount = Number(paymentAgg?.paymentDiscount || 0);
+      const dueAmount = Math.max(0, grossTotal - discountAmount - paidAmount - paymentDiscountAmount);
       if (dueAmount <= 0) return;
 
       const currency = normalizeCurrency(
@@ -381,8 +394,9 @@ export async function fetchLaybyCustomerRows() {
         tableTotalsByCurrency[currency] = { total: 0, paid: 0, discount: 0, due: 0 };
       }
 
-      tableTotalsByCurrency[currency].total += totalAmount;
+      tableTotalsByCurrency[currency].total += grossTotal;
       tableTotalsByCurrency[currency].paid += paidAmount;
+      tableTotalsByCurrency[currency].discount += discountAmount + paymentDiscountAmount;
       tableTotalsByCurrency[currency].due += dueAmount;
     });
 
@@ -437,9 +451,12 @@ export async function fetchLaybyCustomerRows() {
         (sum, item) => sum + Number(item?.quantity || 0) * Number(item?.unit_price || 0),
         0,
       );
-      const subtotalBeforeDiscount = itemSubtotal > 0
-        ? itemSubtotal
-        : Number(fin?.subtotal_before_discount || linkedQuote?.subtotal || totalDue + discountAmount);
+      const subtotalBeforeDiscount = resolveNegotiatedGrossSubtotal({
+        itemSubtotal,
+        subtotalBeforeDiscount: Number(fin?.subtotal_before_discount || linkedQuote?.subtotal || 0),
+        saleDiscount: discountAmount,
+        canonicalTotal: Number(sale?.total_amount || totalDue),
+      });
       const vatApply = Boolean(linkedQuote?.vat_apply || sale?.vat_apply)
         || resolveQuoteVatApply(linkedQuote || sale, subtotalBeforeDiscount, discountAmount);
       const vatRate = Number(linkedQuote?.vat_rate || sale?.vat_rate || 0);
@@ -449,7 +466,7 @@ export async function fetchLaybyCustomerRows() {
         currency: normalizeCurrency(sale?.currency, normalizeCurrency(customer?.currency || 'K', 'K')),
         layby_id: sale?.layby_id || null,
         total_due: totalDue,
-        total_amount: totalDue,
+        total_amount: Number(sale?.total_amount || totalDue),
         paid_amount: paidAmount,
         payment_discount_amount: Math.max(0, paymentDiscountAmount),
         outstanding_amount: Math.max(0, outstandingAmount),
@@ -561,8 +578,8 @@ export async function fetchLaybyCustomerRows() {
         if (Number(tableTotals.total || 0) > Number(existing.total || 0) + 0.5) {
           mergedTotalsByCurrency[currency] = {
             ...existing,
-            total: Number(tableTotals.total || 0),
-            due: Math.max(Number(existing.due || 0), Number(tableTotals.due || 0)),
+            total: Number(existing.total || 0),
+            due: Number(existing.due || 0),
           };
         }
       });

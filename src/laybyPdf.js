@@ -402,19 +402,20 @@ async function appendLegacyDownPayments({ payments = [], sales = [] }) {
       .map(p => String(p.sale_id || ''))
   );
   try {
-    const { data: downRows, error } = await fromPublic('sales')
-      .select('id, down_payment, sale_date, currency')
-      .in('id', saleIds);
+    const { data: downRows, error } = await fromPublic('sales_payments')
+      .select('sale_id, amount, payment_date, currency, payment_type')
+      .in('sale_id', saleIds)
+      .eq('payment_type', 'down_payment');
     if (error || !downRows?.length) return payments;
     const extra = downRows
-      .filter(r => Number(r?.down_payment || 0) > 0 && !existingDown.has(String(r.id || '')))
+      .filter(r => Number(r?.amount || 0) > 0 && !existingDown.has(String(r.sale_id || '')))
       .map(r => ({
-        id: `down-${r.id}`,
-        sale_id: r.id,
-        amount: Number(r.down_payment || 0),
+        id: `down-${r.sale_id}`,
+        sale_id: r.sale_id,
+        amount: Number(r.amount || 0),
         discount_amount: 0,
         payment_type: 'down_payment',
-        payment_date: r.sale_date || null,
+        payment_date: r.payment_date || null,
         reference: null,
         currency: r.currency || null,
         notes: 'Legacy down payment',
@@ -426,8 +427,24 @@ async function appendLegacyDownPayments({ payments = [], sales = [] }) {
   }
 }
 
+const LAYBY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isLaybyUuid = (value) => LAYBY_UUID_RE.test(String(value || '').trim());
+
+function rewriteSupabaseStorageUrl(url) {
+  const raw = String(url || '').trim();
+  if (!raw || !/supabase\.co/i.test(raw)) return raw;
+  try {
+    const configured = String(process.env.REACT_APP_SUPABASE_URL || '').trim().replace(/\/+$/, '');
+    if (!configured) return raw;
+    const currentHost = new URL(configured).host;
+    return raw.replace(/^https?:\/\/[^/]+\.supabase\.co/i, `https://${currentHost}`);
+  } catch {
+    return raw;
+  }
+}
+
 function getLogoUrl(company) {
-  const url = company?.company_logo || company?.logo || '';
+  const url = rewriteSupabaseStorageUrl(company?.company_logo || company?.logo || '');
   if (url) return url;
   try {
     if (typeof window !== 'undefined') return window.location.origin + '/bestrest-logo.png';
@@ -854,7 +871,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
           .limit(1);
         if (qBySale && qBySale.length) quoteRow = qBySale[0];
       }
-      if (!quoteRow && layby?.id) {
+      if (!quoteRow && layby?.id && isLaybyUuid(layby.id) && !opts?.posReceipt) {
         const { data: qByLayby } = await supabase
           .from('quotations')
           .select('id, sale_id, created_at')
@@ -912,7 +929,9 @@ export async function generateLaybyPdf(layby, opts = {}) {
 
     // Ensure legacy down_payment rows are included in settlement and totals.
     try {
-      related.payments = await appendLegacyDownPayments({ payments: related.payments, sales: related.sales });
+      if (!opts?.posReceipt) {
+        related.payments = await appendLegacyDownPayments({ payments: related.payments, sales: related.sales });
+      }
       related.payments = (related.payments || []).map(p => ({ ...p, payment_type: String(p.payment_type || '').toLowerCase() }));
     } catch {}
 

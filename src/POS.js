@@ -306,6 +306,9 @@ export default function POS({ isMobile = false }) {
   const [showCustomProductModal, setShowCustomProductModal] = useState(false);
   const [customProductForm, setCustomProductForm] = useState({ name: '', price: '', qty: 1 });
   const [customProductError, setCustomProductError] = useState('');
+  const [catalogPriceDrafts, setCatalogPriceDrafts] = useState({});
+  const [catalogPriceErrors, setCatalogPriceErrors] = useState({});
+  const [catalogPriceSaving, setCatalogPriceSaving] = useState('');
   const [posUser, setPosUser] = useState(() => getCurrentUser());
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [inventoryDeductedMsg, setInventoryDeductedMsg] = useState(""); // New state for inventory deducted message
@@ -710,6 +713,163 @@ export default function POS({ isMobile = false }) {
   // Helper: get correct price (use promo if present and > 0, else use price if present and > 0)
   const getBestPrice = (item) => selectPrice(item.promotional_price, item.price);
 
+  const getCatalogPriceKey = (item, isSet = false) => `${isSet ? 'set' : 'product'}:${item?.id}`;
+
+  const needsCatalogPrice = (item) => getBestPrice(item) <= 0;
+
+  const patchPosCatalogCache = (mutator) => {
+    if (!selectedLocation) return;
+    try {
+      const cacheKey = `pos:catalog:${selectedLocation}`;
+      const snap = cacheGet(cacheKey);
+      if (!snap) return;
+      const next = mutator({
+        products: Array.isArray(snap.products) ? [...snap.products] : [],
+        sets: Array.isArray(snap.sets) ? [...snap.sets] : [],
+      });
+      cacheSet(cacheKey, next, 2 * 60 * 1000);
+    } catch {}
+  };
+
+  const saveCatalogPrice = async (item, isSet = false) => {
+    const key = getCatalogPriceKey(item, isSet);
+    const raw = String(catalogPriceDrafts[key] ?? '').trim();
+    const price = parseAmountInput(raw);
+    if (!Number.isFinite(price) || price <= 0) {
+      setCatalogPriceErrors((prev) => ({ ...prev, [key]: 'Enter a valid price greater than 0.' }));
+      return;
+    }
+
+    setCatalogPriceSaving(key);
+    setCatalogPriceErrors((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+
+    try {
+      if (isSet) {
+        const { data, error } = await fromPublic('combos')
+          .update({ standard_price: price, combo_price: price })
+          .eq('id', item.id)
+          .select('id, standard_price, combo_price, promotional_price, currency')
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Set update was blocked or not found.');
+
+        const updatedSet = {
+          ...item,
+          ...data,
+          name: data.combo_name || item.combo_name || item.name,
+          price,
+          standard_price: price,
+          combo_price: price,
+          isSet: true,
+        };
+        setSets((prev) => prev.map((row) => (
+          String(row.id) === String(item.id) ? { ...row, ...updatedSet } : row
+        )));
+        patchPosCatalogCache((snap) => ({
+          ...snap,
+          sets: snap.sets.map((row) => (
+            String(row.id) === String(item.id) ? { ...row, ...updatedSet } : row
+          )),
+        }));
+      } else {
+        const { data, error } = await fromPublic('products')
+          .update({ price })
+          .eq('id', item.id)
+          .select('id, price, promotional_price, currency')
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) throw new Error('Product update was blocked or not found.');
+
+        const updatedProduct = { ...item, ...data, price };
+        setProducts((prev) => prev.map((row) => (
+          String(row.id) === String(item.id) ? { ...row, ...updatedProduct } : row
+        )));
+        patchPosCatalogCache((snap) => ({
+          ...snap,
+          products: snap.products.map((row) => (
+            String(row.id) === String(item.id) ? { ...row, ...updatedProduct } : row
+          )),
+        }));
+      }
+
+      const itemName = isSet ? (item.combo_name || item.name) : item.name;
+      logUserActivity({
+        actionType: 'product_price_change',
+        actionLabel: 'POS Catalog Price Set',
+        details: `${itemName} • price set to ${price}`,
+        reference: 'price',
+        entityType: isSet ? 'combo' : 'product',
+        entityId: String(item.id),
+        route: '/pos',
+      });
+
+      setCatalogPriceDrafts((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    } catch (err) {
+      setCatalogPriceErrors((prev) => ({
+        ...prev,
+        [key]: err?.message || 'Failed to save price.',
+      }));
+    } finally {
+      setCatalogPriceSaving('');
+    }
+  };
+
+  const renderCatalogPriceEditor = (item, isSet = false) => {
+    const key = getCatalogPriceKey(item, isSet);
+    const saving = catalogPriceSaving === key;
+    const error = catalogPriceErrors[key];
+    return (
+      <div
+        className="pos-catalog-price-edit"
+        onClick={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="pos-catalog-price-edit__label">Set price to sell</div>
+        <input
+          type="number"
+          min="0"
+          step="any"
+          className="pos-catalog-price-edit__input"
+          placeholder={`Price (${currencyLabel})`}
+          value={catalogPriceDrafts[key] ?? ''}
+          onChange={(event) => {
+            const value = event.target.value;
+            setCatalogPriceDrafts((prev) => ({ ...prev, [key]: value }));
+            setCatalogPriceErrors((prev) => {
+              const next = { ...prev };
+              delete next[key];
+              return next;
+            });
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              saveCatalogPrice(item, isSet);
+            }
+          }}
+          disabled={saving}
+        />
+        <button
+          type="button"
+          className="pos-catalog-price-edit__save"
+          onClick={() => saveCatalogPrice(item, isSet)}
+          disabled={saving}
+        >
+          {saving ? 'Saving...' : 'Save Price'}
+        </button>
+        {error && <div className="pos-catalog-price-edit__error">{error}</div>}
+      </div>
+    );
+  };
+
   const parseAmountInput = (value) => {
     if (value === null || value === undefined) return 0;
     if (typeof value === 'number') {
@@ -773,7 +933,13 @@ export default function POS({ isMobile = false }) {
 
   const handleProductClick = (product) => {
     if (!product || Number(product.stock || 0) <= 0) return;
+    if (needsCatalogPrice(product)) return;
     addToCart(product);
+  };
+
+  const handleSetClick = (set) => {
+    if (needsCatalogPrice(set)) return;
+    addToCart(set);
   };
 
   // Update cart item
@@ -2214,14 +2380,20 @@ export default function POS({ isMobile = false }) {
             return (
             <button
               key={product.id}
-              className="pos-product-btn"
+              className={`pos-product-btn${needsCatalogPrice(product) ? ' pos-product-btn--needs-price' : ''}`}
               onClick={() => handleProductClick(product)}
               disabled={isUnavailable}
               style={isUnavailable ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
             >
               {product.name} ({product.sku})<br />Stock: {Math.max(0, displayStock)} {product.stockState === 'reserved' && '(reserved)'}<br />
-              <b>Price: {getBestPrice(product).toFixed(2)} {getCurrencyLabel(product.currency || currency)}</b>
-              <div className="pos-product-meta">std: {String(product.price)} | promo: {String(product.promotional_price)}</div>
+              {needsCatalogPrice(product) ? (
+                renderCatalogPriceEditor(product, false)
+              ) : (
+                <>
+                  <b>Price: {getBestPrice(product).toFixed(2)} {getCurrencyLabel(product.currency || currency)}</b>
+                  <div className="pos-product-meta">std: {String(product.price)} | promo: {String(product.promotional_price)}</div>
+                </>
+              )}
               {isUnavailable && (
                 <div style={{ marginTop: 6, fontSize: '0.8em', color: '#fff', background: badgeColor, display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
                   {badgeLabel}
@@ -2233,12 +2405,16 @@ export default function POS({ isMobile = false }) {
           ...filteredSets.map(set => (
             <button
               key={"set-" + set.id}
-              className="pos-product-btn"
-              onClick={() => addToCart(set)}
+              className={`pos-product-btn${needsCatalogPrice(set) ? ' pos-product-btn--needs-price' : ''}`}
+              onClick={() => handleSetClick(set)}
             >
               {set.combo_name} (Set) ({set.sku})<br />
               <span className="pos-product-stock">Stock: {set.stock}</span><br />
-              <b>Price: {getBestPrice(set).toFixed(2)} {getCurrencyLabel(set.currency || currency)}</b>
+              {needsCatalogPrice(set) ? (
+                renderCatalogPriceEditor(set, true)
+              ) : (
+                <b>Price: {getBestPrice(set).toFixed(2)} {getCurrencyLabel(set.currency || currency)}</b>
+              )}
             </button>
           ))
         ]}

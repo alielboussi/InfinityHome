@@ -13,6 +13,7 @@ import { applyInventoryBulk } from './utils/inventoryApi';
 import { canDeleteProducts, canManageProductInventory, getCurrentUser } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { exportProductsListExcel } from './utils/productsListExport';
+import { getDuplicateProductNameInfo, normalizeProductNameKey } from './utils/productDuplicateNames';
 import { logUserActivity } from './utils/userActivityLog';
 
 const toolbarWrapperStyle = Object.freeze({
@@ -112,12 +113,19 @@ const deleteProductsViaApi = async (productIds) => {
   const ids = Array.from(new Set((productIds || []).map(id => String(id)).filter(Boolean)));
   if (ids.length === 0) return [];
 
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) {
+    throw new Error('Authentication required — please sign in again.');
+  }
+
   const response = await fetch('/api/products-bulk-delete', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ productIds: ids })
+    body: JSON.stringify({ productIds: ids }),
   });
 
   let payload = null;
@@ -1078,6 +1086,7 @@ function ProductsListPage() {
   const [bulkImportMessage, setBulkImportMessage] = useState('');
   /** 'name_asc' | 'no_locations_first' */
   const [listSortMode, setListSortMode] = useState('name_asc');
+  const [showDuplicateNamesOnly, setShowDuplicateNamesOnly] = useState(false);
 
   const currencyOptions = useMemo(() => ([
     { code: 'K', name: 'K' },
@@ -1450,6 +1459,27 @@ function ProductsListPage() {
     String(item?.__isCombo ? (item.combo_name || '') : (item.name || '')).trim()
   ), []);
 
+  const duplicateCatalogProducts = useMemo(() => (
+    (products || []).filter((product) => {
+      const unit = units.find((row) => String(row.id) === String(product.unit_of_measure_id));
+      const unitName = unit?.name || '';
+      return unitName.toLowerCase() !== 'set';
+    })
+  ), [products, units]);
+
+  const duplicateNameInfo = useMemo(
+    () => getDuplicateProductNameInfo(duplicateCatalogProducts, (product) => product?.name),
+    [duplicateCatalogProducts],
+  );
+
+  const duplicateNameKeyByProductId = useMemo(() => {
+    const map = new Map();
+    duplicateCatalogProducts.forEach((product) => {
+      map.set(String(product.id), normalizeProductNameKey(product?.name));
+    });
+    return map;
+  }, [duplicateCatalogProducts]);
+
   const getAssignedLocationIdsForItem = useCallback((item) => {
     if (!item) return [];
     if (item.__isCombo) {
@@ -1461,12 +1491,23 @@ function ProductsListPage() {
   }, [comboLocations]);
 
   const displayedProducts = useMemo(() => {
-    const items = filteredProducts.slice();
+    let items = filteredProducts.slice();
+    if (showDuplicateNamesOnly) {
+      items = items.filter((item) => !item.__isCombo && duplicateNameInfo.ids.has(String(item.id)));
+    }
     const byName = (a, b) => getItemDisplayName(a).localeCompare(getItemDisplayName(b), undefined, {
       sensitivity: 'base',
       numeric: true,
     });
-    if (listSortMode === 'no_locations_first') {
+    if (showDuplicateNamesOnly) {
+      items.sort((a, b) => {
+        const keyA = duplicateNameKeyByProductId.get(String(a.id)) || '';
+        const keyB = duplicateNameKeyByProductId.get(String(b.id)) || '';
+        const keyCmp = keyA.localeCompare(keyB, undefined, { sensitivity: 'base', numeric: true });
+        if (keyCmp !== 0) return keyCmp;
+        return byName(a, b);
+      });
+    } else if (listSortMode === 'no_locations_first') {
       items.sort((a, b) => {
         const aEmpty = getAssignedLocationIdsForItem(a).length === 0 ? 0 : 1;
         const bEmpty = getAssignedLocationIdsForItem(b).length === 0 ? 0 : 1;
@@ -1477,7 +1518,15 @@ function ProductsListPage() {
       items.sort(byName);
     }
     return items;
-  }, [filteredProducts, getAssignedLocationIdsForItem, getItemDisplayName, listSortMode]);
+  }, [
+    filteredProducts,
+    getAssignedLocationIdsForItem,
+    getItemDisplayName,
+    listSortMode,
+    showDuplicateNamesOnly,
+    duplicateNameInfo.ids,
+    duplicateNameKeyByProductId,
+  ]);
 
   const bulkSelectableItems = useMemo(() => (
     displayedProducts.map(item => ({
@@ -2233,6 +2282,19 @@ function ProductsListPage() {
           )}
           <button
             type="button"
+            onClick={() => setShowDuplicateNamesOnly((active) => !active)}
+            className={`products-toolbar-btn products-toolbar-btn--duplicates${showDuplicateNamesOnly ? ' is-active' : ''}`}
+            title={showDuplicateNamesOnly
+              ? 'Showing products with similar names (case, spacing, or word order). Click to show all products.'
+              : 'Show products that share the same name when spacing, case, or word order is ignored'}
+            aria-pressed={showDuplicateNamesOnly}
+          >
+            {showDuplicateNamesOnly
+              ? `Duplicates (${duplicateNameInfo.productCount})`
+              : `Find Duplicates${duplicateNameInfo.groupCount > 0 ? ` (${duplicateNameInfo.groupCount})` : ''}`}
+          </button>
+          <button
+            type="button"
             onClick={handleExportProductsExcel}
             className="products-toolbar-icon-btn"
             title="Download product list (Excel)"
@@ -2294,6 +2356,12 @@ function ProductsListPage() {
             )
           )}
         </div>
+        {showDuplicateNamesOnly && (
+          <div className="products-toolbar-message products-toolbar-message--duplicates">
+            Showing {duplicateNameInfo.productCount} product{duplicateNameInfo.productCount === 1 ? '' : 's'} across {duplicateNameInfo.groupCount} duplicate name group{duplicateNameInfo.groupCount === 1 ? '' : 's'}.
+            Names match when extra spaces, letter case, or word order differ.
+          </div>
+        )}
         {bulkApplyMessage && (
           <div className="products-toolbar-message">{bulkApplyMessage}</div>
         )}
@@ -2302,7 +2370,7 @@ function ProductsListPage() {
         {(loading && products.length === 0 && combos.length === 0) ? (
           <div>Loading...</div>
         ) : displayedProducts.length === 0 ? (
-          <div>No products found.</div>
+          <div>{showDuplicateNamesOnly ? 'No duplicate product names match the current filters.' : 'No products found.'}</div>
         ) : (
       <div className="products-list-table-wrap">
             <table className="products-list-table">
@@ -2379,9 +2447,10 @@ function ProductsListPage() {
                     }
                   }
                   const highlightRow = !isCombo && (
-                    selectedLocationIds.length > 0
+                    showDuplicateNamesOnly
+                    || (selectedLocationIds.length > 0
                       ? Number(aggregateQty) < 0
-                      : hasNegativeEntry
+                      : hasNegativeEntry)
                   );
                   const rowKey = `${isCombo ? 'combo' : 'prod'}-${item.id}`;
                   const bulkKey = `${isCombo ? 'combo' : 'prod'}:${item.id}`;
@@ -2412,7 +2481,11 @@ function ProductsListPage() {
                       };
                     });
                   return (
-                    <tr key={isCombo ? `combo-${item.id}` : item.id} style={highlightRow ? { background: '#4d1f1f' } : undefined}>
+                    <tr
+                      key={isCombo ? `combo-${item.id}` : item.id}
+                      className={highlightRow ? (showDuplicateNamesOnly ? 'products-list-row--duplicate' : 'products-list-row--negative') : undefined}
+                      style={!showDuplicateNamesOnly && highlightRow ? { background: '#4d1f1f' } : undefined}
+                    >
                       <td className="products-list-cell-bulk">
                         <input
                           type="checkbox"
@@ -2559,20 +2632,23 @@ function ProductsListPage() {
           const isDeleteConfirm = deleteConfirmText.trim().toLowerCase() === 'yes';
           const targetCount = (deleteTargets || []).length;
           return (
-        <div style={{position:'fixed',top:0,left:0,width:'100vw',height:'100vh',background:'rgba(0,0,0,0.6)',zIndex:4000,display:'flex',alignItems:'center',justifyContent:'center',padding:12,boxSizing:'border-box'}}>
-          <div style={{background:'#23272f',padding:32,borderRadius:12,minWidth:280,width:'100%',maxWidth:420,display:'flex',flexDirection:'column',alignItems:'center',boxSizing:'border-box'}}>
-            <h3>Confirm Product Deletion</h3>
-            <div style={{marginBottom:16}}>Type <b>yes</b> to confirm deletion of {targetCount} selected item{targetCount === 1 ? '' : 's'}.</div>
+        <div className="products-delete-modal-overlay">
+          <div className="products-delete-modal" role="dialog" aria-modal="true" aria-labelledby="products-delete-modal-title">
+            <h3 id="products-delete-modal-title" className="products-delete-modal__title">Confirm Product Deletion</h3>
+            <p className="products-delete-modal__message">
+              Type <strong>yes</strong> to confirm deletion of {targetCount} selected item{targetCount === 1 ? '' : 's'}.
+            </p>
             <input
               type="text"
               value={deleteConfirmText}
               onChange={e => setDeleteConfirmText(e.target.value)}
-              style={{marginBottom:18, padding:'8px', borderRadius:'6px', border:'1px solid #00b4d8', width:'80%'}}
+              className="products-delete-modal__input"
               autoFocus
             />
-            <div style={{display:'flex',gap:12,width:'100%',flexWrap:'wrap',justifyContent:'center'}}>
+            <div className="products-delete-modal__actions">
               <button
                 type="button"
+                className="products-delete-modal__btn products-delete-modal__btn--confirm"
                 disabled={!isDeleteConfirm}
                 onClick={async () => {
                   const targets = Array.isArray(deleteTargets) ? deleteTargets : [];
@@ -2614,16 +2690,15 @@ function ProductsListPage() {
                     setDeleteConfirmText("");
                   }
                 }}
-                style={{background:'#e74c3c',color:'#fff',border:'none',borderRadius:'6px',padding:'8px 18px',fontWeight:'bold',cursor: isDeleteConfirm ? 'pointer' : 'not-allowed',flex:'1 1 120px',maxWidth:180}}
               >Confirm</button>
               <button
                 type="button"
+                className="products-delete-modal__btn products-delete-modal__btn--secondary"
                 onClick={() => {
                   setDeleteConfirmOpen(false);
                   setDeleteTargets([]);
                   setDeleteConfirmText("");
                 }}
-                style={{background:'#888',color:'#fff',border:'none',borderRadius:'6px',padding:'8px 18px',fontWeight:'bold',cursor:'pointer',flex:'1 1 120px',maxWidth:180}}
               >Cancel</button>
             </div>
           </div>

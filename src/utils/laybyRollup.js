@@ -21,7 +21,38 @@ const toSortTime = (sale) => {
   return Number.isFinite(time) ? time : 0;
 };
 
-export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v16';
+/** Prefer negotiated layby totals when line-item sums are still at list price. */
+export function resolveNegotiatedGrossSubtotal({
+  itemSubtotal = 0,
+  subtotalBeforeDiscount = 0,
+  saleDiscount = 0,
+  canonicalTotal = 0,
+} = {}) {
+  const item = toNumber(itemSubtotal);
+  const discount = Math.max(0, toNumber(saleDiscount));
+  const canonical = toNumber(canonicalTotal);
+  let gross = toNumber(subtotalBeforeDiscount);
+
+  if (gross <= 0 && item > 0) gross = item;
+  if (gross <= 0 && canonical > 0) {
+    gross = discount > 0 ? canonical + discount : canonical;
+  }
+
+  if (item > 0 && canonical > 0) {
+    const impliedGross = discount > 0 ? canonical + discount : canonical;
+    if (item > impliedGross + 0.5 && impliedGross > 0) {
+      gross = impliedGross;
+    } else if (item > canonical + 0.5 && gross > canonical + 0.5) {
+      gross = canonical;
+    }
+  } else if (canonical > 0 && gross > canonical + 0.5) {
+    gross = canonical;
+  }
+
+  return Math.max(0, gross);
+}
+
+export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v18';
 
 export function buildLaybySaleFinancials(statement) {
   const normalized = normalizeLaybyStatement(statement || {});
@@ -65,6 +96,12 @@ export function buildLaybySaleFinancials(statement) {
         const totalDue = toNumber(sale?.total_due);
         subtotalBeforeDiscount = totalDue > 0 ? totalDue + saleDiscountRaw : 0;
       }
+      subtotalBeforeDiscount = resolveNegotiatedGrossSubtotal({
+        itemSubtotal,
+        subtotalBeforeDiscount,
+        saleDiscount: saleDiscountRaw,
+        canonicalTotal: toNumber(sale?.total_amount ?? sale?.total_due),
+      });
 
       const saleDiscount = Math.min(Math.max(0, saleDiscountRaw), Math.max(0, subtotalBeforeDiscount));
       const derivedNet = Math.max(0, subtotalBeforeDiscount - saleDiscount);
@@ -90,11 +127,20 @@ export function buildLaybySaleFinancials(statement) {
           total = reportedTotal;
         }
       }
-      if (total > 0 && subtotalBeforeDiscount < total + saleDiscount) {
+      const totalLooksNet = Math.abs(total - derivedTotal) < 1;
+      if (total > 0 && totalLooksNet && subtotalBeforeDiscount < total + saleDiscount) {
         subtotalBeforeDiscount = total + saleDiscount;
       }
       const paid = toNumber(paymentAgg.paid);
       const paymentDiscount = toNumber(paymentAgg.paymentDiscount);
+      const netOwed = vatApply
+        ? computeQuotationTotals({
+            subtotal: subtotalBeforeDiscount,
+            discount: saleDiscount,
+            vatApply: true,
+            vatRate,
+          }).total
+        : Math.max(0, subtotalBeforeDiscount - saleDiscount);
 
       return {
         saleId: rawSaleId,
@@ -106,7 +152,7 @@ export function buildLaybySaleFinancials(statement) {
         paid,
         paymentDiscount,
         discount: saleDiscount + paymentDiscount,
-        due: Math.max(0, total - paid - paymentDiscount),
+        due: Math.max(0, netOwed - paid - paymentDiscount),
         saleDate: sale?.sale_date || null,
         createdAt: sale?.created_at || null,
         sortTime: toSortTime(sale),
@@ -121,7 +167,10 @@ export function computeLaybyTotalsByCurrency(statement) {
   buildLaybySaleFinancials(statement).forEach((sale) => {
     const code = sale.currency || 'K';
     if (!totals[code]) totals[code] = { total: 0, paid: 0, discount: 0, due: 0 };
-    totals[code].total += toNumber(sale.total);
+    const grossTotal = toNumber(sale.subtotalBeforeDiscount) > 0
+      ? toNumber(sale.subtotalBeforeDiscount)
+      : toNumber(sale.total) + toNumber(sale.saleDiscount);
+    totals[code].total += grossTotal;
     totals[code].paid += toNumber(sale.paid);
     totals[code].discount += toNumber(sale.discount);
     totals[code].due += toNumber(sale.due);
@@ -129,8 +178,7 @@ export function computeLaybyTotalsByCurrency(statement) {
   return totals;
 }
 
-// PDF-aligned pooled settlement: sum sale totals, subtract all payments for the currency.
-// Sale discounts are already netted into each sale total; payment discounts are subtracted separately.
+// PDF-aligned pooled settlement: sum gross sale totals, subtract deposits and all discounts.
 export function computePooledLaybyTotalsByCurrency(statement) {
   const normalized = normalizeLaybyStatement(statement || {});
   const saleFinancials = buildLaybySaleFinancials(normalized);
@@ -140,7 +188,10 @@ export function computePooledLaybyTotalsByCurrency(statement) {
   saleFinancials.forEach((sale) => {
     const code = sale.currency || 'K';
     if (!totals[code]) totals[code] = { total: 0, paid: 0, discount: 0, due: 0 };
-    totals[code].total += toNumber(sale.total);
+    const grossTotal = toNumber(sale.subtotalBeforeDiscount) > 0
+      ? toNumber(sale.subtotalBeforeDiscount)
+      : toNumber(sale.total) + toNumber(sale.saleDiscount);
+    totals[code].total += grossTotal;
     saleDiscountByCurrency[code] = toNumber(saleDiscountByCurrency[code]) + toNumber(sale.saleDiscount);
   });
 
@@ -159,7 +210,7 @@ export function computePooledLaybyTotalsByCurrency(statement) {
     bucket.total = roundLaybyMoney(bucket.total, code);
     bucket.paid = roundLaybyMoney(bucket.paid, code);
     bucket.discount = roundLaybyMoney(saleDiscount + paymentDiscount, code);
-    bucket.due = Math.max(0, roundLaybyMoney(bucket.total - bucket.paid - paymentDiscount, code));
+    bucket.due = Math.max(0, roundLaybyMoney(bucket.total - bucket.paid - bucket.discount, code));
   });
 
   return totals;

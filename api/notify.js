@@ -53,6 +53,15 @@ const GROUP_KEYS = {
 
 };
 
+// Documented in docs/whatsapp-groups.txt — safe fallback when env group id is unset.
+const DOCUMENTED_WHATSAPP_GROUP_IDS = {
+  labels: '120363410723287387@g.us',
+  transfer: '120363410583418058@g.us',
+  sale: '120363420239254016@g.us',
+  layby: '120363429021437712@g.us',
+  fahme: '120363372527723284@g.us',
+};
+
 
 
 const normalizeCurrency = (raw) => {
@@ -142,10 +151,14 @@ function parseWasenderKinds() {
   const raw = String(process.env.WHATSAPP_WASENDER_KINDS || '').trim().toLowerCase();
   if (raw === 'all') return ['sale', 'layby', 'transfer', 'labels'];
   if (raw) {
-    return raw.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
+    const kinds = raw.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
+    if (kinds.length && !kinds.includes('labels') && kinds.some((kind) => ['sale', 'layby', 'transfer'].includes(kind))) {
+      kinds.push('labels');
+    }
+    return kinds;
   }
   const provider = String(process.env.WHATSAPP_PROVIDER || '').trim().toLowerCase();
-  if (provider === 'wasender' || provider === 'wasenderapi') return ['sale'];
+  if (provider === 'wasender' || provider === 'wasenderapi') return ['sale', 'layby', 'transfer', 'labels'];
   return [];
 }
 
@@ -2136,6 +2149,24 @@ async function handleWhatsAppLayby(body) {
 
 
 
+function resolveLabelsTargets() {
+  const provider = getConfiguredProviderForKind('labels');
+
+  if (provider === 'meta') {
+    const recipients = readRecipients('labels');
+    return recipients.length
+      ? { mode: 'dm', targets: recipients, provider }
+      : { mode: 'none', targets: [], provider };
+  }
+
+  const groupId = readGroupId('labels') || DOCUMENTED_WHATSAPP_GROUP_IDS.labels;
+  return groupId
+    ? { mode: 'group', targets: [groupId], provider }
+    : { mode: 'none', targets: [], provider };
+}
+
+
+
 async function handleWhatsAppLabels(body) {
 
   const pdfUrl = String(body.pdfUrl || '').trim();
@@ -2154,11 +2185,11 @@ async function handleWhatsAppLabels(body) {
 
 
 
-  const routing = resolveDeliveryTargets('labels', null);
+  const routing = resolveLabelsTargets();
 
   if (!routing.targets.length) {
 
-    const err = new Error('WhatsApp env not configured (WHATSAPP_LABELS_GROUP_ID or WHATSAPP_LABELS_RECIPIENTS)');
+    const err = new Error('WhatsApp env not configured for price labels. Set WASENDER_API_TOKEN (or WHAPI token) and optionally WHATSAPP_LABELS_GROUP_ID in .env.local / Vercel.');
 
     err.status = 500;
 

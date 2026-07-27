@@ -4613,6 +4613,34 @@ body {
   border-color: #2563eb;
 }
 
+.products-toolbar-btn--duplicates.is-active {
+  background: #fff7ed;
+  border-color: #ea580c;
+  color: #c2410c;
+}
+
+.products-toolbar-message--duplicates {
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.products-list-row--duplicate td {
+  background: #fff7ed !important;
+}
+
+body.enterprise-theme .products-toolbar-btn--duplicates.is-active {
+  background: #fff7ed !important;
+  border-color: #ea580c !important;
+  color: #c2410c !important;
+}
+
+body.enterprise-theme .products-list-row--duplicate td {
+  background: #fff7ed !important;
+}
+
 .products-toolbar-icon-btn {
   width: 36px;
   height: 36px;
@@ -5151,6 +5179,137 @@ body.enterprise-theme .products-list-action-btn--inventory {
 .products-image-modal__btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Products list delete confirmation modal */
+.products-delete-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.products-delete-modal {
+  width: min(96vw, 420px);
+  background: #ffffff;
+  border: 1px solid #d5dfeb;
+  border-radius: 12px;
+  padding: 22px;
+  color: #0f172a;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.products-delete-modal__title {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
+
+.products-delete-modal__message {
+  margin: 0 0 14px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.products-delete-modal__input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.products-delete-modal__input:focus {
+  outline: none;
+  border-color: #1677ff;
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.15);
+}
+
+.products-delete-modal__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.products-delete-modal__btn {
+  border: 1px solid #1677ff;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  background: #ffffff;
+  color: #0b56c4;
+}
+
+.products-delete-modal__btn--confirm {
+  background: #16a34a !important;
+  border-color: #15803d !important;
+  color: #ffffff !important;
+}
+
+.products-delete-modal__btn--confirm:hover:not(:disabled) {
+  background: #15803d !important;
+  border-color: #166534 !important;
+}
+
+.products-delete-modal__btn--secondary {
+  background: #ffffff !important;
+  color: #0b56c4 !important;
+}
+
+.products-delete-modal__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+body.enterprise-theme .products-delete-modal {
+  background: #ffffff;
+  border-color: #d5dfeb;
+  color: #0f172a;
+}
+
+body.enterprise-theme .products-delete-modal__message {
+  color: #64748b;
+}
+
+body.enterprise-theme .products-delete-modal__input {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+body.enterprise-theme .products-delete-modal__btn {
+  background: #ffffff;
+  color: #0b56c4;
+  border-color: #1677ff;
+}
+
+body.enterprise-theme .products-delete-modal__actions .products-delete-modal__btn--confirm {
+  background: var(--ent-green) !important;
+  border-color: var(--ent-green-dark) !important;
+  color: #ffffff !important;
+}
+
+body.enterprise-theme .products-delete-modal__actions .products-delete-modal__btn--confirm:hover:not(:disabled) {
+  background: var(--ent-green-dark) !important;
+}
+
+body.enterprise-theme .products-delete-modal__actions .products-delete-modal__btn--secondary {
+  background: #ffffff !important;
+  color: var(--ent-blue) !important;
+  border-color: var(--ent-blue) !important;
+}
+
+body.enterprise-theme .products-delete-modal__actions .products-delete-modal__btn--secondary:hover {
+  background: var(--ent-blue-soft) !important;
 }
 
 /* Products list inventory adjustment modal */
@@ -9259,6 +9418,69 @@ body.enterprise-theme .quotes-products-page .quotes-currency-switch button:last-
   color: #111;
   border-color: #00bfff;
   box-shadow: 0 2px 8px #00bfff44;
+}
+
+.pos-product-btn--needs-price {
+  border-color: #ea580c;
+  background: #fff7ed;
+}
+
+.pos-catalog-price-edit {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.pos-catalog-price-edit__label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #c2410c;
+}
+
+.pos-catalog-price-edit__input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.95rem;
+  color: #111;
+  background: #fff;
+}
+
+.pos-catalog-price-edit__save {
+  border: 1px solid #15803d;
+  background: #16a34a;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pos-catalog-price-edit__save:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.pos-catalog-price-edit__error {
+  color: #b91c1c;
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+body.enterprise-theme .pos-product-btn--needs-price {
+  border-color: #ea580c !important;
+  background: #fff7ed !important;
+}
+
+body.enterprise-theme .pos-catalog-price-edit__save {
+  background: var(--ent-green) !important;
+  border-color: var(--ent-green-dark) !important;
+  color: #fff !important;
 }
 
 .pos-table {

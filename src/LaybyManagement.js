@@ -789,9 +789,10 @@ export default function LaybyManagement() {
       const appendLegacyDownPayments = async (paymentsList, saleIdsList, saleMetaById) => {
         if (!saleIdsList?.length) return paymentsList;
         try {
-          const { data: downRows, error: downErr } = await fromPublic('sales')
-            .select('id, down_payment, sale_date, currency')
-            .in('id', saleIdsList);
+          const { data: downRows, error: downErr } = await fromPublic('sales_payments')
+            .select('sale_id, amount, payment_date, currency, payment_type')
+            .in('sale_id', saleIdsList)
+            .eq('payment_type', 'down_payment');
           if (downErr || !downRows?.length) return paymentsList;
 
           const existingDown = new Set(
@@ -801,16 +802,16 @@ export default function LaybyManagement() {
           );
 
           const extra = downRows
-            .filter(r => Number(r?.down_payment || 0) > 0 && !existingDown.has(String(r.id || '')))
+            .filter(r => Number(r?.amount || 0) > 0 && !existingDown.has(String(r.sale_id || '')))
             .map(r => {
-              const meta = saleMetaById?.get(String(r.id || '')) || {};
+              const meta = saleMetaById?.get(String(r.sale_id || '')) || {};
               return {
-                id: `down-${r.id}`,
-                sale_id: r.id,
-                amount: Number(r.down_payment || 0),
+                id: `down-${r.sale_id}`,
+                sale_id: r.sale_id,
+                amount: Number(r.amount || 0),
                 discount_amount: 0,
                 payment_type: 'down_payment',
-                payment_date: r.sale_date || meta.sale_date || null,
+                payment_date: r.payment_date || meta.sale_date || null,
                 reference: null,
                 currency: r.currency || meta.currency || null,
                 notes: 'Legacy down payment',
@@ -1207,7 +1208,7 @@ export default function LaybyManagement() {
     const { laybyIds, saleIds } = collectRowLinkKeys(row);
     const attempts = [];
     const saleList = Array.from(saleIds);
-    const laybyList = Array.from(laybyIds);
+    const laybyList = Array.from(laybyIds).filter(isUuid);
     chunkIds(saleList, 100).forEach((chunk) => {
       attempts.push(
         supabase.from('quotations').select('id, created_at').in('sale_id', chunk).order('created_at', { ascending: false }).limit(1)
