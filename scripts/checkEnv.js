@@ -1,23 +1,38 @@
 #!/usr/bin/env node
 // Build-time environment verification
-// Load .env.local and .env if present so local builds work without exporting vars in the shell
+const fs = require('fs');
+const path = require('path');
+
+const KNOWN_SUPABASE_URL = 'https://ayuufehhzsrinvtlmyqm.supabase.co';
+const VERCEL_ENV = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+
+function firstEnv(...keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+
+// Load local env files so builds work without exporting vars in the shell.
 try {
-  const path = require('path');
-  const fs = require('fs');
-  // Prefer .env.local, then .env
+  try { require('dotenv').config({ path: path.resolve(process.cwd(), 'vercel.env'), override: true }); } catch {}
   try { require('dotenv').config({ path: path.resolve(process.cwd(), '.env.local'), override: true }); } catch {}
   try { require('dotenv').config({ path: path.resolve(process.cwd(), '.env'), override: false }); } catch {}
 } catch {}
 
-const fs = require('fs');
-const path = require('path');
-
-// Allow Vercel/server env names as aliases for CRA build-time vars.
-if (!process.env.REACT_APP_SUPABASE_URL && process.env.SUPABASE_URL) {
-  process.env.REACT_APP_SUPABASE_URL = String(process.env.SUPABASE_URL).trim();
+// Allow Vercel/server/integration env names as aliases for CRA build-time vars.
+if (!process.env.REACT_APP_SUPABASE_URL) {
+  const url = firstEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL');
+  if (url) process.env.REACT_APP_SUPABASE_URL = url;
 }
-if (!process.env.REACT_APP_SUPABASE_ANON_KEY && process.env.SUPABASE_ANON_KEY) {
-  process.env.REACT_APP_SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY).trim();
+if (!process.env.REACT_APP_SUPABASE_ANON_KEY) {
+  const key = firstEnv('SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  if (key) process.env.REACT_APP_SUPABASE_ANON_KEY = key;
+}
+if (!process.env.REACT_APP_SUPABASE_URL) {
+  process.env.REACT_APP_SUPABASE_URL = KNOWN_SUPABASE_URL;
+  console.warn('[env:warn] REACT_APP_SUPABASE_URL not set; using known project URL.');
 }
 
 const required = ['REACT_APP_SUPABASE_URL', 'REACT_APP_SUPABASE_ANON_KEY'];
@@ -28,6 +43,11 @@ for (const k of required) {
 if (missing.length) {
   console.error('[env:fail] Missing required env vars: ' + missing.join(', '));
   console.error('[env:fail] Set REACT_APP_SUPABASE_URL + REACT_APP_SUPABASE_ANON_KEY in Vercel, or SUPABASE_URL + SUPABASE_ANON_KEY.');
+  if (VERCEL_ENV === 'preview' || VERCEL_ENV === 'development') {
+    console.error(`[env:fail] This is a ${VERCEL_ENV || 'non-production'} Vercel build. Supabase vars are often scoped to Production only.`);
+    console.error('[env:fail] In Vercel → Project → Settings → Environment Variables, edit each Supabase var and enable Preview (and Development if needed), then redeploy.');
+    console.error('[env:fail] Vars to include for Preview: REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_ANON_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE.');
+  }
   process.exit(1);
 }
 // Guard: ensure no accidental service role key leaked into anon var
