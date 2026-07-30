@@ -55,15 +55,6 @@ function clearCountUser() {
   try { sessionStorage.removeItem('stocktake:countUser'); } catch {}
 }
 
-function readStoredEventId(locationId) {
-  if (!locationId) return '';
-  try {
-    return localStorage.getItem(`stocktake:countEventId:${locationId}`) || '';
-  } catch {
-    return '';
-  }
-}
-
 function writeStoredEventId(locationId, id) {
   if (!locationId) return;
   try {
