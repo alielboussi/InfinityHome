@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom'; 
 import App from './App'; 
+import { isPublicAppRoute } from './accessControl';
 import 'font-awesome/css/font-awesome.min.css';
 import './global-theme.css';
 
@@ -85,7 +86,7 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
   };
   const onTouchMove = (e) => {
     const path = String(window.location.pathname || '').toLowerCase();
-    if (path.startsWith('/stocktake/count')) return;
+    if (isPublicAppRoute(path)) return;
     const y = (typeof window.scrollY === 'number') ? window.scrollY : (document.documentElement.scrollTop || document.body.scrollTop || 0);
     const currentY = e.touches && e.touches.length > 0 ? e.touches[0].clientY : 0;
     const dy = currentY - startY;

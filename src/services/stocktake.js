@@ -239,7 +239,7 @@ async function clientCreateEvent(locationId, notes = '') {
   return { ok: true, event, initialCompleted: Boolean(state?.initial_completed) };
 }
 
-async function clientCancelEvent(eventId, userEmail = currentEmail()) {
+async function clientCancelEvent(eventId, userEmail = currentEmail(), { force = false } = {}) {
   const { data: event, error } = await supabase
     .from('stocktake_events')
     .select('*')
@@ -253,10 +253,21 @@ async function clientCancelEvent(eventId, userEmail = currentEmail()) {
     supabase.from('stocktake_counts').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
     supabase.from('stocktake_set_scans').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
   ]);
-  if ((countRows || 0) > 0 || (scanRows || 0) > 0) {
+  const hasCounts = (countRows || 0) > 0 || (scanRows || 0) > 0;
+  if (hasCounts && !force) {
     throw new Error('Counts already exist. Clear counts for a fresh start, or submit the stocktake to finish.');
   }
 
+  if (hasCounts && force) {
+    const { error: delCountsErr } = await supabase.from('stocktake_counts').delete().eq('event_id', eventId);
+    if (delCountsErr) throw delCountsErr;
+    const { error: delLogErr } = await supabase.from('stocktake_count_log').delete().eq('event_id', eventId);
+    if (delLogErr) throw delLogErr;
+    const { error: delScansErr } = await supabase.from('stocktake_set_scans').delete().eq('event_id', eventId);
+    if (delScansErr) throw delScansErr;
+  }
+
+  const cancelNote = force && hasCounts ? 'Force closed session (counts discarded)' : 'Cancelled empty session';
   const { data: updated, error: upErr } = await supabase
     .from('stocktake_events')
     .update({
@@ -264,13 +275,13 @@ async function clientCancelEvent(eventId, userEmail = currentEmail()) {
       counting_enabled: false,
       submitted_at: new Date().toISOString(),
       submitted_by_email: userEmail || null,
-      notes: [event.notes, 'Cancelled empty session'].filter(Boolean).join(' · '),
+      notes: [event.notes, cancelNote].filter(Boolean).join(' · '),
     })
     .eq('id', eventId)
     .select('*')
     .single();
   if (upErr) throw upErr;
-  return { ok: true, event: updated };
+  return { ok: true, event: updated, forceClosed: force && hasCounts };
 }
 
 async function clientClearCounts(eventId) {
@@ -679,13 +690,13 @@ export async function clearMyCounts(eventId, userEmail = currentEmail()) {
   );
 }
 
-export async function cancelEvent(eventId, userEmail = currentEmail()) {
+export async function cancelEvent(eventId, userEmail = currentEmail(), { force = false } = {}) {
   return withApiOrClient(
     () => fetchJson('/api/stocktake-event-cancel', {
       method: 'POST',
-      body: JSON.stringify({ eventId, userEmail }),
+      body: JSON.stringify({ eventId, userEmail, force }),
     }),
-    () => clientCancelEvent(eventId, userEmail),
+    () => clientCancelEvent(eventId, userEmail, { force }),
   );
 }
 
@@ -801,11 +812,15 @@ export async function createSet(locationId, payload) {
   }
 }
 
-export async function submitEvent(eventId) {
+export async function submitEvent(eventId, options = {}) {
+  const payload = { eventId, userEmail: currentEmail() };
+  if (Array.isArray(options.finalTotals) && options.finalTotals.length) {
+    payload.finalTotals = options.finalTotals;
+  }
   try {
     return await fetchJson('/api/stocktake-event-submit', {
       method: 'POST',
-      body: JSON.stringify({ eventId, userEmail: currentEmail() }),
+      body: JSON.stringify(payload),
     });
   } catch (err) {
     if (isApiUnavailable(err)) {

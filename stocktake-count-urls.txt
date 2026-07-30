@@ -1,0 +1,20 @@
+Infinity Home — Stock count URLs (public, per location)
+Host: https://infinity-home-pi.vercel.app
+
+Each location has its own counter page. Share only the link for that location.
+Staff login (all other pages): https://infinity-home-pi.vercel.app/
+
+----------------------------------------------------------------------
+Location          URL
+----------------------------------------------------------------------
+Carpentry         https://infinity-home-pi.vercel.app/stocktake/count/carpentry
+Kitwe             https://infinity-home-pi.vercel.app/stocktake/count/kitwe
+Lusaka            https://infinity-home-pi.vercel.app/stocktake/count/lusaka
+Test              https://infinity-home-pi.vercel.app/stocktake/count/test
+Warehouse         https://infinity-home-pi.vercel.app/stocktake/count/warehouse
+----------------------------------------------------------------------
+
+Notes:
+- Counting must be started on Stocktake control (/stocktake) for that location first.
+- The old unified link /stocktake/count is no longer used.
+- /count is not a valid shortcut — use the full location link above.

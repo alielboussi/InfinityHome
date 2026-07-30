@@ -12,10 +12,10 @@ import {
   importCounts,
   listEvents,
   listPeriods,
-  submitEvent,
 } from './services/stocktake';
 import { downloadStocktakeQtySample, parseStocktakeQtyFile } from './utils/stocktakeQtyImport';
 import { downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
+import { stocktakeCountUrlForLocation } from './utils/stocktakeLocationSlug';
 import { logUserActivity } from './utils/userActivityLog';
 import './stocktake-count.css';
 
@@ -25,7 +25,6 @@ export default function StocktakeControlPage() {
   const [eventId, setEventId] = useState('');
   const [event, setEvent] = useState(null);
   const [consolidated, setConsolidated] = useState([]);
-  const [expanded, setExpanded] = useState({});
   const [initialCompleted, setInitialCompleted] = useState(false);
   const [periods, setPeriods] = useState([]);
   const [periodId, setPeriodId] = useState('');
@@ -39,6 +38,8 @@ export default function StocktakeControlPage() {
   const activeCounting = event?.status === 'counting';
   const hasCounts = consolidated.length > 0;
   const locationName = locations.find((l) => l.id === locationId)?.name || '';
+  const selectedLocation = locations.find((l) => l.id === locationId) || null;
+  const countPageUrl = selectedLocation ? stocktakeCountUrlForLocation(selectedLocation) : '';
 
   const refreshSession = useCallback(async (locId, selectedEventId) => {
     if (!locId) return;
@@ -158,26 +159,28 @@ export default function StocktakeControlPage() {
       metadata: { locationId, is_initial: data.event?.is_initial },
     });
     await refreshSession(locationId, data.event.id);
-  }, 'Session started. Users count on /stocktake/count for this location.');
+  }, `Session started. Counters use ${countPageUrl || 'the location count link below'}.`);
 
   const handleCloseSession = () => {
     if (!event?.id) return;
-    if (hasCounts) {
-      setError('Counts already exist. Clear counts for a fresh start, or submit to finish.');
-      return;
-    }
-    if (!window.confirm('Close this empty session? No inventory or periods will change.')) return;
+    const force = hasCounts;
+    const confirmed = force
+      ? window.confirm(
+        'Force close this session? All counts will be permanently discarded and counters will no longer be able to add to it. Inventory and periods are unchanged.',
+      )
+      : window.confirm('Close this empty session? No inventory or periods will change.');
+    if (!confirmed) return;
     run(async () => {
-      await cancelEvent(event.id);
+      await cancelEvent(event.id, undefined, { force });
       await logUserActivity({
         actionType: 'stocktake_event_cancel',
-        actionLabel: 'Close empty stocktake session',
+        actionLabel: force ? 'Force close stocktake session' : 'Close empty stocktake session',
         entityType: 'stocktake_event',
         entityId: event.id,
-        metadata: { locationId },
+        metadata: { locationId, force },
       });
       await refreshSession(locationId);
-    }, 'Empty session closed.');
+    }, force ? 'Session force closed — counts discarded.' : 'Empty session closed.');
   };
 
   const handleClearCounts = () => {
@@ -201,41 +204,16 @@ export default function StocktakeControlPage() {
     }, 'All counts cleared.');
   };
 
-  const handleSubmit = () => {
-    if (!event?.id) return;
-    if (!hasCounts) {
-      setError('No counts yet. Import or count first, or close the empty session.');
-      return;
-    }
-    const msg = initialCompleted
-      ? 'Submit counts? This closes the current period, opens the next one, and updates inventory for this location only.'
-      : 'Submit counts as the first opening stock for this location and start the period?';
-    if (!window.confirm(msg)) return;
-    run(async () => {
-      const result = await submitEvent(event.id);
-      await logUserActivity({
-        actionType: 'stocktake_submit',
-        actionLabel: result.submitType === 'initial' ? 'Submit initial stocktake' : 'Submit stocktake rollover',
-        entityType: 'stocktake_event',
-        entityId: event.id,
-        metadata: { submitType: result.submitType, locationId },
-      });
-      if (result.submitType === 'rollover' && result.closedPeriod?.id) {
-        try {
-          const variance = await getPeriodVariance(result.closedPeriod.id);
-          await downloadStocktakeVariancePdf({
-            period: variance.period,
-            rows: variance.rows,
-            company: variance.company,
-          });
-        } catch (pdfErr) {
-          console.warn('Variance PDF auto-download failed', pdfErr);
-        }
-      }
-      await refreshSession(locationId);
-      await refreshPeriods(locationId);
-    }, 'Submitted. Periods updated automatically.');
-  };
+  const handleDownloadPdf = () => run(async () => {
+    if (!periodId) return;
+    const data = await getPeriodVariance(periodId);
+    await downloadStocktakeVariancePdf({
+      period: data.period,
+      rows: data.rows,
+      company: data.company,
+      locationName: data.locationName || locationName,
+    });
+  }, 'Variance PDF downloaded.');
 
   const handleDownloadSample = () => run(async () => {
     if (!locationId) throw new Error('Select a location first.');
@@ -280,16 +258,6 @@ export default function StocktakeControlPage() {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const handleDownloadPdf = () => run(async () => {
-    if (!periodId) return;
-    const data = await getPeriodVariance(periodId);
-    await downloadStocktakeVariancePdf({
-      period: data.period,
-      rows: data.rows,
-      company: data.company,
-    });
-  }, 'Variance PDF downloaded.');
-
   const period = periodDetail?.period;
   const canDownloadPdf = period?.status === 'closed';
 
@@ -298,8 +266,9 @@ export default function StocktakeControlPage() {
       <div className="stock-periods-card">
         <div className="stock-periods-section-title">Stocktake</div>
         <div className="stock-periods-note">
-          Pick a location, start counting, then import Excel and/or have users count on the fixed page
-          {' '}<strong>/stocktake/count</strong>. Submit when finished — periods update automatically.
+          Pick a location, start counting, then import Excel and/or share that location&apos;s count link with counters.
+          When counting is finished, an admin reviews aggregated totals on
+          {' '}<strong>Stocktake Aggregation</strong> before submit.
         </div>
 
         <label className="stock-periods-label">Location</label>
@@ -315,11 +284,18 @@ export default function StocktakeControlPage() {
           ))}
         </select>
 
+        {locationId && countPageUrl && (
+          <div className="stock-periods-note" style={{ marginTop: 8 }}>
+            <strong>Count link for {locationName || 'this location'}:</strong>
+            {' '}<a href={countPageUrl} target="_blank" rel="noopener noreferrer">{countPageUrl}</a>
+          </div>
+        )}
+
         {locationId && (
           <div className="stock-periods-note" style={{ marginTop: 8 }}>
             {initialCompleted
-              ? 'Next submit closes the open period and opens a new one for this location only.'
-              : 'First stocktake here — submit creates opening stock and starts the first period.'}
+              ? 'Next admin submit on Stocktake Aggregation closes the open period and opens a new one.'
+              : 'First stocktake here — admin submit creates opening stock and starts the first period.'}
           </div>
         )}
       </div>
@@ -347,17 +323,17 @@ export default function StocktakeControlPage() {
               <>
                 <div className="stock-periods-note" style={{ color: '#1f9d55' }}>
                   Counting open{event?.is_initial ? ' (first stocktake)' : ''} for {locationName || 'this location'}.
-                  Users sign in on <strong>/stocktake/count</strong> — same page every time.
+                  Share the count link above with counters — each location has its own URL.
                 </div>
                 <div className="stock-periods-actions" style={{ marginTop: 10 }}>
                   <button
                     type="button"
                     className="stock-periods-btn stock-periods-btn-secondary"
-                    disabled={busy || hasCounts}
-                    title={hasCounts ? 'Clear counts first, or submit instead' : 'Close empty session'}
+                    disabled={busy}
+                    title={hasCounts ? 'Discard all counts and cancel this session' : 'Close empty session'}
                     onClick={handleCloseSession}
                   >
-                    Close session
+                    {hasCounts ? 'Force close session' : 'Close session'}
                   </button>
                   <button
                     type="button"
@@ -367,18 +343,11 @@ export default function StocktakeControlPage() {
                   >
                     Clear counts
                   </button>
-                  <button
-                    type="button"
-                    className="stock-periods-btn stock-periods-btn-primary"
-                    disabled={busy || !hasCounts}
-                    onClick={handleSubmit}
-                  >
-                    Submit stocktake
-                  </button>
                 </div>
                 {hasCounts ? (
                   <div className="stock-periods-note" style={{ marginTop: 6 }}>
-                    Close session is only for empty starts. Use Clear counts to restart, or Submit to finish.
+                    Counts are ready for admin review on <strong>Stocktake Aggregation</strong>.
+                    Use Clear counts to restart counting, or Force close session to cancel entirely (counts discarded).
                   </div>
                 ) : (
                   <div className="stock-periods-note" style={{ marginTop: 6 }}>
@@ -424,141 +393,6 @@ export default function StocktakeControlPage() {
               </div>
             )}
           </div>
-
-          {activeCounting && (
-            <div className="stock-periods-card">
-              <div className="stock-periods-section-title">Live totals</div>
-              <div className="stock-periods-note" style={{ marginBottom: 8 }}>
-                Complete sets are grouped from counted components. Leftover parts stay as separate lines. Expand a row for breakdown and who counted.
-              </div>
-              <table className="pos-table stock-periods-table sticky-header-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 40 }} />
-                    <th>Product / Set</th>
-                    <th>SKU</th>
-                    <th>Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {consolidated.length === 0 ? (
-                    <tr><td colSpan={4}>No counts yet.</td></tr>
-                  ) : consolidated.map((row) => {
-                    const rowKey = row.key || row.product_id;
-                    const open = Boolean(expanded[rowKey]);
-                    const isSet = row.row_type === 'set';
-                    return (
-                      <React.Fragment key={rowKey}>
-                        <tr
-                          className={isSet ? 'stocktake-live-row stocktake-live-row--set' : 'stocktake-live-row'}
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => setExpanded((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }))}
-                        >
-                          <td>
-                            <button
-                              type="button"
-                              className={`stocktake-expand-tri${open ? ' is-open' : ''}`}
-                              aria-label={open ? 'Collapse row' : 'Expand row'}
-                              aria-expanded={open}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpanded((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
-                              }}
-                            />
-                          </td>
-                          <td>
-                            {isSet ? (
-                              <span className="stocktake-live-set-label">
-                                <span className="stocktake-live-badge">SET</span>
-                                {row.name || rowKey}
-                              </span>
-                            ) : (
-                              row.name || row.product_id
-                            )}
-                            {!isSet && Number(row.used_in_sets) > 0 && (
-                              <div className="stocktake-live-subnote">
-                                {Number(row.total_counted)} counted · {Number(row.used_in_sets)} in sets · {Number(row.qty)} left
-                              </div>
-                            )}
-                            {isSet && row.source === 'derived' && (
-                              <div className="stocktake-live-subnote">Derived from components</div>
-                            )}
-                          </td>
-                          <td>{row.sku || '—'}</td>
-                          <td>
-                            <strong>{row.qty}</strong>
-                            {isSet ? <span className="stocktake-live-unit"> sets</span> : null}
-                          </td>
-                        </tr>
-                        {open && isSet && (row.components || []).map((comp) => (
-                          <tr key={`${rowKey}-comp-${comp.product_id}`} className="stocktake-live-detail">
-                            <td />
-                            <td style={{ paddingLeft: 28 }}>
-                              <span className="stocktake-live-detail-label">Component</span>
-                              {' '}
-                              {comp.name || comp.product_id}
-                              <div className="stocktake-live-subnote">
-                                {Number(comp.need_per_set)} per set × {Number(row.qty)} sets
-                              </div>
-                            </td>
-                            <td>{comp.sku || '—'}</td>
-                            <td>{comp.qty}</td>
-                          </tr>
-                        ))}
-                        {open && isSet && (row.byUser || []).length > 0 && (row.byUser || []).map((u) => (
-                          <tr key={`${rowKey}-user-${u.user_email}`} className="stocktake-live-detail">
-                            <td />
-                            <td colSpan={2} style={{ paddingLeft: 28, fontSize: 13 }}>
-                              <span className="stocktake-live-detail-label">Counted by</span>
-                              {' '}
-                              {u.user_email}
-                              {u.updated_at ? ` · ${new Date(u.updated_at).toLocaleString()}` : ''}
-                            </td>
-                            <td>{u.qty} sets</td>
-                          </tr>
-                        ))}
-                        {open && isSet && (!(row.byUser || []).length) && (
-                          <tr className="stocktake-live-detail">
-                            <td />
-                            <td colSpan={3} style={{ paddingLeft: 28, fontSize: 13 }}>
-                              No direct set scans — this set total was derived from matching component counts.
-                            </td>
-                          </tr>
-                        )}
-                        {open && isSet && (row.components || []).flatMap((comp) =>
-                          (comp.byUser || []).map((u) => (
-                            <tr key={`${rowKey}-compuser-${comp.product_id}-${u.user_email}`} className="stocktake-live-detail">
-                              <td />
-                              <td colSpan={2} style={{ paddingLeft: 40, fontSize: 12 }}>
-                                {comp.name || comp.product_id}: {u.user_email}
-                                {u.updated_at ? ` · ${new Date(u.updated_at).toLocaleString()}` : ''}
-                              </td>
-                              <td>{u.qty}</td>
-                            </tr>
-                          ))
-                        )}
-                        {open && !isSet && (row.byUser || []).map((u) => (
-                          <tr key={`${rowKey}-${u.user_email}`} className="stocktake-live-detail">
-                            <td />
-                            <td colSpan={2} style={{ paddingLeft: 28, fontSize: 13 }}>
-                              {u.user_email}
-                              {u.updated_at ? ` · ${new Date(u.updated_at).toLocaleString()}` : ''}
-                              {Number(row.used_in_sets) > 0 ? (
-                                <div className="stocktake-live-subnote">
-                                  Of {Number(row.total_counted)} counted for this component, {Number(row.used_in_sets)} went into sets
-                                </div>
-                              ) : null}
-                            </td>
-                            <td>{u.qty}</td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
 
           <div className="stock-periods-card">
             <div className="stock-periods-section-title">Periods</div>

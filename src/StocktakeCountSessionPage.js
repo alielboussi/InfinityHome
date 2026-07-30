@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { FaDownload, FaFileImport, FaPlus, FaQrcode, FaTrashAlt } from 'react-icons/fa';
 import supabase from './supabase';
@@ -9,17 +10,19 @@ import {
   createSet,
   fetchCatalog,
   fetchImportTemplate,
+  fetchLocations,
   fetchMyCounts,
   getEvent,
   importCounts,
   invalidateStocktakeCatalogCache,
-  listOpenSessions,
+  listEvents,
   removeMyCount,
   scanSet,
 } from './services/stocktake';
 import { downloadStocktakeQtySample, parseStocktakeQtyFile } from './utils/stocktakeQtyImport';
 import { hasOAuthReturnParams, resolveAppUserFromSession, startGoogleSignIn } from './utils/googleAuth';
 import { signInWithEmailPassword } from './utils/supabaseAuthLogin';
+import { resolveLocationBySlug } from './utils/stocktakeLocationSlug';
 import './stocktake-count.css';
 
 const SCANNER_ELEMENT_ID = 'stc-qr-reader';
@@ -52,18 +55,20 @@ function clearCountUser() {
   try { sessionStorage.removeItem('stocktake:countUser'); } catch {}
 }
 
-function readStoredEventId() {
+function readStoredEventId(locationId) {
+  if (!locationId) return '';
   try {
-    return localStorage.getItem('stocktake:countEventId') || '';
+    return localStorage.getItem(`stocktake:countEventId:${locationId}`) || '';
   } catch {
     return '';
   }
 }
 
-function writeStoredEventId(id) {
+function writeStoredEventId(locationId, id) {
+  if (!locationId) return;
   try {
-    if (id) localStorage.setItem('stocktake:countEventId', id);
-    else localStorage.removeItem('stocktake:countEventId');
+    if (id) localStorage.setItem(`stocktake:countEventId:${locationId}`, id);
+    else localStorage.removeItem(`stocktake:countEventId:${locationId}`);
   } catch {}
 }
 
@@ -82,12 +87,16 @@ function displayCountUserName(user) {
   return name || user?.email || '';
 }
 
-export default function StocktakeCountSessionPage() {
+export default function StocktakeCountSessionPage({ locationSlug = '' }) {
+  const routerLocation = useLocation();
+  const countReturnPath = routerLocation.pathname || `/stocktake/count/${locationSlug}`;
   const [user, setUser] = useState(() => readCountUser());
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [openSessions, setOpenSessions] = useState([]);
-  const [eventId, setEventId] = useState(() => readStoredEventId());
+  const [boundLocation, setBoundLocation] = useState(null);
+  const [locationLoading, setLocationLoading] = useState(true);
+  const [locationError, setLocationError] = useState('');
+  const [eventId, setEventId] = useState('');
   const [event, setEvent] = useState(null);
   const [cart, setCart] = useState([]);
   const [search, setSearch] = useState('');
@@ -114,34 +123,65 @@ export default function StocktakeCountSessionPage() {
   const longPressTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
 
-  const locationId = event?.location_id;
-  const canCount = Boolean(eventId && event?.status === 'counting');
-  const waitingForSession = !openSessions.length;
+  const locationId = boundLocation?.id || event?.location_id;
+  const canCount = Boolean(eventId && event?.status === 'counting' && boundLocation);
+  const waitingForSession = Boolean(boundLocation && !eventId);
 
-  const refreshOpenSessions = useCallback(async () => {
-    const data = await listOpenSessions();
-    const rows = data.rows || [];
-    setOpenSessions(rows);
+  useEffect(() => {
+    let alive = true;
+    setLocationLoading(true);
+    setLocationError('');
+    setBoundLocation(null);
 
-    if (!rows.length) {
+    (async () => {
+      try {
+        const slug = String(locationSlug || '').trim().toLowerCase();
+        if (!slug) {
+          if (alive) setLocationError('Missing location in this link. Ask control for your location-specific count URL.');
+          return;
+        }
+        const data = await fetchLocations();
+        const loc = resolveLocationBySlug(data.rows || [], slug);
+        if (!alive) return;
+        if (!loc) {
+          setLocationError(`Unknown location "${slug}". Check the link from Stocktake control.`);
+          return;
+        }
+        setBoundLocation(loc);
+      } catch (err) {
+        if (alive) setLocationError(err?.message || 'Failed to load location.');
+      } finally {
+        if (alive) setLocationLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [locationSlug]);
+
+  const refreshLocationSession = useCallback(async (locId) => {
+    if (!locId) {
       setEventId('');
       setEvent(null);
       setCart([]);
-      return rows;
+      return null;
     }
-
-    setEventId((prev) => {
-      if (prev && rows.some((r) => r.id === prev)) return prev;
-      const stored = readStoredEventId();
-      if (stored && rows.some((r) => r.id === stored)) return stored;
-      return rows.length === 1 ? rows[0].id : '';
-    });
-    return rows;
+    const data = await listEvents(locId);
+    const open = (data.rows || []).find((row) => row.status === 'counting');
+    if (!open) {
+      setEventId('');
+      setEvent(null);
+      setCart([]);
+      return null;
+    }
+    setEventId(open.id);
+    return open;
   }, []);
 
   useEffect(() => {
-    writeStoredEventId(eventId || '');
-  }, [eventId]);
+    writeStoredEventId(locationId, eventId || '');
+  }, [locationId, eventId]);
 
   const refreshEvent = useCallback(async (id) => {
     if (!id) {
@@ -157,11 +197,11 @@ export default function StocktakeCountSessionPage() {
       setToast(next?.status === 'submitted'
         ? 'Stocktake submitted — counting session ended.'
         : 'Counting session ended.');
-      await refreshOpenSessions();
+      await refreshLocationSession(boundLocation?.id);
       return;
     }
     setEvent(next);
-  }, [refreshOpenSessions]);
+  }, [refreshLocationSession, boundLocation?.id]);
 
   const refreshCart = useCallback(async (userEmail, id) => {
     if (!id || !userEmail) {
@@ -187,23 +227,23 @@ export default function StocktakeCountSessionPage() {
   }, [locationId]);
 
   useEffect(() => {
-    if (!user?.email) return undefined;
+    if (!user?.email || !boundLocation?.id) return undefined;
     let alive = true;
     (async () => {
       try {
-        await refreshOpenSessions();
+        await refreshLocationSession(boundLocation.id);
       } catch (err) {
         if (alive) setError(err.message);
       }
     })();
     const timer = setInterval(() => {
-      refreshOpenSessions().catch(() => {});
+      refreshLocationSession(boundLocation.id).catch(() => {});
     }, 4000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [user, refreshOpenSessions]);
+  }, [user, boundLocation?.id, refreshLocationSession]);
 
   useEffect(() => {
     if (!user?.email) {
@@ -488,7 +528,7 @@ export default function StocktakeCountSessionPage() {
     setError('');
     setGoogleLoading(true);
     try {
-      await startGoogleSignIn({ returnPath: '/stocktake/count' });
+      await startGoogleSignIn({ returnPath: countReturnPath });
     } catch (err) {
       setGoogleLoading(false);
       setError(err?.message || 'Could not start Google sign-in.');
@@ -537,7 +577,7 @@ export default function StocktakeCountSessionPage() {
     setError('');
     try {
       const data = await fetchImportTemplate(locationId);
-      const locName = openSessions.find((s) => s.id === eventId)?.location_name || 'location';
+      const locName = boundLocation?.name || 'location';
       downloadStocktakeQtySample({
         rows: data.rows || [],
         filename: `stocktake_qty_sample_${String(locName).replace(/\s+/g, '_')}.xlsx`,
@@ -698,13 +738,35 @@ export default function StocktakeCountSessionPage() {
     else if (results.length === 1) openPopup(results[0]);
   };
 
+  if (locationLoading) {
+    return (
+      <div className="stc-page stc-login">
+        <div className="stc-card">
+          <p className="stc-note">Loading location…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (locationError) {
+    return (
+      <div className="stc-page stc-login">
+        <div className="stc-card">
+          <h2>Stock count</h2>
+          <div className="stc-error">{locationError}</div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user?.email) {
     return (
       <div className="stc-page stc-login">
         <div className="stc-card">
           <h2>Stock count login</h2>
           <p className="stc-login-lead">
-            Sign in to count stock. Open sessions for your location appear automatically on this page.
+            Sign in to count stock for <strong>{boundLocation?.name || 'this location'}</strong>.
+            Use only the count link shared for this location.
           </p>
           {error && <div className="stc-error">{error}</div>}
           <button
@@ -741,7 +803,7 @@ export default function StocktakeCountSessionPage() {
             </button>
           </form>
           <p className="stc-note stc-note-muted" style={{ marginTop: 14 }}>
-            Google accounts: use Continue with Google. This page is always /stocktake/count.
+            Google accounts: use Continue with Google. Bookmark this page for {boundLocation?.name || 'your location'}.
           </p>
         </div>
       </div>
@@ -769,37 +831,16 @@ export default function StocktakeCountSessionPage() {
 
         {waitingForSession ? (
           <div className="stc-warn">
-            No open counting session. Keep this page open — when control starts a session for a location, it will appear here.
+            No counting session is open for <strong>{boundLocation?.name}</strong> yet.
+            Keep this page open — when control starts counting for this location, counting will begin automatically.
           </div>
         ) : (
           <div className="stc-location-block">
             <label className="stc-label">Location</label>
-            {openSessions.length === 1 ? (
-              <div className="stc-location-text">
-                {openSessions[0].location_name}
-                {openSessions[0].is_initial ? ' · first stocktake' : ''}
-              </div>
-            ) : (
-              <div className="stc-location-list" role="listbox" aria-label="Open counting locations">
-                {openSessions.map((s) => {
-                  const active = s.id === eventId;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      className={`stc-location-choice${active ? ' is-active' : ''}`}
-                      disabled={busy}
-                      onClick={() => setEventId(s.id)}
-                    >
-                      {s.location_name}
-                      {s.is_initial ? ' · first' : ''}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <div className="stc-location-text">
+              {boundLocation?.name}
+              {event?.is_initial ? ' · first stocktake' : ''}
+            </div>
           </div>
         )}
 

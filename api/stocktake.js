@@ -3,6 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 import { resolveSessionUserFromAuth } from '../src/accessControl.js';
 import { buildLiveConsolidatedWithSets } from '../src/utils/stocktakeLiveTotals.js';
 
+const STOCKTAKE_ADMIN_EMAIL = 'alielboussi00@gmail.com';
+
+function isStocktakeAdmin(email) {
+  return String(email || '').trim().toLowerCase() === STOCKTAKE_ADMIN_EMAIL;
+}
+
 const ACTION_METHOD = {
   login: 'POST',
   'auth-profile': 'GET',
@@ -1320,6 +1326,7 @@ async function handleEventCancel(req, res) {
   const body = req.body || {};
   const eventId = body.eventId;
   const userEmail = emailOf(body);
+  const force = Boolean(body.force);
   if (!eventId) return res.status(400).json({ ok: false, error: 'eventId required' });
 
   const sb = getService();
@@ -1337,7 +1344,8 @@ async function handleEventCancel(req, res) {
   if (cErr) return res.status(500).json({ ok: false, error: cErr.message });
   if (sErr) return res.status(500).json({ ok: false, error: sErr.message });
 
-  if ((countRows || 0) > 0 || (scanRows || 0) > 0) {
+  const hasCounts = (countRows || 0) > 0 || (scanRows || 0) > 0;
+  if (hasCounts && !force) {
     return res.status(409).json({
       ok: false,
       error: 'Counts already exist. Clear counts for a fresh start, or submit the stocktake to finish.',
@@ -1345,6 +1353,16 @@ async function handleEventCancel(req, res) {
     });
   }
 
+  if (hasCounts && force) {
+    const { error: delCountsErr } = await sb.from('stocktake_counts').delete().eq('event_id', eventId);
+    if (delCountsErr) return res.status(500).json({ ok: false, error: delCountsErr.message });
+    const { error: delLogErr } = await sb.from('stocktake_count_log').delete().eq('event_id', eventId);
+    if (delLogErr) return res.status(500).json({ ok: false, error: delLogErr.message });
+    const { error: delScansErr } = await sb.from('stocktake_set_scans').delete().eq('event_id', eventId);
+    if (delScansErr) return res.status(500).json({ ok: false, error: delScansErr.message });
+  }
+
+  const cancelNote = force && hasCounts ? 'Force closed session (counts discarded)' : 'Cancelled empty session';
   const { data: updated, error: upErr } = await sb
     .from('stocktake_events')
     .update({
@@ -1352,14 +1370,14 @@ async function handleEventCancel(req, res) {
       counting_enabled: false,
       submitted_at: new Date().toISOString(),
       submitted_by_email: userEmail || null,
-      notes: [event.notes, 'Cancelled empty session'].filter(Boolean).join(' · '),
+      notes: [event.notes, cancelNote].filter(Boolean).join(' · '),
     })
     .eq('id', eventId)
     .select('*')
     .single();
   if (upErr) return res.status(500).json({ ok: false, error: upErr.message });
 
-  res.status(200).json({ ok: true, event: updated });
+  res.status(200).json({ ok: true, event: updated, forceClosed: force && hasCounts });
 }
 
 async function handleEventSubmit(req, res) {
@@ -1388,10 +1406,22 @@ async function handleEventSubmit(req, res) {
   );
   if (cErr) return res.status(500).json({ ok: false, error: cErr.message });
 
+  const finalTotals = Array.isArray(body.finalTotals) ? body.finalTotals : null;
   const totals = new Map();
-  (countRows || []).forEach((r) => {
-    totals.set(r.product_id, (totals.get(r.product_id) || 0) + Number(r.qty || 0));
-  });
+  if (finalTotals) {
+    if (!isStocktakeAdmin(userEmail)) {
+      return res.status(403).json({ ok: false, error: 'Admin approval required for adjusted totals.' });
+    }
+    finalTotals.forEach((row) => {
+      const pid = row?.product_id;
+      if (!pid) return;
+      totals.set(pid, Number(row.qty ?? row.quantity ?? 0) || 0);
+    });
+  } else {
+    (countRows || []).forEach((r) => {
+      totals.set(r.product_id, (totals.get(r.product_id) || 0) + Number(r.qty || 0));
+    });
+  }
 
   // Location scope: zero any product linked to this location (product_locations OR inventory)
   // that was not counted. Other locations are never touched.
@@ -1648,7 +1678,18 @@ async function handlePeriodVariance(req, res) {
   }
   const rows = await buildVarianceRows(sb, period);
   const { data: company } = await sb.from('company_settings').select('*').limit(1).maybeSingle();
-  res.status(200).json({ ok: true, period, rows, company: company || null });
+  const { data: location } = await sb
+    .from('locations')
+    .select('id, name')
+    .eq('id', period.location_id)
+    .maybeSingle();
+  res.status(200).json({
+    ok: true,
+    period,
+    rows,
+    company: company || null,
+    locationName: location?.name || '',
+  });
 }
 
 export default async function handler(req, res) {

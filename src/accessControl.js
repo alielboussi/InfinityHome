@@ -1,6 +1,8 @@
 // Hardcoded app permissions by user UUID / email.
 // Do NOT load roles or route access from public.users or Supabase Auth metadata.role.
 
+import { isStocktakeCountLocationPath } from './utils/stocktakeLocationSlug';
+
 const USER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Hassan Awad — quotationer-only: quotes, warehouse deliveries, read-only laybys. */
@@ -14,6 +16,7 @@ export const HASSAN_AWAD = Object.freeze({
     '/quotes-board',
     '/warehouse-deliveries',
     '/layby-management',
+    '/lusaka-transfers',
   ]),
   quotationerOnly: true,
   canManageLaybys: false,
@@ -42,6 +45,26 @@ export function getCurrentUser() {
     // ignore
   }
   return null;
+}
+
+/** Fixed counter URL — the only app page that does not require main login at /. */
+export const STOCKTAKE_COUNT_PUBLIC_PATH = '/stocktake/count';
+
+export function isPublicAppRoute(path) {
+  const raw = String(path || '/').split('?')[0].split('#')[0];
+  let p = raw;
+  if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+  return isStocktakeCountLocationPath(p);
+}
+
+export function isAppAuthenticated() {
+  const user = getCurrentUser();
+  if (!user) return false;
+  try {
+    return sessionStorage.getItem('bestrest:tabAuthed:v1') === '1';
+  } catch {
+    return false;
+  }
 }
 
 // Map logged-in user to sales columns: user_uid (uuid) + user_id (legacy integer).
@@ -242,8 +265,8 @@ const USER_ACTIVITY_ROUTE = '/user-activity';
 const DATABASE_BACKUP_ROUTE = '/database-backup';
 const USER_ACTIVITY_EMAIL = 'alielboussi00@gmail.com';
 const STOCK_CONTROL_EMAIL = 'alielboussi00@gmail.com';
-const QUOTATION_ONLY_UUIDS = new Set([HASSAN_AWAD.id]);
-const QUOTATION_ONLY_EMAILS = new Set([...HASSAN_AWAD.emails]);
+const STOCKTAKE_AGGREGATION_ROUTE = '/stocktake/aggregation';
+const LUSAKA_STOCK_ROUTE = '/lusaka-stock';
 const STOCKTAKE_FLOW_ROUTES = new Set([
   '/stocktake',
   '/stocktake-periods',
@@ -259,9 +282,18 @@ export function canViewStockControl(user) {
   return getUserEmail(user) === STOCK_CONTROL_EMAIL;
 }
 
+export function canViewStocktakeAggregation(user) {
+  return getUserEmail(user) === STOCK_CONTROL_EMAIL;
+}
+
+export function isHassanAwadUser(user) {
+  const email = getUserEmail(user);
+  if (HASSAN_AWAD.emails.some((entry) => entry.toLowerCase() === email)) return true;
+  return getUserUuid(user) === String(HASSAN_AWAD.id).toLowerCase();
+}
+
 export function isQuotationerOnlyUser(user) {
-  return QUOTATION_ONLY_UUIDS.has(getUserUuid(user))
-    || QUOTATION_ONLY_EMAILS.has(getUserEmail(user));
+  return isHassanAwadUser(user);
 }
 
 export function canViewStocktakeFlow(user) {
@@ -304,7 +336,7 @@ export function shouldHideAppChrome() {
 }
 
 export function getHomeDashboardPath(user) {
-  return isQuotationerOnlyUser(user) ? '/quotationer' : '/dashboard';
+  return isHassanAwadUser(user) ? HASSAN_AWAD.landingPath : '/dashboard';
 }
 
 export function canViewUserActivity(user) {
@@ -342,12 +374,15 @@ export function isPathAllowed(user, path) {
   if (p === DATABASE_BACKUP_ROUTE || p.startsWith(`${DATABASE_BACKUP_ROUTE}/`)) {
     return canViewDatabaseBackup(user);
   }
+  if (p === STOCKTAKE_AGGREGATION_ROUTE || p.startsWith(`${STOCKTAKE_AGGREGATION_ROUTE}/`)) {
+    return canViewStocktakeAggregation(user);
+  }
+  // Hidden kiosk page — direct URL only, any logged-in user.
+  if (p === LUSAKA_STOCK_ROUTE) return Boolean(user && (user.id || user.email));
   if (STOCK_CONTROL_ROUTES.has(p) && !canViewStockControl(user)) {
     return false;
   }
   if ((STOCKTAKE_FLOW_ROUTES.has(p) || p.startsWith('/stocktake/')) && !canViewStocktakeFlow(user)) {
-    // Public counting pages are gated in App (own login); AccessGuard still runs for logged-in users.
-    if (p.startsWith('/stocktake/count')) return true;
     return false;
   }
   if (allow.includes('*')) return true;
@@ -356,6 +391,8 @@ export function isPathAllowed(user, path) {
 
 // Return the first allowed base path for a user. If '*' (full access), default to dashboard.
 export function getFirstAllowedPath(user) {
+  const home = getHomeDashboardPath(user);
+  if (isPathAllowed(user, home)) return home;
   const allow = allowedPathsForUser(user);
   if (!allow || allow.length === 0) return '/dashboard';
   if (allow.includes('*')) return '/dashboard';

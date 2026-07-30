@@ -7,7 +7,7 @@ import {
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
   FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo
 } from 'react-icons/fa';
-import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, isQuotationerOnlyUser } from './accessControl';
+import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute } from './accessControl';
 
 // Functional groupings for the slide-out navigation drawer.
 const NAV_GROUPS = [
@@ -49,6 +49,7 @@ const NAV_GROUPS = [
     title: 'Stocktake Flow',
     items: [
       { label: 'Stocktake', route: '/stocktake', icon: FaBoxes },
+      { label: 'Stocktake Aggregation', route: '/stocktake/aggregation', icon: FaClipboardList, adminOnly: true },
     ],
   },
   {
@@ -90,6 +91,13 @@ const QUOTATIONER_ONLY_NAV_GROUPS = [
     title: 'Warehouse',
     items: [
       { label: 'Warehouse Deliveries', route: '/warehouse-deliveries', icon: FaTruckLoading },
+    ],
+  },
+  {
+    id: 'transfers',
+    title: 'Transfers',
+    items: [
+      { label: 'Lusaka Transfers', route: '/lusaka-transfers', icon: FaExchangeAlt },
     ],
   },
   {
@@ -138,6 +146,7 @@ const TITLE_MAP = {
   '/price-labels': 'Price Labels',
   '/price-label-mobile': 'Price Labels',
   '/stocktake': 'Stocktake',
+  '/stocktake/aggregation': 'Stocktake Aggregation',
   '/stocktake-periods': 'Stocktake',
   '/stock-periods': 'Stock Periods',
   '/stock-count': 'Stock Count',
@@ -147,6 +156,7 @@ const TITLE_MAP = {
   '/transfers-report': 'Transfers Report',
   '/warehouse-deliveries': 'Warehouse Deliveries',
   '/warehouse-deliveries-admin': 'Warehouse Deliveries',
+  '/lusaka-transfers': 'Lusaka Transfers',
   '/company-settings': 'Company Settings',
   '/user-activity': 'User Activity',
   '/database-backup': 'Database Backup',
@@ -177,7 +187,8 @@ export default function AppChrome() {
 
   const user = getCurrentUser();
   const isLogin = /^\/login(\b|\/|\?|#)/i.test(path);
-  const isPublicCount = path.toLowerCase().startsWith('/stocktake/count');
+  const isPublicCount = isPublicAppRoute(path);
+  const isKioskStock = path.toLowerCase() === '/lusaka-stock';
   const hasUser = Boolean(user);
   const quotationerOnly = isQuotationerOnlyUser(user);
   const homePath = getHomeDashboardPath(user);
@@ -185,14 +196,14 @@ export default function AppChrome() {
   React.useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     // Count page is a standalone mobile surface — no pinned sidebar.
-    const pinned = hasUser && !isLogin && !isPublicCount;
+    const pinned = hasUser && !isLogin && !isPublicCount && !isKioskStock;
     document.body.classList.toggle('ent-sidebar-pinned', pinned);
     return () => {
       try { document.body.classList.remove('ent-sidebar-pinned'); } catch {}
     };
-  }, [isLogin, isPublicCount, hasUser, user]);
+  }, [isLogin, isPublicCount, isKioskStock, hasUser, user]);
 
-  if (isLogin || isPublicCount || !user) return null;
+  if (isLogin || isPublicCount || isKioskStock || !user) return null;
 
   const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
   const title = titleForPath(path, user, location.search);
@@ -219,7 +230,10 @@ export default function AppChrome() {
     })
     .map(group => ({
       ...group,
-      items: group.items.filter(item => isPathAllowed(user, item.route)),
+      items: group.items.filter((item) => {
+        if (item.adminOnly && !canViewStocktakeAggregation(user)) return false;
+        return isPathAllowed(user, item.route);
+      }),
     }))
     .filter(group => group.items.length > 0));
 
