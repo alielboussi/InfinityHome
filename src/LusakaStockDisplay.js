@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import supabase from './supabase';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import {
@@ -14,6 +15,7 @@ import {
   resolveProductLocationPricing,
 } from './utils/locationPricing';
 import { getMaxSetQty } from './utils/setInventoryUtils';
+import { clearStaleAppLogin } from './utils/authSession';
 import './lusaka-stock-display.css';
 
 function formatLusakaPrice(value, currency) {
@@ -71,6 +73,7 @@ async function resolveLusakaComboIds() {
 }
 
 export default function LusakaStockDisplay() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [locationName, setLocationName] = useState('Lusaka');
@@ -227,6 +230,12 @@ export default function LusakaStockDisplay() {
     [displayRows],
   );
 
+  const handleLogout = async () => {
+    try { await supabase.auth.signOut(); } catch {}
+    clearStaleAppLogin();
+    navigate('/login?next=%2Flusaka-stock', { replace: true });
+  };
+
   return (
     <div className="lusaka-stock-display">
       <header className="lusaka-stock-display__header">
@@ -236,9 +245,18 @@ export default function LusakaStockDisplay() {
             Products and sets assigned to this location
           </p>
         </div>
-        <div className="lusaka-stock-display__stats">
-          <span>{displayRows.length} items</span>
-          <span>{totalQty} total qty</span>
+        <div className="lusaka-stock-display__header-actions">
+          <div className="lusaka-stock-display__stats">
+            <span>{displayRows.length} items</span>
+            <span>{totalQty} total qty</span>
+          </div>
+          <button
+            type="button"
+            className="lusaka-stock-display__logout"
+            onClick={handleLogout}
+          >
+            Log out
+          </button>
         </div>
       </header>
 
