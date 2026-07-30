@@ -25,13 +25,14 @@ function loadImage(url) {
 /**
  * Generate Stocktake Variance Report PDF (A4 portrait, blue border).
  */
-export async function downloadStocktakeVariancePdf({ period, rows, company }) {
+export async function downloadStocktakeVariancePdf({ period, rows, company, locationName }) {
   const companyName = company?.company_name || company?.name || 'Best Rest Furniture';
   const logoUrl = company?.company_logo || company?.logo || '';
   const begin = period?.begin_period_date || period?.opened_at;
   const end = period?.end_period_date || period?.closed_at;
   const beginLabel = fmtDate(begin);
   const endLabel = fmtDate(end);
+  const locationLabel = locationName || period?.location_name || '';
 
   const doc = new jsPDF('p', 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -60,11 +61,17 @@ export async function downloadStocktakeVariancePdf({ period, rows, company }) {
   doc.text(companyName, pageWidth / 2, 48, { align: 'center' });
 
   doc.setFontSize(16);
-  doc.text('Stocktake Report', pageWidth / 2, 78, { align: 'center' });
+  doc.text('Stocktake Variance Report', pageWidth / 2, 78, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
-  doc.text(`Period: ${beginLabel} to ${endLabel}`, pageWidth / 2, 96, { align: 'center' });
+  let metaY = 96;
+  if (locationLabel) {
+    doc.text(`Location: ${locationLabel}`, pageWidth / 2, metaY, { align: 'center' });
+    metaY += 14;
+  }
+  doc.text(`Period: ${beginLabel} to ${endLabel}`, pageWidth / 2, metaY, { align: 'center' });
+  const tableStartY = metaY + 18;
 
   const body = (rows || []).map((r) => [
     r.sku || '',
@@ -80,7 +87,7 @@ export async function downloadStocktakeVariancePdf({ period, rows, company }) {
   ]);
 
   autoTable(doc, {
-    startY: 112,
+    startY: tableStartY,
     head: [[
       'SKU',
       'PRODUCT NAME',

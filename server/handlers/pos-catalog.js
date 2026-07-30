@@ -48,6 +48,62 @@ async function selectProductsByIds(supabase, productIds) {
   return rows;
 }
 
+function locationPriceKey(entityId, locationId) {
+  return `${String(entityId || '').trim()}:${String(locationId || '').trim()}`;
+}
+
+function applyProductLocationPricing(product, locationId, priceMap) {
+  const override = locationId ? priceMap.get(locationPriceKey(product?.id, locationId)) : null;
+  return {
+    ...product,
+    price: override?.price != null ? override.price : product.price,
+    promotional_price: override?.promotional_price != null
+      ? override.promotional_price
+      : product.promotional_price,
+  };
+}
+
+function applyComboLocationPricing(combo, locationId, priceMap) {
+  const override = locationId ? priceMap.get(locationPriceKey(combo?.id, locationId)) : null;
+  const globalStandard = combo.combo_price ?? combo.standard_price ?? null;
+  const comboPrice = override?.combo_price != null ? override.combo_price : globalStandard;
+  return {
+    ...combo,
+    combo_price: comboPrice,
+    standard_price: comboPrice,
+    promotional_price: override?.promotional_price != null
+      ? override.promotional_price
+      : combo.promotional_price,
+  };
+}
+
+async function fetchLocationPriceMaps(supabase, locationId) {
+  if (!locationId) {
+    return { productMap: new Map(), comboMap: new Map() };
+  }
+  const [productRes, comboRes] = await Promise.all([
+    supabase
+      .from('product_location_prices')
+      .select('product_id, location_id, price, promotional_price')
+      .eq('location_id', locationId),
+    supabase
+      .from('combo_location_prices')
+      .select('combo_id, location_id, combo_price, promotional_price')
+      .eq('location_id', locationId),
+  ]);
+  if (productRes.error) throw productRes.error;
+  if (comboRes.error) throw comboRes.error;
+  const productMap = new Map();
+  (productRes.data || []).forEach((row) => {
+    productMap.set(locationPriceKey(row.product_id, row.location_id), row);
+  });
+  const comboMap = new Map();
+  (comboRes.data || []).forEach((row) => {
+    comboMap.set(locationPriceKey(row.combo_id, row.location_id), row);
+  });
+  return { productMap, comboMap };
+}
+
 export default async function handler(req, res) {
   setCors(res);
 
@@ -121,15 +177,18 @@ export default async function handler(req, res) {
     ];
 
     const products = await selectProductsByIds(supabase, derivedProductIds);
+    const { productMap, comboMap } = await fetchLocationPriceMaps(supabase, locationId);
+    const pricedProducts = (products || []).map((row) => applyProductLocationPricing(row, locationId, productMap));
+    const pricedCombos = (combosRes.data || []).map((row) => applyComboLocationPricing(row, locationId, comboMap));
 
     res.status(200).json({
       ok: true,
       rows: {
-        combos: combosRes.data || [],
+        combos: pricedCombos,
         combo_locations: comboLocationsRes.data || [],
         combo_items: comboItemsRes.data || [],
         product_locations: productLocationsRes.data || [],
-        products,
+        products: pricedProducts,
       },
     });
   } catch (err) {

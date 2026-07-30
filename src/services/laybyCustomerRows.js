@@ -2,9 +2,11 @@ import supabase from '../supabase';
 import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
-import { computePooledLaybyTotalsByCurrency, filterStatementToOutstandingSales, resolveNegotiatedGrossSubtotal } from '../utils/laybyRollup';
+import { computePooledLaybyTotalsByCurrency, filterFahmePooledStatementPayments, filterStatementToOutstandingSales, resolveNegotiatedGrossSubtotal } from '../utils/laybyRollup';
 import { computeQuotationDisplayTotal, computeSaleLaybyTotalDue, resolveQuoteVatApply } from '../utils/quotationDisplay';
-import { fetchLaybyPaymentsBySaleIds } from './laybyPayments';
+import { fetchMergedLaybyPayments } from './laybyPayments';
+import { isFahme } from '../laybyRules';
+import laybyPdfSettlementFallbacks from '../data/laybyPdfSettlementFallbacks.json';
 
 const CLOSED_LAYBY_STATUSES = new Set(['completed', 'cancelled', 'voided', 'closed', 'settled', 'paid', 'refunded']);
 
@@ -254,16 +256,56 @@ export async function fetchLaybyCustomerRows() {
   }
 
   const paymentsBySale = new Map();
+  const paymentRowKey = (payment) => [
+    payment?.sale_id || '',
+    payment?.payment_date || '',
+    Number(payment?.amount || 0),
+    Number(payment?.discount_amount || 0),
+    String(payment?.payment_type || '').toLowerCase(),
+    String(payment?.reference || ''),
+    String(payment?.notes || ''),
+    String(payment?.allocation_batch_uuid || ''),
+  ].join('|');
+
   if (candidateSaleIds.length) {
     const chunks = chunkArray(candidateSaleIds, 200);
     for (const chunk of chunks) {
-      const { data, error } = await fetchLaybyPaymentsBySaleIds(chunk);
+      const { data, error } = await fetchMergedLaybyPayments({ saleIds: chunk });
       if (error) throw error;
       (data || []).forEach((payment) => {
-        const saleId = String(payment?.sale_id || '').trim();
+        let saleId = String(payment?.sale_id || '').trim();
         if (!saleId) return;
         if (!paymentsBySale.has(saleId)) paymentsBySale.set(saleId, []);
-        paymentsBySale.get(saleId).push(payment);
+        const bucket = paymentsBySale.get(saleId);
+        const key = paymentRowKey(payment);
+        if (bucket.some((row) => paymentRowKey(row) === key)) return;
+        bucket.push(payment);
+      });
+    }
+  }
+
+  // Customer-scoped payments in bulk (not one request per customer).
+  if (ids.length) {
+    const customerChunks = chunkArray(ids, 100);
+    for (const customerChunk of customerChunks) {
+      const { data, error } = await fromPublic('layby_payments')
+        .select('id, sale_id, customer_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
+        .in('customer_id', customerChunk)
+        .order('payment_date', { ascending: true });
+      if (error) throw error;
+      (data || []).forEach((payment) => {
+        const cid = String(payment?.customer_id || '').trim();
+        const saleIdsForCustomer = (salesByCustomer.get(cid) || []).map((sale) => sale?.id).filter(Boolean);
+        let saleId = String(payment?.sale_id || '').trim();
+        if (!saleId && saleIdsForCustomer.length) {
+          saleId = String(saleIdsForCustomer[0] || '').trim();
+        }
+        if (!saleId) return;
+        if (!paymentsBySale.has(saleId)) paymentsBySale.set(saleId, []);
+        const bucket = paymentsBySale.get(saleId);
+        const key = paymentRowKey(payment);
+        if (bucket.some((row) => paymentRowKey(row) === key)) return;
+        bucket.push({ ...payment, payment_type: String(payment?.payment_type || '').toLowerCase() });
       });
     }
   }
@@ -486,10 +528,19 @@ export async function fetchLaybyCustomerRows() {
       (paymentsBySale.get(saleKey) || []).forEach((payment) => customerPayments.push(payment));
     });
 
+    let statementPayments = customerPayments;
+    if (isFahme(customerId)) {
+      const fallbackRows = [
+        ...(laybyPdfSettlementFallbacks['mohammad fahme'] || []),
+        ...(laybyPdfSettlementFallbacks['mohammad fahme acc(2)'] || []),
+      ];
+      statementPayments = filterFahmePooledStatementPayments(customerPayments, fallbackRows);
+    }
+
     const normalizedStatement = normalizeLaybyStatement({
       sales: statementSales,
       items: customerItems,
-      payments: customerPayments,
+      payments: statementPayments,
     });
 
     const statementSaleIds = new Set(

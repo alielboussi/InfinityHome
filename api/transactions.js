@@ -249,29 +249,56 @@ async function handleLaybyStatement(req, res) {
   });
 
   const fetchLaybyPayments = async () => {
-    let data = null;
-    let error = null;
-    ({ data, error } = await supabase
+    const allCustomerSaleIds = new Set(saleIds.map((id) => String(id)));
+    try {
+      const { data: customerSales } = await supabase
+        .from('sales')
+        .select('id')
+        .eq('customer_id', customerId);
+      (customerSales || []).forEach((sale) => {
+        if (sale?.id != null) allCustomerSaleIds.add(String(sale.id));
+      });
+    } catch {}
+    const mergedSaleIds = Array.from(allCustomerSaleIds);
+
+    const laybyBySale = await supabase
       .from('layby_payments')
+      .select('id, sale_id, customer_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
+      .in('sale_id', mergedSaleIds)
+      .order('payment_date', { ascending: true });
+    const salesBySale = await supabase
+      .from('sales_payments')
       .select('id, sale_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
-      .in('sale_id', saleIds)
-      .order('payment_date', { ascending: true }));
+      .in('sale_id', mergedSaleIds)
+      .order('payment_date', { ascending: true });
+    const laybyByCustomer = customerId
+      ? await supabase
+        .from('layby_payments')
+        .select('id, sale_id, customer_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
+        .eq('customer_id', customerId)
+        .order('payment_date', { ascending: true })
+      : { data: [], error: null };
 
-    if (error) {
-      const message = String(error.message || '').toLowerCase();
-      if (message.includes('discount_amount')) {
-        ({ data, error } = await supabase
-          .from('layby_payments')
-          .select('id, sale_id, amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
-          .in('sale_id', saleIds)
-          .order('payment_date', { ascending: true }));
-        if (!error) {
-          data = (data || []).map((row) => ({ ...row, discount_amount: 0 }));
-        }
-      }
-    }
+    const error = laybyBySale.error || salesBySale.error || laybyByCustomer.error;
+    if (error) return { data: null, error };
 
-    return { data, error };
+    const seen = new Set();
+    const merged = [];
+    [...(laybyBySale.data || []), ...(salesBySale.data || []), ...(laybyByCustomer.data || [])].forEach((row) => {
+      const key = [
+        row?.id || '',
+        row?.sale_id || '',
+        row?.payment_date || '',
+        Number(row?.amount || 0),
+        String(row?.payment_type || '').toLowerCase(),
+        String(row?.reference || ''),
+        String(row?.notes || ''),
+      ].join('|');
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push(row);
+    });
+    return { data: merged, error: null };
   };
 
   const [itemsRes, paymentsRes] = await Promise.all([

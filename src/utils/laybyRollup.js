@@ -52,7 +52,51 @@ export function resolveNegotiatedGrossSubtotal({
   return Math.max(0, gross);
 }
 
-export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v18';
+export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v19';
+
+export function parseFallbackSettlementDateTs(dateLabel) {
+  const m = /^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/.exec(String(dateLabel || '').trim());
+  if (!m) return 0;
+  const ts = Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function paymentDayKey(payment) {
+  const raw = payment?.payment_date || payment?.date || null;
+  if (!raw) return '';
+  try {
+    return new Date(raw).toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+}
+
+export function isPdfRestoreLaybyPayment(payment) {
+  const note = String(payment?.notes || '');
+  const ref = String(payment?.reference || '');
+  return /PDF_ITEM_RESTORE_/i.test(note) || /PDF_ITEM_RESTORE_/i.test(ref)
+    || /PDF settlement allocation/i.test(note);
+}
+
+export function isPaymentCoveredByFallbackSettlement(payment, fallbackRows) {
+  const amount = toNumber(payment?.amount);
+  const paymentDay = paymentDayKey(payment);
+  return (fallbackRows || []).some((row) => {
+    if (Math.abs(toNumber(row?.amount) - amount) > 0.01) return false;
+    const fallbackTs = parseFallbackSettlementDateTs(row?.date);
+    if (!paymentDay || !fallbackTs) return false;
+    const fallbackDay = new Date(fallbackTs).toISOString().slice(0, 10);
+    return paymentDay === fallbackDay;
+  });
+}
+
+/** Drop live DB rows that duplicate PDF fallback settlement lines (Fahme pooled totals). */
+export function filterFahmePooledStatementPayments(payments, fallbackRows) {
+  return (payments || []).filter((payment) => {
+    if (isPdfRestoreLaybyPayment(payment)) return true;
+    return !isPaymentCoveredByFallbackSettlement(payment, fallbackRows);
+  });
+}
 
 export function buildLaybySaleFinancials(statement) {
   const normalized = normalizeLaybyStatement(statement || {});

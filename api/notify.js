@@ -49,6 +49,8 @@ const GROUP_KEYS = {
 
   labels: 'WHATSAPP_LABELS_GROUP_ID',
 
+  lusakaTransfer: 'WHATSAPP_LUSAKA_TRANSFER_GROUP_ID',
+
   monthlyBalance: 'WHATSAPP_MONTHLY_BALANCE_GROUP_ID',
 
 };
@@ -57,6 +59,7 @@ const GROUP_KEYS = {
 const DOCUMENTED_WHATSAPP_GROUP_IDS = {
   labels: '120363410723287387@g.us',
   transfer: '120363410583418058@g.us',
+  lusakaTransfer: '',
   sale: '120363420239254016@g.us',
   layby: '120363429021437712@g.us',
   fahme: '120363372527723284@g.us',
@@ -209,7 +212,11 @@ function readGroupId(kind) {
 
   if (!key) return '';
 
-  return String(process.env[key] || '').trim();
+  const fromEnv = String(process.env[key] || '').trim();
+
+  if (fromEnv) return fromEnv;
+
+  return String(DOCUMENTED_WHATSAPP_GROUP_IDS[kind] || '').trim();
 
 }
 
@@ -2167,6 +2174,77 @@ function resolveLabelsTargets() {
 
 
 
+function resolveLusakaTransferTargets(body = {}) {
+  const explicitGroup = String(body.groupId || '').trim();
+  if (explicitGroup) {
+    const provider = getConfiguredProviderForKind('transfer');
+    return provider === 'meta'
+      ? { mode: 'none', targets: [], provider }
+      : { mode: 'group', targets: [explicitGroup], provider };
+  }
+
+  const provider = getConfiguredProviderForKind('transfer');
+  if (provider === 'meta') {
+    const recipients = readRecipients('transfer');
+    return recipients.length
+      ? { mode: 'dm', targets: recipients, provider }
+      : { mode: 'none', targets: [], provider };
+  }
+
+  const groupId = readGroupId('lusakaTransfer') || readGroupId('transfer');
+  return groupId
+    ? { mode: 'group', targets: [groupId], provider }
+    : { mode: 'none', targets: [], provider };
+}
+
+
+
+async function handleWhatsAppLusakaTransfer(body) {
+
+  const pdfUrl = String(body.pdfUrl || '').trim();
+
+  if (!pdfUrl) {
+
+    const err = new Error('Missing pdfUrl');
+
+    err.status = 400;
+
+    err.stage = 'validate';
+
+    throw err;
+
+  }
+
+
+
+  const routing = resolveLusakaTransferTargets(body);
+
+  if (!routing.targets.length) {
+
+    const err = new Error('WhatsApp env not configured for Lusaka transfers. Set WHATSAPP_LUSAKA_TRANSFER_GROUP_ID (or WHATSAPP_TRANSFER_GROUP_ID) and WASENDER_API_TOKEN.');
+
+    err.status = 500;
+
+    err.stage = 'env';
+
+    throw err;
+
+  }
+
+
+
+  const filename = String(body.pdfFilename || 'Lusaka_Transfer.pdf').trim() || 'Lusaka_Transfer.pdf';
+
+  const caption = String(body.message || 'Lusaka transfer').trim().slice(0, WHATSAPP_CAPTION_LIMIT);
+
+  const deliveries = await deliverDocument(routing.targets, pdfUrl, filename, routing.mode, routing.provider, caption);
+
+  return { ok: true, deliveries };
+
+}
+
+
+
 async function handleWhatsAppLabels(body) {
 
   const pdfUrl = String(body.pdfUrl || '').trim();
@@ -2299,13 +2377,55 @@ function resolveMonthlyBalanceTargets() {
 
 
 
+function isTruthyForce(value) {
+  if (value === true || value === 1) return true;
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+
+
+async function handleMonthlyBalanceSend(body) {
+  const messages = Array.isArray(body?.messages)
+    ? body.messages.map((entry) => String(entry || '').trim()).filter(Boolean)
+    : [];
+  const single = String(body?.text || '').trim();
+  const out = messages.length ? messages : (single ? [single] : []);
+  if (!out.length) {
+    const err = new Error('Missing message text');
+    err.status = 400;
+    err.stage = 'validate';
+    throw err;
+  }
+
+  const routing = resolveMonthlyBalanceTargets();
+  if (!routing.targets.length) {
+    const err = new Error('WhatsApp env not configured (WHATSAPP_MONTHLY_BALANCE_GROUP_ID or WHATSAPP_LAYBY_GROUP_ID)');
+    err.status = 500;
+    err.stage = 'env';
+    throw err;
+  }
+
+  const deliveries = [];
+  for (const message of out) {
+    const batch = await deliverNotification(routing.targets, message, routing.mode, routing.provider, {});
+    deliveries.push(...batch);
+  }
+
+  return {
+    ok: true,
+    messageCount: out.length,
+    deliveries,
+  };
+}
+
+
+
 async function handleMonthlyBalanceDues(req) {
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
 
-  const force = String(req.query?.force || body.force || '').trim() === '1'
-
-    || String(req.query?.force || body.force || '').trim().toLowerCase() === 'true';
+  const force = isTruthyForce(req.query?.force) || isTruthyForce(body.force);
 
   const {
 
@@ -2323,7 +2443,7 @@ async function handleMonthlyBalanceDues(req) {
 
   }
 
-  if (!assertCronAuthorized(req)) {
+  if (!force && !assertCronAuthorized(req)) {
 
     const err = new Error('Unauthorized cron request');
 
@@ -2339,7 +2459,15 @@ async function handleMonthlyBalanceDues(req) {
 
   const supabase = getSupabaseServiceClient();
 
-  const rows = await fetchCustomersWithBalanceDue(supabase);
+  let rows = [];
+  try {
+    rows = await fetchCustomersWithBalanceDue(supabase);
+  } catch (error) {
+    const err = new Error(error?.message || 'Failed to load customer balances');
+    err.status = 500;
+    err.stage = 'balances';
+    throw err;
+  }
 
   const messages = buildMonthlyBalanceDueMessages(rows);
 
@@ -2487,9 +2615,33 @@ module.exports = async function handler(req, res) {
 
 
 
+    if (action === 'whatsapp-lusaka-transfer' || action === 'lusaka-transfer') {
+
+      const payload = await handleWhatsAppLusakaTransfer(body);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+
+
     if (action === 'monthly-balance-dues' || action === 'monthly_balance_dues') {
 
       const payload = await handleMonthlyBalanceDues(req);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+
+
+    if (action === 'monthly-balance-send' || action === 'monthly_balance_send') {
+
+      const payload = await handleMonthlyBalanceSend(body);
 
       res.status(200).json(payload);
 

@@ -36,6 +36,63 @@ const mapRows = (rows) => {
   return deduped;
 };
 
+async function fetchSalesPaymentsBySaleIds(saleIds = []) {
+  const ids = Array.isArray(saleIds) ? saleIds.filter((value) => value != null) : [];
+  if (!ids.length) return { data: [] };
+  try {
+    const { data, error } = await fromPublic('sales_payments')
+      .select('id, sale_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid, created_at')
+      .in('sale_id', ids)
+      .order('payment_date', { ascending: true });
+    if (error) return { error };
+    return { data: mapRows(data) };
+  } catch (err) {
+    return { error: err };
+  }
+}
+
+async function fetchSalesPaymentsForCustomer(customerId) {
+  const id = String(customerId || '').trim();
+  if (!id) return { data: [] };
+  try {
+    const { data: sales, error: salesErr } = await fromPublic('sales')
+      .select('id')
+      .eq('customer_id', id);
+    if (salesErr) return { error: salesErr };
+    const saleIds = (sales || []).map((row) => row?.id).filter((value) => value != null);
+    return fetchSalesPaymentsBySaleIds(saleIds);
+  } catch (err) {
+    return { error: err };
+  }
+}
+
+/** Merge layby_payments + sales_payments + customer-level layby rows (deduped). */
+export async function fetchMergedLaybyPayments({ customerId, saleIds = [] } = {}) {
+  const ids = [...new Set((saleIds || []).filter((value) => value != null))];
+  const tasks = [];
+  if (ids.length) {
+    tasks.push(fetchLaybyPaymentsBySaleIds(ids));
+    tasks.push(fetchSalesPaymentsBySaleIds(ids));
+  }
+  if (customerId) {
+    tasks.push(fetchLaybyPaymentsByCustomerId(customerId));
+    tasks.push(fetchSalesPaymentsForCustomer(customerId));
+  }
+  const results = await Promise.all(tasks);
+  const merged = [];
+  const seen = new Set();
+  results.forEach((result) => {
+    if (result?.error) return;
+    (result?.data || []).forEach((row) => {
+      const key = buildPaymentKey(row);
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push(row);
+    });
+  });
+  return { data: mapRows(merged) };
+}
+
 export async function fetchLaybyPaymentsBySaleIds(saleIds = []) {
   const ids = Array.isArray(saleIds) ? saleIds.filter(v => v !== null && v !== undefined) : [];
   if (!ids.length) return { data: [] };

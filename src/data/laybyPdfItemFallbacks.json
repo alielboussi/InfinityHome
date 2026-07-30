@@ -505,6 +505,7 @@
     {
       "dmy": "17.06.2025",
       "isoDate": "2025-06-17",
+      "discount": 600,
       "items": [
         {
           "qty": 1,
@@ -1431,95 +1432,6 @@
           "name": "New Sitting Set 3+2+1+1",
           "price": 750,
           "amount": 1500,
-          "color": null
-        }
-      ]
-    }
-  ],
-  "mohammad fahme acc(2)": [
-    {
-      "dmy": "05.03.2026",
-      "isoDate": "2026-03-05",
-      "items": [
-        {
-          "qty": 4,
-          "name": "Paris Sitting Set 3+2+1+1",
-          "price": 1800,
-          "amount": 7200,
-          "color": null
-        },
-        {
-          "qty": 10,
-          "name": "Copper Fiber Mattress 160*200",
-          "price": 180,
-          "amount": 1800,
-          "color": null
-        }
-      ]
-    },
-    {
-      "dmy": "27.03.2026",
-      "isoDate": "2026-03-27",
-      "items": [
-        {
-          "qty": 2,
-          "name": "Viking 3+2+1+1 Sitting Set",
-          "price": 1100,
-          "amount": 2200,
-          "color": null
-        },
-        {
-          "qty": 1,
-          "name": "Luxury 3+3+1+1 Sitting Set",
-          "price": 900,
-          "amount": 900,
-          "color": null
-        },
-        {
-          "qty": 3,
-          "name": "Grand Luxury Mattress 200*200",
-          "price": 255,
-          "amount": 765,
-          "color": null
-        }
-      ]
-    },
-    {
-      "dmy": "08.04.2026",
-      "isoDate": "2026-04-08",
-      "items": [
-        {
-          "qty": 1,
-          "name": "Luxury 3+3+1+1 Sitting Set",
-          "price": 900,
-          "amount": 900,
-          "color": null
-        },
-        {
-          "qty": 3,
-          "name": "Anatasia Dining Table + 8 Chairs",
-          "price": 1100,
-          "amount": 3300,
-          "color": null
-        },
-        {
-          "qty": 2,
-          "name": "Anatasia Dining Table + 6 Chairs",
-          "price": 800,
-          "amount": 1600,
-          "color": null
-        }
-      ]
-    },
-    {
-      "dmy": "24.04.2026",
-      "isoDate": "2026-04-24",
-      "items": [
-        {
-          "qty": 2,
-          "name": "Viking Sitting Set 3+2+1+1",
-          "price": 1100,
-          "amount": 2200,
           "color": null
         }
       ]

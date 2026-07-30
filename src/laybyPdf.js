@@ -8,6 +8,8 @@ import { USE_LAYBY_RPC, fetchLaybyStatementRPC } from './laybyStatementService';
 import { fetchCanonicalFinancials } from './utils/financials';
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import { fetchLaybyStatement } from './services/laybyStatement';
+import { fetchLaybyPaymentsByCustomerId, fetchMergedLaybyPayments } from './services/laybyPayments';
+import { isFahme } from './laybyRules';
 import laybyPdfItemFallbacks from './data/laybyPdfItemFallbacks.json';
 import laybyPdfSettlementFallbacks from './data/laybyPdfSettlementFallbacks.json';
 import laybyTelegramItemFallbacks from './data/laybyTelegramItemFallbacks.json';
@@ -47,6 +49,18 @@ function posPaymentTypeLabel(type = '') {
 function isSystemReceiptTag(value) {
   const raw = String(value || '').trim();
   return /^TG_DUE_/i.test(raw) || /^PDF_ITEM_RESTORE_/i.test(raw);
+}
+
+function isPlaceholderReference(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return true;
+  return /^-+$/.test(raw);
+}
+
+function sanitizePaymentReference(value) {
+  const raw = String(value || '').trim();
+  if (!raw || isPlaceholderReference(raw) || isSystemReceiptTag(raw)) return '';
+  return raw;
 }
 
 function isSystemMigrationSale(sale) {
@@ -360,9 +374,25 @@ function sanitizePaymentNote(note) {
   return raw;
 }
 
+async function fetchSalesPaymentsForSaleIds(saleIds = []) {
+  const ids = (saleIds || []).filter((value) => value != null);
+  if (!ids.length) return [];
+  try {
+    const { data, error } = await fromPublic('sales_payments')
+      .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
+      .in('sale_id', ids)
+      .order('payment_date', { ascending: true });
+    if (error) return [];
+    return data || [];
+  } catch {
+    return [];
+  }
+}
+
 async function fetchLaybyPaymentsForSales(saleIds = []) {
   const ids = (saleIds || []).filter(v => v != null);
   if (!ids.length) return [];
+  let laybyRows = [];
   try {
     let data = null;
     let error = null;
@@ -370,22 +400,36 @@ async function fetchLaybyPaymentsForSales(saleIds = []) {
       .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
       .in('sale_id', ids)
       .order('payment_date', { ascending: true }));
-    if (!error) return data || [];
-    const message = String(error?.message || '').toLowerCase();
-    if (message.includes('discount_amount')) {
-      ({ data, error } = await fromPublic('layby_payments')
-        .select('sale_id, amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
-        .in('sale_id', ids)
-        .order('payment_date', { ascending: true }));
-      if (!error) return (data || []).map(row => ({ ...row, discount_amount: 0 }));
+    if (!error) {
+      laybyRows = data || [];
+    } else {
+      const message = String(error?.message || '').toLowerCase();
+      if (message.includes('discount_amount')) {
+        ({ data, error } = await fromPublic('layby_payments')
+          .select('sale_id, amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
+          .in('sale_id', ids)
+          .order('payment_date', { ascending: true }));
+        if (!error) laybyRows = (data || []).map(row => ({ ...row, discount_amount: 0 }));
+      }
     }
   } catch {}
 
-  const { data } = await fromPublic('sales_payments')
-    .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
-    .in('sale_id', ids)
-    .order('payment_date', { ascending: true });
-  return data || [];
+  const salesRows = await fetchSalesPaymentsForSaleIds(ids);
+  if (!laybyRows.length) return salesRows;
+  if (!salesRows.length) return laybyRows;
+
+  const merged = [];
+  const seen = new Set();
+  [...laybyRows, ...salesRows].forEach((row) => {
+    const key = buildLaybyPaymentMergeKey({
+      ...row,
+      payment_type: String(row?.payment_type || '').toLowerCase(),
+    });
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(row);
+  });
+  return merged;
 }
 
 function isClosedSaleStatus(status) {
@@ -429,6 +473,358 @@ async function appendLegacyDownPayments({ payments = [], sales = [] }) {
 
 const LAYBY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isLaybyUuid = (value) => LAYBY_UUID_RE.test(String(value || '').trim());
+const FAHME_PRIMARY_KEY = 'mohammad fahme';
+
+function readRowTotalsUsd(opts) {
+  const raw = opts?.totalsByCurrency || {};
+  const entry = raw.USD || raw.$ || raw.usd || null;
+  if (!entry) return null;
+  return {
+    total: Number(entry.total || 0),
+    paid: Number(entry.paid || 0),
+    discount: Number(entry.discount || 0),
+    due: Number(entry.due || 0),
+  };
+}
+
+function parseFallbackSettlementDateTs(dateLabel) {
+  const m = /^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/.exec(String(dateLabel || '').trim());
+  if (!m) return 0;
+  const ts = Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function settlementLineDescription({ dateLabel, note, paymentType }) {
+  const type = String(paymentType || 'Cash').trim();
+  const cleanNote = String(note || '').trim();
+  if (dateLabel && cleanNote) return `(${dateLabel}) - ${cleanNote} - ${type}`;
+  if (dateLabel) return `(${dateLabel}) - ${type}`;
+  if (cleanNote) return `${cleanNote} - ${type}`;
+  return type || 'Down Payment';
+}
+
+function settlementLineDateTs(line) {
+  if (line?.date) {
+    const ts = new Date(line.date).getTime();
+    if (Number.isFinite(ts)) return ts;
+  }
+  const match = String(line?.description || '').match(/\(([0-9]{2}\/[0-9]{2}\/[0-9]{4})\)/);
+  return match ? parseFallbackSettlementDateTs(match[1]) : 0;
+}
+
+function settlementLineDayKey(line) {
+  const ts = settlementLineDateTs(line);
+  if (!ts) return '';
+  try {
+    return new Date(ts).toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+}
+
+function paymentDayKey(payment) {
+  const raw = payment?.payment_date || payment?.date || null;
+  if (!raw) return '';
+  try {
+    return new Date(raw).toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+}
+
+function isSettlementLineAlreadyListed(paymentLines, line, amount, lineTs, desc) {
+  const lineDay = settlementLineDayKey(line) || (lineTs ? new Date(lineTs).toISOString().slice(0, 10) : '');
+  return paymentLines.some((existing) => {
+    const existingAmount = Number(existing?.amount || 0);
+    if (Math.abs(existingAmount - amount) > 0.01) return false;
+    const existingDay = settlementLineDayKey(existing);
+    if (lineDay && existingDay) return lineDay === existingDay;
+    const existingTs = settlementLineDateTs(existing);
+    if (lineTs && existingTs) return Math.abs(lineTs - existingTs) < 36e5;
+    return String(existing?.description || '') === String(desc || line?.description || '');
+  });
+}
+
+function paymentRowToSettlementLine(payment) {
+  const dateLabel = payment?.payment_date ? new Date(payment.payment_date).toLocaleDateString('en-GB') : '';
+  const paymentType = titleCase(String(payment?.payment_type || 'cash').replace(/_/g, ' '));
+  let note = sanitizePaymentNote(payment?.notes || '').trim();
+  const reference = sanitizePaymentReference(payment?.reference);
+  if (reference && !note.includes(reference)) {
+    note = note ? `${note} (${reference})` : reference;
+  }
+  if (note && (isSystemReceiptTag(note) || isPlaceholderReference(note))) note = '';
+  if (note.toLowerCase() === paymentType.toLowerCase()) note = '';
+  return {
+    description: settlementLineDescription({ dateLabel, note, paymentType }),
+    paymentType,
+    amount: Number(payment?.amount || 0),
+    date: payment?.payment_date || null,
+    discount_amount: Number(payment?.discount_amount || 0),
+  };
+}
+
+function isPaymentCoveredByFallbackRow(payment, fallbackRows) {
+  const amount = Number(payment?.amount || 0);
+  const paymentDay = paymentDayKey(payment);
+  return (fallbackRows || []).some((row) => {
+    if (Math.abs(Number(row?.amount || 0) - amount) > 0.01) return false;
+    const fallbackTs = parseFallbackSettlementDateTs(row?.date);
+    if (!paymentDay || !fallbackTs) return false;
+    const fallbackDay = new Date(fallbackTs).toISOString().slice(0, 10);
+    return paymentDay === fallbackDay;
+  });
+}
+
+function groupPaymentsByAllocationBatch(payments = []) {
+  const grouped = new Map();
+  (payments || []).forEach((payment, index) => {
+    const batchKey = String(payment?.allocation_batch_uuid || '').trim() || `single:${payment?.id || index}`;
+    if (!grouped.has(batchKey)) {
+      grouped.set(batchKey, {
+        sale_id: payment?.sale_id,
+        amount: 0,
+        discount_amount: 0,
+        payment_date: payment?.payment_date || null,
+        payment_type: payment?.payment_type || 'cash',
+        notes: payment?.notes || '',
+        reference: payment?.reference || '',
+        allocation_batch_uuid: payment?.allocation_batch_uuid || null,
+      });
+    }
+    const entry = grouped.get(batchKey);
+    entry.amount += Number(payment?.amount || 0);
+    entry.discount_amount += Number(payment?.discount_amount || 0);
+    if (payment?.payment_date && (!entry.payment_date || payment.payment_date > entry.payment_date)) {
+      entry.payment_date = payment.payment_date;
+    }
+    if (!entry.notes && payment?.notes) entry.notes = payment.notes;
+    if (!entry.reference && payment?.reference) entry.reference = payment.reference;
+    if (!entry.payment_type && payment?.payment_type) entry.payment_type = payment.payment_type;
+  });
+  return Array.from(grouped.values()).map((row) => ({
+    ...row,
+    payment_type: String(row.payment_type || 'cash').toLowerCase(),
+  }));
+}
+
+function appendFahmeLiveSettlementPayments({ paymentLines, payments, fallbackSettlementRows }) {
+  const fallbackMaxTs = (fallbackSettlementRows || []).reduce(
+    (maxTs, row) => Math.max(maxTs, parseFallbackSettlementDateTs(row?.date)),
+    0,
+  );
+  const grouped = groupPaymentsByAllocationBatch(payments);
+  grouped.forEach((payment) => {
+    const amount = Number(payment?.amount || 0);
+    if (!(amount > 0)) return;
+    const paymentTs = payment?.payment_date ? new Date(payment.payment_date).getTime() : 0;
+    if (fallbackMaxTs && paymentTs && paymentTs <= fallbackMaxTs) return;
+    if (isPaymentCoveredByFallbackRow(payment, fallbackSettlementRows)) return;
+    const line = paymentRowToSettlementLine(payment);
+    const lineTs = settlementLineDateTs(line);
+    if (isSettlementLineAlreadyListed(paymentLines, line, amount, lineTs, line.description)) return;
+    paymentLines.push(line);
+  });
+}
+
+function resolveFahmeTargetPaid(opts, related) {
+  const rowTotals = readRowTotalsUsd(opts);
+  if (rowTotals) {
+    const total = Number(rowTotals.total || 0);
+    const discount = Number(rowTotals.discount || 0);
+    const due = Number(rowTotals.due || 0);
+    if (total > 0 && due >= 0) {
+      return Math.max(0, total - discount - due);
+    }
+    if (Number(rowTotals.paid || 0) > 0) {
+      return Number(rowTotals.paid || 0);
+    }
+  }
+  return groupPaymentsByAllocationBatch(related?.payments || [])
+    .reduce((sum, payment) => sum + Number(payment?.amount || 0), 0);
+}
+
+function appendLivePaymentsNotInFallback({ paymentLines, payments, fallbackSettlementRows }) {
+  (payments || []).forEach((payment) => {
+    const amount = Number(payment?.amount || 0);
+    if (!(amount > 0)) return;
+    if (isPaymentCoveredByFallbackRow(payment, fallbackSettlementRows)) return;
+    const line = paymentRowToSettlementLine(payment);
+    const lineTs = settlementLineDateTs(line);
+    if (isSettlementLineAlreadyListed(paymentLines, line, amount, lineTs, line.description)) return;
+    paymentLines.push(line);
+  });
+}
+
+function appendLivePaymentsAfterFallback({ paymentLines, fallbackSettlementRows, livePaymentLines }) {
+  if (!livePaymentLines.length) return;
+  const fallbackMaxTs = (fallbackSettlementRows || []).reduce(
+    (maxTs, row) => Math.max(maxTs, parseFallbackSettlementDateTs(row?.date)),
+    0,
+  );
+  livePaymentLines.forEach((line) => {
+    const desc = String(line?.description || '');
+    if (/TG_DUE_|PDF_ITEM_RESTORE_/i.test(desc)) return;
+    const amount = Number(line?.amount || 0);
+    if (!(amount > 0)) return;
+    const lineTs = settlementLineDateTs(line);
+    // Keep payments on/after the last trusted fallback date (new down payments).
+    if (fallbackMaxTs && lineTs && lineTs <= fallbackMaxTs) return;
+    if (!fallbackMaxTs && !lineTs) return;
+    if (isSettlementLineAlreadyListed(paymentLines, line, amount, lineTs, desc)) return;
+    paymentLines.push(line);
+  });
+}
+
+function appendUnlistedLivePayments({ paymentLines, livePaymentLines }) {
+  livePaymentLines.forEach((line) => {
+    const amount = Number(line?.amount || 0);
+    if (!(amount > 0)) return;
+    const lineTs = settlementLineDateTs(line);
+    if (isSettlementLineAlreadyListed(paymentLines, line, amount, lineTs, line.description)) return;
+    paymentLines.push(line);
+  });
+}
+
+function appendPaymentsToClosePaidGap({ paymentLines, payments, targetPaid, fallbackSettlementRows }) {
+  const goal = Number(targetPaid || 0);
+  if (!(goal > 0)) return;
+  let currentPaid = paymentLines.reduce((sum, line) => sum + Number(line?.amount || 0), 0);
+  if (!(goal > currentPaid + 0.01)) return;
+
+  const fallbackMaxTs = (fallbackSettlementRows || []).reduce(
+    (maxTs, row) => Math.max(maxTs, parseFallbackSettlementDateTs(row?.date)),
+    0,
+  );
+  const candidates = (payments || [])
+    .map((payment) => paymentRowToSettlementLine(payment))
+    .filter((line) => Number(line?.amount || 0) > 0)
+    .sort((left, right) => settlementLineDateTs(left) - settlementLineDateTs(right));
+
+  const tryAppend = (ignoreFallbackDate) => {
+    candidates.forEach((line) => {
+      if (!(goal > currentPaid + 0.01)) return;
+      const amount = Number(line?.amount || 0);
+      const lineTs = settlementLineDateTs(line);
+      if (!ignoreFallbackDate && fallbackMaxTs && lineTs && lineTs <= fallbackMaxTs) return;
+      if (isSettlementLineAlreadyListed(paymentLines, line, amount, lineTs, line.description)) return;
+      paymentLines.push(line);
+      currentPaid += amount;
+    });
+  };
+
+  tryAppend(false);
+  if (goal > currentPaid + 0.01) tryAppend(true);
+
+  // Management row paid total is authoritative — if settlement lines still fall short, show the gap.
+  currentPaid = paymentLines.reduce((sum, line) => sum + Number(line?.amount || 0), 0);
+  const gap = Number((goal - currentPaid).toFixed(2));
+  if (gap <= 0.01) return;
+
+  const exactMatch = candidates.find((line) => {
+    const amount = Number(line?.amount || 0);
+    const lineTs = settlementLineDateTs(line);
+    return Math.abs(amount - gap) < 0.01
+      && !isSettlementLineAlreadyListed(paymentLines, line, amount, lineTs, line.description);
+  });
+  if (exactMatch) {
+    paymentLines.push(exactMatch);
+    return;
+  }
+
+  const newestAfterFallback = candidates
+    .filter((line) => {
+      const lineTs = settlementLineDateTs(line);
+      return !fallbackMaxTs || !lineTs || lineTs > fallbackMaxTs;
+    })
+    .sort((left, right) => settlementLineDateTs(right) - settlementLineDateTs(left))[0];
+  const dateLabel = newestAfterFallback?.date
+    ? new Date(newestAfterFallback.date).toLocaleDateString('en-GB')
+    : '';
+  paymentLines.push({
+    description: settlementLineDescription({
+      dateLabel,
+      note: '',
+      paymentType: newestAfterFallback?.paymentType || 'Cash',
+    }),
+    paymentType: newestAfterFallback?.paymentType || 'Cash',
+    amount: gap,
+    date: newestAfterFallback?.date || null,
+    discount_amount: 0,
+  });
+}
+
+function buildLaybyPaymentMergeKey(payment) {
+  if (payment?.id != null) return `id:${payment.id}`;
+  return [
+    payment?.sale_id || '',
+    payment?.payment_date || '',
+    Number(payment?.amount || 0),
+    Number(payment?.discount_amount || 0),
+    String(payment?.payment_type || '').toLowerCase(),
+    String(payment?.reference || ''),
+    String(payment?.notes || ''),
+    String(payment?.allocation_batch_uuid || ''),
+  ].join('|');
+}
+
+function mergeLaybyPaymentRows(related, extraRows = []) {
+  const merged = [...(related.payments || [])];
+  const seen = new Set(merged.map(buildLaybyPaymentMergeKey));
+  (extraRows || []).forEach((row) => {
+    const normalized = { ...row, payment_type: String(row?.payment_type || '').toLowerCase() };
+    const key = buildLaybyPaymentMergeKey(normalized);
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(normalized);
+  });
+  related.payments = merged;
+}
+
+async function augmentFahmeSettlementPayments(related, customerId) {
+  const id = String(customerId || '').trim();
+  if (!id) return;
+  const saleIds = new Set(
+    (related.sales || []).map((sale) => sale?.id ?? sale?.sale_id).filter((value) => value != null),
+  );
+  try {
+    const { data: customerSales } = await fromPublic('sales')
+      .select('id')
+      .eq('customer_id', id);
+    (customerSales || []).forEach((sale) => {
+      if (sale?.id != null) saleIds.add(sale.id);
+    });
+  } catch {}
+  try {
+    const { data, error } = await fetchMergedLaybyPayments({
+      customerId: id,
+      saleIds: Array.from(saleIds),
+    });
+    if (error || !Array.isArray(data)) return;
+    mergeLaybyPaymentRows(related, data);
+  } catch {}
+}
+
+function normalizeSettlementLineDescriptions(paymentLines) {
+  paymentLines.forEach((line) => {
+    const dateLabel = line?.date
+      ? new Date(line.date).toLocaleDateString('en-GB')
+      : (String(line?.description || '').match(/\(([0-9]{2}\/[0-9]{2}\/[0-9]{4})\)/)?.[1] || '');
+    const paymentType = String(line?.paymentType || 'Cash').trim();
+    let note = String(line?.description || '').trim();
+    note = note
+      .replace(/^\([0-9]{2}\/[0-9]{2}\/[0-9]{4}\)\s*-\s*/i, '')
+      .replace(new RegExp(`\\s*-\\s*${paymentType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i'), '')
+      .trim();
+    if (note.toLowerCase() === paymentType.toLowerCase()) note = '';
+    if (isPlaceholderReference(note)) note = '';
+    line.description = settlementLineDescription({ dateLabel, note, paymentType });
+    if (!line.date && dateLabel) {
+      const ts = parseFallbackSettlementDateTs(dateLabel);
+      if (ts) line.date = new Date(ts).toISOString();
+    }
+  });
+}
 
 function rewriteSupabaseStorageUrl(url) {
   const raw = String(url || '').trim();
@@ -561,10 +957,27 @@ export async function generateLaybyPdf(layby, opts = {}) {
       ''
     );
     const fallbackCustomerKey = String(custName || '').trim().toLowerCase();
-    const isFahmeCustomer = fallbackCustomerKey === 'mohammad fahme' || fallbackCustomerKey === 'mohammad fahme acc(2)';
-    const fallbackSectionsPrimary = Array.isArray(laybyPdfItemFallbacks?.[fallbackCustomerKey])
-      ? laybyPdfItemFallbacks[fallbackCustomerKey]
-      : [];
+    const fahmeCustomerId = layby?.customer_id || customer?.id || null;
+    const isFahmeCustomer = isFahme(fahmeCustomerId)
+      || fallbackCustomerKey === FAHME_PRIMARY_KEY
+      || fallbackCustomerKey === 'mohammad fahme acc(2)';
+    let fallbackSectionsPrimary = [];
+    if (isFahmeCustomer) {
+      const mainSections = Array.isArray(laybyPdfItemFallbacks?.[FAHME_PRIMARY_KEY])
+        ? laybyPdfItemFallbacks[FAHME_PRIMARY_KEY]
+        : [];
+      const extraSections = fallbackCustomerKey !== FAHME_PRIMARY_KEY
+        && Array.isArray(laybyPdfItemFallbacks?.[fallbackCustomerKey])
+        ? laybyPdfItemFallbacks[fallbackCustomerKey]
+        : [];
+      fallbackSectionsPrimary = extraSections.length
+        ? mergeFallbackSections(mainSections, extraSections)
+        : mainSections;
+    } else {
+      fallbackSectionsPrimary = Array.isArray(laybyPdfItemFallbacks?.[fallbackCustomerKey])
+        ? laybyPdfItemFallbacks[fallbackCustomerKey]
+        : [];
+    }
     const fallbackSectionsTelegram = Array.isArray(laybyTelegramItemFallbacks?.[fallbackCustomerKey])
       ? laybyTelegramItemFallbacks[fallbackCustomerKey]
       : [];
@@ -572,9 +985,22 @@ export async function generateLaybyPdf(layby, opts = {}) {
       ? fallbackSectionsPrimary
       : mergeFallbackSections(fallbackSectionsPrimary, fallbackSectionsTelegram);
 
-    const fallbackSettlementPrimary = Array.isArray(laybyPdfSettlementFallbacks?.[fallbackCustomerKey])
-      ? laybyPdfSettlementFallbacks[fallbackCustomerKey]
-      : [];
+    let fallbackSettlementPrimary = [];
+    if (isFahmeCustomer) {
+      const mainSettlement = Array.isArray(laybyPdfSettlementFallbacks?.[FAHME_PRIMARY_KEY])
+        ? laybyPdfSettlementFallbacks[FAHME_PRIMARY_KEY]
+        : [];
+      const extraSettlement = Array.isArray(laybyPdfSettlementFallbacks?.['mohammad fahme acc(2)'])
+        ? laybyPdfSettlementFallbacks['mohammad fahme acc(2)']
+        : [];
+      fallbackSettlementPrimary = extraSettlement.length
+        ? [...mainSettlement, ...extraSettlement]
+        : mainSettlement;
+    } else {
+      fallbackSettlementPrimary = Array.isArray(laybyPdfSettlementFallbacks?.[fallbackCustomerKey])
+        ? laybyPdfSettlementFallbacks[fallbackCustomerKey]
+        : [];
+    }
     const fallbackSettlementTelegram = Array.isArray(laybyTelegramSettlementFallbacks?.[fallbackCustomerKey])
       ? laybyTelegramSettlementFallbacks[fallbackCustomerKey]
       : [];
@@ -935,6 +1361,11 @@ export async function generateLaybyPdf(layby, opts = {}) {
       related.payments = (related.payments || []).map(p => ({ ...p, payment_type: String(p.payment_type || '').toLowerCase() }));
     } catch {}
 
+    if (isFahmeCustomer) {
+      await augmentFahmeSettlementPayments(related, fahmeCustomerId);
+      related.payments = (related.payments || []).map(p => ({ ...p, payment_type: String(p.payment_type || '').toLowerCase() }));
+    }
+
     // ---------------------------
     // Group items by sale date (or created_at fallback)
     // Use timezone-safe normalization: prefer raw YYYY-MM-DD if present,
@@ -1168,7 +1599,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
     const saleCurrency = (related?.sales || []).map(s => s?.currency).find(Boolean) || null;
     // Fahme accounts are USD-only on statements — never render as K from mis-tagged sales.
     const currency = isFahmeCustomer
-      ? 'USD'
+      ? '$'
       : (saleCurrency || layby?.sale_currency || customer?.currency || 'K');
     const numberFmt = n => formatCurrency(n, currency);
 
@@ -1370,7 +1801,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       const finBySaleForAlign = related.finBySale || {};
       const finRowsForAlign = salesForDate.map((s) => finBySaleForAlign[saleRowId(s)]).filter(Boolean);
       const canonicalTotalForAlign = finRowsForAlign.reduce((sum, row) => sum + Number(row.total_due || 0), 0);
-      // Keep date sections visible even when item rows are missing in DB.
+      // Prefer real/fallback product lines only — never invent a carry-forward balance row.
       if (!rows.length && canonicalTotalForAlign > 0) {
         const itemFallback = resolveItemFallbackSection(
           dateKeyStr,
@@ -1391,29 +1822,19 @@ export async function generateLaybyPdf(layby, opts = {}) {
             detailLines: item?.color ? [`Color: ${String(item.color).trim()}`] : [],
           }));
         } else {
-          rows = [{
-            qty: 1,
-            name: 'Outstanding balance brought forward',
-            price: canonicalTotalForAlign,
-            amount: canonicalTotalForAlign,
-            saleId: null,
-            type: 'regular',
-            indent: 0,
-            detailLines: [],
-          }];
+          return;
         }
       } else if (!rows.length) {
-        rows = [{
-          qty: 1,
-          name: 'Item breakdown not captured (total carried)',
-          price: 0,
-          amount: 0,
-          saleId: null,
-          type: 'note',
-          indent: 0,
-          detailLines: [],
-        }];
+        return;
       }
+      // Strip any legacy carry-forward rows that may still arrive from statement data.
+      rows = rows.filter((row) => {
+        const name = String(row?.name || '').trim().toLowerCase();
+        return name !== 'outstanding balance brought forward'
+          && !name.includes('outstanding balance brought forward')
+          && name !== 'item breakdown not captured (total carried)';
+      });
+      if (!rows.length) return;
       // For regular customers, keep per-date visible line totals aligned with canonical sale totals
       // so PDF values match layby-management aggregates.
       if (!isFahmeCustomer && canonicalTotalForAlign > 0) {
@@ -1488,6 +1909,9 @@ export async function generateLaybyPdf(layby, opts = {}) {
   // View-provided figures (may include docs without item lines)
   const viewNet = finRowsForDate.reduce((a,v)=> a + Number(v.subtotal_before_discount || 0), 0);
   let viewDiscount = finRowsForDate.reduce((a,v)=> a + Number(v.discount_amount || 0), 0);
+  if (isFahmeCustomer && Number(fallbackSection?.discount || 0) > 0) {
+    viewDiscount = Math.max(viewDiscount, Number(fallbackSection.discount || 0));
+  }
   const forceCanonicalDateTotal = canonicalTotalForDate > 0 && !isFahmeCustomer;
   // Fahme: drive Net/Due from visible item lines (fallback history + live extras) so settlement matches the PDF body.
   // Prefer canonical date totals to match layby-management exactly when available.
@@ -1729,6 +2153,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
     // --------------- Grand Totals (before settlement) ---------------
   const grandTotal = dateTotals.reduce((a,b)=>a+b,0);
   const grandDiscount = dateDiscountTotals.reduce((a,b)=>a+b,0);
+  const rowTotalsUsd = readRowTotalsUsd(opts);
 
     // If only one date section rendered and we still have a lot of vertical space before settlement,
     // push settlement downward to visually balance the page.
@@ -1737,12 +2162,20 @@ export async function generateLaybyPdf(layby, opts = {}) {
     // --------------- Settlement Section ---------------
     if (!opts?.posReceipt) {
     try {
+      if (isFahmeCustomer) {
+        await augmentFahmeSettlementPayments(related, fahmeCustomerId);
+        related.payments = (related.payments || []).map(p => ({ ...p, payment_type: String(p.payment_type || '').toLowerCase() }));
+      }
         // Build payment events as one row per original down-payment batch.
   const paymentLines = [];
   const saleById = {}; related.sales.forEach(s => { saleById[s.id] = s; });
   const allowedSaleIds = new Set((related.sales || []).map(s => String(s.id || s.sale_id)));
   if (layby?.sale_id != null) allowedSaleIds.add(String(layby.sale_id));
-  const settlementPaymentsAll = (related.payments || []).filter(p => allowedSaleIds.has(String(p.sale_id)));
+  // Fahme history is rendered from synthetic fallback sale ids, so live payments
+  // must not be filtered against those ids or new down payments disappear.
+  const settlementPaymentsAll = isFahmeCustomer
+    ? (related.payments || []).filter((p) => Number(p?.amount || 0) > 0 || Number(p?.discount_amount || 0) > 0)
+    : (related.payments || []).filter(p => allowedSaleIds.has(String(p.sale_id)));
   const pdfBatchTag = 'PDF_ITEM_RESTORE_20260610/';
   // Only treat as frozen PDF-restore when the layby notes explicitly say so.
   // Do NOT lock Fahme accounts forever just because historical JSON fallbacks exist.
@@ -1782,9 +2215,10 @@ export async function generateLaybyPdf(layby, opts = {}) {
         const descriptionParts = [];
         if (dateLabel) descriptionParts.push(`(${dateLabel})`);
         const noteIsSystemTag = isSystemReceiptTag(entry.note);
-        const refIsSystemTag = isSystemReceiptTag(entry.reference);
-        if (entry.note && !noteIsSystemTag) descriptionParts.push(entry.note);
-        if (entry.reference && !refIsSystemTag) descriptionParts.push(`Ref: ${entry.reference}`);
+        const cleanNote = entry.note && !noteIsSystemTag && !isPlaceholderReference(entry.note) ? entry.note : '';
+        const cleanRef = sanitizePaymentReference(entry.reference);
+        if (cleanNote) descriptionParts.push(cleanNote);
+        if (cleanRef) descriptionParts.push(`Ref: ${cleanRef}`);
         const description = descriptionParts.join(' - ') || 'Down Payment';
         paymentLines.push({
           description,
@@ -1802,43 +2236,47 @@ export async function generateLaybyPdf(layby, opts = {}) {
           const dateLabel = String(row?.date || '').trim();
           const note = String(row?.description || '').trim();
           const type = String(row?.paymentType || 'Cash').trim();
-          const description = note
-            ? `(${dateLabel}) - ${note}`
-            : `(${dateLabel}) -`;
+          const description = settlementLineDescription({ dateLabel, note, paymentType: type });
+          const dateTs = parseFallbackSettlementDateTs(dateLabel);
           lines.push({
             description,
             paymentType: type,
             amount: Number(row?.amount || 0),
-            date: null,
+            date: dateTs ? new Date(dateTs).toISOString() : null,
             discount_amount: 0,
           });
         });
         return lines;
       };
 
-      if (isPdfRestoreCustomer && fallbackSettlementRows.length) {
+      if (isFahmeCustomer && fallbackSettlementRows.length) {
+        // Fahme must win over PDF-restore mode — restore notes exist on historical rows but
+        // live down payments (e.g. 28 Jul 2026) are not PDF_ITEM_RESTORE tagged.
         const fallbackLines = buildFallbackSettlementLines();
         paymentLines.length = 0;
         paymentLines.push(...fallbackLines);
-        if (isFahmeCustomer && livePaymentLines.length) {
-          const fallbackMaxTs = fallbackSettlementRows.reduce((maxTs, row) => {
-            const m = /^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/.exec(String(row?.date || '').trim());
-            if (!m) return maxTs;
-            const ts = Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-            return Number.isFinite(ts) ? Math.max(maxTs, ts) : maxTs;
-          }, 0);
-          livePaymentLines.forEach((line) => {
-            const desc = String(line?.description || '');
-            if (/TG_DUE_|PDF_ITEM_RESTORE_/i.test(desc)) return;
-            const lineTs = line?.date ? new Date(line.date).getTime() : 0;
-            if (!lineTs || lineTs <= fallbackMaxTs) return;
-            paymentLines.push(line);
-          });
+        const livePaymentsGrouped = groupPaymentsByAllocationBatch(related.payments || settlementPaymentsAll);
+        appendFahmeLiveSettlementPayments({
+          paymentLines,
+          payments: livePaymentsGrouped,
+          fallbackSettlementRows,
+        });
+        const paidAfterAppend = paymentLines.reduce((sum, line) => sum + Number(line?.amount || 0), 0);
+        const targetPaid = resolveFahmeTargetPaid(opts, related);
+        if (targetPaid > paidAfterAppend + 0.01) {
+          appendUnlistedLivePayments({ paymentLines, livePaymentLines });
         }
-      } else if (isFahmeCustomer && livePaymentLines.length) {
-        // Fahme Acc accounts: always prefer live DB payments so PDF stays in sync with Layby Management.
+        appendPaymentsToClosePaidGap({
+          paymentLines,
+          payments: livePaymentsGrouped,
+          targetPaid,
+          fallbackSettlementRows,
+        });
+      } else if (isPdfRestoreCustomer && fallbackSettlementRows.length) {
+        const fallbackLines = buildFallbackSettlementLines();
         paymentLines.length = 0;
-        paymentLines.push(...livePaymentLines);
+        paymentLines.push(...fallbackLines);
+        appendLivePaymentsAfterFallback({ paymentLines, fallbackSettlementRows, livePaymentLines });
       }
 
       const hasOnlySystemTaggedLines = paymentLines.length > 0
@@ -1854,18 +2292,22 @@ export async function generateLaybyPdf(layby, opts = {}) {
           || isSystemReceiptTag(payment?.notes)
         ));
 
-      if (!isPdfRestoreCustomer && fallbackSettlementRows.length && (
+      // Do not re-wipe Fahme/restore settlements — that dropped newly added down payments.
+      if (!isPdfRestoreCustomer && !isFahmeCustomer && fallbackSettlementRows.length && (
         !paymentLines.length || hasOnlySystemTaggedLines || settlementPaymentsAreMigrationOnly
       )) {
         const fallbackLines = buildFallbackSettlementLines();
         paymentLines.length = 0;
         paymentLines.push(...fallbackLines);
       }
+      if (isFahmeCustomer) {
+        normalizeSettlementLineDescriptions(paymentLines);
+      }
       paymentLines.sort((a, b) => {
-        const da = a.date ? new Date(a.date).getTime() : 0;
-        const db = b.date ? new Date(b.date).getTime() : 0;
+        const da = settlementLineDateTs(a);
+        const db = settlementLineDateTs(b);
         if (da !== db) return da - db;
-        return a.description.localeCompare(b.description);
+        return String(a.description || '').localeCompare(String(b.description || ''));
       });
       if (!paymentLines.length) {
         paymentLines.push({
@@ -1877,16 +2319,18 @@ export async function generateLaybyPdf(layby, opts = {}) {
         });
       }
     // Settlement Due Remaining = accrued total due across all sales minus down-payments/discounts.
-    // Use the same cumulative total the PDF just rendered (includes fallback history + newer live sales).
+    // Prefer Layby Management row totals for Fahme so Settlement matches the table row.
     const lastCumulativeDue = cumulativeDueAcrossDates;
     const paidTotal = paymentLines.reduce((a,l)=> a + Number(l.amount || 0), 0);
     const discountTotal = paymentLines.reduce((sum, p) => sum + Number(p.discount_amount || 0), 0);
     const downPaymentTotal = paidTotal;
-    const dueRemaining = Math.max(0, Number(lastCumulativeDue || 0) - paidTotal - discountTotal);
+    const dueRemaining = (rowTotalsUsd && isFahmeCustomer && Number(rowTotalsUsd.due || 0) >= 0)
+      ? Math.max(0, Number(rowTotalsUsd.due || 0))
+      : Math.max(0, Number(lastCumulativeDue || 0) - paidTotal - discountTotal);
       if (paymentLines.length) {
         // Desired gap between main table and settlement: 3cm (~85pt)
         const CM = 28.346; const desiredGap = 3 * CM; // ≈85.04pt
-        const settlementHeightEstimate = 40 + headerHeight + (paymentLines.length + 2) * rowLineHeight; // title + header + rows + total + due row
+        const settlementHeightEstimate = 40 + headerHeight + (paymentLines.length + (isFahmeCustomer ? 1 : 2)) * rowLineHeight; // title + header + rows + total + due row
         const pH = doc.internal.pageSize.getHeight();
         // If settlement fits on current page with desired gap and 40pt bottom buffer, keep it here; else new page.
         const needGap = yCursor + desiredGap + settlementHeightEstimate + 40 > pH;
@@ -1897,7 +2341,8 @@ export async function generateLaybyPdf(layby, opts = {}) {
           yCursor += desiredGap; // maintain visual separation
         }
         const tableWidth = colWidths.qty + colWidths.name + colWidths.price + colWidths.amount;
-        const typeColWidth = 140;
+        const useLegacySettlementLayout = isFahmeCustomer;
+        const typeColWidth = useLegacySettlementLayout ? 0 : 140;
         const amountColWidth = 120;
         const descColWidth = tableWidth - typeColWidth - amountColWidth;
         const descX = tableMarginLeft + cellPaddingX;
@@ -1909,7 +2354,9 @@ export async function generateLaybyPdf(layby, opts = {}) {
 // Skip drawing header separator lines & internal row separators when borders disabled
         doc.setTextColor(255); doc.setFontSize(11);
         doc.text('Description', descX, yCursor + headerHeight/2 + 1, { baseline: 'middle' });
-        doc.text('Payment Type', typeX, yCursor + headerHeight/2 + 1, { baseline: 'middle' });
+        if (!useLegacySettlementLayout) {
+          doc.text('Payment Type', typeX, yCursor + headerHeight/2 + 1, { baseline: 'middle' });
+        }
         doc.text('Amount', amountX, yCursor + headerHeight/2 + 1, { align: 'right', baseline: 'middle' });
         yCursor += headerHeight;
         doc.setTextColor(0); doc.setFont('helvetica','normal'); doc.setFontSize(10.5);
@@ -1920,14 +2367,18 @@ export async function generateLaybyPdf(layby, opts = {}) {
             const wrappedDesc = doc.splitTextToSize(String(l.description || ''), Math.max(40, descColWidth - (cellPaddingX * 2)));
             const descY = yCursor + rowH/2;
             doc.text(wrappedDesc[0] || '', descX, descY, { baseline: 'middle' });
-            doc.text(String(l.paymentType || ''), typeX, yCursor + rowH/2, { baseline: 'middle' });
+            if (!useLegacySettlementLayout) {
+              doc.text(String(l.paymentType || ''), typeX, yCursor + rowH/2, { baseline: 'middle' });
+            }
             doc.text(numberFmt(l.amount), amountX, yCursor + rowH/2, { align: 'right', baseline: 'middle' });
             yCursor += rowH;
         });
-        doc.setFont('helvetica','bold');
-        doc.text('Total Down Payments', descX, yCursor + rowLineHeight/2, { baseline: 'middle' });
-        doc.text(numberFmt(downPaymentTotal), amountX, yCursor + rowLineHeight/2, { align: 'right', baseline: 'middle' });
-        yCursor += rowLineHeight;
+        if (!useLegacySettlementLayout) {
+          doc.setFont('helvetica','bold');
+          doc.text('Total Down Payments', descX, yCursor + rowLineHeight/2, { baseline: 'middle' });
+          doc.text(numberFmt(downPaymentTotal), amountX, yCursor + rowLineHeight/2, { align: 'right', baseline: 'middle' });
+          yCursor += rowLineHeight;
+        }
         // Due remaining row
         doc.setFont('helvetica','bold');
         doc.text('Due Remaining', descX, yCursor + rowLineHeight/2, { baseline: 'middle' });

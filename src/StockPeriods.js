@@ -830,6 +830,7 @@ export default function StockPeriods() {
     const base = (trackingRows || []).filter(row =>
       row.opening > 0 ||
       row.transfersIn > 0 ||
+      row.transfersOut > 0 ||
       row.salesQty > 0 ||
       row.hasClosingEntry ||
       row.hasInventory
@@ -917,7 +918,7 @@ export default function StockPeriods() {
   };
 
   const buildVarianceCsvLines = useCallback(() => {
-    const header = ['Product', 'SKU', 'Opening', 'Transfers In', 'Sales', 'Expected', 'Closing', 'Variance'];
+    const header = ['Product', 'SKU', 'Opening', 'Transfers In', 'Transfers Out', 'Sales', 'Expected', 'Closing', 'Variance'];
     const lines = [header.join(',')];
     visibleTrackingRows.forEach(row => {
       lines.push([
@@ -925,6 +926,7 @@ export default function StockPeriods() {
         `"${String(row.sku || '').replace(/"/g, '""')}"`,
         row.opening,
         row.transfersIn,
+        row.transfersOut,
         row.salesQty,
         row.expected,
         row.closingQty === null ? '' : row.closingQty,
@@ -1386,33 +1388,68 @@ export default function StockPeriods() {
         .eq('location', locationId);
       if (inventoryErr) throw inventoryErr;
 
-      const [transferInDtRes, transferInDateRes] = await Promise.all([
+      const [transferInDtRes, transferInDateRes, transferOutDtRes, transferOutDateRes] = await Promise.all([
         fromPublic('stock_transfer_sessions')
           .select('id, transfer_datetime, created_at')
           .eq('to_location', locationId)
+          .eq('status', 'approved')
           .not('transfer_datetime', 'is', null)
           .gte('transfer_datetime', startISO)
           .lte('transfer_datetime', endISO),
         fromPublic('stock_transfer_sessions')
           .select('id, transfer_date, created_at')
           .eq('to_location', locationId)
+          .eq('status', 'approved')
+          .is('transfer_datetime', null)
+          .gte('transfer_date', startDate)
+          .lte('transfer_date', endDate),
+        fromPublic('stock_transfer_sessions')
+          .select('id, transfer_datetime, created_at')
+          .eq('from_location', locationId)
+          .eq('status', 'approved')
+          .not('transfer_datetime', 'is', null)
+          .gte('transfer_datetime', startISO)
+          .lte('transfer_datetime', endISO),
+        fromPublic('stock_transfer_sessions')
+          .select('id, transfer_date, created_at')
+          .eq('from_location', locationId)
+          .eq('status', 'approved')
           .is('transfer_datetime', null)
           .gte('transfer_date', startDate)
           .lte('transfer_date', endDate),
       ]);
 
-      const transferInSessions = [
-        ...(transferInDtRes?.data || []),
-        ...(transferInDateRes?.data || []),
-      ];
-      const transferSessionIds = transferInSessions.map(s => s.id).filter(Boolean);
-      let transferEntries = [];
-      if (transferSessionIds.length > 0) {
+      const transferInSessions = Array.from(
+        new Map(
+          [...(transferInDtRes?.data || []), ...(transferInDateRes?.data || [])]
+            .filter((session) => session?.id)
+            .map((session) => [session.id, session]),
+        ).values(),
+      );
+      const transferOutSessions = Array.from(
+        new Map(
+          [...(transferOutDtRes?.data || []), ...(transferOutDateRes?.data || [])]
+            .filter((session) => session?.id)
+            .map((session) => [session.id, session]),
+        ).values(),
+      );
+      const transferInSessionIds = transferInSessions.map((s) => s.id).filter(Boolean);
+      const transferOutSessionIds = transferOutSessions.map((s) => s.id).filter(Boolean);
+      let transferInEntries = [];
+      let transferOutEntries = [];
+      if (transferInSessionIds.length > 0) {
         const { data: entries, error: entriesErr } = await fromPublic('stock_transfer_entries')
           .select('session_id, product_id, quantity')
-          .in('session_id', transferSessionIds);
+          .in('session_id', transferInSessionIds);
         if (entriesErr) throw entriesErr;
-        transferEntries = entries || [];
+        transferInEntries = entries || [];
+      }
+      if (transferOutSessionIds.length > 0) {
+        const { data: entries, error: entriesErr } = await fromPublic('stock_transfer_entries')
+          .select('session_id, product_id, quantity')
+          .in('session_id', transferOutSessionIds);
+        if (entriesErr) throw entriesErr;
+        transferOutEntries = entries || [];
       }
 
       const [salesByDateRes, salesByCreatedRes] = await Promise.all([
@@ -1464,11 +1501,19 @@ export default function StockPeriods() {
       const closeStarted = closingDraftIds.length > 0 || (closingRows || []).length > 0;
 
       const transfersInMap = new Map();
-      (transferEntries || []).forEach(row => {
+      (transferInEntries || []).forEach((row) => {
         if (!row.product_id || !row.session_id) return;
         const pid = String(row.product_id);
         const qty = toNumber(row.quantity);
         transfersInMap.set(pid, (transfersInMap.get(pid) || 0) + qty);
+      });
+
+      const transfersOutMap = new Map();
+      (transferOutEntries || []).forEach((row) => {
+        if (!row.product_id || !row.session_id) return;
+        const pid = String(row.product_id);
+        const qty = toNumber(row.quantity);
+        transfersOutMap.set(pid, (transfersOutMap.get(pid) || 0) + qty);
       });
 
       const salesMap = new Map();
@@ -1489,6 +1534,7 @@ export default function StockPeriods() {
       const allIds = uniqueIds([
         ...Array.from(openingMap.keys()),
         ...Array.from(transfersInMap.keys()),
+        ...Array.from(transfersOutMap.keys()),
         ...Array.from(closingMap.keys()),
         ...Array.from(salesMap.keys()),
         ...Array.from(inventoryMap.keys()),
@@ -1498,15 +1544,16 @@ export default function StockPeriods() {
         const info = getCanonicalProductInfo(pid);
         const opening = openingMap.get(pid) || 0;
         const transfersIn = transfersInMap.get(pid) || 0;
+        const transfersOut = transfersOutMap.get(pid) || 0;
         const salesQty = salesMap.get(pid) || 0;
-        const expected = opening + transfersIn - salesQty;
+        const expected = opening + transfersIn - transfersOut - salesQty;
         const hasClosingEntry = closingMap.has(pid);
         const hasInventory = inventoryMap.has(pid);
         const closingQty = hasClosingEntry
           ? closingMap.get(pid)
           : (closingMode ? null : (hasInventory ? inventoryMap.get(pid) : (closeStarted && openingMap.has(pid) ? 0 : null)));
         const variance = closingQty === null ? null : (closingQty - expected);
-        const includeRow = opening > 0 || transfersIn > 0 || salesQty > 0 || hasClosingEntry || hasInventory;
+        const includeRow = opening > 0 || transfersIn > 0 || transfersOut > 0 || salesQty > 0 || hasClosingEntry || hasInventory;
         if (!includeRow) return null;
         return {
           product_id: pid,
@@ -1516,6 +1563,7 @@ export default function StockPeriods() {
           hasInventory,
           opening,
           transfersIn,
+          transfersOut,
           salesQty,
           expected,
           closingQty,
@@ -1613,10 +1661,12 @@ export default function StockPeriods() {
     const body = rows.map(row => {
       const openingPdf = row.opening;
       const transfersInPdf = row.transfersIn;
+      const transfersOutPdf = row.transfersOut;
       return [
         `${row.name}${row.sku ? ` (${row.sku})` : ''}`,
         formatNumber(openingPdf),
         formatNumber(transfersInPdf),
+        formatNumber(transfersOutPdf),
         formatNumber(row.salesQty),
         formatNumber(row.expected),
         row.closingQty === null ? '-' : formatNumber(row.closingQty),
@@ -1626,7 +1676,7 @@ export default function StockPeriods() {
 
     autoTable(doc, {
       startY: 100,
-      head: [['Product', 'Opening', 'Transfers In', 'Sales', 'Expected', 'Closing', 'Variance']],
+      head: [['Product', 'Opening', 'Transfers In', 'Transfers Out', 'Sales', 'Expected', 'Closing', 'Variance']],
       body,
       styles: { fontSize: 9 },
       headStyles: { fillColor: [0, 180, 216] },
@@ -2269,6 +2319,7 @@ export default function StockPeriods() {
                       <th style={{ textAlign: 'left' }}>Product</th>
                       <th>Opening</th>
                       <th>Transfers In</th>
+                      <th>Transfers Out</th>
                       <th>Sales</th>
                       <th>Expected</th>
                       <th>Closing</th>
@@ -2278,7 +2329,7 @@ export default function StockPeriods() {
                   <tbody>
                     {visibleTrackingRows.length === 0 && (
                       <tr>
-                        <td colSpan={7} style={{ textAlign: 'center', padding: 16 }}>
+                        <td colSpan={8} style={{ textAlign: 'center', padding: 16 }}>
                           No tracking data for this period yet.
                         </td>
                       </tr>
@@ -2288,6 +2339,7 @@ export default function StockPeriods() {
                         <td style={{ textAlign: 'left' }}>{row.name} {row.sku ? `(${row.sku})` : ''}</td>
                         <td>{row.opening}</td>
                         <td>{row.transfersIn}</td>
+                        <td>{row.transfersOut}</td>
                         <td>{row.salesQty}</td>
                         <td>{row.expected}</td>
                         <td>

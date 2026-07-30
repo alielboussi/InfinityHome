@@ -912,6 +912,17 @@ body.stocktake-count-route .App {
   margin-right: 4px;
 }
 
+.stocktake-live-user-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.stocktake-live-user-list li + li {
+  margin-top: 4px;
+}
+
 @media (max-width: 390px) {
   .stc-result {
     font-size: 13px;

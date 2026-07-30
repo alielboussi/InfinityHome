@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import supabase from './supabase';
-import { getFallbackPathForUser, getPreferredLandingPath, isPathAllowed, resolveSessionUserFromAuth } from './accessControl';
+import { getHomeDashboardPath, getPreferredLandingPath, isHassanAwadUser, isPathAllowed, resolveSessionUserFromAuth } from './accessControl';
 import { clearStaleAppLogin, ensureSupabaseSession } from './utils/authSession';
 import { hasOAuthReturnParams, resolveAppUserFromSession, startGoogleSignIn } from './utils/googleAuth';
 import { signInWithEmailPassword } from './utils/supabaseAuthLogin';
@@ -19,11 +19,38 @@ function getCurrentLocalUser() {
   return null;
 }
 
+const QUOTATIONER_HOME_PATHS = new Set([
+  '/quotationer',
+  '/quotes-dashboard',
+  '/quotesdashboard',
+  '/QuotesDashboard',
+]);
+
+function normalizeNextPath(nextTarget) {
+  const raw = String(nextTarget || '').trim();
+  if (!raw) return { path: '', hasQuery: false, raw: '' };
+  const normalizedRaw = raw.startsWith('/') ? raw : `/${raw}`;
+  const [pathPart, queryPart] = normalizedRaw.split('?');
+  const path = (pathPart || '/').replace(/\/+$/, '') || '/';
+  return { path, hasQuery: Boolean(queryPart), raw: normalizedRaw };
+}
+
 function computeDestination(minimalUser, nextTarget) {
+  const home = getHomeDashboardPath(minimalUser);
+  const { path: nextPath, hasQuery, raw } = normalizeNextPath(nextTarget);
+
+  if (raw && nextPath && isPathAllowed(minimalUser, nextPath)) {
+    const isQuotationerHome = QUOTATIONER_HOME_PATHS.has(nextPath);
+    if (!isHassanAwadUser(minimalUser) && isQuotationerHome && !hasQuery) {
+      return home;
+    }
+    return raw;
+  }
+
   const preferred = getPreferredLandingPath(minimalUser);
-  if (nextTarget && isPathAllowed(minimalUser, nextTarget)) return nextTarget;
   if (preferred && isPathAllowed(minimalUser, preferred)) return preferred;
-  return getFallbackPathForUser(minimalUser, nextTarget || null);
+
+  return home;
 }
 
 function toMinimalUser(loginUser) {

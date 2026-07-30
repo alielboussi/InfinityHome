@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import supabase from './supabase';
 import { useNavigate } from 'react-router-dom';
 import { cacheClear } from './utils/staleCache';
-import { getFallbackPathForUser, isPathAllowed, getUserDisplayName } from './accessControl';
+import { getHomeDashboardPath, isPathAllowed, getUserDisplayName } from './accessControl';
 import LaybyDashboardStats from './LaybyDashboardStats';
 
 const normalizeCurrencyCode = (raw) => {
@@ -291,8 +291,7 @@ function Dashboard() {
   useEffect(() => {
     if (!user) return;
     if (!isPathAllowed(user, '/dashboard')) {
-      const fb = getFallbackPathForUser(user, '/quotationer');
-      navigate(fb, { replace: true });
+      navigate(getHomeDashboardPath(user), { replace: true });
     }
   }, [user, navigate]);
 

@@ -17,7 +17,9 @@ import { buildLaybySaleFinancials, buildOutstandingLaybySales, computeLaybyTotal
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
 import { exportAllLaybyPdfsZip, exportLaybySummaryExcel } from './utils/laybyBulkExport';
+import { buildMonthlyBalanceDueMessages, laybyRowsToBalanceDueRows } from './utils/monthlyBalanceDuesMessage';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
+import { sendMonthlyBalanceDueWhatsApp } from './services/whatsapp';
 import { isFahme } from './laybyRules';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 import {
@@ -60,6 +62,22 @@ const getDisplayTotalsByCurrency = (row) => {
   });
   folded.due = Math.max(0, folded.total - folded.paid - folded.discount);
   return { USD: folded };
+};
+
+/** Match layby table currency for payment entry and allocation fallbacks. */
+const resolveCustomerPaymentCurrency = ({ customerId, customer, totalsByCurrency } = {}) => {
+  if (isFahme(customerId)) return 'USD';
+  const preferred = normalizeCurrencyCode(customer?.currency, '');
+  const displayTotals = getDisplayTotalsByCurrency({ customerId, totalsByCurrency });
+  const entries = Object.entries(displayTotals || {});
+  if (preferred) {
+    const match = entries.find(([code]) => code === preferred);
+    if (match) return preferred;
+  }
+  if (entries.length === 1) return entries[0][0];
+  const usd = entries.find(([code]) => code === 'USD');
+  if (usd) return 'USD';
+  return preferred || entries[0]?.[0] || 'K';
 };
 
 const allowedPaymentTypes = ['cash', 'bank_transfer', 'mobile_money', 'cheque', 'visa_card', 'goods'];
@@ -127,7 +145,9 @@ const buildSelectedLaybyTarget = (row, layby) => {
   return {
     ...layby,
     customer_id: row.customerId,
+    customerId: row.customerId,
     customerInfo: row.customer || {},
+    totalsByCurrency: row.totalsByCurrency || {},
     laybys: row.laybys || [],
     statement: row.statement || null,
     fullStatement: row.fullStatement || row.statement || null,
@@ -215,6 +235,7 @@ export default function LaybyManagement() {
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [bulkExportBusy, setBulkExportBusy] = useState(false);
+  const [monthlyBalanceBusy, setMonthlyBalanceBusy] = useState(false);
   const [bulkExportLabel, setBulkExportLabel] = useState('');
   const [whatsAppRowBusyId, setWhatsAppRowBusyId] = useState('');
   const [quoteLinkIndex, setQuoteLinkIndex] = useState(emptyQuoteLinkIndex);
@@ -473,7 +494,11 @@ export default function LaybyManagement() {
     try {
       const customerId = selectedLayby.customer_id;
       const { data: custRow } = await supabase.from('customers').select('currency').eq('id', customerId).maybeSingle();
-      const curr = custRow?.currency || 'K';
+      const curr = resolveCustomerPaymentCurrency({
+        customerId,
+        customer: { ...(selectedLayby.customerInfo || {}), currency: custRow?.currency || selectedLayby.customerInfo?.currency },
+        totalsByCurrency: selectedLayby.totalsByCurrency,
+      });
       const activePaymentLines = (paymentEntryLines || [])
         .map((line) => ({
           amount: parseAmountInput(line.amount),
@@ -628,9 +653,22 @@ export default function LaybyManagement() {
         return;
       }
 
+      const poolSaleId = selectedLayby?.primaryLayby?.sale_id
+        || selectedLayby?.sale_id
+        || owing[0]?.saleId
+        || null;
+      if (!poolSaleId) {
+        setError('Unable to resolve layby account for this payment.');
+        setLoading(false);
+        return;
+      }
+      const poolCurrency = saleCurrencyById.get(String(poolSaleId))
+        || owing[0]?.currency
+        || curr;
+
       const trimmedNote = (paymentNote || '').trim();
       const trimmedReceipt = (receipt || '').trim();
-      if (!trimmedReceipt) {
+      if (!trimmedReceipt || /^-+$/.test(trimmedReceipt)) {
         setError('Receipt # is required.');
         setLoading(false);
         return;
@@ -648,58 +686,38 @@ export default function LaybyManagement() {
       const allocationBatchUuid = (typeof window !== 'undefined' && window.crypto?.randomUUID)
         ? window.crypto.randomUUID()
         : `batch-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(16)}`;
-      const owingWorking = owing.map((entry) => ({
-        ...entry,
-        due: Number(entry.due || 0),
-      }));
 
+      // Pool all down payments against one customer balance (single sale anchor row).
       for (const line of activePaymentLines) {
-        let lineRemaining = Math.min(line.amount, paymentBudget);
-        paymentBudget -= lineRemaining;
-        for (const entry of owingWorking) {
-          if (lineRemaining <= 0) break;
-          const saleOutstanding = Math.max(0, Number(entry.due || 0));
-          if (saleOutstanding <= 0) continue;
-          const allocate = Math.min(saleOutstanding, lineRemaining);
-          if (allocate > 0) {
-            inserts.push({
-              sale_id: entry.saleId,
-              amount: allocate,
-              payment_type: line.type || 'cash',
-              currency: saleCurrencyById.get(String(entry.saleId)) || entry.currency || curr,
-              payment_date: paymentDate,
-              reference: trimmedReceipt || null,
-              notes: trimmedNote || null,
-              allocation_batch_uuid: allocationBatchUuid,
-              discount_amount: 0,
-            });
-            entry.due = saleOutstanding - allocate;
-            lineRemaining -= allocate;
-          }
-        }
+        const lineAmount = Math.min(Number(line.amount || 0), paymentBudget);
+        if (!(lineAmount > 0)) continue;
+        paymentBudget -= lineAmount;
+        inserts.push({
+          sale_id: poolSaleId,
+          amount: lineAmount,
+          payment_type: line.type || 'cash',
+          currency: poolCurrency,
+          payment_date: paymentDate,
+          reference: trimmedReceipt || null,
+          notes: trimmedNote || null,
+          allocation_batch_uuid: allocationBatchUuid,
+          discount_amount: 0,
+        });
       }
 
       const discountPaymentType = activePaymentLines[0]?.type || 'cash';
-      for (const entry of owingWorking) {
-        if (remainingDiscount <= 0) break;
-        const saleOutstanding = Math.max(0, Number(entry.due || 0));
-        if (saleOutstanding <= 0) continue;
-        const discountForThis = Math.min(saleOutstanding, remainingDiscount);
-        remainingDiscount -= discountForThis;
-        if (discountForThis > 0) {
-          inserts.push({
-            sale_id: entry.saleId,
-            amount: 0,
-            payment_type: discountPaymentType,
-            currency: saleCurrencyById.get(String(entry.saleId)) || entry.currency || curr,
-            payment_date: paymentDate,
-            reference: trimmedReceipt || null,
-            notes: trimmedNote || null,
-            allocation_batch_uuid: allocationBatchUuid,
-            discount_amount: discountForThis,
-          });
-          entry.due = saleOutstanding - discountForThis;
-        }
+      if (remainingDiscount > 0) {
+        inserts.push({
+          sale_id: poolSaleId,
+          amount: 0,
+          payment_type: discountPaymentType,
+          currency: poolCurrency,
+          payment_date: paymentDate,
+          reference: trimmedReceipt || null,
+          notes: trimmedNote || null,
+          allocation_batch_uuid: allocationBatchUuid,
+          discount_amount: remainingDiscount,
+        });
       }
 
       if (!inserts.length) {
@@ -707,7 +725,7 @@ export default function LaybyManagement() {
         setLoading(false);
         return;
       }
-      whatsappSaleId = inserts[0]?.sale_id ?? null;
+      whatsappSaleId = poolSaleId;
 
       const { error: payErr } = await insertSalesPayments(inserts);
       if (payErr) throw payErr;
@@ -721,7 +739,7 @@ export default function LaybyManagement() {
 
       successFlag = true;
       cacheClear(LAYBY_ROWS_CACHE_KEY);
-      setSuccess(`Payment allocated across ${inserts.length} sale(s).`);
+      setSuccess(`Payment of ${formatCurrency(rawAmount, curr)} recorded against layby balance.`);
       await refreshCustomerRowFast(customerId);
       void (async () => {
         try {
@@ -1291,6 +1309,33 @@ export default function LaybyManagement() {
     }
   }
 
+  async function handleSendMonthlyBalanceWhatsApp() {
+    if (monthlyBalanceBusy || bulkExportBusy) return;
+    const balanceRows = laybyRowsToBalanceDueRows(rows);
+    if (!balanceRows.length) {
+      setError('No customers with an outstanding balance to include.');
+      return;
+    }
+    if (!window.confirm(`Send monthly balance due for ${balanceRows.length} customer(s) to the Layby WhatsApp group?`)) return;
+    setMonthlyBalanceBusy(true);
+    setError('');
+    setSuccess('');
+    try {
+      const messages = buildMonthlyBalanceDueMessages(balanceRows);
+      const result = await sendMonthlyBalanceDueWhatsApp({ messages });
+      if (!result?.ok) {
+        setError(result?.error || 'Failed to send monthly balance WhatsApp message.');
+        return;
+      }
+      const parts = Number(result.messageCount) > 1 ? ` (${result.messageCount} messages)` : '';
+      setSuccess(`Monthly balance due sent for ${balanceRows.length} customer(s)${parts}.`);
+    } catch (e) {
+      setError(e?.message || 'Failed to send monthly balance WhatsApp message.');
+    } finally {
+      setMonthlyBalanceBusy(false);
+    }
+  }
+
   async function handleSendCustomerLaybyWhatsApp(row) {
     const customerId = row?.customerId;
     const laybyId = row?.primaryLayby?.id || (row?.laybys || []).find((layby) => layby?.id)?.id;
@@ -1342,10 +1387,22 @@ export default function LaybyManagement() {
             title={bulkExportBusy ? bulkExportLabel || 'Preparing download...' : 'Download all layby PDFs (ZIP)'}
             aria-label="Download all layby PDFs as ZIP"
             onClick={handleDownloadAllLaybyPdfs}
-            disabled={bulkExportBusy || !filteredRows.length}
+            disabled={bulkExportBusy || monthlyBalanceBusy || !filteredRows.length}
           >
             <FaFilePdf aria-hidden="true" />
           </button>
+          {!readOnly && (
+            <button
+              type="button"
+              className="layby-mgmt-download-btn layby-mgmt-download-btn--whatsapp"
+              title={monthlyBalanceBusy ? 'Sending monthly balance...' : 'Send monthly balance due to WhatsApp group'}
+              aria-label="Send monthly balance due to WhatsApp"
+              onClick={handleSendMonthlyBalanceWhatsApp}
+              disabled={bulkExportBusy || monthlyBalanceBusy || !rows.length}
+            >
+              <FaWhatsapp aria-hidden="true" />
+            </button>
+          )}
           {!readOnly && (
             <button
               type="button"
@@ -1554,7 +1611,13 @@ export default function LaybyManagement() {
         </div>
       )}
 
-      {!readOnly && selectedLayby && (
+      {!readOnly && selectedLayby && (() => {
+        const paymentCurrency = resolveCustomerPaymentCurrency({
+          customerId: selectedLayby.customer_id || selectedLayby.customerId,
+          customer: selectedLayby.customerInfo,
+          totalsByCurrency: selectedLayby.totalsByCurrency,
+        });
+        return (
         <div className="layby-modal-overlay" onClick={(e) => { if (e.target.classList.contains('layby-modal-overlay')) { setSelectedLayby(null); } }}>
           <div className="layby-modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Add Payment – {selectedLayby.customerInfo?.name}</h3>
@@ -1608,7 +1671,7 @@ export default function LaybyManagement() {
                         Add Another Payment
                       </button>
                       <div>
-                        Total: <b>{formatCurrency((paymentEntryLines || []).reduce((sum, line) => sum + parseAmountInput(line.amount), 0))}</b>
+                        Total: <b>{formatCurrency((paymentEntryLines || []).reduce((sum, line) => sum + parseAmountInput(line.amount), 0), paymentCurrency)}</b>
                       </div>
                     </div>
                   </div>
@@ -1663,7 +1726,8 @@ export default function LaybyManagement() {
             </form>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {!readOnly && paymentEditLayby && (
         <div className="pdf-modal-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

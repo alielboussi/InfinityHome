@@ -11,11 +11,23 @@ try { require('dotenv').config({ path: path.resolve(process.cwd(), '.env.local')
 try { require('dotenv').config({ path: path.resolve(process.cwd(), '.env'), override: false }); } catch {}
 
 const WHATSAPP_NOTIFY_PATHS = new Set([
+  '/api/notify',
+  '/api/whatsapp-labels',
+  '/api/whatsapp-sale',
+  '/api/whatsapp-layby',
+  '/api/whatsapp-transfer',
+  '/api/whatsapp-lusaka-transfer',
+  '/api/monthly-balance-dues',
+  '/api/monthly-balance-send',
+  // Some proxy versions pass pathname without /api prefix.
   '/notify',
   '/whatsapp-labels',
   '/whatsapp-sale',
   '/whatsapp-layby',
   '/whatsapp-transfer',
+  '/whatsapp-lusaka-transfer',
+  '/monthly-balance-dues',
+  '/monthly-balance-send',
 ]);
 
 const WHATSAPP_PATH_ACTION = {
@@ -23,6 +35,9 @@ const WHATSAPP_PATH_ACTION = {
   '/api/whatsapp-sale': 'whatsapp-sale',
   '/api/whatsapp-layby': 'whatsapp-layby',
   '/api/whatsapp-transfer': 'whatsapp-transfer',
+  '/api/whatsapp-lusaka-transfer': 'whatsapp-lusaka-transfer',
+  '/api/monthly-balance-dues': 'monthly-balance-dues',
+  '/api/monthly-balance-send': 'monthly-balance-send',
 };
 
 function readJsonBody(req) {
@@ -42,6 +57,31 @@ function readJsonBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+function attachNotifyAction(req, fixedAction) {
+  if (!req.query || typeof req.query !== 'object') req.query = {};
+
+  if (fixedAction) {
+    req.query.action = fixedAction;
+  } else {
+    const rawUrl = String(req.originalUrl || req.url || '');
+    const qIndex = rawUrl.indexOf('?');
+    if (qIndex >= 0 && !req.query.action) {
+      try {
+        const params = new URLSearchParams(rawUrl.slice(qIndex + 1));
+        const action = params.get('action') || params.get('a');
+        if (action) req.query.action = action;
+      } catch (_) {
+        // ignore malformed query
+      }
+    }
+  }
+
+  const action = fixedAction || req.query.action;
+  if (action) {
+    req.body = { ...(req.body || {}), action };
+  }
 }
 
 function mountLocalNotify(app) {
@@ -69,10 +109,7 @@ function mountLocalNotify(app) {
       if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
         req.body = await readJsonBody(req);
       }
-      if (fixedAction) {
-        req.query = { ...(req.query || {}), action: fixedAction };
-        req.body = { ...(req.body || {}), action: fixedAction };
-      }
+      attachNotifyAction(req, fixedAction);
       await notifyHandler(req, res);
     } catch (error) {
       if (!res.headersSent) {
@@ -113,7 +150,10 @@ module.exports = function setupProxy(app) {
       secure: true,
       proxyTimeout: 15000,
       timeout: 15000,
-      filter: (pathname) => !WHATSAPP_NOTIFY_PATHS.has(pathname),
+      filter: (pathname) => {
+        const pathOnly = String(pathname || '').split('?')[0];
+        return !WHATSAPP_NOTIFY_PATHS.has(pathOnly);
+      },
       onProxyReq: (proxyReq) => {
         const bypass = process.env.REACT_APP_VERCEL_BYPASS && process.env.REACT_APP_VERCEL_BYPASS.trim();
         if (bypass) {
