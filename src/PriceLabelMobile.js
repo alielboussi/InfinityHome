@@ -5,6 +5,16 @@ import { QRCodeSVG } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { sendLabelsWhatsApp } from './services/whatsapp';
+import {
+  applyComboLocationPricing,
+  applyProductLocationPricing,
+  buildComboLocationPriceMap,
+  buildProductLocationPriceMap,
+} from './utils/locationPricing';
+import {
+  fetchComboLocationPricesForLocation,
+  fetchProductLocationPricesForLocation,
+} from './services/locationPricing';
 
 // Mobile-first Price Labels: search, select, preview, save PDF and share
 export default function PriceLabelMobile() {
@@ -12,6 +22,8 @@ export default function PriceLabelMobile() {
   const [combos, setCombos] = useState([]);
   const [comboItems, setComboItems] = useState([]);
   const [company, setCompany] = useState({ name: 'Best Rest Furniture' });
+  const [locations, setLocations] = useState([]);
+  const [labelLocationId, setLabelLocationId] = useState('');
   const [logoSrc, setLogoSrc] = useState('/bestrest-logo.png');
   const [stampSrc, setStampSrc] = useState('/bestreststamp.png');
   const [assetsReady, setAssetsReady] = useState(false);
@@ -22,18 +34,46 @@ export default function PriceLabelMobile() {
   const [isGenerating, setIsGenerating] = useState(false);
   // no bottom sheet; search stays at top
 
+  const loadCatalogForLocation = async (locationId) => {
+    const { data: productsData } = await supabase.from('products').select('*');
+    const { data: combosData } = await supabase.from('combos').select('*');
+    let productLocationPriceRows = [];
+    let comboLocationPriceRows = [];
+    if (locationId) {
+      try {
+        [productLocationPriceRows, comboLocationPriceRows] = await Promise.all([
+          fetchProductLocationPricesForLocation(supabase, locationId),
+          fetchComboLocationPricesForLocation(supabase, locationId),
+        ]);
+      } catch (err) {
+        console.warn('[price-label-mobile] location pricing unavailable', err);
+      }
+    }
+    const productMap = buildProductLocationPriceMap(productLocationPriceRows);
+    const comboMap = buildComboLocationPriceMap(comboLocationPriceRows);
+    setProducts((productsData || []).map((row) => applyProductLocationPricing(row, locationId, productMap)));
+    setCombos((combosData || []).map((row) => applyComboLocationPricing(row, locationId, comboMap)));
+  };
+
   useEffect(() => {
     (async () => {
-      const { data: productsData } = await supabase.from('products').select('*');
-      setProducts(productsData || []);
-      const { data: combosData } = await supabase.from('combos').select('*');
-      setCombos(combosData || []);
+      const { data: locationsData } = await supabase.from('locations').select('id, name').order('name', { ascending: true });
+      const nextLocations = locationsData || [];
+      setLocations(nextLocations);
+      const initialLocationId = nextLocations[0]?.id ? String(nextLocations[0].id) : '';
+      if (initialLocationId) setLabelLocationId(initialLocationId);
       const { data: ci } = await supabase.from('combo_items').select('*');
       setComboItems(ci || []);
       const { data: companyData } = await supabase.from('company_settings').select('name').maybeSingle();
       if (companyData && companyData.name) setCompany(companyData);
+      if (initialLocationId) await loadCatalogForLocation(initialLocationId);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!labelLocationId) return;
+    loadCatalogForLocation(labelLocationId);
+  }, [labelLocationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -426,6 +466,17 @@ export default function PriceLabelMobile() {
     <div className="plm-page">
       {/* Search and results at top */}
       <header className="plm-topbar">
+        <select
+          className="plm-search"
+          value={labelLocationId}
+          onChange={(e) => setLabelLocationId(e.target.value)}
+          aria-label="Label pricing location"
+        >
+          <option value="">Select location</option>
+          {locations.map((loc) => (
+            <option key={loc.id} value={loc.id}>{loc.name}</option>
+          ))}
+        </select>
         <input className="plm-search" placeholder="Search products or sets..." value={search} onChange={(e) => setSearch(e.target.value)} />
         {search && (
           <div className="plm-results">

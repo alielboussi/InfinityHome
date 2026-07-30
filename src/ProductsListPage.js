@@ -15,6 +15,22 @@ import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { exportProductsListExcel } from './utils/productsListExport';
 import { getDuplicateProductNameInfo, normalizeProductNameKey } from './utils/productDuplicateNames';
 import { logUserActivity } from './utils/userActivityLog';
+import {
+  applyComboLocationPricing,
+  applyProductLocationPricing,
+  buildComboLocationPriceMap,
+  buildComboLocationPriceUpsert,
+  buildProductLocationPriceMap,
+  buildProductLocationPriceUpsert,
+} from './utils/locationPricing';
+import {
+  fetchComboLocationPrices,
+  fetchProductLocationPrices,
+  saveComboLocationPrice,
+  saveProductLocationPrice,
+  upsertComboLocationPrices,
+  upsertProductLocationPrices,
+} from './services/locationPricing';
 
 const toolbarWrapperStyle = Object.freeze({
   width: '100%',
@@ -99,7 +115,7 @@ const mapCatalogProducts = (products, unitsData) => {
 };
 
 const PRODUCT_IMAGE_BUCKET = 'productimages';
-const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v2';
+const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v3';
 const PRODUCTS_LIST_INVENTORY_CACHE_KEY = 'products:list:inventory:v3';
 const PRODUCTS_LIST_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const PRODUCTS_LIST_INVENTORY_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -282,6 +298,8 @@ function ProductsListPage() {
   const [combos, setCombos] = useState([]);
   const [comboLocations, setComboLocations] = useState([]);
   const [comboItems, setComboItems] = useState([]);
+  const [productLocationPrices, setProductLocationPrices] = useState([]);
+  const [comboLocationPrices, setComboLocationPrices] = useState([]);
   const [pendingFactoryStorageProductId] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -450,7 +468,7 @@ function ProductsListPage() {
   // Realtime tick for catalog and inventory-related tables
   const rtLocationFilter = selectedLocationIds.length === 1 ? selectedLocationIds[0] : '';
   const rtTickCatalog = useRealtimeRefresh(
-    ['products','product_images','product_locations','categories','unit_of_measure','inventory','combos','combo_items','combo_locations','locations'],
+    ['products','product_images','product_locations','product_location_prices','combo_location_prices','categories','unit_of_measure','inventory','combos','combo_items','combo_locations','locations'],
     250,
     rtLocationFilter ? {
       inventory: { column: 'location', value: rtLocationFilter },
@@ -1115,6 +1133,8 @@ function ProductsListPage() {
         setCombos(snap.combos || []);
         setComboLocations(snap.comboLocations || []);
         setComboItems(snap.comboItems || []);
+        setProductLocationPrices(snap.productLocationPrices || []);
+        setComboLocationPrices(snap.comboLocationPrices || []);
         setLoading(false);
       } else {
         setLoading(true);
@@ -1146,6 +1166,17 @@ function ProductsListPage() {
         { data: comboItems },
       ] = await catalogPromise;
 
+      let productLocationPriceRows = [];
+      let comboLocationPriceRows = [];
+      try {
+        [productLocationPriceRows, comboLocationPriceRows] = await Promise.all([
+          fetchProductLocationPrices(supabase),
+          fetchComboLocationPrices(supabase),
+        ]);
+      } catch (locationPriceErr) {
+        console.warn('[products-list] location pricing unavailable', locationPriceErr?.message || locationPriceErr);
+      }
+
       if (loadSeq !== catalogLoadSeqRef.current) return;
 
       const mappedProducts = mapCatalogProducts(products || [], unitsData || []);
@@ -1162,6 +1193,8 @@ function ProductsListPage() {
       setCombos(combos || []);
       setComboLocations(comboLocations || []);
       setComboItems(comboItems || []);
+      setProductLocationPrices(productLocationPriceRows || []);
+      setComboLocationPrices(comboLocationPriceRows || []);
       setLoading(false);
       try {
         cacheSet(PRODUCTS_LIST_CATALOG_CACHE_KEY, {
@@ -1172,6 +1205,8 @@ function ProductsListPage() {
           combos: combos || [],
           comboLocations: comboLocations || [],
           comboItems: comboItems || [],
+          productLocationPrices: productLocationPriceRows || [],
+          comboLocationPrices: comboLocationPriceRows || [],
         }, PRODUCTS_LIST_CATALOG_CACHE_TTL_MS);
       } catch {}
     } catch (err) {
@@ -1490,6 +1525,30 @@ function ProductsListPage() {
     return (item.product_locations || []).map((pl) => pl.location_id);
   }, [comboLocations]);
 
+  const productLocationPriceMap = useMemo(
+    () => buildProductLocationPriceMap(productLocationPrices),
+    [productLocationPrices],
+  );
+  const comboLocationPriceMap = useMemo(
+    () => buildComboLocationPriceMap(comboLocationPrices),
+    [comboLocationPrices],
+  );
+  const pricingDisplayLocationId = useMemo(() => {
+    if (selectedLocationIds.length > 0) {
+      return normalizeLocationId(selectedLocationIds[0]);
+    }
+    return '';
+  }, [normalizeLocationId, selectedLocationIds]);
+  const pricingEditLocationId = useMemo(() => (
+    selectedLocationIds.length === 1 ? normalizeLocationId(selectedLocationIds[0]) : ''
+  ), [normalizeLocationId, selectedLocationIds]);
+  const pricingLocationLabel = useMemo(() => {
+    const locId = pricingDisplayLocationId || pricingEditLocationId;
+    if (!locId) return '';
+    const match = (locations || []).find((row) => isSameLocation(row.id, locId));
+    return match?.name || 'selected location';
+  }, [isSameLocation, locations, pricingDisplayLocationId, pricingEditLocationId]);
+
   const displayedProducts = useMemo(() => {
     let items = filteredProducts.slice();
     if (showDuplicateNamesOnly) {
@@ -1517,7 +1576,12 @@ function ProductsListPage() {
     } else {
       items.sort(byName);
     }
-    return items;
+    if (!pricingDisplayLocationId) return items;
+    return items.map((item) => (
+      item.__isCombo
+        ? applyComboLocationPricing(item, pricingDisplayLocationId, comboLocationPriceMap)
+        : applyProductLocationPricing(item, pricingDisplayLocationId, productLocationPriceMap)
+    ));
   }, [
     filteredProducts,
     getAssignedLocationIdsForItem,
@@ -1526,6 +1590,9 @@ function ProductsListPage() {
     showDuplicateNamesOnly,
     duplicateNameInfo.ids,
     duplicateNameKeyByProductId,
+    pricingDisplayLocationId,
+    productLocationPriceMap,
+    comboLocationPriceMap,
   ]);
 
   const bulkSelectableItems = useMemo(() => (
@@ -1738,7 +1805,64 @@ function ProductsListPage() {
           value = null;
         }
 
-        if (productIds.length > 0) {
+        const locationPriceFields = new Set(['price', 'promotional_price']);
+        const targetLocationIds = (selectedLocationIds.length > 0
+          ? selectedLocationIds
+          : (locations || []).map((row) => row.id))
+          .map((locId) => normalizeLocationId(locId))
+          .filter(Boolean);
+
+        if (locationPriceFields.has(bulkFieldMeta.value)) {
+          if (!targetLocationIds.length) {
+            alert('No locations available for price update.');
+            setBulkApplyLoading(false);
+            return;
+          }
+          const productRows = productIds.flatMap((productId) => {
+            const product = (products || []).find((row) => String(row.id) === String(productId));
+            return targetLocationIds.map((locationId) => {
+              const existing = productLocationPriceMap.get(`${productId}:${locationId}`);
+              return buildProductLocationPriceUpsert({
+                productId,
+                locationId,
+                price: bulkFieldMeta.value === 'price'
+                  ? value
+                  : (existing?.price ?? product?.price ?? null),
+                promotionalPrice: bulkFieldMeta.value === 'promotional_price'
+                  ? value
+                  : (existing?.promotional_price ?? product?.promotional_price ?? null),
+                promoStartDate: existing?.promo_start_date ?? product?.promo_start_date ?? null,
+                promoEndDate: existing?.promo_end_date ?? product?.promo_end_date ?? null,
+              });
+            });
+          });
+          if (productRows.length) {
+            await upsertProductLocationPrices(supabase, productRows);
+          }
+
+          const comboRows = comboIds.flatMap((comboId) => {
+            const combo = (combos || []).find((row) => String(row.id) === String(comboId));
+            const standard = combo?.combo_price ?? combo?.standard_price ?? null;
+            return targetLocationIds.map((locationId) => {
+              const existing = comboLocationPriceMap.get(`${comboId}:${locationId}`);
+              return buildComboLocationPriceUpsert({
+                comboId,
+                locationId,
+                comboPrice: bulkFieldMeta.value === 'price'
+                  ? value
+                  : (existing?.combo_price ?? standard),
+                promotionalPrice: bulkFieldMeta.value === 'promotional_price'
+                  ? value
+                  : (existing?.promotional_price ?? combo?.promotional_price ?? null),
+                promoStartDate: existing?.promo_start_date ?? combo?.promo_start_date ?? null,
+                promoEndDate: existing?.promo_end_date ?? combo?.promo_end_date ?? null,
+              });
+            });
+          });
+          if (comboRows.length) {
+            await upsertComboLocationPrices(supabase, comboRows);
+          }
+        } else if (productIds.length > 0) {
           const chunks = chunkArray(productIds, 500);
           for (const chunk of chunks) {
             const { error } = await supabase
@@ -1760,7 +1884,7 @@ function ProductsListPage() {
         };
         const comboField = comboFieldMap[bulkFieldMeta.value];
         let updatedCombos = 0;
-        if (comboIds.length > 0 && comboField) {
+        if (!locationPriceFields.has(bulkFieldMeta.value) && comboIds.length > 0 && comboField) {
           const chunks = chunkArray(comboIds, 500);
           for (const chunk of chunks) {
             const { error } = await supabase
@@ -1772,14 +1896,17 @@ function ProductsListPage() {
           updatedCombos = comboIds.length;
         }
         await fetchAll();
-        const skippedCombos = comboIds.length > 0 && !comboField ? ' (sets skipped)' : '';
+        const skippedCombos = comboIds.length > 0 && !comboField && !locationPriceFields.has(bulkFieldMeta.value) ? ' (sets skipped)' : '';
         const comboSuffix = updatedCombos > 0 ? `, ${updatedCombos} set${updatedCombos === 1 ? '' : 's'}` : '';
-        setBulkApplyMessage(`Updated ${bulkFieldMeta.label} for ${productIds.length} product${productIds.length === 1 ? '' : 's'}${comboSuffix}${skippedCombos}.`);
+        const locationSuffix = locationPriceFields.has(bulkFieldMeta.value)
+          ? ` across ${targetLocationIds.length} location${targetLocationIds.length === 1 ? '' : 's'}`
+          : '';
+        setBulkApplyMessage(`Updated ${bulkFieldMeta.label} for ${productIds.length} product${productIds.length === 1 ? '' : 's'}${comboSuffix}${locationSuffix}${skippedCombos}.`);
         const priceFields = new Set(['price', 'promotional_price', 'cost_price']);
         logUserActivity({
           actionType: priceFields.has(bulkFieldMeta.value) ? 'product_price_change' : 'product_edit',
           actionLabel: priceFields.has(bulkFieldMeta.value) ? 'Bulk Price Change' : 'Bulk Product Update',
-          details: `${bulkFieldMeta.label} set to ${value} for ${productIds.length} product${productIds.length === 1 ? '' : 's'}${comboSuffix}`,
+          details: `${bulkFieldMeta.label} set to ${value} for ${productIds.length} product${productIds.length === 1 ? '' : 's'}${comboSuffix}${locationSuffix}`,
           reference: bulkFieldMeta.value,
           entityType: 'product_bulk',
           entityId: String(productIds.length),
@@ -1900,6 +2027,12 @@ function ProductsListPage() {
     if (inlinePriceSaveLockRef.current) return false;
     inlinePriceSaveLockRef.current = true;
 
+    if (!pricingEditLocationId) {
+      alert('Choose a location in the Location filter (next to Categories), not the bulk “Add to location” picker.');
+      inlinePriceSaveLockRef.current = false;
+      return false;
+    }
+
     const allowEmpty = field === 'promotional_price';
     const parsed = parseInlinePriceDraft(draft, allowEmpty);
     if (!allowEmpty && (!Number.isFinite(parsed) || parsed < 0)) {
@@ -1929,54 +2062,64 @@ function ProductsListPage() {
     catalogLoadSeqRef.current += 1;
     setInlinePriceEdit((prev) => (prev ? { ...prev, saving: true } : prev));
     try {
+      const baseProduct = (products || []).find((row) => String(row.id) === String(itemId));
+      const baseCombo = (combos || []).find((row) => String(row.id) === String(itemId));
       if (isCombo) {
-        if (field === 'price') {
-          const { data, error } = await supabase
-            .from('combos')
-            .update({ standard_price: parsed, combo_price: parsed })
-            .eq('id', itemId)
-            .select('id, standard_price, combo_price, promotional_price')
-            .maybeSingle();
-          if (error) throw error;
-          if (!data) throw new Error('Update was blocked or combo not found.');
-        } else {
-          const { data, error } = await supabase
-            .from('combos')
-            .update({ promotional_price: parsed })
-            .eq('id', itemId)
-            .select('id, standard_price, combo_price, promotional_price')
-            .maybeSingle();
-          if (error) throw error;
-          if (!data) throw new Error('Update was blocked or combo not found.');
-        }
+        await saveComboLocationPrice(supabase, {
+          comboId: itemId,
+          locationId: pricingEditLocationId,
+          field,
+          value: parsed,
+          baseCombo: baseCombo || item,
+        });
       } else {
-        const { data, error } = await supabase
-          .from('products')
-          .update({ [field]: parsed })
-          .eq('id', itemId)
-          .select('id, price, promotional_price')
-          .maybeSingle();
-        if (error) throw error;
-        if (!data) throw new Error('Update was blocked or product not found.');
+        await saveProductLocationPrice(supabase, {
+          productId: itemId,
+          locationId: pricingEditLocationId,
+          field,
+          value: parsed,
+          baseProduct: baseProduct || item,
+        });
       }
 
       clearProductsListCaches();
+      const patchLocationPriceState = (prev, rowMatcher, patcher) => (
+        (prev || []).some(rowMatcher)
+          ? (prev || []).map((row) => (rowMatcher(row) ? patcher(row) : row))
+          : [...(prev || []), patcher({})]
+      );
       if (isCombo) {
-        setCombos((prev) => prev.map((combo) => {
-          if (String(combo.id) !== String(itemId)) return combo;
-          if (field === 'price') return { ...combo, standard_price: parsed, combo_price: parsed };
-          return { ...combo, promotional_price: parsed };
-        }));
+        setComboLocationPrices((prev) => patchLocationPriceState(
+          prev,
+          (row) => String(row.combo_id) === String(itemId) && isSameLocation(row.location_id, pricingEditLocationId),
+          (row) => ({
+            combo_id: itemId,
+            location_id: pricingEditLocationId,
+            combo_price: field === 'price' ? parsed : (row.combo_price ?? baseCombo?.combo_price ?? baseCombo?.standard_price ?? null),
+            promotional_price: field === 'promotional_price'
+              ? parsed
+              : (row.promotional_price ?? baseCombo?.promotional_price ?? null),
+          }),
+        ));
       } else {
-        setProducts((prev) => prev.map((product) => (
-          String(product.id) === String(itemId) ? { ...product, [field]: parsed } : product
-        )));
+        setProductLocationPrices((prev) => patchLocationPriceState(
+          prev,
+          (row) => String(row.product_id) === String(itemId) && isSameLocation(row.location_id, pricingEditLocationId),
+          (row) => ({
+            product_id: itemId,
+            location_id: pricingEditLocationId,
+            price: field === 'price' ? parsed : (row.price ?? baseProduct?.price ?? null),
+            promotional_price: field === 'promotional_price'
+              ? parsed
+              : (row.promotional_price ?? baseProduct?.promotional_price ?? null),
+          }),
+        ));
       }
 
       logUserActivity({
         actionType: 'product_price_change',
         actionLabel: field === 'price' ? 'Inline Price Change' : 'Inline Promo Price Change',
-        details: `${itemName} • ${field === 'price' ? 'Price' : 'Promo'} ${oldValue || '-'} → ${parsed ?? 'cleared'}`,
+        details: `${itemName} @ ${pricingLocationLabel} • ${field === 'price' ? 'Price' : 'Promo'} ${oldValue || '-'} → ${parsed ?? 'cleared'}`,
         reference: field,
         entityType: isCombo ? 'combo' : 'product',
         entityId: String(itemId),
@@ -2043,9 +2186,13 @@ function ProductsListPage() {
 
     return (
       <td
-        className={`${className} products-list-cell-editable`}
-        title="Double-click to edit"
+        className={`${className}${pricingEditLocationId ? ' products-list-cell-editable' : ''}`}
+        title={pricingEditLocationId ? 'Double-click to edit location price' : 'Select one location to edit prices'}
         onDoubleClick={() => {
+          if (!pricingEditLocationId) {
+            alert('Choose a location in the Location filter (next to Categories), not the bulk “Add to location” picker.');
+            return;
+          }
           const draft = String(getEditablePriceRaw(item, field, isCombo) ?? '');
           inlinePriceDraftRef.current = draft;
           setInlinePriceEdit({
@@ -2180,6 +2327,22 @@ function ProductsListPage() {
               <option value="">All Categories</option>
               {categories.map(cat => (
                 <option key={cat.id} value={String(cat.id)}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="products-toolbar-control-wrap">
+            <select
+              value={selectedLocationIds.length === 1 ? normalizeLocationId(selectedLocationIds[0]) : ''}
+              onChange={(e) => {
+                const value = String(e.target.value || '').trim();
+                setSelectedLocationIds(value ? [normalizeLocationId(value)] : []);
+              }}
+              className="products-toolbar-select pos-control"
+              aria-label="Filter by location and set price location"
+            >
+              <option value="">All locations</option>
+              {(locations || []).map((loc) => (
+                <option key={loc.id} value={normalizeLocationId(loc.id)}>{loc.name}</option>
               ))}
             </select>
           </div>
@@ -2364,6 +2527,17 @@ function ProductsListPage() {
         )}
         {bulkApplyMessage && (
           <div className="products-toolbar-message">{bulkApplyMessage}</div>
+        )}
+        {selectedLocationIds.length !== 1 && (
+          <div className="products-toolbar-message">
+            Select a location in the Location filter (next to Categories) to view and edit location-specific prices. The bulk “Add to location” picker is only for assigning products to locations.
+          </div>
+        )}
+        {pricingDisplayLocationId && (
+          <div className="products-toolbar-message">
+            Prices for {pricingLocationLabel}
+            {selectedLocationIds.length > 1 ? ' (first selected location)' : ''}.
+          </div>
         )}
       </div>
     <div className="products-list">

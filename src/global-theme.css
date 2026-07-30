@@ -2975,6 +2975,17 @@ button:hover {
   cursor: not-allowed;
 }
 
+.layby-mgmt-download-btn--whatsapp {
+  border-color: rgba(37, 211, 102, 0.55);
+  color: #25d366;
+}
+
+.layby-mgmt-download-btn--whatsapp:hover:not(:disabled) {
+  background: #1a3d2a;
+  border-color: #25d366;
+  color: #fff;
+}
+
 /* Total Due banner (desktop) */
 .layby-total-due-banner-row {
   display: flex;
@@ -3655,16 +3666,27 @@ body.enterprise-theme .price-labels-page .label-category-bulk-control-shell--qty
 .labels-table-full th, .labels-table-full td { padding: 10px; color: #ddd; border: 1px solid rgba(0, 170, 255, 0.28); }
 .labels-table-full thead th { background: #0e0e0e; color: #bfe7ff; }
 .labels-table-full { border: 1px solid rgba(0, 170, 255, 0.55); box-shadow: 0 0 12px rgba(0, 170, 255, 0.35), inset 0 0 8px rgba(0, 170, 255, 0.2); border-radius: 8px; }
+.labels-table-full .labels-table-promo { color: #2e7d32; font-weight: 700; }
 
 /* Search results: normal table with borders (no blue glow) */
 /* Search results list (no table) */
 .label-search-results { width: 100%; max-width: 900px; margin: 12px auto; }
+.label-search-results-note { margin-bottom: 8px; color: #64748b; font-size: 0.92rem; font-weight: 600; }
 .search-list { list-style: none; margin: 0; padding: 0; }
-.search-item { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #c9d3df; border-top: none; background: #ffffff; }
+.search-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #c9d3df; border-top: none; background: #ffffff; }
 .search-item:first-child { border-top: 1px solid #c9d3df; border-top-left-radius: 8px; border-top-right-radius: 8px; }
 .search-item:last-child { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
-.search-item-name { color: #0f172a; font-weight: 600; }
-.search-item-type { color: #64748b; font-size: 0.9rem; }
+.search-item-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.search-item-name { color: #0f172a; font-weight: 600; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.search-item-sku { color: #64748b; font-size: 0.82rem; font-weight: 600; }
+.search-item-hint { color: #b45309; font-size: 0.82rem; font-weight: 600; }
+.search-item-type--set { color: #0f766e; font-weight: 700; }
+.labels-table-sku { color: #64748b; font-size: 0.82rem; margin-top: 2px; }
+.search-item-prices { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.search-item-price { display: inline-flex; gap: 6px; align-items: baseline; font-size: 0.92rem; color: #334155; }
+.search-item-price-label { color: #64748b; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.search-item-price--promo span:last-child { color: #2e7d32; font-weight: 700; }
+.search-item-type { color: #64748b; font-size: 0.9rem; text-transform: capitalize; }
 .search-item-add { padding: 8px 14px; border-radius: 8px; }
 .search-item:hover { background: #eef5ff; }
 
@@ -12181,5 +12203,59 @@ body.enterprise-theme .checkout-btn {
     grid-column: 1 / -1;
     width: 100% !important;
   }
+}
+
+/* Lusaka Transfers — enterprise light theme (matches report / layby pages) */
+.lusaka-transfers-container .report-filters,
+.lusaka-transfers-container .report-section {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.lusaka-transfers-container .report-table {
+  width: 100%;
+}
+
+.lusaka-transfers-container .report-actions {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.lusaka-transfers-container .lusaka-search-results {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--ent-border, #d5dbe2);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.lusaka-transfers-container .lusaka-search-hit {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  cursor: pointer;
+  color: var(--ent-text, #1f2733);
+}
+
+.lusaka-transfers-container .lusaka-search-hit:last-child {
+  border-bottom: none;
+}
+
+.lusaka-transfers-container .lusaka-search-hit:hover,
+.lusaka-transfers-container .lusaka-search-hit:focus {
+  background: #f0f5fb;
+  outline: none;
+}
+
+body.enterprise-theme .lusaka-transfers-container .report-blank {
+  color: var(--ent-muted, #5b6675) !important;
+}
+
+body.enterprise-theme .lusaka-transfers-container .report-error {
+  background: #fef2f2 !important;
+  border: 1px solid #fecaca !important;
+  color: #b91c1c !important;
 }
 

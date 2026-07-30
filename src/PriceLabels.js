@@ -1,21 +1,37 @@
 /* eslint-disable no-unused-vars */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import supabase from './supabase';
 import { QRCodeSVG } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { FaWhatsapp } from 'react-icons/fa';
-import { cacheGet, cacheSet } from './utils/staleCache';
+import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import BackToDashboard from './BackToDashboard';
 import { logUserActivity } from './utils/userActivityLog';
 import { sendLabelsWhatsApp } from './services/whatsapp';
+import {
+  applyComboLocationPricing,
+  applyProductLocationPricing,
+  buildComboLocationPriceMap,
+  buildProductLocationPriceMap,
+} from './utils/locationPricing';
+import {
+  fetchComboLocationPrices,
+  fetchProductLocationPrices,
+} from './services/locationPricing';
+
+const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v3';
 
 // PriceLabels: search, select, and print/export two-up A4 labels
 const PriceLabels = () => {
-  const [products, setProducts] = useState([]);
-  const [combos, setCombos] = useState([]);
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [catalogCombos, setCatalogCombos] = useState([]);
   const [comboItems, setComboItems] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [labelLocationId, setLabelLocationId] = useState('');
+  const [productLocationPrices, setProductLocationPrices] = useState([]);
+  const [comboLocationPrices, setComboLocationPrices] = useState([]);
   const [company, setCompany] = useState({ name: 'Best Rest Furniture' });
 
   const [search, setSearch] = useState('');
@@ -27,78 +43,257 @@ const PriceLabels = () => {
   const [categoryBulkMessage, setCategoryBulkMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const sendRenderRef = useRef(null);
+  const addedOrderRef = useRef(1);
+  const fetchSeqRef = useRef(0);
 
-  const fetchLabelData = useCallback(async ({ useCache = false, showLoading = false } = {}) => {
+  const productLocationPriceMap = useMemo(
+    () => buildProductLocationPriceMap(productLocationPrices),
+    [productLocationPrices],
+  );
+  const comboLocationPriceMap = useMemo(
+    () => buildComboLocationPriceMap(comboLocationPrices),
+    [comboLocationPrices],
+  );
+
+  const pricingLocationId = useMemo(
+    () => String(labelLocationId || '').trim(),
+    [labelLocationId],
+  );
+
+  const getPricedCatalogItem = useCallback((type, id) => {
+    if (!id) return null;
+    if (type === 'product') {
+      const row = (catalogProducts || []).find((product) => String(product.id) === String(id));
+      if (!row) return null;
+      if (!pricingLocationId) return row;
+      return applyProductLocationPricing(row, pricingLocationId, productLocationPriceMap);
+    }
+    const row = (catalogCombos || []).find((combo) => String(combo.id) === String(id));
+    if (!row) return null;
+    if (!pricingLocationId) return row;
+    return applyComboLocationPricing(row, pricingLocationId, comboLocationPriceMap);
+  }, [
+    catalogCombos,
+    catalogProducts,
+    comboLocationPriceMap,
+    pricingLocationId,
+    productLocationPriceMap,
+  ]);
+
+  const resolveItemLocationPrices = useCallback((item) => {
+    const priced = getPricedCatalogItem(item?.type, item?.id) || item?.data || {};
+    if (item?.type === 'product') {
+      return {
+        standard: priced.price,
+        promo: priced.promotional_price,
+        currency: priced.currency,
+      };
+    }
+    return {
+      standard: priced.combo_price ?? priced.standard_price,
+      promo: priced.promotional_price,
+      currency: priced.currency,
+    };
+  }, [getPricedCatalogItem]);
+
+  const getNextAddedOrder = useCallback(() => {
+    const order = addedOrderRef.current;
+    addedOrderRef.current += 1;
+    return order;
+  }, []);
+
+  const sortByAddOrder = useCallback((items) => (
+    [...items]
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const ao = Number.isFinite(a.item.addedOrder) ? a.item.addedOrder : a.index + 1;
+        const bo = Number.isFinite(b.item.addedOrder) ? b.item.addedOrder : b.index + 1;
+        return ao - bo;
+      })
+      .map(({ item }) => item)
+  ), []);
+
+  const selectedInAddOrder = useMemo(
+    () => sortByAddOrder(selected),
+    [selected, sortByAddOrder],
+  );
+
+  const locationPriceCacheKey = 'labels:locationPrices:v6:all';
+
+  const fetchLabelData = useCallback(async ({
+    useCache = false,
+    showLoading = false,
+    bustCache = false,
+  } = {}) => {
+    const fetchSeq = ++fetchSeqRef.current;
     if (showLoading) setIsRefreshing(true);
+    if (bustCache) {
+      try { cacheClear(locationPriceCacheKey); } catch {}
+    }
     try {
-      // Hydrate instantly from cache
       if (useCache) {
         try {
-          const p = cacheGet('labels:products:v2'); if (p) setProducts(p);
-          const c = cacheGet('labels:combos:v2'); if (c) setCombos(c);
-          const ci = cacheGet('labels:comboItems:v2'); if (ci) setComboItems(ci);
-          const cat = cacheGet('labels:categories:v2'); if (cat) setCategories(cat);
-          const co = cacheGet('labels:company:v2'); if (co) setCompany(co);
+          const sharedCatalog = cacheGet(PRODUCTS_LIST_CATALOG_CACHE_KEY);
+          if (sharedCatalog && typeof sharedCatalog === 'object') {
+            if (sharedCatalog.products?.length) setCatalogProducts(sharedCatalog.products);
+            if (sharedCatalog.combos?.length) setCatalogCombos(sharedCatalog.combos);
+            if (sharedCatalog.productLocationPrices?.length) {
+              setProductLocationPrices(sharedCatalog.productLocationPrices);
+            }
+            if (sharedCatalog.comboLocationPrices?.length) {
+              setComboLocationPrices(sharedCatalog.comboLocationPrices);
+            }
+            if (sharedCatalog.categories?.length) setCategories(sharedCatalog.categories);
+            if (sharedCatalog.locations?.length) setLocations(sharedCatalog.locations);
+          }
+          const cachedPrices = cacheGet(locationPriceCacheKey);
+          const p = cacheGet('labels:catalogProducts:v6');
+          const c = cacheGet('labels:catalogCombos:v6');
+          if (p?.length) setCatalogProducts(p);
+          if (c?.length) setCatalogCombos(c);
+          if (cachedPrices) {
+            setProductLocationPrices(cachedPrices.productLocationPrices || []);
+            setComboLocationPrices(cachedPrices.comboLocationPrices || []);
+          }
+          const ci = cacheGet('labels:comboItems:v6'); if (ci) setComboItems(ci);
+          const cat = cacheGet('labels:categories:v6'); if (cat) setCategories(cat);
+          const loc = cacheGet('labels:locations:v1'); if (loc) setLocations(loc);
+          const co = cacheGet('labels:company:v6'); if (co) setCompany(co);
         } catch {}
       }
 
-      const { data: productsData } = await supabase.from('products').select('*');
+      const { data: locationsData } = await supabase.from('locations').select('id, name').order('name', { ascending: true });
+      if (fetchSeq !== fetchSeqRef.current) return;
+      const nextLocations = locationsData || [];
+      setLocations(nextLocations);
+      try { cacheSet('labels:locations:v1', nextLocations, 10 * 60 * 1000); } catch {}
+
+      let productLocationPriceRows = [];
+      let comboLocationPriceRows = [];
+      const [
+        { data: productsData },
+        { data: combosData },
+      ] = await Promise.all([
+        supabase.from('products').select('*'),
+        supabase.from('combos').select('*'),
+      ]);
+      if (fetchSeq !== fetchSeqRef.current) return;
+      try {
+        [productLocationPriceRows, comboLocationPriceRows] = await Promise.all([
+          fetchProductLocationPrices(supabase),
+          fetchComboLocationPrices(supabase),
+        ]);
+      } catch (err) {
+        console.warn('[price-labels] location pricing unavailable', err);
+      }
+      if (fetchSeq !== fetchSeqRef.current) return;
+
       const nextProducts = productsData || [];
-      setProducts(nextProducts);
-      try { cacheSet('labels:products:v2', nextProducts, 10 * 60 * 1000); } catch {}
+      const nextCombos = combosData || [];
+      setCatalogProducts(nextProducts);
+      setCatalogCombos(nextCombos);
+      setProductLocationPrices(productLocationPriceRows);
+      setComboLocationPrices(comboLocationPriceRows);
+      try {
+        cacheSet('labels:catalogProducts:v6', nextProducts, 10 * 60 * 1000);
+        cacheSet('labels:catalogCombos:v6', nextCombos, 10 * 60 * 1000);
+        cacheSet(locationPriceCacheKey, {
+          productLocationPrices: productLocationPriceRows,
+          comboLocationPrices: comboLocationPriceRows,
+        }, 10 * 60 * 1000);
+      } catch {}
 
       const { data: categoriesData } = await supabase.from('categories').select('id, name').order('name', { ascending: true });
+      if (fetchSeq !== fetchSeqRef.current) return;
       const nextCategories = categoriesData || [];
       setCategories(nextCategories);
-      try { cacheSet('labels:categories:v2', nextCategories, 10 * 60 * 1000); } catch {}
-
-      const { data: combosData } = await supabase.from('combos').select('*');
-      const nextCombos = combosData || [];
-      setCombos(nextCombos);
-      try { cacheSet('labels:combos:v2', nextCombos, 10 * 60 * 1000); } catch {}
+      try { cacheSet('labels:categories:v6', nextCategories, 10 * 60 * 1000); } catch {}
 
       const { data: ci } = await supabase.from('combo_items').select('*');
+      if (fetchSeq !== fetchSeqRef.current) return;
       const nextComboItems = ci || [];
       setComboItems(nextComboItems);
-      try { cacheSet('labels:comboItems:v2', nextComboItems, 10 * 60 * 1000); } catch {}
+      try { cacheSet('labels:comboItems:v6', nextComboItems, 10 * 60 * 1000); } catch {}
 
       const { data: companyData } = await supabase.from('company_settings').select('name').maybeSingle();
+      if (fetchSeq !== fetchSeqRef.current) return;
       if (companyData && companyData.name) setCompany(companyData);
-      try { cacheSet('labels:company:v2', companyData || { name: 'Best Rest Furniture' }, 60 * 60 * 1000); } catch {}
-
-      // Keep current selections, but refresh their data if it changed server-side
-      setSelected((prev) => prev.map((s) => {
-        if (s.type === 'product') {
-          const updated = nextProducts.find((p) => p.id === s.id);
-          return updated ? { ...s, data: updated } : s;
-        }
-        if (s.type === 'set') {
-          const updated = nextCombos.find((c) => c.id === s.id);
-          return updated ? { ...s, data: updated } : s;
-        }
-        return s;
-      }));
+      try { cacheSet('labels:company:v6', companyData || { name: 'Best Rest Furniture' }, 60 * 60 * 1000); } catch {}
     } finally {
       if (showLoading) setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchLabelData({ useCache: true });
+    let cancelled = false;
+    (async () => {
+      const { data: locationsData } = await supabase.from('locations').select('id, name').order('name', { ascending: true });
+      if (cancelled) return;
+      const nextLocations = locationsData || [];
+      setLocations(nextLocations);
+      setLabelLocationId((current) => (
+        current || (nextLocations[0]?.id ? String(nextLocations[0].id) : '')
+      ));
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    fetchLabelData({ useCache: true, bustCache: true });
   }, [fetchLabelData]);
 
-  // simple search
+  const normalizeCatalogName = useCallback((value) => (
+    String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+  ), []);
+
+  const normalizeSku = useCallback((sku) => (
+    String(sku || '').replace(/^#/, '').trim().toLowerCase()
+  ), []);
+
+  const comboNameKeys = useMemo(() => {
+    const keys = new Set();
+    (catalogCombos || []).forEach((combo) => {
+      const key = normalizeCatalogName(combo.combo_name);
+      if (key) keys.add(key);
+    });
+    return keys;
+  }, [catalogCombos, normalizeCatalogName]);
+
+  const comboSkuKeys = useMemo(() => {
+    const keys = new Set();
+    (catalogCombos || []).forEach((combo) => {
+      const sku = normalizeSku(combo.sku);
+      if (sku) keys.add(sku);
+    });
+    return keys;
+  }, [catalogCombos, normalizeSku]);
+
+  const productHasMatchingSet = useCallback((product) => {
+    const sku = normalizeSku(product?.sku);
+    const nameKey = normalizeCatalogName(product?.name);
+    if (sku && comboSkuKeys.has(sku)) return true;
+    if (nameKey && comboNameKeys.has(nameKey)) return true;
+    return false;
+  }, [comboNameKeys, comboSkuKeys, normalizeCatalogName, normalizeSku]);
+
+  // Sets first; hide products when the same SKU/name exists as a set (Products List shows the set row).
   useEffect(() => {
     if (!search.trim()) return setSearchResults([]);
     const q = search.toLowerCase();
-    const p = products.filter((x) => (x.name || '').toLowerCase().includes(q));
-    const s = combos.filter((c) => (c.combo_name || '').toLowerCase().includes(q));
-    // Do not de-duplicate; allow selecting both a product and a set even if names/SKUs match
+    const matchesTerm = (value) => String(value || '').toLowerCase().includes(q);
+    const s = catalogCombos.filter((c) => matchesTerm(c.combo_name) || matchesTerm(c.sku));
+    const p = catalogProducts.filter((x) => (
+      (matchesTerm(x.name) || matchesTerm(x.sku))
+      && !productHasMatchingSet(x)
+    ));
     setSearchResults([
-      ...p.map((x) => ({ type: 'product', id: x.id, data: x })),
-      ...s.map((c) => ({ type: 'set', id: c.id, data: c })),
+      ...s.map((c) => ({ type: 'set', id: c.id })),
+      ...p.map((x) => ({ type: 'product', id: x.id })),
     ]);
-  }, [search, products, combos]);
+  }, [search, catalogProducts, catalogCombos, productHasMatchingSet]);
 
   const normalizeQty = (qty) => Math.max(1, parseInt(String(qty).replace(/[^\d]/g, ''), 10) || 1);
 
@@ -119,9 +314,10 @@ const PriceLabels = () => {
   };
 
   const addItem = (item, qty) => {
+    const payload = { type: item.type, id: item.id };
     setSelected((prev) => {
-      const idx = prev.findIndex((s) => s.type === item.type && s.id === item.id);
-      if (idx === -1) return [...prev, { ...item, qty }];
+      const idx = prev.findIndex((s) => s.type === payload.type && s.id === payload.id);
+      if (idx === -1) return [...prev, { ...payload, qty, addedOrder: getNextAddedOrder() }];
       const next = [...prev];
       const existing = next[idx];
       next[idx] = { ...existing, qty: normalizeQty(existing.qty) + normalizeQty(qty) };
@@ -136,7 +332,7 @@ const PriceLabels = () => {
       return;
     }
     const qty = normalizeQty(categoryQty);
-    const matches = products.filter((product) => String(product.category_id) === catKey);
+    const matches = catalogProducts.filter((product) => String(product.category_id) === catKey);
     if (!matches.length) {
       alert('No products found in this category.');
       return;
@@ -145,14 +341,13 @@ const PriceLabels = () => {
     setSelected((prev) => {
       const next = [...prev];
       matches.forEach((product) => {
-        const item = { type: 'product', id: product.id, data: product };
+        const item = { type: 'product', id: product.id };
         const idx = next.findIndex((s) => s.type === item.type && s.id === item.id);
         if (idx === -1) {
-          next.push({ ...item, qty });
+          next.push({ ...item, qty, addedOrder: getNextAddedOrder() });
         } else {
           next[idx] = {
             ...next[idx],
-            data: product,
             qty: normalizeQty(next[idx].qty) + qty,
           };
         }
@@ -165,7 +360,10 @@ const PriceLabels = () => {
   };
   // Add and clear search box/results
   const handleAdd = (item) => {
-    const label = item.type === 'product' ? (item.data?.name || 'Product') : (item.data?.combo_name || 'Set');
+    const priced = getPricedCatalogItem(item.type, item.id);
+    const label = item.type === 'product'
+      ? (priced?.name || 'Product')
+      : (priced?.combo_name || 'Set');
     const qty = promptQty(label, 1);
     if (qty === null) return;
     addItem(item, qty);
@@ -191,6 +389,29 @@ const PriceLabels = () => {
   // Note: Do not infer combo components for standalone products. Only explicit sets show components.
 
   const formatCurrency = (v) => (v === null || v === undefined || v === '' ? '' : `K ${Number(v).toLocaleString()}`);
+  const formatDisplayPrice = (value, currency) => {
+    if (value === null || value === undefined || value === '') return '—';
+    const num = Number(value);
+    if (!Number.isFinite(num) || num <= 0) return '—';
+    const c = String(currency || '').toUpperCase();
+    const sym = c === 'USD' || c === '$' ? '$' : 'K';
+    return `${sym} ${Math.round(num).toLocaleString('en-US')}`;
+  };
+  const formatPromoDisplay = (standard, promo, currency) => {
+    const promoNum = Number(promo);
+    const standardNum = Number(standard);
+    if (!Number.isFinite(promoNum) || promoNum <= 0) return '—';
+    if (Number.isFinite(standardNum) && promoNum >= standardNum) return '—';
+    return formatDisplayPrice(promo, currency);
+  };
+  const hasActivePromo = (standard, promo) => {
+    const promoNum = Number(promo);
+    const standardNum = Number(standard);
+    return Number.isFinite(promoNum) && promoNum > 0
+      && (!Number.isFinite(standardNum) || promoNum < standardNum);
+  };
+  const getSearchItemPrices = (item) => resolveItemLocationPrices(item);
+  const selectedLocationName = locations.find((loc) => String(loc.id) === String(labelLocationId))?.name || '';
   const getDiscountPercent = (oldP, promoP) => {
     if (!oldP || !promoP) return null;
     const percent = Math.round((1 - promoP / oldP) * 100);
@@ -210,8 +431,9 @@ const PriceLabels = () => {
   const printWithAutoFilename = (showExportHint = false) => {
     const oldTitle = document.title;
     const autoTitle = buildPriceLabelsFilename();
-    const labelSummary = selected.map((item) => {
-      const name = item.type === 'product' ? item.data?.name : item.data?.combo_name;
+    const labelSummary = selectedInAddOrder.map((item) => {
+      const priced = getPricedCatalogItem(item.type, item.id);
+      const name = item.type === 'product' ? priced?.name : priced?.combo_name;
       return `${name || item.type} x${normalizeQty(item.qty)}`;
     }).join('; ');
     logUserActivity({
@@ -239,7 +461,7 @@ const PriceLabels = () => {
   // Expand selection by qty and create label pairs (2 per page)
   // - Mix products and sets in sequence
   // - If total is odd, the last page will contain a single label (second half blank)
-  const expanded = selected.flatMap((s) => Array(normalizeQty(s.qty)).fill(s));
+  const expanded = selectedInAddOrder.flatMap((s) => Array(normalizeQty(s.qty)).fill(s));
   const pairs = [];
   for (let i = 0; i < expanded.length; i += 2) pairs.push([expanded[i], expanded[i + 1] || null]);
 
@@ -329,8 +551,9 @@ const PriceLabels = () => {
         throw new Error(json?.error || `Label upload failed (${resp.status})`);
       }
 
-      const labelSummary = selected.map((item) => {
-        const name = item.type === 'product' ? item.data?.name : item.data?.combo_name;
+      const labelSummary = selectedInAddOrder.map((item) => {
+        const priced = getPricedCatalogItem(item.type, item.id);
+        const name = item.type === 'product' ? priced?.name : priced?.combo_name;
         return `${name || item.type} x${normalizeQty(item.qty)}`;
       }).join('; ');
 
@@ -367,12 +590,13 @@ const PriceLabels = () => {
   const LabelCard = ({ item }) => {
   if (!item) return <div className="label-card" />; // placeholder to keep half-page blank only on last page
   const isProduct = item.type === 'product';
-  const data = item.data;
+  const data = getPricedCatalogItem(item.type, item.id) || {};
+  const priced = resolveItemLocationPrices(item);
   // Only show components when the selected item is a set
   const components = item.type === 'set' ? getComboComponents(item.id) : [];
-    const oldPrice = isProduct ? data.price : data.standard_price || data.combo_price;
-    const promoPrice = data.promotional_price;
-    const hasPromo = promoPrice || promoPrice === 0;
+    const oldPrice = priced.standard;
+    const promoPrice = priced.promo;
+    const hasPromo = hasActivePromo(oldPrice, promoPrice);
     const discount = hasPromo ? getDiscountPercent(oldPrice, promoPrice) : null;
 
     return (
@@ -393,7 +617,7 @@ const PriceLabels = () => {
         {components && components.length > 0 && (
           <ul className="label-components">
             {components.map((c) => {
-              const prod = products.find((p) => p.id === c.product_id) || {};
+              const prod = catalogProducts.find((p) => p.id === c.product_id) || {};
               return (
                 <li key={c.product_id}>{prod.name || c.product_id} x{c.quantity}</li>
               );
@@ -451,11 +675,22 @@ const PriceLabels = () => {
         <button
           type="button"
           className="label-refresh-btn"
-          onClick={() => fetchLabelData({ showLoading: true })}
+          onClick={() => fetchLabelData({ showLoading: true, bustCache: true })}
           disabled={isRefreshing}
         >
           {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </button>
+        <select
+          className="label-category-bulk-control label-toolbar-category"
+          value={labelLocationId}
+          onChange={(e) => setLabelLocationId(e.target.value)}
+          aria-label="Label pricing location"
+        >
+          <option value="">Select location</option>
+          {locations.map((loc) => (
+            <option key={loc.id} value={loc.id}>{loc.name}</option>
+          ))}
+        </select>
         <select
           className="label-category-bulk-control label-toolbar-category"
           value={categoryId}
@@ -499,14 +734,42 @@ const PriceLabels = () => {
 
       {search && searchResults.length > 0 && (
         <div className="label-search-results">
+          {labelLocationId && selectedLocationName ? (
+            <div className="label-search-results-note">
+              Prices shown for {selectedLocationName}
+            </div>
+          ) : null}
           <ul className="search-list">
-            {searchResults.map((r) => (
+            {searchResults.map((r) => {
+              const pricedItem = getPricedCatalogItem(r.type, r.id) || {};
+              const prices = getSearchItemPrices(r);
+              const displayName = r.type === 'product' ? pricedItem.name : pricedItem.combo_name;
+              const sku = pricedItem?.sku || '';
+              return (
               <li className="search-item" key={r.type + '-' + r.id}>
-                <div className="search-item-name">{r.type === 'product' ? r.data.name : r.data.combo_name}</div>
-                <div className="search-item-type">{r.type}</div>
-                <button className="search-item-add" onClick={() => handleAdd(r)}>Add</button>
+                <div className="search-item-main">
+                  <div className="search-item-name">
+                    {displayName}
+                    {sku ? <span className="search-item-sku">{sku}</span> : null}
+                  </div>
+                  <div className="search-item-prices">
+                    <span className="search-item-price">
+                      <span className="search-item-price-label">Standard</span>
+                      <span>{formatDisplayPrice(prices.standard, prices.currency)}</span>
+                    </span>
+                    <span className="search-item-price search-item-price--promo">
+                      <span className="search-item-price-label">Promo</span>
+                      <span>{formatPromoDisplay(prices.standard, prices.promo, prices.currency)}</span>
+                    </span>
+                  </div>
+                </div>
+                <div className={`search-item-type search-item-type--${r.type}`}>
+                  {r.type === 'set' ? 'Set' : 'Product'}
+                </div>
+                <button type="button" className="search-item-add" onClick={() => handleAdd(r)}>Add</button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </div>
       )}
@@ -515,12 +778,29 @@ const PriceLabels = () => {
         <h3>Labels to Print</h3>
         {selected.length === 0 ? <div style={{ color: '#aaa' }}>No items selected.</div> : (
           <table className="labels-table-full">
-            <thead><tr><th>Name</th><th>Type</th><th>Qty</th><th>Remove</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Standard</th>
+                <th>Promo</th>
+                <th>Type</th>
+                <th>Qty</th>
+                <th>Remove</th>
+              </tr>
+            </thead>
             <tbody>
-              {selected.map((s) => (
+              {selectedInAddOrder.map((s) => {
+                const pricedItem = getPricedCatalogItem(s.type, s.id) || {};
+                const prices = getSearchItemPrices(s);
+                return (
                 <tr key={s.type + '-' + s.id}>
-                  <td>{s.type === 'product' ? s.data.name : s.data.combo_name}</td>
-                  <td>{s.type}</td>
+                  <td>
+                    {s.type === 'product' ? pricedItem.name : pricedItem.combo_name}
+                    {pricedItem?.sku ? <div className="labels-table-sku">{pricedItem.sku}</div> : null}
+                  </td>
+                  <td>{formatDisplayPrice(prices.standard, prices.currency)}</td>
+                  <td className="labels-table-promo">{formatPromoDisplay(prices.standard, prices.promo, prices.currency)}</td>
+                  <td>{s.type === 'set' ? 'Set' : 'Product'}</td>
                   <td>
                     <input
                       type="text"
@@ -533,9 +813,10 @@ const PriceLabels = () => {
                       aria-label="Print quantity"
                     />
                   </td>
-                  <td><button onClick={() => removeItem(s)}>Remove</button></td>
+                  <td><button type="button" onClick={() => removeItem(s)}>Remove</button></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}

@@ -7,6 +7,14 @@ import useComboColumnSupport from "./hooks/useComboColumnSupport";
 import { insertComboItems } from "./services/comboItems";
 import { logUserActivity } from './utils/userActivityLog';
 import { replaceComboLocations } from "./services/comboLocations";
+import {
+  buildComboLocationPriceMap,
+  resolveComboLocationPricing,
+} from './utils/locationPricing';
+import {
+  fetchComboLocationPriceRow,
+  seedComboLocationPricesForLocations,
+} from './services/locationPricing';
 
 export default function EditSet() {
   const { id } = useParams();
@@ -23,7 +31,7 @@ export default function EditSet() {
   const [selectedLocations, setSelectedLocations] = useState([]);
   const [units, setUnits] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [selectedLocation, setSelectedLocation] = useState("");
+  const [pricingLocationId, setPricingLocationId] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [kitName, setKitName] = useState("");
@@ -38,6 +46,27 @@ export default function EditSet() {
   const comboColumnSupport = useComboColumnSupport();
   const supportsCategoryField = comboColumnSupport.category;
   const supportsUnitField = comboColumnSupport.unit;
+
+  const applyPricingLocationToSet = async (comboData, locationId) => {
+    if (!comboData?.id || !locationId) return;
+    try {
+      const row = await fetchComboLocationPriceRow(supabase, comboData.id, locationId);
+      const priceMap = buildComboLocationPriceMap(row ? [row] : []);
+      const resolved = resolveComboLocationPricing(comboData, locationId, priceMap);
+      setStandardPrice(resolved.combo_price ?? resolved.standard_price ?? '');
+      setPromotionalPrice(resolved.promotional_price ?? '');
+      setPromoStart(resolved.promo_start_date || '');
+      setPromoEnd(resolved.promo_end_date || '');
+    } catch (err) {
+      console.warn('Failed to load set location prices', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!pricingLocationId || !combo?.id) return;
+    applyPricingLocationToSet(combo, pricingLocationId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pricingLocationId, combo?.id]);
 
   useEffect(() => {
     async function fetchData() {
@@ -98,7 +127,13 @@ export default function EditSet() {
         .select("location_id")
         .eq("combo_id", comboFilterValue);
       if (comboLocErr) console.error("Failed to load set locations", comboLocErr);
-      setSelectedLocations((comboLocs || []).map(cl => String(cl.location_id)));
+      const locationIds = (comboLocs || []).map((cl) => String(cl.location_id));
+      setSelectedLocations(locationIds);
+      const initialPricingLocation = locationIds[0] || (locs?.[0]?.id ? String(locs[0].id) : '');
+      setPricingLocationId(initialPricingLocation);
+      if (initialPricingLocation) {
+        await applyPricingLocationToSet(comboData, initialPricingLocation);
+      }
       const { data: unitsData, error: unitErr } = await supabase.from("unit_of_measure").select("id, name");
       if (unitErr) console.error("Failed to load units", unitErr);
       setUnits(unitsData || []);
@@ -146,6 +181,10 @@ export default function EditSet() {
       alert("Please fill all required fields and add at least one product.");
       return;
     }
+  if (!pricingLocationId) {
+      alert("Select a pricing location.");
+      return;
+    }
   // Update combo only (sets are stored in combos; product row may not exist)
     const updatePayload = {
       combo_name: kitName,
@@ -169,6 +208,18 @@ export default function EditSet() {
       .update(updatePayload)
       .eq("id", comboFilterValue);
     if (comboError) return alert("Error updating combo: " + comboError.message);
+    try {
+      await seedComboLocationPricesForLocations(supabase, {
+        comboId: comboFilterValue,
+        locationIds: [pricingLocationId],
+        comboPrice: standardPrice,
+        promotionalPrice: promotionalPrice === "" ? null : promotionalPrice,
+        promoStartDate: promoStart || null,
+        promoEndDate: promoEnd || null,
+      });
+    } catch (priceError) {
+      console.warn('Failed to save set location prices', priceError);
+    }
     // Update combo_locations
     const locRows = (selectedLocations || []).map(lid => {
       const parsed = Number(lid);
@@ -295,12 +346,34 @@ export default function EditSet() {
         </div>
         {/* Row 2: prices and promo window */}
         <div className="sets-row-5 sets-grid" style={{width: '100%', maxWidth: 1200, margin: '0 auto', marginTop: '6px'}}>
-          <input required type="number" step="0.01" name="standardPrice" placeholder="Standard Price" value={standardPrice} onChange={e => setStandardPrice(e.target.value)} />
-          <input type="number" step="0.01" name="promotionalPrice" placeholder="Promotional Price" value={promotionalPrice} onChange={e => setPromotionalPrice(e.target.value)} />
-          <input type="date" name="promoStart" placeholder="Promo Start" value={promoStart} onChange={e => setPromoStart(e.target.value)} />
-          <input type="date" name="promoEnd" placeholder="Promo End" value={promoEnd} onChange={e => setPromoEnd(e.target.value)} />
+          <select
+            value={pricingLocationId}
+            onChange={(e) => setPricingLocationId(e.target.value)}
+            aria-label="Pricing location"
+          >
+            <option value="">Select pricing location</option>
+            {(selectedLocations.length
+              ? locations.filter((loc) => selectedLocations.some((id) => String(id) === String(loc.id)))
+              : locations
+            ).map((loc) => (
+              <option key={loc.id} value={loc.id}>{loc.name}</option>
+            ))}
+          </select>
+          <input required type="number" step="0.01" name="standardPrice" placeholder="Standard Price" value={standardPrice} onChange={e => setStandardPrice(e.target.value)} disabled={!pricingLocationId} />
+          <input type="number" step="0.01" name="promotionalPrice" placeholder="Promotional Price" value={promotionalPrice} onChange={e => setPromotionalPrice(e.target.value)} disabled={!pricingLocationId} />
+          <input type="date" name="promoStart" placeholder="Promo Start" value={promoStart} onChange={e => setPromoStart(e.target.value)} disabled={!pricingLocationId} />
+          <input type="date" name="promoEnd" placeholder="Promo End" value={promoEnd} onChange={e => setPromoEnd(e.target.value)} disabled={!pricingLocationId} />
           <input placeholder="Image URL" value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="sets-control" />
         </div>
+        {pricingLocationId ? (
+          <div style={{ color: '#9fb3c8', fontSize: '0.92rem', margin: '0 auto 8px', maxWidth: 1200 }}>
+            Prices apply to {locations.find((loc) => String(loc.id) === String(pricingLocationId))?.name || 'the selected location'}.
+          </div>
+        ) : (
+          <div style={{ color: '#ffb4b4', fontSize: '0.92rem', margin: '0 auto 8px', maxWidth: 1200 }}>
+            Select a pricing location to edit standard and promotional prices.
+          </div>
+        )}
         {/* Locations row with right-aligned Save button */}
         <div className="sets-locations-row" style={{marginTop: '8px', width: '100%'}}>
           <div className="sets-locations">

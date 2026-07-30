@@ -7,6 +7,14 @@ import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { syncProductLocations } from './services/productLocations';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import { logUserActivity } from './utils/userActivityLog';
+import {
+  buildProductLocationPriceMap,
+  resolveProductLocationPricing,
+} from './utils/locationPricing';
+import {
+  fetchProductLocationPriceRow,
+  seedProductLocationPricesForLocations,
+} from './services/locationPricing';
 
 const initialForm = {
   name: "",
@@ -42,7 +50,8 @@ function Products() {
   const [inventory, setInventory] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
-  const [editPriceBaseline, setEditPriceBaseline] = useState(null);
+  const [pricingLocationId, setPricingLocationId] = useState('');
+  const [globalPriceBaseline, setGlobalPriceBaseline] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -62,12 +71,43 @@ function Products() {
     }
   }, []);
   // Realtime: refresh products, categories, units, inventory and product relations
-  const rtTickCatalog = useRealtimeRefresh(['products','product_images','product_locations','categories','unit_of_measure','inventory']);
+  const rtTickCatalog = useRealtimeRefresh(['products','product_images','product_locations','product_location_prices','categories','unit_of_measure','inventory']);
   // Currency options limited to supported storefront codes
   const currencyOptions = useMemo(() => ([
     { code: 'K', name: 'K' },
     { code: 'USD', name: '$' },
   ]), []);
+
+  const applyPricingLocationToForm = async (product, locationId) => {
+    if (!product?.id || !locationId) return;
+    try {
+      const row = await fetchProductLocationPriceRow(supabase, product.id, locationId);
+      const priceMap = buildProductLocationPriceMap(row ? [row] : []);
+      const resolved = resolveProductLocationPricing(product, locationId, priceMap);
+      setForm((prev) => ({
+        ...prev,
+        price: resolved.price ?? '',
+        promotional_price: resolved.promotional_price ?? '',
+        promo_start_date: resolved.promo_start_date || '',
+        promo_end_date: resolved.promo_end_date || '',
+      }));
+    } catch (err) {
+      console.warn('Failed to load location prices', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!pricingLocationId || !editingId) return;
+    const product = products.find((row) => String(row.id) === String(editingId));
+    if (!product) return;
+    applyPricingLocationToForm(product, pricingLocationId);
+  }, [pricingLocationId, editingId, products]);
+
+  useEffect(() => {
+    if (!form.locations?.length) return;
+    if (pricingLocationId && form.locations.some((id) => String(id) === String(pricingLocationId))) return;
+    setPricingLocationId(String(form.locations[0]));
+  }, [form.locations, pricingLocationId]);
 
   useEffect(() => {
     const loadAllAndEdit = async () => {
@@ -109,11 +149,16 @@ function Products() {
             image: null,
           });
           setEditingId(product.id);
-          setEditPriceBaseline({
+          const nextPricingLocationId = resolvedLocations[0] ? String(resolvedLocations[0]) : (locations[0]?.id ? String(locations[0].id) : '');
+          setPricingLocationId(nextPricingLocationId);
+          setGlobalPriceBaseline({
             price: Number(product.price || 0),
             promotional_price: Number(product.promotional_price || 0),
             cost_price: Number(product.cost_price || 0),
           });
+          if (nextPricingLocationId) {
+            await applyPricingLocationToForm(product, nextPricingLocationId);
+          }
           setImageUrl(product.product_images && product.product_images[0] ? product.product_images[0].image_url : "");
         }
       }
@@ -198,13 +243,24 @@ function Products() {
       image: null,
     });
     setEditingId(product.id);
+    const nextPricingLocationId = resolvedLocations[0] ? String(resolvedLocations[0]) : (locations[0]?.id ? String(locations[0].id) : '');
+    setPricingLocationId(nextPricingLocationId);
+    setGlobalPriceBaseline({
+      price: Number(product.price || 0),
+      promotional_price: Number(product.promotional_price || 0),
+      cost_price: Number(product.cost_price || 0),
+    });
+    if (nextPricingLocationId) {
+      await applyPricingLocationToForm(product, nextPricingLocationId);
+    }
     setImageUrl(product.product_images && product.product_images[0] ? product.product_images[0].image_url : "");
   };
 
   const handleCancelEdit = () => {
     if (!canManageCatalogPage) return;
     setForm(initialForm);
-    setEditPriceBaseline(null);
+    setGlobalPriceBaseline(null);
+    setPricingLocationId('');
     setEditingId(null);
     setImageUrl("");
   };
@@ -419,6 +475,27 @@ function Products() {
         }
       }
 
+      const locationIdsForPricing = (() => {
+        if (editingId && pricingLocationId) return [pricingLocationId];
+        if (form.locations?.length) return form.locations;
+        if (pricingLocationId) return [pricingLocationId];
+        return [];
+      })();
+      if (locationIdsForPricing.length) {
+        try {
+          await seedProductLocationPricesForLocations(supabase, {
+            productId: insertedProductId,
+            locationIds: locationIdsForPricing,
+            price: baseProductData.price,
+            promotionalPrice: baseProductData.promotional_price,
+            promoStartDate: baseProductData.promo_start_date,
+            promoEndDate: baseProductData.promo_end_date,
+          });
+        } catch (locationPriceErr) {
+          console.warn('Failed to save location prices', locationPriceErr);
+        }
+      }
+
       // Handle image upload if a file is selected
       if (form.image) {
         const file = form.image;
@@ -451,15 +528,16 @@ function Products() {
       if (!wasEditing) {
         fetchAll();
       }
-      const priceChanged = wasEditing && editPriceBaseline && (
-        Number(form.price || 0) !== editPriceBaseline.price
-        || Number(form.promotional_price || 0) !== editPriceBaseline.promotional_price
-        || Number(form.cost_price || 0) !== editPriceBaseline.cost_price
+      const priceChanged = wasEditing && globalPriceBaseline && (
+        Number(form.price || 0) !== globalPriceBaseline.price
+        || Number(form.promotional_price || 0) !== globalPriceBaseline.promotional_price
+        || Number(form.cost_price || 0) !== globalPriceBaseline.cost_price
       );
+      const pricingLocationName = locations.find((row) => String(row.id) === String(pricingLocationId))?.name || 'location';
       logUserActivity({
         actionType: wasEditing ? (priceChanged ? 'product_price_change' : 'product_edit') : 'product_create',
         actionLabel: wasEditing ? (priceChanged ? 'Product Price Changed' : 'Product Updated') : 'Product Created',
-        details: `${form.name || 'Product'} • SKU ${skuToUse} • Price ${form.price || 0}${form.promotional_price ? ` • Promo ${form.promotional_price}` : ''}`,
+        details: `${form.name || 'Product'} • SKU ${skuToUse} • ${pricingLocationName} price ${form.price || 0}${form.promotional_price ? ` • Promo ${form.promotional_price}` : ''}`,
         reference: skuToUse,
         entityType: 'product',
         entityId: String(insertedProductId),
@@ -540,10 +618,33 @@ function Products() {
               <option key={opt.code} value={opt.code}>{opt.name}</option>
             ))}
           </select>
+          <select
+            value={pricingLocationId}
+            onChange={(e) => setPricingLocationId(e.target.value)}
+            aria-label="Pricing location"
+          >
+            <option value="">Select pricing location</option>
+            {(form.locations?.length
+              ? locations.filter((loc) => form.locations.some((id) => String(id) === String(loc.id)))
+              : locations
+            ).map((loc) => (
+              <option key={loc.id} value={loc.id}>{loc.name}</option>
+            ))}
+          </select>
           <input name="cost_price" type="number" step="0.01" placeholder={`Cost Price (${form.currency || 'Currency'})`} value={form.cost_price} onChange={handleChange} />
-          <input name="price" type="number" step="0.01" placeholder={`Standard Price (${form.currency || 'Currency'})`} value={form.price} onChange={handleChange} />
-          <input name="promotional_price" type="number" step="0.01" placeholder={`Promotional Price (${form.currency || 'Currency'})`} value={form.promotional_price} onChange={handleChange} />
+          <input name="price" type="number" step="0.01" placeholder={`Standard Price (${form.currency || 'Currency'})`} value={form.price} onChange={handleChange} disabled={!pricingLocationId} />
+          <input name="promotional_price" type="number" step="0.01" placeholder={`Promotional Price (${form.currency || 'Currency'})`} value={form.promotional_price} onChange={handleChange} disabled={!pricingLocationId} />
         </div>
+        {pricingLocationId ? (
+          <div style={{ color: '#9fb3c8', fontSize: '0.92rem', margin: '0 0 8px' }}>
+            Standard and promotional prices apply to {locations.find((loc) => String(loc.id) === String(pricingLocationId))?.name || 'the selected location'}.
+            {editingId ? '' : ' On create, the same prices are also saved for every checked location below.'}
+          </div>
+        ) : (
+          <div style={{ color: '#ffb4b4', fontSize: '0.92rem', margin: '0 0 8px' }}>
+            Select a pricing location to set standard and promotional prices.
+          </div>
+        )}
         {/* Locations, Image, Actions */}
         <div className="form-row" style={{display: 'flex', alignItems: 'center', gap: '1rem', minHeight: '120px', width: '100%'}}>
           <div className="locations-checkbox-group" style={{display: 'flex', flexDirection: 'row', gap: '2rem', justifyContent: 'flex-start', alignItems: 'center', flexWrap: 'wrap'}}>

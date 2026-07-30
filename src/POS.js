@@ -23,6 +23,18 @@ import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import { fetchPosCatalogViaApi, fetchPosLocationsViaApi } from './services/posCatalogApi';
 import BackToDashboard from './BackToDashboard';
 import { syncProductLocations } from './services/productLocations';
+import {
+  applyComboLocationPricing,
+  applyProductLocationPricing,
+  buildComboLocationPriceMap,
+  buildProductLocationPriceMap,
+} from './utils/locationPricing';
+import {
+  fetchComboLocationPricesForLocation,
+  fetchProductLocationPricesForLocation,
+  saveComboLocationPrice,
+  saveProductLocationPrice,
+} from './services/locationPricing';
 import { applySaleInventoryDeductionViaApi } from './utils/inventoryApi';
 import {
   findExistingReceiptSale,
@@ -332,7 +344,7 @@ export default function POS({ isMobile = false }) {
     sales_items: undefined,
   } : undefined);
   const rtTickCatalog = useRealtimeRefresh(
-    ['products','inventory','combos','combo_items','product_locations','combo_locations'],
+    ['products','inventory','combos','combo_items','product_locations','combo_locations','product_location_prices','combo_location_prices'],
     250,
     isUuid(selectedLocation) ? {
       inventory: { column: 'location', value: selectedLocation },
@@ -521,7 +533,7 @@ export default function POS({ isMobile = false }) {
         }
       } catch {}
       // Fetch inventory minimal shape, then hydrate products and locations to avoid 406/400s
-      const [invSnap, combosRes, comboLocationsRes, comboItemsRes, locRowsRes] = await Promise.all([
+      const [invSnap, combosRes, comboLocationsRes, comboItemsRes, locRowsRes, productLocationPricesRes, comboLocationPricesRes] = await Promise.all([
         fetchInventorySnapshot(selectedLocation),
         fromPublic('combos')
           .select('id, combo_name, sku, standard_price, promotional_price, combo_price, currency'),
@@ -532,6 +544,8 @@ export default function POS({ isMobile = false }) {
         fromPublic('product_locations')
           .select('product_id, location_id')
           .eq('location_id', selectedLocation),
+        fetchProductLocationPricesForLocation(supabase, selectedLocation).catch(() => []),
+        fetchComboLocationPricesForLocation(supabase, selectedLocation).catch(() => []),
       ]);
 
       let combosData = combosRes?.data || [];
@@ -539,6 +553,8 @@ export default function POS({ isMobile = false }) {
       let comboItemsData = comboItemsRes?.data || [];
       let locRowsSafe = locRowsRes?.data || [];
       let directCatalogError = combosRes?.error || comboLocationsRes?.error || comboItemsRes?.error || locRowsRes?.error || null;
+      const productLocationPriceMap = buildProductLocationPriceMap(productLocationPricesRes || []);
+      const comboLocationPriceMap = buildComboLocationPriceMap(comboLocationPricesRes || []);
 
       let invData = (invSnap?.data || []).map(r => ({ product_id: r.product_id, quantity: r.quantity }));
       // Collect valid product ids from inventory or location links
@@ -594,8 +610,9 @@ export default function POS({ isMobile = false }) {
       });
       (prodRows || []).forEach(p => {
         if (allowedProductIds && !allowedProductIds.has(String(p.id))) return;
+        const priced = applyProductLocationPricing(p, selectedLocation, productLocationPriceMap);
         productMap[p.id] = {
-          ...p,
+          ...priced,
           stock: Number(qtyByProduct[p.id] || 0),
         };
       });
@@ -618,16 +635,16 @@ export default function POS({ isMobile = false }) {
       // Create filtered sets
           const filteredSets = combosForLocation
             .map(combo => {
-              const setQty = getSetQty(combo.id);
-          // Use combo_price first, then standard_price; promo overrides when > 0
-          const basePrice = (combo.combo_price ?? combo.standard_price ?? 0);
-          const promoPrice = (combo.promotional_price ?? 0);
+              const priced = applyComboLocationPricing(combo, selectedLocation, comboLocationPriceMap);
+              const setQty = getSetQty(priced.id);
+          const basePrice = (priced.combo_price ?? priced.standard_price ?? 0);
+          const promoPrice = (priced.promotional_price ?? 0);
           return {
-            ...combo,
-            name: combo.combo_name, // ensure table shows the set name
+            ...priced,
+            name: priced.combo_name, // ensure table shows the set name
             price: basePrice, // base price stored; UI uses getBestPrice(promotional_price, price)
             promotional_price: promoPrice,
-            currency: combo.currency ?? '',
+            currency: priced.currency ?? '',
             stock: setQty,
             isSet: true,
           };
@@ -749,18 +766,16 @@ export default function POS({ isMobile = false }) {
 
     try {
       if (isSet) {
-        const { data, error } = await fromPublic('combos')
-          .update({ standard_price: price, combo_price: price })
-          .eq('id', item.id)
-          .select('id, standard_price, combo_price, promotional_price, currency')
-          .maybeSingle();
-        if (error) throw error;
-        if (!data) throw new Error('Set update was blocked or not found.');
+        await saveComboLocationPrice(supabase, {
+          comboId: item.id,
+          locationId: selectedLocation,
+          field: 'price',
+          value: price,
+          baseCombo: item,
+        });
 
         const updatedSet = {
           ...item,
-          ...data,
-          name: data.combo_name || item.combo_name || item.name,
           price,
           standard_price: price,
           combo_price: price,
@@ -776,15 +791,15 @@ export default function POS({ isMobile = false }) {
           )),
         }));
       } else {
-        const { data, error } = await fromPublic('products')
-          .update({ price })
-          .eq('id', item.id)
-          .select('id, price, promotional_price, currency')
-          .maybeSingle();
-        if (error) throw error;
-        if (!data) throw new Error('Product update was blocked or not found.');
+        await saveProductLocationPrice(supabase, {
+          productId: item.id,
+          locationId: selectedLocation,
+          field: 'price',
+          value: price,
+          baseProduct: item,
+        });
 
-        const updatedProduct = { ...item, ...data, price };
+        const updatedProduct = { ...item, price };
         setProducts((prev) => prev.map((row) => (
           String(row.id) === String(item.id) ? { ...row, ...updatedProduct } : row
         )));

@@ -9,6 +9,7 @@ import { replaceComboLocations } from "./services/comboLocations";
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import { logUserActivity } from './utils/userActivityLog';
+import { seedComboLocationPricesForLocations } from './services/locationPricing';
 // Removed user permissions imports
 
 const SETS_BOOTSTRAP_CACHE_KEY = 'sets:bootstrap:v1';
@@ -395,6 +396,17 @@ export default function Sets() {
       }
     }
 
+    try {
+      await seedComboLocationPricesForLocations(supabase, {
+        comboId,
+        locationIds: selectedLocations,
+        comboPrice: standardPrice,
+        promotionalPrice: promotionalPrice === "" ? null : promotionalPrice,
+      });
+    } catch (priceError) {
+      console.warn('Failed to save set location prices', priceError);
+    }
+
     // 5. Insert combo_items for each component product (single batch insert with fallback id support)
     try {
       await insertComboItems(
@@ -571,6 +583,9 @@ export default function Sets() {
               onChange={e => setImageFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
             />
           </div>
+        </div>
+        <div style={{ color: '#9fb3c8', fontSize: '0.92rem', margin: '0 0 8px' }}>
+          Standard and promotional prices are saved separately for each selected location.
         </div>
         <div className="sets-form-spacer" aria-hidden="true" />
         <div className="sets-locations-section">
