@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import supabase from './supabase';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
@@ -72,6 +72,8 @@ async function resolveLusakaComboIds() {
   return Array.from(new Set((data || []).map((row) => String(row.combo_id)).filter(Boolean)));
 }
 
+const STOCK_SYNC_MS = 60_000;
+
 export default function LusakaStockDisplay() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -85,67 +87,82 @@ export default function LusakaStockDisplay() {
   const [comboLocationPrices, setComboLocationPrices] = useState([]);
   const [search, setSearch] = useState('');
   const [expandedImage, setExpandedImage] = useState(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+
+  const refreshStock = useCallback(async ({ initial = false } = {}) => {
+    if (initial) {
+      setLoading(true);
+      setError('');
+    }
+    try {
+      const [{ data: locRow }, invSnap, productPriceRows, comboPriceRows] = await Promise.all([
+        supabase.from('locations').select('id, name').eq('id', LUSAKA_BRANCH_ID).maybeSingle(),
+        fetchInventorySnapshot(LUSAKA_BRANCH_ID),
+        fetchProductLocationPricesForLocation(supabase, LUSAKA_BRANCH_ID),
+        fetchComboLocationPricesForLocation(supabase, LUSAKA_BRANCH_ID),
+      ]);
+      const inventoryRows = invSnap?.data || [];
+      const [productIdList, comboIdList] = await Promise.all([
+        resolveLusakaProductIds(inventoryRows),
+        resolveLusakaComboIds(),
+      ]);
+
+      const [productRows, comboRows, itemRows] = await Promise.all([
+        fetchRowsByIds(
+          'products',
+          'id',
+          'id, name, sku, currency, price, promotional_price, promo_start_date, promo_end_date, image_url, product_images(image_url)',
+          productIdList,
+        ),
+        fetchRowsByIds(
+          'combos',
+          'id',
+          'id, combo_name, sku, currency, combo_price, standard_price, promotional_price, promo_start_date, promo_end_date, picture_url',
+          comboIdList,
+        ),
+        fetchRowsByIds(
+          'combo_items',
+          'combo_id',
+          'combo_id, product_id, quantity',
+          comboIdList,
+        ),
+      ]);
+
+      setLocationName(locRow?.name || 'Lusaka');
+      setProducts(
+        productRows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })),
+      );
+      setCombos(
+        comboRows.sort((a, b) => String(a.combo_name || '').localeCompare(String(b.combo_name || ''), undefined, { sensitivity: 'base' })),
+      );
+      setComboItems(itemRows);
+      setInventory(inventoryRows);
+      setProductLocationPrices(productPriceRows || []);
+      setComboLocationPrices(comboPriceRows || []);
+      setError('');
+      setLastSyncedAt(new Date());
+    } catch (err) {
+      if (initial) {
+        setError(err?.message || 'Failed to load Lusaka stock.');
+      }
+    } finally {
+      if (initial) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const [{ data: locRow }, invSnap, productPriceRows, comboPriceRows] = await Promise.all([
-          supabase.from('locations').select('id, name').eq('id', LUSAKA_BRANCH_ID).maybeSingle(),
-          fetchInventorySnapshot(LUSAKA_BRANCH_ID),
-          fetchProductLocationPricesForLocation(supabase, LUSAKA_BRANCH_ID),
-          fetchComboLocationPricesForLocation(supabase, LUSAKA_BRANCH_ID),
-        ]);
-        const inventoryRows = invSnap?.data || [];
-        const [productIdList, comboIdList] = await Promise.all([
-          resolveLusakaProductIds(inventoryRows),
-          resolveLusakaComboIds(),
-        ]);
-
-        const [productRows, comboRows, itemRows] = await Promise.all([
-          fetchRowsByIds(
-            'products',
-            'id',
-            'id, name, sku, currency, price, promotional_price, promo_start_date, promo_end_date, image_url, product_images(image_url)',
-            productIdList,
-          ),
-          fetchRowsByIds(
-            'combos',
-            'id',
-            'id, combo_name, sku, currency, combo_price, standard_price, promotional_price, promo_start_date, promo_end_date, picture_url',
-            comboIdList,
-          ),
-          fetchRowsByIds(
-            'combo_items',
-            'combo_id',
-            'combo_id, product_id, quantity',
-            comboIdList,
-          ),
-        ]);
-
-        if (!alive) return;
-        setLocationName(locRow?.name || 'Lusaka');
-        setProducts(
-          productRows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })),
-        );
-        setCombos(
-          comboRows.sort((a, b) => String(a.combo_name || '').localeCompare(String(b.combo_name || ''), undefined, { sensitivity: 'base' })),
-        );
-        setComboItems(itemRows);
-        setInventory(inventoryRows);
-        setProductLocationPrices(productPriceRows || []);
-        setComboLocationPrices(comboPriceRows || []);
-      } catch (err) {
-        if (!alive) return;
-        setError(err?.message || 'Failed to load Lusaka stock.');
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
+    const run = async (initial) => {
+      if (!alive) return;
+      await refreshStock({ initial });
+    };
+    run(true);
+    const timer = setInterval(() => run(false), STOCK_SYNC_MS);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [refreshStock]);
 
   const stockByProduct = useMemo(() => {
     const map = new Map();
@@ -243,6 +260,7 @@ export default function LusakaStockDisplay() {
           <h1 className="lusaka-stock-display__title">{locationName} Stock</h1>
           <p className="lusaka-stock-display__subtitle">
             Products and sets assigned to this location
+            {lastSyncedAt ? ` · updated ${lastSyncedAt.toLocaleTimeString()}` : ''}
           </p>
         </div>
         <div className="lusaka-stock-display__header-actions">
