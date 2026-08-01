@@ -150,6 +150,22 @@ function getWasenderToken() {
   return String(process.env.WASENDER_API_TOKEN || process.env.WHATSAPP_WASENDER_API_TOKEN || '').trim();
 }
 
+function isWasenderOnlyProvider() {
+  const provider = String(process.env.WHATSAPP_PROVIDER || '').trim().toLowerCase();
+  return provider === 'wasender' || provider === 'wasenderapi';
+}
+
+function canFallbackToWasender() {
+  return Boolean(getWasenderToken());
+}
+
+function normalizeWasenderKind(kind) {
+  const key = String(kind || '').trim().toLowerCase();
+  if (key === 'monthlybalance' || key === 'monthly_balance' || key === 'monthly-balance') return 'layby';
+  if (key === 'lusakatransfer' || key === 'lusaka_transfer' || key === 'lusaka-transfer') return 'transfer';
+  return key;
+}
+
 function parseWasenderKinds() {
   const raw = String(process.env.WHATSAPP_WASENDER_KINDS || '').trim().toLowerCase();
   if (raw === 'all') return ['sale', 'layby', 'transfer', 'labels'];
@@ -160,19 +176,20 @@ function parseWasenderKinds() {
     }
     return kinds;
   }
-  const provider = String(process.env.WHATSAPP_PROVIDER || '').trim().toLowerCase();
-  if (provider === 'wasender' || provider === 'wasenderapi') return ['sale', 'layby', 'transfer', 'labels'];
+  if (isWasenderOnlyProvider()) return ['sale', 'layby', 'transfer', 'labels'];
   return [];
 }
 
 function isWasenderKindEnabled(kind) {
-  return parseWasenderKinds().includes(String(kind || '').trim().toLowerCase());
+  return parseWasenderKinds().includes(normalizeWasenderKind(kind));
 }
 
 function getConfiguredProviderForKind(kind) {
-  const key = String(kind || '').trim().toLowerCase();
-  if (getWasenderToken() && isWasenderKindEnabled(key)) return 'wasender';
-  if (getWhapiToken()) return 'whapi';
+  const normalized = normalizeWasenderKind(kind);
+  const wasenderOnly = isWasenderOnlyProvider();
+  if (getWasenderToken() && (isWasenderKindEnabled(kind) || wasenderOnly)) return 'wasender';
+  if (wasenderOnly) return 'wasender';
+  if (!wasenderOnly && getWhapiToken()) return 'whapi';
   return 'meta';
 }
 
@@ -199,6 +216,8 @@ function isWhapiProvider() {
 
 
 function getWhapiToken() {
+
+  if (isWasenderOnlyProvider()) return '';
 
   return String(process.env.WHATSAPP_API_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN || '').trim();
 
@@ -380,7 +399,7 @@ function setCors(res) {
 
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-vercel-protection-bypass');
 
 }
 
@@ -592,6 +611,47 @@ function waBold(text) {
 
 
 
+function sumSaleCashPayments(salePayments) {
+  return (salePayments || []).reduce((sum, payment) => {
+    if (String(payment.payment_type || '').toLowerCase() === 'credit') return sum;
+    return sum + Number(payment.amount || 0);
+  }, 0);
+}
+
+// Mirrors POS partial/layby settlement: discounted sales can still accrue net total to layby.
+function computeSaleLaybyOutstanding(sale, salePayments) {
+  const net = Number(sale?.total_amount || 0);
+  const disc = Number(sale?.discount || 0);
+  const subtotal = net + disc;
+  const paid = sumSaleCashPayments(salePayments);
+  let outstanding = Math.max(0, subtotal - paid - disc);
+  if (disc > 0 && paid + 0.0001 < subtotal && outstanding < 0.0001) {
+    outstanding = net;
+  }
+  return outstanding;
+}
+
+function computeLaybyAdditionBalances(sales, payments, focusSaleId) {
+  const rows = Array.isArray(sales) ? sales.filter(Boolean) : [];
+  const payRows = Array.isArray(payments) ? payments : [];
+  let previousDueBalance = 0;
+  let newSaleDue = 0;
+  rows.forEach((sale) => {
+    const salePayments = payRows.filter((payment) => String(payment.sale_id) === String(sale.id));
+    const outstanding = computeSaleLaybyOutstanding(sale, salePayments);
+    if (focusSaleId != null && String(sale.id) === String(focusSaleId)) {
+      newSaleDue = outstanding;
+    } else {
+      previousDueBalance += outstanding;
+    }
+  });
+  return {
+    previousDueBalance,
+    newSaleDue,
+    balanceDue: previousDueBalance + newSaleDue,
+  };
+}
+
 function pickFocusSale(sales, focusSaleId) {
 
   const rows = Array.isArray(sales) ? sales.filter(Boolean) : [];
@@ -630,21 +690,115 @@ async function loadProductPriceMap(supabase, items) {
 
 
 
-  const { data: products } = await supabase
+  const chunkSize = 100;
 
-    .from('products')
+  for (let i = 0; i < productIds.length; i += chunkSize) {
 
-    .select('id, price, promotional_price')
+    const chunk = productIds.slice(i, i + chunkSize);
 
-    .in('id', productIds);
+    const { data: products, error } = await supabase
 
-  (products || []).forEach((row) => {
+      .from('products')
 
-    map.set(String(row.id), row);
+      .select('id, name, price, promotional_price')
 
-  });
+      .in('id', chunk);
+
+    if (error) console.warn('loadProductPriceMap products query failed:', error.message || error);
+
+    (products || []).forEach((row) => {
+
+      map.set(String(row.id), row);
+
+    });
+
+  }
+
+
+
+  const missing = productIds.filter((id) => !map.has(String(id)));
+
+  if (missing.length) {
+
+    for (let i = 0; i < missing.length; i += chunkSize) {
+
+      const chunk = missing.slice(i, i + chunkSize);
+
+      const { data: quoteProducts } = await supabase
+
+        .from('quotation_products')
+
+        .select('id, name')
+
+        .in('id', chunk);
+
+      (quoteProducts || []).forEach((row) => {
+
+        map.set(String(row.id), {
+
+          id: row.id,
+
+          name: row.name,
+
+          price: 0,
+
+          promotional_price: 0,
+
+        });
+
+      });
+
+    }
+
+  }
+
+
 
   return map;
+
+}
+
+
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function looksLikeOpaqueId(value) {
+
+  const raw = String(value || '').trim();
+
+  return UUID_RE.test(raw) || /^\d+$/.test(raw);
+
+}
+
+
+
+function resolveItemName(item, productMap) {
+
+  const displayName = String(item.display_name || '').trim();
+
+  if (displayName && !looksLikeOpaqueId(displayName)) return displayName;
+
+  const productId = item.product_id;
+
+  if (productId && productMap.has(String(productId))) {
+
+    const productName = String(productMap.get(String(productId))?.name || '').trim();
+
+    if (productName) return productName;
+
+  }
+
+  return 'Product';
+
+}
+
+
+
+function safeProductLabel(item, productMap) {
+
+  const name = resolveItemName(item, productMap);
+
+  return looksLikeOpaqueId(name) ? 'Product' : name;
 
 }
 
@@ -692,7 +846,7 @@ function buildProductLines(items, currency, productMap, { saleId } = {}) {
 
     const qty = Number(item.quantity || 0);
 
-    const name = String(item.display_name || item.product_id || '').trim();
+    const name = safeProductLabel(item, productMap);
 
     if (!name || qty <= 0) return false;
 
@@ -708,7 +862,7 @@ function buildProductLines(items, currency, productMap, { saleId } = {}) {
 
     const qty = Number(item.quantity || 0);
 
-    const name = String(item.display_name || item.product_id || '').trim();
+    const name = safeProductLabel(item, productMap);
 
     const { unit } = resolveItemPrices(item, productMap);
 
@@ -844,6 +998,8 @@ function buildLaybyMessage({
 
   topupRequired,
 
+  previousDueBalance,
+
 }) {
 
   const { date, time } = formatDateTimeParts(dateTimeIso);
@@ -860,7 +1016,7 @@ function buildLaybyMessage({
 
       : '📝 *Quote Edited (Lay-Buy Updated)*');
 
-  } else if (eventType === 'quote_convert' || isQuoteLayby) {
+  } else if (eventType === 'quote_convert' || eventType === 'layby_addition' || isQuoteLayby) {
 
     lines.push('🏭 *Factory Production*');
 
@@ -914,7 +1070,31 @@ function buildLaybyMessage({
 
   pushLine(lines, '📞 Customer Number', customerPhone);
 
-  if (productLines?.length && eventType !== 'statement') {
+  if (eventType === 'layby_addition') {
+
+    if (previousDueBalance != null && Number(previousDueBalance) >= 0) {
+
+      lines.push('');
+
+      lines.push(`Previous Due Balance: ${formatAmount(previousDueBalance, currency)}`);
+
+    }
+
+    lines.push('');
+
+    lines.push('*New Sale*');
+
+    if (productLines?.length) {
+
+      lines.push('');
+
+      lines.push('🛒 *Products:*');
+
+      lines.push(productLines.join(`\n${PRODUCT_LINE_SEP}\n`));
+
+    }
+
+  } else if (productLines?.length && eventType !== 'statement' && eventType !== 'payment') {
 
     lines.push('');
 
@@ -1036,6 +1216,14 @@ async function sendMetaWhatsAppMessage({ to, type, payload }) {
 
 
 
+function resolveWhapiApiError(json, fallback = 'Whapi request failed') {
+  if (!json || typeof json !== 'object') return fallback;
+  if (typeof json.error === 'string' && json.error.trim()) return json.error.trim();
+  if (json.error?.message) return String(json.error.message).trim();
+  if (json.message) return String(json.message).trim();
+  return fallback;
+}
+
 async function sendWhapiText(to, body) {
 
   const { token } = getWhapiConfig();
@@ -1071,9 +1259,9 @@ async function sendWhapiText(to, body) {
 
   if (!resp.ok) {
 
-    const msg = json?.error?.message || json?.message || 'Whapi text send failed';
+    const whapiDetail = resolveWhapiApiError(json, 'Whapi text send failed');
 
-    const err = new Error(msg);
+    const err = new Error(`Whapi text send failed: ${whapiDetail}`);
 
     err.status = 502;
 
@@ -1221,15 +1409,29 @@ async function deliverText(targets, text, mode, provider = 'whapi') {
 
   if (provider === 'whapi' || mode === 'group') {
 
-    for (const to of unique) {
+    try {
+      for (const to of unique) {
 
-      const response = await sendWhapiText(to, body);
+        const response = await sendWhapiText(to, body);
 
-      results.push({ to, messageId: response?.message?.id || response?.id || null });
+        results.push({ to, messageId: response?.message?.id || response?.id || null });
 
+      }
+
+      return results;
+    } catch (whapiErr) {
+      if (!canFallbackToWasender()) throw whapiErr;
+
+      for (const to of unique) {
+
+        const response = await sendWasenderMessage({ to, text: body });
+
+        results.push({ to, messageId: response?.data?.id || response?.message?.id || response?.id || null });
+
+      }
+
+      return results;
     }
-
-    return results;
 
   }
 
@@ -1257,6 +1459,145 @@ async function deliverText(targets, text, mode, provider = 'whapi') {
 
 
 
+async function resolveDocumentBuffer(link) {
+  const trimmed = String(link || '').trim();
+  if (!trimmed) return null;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), WHAPI_TIMEOUT_MS);
+    try {
+      const resp = await fetch(trimmed, { signal: controller.signal });
+      if (!resp.ok) {
+        const err = new Error(`Failed to download PDF (${resp.status})`);
+        err.status = 502;
+        err.stage = 'download';
+        throw err;
+      }
+      return Buffer.from(await resp.arrayBuffer());
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const base64 = trimmed.replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '').replace(/\s+/g, '');
+  if (!base64) return null;
+  return Buffer.from(base64, 'base64');
+}
+
+async function resolveWasenderDocumentUrl(link, filename = 'document.pdf') {
+  const trimmed = String(link || '').trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+
+  const buffer = await resolveDocumentBuffer(trimmed);
+  if (!buffer?.length) {
+    const err = new Error('Document payload is empty');
+    err.status = 400;
+    err.stage = 'validate';
+    throw err;
+  }
+
+  const supabase = getSupabaseServiceClient();
+  const bucket = 'labels';
+  const safeName = String(filename || 'document.pdf').replace(/[^\w.\-() ]+/g, '_') || 'document.pdf';
+  const path = `whatsapp/${Date.now()}_${safeName}`;
+
+  try {
+    const { data: bucketInfo } = await supabase.storage.getBucket(bucket);
+    if (!bucketInfo) await supabase.storage.createBucket(bucket, { public: false });
+  } catch {
+    try { await supabase.storage.createBucket(bucket, { public: false }); } catch {}
+  }
+
+  const { error: uploadErr } = await supabase.storage.from(bucket).upload(path, buffer, {
+    upsert: true,
+    contentType: 'application/pdf',
+    cacheControl: '3600',
+  });
+  if (uploadErr) {
+    const err = new Error(uploadErr.message || 'Failed to upload document for Wasender');
+    err.status = 502;
+    err.stage = 'upload';
+    throw err;
+  }
+
+  const { data: signed, error: signedErr } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 3600, { download: safeName });
+  if (signedErr || !signed?.signedUrl) {
+    const err = new Error(signedErr?.message || 'Failed to create signed URL for Wasender');
+    err.status = 502;
+    err.stage = 'upload';
+    throw err;
+  }
+
+  return signed.signedUrl;
+}
+
+function whapiDocumentError(json, fallback = 'Whapi document send failed') {
+  const whapiDetail = resolveWhapiApiError(json, fallback);
+  const err = new Error(`${fallback}: ${whapiDetail}`);
+  err.status = 502;
+  err.stage = 'whatsapp';
+  err.details = json;
+  return err;
+}
+
+async function sendWhapiDocument({ to, buffer, filename, caption, token }) {
+  const safeName = filename || 'document.pdf';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error('Whapi document timeout')), WHAPI_TIMEOUT_MS);
+
+  try {
+    const form = new FormData();
+    form.append('to', to);
+    form.append('filename', safeName);
+    form.append('mime_type', 'application/pdf');
+    if (caption) form.append('caption', String(caption).slice(0, WHATSAPP_CAPTION_LIMIT));
+    form.append('media', new Blob([buffer], { type: 'application/pdf' }), safeName);
+
+    let resp = await fetch('https://gate.whapi.cloud/messages/document', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+      signal: controller.signal,
+    });
+
+    let json = await resp.json().catch(() => ({}));
+    if (resp.ok) return json;
+
+    // JSON/base64 fallback when multipart is rejected.
+    resp = await fetch('https://gate.whapi.cloud/messages/document', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to,
+        media: buffer.toString('base64'),
+        filename: safeName,
+        mime_type: 'application/pdf',
+        caption: caption ? String(caption).slice(0, WHATSAPP_CAPTION_LIMIT) : undefined,
+      }),
+      signal: controller.signal,
+    });
+    json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw whapiDocumentError(json);
+    return json;
+  } catch (err) {
+    if (err?.stage === 'whatsapp') throw err;
+    const e = new Error(err?.name === 'AbortError' ? `Whapi document timeout after ${WHAPI_TIMEOUT_MS}ms` : (err?.message || 'Whapi document send failed'));
+    e.status = err?.name === 'AbortError' ? 504 : 502;
+    e.stage = 'whatsapp';
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+
+
 async function deliverDocument(targets, link, filename, mode, provider = 'whapi', caption = '') {
 
   if (!link || !targets.length) return [];
@@ -1268,6 +1609,7 @@ async function deliverDocument(targets, link, filename, mode, provider = 'whapi'
   if (provider === 'wasender') {
 
     const results = [];
+    const documentUrl = await resolveWasenderDocumentUrl(link, filename || 'document.pdf');
 
     for (const to of unique) {
 
@@ -1277,7 +1619,7 @@ async function deliverDocument(targets, link, filename, mode, provider = 'whapi'
 
         text: caption,
 
-        documentUrl: link,
+        documentUrl,
 
         fileName: filename || 'document.pdf',
 
@@ -1296,69 +1638,46 @@ async function deliverDocument(targets, link, filename, mode, provider = 'whapi'
   if (provider === 'whapi' || mode === 'group') {
 
     const { token } = getWhapiConfig();
+    const buffer = await resolveDocumentBuffer(link);
+    if (!buffer?.length) {
+      const err = new Error('Document payload is empty');
+      err.status = 400;
+      err.stage = 'validate';
+      throw err;
+    }
 
     const results = [];
 
-    for (const to of unique) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(new Error('Whapi document timeout')), WHAPI_TIMEOUT_MS);
-      let resp;
-      try {
-        resp = await fetch('https://gate.whapi.cloud/messages/document', {
-
-        method: 'POST',
-
-        headers: {
-
-          Authorization: `Bearer ${token}`,
-
-          'Content-Type': 'application/json',
-
-        },
-
-        body: JSON.stringify({
-
+    try {
+      for (const to of unique) {
+        const json = await sendWhapiDocument({
           to,
-
-          media: link,
-
+          buffer,
           filename: filename || 'document.pdf',
-
-          mime_type: 'application/pdf',
-
-          caption: caption ? String(caption).slice(0, WHATSAPP_CAPTION_LIMIT) : undefined,
-
-        }),
-          signal: controller.signal,
+          caption,
+          token,
         });
-      } catch (err) {
-        const e = new Error(err?.name === 'AbortError' ? `Whapi document timeout after ${WHAPI_TIMEOUT_MS}ms` : (err?.message || 'Whapi document send failed'));
-        e.status = 504;
-        e.stage = 'whatsapp';
-        throw e;
-      } finally {
-        clearTimeout(timeout);
+        results.push({ to, messageId: json?.message?.id || json?.id || null });
       }
 
-      const json = await resp.json().catch(() => ({}));
+      return results;
+    } catch (whapiErr) {
+      if (!canFallbackToWasender()) throw whapiErr;
 
-      if (!resp.ok) {
+      const documentUrl = await resolveWasenderDocumentUrl(link, filename || 'document.pdf');
 
-        const err = new Error(json?.error?.message || json?.message || 'Whapi document send failed');
-
-        err.status = 502;
-
-        err.stage = 'whatsapp';
-
-        throw err;
-
+      for (const to of unique) {
+        const response = await sendWasenderMessage({
+          to,
+          text: caption,
+          documentUrl,
+          fileName: filename || 'document.pdf',
+        });
+        results.push({ to, messageId: response?.data?.id || response?.message?.id || response?.id || null });
       }
 
-      results.push({ to, messageId: json?.message?.id || json?.id || null });
-
+      return results;
     }
-
-    return results;
 
   }
 
@@ -2045,7 +2364,7 @@ async function handleWhatsAppLayby(body) {
 
 
 
-  const itemScopeSaleId = (eventType === 'new_layby' || eventType === 'quote_convert') && focusSale
+  const itemScopeSaleId = (eventType === 'new_layby' || eventType === 'quote_convert' || eventType === 'layby_addition') && focusSale
 
     ? focusSale.id
 
@@ -2077,9 +2396,19 @@ async function handleWhatsAppLayby(body) {
 
 
 
+  let previousDueBalance = null;
+
   let balanceDue = Math.max(0, laybyTotal - totalPaid - totalDiscount);
 
-  if (eventType === 'new_layby' || eventType === 'quote_convert') {
+  if (eventType === 'layby_addition' && focusSale) {
+
+    const additionBalances = computeLaybyAdditionBalances(sales, payments, focusSale.id);
+
+    previousDueBalance = additionBalances.previousDueBalance;
+
+    balanceDue = additionBalances.balanceDue;
+
+  } else if (eventType === 'new_layby' || eventType === 'quote_convert') {
 
     balanceDue = Math.max(0, summaryTotal - paidOnFocus);
 
@@ -2123,6 +2452,8 @@ async function handleWhatsAppLayby(body) {
     laybyClosed: effectiveLaybyClosed,
 
     editSummary,
+
+    previousDueBalance,
 
   });
 
@@ -2248,10 +2579,14 @@ async function handleWhatsAppLusakaTransfer(body) {
 async function handleWhatsAppLabels(body) {
 
   const pdfUrl = String(body.pdfUrl || '').trim();
+  const pdfBase64 = String(body.pdfBase64 || '')
+    .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
+    .replace(/\s+/g, '');
+  const documentLink = pdfUrl || pdfBase64;
 
-  if (!pdfUrl) {
+  if (!documentLink) {
 
-    const err = new Error('Missing pdfUrl');
+    const err = new Error('Missing pdfUrl or pdfBase64');
 
     err.status = 400;
 
@@ -2266,8 +2601,7 @@ async function handleWhatsAppLabels(body) {
   const routing = resolveLabelsTargets();
 
   if (!routing.targets.length) {
-
-    const err = new Error('WhatsApp env not configured for price labels. Set WASENDER_API_TOKEN (or WHAPI token) and optionally WHATSAPP_LABELS_GROUP_ID in .env.local / Vercel.');
+    const err = new Error('WhatsApp env not configured for price labels. Set WASENDER_API_TOKEN and WHATSAPP_LABELS_GROUP_ID in .env.local / Vercel.');
 
     err.status = 500;
 
@@ -2283,7 +2617,7 @@ async function handleWhatsAppLabels(body) {
 
   const caption = String(body.message || 'Price labels').trim().slice(0, WHATSAPP_CAPTION_LIMIT);
 
-  const deliveries = await deliverDocument(routing.targets, pdfUrl, filename, routing.mode, routing.provider, caption);
+  const deliveries = await deliverDocument(routing.targets, documentLink, filename, routing.mode, routing.provider, caption);
 
   return { ok: true, deliveries };
 

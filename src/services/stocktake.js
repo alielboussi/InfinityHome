@@ -69,11 +69,13 @@ async function fetchJson(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   }
 }
 
-async function withApiOrClient(apiCall, clientCall) {
+async function withApiOrClient(apiCall, clientCall, { fallbackOnServerError = false } = {}) {
   try {
     return await apiCall();
   } catch (err) {
-    if (!isApiUnavailable(err)) throw err;
+    const status = Number(err?.status || 0);
+    const canFallback = isApiUnavailable(err) || (fallbackOnServerError && status >= 500);
+    if (!canFallback) throw err;
     try {
       return await clientCall();
     } catch (clientErr) {
@@ -700,22 +702,49 @@ export async function cancelEvent(eventId, userEmail = currentEmail(), { force =
   );
 }
 
-export async function fetchImportTemplate(locationId) {
-  try {
-    return await fetchJson(`/api/stocktake-import-template?locationId=${encodeURIComponent(locationId)}`);
-  } catch (err) {
-    if (!isApiUnavailable(err)) throw err;
-    // Minimal client fallback: location products as SKU/name/qty template rows
-    const catalog = await clientFetchCatalog(locationId, '');
-    return {
-      ok: true,
-      rows: (catalog.products || []).map((p) => ({
-        sku: p.sku || '',
-        name: p.name || '',
-        qty: '',
-      })),
-    };
+async function clientFetchImportTemplate(locationId) {
+  const productIds = await resolveLocationProductIds(locationId);
+  const products = [];
+  for (let i = 0; i < productIds.length; i += 150) {
+    const chunk = productIds.slice(i, i + 150);
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, sku, name')
+      .in('id', chunk);
+    if (error) throw error;
+    products.push(...(data || []));
   }
+
+  const { data: comboRows, error: comboErr } = await supabase.from('combos').select('sku');
+  if (comboErr) throw comboErr;
+  const setSkus = new Set(
+    (comboRows || [])
+      .map((c) => String(c.sku || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  const rows = products
+    .filter((p) => {
+      const sku = String(p.sku || '').trim().toLowerCase();
+      return sku && !setSkus.has(sku);
+    })
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }))
+    .map((p) => ({
+      sku: p.sku,
+      name: p.name,
+      productName: p.name,
+      quantity: '',
+    }));
+
+  return { ok: true, locationId, rows };
+}
+
+export async function fetchImportTemplate(locationId) {
+  return withApiOrClient(
+    () => fetchJson(`/api/stocktake-import-template?locationId=${encodeURIComponent(locationId)}`),
+    () => clientFetchImportTemplate(locationId),
+    { fallbackOnServerError: true },
+  );
 }
 
 export async function addCount(eventId, productId, qty, userEmail = currentEmail()) {

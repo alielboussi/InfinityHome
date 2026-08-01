@@ -128,6 +128,114 @@ function chunkArray(list, size) {
   return chunks;
 }
 
+async function loadLocationProductIds(sb, locationId) {
+  const productIdSet = new Set();
+  const [{ data: plRows, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
+    fetchAllPaged((from, to) =>
+      sb.from('product_locations')
+        .select('product_id')
+        .eq('location_id', locationId)
+        .order('product_id', { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllPaged((from, to) =>
+      sb.from('inventory')
+        .select('product_id')
+        .eq('location', locationId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
+  ]);
+  if (plErr) throw plErr;
+  if (invErr) throw invErr;
+  (plRows || []).forEach((r) => { if (r.product_id) productIdSet.add(r.product_id); });
+  (invRows || []).forEach((r) => { if (r.product_id) productIdSet.add(r.product_id); });
+  return [...productIdSet];
+}
+
+async function fetchProductsByIds(sb, productIds) {
+  const ids = [...new Set((productIds || []).filter(Boolean))];
+  if (!ids.length) return [];
+  const all = [];
+  for (const chunk of chunkArray(ids, 150)) {
+    const { data, error } = await sb
+      .from('products')
+      .select('id, sku, name')
+      .in('id', chunk);
+    if (error) throw error;
+    all.push(...(data || []));
+  }
+  all.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+  return all;
+}
+
+async function loadLocationImportProductsJoined(sb, locationId) {
+  const byId = new Map();
+  const pageSize = 1000;
+
+  async function mergePaged(table, locationColumn) {
+    let offset = 0;
+    while (true) {
+      let query = sb
+        .from(table)
+        .select('product_id, products(id, sku, name)')
+        .eq(locationColumn, locationId)
+        .not('product_id', 'is', null);
+      if (table === 'inventory') {
+        query = query.order('id', { ascending: true });
+      } else {
+        query = query.order('product_id', { ascending: true });
+      }
+      const { data, error } = await query.range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      const rows = data || [];
+      rows.forEach((row) => {
+        const product = Array.isArray(row.products) ? row.products[0] : row.products;
+        if (product?.id) byId.set(String(product.id), product);
+      });
+      if (rows.length < pageSize) break;
+      offset += pageSize;
+    }
+  }
+
+  await mergePaged('product_locations', 'location_id');
+  await mergePaged('inventory', 'location');
+
+  return [...byId.values()].sort((a, b) =>
+    String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }),
+  );
+}
+
+async function loadLocationImportProducts(sb, locationId) {
+  try {
+    return await loadLocationImportProductsJoined(sb, locationId);
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/relationship|schema cache|embed|could not find/i.test(msg)) throw err;
+    const ids = await loadLocationProductIds(sb, locationId);
+    return fetchProductsByIds(sb, ids);
+  }
+}
+
+async function loadComboSkuFilters(sb) {
+  const { data, error } = await fetchAllPaged((from, to) =>
+    sb.from('combos')
+      .select('sku, combo_name')
+      .order('id', { ascending: true })
+      .range(from, to),
+  );
+  if (error) throw error;
+  const setSkus = new Set();
+  const setNames = new Set();
+  (data || []).forEach((c) => {
+    const sku = String(c.sku || '').trim().toLowerCase();
+    if (sku) setSkus.add(sku);
+    const name = String(c.combo_name || '').trim().toLowerCase();
+    if (name) setNames.add(name);
+  });
+  return { setSkus, setNames };
+}
+
 function buildAuthUserPayload(authUser) {
   const metadata = authUser?.user_metadata || {};
   return resolveSessionUserFromAuth({
@@ -616,13 +724,8 @@ async function handleCountsImport(req, res) {
     const event = await assertCountingAllowed(sb, eventId);
     const locationId = event.location_id;
 
-    const { data: enabledLinks, error: plErr } = await sb
-      .from('product_locations')
-      .select('product_id')
-      .eq('location_id', locationId);
-    if (plErr) throw plErr;
-    const enabledIds = [...new Set((enabledLinks || []).map((r) => r.product_id))];
-    if (!enabledIds.length) {
+    const products = await loadLocationImportProducts(sb, locationId);
+    if (!products.length) {
       return res.status(200).json({
         ok: true,
         locationId,
@@ -636,12 +739,6 @@ async function handleCountsImport(req, res) {
       });
     }
 
-    const { data: products, error: pErr } = await sb
-      .from('products')
-      .select('id, sku, name')
-      .in('id', enabledIds);
-    if (pErr) throw pErr;
-
     const bySku = new Map();
     const byName = new Map();
     (products || []).forEach((p) => {
@@ -651,20 +748,7 @@ async function handleCountsImport(req, res) {
       if (nameKey && !byName.has(nameKey)) byName.set(nameKey, p);
     });
 
-    const { data: combos, error: cErr } = await sb
-      .from('combos')
-      .select('id, sku, name');
-    if (cErr) throw cErr;
-    const setSkus = new Set(
-      (combos || [])
-        .map((c) => String(c.sku || '').trim().toLowerCase())
-        .filter(Boolean)
-    );
-    const setNames = new Set(
-      (combos || [])
-        .map((c) => String(c.name || '').trim().toLowerCase())
-        .filter(Boolean)
-    );
+    const { setSkus, setNames } = await loadComboSkuFilters(sb);
 
     const imported = [];
     const skipped = [];
@@ -734,28 +818,12 @@ async function handleImportTemplate(req, res) {
 
   try {
     const sb = getService();
-    const { data: links, error: plErr } = await sb
-      .from('product_locations')
-      .select('product_id')
-      .eq('location_id', locationId);
-    if (plErr) throw plErr;
-    const ids = (links || []).map((r) => r.product_id);
-    if (!ids.length) {
+    const products = await loadLocationImportProducts(sb, locationId);
+    if (!products.length) {
       return res.status(200).json({ ok: true, locationId, rows: [] });
     }
 
-    const { data: products, error: pErr } = await sb
-      .from('products')
-      .select('id, sku, name')
-      .in('id', ids)
-      .order('name', { ascending: true });
-    if (pErr) throw pErr;
-
-    // Exclude anything whose SKU is also a set SKU
-    const { data: combos } = await sb.from('combos').select('sku');
-    const setSkus = new Set(
-      (combos || []).map((c) => String(c.sku || '').trim().toLowerCase()).filter(Boolean)
-    );
+    const { setSkus } = await loadComboSkuFilters(sb);
 
     const rows = (products || [])
       .filter((p) => {

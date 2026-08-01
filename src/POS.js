@@ -1156,13 +1156,49 @@ export default function POS({ isMobile = false }) {
   // Calculate totals (VAT is inclusive, not added)
   const subtotal = cart.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.qty)), 0);
   const discountAmount = Number(discountAll) || 0;
-  const total = subtotal - discountAmount;
+  const total = Math.max(0, subtotal - discountAmount);
   // Downpayment-only model: no credit auto-apply; any prior "credit" is not used here.
   const selectedCustObj = customers.find(c => String(c.id) === String(selectedCustomer));
 
-  // Auto-fill the payment line(s) with the cart total. Lines the user has not
-  // manually edited share the remaining balance equally, so adding another
-  // payment splits the total automatically.
+  const computeCheckoutSettlement = (payAmt) => {
+    const paid = Number(payAmt) || 0;
+    if (paid < 0) {
+      return { ok: false, error: 'Enter a valid payment amount.' };
+    }
+    if (paid > subtotal + 0.0001) {
+      return {
+        ok: false,
+        error: `Payment (${paid.toFixed(2)}) exceeds subtotal (${subtotal.toFixed(2)}).`,
+      };
+    }
+    let outstandingNow = Math.max(0, subtotal - paid - discountAmount);
+    // Discounted sale paid in full at net price but not at sticker: keep net balance on layby.
+    if (discountAmount > 0 && paid + 0.0001 < subtotal && outstandingNow < 0.0001) {
+      outstandingNow = total;
+    }
+    return { ok: true, appliedPay: paid, outstandingNow };
+  };
+
+  const resolveActiveLayby = (laybys, desiredCurrency) => {
+    const active = (laybys || []).filter((l) => String(l.status).toLowerCase() === 'active');
+    const currencyMatch = active.find((l) => {
+      const laybyCurrency = normalizeCurrencyCode(l.sale_currency || l.currency || '');
+      return laybyCurrency ? laybyCurrency === desiredCurrency : false;
+    });
+    if (currencyMatch) return currencyMatch;
+    const unsetCurrency = active.find((l) => !normalizeCurrencyCode(l.sale_currency || l.currency || ''));
+    return unsetCurrency || active[0] || null;
+  };
+
+  const totalPaidNow = (paymentLines || []).reduce((sum, p) => sum + parseAmountInput(p.amount), 0);
+  const settlementPreview = computeCheckoutSettlement(totalPaidNow);
+  const paymentDueNow = settlementPreview.ok
+    ? settlementPreview.outstandingNow
+    : Math.max(0, subtotal - totalPaidNow - discountAmount);
+  const isPartialCheckout = paymentDueNow > 0.0001
+    || (discountAmount > 0 && totalPaidNow + 0.0001 < subtotal);
+
+  // Auto-fill payment to the net total (amount due after discount).
   const paymentManualSignature = (paymentLines || [])
     .map(L => `${L.manual ? 1 : 0}:${L.manual ? L.amount : ''}`)
     .join('|');
@@ -1170,9 +1206,11 @@ export default function POS({ isMobile = false }) {
     setPaymentLines(lines => {
       const list = lines || [];
       if (list.length === 0) return list;
+
       const manualSum = list.reduce((s, L) => s + (L.manual ? parseAmountInput(L.amount) : 0), 0);
       const autoLines = list.filter(L => !L.manual);
       if (autoLines.length === 0) return list;
+
       const remaining = Math.max(0, total - manualSum);
       const nextAmount = total > 0 ? (remaining / autoLines.length).toFixed(2) : '';
       let changed = false;
@@ -1308,32 +1346,20 @@ export default function POS({ isMobile = false }) {
       }
     }
 
-  // Validate payment against total
   const payAmt = (paymentLines || []).reduce((sum, p) => sum + parseAmountInput(p.amount), 0);
-    if (payAmt < 0 || payAmt > total) {
-      setCheckoutError("Enter a valid payment amount (<= total).");
+    const settlement = computeCheckoutSettlement(payAmt);
+    if (!settlement.ok) {
+      setCheckoutError(settlement.error);
       return;
     }
-    // Normalize NaN
-    const normPayAmt = Number(payAmt || 0);
-    // Compute credit usage and outstanding first; if outstanding remains, show decision modal
-    const cust = customers.find(c => String(c.id) === String(selectedCustomer));
-  // No credit usage
-  const currentCredit = 0;
-  const useCredit = 0;
-  const remainingPay = normPayAmt; // sum of all payment lines now
-  const outstandingNow = Math.max(0, total - remainingPay);
+    const remainingPay = settlement.appliedPay;
+    const outstandingNow = settlement.outstandingNow;
 
     // If there is outstanding, check for existing active layby for this customer.
     // If one exists, automatically accrue to that layby (no modal). Otherwise, auto-create a new layby (no modal).
     if (outstandingNow > 0) {
       const desiredCurrency = normalizeCurrencyCode(currency);
-      const activeLayby = (customerLaybys || [])
-        .filter(l => String(l.status).toLowerCase() === 'active')
-        .find(l => {
-          const laybyCurrency = normalizeCurrencyCode(l.sale_currency || l.currency || '');
-          return laybyCurrency ? laybyCurrency === desiredCurrency : false;
-        });
+      const activeLayby = resolveActiveLayby(customerLaybys, desiredCurrency);
       if (activeLayby) {
         setCheckoutLoading(true);
         try {
@@ -1350,6 +1376,7 @@ export default function POS({ isMobile = false }) {
               date,
               currency,
               discountAmount,
+              subtotal,
               total,
               receiptNumber: formattedReceipt,
             },
@@ -1377,6 +1404,7 @@ export default function POS({ isMobile = false }) {
             date,
             currency,
             discountAmount,
+            subtotal,
             total,
             receiptNumber: formattedReceipt,
           }
@@ -1402,6 +1430,7 @@ export default function POS({ isMobile = false }) {
           date,
           currency,
           discountAmount,
+          subtotal,
           total,
           receiptNumber: formattedReceipt,
         }
@@ -1425,23 +1454,38 @@ export default function POS({ isMobile = false }) {
     const recomputeLaybyRollup = async (laybyIdForRollup) => {
       if (!laybyIdForRollup) return;
       try {
-        // Find all sales linked to this layby
         const { data: linkedSales } = await fromPublic('sales')
-          .select('id, total_amount')
+          .select('id, total_amount, discount')
           .eq('layby_id', laybyIdForRollup);
         const saleIds = (linkedSales || []).map(s => s.id);
-        let totalAmount = (linkedSales || []).reduce((a, s) => a + Number(s.total_amount || 0), 0);
-        // Fallback: if no linked sales yet (should not happen), keep total_amount as-is
         if (!saleIds.length) return;
-        // Sum non-credit payments across those sales
         const { data: payRows } = await fromPublic('sales_payments')
           .select('sale_id, amount, payment_type')
           .in('sale_id', saleIds);
-        const paid = (payRows || []).filter(p => String(p.payment_type || '').toLowerCase() !== 'credit')
-          .reduce((a, p) => a + Number(p.amount || 0), 0);
-        const status = paid >= totalAmount ? 'completed' : 'active';
+        const paidBySale = (payRows || []).reduce((acc, row) => {
+          if (String(row.payment_type || '').toLowerCase() === 'credit') return acc;
+          const key = String(row.sale_id);
+          acc[key] = (acc[key] || 0) + Number(row.amount || 0);
+          return acc;
+        }, {});
+        let totalGross = 0;
+        let outstanding = 0;
+        for (const sale of linkedSales || []) {
+          const net = Number(sale.total_amount || 0);
+          const disc = Number(sale.discount || 0);
+          const gross = net + disc;
+          totalGross += gross;
+          const salePaid = Number(paidBySale[String(sale.id)] || 0);
+          if (disc > 0) {
+            outstanding += Math.max(0, gross - salePaid - disc);
+          } else {
+            outstanding += Math.max(0, net - salePaid);
+          }
+        }
+        const paid = Object.values(paidBySale).reduce((a, n) => a + Number(n || 0), 0);
+        const status = outstanding <= 0.0001 ? 'completed' : 'active';
         await fromPublic('laybys')
-          .update({ total_amount: totalAmount, paid_amount: paid, status, updated_at: new Date().toISOString() })
+          .update({ total_amount: totalGross, paid_amount: paid, status, updated_at: new Date().toISOString() })
           .eq('id', laybyIdForRollup);
       } catch (e) {
         console.warn('Layby rollup recompute failed', e);
@@ -1526,6 +1570,7 @@ export default function POS({ isMobile = false }) {
         saleItems.push({
           sale_id: saleId,
           product_id: item.id,
+          display_name: item.name || null,
           quantity: Number(item.qty),
           unit_price: Number(item.price),
           currency: item.overrideCurrency || item.currency || ctx.currency,
@@ -1639,14 +1684,14 @@ export default function POS({ isMobile = false }) {
           saleId,
         });
         if (!result?.ok) notifyErrors.push(result?.error || 'Layby WhatsApp failed');
-      } else if (laybyId && existingLaybyId && remainingPay > 0) {
+      } else if (laybyId && existingLaybyId && (remainingPay > 0 || outstandingNow > 0)) {
         const result = await notifyLaybyWhatsApp({
           laybyId,
           customerId,
-          eventType: 'payment',
+          eventType: 'layby_addition',
           saleId,
         });
-        if (!result?.ok) notifyErrors.push(result?.error || 'Layby payment WhatsApp failed');
+        if (!result?.ok) notifyErrors.push(result?.error || 'Layby WhatsApp failed');
       }
       if (!isFahmeCheckout && saleId && outstandingNow <= 0) {
         const result = await notifySaleWhatsApp({ saleId });
@@ -2611,13 +2656,17 @@ export default function POS({ isMobile = false }) {
             min="0"
             max={subtotal}
             value={discountAll}
-            onChange={e => setDiscountAll(e.target.value)}
+            onChange={e => {
+              const v = e.target.value;
+              setDiscountAll(v);
+              setCheckoutError('');
+            }}
             style={{ width: 60, marginLeft: 4, marginRight: 4, fontSize: '0.95rem', height: 24 }}
           />
         </div>
         <div><b>Total: {total.toFixed(2)} {currencyLabel}</b></div>
         {selectedCustomer && (
-          <div><b>Amount Due Now: {Math.max(0, total - (paymentLines || []).reduce((s, p) => s + parseAmountInput(p.amount), 0)).toFixed(2)} {currencyLabel}</b></div>
+          <div><b>Amount due: {paymentDueNow.toFixed(2)} {currencyLabel}</b></div>
         )}
       </div>
       <div className="pos-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
@@ -2678,7 +2727,7 @@ export default function POS({ isMobile = false }) {
             >
               {checkoutLoading
                 ? "Processing..."
-                : (((paymentLines || []).reduce((s, p) => s + parseAmountInput(p.amount), 0) < total)
+                : (isPartialCheckout
                     ? "Partial/Layby"
                     : "Checkout")}
             </button>

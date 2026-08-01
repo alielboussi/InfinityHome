@@ -129,8 +129,97 @@ function mountLocalNotify(app) {
   console.log('[proxy] Local /api/notify and /api/whatsapp-* handlers enabled.');
 }
 
+function mountLocalStocktake(app) {
+  let stocktakeHandlerPromise = null;
+
+  const loadStocktakeHandler = () => {
+    if (!stocktakeHandlerPromise) {
+      stocktakeHandlerPromise = import('../api/stocktake.js')
+        .then((mod) => mod.default || mod)
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[proxy] Could not load local api/stocktake.js:', error?.message || error);
+          return null;
+        });
+    }
+    return stocktakeHandlerPromise;
+  };
+
+  const handleStocktake = async (req, res) => {
+    try {
+      const stocktakeHandler = await loadStocktakeHandler();
+      if (!stocktakeHandler) {
+        res.status(503).json({ ok: false, error: 'Local stocktake API unavailable' });
+        return;
+      }
+      if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
+        req.body = await readJsonBody(req);
+      }
+      attachNotifyAction(req);
+      await stocktakeHandler(req, res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, stage: 'stocktake', error: error?.message || String(error) });
+      }
+    }
+  };
+
+  app.get('/api/stocktake', (req, res) => { handleStocktake(req, res); });
+  app.post('/api/stocktake', (req, res) => { handleStocktake(req, res); });
+  app.options('/api/stocktake', (req, res) => { handleStocktake(req, res); });
+
+  const STOCKTAKE_REWRITE_ROUTES = [
+    'stocktake-login',
+    'auth-profile',
+    'stocktake-locations',
+    'stocktake-location-state',
+    'stocktake-catalog',
+    'stocktake-events-list',
+    'stocktake-open-sessions',
+    'stocktake-event-get',
+    'stocktake-event-create',
+    'stocktake-event-set-gate',
+    'stocktake-count-add',
+    'stocktake-count-mine',
+    'stocktake-count-remove-mine',
+    'stocktake-count-clear-mine',
+    'stocktake-counts-import',
+    'stocktake-counts-clear',
+    'stocktake-import-template',
+    'stocktake-set-scan',
+    'stocktake-product-create',
+    'stocktake-set-create',
+    'stocktake-event-submit',
+    'stocktake-event-cancel',
+    'stocktake-periods-list',
+    'stocktake-period-detail',
+    'stocktake-period-variance',
+  ];
+
+  STOCKTAKE_REWRITE_ROUTES.forEach((route) => {
+    const action = route.startsWith('stocktake-') ? route.slice('stocktake-'.length) : route;
+    const fixedAction = action === 'login' ? 'login' : action;
+    app.get(`/api/${route}`, (req, res) => {
+      req.query = { ...(req.query || {}), action: fixedAction };
+      handleStocktake(req, res);
+    });
+    app.post(`/api/${route}`, (req, res) => {
+      req.query = { ...(req.query || {}), action: fixedAction };
+      handleStocktake(req, res);
+    });
+    app.options(`/api/${route}`, (req, res) => {
+      req.query = { ...(req.query || {}), action: fixedAction };
+      handleStocktake(req, res);
+    });
+  });
+
+  // eslint-disable-next-line no-console
+  console.log('[proxy] Local /api/stocktake* handlers enabled.');
+}
+
 module.exports = function setupProxy(app) {
   mountLocalNotify(app);
+  mountLocalStocktake(app);
 
   const target = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
   if (!target) {
