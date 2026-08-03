@@ -593,14 +593,17 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
       const rows = await parseStocktakeQtyFile(file);
       const result = await importCounts(eventId, rows, user.email);
       await refreshCart(user.email, eventId);
+      const zeroQtyImports = (result.imported || []).filter((row) => !Number(row.qty)).length;
       const skipPreview = (result.skipped || [])
         .slice(0, 3)
         .map((s) => `${s.sku}: ${s.reason}`)
         .join(' · ');
-      setToast(
-        `Imported ${result.importedCount}`
-        + (result.skippedCount ? ` · skipped ${result.skippedCount}${skipPreview ? ` (${skipPreview})` : ''}` : '')
-      );
+      let message = `Imported ${result.importedCount}`
+        + (result.skippedCount ? ` · skipped ${result.skippedCount}${skipPreview ? ` (${skipPreview})` : ''}` : '');
+      if (zeroQtyImports) {
+        message += ` · warning: ${zeroQtyImports} row${zeroQtyImports === 1 ? '' : 's'} imported with qty 0`;
+      }
+      setToast(message);
     } catch (err) {
       setError(err.message || 'Import failed');
     } finally {

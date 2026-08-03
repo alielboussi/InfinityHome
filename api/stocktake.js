@@ -758,7 +758,7 @@ async function handleCountsImport(req, res) {
       const productName = String(raw?.productName || raw?.name || '').trim();
       const skuKey = sku.toLowerCase();
       const nameKey = productName.toLowerCase();
-      const qty = Number(raw?.quantity);
+      const qty = Number(raw?.quantity ?? raw?.qty);
       const label = sku || productName || '(blank)';
 
       if (!skuKey && !nameKey) {
