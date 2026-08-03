@@ -55,7 +55,6 @@ function Products() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
   const [search, setSearch] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
   const fileInputRef = useRef(null);
@@ -159,7 +158,6 @@ function Products() {
           if (nextPricingLocationId) {
             await applyPricingLocationToForm(product, nextPricingLocationId);
           }
-          setImageUrl(product.product_images && product.product_images[0] ? product.product_images[0].image_url : "");
         }
       }
     };
@@ -253,7 +251,6 @@ function Products() {
     if (nextPricingLocationId) {
       await applyPricingLocationToForm(product, nextPricingLocationId);
     }
-    setImageUrl(product.product_images && product.product_images[0] ? product.product_images[0].image_url : "");
   };
 
   const handleCancelEdit = () => {
@@ -262,7 +259,6 @@ function Products() {
     setGlobalPriceBaseline(null);
     setPricingLocationId('');
     setEditingId(null);
-    setImageUrl("");
   };
 
   const handleDelete = async (id) => {
@@ -645,13 +641,14 @@ function Products() {
             Select a pricing location to set standard and promotional prices.
           </div>
         )}
-        {/* Locations, Image, Actions */}
-        <div className="form-row" style={{display: 'flex', alignItems: 'center', gap: '1rem', minHeight: '120px', width: '100%'}}>
-          <div className="locations-checkbox-group" style={{display: 'flex', flexDirection: 'row', gap: '2rem', justifyContent: 'flex-start', alignItems: 'center', flexWrap: 'wrap'}}>
+        {/* Locations */}
+        <div className="product-form-locations-section">
+          <div className="locations-checkbox-group">
             {locations.map((loc) => (
-              <label key={loc.id} style={{display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem'}}>
+              <label key={loc.id}>
                 <input
                   type="checkbox"
+                  className="locations-checkbox-input"
                   name="locations"
                   value={loc.id}
                   checked={form.locations.includes(loc.id)}
@@ -664,61 +661,43 @@ function Products() {
                         : f.locations.filter(id => id !== loc.id)
                     }));
                   }}
-                  style={{
-                    width: '18px',
-                    height: '18px',
-                    accentColor: '#00b4d8',
-                    borderRadius: '4px',
-                    border: '2px solid #00b4d8',
-                    marginRight: '0.5rem',
-                  }}
                 />
-                <span style={{color: '#e0e6ed'}}>{loc.name}</span>
+                <span>{loc.name}</span>
               </label>
             ))}
           </div>
-          <input
-            ref={fileInputRef}
-            name="image"
-            type="file"
-            accept="image/*"
-            onChange={handleChange}
-            style={{ display: 'none' }}
-          />
-          <div className="file-actions-wrap" style={{display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto', marginTop: 0}}>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                marginLeft: 0,
-                alignSelf: 'center',
-                background: '#00b4d8',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '0.9rem 2.2rem',
-                fontWeight: 'bold',
-                fontSize: '1.05rem',
-                boxShadow: '0 2px 8px #00b4d855',
-                cursor: 'pointer',
-                minWidth: '220px',
-                height: '52px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                lineHeight: '1',
-                marginTop: '19px'
-              }}
-            >
-              Choose File
+        </div>
+        <input
+          ref={fileInputRef}
+          name="image"
+          type="file"
+          accept="image/*"
+          onChange={handleChange}
+          style={{ display: 'none' }}
+        />
+        <div className="product-form-actions-row">
+          <button
+            type="button"
+            className="product-form-btn product-form-btn--file"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Choose File
+          </button>
+          {canAdd && (
+            <button type="submit" className="product-form-btn product-form-btn--primary" disabled={saving}>
+              {editingId ? 'Update Product' : 'Add Product'}
             </button>
-            {imageUrl && <img src={imageUrl} alt="Product" className="product-image-preview" style={{maxHeight: '60px', borderRadius: '6px', border: '1px solid #00b4d8'}} />}
-            <div className="form-actions" style={{display: 'flex', flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', width: 'auto'}}>
-              {canAdd && <button type="submit" disabled={saving} style={{background: '#00b4d8', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.9rem 2.2rem', fontWeight: 'bold', fontSize: '1.1rem', boxShadow: '0 2px 8px #00b4d855', cursor: 'pointer', height: '52px', minWidth: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1'}}>{editingId ? "Update" : "Add"} Product</button>}
-              {editingId && <button type="button" onClick={handleCancelEdit} style={{background: '#23272f', color: '#fff', border: '1px solid #00b4d8', borderRadius: '8px', padding: '0.9rem 2.2rem', fontWeight: 'bold', fontSize: '1.1rem', cursor: 'pointer', height: '52px', minWidth: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1'}}>Cancel</button>}
-              {editingId && canDelete && <button type="button" onClick={() => handleDelete(editingId)} style={{background: '#c0392b', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.9rem 2.2rem', fontWeight: 'bold', fontSize: '1.1rem', boxShadow: '0 2px 8px #c0392b55', cursor: 'pointer', height: '52px', minWidth: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1'}}>Delete</button>}
-            </div>
-          </div>
+          )}
+          {editingId && (
+            <button type="button" className="product-form-btn product-form-btn--secondary" onClick={handleCancelEdit}>
+              Cancel
+            </button>
+          )}
+          {editingId && canDelete && (
+            <button type="button" className="product-form-btn product-form-btn--danger" onClick={() => handleDelete(editingId)}>
+              Delete
+            </button>
+          )}
         </div>
       </form>
       ) : (

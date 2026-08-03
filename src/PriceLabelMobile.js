@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import supabase from './supabase';
 import { QRCodeSVG } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 import { sendLabelsWhatsApp } from './services/whatsapp';
 import {
   applyComboLocationPricing,
@@ -15,6 +14,8 @@ import {
   fetchComboLocationPricesForLocation,
   fetchProductLocationPricesForLocation,
 } from './services/locationPricing';
+import { brandLogoOnError, preloadBrandAssets, STATIC_BRAND_LOGO, STATIC_BRAND_STAMP } from './utils/brandAssets';
+import { buildPriceLabelFilename, renderLabelNodeToCanvas, waitForLayout } from './utils/labelPdfCapture';
 
 // Mobile-first Price Labels: search, select, preview, save PDF and share
 export default function PriceLabelMobile() {
@@ -24,8 +25,8 @@ export default function PriceLabelMobile() {
   const [company, setCompany] = useState({ name: 'Best Rest Furniture' });
   const [locations, setLocations] = useState([]);
   const [labelLocationId, setLabelLocationId] = useState('');
-  const [logoSrc, setLogoSrc] = useState('/bestrest-logo.png');
-  const [stampSrc, setStampSrc] = useState('/bestreststamp.png');
+  const [logoSrc, setLogoSrc] = useState(STATIC_BRAND_LOGO);
+  const [stampSrc, setStampSrc] = useState(STATIC_BRAND_STAMP);
   const [assetsReady, setAssetsReady] = useState(false);
 
   const [search, setSearch] = useState('');
@@ -64,8 +65,8 @@ export default function PriceLabelMobile() {
       if (initialLocationId) setLabelLocationId(initialLocationId);
       const { data: ci } = await supabase.from('combo_items').select('*');
       setComboItems(ci || []);
-      const { data: companyData } = await supabase.from('company_settings').select('name').maybeSingle();
-      if (companyData && companyData.name) setCompany(companyData);
+      const { data: companyData } = await supabase.from('company_settings').select('company_name').maybeSingle();
+      if (companyData?.company_name) setCompany({ name: companyData.company_name });
       if (initialLocationId) await loadCatalogForLocation(initialLocationId);
     })();
   }, []);
@@ -77,32 +78,12 @@ export default function PriceLabelMobile() {
 
   useEffect(() => {
     let cancelled = false;
-    const loadAsDataUrl = async (path) => {
-      try {
-        const resp = await fetch(path, { cache: 'force-cache' });
-        if (!resp.ok) return path;
-        const blob = await resp.blob();
-        return await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result || path);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      } catch (err) {
-        console.warn('Asset preload failed', path, err);
-        return path;
-      }
-    };
-
     (async () => {
       try {
-        const [logoData, stampData] = await Promise.all([
-          loadAsDataUrl('/bestrest-logo.png'),
-          loadAsDataUrl('/bestreststamp.png'),
-        ]);
+        const brandAssets = await preloadBrandAssets({ includeStamp: true });
         if (cancelled) return;
-        setLogoSrc(logoData);
-        setStampSrc(stampData);
+        setLogoSrc(brandAssets.logoSrc || STATIC_BRAND_LOGO);
+        setStampSrc(brandAssets.stampSrc || STATIC_BRAND_STAMP);
       } finally {
         if (!cancelled) setAssetsReady(true);
       }
@@ -197,9 +178,12 @@ export default function PriceLabelMobile() {
   // Refs to label nodes for PDF
   const hiddenRenderRef = useRef(null);
 
-  const waitForLayout = () => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
-  });
+  const selectedLocationName = useMemo(() => {
+    const loc = (locations || []).find((row) => String(row.id) === String(labelLocationId));
+    return loc?.name || '';
+  }, [locations, labelLocationId]);
+
+  const waitForLayoutOnly = () => waitForLayout();
 
   const generatePdf = async () => {
     if (!assetsReady) {
@@ -210,43 +194,12 @@ export default function PriceLabelMobile() {
     setIsGenerating(true);
     const container = hiddenRenderRef.current;
     if (!container) { setIsGenerating(false); return; }
-    await waitForLayout();
+    await waitForLayoutOnly();
     const labelNodes = Array.from(container.querySelectorAll('.a4-pair'));
     if (labelNodes.length === 0) { setIsGenerating(false); return; }
 
-    // Page constants
     const pageWidthMm = 210;
     const pageHeightMm = 297;
-    const targetDpi = 180; // Safer on mobile to avoid hangs (≈ 150–200 DPI is fine for labels)
-    const mmToInch = (mm) => mm / 25.4;
-    const targetWidthPx = Math.round(mmToInch(pageWidthMm) * targetDpi);
-    const targetHeightPx = Math.round(mmToInch(pageHeightMm) * targetDpi);
-
-    // Helper to render a node with a safe scale and a fallback path
-    const renderNode = async (node) => {
-      const nodeWidthPx = node.offsetWidth || targetWidthPx;
-      const computedScale = nodeWidthPx ? targetWidthPx / nodeWidthPx : 2;
-      const scale = Math.min(2.2, Math.max(1.5, computedScale));
-      try {
-        return await html2canvas(node, {
-          backgroundColor: '#ffffff',
-          useCORS: true,
-          foreignObjectRendering: true,
-          imageTimeout: 0,
-          scale,
-        });
-      } catch (e) {
-        // Fallback: turn off foreignObjectRendering for better stability
-        return await html2canvas(node, {
-          backgroundColor: '#ffffff',
-          useCORS: true,
-          allowTaint: true,
-          foreignObjectRendering: false,
-          imageTimeout: 0,
-          scale: Math.max(1.25, scale - 0.5),
-        });
-      }
-    };
 
     let doc;
     try {
@@ -255,14 +208,12 @@ export default function PriceLabelMobile() {
 
       let first = true;
       for (const node of labelNodes) {
-        // Yield to UI loop and allow layout to settle on mobile WebView
         // eslint-disable-next-line no-await-in-loop
         await new Promise((r) => setTimeout(r, 30));
         // eslint-disable-next-line no-await-in-loop
-        await waitForLayout();
+        await waitForLayoutOnly();
         // eslint-disable-next-line no-await-in-loop
-        const canvas = await renderNode(node);
-        // Use JPEG output because jsPDF occasionally rejects huge PNG payloads in Android WebView
+        const canvas = await renderLabelNodeToCanvas(node);
         const imgData = canvas.toDataURL('image/jpeg', 0.92);
         if (!first) doc.addPage();
         first = false;
@@ -271,16 +222,12 @@ export default function PriceLabelMobile() {
 
       // Build a Blob of the PDF
       const pdfBlob = doc.output('blob');
-      // Build filename: Price_Printing_YYYY-MM-DD_HH-mm-ss.pdf
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-      const timePart = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-      const filename = `Price_Printing_${datePart}_${timePart}.pdf`;
+      const filename = `${buildPriceLabelFilename(selectedLocationName)}.pdf`;
       const path = `mobile/${filename}`;
 
       // Upload via serverless endpoint (service role) for private bucket support
       let url = '';
+      let pdfBase64 = '';
       try {
         const arrayBuffer = await pdfBlob.arrayBuffer();
         const toBase64 = (buf) => {
@@ -292,7 +239,7 @@ export default function PriceLabelMobile() {
           }
           return btoa(binary);
         };
-        const pdfBase64 = toBase64(arrayBuffer);
+        pdfBase64 = toBase64(arrayBuffer);
         const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
         const host = (() => {
           try { return window?.location?.hostname || ''; } catch { return ''; }
@@ -348,6 +295,7 @@ export default function PriceLabelMobile() {
       // Post the PDF to the WhatsApp group (Wasender via /api/whatsapp-labels)
       const sendResult = await sendLabelsWhatsApp({
         pdfUrl: url,
+        pdfBase64,
         pdfFilename: filename,
         message: `Price labels — ${expanded.length} label${expanded.length === 1 ? '' : 's'}`,
       });
@@ -414,11 +362,11 @@ export default function PriceLabelMobile() {
 
     return (
       <div className="label-card">
-        <div className="label-watermark"><img src={logoSrc} alt="wm" crossOrigin="anonymous" /></div>
+        <div className="label-watermark"><img src={logoSrc} alt="wm" crossOrigin="anonymous" onError={brandLogoOnError} /></div>
         <div className="label-header">
-          <img src={logoSrc} className="header-logo" alt="logo" crossOrigin="anonymous" />
+          <img src={logoSrc} className="header-logo" alt="logo" crossOrigin="anonymous" onError={brandLogoOnError} />
           <div className="header-company">{company.name || 'Best Rest Furniture'}</div>
-          <img src={logoSrc} className="header-logo" alt="logo" crossOrigin="anonymous" />
+          <img src={logoSrc} className="header-logo" alt="logo" crossOrigin="anonymous" onError={brandLogoOnError} />
         </div>
 
         <div className="label-name">

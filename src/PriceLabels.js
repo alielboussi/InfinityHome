@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import supabase from './supabase';
 import { QRCodeSVG } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 import { FaWhatsapp } from 'react-icons/fa';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import BackToDashboard from './BackToDashboard';
@@ -19,6 +18,8 @@ import {
   fetchComboLocationPrices,
   fetchProductLocationPrices,
 } from './services/locationPricing';
+import { brandLogoOnError, preloadBrandAssets, STATIC_BRAND_LOGO, STATIC_BRAND_STAMP } from './utils/brandAssets';
+import { buildPriceLabelFilename, renderLabelNodeToCanvas, waitForLayout } from './utils/labelPdfCapture';
 
 const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v3';
 
@@ -33,6 +34,9 @@ const PriceLabels = () => {
   const [productLocationPrices, setProductLocationPrices] = useState([]);
   const [comboLocationPrices, setComboLocationPrices] = useState([]);
   const [company, setCompany] = useState({ name: 'Best Rest Furniture' });
+  const [logoSrc, setLogoSrc] = useState(STATIC_BRAND_LOGO);
+  const [stampSrc, setStampSrc] = useState(STATIC_BRAND_STAMP);
+  const [assetsReady, setAssetsReady] = useState(false);
 
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -215,10 +219,19 @@ const PriceLabels = () => {
       setComboItems(nextComboItems);
       try { cacheSet('labels:comboItems:v6', nextComboItems, 10 * 60 * 1000); } catch {}
 
-      const { data: companyData } = await supabase.from('company_settings').select('name').maybeSingle();
+      const { data: companyData } = await supabase.from('company_settings').select('company_name, company_logo').maybeSingle();
       if (fetchSeq !== fetchSeqRef.current) return;
-      if (companyData && companyData.name) setCompany(companyData);
-      try { cacheSet('labels:company:v6', companyData || { name: 'Best Rest Furniture' }, 60 * 60 * 1000); } catch {}
+      const companyRow = companyData?.company_name
+        ? { name: companyData.company_name }
+        : { name: 'Best Rest Furniture' };
+      setCompany(companyRow);
+      try { cacheSet('labels:company:v6', companyRow, 60 * 60 * 1000); } catch {}
+
+      const brandAssets = await preloadBrandAssets({ includeStamp: true });
+      if (fetchSeq !== fetchSeqRef.current) return;
+      setLogoSrc(brandAssets.logoSrc || STATIC_BRAND_LOGO);
+      setStampSrc(brandAssets.stampSrc || STATIC_BRAND_STAMP);
+      setAssetsReady(true);
     } finally {
       if (showLoading) setIsRefreshing(false);
     }
@@ -419,13 +432,7 @@ const PriceLabels = () => {
   };
 
   // Build a friendly default filename for the browser's "Save as PDF" dialog
-  const buildPriceLabelsFilename = () => {
-    const pad = (n) => String(n).padStart(2, '0');
-    const d = new Date();
-    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const time = `${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-    return `Price_Printing_${date}_${time}`;
-  };
+  const buildPriceLabelsFilename = () => buildPriceLabelFilename(selectedLocationName);
 
   // Trigger print with a temporary document.title so the PDF default name matches our pattern.
   const printWithAutoFilename = (showExportHint = false) => {
@@ -465,16 +472,18 @@ const PriceLabels = () => {
   const pairs = [];
   for (let i = 0; i < expanded.length; i += 2) pairs.push([expanded[i], expanded[i + 1] || null]);
 
-  const waitForLayout = () => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
-  });
+  const waitForLayoutOnly = () => waitForLayout();
 
   // Build PDF from the offscreen render, upload it, then post to the WhatsApp group.
   const sendToWhatsApp = async () => {
     if (selected.length === 0 || isSending) return;
+    if (!assetsReady) {
+      alert('Logos are still loading. Please try again in a moment.');
+      return;
+    }
     setIsSending(true);
     try {
-      await waitForLayout();
+      await waitForLayoutOnly();
       const container = sendRenderRef.current;
       const labelNodes = container ? Array.from(container.querySelectorAll('.a4-pair')) : [];
       if (!labelNodes.length) {
@@ -487,33 +496,12 @@ const PriceLabels = () => {
       const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
       doc.setProperties({ title: 'Price Printing' });
 
-      const renderNode = async (node) => {
-        try {
-          return await html2canvas(node, {
-            backgroundColor: '#ffffff',
-            useCORS: true,
-            foreignObjectRendering: true,
-            imageTimeout: 0,
-            scale: 2,
-          });
-        } catch (e) {
-          return await html2canvas(node, {
-            backgroundColor: '#ffffff',
-            useCORS: true,
-            allowTaint: true,
-            foreignObjectRendering: false,
-            imageTimeout: 0,
-            scale: 1.5,
-          });
-        }
-      };
-
       let first = true;
       for (const node of labelNodes) {
         // eslint-disable-next-line no-await-in-loop
-        await waitForLayout();
+        await waitForLayoutOnly();
         // eslint-disable-next-line no-await-in-loop
-        const canvas = await renderNode(node);
+        const canvas = await renderLabelNodeToCanvas(node);
         const imgData = canvas.toDataURL('image/jpeg', 0.92);
         if (!first) doc.addPage();
         first = false;
@@ -559,6 +547,7 @@ const PriceLabels = () => {
 
       const sendResult = await sendLabelsWhatsApp({
         pdfUrl: url,
+        pdfBase64,
         pdfFilename: filename,
         message: `Price labels — ${expanded.length} label${expanded.length === 1 ? '' : 's'}`,
       });
@@ -601,11 +590,11 @@ const PriceLabels = () => {
 
     return (
       <div className="label-card">
-        <div className="label-watermark"><img src="/bestrest-logo.png" alt="wm" /></div>
+        <div className="label-watermark"><img src={logoSrc} alt="wm" onError={brandLogoOnError} /></div>
         <div className="label-header">
-          <img src="/bestrest-logo.png" className="header-logo" alt="logo" />
+          <img src={logoSrc} className="header-logo" alt="logo" onError={brandLogoOnError} />
           <div className="header-company">{company.name || 'Best Rest Furniture'}</div>
-          <img src="/bestrest-logo.png" className="header-logo" alt="logo" />
+          <img src={logoSrc} className="header-logo" alt="logo" onError={brandLogoOnError} />
         </div>
 
         {/* Product name line, left-aligned below header */}
@@ -625,9 +614,8 @@ const PriceLabels = () => {
           </ul>
         )}
 
-        {/* Digital stamp overlay (subtle) */}
         <div className="label-stamp">
-          <img src="/bestreststamp.png" alt="stamp" />
+          <img src={stampSrc} alt="stamp" />
         </div>
 
         <div className="label-bl">
@@ -827,7 +815,7 @@ const PriceLabels = () => {
         <button
           type="button"
           className="label-whatsapp-btn"
-          disabled={selected.length === 0 || isSending}
+          disabled={selected.length === 0 || isSending || !assetsReady}
           onClick={sendToWhatsApp}
           aria-busy={isSending}
           title="Send to WhatsApp group"
@@ -847,17 +835,15 @@ const PriceLabels = () => {
         ))}
       </div>
 
-      {/* Offscreen render used only while sending to WhatsApp (html2canvas needs laid-out nodes) */}
-      {isSending && (
-        <section className="labels-a4 plm-hidden-render" ref={sendRenderRef} aria-hidden>
-          {pairs.map((pair, idx) => (
-            <div className="a4-pair" key={idx}>
-              <div className="a4-label"><LabelCard item={pair[0]} /></div>
-              <div className="a4-label"><LabelCard item={pair[1] || null} /></div>
-            </div>
-          ))}
-        </section>
-      )}
+      {/* Offscreen render for WhatsApp PDF capture — always mounted so layout/images are ready */}
+      <section className="labels-a4 plm-hidden-render" ref={sendRenderRef} aria-hidden>
+        {pairs.map((pair, idx) => (
+          <div className="a4-pair" key={`send-${idx}`}>
+            <div className="a4-label"><LabelCard item={pair[0]} /></div>
+            <div className="a4-label"><LabelCard item={pair[1] || null} /></div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 };

@@ -279,7 +279,7 @@ export default function EditSet() {
   }
 
   return (
-    <div className="products-container" style={{maxWidth: '100vw', minHeight: '100vh', height: 'auto', overflow: 'visible', padding: '0', margin: 0}}>
+    <div className="products-container sets-page" style={{maxWidth: '100vw', minHeight: '100vh', height: 'auto', overflow: 'visible', padding: '0', margin: 0}}>
       <h1 className="products-title" style={{marginTop: '1rem'}}>Edit Kit / Set</h1>
       <form className="product-form" onSubmit={handleSave}>
         {columnWarnings.length > 0 && (
@@ -375,17 +375,18 @@ export default function EditSet() {
           </div>
         )}
         {/* Locations row with right-aligned Save button */}
-        <div className="sets-locations-row" style={{marginTop: '8px', width: '100%'}}>
+        <div className="sets-locations-row" style={{ marginTop: '8px', width: '100%' }}>
           <div className="sets-locations">
-            <div style={{fontSize: '0.9rem', color: '#00b4d8', marginBottom: 4}}>Locations</div>
-            <div style={{display:'flex', flexWrap:'wrap', gap:'6px 12px'}}>
+            <div className="sets-locations-title">Locations</div>
+            <div className="sets-locations-list">
               {locations.map(loc => {
                 const idStr = String(loc.id);
                 const checked = (selectedLocations || []).some(x => String(x) === idStr);
                 return (
-                  <label key={loc.id}>
+                  <label key={loc.id} className="sets-location-label">
                     <input
                       type="checkbox"
+                      className="sets-location-checkbox"
                       checked={checked}
                       onChange={e => {
                         setSelectedLocations(prev => {

@@ -74,6 +74,35 @@ async function resolveLusakaComboIds() {
 
 const STOCK_SYNC_MS = 60_000;
 
+function StockCardImage({ row, onExpand }) {
+  const [failed, setFailed] = useState(false);
+  const showImage = Boolean(row.imageUrl) && !failed;
+  const placeholderLabel = row.type === 'set' ? 'SET' : 'No image';
+
+  return (
+    <button
+      type="button"
+      className="lusaka-stock-display__image-btn"
+      onClick={() => showImage && onExpand(row.imageUrl)}
+      aria-label={`View image for ${row.name}`}
+      disabled={!showImage}
+    >
+      {showImage ? (
+        <img
+          src={row.imageUrl}
+          alt=""
+          className="lusaka-stock-display__image"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div className="lusaka-stock-display__image-placeholder">
+          {placeholderLabel}
+        </div>
+      )}
+    </button>
+  );
+}
+
 export default function LusakaStockDisplay() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -301,20 +330,7 @@ export default function LusakaStockDisplay() {
             </div>
           ) : displayRows.map((row) => (
             <article key={row.key} className="lusaka-stock-display__card">
-              <button
-                type="button"
-                className="lusaka-stock-display__image-btn"
-                onClick={() => row.imageUrl && setExpandedImage(row.imageUrl)}
-                aria-label={`View image for ${row.name}`}
-              >
-                {row.imageUrl ? (
-                  <img src={row.imageUrl} alt={row.name} className="lusaka-stock-display__image" />
-                ) : (
-                  <div className="lusaka-stock-display__image-placeholder">
-                    {row.type === 'set' ? 'SET' : 'No image'}
-                  </div>
-                )}
-              </button>
+              <StockCardImage row={row} onExpand={setExpandedImage} />
               <div className="lusaka-stock-display__body">
                 <div className="lusaka-stock-display__type">
                   {row.type === 'set' ? 'Set' : 'Product'}

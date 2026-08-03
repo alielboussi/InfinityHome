@@ -30,6 +30,37 @@ const WHATSAPP_NOTIFY_PATHS = new Set([
   '/monthly-balance-send',
 ]);
 
+const STOCKTAKE_API_PATHS = new Set([
+  '/api/stocktake',
+  '/api/stocktake-login',
+  '/api/auth-profile',
+  '/api/stocktake-locations',
+  '/api/stocktake-location-state',
+  '/api/stocktake-catalog',
+  '/api/stocktake-events-list',
+  '/api/stocktake-open-sessions',
+  '/api/stocktake-event-get',
+  '/api/stocktake-event-create',
+  '/api/stocktake-event-set-gate',
+  '/api/stocktake-count-add',
+  '/api/stocktake-count-mine',
+  '/api/stocktake-count-remove-mine',
+  '/api/stocktake-count-clear-mine',
+  '/api/stocktake-counts-import',
+  '/api/stocktake-counts-clear',
+  '/api/stocktake-import-template',
+  '/api/stocktake-set-scan',
+  '/api/stocktake-product-create',
+  '/api/stocktake-set-create',
+  '/api/stocktake-event-submit',
+  '/api/stocktake-event-cancel',
+  '/api/stocktake-periods-list',
+  '/api/stocktake-period-detail',
+  '/api/stocktake-period-variance',
+]);
+
+const LOCAL_API_PATHS = new Set([...WHATSAPP_NOTIFY_PATHS, ...STOCKTAKE_API_PATHS]);
+
 const WHATSAPP_PATH_ACTION = {
   '/api/whatsapp-labels': 'whatsapp-labels',
   '/api/whatsapp-sale': 'whatsapp-sale',
@@ -217,9 +248,64 @@ function mountLocalStocktake(app) {
   console.log('[proxy] Local /api/stocktake* handlers enabled.');
 }
 
+function mountLocalLabels(app) {
+  let labelsHandlerPromise = null;
+
+  const loadLabelsHandler = () => {
+    if (!labelsHandlerPromise) {
+      labelsHandlerPromise = import('../api/labels.js')
+        .then((mod) => mod.default || mod)
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[proxy] Could not load local api/labels.js:', error?.message || error);
+          return null;
+        });
+    }
+    return labelsHandlerPromise;
+  };
+
+  const handleLabels = async (req, res) => {
+    try {
+      const labelsHandler = await loadLabelsHandler();
+      if (!labelsHandler) {
+        res.status(503).json({ ok: false, error: 'Local labels API unavailable' });
+        return;
+      }
+      if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
+        req.body = await readJsonBody(req);
+      }
+      await labelsHandler(req, res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, stage: 'labels', error: error?.message || String(error) });
+      }
+    }
+  };
+
+  app.get('/api/labels', handleLabels);
+  app.post('/api/labels', handleLabels);
+  app.options('/api/labels', handleLabels);
+  app.get('/api/label-print-job', (req, res) => {
+    req.query = { ...(req.query || {}), action: 'job' };
+    handleLabels(req, res);
+  });
+  app.post('/api/label-print-job', (req, res) => {
+    req.query = { ...(req.query || {}), action: 'job' };
+    handleLabels(req, res);
+  });
+  app.get('/api/label-print-history', (req, res) => {
+    req.query = { ...(req.query || {}), action: 'history' };
+    handleLabels(req, res);
+  });
+
+  // eslint-disable-next-line no-console
+  console.log('[proxy] Local /api/labels handlers enabled.');
+}
+
 module.exports = function setupProxy(app) {
   mountLocalNotify(app);
   mountLocalStocktake(app);
+  mountLocalLabels(app);
 
   const target = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
   if (!target) {
@@ -241,7 +327,7 @@ module.exports = function setupProxy(app) {
       timeout: 15000,
       filter: (pathname) => {
         const pathOnly = String(pathname || '').split('?')[0];
-        return !WHATSAPP_NOTIFY_PATHS.has(pathOnly);
+        return !LOCAL_API_PATHS.has(pathOnly);
       },
       onProxyReq: (proxyReq) => {
         const bypass = process.env.REACT_APP_VERCEL_BYPASS && process.env.REACT_APP_VERCEL_BYPASS.trim();

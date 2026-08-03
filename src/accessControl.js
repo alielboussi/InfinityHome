@@ -1,7 +1,7 @@
 // Hardcoded app permissions by user UUID / email.
 // Do NOT load roles or route access from public.users or Supabase Auth metadata.role.
 
-import { isStocktakeCountLocationPath } from './utils/stocktakeLocationSlug';
+import { isStocktakeCountLocationPath } from './utils/stocktakeLocationSlug.js';
 
 const USER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

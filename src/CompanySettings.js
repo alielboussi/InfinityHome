@@ -66,7 +66,7 @@ const CompanySettings = () => {
         return null;
       }
 
-      const logoUrl = `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/${filePath}`;
+      const logoUrl = `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/${bucketName}/${filePath}`;
       return logoUrl;
     } catch (error) {
       console.error('Unexpected error uploading logo:', error);

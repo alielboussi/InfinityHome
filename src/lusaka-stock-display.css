@@ -202,26 +202,33 @@ body.enterprise-theme .lusaka-stock-display__search {
 }
 
 .lusaka-stock-display__image-btn {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
+  height: 200px;
   padding: 0;
   border: none;
   background: var(--ent-surface-2, #f4f6f9);
   cursor: pointer;
-  min-height: 180px;
+  overflow: hidden;
   touch-action: manipulation;
+}
+
+.lusaka-stock-display__image-btn:disabled {
+  cursor: default;
 }
 
 .lusaka-stock-display__image {
   display: block;
   width: 100%;
-  height: 200px;
+  height: 100%;
   object-fit: contain;
   background: var(--ent-surface-2, #f4f6f9);
 }
 
 @media (min-width: 900px) {
-  .lusaka-stock-display__image {
+  .lusaka-stock-display__image-btn {
     height: 240px;
   }
 }
@@ -231,7 +238,7 @@ body.enterprise-theme .lusaka-stock-display__search {
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 200px;
+  height: 100%;
   background: var(--ent-surface-2, #f4f6f9);
   color: var(--ent-muted, #5b6675);
   font-size: 1.1rem;

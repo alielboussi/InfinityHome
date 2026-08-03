@@ -850,9 +850,13 @@ export async function submitEvent(eventId, options = {}) {
     return await fetchJson('/api/stocktake-event-submit', {
       method: 'POST',
       body: JSON.stringify(payload),
-    });
+    }, 120000);
   } catch (err) {
     if (isApiUnavailable(err)) {
+      const detail = String(err?.payload?.error || err?.message || '');
+      if (/local stocktake api unavailable/i.test(detail)) {
+        throw new Error('Local stocktake API failed to start. Restart npm start and ensure SUPABASE_SERVICE_ROLE is set in .env.local.');
+      }
       throw new Error('Submit needs the Vercel stocktake API (updates inventory + periods). Counting still works via Supabase — redeploy/fix Vercel, then submit.');
     }
     throw err;
