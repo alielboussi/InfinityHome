@@ -1,7 +1,8 @@
 // Stocktake Flow API: auth login + multi-user counting events + period submit.
-import { createClient } from '@supabase/supabase-js';
 import { resolveSessionUserFromAuth } from '../src/accessControl.js';
 import { buildLiveConsolidatedWithSets } from '../src/utils/stocktakeLiveTotals.js';
+import { createFirestoreServerClient } from '../server/lib/firestoreServerClient.js';
+import { createFirestoreAnonClient } from '../server/lib/firestoreStocktakeAuth.js';
 
 const STOCKTAKE_ADMIN_EMAIL = 'alielboussi00@gmail.com';
 
@@ -76,28 +77,14 @@ function resolveAction(req) {
   return ACTION_ALIAS[raw] || raw || '';
 }
 
-function resolveSupabaseUrl() {
-  const raw = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || '';
-  let u = String(raw || '').trim().replace(/\/+$/, '');
-  if (!u) u = 'https://ayuufehhzsrinvtlmyqm.supabase.co';
-  if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
-  const host = u.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
-  if (!host.endsWith('.supabase.co')) return 'https://ayuufehhzsrinvtlmyqm.supabase.co';
-  return u;
-}
-
 function getService() {
-  const url = resolveSupabaseUrl();
-  const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase service env not configured');
-  return createClient(url, key, { auth: { persistSession: false }, db: { schema: 'public' } });
+  const client = createFirestoreServerClient();
+  if (!client) throw new Error('Firebase admin not configured');
+  return client;
 }
 
 function getAnon() {
-  const url = resolveSupabaseUrl();
-  const key = process.env.SUPABASE_ANON_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error('Supabase anon env not configured');
-  return createClient(url, key, { auth: { persistSession: false }, db: { schema: 'public' } });
+  return createFirestoreAnonClient();
 }
 
 function emailOf(body = {}, query = {}) {
@@ -261,13 +248,8 @@ async function handleAuthProfile(req, res) {
 
   let authUser = null;
   try {
-    const anon = getAnon();
-    const { data, error } = await anon.auth.getUser(token);
-    if (error) {
-      res.status(401).json({ ok: false, error: error.message || 'Invalid session' });
-      return;
-    }
-    authUser = data?.user || null;
+    const { verifyBearerUser } = await import('../server/lib/verifyBearerUser.js');
+    authUser = await verifyBearerUser(req);
   } catch (err) {
     res.status(401).json({ ok: false, error: err?.message || 'Invalid session' });
     return;
@@ -292,8 +274,8 @@ async function handleLogin(req, res) {
     res.status(400).json({ ok: false, error: 'Email and password are required.' });
     return;
   }
-  const supabase = getAnon();
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const authClient = getAnon();
+  const { data, error } = await authClient.auth.signInWithPassword({ email, password });
   const session = data?.session || null;
   const authUser = data?.user || session?.user || null;
   if (error || !session?.access_token || !authUser?.id) {

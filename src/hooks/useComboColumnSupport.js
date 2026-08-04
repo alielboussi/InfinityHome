@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import supabase from "../supabase";
+import db from '../dataClient';
 
 // Detect whether optional combos columns exist so UI can adapt gracefully.
 export default function useComboColumnSupport() {
@@ -15,7 +15,7 @@ export default function useComboColumnSupport() {
     let isActive = true;
 
     const probeColumn = async (column) => {
-      const { error } = await supabase.from("combos").select(column).limit(1);
+      const { error } = await db.from("combos").select(column).limit(1);
       if (!error) {
         return { supported: true, reason: '' };
       }
@@ -24,7 +24,7 @@ export default function useComboColumnSupport() {
       if (message.includes(`column combos.${column}`) && message.includes("does not exist")) {
         return {
           supported: false,
-          reason: `Supabase says column combos.${column} does not exist`,
+          reason: `Column combos.${column} does not exist`,
         };
       }
       console.warn(`Unexpected error probing combos column ${column}`, error);

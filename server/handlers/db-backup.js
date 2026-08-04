@@ -1,4 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
+import { requireBearerUser } from '../lib/verifyBearerUser.js';
+import {
+  clearFirestoreTable,
+  exportFirestoreTablePage,
+  getFirestoreBackupMeta,
+  importFirestoreRows,
+  probeFirestoreTable,
+} from '../lib/firestoreBackup.js';
+import { getFirestore } from '../lib/firestoreDb.js';
 
 const ALLOWED_EMAIL = 'alielboussi00@gmail.com';
 const PAGE_SIZE_DEFAULT = 500;
@@ -10,7 +18,10 @@ const BACKUP_TABLES = [
   'locations',
   'unit_of_measure',
   'categories',
+  'variant_attribute_columns',
+  'variant_attribute_values',
   'users',
+  'auth_user_map',
   'user_acl',
   'company_settings',
   'customers',
@@ -18,10 +29,12 @@ const BACKUP_TABLES = [
   'products',
   'product_images',
   'product_locations',
+  'product_location_prices',
   'inventory',
   'combos',
   'combo_items',
   'combo_locations',
+  'combo_location_prices',
   'incomplete_packages',
   'quotations',
   'quotation_items',
@@ -29,13 +42,17 @@ const BACKUP_TABLES = [
   'quotation_units',
   'sales',
   'sales_items',
+  'sales_items_dupe_archive',
   'sales_payments',
+  'sales_payments_credit_backup',
   'laybys',
   'layby_payments',
   'ledger_entries',
   'factory_sold_storage_items',
   'factory_sold_storage_events',
   'stock_periods',
+  'stocktake_user_sessions',
+  'stocktake_user_entries',
   'opening_stock_entries',
   'closing_stock_entries',
   'stock_transfer_sessions',
@@ -60,56 +77,6 @@ const BACKUP_TABLES = [
 
 const CLEAR_ORDER = [...BACKUP_TABLES].reverse();
 
-function getSupabaseServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    const error = new Error('Supabase service environment variables missing');
-    error.status = 500;
-    error.details = {
-      missing: [
-        !url ? 'SUPABASE_URL (or REACT_APP_SUPABASE_URL)' : null,
-        !serviceKey ? 'SUPABASE_SERVICE_ROLE' : null,
-      ].filter(Boolean),
-    };
-    throw error;
-  }
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
-}
-
-function getSupabaseAnonClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const anonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    const error = new Error('Supabase anon environment variables missing');
-    error.status = 500;
-    throw error;
-  }
-  return createClient(url, anonKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
-}
-
-async function getRequestUser(req) {
-  const header = req.headers?.authorization || req.headers?.Authorization || '';
-  const match = String(header).match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-  const token = match[1].trim();
-  if (!token) return null;
-  const supabase = getSupabaseAnonClient();
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error) {
-    const authError = new Error(error.message || 'Invalid session');
-    authError.status = 401;
-    throw authError;
-  }
-  return data?.user || null;
-}
-
 function assertBackupAdmin(actor) {
   if (!actor) {
     const err = new Error('Authentication required');
@@ -121,11 +88,6 @@ function assertBackupAdmin(actor) {
     err.status = 403;
     throw err;
   }
-}
-
-function isMissingTableError(error) {
-  const msg = String(error?.message || '');
-  return /relation .* does not exist|Could not find the table|schema cache/i.test(msg);
 }
 
 function parseLimit(raw) {
@@ -150,44 +112,33 @@ function normalizeTableName(raw) {
   return name;
 }
 
-async function probeTable(supabase, table) {
-  const { count, error } = await supabase
-    .from(table)
-    .select('*', { count: 'exact', head: true });
-  if (error) {
-    if (isMissingTableError(error)) {
-      return { table, exists: false, count: 0 };
-    }
-    throw error;
+function requireFirestore() {
+  const db = getFirestore();
+  if (!db) {
+    const err = new Error('Firestore not configured');
+    err.status = 500;
+    throw err;
   }
-  return { table, exists: true, count: count || 0 };
+  return db;
 }
 
 async function handleManifest(req, res) {
-  const actor = await getRequestUser(req);
+  const actor = await requireBearerUser(req);
   assertBackupAdmin(actor);
-  const supabase = getSupabaseServiceClient();
 
+  const db = requireFirestore();
   const tables = [];
   for (const table of BACKUP_TABLES) {
-    tables.push(await probeTable(supabase, table));
+    tables.push(await probeFirestoreTable(db, table));
   }
 
-  const projectUrl = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL || null;
+  const meta = getFirestoreBackupMeta();
 
   res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({
     ok: true,
-    format: 'infinity-home-db-backup',
-    version: 1,
+    ...meta,
     generatedAt: new Date().toISOString(),
-    projectUrl,
-    notes: [
-      'Exports public business tables only (not auth.users or Storage files).',
-      'Recreate login users in Auth on a new project before or after import.',
-      'Product image files in Storage are not included; URLs may still point at the old project.',
-      'Apply schema/migrations on the target project before importing.',
-    ],
     tables,
     clearOrder: CLEAR_ORDER,
     insertOrder: BACKUP_TABLES,
@@ -195,80 +146,21 @@ async function handleManifest(req, res) {
 }
 
 async function handleExportTable(req, res) {
-  const actor = await getRequestUser(req);
+  const actor = await requireBearerUser(req);
   assertBackupAdmin(actor);
 
   const table = normalizeTableName(req.query?.table);
   const limit = parseLimit(req.query?.limit);
   const offset = parseOffset(req.query?.offset);
-  const supabase = getSupabaseServiceClient();
 
-  const { data, error } = await supabase
-    .from(table)
-    .select('*')
-    .range(offset, offset + limit - 1);
-
-  if (error) {
-    if (isMissingTableError(error)) {
-      res.status(200).json({
-        ok: true,
-        table,
-        exists: false,
-        rows: [],
-        offset,
-        limit,
-        hasMore: false,
-      });
-      return;
-    }
-    throw error;
-  }
-
-  const rows = Array.isArray(data) ? data : [];
+  const db = requireFirestore();
+  const result = await exportFirestoreTablePage(db, table, limit, offset);
   res.setHeader('Cache-Control', 'no-store');
-  res.status(200).json({
-    ok: true,
-    table,
-    exists: true,
-    rows,
-    offset,
-    limit,
-    hasMore: rows.length === limit,
-  });
-}
-
-async function clearTable(supabase, table) {
-  // Delete in batches by primary key `id` when present.
-  for (let guard = 0; guard < 5000; guard += 1) {
-    const { data, error } = await supabase.from(table).select('id').limit(500);
-    if (error) {
-      if (isMissingTableError(error)) return { cleared: 0, skipped: true };
-      // Table may not have `id` — try deleting everything with a broad filter.
-      if (/column .* does not exist/i.test(error.message || '')) {
-        const del = await supabase.from(table).delete().neq('created_at', '1970-01-01T00:00:00.000Z');
-        if (del.error && !isMissingTableError(del.error)) {
-          // last resort: fail soft so import can still try upserts
-          return { cleared: 0, skipped: true, warning: del.error.message };
-        }
-        return { cleared: -1, skipped: false };
-      }
-      throw error;
-    }
-    if (!data?.length) return { cleared: 0, skipped: false };
-
-    const ids = data.map((row) => row.id).filter((id) => id != null);
-    if (!ids.length) {
-      return { cleared: 0, skipped: true, warning: `No deletable id values in ${table}` };
-    }
-
-    const { error: delError } = await supabase.from(table).delete().in('id', ids);
-    if (delError) throw delError;
-  }
-  return { cleared: -1, skipped: false, warning: 'Clear stopped after safety limit' };
+  res.status(200).json({ ok: true, ...result });
 }
 
 async function handleClearTable(req, res) {
-  const actor = await getRequestUser(req);
+  const actor = await requireBearerUser(req);
   assertBackupAdmin(actor);
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -278,13 +170,13 @@ async function handleClearTable(req, res) {
   }
 
   const table = normalizeTableName(body.table);
-  const supabase = getSupabaseServiceClient();
-  const result = await clearTable(supabase, table);
+  const db = requireFirestore();
+  const result = await clearFirestoreTable(db, table);
   res.status(200).json({ ok: true, table, ...result });
 }
 
 async function handleImportTable(req, res) {
-  const actor = await getRequestUser(req);
+  const actor = await requireBearerUser(req);
   assertBackupAdmin(actor);
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -308,49 +200,15 @@ async function handleImportTable(req, res) {
   }
 
   const mode = String(body.mode || 'upsert').toLowerCase() === 'insert' ? 'insert' : 'upsert';
-  const supabase = getSupabaseServiceClient();
 
   if (!rows.length) {
     res.status(200).json({ ok: true, table, inserted: 0, mode });
     return;
   }
 
-  let result;
-  if (mode === 'insert') {
-    result = await supabase.from(table).insert(rows);
-  } else {
-    result = await supabase.from(table).upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
-  }
-
-  if (result.error) {
-    if (isMissingTableError(result.error)) {
-      res.status(200).json({
-        ok: true,
-        table,
-        inserted: 0,
-        skipped: true,
-        warning: `Table missing on target: ${table}`,
-      });
-      return;
-    }
-    // Upsert can fail when there is no unique `id` constraint — fall back to insert.
-    if (mode === 'upsert') {
-      const fallback = await supabase.from(table).insert(rows);
-      if (fallback.error) {
-        throw fallback.error;
-      }
-      res.status(200).json({
-        ok: true,
-        table,
-        inserted: rows.length,
-        mode: 'insert-fallback',
-      });
-      return;
-    }
-    throw result.error;
-  }
-
-  res.status(200).json({ ok: true, table, inserted: rows.length, mode });
+  const db = requireFirestore();
+  const { inserted, mode: appliedMode } = await importFirestoreRows(db, table, rows, mode);
+  res.status(200).json({ ok: true, table, inserted, mode: appliedMode });
 }
 
 export default async function handler(req, res) {

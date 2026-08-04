@@ -1,11 +1,12 @@
 /* eslint-disable no-unused-vars */
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import { getHomeDashboardPath, getPreferredLandingPath, isHassanAwadUser, isPathAllowed, resolveSessionUserFromAuth } from './accessControl';
-import { clearStaleAppLogin, ensureSupabaseSession } from './utils/authSession';
+import { USE_FIREBASE } from './config/backend';
+import { clearStaleAppLogin, ensureAuthSession } from './utils/authSession';
 import { hasOAuthReturnParams, resolveAppUserFromSession, startGoogleSignIn } from './utils/googleAuth';
-import { signInWithEmailPassword } from './utils/supabaseAuthLogin';
+import { signInWithEmailPassword } from './utils/authLogin';
 
 // App version string (unused)
 const _bestrestAppVersion = "0c1e214ac027f84a7dc99eb41faf2199a2a2ced1d73c9eff6cb474e95f2c9d35";
@@ -96,7 +97,7 @@ const LoginPage = () => {
       } catch {}
       if (!tabAuthed) return;
 
-      const sessionResult = await ensureSupabaseSession();
+      const sessionResult = await ensureAuthSession();
       if (!sessionResult.ok) {
         clearStaleAppLogin();
         return;
@@ -113,7 +114,7 @@ const LoginPage = () => {
 
       let sessionReady = false;
       for (let attempt = 0; attempt < 8; attempt += 1) {
-        const sessionResult = await ensureSupabaseSession();
+        const sessionResult = await ensureAuthSession();
         if (sessionResult.ok) {
           sessionReady = true;
           break;
@@ -130,7 +131,7 @@ const LoginPage = () => {
       try {
         const profile = await resolveAppUserFromSession();
         if (!profile.ok) {
-          try { await supabase.auth.signOut(); } catch {}
+          try { await db.auth.signOut(); } catch {}
           clearStaleAppLogin();
           setError(profile.error || 'Google account is not authorized for this app.');
           return;
@@ -138,7 +139,7 @@ const LoginPage = () => {
         setError('');
         finishLogin(toMinimalUser(profile.user));
       } catch (err) {
-        try { await supabase.auth.signOut(); } catch {}
+        try { await db.auth.signOut(); } catch {}
         clearStaleAppLogin();
         setError(err?.message || 'Google sign-in failed.');
       } finally {
@@ -187,14 +188,21 @@ const LoginPage = () => {
     setError('');
     setGoogleLoading(true);
     try {
-      await startGoogleSignIn({
+      const result = await startGoogleSignIn({
         nextTarget: nextTarget || '',
         returnPath: '/login',
       });
+      if (USE_FIREBASE && result?.ok && result.user) {
+        const minimal = toMinimalUser(result.user);
+        persistAppLogin(minimal);
+        navigate(computeDestination(minimal, nextTarget), { replace: true });
+        return;
+      }
     } catch (err) {
-      setGoogleLoading(false);
       setError(err?.message || 'Could not start Google sign-in.');
       console.error('Google login error:', err);
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -239,7 +247,9 @@ const LoginPage = () => {
         {googleLoading ? 'Connecting to Google...' : 'Continue with Google'}
       </button>
       <p className="google-login-hint">
-        Sign in with any Supabase Auth user — email/password or Google. Works on localhost and production.
+        {USE_FIREBASE
+          ? 'Sign in with Firebase Auth — email/password or Google. Works on localhost and production.'
+          : 'Sign in with your Firebase account — email/password or Google. Works on localhost and production.'}
       </p>
     </div>
   );

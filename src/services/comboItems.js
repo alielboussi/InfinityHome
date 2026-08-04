@@ -1,4 +1,4 @@
-import supabase from "../supabase";
+import db from '../dataClient';
 
 const needsManualId = (error) => {
   if (!error || !error.message) return false;
@@ -6,7 +6,7 @@ const needsManualId = (error) => {
 };
 
 const fetchNextComboItemId = async () => {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("combo_items")
     .select("id")
     .order("id", { ascending: false })
@@ -22,11 +22,11 @@ const fetchNextComboItemId = async () => {
 export async function insertComboItems(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return;
 
-  let { error } = await supabase.from("combo_items").insert(rows);
+  let { error } = await db.from("combo_items").insert(rows);
   if (needsManualId(error)) {
     let nextId = await fetchNextComboItemId();
     const rowsWithIds = rows.map(row => ({ ...row, id: nextId++ }));
-    ({ error } = await supabase.from("combo_items").insert(rowsWithIds));
+    ({ error } = await db.from("combo_items").insert(rowsWithIds));
   }
 
   if (error) {

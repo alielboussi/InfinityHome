@@ -1,10 +1,18 @@
 function formatWhatsAppError(res, json, label) {
   const detail = json?.error || json?.stage || `HTTP ${res.status}`;
+  const detailsError = json?.details?.error;
+  const whapiDetail = json?.details?.error?.message
+    || json?.details?.message
+    || (typeof detailsError === 'string' ? detailsError : null)
+    || null;
   const suffix = json?.stage && json?.error && json.stage !== json.error
     ? ` (${json.stage})`
     : '';
-  console.warn(`WhatsApp ${label} request failed: ${detail}${suffix}`, json);
-  return { ok: false, error: `${detail}${suffix}` };
+  const message = whapiDetail && !String(detail).includes(String(whapiDetail))
+    ? `${detail}: ${whapiDetail}${suffix}`
+    : `${detail}${suffix}`;
+  console.warn(`WhatsApp ${label} request failed: ${message}`, json);
+  return { ok: false, error: message };
 }
 
 // Dedicated notify routes (match setupProxy + vercel.json rewrites).
@@ -18,22 +26,35 @@ const NOTIFY_ROUTE_BY_ACTION = {
   'monthly-balance-send': '/api/monthly-balance-send',
 };
 
-// Resolve API base the same way the labels upload does (see PriceLabelMobile /api/labels call).
+// In dev, WhatsApp notify routes run locally via setupProxy (.env.local Wasender vars).
 function notifyApiUrl(action) {
   const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
   let host = '';
   try { host = window?.location?.hostname || ''; } catch {}
   const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
+  const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
+  const isWhatsAppRoute = Boolean(NOTIFY_ROUTE_BY_ACTION[action]);
   const path = NOTIFY_ROUTE_BY_ACTION[action]
     || `/api/notify?action=${encodeURIComponent(action)}`;
-  return (!isLocalHost && apiBase) ? `${apiBase}${path}` : path;
+  const useRemote = Boolean(apiBase && (!isLocalHost || (forceApi && !isWhatsAppRoute)));
+  return useRemote ? `${apiBase}${path}` : path;
+}
+
+function notifyApiHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  const bypass = (process.env.REACT_APP_VERCEL_BYPASS || '').trim();
+  let host = '';
+  try { host = window?.location?.hostname || ''; } catch {}
+  const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
+  if (bypass && !isLocalHost) headers['x-vercel-protection-bypass'] = bypass;
+  return headers;
 }
 
 export async function sendLaybyWhatsApp(payload) {
   try {
     const res = await fetch(notifyApiUrl('whatsapp-layby'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: notifyApiHeaders(),
       body: JSON.stringify({ ...(payload || {}), action: 'whatsapp-layby' }),
     });
     const json = await res.json().catch(() => ({}));
@@ -50,7 +71,7 @@ export async function sendAdjustmentWhatsApp(payload) {
   try {
     const res = await fetch(notifyApiUrl('whatsapp-adjustment'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: notifyApiHeaders(),
       body: JSON.stringify({ ...(payload || {}), action: 'whatsapp-adjustment' }),
     });
     const json = await res.json().catch(() => ({}));
@@ -67,7 +88,7 @@ export async function sendSaleWhatsApp(payload) {
   try {
     const res = await fetch(notifyApiUrl('whatsapp-sale'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: notifyApiHeaders(),
       body: JSON.stringify({ ...(payload || {}), action: 'whatsapp-sale' }),
     });
     const json = await res.json().catch(() => ({}));
@@ -84,7 +105,7 @@ export async function sendTransferWhatsApp(payload) {
   try {
     const res = await fetch(notifyApiUrl('whatsapp-transfer'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: notifyApiHeaders(),
       body: JSON.stringify({ ...(payload || {}), action: 'whatsapp-transfer' }),
     });
     const json = await res.json().catch(() => ({}));
@@ -101,7 +122,7 @@ export async function sendLusakaTransferPdfWhatsApp({ pdfUrl, pdfFilename, messa
   try {
     const res = await fetch(notifyApiUrl('whatsapp-lusaka-transfer'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: notifyApiHeaders(),
       body: JSON.stringify({
         pdfUrl,
         pdfFilename,
@@ -120,12 +141,12 @@ export async function sendLusakaTransferPdfWhatsApp({ pdfUrl, pdfFilename, messa
   }
 }
 
-export async function sendLabelsWhatsApp({ pdfUrl, pdfFilename, message } = {}) {
+export async function sendLabelsWhatsApp({ pdfUrl, pdfBase64, pdfFilename, message } = {}) {
   try {
     const res = await fetch(notifyApiUrl('whatsapp-labels'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pdfUrl, pdfFilename, message, action: 'whatsapp-labels' }),
+      headers: notifyApiHeaders(),
+      body: JSON.stringify({ pdfUrl, pdfBase64, pdfFilename, message, action: 'whatsapp-labels' }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || json?.ok === false) {
@@ -149,7 +170,7 @@ export async function sendMonthlyBalanceDueWhatsApp({ messages } = {}) {
   try {
     const res = await fetch(notifyApiUrl('monthly-balance-send'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: notifyApiHeaders(),
       body: JSON.stringify(payload),
     });
     const json = await res.json().catch(() => ({}));

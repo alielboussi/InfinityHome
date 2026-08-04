@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { useNavigate } from 'react-router-dom';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 
@@ -24,7 +24,7 @@ const Locations = () => {
     setLoading(true);
     try {
   // Perf: fetch only needed columns for listing and editing
-  const { data, error } = await supabase.from('locations').select('id, name, address, city');
+  const { data, error } = await db.from('locations').select('id, name, address, city');
       if (error) throw error;
       setLocations(data || []);
     } catch (err) {
@@ -52,9 +52,9 @@ const Locations = () => {
     setSaving(true);
     try {
       if (editingId) {
-        await supabase.from('locations').update(form).eq('id', editingId);
+        await db.from('locations').update(form).eq('id', editingId);
       } else {
-        await supabase.from('locations').insert([form]);
+        await db.from('locations').insert([form]);
       }
       setForm(initialForm);
       setEditingId(null);
@@ -78,7 +78,7 @@ const Locations = () => {
     if (!window.confirm('Delete this location and all related data?')) return;
     setSaving(true);
     try {
-      const { error } = await supabase.from('locations').delete().eq('id', id);
+      const { error } = await db.from('locations').delete().eq('id', id);
       if (error) throw error;
       fetchLocations();
     } catch (err) {

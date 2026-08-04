@@ -2,10 +2,6 @@
 
 
 
-const { createClient } = require('@supabase/supabase-js');
-
-
-
 const WHATSAPP_TEXT_LIMIT = 4096;
 const WHAPI_TIMEOUT_MS = Number(process.env.WHAPI_TIMEOUT_MS || 20000);
 const WASENDER_API_URL = String(process.env.WASENDER_API_URL || 'https://www.wasenderapi.com/api/send-message').trim();
@@ -405,26 +401,9 @@ function setCors(res) {
 
 
 
-function getSupabaseServiceClient() {
-
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey) {
-
-    const err = new Error('Supabase service env not configured (SUPABASE_URL + SUPABASE_SERVICE_ROLE)');
-
-    err.status = 500;
-
-    err.stage = 'env';
-
-    throw err;
-
-  }
-
-  return createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: 'public' } });
-
+async function getDbClient() {
+  const { getDataClient } = await import('../server/lib/getDataClient.js');
+  return getDataClient();
 }
 
 
@@ -680,7 +659,7 @@ function pickFocusSale(sales, focusSaleId) {
 
 
 
-async function loadProductPriceMap(supabase, items) {
+async function loadProductPriceMap(db, items) {
 
   const productIds = Array.from(new Set((items || []).map((item) => item.product_id).filter(Boolean)));
 
@@ -696,7 +675,7 @@ async function loadProductPriceMap(supabase, items) {
 
     const chunk = productIds.slice(i, i + chunkSize);
 
-    const { data: products, error } = await supabase
+    const { data: products, error } = await db
 
       .from('products')
 
@@ -724,7 +703,7 @@ async function loadProductPriceMap(supabase, items) {
 
       const chunk = missing.slice(i, i + chunkSize);
 
-      const { data: quoteProducts } = await supabase
+      const { data: quoteProducts } = await db
 
         .from('quotation_products')
 
@@ -1497,41 +1476,19 @@ async function resolveWasenderDocumentUrl(link, filename = 'document.pdf') {
     throw err;
   }
 
-  const supabase = getSupabaseServiceClient();
+  const { uploadPdfAndGetUrl } = await import('../server/lib/firebaseStorage.js');
   const bucket = 'labels';
   const safeName = String(filename || 'document.pdf').replace(/[^\w.\-() ]+/g, '_') || 'document.pdf';
   const path = `whatsapp/${Date.now()}_${safeName}`;
 
-  try {
-    const { data: bucketInfo } = await supabase.storage.getBucket(bucket);
-    if (!bucketInfo) await supabase.storage.createBucket(bucket, { public: false });
-  } catch {
-    try { await supabase.storage.createBucket(bucket, { public: false }); } catch {}
-  }
-
-  const { error: uploadErr } = await supabase.storage.from(bucket).upload(path, buffer, {
-    upsert: true,
+  return uploadPdfAndGetUrl({
+    bucket,
+    path,
+    buffer,
     contentType: 'application/pdf',
-    cacheControl: '3600',
+    signedSeconds: 3600,
+    downloadName: safeName,
   });
-  if (uploadErr) {
-    const err = new Error(uploadErr.message || 'Failed to upload document for Wasender');
-    err.status = 502;
-    err.stage = 'upload';
-    throw err;
-  }
-
-  const { data: signed, error: signedErr } = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(path, 3600, { download: safeName });
-  if (signedErr || !signed?.signedUrl) {
-    const err = new Error(signedErr?.message || 'Failed to create signed URL for Wasender');
-    err.status = 502;
-    err.stage = 'upload';
-    throw err;
-  }
-
-  return signed.signedUrl;
 }
 
 function whapiDocumentError(json, fallback = 'Whapi document send failed') {
@@ -1745,9 +1702,9 @@ async function handleWhatsAppSale(body) {
 
 
 
-  const supabase = getSupabaseServiceClient();
+  const db = await getDbClient();
 
-  const { data: sale, error: saleErr } = await supabase
+  const { data: sale, error: saleErr } = await db
 
     .from('sales')
 
@@ -1809,7 +1766,7 @@ async function handleWhatsAppSale(body) {
 
 
 
-  const { data: customer } = await supabase
+  const { data: customer } = await db
 
     .from('customers')
 
@@ -1821,7 +1778,7 @@ async function handleWhatsAppSale(body) {
 
 
 
-  const { data: itemsRows } = await supabase
+  const { data: itemsRows } = await db
 
     .from('sales_items')
 
@@ -1833,7 +1790,7 @@ async function handleWhatsAppSale(body) {
 
 
 
-  const { data: payRows } = await supabase
+  const { data: payRows } = await db
 
     .from('sales_payments')
 
@@ -1851,7 +1808,7 @@ async function handleWhatsAppSale(body) {
 
   if (sale.location_id) {
 
-    const { data: loc } = await supabase
+    const { data: loc } = await db
 
       .from('locations')
 
@@ -1869,7 +1826,7 @@ async function handleWhatsAppSale(body) {
 
   const currency = normalizeCurrency(sale.currency || customer?.currency || 'K');
 
-  const productMap = await loadProductPriceMap(supabase, items);
+  const productMap = await loadProductPriceMap(db, items);
 
   const productLines = buildProductLines(items, currency, productMap, { saleId: sale.id });
 
@@ -1948,9 +1905,9 @@ async function handleWhatsAppAdjustment(body) {
 
 
 
-  const supabase = getSupabaseServiceClient();
+  const db = await getDbClient();
 
-  const { data: sale, error: saleErr } = await supabase
+  const { data: sale, error: saleErr } = await db
 
     .from('sales')
 
@@ -1998,7 +1955,7 @@ async function handleWhatsAppAdjustment(body) {
 
 
 
-  const { data: customer } = await supabase
+  const { data: customer } = await db
 
     .from('customers')
 
@@ -2010,7 +1967,7 @@ async function handleWhatsAppAdjustment(body) {
 
 
 
-  const { data: itemsRows } = await supabase
+  const { data: itemsRows } = await db
 
     .from('sales_items')
 
@@ -2026,7 +1983,7 @@ async function handleWhatsAppAdjustment(body) {
 
   if (sale.layby_id) {
 
-    const { data: linkedSales } = await supabase
+    const { data: linkedSales } = await db
 
       .from('sales')
 
@@ -2042,7 +1999,7 @@ async function handleWhatsAppAdjustment(body) {
 
 
 
-  const { data: payRows } = await supabase
+  const { data: payRows } = await db
 
     .from('sales_payments')
 
@@ -2060,7 +2017,7 @@ async function handleWhatsAppAdjustment(body) {
 
   if (sale.location_id) {
 
-    const { data: loc } = await supabase
+    const { data: loc } = await db
 
       .from('locations')
 
@@ -2078,7 +2035,7 @@ async function handleWhatsAppAdjustment(body) {
 
   const currency = normalizeCurrency(sale.currency || customer?.currency || 'K');
 
-  const productMap = await loadProductPriceMap(supabase, items);
+  const productMap = await loadProductPriceMap(db, items);
 
   const productLines = buildProductLines(items, currency, productMap, { saleId: sale.id });
 
@@ -2166,9 +2123,9 @@ async function handleWhatsAppLayby(body) {
 
 
 
-  const supabase = getSupabaseServiceClient();
+  const db = await getDbClient();
 
-  const { data: layby, error: laybyErr } = await supabase
+  const { data: layby, error: laybyErr } = await db
 
     .from('laybys')
 
@@ -2214,7 +2171,7 @@ async function handleWhatsAppLayby(body) {
 
 
 
-  const { data: customer } = await supabase
+  const { data: customer } = await db
 
     .from('customers')
 
@@ -2226,7 +2183,7 @@ async function handleWhatsAppLayby(body) {
 
 
 
-  const { data: salesRows } = await supabase
+  const { data: salesRows } = await db
 
     .from('sales')
 
@@ -2246,7 +2203,7 @@ async function handleWhatsAppLayby(body) {
 
   if (!isQuoteLayby && saleIds.length) {
 
-    const { data: qRows } = await supabase
+    const { data: qRows } = await db
 
       .from('quotations')
 
@@ -2274,7 +2231,7 @@ async function handleWhatsAppLayby(body) {
 
   if (locationId) {
 
-    const { data: loc } = await supabase
+    const { data: loc } = await db
 
       .from('locations')
 
@@ -2294,7 +2251,7 @@ async function handleWhatsAppLayby(body) {
 
   if (saleIds.length) {
 
-    const { data: payRows } = await supabase
+    const { data: payRows } = await db
 
       .from('sales_payments')
 
@@ -2348,7 +2305,7 @@ async function handleWhatsAppLayby(body) {
 
   const { data: itemRows } = saleIds.length
 
-    ? await supabase
+    ? await db
 
         .from('sales_items')
 
@@ -2360,7 +2317,7 @@ async function handleWhatsAppLayby(body) {
 
   const items = Array.isArray(itemRows) ? itemRows : [];
 
-  const productMap = await loadProductPriceMap(supabase, items);
+  const productMap = await loadProductPriceMap(db, items);
 
 
 
@@ -2791,11 +2748,11 @@ async function handleMonthlyBalanceDues(req) {
 
 
 
-  const supabase = getSupabaseServiceClient();
+  const db = await getDbClient();
 
   let rows = [];
   try {
-    rows = await fetchCustomersWithBalanceDue(supabase);
+    rows = await fetchCustomersWithBalanceDue(db);
   } catch (error) {
     const err = new Error(error?.message || 'Failed to load customer balances');
     err.status = 500;

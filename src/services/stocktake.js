@@ -1,5 +1,5 @@
-import supabase from '../supabase';
-import { signInWithEmailPassword } from '../utils/supabaseAuthLogin';
+import db from '../dataClient';
+import { signInWithEmailPassword } from '../utils/authLogin';
 import { buildLiveConsolidatedWithSets } from '../utils/stocktakeLiveTotals';
 
 const API_TIMEOUT_MS = 12000;
@@ -91,7 +91,7 @@ async function withApiOrClient(apiCall, clientCall, { fallbackOnServerError = fa
 
 async function clientLoadLocationCombos(locationId) {
   if (!locationId) return { combos: [], comboItems: [] };
-  const { data: comboLocs, error: clErr } = await supabase
+  const { data: comboLocs, error: clErr } = await db
     .from('combo_locations')
     .select('combo_id')
     .eq('location_id', locationId);
@@ -99,8 +99,8 @@ async function clientLoadLocationCombos(locationId) {
   const comboIds = [...new Set((comboLocs || []).map((r) => r.combo_id).filter(Boolean))];
   if (!comboIds.length) return { combos: [], comboItems: [] };
   const [{ data: combos, error: cErr }, { data: comboItems, error: iErr }] = await Promise.all([
-    supabase.from('combos').select('id, combo_name, sku').in('id', comboIds),
-    supabase.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds),
+    db.from('combos').select('id, combo_name, sku').in('id', comboIds),
+    db.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds),
   ]);
   if (cErr) throw cErr;
   if (iErr) throw iErr;
@@ -108,13 +108,13 @@ async function clientLoadLocationCombos(locationId) {
 }
 
 async function clientFetchLocations() {
-  const { data, error } = await supabase.from('locations').select('id, name').order('name');
+  const { data, error } = await db.from('locations').select('id, name').order('name');
   if (error) throw error;
   return { ok: true, rows: data || [] };
 }
 
 async function clientFetchLocationState(locationId) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('stocktake_location_state')
     .select('*')
     .eq('location_id', locationId)
@@ -127,7 +127,7 @@ async function clientFetchLocationState(locationId) {
 }
 
 async function clientListEvents(locationId) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('stocktake_events')
     .select('*')
     .eq('location_id', locationId)
@@ -138,7 +138,7 @@ async function clientListEvents(locationId) {
 }
 
 async function clientListOpenSessions() {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('stocktake_events')
     .select('id, location_id, status, counting_enabled, is_initial, created_at, created_by_email')
     .eq('status', 'counting')
@@ -148,7 +148,7 @@ async function clientListOpenSessions() {
   const locationIds = [...new Set(rows.map((r) => r.location_id).filter(Boolean))];
   let locationMap = new Map();
   if (locationIds.length) {
-    const { data: locs } = await supabase.from('locations').select('id, name').in('id', locationIds);
+    const { data: locs } = await db.from('locations').select('id, name').in('id', locationIds);
     locationMap = new Map((locs || []).map((l) => [l.id, l.name]));
   }
   return {
@@ -161,7 +161,7 @@ async function clientListOpenSessions() {
 }
 
 async function clientGetEvent(eventId) {
-  const { data: event, error } = await supabase
+  const { data: event, error } = await db
     .from('stocktake_events')
     .select('*')
     .eq('id', eventId)
@@ -169,7 +169,7 @@ async function clientGetEvent(eventId) {
   if (error) throw error;
   if (!event) throw new Error('Event not found');
 
-  const { data: counts, error: cErr } = await supabase
+  const { data: counts, error: cErr } = await db
     .from('stocktake_counts')
     .select('product_id, user_email, qty, updated_at, products(name, sku)')
     .eq('event_id', eventId);
@@ -177,7 +177,7 @@ async function clientGetEvent(eventId) {
 
   const [{ combos, comboItems }, scansRes] = await Promise.all([
     clientLoadLocationCombos(event.location_id),
-    supabase
+    db
       .from('stocktake_set_scans')
       .select('combo_id, user_email, set_qty, updated_at')
       .eq('event_id', eventId),
@@ -197,7 +197,7 @@ async function clientGetEvent(eventId) {
 
 async function clientCreateEvent(locationId, notes = '') {
   const userEmail = currentEmail();
-  const { data: existingOpen } = await supabase
+  const { data: existingOpen } = await db
     .from('stocktake_events')
     .select('id')
     .eq('location_id', locationId)
@@ -210,14 +210,14 @@ async function clientCreateEvent(locationId, notes = '') {
     throw err;
   }
 
-  const { data: state } = await supabase
+  const { data: state } = await db
     .from('stocktake_location_state')
     .select('*')
     .eq('location_id', locationId)
     .maybeSingle();
   const isInitial = !Boolean(state?.initial_completed);
 
-  const { data: event, error } = await supabase
+  const { data: event, error } = await db
     .from('stocktake_events')
     .insert([{
       location_id: locationId,
@@ -231,7 +231,7 @@ async function clientCreateEvent(locationId, notes = '') {
     .single();
   if (error) throw error;
 
-  await supabase.from('stocktake_gate_audit').insert([{
+  await db.from('stocktake_gate_audit').insert([{
     event_id: event.id,
     location_id: locationId,
     enabled: true,
@@ -242,7 +242,7 @@ async function clientCreateEvent(locationId, notes = '') {
 }
 
 async function clientCancelEvent(eventId, userEmail = currentEmail(), { force = false } = {}) {
-  const { data: event, error } = await supabase
+  const { data: event, error } = await db
     .from('stocktake_events')
     .select('*')
     .eq('id', eventId)
@@ -252,8 +252,8 @@ async function clientCancelEvent(eventId, userEmail = currentEmail(), { force = 
   if (event.status !== 'counting') throw new Error('Only an open counting session can be closed this way.');
 
   const [{ count: countRows }, { count: scanRows }] = await Promise.all([
-    supabase.from('stocktake_counts').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
-    supabase.from('stocktake_set_scans').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
+    db.from('stocktake_counts').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
+    db.from('stocktake_set_scans').select('id', { count: 'exact', head: true }).eq('event_id', eventId),
   ]);
   const hasCounts = (countRows || 0) > 0 || (scanRows || 0) > 0;
   if (hasCounts && !force) {
@@ -261,16 +261,16 @@ async function clientCancelEvent(eventId, userEmail = currentEmail(), { force = 
   }
 
   if (hasCounts && force) {
-    const { error: delCountsErr } = await supabase.from('stocktake_counts').delete().eq('event_id', eventId);
+    const { error: delCountsErr } = await db.from('stocktake_counts').delete().eq('event_id', eventId);
     if (delCountsErr) throw delCountsErr;
-    const { error: delLogErr } = await supabase.from('stocktake_count_log').delete().eq('event_id', eventId);
+    const { error: delLogErr } = await db.from('stocktake_count_log').delete().eq('event_id', eventId);
     if (delLogErr) throw delLogErr;
-    const { error: delScansErr } = await supabase.from('stocktake_set_scans').delete().eq('event_id', eventId);
+    const { error: delScansErr } = await db.from('stocktake_set_scans').delete().eq('event_id', eventId);
     if (delScansErr) throw delScansErr;
   }
 
   const cancelNote = force && hasCounts ? 'Force closed session (counts discarded)' : 'Cancelled empty session';
-  const { data: updated, error: upErr } = await supabase
+  const { data: updated, error: upErr } = await db
     .from('stocktake_events')
     .update({
       status: 'cancelled',
@@ -287,21 +287,21 @@ async function clientCancelEvent(eventId, userEmail = currentEmail(), { force = 
 }
 
 async function clientClearCounts(eventId) {
-  const { error } = await supabase.from('stocktake_counts').delete().eq('event_id', eventId);
+  const { error } = await db.from('stocktake_counts').delete().eq('event_id', eventId);
   if (error) throw error;
-  await supabase.from('stocktake_set_scans').delete().eq('event_id', eventId);
+  await db.from('stocktake_set_scans').delete().eq('event_id', eventId);
   return { ok: true };
 }
 
 async function clientRemoveMyCount(eventId, productId, userEmail = currentEmail()) {
-  const { error } = await supabase
+  const { error } = await db
     .from('stocktake_counts')
     .delete()
     .eq('event_id', eventId)
     .eq('product_id', productId)
     .eq('user_email', userEmail);
   if (error) throw error;
-  await supabase
+  await db
     .from('stocktake_count_log')
     .delete()
     .eq('event_id', eventId)
@@ -311,14 +311,14 @@ async function clientRemoveMyCount(eventId, productId, userEmail = currentEmail(
 }
 
 async function clientClearMyCounts(eventId, userEmail = currentEmail()) {
-  const { error } = await supabase
+  const { error } = await db
     .from('stocktake_counts')
     .delete()
     .eq('event_id', eventId)
     .eq('user_email', userEmail);
   if (error) throw error;
-  await supabase.from('stocktake_count_log').delete().eq('event_id', eventId).eq('user_email', userEmail);
-  await supabase.from('stocktake_set_scans').delete().eq('event_id', eventId).eq('user_email', userEmail);
+  await db.from('stocktake_count_log').delete().eq('event_id', eventId).eq('user_email', userEmail);
+  await db.from('stocktake_set_scans').delete().eq('event_id', eventId).eq('user_email', userEmail);
   return { ok: true };
 }
 
@@ -327,11 +327,11 @@ async function clientAddCount(eventId, productId, qty, userEmail = currentEmail(
   if (!Number.isFinite(add) || add <= 0) throw new Error('qty must be > 0');
   if (!userEmail) throw new Error('userEmail required');
 
-  const { data: event } = await supabase.from('stocktake_events').select('status, counting_enabled').eq('id', eventId).maybeSingle();
+  const { data: event } = await db.from('stocktake_events').select('status, counting_enabled').eq('id', eventId).maybeSingle();
   if (!event || event.status !== 'counting') throw new Error('Counting session is not open.');
   if (!event.counting_enabled) throw new Error('Counting is paused for this session.');
 
-  const { data: existing } = await supabase
+  const { data: existing } = await db
     .from('stocktake_counts')
     .select('id, qty')
     .eq('event_id', eventId)
@@ -340,7 +340,7 @@ async function clientAddCount(eventId, productId, qty, userEmail = currentEmail(
     .maybeSingle();
 
   const nextQty = Number(existing?.qty || 0) + add;
-  const { data: row, error } = await supabase
+  const { data: row, error } = await db
     .from('stocktake_counts')
     .upsert([{
       event_id: eventId,
@@ -353,7 +353,7 @@ async function clientAddCount(eventId, productId, qty, userEmail = currentEmail(
     .single();
   if (error) throw error;
 
-  await supabase.from('stocktake_count_log').insert([{
+  await db.from('stocktake_count_log').insert([{
     event_id: eventId,
     product_id: productId,
     user_email: userEmail,
@@ -365,7 +365,7 @@ async function clientAddCount(eventId, productId, qty, userEmail = currentEmail(
 }
 
 async function clientFetchMyCounts(eventId, userEmail = currentEmail()) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('stocktake_counts')
     .select('product_id, qty, updated_at, products(name, sku)')
     .eq('event_id', eventId)
@@ -392,9 +392,9 @@ async function resolveLocationProductIds(locationId) {
 
   const ids = new Set();
   const [{ data: linked, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
-    supabase.from('product_locations').select('product_id').eq('location_id', locationId),
+    db.from('product_locations').select('product_id').eq('location_id', locationId),
     // All Products shows location stock from inventory — include those too.
-    supabase.from('inventory').select('product_id').eq('location', locationId),
+    db.from('inventory').select('product_id').eq('location', locationId),
   ]);
   if (plErr) throw plErr;
   if (invErr) throw invErr;
@@ -409,7 +409,7 @@ async function fetchLocationProductsByTerm(locationProductIds, term) {
   const orFilter = buildIlikeOrFilter(['name', 'sku'], term);
 
   if (locationProductIds.length <= 200) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('products')
       .select('id, name, sku, price')
       .in('id', locationProductIds)
@@ -420,7 +420,7 @@ async function fetchLocationProductsByTerm(locationProductIds, term) {
     return (data || []).map((p) => ({ ...p, type: 'product' }));
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('products')
     .select('id, name, sku, price')
     .or(orFilter)
@@ -443,7 +443,7 @@ async function clientFetchCatalog(locationId, q = '') {
   }
 
   const locationProductIdsPromise = resolveLocationProductIds(locationId);
-  const comboLocsPromise = supabase
+  const comboLocsPromise = db
     .from('combo_locations')
     .select('combo_id')
     .eq('location_id', locationId);
@@ -460,7 +460,7 @@ async function clientFetchCatalog(locationId, q = '') {
       products = await fetchLocationProductsByTerm(locationProductIds, term);
     } else {
       const chunk = locationProductIds.slice(0, 120);
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('products')
         .select('id, name, sku, price')
         .in('id', chunk)
@@ -474,7 +474,7 @@ async function clientFetchCatalog(locationId, q = '') {
   const comboIds = [...new Set((comboLocs || []).map((r) => r.combo_id).filter(Boolean))];
   let sets = [];
   if (comboIds.length) {
-    let comboQuery = supabase
+    let comboQuery = db
       .from('combos')
       .select('id, combo_name, sku, standard_price, combo_price, promotional_price')
       .in('id', comboIds)
@@ -489,7 +489,7 @@ async function clientFetchCatalog(locationId, q = '') {
     const matchedComboIds = (combos || []).map((c) => c.id).filter(Boolean);
     let byCombo = new Map();
     if (matchedComboIds.length) {
-      const { data: items } = await supabase
+      const { data: items } = await db
         .from('combo_items')
         .select('combo_id, product_id, quantity')
         .in('combo_id', matchedComboIds);
@@ -527,7 +527,7 @@ export function invalidateStocktakeCatalogCache(locationId) {
 }
 
 async function clientListPeriods(locationId) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('stock_periods')
     .select('*')
     .eq('location_id', locationId)
@@ -625,18 +625,18 @@ export async function setEventGate(eventId, enabled) {
     }),
     async () => {
       const userEmail = currentEmail();
-      const { data: event, error } = await supabase.from('stocktake_events').select('*').eq('id', eventId).maybeSingle();
+      const { data: event, error } = await db.from('stocktake_events').select('*').eq('id', eventId).maybeSingle();
       if (error) throw error;
       if (!event) throw new Error('Event not found');
       if (event.status !== 'counting') throw new Error('Gate can only change while event is counting.');
-      const { data: updated, error: upErr } = await supabase
+      const { data: updated, error: upErr } = await db
         .from('stocktake_events')
         .update({ counting_enabled: Boolean(enabled) })
         .eq('id', eventId)
         .select('*')
         .single();
       if (upErr) throw upErr;
-      await supabase.from('stocktake_gate_audit').insert([{
+      await db.from('stocktake_gate_audit').insert([{
         event_id: eventId,
         location_id: event.location_id,
         enabled: Boolean(enabled),
@@ -707,7 +707,7 @@ async function clientFetchImportTemplate(locationId) {
   const products = [];
   for (let i = 0; i < productIds.length; i += 150) {
     const chunk = productIds.slice(i, i + 150);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('products')
       .select('id, sku, name')
       .in('id', chunk);
@@ -715,7 +715,7 @@ async function clientFetchImportTemplate(locationId) {
     products.push(...(data || []));
   }
 
-  const { data: comboRows, error: comboErr } = await supabase.from('combos').select('sku');
+  const { data: comboRows, error: comboErr } = await db.from('combos').select('sku');
   if (comboErr) throw comboErr;
   const setSkus = new Set(
     (comboRows || [])
@@ -774,7 +774,7 @@ export async function scanSet(eventId, comboId, qty, userEmail = currentEmail())
   } catch (err) {
     if (!isApiUnavailable(err)) throw err;
     // Expand set components client-side and add counts
-    const { data: comps, error } = await supabase
+    const { data: comps, error } = await db
       .from('combo_items')
       .select('product_id, quantity')
       .eq('combo_id', comboId);
@@ -784,7 +784,7 @@ export async function scanSet(eventId, comboId, qty, userEmail = currentEmail())
       const lineQty = sets * Number(c.quantity || 0);
       if (lineQty > 0) await clientAddCount(eventId, c.product_id, lineQty, userEmail);
     }
-    const { data: existingScan } = await supabase
+    const { data: existingScan } = await db
       .from('stocktake_set_scans')
       .select('id, set_qty')
       .eq('event_id', eventId)
@@ -792,7 +792,7 @@ export async function scanSet(eventId, comboId, qty, userEmail = currentEmail())
       .eq('user_email', userEmail)
       .maybeSingle();
     const nextSetQty = Number(existingScan?.set_qty || 0) + sets;
-    await supabase.from('stocktake_set_scans').upsert([{
+    await db.from('stocktake_set_scans').upsert([{
       event_id: eventId,
       combo_id: comboId,
       user_email: userEmail,
@@ -811,7 +811,7 @@ export async function createProduct(locationId, payload) {
     });
   } catch (err) {
     if (!isApiUnavailable(err)) throw err;
-    const { data: product, error } = await supabase
+    const { data: product, error } = await db
       .from('products')
       .insert([{
         name: payload.name,
@@ -821,7 +821,7 @@ export async function createProduct(locationId, payload) {
       .select('id, name, sku, price')
       .single();
     if (error) throw error;
-    await supabase.from('product_locations').insert([{
+    await db.from('product_locations').insert([{
       product_id: product.id,
       location_id: locationId,
     }]);
@@ -855,7 +855,7 @@ export async function submitEvent(eventId, options = {}) {
     if (isApiUnavailable(err)) {
       const detail = String(err?.payload?.error || err?.message || '');
       if (/local stocktake api unavailable/i.test(detail)) {
-        throw new Error('Local stocktake API failed to start. Restart npm start and ensure SUPABASE_SERVICE_ROLE is set in .env.local.');
+        throw new Error('Local stocktake API failed to start. Restart npm start and ensure FIREBASE_SERVICE_ACCOUNT is set in .env.local.');
       }
       throw new Error('Submit needs the Vercel stocktake API (updates inventory + periods). Counting still works via Supabase — redeploy/fix Vercel, then submit.');
     }
@@ -875,7 +875,7 @@ export async function getPeriodDetail(periodId) {
     return await fetchJson(`/api/stocktake-period-detail?periodId=${encodeURIComponent(periodId)}`);
   } catch (err) {
     if (!isApiUnavailable(err)) throw err;
-    const { data, error } = await supabase.from('stock_periods').select('*').eq('id', periodId).maybeSingle();
+    const { data, error } = await db.from('stock_periods').select('*').eq('id', periodId).maybeSingle();
     if (error) throw error;
     return { ok: true, period: data, rows: [] };
   }

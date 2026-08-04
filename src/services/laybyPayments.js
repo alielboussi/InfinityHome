@@ -1,5 +1,5 @@
 import { fromPublic } from '../dbSchema';
-import supabase from '../supabase';
+import db from '../dataClient';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
@@ -9,6 +9,8 @@ const isNumericId = (value) => {
 };
 
 const buildPaymentKey = (row) => {
+  const batch = String(row?.allocation_batch_uuid || '').trim();
+  if (batch) return `batch:${batch}`;
   const saleId = String(row?.sale_id || '').trim();
   const date = String(row?.payment_date || '').trim();
   const amount = Number(row?.amount || 0);
@@ -16,8 +18,7 @@ const buildPaymentKey = (row) => {
   const type = String(row?.payment_type || '').toLowerCase();
   const reference = String(row?.reference || '').trim();
   const notes = String(row?.notes || '').trim();
-  const batch = String(row?.allocation_batch_uuid || '').trim();
-  return `${saleId}|${date}|${amount}|${discount}|${type}|${reference}|${notes}|${batch}`;
+  return `${saleId}|${date}|${amount}|${discount}|${type}|${reference}|${notes}`;
 };
 
 const mapRows = (rows) => {
@@ -245,7 +246,7 @@ export async function deleteLaybyPayments(rows = []) {
       const saleId = row?.sale_id ?? null;
       if (!saleId) continue;
       const batch = row?.allocation_batch_uuid || null;
-      let query = supabase.from('sales_payments').delete().eq('sale_id', saleId);
+      let query = db.from('sales_payments').delete().eq('sale_id', saleId);
       if (batch) {
         query = query.eq('allocation_batch_uuid', batch);
       } else {

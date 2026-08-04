@@ -1,78 +1,20 @@
-import { createClient } from '@supabase/supabase-js';
 import { canDeleteProducts } from '../../src/accessControl.js';
-
-function assertServiceRoleKey(serviceKey) {
-  try {
-    const parts = String(serviceKey || '').split('.');
-    if (parts.length < 2) return;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-    if (payload?.role && payload.role !== 'service_role') {
-      const error = new Error('SUPABASE_SERVICE_ROLE is not a service role key');
-      error.status = 500;
-      error.details = { role: payload.role };
-      throw error;
-    }
-  } catch (err) {
-    if (err?.status) throw err;
-  }
-}
-
-function getSupabaseServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE;
-  if (!url || !serviceKey) {
-    const missing = [];
-    if (!url) missing.push('SUPABASE_URL (or REACT_APP_SUPABASE_URL)');
-    if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE');
-    const error = new Error('Supabase service environment variables missing');
-    error.status = 500;
-    error.details = { missing };
-    throw error;
-  }
-  assertServiceRoleKey(serviceKey);
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
-}
-
-function getSupabaseAnonClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const anonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    const missing = [];
-    if (!url) missing.push('SUPABASE_URL (or REACT_APP_SUPABASE_URL)');
-    if (!anonKey) missing.push('SUPABASE_ANON_KEY (or REACT_APP_SUPABASE_ANON_KEY)');
-    const error = new Error('Supabase anon environment variables missing');
-    error.status = 500;
-    error.details = { missing };
-    throw error;
-  }
-  return createClient(url, anonKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
-}
+import { getDataClient } from '../lib/getDataClient.js';
+import { verifyBearerUser } from '../lib/verifyBearerUser.js';
 
 async function getRequestUser(req) {
-  const header = req.headers?.authorization || req.headers?.Authorization || '';
-  const match = String(header).match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-  const token = match[1].trim();
-  if (!token) return null;
-  const supabase = getSupabaseAnonClient();
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error) {
-    const authError = new Error(error.message || 'Invalid session');
-    authError.status = 401;
+  try {
+    return await verifyBearerUser(req);
+  } catch (err) {
+    const authError = new Error(err?.message || 'Invalid session');
+    authError.status = err?.status || 401;
     throw authError;
   }
-  return data?.user || null;
 }
 
-async function deleteByIds(supabase, table, column, ids) {
+async function deleteByIds(db, table, column, ids) {
   if (!ids.length) return;
-  const { error } = await supabase.from(table).delete().in(column, ids);
+  const { error } = await db.from(table).delete().in(column, ids);
   if (error) throw error;
 }
 
@@ -110,17 +52,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    const supabase = getSupabaseServiceClient();
+    const db = getDataClient();
 
-    await deleteByIds(supabase, 'product_images', 'product_id', productIds);
-    await deleteByIds(supabase, 'product_locations', 'product_id', productIds);
-    await deleteByIds(supabase, 'inventory', 'product_id', productIds);
-    await deleteByIds(supabase, 'stock_transfer_entries', 'product_id', productIds);
-    await deleteByIds(supabase, 'opening_stock_entries', 'product_id', productIds);
-    await deleteByIds(supabase, 'closing_stock_entries', 'product_id', productIds);
-    await deleteByIds(supabase, 'combo_items', 'product_id', productIds);
+    await deleteByIds(db, 'product_images', 'product_id', productIds);
+    await deleteByIds(db, 'product_locations', 'product_id', productIds);
+    await deleteByIds(db, 'inventory', 'product_id', productIds);
+    await deleteByIds(db, 'stock_transfer_entries', 'product_id', productIds);
+    await deleteByIds(db, 'opening_stock_entries', 'product_id', productIds);
+    await deleteByIds(db, 'closing_stock_entries', 'product_id', productIds);
+    await deleteByIds(db, 'combo_items', 'product_id', productIds);
 
-    const { data: deletedRows, error: deleteErr } = await supabase
+    const { data: deletedRows, error: deleteErr } = await db
       .from('products')
       .delete()
       .in('id', productIds)

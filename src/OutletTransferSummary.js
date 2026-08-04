@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { applyInventoryBulk } from './utils/inventoryApi';
@@ -71,7 +71,7 @@ export default function OutletTransferSummary() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase.from('company_settings').select('*').single();
+        const { data } = await db.from('company_settings').select('*').single();
         setCompany(data || {});
       } catch {}
     })();
@@ -80,7 +80,7 @@ export default function OutletTransferSummary() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase
+        const { data } = await db
           .from('locations')
           .select('id, name')
           .in('id', [FROM_LOCATION_ID, TO_LOCATION_ID]);
@@ -98,7 +98,7 @@ export default function OutletTransferSummary() {
       try {
         const productIds = Array.from(new Set(transfer.items.filter(i => i.product_id && i.kind !== 'set-parent').map(i => i.product_id)));
         if (!productIds.length) return;
-        const { data: invRows } = await supabase
+        const { data: invRows } = await db
           .from('inventory')
           .select('product_id, location, quantity')
           .in('product_id', productIds)
@@ -113,7 +113,7 @@ export default function OutletTransferSummary() {
         });
         setRemainingPreview(rem);
 
-        const { data: dstRows } = await supabase
+        const { data: dstRows } = await db
           .from('inventory')
           .select('product_id, location, quantity')
           .in('product_id', productIds)
@@ -280,7 +280,7 @@ export default function OutletTransferSummary() {
         status: 'approved',
         total_qty: transfer.items.reduce((s, i) => s + (Number(i.qty) || 0), 0)
       };
-      const { data: session, error: sessErr } = await supabase.from('stock_transfer_sessions').insert(baseSessionInsert).select().single();
+      const { data: session, error: sessErr } = await db.from('stock_transfer_sessions').insert(baseSessionInsert).select().single();
       if (sessErr) throw sessErr;
       const sessionId = session.id;
       const lineItems = transfer.items
@@ -292,7 +292,7 @@ export default function OutletTransferSummary() {
 
       if (lineItems.length) {
         const entryRows = lineItems.map(it => ({ session_id: sessionId, product_id: it.product_id, quantity: it.qty }));
-        const { error: entriesErr } = await supabase.from('stock_transfer_entries').insert(entryRows);
+        const { error: entriesErr } = await db.from('stock_transfer_entries').insert(entryRows);
         if (entriesErr) throw entriesErr;
       }
 
@@ -302,7 +302,7 @@ export default function OutletTransferSummary() {
             notes: JSON.stringify({ transfer_number: transfer.transferNumber || null, status: 'pending' }),
             metadata: { transfer_number: transfer.transferNumber || null, status: 'pending' },
           };
-          await supabase.from('stock_transfer_sessions').update(updatePayload).eq('id', sessionId);
+          await db.from('stock_transfer_sessions').update(updatePayload).eq('id', sessionId);
         } catch {}
         localStorage.removeItem(LS_KEY);
         navigate('/Kitwe-Lusaka');
@@ -313,7 +313,7 @@ export default function OutletTransferSummary() {
       const remainingDestMap = new Map();
       if (lineItems.length) {
         const productIds = [...new Set(lineItems.map(i => i.product_id))];
-        const { data: existingInv, error: invFetchErr } = await supabase
+        const { data: existingInv, error: invFetchErr } = await db
           .from('inventory')
           .select('id, product_id, location, quantity')
           .in('product_id', productIds)
@@ -352,14 +352,14 @@ export default function OutletTransferSummary() {
           await applyInventoryBulk({
             updates: inventoryUpdates,
             inserts: inventoryInserts,
-          }, supabase);
+          }, db);
         }
       }
 
       try {
         const allItemProductIds = Array.from(new Set(transfer.items.filter(i => i.kind !== 'set-parent' && i.product_id).map(i => i.product_id)));
         if (allItemProductIds.length) {
-          const { data: allInv } = await supabase
+          const { data: allInv } = await db
             .from('inventory')
             .select('product_id, location, quantity')
             .in('product_id', allItemProductIds)
@@ -381,7 +381,7 @@ export default function OutletTransferSummary() {
 
       const productLocationRows = lineItems.map(it => ({ product_id: it.product_id, location_id: TO_LOCATION_ID }));
       const uniquePL = Array.from(new Map(productLocationRows.map(r => [r.product_id, r])).values());
-      await syncProductLocations({ rows: uniquePL }, supabase);
+      await syncProductLocations({ rows: uniquePL }, db);
 
       const pdfBlob = await generatePdf(transfer, remainingSourceMap, remainingDestMap, { fromLabel, toLabel, fromName, toName });
       const arrayBuffer = await pdfBlob.arrayBuffer();
@@ -409,8 +409,8 @@ export default function OutletTransferSummary() {
         try {
           await ensureBucket();
           const path = `${sessionId}/${fileName}`;
-          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' });
-          if (!upErr) { const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path); pdfUrl = pub?.publicUrl || null; }
+          const { error: upErr } = await db.storage.from(BUCKET).upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' });
+          if (!upErr) { const { data: pub } = db.storage.from(BUCKET).getPublicUrl(path); pdfUrl = pub?.publicUrl || null; }
           else { console.warn('Client upload error', upErr.message || upErr); }
         } catch (e) { console.warn('Client upload failed', e.message || e); }
       }
@@ -422,7 +422,7 @@ export default function OutletTransferSummary() {
             metadata: { pdf_url: pdfUrl, transfer_number: transfer.transferNumber || null },
             notes: JSON.stringify({ pdf_url: pdfUrl, transfer_number: transfer.transferNumber || null })
           };
-          await supabase.from('stock_transfer_sessions').update(updatePayload).eq('id', sessionId);
+          await db.from('stock_transfer_sessions').update(updatePayload).eq('id', sessionId);
         } catch (e) { console.warn('Failed to update session with pdf url', e.message || e); }
       }
 

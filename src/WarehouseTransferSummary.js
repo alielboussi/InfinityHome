@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { applyInventoryBulk } from './utils/inventoryApi';
@@ -126,12 +126,12 @@ export default function WarehouseTransferSummary(){
     }
   },[]);
 
-  useEffect(()=>{(async()=>{try{const { data } = await supabase.from('company_settings').select('*').single();setCompany(data||{});}catch{}})();},[]);
+  useEffect(()=>{(async()=>{try{const { data } = await db.from('company_settings').select('*').single();setCompany(data||{});}catch{}})();},[]);
 
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase
+        const { data } = await db
           .from('locations')
           .select('id, name')
           .in('id', [FROM_LOCATION_ID, ...DEST_LOCATION_IDS]);
@@ -163,7 +163,7 @@ export default function WarehouseTransferSummary(){
         return;
       }
 
-      const { data: invRows } = await supabase
+      const { data: invRows } = await db
         .from('inventory')
         .select('product_id, location, quantity')
         .in('product_id', productIds)
@@ -390,7 +390,7 @@ export default function WarehouseTransferSummary(){
         status: 'approved',
         total_qty: transfer.items.reduce((s,i)=>s + (Number(i.qty)||0),0)
       };
-      const { data: session, error: sessErr } = await supabase.from('stock_transfer_sessions').insert(baseSessionInsert).select().single();
+      const { data: session, error: sessErr } = await db.from('stock_transfer_sessions').insert(baseSessionInsert).select().single();
       if(sessErr) throw sessErr;
       const sessionId = session.id;
       // Filter valid items (qty>0). Require at least one tangible line to proceed.
@@ -404,7 +404,7 @@ export default function WarehouseTransferSummary(){
   // 1) Batch insert entries (only if there are positive-qty items)
       if(lineItems.length){
         const entryRows = lineItems.map(it => ({ session_id: sessionId, product_id: it.product_id, quantity: it.qty }));
-        const { error: entriesErr } = await supabase.from('stock_transfer_entries').insert(entryRows);
+        const { error: entriesErr } = await db.from('stock_transfer_entries').insert(entryRows);
         if(entriesErr) throw entriesErr;
       }
 
@@ -428,7 +428,7 @@ export default function WarehouseTransferSummary(){
         // Collect product ids
         const productIds = [...new Set(lineItems.map(i => i.product_id))];
         // Fetch existing inventory rows for both locations in a single query
-        const { data: existingInv, error: invFetchErr } = await supabase
+        const { data: existingInv, error: invFetchErr } = await db
           .from('inventory')
           .select('id, product_id, location, quantity')
           .in('product_id', productIds)
@@ -470,12 +470,12 @@ export default function WarehouseTransferSummary(){
           await applyInventoryBulk({
             updates: inventoryUpdates,
             inserts: inventoryInserts,
-          }, supabase);
+          }, db);
         }
       }
 
       try {
-        const { data: periodRows } = await supabase
+        const { data: periodRows } = await db
           .from('stock_periods')
           .select('id, status')
           .eq('location_id', toLocationId)
@@ -491,7 +491,7 @@ export default function WarehouseTransferSummary(){
           });
           const productIds = Array.from(qtyByProduct.keys());
           if (productIds.length) {
-            const { data: existingRows } = await supabase
+            const { data: existingRows } = await db
               .from('opening_stock_entries')
               .select('product_id')
               .eq('session_id', period.id)
@@ -505,7 +505,7 @@ export default function WarehouseTransferSummary(){
                 qty: qtyByProduct.get(pid) || 0,
               }));
             if (openingRows.length) {
-              await supabase.from('opening_stock_entries').insert(openingRows);
+              await db.from('opening_stock_entries').insert(openingRows);
             }
           }
         }
@@ -518,7 +518,7 @@ export default function WarehouseTransferSummary(){
         // Build a lookup of current inventory for all items in the transfer at both locations
         const allItemProductIds = Array.from(new Set(transfer.items.filter(i => i.kind !== 'set-parent' && i.product_id).map(i => i.product_id)));
         if(allItemProductIds.length){
-          const { data: allInv } = await supabase
+          const { data: allInv } = await db
             .from('inventory')
             .select('product_id, location, quantity')
             .in('product_id', allItemProductIds)
@@ -541,7 +541,7 @@ export default function WarehouseTransferSummary(){
       // 3) Ensure product_locations for destination in one upsert batch
       const productLocationRows = lineItems.map(it => ({ product_id: it.product_id, location_id: toLocationId }));
       const uniquePL = Array.from(new Map(productLocationRows.map(r => [r.product_id, r])).values());
-      await syncProductLocations({ rows: uniquePL }, supabase);
+      await syncProductLocations({ rows: uniquePL }, db);
 
       // Generate PDF and upload via secure serverless endpoint (service role)
       const pdfBlob = await generatePdf(transfer, remainingSourceMap, remainingDestMap, { fromLabel, toLabel, fromName, toName });
@@ -572,8 +572,8 @@ export default function WarehouseTransferSummary(){
         try {
           await ensureBucket();
           const path = `${sessionId}/${fileName}`;
-          const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' });
-          if(!upErr){ const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path); pdfUrl = pub?.publicUrl || null; }
+          const { error: upErr } = await db.storage.from(BUCKET).upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' });
+          if(!upErr){ const { data: pub } = db.storage.from(BUCKET).getPublicUrl(path); pdfUrl = pub?.publicUrl || null; }
           else { console.warn('Client upload error', upErr.message || upErr); }
         } catch (e){ console.warn('Client upload failed', e.message || e); }
       }
@@ -585,7 +585,7 @@ export default function WarehouseTransferSummary(){
             metadata: { pdf_url: pdfUrl, transfer_number: transfer.transferNumber || null },
             notes: JSON.stringify({ pdf_url: pdfUrl, transfer_number: transfer.transferNumber || null })
           };
-          await supabase.from('stock_transfer_sessions').update(updatePayload).eq('id', sessionId);
+          await db.from('stock_transfer_sessions').update(updatePayload).eq('id', sessionId);
         } catch (e){ console.warn('Failed to update session with pdf url', e.message || e); }
       }
 

@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useEffect, useRef, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { useNavigate } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 
@@ -188,9 +188,9 @@ export default function WarehouseTransfer(){
   // Fetch product catalog + combos + inventory for source/destination
   useEffect(()=>{(async()=>{
     const [{ data: prods }, { data: inv }, { data: cbs } ] = await Promise.all([
-      supabase.from('products').select('id,name,sku'),
-      supabase.from('inventory').select('product_id,location,quantity').in('location',[FROM_LOCATION_ID,toLocationId]),
-      supabase.from('combos').select('id,combo_name,sku')
+      db.from('products').select('id,name,sku'),
+      db.from('inventory').select('product_id,location,quantity').in('location',[FROM_LOCATION_ID,toLocationId]),
+      db.from('combos').select('id,combo_name,sku')
     ]);
     setProducts(prods||[]);
     setInventory(inv||[]);
@@ -200,7 +200,7 @@ export default function WarehouseTransfer(){
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase
+        const { data } = await db
           .from('locations')
           .select('id, name')
           .in('id', [FROM_LOCATION_ID, ...DEST_LOCATION_IDS]);
@@ -218,7 +218,7 @@ export default function WarehouseTransfer(){
 
   async function ensureComboItemsLoaded(combo){
     if(comboItemsMap.has(combo.id)) return comboItemsMap.get(combo.id);
-    const { data: items } = await supabase.from('combo_items').select('product_id,quantity, products(name,sku)').eq('combo_id', combo.id);
+    const { data: items } = await db.from('combo_items').select('product_id,quantity, products(name,sku)').eq('combo_id', combo.id);
     const mapped = (items||[]).map(it=>({ product_id: it.product_id, quantity: it.quantity, name: it.products?.name, sku: it.products?.sku }));
     setComboItemsMap(prev=>{ const n=new Map(prev); n.set(combo.id,mapped); return n; });
     return mapped;

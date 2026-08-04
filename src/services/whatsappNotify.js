@@ -1,11 +1,11 @@
-import supabase from '../supabase';
+import db from '../dataClient';
 import { sendLaybyWhatsApp, sendSaleWhatsApp } from './whatsapp';
 import { buildLaybyPdfUrlForWhatsApp, buildPosSalePdfUrlForWhatsApp } from './whatsappPdfs';
 import { fetchLaybyStatement } from './laybyStatement';
 
 async function loadCustomerInfo(customerId) {
   if (!customerId) return {};
-  const { data } = await supabase
+  const { data } = await db
     .from('customers')
     .select('id, name, phone, address, city, tpin, currency')
     .eq('id', customerId)
@@ -17,7 +17,7 @@ async function resolveCustomerLaybyId(laybyId, customerId) {
   if (laybyId) return laybyId;
   if (!customerId) return null;
 
-  const { data: activeLayby } = await supabase
+  const { data: activeLayby } = await db
     .from('laybys')
     .select('id, status, updated_at, created_at')
     .eq('customer_id', customerId)
@@ -30,7 +30,7 @@ async function resolveCustomerLaybyId(laybyId, customerId) {
 
   // A fully settled Fahme transaction can close the active row before the PDF
   // is generated. In that case use the customer's most recently updated account.
-  const { data: latestLayby } = await supabase
+  const { data: latestLayby } = await db
     .from('laybys')
     .select('id, updated_at, created_at')
     .eq('customer_id', customerId)

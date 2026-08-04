@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from 'react';
-import supabase from './supabase'; // Supabase client
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 // Removed user permissions imports
 
@@ -18,7 +18,7 @@ const CompanySettings = () => {
   useEffect(() => {
     const fetchCompanyData = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('company_settings')
           .select('*')
           .single(); // Assuming you want to fetch the only one company record
@@ -56,18 +56,18 @@ const CompanySettings = () => {
       console.log('File object:', file);
       console.log('File path:', filePath);
 
-      const { data, error } = await supabase.storage
+      const { data, error } = await db.storage
         .from(bucketName) // Use variable for bucket name
         .upload(filePath, file);
 
       if (error) {
-        console.error('Supabase upload error:', error);
+        console.error('Logo upload error:', error);
         alert('An error occurred while uploading the logo: ' + error.message + '\n\nFull error: ' + JSON.stringify(error));
         return null;
       }
 
-      const logoUrl = `${process.env.REACT_APP_SUPABASE_URL}/storage/v1/object/public/${bucketName}/${filePath}`;
-      return logoUrl;
+      const { data: publicData } = db.storage.from(bucketName).getPublicUrl(filePath);
+      return publicData?.publicUrl || '';
     } catch (error) {
       console.error('Unexpected error uploading logo:', error);
       alert('An unexpected error occurred while uploading the logo.\n\n' + error.toString());
@@ -91,7 +91,7 @@ const CompanySettings = () => {
       }
 
       // After logo upload is successful, save other settings
-      const { error } = await supabase
+      const { error } = await db
         .from('company_settings')
         .upsert({
           id: companyId, // Update the existing company record

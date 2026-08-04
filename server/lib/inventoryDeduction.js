@@ -15,9 +15,9 @@ export function buildInventoryUsage(items = []) {
   return usageMap;
 }
 
-async function syncOpeningStockDeduction(supabase, { locationId, productId, usedQty }) {
+async function syncOpeningStockDeduction(db, { locationId, productId, usedQty }) {
   if (!locationId || !productId) return;
-  const { data: period, error: periodErr } = await supabase
+  const { data: period, error: periodErr } = await db
     .from('stock_periods')
     .select('id')
     .eq('location_id', locationId)
@@ -27,7 +27,7 @@ async function syncOpeningStockDeduction(supabase, { locationId, productId, used
     .maybeSingle();
   if (periodErr || !period?.id) return;
 
-  const { data: opening, error: openingErr } = await supabase
+  const { data: opening, error: openingErr } = await db
     .from('opening_stock_entries')
     .select('qty')
     .eq('session_id', period.id)
@@ -36,14 +36,14 @@ async function syncOpeningStockDeduction(supabase, { locationId, productId, used
   if (openingErr || !opening) return;
 
   const nextQty = Number(opening.qty || 0) - Number(usedQty || 0);
-  await supabase
+  await db
     .from('opening_stock_entries')
     .update({ qty: nextQty })
     .eq('session_id', period.id)
     .eq('product_id', productId);
 }
 
-export async function applyInventoryDeduction(supabase, {
+export async function applyInventoryDeduction(db, {
   items = [],
   locationId,
   saleId,
@@ -61,7 +61,7 @@ export async function applyInventoryDeduction(supabase, {
   let adjustedProducts = 0;
   for (const [productId, usedQty] of usageMap.entries()) {
     const nowIso = new Date().toISOString();
-    const { data: invRows, error: invFetchErr } = await supabase
+    const { data: invRows, error: invFetchErr } = await db
       .from('inventory')
       .select('id, quantity')
       .eq('product_id', productId)
@@ -73,26 +73,26 @@ export async function applyInventoryDeduction(supabase, {
     const afterQtyTotal = beforeQtyTotal - Number(usedQty || 0);
 
     if (rows.length === 0) {
-      const { error: insertErr } = await supabase
+      const { error: insertErr } = await db
         .from('inventory')
         .insert([{ product_id: productId, location: locationId, quantity: afterQtyTotal, updated_at: nowIso }]);
       if (insertErr) throw insertErr;
     } else if (rows.length === 1) {
-      const { error: updateErr } = await supabase
+      const { error: updateErr } = await db
         .from('inventory')
         .update({ quantity: afterQtyTotal, updated_at: nowIso })
         .eq('id', rows[0].id);
       if (updateErr) throw updateErr;
     } else {
       const [firstRow, ...duplicateRows] = rows;
-      const { error: updateErr } = await supabase
+      const { error: updateErr } = await db
         .from('inventory')
         .update({ quantity: afterQtyTotal, updated_at: nowIso })
         .eq('id', firstRow.id);
       if (updateErr) throw updateErr;
       if (duplicateRows.length > 0) {
         const duplicateIds = duplicateRows.map((row) => row.id);
-        const { error: zeroErr } = await supabase
+        const { error: zeroErr } = await db
           .from('inventory')
           .update({ quantity: 0, updated_at: nowIso })
           .in('id', duplicateIds);
@@ -101,11 +101,11 @@ export async function applyInventoryDeduction(supabase, {
     }
 
     try {
-      await syncOpeningStockDeduction(supabase, { locationId, productId, usedQty });
+      await syncOpeningStockDeduction(db, { locationId, productId, usedQty });
     } catch (_) { /* opening stock sync is best-effort */ }
 
     try {
-      const { error: auditErr } = await supabase
+      const { error: auditErr } = await db
         .from('inventory_adjustments')
         .insert({
           id: newUuid(),

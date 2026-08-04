@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { FaFileExcel } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
-import supabase from "./supabase";
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { deleteComboLocations, removeComboLocations, replaceComboLocations, upsertComboLocations } from './services/comboLocations';
@@ -14,6 +14,7 @@ import { canDeleteProducts, canManageProductInventory, getCurrentUser } from './
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { exportProductsListExcel } from './utils/productsListExport';
 import { getDuplicateProductNameInfo, normalizeProductNameKey } from './utils/productDuplicateNames';
+import { resolveProductImageUrl } from './utils/productImageUrl';
 import { logUserActivity } from './utils/userActivityLog';
 import {
   applyComboLocationPricing,
@@ -104,7 +105,9 @@ const mapCatalogProducts = (products, unitsData) => {
   const unitsMap = Object.fromEntries((unitsData || []).map((unit) => [String(unit.id), unit]));
   return (products || []).map((product) => {
     const related = Array.isArray(product.product_images) && product.product_images.length > 0 ? product.product_images[0].image_url : '';
-    const finalUrl = (product.image_url && product.image_url.trim() !== '') ? product.image_url : (related || '');
+    const finalUrl = resolveProductImageUrl(
+      (product.image_url && product.image_url.trim() !== '') ? product.image_url : (related || ''),
+    );
     const unitFromMap = unitsMap[String(product.unit_of_measure_id)];
     const unitFromJoin = product.unit || null;
     const unitLabel = unitFromJoin
@@ -115,7 +118,7 @@ const mapCatalogProducts = (products, unitsData) => {
 };
 
 const PRODUCT_IMAGE_BUCKET = 'productimages';
-const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v3';
+const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v4';
 const PRODUCTS_LIST_INVENTORY_CACHE_KEY = 'products:list:inventory:v3';
 const PRODUCTS_LIST_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const PRODUCTS_LIST_INVENTORY_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -129,7 +132,7 @@ const deleteProductsViaApi = async (productIds) => {
   const ids = Array.from(new Set((productIds || []).map(id => String(id)).filter(Boolean)));
   if (ids.length === 0) return [];
 
-  const { data: sessionData } = await supabase.auth.getSession();
+  const { data: sessionData } = await db.auth.getSession();
   const token = sessionData?.session?.access_token;
   if (!token) {
     throw new Error('Authentication required — please sign in again.');
@@ -169,7 +172,7 @@ const buildImageFilePath = (itemId, isCombo, fileName) => {
 const purgeExistingStorageImages = async (itemId, isCombo) => {
   const folderPath = getImageFolderPath(itemId, isCombo);
   try {
-    const bucket = supabase.storage.from(PRODUCT_IMAGE_BUCKET);
+    const bucket = db.storage.from(PRODUCT_IMAGE_BUCKET);
     const { data: entries, error } = await bucket.list(folderPath, { limit: 100 });
     if (error || !Array.isArray(entries) || entries.length === 0) return;
     const targets = entries.map(entry => `${folderPath}/${entry.name}`);
@@ -368,7 +371,7 @@ function ProductsListPage() {
     if (!locId) return null;
     // Only the current OPEN period accepts opening-stock edits.
     // Periods are created by Stocktake Flow submit — never auto-create here.
-    const { data: existing, error } = await supabase
+    const { data: existing, error } = await db
       .from('stock_periods')
       .select('id, status, begin_period_date, opened_at')
       .eq('location_id', locId)
@@ -587,7 +590,7 @@ function ProductsListPage() {
     let legacyUserId = null;
     if (email) {
       try {
-        const { data: legacyUser } = await supabase
+        const { data: legacyUser } = await db
           .from('users')
           .select('id')
           .eq('email', email)
@@ -859,7 +862,7 @@ function ProductsListPage() {
           for (const it of items) {
             const need = (Number(it.quantity) || 0) * setCount;
             if (need <= 0) continue;
-            const { data: invRow } = await supabase
+            const { data: invRow } = await db
               .from('inventory')
               .select('id, quantity')
               .eq('product_id', it.product_id)
@@ -869,11 +872,11 @@ function ProductsListPage() {
               const newQty = Math.max(0, Number(invRow.quantity || 0) - need);
               await applyInventoryBulk({
                 updates: [{ id: invRow.id, quantity: newQty, updated_at: nowIso }],
-              }, supabase);
+              }, db);
               localInventoryChanges.push({ productId: it.product_id, locationId, quantity: newQty });
               if (activePeriodId) {
                 try {
-                  await supabase
+                  await db
                     .from('opening_stock_entries')
                     .upsert(
                       { session_id: activePeriodId, product_id: it.product_id, qty: newQty },
@@ -886,11 +889,11 @@ function ProductsListPage() {
             } else {
               await applyInventoryBulk({
                 inserts: [{ product_id: it.product_id, location: locationId, quantity: 0, updated_at: nowIso }],
-              }, supabase);
+              }, db);
               localInventoryChanges.push({ productId: it.product_id, locationId, quantity: 0 });
               if (activePeriodId) {
                 try {
-                  await supabase
+                  await db
                     .from('opening_stock_entries')
                     .upsert(
                       { session_id: activePeriodId, product_id: it.product_id, qty: 0 },
@@ -904,13 +907,13 @@ function ProductsListPage() {
             if (!touchedProducts.has(it.product_id)) {
               touchedProducts.add(it.product_id);
               try {
-                await syncProductLocations({ rows: [{ product_id: it.product_id, location_id: locationId }] }, supabase);
+                await syncProductLocations({ rows: [{ product_id: it.product_id, location_id: locationId }] }, db);
               } catch (e) {
                 console.warn('[inventory] product_locations sync failed', e);
               }
             }
             try {
-              await supabase.from('inventory_adjustments').insert({
+              await db.from('inventory_adjustments').insert({
                 product_id: it.product_id,
                 location_id: locationId,
                 quantity: -need,
@@ -931,7 +934,7 @@ function ProductsListPage() {
           for (const it of items) {
             const add = (Number(it.quantity) || 0) * setCount;
             if (add <= 0) continue;
-            const { data: invRow } = await supabase
+            const { data: invRow } = await db
               .from('inventory')
               .select('id, quantity')
               .eq('product_id', it.product_id)
@@ -941,11 +944,11 @@ function ProductsListPage() {
               const newQty = Number(invRow.quantity || 0) + add;
               await applyInventoryBulk({
                 updates: [{ id: invRow.id, quantity: newQty, updated_at: nowIso }],
-              }, supabase);
+              }, db);
               localInventoryChanges.push({ productId: it.product_id, locationId, quantity: newQty });
               if (activePeriodId) {
                 try {
-                  await supabase
+                  await db
                     .from('opening_stock_entries')
                     .upsert(
                       { session_id: activePeriodId, product_id: it.product_id, qty: newQty },
@@ -958,11 +961,11 @@ function ProductsListPage() {
             } else {
               await applyInventoryBulk({
                 inserts: [{ product_id: it.product_id, location: locationId, quantity: add, updated_at: nowIso }],
-              }, supabase);
+              }, db);
               localInventoryChanges.push({ productId: it.product_id, locationId, quantity: add });
               if (activePeriodId) {
                 try {
-                  await supabase
+                  await db
                     .from('opening_stock_entries')
                     .upsert(
                       { session_id: activePeriodId, product_id: it.product_id, qty: add },
@@ -976,13 +979,13 @@ function ProductsListPage() {
             if (!touchedProducts.has(it.product_id)) {
               touchedProducts.add(it.product_id);
               try {
-                await syncProductLocations({ rows: [{ product_id: it.product_id, location_id: locationId }] }, supabase);
+                await syncProductLocations({ rows: [{ product_id: it.product_id, location_id: locationId }] }, db);
               } catch (e) {
                 console.warn('[inventory] product_locations sync failed', e);
               }
             }
             try {
-              await supabase.from('inventory_adjustments').insert({
+              await db.from('inventory_adjustments').insert({
                 product_id: it.product_id,
                 location_id: locationId,
                 quantity: add,
@@ -1020,7 +1023,7 @@ function ProductsListPage() {
         : 'Manual Adjustment';
       let locationSyncError = null;
       try {
-        await syncProductLocations({ rows: [{ product_id: adjustProduct.id, location_id: locationId }] }, supabase);
+        await syncProductLocations({ rows: [{ product_id: adjustProduct.id, location_id: locationId }] }, db);
       } catch (e) {
         locationSyncError = e;
         console.warn('[inventory] product_locations sync failed', e);
@@ -1029,7 +1032,7 @@ function ProductsListPage() {
       try {
         await applyInventoryBulk({
           inserts: [{ product_id: adjustProduct.id, location: locationId, quantity: targetQty, updated_at: nowIso }],
-        }, supabase);
+        }, db);
       } catch (e) {
         if (locationSyncError) {
           const combined = new Error(`${e?.message || e}. Location link failed: ${locationSyncError?.message || locationSyncError}`);
@@ -1039,7 +1042,7 @@ function ProductsListPage() {
       }
       localInventoryChanges.push({ productId: adjustProduct.id, locationId, quantity: targetQty });
       const tasks = [
-        supabase.from('inventory_adjustments').insert({
+        db.from('inventory_adjustments').insert({
           product_id: adjustProduct.id,
           location_id: locationId,
           quantity: targetQty,
@@ -1054,7 +1057,7 @@ function ProductsListPage() {
       ];
       if (activePeriodId) {
         tasks.push(
-          supabase
+          db
             .from('opening_stock_entries')
             .upsert(
               { session_id: activePeriodId, product_id: adjustProduct.id, qty: targetQty },
@@ -1144,16 +1147,16 @@ function ProductsListPage() {
     }
     try {
       const catalogPromise = Promise.all([
-        supabase
+        db
           .from("products")
           .select(`id, name, sku, sku_type, cost_price, price, promotional_price, promo_start_date, promo_end_date, currency, category_id, unit_of_measure_id, created_at, image_url, product_images(image_url), product_locations(location_id), unit:unit_of_measure(id, name, abbreviation)`)
           .order("created_at", { ascending: false }),
-        supabase.from("categories").select("id, name").order("name", { ascending: true }),
-        supabase.from("locations").select("id, name").order("name", { ascending: true }),
-        supabase.from("unit_of_measure").select("id, name, abbreviation"),
-        supabase.from("combos").select("id, combo_name, sku, combo_price, standard_price, promotional_price, promo_start_date, promo_end_date, picture_url, currency, category_id"),
-        supabase.from("combo_locations").select("combo_id, location_id"),
-        supabase.from("combo_items").select("combo_id, product_id, quantity"),
+        db.from("categories").select("id, name").order("name", { ascending: true }),
+        db.from("locations").select("id, name").order("name", { ascending: true }),
+        db.from("unit_of_measure").select("id, name, abbreviation"),
+        db.from("combos").select("id, combo_name, sku, combo_price, standard_price, promotional_price, promo_start_date, promo_end_date, picture_url, currency, category_id"),
+        db.from("combo_locations").select("combo_id, location_id"),
+        db.from("combo_items").select("combo_id, product_id, quantity"),
       ]);
 
       const [
@@ -1170,8 +1173,8 @@ function ProductsListPage() {
       let comboLocationPriceRows = [];
       try {
         [productLocationPriceRows, comboLocationPriceRows] = await Promise.all([
-          fetchProductLocationPrices(supabase),
-          fetchComboLocationPrices(supabase),
+          fetchProductLocationPrices(db),
+          fetchComboLocationPrices(db),
         ]);
       } catch (locationPriceErr) {
         console.warn('[products-list] location pricing unavailable', locationPriceErr?.message || locationPriceErr);
@@ -1739,7 +1742,7 @@ function ProductsListPage() {
           bulkLocationIds.map((locId) => ({ product_id: productId, location_id: locId }))
         ));
         for (const chunk of chunkArray(productRows, 500)) {
-          await syncProductLocations({ rows: chunk }, supabase);
+          await syncProductLocations({ rows: chunk }, db);
         }
         const comboRows = comboIds.flatMap((comboId) => (
           bulkLocationIds.map((locId) => ({ combo_id: comboId, location_id: locId }))
@@ -1763,7 +1766,7 @@ function ProductsListPage() {
           bulkLocationIds.map((locId) => ({ product_id: productId, location_id: locId }))
         ));
         for (const chunk of chunkArray(productRows, 500)) {
-          await removeProductLocations(chunk, supabase);
+          await removeProductLocations(chunk, db);
         }
         const comboRows = comboIds.flatMap((comboId) => (
           bulkLocationIds.map((locId) => ({ combo_id: comboId, location_id: locId }))
@@ -1837,7 +1840,7 @@ function ProductsListPage() {
             });
           });
           if (productRows.length) {
-            await upsertProductLocationPrices(supabase, productRows);
+            await upsertProductLocationPrices(db, productRows);
           }
 
           const comboRows = comboIds.flatMap((comboId) => {
@@ -1860,12 +1863,12 @@ function ProductsListPage() {
             });
           });
           if (comboRows.length) {
-            await upsertComboLocationPrices(supabase, comboRows);
+            await upsertComboLocationPrices(db, comboRows);
           }
         } else if (productIds.length > 0) {
           const chunks = chunkArray(productIds, 500);
           for (const chunk of chunks) {
-            const { error } = await supabase
+            const { error } = await db
               .from('products')
               .update({ [bulkFieldMeta.value]: value })
               .in('id', chunk);
@@ -1887,7 +1890,7 @@ function ProductsListPage() {
         if (!locationPriceFields.has(bulkFieldMeta.value) && comboIds.length > 0 && comboField) {
           const chunks = chunkArray(comboIds, 500);
           for (const chunk of chunks) {
-            const { error } = await supabase
+            const { error } = await db
               .from('combos')
               .update({ [comboField]: value })
               .in('id', chunk);
@@ -1934,12 +1937,12 @@ function ProductsListPage() {
       for (const row of negativeResetTargets) {
         const currentQty = Number(row.quantity || 0);
         const delta = -currentQty; // currentQty is negative, so delta is positive increase to reach zero
-        const { error: invErr } = await supabase
+        const { error: invErr } = await db
           .from('inventory')
           .update({ quantity: 0 })
           .eq('id', row.id);
         if (invErr) throw invErr;
-        await supabase.from('inventory_adjustments').insert({
+        await db.from('inventory_adjustments').insert({
           product_id: row.product_id,
           location_id: row.location,
           quantity: delta,
@@ -2065,7 +2068,7 @@ function ProductsListPage() {
       const baseProduct = (products || []).find((row) => String(row.id) === String(itemId));
       const baseCombo = (combos || []).find((row) => String(row.id) === String(itemId));
       if (isCombo) {
-        await saveComboLocationPrice(supabase, {
+        await saveComboLocationPrice(db, {
           comboId: itemId,
           locationId: pricingEditLocationId,
           field,
@@ -2073,7 +2076,7 @@ function ProductsListPage() {
           baseCombo: baseCombo || item,
         });
       } else {
-        await saveProductLocationPrice(supabase, {
+        await saveProductLocationPrice(db, {
           productId: itemId,
           locationId: pricingEditLocationId,
           field,
@@ -2298,7 +2301,7 @@ function ProductsListPage() {
         inserts.push({ product_id, location, quantity });
       }
       if (!inserts.length) throw new Error('No valid rows found in CSV.');
-      await applyInventoryBulk({ inserts }, supabase);
+      await applyInventoryBulk({ inserts }, db);
       setBulkImportMessage(`Imported ${inserts.length} inventory rows.`);
       setBulkImportFile(null);
       await fetchInventory();
@@ -2834,10 +2837,10 @@ function ProductsListPage() {
                       const productIds = targets.filter(t => !t.isCombo).map(t => String(t.id));
 
                       for (const comboId of comboIds) {
-                        const { error: comboItemsErr } = await supabase.from('combo_items').delete().eq('combo_id', comboId);
+                        const { error: comboItemsErr } = await db.from('combo_items').delete().eq('combo_id', comboId);
                         if (comboItemsErr) throw comboItemsErr;
                         await deleteComboLocations(comboId);
-                        const { error: comboErr } = await supabase.from('combos').delete().eq('id', comboId);
+                        const { error: comboErr } = await db.from('combos').delete().eq('id', comboId);
                         if (comboErr) throw comboErr;
                         setCombos(prev => prev.filter(c => String(c.id) !== String(comboId)));
                         try { await purgeExistingStorageImages(comboId, true); } catch {}
@@ -3362,10 +3365,10 @@ function ProductsListPage() {
                     setImageEditLoading(true);
                     try {
                       if (imageEditProduct.__isCombo) {
-                        await supabase.from('combos').update({ picture_url: '' }).eq('id', imageEditProduct.id);
+                        await db.from('combos').update({ picture_url: '' }).eq('id', imageEditProduct.id);
                       } else {
-                        await supabase.from('product_images').delete().eq('product_id', imageEditProduct.id);
-                        await supabase.from('products').update({ image_url: '' }).eq('id', imageEditProduct.id);
+                        await db.from('product_images').delete().eq('product_id', imageEditProduct.id);
+                        await db.from('products').update({ image_url: '' }).eq('id', imageEditProduct.id);
                       }
                       await purgeExistingStorageImages(imageEditProduct.id, Boolean(imageEditProduct.__isCombo));
                       setImageEditModalOpen(false);
@@ -3394,20 +3397,20 @@ function ProductsListPage() {
                     const isCombo = Boolean(imageEditProduct.__isCombo);
                     await purgeExistingStorageImages(imageEditProduct.id, isCombo);
                     const filePath = buildImageFilePath(imageEditProduct.id, isCombo, file.name);
-                    const bucket = supabase.storage.from(PRODUCT_IMAGE_BUCKET);
+                    const bucket = db.storage.from(PRODUCT_IMAGE_BUCKET);
                     const { error: uploadError } = await bucket.upload(filePath, file, { upsert: true });
                     if (uploadError) throw uploadError;
                     const { data: publicUrlData } = bucket.getPublicUrl(filePath);
                     const publicUrl = publicUrlData?.publicUrl;
                     if (!publicUrl) throw new Error('Failed to get public URL for image.');
                     if (isCombo) {
-                      await supabase.from('combos').update({ picture_url: publicUrl }).eq('id', imageEditProduct.id);
+                      await db.from('combos').update({ picture_url: publicUrl }).eq('id', imageEditProduct.id);
                     } else {
-                      await supabase.from('product_images').delete().eq('product_id', imageEditProduct.id);
-                      await supabase.from('product_images').insert([
+                      await db.from('product_images').delete().eq('product_id', imageEditProduct.id);
+                      await db.from('product_images').insert([
                         { product_id: imageEditProduct.id, image_url: publicUrl }
                       ]);
-                      await supabase.from('products').update({ image_url: publicUrl }).eq('id', imageEditProduct.id);
+                      await db.from('products').update({ image_url: publicUrl }).eq('id', imageEditProduct.id);
                     }
                     setImageEditModalOpen(false);
                     setImageEditProduct(null);
@@ -3568,7 +3571,7 @@ function ProductsListPage() {
                           const email = u?.email || '';
                           if (email) {
                             try {
-                              const { data: legacyUser } = await supabase
+                              const { data: legacyUser } = await db
                                 .from('users')
                                 .select('id')
                                 .eq('email', email)
@@ -3598,14 +3601,14 @@ function ProductsListPage() {
                         };
                         // Add legacy user_id if required by the schema (best-effort)
                         if (legacyUserIntId != null) payload.user_id = legacyUserIntId;
-                        const { data: session, error: sessErr } = await supabase
+                        const { data: session, error: sessErr } = await db
                           .from('stock_transfer_sessions')
                           .insert(payload)
                           .select()
                           .single();
                         if (sessErr) throw sessErr;
                         const sessionId = session.id;
-                        const { error: entryErr } = await supabase.from('stock_transfer_entries').insert({
+                        const { error: entryErr } = await db.from('stock_transfer_entries').insert({
                           session_id: sessionId,
                           product_id: adjustProduct.id,
                           quantity: qty
@@ -3613,24 +3616,24 @@ function ProductsListPage() {
                         if (entryErr) throw entryErr;
                         // Apply inventory changes
                         const nowIso = new Date().toISOString();
-                        const { data: invFrom } = await supabase.from('inventory').select('id, quantity').eq('product_id', adjustProduct.id).eq('location', fromUuid).maybeSingle();
+                        const { data: invFrom } = await db.from('inventory').select('id, quantity').eq('product_id', adjustProduct.id).eq('location', fromUuid).maybeSingle();
                         if (invFrom) {
                           await applyInventoryBulk({
                             updates: [{ id: invFrom.id, quantity: Math.max(0, Number(invFrom.quantity || 0) - qty), updated_at: nowIso }],
-                          }, supabase);
+                          }, db);
                         }
-                        const { data: invTo } = await supabase.from('inventory').select('id, quantity').eq('product_id', adjustProduct.id).eq('location', toUuid).maybeSingle();
+                        const { data: invTo } = await db.from('inventory').select('id, quantity').eq('product_id', adjustProduct.id).eq('location', toUuid).maybeSingle();
                         if (invTo) {
                           await applyInventoryBulk({
                             updates: [{ id: invTo.id, quantity: Number(invTo.quantity || 0) + qty, updated_at: nowIso }],
-                          }, supabase);
+                          }, db);
                         } else {
                           await applyInventoryBulk({
                             inserts: [{ product_id: adjustProduct.id, location: toUuid, quantity: qty, updated_at: nowIso }],
-                          }, supabase);
+                          }, db);
                         }
                         // Ensure product_locations link exists for the destination
-                        await syncProductLocations({ rows: [{ product_id: adjustProduct.id, location_id: toUuid }] }, supabase);
+                        await syncProductLocations({ rows: [{ product_id: adjustProduct.id, location_id: toUuid }] }, db);
                         await refreshInventoryForLocations([fromUuid, toUuid]);
                         setAdjustModalOpen(false);
                       } catch (err) {

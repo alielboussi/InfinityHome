@@ -1,4 +1,4 @@
-import supabase from '../supabase';
+import { firebaseSignInWithGoogle, firebaseResolveAppUserFromSession, firebaseGetAccessToken } from './firebaseAuthApi';
 import { resolveSessionUserFromAuth } from '../accessControl';
 
 function normalizeReturnPath(returnPath = '/login') {
@@ -18,55 +18,17 @@ export function getGoogleAuthRedirectTo(nextTargetOrOptions = '', maybeOptions =
   return `${origin}${returnPath}?${params.toString()}`;
 }
 
-export async function startGoogleSignIn(nextTargetOrOptions = '', maybeOptions = {}) {
-  const redirectTo = getGoogleAuthRedirectTo(nextTargetOrOptions, maybeOptions);
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo,
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'select_account',
-      },
-    },
-  });
-  if (error) throw error;
-  return data;
+export async function startGoogleSignIn() {
+  return firebaseSignInWithGoogle();
 }
 
-function userFromAuthSession(session) {
-  const authUser = session?.user || null;
-  if (!authUser?.email) return null;
-  const metadata = authUser.user_metadata || {};
-  return resolveSessionUserFromAuth({
-    id: authUser.id,
-    email: authUser.email,
-    full_name: metadata.full_name || metadata.name || metadata.display_name || null,
-    user_metadata: metadata,
-  });
-}
-
-/**
- * Resolve app user from the current Supabase session.
- * Uses hardcoded UUID/email maps client-side. Optionally consults /api/auth-profile
- * with a short timeout; never blocks login on localhost/API outages.
- */
 export async function resolveAppUserFromSession() {
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError) throw sessionError;
-  const session = sessionData?.session || null;
-  const accessToken = session?.access_token;
+  const local = await firebaseResolveAppUserFromSession();
+  if (!local.ok) return local;
+
+  const accessToken = await firebaseGetAccessToken();
   if (!accessToken) {
     return { ok: false, error: 'No Google session found.' };
-  }
-
-  const localUser = userFromAuthSession(session);
-  if (!localUser) {
-    return {
-      ok: false,
-      error: 'Authenticated account has no usable email.',
-      email: session?.user?.email || null,
-    };
   }
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -74,38 +36,27 @@ export async function resolveAppUserFromSession() {
   try {
     const response = await fetch('/api/auth-profile', {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: { Authorization: `Bearer ${accessToken}` },
       cache: 'no-store',
       signal: controller?.signal,
     });
     const payload = await response.json().catch(() => ({}));
     if (response.ok && payload?.ok && payload?.user) {
-      return { ok: true, user: resolveSessionUserFromAuth(payload.user), session };
+      return { ok: true, user: resolveSessionUserFromAuth(payload.user), session: local.session };
     }
-  } catch (_) {
+  } catch {
     // Fall through to client-side resolution.
   } finally {
     if (timer) clearTimeout(timer);
   }
 
-  return { ok: true, user: localUser, session };
+  return local;
 }
 
 export function hasOAuthReturnParams() {
-  if (typeof window === 'undefined') return false;
-  const search = new URLSearchParams(window.location.search || '');
-  if (search.get('oauth') === 'google' || search.get('code') || search.get('error_description') || search.get('error')) {
-    return true;
-  }
-  const hash = String(window.location.hash || '').replace(/^#/, '');
-  if (!hash) return false;
-  const hashParams = new URLSearchParams(hash);
-  return Boolean(
-    hashParams.get('access_token')
-    || hashParams.get('refresh_token')
-    || hashParams.get('error_description')
-    || hashParams.get('error')
-  );
+  return false;
+}
+
+export function isFirebaseGooglePopupMode() {
+  return true;
 }

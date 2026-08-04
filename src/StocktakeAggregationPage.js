@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import {
   fetchLocationState,
   fetchLocations,
@@ -135,7 +135,7 @@ export default function StocktakeAggregationPage() {
   useEffect(() => {
     Promise.all([
       fetchLocations(),
-      supabase.from('company_settings').select('*').limit(1).maybeSingle(),
+      db.from('company_settings').select('*').limit(1).maybeSingle(),
     ])
       .then(([locRes, companyRes]) => {
         setLocations(locRes.rows || []);

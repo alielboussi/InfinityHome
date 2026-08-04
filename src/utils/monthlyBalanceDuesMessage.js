@@ -70,6 +70,20 @@ export function laybyRowsToBalanceDueRows(laybyRows = []) {
   return rows;
 }
 
+function buildMonthlyBalanceFooter(rows) {
+  const totals = {};
+  rows.forEach((row) => {
+    (row.balances || []).forEach((entry) => {
+      const currency = normalizeCurrency(entry.currency);
+      totals[currency] = (totals[currency] || 0) + Number(entry.outstanding || 0);
+    });
+  });
+  const totalLine = Object.entries(totals)
+    .map(([currency, amount]) => formatAmount(amount, currency))
+    .join(' · ');
+  return `\n\nTotal outstanding: ${totalLine}\nTotal customers: ${rows.length}`;
+}
+
 export function buildMonthlyBalanceDueMessages(rows, { reportDate = new Date() } = {}) {
   const dateLabel = formatReportDate(reportDate);
   const header = `📋 *Monthly Balance Due — ${dateLabel}*`;
@@ -86,7 +100,7 @@ export function buildMonthlyBalanceDueMessages(rows, { reportDate = new Date() }
     return `• ${row.name} — ${amounts}`;
   });
 
-  const footer = `\n\nTotal customers: ${rows.length}`;
+  const footer = buildMonthlyBalanceFooter(rows);
   const messages = [];
   let buffer = [];
 

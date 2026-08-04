@@ -1,23 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
 import { applyInventoryDeduction } from '../lib/inventoryDeduction.js';
-
-function getSupabaseServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE;
-  if (!url || !serviceKey) {
-    const missing = [];
-    if (!url) missing.push('SUPABASE_URL (or REACT_APP_SUPABASE_URL)');
-    if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE');
-    const error = new Error('Supabase service environment variables missing');
-    error.status = 500;
-    error.details = { missing };
-    throw error;
-  }
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
-}
+import { applyFirestoreInventoryDeduction } from '../lib/firestoreInventoryDeduction.js';
+import { getDataClient } from '../lib/getDataClient.js';
+import { getFirestore } from '../lib/firestoreDb.js';
 
 const chunkArray = (list, size) => {
   const chunks = [];
@@ -27,13 +11,13 @@ const chunkArray = (list, size) => {
   return chunks;
 };
 
-const fetchAllInventoryRows = async ({ supabase, locationList }) => {
+const fetchAllInventoryRows = async ({ db, locationList }) => {
   const pageSize = 1000;
   let offset = 0;
   let allRows = [];
 
   while (true) {
-    let query = supabase
+    let query = db
       .from('inventory')
       .select('id, product_id, location, quantity, updated_at')
       .order('id', { ascending: true })
@@ -59,8 +43,8 @@ const isUuid = (value) => UUID_RE.test(String(value || '').trim());
 
 const OPEN_STATUSES = ['open', 'open_locked'];
 
-const mergeOpeningStockSnapshot = async ({ supabase, inventoryRows, locationList }) => {
-  let periodQuery = supabase
+const mergeOpeningStockSnapshot = async ({ db, inventoryRows, locationList }) => {
+  let periodQuery = db
     .from('stock_periods')
     .select('id, location_id, status, opened_at, updated_at')
     .in('status', OPEN_STATUSES)
@@ -80,7 +64,7 @@ const mergeOpeningStockSnapshot = async ({ supabase, inventoryRows, locationList
   const sessionIds = Array.from(latestByLocation.values()).map(row => row.id).filter(Boolean);
   if (!sessionIds.length) return inventoryRows || [];
 
-  const { data: openingRows, error: openingErr } = await supabase
+  const { data: openingRows, error: openingErr } = await db
     .from('opening_stock_entries')
     .select('session_id, product_id, qty')
     .in('session_id', sessionIds);
@@ -163,8 +147,7 @@ export default async function handler(req, res) {
         res.status(400).json({ ok: false, error: 'items and locationId are required' });
         return;
       }
-      const supabase = getSupabaseServiceClient();
-      const adjustedProducts = await applyInventoryDeduction(supabase, {
+      const adjustedProducts = await applyFirestoreInventoryDeduction(getFirestore(), {
         items,
         locationId: String(locationId),
         saleId: saleId ?? null,
@@ -177,14 +160,14 @@ export default async function handler(req, res) {
     }
 
     if (shouldSnapshot) {
-      const supabase = getSupabaseServiceClient();
-      const { data, error } = await fetchAllInventoryRows({ supabase, locationList });
+      const db = getDataClient();
+      const { data, error } = await fetchAllInventoryRows({ db: db, locationList });
       if (error) {
         res.status(500).json({ ok: false, error: error.message || String(error) });
         return;
       }
       const merged = await mergeOpeningStockSnapshot({
-        supabase,
+        db: db,
         inventoryRows: data || [],
         locationList,
       });
@@ -200,9 +183,9 @@ export default async function handler(req, res) {
         return;
       }
 
-      const supabase = getSupabaseServiceClient();
+      const db = getDataClient();
       if (entryAction === 'delete') {
-        const { error } = await supabase
+        const { error } = await db
           .from('opening_stock_entries')
           .delete()
           .eq('session_id', sessionId)
@@ -220,7 +203,7 @@ export default async function handler(req, res) {
           res.status(400).json({ ok: false, error: 'Invalid qty' });
           return;
         }
-        const { error } = await supabase
+        const { error } = await db
           .from('opening_stock_entries')
           .upsert([
             { session_id: sessionId, product_id: productId, qty: Number(qty) },
@@ -229,7 +212,7 @@ export default async function handler(req, res) {
           res.status(500).json({ ok: false, error: error.message || String(error) });
           return;
         }
-        const { data: row, error: readErr } = await supabase
+        const { data: row, error: readErr } = await db
           .from('opening_stock_entries')
           .select('qty')
           .eq('session_id', sessionId)
@@ -279,14 +262,14 @@ export default async function handler(req, res) {
 
     if (cleanInserts.length === 0 && cleanUpdates.length === 0) {
       if (shouldSnapshot || locationList.length > 0) {
-        const supabase = getSupabaseServiceClient();
-        const { data, error } = await fetchAllInventoryRows({ supabase, locationList });
+        const db = getDataClient();
+        const { data, error } = await fetchAllInventoryRows({ db, locationList });
         if (error) {
           res.status(500).json({ ok: false, error: error.message || String(error) });
           return;
         }
         const merged = await mergeOpeningStockSnapshot({
-          supabase,
+          db,
           inventoryRows: data || [],
           locationList,
         });
@@ -297,10 +280,10 @@ export default async function handler(req, res) {
       return;
     }
 
-    const supabase = getSupabaseServiceClient();
+    const db = getDataClient();
 
     if (cleanInserts.length > 0) {
-      const { error: insErr } = await supabase
+      const { error: insErr } = await db
         .from('inventory')
         .upsert(cleanInserts, { onConflict: 'product_id,location' });
       if (insErr) {
@@ -313,7 +296,7 @@ export default async function handler(req, res) {
       const chunks = chunkArray(cleanUpdates, 200);
       for (const chunk of chunks) {
         const results = await Promise.all(
-          chunk.map(row => supabase
+          chunk.map(row => db
             .from('inventory')
             .update({ quantity: row.quantity, updated_at: row.updated_at })
             .eq('id', row.id))

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { FaExchangeAlt } from 'react-icons/fa';
 
 // Simplified Transfer Report: From → To with per-product Sent/Received/Net
@@ -28,7 +28,7 @@ export default function TransferReportDashboard() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('locations').select('id, name').order('name');
+      const { data } = await db.from('locations').select('id, name').order('name');
       setLocations(data || []);
     })();
   }, []);
@@ -52,7 +52,7 @@ export default function TransferReportDashboard() {
         b_dateOnly
       ] = await Promise.all([
         // A → B with transfer_datetime in range
-        supabase
+        db
           .from('stock_transfer_sessions')
           .select('id, from_location, to_location, transfer_date, created_at, transfer_datetime')
           .eq('from_location', fromLoc)
@@ -61,7 +61,7 @@ export default function TransferReportDashboard() {
           .gte('transfer_datetime', startISO)
           .lte('transfer_datetime', endISO),
         // A → B legacy rows without transfer_datetime, use transfer_date
-        supabase
+        db
           .from('stock_transfer_sessions')
           .select('id, from_location, to_location, transfer_date, created_at, transfer_datetime')
           .eq('from_location', fromLoc)
@@ -70,7 +70,7 @@ export default function TransferReportDashboard() {
           .gte('transfer_date', startDate)
           .lte('transfer_date', endDate),
         // B → A with transfer_datetime in range
-        supabase
+        db
           .from('stock_transfer_sessions')
           .select('id, from_location, to_location, transfer_date, created_at, transfer_datetime')
           .eq('from_location', toLoc)
@@ -79,7 +79,7 @@ export default function TransferReportDashboard() {
           .gte('transfer_datetime', startISO)
           .lte('transfer_datetime', endISO),
         // B → A legacy rows without transfer_datetime
-        supabase
+        db
           .from('stock_transfer_sessions')
           .select('id, from_location, to_location, transfer_date, created_at, transfer_datetime')
           .eq('from_location', toLoc)
@@ -103,7 +103,7 @@ export default function TransferReportDashboard() {
       const sessionIds = sessions.map(s => s.id);
       if (!sessionIds.length) { setRows([]); setLoading(false); return; }
 
-      const { data: entries } = await supabase
+      const { data: entries } = await db
         .from('stock_transfer_entries')
         .select('session_id, product_id, quantity')
         .in('session_id', sessionIds);
@@ -128,7 +128,7 @@ export default function TransferReportDashboard() {
       const productIds = Array.from(new Set([...mapA.keys(), ...mapB.keys()]));
       let products = [];
       if (productIds.length) {
-        const { data: prodRows } = await supabase.from('products').select('id, name, sku').in('id', productIds);
+        const { data: prodRows } = await db.from('products').select('id, name, sku').in('id', productIds);
         products = prodRows || [];
       }
       const prodInfo = new Map(products.map(p => [p.id, p]));

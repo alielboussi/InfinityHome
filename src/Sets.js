@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from "react";
-import supabase from "./supabase";
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import { FaTrash } from "react-icons/fa";
 import useComboColumnSupport from "./hooks/useComboColumnSupport";
@@ -56,11 +56,11 @@ export default function Sets() {
     } catch {}
 
     Promise.allSettled([
-      supabase.from("products").select("id, name, sku, unit_of_measure_id"),
-      supabase.from("locations").select("id, name"),
-      supabase.from("unit_of_measure").select("id, name"),
-      supabase.from("categories").select("id, name"),
-      supabase.from('combos').select('sku'),
+      db.from("products").select("id, name, sku, unit_of_measure_id"),
+      db.from("locations").select("id, name"),
+      db.from("unit_of_measure").select("id, name"),
+      db.from("categories").select("id, name"),
+      db.from('combos').select('sku'),
     ]).then(([productsRes, locationsRes, unitsRes, categoriesRes, combosRes]) => {
       const productsResult = productsRes.status === 'fulfilled' ? productsRes.value : { data: [], error: productsRes.reason };
       const locationsResult = locationsRes.status === 'fulfilled' ? locationsRes.value : { data: [], error: locationsRes.reason };
@@ -103,7 +103,7 @@ export default function Sets() {
         const cachedInventory = cacheGet(cacheKey);
         if (Array.isArray(cachedInventory)) setInventory(cachedInventory);
       } catch {}
-      supabase
+      db
         .from("inventory")
         .select("product_id, quantity, location")
         .in("location", selectedLocations)
@@ -138,8 +138,8 @@ export default function Sets() {
     let productSkuRows = Array.isArray(products) && products.length ? products.map((product) => ({ sku: product.sku })) : null;
     if (!comboSkuRows || !productSkuRows) {
       const [combosRes, productsRes] = await Promise.all([
-        supabase.from('combos').select('sku'),
-        supabase.from('products').select('sku')
+        db.from('combos').select('sku'),
+        db.from('products').select('sku')
       ]);
       comboSkuRows = combosRes.data || comboSkuRows || [];
       productSkuRows = productsRes.data || productSkuRows || [];
@@ -173,8 +173,8 @@ export default function Sets() {
       }
       setSkuChecking(true);
       const [cRes, pRes] = await Promise.all([
-        supabase.from('combos').select('id').eq('sku', sku).limit(1),
-        supabase.from('products').select('id').eq('sku', sku).limit(1),
+        db.from('combos').select('id').eq('sku', sku).limit(1),
+        db.from('products').select('id').eq('sku', sku).limit(1),
       ]);
       if (!active) return;
       setSkuChecking(false);
@@ -267,7 +267,7 @@ export default function Sets() {
       finalSku = await computeNextSku();
     }
     // Guard: duplicate SKU check right before creating (using array result, not maybeSingle)
-    const { data: skuRows } = await supabase
+    const { data: skuRows } = await db
       .from('combos')
       .select('id')
       .eq('sku', finalSku)
@@ -280,7 +280,7 @@ export default function Sets() {
         while (attempts < 3 && !ok) {
           attempts += 1;
           finalSku = await computeNextSku();
-          const { data: again } = await supabase.from('combos').select('id').eq('sku', finalSku).limit(1);
+          const { data: again } = await db.from('combos').select('id').eq('sku', finalSku).limit(1);
           ok = !(Array.isArray(again) && again.length > 0);
         }
         if (!ok) {
@@ -293,7 +293,7 @@ export default function Sets() {
       }
     }
     // 1. Check for existing combo by name or SKU
-    const { data: existingList } = await supabase
+    const { data: existingList } = await db
       .from("combos")
       .select("id")
       .or(`combo_name.eq.${kitName},sku.eq.${finalSku}`)
@@ -320,11 +320,11 @@ export default function Sets() {
     }
 
     const attemptInsert = async (payload) => {
-      return supabase.from("combos").insert([payload]).select().single();
+      return db.from("combos").insert([payload]).select().single();
     };
 
     const fetchNextComboId = async () => {
-      const { data: latest, error: latestError } = await supabase
+      const { data: latest, error: latestError } = await db
         .from('combos')
         .select('id')
         .order('id', { ascending: false })
@@ -367,15 +367,15 @@ export default function Sets() {
       const fileExt = (imageFile.name || '').split('.').pop();
       const safeName = (kitName || 'combo').replace(/[^a-zA-Z0-9_-]/g, '_');
       const fileName = `${safeName}_${comboId}_${Date.now()}.${fileExt || 'png'}`;
-      const { error: uploadError } = await supabase.storage.from('productimages').upload(fileName, imageFile, { upsert: true });
+      const { error: uploadError } = await db.storage.from('productimages').upload(fileName, imageFile, { upsert: true });
       if (uploadError) {
         alert('Failed to upload image: ' + (uploadError.message || 'Unknown error'));
         return;
       }
-      const { data: publicUrlData } = supabase.storage.from('productimages').getPublicUrl(fileName);
+      const { data: publicUrlData } = db.storage.from('productimages').getPublicUrl(fileName);
       const publicUrl = publicUrlData?.publicUrl;
       if (publicUrl) {
-        await supabase.from('combos').update({ picture_url: publicUrl }).eq('id', comboId);
+        await db.from('combos').update({ picture_url: publicUrl }).eq('id', comboId);
       }
     }
 
@@ -397,7 +397,7 @@ export default function Sets() {
     }
 
     try {
-      await seedComboLocationPricesForLocations(supabase, {
+      await seedComboLocationPricesForLocations(db, {
         comboId,
         locationIds: selectedLocations,
         comboPrice: standardPrice,
@@ -448,10 +448,10 @@ export default function Sets() {
   const shouldEnableScroll = (search.trim() !== "") || (kitItems.length > 0);
   const columnWarnings = [];
   if (!supportsUnitField) {
-    columnWarnings.push(comboColumnSupport.unitReason || 'Supabase reports combos.unit_of_measure_id is missing – unit selection is disabled.');
+    columnWarnings.push(comboColumnSupport.unitReason || 'combos.unit_of_measure_id is missing – unit selection is disabled.');
   }
   if (!supportsCategoryField) {
-    columnWarnings.push(comboColumnSupport.categoryReason || 'Supabase reports combos.category_id is missing – category selection is disabled.');
+    columnWarnings.push(comboColumnSupport.categoryReason || 'combos.category_id is missing – category selection is disabled.');
   }
 
   return (
@@ -719,7 +719,7 @@ export default function Sets() {
             </table>
             {products.length === 0 && (
               <div style={{ color: '#ff4d4d', marginTop: '1rem', textAlign: 'center' }}>
-                No products found in the database. Please check your Supabase connection and products table.
+                No products found in the database. Please check your connection and products collection.
               </div>
             )}
           </div>

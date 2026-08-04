@@ -1,9 +1,10 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useMemo } from 'react';
 import { getMaxSetQty as calcMaxSetQty, selectPrice, formatAmount } from './utils/setInventoryUtils';
-import supabase from './supabase';
+import db from './dataClient';
 import { getCurrentUser, getLockedLocationIdForUser } from './accessControl';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
+import { resolveProductImageUrl } from './utils/productImageUrl';
 
 const StockReportMobile = () => {
   const [products, setProducts] = useState([]);
@@ -35,25 +36,25 @@ const StockReportMobile = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data: prods } = await supabase.from('products').select('*');
+      const { data: prods } = await db.from('products').select('*');
   setProducts(prods || []);
-  const { data: locs } = await supabase.from('locations').select('*');
+  const { data: locs } = await db.from('locations').select('*');
   setLocations(locs || []);
-      const { data: cats } = await supabase.from('categories').select('*');
+      const { data: cats } = await db.from('categories').select('*');
       setCategories(cats || []);
       const invSnap = await fetchInventorySnapshot();
       setInventory(invSnap?.data || []);
-      const { data: unitData } = await supabase.from('unit_of_measure').select('*');
+      const { data: unitData } = await db.from('unit_of_measure').select('*');
       setUnits(unitData || []);
-      const { data: images } = await supabase.from('product_images').select('*');
+      const { data: images } = await db.from('product_images').select('*');
       setProductImages(images || []);
-  const { data: combosData } = await supabase.from('combos').select('*');
+  const { data: combosData } = await db.from('combos').select('*');
       setCombos(combosData || []);
-      const { data: comboItemsData } = await supabase.from('combo_items').select('*');
+      const { data: comboItemsData } = await db.from('combo_items').select('*');
       setComboItems(comboItemsData || []);
-  const { data: comboLocs } = await supabase.from('combo_locations').select('*');
+  const { data: comboLocs } = await db.from('combo_locations').select('*');
   setComboLocations(comboLocs || []);
-  const { data: ip } = await supabase.from('incomplete_packages').select('*');
+  const { data: ip } = await db.from('incomplete_packages').select('*');
   setIncompletePackages(ip || []);
   // ...existing code...
 
@@ -212,15 +213,7 @@ const StockReportMobile = () => {
         {/* Render sets (combos) first */}
         {filteredCombos.map(c => {
           const qty = computeComboMaxQty(c.id, location || '');
-          let pic = c.picture_url || '';
-          try {
-            if (pic) {
-              const u2 = new URL(pic, window.location.origin);
-              if (/\.supabase\.co$/i.test(u2.hostname) && /\/storage\/v1\/object\/public\/productimages\//i.test(u2.pathname)) {
-                pic = `/api/image-proxy?u=${encodeURIComponent(u2.toString())}`;
-              }
-            }
-          } catch (_) {}
+          const pic = resolveProductImageUrl(c.picture_url || '');
           const stdPrice = c.combo_price || c.standard_price || '';
           const promo = c.promotional_price || '';
           const isExpanded = expandedCombos.has(String(c.id));
@@ -306,15 +299,7 @@ const StockReportMobile = () => {
           const totalStock = getStockForProduct(p.id, location || '');
           const remainingStock = Math.max(0, totalStock - (usedStock[p.id] || 0));
           const imageObj = productImages.find(img => img.product_id === p.id);
-          let imageUrl = imageObj ? imageObj.image_url : p.image_url;
-          try {
-            if (imageUrl) {
-              const u = new URL(imageUrl, window.location.origin);
-              if (/\.supabase\.co$/i.test(u.hostname) && /\/storage\/v1\/object\/public\/productimages\//i.test(u.pathname)) {
-                imageUrl = `/api/image-proxy?u=${encodeURIComponent(u.toString())}`;
-              }
-            }
-          } catch (_) {}
+          const imageUrl = resolveProductImageUrl(imageObj ? imageObj.image_url : p.image_url);
           return (
             <div className="stock-report-mobile-card glowing-green" key={p.id}>
               <div className="stock-report-mobile-card-row">

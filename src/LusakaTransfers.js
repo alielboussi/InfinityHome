@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import { getCurrentUser } from './accessControl';
 import { applyInventoryBulk } from './utils/inventoryApi';
@@ -25,8 +25,8 @@ function buildSearchOrFilter(term) {
 
 async function fetchKitweProductIds() {
   const [{ data: linked, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
-    supabase.from('product_locations').select('product_id').eq('location_id', LUSAKA_TRANSFER_FROM_ID),
-    supabase.from('inventory').select('product_id').eq('location', LUSAKA_TRANSFER_FROM_ID),
+    db.from('product_locations').select('product_id').eq('location_id', LUSAKA_TRANSFER_FROM_ID),
+    db.from('inventory').select('product_id').eq('location', LUSAKA_TRANSFER_FROM_ID),
   ]);
   if (plErr) throw plErr;
   if (invErr) throw invErr;
@@ -44,7 +44,7 @@ async function searchKitweProducts(term, allowedIds) {
   const allowedList = Array.from(allowedIds);
 
   if (allowedList.length <= 200) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('products')
       .select('id, name, sku')
       .in('id', allowedList)
@@ -55,7 +55,7 @@ async function searchKitweProducts(term, allowedIds) {
     return data || [];
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('products')
     .select('id, name, sku')
     .or(orFilter)
@@ -88,11 +88,11 @@ async function uploadTransferPdf(sessionId, pdfBlob, fileName) {
   if (!pdfUrl) {
     try {
       const path = `${sessionId}/${fileName}`;
-      const { error: upErr } = await supabase.storage
+      const { error: upErr } = await db.storage
         .from(BUCKET)
         .upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' });
       if (!upErr) {
-        const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+        const { data: pub } = db.storage.from(BUCKET).getPublicUrl(path);
         pdfUrl = pub?.publicUrl || null;
       }
     } catch {}
@@ -102,14 +102,14 @@ async function uploadTransferPdf(sessionId, pdfBlob, fileName) {
 
 async function enableEligibleCombosAtDestination(productIds) {
   if (!productIds.length) return;
-  const { data: comboItems } = await supabase
+  const { data: comboItems } = await db
     .from('combo_items')
     .select('combo_id, product_id, quantity')
     .in('product_id', productIds);
   const comboIds = [...new Set((comboItems || []).map((row) => row.combo_id).filter(Boolean))];
   if (!comboIds.length) return;
 
-  const { data: srcComboLocs } = await supabase
+  const { data: srcComboLocs } = await db
     .from('combo_locations')
     .select('combo_id')
     .eq('location_id', LUSAKA_TRANSFER_FROM_ID)
@@ -128,7 +128,7 @@ async function enableEligibleCombosAtDestination(productIds) {
   )];
   if (!allComponentIds.length) return;
 
-  const { data: invRows } = await supabase
+  const { data: invRows } = await db
     .from('inventory')
     .select('product_id, quantity')
     .eq('location', LUSAKA_TRANSFER_TO_ID)
@@ -169,8 +169,8 @@ export default function LusakaTransfers() {
     setError('');
     try {
       const [{ data: locs }, { data: companyRow }, allowed] = await Promise.all([
-        supabase.from('locations').select('id, name').in('id', [LUSAKA_TRANSFER_FROM_ID, LUSAKA_TRANSFER_TO_ID]),
-        supabase.from('company_settings').select('*').limit(1).maybeSingle(),
+        db.from('locations').select('id, name').in('id', [LUSAKA_TRANSFER_FROM_ID, LUSAKA_TRANSFER_TO_ID]),
+        db.from('company_settings').select('*').limit(1).maybeSingle(),
         fetchKitweProductIds(),
       ]);
 
@@ -189,7 +189,7 @@ export default function LusakaTransfers() {
 
   const loadHistory = useCallback(async () => {
     try {
-      const { data } = await supabase
+      const { data } = await db
         .from('stock_transfer_sessions')
         .select('id, delivery_number, transfer_datetime, created_at, total_qty, status, metadata')
         .eq('from_location', LUSAKA_TRANSFER_FROM_ID)
@@ -297,7 +297,7 @@ export default function LusakaTransfers() {
       const deliveryNumber = buildLusakaTransferDeliveryNumber(transferRef, capturedAt);
       const productIds = lineItems.map((row) => row.product_id);
 
-      const { data: session, error: sessionErr } = await supabase
+      const { data: session, error: sessionErr } = await db
         .from('stock_transfer_sessions')
         .insert({
           from_location: LUSAKA_TRANSFER_FROM_ID,
@@ -320,7 +320,7 @@ export default function LusakaTransfers() {
       if (sessionErr) throw sessionErr;
 
       const sessionId = session.id;
-      const { error: entriesErr } = await supabase.from('stock_transfer_entries').insert(
+      const { error: entriesErr } = await db.from('stock_transfer_entries').insert(
         lineItems.map((row) => ({
           session_id: sessionId,
           product_id: row.product_id,
@@ -329,7 +329,7 @@ export default function LusakaTransfers() {
       );
       if (entriesErr) throw entriesErr;
 
-      const { data: existingInv, error: invFetchErr } = await supabase
+      const { data: existingInv, error: invFetchErr } = await db
         .from('inventory')
         .select('id, product_id, location, quantity')
         .in('product_id', productIds)
@@ -381,7 +381,7 @@ export default function LusakaTransfers() {
       });
 
       if (inventoryUpdates.length || inventoryInserts.length) {
-        await applyInventoryBulk({ updates: inventoryUpdates, inserts: inventoryInserts }, supabase);
+        await applyInventoryBulk({ updates: inventoryUpdates, inserts: inventoryInserts }, db);
       }
 
       await syncProductLocations({
@@ -389,7 +389,7 @@ export default function LusakaTransfers() {
           product_id: row.product_id,
           location_id: LUSAKA_TRANSFER_TO_ID,
         })),
-      }, supabase);
+      }, db);
 
       await enableEligibleCombosAtDestination(productIds);
 
@@ -421,7 +421,7 @@ export default function LusakaTransfers() {
       const fileName = `${deliveryNumber}.pdf`;
       const pdfUrl = await uploadTransferPdf(sessionId, pdfBlob, fileName);
       if (pdfUrl) {
-        await supabase.from('stock_transfer_sessions').update({
+        await db.from('stock_transfer_sessions').update({
           pdf_url: pdfUrl,
           metadata: {
             transfer_number: deliveryNumber,

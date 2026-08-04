@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { useNavigate } from 'react-router-dom';
 import { FaFilePdf } from 'react-icons/fa';
 import { buildTransferPdf, triggerDownload } from './utils/transferPdf';
@@ -228,7 +228,7 @@ export default function OutletTransfer() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase
+        const { data } = await db
           .from('locations')
           .select('id, name')
           .in('id', [FROM_LOCATION_ID, TO_LOCATION_ID]);
@@ -243,7 +243,7 @@ export default function OutletTransfer() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase.from('company_settings').select('*').single();
+        const { data } = await db.from('company_settings').select('*').single();
         setCompany(data || null);
       } catch {}
     })();
@@ -336,9 +336,9 @@ export default function OutletTransfer() {
     setCatalogLoading(true);
     try {
       const [{ data: prods }, { data: inv }, { data: cbs }] = await Promise.all([
-        supabase.from('products').select('id,name,sku'),
-        supabase.from('inventory').select('product_id,location,quantity').in('location', [FROM_LOCATION_ID, TO_LOCATION_ID]),
-        supabase.from('combos').select('id,combo_name,sku')
+        db.from('products').select('id,name,sku'),
+        db.from('inventory').select('product_id,location,quantity').in('location', [FROM_LOCATION_ID, TO_LOCATION_ID]),
+        db.from('combos').select('id,combo_name,sku')
       ]);
       setProducts(prods || []);
       setInventory(inv || []);
@@ -357,7 +357,7 @@ export default function OutletTransfer() {
       setHistoryLoading(true);
       setHistoryError('');
       try {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('stock_transfer_sessions')
           .select('id, transfer_date, created_at, transfer_datetime, delivery_number, total_qty, status, notes, metadata, pdf_url')
           .eq('from_location', FROM_LOCATION_ID)
@@ -380,7 +380,7 @@ export default function OutletTransfer() {
 
   async function ensureComboItemsLoaded(combo) {
     if (comboItemsMap.has(combo.id)) return comboItemsMap.get(combo.id);
-    const { data: items } = await supabase
+    const { data: items } = await db
       .from('combo_items')
       .select('product_id,quantity, products(name,sku)')
       .eq('combo_id', combo.id);
@@ -613,11 +613,11 @@ export default function OutletTransfer() {
     if (!pdfUrl) {
       try {
         const path = `${sessionId}/${fileName}`;
-        const { error: upErr } = await supabase.storage
+        const { error: upErr } = await db.storage
           .from(BUCKET)
           .upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' });
         if (!upErr) {
-          const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+          const { data: pub } = db.storage.from(BUCKET).getPublicUrl(path);
           pdfUrl = pub?.publicUrl || null;
         }
       } catch {}
@@ -630,7 +630,7 @@ export default function OutletTransfer() {
           metadata: { pdf_url: pdfUrl, transfer_number: transferNumber || null },
           notes: JSON.stringify({ pdf_url: pdfUrl, transfer_number: transferNumber || null })
         };
-        await supabase.from('stock_transfer_sessions').update(updatePayload).eq('id', sessionId);
+        await db.from('stock_transfer_sessions').update(updatePayload).eq('id', sessionId);
       } catch {}
     }
 
@@ -646,7 +646,7 @@ export default function OutletTransfer() {
     try {
       const fileName = getHistoryPdfFileName(row);
 
-      const { data: entryRows, error: entryErr } = await supabase
+      const { data: entryRows, error: entryErr } = await db
         .from('stock_transfer_entries')
         .select('product_id, quantity')
         .eq('session_id', sessionId);
@@ -662,7 +662,7 @@ export default function OutletTransfer() {
       const productIds = Array.from(qtyByProduct.keys());
       if (!productIds.length) throw new Error('No items to export.');
 
-      const { data: prodRows, error: prodErr } = await supabase
+      const { data: prodRows, error: prodErr } = await db
         .from('products')
         .select('id, name, sku')
         .in('id', productIds);
@@ -677,7 +677,7 @@ export default function OutletTransfer() {
         kind: 'product',
       })).filter(item => Number(item.qty) > 0);
 
-      const { data: invRows } = await supabase
+      const { data: invRows } = await db
         .from('inventory')
         .select('product_id, location, quantity')
         .in('product_id', productIds)

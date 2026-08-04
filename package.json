@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@supabase/supabase-js": "^2.52.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
     "dotenv": "^16.4.5",
+    "firebase": "^11.10.0",
+    "firebase-admin": "^13.4.0",
     "font-awesome": "^4.7.0",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
@@ -33,19 +34,7 @@
     "prebuild": "node scripts/checkEnv.js",
     "postinstall": "node scripts/silenceHtml5QrcodeSourceMaps.js",
     "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "scan:unused": "node scripts/scan-unused-files.js",
-    "scan:unused:rename": "node scripts/scan-unused-files.js --rename",
-    "lusaka:dup-merge": "node scripts/lusakaDuplicateProductMerge.js",
-    "lusaka:dup-merge:apply": "node scripts/lusakaDuplicateProductMerge.js --apply-safe",
-    "lusaka:dup-cleanup": "node scripts/lusakaDuplicateZeroStockCleanup.js",
-    "lusaka:dup-cleanup:apply": "node scripts/lusakaDuplicateZeroStockCleanup.js --apply-safe",
-    "layby:parity": "node scripts/runLaybyParity.js",
-    "layby:smoke": "node scripts/laybySmokeTest.js",
-    "layby:bench": "node scripts/laybyBench.js",
-    "layby:bench:batch": "node scripts/laybyBenchBatch.js",
-    "db:types": "npx supabase gen types typescript --project-id $SUPABASE_PROJECT_REF --schema public > supabase/types/database.types.d.ts",
-    "gen:types": "npm run db:types"
+    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [

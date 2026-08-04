@@ -1,14 +1,14 @@
 // Serverless API: quotation-save
-// Creates or updates a quotation and its items using the Supabase service role (bypasses RLS)
+// Creates or updates a quotation and its items using the Firestore service client.
 // Request: POST JSON { id?: string (uuid), quote: {...}, items: [...], vatChoice: 'exclusive'|'vat16' }
 // - quote.customer_id may be:
 //   - a customers.id (uuid) OR
 //   - a quote_customers.id (uuid) — in this case we will resolve/create a real customers row and link to it
 // Response: { ok: true, id, quote }
 
-import { createClient } from '@supabase/supabase-js';
 import { computeQuotationTotals, computeQuotationDisplayTotal } from '../../src/utils/quotationDisplay.js';
 import { buildQuoteLaybyEditSummary } from '../../src/utils/quoteLaybyEditNotify.js';
+import { getDataClient } from '../lib/getDataClient.js';
 
 function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -34,14 +34,14 @@ async function resolveTable(db, preferred, candidates = []) {
   return preferred;
 }
 
-async function getSalePaidTotal(supabase, saleId) {
+async function getSalePaidTotal(db, saleId) {
   if (!saleId) return 0;
   const sumRows = (rows) => (rows || []).reduce((sum, row) => (
     sum + Number(row?.amount || 0) + Number(row?.discount_amount || 0)
   ), 0);
   const [{ data: salesRows, error: salesErr }, { data: laybyRows, error: laybyErr }] = await Promise.all([
-    supabase.from('sales_payments').select('amount, discount_amount').eq('sale_id', saleId),
-    supabase.from('layby_payments').select('amount, discount_amount').eq('sale_id', saleId),
+    db.from('sales_payments').select('amount, discount_amount').eq('sale_id', saleId),
+    db.from('layby_payments').select('amount, discount_amount').eq('sale_id', saleId),
   ]);
   if (salesErr && laybyErr) {
     throw new Error(`Payment lookup failed: ${salesErr.message || laybyErr.message}`);
@@ -49,11 +49,11 @@ async function getSalePaidTotal(supabase, saleId) {
   return Math.max(sumRows(salesRows), sumRows(laybyRows));
 }
 
-async function resolveConvertedSaleId(supabase, existing) {
+async function resolveConvertedSaleId(db, existing) {
   if (!existing) return null;
   if (existing.sale_id) return existing.sale_id;
   if (!existing.layby_id) return null;
-  const { data: layby, error } = await supabase
+  const { data: layby, error } = await db
     .from('laybys')
     .select('sale_id')
     .eq('id', existing.layby_id)
@@ -62,7 +62,7 @@ async function resolveConvertedSaleId(supabase, existing) {
   return layby?.sale_id || null;
 }
 
-async function syncConvertedQuoteToLaybySale(supabase, {
+async function syncConvertedQuoteToLaybySale(db, {
   saleId,
   laybyId,
   quote,
@@ -74,11 +74,11 @@ async function syncConvertedQuoteToLaybySale(supabase, {
 }) {
   if (!saleId) return;
 
-  const salesTable = await resolveTable(supabase, 'sales', ['sale']);
-  const salesItemsTable = await resolveTable(supabase, 'sales_items', ['sale_items', 'sales_item']);
+  const salesTable = await resolveTable(db, 'sales', ['sale']);
+  const salesItemsTable = await resolveTable(db, 'sales_items', ['sale_items', 'sales_item']);
   const nowIso = new Date().toISOString();
 
-  const { error: saleErr } = await supabase
+  const { error: saleErr } = await db
     .from(salesTable)
     .update({
       total_amount: total,
@@ -90,7 +90,7 @@ async function syncConvertedQuoteToLaybySale(supabase, {
     .eq('id', saleId);
   if (saleErr) throw new Error(`Sale update failed: ${saleErr.message}`);
 
-  const { error: delErr } = await supabase.from(salesItemsTable).delete().eq('sale_id', saleId);
+  const { error: delErr } = await db.from(salesItemsTable).delete().eq('sale_id', saleId);
   if (delErr) throw new Error(`Sale items reset failed: ${delErr.message}`);
 
   const saleItems = cleanItems.map((item) => ({
@@ -103,20 +103,20 @@ async function syncConvertedQuoteToLaybySale(supabase, {
     color: null,
   }));
   if (saleItems.length) {
-    const { error: insErr } = await supabase.from(salesItemsTable).insert(saleItems);
+    const { error: insErr } = await db.from(salesItemsTable).insert(saleItems);
     if (insErr) throw new Error(`Sale items insert failed: ${insErr.message}`);
   }
 
   if (laybyId) {
-    const { data: layby, error: laybyErr } = await supabase
+    const { data: layby, error: laybyErr } = await db
       .from('laybys')
       .select('paid_amount')
       .eq('id', laybyId)
       .maybeSingle();
     if (laybyErr) throw new Error(`Layby lookup failed: ${laybyErr.message}`);
-    const paidFromPayments = await getSalePaidTotal(supabase, saleId);
+    const paidFromPayments = await getSalePaidTotal(db, saleId);
     const paidAmount = Math.max(Number(layby?.paid_amount || 0), paidFromPayments);
-    const { error: laybyUpdateErr } = await supabase
+    const { error: laybyUpdateErr } = await db
       .from('laybys')
       .update({
         total_amount: total,
@@ -143,14 +143,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !serviceKey) {
-      res.status(500).json({ ok: false, error: 'Supabase service env not configured (SUPABASE_URL + SUPABASE_SERVICE_ROLE)' });
-      return;
-    }
-
-  const supabase = createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: 'public' } });
+    const db = getDataClient();
 
     const body = req.body || {};
     const action = String(body?.action || req.query?.action || '').trim().toLowerCase();
@@ -172,7 +165,7 @@ export default async function handler(req, res) {
         tpin: body?.tpin || null,
       };
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('quote_customers')
         .insert([row])
         .select('id, name, currency, phone, address, city, country, tpin, created_at')
@@ -201,7 +194,7 @@ export default async function handler(req, res) {
         active: true,
       };
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('quotation_products')
         .insert([payload])
         .select('id, name, price, unit_id, description, active')
@@ -227,7 +220,7 @@ export default async function handler(req, res) {
         abbreviation: body?.abbreviation || null,
       };
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('quotation_units')
         .insert([payload])
         .select('*')
@@ -252,12 +245,12 @@ export default async function handler(req, res) {
       if (!inputId) return null;
       // 1) Is it already a customers.id?
       {
-        const { data, error } = await supabase.from('customers').select('id').eq('id', inputId).maybeSingle();
+        const { data, error } = await db.from('customers').select('id').eq('id', inputId).maybeSingle();
         if (error) throw new Error(`Customer check failed: ${error.message}`);
         if (data && data.id) return data.id;
       }
       // 2) Is it a quote_customers.id? If so, upsert into customers and return the new id.
-      const { data: qc, error: qcErr } = await supabase
+      const { data: qc, error: qcErr } = await db
         .from('quote_customers')
         .select('id, name, phone, currency, address, city, tpin')
         .eq('id', inputId)
@@ -269,7 +262,7 @@ export default async function handler(req, res) {
       }
       // Try to find existing customers by phone first, then by exact name
       if (qc.phone) {
-        const { data: byPhone, error: phoneErr } = await supabase
+        const { data: byPhone, error: phoneErr } = await db
           .from('customers')
           .select('id')
           .eq('phone', qc.phone)
@@ -278,7 +271,7 @@ export default async function handler(req, res) {
         if (byPhone && byPhone.id) return byPhone.id;
       }
       if (qc.name) {
-        const { data: byName, error: nameErr } = await supabase
+        const { data: byName, error: nameErr } = await db
           .from('customers')
           .select('id')
           .eq('name', qc.name)
@@ -295,7 +288,7 @@ export default async function handler(req, res) {
         city: qc.city || null,
         tpin: qc.tpin || null,
       };
-      const { data: createdCust, error: createCustErr } = await supabase
+      const { data: createdCust, error: createCustErr } = await db
         .from('customers')
         .insert([newCust])
         .select('id')
@@ -332,7 +325,7 @@ export default async function handler(req, res) {
     // Ensure quote_number exists following pattern QT#1, QT#2, ... (stored in quote_number column)
     let quote_number = quote.quote_number || null;
     if (!id && !quote_number) {
-      const { data: recent, error: recentErr } = await supabase
+      const { data: recent, error: recentErr } = await db
         .from('quotations')
         .select('quote_number, created_at')
         .ilike('quote_number', 'QT#%')
@@ -370,7 +363,7 @@ export default async function handler(req, res) {
     if (!quoteId) {
       // Create
       const header = { ...baseHeader, quote_number: quote_number || 'QT#1' };
-      const { data: created, error: createErr } = await supabase
+      const { data: created, error: createErr } = await db
         .from('quotations')
         .insert([header])
         .select('*')
@@ -384,7 +377,7 @@ export default async function handler(req, res) {
       cleanItems.forEach(it => { it.quotation_id = quoteId; });
     } else {
       // Update existing — lock once converted to layby and payments exist
-      const { data: existing, error: exErr } = await supabase
+      const { data: existing, error: exErr } = await db
         .from('quotations')
         .select('id, status, sale_id, layby_id, quote_number')
         .eq('id', quoteId)
@@ -401,14 +394,14 @@ export default async function handler(req, res) {
           || Boolean(existing.sale_id)
           || Boolean(existing.layby_id);
         if (isConverted) {
-          const linkedSaleId = await resolveConvertedSaleId(supabase, existing);
+          const linkedSaleId = await resolveConvertedSaleId(db, existing);
           if (linkedSaleId) {
             existing.sale_id = linkedSaleId;
             existingConverted = { ...existingConverted, sale_id: linkedSaleId };
           }
         }
         if (isConverted && existing.sale_id) {
-          const { data: existingQuote, error: quoteLoadErr } = await supabase
+          const { data: existingQuote, error: quoteLoadErr } = await db
             .from('quotations')
             .select('id, subtotal, total, discount, vat_apply, vat_rate')
             .eq('id', quoteId)
@@ -417,7 +410,7 @@ export default async function handler(req, res) {
             res.status(500).json({ ok: false, error: quoteLoadErr.message });
             return;
           }
-          const { data: existingItems, error: itemsLoadErr } = await supabase
+          const { data: existingItems, error: itemsLoadErr } = await db
             .from('quotation_items')
             .select('name_override, product_id, quantity, unit_price, sort_order')
             .eq('quotation_id', quoteId)
@@ -429,7 +422,7 @@ export default async function handler(req, res) {
           beforeQuoteSnapshot = { ...(existingQuote || {}) };
           beforeItemsSnapshot = existingItems || [];
           const currentTotal = computeQuotationDisplayTotal(existingQuote || existing);
-          const paidTotal = await getSalePaidTotal(supabase, existing.sale_id);
+          const paidTotal = await getSalePaidTotal(db, existing.sale_id);
           const outstanding = Math.max(0, currentTotal - paidTotal);
           if (outstanding <= 0.009) {
             res.status(409).json({ ok: false, error: 'Quotation is locked (layby paid in full).' });
@@ -443,7 +436,7 @@ export default async function handler(req, res) {
         }
       }
       const header = { ...baseHeader, quote_number: quote_number || existing?.quote_number || null };
-      const { error: updErr } = await supabase
+      const { error: updErr } = await db
         .from('quotations')
         .update(header)
         .eq('id', quoteId);
@@ -453,7 +446,7 @@ export default async function handler(req, res) {
       }
       responseHeader = header;
       // Replace items
-      const { error: delErr } = await supabase.from('quotation_items').delete().eq('quotation_id', quoteId);
+      const { error: delErr } = await db.from('quotation_items').delete().eq('quotation_id', quoteId);
       if (delErr) {
         res.status(500).json({ ok: false, error: delErr.message });
         return;
@@ -462,7 +455,7 @@ export default async function handler(req, res) {
     }
 
     if (cleanItems.length) {
-      const { error: insItemsErr } = await supabase.from('quotation_items').insert(cleanItems);
+      const { error: insItemsErr } = await db.from('quotation_items').insert(cleanItems);
       if (insItemsErr) {
         res.status(500).json({ ok: false, error: insItemsErr.message });
         return;
@@ -471,7 +464,7 @@ export default async function handler(req, res) {
 
     if (existingConverted?.sale_id) {
       try {
-        await syncConvertedQuoteToLaybySale(supabase, {
+        await syncConvertedQuoteToLaybySale(db, {
           saleId: existingConverted.sale_id,
           laybyId: existingConverted.layby_id,
           quote,
@@ -489,7 +482,7 @@ export default async function handler(req, res) {
 
     let laybyEditNotify = null;
     if (beforeQuoteSnapshot && existingConverted?.layby_id && existingConverted?.sale_id) {
-      const paidTotal = await getSalePaidTotal(supabase, existingConverted.sale_id);
+      const paidTotal = await getSalePaidTotal(db, existingConverted.sale_id);
       const afterQuote = {
         ...beforeQuoteSnapshot,
         ...baseHeader,

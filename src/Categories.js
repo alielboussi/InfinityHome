@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import { useNavigate } from 'react-router-dom';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
@@ -64,11 +64,11 @@ const Categories = () => {
     try {
       // Perf: fetch only needed columns
       const [{ data: categoriesData, error: categoriesError }, { data: productsData, error: productsError }] = await Promise.all([
-        supabase
+        db
           .from('categories')
           .select('id, name')
           .order('name', { ascending: true }),
-        supabase
+        db
           .from('products')
           .select('category_id')
           .not('category_id', 'is', null),
@@ -113,14 +113,14 @@ const Categories = () => {
         return;
       }
       if (editingId) {
-        const { error } = await supabase
+        const { error } = await db
           .from('categories')
           .update({ name: nameTrimmed })
           .eq('id', editingId);
         if (error) throw error;
       } else {
         // Manual duplicate check (case-insensitive exact)
-        const { data: existingRows, error: fetchErr } = await supabase
+        const { data: existingRows, error: fetchErr } = await db
           .from('categories')
           .select('id, name');
         if (fetchErr) throw fetchErr;
@@ -130,7 +130,7 @@ const Categories = () => {
           setSaving(false);
           return;
         }
-        const { error: insertErr } = await supabase
+        const { error: insertErr } = await db
           .from('categories')
           .insert([{ name: nameTrimmed }]);
         if (insertErr) throw insertErr;
@@ -157,7 +157,7 @@ const Categories = () => {
     if (!window.confirm('Delete this category and all related products?')) return;
     setSaving(true);
     try {
-      const { error } = await supabase.from('categories').delete().eq('id', id);
+      const { error } = await db.from('categories').delete().eq('id', id);
       if (error) throw error;
       fetchCategories();
     } catch (err) {

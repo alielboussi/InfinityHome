@@ -3,7 +3,7 @@
 // Falls back to legacy multi-query approach if RPC disabled or errors out.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import supabase from '../supabase';
+import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { USE_LAYBY_RPC, fetchLaybyStatementRPC } from '../laybyStatementService';
 import { fetchLaybyStatement } from '../services/laybyStatement';
@@ -29,7 +29,7 @@ export function useLaybyData(customerId, laybyId, opts = {}) {
     // Use canonical view for authoritative totals
     try {
       const saleIds = stmt.sales.map(s => s.sale_id).filter(v => v != null);
-      const finMap = await fetchCanonicalFinancials(supabase, saleIds);
+      const finMap = await fetchCanonicalFinancials(db, saleIds);
       let total = 0; let paid = 0;
       saleIds.forEach(id => {
         const fin = finMap.get(String(id));

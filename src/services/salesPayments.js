@@ -1,7 +1,7 @@
 // Wrapper enforcing allocation_batch_uuid presence for new sales_payments inserts.
 // Primary path: serverless API (/api/payments). Fallback: direct Supabase insert in local dev.
 
-import supabase from '../supabase';
+import db from '../dataClient';
 import { newUuid } from '../utils/uuid';
 
 /**
@@ -79,7 +79,7 @@ export async function insertSalesPayments(payments, opts = {}) {
       allocation_batch_uuid: p.allocation_batch_uuid || batch || newUuid(),
       created_at: p.created_at || nowIso,
     }));
-    const { error } = await supabase.from('sales_payments').insert(mapped);
+    const { error } = await db.from('sales_payments').insert(mapped);
     if (error) return { error };
     return { data: { count: mapped.length, batch: batch || mapped[0]?.allocation_batch_uuid } };
   } catch (err) {
@@ -118,7 +118,7 @@ export async function fetchSalesPaymentsBySaleIds(saleIds = []) {
   }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('sales_payments')
       .select('id, sale_id, payment_type, amount, discount_amount, currency, payment_date, notes, reference, allocation_batch_uuid')
       .in('sale_id', ids)
@@ -161,7 +161,7 @@ export async function deleteSalesPayments(paymentIds = []) {
   }
 
   try {
-    const { error } = await supabase
+    const { error } = await db
       .from('sales_payments')
       .delete()
       .in('id', ids);

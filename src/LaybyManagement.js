@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FaFileExcel, FaFilePdf, FaWhatsapp } from 'react-icons/fa';
 import { useLocation, useNavigate } from 'react-router-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import generateLaybyPdf from './laybyPdf';
 import { deleteSalesPayments, insertSalesPayments } from './services/salesPayments';
@@ -265,7 +265,7 @@ export default function LaybyManagement() {
 
   useEffect(() => {
     if (!isRealtimeEnabled()) return undefined;
-    const channel = supabase
+    const channel = db
       .channel('layby-mgmt-rt-simple')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'laybys' }, () => {
         if (rtTimerRef.current) clearTimeout(rtTimerRef.current);
@@ -285,7 +285,7 @@ export default function LaybyManagement() {
       })
       .subscribe();
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
+      try { db.removeChannel(channel); } catch {}
       if (rtTimerRef.current) clearTimeout(rtTimerRef.current);
     };
   }, []);
@@ -332,7 +332,7 @@ export default function LaybyManagement() {
         const requests = [];
         chunkIds(customerIds, 100).forEach((chunk) => {
           requests.push(
-            supabase
+            db
               .from('quotations')
               .select(quotationSelect)
               .in('customer_id', chunk)
@@ -341,7 +341,7 @@ export default function LaybyManagement() {
         });
         chunkIds(saleIds, 100).forEach((chunk) => {
           requests.push(
-            supabase
+            db
               .from('quotations')
               .select(quotationSelect)
               .in('sale_id', chunk)
@@ -349,7 +349,7 @@ export default function LaybyManagement() {
         });
         chunkIds(laybyIds, 100).forEach((chunk) => {
           requests.push(
-            supabase
+            db
               .from('quotations')
               .select(quotationSelect)
               .in('layby_id', chunk)
@@ -423,7 +423,7 @@ export default function LaybyManagement() {
     if (!customerId) return;
     try {
       const [{ data: laybyRows }, { data: statementData, error: statementErr }] = await Promise.all([
-        supabase
+        db
           .from('laybys')
           .select('id, sale_id, total_amount, paid_amount, status')
           .eq('customer_id', customerId),
@@ -444,7 +444,7 @@ export default function LaybyManagement() {
           patch.status = Number(matchedFinancial.due || 0) > 0 ? 'active' : 'completed';
           if (!l?.sale_id && matchedFinancial.saleId != null) patch.sale_id = matchedFinancial.saleId;
         }
-        try { await supabase.from('laybys').update(patch).eq('id', l.id); } catch {}
+        try { await db.from('laybys').update(patch).eq('id', l.id); } catch {}
       }
     } catch {}
   }
@@ -493,7 +493,7 @@ export default function LaybyManagement() {
     }, 15000);
     try {
       const customerId = selectedLayby.customer_id;
-      const { data: custRow } = await supabase.from('customers').select('currency').eq('id', customerId).maybeSingle();
+      const { data: custRow } = await db.from('customers').select('currency').eq('id', customerId).maybeSingle();
       const curr = resolveCustomerPaymentCurrency({
         customerId,
         customer: { ...(selectedLayby.customerInfo || {}), currency: custRow?.currency || selectedLayby.customerInfo?.currency },
@@ -535,14 +535,14 @@ export default function LaybyManagement() {
 
       if (!owing.length) {
         const saleColumns = 'id, discount, sale_date, created_at, layby_id, status, currency, total_amount, customer_id';
-        const { data: laybyRows } = await supabase
+        const { data: laybyRows } = await db
           .from('laybys')
           .select('id, sale_id, status')
           .eq('customer_id', customerId);
         const laybyIds = new Set((laybyRows || []).map(r => String(r.id || '')).filter(Boolean));
         const laybySaleIds = new Set((laybyRows || []).map(r => String(r.sale_id || '')).filter(Boolean));
 
-        let { data: salesRows } = await supabase
+        let { data: salesRows } = await db
           .from('sales')
           .select(saleColumns)
           .eq('customer_id', customerId);
@@ -568,7 +568,7 @@ export default function LaybyManagement() {
             if (insertErr) throw insertErr;
             salesList = [insertSale];
             if (!selectedLayby.sale_id) {
-              await supabase.from('laybys').update({ sale_id: insertSale.id, updated_at: new Date().toISOString() }).eq('id', selectedLayby.id);
+              await db.from('laybys').update({ sale_id: insertSale.id, updated_at: new Date().toISOString() }).eq('id', selectedLayby.id);
               selectedLayby.sale_id = insertSale.id;
             }
           } catch (mkErr) {
@@ -631,7 +631,7 @@ export default function LaybyManagement() {
       try {
         const saleIds = Array.from(new Set((owing || []).map(r => r.saleId).filter(v => v != null)));
         if (saleIds.length) {
-          const { data: currencyRows, error: currencyErr } = await supabase
+          const { data: currencyRows, error: currencyErr } = await db
             .from('sales')
             .select('id, currency')
             .in('id', saleIds);
@@ -1012,7 +1012,7 @@ export default function LaybyManagement() {
         // Single editable row maps 1:1 to one sales_payments UUID.
         const idsToUpdate = targetIds.length ? targetIds : [primaryId];
         for (const paymentId of idsToUpdate) {
-          const { error: upErr } = await supabase
+          const { error: upErr } = await db
             .from('sales_payments')
             .update(patch)
             .eq('id', paymentId);
@@ -1059,7 +1059,7 @@ export default function LaybyManagement() {
             (paymentRows || []).map((r) => r.sale_id).filter((id) => id != null)
           ));
           if (saleIdsForCurrency.length) {
-            await supabase
+            await db
               .from('sales_payments')
               .update({ currency: 'USD' })
               .in('sale_id', saleIdsForCurrency);
@@ -1229,17 +1229,17 @@ export default function LaybyManagement() {
     const laybyList = Array.from(laybyIds).filter(isUuid);
     chunkIds(saleList, 100).forEach((chunk) => {
       attempts.push(
-        supabase.from('quotations').select('id, created_at').in('sale_id', chunk).order('created_at', { ascending: false }).limit(1)
+        db.from('quotations').select('id, created_at').in('sale_id', chunk).order('created_at', { ascending: false }).limit(1)
       );
     });
     chunkIds(laybyList, 100).forEach((chunk) => {
       attempts.push(
-        supabase.from('quotations').select('id, created_at').in('layby_id', chunk).order('created_at', { ascending: false }).limit(1)
+        db.from('quotations').select('id, created_at').in('layby_id', chunk).order('created_at', { ascending: false }).limit(1)
       );
     });
     if (row?.customerId) {
       attempts.push(
-        supabase
+        db
           .from('quotations')
           .select('id, created_at')
           .eq('customer_id', row.customerId)

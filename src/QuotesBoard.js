@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import { convertQuoteToLayby } from './services/quoteConversion';
@@ -30,7 +30,7 @@ const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https:/
 async function fetchQuotationRead(action, params = {}) {
   let headers = undefined;
   try {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await db.auth.getSession();
     const token = data?.session?.access_token;
     if (token) headers = { Authorization: `Bearer ${token}` };
   } catch {}
@@ -97,7 +97,7 @@ export default function QuotesBoard() {
       try {
         data = await fetchQuotationRead('list-quotes', { limit: '200' });
       } catch (readErr) {
-        const fallback = await supabase
+        const fallback = await db
           .from('quotations')
           .select('id, quote_number, customer_id, created_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id')
           .order('created_at', { ascending: false })
@@ -118,7 +118,7 @@ export default function QuotesBoard() {
             });
             if (ids.length) {
               const missing = ids.filter(id => !map[String(id)]);
-              const { data: cust } = missing.length ? await supabase.from('customers').select('id, name').in('id', missing) : { data: [] };
+              const { data: cust } = missing.length ? await db.from('customers').select('id, name').in('id', missing) : { data: [] };
               (cust || []).forEach(c => { map[String(c.id)] = titleCaseWords(c.name); });
             }
             if (!cancelled) setCustomerMap(map);
@@ -179,8 +179,8 @@ export default function QuotesBoard() {
   async function handleConvert(q) {
     try {
       const [{ data: items }, { data: quoteRow }] = await Promise.all([
-        supabase.from('quotation_items').select('*').eq('quotation_id', q.id).order('sort_order'),
-        supabase.from('quotations').select('*').eq('id', q.id).maybeSingle(),
+        db.from('quotation_items').select('*').eq('quotation_id', q.id).order('sort_order'),
+        db.from('quotations').select('*').eq('id', q.id).maybeSingle(),
       ]);
       const quote = quoteRow || q;
       await convertQuoteToLayby({
@@ -196,7 +196,7 @@ export default function QuotesBoard() {
       try {
         data = await fetchQuotationRead('list-quotes', { limit: '200' });
       } catch {
-        const fallback = await supabase.from('quotations').select('id, quote_number, customer_id, created_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id').order('created_at', { ascending: false }).limit(200);
+        const fallback = await db.from('quotations').select('id, quote_number, customer_id, created_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id').order('created_at', { ascending: false }).limit(200);
         data = fallback.data || [];
       }
       setQuotes(data || []);
@@ -209,9 +209,9 @@ export default function QuotesBoard() {
   async function handleDownloadPdf(q) {
     try {
       const [{ data: items }, { data: quoteRow }, { data: units }] = await Promise.all([
-        supabase.from('quotation_items').select('*').eq('quotation_id', q.id).order('sort_order'),
-        supabase.from('quotations').select('*').eq('id', q.id).single(),
-        supabase.from('quotation_units').select('*')
+        db.from('quotation_items').select('*').eq('quotation_id', q.id).order('sort_order'),
+        db.from('quotations').select('*').eq('id', q.id).single(),
+        db.from('quotation_units').select('*')
       ]);
       let paid = 0;
       if (quoteRow?.sale_id) {
@@ -222,7 +222,7 @@ export default function QuotesBoard() {
       }
       let customerName = '';
       if (quoteRow?.customer_id) {
-        const { data: cust } = await supabase.from('customers').select('name').eq('id', quoteRow.customer_id).maybeSingle();
+        const { data: cust } = await db.from('customers').select('name').eq('id', quoteRow.customer_id).maybeSingle();
         customerName = titleCaseWords(cust?.name || '');
       }
       await openOrCreateQuotationPdf(
@@ -242,8 +242,8 @@ export default function QuotesBoard() {
     const ok = window.confirm('Delete this quote? This cannot be undone.');
     if (!ok) return;
     try {
-      await supabase.from('quotation_items').delete().eq('quotation_id', q.id);
-      const { error } = await supabase.from('quotations').delete().eq('id', q.id);
+      await db.from('quotation_items').delete().eq('quotation_id', q.id);
+      const { error } = await db.from('quotations').delete().eq('id', q.id);
       if (error) throw error;
       setQuotes(prev => prev.filter(row => row.id !== q.id));
       alert('Quote deleted.');

@@ -1,4 +1,4 @@
-import supabase from '../supabase';
+import db from '../dataClient';
 import { fetchCanonicalFinancials } from '../utils/financials';
 
 export async function fetchCustomerStatement(customerId) {
@@ -22,7 +22,7 @@ export async function fetchCustomerStatement(customerId) {
   }
 
   try {
-    const { data: salesRows, error: salesErr } = await supabase
+    const { data: salesRows, error: salesErr } = await db
       .from('sales')
       .select('id, sale_date, currency')
       .eq('customer_id', customerId);
@@ -30,7 +30,7 @@ export async function fetchCustomerStatement(customerId) {
     const saleIds = (salesRows || []).map(s => s.id).filter(v => v != null);
     if (!saleIds.length) return { data: { sales: [], items: [], payments: [] } };
 
-    const finMap = await fetchCanonicalFinancials(supabase, saleIds);
+    const finMap = await fetchCanonicalFinancials(db, saleIds);
     const sales = (salesRows || []).map(s => {
       const fin = finMap.get(String(s.id)) || {};
       return {
@@ -45,13 +45,13 @@ export async function fetchCustomerStatement(customerId) {
       };
     });
 
-    const { data: items, error: itemsErr } = await supabase
+    const { data: items, error: itemsErr } = await db
       .from('sales_items')
       .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
       .in('sale_id', saleIds);
     if (itemsErr) return { error: itemsErr };
 
-    const { data: payments, error: payErr } = await supabase
+    const { data: payments, error: payErr } = await db
       .from('sales_payments')
       .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
       .in('sale_id', saleIds)

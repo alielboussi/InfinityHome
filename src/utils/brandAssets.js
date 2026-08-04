@@ -1,4 +1,5 @@
-import supabase from '../supabase';
+import db from '../dataClient';
+import { rewriteLegacyStorageUrl } from './storageImageUrl';
 
 function publicAsset(path) {
   const base = String(process.env.PUBLIC_URL || '').replace(/\/$/, '');
@@ -9,7 +10,7 @@ function publicAsset(path) {
 export const STATIC_BRAND_LOGO = publicAsset('/bestrest-logo.png');
 export const STATIC_BRAND_STAMP = publicAsset('/bestreststamp.png');
 
-export async function fetchCompanyLogoUrl(client = supabase) {
+export async function fetchCompanyLogoUrl(client = db) {
   try {
     const { data } = await client.from('company_settings').select('company_logo').maybeSingle();
     const url = String(data?.company_logo || '').trim();
@@ -20,21 +21,12 @@ export async function fetchCompanyLogoUrl(client = supabase) {
   return '';
 }
 
-function rewriteSupabaseStorageUrl(url) {
-  const raw = String(url || '').trim();
-  if (!raw || !/supabase\.co/i.test(raw)) return raw;
-  try {
-    const configured = String(process.env.REACT_APP_SUPABASE_URL || '').trim().replace(/\/+$/, '');
-    if (!configured) return raw;
-    const currentHost = new URL(configured).host;
-    return raw.replace(/^https?:\/\/[^/]+\.supabase\.co/i, `https://${currentHost}`);
-  } catch {
-    return raw;
-  }
+function rewriteStorageUrl(url) {
+  return rewriteLegacyStorageUrl(url);
 }
 
 function companyLogoUrlCandidates(url) {
-  const rewritten = rewriteSupabaseStorageUrl(url);
+  const rewritten = rewriteStorageUrl(url);
   const candidates = [rewritten];
   // Company Settings upload stores .../public/companylogos/file.png but the object key is companylogos/file.png
   const match = rewritten.match(/^(https?:\/\/[^/]+\/storage\/v1\/object\/public\/companylogos\/)(?!companylogos\/)(.+)$/i);
@@ -74,7 +66,7 @@ export function brandLogoOnError(event) {
   img.src = STATIC_BRAND_LOGO;
 }
 
-export async function preloadBrandAssets({ client = supabase, includeStamp = true } = {}) {
+export async function preloadBrandAssets({ client = db, includeStamp = true } = {}) {
   const staticLogoData = await loadAsDataUrl(STATIC_BRAND_LOGO);
   let logoSrc = staticLogoData || STATIC_BRAND_LOGO;
 

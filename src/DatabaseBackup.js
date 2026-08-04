@@ -92,8 +92,8 @@ export default function DatabaseBackup() {
       return;
     }
     const warning = importMode === 'replace'
-      ? 'This will CLEAR matching tables in the current Supabase project, then restore from the backup. Continue?'
-      : 'This will upsert/merge rows into the current Supabase project. Continue?';
+      ? 'This will CLEAR matching collections in the current Firebase project, then restore from the backup. Continue?'
+      : 'This will upsert/merge rows into the current Firebase project. Continue?';
     if (!window.confirm(warning)) return;
 
     setBusy(true);
@@ -145,7 +145,7 @@ export default function DatabaseBackup() {
             <div>
               <h1 className="user-activity-title">Database Backup</h1>
               <p className="user-activity-subtitle">
-                Export a full business-data backup (products, sales, laybys, inventory, etc.) and restore it into this project or a new Supabase project after schema is applied.
+                Export a full business-data backup (products, sales, laybys, inventory, etc.) and restore it into this Firebase project or another project with the same collection layout.
               </p>
             </div>
             <div className="user-activity-header-actions">
@@ -161,7 +161,7 @@ export default function DatabaseBackup() {
           </div>
           <div className="db-backup-notes">
             <p><strong>Included:</strong> public app tables (products, sales, customers, laybys, quotes, stock, etc.).</p>
-            <p><strong>Not included:</strong> Supabase Auth login accounts, or files in Storage (product images). Recreate Auth users on a new project; image URLs may still point at the old project.</p>
+            <p><strong>Not included:</strong> Firebase Auth login accounts, or files in Storage (product images). Recreate Auth users on a new project; image URLs may still point at the old host.</p>
             <p><strong>New project:</strong> create the project → run schema/migrations → point the app env at it → Import here.</p>
           </div>
         </section>
@@ -192,7 +192,7 @@ export default function DatabaseBackup() {
         <section className="user-activity-panel">
           <h2 className="db-backup-section-title">Import / Restore</h2>
           <p className="user-activity-subtitle" style={{ marginTop: 0 }}>
-            Restores into the <strong>currently connected</strong> Supabase project. Use Replace when migrating to an empty project, or Merge to upsert by id.
+            Restores into the <strong>currently connected</strong> Firebase project. Use Replace when migrating to an empty project, or Merge to upsert by id.
           </p>
           <div className="db-backup-import-grid">
             <label className="db-backup-field">

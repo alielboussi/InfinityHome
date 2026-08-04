@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import supabase from "./supabase";
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { syncProductLocations } from './services/productLocations';
@@ -80,7 +80,7 @@ function Products() {
   const applyPricingLocationToForm = async (product, locationId) => {
     if (!product?.id || !locationId) return;
     try {
-      const row = await fetchProductLocationPriceRow(supabase, product.id, locationId);
+      const row = await fetchProductLocationPriceRow(db, product.id, locationId);
       const priceMap = buildProductLocationPriceMap(row ? [row] : []);
       const resolved = resolveProductLocationPricing(product, locationId, priceMap);
       setForm((prev) => ({
@@ -122,7 +122,7 @@ function Products() {
         let product = products.find(p => String(p.id) === String(editId));
         if (!product) {
           // Fetch single product if not loaded
-          const { data, error } = await supabase
+          const { data, error } = await db
             .from('products')
             .select(`id, name, sku, sku_type, cost_price, price, promotional_price, promo_start_date, promo_end_date, currency, category_id, unit_of_measure_id, created_at, product_locations(id, location_id), product_images(image_url)`)
             .eq('id', editId)
@@ -165,7 +165,7 @@ function Products() {
   }, [rtTickCatalog]);
 
   const fetchInventory = async () => {
-    const { data, error } = await supabase.from('inventory').select('product_id, quantity');
+    const { data, error } = await db.from('inventory').select('product_id, quantity');
     if (!error) {
       console.log('Fetched inventory:', data);
       setInventory(data || []);
@@ -173,7 +173,7 @@ function Products() {
   };
 
   const fetchUnits = async () => {
-    const { data, error } = await supabase.from('unit_of_measure').select('*').order('created_at', { ascending: false });
+    const { data, error } = await db.from('unit_of_measure').select('*').order('created_at', { ascending: false });
     if (!error) setUnits(data || []);
   };
 
@@ -186,12 +186,12 @@ function Products() {
         { data: categories, error: categoriesError },
         { data: locations, error: locationsError }
       ] = await Promise.all([
-        supabase
+        db
           .from("products")
           .select(`id, name, sku, sku_type, cost_price, price, promotional_price, promo_start_date, promo_end_date, currency, category_id, unit_of_measure_id, created_at, product_locations(id, location_id), product_images(image_url)`)
           .order("created_at", { ascending: false }),
-        supabase.from("categories").select("id, name"),
-        supabase.from("locations").select("id, name"),
+        db.from("categories").select("id, name"),
+        db.from("locations").select("id, name"),
       ]);
       if (productsError) console.warn('Products fetch error:', productsError);
       if (categoriesError) console.warn('Categories fetch error:', categoriesError);
@@ -266,7 +266,7 @@ function Products() {
     if (!window.confirm("Delete this product?")) return;
     setSaving(true);
     try {
-      const { error } = await supabase.from("products").delete().eq("id", id);
+      const { error } = await db.from("products").delete().eq("id", id);
       if (error) throw error;
       fetchAll();
     } catch (err) {
@@ -290,7 +290,7 @@ function Products() {
   };
 
   const getNextAutoSku = async () => {
-    const { data: allSkus, error } = await supabase.from('products').select('sku');
+    const { data: allSkus, error } = await db.from('products').select('sku');
     if (error || !Array.isArray(allSkus)) {
       throw error || new Error('Failed to load existing SKUs.');
     }
@@ -333,7 +333,7 @@ function Products() {
   };
 
   const fetchProductLocationsDirect = async (productId) => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('product_locations')
       .select('location_id')
       .eq('product_id', productId);
@@ -418,7 +418,7 @@ function Products() {
         let skuCandidate = skuToUse;
         let lastError = null;
         while (attempt < 5 && !inserted) {
-          const { data: insertedRow, error: insertError } = await supabase
+          const { data: insertedRow, error: insertError } = await db
             .from('products')
             .insert([{ ...baseProductData, sku: skuCandidate }])
             .select('id')
@@ -452,7 +452,7 @@ function Products() {
         insertedProductId = inserted.id;
       } else {
         // If editing, update the product
-        const { error: updateError } = await supabase.from('products').update({ ...baseProductData, sku: skuToUse }).eq('id', editingId);
+        const { error: updateError } = await db.from('products').update({ ...baseProductData, sku: skuToUse }).eq('id', editingId);
         if (updateError) {
           if (isDuplicateSkuError(updateError)) {
             throw new Error('SKU already exists. Please choose another.');
@@ -467,7 +467,7 @@ function Products() {
           await postProductLocationsReplace(insertedProductId, form.locations);
         } else {
           const prodLocRows = form.locations.map(locId => ({ product_id: insertedProductId, location_id: locId }));
-          await syncProductLocations({ rows: prodLocRows, replaceProductId: editingId ? insertedProductId : null }, supabase);
+          await syncProductLocations({ rows: prodLocRows, replaceProductId: editingId ? insertedProductId : null }, db);
         }
       }
 
@@ -479,7 +479,7 @@ function Products() {
       })();
       if (locationIdsForPricing.length) {
         try {
-          await seedProductLocationPricesForLocations(supabase, {
+          await seedProductLocationPricesForLocations(db, {
             productId: insertedProductId,
             locationIds: locationIdsForPricing,
             price: baseProductData.price,
@@ -502,22 +502,22 @@ function Products() {
         const filePath = `${fileName}`;
 
         // Upload to bucket 'productimages'
-        const { error: uploadError } = await supabase.storage.from('productimages').upload(filePath, file, { upsert: true });
+        const { error: uploadError } = await db.storage.from('productimages').upload(filePath, file, { upsert: true });
         if (uploadError) throw uploadError;
 
         // Get public URL
-        const { data: publicUrlData } = supabase.storage.from('productimages').getPublicUrl(filePath);
+        const { data: publicUrlData } = db.storage.from('productimages').getPublicUrl(filePath);
         const publicUrl = publicUrlData?.publicUrl;
         if (!publicUrl) throw new Error('Failed to get public URL for image.');
 
         // Insert into product_images table
-        const { error: imageInsertError } = await supabase.from('product_images').insert([
+        const { error: imageInsertError } = await db.from('product_images').insert([
           { product_id: insertedProductId, image_url: publicUrl }
         ]);
         if (imageInsertError) throw imageInsertError;
 
         // Update image_url in products table
-        const { error: prodImgUpdateError } = await supabase.from('products').update({ image_url: publicUrl }).eq('id', insertedProductId);
+        const { error: prodImgUpdateError } = await db.from('products').update({ image_url: publicUrl }).eq('id', insertedProductId);
         if (prodImgUpdateError) throw prodImgUpdateError;
       }
 

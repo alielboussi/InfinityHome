@@ -1,5 +1,5 @@
 import React from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import generateQuotePdf from './quotespdf';
 
 const EMPTY_ARR = [];
@@ -129,13 +129,13 @@ export default function ConvertedQuoteLaybysModal({ open, onClose }) {
     setError('');
     try {
       const [{ data: quotes, error: quoteErr }, { data: units, error: unitErr }] = await Promise.all([
-        supabase
+        db
           .from('quotations')
           .select('id, quote_number, customer_id, created_at, status')
           .eq('status', 'converted')
           .order('created_at', { ascending: false })
           .limit(200),
-        supabase
+        db
           .from('quotation_units')
           .select('id, name, abbreviation')
           .order('name', { ascending: true })
@@ -150,7 +150,7 @@ export default function ConvertedQuoteLaybysModal({ open, onClose }) {
 
       let customerMap = {};
       if (customerIds.length) {
-        const { data: custRows, error: custErr } = await supabase
+        const { data: custRows, error: custErr } = await db
           .from('customers')
           .select('id, name, phone, address, city, tpin')
           .in('id', customerIds);
@@ -160,7 +160,7 @@ export default function ConvertedQuoteLaybysModal({ open, onClose }) {
 
       let itemsByQuote = new Map();
       if (quoteIds.length) {
-        const { data: items, error: itemsErr } = await supabase
+        const { data: items, error: itemsErr } = await db
           .from('quotation_items')
           .select('*')
           .in('quotation_id', quoteIds)

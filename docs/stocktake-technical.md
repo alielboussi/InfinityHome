@@ -46,7 +46,7 @@ flowchart TB
 - **Client service:** `src/services/stocktake.js`
 - **Live set derivation:** `src/utils/stocktakeLiveTotals.js`
 - **Excel parse/sample:** `src/utils/stocktakeQtyImport.js`
-- **Schema:** `supabase/sql/migrations/20260710_stocktake_flow_v3.sql`
+- **Collections:** Firestore (`stocktake_*` collections; see `server/lib/firestoreServerClient.js`)
 
 ---
 
@@ -55,7 +55,7 @@ flowchart TB
 | Route | Component | Auth |
 |-------|-----------|------|
 | `/stocktake` | `StocktakeControlPage` | App auth (`RequireAuth`); stocktake access required |
-| `/stocktake/count` | `StocktakeCountSessionPage` | Public route; own Supabase Auth login (Google or email/password) |
+| `/stocktake/count` | `StocktakeCountSessionPage` | Public route; Firebase Auth login (Google or email/password) |
 | `/stocktake-periods`, `/stock-periods`, legacy stocktake URLs | Redirect | → `/stocktake` or `/stocktake/count` |
 | `/stocktake/count/:eventId` | Redirect | → `/stocktake/count` (selected event stored in browser storage, not the URL) |
 
@@ -130,7 +130,7 @@ Vercel rewrites also expose friendly paths such as `/api/stocktake-event-submit`
 
 ### Client fallback behaviour
 
-`src/services/stocktake.js` may fall back to direct Supabase for many read/write ops if the Vercel API is unreachable.
+`src/services/stocktake.js` may fall back to direct Firestore reads/writes if the Vercel API is unreachable.
 
 **No client fallback** (must hit the API):
 
@@ -343,7 +343,7 @@ Import qty behaviour: **absolute** for the importing user (not additive).
 
 1. `event-set-gate` exists in the API; the main control UI may not expose a gate toggle (sessions start enabled).
 2. Import sample template is based on `product_locations`; catalogue/submit also consider inventory-only products at the location.
-3. Submit/import/create-set/variance require the Vercel API path (no silent Supabase-only completion).
+3. Submit/import/create-set/variance require the Vercel API path (no silent Firestore-only completion).
 4. Large location catalogues on submit are paged so default API row limits do not truncate zeroing or count aggregation.
 
 ---
@@ -359,7 +359,7 @@ Import qty behaviour: **absolute** for the importing user (not additive).
 | Live totals | `src/utils/stocktakeLiveTotals.js` |
 | Excel helpers | `src/utils/stocktakeQtyImport.js` |
 | Rewrites | `vercel.json` |
-| Schema | `supabase/sql/migrations/20260710_stocktake_flow_v3.sql` |
-| Lab seed | `supabase/sql/migrations/20260710_seed_test_stocktake_lab.sql` |
+| Schema | Firestore collections (legacy SQL: `supabase/sql/migrations/20260710_stocktake_flow_v3.sql`) |
+| Lab seed | Historical Postgres seed script only |
 | Short overview | `docs/stocktake-flow.md` |
 | Operator procedure | `docs/stocktake-procedure.md` |

@@ -1,6 +1,6 @@
 // Client service to save sales edits via service-role API (bypasses RLS)
 
-import supabase from '../supabase';
+import db from '../dataClient';
 
 const isLocalHost = () => {
   try {
@@ -33,11 +33,11 @@ async function applySaleEditDirect(payload) {
     color: line?.color ?? null,
   }));
 
-  const { error: deleteErr } = await supabase.from('sales_items').delete().eq('sale_id', saleId);
+  const { error: deleteErr } = await db.from('sales_items').delete().eq('sale_id', saleId);
   if (deleteErr) throw deleteErr;
 
   if (itemsPayload.length > 0) {
-    const { error: insertErr } = await supabase.from('sales_items').insert(itemsPayload);
+    const { error: insertErr } = await db.from('sales_items').insert(itemsPayload);
     if (insertErr) throw insertErr;
   }
 
@@ -54,14 +54,14 @@ async function applySaleEditDirect(payload) {
     discount,
   };
 
-  const { data: existingSale, error: saleFetchErr } = await supabase
+  const { data: existingSale, error: saleFetchErr } = await db
     .from('sales')
     .select('id, layby_id')
     .eq('id', saleId)
     .maybeSingle();
   if (saleFetchErr) throw saleFetchErr;
 
-  const { error: saleErr } = await supabase
+  const { error: saleErr } = await db
     .from('sales')
     .update(saleUpdates)
     .eq('id', saleId);
@@ -81,13 +81,13 @@ async function applySaleEditDirect(payload) {
     };
 
     if (activeLaybyId) {
-      const { error: laybyErr } = await supabase
+      const { error: laybyErr } = await db
         .from('laybys')
         .update(laybyPayload)
         .eq('id', activeLaybyId);
       if (laybyErr) throw laybyErr;
     } else {
-      const { data: insertedLayby, error: insErr } = await supabase
+      const { data: insertedLayby, error: insErr } = await db
         .from('laybys')
         .insert(laybyPayload)
         .select('id')
@@ -97,14 +97,14 @@ async function applySaleEditDirect(payload) {
     }
 
     if (activeLaybyId) {
-      const { error: linkErr } = await supabase
+      const { error: linkErr } = await db
         .from('sales')
         .update({ layby_id: activeLaybyId })
         .eq('id', saleId);
       if (linkErr) throw linkErr;
     }
   } else if (activeLaybyId) {
-    const { error: laybyDoneErr } = await supabase
+    const { error: laybyDoneErr } = await db
       .from('laybys')
       .update({
         sale_id: saleId,

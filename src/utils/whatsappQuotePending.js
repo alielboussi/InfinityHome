@@ -1,4 +1,4 @@
-import supabase from '../supabase';
+import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { notifyLaybyWhatsApp } from '../services/whatsappNotify';
 
@@ -96,7 +96,7 @@ export async function salesHavePayments(saleIds = []) {
 export async function isQuoteOriginLayby({ laybyId, saleId } = {}) {
   try {
     if (laybyId != null && String(laybyId).trim() !== '') {
-      const { data: byLayby } = await supabase
+      const { data: byLayby } = await db
         .from('quotations')
         .select('id')
         .eq('layby_id', laybyId)
@@ -104,7 +104,7 @@ export async function isQuoteOriginLayby({ laybyId, saleId } = {}) {
       if (byLayby?.length) return true;
     }
     if (saleId != null && String(saleId).trim() !== '') {
-      const { data: bySale } = await supabase
+      const { data: bySale } = await db
         .from('quotations')
         .select('id')
         .eq('sale_id', saleId)

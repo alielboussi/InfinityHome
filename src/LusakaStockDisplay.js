@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import {
   fetchComboLocationPricesForLocation,
@@ -36,7 +36,7 @@ async function fetchRowsByIds(table, idField, select, ids) {
   if (!ids.length) return [];
   const rows = [];
   for (const chunk of chunkArray(ids, 200)) {
-    const { data, error } = await supabase.from(table).select(select).in(idField, chunk);
+    const { data, error } = await db.from(table).select(select).in(idField, chunk);
     if (error) throw error;
     rows.push(...(data || []));
   }
@@ -45,7 +45,7 @@ async function fetchRowsByIds(table, idField, select, ids) {
 
 async function resolveLusakaProductIds(inventoryRows) {
   const ids = new Set();
-  const { data: linked, error: plErr } = await supabase
+  const { data: linked, error: plErr } = await db
     .from('product_locations')
     .select('product_id')
     .eq('location_id', LUSAKA_BRANCH_ID);
@@ -64,7 +64,7 @@ async function resolveLusakaProductIds(inventoryRows) {
 }
 
 async function resolveLusakaComboIds() {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('combo_locations')
     .select('combo_id')
     .eq('location_id', LUSAKA_BRANCH_ID);
@@ -125,10 +125,10 @@ export default function LusakaStockDisplay() {
     }
     try {
       const [{ data: locRow }, invSnap, productPriceRows, comboPriceRows] = await Promise.all([
-        supabase.from('locations').select('id, name').eq('id', LUSAKA_BRANCH_ID).maybeSingle(),
+        db.from('locations').select('id, name').eq('id', LUSAKA_BRANCH_ID).maybeSingle(),
         fetchInventorySnapshot(LUSAKA_BRANCH_ID),
-        fetchProductLocationPricesForLocation(supabase, LUSAKA_BRANCH_ID),
-        fetchComboLocationPricesForLocation(supabase, LUSAKA_BRANCH_ID),
+        fetchProductLocationPricesForLocation(db, LUSAKA_BRANCH_ID),
+        fetchComboLocationPricesForLocation(db, LUSAKA_BRANCH_ID),
       ]);
       const inventoryRows = invSnap?.data || [];
       const [productIdList, comboIdList] = await Promise.all([
@@ -277,7 +277,7 @@ export default function LusakaStockDisplay() {
   );
 
   const handleLogout = async () => {
-    try { await supabase.auth.signOut(); } catch {}
+    try { await db.auth.signOut(); } catch {}
     clearStaleAppLogin();
     navigate('/login?next=%2Flusaka-stock', { replace: true });
   };

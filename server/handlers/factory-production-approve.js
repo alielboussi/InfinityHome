@@ -1,17 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { getDataClient } from '../lib/getDataClient.js';
 
-function getSupabaseServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    const err = new Error('Supabase service environment variables missing');
-    err.status = 500;
-    throw err;
-  }
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
+function getDb() {
+  return getDataClient();
 }
 
 function normalizeItems(items) {
@@ -62,7 +52,7 @@ export default async function handler(req, res) {
     const totalQty = cleanItems.reduce((sum, item) => sum + Number(item.qty || 0), 0);
     const transferDate = String(capturedAt).slice(0, 10);
 
-    const supabase = getSupabaseServiceClient();
+    const db = getDb();
 
     const sessionRow = {
       from_location: fromLocation,
@@ -82,7 +72,7 @@ export default async function handler(req, res) {
       },
     };
 
-    const { data: sessionData, error: sessionErr } = await supabase
+    const { data: sessionData, error: sessionErr } = await db
       .from('stock_transfer_sessions')
       .insert([sessionRow])
       .select('id,delivery_number')
@@ -99,14 +89,14 @@ export default async function handler(req, res) {
       product_id: item.product_id,
       quantity: Number(item.qty || 0),
     }));
-    const { error: entryErr } = await supabase.from('stock_transfer_entries').insert(entryRows);
+    const { error: entryErr } = await db.from('stock_transfer_entries').insert(entryRows);
     if (entryErr) {
       res.status(500).json({ ok: false, error: entryErr.message || 'Failed to save transfer entries.' });
       return;
     }
 
     const productIds = Array.from(new Set(cleanItems.map((item) => item.product_id)));
-    const { data: inventoryRows, error: invReadErr } = await supabase
+    const { data: inventoryRows, error: invReadErr } = await db
       .from('inventory')
       .select('id,product_id,location,quantity')
       .eq('location', toLocation)
@@ -137,7 +127,7 @@ export default async function handler(req, res) {
     });
 
     if (upsertRows.length > 0) {
-      const { error: invWriteErr } = await supabase
+      const { error: invWriteErr } = await db
         .from('inventory')
         .upsert(upsertRows, { onConflict: 'product_id,location' });
       if (invWriteErr) {
@@ -160,7 +150,7 @@ export default async function handler(req, res) {
     };
 
     let labelJobId = null;
-    const { data: labelData, error: labelErr } = await supabase
+    const { data: labelData, error: labelErr } = await db
       .from('label_print_jobs')
       .insert([{ payload: labelPayload }])
       .select('id')

@@ -65,7 +65,7 @@ Also supported in schema: `submitted` (treated like pending), `accepted` (legacy
 | `completed` | Accepted; inventory moved Factory → Kitwe |
 | `cancelled` / `failed` | Terminal non-success |
 
-## Supabase tables
+## Firestore collections
 
 ### `warehouse_delivery_sessions`
 
@@ -102,7 +102,7 @@ Event types: `submitted`, `edited`, `completed`
 
 `inventory` rows for Factory and Kitwe are updated only inside `accept_warehouse_delivery`.
 
-## Supabase RPCs
+## API / server actions
 
 | Function | Purpose |
 |----------|---------|
@@ -180,7 +180,7 @@ After a successful accept, the web app posts this template to `/api/whatsapp-tra
 3. If name is missing at submit time, the RPC looks up `users.full_name` by `created_by_id`
 4. Email is only a last-resort fallback
 
-Set each Android employee’s name in Supabase on the `public.users` table:
+Set each mobile employee’s name in Firestore on the `users` collection (or via the web Users admin):
 
 ```sql
 UPDATE public.users
@@ -190,8 +190,8 @@ WHERE email = 'john@example.com';
 
 Also apply:
 
-- `supabase/sql/migrations/20260711_warehouse_deliveries_workflow.sql`
-- `supabase/sql/migrations/20260711_warehouse_delivery_created_by_name.sql`
+- Legacy SQL reference (historical): `supabase/sql/migrations/20260711_warehouse_deliveries_workflow.sql`
+- Legacy SQL reference (historical): `supabase/sql/migrations/20260711_warehouse_delivery_created_by_name.sql`
 
 #### Vercel environment variables
 
@@ -245,32 +245,26 @@ Page: `/warehouse-deliveries-admin`
 - `src/utils/warehouseDeliveryPdf.js` — PDF
 - `src/WarehouseTransferSummary.js` — legacy All-Transfers PDF (unchanged route)
 
-### Android
+### Mobile (Expo)
 
-- `.../MainActivity.kt` — UI flow
-- `.../data/ProductRepository.kt` — catalog + submit + completed list
-- `.../data/CartStorage.kt` — cart persistence
-- `.../data/AppConfig.kt` — locations + Supabase URL/key
-- `.../data/AuthRepository.kt` — login
-- `.../data/SupabaseClient.kt` — REST client
+- `mobile-apps/warehouse-transfers/` — product list, cart, Firestore submit
+- `mobile-apps/shared/firebase.js` — Firebase init + auth
 
-### SQL
+### SQL (legacy reference)
 
-- `supabase/sql/migrations/20260711_warehouse_deliveries_workflow.sql`
+- Historical Postgres migration: `supabase/sql/migrations/20260711_warehouse_deliveries_workflow.sql`
 
 ## Setup instructions
 
-1. Apply the migration in the Supabase SQL editor (or your migration runner):
-   `supabase/sql/migrations/20260711_warehouse_deliveries_workflow.sql`
-2. Confirm RPCs exist: `submit_warehouse_delivery`, `accept_warehouse_delivery`, `update_warehouse_delivery_items`
-3. Deploy / restart the web app so nav + pages pick up changes
-4. Rebuild the Android APK from `Android Apps/WarehouseTransfers`
-5. Ensure Hassan’s web account UUID is `6b992ac8-8e39-4f31-a323-2271a974da8c` (accept gate)
+1. Ensure `warehouse_delivery_sessions` / `warehouse_delivery_entries` collections exist in Firestore (migrated from legacy Postgres).
+2. Deploy / restart the web app so nav + pages pick up changes.
+3. Configure `mobile-apps/warehouse-transfers/.env` with `EXPO_PUBLIC_FIREBASE_*`.
+4. Ensure Hassan’s web account UUID is `6b992ac8-8e39-4f31-a323-2271a974da8c` (accept gate).
 
 ### Environment / secrets
 
-- Web: existing Supabase client env (`src/supabase.js`)
-- Android: URL + anon key currently in `AppConfig.kt` (move to BuildConfig / secrets for production hardening)
+- Web: `REACT_APP_FIREBASE_*` + `src/dataClient.js`
+- Mobile: `EXPO_PUBLIC_FIREBASE_*` in Expo app `.env`
 - WhatsApp (Vercel): set `WHATSAPP_TRANSFER_GROUP_ID=120363410583418058@g.us` and a real `WHATSAPP_API_TOKEN` (Whapi channel e.g. `GRNLTR-WEWZ3`)
 
 ## Testing checklist

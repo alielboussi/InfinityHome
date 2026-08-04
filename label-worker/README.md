@@ -7,7 +7,24 @@ This worker polls `label_print_jobs` and prints labels over USB (Godex EZ120 rea
 - Ensure "Add Python to PATH" is checked.
 
 ## 2) Configure environment
-The installer drops a prefilled `.env` with your Supabase service key and label size.
+
+### Firebase mode (recommended)
+
+Set these in `.env` next to `LabelPrinter.exe`:
+
+- `INFINITY_API_BASE=https://infinity-home-pi.vercel.app` (your deployed app URL)
+- `LABEL_WORKER_SECRET=<same secret as Vercel env LABEL_WORKER_SECRET>`
+- `PRINTER_NAME` (the exact Windows printer name)
+
+The worker polls `/api/labels?action=worker-pending` and updates job status via Firestore on the server. No Supabase credentials are needed.
+
+### Legacy Supabase mode (deprecated)
+
+If `INFINITY_API_BASE` is not set, the worker falls back to Supabase REST:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_KEY`
+
 You only need to set:
 - `PRINTER_NAME` (the exact Windows printer name)
 

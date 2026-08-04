@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { FaDownload, FaFileImport, FaPlus, FaQrcode, FaTrashAlt } from 'react-icons/fa';
-import supabase from './supabase';
+import db from './dataClient';
 import {
   addCount,
   clearMyCounts,
@@ -21,7 +21,7 @@ import {
 } from './services/stocktake';
 import { downloadStocktakeQtySample, parseStocktakeQtyFile } from './utils/stocktakeQtyImport';
 import { hasOAuthReturnParams, resolveAppUserFromSession, startGoogleSignIn } from './utils/googleAuth';
-import { signInWithEmailPassword } from './utils/supabaseAuthLogin';
+import { signInWithEmailPassword } from './utils/authLogin';
 import { resolveLocationBySlug } from './utils/stocktakeLocationSlug';
 import './stocktake-count.css';
 
@@ -471,7 +471,7 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
         setGoogleLoading(true);
         try {
           for (let attempt = 0; attempt < 8; attempt += 1) {
-            const { data } = await supabase.auth.getSession();
+            const { data } = await db.auth.getSession();
             if (data?.session?.access_token) break;
             await new Promise((resolve) => setTimeout(resolve, 150));
           }
@@ -484,9 +484,9 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
         return;
       }
 
-      // Reuse an existing Supabase session (e.g. already signed in via Google on /login).
+      // Reuse an existing Firebase session (e.g. already signed in via Google on /login).
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data } = await db.auth.getSession();
         if (data?.session?.access_token) await finishFromSession();
       } catch (_) {}
     })();

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { cacheSet } from './utils/staleCache';
 import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { formatLaybyTotalsLine, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
@@ -39,7 +39,7 @@ export default function LaybyDashboardStats({ active = true }) {
       timer = setTimeout(() => setLaybyStatsTick((value) => value + 1), 300);
     };
 
-    const channel = supabase
+    const channel = db
       .channel('layby-dashboard-stats-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'laybys' }, bump)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, bump)
@@ -49,7 +49,7 @@ export default function LaybyDashboardStats({ active = true }) {
 
     return () => {
       if (timer) clearTimeout(timer);
-      try { supabase.removeChannel(channel); } catch {}
+      try { db.removeChannel(channel); } catch {}
     };
   }, [active]);
 

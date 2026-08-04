@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import BackToDashboard from './BackToDashboard';
 import { getCurrentUser, getHomeDashboardPath } from './accessControl';
@@ -111,7 +111,7 @@ export default function Reversal() {
         throw new Error('Only completed or layby sales can be adjusted.');
       }
 
-      const { data: itemRows, error: itemsErr } = await supabase
+      const { data: itemRows, error: itemsErr } = await db
         .from('sales_items')
         .select('id, product_id, display_name, quantity, unit_price, currency, color')
         .eq('sale_id', saleRow.id)
@@ -132,7 +132,7 @@ export default function Reversal() {
         custName = cust?.name || '';
       }
 
-      const finMap = await fetchCanonicalFinancials(supabase, [saleRow.id]);
+      const finMap = await fetchCanonicalFinancials(db, [saleRow.id]);
       const fin = finMap.get(String(saleRow.id)) || {};
       const paid = Number(fin.paid_amount || 0);
       const outstanding = Number(fin.outstanding_amount ?? Math.max(0, Number(saleRow.total_amount || 0) - paid));

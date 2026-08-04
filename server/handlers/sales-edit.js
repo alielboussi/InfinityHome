@@ -1,7 +1,7 @@
 // Serverless API: sales-edit
-// Replaces sales_items and updates sales/laybys using Supabase service role (bypasses RLS).
+// Replaces sales_items and updates sales/laybys using the Firestore service client.
 
-import { createClient } from '@supabase/supabase-js';
+import { getDataClient } from '../lib/getDataClient.js';
 
 const toNumber = (value) => {
   const n = Number(value || 0);
@@ -40,14 +40,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !serviceKey) {
-      sendError(500, 'env', new Error('Supabase service env not configured (SUPABASE_URL + SUPABASE_SERVICE_ROLE)'));
-      return;
-    }
-
-    const supabase = createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: 'public' } });
+    const db = getDataClient();
 
     const body = req.body || {};
     const saleId = body.saleId || body.sale_id || body.id;
@@ -62,7 +55,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const { data: existingSale, error: saleFetchErr } = await supabase
+    const { data: existingSale, error: saleFetchErr } = await db
       .from('sales')
       .select('id, layby_id')
       .eq('id', saleId)
@@ -86,14 +79,14 @@ export default async function handler(req, res) {
       color: line?.color ?? null,
     }));
 
-    const { error: deleteErr } = await supabase.from('sales_items').delete().eq('sale_id', saleId);
+    const { error: deleteErr } = await db.from('sales_items').delete().eq('sale_id', saleId);
     if (deleteErr) {
       sendError(500, 'items_delete', deleteErr);
       return;
     }
 
     if (itemsPayload.length > 0) {
-      const { error: insertErr } = await supabase.from('sales_items').insert(itemsPayload);
+      const { error: insertErr } = await db.from('sales_items').insert(itemsPayload);
       if (insertErr) {
         sendError(500, 'items_insert', insertErr);
         return;
@@ -113,7 +106,7 @@ export default async function handler(req, res) {
       discount,
     };
 
-    const { error: saleErr } = await supabase
+    const { error: saleErr } = await db
       .from('sales')
       .update(saleUpdates)
       .eq('id', saleId);
@@ -136,7 +129,7 @@ export default async function handler(req, res) {
       };
 
       if (activeLaybyId) {
-        const { error: laybyErr } = await supabase
+        const { error: laybyErr } = await db
           .from('laybys')
           .update(laybyPayload)
           .eq('id', activeLaybyId);
@@ -145,7 +138,7 @@ export default async function handler(req, res) {
           return;
         }
       } else {
-        const { data: insertedLayby, error: insErr } = await supabase
+        const { data: insertedLayby, error: insErr } = await db
           .from('laybys')
           .insert(laybyPayload)
           .select('id')
@@ -158,7 +151,7 @@ export default async function handler(req, res) {
       }
 
       if (activeLaybyId) {
-        const { error: linkErr } = await supabase
+        const { error: linkErr } = await db
           .from('sales')
           .update({ layby_id: activeLaybyId })
           .eq('id', saleId);
@@ -168,7 +161,7 @@ export default async function handler(req, res) {
         }
       }
     } else if (activeLaybyId) {
-      const { error: laybyDoneErr } = await supabase
+      const { error: laybyDoneErr } = await db
         .from('laybys')
         .update({
           sale_id: saleId,

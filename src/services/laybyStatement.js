@@ -1,4 +1,4 @@
-import supabase from '../supabase';
+import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
@@ -63,7 +63,7 @@ export async function fetchLaybyStatement(customerId) {
     const saleIds = laybySales.map(s => s.id).filter(v => v != null);
     if (!saleIds.length) return { data: { sales: [], items: [], payments: [] } };
 
-    const finMap = await fetchCanonicalFinancials(supabase, saleIds);
+    const finMap = await fetchCanonicalFinancials(db, saleIds);
     let quoteBySale = new Map();
     try {
       const { data: quoteRows } = await fromPublic('quotations')

@@ -1,7 +1,7 @@
 // src/Dashboard.js
 
 import React, { useState, useEffect, useCallback } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { useNavigate } from 'react-router-dom';
 import { cacheClear } from './utils/staleCache';
 import { getHomeDashboardPath, isPathAllowed, getUserDisplayName } from './accessControl';
@@ -80,7 +80,7 @@ function Dashboard() {
 
     const computeMostSoldProduct = async () => {
       try {
-        const { data: completedSales, error: salesErr } = await supabase
+        const { data: completedSales, error: salesErr } = await db
           .from('sales')
           .select('id')
           .eq('status', 'completed');
@@ -94,7 +94,7 @@ function Dashboard() {
         for (let i = 0; i < saleIds.length; i += 200) chunks.push(saleIds.slice(i, i + 200));
 
         for (const chunk of chunks) {
-          const { data: items, error: itemErr } = await supabase
+          const { data: items, error: itemErr } = await db
             .from('sales_items')
             .select('product_id, display_name, quantity')
             .in('sale_id', chunk);
@@ -120,7 +120,7 @@ function Dashboard() {
         if (productIds.length) {
           for (let i = 0; i < productIds.length; i += 200) {
             const chunk = productIds.slice(i, i + 200);
-            const { data: products, error: prodErr } = await supabase
+            const { data: products, error: prodErr } = await db
               .from('products')
               .select('id, name')
               .in('id', chunk);
@@ -155,7 +155,7 @@ function Dashboard() {
     const computeProductCost = async () => {
       const totals = { K: 0, USD: 0 };
       try {
-        const { data: products, error: pErr } = await supabase
+        const { data: products, error: pErr } = await db
           .from('products')
           .select('id, cost_price, currency');
         if (pErr) throw pErr;
@@ -164,7 +164,7 @@ function Dashboard() {
           cost: Number(p.cost_price || 0),
           code: normalizeCurrencyCode(p.currency),
         }));
-        const { data: inv, error: iErr } = await supabase
+        const { data: inv, error: iErr } = await db
           .from('inventory')
           .select('product_id, quantity');
         if (iErr) throw iErr;
@@ -207,7 +207,7 @@ function Dashboard() {
     const totals = { K: 0, USD: 0 };
     const discounts = { K: 0, USD: 0 };
     try {
-      let q = supabase
+      let q = db
         .from('sales')
         .select('id, total_amount, discount, currency, sale_date, created_at, status')
         .eq('status', 'completed');
@@ -247,7 +247,7 @@ function Dashboard() {
         let usdPaymentDiscount = 0;
         for (let i = 0; i < usdSaleIds.length; i += 200) {
           const chunk = usdSaleIds.slice(i, i + 200);
-          const { data: payRows, error: payErr } = await supabase
+          const { data: payRows, error: payErr } = await db
             .from('sales_payments')
             .select('sale_id, amount, discount_amount')
             .in('sale_id', chunk);

@@ -1,4 +1,4 @@
-import supabase from '../supabase';
+import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 
 function normalizeCurrency(cur) {
@@ -69,7 +69,7 @@ export async function addLedgerEntry({ direction, amount, currency = 'K', reason
       reference: reference ? reference.trim() : null,
       location_id: location_id || null,
     };
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('ledger_entries')
       .insert([payload])
       .select()

@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, no-loop-func */
 /* eslint-disable import/first */
 import jsPDF from 'jspdf';
-import supabase from './supabase';
+import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import { pdfTheme, formatCurrency } from './pdfTheme';
 import { USE_LAYBY_RPC, fetchLaybyStatementRPC } from './laybyStatementService';
@@ -9,6 +9,7 @@ import { fetchCanonicalFinancials } from './utils/financials';
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import { fetchLaybyStatement } from './services/laybyStatement';
 import { fetchLaybyPaymentsByCustomerId, fetchMergedLaybyPayments } from './services/laybyPayments';
+import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
 import { isFahme } from './laybyRules';
 import laybyPdfItemFallbacks from './data/laybyPdfItemFallbacks.json';
 import laybyPdfSettlementFallbacks from './data/laybyPdfSettlementFallbacks.json';
@@ -316,7 +317,7 @@ const safeLog = (type, ...args) => { if (!PDF_DEBUG) return; // eslint-disable-n
 
 // Dynamic sales column selection with graceful fallback.
 // We attempt optional columns and remove any that trigger a 400 error so no warning appears to user.
-// Note: down_payment removed; use sales_payments + v_sales_financials instead
+// Note: down_payment removed; use sales_payments + computeSaleFinancials instead
 const SALES_MANDATORY = ['id','sale_date','currency','layby_id','total_amount','customer_id'];
 const SALES_OPTIONAL = ['discount']; // removed sale_discount (column no longer present)
 async function selectSales(whereFn, single = false) {
@@ -352,7 +353,7 @@ async function getCompanySettings() {
     }
   } catch {}
   try {
-    const { data } = await supabase.from('company_settings').select('*').single();
+    const { data } = await db.from('company_settings').select('*').single();
     cachedCompany = data || {};
     if (typeof window !== 'undefined') window.companySettings = cachedCompany;
   } catch {
@@ -580,21 +581,30 @@ function groupPaymentsByAllocationBatch(payments = []) {
   const grouped = new Map();
   (payments || []).forEach((payment, index) => {
     const batchKey = String(payment?.allocation_batch_uuid || '').trim() || `single:${payment?.id || index}`;
+    const paymentAmount = Number(payment?.amount || 0);
+    const paymentDiscount = Number(payment?.discount_amount || 0);
     if (!grouped.has(batchKey)) {
       grouped.set(batchKey, {
         sale_id: payment?.sale_id,
-        amount: 0,
-        discount_amount: 0,
+        amount: paymentAmount,
+        discount_amount: paymentDiscount,
         payment_date: payment?.payment_date || null,
         payment_type: payment?.payment_type || 'cash',
         notes: payment?.notes || '',
         reference: payment?.reference || '',
         allocation_batch_uuid: payment?.allocation_batch_uuid || null,
       });
+      return;
     }
     const entry = grouped.get(batchKey);
-    entry.amount += Number(payment?.amount || 0);
-    entry.discount_amount += Number(payment?.discount_amount || 0);
+    // layby_payments and sales_payments mirror the same batch — do not sum.
+    if (String(payment?.allocation_batch_uuid || '').trim()) {
+      entry.amount = Math.max(entry.amount, paymentAmount);
+      entry.discount_amount = Math.max(entry.discount_amount, paymentDiscount);
+    } else {
+      entry.amount += paymentAmount;
+      entry.discount_amount += paymentDiscount;
+    }
     if (payment?.payment_date && (!entry.payment_date || payment.payment_date > entry.payment_date)) {
       entry.payment_date = payment.payment_date;
     }
@@ -755,6 +765,8 @@ function appendPaymentsToClosePaidGap({ paymentLines, payments, targetPaid, fall
 }
 
 function buildLaybyPaymentMergeKey(payment) {
+  const batch = String(payment?.allocation_batch_uuid || '').trim();
+  if (batch) return `batch:${batch}`;
   if (payment?.id != null) return `id:${payment.id}`;
   return [
     payment?.sale_id || '',
@@ -764,7 +776,6 @@ function buildLaybyPaymentMergeKey(payment) {
     String(payment?.payment_type || '').toLowerCase(),
     String(payment?.reference || ''),
     String(payment?.notes || ''),
-    String(payment?.allocation_batch_uuid || ''),
   ].join('|');
 }
 
@@ -826,21 +837,8 @@ function normalizeSettlementLineDescriptions(paymentLines) {
   });
 }
 
-function rewriteSupabaseStorageUrl(url) {
-  const raw = String(url || '').trim();
-  if (!raw || !/supabase\.co/i.test(raw)) return raw;
-  try {
-    const configured = String(process.env.REACT_APP_SUPABASE_URL || '').trim().replace(/\/+$/, '');
-    if (!configured) return raw;
-    const currentHost = new URL(configured).host;
-    return raw.replace(/^https?:\/\/[^/]+\.supabase\.co/i, `https://${currentHost}`);
-  } catch {
-    return raw;
-  }
-}
-
 function getLogoUrl(company) {
-  const url = rewriteSupabaseStorageUrl(company?.company_logo || company?.logo || '');
+  const url = rewriteLegacyStorageUrl(company?.company_logo || company?.logo || '');
   if (url) return url;
   try {
     if (typeof window !== 'undefined') return window.location.origin + '/bestrest-logo.png';
@@ -1194,7 +1192,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
         // Secondary fallback: maybe the layby row itself holds the sale_id and wasn't passed in
         if ((!sales || sales.length === 0) && !layby?.sale_id) {
           try {
-            const { data: laybyRow, error: laybyRowErr } = await supabase
+            const { data: laybyRow, error: laybyRowErr } = await db
               .from('laybys')
               .select('sale_id')
               .eq('id', laybyId)
@@ -1225,10 +1223,10 @@ export async function generateLaybyPdf(layby, opts = {}) {
         if (saleIds.length) {
           const saleIdsNumeric = saleIds.map(v => typeof v === 'string' ? parseInt(v, 10) : v).filter(v => Number.isFinite(v));
           try {
-            const finMap = await fetchCanonicalFinancials(supabase, saleIdsNumeric);
+            const finMap = await fetchCanonicalFinancials(db, saleIdsNumeric);
             finMap.forEach((r, k) => { related.finBySale[String(k)] = r; });
           } catch {}
-          const { data: itemRows, error: itemsErr } = await supabase
+          const { data: itemRows, error: itemsErr } = await db
             .from('sales_items')
             .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
             .in('sale_id', saleIdsNumeric);
@@ -1237,7 +1235,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
           try { console.info('[LaybyPDF] Items fetched counts', { count: related.items.length, sample: related.items.slice(0,3) }); } catch {}
           const productIds = [...new Set((itemRows || []).map(r => r.product_id).filter(Boolean))];
           if (productIds.length) {
-            const { data: prodRows } = await supabase
+            const { data: prodRows } = await db
               .from('products')
               .select('id, name')
               .in('id', productIds);
@@ -1289,7 +1287,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       if (layby?.sale_id && !saleIdsForQuote.includes(layby.sale_id)) saleIdsForQuote.push(layby.sale_id);
       let quoteRow = null;
       if (saleIdsForQuote.length) {
-        const { data: qBySale } = await supabase
+        const { data: qBySale } = await db
           .from('quotations')
           .select('id, sale_id, created_at')
           .in('sale_id', saleIdsForQuote)
@@ -1298,7 +1296,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
         if (qBySale && qBySale.length) quoteRow = qBySale[0];
       }
       if (!quoteRow && layby?.id && isLaybyUuid(layby.id) && !opts?.posReceipt) {
-        const { data: qByLayby } = await supabase
+        const { data: qByLayby } = await db
           .from('quotations')
           .select('id, sale_id, created_at')
           .eq('layby_id', layby.id)
@@ -1311,7 +1309,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       const isSingleStatementExport = statementSaleIds.length <= 1 && statementLaybyIds.length <= 1;
       const preferQuoteItems = !!quoteRow && isSingleStatementExport && (origin === 'quote' || originNote.includes('origin=quote') || (related.items || []).length === 0);
       if (preferQuoteItems && quoteRow?.id) {
-        const { data: qItems } = await supabase
+        const { data: qItems } = await db
           .from('quotation_items')
           .select('id, quotation_id, quote_product_id, product_id, name_override, description, quantity, unit_price, unit_id, sort_order')
           .eq('quotation_id', quoteRow.id)
@@ -1319,7 +1317,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
         const qpIds = [...new Set((qItems || []).map(it => it.quote_product_id).filter(Boolean))];
         const qpNameMap = new Map();
         if (qpIds.length) {
-          const { data: qpRows } = await supabase
+          const { data: qpRows } = await db
             .from('quotation_products')
             .select('id, name')
             .in('id', qpIds);
@@ -2191,19 +2189,27 @@ export async function generateLaybyPdf(layby, opts = {}) {
       settlementPayments.forEach((payment, index) => {
         const batchKey = String(payment?.allocation_batch_uuid || '').trim();
         const key = batchKey || `single:${index}`;
+        const paymentAmount = Number(payment?.amount || 0);
+        const paymentDiscount = Number(payment?.discount_amount || 0);
         if (!groupedByBatch.has(key)) {
           groupedByBatch.set(key, {
-            amount: 0,
-            discount_amount: 0,
+            amount: paymentAmount,
+            discount_amount: paymentDiscount,
             date: payment?.payment_date || null,
             paymentType: titleCase(String(payment?.payment_type || 'cash').replace(/_/g, ' ')),
             note: sanitizePaymentNote(payment?.notes || '').trim(),
             reference: String(payment?.reference || '').trim(),
           });
+          return;
         }
         const entry = groupedByBatch.get(key);
-        entry.amount += Number(payment?.amount || 0);
-        entry.discount_amount += Number(payment?.discount_amount || 0);
+        if (batchKey) {
+          entry.amount = Math.max(entry.amount, paymentAmount);
+          entry.discount_amount = Math.max(entry.discount_amount, paymentDiscount);
+        } else {
+          entry.amount += paymentAmount;
+          entry.discount_amount += paymentDiscount;
+        }
         if (!entry.date && payment?.payment_date) entry.date = payment.payment_date;
         if (!entry.note) entry.note = sanitizePaymentNote(payment?.notes || '').trim();
         if (!entry.reference) entry.reference = String(payment?.reference || '').trim();
@@ -2330,7 +2336,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       if (paymentLines.length) {
         // Desired gap between main table and settlement: 3cm (~85pt)
         const CM = 28.346; const desiredGap = 3 * CM; // ≈85.04pt
-        const settlementHeightEstimate = 40 + headerHeight + (paymentLines.length + (isFahmeCustomer ? 1 : 2)) * rowLineHeight; // title + header + rows + total + due row
+        const settlementHeightEstimate = 40 + headerHeight + (paymentLines.length + 2) * rowLineHeight; // title + header + rows + total paid + due row
         const pH = doc.internal.pageSize.getHeight();
         // If settlement fits on current page with desired gap and 40pt bottom buffer, keep it here; else new page.
         const needGap = yCursor + desiredGap + settlementHeightEstimate + 40 > pH;
@@ -2373,12 +2379,13 @@ export async function generateLaybyPdf(layby, opts = {}) {
             doc.text(numberFmt(l.amount), amountX, yCursor + rowH/2, { align: 'right', baseline: 'middle' });
             yCursor += rowH;
         });
-        if (!useLegacySettlementLayout) {
-          doc.setFont('helvetica','bold');
-          doc.text('Total Down Payments', descX, yCursor + rowLineHeight/2, { baseline: 'middle' });
-          doc.text(numberFmt(downPaymentTotal), amountX, yCursor + rowLineHeight/2, { align: 'right', baseline: 'middle' });
-          yCursor += rowLineHeight;
+        if (DRAW_TABLE_BORDERS) {
+          doc.line(tableMarginLeft, yCursor, tableMarginLeft + tableWidth, yCursor);
         }
+        doc.setFont('helvetica','bold');
+        doc.text('Total Paid', descX, yCursor + rowLineHeight/2, { baseline: 'middle' });
+        doc.text(numberFmt(downPaymentTotal), amountX, yCursor + rowLineHeight/2, { align: 'right', baseline: 'middle' });
+        yCursor += rowLineHeight;
         // Due remaining row
         doc.setFont('helvetica','bold');
         doc.text('Due Remaining', descX, yCursor + rowLineHeight/2, { baseline: 'middle' });

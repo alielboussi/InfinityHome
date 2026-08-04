@@ -1,7 +1,7 @@
 // Client service to call unified checkout API
-// Falls back to direct Supabase writes in local dev (where /api routes are not served by CRA)
+// Falls back to direct Firestore writes in local dev (where /api routes are not served by CRA)
 
-import supabase from '../supabase';
+import db from '../dataClient';
 import { resolveSaleActor } from '../accessControl';
 import { applySaleInventoryDeductionViaApi } from '../utils/inventoryApi';
 import { newUuid } from '../utils/uuid';
@@ -142,35 +142,10 @@ async function applyInventoryDeduction(db, { items = [], locationId, saleId, rec
   return adjustedProducts;
 }
 
-// Direct REST insert helper (explicit headers) as a last-resort fallback
-async function restInsertPublic(table, row) {
-  const base = (process.env.REACT_APP_SUPABASE_URL || '').replace(/\/?$/, '');
-  const key = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
-  if (!base || !key) throw new Error('Supabase env not configured');
-  const url = `${base}/rest/v1/${encodeURIComponent(table)}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'apikey': key,
-      'Authorization': `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      'Accept-Profile': 'public',
-      'Content-Profile': 'public',
-      'Prefer': 'return=minimal',
-    },
-    body: JSON.stringify([row]),
-  });
-  if (!resp.ok) {
-    const text = await resp.text().catch(()=>'');
-    const msg = text || `REST insert failed (${resp.status})`;
-    throw new Error(msg);
-  }
-}
-
 /**
  * Perform a full checkout in one call.
- * Tries serverless API first, then falls back to client-side Supabase writes
- * when the API is unavailable (404/Network in local dev).
+ * Tries serverless API first, then falls back to client-side Firestore writes
+ * when the API is unavailable (404/network in local dev).
  * @param {{ sale: object, items?: Array<object>, payments?: Array<object> }} payload
  * @returns {Promise<{ data: { ok: true, sale: object, storedReceiptNumber: string, itemsInserted: number, paymentsInserted: number, paymentsBatch?: string, inventoryApplied?: boolean }|null, error: Error|null }>}
  */
@@ -229,17 +204,16 @@ export async function checkout(payload) {
     // Log but do not block local development when fallback is allowed
     try {
       if (isKnownApiBug) {
-        console.warn('[checkout] Remote API missing randomUUID import; using local Supabase fallback.');
+        console.warn('[checkout] Remote API missing randomUUID import; using local Firestore fallback.');
       } else {
         console.warn('[checkout] API call failed; falling back to browser writes. Check dev proxy and REACT_APP_API_BASE.');
       }
     } catch {}
   }
 
-  // 2) Fallback: perform the checkout steps directly using the browser Supabase client
+  // 2) Fallback: perform the checkout steps directly using the browser Firestore client
   try {
-    // Pin schema explicitly in case the environment/proxy drops the header
-    const db = typeof supabase.schema === 'function' ? supabase.schema('public') : supabase;
+    const scopedDb = typeof db.schema === 'function' ? db.schema('public') : db;
 
     const body = normalizedPayload || {};
     const sale = body.sale || {};
@@ -251,16 +225,16 @@ export async function checkout(payload) {
     }
 
     // Resolve table names (plural-first, then common singular variants)
-    const salesTable = await resolveTable(db, 'sales', ['sale']);
-    const salesItemsTable = await resolveTable(db, 'sales_items', ['sale_items', 'sales_item']);
-    const salesPaymentsTable = await resolveTable(db, 'sales_payments', ['sale_payments', 'sales_payment']);
+    const salesTable = await resolveTable(scopedDb, 'sales', ['sale']);
+    const salesItemsTable = await resolveTable(scopedDb, 'sales_items', ['sale_items', 'sales_item']);
+    const salesPaymentsTable = await resolveTable(scopedDb, 'sales_payments', ['sale_payments', 'sales_payment']);
 
     // Reject duplicate receipt numbers (client-side fallback)
     const hasReceipt = typeof sale?.receipt_number === 'string' && sale.receipt_number.trim() !== '';
     const storedReceiptNumber = hasReceipt ? sale.receipt_number.trim() : null;
     if (hasReceipt) {
       try {
-        await assertReceiptNumberAvailable(db, salesTable, storedReceiptNumber);
+        await assertReceiptNumberAvailable(scopedDb, salesTable, storedReceiptNumber);
       } catch (dupErr) {
         return { data: null, error: dupErr };
       }
@@ -269,11 +243,11 @@ export async function checkout(payload) {
     const payloadToInsert = hasReceipt
       ? { ...sale, receipt_number: storedReceiptNumber }
       : { ...sale, receipt_number: sale?.receipt_number || null };
-    const resIns = await db.from(salesTable).insert(payloadToInsert).select('*').single();
+    const resIns = await scopedDb.from(salesTable).insert(payloadToInsert).select('*').single();
     if (resIns.error) {
       const msg = String(resIns.error?.message || '');
       if (/null value in column\s+"id"\s+of relation\s+"sales"/i.test(msg)) {
-        const hint = 'Checkout failed because public.sales.id does not auto-generate. Apply the SQL patch supabase/sql/patches/006_sales_id_identity.sql (adds identity/sequence-backed default).';
+        const hint = 'Checkout failed because public.sales.id does not auto-generate. Apply the SQL patch db/sql/patches/006_sales_id_identity.sql (adds identity/sequence-backed default).';
         return { data: null, error: new Error(`${msg}. ${hint}`) };
       }
       if (isDuplicateReceiptError(resIns.error)) {
@@ -281,7 +255,7 @@ export async function checkout(payload) {
       }
       const m = String(resIns.error?.message || resIns.error || '').toLowerCase();
       if (/relation .* does not exist|not found|pgrst/i.test(m)) {
-        return { data: null, error: new Error(`Checkout failed: table '${salesTable}' is not available via public schema for ${process.env.REACT_APP_SUPABASE_URL || 'Supabase URL'}. Verify your local .env REACT_APP_SUPABASE_URL/ANON_KEY point to the project that has public.sales and that 'public' is the active profile.`) };
+        return { data: null, error: new Error(`Checkout failed: table '${salesTable}' is not available. Verify Firestore data and collection names.`) };
       }
       return { data: null, error: new Error(resIns.error.message || String(resIns.error)) };
     }
@@ -304,22 +278,15 @@ export async function checkout(payload) {
         };
       });
       for (const row of mapped) {
-        const { error } = await db.from(salesItemsTable).insert(row, { returning: 'minimal' });
+        const { error } = await scopedDb.from(salesItemsTable).insert(row, { returning: 'minimal' });
         if (error) {
           const rawMsg = String(error?.message || error?.details || '');
           const msg = rawMsg.toLowerCase();
           if (/null value in column "id" of relation "sales_items"/i.test(rawMsg)) {
-            return { data: null, error: new Error(`${rawMsg}. Remediation: apply supabase/sql/patches/007_sales_items_id_identity.sql to add sequence/identity default for public.sales_items.id.`) };
+            return { data: null, error: new Error(`${rawMsg}. Remediation: apply db/sql/patches/007_sales_items_id_identity.sql to add sequence/identity default for public.sales_items.id.`) };
           }
-          // If PostgREST reports Not Found (schema/profile mismatch), try direct REST with explicit headers
           if (/not\s*found|404|relation .* does not exist|pgrst/i.test(msg)) {
-            try {
-              await restInsertPublic(salesItemsTable, row);
-              itemsInserted += 1; // success via REST
-              continue;
-            } catch (e) {
-              return { data: null, error: new Error(`Insert into '${salesItemsTable}' failed (404). The table isn't exposed under Content-Profile 'public' or you're pointing to the wrong project. Details: ${e.message || e}`) };
-            }
+            return { data: null, error: new Error(`Insert into '${salesItemsTable}' failed (404). Collection may be missing or misnamed. Details: ${rawMsg || 'not found'}`) };
           }
           return { data: null, error: new Error(error.message || error.details || 'Insert sales_items failed') };
         }
@@ -343,17 +310,11 @@ export async function checkout(payload) {
         created_at: p.created_at || nowIso,
       }));
       for (const row of mapped) {
-        const { error } = await db.from(salesPaymentsTable).insert(row, { returning: 'minimal' });
+        const { error } = await scopedDb.from(salesPaymentsTable).insert(row, { returning: 'minimal' });
         if (error) {
           const msg = String(error?.message || error?.details || '').toLowerCase();
           if (/not\s*found|404|relation .* does not exist|pgrst/i.test(msg)) {
-            try {
-              await restInsertPublic(salesPaymentsTable, row);
-              paymentsInserted += 1;
-              continue;
-            } catch (e) {
-              return { data: null, error: new Error(`Insert into '${salesPaymentsTable}' failed (404). Details: ${e.message || e}`) };
-            }
+            return { data: null, error: new Error(`Insert into '${salesPaymentsTable}' failed (404). Details: ${error?.message || error?.details || 'not found'}`) };
           }
           return { data: null, error: new Error(error.message || error.details || 'Insert sales_payments failed') };
         }
@@ -374,7 +335,7 @@ export async function checkout(payload) {
         });
         inventoryApplied = true;
       } catch (apiInvErr) {
-        await applyInventoryDeduction(db, {
+        await applyInventoryDeduction(scopedDb, {
           items,
           locationId: sale.location_id,
           saleId,

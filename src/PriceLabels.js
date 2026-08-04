@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { QRCodeSVG } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
 import { FaWhatsapp } from 'react-icons/fa';
@@ -166,7 +166,7 @@ const PriceLabels = () => {
         } catch {}
       }
 
-      const { data: locationsData } = await supabase.from('locations').select('id, name').order('name', { ascending: true });
+      const { data: locationsData } = await db.from('locations').select('id, name').order('name', { ascending: true });
       if (fetchSeq !== fetchSeqRef.current) return;
       const nextLocations = locationsData || [];
       setLocations(nextLocations);
@@ -178,14 +178,14 @@ const PriceLabels = () => {
         { data: productsData },
         { data: combosData },
       ] = await Promise.all([
-        supabase.from('products').select('*'),
-        supabase.from('combos').select('*'),
+        db.from('products').select('*'),
+        db.from('combos').select('*'),
       ]);
       if (fetchSeq !== fetchSeqRef.current) return;
       try {
         [productLocationPriceRows, comboLocationPriceRows] = await Promise.all([
-          fetchProductLocationPrices(supabase),
-          fetchComboLocationPrices(supabase),
+          fetchProductLocationPrices(db),
+          fetchComboLocationPrices(db),
         ]);
       } catch (err) {
         console.warn('[price-labels] location pricing unavailable', err);
@@ -207,19 +207,19 @@ const PriceLabels = () => {
         }, 10 * 60 * 1000);
       } catch {}
 
-      const { data: categoriesData } = await supabase.from('categories').select('id, name').order('name', { ascending: true });
+      const { data: categoriesData } = await db.from('categories').select('id, name').order('name', { ascending: true });
       if (fetchSeq !== fetchSeqRef.current) return;
       const nextCategories = categoriesData || [];
       setCategories(nextCategories);
       try { cacheSet('labels:categories:v6', nextCategories, 10 * 60 * 1000); } catch {}
 
-      const { data: ci } = await supabase.from('combo_items').select('*');
+      const { data: ci } = await db.from('combo_items').select('*');
       if (fetchSeq !== fetchSeqRef.current) return;
       const nextComboItems = ci || [];
       setComboItems(nextComboItems);
       try { cacheSet('labels:comboItems:v6', nextComboItems, 10 * 60 * 1000); } catch {}
 
-      const { data: companyData } = await supabase.from('company_settings').select('company_name, company_logo').maybeSingle();
+      const { data: companyData } = await db.from('company_settings').select('company_name, company_logo').maybeSingle();
       if (fetchSeq !== fetchSeqRef.current) return;
       const companyRow = companyData?.company_name
         ? { name: companyData.company_name }
@@ -240,7 +240,7 @@ const PriceLabels = () => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: locationsData } = await supabase.from('locations').select('id, name').order('name', { ascending: true });
+      const { data: locationsData } = await db.from('locations').select('id, name').order('name', { ascending: true });
       if (cancelled) return;
       const nextLocations = locationsData || [];
       setLocations(nextLocations);

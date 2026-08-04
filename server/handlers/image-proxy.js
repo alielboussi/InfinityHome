@@ -16,8 +16,12 @@ export default async function handler(req, res) {
       return;
     }
 
-    const hostOk = /\.supabase\.co$/i.test(url.hostname);
-    const pathOk = /\/storage\/v1\/object\/public\/productimages\//i.test(url.pathname);
+    const hostOk = /\.supabase\.co$/i.test(url.hostname)
+      || /firebasestorage\.googleapis\.com$/i.test(url.hostname)
+      || /storage\.googleapis\.com$/i.test(url.hostname);
+    const pathOk = /\/storage\/v1\/object\/public\/productimages\//i.test(url.pathname)
+      || /\/o\/productimages%2F/i.test(url.pathname)
+      || /\/o\/productimages\//i.test(url.pathname);
     if (!hostOk || !pathOk) {
       res.statusCode = 400;
       res.end('Blocked host or path');

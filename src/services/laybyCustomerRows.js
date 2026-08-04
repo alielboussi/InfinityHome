@@ -1,4 +1,4 @@
-import supabase from '../supabase';
+import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
@@ -110,7 +110,7 @@ export async function fetchLaybyCustomerRows() {
     { data: paymentSeedRows, error: paymentSeedErr },
     { data: salesSeedRows, error: salesSeedErr },
   ] = await Promise.all([
-    supabase
+    db
       .from('laybys')
       .select('id, sale_id, customer_id, total_amount, paid_amount, status, updated_at, created_at, origin, notes')
       .not('customer_id', 'is', null),
@@ -236,7 +236,7 @@ export async function fetchLaybyCustomerRows() {
     new Set(candidateSales.map((sale) => sale?.id).filter((saleId) => saleId != null))
   );
 
-  const financialsBySale = await fetchCanonicalFinancials(supabase, candidateSaleIds);
+  const financialsBySale = await fetchCanonicalFinancials(db, candidateSaleIds);
 
   const itemsBySale = new Map();
   if (candidateSaleIds.length) {
@@ -331,7 +331,7 @@ export async function fetchLaybyCustomerRows() {
   if (candidateSaleIds.length) {
     const chunks = chunkArray(candidateSaleIds, 200);
     for (const chunk of chunks) {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('quotations')
         .select(quotationSelect)
         .in('sale_id', chunk);
@@ -343,7 +343,7 @@ export async function fetchLaybyCustomerRows() {
   if (laybyIdsAll.length) {
     const chunks = chunkArray(laybyIdsAll, 200);
     for (const chunk of chunks) {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('quotations')
         .select(quotationSelect)
         .in('layby_id', chunk);
@@ -355,7 +355,7 @@ export async function fetchLaybyCustomerRows() {
   if (ids.length) {
     const chunks = chunkArray(ids, 100);
     for (const chunk of chunks) {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('quotations')
         .select(quotationSelect)
         .in('customer_id', chunk)

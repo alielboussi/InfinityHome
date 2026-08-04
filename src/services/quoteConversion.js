@@ -1,4 +1,4 @@
-import supabase from '../supabase';
+import db from '../dataClient';
 import { checkout as checkoutApi } from './checkout';
 import { resolveSaleActor, getCurrentUser } from '../accessControl';
 import { logUserActivity } from '../utils/userActivityLog';
@@ -27,7 +27,7 @@ async function getAuthHeaders({ includeBypass = false } = {}) {
   }
 
   try {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await db.auth.getSession();
     const token = data?.session?.access_token;
     if (token) headers.Authorization = `Bearer ${token}`;
   } catch {}
@@ -129,7 +129,7 @@ async function convertQuoteToLaybyDirect({ quote, saleItems, total, saleDiscount
   const nowIso = new Date().toISOString();
   const actor = resolveSaleActor(getCurrentUser());
 
-  const { data: laybyRow, error: laybyErr } = await supabase
+  const { data: laybyRow, error: laybyErr } = await db
     .from('laybys')
     .insert([
       {
@@ -168,14 +168,14 @@ async function convertQuoteToLaybyDirect({ quote, saleItems, total, saleDiscount
     payments: [],
   });
   if (checkoutErr) {
-    try { await supabase.from('laybys').delete().eq('id', laybyRow.id); } catch {}
+    try { await db.from('laybys').delete().eq('id', laybyRow.id); } catch {}
     throw checkoutErr;
   }
 
   const sale = checkoutData?.sale;
   if (!sale?.id) throw new Error('Quote conversion completed without a sale id');
 
-  const { error: laybyLinkErr } = await supabase
+  const { error: laybyLinkErr } = await db
     .from('laybys')
     .update({
       sale_id: sale.id,
@@ -186,12 +186,12 @@ async function convertQuoteToLaybyDirect({ quote, saleItems, total, saleDiscount
   if (laybyLinkErr) throw laybyLinkErr;
 
   try {
-    await supabase
+    await db
       .from('quotations')
       .update({ status: quotationStatus, sale_id: sale.id, layby_id: laybyRow.id })
       .eq('id', quote.id);
   } catch {
-    await supabase
+    await db
       .from('quotations')
       .update({ status: quotationStatus, sale_id: sale.id })
       .eq('id', quote.id);

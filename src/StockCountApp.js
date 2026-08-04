@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
 
@@ -24,7 +24,7 @@ const fetchProductsMap = async (productIds) => {
 
   const settled = await Promise.allSettled(
     batches.map(async (batchIds) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('products')
         .select('id, name, sku')
         .in('id', batchIds);
@@ -119,7 +119,7 @@ export default function StockCountApp() {
         if (!silent) setLoading(false);
         return;
       }
-      const { data: periodRow, error: periodErr } = await supabase
+      const { data: periodRow, error: periodErr } = await db
         .from('stock_periods')
         .select('id, status, opened_at')
         .eq('location_id', locationId)
@@ -169,7 +169,7 @@ export default function StockCountApp() {
     setCountsLoading(true);
     setCountsError('');
     try {
-      const { data, error: countErr } = await supabase
+      const { data, error: countErr } = await db
         .from('stock_count_checks')
         .select('product_id, counted')
         .eq('session_id', sessionId)
@@ -198,7 +198,7 @@ export default function StockCountApp() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data, error: locErr } = await supabase
+      const { data, error: locErr } = await db
         .from('locations')
         .select('id, name')
         .order('name');
@@ -252,7 +252,7 @@ export default function StockCountApp() {
         }));
         return;
       }
-      const { data, error: rpcErr } = await supabase.rpc('stock_count_add', {
+      const { data, error: rpcErr } = await db.rpc('stock_count_add', {
         p_session_id: period.id,
         p_product_id: productId,
         p_location_id: locationId,

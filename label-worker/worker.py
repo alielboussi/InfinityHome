@@ -34,8 +34,8 @@ def _load_env_file():
 
 _load_env_file()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+INFINITY_API_BASE = os.getenv("INFINITY_API_BASE", "").rstrip("/")
+LABEL_WORKER_SECRET = os.getenv("LABEL_WORKER_SECRET", "")
 PRINTER_NAME = os.getenv("PRINTER_NAME", "")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 PRINT_RETRY_COUNT = int(os.getenv("PRINT_RETRY_COUNT", "3"))
@@ -81,12 +81,11 @@ PROCESSING_STATUS = "processing"
 FAILED_STATUS = "failed"
 
 
-def _headers():
+def _api_headers():
     return {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "X-Label-Worker-Secret": LABEL_WORKER_SECRET,
     }
 
 
@@ -116,23 +115,19 @@ def _print_date(payload):
 
 
 def fetch_pending_jobs():
-    url = f"{SUPABASE_URL}/rest/v1/label_print_jobs"
-    params = {
-        "select": "id,status,payload,created_at",
-        "status": "eq.pending",
-        "order": "created_at.asc",
-        "limit": "10",
-    }
-    resp = requests.get(url, headers=_headers(), params=params, timeout=20)
+    url = f"{INFINITY_API_BASE}/api/labels"
+    params = {"action": "worker-pending", "limit": "10"}
+    resp = requests.get(url, headers=_api_headers(), params=params, timeout=20)
     resp.raise_for_status()
-    return resp.json() or []
+    payload = resp.json() or {}
+    return payload.get("jobs") or []
 
 
 def update_job(job_id, status, error_text=None):
-    url = f"{SUPABASE_URL}/rest/v1/label_print_jobs"
-    params = {"id": f"eq.{job_id}"}
-    body = {"status": status, "error": error_text}
-    resp = requests.patch(url, headers=_headers(), params=params, data=json.dumps(body), timeout=20)
+    url = f"{INFINITY_API_BASE}/api/labels"
+    params = {"action": "worker-update"}
+    body = {"id": job_id, "status": status, "error": error_text}
+    resp = requests.post(url, headers=_api_headers(), params=params, data=json.dumps(body), timeout=20)
     resp.raise_for_status()
 
 
@@ -358,8 +353,8 @@ def process_job(job):
 
 
 def main():
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        raise SystemExit("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY.")
+    if not INFINITY_API_BASE or not LABEL_WORKER_SECRET:
+        raise SystemExit("Configure INFINITY_API_BASE and LABEL_WORKER_SECRET in .env")
     if not PRINTER_NAME:
         raise SystemExit("Missing PRINTER_NAME.")
 

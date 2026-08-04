@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import supabase from "./supabase";
+import db from './dataClient';
 import { FaTrash } from "react-icons/fa";
 import useComboColumnSupport from "./hooks/useComboColumnSupport";
 import { insertComboItems } from "./services/comboItems";
@@ -50,7 +50,7 @@ export default function EditSet() {
   const applyPricingLocationToSet = async (comboData, locationId) => {
     if (!comboData?.id || !locationId) return;
     try {
-      const row = await fetchComboLocationPriceRow(supabase, comboData.id, locationId);
+      const row = await fetchComboLocationPriceRow(db, comboData.id, locationId);
       const priceMap = buildComboLocationPriceMap(row ? [row] : []);
       const resolved = resolveComboLocationPricing(comboData, locationId, priceMap);
       setStandardPrice(resolved.combo_price ?? resolved.standard_price ?? '');
@@ -78,7 +78,7 @@ export default function EditSet() {
         return;
       }
       // Fetch combo and populate fields directly from combos table
-      const { data: comboData, error: comboErr } = await supabase
+      const { data: comboData, error: comboErr } = await db
         .from("combos")
         .select("*")
         .eq("id", comboFilterValue)
@@ -108,21 +108,21 @@ export default function EditSet() {
       setSelectedCategory(comboData?.category_id ? String(comboData.category_id) : "");
       setSelectedUnit(comboData?.unit_of_measure_id ? String(comboData.unit_of_measure_id) : "");
       // Fetch combo_items
-      const { data: itemsData, error: itemsErr } = await supabase.from("combo_items").select("*").eq("combo_id", comboFilterValue);
+      const { data: itemsData, error: itemsErr } = await db.from("combo_items").select("*").eq("combo_id", comboFilterValue);
       if (itemsErr) {
         console.error("Failed to load set components", itemsErr);
       }
       setComboItems(itemsData || []);
       setKitItems((itemsData || []).map(item => ({ product_id: item.product_id, quantity: item.quantity })));
       // Fetch products, locations, units, categories
-      const { data: prods, error: prodErr } = await supabase.from("products").select("id, name, sku");
+      const { data: prods, error: prodErr } = await db.from("products").select("id, name, sku");
       if (prodErr) console.error("Failed to load products", prodErr);
       setProducts(prods || []);
-      const { data: locs, error: locErr } = await supabase.from("locations").select("id, name");
+      const { data: locs, error: locErr } = await db.from("locations").select("id, name");
       if (locErr) console.error("Failed to load locations", locErr);
       setLocations(locs || []);
       // fetch selected locations for this combo
-      const { data: comboLocs, error: comboLocErr } = await supabase
+      const { data: comboLocs, error: comboLocErr } = await db
         .from("combo_locations")
         .select("location_id")
         .eq("combo_id", comboFilterValue);
@@ -134,10 +134,10 @@ export default function EditSet() {
       if (initialPricingLocation) {
         await applyPricingLocationToSet(comboData, initialPricingLocation);
       }
-      const { data: unitsData, error: unitErr } = await supabase.from("unit_of_measure").select("id, name");
+      const { data: unitsData, error: unitErr } = await db.from("unit_of_measure").select("id, name");
       if (unitErr) console.error("Failed to load units", unitErr);
       setUnits(unitsData || []);
-      const { data: cats, error: catErr } = await supabase.from("categories").select("id, name");
+      const { data: cats, error: catErr } = await db.from("categories").select("id, name");
       if (catErr) console.error("Failed to load categories", catErr);
       setCategories(cats || []);
       setLoading(false);
@@ -203,13 +203,13 @@ export default function EditSet() {
     if (supportsUnitField) {
       updatePayload.unit_of_measure_id = selectedUnit || null;
     }
-    const { error: comboError } = await supabase
+    const { error: comboError } = await db
       .from("combos")
       .update(updatePayload)
       .eq("id", comboFilterValue);
     if (comboError) return alert("Error updating combo: " + comboError.message);
     try {
-      await seedComboLocationPricesForLocations(supabase, {
+      await seedComboLocationPricesForLocations(db, {
         comboId: comboFilterValue,
         locationIds: [pricingLocationId],
         comboPrice: standardPrice,
@@ -235,7 +235,7 @@ export default function EditSet() {
       return;
     }
     // Update combo_items: delete old, then insert current list with id fallback support
-    await supabase.from("combo_items").delete().eq("combo_id", comboFilterValue);
+    await db.from("combo_items").delete().eq("combo_id", comboFilterValue);
     try {
       await insertComboItems(
         kitItems.map(item => ({
@@ -272,10 +272,10 @@ export default function EditSet() {
 
   const columnWarnings = [];
   if (!supportsUnitField) {
-    columnWarnings.push(comboColumnSupport.unitReason || 'Supabase reports combos.unit_of_measure_id is missing – unit selection is disabled.');
+    columnWarnings.push(comboColumnSupport.unitReason || 'combos.unit_of_measure_id is missing – unit selection is disabled.');
   }
   if (!supportsCategoryField) {
-    columnWarnings.push(comboColumnSupport.categoryReason || 'Supabase reports combos.category_id is missing – category selection is disabled.');
+    columnWarnings.push(comboColumnSupport.categoryReason || 'combos.category_id is missing – category selection is disabled.');
   }
 
   return (

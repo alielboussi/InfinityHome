@@ -1,6 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
 import { applyInventoryDeduction } from '../lib/inventoryDeduction.js';
 import { applyInventoryRestore } from '../lib/inventoryRestore.js';
+import { applyFirestoreInventoryDeduction } from '../lib/firestoreInventoryDeduction.js';
+import { applyFirestoreInventoryRestore } from '../lib/firestoreInventoryRestore.js';
+import { getDataClient, isUsingFirebaseData } from '../lib/getDataClient.js';
+import { getFirestore } from '../lib/firestoreDb.js';
 
 const BALANCE_CLOSED_THRESHOLD = 1;
 const toNumber = (value) => {
@@ -8,18 +11,18 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-async function getLinkedSaleIds(supabase, sale) {
+async function getLinkedSaleIds(db, sale) {
   const ids = new Set([sale.id]);
   if (sale.layby_id) {
-    const { data: linked } = await supabase.from('sales').select('id').eq('layby_id', sale.layby_id);
+    const { data: linked } = await db.from('sales').select('id').eq('layby_id', sale.layby_id);
     (linked || []).forEach((row) => { if (row?.id != null) ids.add(row.id); });
   }
   return [...ids];
 }
 
-async function getPaidAmount(supabase, sale) {
-  const saleIds = await getLinkedSaleIds(supabase, sale);
-  const { data: payments, error } = await supabase
+async function getPaidAmount(db, sale) {
+  const saleIds = await getLinkedSaleIds(db, sale);
+  const { data: payments, error } = await db
     .from('sales_payments')
     .select('amount, payment_type')
     .in('sale_id', saleIds);
@@ -29,19 +32,19 @@ async function getPaidAmount(supabase, sale) {
     .reduce((sum, p) => sum + toNumber(p.amount), 0);
 }
 
-async function recomputeLaybyRollup(supabase, laybyId) {
+async function recomputeLaybyRollup(db, laybyId) {
   if (!laybyId) return;
-  const { data: linkedSales } = await supabase
+  const { data: linkedSales } = await db
     .from('sales')
     .select('id, total_amount')
     .eq('layby_id', laybyId);
   const saleIds = (linkedSales || []).map((s) => s.id).filter((id) => id != null);
   if (!saleIds.length) {
-    await supabase.from('laybys').delete().eq('id', laybyId);
+    await db.from('laybys').delete().eq('id', laybyId);
     return;
   }
 
-  const { data: payRows } = await supabase
+  const { data: payRows } = await db
     .from('sales_payments')
     .select('sale_id, amount, payment_type')
     .in('sale_id', saleIds);
@@ -52,7 +55,7 @@ async function recomputeLaybyRollup(supabase, laybyId) {
   const outstanding = Math.max(0, total - paid);
   const status = outstanding < BALANCE_CLOSED_THRESHOLD ? 'completed' : 'active';
 
-  await supabase
+  await db
     .from('laybys')
     .update({ total_amount: total, paid_amount: paid, status, updated_at: new Date().toISOString() })
     .eq('id', laybyId);
@@ -91,14 +94,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !serviceKey) {
-      sendError(500, 'env', new Error('Supabase service env not configured'));
-      return;
-    }
-
-    const supabase = createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: 'public' } });
+    const db = getDataClient();
+    const db = isUsingFirebaseData() ? getFirestore() : null;
     const body = req.body || {};
     const operation = String(body.operation || '').trim().toLowerCase();
     const saleId = body.saleId || body.sale_id;
@@ -128,7 +125,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const { data: sale, error: saleErr } = await supabase
+    const { data: sale, error: saleErr } = await db
       .from('sales')
       .select('id, customer_id, location_id, layby_id, status, currency, discount, receipt_number, total_amount')
       .eq('id', saleId)
@@ -138,7 +135,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const { data: currentItems, error: itemsErr } = await supabase
+    const { data: currentItems, error: itemsErr } = await db
       .from('sales_items')
       .select('id, product_id, display_name, quantity, unit_price, currency, color')
       .eq('sale_id', saleId)
@@ -178,29 +175,52 @@ export default async function handler(req, res) {
     }
 
     if (sale.location_id && removed.length) {
-      await applyInventoryRestore(supabase, {
-        items: inventoryLinesFromItems(removed),
-        locationId: sale.location_id,
-        saleId: sale.id,
-        receiptNumber: sale.receipt_number,
-        reason: 'sale_adjustment_restore',
-        userUid,
-        userId,
-      });
+      if (db) {
+        await applyFirestoreInventoryRestore(db, {
+          items: inventoryLinesFromItems(removed),
+          locationId: sale.location_id,
+          saleId: sale.id,
+          receiptNumber: sale.receipt_number,
+          reason: 'sale_adjustment_restore',
+          userUid,
+          userId,
+        });
+      } else {
+        await applyInventoryRestore(db, {
+          items: inventoryLinesFromItems(removed),
+          locationId: sale.location_id,
+          saleId: sale.id,
+          receiptNumber: sale.receipt_number,
+          reason: 'sale_adjustment_restore',
+          userUid,
+          userId,
+        });
+      }
     }
 
     if (sale.location_id && addPayload.length) {
-      await applyInventoryDeduction(supabase, {
-        items: inventoryLinesFromItems(addPayload),
-        locationId: sale.location_id,
-        saleId: sale.id,
-        receiptNumber: sale.receipt_number,
-        userUid,
-        userId,
-      });
+      if (db) {
+        await applyFirestoreInventoryDeduction(db, {
+          items: inventoryLinesFromItems(addPayload),
+          locationId: sale.location_id,
+          saleId: sale.id,
+          receiptNumber: sale.receipt_number,
+          userUid,
+          userId,
+        });
+      } else {
+        await applyInventoryDeduction(db, {
+          items: inventoryLinesFromItems(addPayload),
+          locationId: sale.location_id,
+          saleId: sale.id,
+          receiptNumber: sale.receipt_number,
+          userUid,
+          userId,
+        });
+      }
     }
 
-    const { error: deleteErr } = await supabase.from('sales_items').delete().eq('sale_id', saleId);
+    const { error: deleteErr } = await db.from('sales_items').delete().eq('sale_id', saleId);
     if (deleteErr) {
       sendError(500, 'items_delete', deleteErr);
       return;
@@ -210,7 +230,7 @@ export default async function handler(req, res) {
       sale_id: saleId,
       ...line,
     }));
-    const { error: insertErr } = await supabase.from('sales_items').insert(insertRows);
+    const { error: insertErr } = await db.from('sales_items').insert(insertRows);
     if (insertErr) {
       sendError(500, 'items_insert', insertErr);
       return;
@@ -219,7 +239,7 @@ export default async function handler(req, res) {
     const discount = toNumber(sale.discount);
     const subtotal = finalItems.reduce((sum, it) => sum + (toNumber(it.unit_price) * toNumber(it.quantity)), 0);
     const newTotal = Math.max(0, subtotal - discount);
-    const paid = await getPaidAmount(supabase, sale);
+    const paid = await getPaidAmount(db, sale);
     const outstanding = Math.max(0, newTotal - paid);
 
     let newStatus = sale.status;
@@ -251,7 +271,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const { error: saleUpdateErr } = await supabase
+    const { error: saleUpdateErr } = await db
       .from('sales')
       .update({ total_amount: newTotal, status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', saleId);
@@ -269,9 +289,9 @@ export default async function handler(req, res) {
         status: laybyStatus || 'active',
       };
       if (laybyId) {
-        await supabase.from('laybys').update(laybyPayload).eq('id', laybyId);
+        await db.from('laybys').update(laybyPayload).eq('id', laybyId);
       } else {
-        const { data: insertedLayby, error: laybyInsErr } = await supabase
+        const { data: insertedLayby, error: laybyInsErr } = await db
           .from('laybys')
           .insert([{ ...laybyPayload, notes: `${operation} adjustment`, origin: 'pos' }])
           .select('id')
@@ -282,13 +302,13 @@ export default async function handler(req, res) {
         }
         laybyId = insertedLayby?.id || null;
         if (laybyId) {
-          await supabase.from('sales').update({ layby_id: laybyId }).eq('id', saleId);
+          await db.from('sales').update({ layby_id: laybyId }).eq('id', saleId);
         }
       }
-      if (laybyId) await recomputeLaybyRollup(supabase, laybyId);
+      if (laybyId) await recomputeLaybyRollup(db, laybyId);
     } else if (laybyId && laybyStatus === 'completed') {
-      await supabase.from('laybys').update({ status: 'completed', total_amount: newTotal }).eq('id', laybyId);
-      await recomputeLaybyRollup(supabase, laybyId);
+      await db.from('laybys').update({ status: 'completed', total_amount: newTotal }).eq('id', laybyId);
+      await recomputeLaybyRollup(db, laybyId);
     }
 
     res.setHeader('Access-Control-Allow-Origin', '*');

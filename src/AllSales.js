@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, no-empty-pattern */
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { fetchCanonicalFinancials } from './utils/financials';
@@ -333,12 +333,12 @@ export default function AllSales() {
       if (saleIds.length > 0) {
         const laybyIdsFromSales = Array.from(new Set((salesRows || []).map(s => s.layby_id).filter(Boolean)));
         const [laybyBySaleRes, laybyByIdRes] = await Promise.all([
-          supabase
+          db
             .from('laybys')
             .select('id, sale_id, customer_id, total_amount, paid_amount, status, notes, created_at, updated_at')
             .in('sale_id', saleIds),
           laybyIdsFromSales.length
-            ? supabase
+            ? db
                 .from('laybys')
                 .select('id, sale_id, customer_id, total_amount, paid_amount, status, notes, created_at, updated_at')
                 .in('id', laybyIdsFromSales)
@@ -358,7 +358,7 @@ export default function AllSales() {
           if (layby.sale_id != null) laybyBySale[String(layby.sale_id)] = layby;
         });
 
-        const finMap = await fetchCanonicalFinancials(supabase, saleIds);
+        const finMap = await fetchCanonicalFinancials(db, saleIds);
         finMap.forEach((value, key) => { vfMap[String(key)] = value; });
 
         const laybySaleIds = (salesRows || [])
@@ -610,7 +610,7 @@ export default function AllSales() {
         acc[String(sale.id)] = sale;
         return acc;
       }, {});
-      const finMap = await fetchCanonicalFinancials(supabase, saleIds);
+      const finMap = await fetchCanonicalFinancials(db, saleIds);
       const totals = saleIds.reduce((acc, saleId) => {
         const fin = finMap.get(String(saleId));
         const base = baseSalesById[String(saleId)];
@@ -698,7 +698,7 @@ export default function AllSales() {
         if (rows.length === 0) {
           await applyInventoryBulk({
             inserts: [{ product_id: it.product_id, location: restoreLocation, quantity: deltaQty, updated_at: nowIso }],
-          }, supabase);
+          }, db);
         } else {
           const targetRow = rows.length === 1
             ? rows[0]
@@ -706,7 +706,7 @@ export default function AllSales() {
           const newQty = (Number(targetRow.quantity) || 0) + deltaQty;
           await applyInventoryBulk({
             updates: [{ id: targetRow.id, quantity: newQty, updated_at: nowIso }],
-          }, supabase);
+          }, db);
         }
         // Inventory audit row
         try {
@@ -868,7 +868,7 @@ export default function AllSales() {
     });
     // Load sale items for this sale
     setItemsLoading(true);
-    const { data: items } = await supabase
+    const { data: items } = await db
       .from('sales_items')
       .select('id, product_id, display_name, quantity, unit_price, currency, color')
       .eq('sale_id', row.id)

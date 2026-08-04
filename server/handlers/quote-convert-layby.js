@@ -1,8 +1,11 @@
 // Serverless API: quote-convert-layby
-// Converts a quotation to a layby sale using the Supabase service role (bypasses RLS).
+// Converts a quotation to a layby sale using the Firestore service client.
 
-import { createClient } from '@supabase/supabase-js';
 import { computeQuoteLaybyTotal } from '../../src/utils/quotationDisplay.js';
+import { getDataClient } from '../lib/getDataClient.js';
+import { verifyBearerUser } from '../lib/verifyBearerUser.js';
+import { ensureSequenceInitialized, getFirestore } from '../lib/firestoreDb.js';
+import { isFirebaseBackendEnabled } from '../lib/backendMode.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -33,41 +36,10 @@ async function resolveTable(db, preferred, candidates = []) {
   return preferred;
 }
 
-function getSupabaseServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    const error = new Error('Supabase service env not configured (SUPABASE_URL + SUPABASE_SERVICE_ROLE)');
-    error.status = 500;
-    throw error;
-  }
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
-}
-
-function getSupabaseAnonClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const anonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return null;
-  return createClient(url, anonKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
-}
-
 async function getRequestUserUid(req) {
-  const header = req.headers?.authorization || req.headers?.Authorization || '';
-  const match = String(header).match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-  const token = match[1].trim();
-  if (!token) return null;
-  const supabase = getSupabaseAnonClient();
-  if (!supabase) return null;
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user?.id) return null;
-  return isUuid(data.user.id) ? data.user.id : null;
+  const user = await verifyBearerUser(req);
+  if (user?.id && isUuid(user.id)) return user.id;
+  return null;
 }
 
 export default async function handler(req, res) {
@@ -119,7 +91,16 @@ export default async function handler(req, res) {
     const currency = quote.currency || 'K';
     const nowIso = new Date().toISOString();
     const actor = normalizeSaleActor(await getRequestUserUid(req));
-    const supabase = getSupabaseServiceClient();
+    if (isFirebaseBackendEnabled()) {
+      const db = getFirestore();
+      if (db) {
+        await Promise.all([
+          ensureSequenceInitialized(db, 'sales'),
+          ensureSequenceInitialized(db, 'sales_items'),
+        ]);
+      }
+    }
+    const db = getDataClient();
 
     const saleItems = items.map((item) => ({
       product_id: item.product_id != null && isUuid(item.product_id) ? item.product_id : null,
@@ -136,7 +117,7 @@ export default async function handler(req, res) {
     const saleDiscount = Math.max(0, toNumber(quote.discount));
     const total = computeQuoteLaybyTotal({ quote, subtotal, discount: saleDiscount });
 
-    const { data: laybyRow, error: laybyErr } = await supabase
+    const { data: laybyRow, error: laybyErr } = await db
       .from('laybys')
       .insert([
         {
@@ -157,8 +138,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    const salesTable = await resolveTable(supabase, 'sales', ['sale']);
-    const salesItemsTable = await resolveTable(supabase, 'sales_items', ['sale_items', 'sales_item']);
+    const salesTable = await resolveTable(db, 'sales', ['sale']);
+    const salesItemsTable = await resolveTable(db, 'sales_items', ['sale_items', 'sales_item']);
 
     const salePayload = {
       customer_id: quote.customer_id,
@@ -176,7 +157,7 @@ export default async function handler(req, res) {
       receipt_number: null,
     };
 
-    const { data: saleRow, error: saleErr } = await supabase
+    const { data: saleRow, error: saleErr } = await db
       .from(salesTable)
       .insert(salePayload)
       .select('*')
@@ -184,7 +165,7 @@ export default async function handler(req, res) {
 
     if (saleErr) {
       try {
-        await supabase.from('laybys').delete().eq('id', laybyRow.id);
+        await db.from('laybys').delete().eq('id', laybyRow.id);
       } catch {}
       sendError(500, 'sale_insert', saleErr);
       return;
@@ -200,18 +181,18 @@ export default async function handler(req, res) {
         currency: item.currency || currency,
         color: item.color ?? null,
       }));
-      const { error: itemsErr } = await supabase.from(salesItemsTable).insert(mapped);
+      const { error: itemsErr } = await db.from(salesItemsTable).insert(mapped);
       if (itemsErr) {
         try {
-          await supabase.from(salesTable).delete().eq('id', saleRow.id);
-          await supabase.from('laybys').delete().eq('id', laybyRow.id);
+          await db.from(salesTable).delete().eq('id', saleRow.id);
+          await db.from('laybys').delete().eq('id', laybyRow.id);
         } catch {}
         sendError(500, 'items_insert', itemsErr);
         return;
       }
     }
 
-    const { error: laybyLinkErr } = await supabase
+    const { error: laybyLinkErr } = await db
       .from('laybys')
       .update({
         sale_id: saleRow.id,
@@ -225,13 +206,13 @@ export default async function handler(req, res) {
     }
 
     let quoteUpdateErr = null;
-    const quoteUpdateWithLayby = await supabase
+    const quoteUpdateWithLayby = await db
       .from('quotations')
       .update({ status: quotationStatus, sale_id: saleRow.id, layby_id: laybyRow.id })
       .eq('id', quote.id);
     quoteUpdateErr = quoteUpdateWithLayby.error;
     if (quoteUpdateErr) {
-      const quoteUpdateFallback = await supabase
+      const quoteUpdateFallback = await db
         .from('quotations')
         .update({ status: quotationStatus, sale_id: saleRow.id })
         .eq('id', quote.id);

@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import generateLaybyPdf from './laybyPdf';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
@@ -62,7 +62,7 @@ export default function LaybyManagementMobile() {
 
   useEffect(() => {
     if (!isRealtimeEnabled()) return undefined;
-    const channel = supabase
+    const channel = db
       .channel('layby-mgmt-mobile-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'laybys' }, () => {
         if (rtTimerRef.current) clearTimeout(rtTimerRef.current);
@@ -82,7 +82,7 @@ export default function LaybyManagementMobile() {
       })
       .subscribe();
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
+      try { db.removeChannel(channel); } catch {}
       if (rtTimerRef.current) clearTimeout(rtTimerRef.current);
     };
   }, []);

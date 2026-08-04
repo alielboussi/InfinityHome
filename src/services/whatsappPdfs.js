@@ -1,7 +1,8 @@
-import supabase from '../supabase';
+import db from '../dataClient';
 import generateLaybyPdf from '../laybyPdf';
 import { fetchLaybyStatement } from './laybyStatement';
 import { computePooledLaybyTotalsByCurrency } from '../utils/laybyRollup';
+import { computeSaleFinancials } from '../utils/saleFinancials';
 import { isFahme } from '../laybyRules';
 
 function safeFilePart(value, fallback = 'Customer') {
@@ -12,17 +13,17 @@ function safeFilePart(value, fallback = 'Customer') {
 const PDF_UPLOAD_BUCKETS = ['laybypdfs', 'labels'];
 
 async function uploadPdfToBucket(bucket, filePath, blob) {
-  const { error: uploadErr } = await supabase.storage
+  const { error: uploadErr } = await db.storage
     .from(bucket)
     .upload(filePath, blob, { upsert: true, contentType: 'application/pdf', cacheControl: '3600' });
   if (uploadErr) throw uploadErr;
 
-  const { data: signed, error: signErr } = await supabase.storage
+  const { data: signed, error: signErr } = await db.storage
     .from(bucket)
     .createSignedUrl(filePath, 60 * 60, { download: filePath.split('/').pop() || 'document.pdf' });
   if (!signErr && signed?.signedUrl) return signed.signedUrl;
 
-  const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
+  const { data: publicUrlData } = db.storage.from(bucket).getPublicUrl(filePath);
   return publicUrlData?.publicUrl || null;
 }
 
@@ -61,7 +62,7 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
     const base = laybySnapshot?.primaryLayby || laybySnapshot || { id: laybyId, customer_id: resolvedCustomerId };
     let customerInfo = laybySnapshot?.customerInfo || laybySnapshot?.customer || {};
     if (!customerInfo?.name && resolvedCustomerId) {
-      const { data: customer } = await supabase
+      const { data: customer } = await db
         .from('customers')
         .select('id, name, phone, address, city, tpin, currency')
         .eq('id', resolvedCustomerId)
@@ -104,7 +105,7 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
 export async function buildPosSalePdfUrlForWhatsApp({ saleId } = {}) {
   if (saleId == null || String(saleId).trim() === '') return null;
   try {
-    const { data: sale, error: saleErr } = await supabase
+    const { data: sale, error: saleErr } = await db
       .from('sales')
       .select('id, customer_id, sale_date, created_at, total_amount, currency, receipt_number, discount')
       .eq('id', saleId)
@@ -112,34 +113,32 @@ export async function buildPosSalePdfUrlForWhatsApp({ saleId } = {}) {
     if (saleErr || !sale) return null;
 
     const [{ data: items }, { data: payments }, { data: customer }] = await Promise.all([
-      supabase
+      db
         .from('sales_items')
         .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
         .eq('sale_id', sale.id),
-      supabase
+      db
         .from('sales_payments')
         .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, notes, currency')
         .eq('sale_id', sale.id)
         .order('payment_date', { ascending: true }),
       sale.customer_id
-        ? supabase.from('customers').select('id, name, phone, address, city, tpin, currency').eq('id', sale.customer_id).maybeSingle()
+        ? db.from('customers').select('id, name, phone, address, city, tpin, currency').eq('id', sale.customer_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
 
-    const paidAmount = (payments || []).reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const totalDue = Number(sale.total_amount || 0);
-    const outstandingAmount = Math.max(0, totalDue - paidAmount);
+    const fin = computeSaleFinancials({ sale, items: items || [], payments: payments || [] });
     const statement = {
       sales: [{
         sale_id: sale.id,
         id: sale.id,
         sale_date: sale.sale_date || sale.created_at,
         currency: sale.currency,
-        total_due: totalDue,
-        paid_amount: paidAmount,
-        outstanding_amount: outstandingAmount,
-        subtotal_before_discount: Number(sale.total_amount || 0) + Number(sale.discount || 0),
-        discount_amount: Number(sale.discount || 0),
+        total_due: fin.total_due,
+        paid_amount: fin.paid_amount,
+        outstanding_amount: fin.outstanding_amount,
+        subtotal_before_discount: fin.subtotal_before_discount,
+        discount_amount: fin.discount_amount,
       }],
       items: (items || []).map((item) => ({
         sale_id: item.sale_id,

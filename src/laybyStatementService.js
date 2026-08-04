@@ -1,6 +1,6 @@
 // Service to fetch consolidated layby statement via RPC get_layby_statement
 // Feature-flag driven; caller can fall back to legacy multi-query logic if needed.
-import supabase from './supabase';
+import db from './dataClient';
 
 // Environment-driven feature flag: set REACT_APP_USE_LAYBY_RPC=true to enable.
 // Defaults to false so API/client statement filters remain the single active-only source.
@@ -31,7 +31,7 @@ const saleLooksOpen = (sale) => {
 // { layby: {...}, sales: [], items: [], payments: [] }
 export async function fetchLaybyStatementRPC(customerId, laybyId) {
   if (!customerId || !laybyId) return { error: 'MISSING_IDS' };
-  const { data, error } = await supabase.rpc('get_layby_statement', { p_customer_id: customerId, p_layby_id: laybyId });
+  const { data, error } = await db.rpc('get_layby_statement', { p_customer_id: customerId, p_layby_id: laybyId });
   if (error) return { error: error.message || String(error) };
   if (!data) return { error: 'NO_DATA' };
   if (data.error) return { error: data.error };

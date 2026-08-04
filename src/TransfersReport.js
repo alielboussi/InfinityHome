@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { fromPublic } from './dbSchema';
-import supabase from './supabase';
+import db from './dataClient';
 import { applyInventoryBulk } from './utils/inventoryApi';
 import { syncProductLocations } from './services/productLocations';
 import BackToDashboard from './BackToDashboard';
@@ -310,10 +310,10 @@ export default function TransfersReport() {
       }
     });
 
-    await applyInventoryBulk({ updates, inserts }, supabase);
+    await applyInventoryBulk({ updates, inserts }, db);
 
     const productLocationRows = productIds.map(pid => ({ product_id: pid, location_id: toLoc }));
-    await syncProductLocations({ rows: productLocationRows }, supabase);
+    await syncProductLocations({ rows: productLocationRows }, db);
   };
 
   const handleApprove = async (session) => {

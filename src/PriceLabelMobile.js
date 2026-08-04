@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { QRCodeSVG } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
 import { sendLabelsWhatsApp } from './services/whatsapp';
@@ -36,15 +36,15 @@ export default function PriceLabelMobile() {
   // no bottom sheet; search stays at top
 
   const loadCatalogForLocation = async (locationId) => {
-    const { data: productsData } = await supabase.from('products').select('*');
-    const { data: combosData } = await supabase.from('combos').select('*');
+    const { data: productsData } = await db.from('products').select('*');
+    const { data: combosData } = await db.from('combos').select('*');
     let productLocationPriceRows = [];
     let comboLocationPriceRows = [];
     if (locationId) {
       try {
         [productLocationPriceRows, comboLocationPriceRows] = await Promise.all([
-          fetchProductLocationPricesForLocation(supabase, locationId),
-          fetchComboLocationPricesForLocation(supabase, locationId),
+          fetchProductLocationPricesForLocation(db, locationId),
+          fetchComboLocationPricesForLocation(db, locationId),
         ]);
       } catch (err) {
         console.warn('[price-label-mobile] location pricing unavailable', err);
@@ -58,14 +58,14 @@ export default function PriceLabelMobile() {
 
   useEffect(() => {
     (async () => {
-      const { data: locationsData } = await supabase.from('locations').select('id, name').order('name', { ascending: true });
+      const { data: locationsData } = await db.from('locations').select('id, name').order('name', { ascending: true });
       const nextLocations = locationsData || [];
       setLocations(nextLocations);
       const initialLocationId = nextLocations[0]?.id ? String(nextLocations[0].id) : '';
       if (initialLocationId) setLabelLocationId(initialLocationId);
-      const { data: ci } = await supabase.from('combo_items').select('*');
+      const { data: ci } = await db.from('combo_items').select('*');
       setComboItems(ci || []);
-      const { data: companyData } = await supabase.from('company_settings').select('company_name').maybeSingle();
+      const { data: companyData } = await db.from('company_settings').select('company_name').maybeSingle();
       if (companyData?.company_name) setCompany({ name: companyData.company_name });
       if (initialLocationId) await loadCatalogForLocation(initialLocationId);
     })();
@@ -276,16 +276,16 @@ export default function PriceLabelMobile() {
 
       if (!url) {
         // Fallback to direct client upload when service endpoint unavailable (e.g., local dev)
-        const { error: upErr } = await supabase.storage
+        const { error: upErr } = await db.storage
           .from('labels')
           .upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf', cacheControl: '3600' });
         if (upErr) throw upErr;
 
-        const { data: signed, error: signErr } = await supabase.storage
+        const { data: signed, error: signErr } = await db.storage
           .from('labels')
           .createSignedUrl(path, 60 * 60, { download: filename });
         if (signErr) {
-          url = supabase.storage.from('labels').getPublicUrl(path)?.data?.publicUrl || '';
+          url = db.storage.from('labels').getPublicUrl(path)?.data?.publicUrl || '';
           if (!url) throw signErr;
         } else {
           url = signed.signedUrl;

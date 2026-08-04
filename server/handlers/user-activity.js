@@ -1,57 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
+import { getDataClient } from '../lib/getDataClient.js';
 
 const ALLOWED_VIEWER_EMAIL = 'alielboussi00@gmail.com';
 
-function getSupabaseServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE;
-  if (!url || !serviceKey) {
-    const missing = [];
-    if (!url) missing.push('SUPABASE_URL (or REACT_APP_SUPABASE_URL)');
-    if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE');
-    const error = new Error('Supabase service environment variables missing');
-    error.status = 500;
-    error.details = { missing };
-    throw error;
-  }
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
-}
-
-function getSupabaseAnonClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const anonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    const missing = [];
-    if (!url) missing.push('SUPABASE_URL (or REACT_APP_SUPABASE_URL)');
-    if (!anonKey) missing.push('SUPABASE_ANON_KEY (or REACT_APP_SUPABASE_ANON_KEY)');
-    const error = new Error('Supabase anon environment variables missing');
-    error.status = 500;
-    error.details = { missing };
-    throw error;
-  }
-  return createClient(url, anonKey, {
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-  });
+function getDb() {
+  return getDataClient();
 }
 
 async function getRequestUser(req) {
-  const header = req.headers?.authorization || req.headers?.Authorization || '';
-  const match = String(header).match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-  const token = match[1].trim();
-  if (!token) return null;
-  const supabase = getSupabaseAnonClient();
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error) {
-    const authError = new Error(error.message || 'Invalid session');
-    authError.status = 401;
-    throw authError;
-  }
-  return data?.user || null;
+  const { requireBearerUser } = await import('../lib/verifyBearerUser.js');
+  return requireBearerUser(req);
 }
 
 function isViewer(actor) {
@@ -93,8 +50,8 @@ function mapLogRow(row, usersById = new Map()) {
   };
 }
 
-async function loadLoggedActivities(supabase, limit, usersById = new Map()) {
-  const { data, error } = await supabase
+async function loadLoggedActivities(db, limit, usersById = new Map()) {
+  const { data, error } = await db
     .from('user_activity_log')
     .select('id, created_at, user_uid, user_email, user_name, action_type, action_label, details, reference, entity_type, entity_id, route, metadata')
     .order('created_at', { ascending: false })
@@ -124,12 +81,12 @@ async function handlePost(req, res) {
     return;
   }
 
-  const supabase = getSupabaseServiceClient();
+  const db = getDb();
   const userMeta = actor.user_metadata && typeof actor.user_metadata === 'object' ? actor.user_metadata : {};
 
   let resolvedName = userMeta.full_name || userMeta.name || null;
   if (!resolvedName && actor.id) {
-    const { data: profile } = await supabase
+    const { data: profile } = await db
       .from('users')
       .select('full_name, email')
       .eq('id', actor.id)
@@ -151,7 +108,7 @@ async function handlePost(req, res) {
     metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('user_activity_log')
     .insert([insertRow])
     .select('id')
@@ -161,7 +118,7 @@ async function handlePost(req, res) {
     if (/relation .* does not exist|Could not find the table/i.test(error.message || '')) {
       res.status(503).json({
         ok: false,
-        error: 'user_activity_log table is missing. Run supabase/sql/user_activity_log.sql first.',
+        error: 'user_activity_log collection is missing or not accessible.',
       });
       return;
     }
@@ -182,11 +139,11 @@ async function handleGet(req, res) {
     return;
   }
 
-  const supabase = getSupabaseServiceClient();
+  const db = getDb();
   const rawLimit = Number(req.query?.limit || 250);
   const limit = Number.isFinite(rawLimit) ? Math.max(5, Math.min(500, rawLimit)) : 250;
 
-  const { data: users, error: usersError } = await supabase
+  const { data: users, error: usersError } = await db
     .from('users')
     .select('id, email, full_name, role')
     .limit(500);
@@ -194,7 +151,7 @@ async function handleGet(req, res) {
   if (usersError) throw usersError;
 
   const usersById = new Map((users || []).map((row) => [String(row.id), row]));
-  const activities = await loadLoggedActivities(supabase, limit, usersById);
+  const activities = await loadLoggedActivities(db, limit, usersById);
 
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.status(200).json({
@@ -221,8 +178,8 @@ async function handleDelete(req, res) {
     return;
   }
 
-  const supabase = getSupabaseServiceClient();
-  const { error } = await supabase
+  const db = getDb();
+  const { error } = await db
     .from('user_activity_log')
     .delete()
     .neq('id', '00000000-0000-0000-0000-000000000000');
@@ -231,7 +188,7 @@ async function handleDelete(req, res) {
     if (/relation .* does not exist|Could not find the table/i.test(error.message || '')) {
       res.status(503).json({
         ok: false,
-        error: 'user_activity_log table is missing. Run supabase/sql/user_activity_log.sql first.',
+        error: 'user_activity_log collection is missing or not accessible.',
       });
       return;
     }

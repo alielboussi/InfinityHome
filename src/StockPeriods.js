@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import supabase from './supabase';
+import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
@@ -195,9 +195,9 @@ export default function StockPeriods() {
   useEffect(() => {
     (async () => {
       const [{ data: locData }, { data: catData }, { data: unitData }] = await Promise.all([
-        supabase.from('locations').select('id, name').order('name'),
-        supabase.from('categories').select('id, name').order('name'),
-        supabase.from('unit_of_measure').select('id, name, abbreviation').order('created_at', { ascending: false }),
+        db.from('locations').select('id, name').order('name'),
+        db.from('categories').select('id, name').order('name'),
+        db.from('unit_of_measure').select('id, name, abbreviation').order('created_at', { ascending: false }),
       ]);
       setLocations(locData || []);
       setCategories(catData || []);
@@ -363,7 +363,7 @@ export default function StockPeriods() {
       await applyInventoryBulk({
         inserts,
         updates: updates.map(row => ({ id: row.id, quantity: row.qty, updated_at: nowIso })),
-      }, supabase);
+      }, db);
     }
   }, [postProductLocations, shouldUseApi]);
 
@@ -694,12 +694,12 @@ export default function StockPeriods() {
         const fileExt = file.name.split('.').pop();
         const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
         const fileName = `${safeName}_${inserted.id}_${Date.now()}.${fileExt}`;
-        const { error: uploadErr } = await supabase.storage
+        const { error: uploadErr } = await db.storage
           .from('productimages')
           .upload(fileName, file, { upsert: true });
         if (uploadErr) throw uploadErr;
 
-        const { data: publicUrlData } = supabase.storage
+        const { data: publicUrlData } = db.storage
           .from('productimages')
           .getPublicUrl(fileName);
         const publicUrl = publicUrlData?.publicUrl;
@@ -1618,7 +1618,7 @@ export default function StockPeriods() {
 
   const loadVarianceLogo = async () => {
     try {
-      const { data } = await supabase.from('company_settings').select('company_logo, logo').single();
+      const { data } = await db.from('company_settings').select('company_logo, logo').single();
       const url = data?.company_logo || data?.logo || '';
       if (url) return await loadImage(url);
     } catch {}

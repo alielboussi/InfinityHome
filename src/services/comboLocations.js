@@ -1,4 +1,4 @@
-import supabase from "../supabase";
+import db from '../dataClient';
 
 const getApiBase = () => {
   const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
@@ -87,7 +87,7 @@ const dedupeComboRows = (rows) => {
 };
 
 const fetchNextComboLocationId = async () => {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("combo_locations")
     .select("id")
     .order("id", { ascending: false })
@@ -115,11 +115,11 @@ export async function insertComboLocations(rows) {
   })));
   if (!payload.length) return;
 
-  let { error } = await supabase.from("combo_locations").insert(payload);
+  let { error } = await db.from("combo_locations").insert(payload);
   if (needsManualId(error)) {
     let nextId = await fetchNextComboLocationId();
     const rowsWithIds = payload.map((row) => ({ ...row, id: nextId++ }));
-    ({ error } = await supabase.from("combo_locations").insert(rowsWithIds));
+    ({ error } = await db.from("combo_locations").insert(rowsWithIds));
   }
 
   if (error) {
@@ -149,13 +149,13 @@ export async function upsertComboLocations(rows) {
   try {
     for (let i = 0; i < payload.length; i += CHUNK) {
       const chunk = payload.slice(i, i + CHUNK);
-      let { error } = await supabase
+      let { error } = await db
         .from('combo_locations')
         .upsert(chunk, { onConflict: 'combo_id,location_id' });
       if (needsManualId(error)) {
         let nextId = await fetchNextComboLocationId();
         const rowsWithIds = chunk.map((row) => ({ ...row, id: nextId++ }));
-        ({ error } = await supabase
+        ({ error } = await db
           .from('combo_locations')
           .upsert(rowsWithIds, { onConflict: 'combo_id,location_id' }));
       }
@@ -180,7 +180,7 @@ export async function replaceComboLocations(comboId, rows) {
     }
   }
 
-  const { error: deleteError } = await supabase.from('combo_locations').delete().eq('combo_id', coerceNumeric(comboId));
+  const { error: deleteError } = await db.from('combo_locations').delete().eq('combo_id', coerceNumeric(comboId));
   if (deleteError) throw wrapLocalDevRlsError(deleteError);
   try {
     await insertComboLocations(payload);
@@ -203,7 +203,7 @@ export async function deleteComboLocations(comboId) {
     }
   }
 
-  const { error } = await supabase.from('combo_locations').delete().eq('combo_id', coerceNumeric(comboId));
+  const { error } = await db.from('combo_locations').delete().eq('combo_id', coerceNumeric(comboId));
   if (error) throw wrapLocalDevRlsError(error);
   return { ok: true, count: 0 };
 }
@@ -227,7 +227,7 @@ export async function removeComboLocations(rows) {
   }
 
   for (const row of payload) {
-    const { error } = await supabase
+    const { error } = await db
       .from('combo_locations')
       .delete()
       .eq('combo_id', row.combo_id)

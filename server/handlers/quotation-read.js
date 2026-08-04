@@ -1,49 +1,12 @@
 // Serverless API: quotation-read
 // Service-role powered reads for quotation modules to avoid client-side RLS visibility issues.
 
-import { createClient } from '@supabase/supabase-js';
+import { getDataClient } from '../lib/getDataClient.js';
 
 function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-}
-
-function extractBearerToken(req) {
-  const raw = req?.headers?.authorization || req?.headers?.Authorization || '';
-  const m = String(raw).match(/^Bearer\s+(.+)$/i);
-  return m ? m[1].trim() : '';
-}
-
-function getSupabaseServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    throw new Error('Supabase service env not configured (SUPABASE_URL + SUPABASE_SERVICE_ROLE)');
-  }
-  return createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: 'public' } });
-}
-
-function getSupabaseAnonClient(req) {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.REACT_APP_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    throw new Error('Supabase anon env not configured (SUPABASE_URL + SUPABASE_ANON_KEY)');
-  }
-  const token = extractBearerToken(req);
-  const options = { auth: { persistSession: false }, db: { schema: 'public' } };
-  if (token) {
-    options.global = { headers: { Authorization: `Bearer ${token}` } };
-  }
-  return createClient(url, anonKey, options);
-}
-
-function getSupabaseReadClient(req) {
-  try {
-    return getSupabaseServiceClient();
-  } catch {
-    return getSupabaseAnonClient(req);
-  }
 }
 
 function safeLimit(raw, fallback = 200, max = 500) {
@@ -52,14 +15,14 @@ function safeLimit(raw, fallback = 200, max = 500) {
   return Math.min(Math.floor(n), max);
 }
 
-async function attachCustomerNames(supabase, quotes) {
+async function attachCustomerNames(db, quotes) {
   const rows = Array.isArray(quotes) ? quotes : [];
   const ids = Array.from(new Set(rows.map((q) => q?.customer_id).filter(Boolean).map((v) => String(v))));
   if (!ids.length) return rows;
 
   const nameById = {};
   try {
-    const { data: qc } = await supabase.from('quote_customers').select('id, name').in('id', ids);
+    const { data: qc } = await db.from('quote_customers').select('id, name').in('id', ids);
     (qc || []).forEach((c) => {
       if (c?.id && c?.name) nameById[String(c.id)] = c.name;
     });
@@ -68,7 +31,7 @@ async function attachCustomerNames(supabase, quotes) {
   const missing = ids.filter((id) => !nameById[id]);
   if (missing.length) {
     try {
-      const { data: cust } = await supabase.from('customers').select('id, name').in('id', missing);
+      const { data: cust } = await db.from('customers').select('id, name').in('id', missing);
       (cust || []).forEach((c) => {
         if (c?.id && c?.name) nameById[String(c.id)] = c.name;
       });
@@ -102,17 +65,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    const supabase = getSupabaseReadClient(req);
+    const db = getDataClient();
 
     if (action === 'list-quotes') {
       const limit = safeLimit(req.query?.limit, 200);
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('quotations')
         .select('id, quote_number, customer_id, created_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw error;
-      const rows = await attachCustomerNames(supabase, data || []);
+      const rows = await attachCustomerNames(db, data || []);
       res.status(200).json({ ok: true, rows });
       return;
     }
@@ -124,8 +87,8 @@ export default async function handler(req, res) {
         return;
       }
       const [{ data: quote, error: quoteErr }, { data: items, error: itemsErr }] = await Promise.all([
-        supabase.from('quotations').select('*').eq('id', quoteId).maybeSingle(),
-        supabase.from('quotation_items').select('*').eq('quotation_id', quoteId).order('sort_order'),
+        db.from('quotations').select('*').eq('id', quoteId).maybeSingle(),
+        db.from('quotation_items').select('*').eq('quotation_id', quoteId).order('sort_order'),
       ]);
       if (quoteErr) throw quoteErr;
       if (itemsErr) throw itemsErr;
@@ -140,7 +103,7 @@ export default async function handler(req, res) {
     if (action === 'list-products') {
       const limit = safeLimit(req.query?.limit, 200);
       const q = String(req.query?.q || '').trim();
-      let query = supabase
+      let query = db
         .from('quotation_products')
         .select('id, name, price, unit_id, description, active, image_url, qr_code_url')
         .order('created_at', { ascending: false })
@@ -156,14 +119,14 @@ export default async function handler(req, res) {
     }
 
     if (action === 'list-units') {
-      const { data, error } = await supabase.from('quotation_units').select('*').order('name', { ascending: true });
+      const { data, error } = await db.from('quotation_units').select('*').order('name', { ascending: true });
       if (error) throw error;
       res.status(200).json({ ok: true, rows: data || [] });
       return;
     }
 
     if (action === 'list-customers') {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('quote_customers')
         .select('id, name, currency, phone, address, city, country, tpin, created_at')
         .order('name', { ascending: true });

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { getMaxSetQty, selectPrice, formatAmount } from './utils/setInventoryUtils';
 import { FaCalendarAlt, FaCashRegister, FaFilePdf } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
-import supabase from "./supabase";
+import db from './dataClient';
 import { isFahme, computeFahmeOverrides, computePosBadgeDue, FAHME_ID, computeLaybyRollups } from './laybyRules';
 import useLaybyData from './hooks/useLaybyData';
 import { checkout as checkoutApi } from './services/checkout';
@@ -15,7 +15,7 @@ import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { computeCustomerOutstandingLikeLaybyPage } from './utils/financials';
 import { logUserActivity } from './utils/userActivityLog';
-import { probeSupabaseOnce } from './utils/devProbe';
+import { probeFirestoreOnce } from './utils/devProbe';
 import { notifyLaybyWhatsApp, notifySaleWhatsApp } from './services/whatsappNotify';
 import { previewPosSalePdfSample } from './services/whatsappPdfs';
 import { getCurrentUser, resolveSaleActor } from './accessControl';
@@ -173,14 +173,18 @@ const chunkArray = (list, size) => {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
 
-const POS_REQUIRED_LOCATIONS = [
-  { id: 'f72aa989-3888-4a45-96ed-15dc45b5d399', name: 'Outlet (f72aa989)' },
-];
+const KITWE_LOCATION_ID = '454a092c-5b12-441e-b99d-216f6fa72198';
+const LUSAKA_LOCATION_ID = 'f72aa989-3888-4a45-96ed-15dc45b5d399';
 
-const POS_EXCLUDED_LOCATION_IDS = new Set([
-  '39ffaa82-8aee-4a33-8de8-06584cbaffcf',
-  '20abb7a3-9df9-45bd-885e-6440503ea728',
+const POS_ALLOWED_LOCATION_IDS = new Set([
+  KITWE_LOCATION_ID,
+  LUSAKA_LOCATION_ID,
 ]);
+
+const POS_REQUIRED_LOCATIONS = [
+  { id: KITWE_LOCATION_ID, name: 'Kitwe' },
+  { id: LUSAKA_LOCATION_ID, name: 'Lusaka' },
+];
 
 const POS_CUSTOM_PRODUCT_BLOCKED_USERS = new Set([
   '99a0cdc5-1e67-40ff-93d4-a961cb9cff39',
@@ -195,9 +199,12 @@ function blockNumberInputWheel(event) {
 }
 
 
-const filterLocations = (rows = []) => (
-  (rows || []).filter(row => row && isUuid(row.id) && !POS_EXCLUDED_LOCATION_IDS.has(String(row.id)))
-);
+const filterLocations = (rows = []) => {
+  const order = [KITWE_LOCATION_ID, LUSAKA_LOCATION_ID];
+  return (rows || [])
+    .filter((row) => row && isUuid(row.id) && POS_ALLOWED_LOCATION_IDS.has(String(row.id)))
+    .sort((a, b) => order.indexOf(String(a.id)) - order.indexOf(String(b.id)));
+};
 
 const filterUuidCustomers = (list = []) => (
   (list || []).filter(row => row && isUuid(row.id))
@@ -356,7 +363,7 @@ export default function POS({ isMobile = false }) {
   // Removed: credit refresh logic and ledger reconciliation
 
   // Dev-only probe to surface local environment misconfigurations
-  useEffect(() => { try { probeSupabaseOnce('POS'); } catch {} }, []);
+  useEffect(() => { try { probeFirestoreOnce('POS'); } catch {} }, []);
   useEffect(() => { setPosUser(getCurrentUser()); }, []);
   useEffect(() => {
     const trimmed = receiptNumber.trim();
@@ -370,7 +377,7 @@ export default function POS({ isMobile = false }) {
     const timer = setTimeout(async () => {
       const formatted = formatPosReceiptNumber(receiptNumber);
       try {
-        const existing = await findExistingReceiptSale(supabase, 'sales', formatted);
+        const existing = await findExistingReceiptSale(db, 'sales', formatted);
         if (receiptDuplicateCheckRef.current !== checkId) return;
         setReceiptDuplicateError(existing ? RECEIPT_DUPLICATE_ERROR : "");
       } catch (_) {
@@ -390,7 +397,7 @@ export default function POS({ isMobile = false }) {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase.auth.getUser();
+        const { data } = await db.auth.getUser();
         const authUid = data?.user?.id;
         if (!authUid || !isUuid(authUid)) return;
         setPosUser((current) => {
@@ -436,7 +443,7 @@ export default function POS({ isMobile = false }) {
   // Fetch locations and customers (hydrate from cache, then revalidate)
   useEffect(() => {
     try {
-      const locSnap = cacheGet('pos:locations:v2');
+      const locSnap = cacheGet('pos:locations:v3');
       if (locSnap) setLocations(filterLocations(mergeLocations(locSnap, POS_REQUIRED_LOCATIONS)));
       const custSnap = cacheGet('pos:customers:v2');
       if (custSnap) setCustomers(filterUuidCustomers(dedupeCustomers((custSnap || []).map(normalizeCustomerRecord))));
@@ -457,7 +464,7 @@ export default function POS({ isMobile = false }) {
 
       const mergedLocs = filterLocations(mergeLocations(locs, POS_REQUIRED_LOCATIONS));
       setLocations(mergedLocs);
-      try { cacheSet('pos:locations:v2', mergedLocs, 10 * 60 * 1000); } catch {}
+      try { cacheSet('pos:locations:v3', mergedLocs, 10 * 60 * 1000); } catch {}
       try {
         const stored = localStorage.getItem('pos:selectedLocation');
         if (stored && !isUuid(stored)) {
@@ -468,7 +475,7 @@ export default function POS({ isMobile = false }) {
           mergedLocs
         ));
       } catch {}
-      // Fetch customers directly from Supabase
+      // Fetch customers from Firestore
       try {
         let rows = [];
         try {
@@ -544,8 +551,8 @@ export default function POS({ isMobile = false }) {
         fromPublic('product_locations')
           .select('product_id, location_id')
           .eq('location_id', selectedLocation),
-        fetchProductLocationPricesForLocation(supabase, selectedLocation).catch(() => []),
-        fetchComboLocationPricesForLocation(supabase, selectedLocation).catch(() => []),
+        fetchProductLocationPricesForLocation(db, selectedLocation).catch(() => []),
+        fetchComboLocationPricesForLocation(db, selectedLocation).catch(() => []),
       ]);
 
       let combosData = combosRes?.data || [];
@@ -766,7 +773,7 @@ export default function POS({ isMobile = false }) {
 
     try {
       if (isSet) {
-        await saveComboLocationPrice(supabase, {
+        await saveComboLocationPrice(db, {
           comboId: item.id,
           locationId: selectedLocation,
           field: 'price',
@@ -791,7 +798,7 @@ export default function POS({ isMobile = false }) {
           )),
         }));
       } else {
-        await saveProductLocationPrice(supabase, {
+        await saveProductLocationPrice(db, {
           productId: item.id,
           locationId: selectedLocation,
           field: 'price',
@@ -1228,7 +1235,7 @@ export default function POS({ isMobile = false }) {
   // Removed: addCustomerCredit (credit top-up flow)
 
 
-  // Handle checkout (Supabase integration, supports partial payments/layby)
+  // Handle checkout (API + Firestore fallback, supports partial payments/layby)
   // --- Restore inventory logic ---
   // Restore inventory for all products in a layby using only recorded sales_items
   const restoreInventoryForLayby = async (laybyId) => {
@@ -1280,7 +1287,7 @@ export default function POS({ isMobile = false }) {
           .eq('product_id', item.product_id)
           .eq('location_id', restoreLocation);
         if (!prodLocRows || prodLocRows.length === 0) {
-          await syncProductLocations({ rows: [{ product_id: item.product_id, location_id: restoreLocation }] }, supabase);
+          await syncProductLocations({ rows: [{ product_id: item.product_id, location_id: restoreLocation }] }, db);
         }
       })());
     }
@@ -1298,7 +1305,7 @@ export default function POS({ isMobile = false }) {
     }
   };
 
-  // Handle checkout (Supabase integration, supports partial payments/layby)
+  // Handle checkout (API + Firestore fallback, supports partial payments/layby)
   const handleCheckout = async () => {
     setCheckoutError("");
     setCheckoutSuccess("");
@@ -1884,11 +1891,11 @@ export default function POS({ isMobile = false }) {
     } catch {}
   // Compute customer-wide due using the exact LaybyManagement aggregation
   let totalOutstanding = 0;
-  try { totalOutstanding = await computeCustomerOutstandingLikeLaybyPage(supabase, customerId); }
+  try { totalOutstanding = await computeCustomerOutstandingLikeLaybyPage(db, customerId); }
     catch { /* fallback below */ }
     if (!Number.isFinite(totalOutstanding) || totalOutstanding < 0) {
       try {
-        const rollups = await computeLaybyRollups(supabase, list);
+        const rollups = await computeLaybyRollups(db, list);
         totalOutstanding = Object.values(rollups || {}).reduce((acc, r) => acc + Math.max(0, Number(r.outstanding || (Number(r.total||0) - Number(r.paid||0)))), 0);
       } catch {
         totalOutstanding = (list || []).reduce((acc, row) => acc + Math.max(0, Number(row.total_amount||0) - Number(row.paid_amount||0)), 0);

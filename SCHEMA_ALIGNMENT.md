@@ -2,12 +2,12 @@
 
 Last updated: 2025-11-07
 
-Purpose: document observed mismatches between the application code and the Supabase (PostgreSQL) schema, plus safe remediation options.
+Purpose: document observed mismatches between the application code and the Firestore data model (migrated from legacy Postgres), plus safe remediation options.
 
 ## Confirmed alignments
 
 - Customers data model: code consistently uses `customers.credit_balance` (read in POS, Customers, Layby components and API).
-- Canonical reporting views: referenced across UI/scripts (`v_sales_financials`, `v_sales_pdf_totals`, `v_sales_totals_canonical`, `v_payments_non_credit`, etc.).
+- Sale financials: computed in-app via `src/utils/saleFinancials.js` (`computeSaleFinancials`) from `sales`, `sales_items`, `sales_payments` (legacy Postgres views removed).
 - Checkout flow: API `api/checkout.js` inserts into `sales`, `sales_items`, `sales_payments` and is working against current schema (smoke-tested previously).
 
 ## Potential mismatches

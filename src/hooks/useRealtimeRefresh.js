@@ -1,9 +1,9 @@
 import React from 'react';
-import supabase from '../supabase';
+import db from '../dataClient';
 import { isRealtimeEnabled } from '../utils/realtimeConfig';
 
 /**
- * Subscribe to Supabase realtime for a set of tables and emit a small debounced tick
+ * Subscribe to Firestore realtime (or legacy channel shim) for a set of tables and emit a debounced tick
  * whenever any change happens. Use the returned `tick` in effect deps to refetch.
  */
 export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable = undefined) {
@@ -26,7 +26,7 @@ export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable
     if (!Array.isArray(tables) || tables.length === 0) return;
     if (!isVisible) return; // don't subscribe when tab is hidden
     const channelName = 'rt-' + tables.join(',') + (filtersByTable ? ':' + JSON.stringify(filtersByTable) : '');
-    const channel = supabase.channel(channelName);
+    const channel = db.channel(channelName);
     tables.forEach((table) => {
       try {
         // Build optional filter string if provided for this table
@@ -54,7 +54,7 @@ export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable
     });
     channel.subscribe();
     return () => {
-      try { supabase.removeChannel(channel); } catch {}
+      try { db.removeChannel(channel); } catch {}
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

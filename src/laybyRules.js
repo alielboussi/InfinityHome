@@ -14,8 +14,8 @@ export function isFahme(customerId) {
   return FAHME_IDS.some((id) => String(id).toLowerCase() === key);
 }
 
-// Compute total/paid/outstanding per layby using canonical DB view and payments
-export async function computeLaybyRollups(supabase, laybys) {
+// Compute total/paid/outstanding per layby using computeSaleFinancials from base tables
+export async function computeLaybyRollups(db, laybys) {
   const rows = Array.isArray(laybys) ? laybys : [];
   if (!rows.length) return {};
 
@@ -35,7 +35,7 @@ export async function computeLaybyRollups(supabase, laybys) {
   try {
     const laybyIds = Array.from(new Set(rows.map(r => toKey(r.id)).filter(Boolean)));
     if (laybyIds.length) {
-      const q = await supabase
+      const q = await db
         .schema('public')
         .from('sales')
         .select('id, layby_id, customer_id')
@@ -57,12 +57,12 @@ export async function computeLaybyRollups(supabase, laybys) {
   let finBySale = new Map();
   if (allSaleIds.length) {
     try {
-      const map = await fetchCanonicalFinancials(supabase, allSaleIds);
+      const map = await fetchCanonicalFinancials(db, allSaleIds);
       finBySale = map;
     } catch {}
   }
 
-  // Compute per-layby aggregates using view; fallback to layby table values
+  // Compute per-layby aggregates from base-table financials; fallback to layby table values
   const out = {};
   rows.forEach(l => {
     const ref = byLayby.get(String(l.id));
@@ -87,10 +87,10 @@ export async function computeLaybyRollups(supabase, laybys) {
 }
 
 // For Fahme, compute an override outstanding across all his laybys (applies opening credit once)
-export async function computeFahmeOverrides(supabase, laybys) {
+export async function computeFahmeOverrides(db, laybys) {
   const rows = Array.isArray(laybys) ? laybys : [];
   if (!rows.length) return {};
-  const rollups = await computeLaybyRollups(supabase, rows);
+  const rollups = await computeLaybyRollups(db, rows);
   const totals = Object.entries(rollups).reduce((acc, [, v]) => {
     acc.total += Number(v.total || 0);
     acc.paid += Number(v.paid || 0);
@@ -103,6 +103,6 @@ export async function computeFahmeOverrides(supabase, laybys) {
 }
 
 // POS badge due helper (minimal); return 0 for now or compute externally
-export async function computePosBadgeDue(/* supabase, customerId */) {
+export async function computePosBadgeDue(/* db, customerId */) {
   return 0;
 }

@@ -1,3 +1,5 @@
+import { aggregateCustomerTotals, buildFinancialsMap } from '../../src/utils/saleFinancials.js';
+
 const FAHME_CUSTOMER_IDS = new Set([
   'd8e756ae-b8ea-4f90-b99a-70c1120f52b9',
   'efb21cad-1a8d-4d64-9487-51e816fcb429',
@@ -35,29 +37,16 @@ function normalizeBalanceDue(balanceDue, currency = 'K') {
   return due;
 }
 
-async function trySelectBySaleIds(supabase, saleIds, view, columns) {
-  try {
-    const { data, error } = await supabase
-      .from(view)
-      .select(columns)
-      .in('sale_id', saleIds);
-    if (error) return { ok: false, data: [] };
-    return { ok: true, data: data || [] };
-  } catch {
-    return { ok: false, data: [] };
-  }
-}
-
-async function computeTotalsForCustomers(supabase, customerIds) {
+async function computeTotalsForCustomers(db, customerIds) {
   const ids = Array.from(new Set((customerIds || []).map((id) => String(id)).filter(Boolean)));
   if (!ids.length) return {};
 
   const [{ data: salesRows, error: salesErr }, { data: laybyRows, error: laybyErr }] = await Promise.all([
-    supabase
+    db
       .from('sales')
       .select('id, customer_id, currency, total_amount, discount, layby_id')
       .in('customer_id', ids),
-    supabase
+    db
       .from('laybys')
       .select('id, customer_id')
       .in('customer_id', ids),
@@ -70,7 +59,7 @@ async function computeTotalsForCustomers(supabase, customerIds) {
 
   let linkedSales = [];
   if (laybyIds.length) {
-    const { data: byLayby, error: linkedErr } = await supabase
+    const { data: byLayby, error: linkedErr } = await db
       .from('sales')
       .select('id, customer_id, currency, total_amount, discount, layby_id')
       .in('layby_id', laybyIds);
@@ -90,112 +79,25 @@ async function computeTotalsForCustomers(supabase, customerIds) {
   const saleIds = normalizedSales.map((sale) => sale.id).filter((value) => value != null);
   if (!saleIds.length) return {};
 
-  let totalsRows = [];
-  let totalsRes = await trySelectBySaleIds(
-    supabase,
-    saleIds,
-    'v_sales_pdf_totals',
-    'sale_id, currency, subtotal_before_discount, discount_amount, total_due, paid_amount, outstanding_amount',
-  );
-  if (totalsRes.ok) totalsRows = totalsRes.data;
-  if (!totalsRows.length) {
-    totalsRes = await trySelectBySaleIds(
-      supabase,
-      saleIds,
-      'v_sales_financials',
-      'sale_id, currency, subtotal_before_discount, discount_amount, total_due, paid_amount, outstanding_amount',
-    );
-    if (totalsRes.ok) totalsRows = totalsRes.data;
-  }
+  const [itemsRes, payRes] = await Promise.all([
+    db
+      .from('sales_items')
+      .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
+      .in('sale_id', saleIds),
+    db
+      .from('sales_payments')
+      .select('sale_id, amount, discount_amount, currency')
+      .in('sale_id', saleIds),
+  ]);
+  if (itemsRes.error) throw itemsRes.error;
+  const payRows = payRes.error ? [] : (payRes.data || []);
 
-  const saleMetaById = new Map();
-  normalizedSales.forEach((sale) => {
-    saleMetaById.set(String(sale.id), {
-      currency: sale.currency || null,
-      total_amount: Number(sale.total_amount || 0),
-      sale_discount: Number(sale.discount || 0),
-      customer_id: sale.customer_id || null,
-    });
-  });
-
-  (totalsRows || []).forEach((row) => {
-    const key = String(row.sale_id);
-    const prev = saleMetaById.get(key) || {};
-    saleMetaById.set(key, {
-      ...prev,
-      currency: row.currency || prev.currency || null,
-      subtotal_before_discount: Number(row.subtotal_before_discount || 0),
-      sale_discount: Number(row.discount_amount || prev.sale_discount || 0),
-      total_due: Number(row.total_due || 0),
-      outstanding_amount: Number(
-        row.outstanding_amount ?? Math.max(0, Number(row.total_due || 0) - Number(row.paid_amount || 0)),
-      ),
-    });
-  });
-
-  const { data: payRows, error: payErr } = await supabase
-    .from('sales_payments')
-    .select('sale_id, amount, discount_amount, currency')
-    .in('sale_id', saleIds);
-  if (payErr) throw payErr;
-
-  const paymentsByCustomerCurrency = new Map();
-  (payRows || []).forEach((payment) => {
-    const saleMeta = saleMetaById.get(String(payment.sale_id)) || {};
-    const customerId = saleMeta.customer_id || null;
-    if (!customerId) return;
-    const code = normalizeCurrency(payment.currency || saleMeta.currency || 'K');
-    const key = `${customerId}|${code}`;
-    const prev = paymentsByCustomerCurrency.get(key) || { paid: 0, discount: 0 };
-    prev.paid += Number(payment.amount || 0);
-    prev.discount += Number(payment.discount_amount || 0);
-    paymentsByCustomerCurrency.set(key, prev);
-  });
-
-  const totals = {};
-  normalizedSales.forEach((sale) => {
-    const customerId = String(sale.customer_id || '');
-    if (!customerId) return;
-    const fin = saleMetaById.get(String(sale.id)) || {};
-    const code = normalizeCurrency(fin.currency || sale.currency || 'K');
-
-    if (!totals[customerId]) totals[customerId] = {};
-    if (!totals[customerId][code]) {
-      totals[customerId][code] = { total: 0, paid: 0, discount: 0, outstanding: 0, _saleDiscount: 0 };
-    }
-
-    const subtotal = Number(fin.subtotal_before_discount || 0);
-    const saleDiscount = Number(fin.sale_discount || 0);
-    const netTotal = subtotal > 0 ? subtotal : Math.max(0, Number(fin.total_amount || 0) + saleDiscount);
-    totals[customerId][code].total += netTotal;
-    totals[customerId][code]._saleDiscount += saleDiscount;
-  });
-
-  Object.keys(totals).forEach((customerId) => {
-    Object.keys(totals[customerId]).forEach((code) => {
-      const agg = totals[customerId][code];
-      const payKey = `${customerId}|${code}`;
-      const payAgg = paymentsByCustomerCurrency.get(payKey) || { paid: 0, discount: 0 };
-      const saleDiscount = Number(agg._saleDiscount || 0);
-      const paid = Number(payAgg.paid || 0);
-      const payDiscount = Number(payAgg.discount || 0);
-      const totalDiscount = saleDiscount + payDiscount;
-      const outstanding = Math.max(0, Number(agg.total || 0) - saleDiscount - paid - payDiscount);
-
-      totals[customerId][code] = {
-        total: Number(agg.total || 0),
-        paid,
-        discount: totalDiscount,
-        outstanding,
-      };
-    });
-  });
-
-  return totals;
+  const finMap = buildFinancialsMap(normalizedSales, itemsRes.data || [], payRows);
+  return aggregateCustomerTotals(normalizedSales, finMap, payRows);
 }
 
-export async function fetchCustomersWithBalanceDue(supabase) {
-  const { data: customers, error: custErr } = await supabase
+export async function fetchCustomersWithBalanceDue(db) {
+  const { data: customers, error: custErr } = await db
     .from('customers')
     .select('id, name, currency')
     .order('name', { ascending: true });
@@ -204,7 +106,7 @@ export async function fetchCustomersWithBalanceDue(supabase) {
   const eligible = (customers || []).filter((row) => row?.id && !isFahmeCustomer(row.id));
   if (!eligible.length) return [];
 
-  const totalsByCustomer = await computeTotalsForCustomers(supabase, eligible.map((row) => row.id));
+  const totalsByCustomer = await computeTotalsForCustomers(db, eligible.map((row) => row.id));
   const nameById = new Map(eligible.map((row) => [String(row.id), String(row.name || 'Unknown').trim() || 'Unknown']));
 
   const rows = [];
@@ -242,6 +144,20 @@ function formatReportDate(date = new Date()) {
   }
 }
 
+function buildMonthlyBalanceFooter(rows) {
+  const totals = {};
+  rows.forEach((row) => {
+    (row.balances || []).forEach((entry) => {
+      const currency = normalizeCurrency(entry.currency);
+      totals[currency] = (totals[currency] || 0) + Number(entry.outstanding || 0);
+    });
+  });
+  const totalLine = Object.entries(totals)
+    .map(([currency, amount]) => formatAmount(amount, currency))
+    .join(' · ');
+  return `\n\nTotal outstanding: ${totalLine}\nTotal customers: ${rows.length}`;
+}
+
 export function buildMonthlyBalanceDueMessages(rows, { reportDate = new Date() } = {}) {
   const dateLabel = formatReportDate(reportDate);
   const header = `📋 *Monthly Balance Due — ${dateLabel}*`;
@@ -258,7 +174,7 @@ export function buildMonthlyBalanceDueMessages(rows, { reportDate = new Date() }
     return `• ${row.name} — ${amounts}`;
   });
 
-  const footer = `\n\nTotal customers: ${rows.length}`;
+  const footer = buildMonthlyBalanceFooter(rows);
   const messages = [];
   let buffer = [];
 

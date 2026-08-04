@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -125,7 +125,7 @@ export default function SalesReportMobile() {
         }
       }
       // 1) Fetch payments within date range and by type
-      let q = supabase
+      let q = db
         .from('sales_payments')
         .select('id, sale_id, amount, currency, payment_type, created_at')
         .order('created_at', { ascending: false })
@@ -149,7 +149,7 @@ export default function SalesReportMobile() {
         (sales || []).forEach(s => { salesMap[String(s.id)] = s; });
         const custIds = Array.from(new Set((sales || []).map(s => s.customer_id).filter(Boolean)));
         if (custIds.length) {
-          const { data: customers } = await supabase
+          const { data: customers } = await db
             .from('customers')
             .select('id, name')
             .in('id', custIds);
@@ -172,7 +172,7 @@ export default function SalesReportMobile() {
         const saleIdsForLayby = Array.from(new Set((merged || []).map(p => p.sale_id).filter(Boolean)));
         let originMap = {};
         if (saleIdsForLayby.length) {
-          const { data: laybyRows } = await supabase
+          const { data: laybyRows } = await db
             .from('laybys')
             .select('id, sale_id, notes, origin')
             .in('sale_id', saleIdsForLayby);
@@ -185,7 +185,7 @@ export default function SalesReportMobile() {
           // Find which laybys are referenced by converted quotations
           let convertedLaybyIds = new Set();
           if (laybyIds.length) {
-            const { data: qlinks } = await supabase
+            const { data: qlinks } = await db
               .from('quotations')
               .select('layby_id, status')
               .eq('status', 'converted')
@@ -211,7 +211,7 @@ export default function SalesReportMobile() {
       }
 
       // 2) Fetch only converted quotes within range
-      let q2 = supabase
+      let q2 = db
         .from('quotations')
         .select('id, total, currency, status, discount, created_at')
         .eq('status', 'converted')
@@ -224,7 +224,7 @@ export default function SalesReportMobile() {
       setQuotesConverted(quotes || []);
 
       // 2b) Fetch pending (not converted) quotes within range
-      let qPending = supabase
+      let qPending = db
         .from('quotations')
         .select('id, total, currency, status, discount, created_at')
         .or('status.eq.pending,status.is.null,sale_id.is.null')
@@ -286,14 +286,14 @@ export default function SalesReportMobile() {
           .order('sale_date', { ascending: false })
           .limit(5);
 
-        const quotesQ = supabase
+        const quotesQ = db
           .from('quotations')
           .select('id, quote_number, total, currency, created_at, status')
           .or(`quote_number.ilike.%${t}%,id.eq.${isNum ? num : -1}`)
           .order('created_at', { ascending: false })
           .limit(5);
 
-        const laybyQ = supabase
+        const laybyQ = db
           .from('laybys')
           .select('id, sale_id, created_at')
           .or(`id.eq.${isNum ? num : -1},sale_id.eq.${isNum ? num : -1}`)
@@ -510,17 +510,17 @@ export default function SalesReportMobile() {
       const safeFrom = (dateFrom || 'start').replace(/\//g, '-');
       const safeTo = (dateTo || 'end').replace(/\//g, '-');
       const path = `mobile/sales-report_${safeFrom}_to_${safeTo}_${ts}.pdf`;
-      const { error: upErr } = await supabase
+      const { error: upErr } = await db
         .storage
         .from('SalesReports')
         .upload(path, blob, { contentType: 'application/pdf', upsert: true });
       if (upErr) throw upErr;
 
       // Get public URL (fallback to signed URL if bucket not public)
-      const pub = supabase.storage.from('SalesReports').getPublicUrl(path);
+      const pub = db.storage.from('SalesReports').getPublicUrl(path);
       let url = pub?.data?.publicUrl || '';
       if (!url) {
-        const { data: signed } = await supabase
+        const { data: signed } = await db
           .storage
           .from('SalesReports')
           .createSignedUrl(path, 60 * 60);

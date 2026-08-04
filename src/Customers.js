@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import { cacheGet, cacheSet } from './utils/staleCache';
 // Removed unused navigate import (was not used, eliminating CI lint error)
@@ -66,7 +66,7 @@ const Customers = () => {
       }
     } catch { setLoading(true); }
     try {
-      const { data, error } = await supabase.from('customers').select('id, name, phone, address, city, tpin, created_at');
+      const { data, error } = await db.from('customers').select('id, name, phone, address, city, tpin, created_at');
       if (error) throw error;
       setCustomers(data || []);
       try { cacheSet('customers:list:v1', data || [], 5 * 60 * 1000); } catch {}
@@ -122,14 +122,14 @@ const Customers = () => {
       // Phone, address, city, tpin are optional
       if (editingId) {
         // Update
-        const { error } = await supabase
+        const { error } = await db
           .from('customers')
           .update(formToSave)
           .eq('id', editingId);
         if (error) throw error;
       } else {
         // Insert
-        const { error } = await supabase
+        const { error } = await db
           .from('customers')
           .insert([formToSave]);
         if (error) throw error;
@@ -171,7 +171,7 @@ const Customers = () => {
     if (!window.confirm('Delete this customer?')) return;
     setSaving(true);
     try {
-      const { error } = await supabase.from('customers').delete().eq('id', id);
+      const { error } = await db.from('customers').delete().eq('id', id);
       if (error) throw error;
       fetchCustomers();
     } catch (err) {
@@ -203,7 +203,7 @@ const Customers = () => {
     setSearching(true);
     try {
       const pattern = `%${t}%`;
-      const { data, error } = await supabase
+      const { data, error } = await db
       .from('customers')
       .select('id, name, phone, address, city, tpin')
       .or(`name.ilike.${pattern},phone.ilike.${pattern}`)

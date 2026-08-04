@@ -1,13 +1,10 @@
-import supabase from '../supabase';
 import { getCurrentUser } from '../accessControl';
+import { ensureAuthSession } from './authSession';
+import { firebaseGetAccessToken } from './firebaseAuthApi';
 
 async function getAccessToken() {
-  try {
-    const { data } = await supabase.auth.getSession();
-    return data?.session?.access_token || null;
-  } catch {
-    return null;
-  }
+  await ensureAuthSession();
+  return firebaseGetAccessToken();
 }
 
 async function getAuthHeaders() {
@@ -28,8 +25,7 @@ export async function logUserActivity({
   const user = getCurrentUser();
   if (!user?.id && !user?.email) return;
 
-  // Without a Supabase session token the server rejects the request with 401.
-  // Skip silently (e.g. not yet authenticated on this device) to avoid console noise.
+  await ensureAuthSession();
   const token = await getAccessToken();
   if (!token) return;
 
@@ -52,12 +48,13 @@ export async function logUserActivity({
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 4000) : null;
     try {
-      await fetch('/api/user-activity', {
+      const response = await fetch('/api/user-activity', {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
         signal: controller?.signal,
       });
+      if (response.status === 401) return;
     } finally {
       if (timer) clearTimeout(timer);
     }

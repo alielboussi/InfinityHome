@@ -13,7 +13,11 @@ Mohammad Fahme = 120363372527723284@g.us
 Sales & Deliveries = 120363428119118757@g.us
 
 ---
-Vercel env mapping:
+Vercel env mapping (Wasender):
+
+WHATSAPP_PROVIDER=wasender
+WASENDER_API_TOKEN=<from wasenderapi.com dashboard>
+WHATSAPP_WASENDER_KINDS=all
 
 WHATSAPP_LABELS_GROUP_ID=120363410723287387@g.us
 WHATSAPP_TRANSFER_GROUP_ID=120363410583418058@g.us

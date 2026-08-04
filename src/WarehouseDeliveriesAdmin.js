@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
@@ -61,7 +61,7 @@ export default function WarehouseDeliveriesAdmin() {
     setLoading(true);
     setError('');
     try {
-      const { data: sessionData, error: sessErr } = await supabase
+      const { data: sessionData, error: sessErr } = await db
         .from('warehouse_delivery_sessions')
         .select('id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, applied_by, accepted_at, applied_at, completed_at, last_edited_at, pdf_url, metadata')
         .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
@@ -80,7 +80,7 @@ export default function WarehouseDeliveriesAdmin() {
         return;
       }
 
-      const { data: entryRows, error: entryErr } = await supabase
+      const { data: entryRows, error: entryErr } = await db
         .from('warehouse_delivery_entries')
         .select('id, session_id, product_id, combo_id, kind, name, sku, quantity, original_quantity, edited_quantity, expected_dest_stock, per_set_qty, max_qty')
         .in('session_id', ids)
@@ -105,7 +105,7 @@ export default function WarehouseDeliveriesAdmin() {
         sessionsList.map((s) => s.created_by_id).filter((id) => id != null)
       ));
       if (creatorIds.length) {
-        const { data: userRows } = await supabase
+        const { data: userRows } = await db
           .from('users')
           .select('id, full_name, email')
           .in('id', creatorIds);
@@ -123,7 +123,7 @@ export default function WarehouseDeliveriesAdmin() {
       }
 
       if (productIds.size) {
-        const { data: invRows } = await supabase
+        const { data: invRows } = await db
           .from('inventory')
           .select('product_id, quantity')
           .eq('location', WAREHOUSE_TO_LOCATION_ID)
@@ -158,7 +158,7 @@ export default function WarehouseDeliveriesAdmin() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase
+        const { data } = await db
           .from('locations')
           .select('id, name')
           .in('id', [WAREHOUSE_FROM_LOCATION_ID, WAREHOUSE_TO_LOCATION_ID]);
@@ -212,7 +212,7 @@ export default function WarehouseDeliveriesAdmin() {
         userEmail = raw ? (JSON.parse(raw)?.email || '') : '';
       } catch {}
 
-      const { data, error: rpcErr } = await supabase.rpc('update_warehouse_delivery_items', {
+      const { data, error: rpcErr } = await db.rpc('update_warehouse_delivery_items', {
         p_session_id: session.id,
         p_items: items,
         p_edited_by: currentUserId || null,

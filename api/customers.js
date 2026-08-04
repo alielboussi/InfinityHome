@@ -3,9 +3,14 @@
 // - POST: create or update a customer with light de-duplication
 // - POST action=statement: fetch customer statement rows
 // - POST action=totals: fetch customer totals rollups
-// Uses Supabase service role; bypasses RLS
+// Uses Firestore service client (server-side).
 
-import { createClient } from '@supabase/supabase-js';
+import { getDataClient } from '../server/lib/getDataClient.js';
+import {
+  aggregateCustomerTotals,
+  buildFinancialsMap,
+  computeSaleFinancials,
+} from '../src/utils/saleFinancials.js';
 
 function normalizePhone(phone) {
   const raw = (phone || '').toString();
@@ -22,15 +27,8 @@ function setCors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-function getSupabaseServiceClient() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    const error = new Error('Supabase service env not configured (SUPABASE_URL + SUPABASE_SERVICE_ROLE)');
-    error.status = 500;
-    throw error;
-  }
-  return createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: 'public' } });
+function getServiceClient() {
+  return getDataClient();
 }
 
 function resolveAction(req) {
@@ -39,20 +37,18 @@ function resolveAction(req) {
     .toLowerCase();
 }
 
-async function trySelectBySaleIds(supabase, saleIds, view, columns) {
-  try {
-    const { data, error } = await supabase
-      .from(view)
-      .select(columns)
-      .in('sale_id', saleIds);
-    if (error) return { ok: false, data: [] };
-    return { ok: true, data: data || [] };
-  } catch {
-    return { ok: false, data: [] };
-  }
+async function fetchFinancialsForSales(db, saleIds, salesRows = []) {
+  if (!saleIds.length) return new Map();
+  const [itemsRes, paymentsRes] = await Promise.all([
+    db.from('sales_items').select('sale_id, product_id, display_name, quantity, unit_price, currency, color').in('sale_id', saleIds),
+    db.from('sales_payments').select('sale_id, amount, discount_amount, payment_type, payment_date, reference, notes, currency').in('sale_id', saleIds),
+  ]);
+  if (itemsRes.error) throw itemsRes.error;
+  if (paymentsRes.error) throw paymentsRes.error;
+  return buildFinancialsMap(salesRows, itemsRes.data || [], paymentsRes.data || []);
 }
 
-async function handleCustomerStatement(req, res, supabase) {
+async function handleCustomerStatement(req, res, db) {
   const body = req.body || {};
   const customerId = body.customerId || body.customer_id;
   if (!customerId) {
@@ -60,7 +56,7 @@ async function handleCustomerStatement(req, res, supabase) {
     return;
   }
 
-  const { data: salesRows, error: salesErr } = await supabase
+  const { data: salesRows, error: salesErr } = await db
     .from('sales')
     .select('id, sale_date, currency')
     .eq('customer_id', customerId);
@@ -75,44 +71,14 @@ async function handleCustomerStatement(req, res, supabase) {
     return;
   }
 
-  let totalsRows = [];
-  let totalsRes = await trySelectBySaleIds(
-    supabase,
-    saleIds,
-    'v_sales_pdf_totals',
-    'sale_id, currency, total_due, paid_amount, outstanding_amount, subtotal_before_discount, discount_amount'
-  );
-  if (totalsRes.ok) totalsRows = totalsRes.data;
-  if (!totalsRows.length) {
-    totalsRes = await trySelectBySaleIds(
-      supabase,
-      saleIds,
-      'v_sales_financials',
-      'sale_id, currency, total_due, paid_amount, outstanding_amount, subtotal_before_discount, discount_amount'
-    );
-    if (totalsRes.ok) totalsRows = totalsRes.data;
-  }
-
-  const totalsBySale = new Map();
-  (totalsRows || []).forEach((row) => {
-    totalsBySale.set(String(row.sale_id), {
-      currency: row.currency || null,
-      total_due: Number(row.total_due || 0),
-      paid_amount: Number(row.paid_amount || 0),
-      outstanding_amount: Number(
-        row.outstanding_amount ?? Math.max(0, Number(row.total_due || 0) - Number(row.paid_amount || 0))
-      ),
-      subtotal_before_discount: Number(row.subtotal_before_discount || 0),
-      discount_amount: Number(row.discount_amount || 0),
-    });
-  });
+  const totalsBySale = await fetchFinancialsForSales(db, saleIds, salesRows || []);
 
   const [itemsRes, paymentsRes] = await Promise.all([
-    supabase
+    db
       .from('sales_items')
       .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
       .in('sale_id', saleIds),
-    supabase
+    db
       .from('sales_payments')
       .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, currency, notes, allocation_batch_uuid')
       .in('sale_id', saleIds)
@@ -129,7 +95,7 @@ async function handleCustomerStatement(req, res, supabase) {
   }
 
   const sales = (salesRows || []).map((sale) => {
-    const fin = totalsBySale.get(String(sale.id)) || {};
+    const fin = totalsBySale.get(String(sale.id)) || computeSaleFinancials({ sale, items: [], payments: [] });
     return {
       sale_id: sale.id,
       sale_date: sale.sale_date,
@@ -145,7 +111,7 @@ async function handleCustomerStatement(req, res, supabase) {
   res.status(200).json({ ok: true, sales, items: itemsRes.data || [], payments: paymentsRes.data || [] });
 }
 
-async function handleCustomerTotals(req, res, supabase) {
+async function handleCustomerTotals(req, res, db) {
   const body = req.body || {};
   const customerIds = Array.isArray(body.customerIds) ? body.customerIds.filter(Boolean) : [];
   if (!customerIds.length) {
@@ -153,7 +119,7 @@ async function handleCustomerTotals(req, res, supabase) {
     return;
   }
 
-  const { data: salesRows, error: salesErr } = await supabase
+  const { data: salesRows, error: salesErr } = await db
     .from('sales')
     .select('id, customer_id, currency, total_amount, discount')
     .in('customer_id', customerIds);
@@ -168,47 +134,9 @@ async function handleCustomerTotals(req, res, supabase) {
     return;
   }
 
-  let totalsRows = [];
-  let totalsRes = await trySelectBySaleIds(
-    supabase,
-    saleIds,
-    'v_sales_pdf_totals',
-    'sale_id, currency, subtotal_before_discount, discount_amount, total_due, paid_amount, outstanding_amount'
-  );
-  if (totalsRes.ok) totalsRows = totalsRes.data;
-  if (!totalsRows.length) {
-    totalsRes = await trySelectBySaleIds(
-      supabase,
-      saleIds,
-      'v_sales_financials',
-      'sale_id, currency, subtotal_before_discount, discount_amount, total_due, paid_amount, outstanding_amount'
-    );
-    if (totalsRes.ok) totalsRows = totalsRes.data;
-  }
+  const finMap = await fetchFinancialsForSales(db, saleIds, salesRows || []);
 
-  const saleMetaById = new Map();
-  (salesRows || []).forEach((sale) => {
-    saleMetaById.set(String(sale.id), {
-      currency: sale.currency || null,
-      total_amount: Number(sale.total_amount || 0),
-      sale_discount: Number(sale.discount || 0),
-      customer_id: sale.customer_id || null,
-    });
-  });
-
-  (totalsRows || []).forEach((row) => {
-    const key = String(row.sale_id);
-    const prev = saleMetaById.get(key) || {};
-    saleMetaById.set(key, {
-      ...prev,
-      currency: row.currency || prev.currency || null,
-      subtotal_before_discount: Number(row.subtotal_before_discount || 0),
-      sale_discount: Number(row.discount_amount || prev.sale_discount || 0),
-      total_due: Number(row.total_due || 0),
-    });
-  });
-
-  const { data: payRows, error: payErr } = await supabase
+  const { data: payRows, error: payErr } = await db
     .from('sales_payments')
     .select('sale_id, amount, discount_amount, currency')
     .in('sale_id', saleIds);
@@ -217,59 +145,7 @@ async function handleCustomerTotals(req, res, supabase) {
     return;
   }
 
-  const paymentsByCustomerCurrency = new Map();
-  (payRows || []).forEach((payment) => {
-    const saleMeta = saleMetaById.get(String(payment.sale_id)) || {};
-    const customerId = saleMeta.customer_id || null;
-    if (!customerId) return;
-    const currencyRaw = payment.currency || saleMeta.currency || 'K';
-    const code = currencyRaw === '$' || currencyRaw === 'USD' ? 'USD' : 'K';
-    const key = `${customerId}|${code}`;
-    const prev = paymentsByCustomerCurrency.get(key) || { paid: 0, discount: 0 };
-    prev.paid += Number(payment.amount || 0);
-    prev.discount += Number(payment.discount_amount || 0);
-    paymentsByCustomerCurrency.set(key, prev);
-  });
-
-  const totals = {};
-  (salesRows || []).forEach((sale) => {
-    const customerId = String(sale.customer_id || '');
-    if (!customerId) return;
-    const fin = saleMetaById.get(String(sale.id)) || {};
-    const currencyRaw = fin.currency || sale.currency || 'K';
-    const code = currencyRaw === '$' || currencyRaw === 'USD' ? 'USD' : 'K';
-
-    if (!totals[customerId]) totals[customerId] = {};
-    if (!totals[customerId][code]) {
-      totals[customerId][code] = { total: 0, paid: 0, discount: 0, outstanding: 0, _saleDiscount: 0 };
-    }
-
-    const subtotal = Number(fin.subtotal_before_discount || 0);
-    const saleDiscount = Number(fin.sale_discount || 0);
-    const netTotal = subtotal > 0 ? subtotal : Math.max(0, Number(fin.total_amount || 0) + saleDiscount);
-    totals[customerId][code].total += netTotal;
-    totals[customerId][code]._saleDiscount += saleDiscount;
-  });
-
-  Object.keys(totals).forEach((customerId) => {
-    Object.keys(totals[customerId]).forEach((code) => {
-      const agg = totals[customerId][code];
-      const payKey = `${customerId}|${code}`;
-      const payAgg = paymentsByCustomerCurrency.get(payKey) || { paid: 0, discount: 0 };
-      const saleDiscount = Number(agg._saleDiscount || 0);
-      const paid = Number(payAgg.paid || 0);
-      const payDiscount = Number(payAgg.discount || 0);
-      const totalDiscount = saleDiscount + payDiscount;
-      const outstanding = Math.max(0, Number(agg.total || 0) - saleDiscount - paid - payDiscount);
-
-      totals[customerId][code] = {
-        total: Number(agg.total || 0),
-        paid,
-        discount: totalDiscount,
-        outstanding,
-      };
-    });
-  });
+  const totals = aggregateCustomerTotals(salesRows || [], finMap, payRows || []);
 
   res.status(200).json({ ok: true, totals });
 }
@@ -283,11 +159,11 @@ export default async function handler(req, res) {
       return;
     }
 
-    const supabase = getSupabaseServiceClient();
+    const db = getServiceClient();
     const action = resolveAction(req);
 
     if (req.method === 'GET') {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('customers')
         .select('id, name, phone, currency, opening_balance, credit_balance')
         .order('name', { ascending: true });
@@ -298,12 +174,12 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       if (action === 'statement') {
-        await handleCustomerStatement(req, res, supabase);
+        await handleCustomerStatement(req, res, db);
         return;
       }
 
       if (action === 'totals') {
-        await handleCustomerTotals(req, res, supabase);
+        await handleCustomerTotals(req, res, db);
         return;
       }
 
@@ -328,7 +204,7 @@ export default async function handler(req, res) {
       let customer = null;
 
       if (id) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('customers')
           .update(payload)
           .eq('id', id)
@@ -341,7 +217,7 @@ export default async function handler(req, res) {
         if (payload.phone) {
           const phoneDigits = normalizePhone(payload.phone);
           if (phoneDigits) {
-            const { data: existingByPhone, error: phoneErr } = await supabase
+            const { data: existingByPhone, error: phoneErr } = await db
               .from('customers')
               .select('*')
               .order('created_at', { ascending: true });
@@ -353,7 +229,7 @@ export default async function handler(req, res) {
                 const v = payload[k]; if (v && String(hit[k] || '') !== String(v)) update[k] = v;
               }
               if (Object.keys(update).length > 0) {
-                const { data, error } = await supabase.from('customers').update(update).eq('id', hit.id).select('*').single();
+                const { data, error } = await db.from('customers').update(update).eq('id', hit.id).select('*').single();
                 if (error) { res.status(500).json({ ok: false, error: error.message }); return; }
                 customer = data;
               } else {
@@ -363,7 +239,7 @@ export default async function handler(req, res) {
           }
         }
         if (!customer && payload.name) {
-          const { data: existingByName, error: nameErr } = await supabase
+          const { data: existingByName, error: nameErr } = await db
             .from('customers')
             .select('*')
             .order('created_at', { ascending: true });
@@ -376,7 +252,7 @@ export default async function handler(req, res) {
               const v = payload[k]; if (v && String(hit[k] || '') !== String(v)) update[k] = v;
             }
             if (Object.keys(update).length > 0) {
-              const { data, error } = await supabase.from('customers').update(update).eq('id', hit.id).select('*').single();
+              const { data, error } = await db.from('customers').update(update).eq('id', hit.id).select('*').single();
               if (error) { res.status(500).json({ ok: false, error: error.message }); return; }
               customer = data;
             } else {
@@ -385,7 +261,7 @@ export default async function handler(req, res) {
           }
         }
         if (!customer) {
-          const { data, error } = await supabase.from('customers').insert([payload]).select('*').single();
+          const { data, error } = await db.from('customers').insert([payload]).select('*').single();
           if (error) { res.status(500).json({ ok: false, error: error.message }); return; }
           customer = data; created = true;
         }

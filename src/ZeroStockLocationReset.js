@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import { applyInventoryBulk } from './utils/inventoryApi';
 
@@ -24,7 +24,7 @@ export default function ZeroStockLocationReset() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('locations')
         .select('id, name')
         .order('name');
@@ -46,7 +46,7 @@ export default function ZeroStockLocationReset() {
     setLoading(true);
     setMessage('');
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('inventory')
         .select('id, product_id, quantity, products(name, sku)')
         .eq('location', locId);
@@ -95,7 +95,7 @@ export default function ZeroStockLocationReset() {
           quantity: 0,
           updated_at: nowIso,
         }));
-        await applyInventoryBulk({ updates }, supabase);
+        await applyInventoryBulk({ updates }, db);
       }
 
       if (inventoryRows.length > 0) {
@@ -112,7 +112,7 @@ export default function ZeroStockLocationReset() {
         }));
         const chunks = chunkArray(adjustmentRows, 200);
         for (const chunk of chunks) {
-          const { error: adjErr } = await supabase
+          const { error: adjErr } = await db
             .from('inventory_adjustments')
             .insert(chunk);
           if (adjErr) throw adjErr;

@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import supabase from './supabase';
+import db from './dataClient';
 import { formatCurrency } from './pdfTheme';
 import { computeQuotationTotals } from './utils/quotationDisplay';
 
@@ -58,7 +58,7 @@ async function getCompanySettings() {
     }
   } catch {}
   try {
-    const { data } = await supabase.from('company_settings').select('*').single();
+    const { data } = await db.from('company_settings').select('*').single();
     cachedCompany = data || {};
     if (typeof window !== 'undefined') window.companySettings = cachedCompany;
   } catch {

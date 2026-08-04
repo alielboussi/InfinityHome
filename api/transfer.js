@@ -1,9 +1,10 @@
 // Unified Serverless API: transfer
-// - POST action=upload-pdf: upload transfer PDF to Supabase Storage (service role)
+// - POST action=upload-pdf: upload transfer PDF to Firebase Storage
 // - POST action=send-email: email notifications disabled (returns skipped)
 // - GET action=env-check: environment diagnostics
 
-import { createClient } from '@supabase/supabase-js';
+import { getStorageClient } from '../server/lib/firebaseStorage.js';
+import { isFirebaseBackendEnabled } from '../server/lib/backendMode.js';
 
 const BUCKET = 'WarehouseTransfers';
 
@@ -26,12 +27,12 @@ export default async function handler(req, res) {
         return;
       }
       const env = process.env || {};
+      const firebaseMode = isFirebaseBackendEnabled();
       const report = {
-        SUPABASE_URL: env.SUPABASE_URL ? 'OK' : (env.REACT_APP_SUPABASE_URL ? 'OK (from client var)' : 'MISSING'),
-        SUPABASE_SERVICE_ROLE: env.SUPABASE_SERVICE_ROLE ? 'OK' : 'MISSING',
-        REACT_APP_SUPABASE_URL: env.REACT_APP_SUPABASE_URL ? 'OK' : 'MISSING',
-        REACT_APP_SUPABASE_ANON_KEY: env.REACT_APP_SUPABASE_ANON_KEY ? 'OK' : 'MISSING',
-        EMAIL_NOTIFICATIONS: 'DISABLED'
+        USE_FIREBASE: 'true',
+        FIREBASE_STORAGE_BUCKET: env.FIREBASE_STORAGE_BUCKET || env.REACT_APP_FIREBASE_STORAGE_BUCKET ? 'OK' : 'MISSING',
+        FIREBASE_SERVICE_ACCOUNT: env.FIREBASE_SERVICE_ACCOUNT ? 'OK' : 'MISSING',
+        EMAIL_NOTIFICATIONS: 'DISABLED',
       };
       const missing = Object.entries(report).filter(([,v])=>String(v).startsWith('MISSING')).map(([k])=>k);
       const context = { VERCEL_ENV: env.VERCEL_ENV || null, VERCEL_URL: env.VERCEL_URL || null, REGION: env.VERCEL_REGION || env.AWS_REGION || null };
@@ -53,33 +54,13 @@ export default async function handler(req, res) {
     if (action === 'upload-pdf') {
       const { sessionId, fileName, pdfBase64 } = req.body || {};
       if (!sessionId || !fileName || !pdfBase64) { res.status(400).json({ ok:false, error:'Missing fields' }); return; }
-      const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE;
-      if (!url || !serviceKey) {
-        const missing = [];
-        if (!process.env.SUPABASE_URL && !process.env.REACT_APP_SUPABASE_URL) missing.push('SUPABASE_URL (or REACT_APP_SUPABASE_URL)');
-        if (!process.env.SUPABASE_SERVICE_ROLE) missing.push('SUPABASE_SERVICE_ROLE');
-        const present = { SUPABASE_URL: !!process.env.SUPABASE_URL, REACT_APP_SUPABASE_URL: !!process.env.REACT_APP_SUPABASE_URL, SUPABASE_SERVICE_ROLE: !!process.env.SUPABASE_SERVICE_ROLE };
-        res.status(500).json({ ok:false, error:'Supabase server env not configured', missing, present });
-        return;
-      }
-      const supabase = createClient(url, serviceKey, { auth: { persistSession: false }, db: { schema: 'public' } });
-      try {
-        const { data: buckets, error: listErr } = await supabase.storage.listBuckets();
-        if (listErr) throw listErr;
-        const exists = Array.isArray(buckets) && buckets.some(b => b.name === BUCKET);
-        if (!exists) {
-          await supabase.storage.createBucket(BUCKET, { public: true });
-        }
-      } catch (e) {
-        // proceed; upload may still work if bucket exists
-      }
       const base64Data = String(pdfBase64).replace(/^data:application\/pdf;base64,/, '').trim();
       const buffer = Buffer.from(base64Data, 'base64');
       const path = `${sessionId}/${fileName}`;
-      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, buffer, { upsert: true, contentType: 'application/pdf' });
+      const storage = getStorageClient();
+      const { error: upErr } = await storage.from(BUCKET).upload(path, buffer, { upsert: true, contentType: 'application/pdf' });
       if (upErr) { res.status(500).json({ ok:false, error: upErr.message || String(upErr), code: upErr.name || upErr.code }); return; }
-      let publicUrl = null; try { const { data } = supabase.storage.from(BUCKET).getPublicUrl(path); publicUrl = data?.publicUrl || null; } catch {}
+      let publicUrl = null; try { const { data } = storage.from(BUCKET).getPublicUrl(path); publicUrl = data?.publicUrl || null; } catch {}
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.status(200).json({ ok:true, path, publicUrl });
       return;

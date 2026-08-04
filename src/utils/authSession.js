@@ -1,4 +1,4 @@
-import supabase from '../supabase';
+import { firebaseEnsureSession } from './firebaseAuthApi';
 import { cacheClearAll } from './staleCache';
 
 const CACHE_GENERATION_KEY = 'app:cacheGeneration';
@@ -34,35 +34,10 @@ export function ensureCacheGeneration() {
     return false;
   }
 }
-
-export async function ensureSupabaseSession() {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const expiresAtMs = session?.expires_at ? session.expires_at * 1000 : 0;
-    const stillValid = Boolean(session?.access_token)
-      && (!expiresAtMs || expiresAtMs > Date.now() + 60_000);
-
-    if (stillValid) {
-      return { ok: true, session, refreshed: false };
-    }
-
-    if (session?.refresh_token) {
-      const { data: refreshed, error } = await supabase.auth.refreshSession();
-      if (!error && refreshed?.session?.access_token) {
-        return { ok: true, session: refreshed.session, refreshed: true };
-      }
-    }
-
-    return { ok: false, session: null, refreshed: false };
-  } catch {
-    return { ok: false, session: null, refreshed: false };
-  }
+export async function ensureAuthSession() {
+  return firebaseEnsureSession();
 }
 
-/**
- * Restore Supabase auth for users who still have local login state.
- * Clears stale data caches when the session was missing or refreshed.
- */
 export function clearStaleAppLogin() {
   try {
     localStorage.removeItem('user');
@@ -79,7 +54,15 @@ export async function bootstrapAppAuth() {
     return { ok: true, skipped: true };
   }
 
-  const result = await ensureSupabaseSession();
+  const { waitForFirebaseAuthReady } = await import('./firebaseAuthApi');
+  const fbUser = await waitForFirebaseAuthReady();
+  if (!fbUser) {
+    cacheClearAll();
+    clearStaleAppLogin();
+    return { ok: false, skipped: false };
+  }
+
+  const result = await ensureAuthSession();
   if (!result.ok) {
     cacheClearAll();
     clearStaleAppLogin();

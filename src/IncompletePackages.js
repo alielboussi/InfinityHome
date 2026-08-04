@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 
 // Simple manager for recording incomplete packages (combos missing parts) per location
@@ -16,7 +16,7 @@ export default function IncompletePackages() {
   useEffect(() => {
     (async () => {
   // Perf: only id and name needed for dropdown
-  const { data: locs } = await supabase.from('locations').select('id, name');
+  const { data: locs } = await db.from('locations').select('id, name');
       setLocations(locs || []);
       await refresh();
     })();
@@ -24,7 +24,7 @@ export default function IncompletePackages() {
 
   async function refresh() {
     // Perf: restrict columns to those used in the table
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('incomplete_packages')
       .select('id, location_id, item_name, quantity, notes')
       .order('id', { ascending: false });
@@ -42,7 +42,7 @@ export default function IncompletePackages() {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.from('incomplete_packages').insert({
+      const { error } = await db.from('incomplete_packages').insert({
         location_id: locationId, // keep as-is (supports uuid or numeric)
         combo_id: null,
         item_name: itemName.trim(),
@@ -68,14 +68,14 @@ export default function IncompletePackages() {
   }
 
   async function updateRow(id, patch) {
-  const { error } = await supabase.from('incomplete_packages').update(patch).eq('id', id);
+  const { error } = await db.from('incomplete_packages').update(patch).eq('id', id);
     if (error) alert('Update failed: ' + error.message);
     await refresh();
   }
 
   async function deleteRow(id) {
     if (!window.confirm('Delete this row?')) return;
-    const { error } = await supabase.from('incomplete_packages').delete().eq('id', id);
+    const { error } = await db.from('incomplete_packages').delete().eq('id', id);
     if (error) alert('Delete failed: ' + error.message);
     await refresh();
   }

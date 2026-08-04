@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React from 'react';
-import supabase from './supabase';
+import db from './dataClient';
 
 // Location-locked incomplete sets/products mobile view
 // Locks to: 454a092c-5b12-441e-b99d-216f6fa72198
@@ -18,9 +18,9 @@ export default function IncompleteMobileLocked() {
     setError('');
     try {
       const [{ data: locs }, { data: ip, error: e1 }, { data: combosData, error: e2 }] = await Promise.all([
-        supabase.from('locations').select('id, name'),
-        supabase.from('incomplete_packages').select('id, location_id, combo_id, item_name, quantity, notes').order('id', { ascending: false }),
-        supabase.from('combos').select('id, combo_name'),
+        db.from('locations').select('id, name'),
+        db.from('incomplete_packages').select('id, location_id, combo_id, item_name, quantity, notes').order('id', { ascending: false }),
+        db.from('combos').select('id, combo_name'),
       ]);
       const loc = (locs || []).find(l => String(l.id) === String(LOCKED_LOCATION_ID));
       setLocationName(loc ? (loc.name || '') : LOCKED_LOCATION_ID);

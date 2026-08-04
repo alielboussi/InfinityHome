@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
-import supabase from './supabase';
+import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import generateQuotePdf from './quotespdf';
@@ -89,7 +89,7 @@ const readLocalUser = () => {
 async function fetchQuotationRead(action, params = {}) {
   let headers = undefined;
   try {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await db.auth.getSession();
     const token = data?.session?.access_token;
     if (token) headers = { Authorization: `Bearer ${token}` };
   } catch {}
@@ -119,7 +119,7 @@ async function fetchQuotationRead(action, params = {}) {
 async function fetchQuotationDetail(quoteId) {
   let headers = undefined;
   try {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await db.auth.getSession();
     const token = data?.session?.access_token;
     if (token) headers = { Authorization: `Bearer ${token}` };
   } catch {}
@@ -144,8 +144,8 @@ async function fetchQuotationDetail(quoteId) {
 
 async function fallbackGetQuote(quoteId) {
   const [{ data: quote, error: quoteErr }, { data: items, error: itemsErr }] = await Promise.all([
-    supabase.from('quotations').select('*').eq('id', quoteId).maybeSingle(),
-    supabase.from('quotation_items').select('*').eq('quotation_id', quoteId).order('sort_order'),
+    db.from('quotations').select('*').eq('id', quoteId).maybeSingle(),
+    db.from('quotation_items').select('*').eq('quotation_id', quoteId).order('sort_order'),
   ]);
   if (quoteErr) throw quoteErr;
   if (itemsErr) throw itemsErr;
@@ -155,7 +155,7 @@ async function fallbackGetQuote(quoteId) {
 async function fetchQuotationWrite(action, payload = {}) {
   let authHeaders = {};
   try {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await db.auth.getSession();
     const token = data?.session?.access_token;
     if (token) authHeaders = { Authorization: `Bearer ${token}` };
   } catch {}
@@ -185,7 +185,7 @@ async function fetchQuotationWrite(action, payload = {}) {
 }
 
 async function fallbackListQuotes(limit = 200) {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('quotations')
     .select('id, quote_number, customer_id, created_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id')
     .order('created_at', { ascending: false })
@@ -196,7 +196,7 @@ async function fallbackListQuotes(limit = 200) {
 
 async function fallbackListProducts(query = '', limit = 200) {
   const s = String(query || '').trim();
-  let req = supabase
+  let req = db
     .from('quotation_products')
     .select('id, name, price, unit_id, description, active, image_url, qr_code_url')
     .order('created_at', { ascending: false })
@@ -211,13 +211,13 @@ async function fallbackListProducts(query = '', limit = 200) {
 }
 
 async function fallbackListUnits() {
-  const { data, error } = await supabase.from('quotation_units').select('*').order('name', { ascending: true });
+  const { data, error } = await db.from('quotation_units').select('*').order('name', { ascending: true });
   if (error) throw error;
   return data || [];
 }
 
 async function fallbackListCustomers() {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('quote_customers')
     .select('id, name, currency, phone, address, city, country, tpin, created_at')
     .order('name', { ascending: true });
@@ -248,7 +248,7 @@ async function buildQuotationCustomerMap(rows = []) {
   };
 
   try {
-    const { data: qc } = await supabase.from('quote_customers').select('id, name').in('id', ids);
+    const { data: qc } = await db.from('quote_customers').select('id, name').in('id', ids);
     applyRows(qc);
   } catch {}
 
@@ -256,7 +256,7 @@ async function buildQuotationCustomerMap(rows = []) {
   if (!missing.length) return map;
 
   try {
-    const { data: cust } = await supabase.from('customers').select('id, name').in('id', missing);
+    const { data: cust } = await db.from('customers').select('id, name').in('id', missing);
     applyRows(cust);
   } catch {}
 
@@ -265,14 +265,14 @@ async function buildQuotationCustomerMap(rows = []) {
   const stillMissing = ids.filter((id) => !map[id]);
   for (const id of stillMissing) {
     try {
-      const { data: qcOne } = await supabase.from('quote_customers').select('id, name').eq('id', id).maybeSingle();
+      const { data: qcOne } = await db.from('quote_customers').select('id, name').eq('id', id).maybeSingle();
       if (qcOne?.name) {
         map[String(qcOne.id)] = titleCaseWords(qcOne.name);
         continue;
       }
     } catch {}
     try {
-      const { data: cOne } = await supabase.from('customers').select('id, name').eq('id', id).maybeSingle();
+      const { data: cOne } = await db.from('customers').select('id, name').eq('id', id).maybeSingle();
       if (cOne?.name) {
         map[String(cOne.id)] = titleCaseWords(cOne.name);
       }
@@ -620,9 +620,9 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
   async function handleDownloadPdf(q) {
     try {
       const [{ data: items }, { data: quoteRow }, { data: units }] = await Promise.all([
-        supabase.from('quotation_items').select('*').eq('quotation_id', q.id).order('sort_order'),
-        supabase.from('quotations').select('*').eq('id', q.id).single(),
-        supabase.from('quotation_units').select('*')
+        db.from('quotation_items').select('*').eq('quotation_id', q.id).order('sort_order'),
+        db.from('quotations').select('*').eq('id', q.id).single(),
+        db.from('quotation_units').select('*')
       ]);
       let paid = 0;
       if (quoteRow?.sale_id) {
@@ -633,9 +633,9 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
       }
       let customerName = '';
       if (quoteRow?.customer_id) {
-        const { data: qc } = await supabase.from('quote_customers').select('name').eq('id', quoteRow.customer_id).maybeSingle();
+        const { data: qc } = await db.from('quote_customers').select('name').eq('id', quoteRow.customer_id).maybeSingle();
         if (qc && qc.name) customerName = qc.name; else {
-          const { data: cust } = await supabase.from('customers').select('name').eq('id', quoteRow.customer_id).maybeSingle();
+          const { data: cust } = await db.from('customers').select('name').eq('id', quoteRow.customer_id).maybeSingle();
           customerName = cust?.name || '';
         }
       }
@@ -821,7 +821,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           lines = detail?.items || [];
         }
         if (hdr) {
-          const resolved = await resolveQuoteCustomerForSelect(hdr, (qcs || []).map(c => ({ ...c, name: titleCaseWords(c.name) })), supabase);
+          const resolved = await resolveQuoteCustomerForSelect(hdr, (qcs || []).map(c => ({ ...c, name: titleCaseWords(c.name) })), db);
           if (!cancelled) {
             if (resolved.customers?.length) setQuoteCustomers(resolved.customers);
             setQuote(hdr);
@@ -965,8 +965,8 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
         const dateStr = now.toISOString().slice(0,10);
         const timeStr = now.toISOString().slice(11,19).replace(/:/g, '');
 
-        const { data: freshQuote } = await supabase.from('quotations').select('*').eq('id', createdQuoteId).maybeSingle();
-        const { data: freshItems } = await supabase.from('quotation_items').select('*').eq('quotation_id', createdQuoteId).order('sort_order');
+        const { data: freshQuote } = await db.from('quotations').select('*').eq('id', createdQuoteId).maybeSingle();
+        const { data: freshItems } = await db.from('quotation_items').select('*').eq('quotation_id', createdQuoteId).order('sort_order');
         if (freshQuote) {
           setQuote(q => ({ ...q, ...freshQuote }));
           setCurrentQuoteId(freshQuote.id || createdQuoteId || currentQuoteId);
@@ -979,7 +979,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
         const qpIds = [...new Set((itemsForPdf||[]).map(i => i.quote_product_id).filter(Boolean))];
         let productMap = new Map();
         if (qpIds.length) {
-          const { data: qps } = await supabase
+          const { data: qps } = await db
             .from('quotation_products')
             .select('id, name, unit_id, description, image_url, qr_code_url')
             .in('id', qpIds);
@@ -1045,7 +1045,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
 
         // Attempt bucket upload (works when storage rules allow the current key; logs if blocked)
         try {
-          const { error: upErr } = await supabase.storage.from('Quotations').upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' });
+          const { error: upErr } = await db.storage.from('Quotations').upload(path, pdfBlob, { upsert: true, contentType: 'application/pdf' });
           if (upErr) console.warn('Upload failed', upErr.message || upErr);
         } catch (uploadErr) {
           console.warn('Upload exception', uploadErr?.message || uploadErr);
@@ -1507,7 +1507,7 @@ function QuotesCustomersView({ onBackHome }) {
     try {
       rows = await fetchQuotationRead('list-customers');
     } catch (readErr) {
-      const { data, error } = await supabase.from('quote_customers').select('*').order('created_at', { ascending: false });
+      const { data, error } = await db.from('quote_customers').select('*').order('created_at', { ascending: false });
       rows = data || null;
       err = error || readErr;
     }
@@ -1548,7 +1548,7 @@ function QuotesCustomersView({ onBackHome }) {
       }
       const row = { name: normalizedName, phone: fullPhone, currency: DEFAULT_CURRENCY, address: address || null, city: city || null, country: country || null, tpin: tpin || null };
       if (editingId) {
-        const { error } = await supabase.from('quote_customers').update(row).eq('id', editingId);
+        const { error } = await db.from('quote_customers').update(row).eq('id', editingId);
         if (error) throw error;
       } else {
         await fetchQuotationWrite('create-customer', row);
@@ -1590,7 +1590,7 @@ function QuotesCustomersView({ onBackHome }) {
     if (!targetId) return;
     if (!window.confirm('Delete this quote customer? This cannot be undone.')) return;
     try {
-      const { error } = await supabase.from('quote_customers').delete().eq('id', targetId);
+      const { error } = await db.from('quote_customers').delete().eq('id', targetId);
       if (error) throw error;
       setSelectedId('');
       setEditingId('');
@@ -1817,8 +1817,8 @@ function QuoteProductsView({ onBackHome }) {
 
   const removeUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
-    await supabase.from('quotation_units').delete().eq('id', id);
-    const { data } = await supabase.from('quotation_units').select('*').order('name');
+    await db.from('quotation_units').delete().eq('id', id);
+    const { data } = await db.from('quotation_units').select('*').order('name');
     setUnits(data || []);
   };
 
@@ -1840,15 +1840,15 @@ function QuoteProductsView({ onBackHome }) {
   };
 
   const toggleActive = async (id, active) => {
-    await supabase.from('quotation_products').update({ active: !active }).eq('id', id);
-    const { data: p } = await supabase.from('quotation_products').select('id, name, price, unit_id, description, active').order('created_at', { ascending: false }).limit(200);
+    await db.from('quotation_products').update({ active: !active }).eq('id', id);
+    const { data: p } = await db.from('quotation_products').select('id, name, price, unit_id, description, active').order('created_at', { ascending: false }).limit(200);
     setProducts(p || []);
   };
 
   const deleteProduct = async (id) => {
     if (!window.confirm('Delete this quote product? This cannot be undone.')) return;
     try {
-      const { error } = await supabase.from('quotation_products').delete().eq('id', id);
+      const { error } = await db.from('quotation_products').delete().eq('id', id);
       if (error) throw error;
       await fetchProducts(tableSearch);
     } catch (e) {
