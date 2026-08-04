@@ -72,7 +72,7 @@ export async function parseStocktakeQtyFile(file) {
   if (!matrix.length) throw new Error('File is empty.');
 
   const headerRow = detectHeaderRow(matrix);
-  const { rowIndex, headers, skuIdx, nameIdx, qtyIdx } = headerRow;
+  const { rowIndex, skuIdx, nameIdx, qtyIdx } = headerRow;
   if (skuIdx < 0 || nameIdx < 0 || qtyIdx < 0) {
     throw new Error('File must include SKU, Product Name, and Quantity columns. Sets are not allowed.');
   }
