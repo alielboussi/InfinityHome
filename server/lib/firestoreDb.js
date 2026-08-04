@@ -16,6 +16,7 @@ const FIELD_DOC_IDS = {
   user_acl: 'user_uid',
   stocktake_location_state: 'location_id',
   auth_user_map: 'public_user_id',
+  product_images: 'product_id',
 };
 
 export function getFirestore() {

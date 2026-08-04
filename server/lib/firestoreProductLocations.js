@@ -232,7 +232,7 @@ async function fetchAllOrdered(db, table, orderField) {
 }
 
 async function selectProductsByIds(db, productIds) {
-  const ids = Array.from(new Set((productIds || []).map((value) => String(value || '').trim()).filter((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)));
+  const ids = Array.from(new Set((productIds || []).map((value) => String(value || '').trim()).filter((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))));
   if (!ids.length) {
     const rows = await fetchAllOrdered(db, 'products', 'name');
     return rows.map((row) => ({

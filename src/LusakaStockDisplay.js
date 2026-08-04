@@ -7,7 +7,7 @@ import {
   fetchProductLocationPricesForLocation,
 } from './services/locationPricing';
 import { LUSAKA_BRANCH_ID } from './utils/locationIds';
-import { resolveProductImageUrl } from './utils/productImageUrl';
+import { resolveProductImageUrl, resolveProductRecordImageUrl } from './utils/productImageUrl';
 import {
   buildComboLocationPriceMap,
   buildProductLocationPriceMap,
@@ -43,6 +43,39 @@ async function fetchRowsByIds(table, idField, select, ids) {
   return rows;
 }
 
+async function fetchProductImageMap(productIds) {
+  if (!productIds.length) return new Map();
+  const map = new Map();
+  for (const chunk of chunkArray(productIds, 30)) {
+    await Promise.all(chunk.map(async (productId) => {
+      const pid = String(productId);
+      const { data, error } = await db
+        .from('product_images')
+        .select('product_id, image_url')
+        .eq('product_id', pid)
+        .maybeSingle();
+      if (error || !data?.image_url) return;
+      const url = String(data.image_url).trim();
+      if (url) map.set(pid, url);
+    }));
+  }
+  return map;
+}
+
+function mergeProductImages(productRows, imageByProductId) {
+  return (productRows || []).map((product) => {
+    const pid = String(product.id);
+    const joinedUrl = imageByProductId.get(pid);
+    if (!joinedUrl) return product;
+    const existing = Array.isArray(product.product_images) ? product.product_images : [];
+    if (existing.some((row) => row?.image_url === joinedUrl)) return product;
+    return {
+      ...product,
+      product_images: [{ image_url: joinedUrl }, ...existing],
+    };
+  });
+}
+
 async function resolveLusakaProductIds(inventoryRows) {
   const ids = new Set();
   const { data: linked, error: plErr } = await db
@@ -76,24 +109,41 @@ const STOCK_SYNC_MS = 60_000;
 
 function StockCardImage({ row, onExpand }) {
   const [failed, setFailed] = useState(false);
-  const showImage = Boolean(row.imageUrl) && !failed;
+  const imageUrl = row.imageUrl || '';
+  const showImage = Boolean(imageUrl) && !failed;
   const placeholderLabel = row.type === 'set' ? 'SET' : 'No image';
+
+  useEffect(() => {
+    setFailed(false);
+  }, [imageUrl]);
+
+  const openExpanded = () => {
+    if (showImage) onExpand(imageUrl);
+  };
 
   return (
     <button
       type="button"
-      className="lusaka-stock-display__image-btn"
-      onClick={() => showImage && onExpand(row.imageUrl)}
-      aria-label={`View image for ${row.name}`}
+      className={`lusaka-stock-display__image-btn${showImage ? ' is-expandable' : ''}`}
+      onClick={openExpanded}
+      aria-label={showImage ? `View larger image for ${row.name}` : `No image for ${row.name}`}
       disabled={!showImage}
     >
       {showImage ? (
-        <img
-          src={row.imageUrl}
-          alt=""
-          className="lusaka-stock-display__image"
-          onError={() => setFailed(true)}
-        />
+        <>
+          <img
+            key={imageUrl}
+            src={imageUrl}
+            alt=""
+            className="lusaka-stock-display__image"
+            loading="lazy"
+            decoding="async"
+            onError={() => setFailed(true)}
+          />
+          <div className="lusaka-stock-display__image-zoom" aria-hidden="true">
+            <img src={imageUrl} alt="" className="lusaka-stock-display__image-zoom-img" />
+          </div>
+        </>
       ) : (
         <div className="lusaka-stock-display__image-placeholder">
           {placeholderLabel}
@@ -136,7 +186,7 @@ export default function LusakaStockDisplay() {
         resolveLusakaComboIds(),
       ]);
 
-      const [productRows, comboRows, itemRows] = await Promise.all([
+      const [productRows, comboRows, itemRows, imageByProductId] = await Promise.all([
         fetchRowsByIds(
           'products',
           'id',
@@ -155,11 +205,13 @@ export default function LusakaStockDisplay() {
           'combo_id, product_id, quantity',
           comboIdList,
         ),
+        fetchProductImageMap(productIdList),
       ]);
 
       setLocationName(locRow?.name || 'Lusaka');
       setProducts(
-        productRows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })),
+        mergeProductImages(productRows, imageByProductId)
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })),
       );
       setCombos(
         comboRows.sort((a, b) => String(a.combo_name || '').localeCompare(String(b.combo_name || ''), undefined, { sensitivity: 'base' })),
@@ -229,6 +281,16 @@ export default function LusakaStockDisplay() {
     return map;
   }, [combos, comboItems, stockByProduct]);
 
+  const setComponentProductIds = useMemo(() => {
+    const lusakaComboIds = new Set((combos || []).map((combo) => String(combo.id)));
+    const ids = new Set();
+    (comboItems || []).forEach((row) => {
+      if (!lusakaComboIds.has(String(row.combo_id))) return;
+      if (row?.product_id) ids.add(String(row.product_id));
+    });
+    return ids;
+  }, [combos, comboItems]);
+
   const displayRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     const sets = (combos || []).map((combo) => {
@@ -246,8 +308,9 @@ export default function LusakaStockDisplay() {
     };
     });
 
-    const items = (products || []).map((product) => {
-      const imageFromJoin = product.product_images?.[0]?.image_url;
+    const items = (products || [])
+      .filter((product) => !setComponentProductIds.has(String(product.id)))
+      .map((product) => {
       const pricing = resolveProductLocationPricing(product, LUSAKA_BRANCH_ID, productLocationPriceMap);
       return {
       key: `product-${product.id}`,
@@ -256,7 +319,7 @@ export default function LusakaStockDisplay() {
       name: product.name || product.sku || 'Product',
       sku: product.sku || '',
       qty: stockByProduct.get(String(product.id)) || 0,
-      imageUrl: resolveProductImageUrl(imageFromJoin || product.image_url),
+      imageUrl: resolveProductRecordImageUrl(product),
       standardPrice: formatLusakaPrice(pricing.price, product.currency),
       promoPrice: formatLusakaPrice(pricing.promotional_price, product.currency),
     };
@@ -269,12 +332,21 @@ export default function LusakaStockDisplay() {
     return merged.filter((row) =>
       row.name.toLowerCase().includes(term)
       || String(row.sku || '').toLowerCase().includes(term));
-  }, [combos, products, search, setQtyByCombo, stockByProduct, productLocationPriceMap, comboLocationPriceMap]);
+  }, [combos, products, search, setQtyByCombo, setComponentProductIds, stockByProduct, productLocationPriceMap, comboLocationPriceMap]);
 
   const totalQty = useMemo(
     () => displayRows.reduce((sum, row) => sum + Number(row.qty || 0), 0),
     [displayRows],
   );
+
+  useEffect(() => {
+    if (!expandedImage) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setExpandedImage(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [expandedImage]);
 
   const handleLogout = async () => {
     try { await db.auth.signOut(); } catch {}
@@ -362,14 +434,28 @@ export default function LusakaStockDisplay() {
       )}
 
       {expandedImage && (
-        <button
-          type="button"
+        <div
           className="lusaka-stock-display__lightbox"
           onClick={() => setExpandedImage(null)}
-          aria-label="Close image"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Expanded product image"
         >
-          <img src={expandedImage} alt="" className="lusaka-stock-display__lightbox-img" />
-        </button>
+          <button
+            type="button"
+            className="lusaka-stock-display__lightbox-close"
+            onClick={() => setExpandedImage(null)}
+            aria-label="Close image"
+          >
+            ×
+          </button>
+          <img
+            src={expandedImage}
+            alt=""
+            className="lusaka-stock-display__lightbox-img"
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

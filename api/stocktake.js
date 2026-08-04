@@ -1,6 +1,7 @@
 // Stocktake Flow API: auth login + multi-user counting events + period submit.
 import { resolveSessionUserFromAuth } from '../src/accessControl.js';
 import { buildLiveConsolidatedWithSets } from '../src/utils/stocktakeLiveTotals.js';
+import { isSetProductId } from '../src/utils/stocktakeSubmitTotals.js';
 import { createFirestoreServerClient } from '../server/lib/firestoreServerClient.js';
 import { createFirestoreAnonClient } from '../server/lib/firestoreStocktakeAuth.js';
 
@@ -856,6 +857,47 @@ async function assertProductEnabledAtLocation(sb, productId, locationId) {
   }
 }
 
+async function assertNotSetSkuProduct(sb, productId, locationId) {
+  const { data: product, error: pErr } = await sb
+    .from('products')
+    .select('sku, name')
+    .eq('id', productId)
+    .maybeSingle();
+  if (pErr) throw pErr;
+  if (!product) return;
+
+  const { data: comboLocs, error: clErr } = await sb
+    .from('combo_locations')
+    .select('combo_id')
+    .eq('location_id', locationId);
+  if (clErr) throw clErr;
+  const comboIds = [...new Set((comboLocs || []).map((row) => row.combo_id).filter(Boolean))];
+  if (!comboIds.length) return;
+
+  const { data: combos, error: cErr } = await sb
+    .from('combos')
+    .select('sku, combo_name')
+    .in('id', comboIds);
+  if (cErr) throw cErr;
+
+  const sku = String(product.sku || '').trim().toLowerCase();
+  const name = String(product.name || '').trim().toLowerCase();
+  for (const combo of combos || []) {
+    const comboSku = String(combo.sku || '').trim().toLowerCase();
+    const comboName = String(combo.combo_name || '').trim().toLowerCase();
+    if (sku && comboSku && sku === comboSku) {
+      const err = new Error('This SKU belongs to a set. Scan the set (SET badge) instead of counting it as a product.');
+      err.status = 400;
+      throw err;
+    }
+    if (name && comboName && name === comboName) {
+      const err = new Error('This item is a set. Use set scan instead of counting it as a product.');
+      err.status = 400;
+      throw err;
+    }
+  }
+}
+
 async function assertComboEnabledAtLocation(sb, comboId, locationId) {
   const { data, error } = await sb
     .from('combo_locations')
@@ -884,6 +926,7 @@ async function handleCountAdd(req, res) {
     const sb = getService();
     const event = await assertCountingAllowed(sb, eventId);
     await assertProductEnabledAtLocation(sb, productId, event.location_id);
+    await assertNotSetSkuProduct(sb, productId, event.location_id);
     const row = await addCountLine(sb, { eventId, productId, qtyAdd, userEmail });
     res.status(200).json({ ok: true, row });
   } catch (err) {
@@ -1458,18 +1501,27 @@ async function handleEventSubmit(req, res) {
 
   const finalTotals = Array.isArray(body.finalTotals) ? body.finalTotals : null;
   const totals = new Map();
-  if (finalTotals) {
+
+  // Default: sum raw counter rows (set scans already expanded into components in stocktake_counts).
+  (countRows || []).forEach((r) => {
+    if (!r?.product_id || isSetProductId(r.product_id)) return;
+    totals.set(r.product_id, (totals.get(r.product_id) || 0) + Number(r.qty || 0));
+  });
+
+  if (finalTotals?.length) {
     if (!isStocktakeAdmin(userEmail)) {
       return res.status(403).json({ ok: false, error: 'Admin approval required for adjusted totals.' });
     }
+    // Admin-adjusted component totals replace the summed values (sets must be expanded client-side).
     finalTotals.forEach((row) => {
       const pid = row?.product_id;
-      if (!pid) return;
+      if (!pid || isSetProductId(pid)) return;
       totals.set(pid, Number(row.qty ?? row.quantity ?? 0) || 0);
     });
-  } else {
+    // Safety: keep any component counts missing from older clients that dropped set expansion.
     (countRows || []).forEach((r) => {
-      totals.set(r.product_id, (totals.get(r.product_id) || 0) + Number(r.qty || 0));
+      if (!r?.product_id || isSetProductId(r.product_id) || totals.has(r.product_id)) return;
+      totals.set(r.product_id, Number(r.qty || 0));
     });
   }
 

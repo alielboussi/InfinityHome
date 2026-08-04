@@ -10,6 +10,7 @@ const DOC_ID_FIELDS = {
   closing_stock_entries: ['session_id', 'product_id'],
   inventory: ['product_id', 'location'],
   stock_transfer_entries: ['session_id', 'product_id'],
+  product_images: 'product_id',
 };
 
 export function docIdForTable(table, row) {
@@ -42,4 +43,4 @@ export function docIdFromOnConflict(row, onConflict) {
   return parts.map((part) => String(part)).join('_');
 }
 
-export { pickColumns, parseSelectSpec } from './selectSpec';
+export { pickColumns, parseSelectSpec } from './selectSpec.js';

@@ -55,6 +55,8 @@ function Products() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [imageStatus, setImageStatus] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
   const [search, setSearch] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
   const fileInputRef = useRef(null);
@@ -210,20 +212,65 @@ function Products() {
   };
 
   const handleChange = (e) => {
-    const { name, value, type, files } = e.target;
+    const { name, value, type } = e.target;
     if (name === "locations") {
-      // Multi-select
       const options = Array.from(e.target.selectedOptions, (opt) => opt.value);
       setForm((f) => ({ ...f, locations: options }));
-    } else if (type === "file") {
-      setForm((f) => ({ ...f, image: files[0] }));
-    } else {
+    } else if (type !== "file") {
       setForm((f) => ({ ...f, [name]: value }));
+    }
+  };
+
+  const uploadProductImage = async (file, productId, productName) => {
+    const fileExt = file.name.split('.').pop();
+    const safeName = (productName || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fileName = `${safeName}_${productId}_${Date.now()}.${fileExt}`;
+    const { error: uploadError } = await db.storage.from('productimages').upload(fileName, file, { upsert: true });
+    if (uploadError) throw uploadError;
+    const { data: publicUrlData } = db.storage.from('productimages').getPublicUrl(fileName);
+    const publicUrl = publicUrlData?.publicUrl;
+    if (!publicUrl) throw new Error('Failed to get public URL for image.');
+    await db.from('product_images').delete().eq('product_id', productId);
+    const { error: imageInsertError } = await db.from('product_images').insert([
+      { product_id: productId, image_url: publicUrl },
+    ]);
+    if (imageInsertError) throw imageInsertError;
+    const { error: prodImgUpdateError } = await db.from('products').update({ image_url: publicUrl }).eq('id', productId);
+    if (prodImgUpdateError) throw prodImgUpdateError;
+    return publicUrl;
+  };
+
+  const handleImageFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageStatus(null);
+    setForm((f) => ({ ...f, image: file }));
+
+    if (!editingId) {
+      setImageStatus({ type: 'info', text: 'Image selected. It will upload when you save the product.' });
+      return;
+    }
+
+    setImageUploading(true);
+    try {
+      const { data: sessionData } = await db.auth.getSession();
+      if (!sessionData?.session?.access_token) {
+        throw new Error('Please sign in again before uploading images.');
+      }
+      await uploadProductImage(file, editingId, form.name);
+      setImageStatus({ type: 'success', text: 'Image uploaded successfully.' });
+      setForm((f) => ({ ...f, image: null }));
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err) {
+      setImageStatus({ type: 'error', text: `Failed to upload image: ${err.message || err}` });
+    } finally {
+      setImageUploading(false);
     }
   };
 
   const handleEdit = async (product) => {
     if (!canManageCatalogPage) return;
+    setImageStatus(null);
     const resolvedLocations = await resolveProductLocations(product);
     setForm({
       name: product.name || "",
@@ -259,6 +306,9 @@ function Products() {
     setGlobalPriceBaseline(null);
     setPricingLocationId('');
     setEditingId(null);
+    setImageStatus(null);
+    setImageUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleDelete = async (id) => {
@@ -315,15 +365,30 @@ function Products() {
     return base.replace(/\/+$/, '');
   };
 
+  const isLocalHost = () => {
+    try {
+      const host = typeof window !== 'undefined' ? window.location.hostname : '';
+      return /^(localhost|127\.0\.0\.1)$/i.test(host);
+    } catch {
+      return false;
+    }
+  };
+
+  const productLocationsApiUrl = () => (
+    isLocalHost()
+      ? '/api/product-locations'
+      : (getApiBase() ? `${getApiBase()}/api/product-locations` : '/api/product-locations')
+  );
+
   const shouldUseApi = () => {
+    if (isLocalHost()) return false;
     const apiBase = getApiBase();
     if (apiBase) return true;
     return process.env.NODE_ENV === 'production';
   };
 
   const fetchProductLocationsForProduct = async (productId) => {
-    const apiBase = getApiBase();
-    const url = apiBase ? `${apiBase}/api/product-locations` : '/api/product-locations';
+    const url = productLocationsApiUrl();
     const response = await fetch(`${url}?product_id=${encodeURIComponent(productId)}`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data?.ok === false) {
@@ -362,8 +427,7 @@ function Products() {
   };
 
   const postProductLocationsReplace = async (productId, locationIds) => {
-    const apiBase = getApiBase();
-    const url = apiBase ? `${apiBase}/api/product-locations` : '/api/product-locations';
+    const url = productLocationsApiUrl();
     const rows = (locationIds || []).map(locId => ({ product_id: productId, location_id: locId }));
     const response = await fetch(url, {
       method: 'POST',
@@ -492,33 +556,9 @@ function Products() {
         }
       }
 
-      // Handle image upload if a file is selected
       if (form.image) {
-        const file = form.image;
-        const fileExt = file.name.split('.').pop();
-        // Sanitize product name for filename
-        const safeName = (form.name || '').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const fileName = `${safeName}_${insertedProductId}_${Date.now()}.${fileExt}`;
-        const filePath = `${fileName}`;
-
-        // Upload to bucket 'productimages'
-        const { error: uploadError } = await db.storage.from('productimages').upload(filePath, file, { upsert: true });
-        if (uploadError) throw uploadError;
-
-        // Get public URL
-        const { data: publicUrlData } = db.storage.from('productimages').getPublicUrl(filePath);
-        const publicUrl = publicUrlData?.publicUrl;
-        if (!publicUrl) throw new Error('Failed to get public URL for image.');
-
-        // Insert into product_images table
-        const { error: imageInsertError } = await db.from('product_images').insert([
-          { product_id: insertedProductId, image_url: publicUrl }
-        ]);
-        if (imageInsertError) throw imageInsertError;
-
-        // Update image_url in products table
-        const { error: prodImgUpdateError } = await db.from('products').update({ image_url: publicUrl }).eq('id', insertedProductId);
-        if (prodImgUpdateError) throw prodImgUpdateError;
+        await uploadProductImage(form.image, insertedProductId, form.name);
+        setImageStatus({ type: 'success', text: 'Image uploaded successfully.' });
       }
 
       if (!wasEditing) {
@@ -672,7 +712,7 @@ function Products() {
           name="image"
           type="file"
           accept="image/*"
-          onChange={handleChange}
+          onChange={handleImageFileChange}
           style={{ display: 'none' }}
         />
         <div className="product-form-actions-row">
@@ -680,11 +720,12 @@ function Products() {
             type="button"
             className="product-form-btn product-form-btn--file"
             onClick={() => fileInputRef.current?.click()}
+            disabled={imageUploading}
           >
-            Choose File
+            {imageUploading ? 'Uploading…' : 'Choose File'}
           </button>
           {canAdd && (
-            <button type="submit" className="product-form-btn product-form-btn--primary" disabled={saving}>
+            <button type="submit" className="product-form-btn product-form-btn--primary" disabled={saving || imageUploading}>
               {editingId ? 'Update Product' : 'Add Product'}
             </button>
           )}
@@ -699,6 +740,20 @@ function Products() {
             </button>
           )}
         </div>
+        {(imageUploading || imageStatus) && (
+          <div
+            className="products-error"
+            style={
+              imageStatus?.type === 'success'
+                ? { color: '#b8f5c3', background: '#1a2a1f', borderColor: '#2ecc71' }
+                : imageStatus?.type === 'info'
+                  ? { color: '#cdefff', background: '#101722', borderColor: '#00b4d8' }
+                  : undefined
+            }
+          >
+            {imageUploading ? 'Uploading image…' : imageStatus?.text}
+          </div>
+        )}
       </form>
       ) : (
         <div style={{ maxWidth: 1200, margin: '0 auto 1.5rem', padding: '12px 14px', border: '1px solid #00b4d8', borderRadius: 10, background: '#101722', color: '#cdefff' }}>

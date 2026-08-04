@@ -16,8 +16,8 @@ import {
 } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { firestoreDb, firebaseStorage } from '../firebase';
-import { docIdForTable, docIdFromOnConflict, pickColumns, parseSelectSpec } from './docIds';
-import { attachRelationEmbeds } from './relationEmbeds';
+import { docIdForTable, docIdFromOnConflict, pickColumns, parseSelectSpec } from './docIds.js';
+import { attachRelationEmbeds } from './relationEmbeds.js';
 
 const IN_CHUNK = 30;
 

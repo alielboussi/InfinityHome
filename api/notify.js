@@ -17,6 +17,8 @@ const FAHME_CUSTOMER_IDS = new Set([
 
 ]);
 
+const LUSAKA_BRANCH_ID = 'f72aa989-3888-4a45-96ed-15dc45b5d399';
+
 
 
 const RECIPIENT_KEYS = {
@@ -39,6 +41,8 @@ const GROUP_KEYS = {
 
   sale: 'WHATSAPP_SALES_GROUP_ID',
 
+  lusakaSale: 'WHATSAPP_LUSAKA_SALES_GROUP_ID',
+
   fahme: 'WHATSAPP_FAHME_GROUP_ID',
 
   transfer: 'WHATSAPP_TRANSFER_GROUP_ID',
@@ -56,6 +60,7 @@ const DOCUMENTED_WHATSAPP_GROUP_IDS = {
   labels: '120363410723287387@g.us',
   transfer: '120363410583418058@g.us',
   lusakaTransfer: '',
+  lusakaSale: '260966000444-1611566360@g.us',
   sale: '120363420239254016@g.us',
   layby: '120363429021437712@g.us',
   fahme: '120363372527723284@g.us',
@@ -265,7 +270,7 @@ function readRecipients(kind) {
 
 
 
-function resolveDeliveryTargets(kind, customerId) {
+function resolveDeliveryTargets(kind, customerId, options = {}) {
 
   const targets = [];
 
@@ -291,9 +296,21 @@ function resolveDeliveryTargets(kind, customerId) {
 
     } else if (kind === 'sale') {
 
-      const salesGroup = readGroupId('sale');
+      const locationId = options.locationId != null ? String(options.locationId).trim() : '';
 
-      if (salesGroup) targets.push(salesGroup);
+      if (locationId === LUSAKA_BRANCH_ID) {
+
+        const lusakaSalesGroup = readGroupId('lusakaSale');
+
+        if (lusakaSalesGroup) targets.push(lusakaSalesGroup);
+
+      } else {
+
+        const salesGroup = readGroupId('sale');
+
+        if (salesGroup) targets.push(salesGroup);
+
+      }
 
     } else {
 
@@ -1744,11 +1761,15 @@ async function handleWhatsAppSale(body) {
 
 
 
-  const routing = resolveDeliveryTargets('sale', sale.customer_id);
+  const routing = resolveDeliveryTargets('sale', sale.customer_id, { locationId: sale.location_id });
 
   if (!routing.targets.length) {
 
-    const err = new Error('WhatsApp env not configured (WHATSAPP_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)');
+    const err = new Error(
+      String(sale.location_id) === LUSAKA_BRANCH_ID
+        ? 'WhatsApp env not configured (WHATSAPP_LUSAKA_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)'
+        : 'WhatsApp env not configured (WHATSAPP_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)',
+    );
 
     err.status = 500;
 
@@ -1939,11 +1960,15 @@ async function handleWhatsAppAdjustment(body) {
 
 
 
-  const routing = resolveDeliveryTargets('sale', sale.customer_id);
+  const routing = resolveDeliveryTargets('sale', sale.customer_id, { locationId: sale.location_id });
 
   if (!routing.targets.length) {
 
-    const err = new Error('WhatsApp env not configured (WHATSAPP_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)');
+    const err = new Error(
+      String(sale.location_id) === LUSAKA_BRANCH_ID
+        ? 'WhatsApp env not configured (WHATSAPP_LUSAKA_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)'
+        : 'WhatsApp env not configured (WHATSAPP_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)',
+    );
 
     err.status = 500;
 

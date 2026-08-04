@@ -5,7 +5,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { firestoreDb } from '../firebase';
-import { pickColumns } from './selectSpec';
+import { pickColumns } from './selectSpec.js';
 
 const IN_CHUNK = 30;
 
@@ -104,4 +104,4 @@ export async function attachRelationEmbeds(parentTable, rows, embeds) {
   return enriched;
 }
 
-export { parseSelectSpec } from './selectSpec';
+export { parseSelectSpec } from './selectSpec.js';

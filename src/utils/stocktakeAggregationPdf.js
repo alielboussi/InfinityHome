@@ -75,7 +75,9 @@ export async function downloadStocktakeAggregationPdf({
   }
 
   const body = (rows || []).map((row) => {
-    const typeLabel = row.row_type === 'set' ? 'Set' : 'Product';
+    let typeLabel = 'Product';
+    if (row.row_type === 'set') typeLabel = 'Set';
+    else if (row.row_type === 'component') typeLabel = 'Component';
     return [
       typeLabel,
       row.sku || '',

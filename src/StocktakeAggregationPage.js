@@ -10,38 +10,9 @@ import {
 } from './services/stocktake';
 import { downloadStocktakeAggregationPdf } from './utils/stocktakeAggregationPdf';
 import { downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
+import { buildFinalTotals, buildPdfRows, isComponentRow } from './utils/stocktakeSubmitTotals';
 import { logUserActivity } from './utils/userActivityLog';
 import './stocktake-count.css';
-
-function isComponentRow(row) {
-  return row && row.row_type !== 'set' && row.product_id;
-}
-
-function buildPdfRows(consolidated, qtyDraft) {
-  return (consolidated || []).map((row) => {
-    const pid = row.product_id ? String(row.product_id) : '';
-    const draftQty = pid && Object.prototype.hasOwnProperty.call(qtyDraft, pid)
-      ? qtyDraft[pid]
-      : null;
-    return {
-      row_type: row.row_type,
-      sku: row.sku || '',
-      name: row.name || pid || row.key,
-      qty: draftQty === null || draftQty === '' ? Number(row.qty) || 0 : Number(draftQty) || 0,
-    };
-  }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-}
-
-function buildFinalTotals(consolidated, qtyDraft) {
-  const totals = new Map();
-  (consolidated || []).forEach((row) => {
-    if (!isComponentRow(row)) return;
-    const pid = String(row.product_id);
-    const draftQty = Object.prototype.hasOwnProperty.call(qtyDraft, pid) ? qtyDraft[pid] : row.qty;
-    totals.set(pid, Number(draftQty) || 0);
-  });
-  return Array.from(totals.entries()).map(([product_id, qty]) => ({ product_id, qty }));
-}
 
 const COUNTER_DISPLAY_NAMES = {
   'alielboussi00@gmail.com': 'Ali El Boussi',
@@ -253,10 +224,11 @@ export default function StocktakeAggregationPage() {
     if (!window.confirm(msg)) return;
 
     run(async () => {
+      const hasDraftEdits = Object.keys(qtyDraft).length > 0;
       const finalTotals = buildFinalTotals(consolidated, qtyDraft);
       const result = await submitEvent(
         event.id,
-        finalTotals.length ? { finalTotals } : {},
+        hasDraftEdits && finalTotals.length ? { finalTotals } : {},
       );
       await logUserActivity({
         actionType: 'stocktake_submit',
@@ -437,14 +409,32 @@ export default function StocktakeAggregationPage() {
                             </td>
                           </tr>
                         )}
+                        {row.row_type === 'set' && (row.components || []).map((comp) => (
+                          <tr key={`${rowKey}-comp-${comp.product_id}`} className="stocktake-live-detail">
+                            <td />
+                            <td style={{ textAlign: 'left', paddingLeft: 20 }}>
+                              <span className="stocktake-live-subnote">
+                                ↳ {comp.name || comp.product_id}
+                                {comp.sku ? ` (${comp.sku})` : ''}
+                              </span>
+                            </td>
+                            <td>{comp.sku || '—'}</td>
+                            <td>Component</td>
+                            <td>
+                              <span title={`${comp.need_per_set || comp.quantity || 0} per set × ${qtyValue} sets`}>
+                                {Number(comp.qty) || (Number(comp.need_per_set || comp.quantity || 0) * Number(qtyValue || 0))}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
                       </React.Fragment>
                     );
                   })}
                 </tbody>
               </table>
               <div className="stock-periods-note" style={{ marginTop: 10 }}>
-                Use the triangle on a row to see each counter&apos;s contribution. Set rows are derived from components and cannot be edited directly.
-                Kitwe variance uses transfers out in the expected formula: opening + transfers in − transfers out − sales.
+                Set rows show complete sets derived from components. Component lines under each set are what get written to inventory on submit.
+                Use the triangle to see each counter&apos;s contribution. Edit leftover component quantities only — set qty is read-only.
               </div>
             </>
           )}

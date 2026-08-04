@@ -1,0 +1,47 @@
+rules_version = '2';
+
+// Infinity Home — Firebase Storage (publish: firebase deploy --only storage)
+// Product/company images use public read URLs (?alt=media); writes require sign-in.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Product & set images — nested paths: productimages/products/{id}/… and productimages/sets/{id}/…
+    match /productimages/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Company logos (public URLs in PDFs/receipts)
+    match /companylogos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Transfer PDFs, sales reports, quotations, label assets
+    match /WarehouseTransfers/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+    match /SalesReports/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+    match /Quotations/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+    match /labels/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // Deny everything else by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

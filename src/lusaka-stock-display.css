@@ -48,9 +48,11 @@ body.lusaka-stock-route .App {
 
 .lusaka-stock-display__header {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -72,6 +74,7 @@ body.lusaka-stock-route .App {
 .lusaka-stock-display__stats {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -79,7 +82,7 @@ body.lusaka-stock-route .App {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 12px;
 }
 
@@ -119,6 +122,8 @@ body.lusaka-stock-route .App {
 }
 
 .lusaka-stock-display__search-wrap {
+  display: flex;
+  justify-content: center;
   margin-bottom: 20px;
 }
 
@@ -195,28 +200,36 @@ body.enterprise-theme .lusaka-stock-display__search {
   background: var(--ent-surface, #ffffff);
   border: 1px solid var(--ent-border, #d5dbe2);
   border-radius: 14px;
-  overflow: hidden;
+  overflow: visible;
   min-height: 100%;
   touch-action: manipulation;
   box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
 }
 
 .lusaka-stock-display__image-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 200px;
+  aspect-ratio: 4 / 3;
   padding: 0;
   border: none;
-  background: var(--ent-surface-2, #f4f6f9);
-  cursor: pointer;
+  background: #ffffff;
+  cursor: default;
   overflow: hidden;
+  border-radius: 14px 14px 0 0;
   touch-action: manipulation;
+}
+
+.lusaka-stock-display__image-btn.is-expandable {
+  cursor: zoom-in;
+  overflow: visible;
 }
 
 .lusaka-stock-display__image-btn:disabled {
   cursor: default;
+  overflow: hidden;
 }
 
 .lusaka-stock-display__image {
@@ -224,13 +237,37 @@ body.enterprise-theme .lusaka-stock-display__search {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: var(--ent-surface-2, #f4f6f9);
+  object-position: center;
+  background: #ffffff;
+  pointer-events: none;
 }
 
-@media (min-width: 900px) {
-  .lusaka-stock-display__image-btn {
-    height: 240px;
-  }
+.lusaka-stock-display__image-zoom {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  z-index: 20;
+  display: none;
+  padding: 6px;
+  background: #ffffff;
+  border: 2px solid var(--ent-blue, #1565c0);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.35);
+  pointer-events: none;
+}
+
+.lusaka-stock-display__image-btn.is-expandable:hover .lusaka-stock-display__image-zoom,
+.lusaka-stock-display__image-btn.is-expandable:focus-visible .lusaka-stock-display__image-zoom {
+  display: block;
+}
+
+.lusaka-stock-display__image-zoom-img {
+  display: block;
+  width: min(320px, 70vw);
+  height: min(240px, 50vh);
+  max-width: none;
+  object-fit: contain;
 }
 
 .lusaka-stock-display__image-placeholder {
@@ -348,10 +385,25 @@ body.enterprise-theme .lusaka-stock-display__search {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  border: none;
   background: rgba(15, 23, 42, 0.88);
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.lusaka-stock-display__lightbox-close {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 10001;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .lusaka-stock-display__lightbox-img {
@@ -361,4 +413,5 @@ body.enterprise-theme .lusaka-stock-display__search {
   border-radius: 12px;
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35);
   background: #ffffff;
+  cursor: default;
 }

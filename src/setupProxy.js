@@ -71,6 +71,7 @@ const LOCAL_API_PATHS = new Set([
   '/api/layby-statement',
   '/api/layby-payments-delete',
   '/api/layby-delete-customer',
+  '/api/product-locations',
 ]);
 
 const WHATSAPP_PATH_ACTION = {
@@ -397,6 +398,47 @@ function mountLocalApiHandler(app, route, modulePath, label, fixedAction) {
   console.log(`[proxy] Local ${route} handler enabled.`);
 }
 
+function mountLocalProductLocations(app) {
+  let handlerPromise = null;
+  const loadHandler = () => {
+    if (!handlerPromise) {
+      handlerPromise = import('../server/handlers/product-locations.js')
+        .then((mod) => mod.default || mod)
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[proxy] Could not load local product-locations handler:', error?.message || error);
+          return null;
+        });
+    }
+    return handlerPromise;
+  };
+
+  const handle = async (req, res) => {
+    try {
+      const handler = await loadHandler();
+      if (!handler) {
+        res.status(503).json({ ok: false, error: 'Local product-locations API unavailable' });
+        return;
+      }
+      if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
+        req.body = await readJsonBody(req);
+      }
+      await handler(req, res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, error: error?.message || String(error) });
+      }
+    }
+  };
+
+  app.get('/api/product-locations', handle);
+  app.post('/api/product-locations', handle);
+  app.options('/api/product-locations', handle);
+
+  // eslint-disable-next-line no-console
+  console.log('[proxy] Local /api/product-locations handler enabled.');
+}
+
 function mountLocalCheckout(app) {
   mountLocalApiHandler(app, '/api/checkout', '../api/checkout.js', 'checkout API');
 }
@@ -423,6 +465,7 @@ module.exports = function setupProxy(app) {
   mountLocalUserActivity(app);
   mountLocalCheckout(app);
   mountLocalTransactions(app);
+  mountLocalProductLocations(app);
 
   const target = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
   if (!target) {

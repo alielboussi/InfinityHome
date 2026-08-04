@@ -117,6 +117,13 @@ const mapCatalogProducts = (products, unitsData) => {
   });
 };
 
+const getListItemImageUrl = (item) => {
+  if (item?.__isCombo) {
+    return resolveProductImageUrl(item.picture_url || '');
+  }
+  return item?.image_url || '';
+};
+
 const PRODUCT_IMAGE_BUCKET = 'productimages';
 const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v4';
 const PRODUCTS_LIST_INVENTORY_CACHE_KEY = 'products:list:inventory:v3';
@@ -162,11 +169,11 @@ const deleteProductsViaApi = async (productIds) => {
 
 const getImageFolderPath = (itemId, isCombo) => `${isCombo ? 'sets' : 'products'}/${itemId}`;
 
-const buildImageFilePath = (itemId, isCombo, fileName) => {
+const buildImageFilePath = (itemId, isCombo, fileName, fileNonce = Date.now()) => {
   const fallbackExt = 'jpg';
   const rawExt = (fileName || '').split('.').pop();
   const sanitizedExt = (rawExt || fallbackExt).replace(/[^0-9a-z]/gi, '').toLowerCase() || fallbackExt;
-  return `${getImageFolderPath(itemId, isCombo)}/main-${Date.now()}.${sanitizedExt}`;
+  return `${getImageFolderPath(itemId, isCombo)}/main-${fileNonce}.${sanitizedExt}`;
 };
 
 const purgeExistingStorageImages = async (itemId, isCombo) => {
@@ -181,6 +188,25 @@ const purgeExistingStorageImages = async (itemId, isCombo) => {
     console.warn('Failed to purge existing product images', err);
   }
 };
+
+async function applyImageFileToItem({ itemId, isCombo, file, fileNonce }) {
+  await purgeExistingStorageImages(itemId, isCombo);
+  const filePath = buildImageFilePath(itemId, isCombo, file.name, fileNonce);
+  const bucket = db.storage.from(PRODUCT_IMAGE_BUCKET);
+  const { error: uploadError } = await bucket.upload(filePath, file, { upsert: true });
+  if (uploadError) throw uploadError;
+  const { data: publicUrlData } = bucket.getPublicUrl(filePath);
+  const publicUrl = publicUrlData?.publicUrl;
+  if (!publicUrl) throw new Error('Failed to get public URL for image.');
+  if (isCombo) {
+    await db.from('combos').update({ picture_url: publicUrl }).eq('id', itemId);
+  } else {
+    await db.from('product_images').delete().eq('product_id', itemId);
+    await db.from('product_images').insert([{ product_id: itemId, image_url: publicUrl }]);
+    await db.from('products').update({ image_url: publicUrl }).eq('id', itemId);
+  }
+  return publicUrl;
+}
 
 const FACTORY_LOCATION_ID = '39ffaa82-8aee-4a33-8de8-06584cbaffcf';
 const KITWE_LOCATION_ID = '454a092c-5b12-441e-b99d-216f6fa72198';
@@ -250,6 +276,7 @@ function ProductsListPage() {
   const navigate = useNavigate();
   const [imageEditModalOpen, setImageEditModalOpen] = useState(false);
   const [imageEditProduct, setImageEditProduct] = useState(null);
+  const [imageEditBulkProducts, setImageEditBulkProducts] = useState(null);
   const [imageEditFile, setImageEditFile] = useState(null);
   const [imageEditLoading, setImageEditLoading] = useState(false);
   const [expandedImage, setExpandedImage] = useState(null);
@@ -1626,6 +1653,20 @@ function ProductsListPage() {
     Array.from(new Set(selectedBulkItems.filter(item => item.isCombo).map(item => item.id)))
   ), [selectedBulkItems]);
 
+  const selectedBulkProductRows = useMemo(() => (
+    selectedBulkItems
+      .filter((item) => !item.isCombo)
+      .map((item) => {
+        const product = (products || []).find((row) => String(row.id) === String(item.id));
+        return {
+          id: String(item.id),
+          name: product?.name || product?.sku || item.id,
+          sku: product?.sku || '',
+          image_url: product?.image_url || '',
+        };
+      })
+  ), [selectedBulkItems, products]);
+
   const allBulkKeys = useMemo(() => (
     bulkSelectableItems.map(item => item.key)
   ), [bulkSelectableItems]);
@@ -2446,6 +2487,22 @@ function ProductsListPage() {
               {`Delete (${selectedBulkItems.length})`}
             </button>
           )}
+          {selectedBulkProductRows.length >= 2 && (
+            <button
+              type="button"
+              onClick={() => {
+                setImageEditProduct(null);
+                setImageEditBulkProducts(selectedBulkProductRows);
+                setImageEditFile(null);
+                setImageEditModalOpen(true);
+              }}
+              disabled={imageEditLoading}
+              className="products-toolbar-btn products-toolbar-btn--apply"
+              title="Upload one image and apply it to all selected products"
+            >
+              {`Same Image (${selectedBulkProductRows.length})`}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowDuplicateNamesOnly((active) => !active)}
@@ -2575,7 +2632,8 @@ function ProductsListPage() {
                       />
                     </div>
                   </th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '16%'}}>Name</th>
+                  <th className="products-list-cell-image-header" style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '3cm'}}>Image</th>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '14%'}}>Name</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>SKU</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Category</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '14%'}}>
@@ -2680,6 +2738,40 @@ function ProductsListPage() {
                           aria-label={`Select ${isCombo ? item.combo_name : item.name}`}
                         />
                       </td>
+                      <td className="products-list-cell-image">
+                        {(() => {
+                          const imageUrl = getListItemImageUrl(item);
+                          const imageAlt = isCombo ? item.combo_name : item.name;
+                          if (!imageUrl) {
+                            return <span className="products-list-thumb-empty" aria-hidden="true">—</span>;
+                          }
+                          return (
+                            <div
+                              className="products-list-thumb-wrap"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setExpandedImage(imageUrl)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  setExpandedImage(imageUrl);
+                                }
+                              }}
+                              aria-label={`View larger image for ${imageAlt}`}
+                            >
+                              <img
+                                src={imageUrl}
+                                alt={imageAlt}
+                                className="products-list-thumb"
+                                loading="lazy"
+                              />
+                              <div className="products-list-thumb-zoom" aria-hidden="true">
+                                <img src={imageUrl} alt="" className="products-list-thumb-zoom__img" />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="products-list-cell-name">
                         <span
                           role="button"
@@ -2776,6 +2868,7 @@ function ProductsListPage() {
                                   style={{background:'transparent',color:'#e0e6ed',border:'none',padding:'10px 14px',textAlign:'left',cursor:'pointer'}}
                                   onClick={() => {
                                     setImageEditProduct(item);
+                                    setImageEditBulkProducts(null);
                                     setImageEditFile(null);
                                     setImageEditModalOpen(true);
                                     setOpenActionMenuId(null);
@@ -3344,20 +3437,36 @@ function ProductsListPage() {
         </div>
       )}
 
-      {/* Image Edit Modal (Product or Set) */}
-      {imageEditModalOpen && imageEditProduct && (
+      {/* Image Edit Modal (Product, Set, or bulk products) */}
+      {imageEditModalOpen && (imageEditProduct || (imageEditBulkProducts && imageEditBulkProducts.length > 0)) && (
         <div className="products-image-modal-overlay">
           <div className="products-image-modal">
-            <h3 className="products-image-modal__title">{imageEditProduct.__isCombo ? 'Edit Set Image' : 'Edit Product Image'}</h3>
+            <h3 className="products-image-modal__title">
+              {imageEditBulkProducts?.length > 1
+                ? `Apply Image to ${imageEditBulkProducts.length} Products`
+                : (imageEditProduct?.__isCombo ? 'Edit Set Image' : 'Edit Product Image')}
+            </h3>
             <div className="products-image-modal__meta">
-              {imageEditProduct.__isCombo ? (
+              {imageEditBulkProducts?.length > 1 ? (
+                <>
+                  <div>Selected products:</div>
+                  <ul className="products-image-modal__bulk-list">
+                    {imageEditBulkProducts.map((row) => (
+                      <li key={row.id}>
+                        <b>{row.name}</b>
+                        {row.sku ? ` (${row.sku})` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : imageEditProduct?.__isCombo ? (
                 <>Set: <b>{imageEditProduct.combo_name}</b></>
               ) : (
-                <>Product: <b>{imageEditProduct.name}</b></>
+                <>Product: <b>{imageEditProduct?.name || imageEditBulkProducts?.[0]?.name}</b></>
               )}
             </div>
             <input type="file" accept="image/*" onChange={e => setImageEditFile(e.target.files[0])} className="products-image-modal__file" />
-            {(imageEditProduct.__isCombo ? imageEditProduct.picture_url : imageEditProduct.image_url) && (
+            {!imageEditBulkProducts?.length && (imageEditProduct?.__isCombo ? imageEditProduct.picture_url : imageEditProduct?.image_url) && (
               <div className="products-image-modal__preview-row">
                 <img src={imageEditProduct.__isCombo ? imageEditProduct.picture_url : imageEditProduct.image_url} alt="Current" className="products-image-modal__preview" />
                 <button
@@ -3373,6 +3482,7 @@ function ProductsListPage() {
                       await purgeExistingStorageImages(imageEditProduct.id, Boolean(imageEditProduct.__isCombo));
                       setImageEditModalOpen(false);
                       setImageEditProduct(null);
+                      setImageEditBulkProducts(null);
                       setImageEditFile(null);
                       await fetchAll();
                     } catch (err) {
@@ -3394,28 +3504,41 @@ function ProductsListPage() {
                   setImageEditLoading(true);
                   try {
                     const file = imageEditFile;
-                    const isCombo = Boolean(imageEditProduct.__isCombo);
-                    await purgeExistingStorageImages(imageEditProduct.id, isCombo);
-                    const filePath = buildImageFilePath(imageEditProduct.id, isCombo, file.name);
-                    const bucket = db.storage.from(PRODUCT_IMAGE_BUCKET);
-                    const { error: uploadError } = await bucket.upload(filePath, file, { upsert: true });
-                    if (uploadError) throw uploadError;
-                    const { data: publicUrlData } = bucket.getPublicUrl(filePath);
-                    const publicUrl = publicUrlData?.publicUrl;
-                    if (!publicUrl) throw new Error('Failed to get public URL for image.');
-                    if (isCombo) {
-                      await db.from('combos').update({ picture_url: publicUrl }).eq('id', imageEditProduct.id);
+                    if (imageEditBulkProducts?.length > 1) {
+                      for (let i = 0; i < imageEditBulkProducts.length; i += 1) {
+                        const row = imageEditBulkProducts[i];
+                        await applyImageFileToItem({
+                          itemId: row.id,
+                          isCombo: false,
+                          file,
+                          fileNonce: `${Date.now()}-${i}`,
+                        });
+                      }
+                      const appliedIds = imageEditBulkProducts.map((row) => String(row.id));
+                      setBulkSelectionMap((prev) => {
+                        const next = { ...prev };
+                        appliedIds.forEach((id) => {
+                          delete next[`prod:${id}`];
+                        });
+                        return next;
+                      });
+                      setBulkApplyMessage(`Image applied to ${imageEditBulkProducts.length} products.`);
                     } else {
-                      await db.from('product_images').delete().eq('product_id', imageEditProduct.id);
-                      await db.from('product_images').insert([
-                        { product_id: imageEditProduct.id, image_url: publicUrl }
-                      ]);
-                      await db.from('products').update({ image_url: publicUrl }).eq('id', imageEditProduct.id);
+                      const target = imageEditProduct || {
+                        id: imageEditBulkProducts[0].id,
+                        __isCombo: false,
+                      };
+                      const isCombo = Boolean(target.__isCombo);
+                      await applyImageFileToItem({
+                        itemId: target.id,
+                        isCombo,
+                        file,
+                      });
                     }
                     setImageEditModalOpen(false);
                     setImageEditProduct(null);
+                    setImageEditBulkProducts(null);
                     setImageEditFile(null);
-                    // Instead of window.location.reload(), just refetch products and keep filter
                     await fetchAll();
                   } catch (err) {
                     alert('Failed to upload image: ' + (err.message || err));
@@ -3424,11 +3547,12 @@ function ProductsListPage() {
                   }
                 }}
                 className="products-image-modal__btn products-image-modal__btn--primary"
-              >Save</button>
+              >{imageEditBulkProducts?.length > 1 ? 'Apply to All' : 'Save'}</button>
               <button
                 onClick={() => {
                   setImageEditModalOpen(false);
                   setImageEditProduct(null);
+                  setImageEditBulkProducts(null);
                   setImageEditFile(null);
                 }}
                 className="products-image-modal__btn products-image-modal__btn--secondary"
