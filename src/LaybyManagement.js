@@ -267,19 +267,19 @@ export default function LaybyManagement() {
     if (!isRealtimeEnabled()) return undefined;
     const channel = db
       .channel('layby-mgmt-rt-simple')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'laybys' }, () => {
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'laybys' }, () => {
         if (rtTimerRef.current) clearTimeout(rtTimerRef.current);
         rtTimerRef.current = setTimeout(() => setRtTick(t => t + 1), 250);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'sales' }, () => {
         if (rtTimerRef.current) clearTimeout(rtTimerRef.current);
         rtTimerRef.current = setTimeout(() => setRtTick(t => t + 1), 250);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_payments' }, () => {
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'sales_payments' }, () => {
         if (rtTimerRef.current) clearTimeout(rtTimerRef.current);
         rtTimerRef.current = setTimeout(() => setRtTick(t => t + 1), 250);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'layby_payments' }, () => {
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'layby_payments' }, () => {
         if (rtTimerRef.current) clearTimeout(rtTimerRef.current);
         rtTimerRef.current = setTimeout(() => setRtTick(t => t + 1), 250);
       })

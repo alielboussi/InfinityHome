@@ -1,5 +1,5 @@
 /**
- * Optional live refresh via Supabase Realtime or Firestore onSnapshot (when USE_FIREBASE=true).
+ * Optional live refresh via Firestore onSnapshot.
  * Off unless REACT_APP_ENABLE_REALTIME=1 — some networks block wss://.
  */
 export function isRealtimeEnabled() {

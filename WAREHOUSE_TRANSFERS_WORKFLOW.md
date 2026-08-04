@@ -113,9 +113,9 @@ Event types: `submitted`, `edited`, `completed`
 
 All inventory-moving / submit functions are `SECURITY DEFINER`.
 
-## Row Level Security
+## Firestore Security
 
-Policies on sessions/entries/events allow select/insert for `anon` + `authenticated` (Android uses anon key today). Session updates restricted to pending/submitted statuses for client updates. Inventory changes go through RPCs, not direct client writes for accept.
+Client reads/writes go through Firebase Auth + `firestore.rules`. Inventory-moving accept/submit flows use server APIs (`api/transfer.js`, Firestore transactions) rather than direct client inventory writes.
 
 ## Android login and dashboard
 
@@ -180,18 +180,7 @@ After a successful accept, the web app posts this template to `/api/whatsapp-tra
 3. If name is missing at submit time, the RPC looks up `users.full_name` by `created_by_id`
 4. Email is only a last-resort fallback
 
-Set each mobile employee’s name in Firestore on the `users` collection (or via the web Users admin):
-
-```sql
-UPDATE public.users
-SET full_name = 'John Mwansa'
-WHERE email = 'john@example.com';
-```
-
-Also apply:
-
-- Legacy SQL reference (historical): `supabase/sql/migrations/20260711_warehouse_deliveries_workflow.sql`
-- Legacy SQL reference (historical): `supabase/sql/migrations/20260711_warehouse_delivery_created_by_name.sql`
+Set each mobile employee’s name in Firestore on the `users` collection (or via the web Users admin).
 
 #### Vercel environment variables
 
@@ -250,9 +239,9 @@ Page: `/warehouse-deliveries-admin`
 - `mobile-apps/warehouse-transfers/` — product list, cart, Firestore submit
 - `mobile-apps/shared/firebase.js` — Firebase init + auth
 
-### SQL (legacy reference)
+### Firestore collections
 
-- Historical Postgres migration: `supabase/sql/migrations/20260711_warehouse_deliveries_workflow.sql`
+- `warehouse_delivery_sessions`, `warehouse_delivery_entries`, `warehouse_delivery_events` (see `firestore.rules`)
 
 ## Setup instructions
 
@@ -283,7 +272,7 @@ Page: `/warehouse-deliveries-admin`
 
 ## Known assumptions / limitations
 
-- Android authenticates via `app_login` and continues using the anon key for REST (same as before). Hardening to user JWTs is a follow-up.
+- Mobile apps authenticate via Firebase Auth (`mobile-apps/shared/AuthGate.js`).
 - PDF blob is generated client-side on web; `pdf_url` on the session is optional and may be empty until a future upload step stores it.
 - Set/combo building was removed from the employee guided Android flow (products only). Schema still supports set kinds for compatibility.
 - Completed inventory corrections require a separate controlled adjustment process (admin edit is blocked after complete).
@@ -292,7 +281,7 @@ Page: `/warehouse-deliveries-admin`
 ## Status of implementation phases
 
 1. Inspect existing systems — done  
-2. Database + RLS + RPCs — migration file ready (apply manually)  
+2. Firestore schema + security rules — done (`firestore.rules`, server APIs)
 3. Android guided flow — done  
 4. Hassan page + accept + PDF — done  
 5. Admin page — done  

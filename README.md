@@ -71,7 +71,7 @@ When approving a warehouse transfer, a PDF is generated client-side and then:
 	- bestrest10@gmail.com
 	- alielboussi00@gmail.com
 	The subject line format: `Delivery #<transferNumber> - <local date> <local time>`.
-2. After emailing, the PDF is uploaded to the Supabase storage bucket `WarehouseTransfers` and the public URL saved in `stock_transfer_sessions.pdf_url` (and metadata/notes JSON).
+2. After emailing, the PDF is uploaded to the Firebase Storage bucket `WarehouseTransfers` and the public URL saved in `stock_transfer_sessions.pdf_url` (and metadata/notes JSON).
 
 Configure the following environment variables for email (e.g. in Vercel project settings or a local `.env` file if supported by your dev setup):
 
@@ -150,12 +150,7 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 
 ## Canonical Finance Rules (Sales/Layby)
 
-The app and PDFs share a single source of truth for financials via canonical Postgres views:
-
-- v_sales_totals_canonical: per-sale total computed from line items minus discounts, with schema-fallback for legacy fields.
-- v_payments_non_credit: sums payments per sale excluding credit-like types; includes down_payment rows.
-- v_sales_financials_canonical: joins totals + non-credit payments to yield total, paid, outstanding per sale.
-- v_sales_financials: alias to v_sales_financials_canonical used by the UI.
+The app and PDFs share a single source of truth via `src/utils/saleFinancials.js` (`computeSaleFinancials`, `buildFinancialsMap`), loading `sales`, `sales_items`, and `sales_payments` from Firestore.
 
 Rules:
 - Paid excludes any credit-type payments; down_payment counts as paid.
@@ -164,33 +159,20 @@ Rules:
 
 ## Database Cleanup & Verification
 
-The repo includes SQL to preview, drop unused public objects, verify, and index safely:
+The app now runs on **Firebase Firestore**. Legacy Postgres SQL cleanup scripts were removed during the Firebase migration.
 
-- supabase/sql/preview_drop_unused_objects.sql
-	- Lists public tables/views not referenced by the app (whitelist derived from code).
-	- Outputs commented DROP statements for review.
+- Schema alignment notes: see `SCHEMA_ALIGNMENT.md`
+- Firestore security rules: `firestore.rules`
+- Backups: `/api/db-backup` (Firebase Admin export)
 
-- supabase/sql/drop_unused_objects.sql
-	- Drops all non-whitelisted public tables/views via a DO block. Run only after preview.
-
-- supabase/sql/post_cleanup_verification.sql
-	- Confirms legacy objects are gone, canonical views exist, sanity-selects work, and checks for orphan rows.
-
-- supabase/sql/create_indexes_safe.sql
-	- Creates performance indexes only when the referenced columns exist (avoids errors on missing created_at).
-
-Recommended sequence:
-1. Run preview_drop_unused_objects.sql and review results.
-2. Run drop_unused_objects.sql (optional, if you want full cleanup) or selectively drop specific objects.
-3. Ensure v_sales_financials alias exists:
-	 - create or replace view public.v_sales_financials as select * from public.v_sales_financials_canonical;
-4. Run post_cleanup_verification.sql and confirm orphan counts are zero.
-5. Run create_indexes_safe.sql for performance.
+Recommended checks before decommissioning legacy infrastructure:
+1. Verify `/api/health` reports `"backend": "firestore"`.
+2. Spot-check sales, layby, inventory, and transfer flows in production.
+3. Confirm product/company images load from `firebasestorage.googleapis.com`.
 
 ## Duplicate Receipt Numbers (Scoped)
 
-To allow duplicate `receipt_number` values only for a specific customer (Fahme), run the SQL in
-`scripts/sql/allow_duplicate_receipts.sql` in the Supabase SQL editor (or `psql`).
+To allow duplicate `receipt_number` values only for a specific customer (Fahme), enforce the rule in application logic and/or Firestore data validation. The legacy Postgres partial unique index is no longer used.
 
 What it does:
 - Drops any existing global unique constraint/index on `sales.receipt_number`.
@@ -210,31 +192,12 @@ Notes:
 ## Layby Architecture (Normalized Allocation Batching)
 
 ### Overview
-Layby (lay-by) statements are now produced via a single Postgres RPC function `get_layby_statement` that returns:
-
-```
-{ layby: {...}, sales: [...], items: [...], payments: [...] }
-```
+Layby statements are built from Firestore collections (`laybys`, `sales`, `sales_items`, `sales_payments`, `layby_payments`) via `src/laybyStatementService.js` and canonical totals from `src/utils/saleFinancials.js`.
 
 Payments that originate from a pooled / multi-sale allocation are grouped by `allocation_batch_uuid` (column on `sales_payments`). Legacy note token parsing (e.g. `ALLOC:<uuid>` inside `sales_payments.notes`) has been removed after migration backfilled the UUID column and stripped tokens.
 
-### Feature Flag
-The front-end decides whether to use the RPC via environment variable:
-
-```
-REACT_APP_USE_LAYBY_RPC=true
-```
-
-If unset, it defaults to `true` (can be flipped to `false` to fall back to legacy multi-query logic if reintroduced). See `src/laybyStatementService.js`.
-
-### Parity Script
-To validate that RPC output matches legacy logic for a given layby:
-
-```
-node scripts/laybyParityCheck.js <customer_uuid> <layby_uuid>
-```
-
-The script compares payment arrays (normalized + sorted). A non-zero exit code indicates a structural difference.
+### Client implementation
+Layby statements are loaded entirely in the browser/server via Firestore queries. See `src/laybyStatementService.js`.
 
 ### Allocation Grouping Rules (PDF)
 1. Group by `allocation_batch_uuid` when present.
@@ -242,21 +205,14 @@ The script compares payment arrays (normalized + sorted). A non-zero exit code i
 3. Legacy ALLOC token grouping is retired; if any lingering token appears a console warning is emitted.
 
 ### Synchronizing `laybys.paid_amount`
-The column `laybys.paid_amount` is now maintained by triggers defined in migration:
-
-`supabase/migrations/2025-10-08_layby_paid_amount_triggers.sql`
-
-Triggers fire AFTER INSERT/UPDATE/DELETE on `sales_payments` and recompute the paid sum for the associated layby (via `sale_id`). If future pooling introduces multi-sale laybys, extend the function accordingly.
+Paid totals are computed in application code (`saleFinancials`, layby services) from `sales_payments` / `layby_payments`. Keep `laybys.paid_amount` in sync when writing payments if the column is still used in UI filters.
 
 ### Future Hardening (Optional)
-- Replace UI references to stored `paid_amount` with a computed view (then drop the column) once triggers have proven stable.
-- Introduce RLS policy tests ensuring only authorized users can read payments and invoke the RPC.
-- Consider materialized view caching if RPC latency becomes a bottleneck on large datasets.
+- Replace UI references to stored `paid_amount` with computed totals from `saleFinancials` once verified stable.
+- Add Firestore security rule tests for payment reads and layby mutations.
+- Consider caching heavy layby statement queries if latency grows on large datasets.
 
-### Quick Verification Queries
-Residual legacy tokens (should return zero rows):
-```
-SELECT notes FROM sales_payments WHERE notes ILIKE 'ALLOC:%' LIMIT 1;
-```
-Confirm trigger updates (insert a tiny test payment and inspect `laybys.paid_amount`).
+### Quick verification
+- Search Firestore `sales_payments` for notes starting with `ALLOC:` (should be none after migration).
+- After a test payment, confirm layby paid totals match `saleFinancials` output in the UI.
 

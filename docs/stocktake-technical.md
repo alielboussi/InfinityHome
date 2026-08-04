@@ -359,7 +359,7 @@ Import qty behaviour: **absolute** for the importing user (not additive).
 | Live totals | `src/utils/stocktakeLiveTotals.js` |
 | Excel helpers | `src/utils/stocktakeQtyImport.js` |
 | Rewrites | `vercel.json` |
-| Schema | Firestore collections (legacy SQL: `supabase/sql/migrations/20260710_stocktake_flow_v3.sql`) |
-| Lab seed | Historical Postgres seed script only |
+| Schema | Firestore collections (`stocktake_events`, `stocktake_counts`, etc.) |
+| Lab seed | Create location **TEST STOCKTAKE LAB** in Firestore / product locations UI |
 | Short overview | `docs/stocktake-flow.md` |
 | Operator procedure | `docs/stocktake-procedure.md` |

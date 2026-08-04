@@ -36,29 +36,28 @@ Purpose: document observed mismatches between the application code and the Fires
     - Symptom: `null value in column "id" of relation "sales_items" violates not-null constraint` during checkout item inserts.
     - Cause: `public.sales_items.id` defined NOT NULL without identity/default in some environments.
     - Impact: Checkout fails after header insertion; payments never inserted.
-    - Remediation (applied): Added patch `supabase/sql/patches/007_sales_items_id_identity.sql` to idempotently set a sequence-backed default.
+    - Remediation (Firestore): ensure checkout assigns document IDs / numeric IDs via server logic (`api/checkout.js`, `firestoreCheckout.js`) so `sales_items.id` is always set.
     - Follow-up: Verify auto-generation by inserting a test row or running a checkout in a sandbox.
 
 4) Missing auto-generation for `sales.id`
   - Symptom: Runtime error `null value in column "id" of relation "sales" violates not-null constraint` during checkout.
   - Cause: `public.sales.id` defined NOT NULL without `DEFAULT nextval(...)` or `GENERATED AS IDENTITY`; frontend inserts omit `id` expecting server assignment.
   - Impact: Sale header insert fails; downstream item/payment inserts never run.
-  - Remediation (implemented): Patch `006_sales_id_identity.sql` adds an idempotent sequence-backed default if identity not present.
-  - Verification: After running patch, perform a test checkout; confirm `sale.id` is populated and no NOT NULL violations.
+  - Remediation (Firestore): checkout uses server-assigned IDs; verify in sandbox that `sales.id` is populated on insert.
 
 ## Recommended remediation plan
 
 - Phase 1 (no-risk):
-  - Apply `006_sales_id_identity.sql` to ensure `sales.id` auto-generates.
-  - Annotate unused DB functions with `COMMENT` to mark deprecated (requires DB access).
+  - Verify checkout and sales edit flows assign IDs correctly in Firestore.
+  - Remove or archive legacy Postgres-only notes from this document as migration completes.
 
 - Phase 2 (targeted cleanup):
-  - If legacy `advance_balance` references exist in DB functions: update those functions to use `credit_balance`. Avoid introducing writable alias columns unless essential.
+  - If any legacy `advance_balance` fields remain in Firestore documents, map them to `credit_balance` in a one-time data fix.
 
 ## Validation
 
-- Re-run the unified schema exporter (`supabase/sql/schema_inventory_full.sql`) and scan the `functions` section for any occurrence of `advance_balance` or `pos_finalize_checkout`.
-- If found, queue small patch files to refactor/annotate accordingly.
+- Grep the codebase for `advance_balance` and `pos_finalize_checkout`; remove dead references.
+- Run production smoke tests on checkout, layby statements, and customer totals.
 
 ## Notes
 

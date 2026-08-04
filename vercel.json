@@ -60,7 +60,6 @@
     { "source": "/api/customer-statement", "destination": "/api/customers?action=statement" },
     { "source": "/api/customer-totals", "destination": "/api/customers?action=totals" },
 
-    { "source": "/api/image-proxy", "destination": "/api/admin?adminAction=image-proxy" },
     { "source": "/api/pos-catalog", "destination": "/api/admin?adminAction=pos-catalog" },
     { "source": "/api/quotation-read", "destination": "/api/admin?adminAction=quotation-read" },
 

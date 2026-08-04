@@ -1,4 +1,4 @@
-// Client service to save sales edits via service-role API (bypasses RLS)
+// Client service to save sales edits via server API (Firebase Admin on the server).
 
 import db from '../dataClient';
 

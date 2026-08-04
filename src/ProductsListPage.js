@@ -3562,7 +3562,7 @@ function ProductsListPage() {
                         }
                         // Create a minimal transfer session and entry for one product
                         // Read current app user from localStorage
-                        let userId = null; // Supabase Auth UUID
+                        let userId = null; // Firebase Auth UID
                         let legacyUserIntId = null; // optional legacy int id for compatibility
                         try {
                           const raw = localStorage.getItem('user');

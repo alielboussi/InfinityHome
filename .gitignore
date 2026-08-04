@@ -35,10 +35,6 @@ coverage/
 # Misc
 *.local
 
-# Supabase generated files (if any)
-supabase/.temp/
-supabase/.output/
-
 # Ignore SQLite DBs (if used)
 *.sqlite
 *.db

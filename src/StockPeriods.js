@@ -6,6 +6,7 @@ import { fromPublic } from './dbSchema';
 import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { applyInventoryBulk } from './utils/inventoryApi';
+import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
 
 const PERIOD_STATUS_OPEN = 'open';
 const PERIOD_STATUS_CLOSED = 'closed';
@@ -1619,7 +1620,7 @@ export default function StockPeriods() {
   const loadVarianceLogo = async () => {
     try {
       const { data } = await db.from('company_settings').select('company_logo, logo').single();
-      const url = data?.company_logo || data?.logo || '';
+      const url = rewriteLegacyStorageUrl(data?.company_logo || data?.logo || '', { bucket: 'companylogos' });
       if (url) return await loadImage(url);
     } catch {}
     try {

@@ -15,7 +15,7 @@ export function receiptNumbersEquivalent(a, b) {
   return left !== '' && left === right;
 }
 
-function quotePostgrestFilterValue(value) {
+function quoteOrFilterValue(value) {
   const v = String(value ?? '').replace(/"/g, '""');
   return `"${v}"`;
 }
@@ -25,7 +25,7 @@ export function buildReceiptDuplicateOrFilter(receiptNumber) {
   if (!stripped) return null;
   const withoutHash = stripped.replace(/^#+/, '');
   const withHash = `#${withoutHash}`;
-  return `receipt_number.ilike.${quotePostgrestFilterValue(withoutHash)},receipt_number.ilike.${quotePostgrestFilterValue(withHash)}`;
+  return `receipt_number.ilike.${quoteOrFilterValue(withoutHash)},receipt_number.ilike.${quoteOrFilterValue(withHash)}`;
 }
 
 export function isDuplicateReceiptError(error) {

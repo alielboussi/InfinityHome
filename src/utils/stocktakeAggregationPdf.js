@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { rewriteLegacyStorageUrl } from './storageImageUrl';
 
 function fmtDateTime(value = new Date()) {
   const d = value instanceof Date ? value : new Date(value);
@@ -35,7 +36,7 @@ export async function downloadStocktakeAggregationPdf({
   generatedAt = new Date(),
 }) {
   const companyName = company?.company_name || company?.name || 'Best Rest Furniture';
-  const logoUrl = company?.company_logo || company?.logo || '';
+  const logoUrl = rewriteLegacyStorageUrl(company?.company_logo || company?.logo || '', { bucket: 'companylogos' });
   const doc = new jsPDF('p', 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

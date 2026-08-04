@@ -504,7 +504,7 @@ export default function SalesReportMobile() {
         doc.text('No payments found.', margin, ty); ty += 12;
       }
 
-      // Create Blob and upload to Supabase Storage
+      // Create Blob and upload to Firebase Storage
       const blob = doc.output('blob');
       const ts = new Date().toISOString().replace(/[:T]/g, '-').replace(/\..+/, '');
       const safeFrom = (dateFrom || 'start').replace(/\//g, '-');

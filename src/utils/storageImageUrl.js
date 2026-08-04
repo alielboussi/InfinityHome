@@ -1,97 +1,104 @@
 const PRODUCT_IMAGE_BUCKET = 'productimages';
-const SUPABASE_PUBLIC_PREFIX = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`;
+const LEGACY_PUBLIC_PREFIX = '/storage/v1/object/public/';
 
-export function extractProductImageObjectPath(rawUrl) {
-  const pic = String(rawUrl || '').trim();
-  if (!pic) return null;
-  try {
-    const u = new URL(pic, 'http://localhost');
-    if (/\.supabase\.co$/i.test(u.hostname) && u.pathname.includes(SUPABASE_PUBLIC_PREFIX)) {
-      const idx = u.pathname.indexOf(SUPABASE_PUBLIC_PREFIX);
-      const encoded = u.pathname.slice(idx + SUPABASE_PUBLIC_PREFIX.length);
-      return decodeURIComponent(encoded);
-    }
-    const firebaseMatch = u.pathname.match(/\/o\/productimages%2F(.+)$/i);
-    if (firebaseMatch) {
-      return decodeURIComponent(firebaseMatch[1]);
-    }
-    if (u.pathname.startsWith(`/${PRODUCT_IMAGE_BUCKET}/`)) {
-      return decodeURIComponent(u.pathname.slice(PRODUCT_IMAGE_BUCKET.length + 2));
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-export function isSupabaseProductImageUrl(rawUrl) {
-  const pic = String(rawUrl || '').trim();
-  if (!pic) return false;
-  try {
-    const u = new URL(pic, 'http://localhost');
-    return /\.supabase\.co$/i.test(u.hostname) && u.pathname.includes(SUPABASE_PUBLIC_PREFIX);
-  } catch {
-    return false;
-  }
-}
-
-export function firebasePublicUrlForObject(bucket, objectPath, bucketName) {
-  const storageBucket = String(
-    bucketName
+function resolveBucketName(options = {}) {
+  return String(
+    options.bucketName
     || (typeof process !== 'undefined' && process.env?.REACT_APP_FIREBASE_STORAGE_BUCKET)
     || '',
   ).trim();
+}
+
+/**
+ * Extract the Firebase object path from a stored URL or bare path.
+ * Handles Firebase public URLs, legacy Postgres storage URL shapes, and plain keys.
+ */
+export function extractStorageObjectPath(rawUrl, bucket = PRODUCT_IMAGE_BUCKET) {
+  const pic = String(rawUrl || '').trim();
+  if (!pic) return null;
+
+  if (!/^https?:\/\//i.test(pic) && !pic.includes(LEGACY_PUBLIC_PREFIX)) {
+    const bare = pic.replace(/^\/+/, '');
+    if (bare.startsWith(`${bucket}/`)) return bare.slice(bucket.length + 1);
+    return bare || null;
+  }
+
+  try {
+    const u = new URL(pic, 'http://localhost');
+
+    if (/firebasestorage\.googleapis\.com$/i.test(u.hostname)) {
+      const firebaseMatch = u.pathname.match(/\/o\/(.+)$/i);
+      if (firebaseMatch) {
+        const decoded = decodeURIComponent(firebaseMatch[1]);
+        if (decoded.startsWith(`${bucket}/`)) return decoded.slice(bucket.length + 1);
+        return decoded;
+      }
+    }
+
+    const legacyPrefix = `${LEGACY_PUBLIC_PREFIX}${bucket}/`;
+    const legacyIdx = u.pathname.indexOf(legacyPrefix);
+    if (legacyIdx >= 0) {
+      return decodeURIComponent(u.pathname.slice(legacyIdx + legacyPrefix.length));
+    }
+
+    if (u.pathname.startsWith(`/${bucket}/`)) {
+      return decodeURIComponent(u.pathname.slice(bucket.length + 2));
+    }
+
+    const genericLegacy = pic.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/i);
+    if (genericLegacy && String(genericLegacy[1]) === bucket) {
+      return decodeURIComponent(genericLegacy[2]);
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function extractProductImageObjectPath(rawUrl) {
+  return extractStorageObjectPath(rawUrl, PRODUCT_IMAGE_BUCKET);
+}
+
+export function firebasePublicUrlForObject(bucketFolder, objectPath, bucketName) {
+  const storageBucket = resolveBucketName({ bucketName });
   if (!storageBucket || !objectPath) return null;
-  const fullPath = `${bucket}/${String(objectPath).replace(/^\/+/, '')}`;
+  const fullPath = `${bucketFolder}/${String(objectPath).replace(/^\/+/, '')}`;
   const encoded = encodeURIComponent(fullPath);
   return `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o/${encoded}?alt=media`;
 }
 
 /**
- * Rewrite legacy Supabase storage URLs to Firebase public URLs when possible.
+ * Rewrite a stored storage URL or object key to a Firebase Storage public URL.
  */
 export function rewriteLegacyStorageUrl(rawUrl, options = {}) {
   const raw = String(rawUrl || '').trim();
   if (!raw) return raw;
   if (/firebasestorage\.googleapis\.com/i.test(raw)) return raw;
 
-  const supabaseMatch = raw.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/i);
-  if (supabaseMatch) {
-    const [, bucket, pathPart] = supabaseMatch;
-    const firebaseUrl = firebasePublicUrlForObject(bucket, decodeURIComponent(pathPart), options.bucketName);
+  const bucket = String(options.bucket || '').trim();
+  const legacyMatch = raw.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/i);
+  if (legacyMatch) {
+    const [, legacyBucket, pathPart] = legacyMatch;
+    const firebaseUrl = firebasePublicUrlForObject(
+      legacyBucket,
+      decodeURIComponent(pathPart),
+      options.bucketName,
+    );
+    if (firebaseUrl) return firebaseUrl;
+  }
+
+  const targetBucket = bucket || PRODUCT_IMAGE_BUCKET;
+  const objectPath = extractStorageObjectPath(raw, targetBucket);
+  if (objectPath) {
+    const firebaseUrl = firebasePublicUrlForObject(targetBucket, objectPath, options.bucketName);
     if (firebaseUrl) return firebaseUrl;
   }
 
   return raw;
 }
 
-/**
- * Normalize legacy Supabase product image URLs for Firebase mode.
- * Falls back to image-proxy for Supabase hosts when Firebase rewrite is unavailable.
- */
+/** Normalize product image URLs to Firebase Storage public URLs. */
 export function rewriteLegacyProductImageUrl(rawUrl, options = {}) {
-  const pic = String(rawUrl || '').trim();
-  if (!pic) return '';
-
-  const preferFirebase = Boolean(options.preferFirebase);
-  const origin = options.origin || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-
-  if (preferFirebase && isSupabaseProductImageUrl(pic)) {
-    const objectPath = extractProductImageObjectPath(pic);
-    const firebaseUrl = firebasePublicUrlForObject(PRODUCT_IMAGE_BUCKET, objectPath, options.bucketName);
-    if (firebaseUrl) return firebaseUrl;
-  }
-
-  try {
-    const u = new URL(pic, origin);
-    if (/\.supabase\.co$/i.test(u.hostname) && u.pathname.includes(SUPABASE_PUBLIC_PREFIX)) {
-      return `/api/image-proxy?u=${encodeURIComponent(u.toString())}`;
-    }
-    if (/firebasestorage\.googleapis\.com$/i.test(u.hostname) && /\/o\/productimages/i.test(u.pathname)) {
-      return pic;
-    }
-    return pic;
-  } catch {
-    return pic;
-  }
+  return rewriteLegacyStorageUrl(rawUrl, { ...options, bucket: PRODUCT_IMAGE_BUCKET });
 }

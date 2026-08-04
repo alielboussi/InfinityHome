@@ -44,7 +44,7 @@ export default function TransferReportDashboard() {
     const endISO = eDate.toISOString();
     setLoading(true);
     (async () => {
-      // Query sessions in four parts to avoid complex OR logic with PostgREST
+      // Query sessions in four parts to avoid complex OR logic in a single query.
       const [
         a_dt,
         a_dateOnly,

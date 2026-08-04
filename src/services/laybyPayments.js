@@ -193,7 +193,7 @@ export async function insertLaybyPayments(rows = [], options = {}) {
 
 /**
  * Delete layby_payments rows (and matching sales_payments) by row data.
- * Uses serverless API (/api/layby-payments-delete). Falls back to direct Supabase on localhost.
+ * Uses serverless API (/api/layby-payments-delete). Falls back to direct Firestore client on localhost.
  * @param {Array<Object>} rows
  */
 export async function deleteLaybyPayments(rows = []) {

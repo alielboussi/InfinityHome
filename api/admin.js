@@ -6,7 +6,6 @@ const HANDLER_LOADERS = {
   'inventory-bulk': () => import('../server/handlers/inventory-bulk.js'),
   'product-locations': () => import('../server/handlers/product-locations.js'),
   'products-bulk-delete': () => import('../server/handlers/products-bulk-delete.js'),
-  'image-proxy': () => import('../server/handlers/image-proxy.js'),
   'pos-catalog': () => import('../server/handlers/pos-catalog.js'),
   'quotation-read': () => import('../server/handlers/quotation-read.js'),
   'quotation-save': () => import('../server/handlers/quotation-save.js'),

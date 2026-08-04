@@ -1,4 +1,4 @@
-// Firestore data client (PostgREST-shaped query API).
+// Firestore data client (table-shaped query API).
 
 import { createFirestoreClient } from './db/firestoreAdapter';
 import { firebaseAuth } from './firebase';

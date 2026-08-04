@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { rewriteLegacyStorageUrl } from './storageImageUrl';
 
 function fmtDate(value) {
   if (!value) return '';
@@ -27,7 +28,7 @@ function loadImage(url) {
  */
 export async function downloadStocktakeVariancePdf({ period, rows, company, locationName }) {
   const companyName = company?.company_name || company?.name || 'Best Rest Furniture';
-  const logoUrl = company?.company_logo || company?.logo || '';
+  const logoUrl = rewriteLegacyStorageUrl(company?.company_logo || company?.logo || '', { bucket: 'companylogos' });
   const begin = period?.begin_period_date || period?.opened_at;
   const end = period?.end_period_date || period?.closed_at;
   const beginLabel = fmtDate(begin);

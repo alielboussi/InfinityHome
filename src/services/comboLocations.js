@@ -25,8 +25,8 @@ const shouldUseApi = () => {
 
 const wrapLocalDevRlsError = (error) => {
   const message = String(error?.message || error || 'Unknown error');
-  if (isLocalHost() && !getApiBase() && /row-level security|permission denied/i.test(message)) {
-    return new Error(`${message}. Local dev is calling Supabase directly. Set REACT_APP_API_BASE to your deployed app URL or run vercel dev so /api/combo-locations can use the service-role path.`);
+  if (isLocalHost() && !getApiBase() && /permission denied|insufficient permissions/i.test(message)) {
+    return new Error(`${message}. Local dev is calling Firestore directly. Set REACT_APP_API_BASE to your deployed app URL or run vercel dev so /api/combo-locations can use the server API path.`);
   }
   return error instanceof Error ? error : new Error(message);
 };

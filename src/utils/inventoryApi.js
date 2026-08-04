@@ -68,7 +68,7 @@ export const applySaleInventoryDeductionViaApi = async ({
   return Number(data?.adjustedProducts || 0);
 };
 
-export const applyInventoryBulk = async ({ inserts = [], updates = [] }, supabase) => {
+export const applyInventoryBulk = async ({ inserts = [], updates = [] }, db) => {
   const nowIso = new Date().toISOString();
   let lastApiError = null;
   const cleanInserts = (Array.isArray(inserts) ? inserts : [])
@@ -102,13 +102,13 @@ export const applyInventoryBulk = async ({ inserts = [], updates = [] }, supabas
     }
   }
 
-  if (!supabase) {
-    throw new Error('Supabase client required for inventory fallback.');
+  if (!db) {
+    throw new Error('Data client required for inventory fallback.');
   }
 
   try {
     if (cleanInserts.length > 0) {
-      const { error: insErr } = await supabase
+      const { error: insErr } = await db
         .from('inventory')
         .upsert(cleanInserts, { onConflict: 'product_id,location' });
       if (insErr) throw insErr;
@@ -118,7 +118,7 @@ export const applyInventoryBulk = async ({ inserts = [], updates = [] }, supabas
       const chunks = chunkArray(cleanUpdates, 200);
       for (const chunk of chunks) {
         const results = await Promise.all(
-          chunk.map(row => supabase
+          chunk.map(row => db
             .from('inventory')
             .update({ quantity: row.quantity, updated_at: row.updated_at })
             .eq('id', row.id))

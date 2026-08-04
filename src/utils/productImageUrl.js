@@ -1,7 +1,6 @@
-import { USE_FIREBASE } from '../config/backend';
 import { rewriteLegacyProductImageUrl } from './storageImageUrl';
 
-/** Rewrite legacy Supabase product image URLs for Firebase or image-proxy. */
+/** Resolve product image URLs to Firebase Storage public URLs. */
 export function resolveProductImageUrl(rawUrl) {
-  return rewriteLegacyProductImageUrl(rawUrl, { preferFirebase: USE_FIREBASE });
+  return rewriteLegacyProductImageUrl(rawUrl);
 }

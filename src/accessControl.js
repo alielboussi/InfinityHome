@@ -1,5 +1,5 @@
 // Hardcoded app permissions by user UUID / email.
-// Do NOT load roles or route access from public.users or Supabase Auth metadata.role.
+// Do NOT load roles or route access from public.users or Firebase Auth metadata.role.
 
 import { isStocktakeCountLocationPath } from './utils/stocktakeLocationSlug.js';
 
@@ -447,7 +447,7 @@ const LOCKED_LOCATION_BY_USER = new Map([
 ]);
 
 /**
- * Build the local session user from Supabase Auth identity using hardcoded UUID/email maps only.
+ * Build the local session user from Firebase Auth identity using hardcoded UUID/email maps only.
  * Call after password login, Google OAuth, or auth-profile API.
  */
 export function resolveSessionUserFromAuth(input = {}) {

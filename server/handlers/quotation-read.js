@@ -1,5 +1,5 @@
 // Serverless API: quotation-read
-// Service-role powered reads for quotation modules to avoid client-side RLS visibility issues.
+// Server-side reads for quotation modules (Firebase Admin SDK).
 
 import { getDataClient } from '../lib/getDataClient.js';
 

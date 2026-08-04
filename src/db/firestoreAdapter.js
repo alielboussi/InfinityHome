@@ -623,7 +623,7 @@ export function createFirestoreClient(getAuthApi) {
       const channelObj = {
         _unsubs: [],
         on(event, params, callback) {
-          if (event === 'postgres_changes' && params?.table && typeof callback === 'function') {
+          if (event === 'firestore_changes' && params?.table && typeof callback === 'function') {
             listeners.push({ table: params.table, filter: params.filter, callback });
           }
           return channelObj;

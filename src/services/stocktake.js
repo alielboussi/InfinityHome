@@ -58,7 +58,7 @@ async function fetchJson(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
     return data;
   } catch (err) {
     if (err?.name === 'AbortError') {
-      const timeoutErr = new Error('Stocktake API timed out. Falling back to Supabase when possible.');
+      const timeoutErr = new Error('Stocktake API timed out. Falling back to Firestore client when possible.');
       timeoutErr.status = 504;
       timeoutErr.isTimeout = true;
       throw timeoutErr;
@@ -82,7 +82,7 @@ async function withApiOrClient(apiCall, clientCall, { fallbackOnServerError = fa
       const msg = clientErr?.message || err.message || 'Request failed.';
       throw new Error(
         /timeout|504|gateway|failed to fetch/i.test(String(err.message || ''))
-          ? `${msg} (Vercel API unreachable — used Supabase fallback)`
+          ? `${msg} (Vercel API unreachable — used Firestore client fallback)`
           : msg,
       );
     }
@@ -541,7 +541,7 @@ export function stocktakeCountSessionKey(eventId) {
   return `stocktake:countSession:${eventId}`;
 }
 
-/** Email/password via Supabase Auth (localhost + production). */
+/** Email/password via Firebase Auth (localhost + production). */
 export async function stocktakeLogin(email, password) {
   const result = await signInWithEmailPassword(email, password);
   if (!result.ok) {
@@ -567,7 +567,7 @@ export async function fetchLocationState(locationId) {
 }
 
 export async function fetchCatalog(locationId, q = '') {
-  // Prefer direct Supabase for catalog — faster and works when Vercel API is down.
+  // Prefer direct Firestore client for catalog — faster and works when Vercel API is down.
   try {
     return await clientFetchCatalog(locationId, q);
   } catch (clientErr) {
@@ -588,7 +588,7 @@ export async function listEvents(locationId) {
 }
 
 export async function listOpenSessions() {
-  // Prefer Supabase so counters can join sessions when Vercel API is down.
+  // Prefer Firestore client so counters can join sessions when Vercel API is down.
   try {
     return await clientListOpenSessions();
   } catch (clientErr) {
@@ -857,7 +857,7 @@ export async function submitEvent(eventId, options = {}) {
       if (/local stocktake api unavailable/i.test(detail)) {
         throw new Error('Local stocktake API failed to start. Restart npm start and ensure FIREBASE_SERVICE_ACCOUNT is set in .env.local.');
       }
-      throw new Error('Submit needs the Vercel stocktake API (updates inventory + periods). Counting still works via Supabase — redeploy/fix Vercel, then submit.');
+      throw new Error('Submit needs the Vercel stocktake API (updates inventory + periods). Counting still works via Firestore client — redeploy/fix Vercel, then submit.');
     }
     throw err;
   }

@@ -354,7 +354,7 @@ export default function WarehouseTransferSummary(){
   }
 
   async function ensureBucket(){
-    // Avoid bucket creation from client in production to prevent RLS 400 spam.
+    // Avoid bucket creation from the client in production.
     // This function becomes a no-op; serverless endpoint ensures the bucket.
     return;
   }
@@ -543,7 +543,7 @@ export default function WarehouseTransferSummary(){
       const uniquePL = Array.from(new Map(productLocationRows.map(r => [r.product_id, r])).values());
       await syncProductLocations({ rows: uniquePL }, db);
 
-      // Generate PDF and upload via secure serverless endpoint (service role)
+      // Generate PDF and upload via secure serverless endpoint (Firebase Admin SDK)
       const pdfBlob = await generatePdf(transfer, remainingSourceMap, remainingDestMap, { fromLabel, toLabel, fromName, toName });
       const arrayBuffer = await pdfBlob.arrayBuffer();
       const pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
@@ -567,7 +567,7 @@ export default function WarehouseTransferSummary(){
         }
       } catch (e) { console.warn('Upload service failed', e.message||e); }
 
-      // Fallback for local dev or missing serverless env: try client-side upload using anon key
+      // Fallback for local dev or missing serverless env: try client-side Firebase Storage upload
       if(!pdfUrl){
         try {
           await ensureBucket();

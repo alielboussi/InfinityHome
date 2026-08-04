@@ -41,10 +41,10 @@ export default function LaybyDashboardStats({ active = true }) {
 
     const channel = db
       .channel('layby-dashboard-stats-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'laybys' }, bump)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, bump)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_payments' }, bump)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'layby_payments' }, bump)
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'laybys' }, bump)
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'sales' }, bump)
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'sales_payments' }, bump)
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'layby_payments' }, bump)
       .subscribe();
 
     return () => {

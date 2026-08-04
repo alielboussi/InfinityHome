@@ -1050,7 +1050,7 @@ export default function POS({ isMobile = false }) {
       }
     } catch (dupeCheckErr) {
       // If browser-side reads are blocked in production, the API save path below
-      // performs the same dedupe using the service-role client.
+      // performs the same dedupe using the Firebase Admin SDK on the server.
     }
     const payload = {
       name,
@@ -1710,7 +1710,7 @@ export default function POS({ isMobile = false }) {
       whatsappWarning = e?.message || 'WhatsApp alert failed';
     }
 
-    // 3. Inventory deduction via server API (browser client cannot reliably write inventory due to RLS)
+    // 3. Inventory deduction via server API (client writes go through Firestore security rules).
     try {
       const usageMap = {};
       for (const si of saleItems) {

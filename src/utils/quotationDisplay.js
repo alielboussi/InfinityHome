@@ -124,7 +124,7 @@ export function computeSaleLaybyTotalDue({ sale, fin, items, linkedQuote }) {
   return computed > 0 ? computed : reported;
 }
 
-export async function resolveQuoteCustomerForSelect(hdr, quoteCustomers, supabaseClient) {
+export async function resolveQuoteCustomerForSelect(hdr, quoteCustomers, db) {
   const catalog = Array.isArray(quoteCustomers) ? quoteCustomers : [];
   if (!hdr?.customer_id) return { header: hdr, customers: catalog };
 
@@ -135,7 +135,7 @@ export async function resolveQuoteCustomerForSelect(hdr, quoteCustomers, supabas
 
   let extraCustomer = null;
   try {
-    const { data: qc } = await supabaseClient
+    const { data: qc } = await db
       .from('quote_customers')
       .select('id, name, currency, phone')
       .eq('id', customerId)
@@ -145,7 +145,7 @@ export async function resolveQuoteCustomerForSelect(hdr, quoteCustomers, supabas
 
   if (!extraCustomer) {
     try {
-      const { data: cust } = await supabaseClient
+      const { data: cust } = await db
         .from('customers')
         .select('id, name, currency, phone')
         .eq('id', customerId)

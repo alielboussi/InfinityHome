@@ -838,7 +838,7 @@ function normalizeSettlementLineDescriptions(paymentLines) {
 }
 
 function getLogoUrl(company) {
-  const url = rewriteLegacyStorageUrl(company?.company_logo || company?.logo || '');
+  const url = rewriteLegacyStorageUrl(company?.company_logo || company?.logo || '', { bucket: 'companylogos' });
   if (url) return url;
   try {
     if (typeof window !== 'undefined') return window.location.origin + '/bestrest-logo.png';

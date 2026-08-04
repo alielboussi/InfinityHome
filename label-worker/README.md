@@ -16,16 +16,12 @@ Set these in `.env` next to `LabelPrinter.exe`:
 - `LABEL_WORKER_SECRET=<same secret as Vercel env LABEL_WORKER_SECRET>`
 - `PRINTER_NAME` (the exact Windows printer name)
 
-The worker polls `/api/labels?action=worker-pending` and updates job status via Firestore on the server. No Supabase credentials are needed.
+The worker polls `/api/labels?action=worker-pending` and updates job status via Firestore on the server.
 
-### Legacy Supabase mode (deprecated)
+Required env vars in `.env` next to `LabelPrinter.exe`:
 
-If `INFINITY_API_BASE` is not set, the worker falls back to Supabase REST:
-
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_KEY`
-
-You only need to set:
+- `INFINITY_API_BASE=https://infinity-home-pi.vercel.app` (your deployed app URL)
+- `LABEL_WORKER_SECRET=<same secret as Vercel env LABEL_WORKER_SECRET>`
 - `PRINTER_NAME` (the exact Windows printer name)
 
 Optional (defaults tuned for Godex EZ120, 203 dpi):
@@ -77,7 +73,7 @@ The installer EXE will be created at:
 
 The installer will:
 - Copy `LabelPrinter.exe` and `nssm.exe`
-- Create `.env` (if missing) with Supabase key + label size prefilled
+- Create `.env` (if missing) with API base URL, worker secret, and label size prefilled
 - Prompt for the Windows printer name and save it into `.env`
 - Install the Windows service `LabelPrinter`
 - Start the service automatically

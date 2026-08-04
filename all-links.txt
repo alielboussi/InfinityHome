@@ -46,7 +46,6 @@ Serverless API endpoints (same origin)
 - https://infinity-home-pi.vercel.app/api/send-transfer-email
 - https://infinity-home-pi.vercel.app/api/env-check
 - https://infinity-home-pi.vercel.app/api/health
-- https://infinity-home-pi.vercel.app/api/image-proxy
 
 Android app entry URLs
 - https://infinity-home-pi.vercel.app/stock-report-mobile

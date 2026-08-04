@@ -1,5 +1,5 @@
 import db from '../dataClient';
-import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { rewriteLegacyStorageUrl, extractStorageObjectPath, firebasePublicUrlForObject } from './storageImageUrl';
 
 function publicAsset(path) {
   const base = String(process.env.PUBLIC_URL || '').replace(/\/$/, '');
@@ -28,9 +28,11 @@ function rewriteStorageUrl(url) {
 function companyLogoUrlCandidates(url) {
   const rewritten = rewriteStorageUrl(url);
   const candidates = [rewritten];
-  // Company Settings upload stores .../public/companylogos/file.png but the object key is companylogos/file.png
-  const match = rewritten.match(/^(https?:\/\/[^/]+\/storage\/v1\/object\/public\/companylogos\/)(?!companylogos\/)(.+)$/i);
-  if (match) candidates.push(`${match[1]}companylogos/${match[2]}`);
+  const objectPath = extractStorageObjectPath(rewritten, 'companylogos');
+  if (objectPath && !objectPath.startsWith('companylogos/')) {
+    const alt = firebasePublicUrlForObject('companylogos', `companylogos/${objectPath}`);
+    if (alt) candidates.push(alt);
+  }
   return [...new Set(candidates.filter(Boolean))];
 }
 

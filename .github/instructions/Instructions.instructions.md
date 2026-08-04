@@ -3,7 +3,7 @@
 // ----------------------
 
 // Very important note:
-// We are using the **users** table for login, not Supabase Auth or hashed tokens. Authentication will be done using **plain Supabase email and password**.
+// Authentication uses Firebase Auth (email/password and Google). App permissions are hardcoded in accessControl.js by user UUID/email.
 
 // ----------------------
 // A. Platform & Security
@@ -12,8 +12,8 @@
  * - Fully web-based, accessible from any browser (desktop, laptop, tablet).
  * - Responsive and touch-friendly UI.
  * - Theme: **Black background, blue/green bordered fields, green save buttons, blue edit buttons, and red delete buttons**.
- * - Data stored in Supabase (PostgreSQL) with Row Level Security (RLS).
- * - User authentication will be done using **users table** for login (plain email/password), not Supabase Auth or hashed tokens.
+ * - Data stored in Firebase Firestore; files in Firebase Storage.
+ * - User authentication via Firebase Auth; route access enforced in accessControl.js.
  * - All sensitive data encrypted in transit and at rest.
  * - Daily automatic database backups with easy restore.
  * - All major tables and reports exportable to Excel and PDF.
@@ -23,7 +23,7 @@
 // B. User Roles & Permissions
 // ----------------------
 /**
- * - Role-based access control (RBAC) using **Supabase email/password-based login**.
+ * - Role-based access control (RBAC) using Firebase Auth identity + hardcoded permission maps.
  * - Granular permissions: view/add/edit/delete per page/module.
  * - Each user only sees/accesses allowed pages/functions.
  * - User management page for admins to assign roles, manage access, and reset passwords.

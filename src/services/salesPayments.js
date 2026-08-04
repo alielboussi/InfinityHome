@@ -1,5 +1,5 @@
 // Wrapper enforcing allocation_batch_uuid presence for new sales_payments inserts.
-// Primary path: serverless API (/api/payments). Fallback: direct Supabase insert in local dev.
+// Primary path: serverless API (/api/payments). Fallback: direct Firestore client insert in local dev.
 
 import db from '../dataClient';
 import { newUuid } from '../utils/uuid';
@@ -49,7 +49,7 @@ export async function insertSalesPayments(payments, opts = {}) {
     const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(hostname);
     if (!isLocal) return { error: e };
   }
-  // Fallback path: insert directly via Supabase (requires RLS allowing the operation for anon)
+  // Fallback path: insert directly via data client (local dev only).
   try {
     const nowIso = new Date().toISOString();
     const allMissing = payments.every(p => !p.allocation_batch_uuid);
@@ -89,7 +89,7 @@ export async function insertSalesPayments(payments, opts = {}) {
 
 /**
  * Fetch sales_payments rows for a list of sale IDs.
- * Uses serverless API (/api/payments-list). Falls back to direct Supabase on localhost.
+ * Uses serverless API (/api/payments-list). Falls back to direct Firestore client on localhost.
  * @param {Array<number>} saleIds
  */
 export async function fetchSalesPaymentsBySaleIds(saleIds = []) {
@@ -132,7 +132,7 @@ export async function fetchSalesPaymentsBySaleIds(saleIds = []) {
 
 /**
  * Delete sales_payments rows by ids.
- * Uses serverless API (/api/payments-delete). Falls back to direct Supabase on localhost.
+ * Uses serverless API (/api/payments-delete). Falls back to direct Firestore client on localhost.
  * @param {Array<string|number>} paymentIds
  */
 export async function deleteSalesPayments(paymentIds = []) {

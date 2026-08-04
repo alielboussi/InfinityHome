@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import db from './dataClient';
 import { formatCurrency } from './pdfTheme';
 import { computeQuotationTotals } from './utils/quotationDisplay';
+import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
 
 function computeTotals(quote, items = []) {
   const subtotal = items.reduce((sum, it) => sum + Number(it.quantity || 0) * Number(it.unit_price || 0), 0);
@@ -68,7 +69,7 @@ async function getCompanySettings() {
 }
 
 function getLogoUrl(company) {
-  const url = company?.company_logo || company?.logo || '';
+  const url = rewriteLegacyStorageUrl(company?.company_logo || company?.logo || '', { bucket: 'companylogos' });
   if (url) return url;
   try {
     if (typeof window !== 'undefined') return window.location.origin + '/bestrest-logo.png';

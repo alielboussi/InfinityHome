@@ -3,7 +3,7 @@ import db from '../dataClient';
 import { isRealtimeEnabled } from '../utils/realtimeConfig';
 
 /**
- * Subscribe to Firestore realtime (or legacy channel shim) for a set of tables and emit a debounced tick
+ * Subscribe to Firestore realtime for a set of tables and emit a debounced tick
  * whenever any change happens. Use the returned `tick` in effect deps to refetch.
  */
 export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable = undefined) {
@@ -46,7 +46,7 @@ export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable
         }
         const params = { event: '*', schema: 'public', table };
         if (filterStr) params.filter = filterStr;
-        channel.on('postgres_changes', params, () => {
+        channel.on('firestore_changes', params, () => {
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => setTick((t) => t + 1), debounceMs);
         });

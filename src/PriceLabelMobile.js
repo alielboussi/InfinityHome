@@ -225,7 +225,7 @@ export default function PriceLabelMobile() {
       const filename = `${buildPriceLabelFilename(selectedLocationName)}.pdf`;
       const path = `mobile/${filename}`;
 
-      // Upload via serverless endpoint (service role) for private bucket support
+      // Upload via serverless endpoint (Firebase Admin SDK) for private bucket support
       let url = '';
       let pdfBase64 = '';
       try {
