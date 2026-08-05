@@ -13,6 +13,8 @@ import {
   signOutFirebase,
   subscribeFirebaseAuth,
 } from './firebase';
+import { GoogleSignInButton, isGoogleSignInConfigured } from './GoogleSignInButton';
+import { verifyMobileLoginAccess } from './loginAccess';
 
 export { getFirebaseIdToken };
 
@@ -24,18 +26,45 @@ export function useFirebaseUser() {
   return user;
 }
 
-export default function FirebaseAuthGate({ children }) {
+export default function FirebaseAuthGate({ children, title = 'Infinity Home' }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const user = useFirebaseUser();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [accessChecked, setAccessChecked] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    if (!user) {
+      setAccessChecked(true);
+      return undefined;
+    }
+    setAccessChecked(false);
+    (async () => {
+      const access = await verifyMobileLoginAccess();
+      if (!alive) return;
+      if (!access.ok) {
+        await signOutFirebase();
+        setError(access.error || 'Login not allowed.');
+      }
+      setAccessChecked(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user?.uid]);
 
   async function handleSignIn() {
     setError('');
     setBusy(true);
     try {
       await signInFirebase(email, password);
+      const access = await verifyMobileLoginAccess();
+      if (!access.ok) {
+        await signOutFirebase();
+        setError(access.error || 'Login not allowed.');
+      }
     } catch (err) {
       setError(err?.message || 'Sign in failed');
     } finally {
@@ -53,7 +82,7 @@ export default function FirebaseAuthGate({ children }) {
     }
   }
 
-  if (user === undefined) {
+  if (user === undefined || (user && !accessChecked)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -64,8 +93,8 @@ export default function FirebaseAuthGate({ children }) {
   if (!user) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Infinity Home</Text>
-        <Text style={styles.hint}>Sign in with your Firebase email and password.</Text>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.hint}>Sign in with Google or your Firebase email and password.</Text>
         <TextInput
           style={styles.input}
           placeholder="Email"
@@ -85,6 +114,13 @@ export default function FirebaseAuthGate({ children }) {
         <Pressable style={styles.button} onPress={handleSignIn} disabled={busy}>
           <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Sign in'}</Text>
         </Pressable>
+        {isGoogleSignInConfigured() ? (
+          <GoogleSignInButton
+            disabled={busy}
+            onError={(message) => setError(message || 'Google sign-in failed')}
+            onSuccess={() => setError('')}
+          />
+        ) : null}
       </View>
     );
   }

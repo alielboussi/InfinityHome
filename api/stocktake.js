@@ -284,6 +284,23 @@ async function handleLogin(req, res) {
     return;
   }
 
+  try {
+    const { assertLoginAllowed } = await import('../server/lib/loginAccess.js');
+    await assertLoginAllowed({
+      id: authUser.id,
+      email: authUser.email,
+      user_metadata: authUser.user_metadata || {},
+    });
+  } catch (err) {
+    const status = err?.status || 403;
+    res.status(status).json({
+      ok: false,
+      error: err?.message || 'Login not allowed',
+      code: err?.code || null,
+    });
+    return;
+  }
+
   res.status(200).json({
     ok: true,
     user: buildAuthUserPayload(authUser),

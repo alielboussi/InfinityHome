@@ -44,6 +44,11 @@ export async function resolveAppUserFromSession() {
     if (response.ok && payload?.ok && payload?.user) {
       return { ok: true, user: resolveSessionUserFromAuth(payload.user), session: local.session };
     }
+    if (response.status === 403) {
+      const { firebaseSignOut } = await import('./firebaseAuthApi');
+      await firebaseSignOut().catch(() => {});
+      return { ok: false, error: payload?.error || 'Your account has been disabled. Contact an administrator.' };
+    }
   } catch {
     // Fall through to client-side resolution.
   } finally {

@@ -63,6 +63,7 @@ const LOCAL_API_PATHS = new Set([
   ...WHATSAPP_NOTIFY_PATHS,
   ...STOCKTAKE_API_PATHS,
   '/api/user-activity',
+  '/api/login-access',
   '/api/checkout',
   '/api/transactions',
   '/api/payments',
@@ -358,6 +359,46 @@ function mountLocalUserActivity(app) {
   console.log('[proxy] Local /api/user-activity handler enabled (Firebase token support).');
 }
 
+function mountLocalLoginAccess(app) {
+  let handlerPromise = null;
+
+  const loadHandler = () => {
+    if (!handlerPromise) {
+      handlerPromise = import('../server/handlers/login-access.js')
+        .then((mod) => mod.default || mod)
+        .catch((error) => {
+          console.warn('[proxy] Could not load local login-access handler:', error?.message || error);
+          return null;
+        });
+    }
+    return handlerPromise;
+  };
+
+  const handleLoginAccess = async (req, res) => {
+    try {
+      const handler = await loadHandler();
+      if (!handler) {
+        res.status(503).json({ ok: false, error: 'Local login-access API unavailable' });
+        return;
+      }
+      if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
+        req.body = await readJsonBody(req);
+      }
+      await handler(req, res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, error: error?.message || String(error) });
+      }
+    }
+  };
+
+  app.get('/api/login-access', handleLoginAccess);
+  app.post('/api/login-access', handleLoginAccess);
+  app.options('/api/login-access', handleLoginAccess);
+
+  console.log('[proxy] Local /api/login-access handler enabled (Firebase token support).');
+}
+
 function mountLocalApiHandler(app, route, modulePath, label, fixedAction) {
   let handlerPromise = null;
   const loadHandler = () => {
@@ -463,6 +504,7 @@ module.exports = function setupProxy(app) {
   mountLocalStocktake(app);
   mountLocalLabels(app);
   mountLocalUserActivity(app);
+  mountLocalLoginAccess(app);
   mountLocalCheckout(app);
   mountLocalTransactions(app);
   mountLocalProductLocations(app);

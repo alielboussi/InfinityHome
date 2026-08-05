@@ -90,6 +90,7 @@
     { "source": "/api/sales-edit", "destination": "/api/admin?adminAction=sales-edit" },
     { "source": "/api/sales-adjustment", "destination": "/api/admin?adminAction=sales-adjustment" },
     { "source": "/api/user-activity", "destination": "/api/admin?adminAction=user-activity" },
+    { "source": "/api/login-access", "destination": "/api/admin?adminAction=login-access" },
     { "source": "/api/db-backup", "destination": "/api/admin?adminAction=db-backup" },
 
     { "source": "/api/opening-stock-entry", "destination": "/api/admin?adminAction=inventory-bulk&action=opening-stock-entry" },

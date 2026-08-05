@@ -1,6 +1,6 @@
 # Infinity Home Mobile Apps (Expo SDK 52)
 
-Three Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator.
+Four Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator.
 
 ## Prerequisites
 
@@ -67,6 +67,41 @@ npx expo start
 
 ---
 
+## 4. Customer Credit (`customer-credit/`)
+
+Standalone layby-style credit tracker in Firebase. **Not linked to portal customers, products, or sales** — uses its own Firestore collections (`credit_app_*`).
+
+```bash
+cd mobile-apps/customer-credit
+cp .env.example .env
+# Edit .env with EXPO_PUBLIC_FIREBASE_* values (same project as the portal)
+npm install
+npx expo start
+```
+
+Sign in with a Firebase email/password account on launch. Data is scoped to the signed-in user (`owner_uid`).
+
+**Google sign-in:** set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in `.env` to the Firebase **Web client** OAuth ID (Firebase Console → Authentication → Sign-in method → Google → Web SDK configuration). Enable Google sign-in in Firebase Authentication.
+
+**Login access control:** disabled users are blocked on the portal and mobile apps via Administration → **User Login Access**.
+
+**Firestore collections (isolated from portal):**
+- `credit_app_customers` — customer profiles
+- `credit_app_customers/{id}/sales` — products taken
+- `credit_app_customers/{id}/payments` — payments / down payments
+- `credit_app_products` — local product catalog for this app only
+- `credit_app_meta/{userId}` — monthly report timestamp
+
+**Features:**
+- Add customers (name, phone, address, payment deadline in days)
+- Maintain a local product catalog with prices
+- Record products taken per customer and payments / down payments
+- Dashboard with pending balances and overdue warnings
+- Monthly dues report card every 30 days
+- Per-customer deadline: overdue warning if balance remains after deadline (from first sale date)
+
+---
+
 ## Project layout
 
 ```
@@ -78,6 +113,7 @@ mobile-apps/
   layby-shell/
   warehouse-transfers/
   factory-production/
+  customer-credit/
   README.md
 ```
 

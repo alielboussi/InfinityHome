@@ -13,6 +13,7 @@ const HANDLER_LOADERS = {
   'sales-edit': () => import('../server/handlers/sales-edit.js'),
   'sales-adjustment': () => import('../server/handlers/sales-adjustment.js'),
   'user-activity': () => import('../server/handlers/user-activity.js'),
+  'login-access': () => import('../server/handlers/login-access.js'),
   'db-backup': () => import('../server/handlers/db-backup.js'),
 };
 

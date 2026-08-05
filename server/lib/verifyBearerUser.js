@@ -13,11 +13,14 @@ export async function verifyBearerUser(req) {
 
   const decoded = await verifyFirebaseIdToken(token);
   if (decoded?.uid && decoded?.email) {
-    return {
+    const user = {
       id: decoded.uid,
       email: decoded.email,
       user_metadata: decoded.name ? { full_name: decoded.name } : {},
     };
+    const { assertLoginAllowed } = await import('./loginAccess.js');
+    await assertLoginAllowed(user);
+    return user;
   }
 
   return null;
@@ -38,7 +41,8 @@ export async function requireBearerUser(req) {
   } catch (err) {
     if (err.status) throw err;
     const error = new Error(err?.message || 'Invalid session');
-    error.status = 401;
+    error.status = err?.code === 'login_disabled' ? 403 : 401;
+    error.code = err?.code || null;
     throw error;
   }
 }

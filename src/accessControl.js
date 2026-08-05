@@ -263,6 +263,7 @@ const ZERO_STOCK_RESET_ROUTE = '/zero-stock-location';
 const ZERO_STOCK_RESET_USER = '1b5e098e-1206-447e-b4bc-6d009b85b5d3';
 const USER_ACTIVITY_ROUTE = '/user-activity';
 const DATABASE_BACKUP_ROUTE = '/database-backup';
+const USER_ACCESS_ROUTE = '/user-access';
 const USER_ACTIVITY_EMAIL = 'alielboussi00@gmail.com';
 const STOCK_CONTROL_EMAIL = 'alielboussi00@gmail.com';
 const STOCKTAKE_AGGREGATION_ROUTE = '/stocktake/aggregation';
@@ -347,6 +348,10 @@ export function canViewDatabaseBackup(user) {
   return getUserEmail(user) === USER_ACTIVITY_EMAIL;
 }
 
+export function canManageLoginAccess(user) {
+  return getUserEmail(user) === USER_ACTIVITY_EMAIL;
+}
+
 export function allowedPathsForUser(user) {
   const uuid = getUserUuid(user);
   const email = getUserEmail(user);
@@ -373,6 +378,9 @@ export function isPathAllowed(user, path) {
   }
   if (p === DATABASE_BACKUP_ROUTE || p.startsWith(`${DATABASE_BACKUP_ROUTE}/`)) {
     return canViewDatabaseBackup(user);
+  }
+  if (p === USER_ACCESS_ROUTE || p.startsWith(`${USER_ACCESS_ROUTE}/`)) {
+    return canManageLoginAccess(user);
   }
   if (p === STOCKTAKE_AGGREGATION_ROUTE || p.startsWith(`${STOCKTAKE_AGGREGATION_ROUTE}/`)) {
     return canViewStocktakeAggregation(user);

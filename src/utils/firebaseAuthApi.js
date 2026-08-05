@@ -29,6 +29,28 @@ export function userFromFirebaseAuth(firebaseUser) {
   });
 }
 
+async function verifyLoginAccessFromToken(token) {
+  if (!token) return { ok: true };
+  try {
+    const response = await fetch('/api/auth-profile', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.status === 403) {
+      await firebaseSignOut();
+      return { ok: false, error: payload?.error || 'Your account has been disabled. Contact an administrator.' };
+    }
+    if (!response.ok) {
+      return { ok: false, error: payload?.error || 'Unable to verify login access.' };
+    }
+    return { ok: true, user: payload?.user || null };
+  } catch (err) {
+    return { ok: false, error: err?.message || 'Unable to verify login access.' };
+  }
+}
+
 export async function firebaseSignInWithEmailPassword(email, password) {
   const cleanEmail = String(email || '').trim().toLowerCase();
   const cleanPassword = String(password || '');
@@ -39,6 +61,10 @@ export async function firebaseSignInWithEmailPassword(email, password) {
     const credential = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, cleanPassword);
     const user = userFromFirebaseAuth(credential.user);
     const token = await credential.user.getIdToken();
+    const access = await verifyLoginAccessFromToken(token);
+    if (!access.ok) {
+      return { ok: false, error: access.error };
+    }
     return {
       ok: true,
       user,
@@ -62,6 +88,10 @@ export async function firebaseSignInWithGoogle() {
   const credential = await signInWithPopup(firebaseAuth, provider);
   const user = userFromFirebaseAuth(credential.user);
   const token = await credential.user.getIdToken();
+  const access = await verifyLoginAccessFromToken(token);
+  if (!access.ok) {
+    return { ok: false, error: access.error };
+  }
   return {
     ok: true,
     user,

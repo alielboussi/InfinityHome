@@ -5,7 +5,7 @@ import {
   FaCashRegister, FaReceipt, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags, FaLayerGroup,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield
 } from 'react-icons/fa';
 import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute } from './accessControl';
 
@@ -63,6 +63,7 @@ const NAV_GROUPS = [
     title: 'Administration',
     items: [
       { label: 'User Activity', route: '/user-activity', icon: FaHistory },
+      { label: 'User Login Access', route: '/user-access', icon: FaUserShield },
       { label: 'Database Backup', route: '/database-backup', icon: FaDatabase },
     ],
   },
@@ -159,6 +160,7 @@ const TITLE_MAP = {
   '/lusaka-transfers': 'Lusaka Transfers',
   '/company-settings': 'Company Settings',
   '/user-activity': 'User Activity',
+  '/user-access': 'User Login Access',
   '/database-backup': 'Database Backup',
   '/incomplete-packages': 'Incomplete Packages',
 };

@@ -39,10 +39,11 @@ import IncompletePackages from './IncompletePackages';
 import IncompleteMobileLocked from './IncompleteMobileLocked';
 import QuotesBoard from './QuotesBoard.js';
 import UserActivityLog from './UserActivityLog';
+import UserAccessManagement from './UserAccessManagement';
 import DatabaseBackup from './DatabaseBackup';
 import AppChrome from './AppChrome';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
-import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated } from './accessControl';
+import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated } from './accessControl';
 import { bootstrapAppAuth } from './utils/authSession';
 
 function RouteActivityLogger() {
@@ -294,6 +295,7 @@ function App() {
           <Route path="/all-sales" element={<AllSales />} />
           <Route path="/reversal" element={<Reversal />} />
           <Route path="/user-activity" element={<RequireAdminPage check={canViewUserActivity}><UserActivityLog /></RequireAdminPage>} />
+          <Route path="/user-access" element={<RequireAdminPage check={canManageLoginAccess}><UserAccessManagement /></RequireAdminPage>} />
           <Route path="/database-backup" element={<RequireAdminPage check={canViewDatabaseBackup}><DatabaseBackup /></RequireAdminPage>} />
           <Route path="/incomplete-packages" element={<IncompletePackages />} />
           <Route path="/quotes" element={<Navigate to="/quotes-board" replace />} />
