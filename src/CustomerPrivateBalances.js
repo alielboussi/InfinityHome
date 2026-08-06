@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   fetchCustomerPrivateBalancesDashboard,
   formatBalances,
@@ -37,7 +36,6 @@ function StatTile({ label, value, tone = 'default' }) {
 }
 
 export default function CustomerPrivateBalances() {
-  const navigate = useNavigate();
   const user = getCurrentUser();
   const displayName = displayNameForEmail(user?.email);
   const [data, setData] = useState(null);
