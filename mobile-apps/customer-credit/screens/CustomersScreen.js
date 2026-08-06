@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { PrimaryButton, ScreenWrap } from '../components/ui';
 import { listCustomers } from '../db/repository';
 import { colors, styles } from '../theme';
-import { formatMoney } from '../utils/format';
+import { formatBalances } from '../utils/format';
 
 export default function CustomersScreen() {
   const navigation = useNavigation();
@@ -47,7 +47,7 @@ export default function CustomersScreen() {
               <Text style={styles.cardTitle}>{item.name}</Text>
               {item.phone ? <Text style={styles.cardSub}>{item.phone}</Text> : null}
               <Text style={{ marginTop: 6, fontWeight: '700', color: item.overdue ? colors.danger : colors.primary }}>
-                Balance: {formatMoney(item.balance)}
+                Balance: {formatBalances(item.balanceByCurrency)}
               </Text>
             </Pressable>
           )}

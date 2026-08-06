@@ -60,6 +60,7 @@ export default function ProductsScreen() {
               onLongPress={() => onDelete(item)}
             >
               <Text style={styles.cardTitle}>{item.name}</Text>
+              {item.description ? <Text style={styles.cardSub} numberOfLines={2}>{item.description}</Text> : null}
               <Text style={{ marginTop: 6, fontWeight: '700', color: colors.primary }}>
                 {formatMoney(item.price, item.currency)}
               </Text>

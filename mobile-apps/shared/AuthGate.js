@@ -26,7 +26,7 @@ export function useFirebaseUser() {
   return user;
 }
 
-export default function FirebaseAuthGate({ children, title = 'Infinity Home' }) {
+export default function FirebaseAuthGate({ children, title = 'Infinity Home', showUserBar = true }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const user = useFirebaseUser();
@@ -127,12 +127,14 @@ export default function FirebaseAuthGate({ children, title = 'Infinity Home' }) 
 
   return (
     <View style={styles.authedRoot}>
-      <View style={styles.userBar}>
-        <Text style={styles.userEmail} numberOfLines={1}>{user.email || 'Signed in'}</Text>
-        <Pressable onPress={handleSignOut} disabled={busy}>
-          <Text style={styles.signOut}>{busy ? '…' : 'Sign out'}</Text>
-        </Pressable>
-      </View>
+      {showUserBar ? (
+        <View style={styles.userBar}>
+          <Text style={styles.userEmail} numberOfLines={1}>{user.email || 'Signed in'}</Text>
+          <Pressable onPress={handleSignOut} disabled={busy}>
+            <Text style={styles.signOut}>{busy ? '…' : 'Sign out'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {children}
     </View>
   );

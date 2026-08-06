@@ -1,14 +1,32 @@
-const CURRENCY = 'K';
+export const CURRENCIES = ['K', '$'];
+export const DEFAULT_CURRENCY = 'K';
 
-export function formatMoney(amount, currency = CURRENCY) {
+export function normalizeCurrency(value) {
+  const raw = String(value || DEFAULT_CURRENCY).trim();
+  return raw === '$' ? '$' : 'K';
+}
+
+export function emptyCurrencyMap() {
+  return { K: 0, $: 0 };
+}
+
+export function formatMoney(amount, currency = DEFAULT_CURRENCY) {
+  const c = normalizeCurrency(currency);
   const n = Number(amount);
-  if (!Number.isFinite(n)) return `${currency} 0`;
+  if (!Number.isFinite(n)) return `${c} 0`;
   const decimals = n % 1 !== 0;
   const fmt = n.toLocaleString('en-US', {
     minimumFractionDigits: decimals ? 2 : 0,
     maximumFractionDigits: decimals ? 2 : 0,
   });
-  return `${currency} ${fmt}`;
+  return `${c} ${fmt}`;
+}
+
+export function formatBalances(balanceByCurrency) {
+  const parts = CURRENCIES
+    .filter((currency) => hasBalance(balanceByCurrency?.[currency]))
+    .map((currency) => formatMoney(balanceByCurrency[currency], currency));
+  return parts.length ? parts.join(' · ') : formatMoney(0, DEFAULT_CURRENCY);
 }
 
 export function parseMoney(text) {
@@ -42,4 +60,8 @@ export const BALANCE_EPSILON = 0.01;
 
 export function hasBalance(balance) {
   return Number(balance) > BALANCE_EPSILON;
+}
+
+export function customerHasBalance(balanceByCurrency) {
+  return CURRENCIES.some((currency) => hasBalance(balanceByCurrency?.[currency]));
 }

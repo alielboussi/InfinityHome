@@ -1,12 +1,23 @@
 import { useEffect, useState } from 'react';
 import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
+import Constants from 'expo-constants';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { getFirebaseAuth } from './firebase';
+import { getFirebaseAuth, signOutFirebase } from './firebase';
 import { verifyMobileLoginAccess } from './loginAccess';
 
 WebBrowser.maybeCompleteAuthSession();
+
+const APP_SCHEME = Constants.expoConfig?.scheme
+  || process.env.EXPO_PUBLIC_APP_SCHEME
+  || 'customer-ledger-tracking';
+
+const REDIRECT_URI = makeRedirectUri({
+  scheme: APP_SCHEME,
+  path: 'oauth',
+});
 
 function getGoogleClientIds() {
   return {
@@ -28,6 +39,7 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
     webClientId,
     androidClientId: androidClientId || webClientId,
     iosClientId: iosClientId || webClientId,
+    redirectUri: REDIRECT_URI,
   });
 
   useEffect(() => {

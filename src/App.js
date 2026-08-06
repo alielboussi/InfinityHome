@@ -40,10 +40,11 @@ import IncompleteMobileLocked from './IncompleteMobileLocked';
 import QuotesBoard from './QuotesBoard.js';
 import UserActivityLog from './UserActivityLog';
 import UserAccessManagement from './UserAccessManagement';
-import DatabaseBackup from './DatabaseBackup';
+import DatabaseBackupPage from './DatabaseBackup.js';
+import CustomerPrivateBalances from './CustomerPrivateBalances';
 import AppChrome from './AppChrome';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
-import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated } from './accessControl';
+import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewCustomerPrivateBalances, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated } from './accessControl';
 import { bootstrapAppAuth } from './utils/authSession';
 
 function RouteActivityLogger() {
@@ -58,6 +59,7 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/layby-management',
       '/quotes-board',
       '/ledger-mobile',
+      '/customer-private-balances',
       '/all-transfers',
       '/warehouse-deliveries-admin',
       '/stock-periods',
@@ -251,6 +253,7 @@ function App() {
           <Route path="/sales-report" element={<SalesReport />} />
           <Route path="/transfers-report" element={<TransfersReport />} />
           <Route path="/ledger-mobile" element={<LedgerMobile />} />
+          <Route path="/customer-private-balances" element={<RequireAdminPage check={canViewCustomerPrivateBalances}><CustomerPrivateBalances /></RequireAdminPage>} />
           <Route path="/quotationer" element={<Quotationer />} />
           <Route path="/QuotesDashboard" element={<Navigate to="/quotationer" replace />} />
           <Route path="/QuotesCustomers" element={<Navigate to="/quotationer" replace />} />
@@ -296,7 +299,7 @@ function App() {
           <Route path="/reversal" element={<Reversal />} />
           <Route path="/user-activity" element={<RequireAdminPage check={canViewUserActivity}><UserActivityLog /></RequireAdminPage>} />
           <Route path="/user-access" element={<RequireAdminPage check={canManageLoginAccess}><UserAccessManagement /></RequireAdminPage>} />
-          <Route path="/database-backup" element={<RequireAdminPage check={canViewDatabaseBackup}><DatabaseBackup /></RequireAdminPage>} />
+          <Route path="/database-backup" element={<RequireAdminPage check={canViewDatabaseBackup}><DatabaseBackupPage /></RequireAdminPage>} />
           <Route path="/incomplete-packages" element={<IncompletePackages />} />
           <Route path="/quotes" element={<Navigate to="/quotes-board" replace />} />
           <Route path="/quotes/create" element={<Navigate to="/quotationer" replace />} />

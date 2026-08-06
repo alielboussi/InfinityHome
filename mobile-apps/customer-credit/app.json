@@ -1,21 +1,37 @@
 {
   "expo": {
-    "name": "Customer Credit",
-    "slug": "customer-credit",
+    "name": "Customer Ledger Tracking",
+    "slug": "customer-ledger-tracking",
+    "scheme": "customer-ledger-tracking",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#1565c0"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.bestrest.customerledger"
     },
     "android": {
+      "package": "com.bestrest.customerledger",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1565c0"
       }
-    }
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5cca5827-6bfa-4a7d-98a4-3a670542a0eb"
+      }
+    },
+    "owner": "alielboussi"
   }
 }

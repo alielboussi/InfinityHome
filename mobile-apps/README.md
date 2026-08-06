@@ -1,11 +1,11 @@
 # Infinity Home Mobile Apps (Expo SDK 52)
 
-Four Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator.
+Four Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator (SDK 54 for customer-credit; SDK 52 for others).
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 18+
-- [Expo Go](https://expo.dev/go) on your device (SDK 52)
+- [Expo Go](https://expo.dev/go) on your device (**SDK 54** for customer-credit; SDK 52 for other apps)
 - Firebase config values for the Firestore apps (copy from the main web app `.env`)
 
 ## Shared Firebase config
@@ -67,9 +67,9 @@ npx expo start
 
 ---
 
-## 4. Customer Credit (`customer-credit/`)
+## 4. Customer Ledger Tracking (`customer-credit/`)
 
-Standalone layby-style credit tracker in Firebase. **Not linked to portal customers, products, or sales** — uses its own Firestore collections (`credit_app_*`).
+Standalone layby-style ledger tracker in Firebase. **Not linked to portal customers, products, or sales** — uses its own Firestore collections (`credit_app_*`).
 
 ```bash
 cd mobile-apps/customer-credit

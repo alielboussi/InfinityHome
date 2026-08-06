@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Alert, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { PrimaryButton, ScreenWrap } from '../components/ui';
+import { CurrencyToggle, PrimaryButton, ScreenWrap } from '../components/ui';
 import { addPayment } from '../db/repository';
 import { styles } from '../theme';
-import { parseMoney } from '../utils/format';
+import { DEFAULT_CURRENCY, parseMoney } from '../utils/format';
 import { todayIsoDate } from '../utils/ids';
 
 export default function AddPaymentScreen() {
@@ -12,6 +12,7 @@ export default function AddPaymentScreen() {
   const route = useRoute();
   const customerId = route.params?.customerId;
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [paymentDate, setPaymentDate] = useState(todayIsoDate());
   const [isDownPayment, setIsDownPayment] = useState(false);
   const [notes, setNotes] = useState('');
@@ -23,6 +24,7 @@ export default function AddPaymentScreen() {
       await addPayment({
         customer_id: customerId,
         amount: parseMoney(amount),
+        currency,
         payment_date: paymentDate,
         is_down_payment: isDownPayment,
         notes,
@@ -38,7 +40,8 @@ export default function AddPaymentScreen() {
   return (
     <ScreenWrap>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.label}>Amount (K) *</Text>
+        <CurrencyToggle value={currency} onChange={setCurrency} />
+        <Text style={styles.label}>Amount *</Text>
         <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
         <Text style={styles.label}>Payment date (YYYY-MM-DD)</Text>
         <TextInput style={styles.input} value={paymentDate} onChangeText={setPaymentDate} />

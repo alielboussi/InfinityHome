@@ -1,6 +1,13 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import {
+  getAuth,
+  initializeAuth,
+  getReactNativePersistence,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -11,9 +18,38 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
+let authInstance = null;
+
+function loadAsyncStorage() {
+  try {
+    const mod = require('@react-native-async-storage/async-storage');
+    return mod?.default || mod;
+  } catch {
+    return null;
+  }
+}
+
+function initAuth(app) {
+  const AsyncStorage = loadAsyncStorage();
+  if (AsyncStorage) {
+    try {
+      return initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage),
+      });
+    } catch (error) {
+      if (error?.code === 'auth/already-initialized') {
+        return getAuth(app);
+      }
+      throw error;
+    }
+  }
+  return getAuth(app);
+}
+
 export function getFirebaseApp() {
   if (!getApps().length) {
-    initializeApp(firebaseConfig);
+    const app = initializeApp(firebaseConfig);
+    authInstance = initAuth(app);
   }
   return getApps()[0];
 }
@@ -23,7 +59,10 @@ export function getDb() {
 }
 
 export function getFirebaseAuth() {
-  return getAuth(getFirebaseApp());
+  if (!authInstance) {
+    getFirebaseApp();
+  }
+  return authInstance;
 }
 
 export async function getFirebaseIdToken(forceRefresh = false) {

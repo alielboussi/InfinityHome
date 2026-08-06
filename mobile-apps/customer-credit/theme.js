@@ -124,4 +124,43 @@ export const styles = {
     fontWeight: '700',
     textTransform: 'uppercase',
   },
+  textArea: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 12,
+    minHeight: 96,
+    textAlignVertical: 'top',
+  },
+  currencyRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  currencyBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+  },
+  currencyBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  currencyBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.muted,
+  },
+  currencyBtnTextActive: {
+    color: colors.primary,
+  },
 };

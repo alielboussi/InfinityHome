@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { PrimaryButton, ScreenWrap } from '../components/ui';
+import { CurrencyToggle, PrimaryButton, ScreenWrap } from '../components/ui';
 import { getProduct, saveProduct } from '../db/repository';
 import { styles } from '../theme';
-import { parseMoney } from '../utils/format';
+import { DEFAULT_CURRENCY, normalizeCurrency, parseMoney } from '../utils/format';
 
 export default function ProductFormScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const productId = route.params?.productId;
   const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -20,7 +22,9 @@ export default function ProductFormScreen() {
       const row = await getProduct(productId);
       if (!row) return;
       setName(row.name || '');
+      setDescription(row.description || '');
       setPrice(String(row.price ?? ''));
+      setCurrency(normalizeCurrency(row.currency));
     })();
   }, [productId]);
 
@@ -30,7 +34,9 @@ export default function ProductFormScreen() {
       await saveProduct({
         id: productId,
         name,
+        description,
         price: parseMoney(price),
+        currency,
       });
       navigation.goBack();
     } catch (err) {
@@ -45,7 +51,17 @@ export default function ProductFormScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.label}>Product name *</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Product name" />
-        <Text style={styles.label}>Price (K)</Text>
+        <Text style={styles.label}>Description</Text>
+        <TextInput
+          style={styles.textArea}
+          value={description}
+          onChangeText={setDescription}
+          placeholder="Product description"
+          multiline
+          textAlignVertical="top"
+        />
+        <CurrencyToggle value={currency} onChange={setCurrency} />
+        <Text style={styles.label}>Price</Text>
         <TextInput
           style={styles.input}
           value={price}

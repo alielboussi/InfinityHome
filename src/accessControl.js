@@ -264,6 +264,7 @@ const ZERO_STOCK_RESET_USER = '1b5e098e-1206-447e-b4bc-6d009b85b5d3';
 const USER_ACTIVITY_ROUTE = '/user-activity';
 const DATABASE_BACKUP_ROUTE = '/database-backup';
 const USER_ACCESS_ROUTE = '/user-access';
+const CUSTOMER_PRIVATE_BALANCES_ROUTE = '/customer-private-balances';
 const USER_ACTIVITY_EMAIL = 'alielboussi00@gmail.com';
 const STOCK_CONTROL_EMAIL = 'alielboussi00@gmail.com';
 const STOCKTAKE_AGGREGATION_ROUTE = '/stocktake/aggregation';
@@ -352,6 +353,16 @@ export function canManageLoginAccess(user) {
   return getUserEmail(user) === USER_ACTIVITY_EMAIL;
 }
 
+const CUSTOMER_PRIVATE_BALANCES_EMAILS = new Set([
+  'alielboussi00@gmail.com',
+  'hassanboussi2000@gmail.com',
+  'hassanawad18@gmail.com',
+]);
+
+export function canViewCustomerPrivateBalances(user) {
+  return CUSTOMER_PRIVATE_BALANCES_EMAILS.has(getUserEmail(user));
+}
+
 export function allowedPathsForUser(user) {
   const uuid = getUserUuid(user);
   const email = getUserEmail(user);
@@ -381,6 +392,9 @@ export function isPathAllowed(user, path) {
   }
   if (p === USER_ACCESS_ROUTE || p.startsWith(`${USER_ACCESS_ROUTE}/`)) {
     return canManageLoginAccess(user);
+  }
+  if (p === CUSTOMER_PRIVATE_BALANCES_ROUTE || p.startsWith(`${CUSTOMER_PRIVATE_BALANCES_ROUTE}/`)) {
+    return canViewCustomerPrivateBalances(user);
   }
   if (p === STOCKTAKE_AGGREGATION_ROUTE || p.startsWith(`${STOCKTAKE_AGGREGATION_ROUTE}/`)) {
     return canViewStocktakeAggregation(user);

@@ -5,7 +5,7 @@ import {
   FaCashRegister, FaReceipt, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags, FaLayerGroup,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaLock
 } from 'react-icons/fa';
 import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute } from './accessControl';
 
@@ -33,6 +33,7 @@ const NAV_GROUPS = [
       { label: 'Customers', route: '/customers', icon: FaUsers },
       { label: 'Laybys', route: '/layby-management', icon: FaClipboardList },
       { label: 'Ledger', route: '/ledger-mobile', icon: FaWallet },
+      { label: 'Customer Private Balances', route: '/customer-private-balances', icon: FaLock },
     ],
   },
   {
@@ -140,6 +141,7 @@ const TITLE_MAP = {
   '/layby-management': 'Layby Management',
   '/layby-management-mobile': 'Layby Management',
   '/ledger-mobile': 'Ledger',
+  '/customer-private-balances': 'Customer Private Balances',
   '/products': 'Products',
   '/products-list': 'Products',
   '/categories': 'Categories',

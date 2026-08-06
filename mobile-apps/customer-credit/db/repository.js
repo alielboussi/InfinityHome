@@ -10,7 +10,7 @@ import {
 } from 'firebase/firestore';
 import { getDb, getFirebaseAuth } from '../../shared/firebase';
 import { COLLECTIONS, DEFAULT_PAYMENT_DEADLINE_DAYS, MONTHLY_REPORT_DAYS } from './constants';
-import { hasBalance, daysBetween } from '../utils/format';
+import { daysBetween, emptyCurrencyMap, normalizeCurrency, customerHasBalance, CURRENCIES } from '../utils/format';
 import { nowIso, todayIsoDate, uuid } from '../utils/ids';
 
 function requireOwnerUid() {
@@ -38,43 +38,61 @@ function mapCustomerDoc(docSnap) {
 
 async function sumSalesForCustomer(customerId) {
   const snap = await getDocs(salesCollection(customerId));
-  let total = 0;
+  const chargedByCurrency = emptyCurrencyMap();
   let firstSale = null;
   snap.forEach((row) => {
     const data = row.data();
-    total += Number(data.quantity || 0) * Number(data.unit_price || 0);
+    const currency = normalizeCurrency(data.currency);
+    chargedByCurrency[currency] += Number(data.quantity || 0) * Number(data.unit_price || 0);
     const saleDate = data.sale_date;
     if (saleDate && (!firstSale || saleDate < firstSale)) firstSale = saleDate;
   });
-  return { total, firstSale };
+  return { chargedByCurrency, firstSale };
 }
 
 async function sumPaymentsForCustomer(customerId) {
   const snap = await getDocs(paymentsCollection(customerId));
-  let total = 0;
+  const paidByCurrency = emptyCurrencyMap();
   snap.forEach((row) => {
-    total += Number(row.data().amount || 0);
+    const currency = normalizeCurrency(row.data().currency);
+    paidByCurrency[currency] += Number(row.data().amount || 0);
   });
-  return total;
+  return paidByCurrency;
+}
+
+function computeBalanceByCurrency(chargedByCurrency, paidByCurrency) {
+  const balanceByCurrency = emptyCurrencyMap();
+  CURRENCIES.forEach((currency) => {
+    balanceByCurrency[currency] = Math.max(
+      0,
+      Number(chargedByCurrency[currency] || 0) - Number(paidByCurrency[currency] || 0),
+    );
+  });
+  return balanceByCurrency;
 }
 
 export async function enrichCustomer(customer) {
-  const [{ total: totalCharged, firstSale }, totalPaid] = await Promise.all([
+  const [{ chargedByCurrency, firstSale }, paidByCurrency] = await Promise.all([
     sumSalesForCustomer(customer.id),
     sumPaymentsForCustomer(customer.id),
   ]);
-  const balance = Math.max(0, totalCharged - totalPaid);
+  const balanceByCurrency = computeBalanceByCurrency(chargedByCurrency, paidByCurrency);
   const startDate = firstSale || customer.created_at;
   const deadlineDays = Number(customer.payment_deadline_days) || DEFAULT_PAYMENT_DEADLINE_DAYS;
   const daysElapsed = daysBetween(startDate);
   const daysRemaining = deadlineDays - daysElapsed;
-  const overdue = hasBalance(balance) && daysRemaining < 0;
+  const hasBalanceDue = customerHasBalance(balanceByCurrency);
+  const overdue = hasBalanceDue && daysRemaining < 0;
 
   return {
     ...customer,
-    totalCharged,
-    totalPaid,
-    balance,
+    chargedByCurrency,
+    paidByCurrency,
+    balanceByCurrency,
+    totalCharged: chargedByCurrency,
+    totalPaid: paidByCurrency,
+    balance: balanceByCurrency,
+    hasBalance: hasBalanceDue,
     firstSaleDate: firstSale,
     creditStartDate: startDate,
     daysElapsed,
@@ -188,8 +206,9 @@ export async function saveProduct(payload) {
   const record = {
     owner_uid: ownerUid,
     name: String(payload.name || '').trim(),
+    description: String(payload.description || '').trim(),
     price: Math.max(0, Number(payload.price) || 0),
-    currency: String(payload.currency || 'K').trim() || 'K',
+    currency: normalizeCurrency(payload.currency),
     updated_at: now,
     created_at: existing?.created_at || now,
   };
@@ -217,6 +236,33 @@ export async function listCustomerSales(customerId) {
     .sort((a, b) => String(b.sale_date).localeCompare(String(a.sale_date)));
 }
 
+export async function listAllSales({ search = '' } = {}) {
+  const customers = await listCustomers();
+  const term = String(search || '').trim().toLowerCase();
+  const rows = [];
+
+  for (const customer of customers) {
+    const sales = await listCustomerSales(customer.id);
+    sales.forEach((sale) => {
+      rows.push({
+        ...sale,
+        customer_id: customer.id,
+        customer_name: customer.name,
+        line_total: Number(sale.quantity || 0) * Number(sale.unit_price || 0),
+      });
+    });
+  }
+
+  rows.sort((a, b) => String(b.sale_date).localeCompare(String(a.sale_date)));
+
+  if (!term) return rows;
+
+  return rows.filter((row) =>
+    String(row.customer_name || '').toLowerCase().includes(term)
+    || String(row.product_name || '').toLowerCase().includes(term)
+    || String(row.description || '').toLowerCase().includes(term));
+}
+
 export async function addCustomerSale(payload) {
   const ownerUid = requireOwnerUid();
   const customerId = payload.customer_id;
@@ -235,9 +281,10 @@ export async function addCustomerSale(payload) {
     customer_id: customerId,
     product_id: payload.product_id || null,
     product_name: productName,
+    description: String(payload.description || '').trim(),
     quantity,
     unit_price: unitPrice,
-    currency: String(payload.currency || 'K'),
+    currency: normalizeCurrency(payload.currency),
     sale_date: payload.sale_date || todayIsoDate(),
     notes: String(payload.notes || '').trim(),
     created_at: now,
@@ -271,7 +318,7 @@ export async function addPayment(payload) {
     owner_uid: ownerUid,
     customer_id: customerId,
     amount,
-    currency: String(payload.currency || 'K'),
+    currency: normalizeCurrency(payload.currency),
     payment_date: payload.payment_date || todayIsoDate(),
     is_down_payment: payload.is_down_payment ? 1 : 0,
     notes: String(payload.notes || '').trim(),
@@ -294,29 +341,34 @@ async function setMeta(ownerUid, patch) {
 
 export async function getDashboardData() {
   const customers = await listCustomers();
-  const withBalance = customers.filter((c) => hasBalance(c.balance));
+  const withBalance = customers.filter((c) => c.hasBalance);
   const overdue = withBalance.filter((c) => c.overdue);
-  const totalOutstanding = withBalance.reduce((sum, c) => sum + c.balance, 0);
+  const totalOutstandingByCurrency = emptyCurrencyMap();
+  withBalance.forEach((customer) => {
+    CURRENCIES.forEach((currency) => {
+      totalOutstandingByCurrency[currency] += Number(customer.balanceByCurrency?.[currency] || 0);
+    });
+  });
   const monthlyReport = await getMonthlyReportIfDue(withBalance);
 
   return {
     customers,
     withBalance,
     overdue,
-    totalOutstanding,
+    totalOutstandingByCurrency,
     monthlyReport,
     stats: {
       customerCount: customers.length,
       pendingCount: withBalance.length,
       overdueCount: overdue.length,
-      totalOutstanding,
+      totalOutstandingByCurrency,
     },
   };
 }
 
 export async function getMonthlyReportIfDue(withBalanceInput) {
   const ownerUid = requireOwnerUid();
-  const withBalance = withBalanceInput || (await listCustomers()).filter((c) => hasBalance(c.balance));
+  const withBalance = withBalanceInput || (await listCustomers()).filter((c) => c.hasBalance);
   const meta = await getMeta(ownerUid);
   const lastShown = meta.last_monthly_report_shown_at || '';
   const now = Date.now();
@@ -324,19 +376,25 @@ export async function getMonthlyReportIfDue(withBalanceInput) {
   const due = !lastShown || (now - lastMs) >= MONTHLY_REPORT_DAYS * 24 * 60 * 60 * 1000;
 
   if (!due || withBalance.length === 0) {
-    return { due: false, rows: [], totalOutstanding: 0, generatedAt: null };
+    return { due: false, rows: [], totalOutstandingByCurrency: emptyCurrencyMap(), generatedAt: null };
   }
 
-  const totalOutstanding = withBalance.reduce((sum, c) => sum + c.balance, 0);
+  const totalOutstandingByCurrency = emptyCurrencyMap();
+  withBalance.forEach((customer) => {
+    CURRENCIES.forEach((currency) => {
+      totalOutstandingByCurrency[currency] += Number(customer.balanceByCurrency?.[currency] || 0);
+    });
+  });
+
   return {
     due: true,
     generatedAt: new Date().toISOString(),
-    totalOutstanding,
+    totalOutstandingByCurrency,
     rows: withBalance.map((c) => ({
       id: c.id,
       name: c.name,
       phone: c.phone,
-      balance: c.balance,
+      balanceByCurrency: c.balanceByCurrency,
       daysRemaining: c.daysRemaining,
       overdue: c.overdue,
     })),

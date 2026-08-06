@@ -1,10 +1,16 @@
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { PrimaryButton, ScreenWrap, SecondaryButton } from '../components/ui';
+import { HorizontalMoneyRow, ScreenWrap, SecondaryButton } from '../components/ui';
 import { deleteCustomer, getCustomer, listCustomerSales, listPayments } from '../db/repository';
 import { colors, styles } from '../theme';
-import { formatDate, formatMoney } from '../utils/format';
+import { CURRENCIES, formatDate, formatMoney } from '../utils/format';
+
+function formatLedgerTotals(totals) {
+  return CURRENCIES
+    .map((currency) => formatMoney(totals?.[currency] || 0, currency))
+    .join(' · ');
+}
 
 export default function CustomerDetailScreen() {
   const navigation = useNavigation();
@@ -58,15 +64,22 @@ export default function CustomerDetailScreen() {
           <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>{customer.name}</Text>
           {customer.phone ? <Text style={styles.cardSub}>{customer.phone}</Text> : null}
           {customer.address ? <Text style={styles.cardSub}>{customer.address}</Text> : null}
-          <Text style={{ marginTop: 10, fontSize: 24, fontWeight: '800', color: customer.overdue ? colors.danger : colors.primary }}>
-            {formatMoney(customer.balance)}
-          </Text>
+          <View style={{ marginTop: 10 }}>
+            <HorizontalMoneyRow
+              balanceByCurrency={customer.balanceByCurrency}
+              amountStyle={{
+                fontSize: 24,
+                fontWeight: '800',
+                color: customer.overdue ? colors.danger : colors.primary,
+              }}
+            />
+          </View>
           <Text style={styles.cardSub}>
-            Charged {formatMoney(customer.totalCharged)} · Paid {formatMoney(customer.totalPaid)}
+            Charged {formatLedgerTotals(customer.chargedByCurrency)} · Paid {formatLedgerTotals(customer.paidByCurrency)}
           </Text>
           <Text style={styles.cardSub}>
             Payment deadline: {customer.paymentDeadlineDays} days
-            {customer.balance > 0
+            {customer.hasBalance
               ? customer.overdue
                 ? ` · overdue by ${Math.abs(customer.daysRemaining)} days`
                 : ` · ${customer.daysRemaining} days remaining`
@@ -75,7 +88,6 @@ export default function CustomerDetailScreen() {
         </View>
 
         <View style={{ gap: 10, marginBottom: 16 }}>
-          <PrimaryButton title="Add products taken" onPress={() => navigation.navigate('AddSale', { customerId })} />
           <SecondaryButton title="Record payment / down payment" onPress={() => navigation.navigate('AddPayment', { customerId })} />
           <SecondaryButton title="Edit customer" onPress={() => navigation.navigate('CustomerForm', { customerId })} />
           <Pressable style={styles.btnDanger} onPress={onDelete}>
@@ -87,6 +99,7 @@ export default function CustomerDetailScreen() {
         {sales.length ? sales.map((sale) => (
           <View key={sale.id} style={styles.card}>
             <Text style={styles.cardTitle}>{sale.product_name}</Text>
+            {sale.description ? <Text style={styles.cardSub}>{sale.description}</Text> : null}
             <Text style={styles.cardSub}>
               {sale.quantity} × {formatMoney(sale.unit_price, sale.currency)} = {formatMoney(sale.quantity * sale.unit_price, sale.currency)}
             </Text>
