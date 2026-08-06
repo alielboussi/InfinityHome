@@ -28,6 +28,3 @@
 - Only products enabled at the **session location**  
 - Other locations are never changed  
 
-## SQL
-- Schema: `20260710_stocktake_flow_v3.sql`  
-- Lab seed: `20260710_seed_test_stocktake_lab.sql`

@@ -25,6 +25,7 @@ config.resolver.extraNodeModules = {
   ),
   '@expo/vector-icons': path.resolve(appNodeModules, '@expo/vector-icons'),
   'expo-constants': path.resolve(appNodeModules, 'expo-constants'),
+  'react-native-gesture-handler': path.resolve(appNodeModules, 'react-native-gesture-handler'),
 };
 
 module.exports = config;

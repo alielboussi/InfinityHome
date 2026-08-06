@@ -55,6 +55,7 @@ public/exported/
 
 # Local full DB backups (may contain customer/sales data)
 /backups/
+*.sql
 
 # testing
 /coverage

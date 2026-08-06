@@ -18,6 +18,19 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "production-play": {
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "production-play": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
     }
   }
 }

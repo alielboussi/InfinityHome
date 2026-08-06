@@ -159,35 +159,24 @@ Rules:
 
 ## Database Cleanup & Verification
 
-The app now runs on **Firebase Firestore**. Legacy Postgres SQL cleanup scripts were removed during the Firebase migration.
+The app runs on **Firebase Firestore**. Legacy Postgres SQL cleanup scripts and schema notes were removed during the Firebase migration.
 
-- Schema alignment notes: see `SCHEMA_ALIGNMENT.md`
 - Firestore security rules: `firestore.rules`
+- Storage rules: `storage.rules`
 - Backups: `/api/db-backup` (Firebase Admin export)
 
-Recommended checks before decommissioning legacy infrastructure:
+Recommended checks:
 1. Verify `/api/health` reports `"backend": "firestore"`.
 2. Spot-check sales, layby, inventory, and transfer flows in production.
 3. Confirm product/company images load from `firebasestorage.googleapis.com`.
 
 ## Duplicate Receipt Numbers (Scoped)
 
-To allow duplicate `receipt_number` values only for a specific customer (Fahme), enforce the rule in application logic and/or Firestore data validation. The legacy Postgres partial unique index is no longer used.
-
-What it does:
-- Drops any existing global unique constraint/index on `sales.receipt_number`.
-- Creates a partial unique index that enforces uniqueness for all customers except the UUID
-	`d8e756ae-b8ea-4f90-b99a-70c1120f52b9`.
-- Trims existing `receipt_number` values to avoid whitespace duplicates.
-
-Notes:
-- The frontend does not enforce uniqueness; the database-level partial index protects everyone else.
-- If you later need to change the UUID, edit the SQL and re-run (it is idempotent for the provided names).
+Duplicate `receipt_number` values are enforced in application logic for specific customers (for example Fahme). Firestore data validation and checkout logic handle scoped uniqueness; legacy Postgres partial indexes are no longer used.
 
 ## Code Hygiene
 
-- scripts/scan-unused-files.js can detect unused JS files from src/index.js.
-- npm run scan:unused (preview) / npm run scan:unused:rename (append .delete.js) can help keep the codebase clean.
+Keep the repo focused on the Firebase-backed web portal, Vercel APIs, and mobile apps under `mobile-apps/`.
 
 ## Layby Architecture (Normalized Allocation Batching)
 

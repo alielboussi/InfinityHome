@@ -7,6 +7,8 @@ import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { getFirebaseAuth, signOutFirebase } from './firebase';
 import { verifyMobileLoginAccess } from './loginAccess';
+import { DEFAULT_GOOGLE_WEB_CLIENT_ID } from './defaultFirebaseConfig';
+import { readExpoExtra } from './expoExtra';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,8 +22,14 @@ const REDIRECT_URI = makeRedirectUri({
 });
 
 function getGoogleClientIds() {
+  const extra = readExpoExtra();
+  const webClientId = String(
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+    || extra.googleWebClientId
+    || DEFAULT_GOOGLE_WEB_CLIENT_ID,
+  ).trim();
   return {
-    webClientId: String(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '').trim(),
+    webClientId,
     androidClientId: String(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '').trim(),
     iosClientId: String(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '').trim(),
   };

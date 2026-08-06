@@ -46,7 +46,7 @@ export default function DashboardScreen() {
   };
 
   const onLogout = () => {
-    Alert.alert('Log out', 'Sign out of Customer Ledger Tracking?', [
+    Alert.alert('Log out', 'Sign out of Ledger?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Log out',

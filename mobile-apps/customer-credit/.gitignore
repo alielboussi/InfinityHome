@@ -1,6 +1,9 @@
-node_modules/
+# Ignore local Play Console service account key
+google-play-service-account.json
+
 .expo/
 dist-smoke/
+dist-smoke-v102/
 *.jks
 *.keystore
 *.apk

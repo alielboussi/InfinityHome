@@ -67,7 +67,7 @@ npx expo start
 
 ---
 
-## 4. Customer Ledger Tracking (`customer-credit/`)
+## 4. Ledger (`customer-credit/`)
 
 Standalone layby-style ledger tracker in Firebase. **Not linked to portal customers, products, or sales** — uses its own Firestore collections (`credit_app_*`).
 
@@ -99,6 +99,9 @@ Sign in with a Firebase email/password account on launch. Data is scoped to the 
 - Dashboard with pending balances and overdue warnings
 - Monthly dues report card every 30 days
 - Per-customer deadline: overdue warning if balance remains after deadline (from first sale date)
+
+**Installing on staff phones:** see [`customer-credit/INSTALL.md`](customer-credit/INSTALL.md).  
+For trusted installs without sideload warnings, use **Google Play internal testing** (`npm run build:play` then `npm run submit:play`).
 
 ---
 

@@ -247,7 +247,7 @@ export async function checkout(payload) {
     if (resIns.error) {
       const msg = String(resIns.error?.message || '');
       if (/null value in column\s+"id"\s+of relation\s+"sales"/i.test(msg)) {
-        const hint = 'Checkout failed because public.sales.id does not auto-generate. Apply the SQL patch db/sql/patches/006_sales_id_identity.sql (adds identity/sequence-backed default).';
+        const hint = 'Checkout failed because the sale document id was not generated. Verify Firestore checkout configuration and sales collection rules.';
         return { data: null, error: new Error(`${msg}. ${hint}`) };
       }
       if (isDuplicateReceiptError(resIns.error)) {
@@ -283,7 +283,7 @@ export async function checkout(payload) {
           const rawMsg = String(error?.message || error?.details || '');
           const msg = rawMsg.toLowerCase();
           if (/null value in column "id" of relation "sales_items"/i.test(rawMsg)) {
-            return { data: null, error: new Error(`${rawMsg}. Remediation: apply db/sql/patches/007_sales_items_id_identity.sql to add sequence/identity default for public.sales_items.id.`) };
+            return { data: null, error: new Error(`${rawMsg}. Remediation: verify Firestore sales_items writes and checkout item mapping.`) };
           }
           if (/not\s*found|404|relation .* does not exist|pgrst/i.test(msg)) {
             return { data: null, error: new Error(`Insert into '${salesItemsTable}' failed (404). Collection may be missing or misnamed. Details: ${rawMsg || 'not found'}`) };

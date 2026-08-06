@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -13,6 +14,7 @@ import CustomerDetailScreen from './screens/CustomerDetailScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
 import AddSaleScreen from './screens/AddSaleScreen';
 import AddPaymentScreen from './screens/AddPaymentScreen';
+import AppErrorBoundary from './components/ErrorBoundary';
 import { colors } from './theme';
 
 const Tab = createBottomTabNavigator();
@@ -40,7 +42,8 @@ function MainTabs() {
 
 export default function App() {
   return (
-    <FirebaseAuthGate title="Customer Ledger Tracking" showUserBar={false}>
+    <AppErrorBoundary>
+      <FirebaseAuthGate title="Ledger" showUserBar={false}>
       <NavigationContainer>
         <StatusBar style="light" />
         <Stack.Navigator
@@ -59,5 +62,6 @@ export default function App() {
         </Stack.Navigator>
       </NavigationContainer>
     </FirebaseAuthGate>
+    </AppErrorBoundary>
   );
 }

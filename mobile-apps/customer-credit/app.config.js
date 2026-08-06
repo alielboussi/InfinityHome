@@ -1,0 +1,53 @@
+const firebase = {
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyDH7wLdDQui32tzfdvXA5p1VBKxqLQbqjw',
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'bestrest-portal-system-43108.firebaseapp.com',
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'bestrest-portal-system-43108',
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || 'bestrest-portal-system-43108.firebasestorage.app',
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '876299148810',
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:876299148810:web:ad26d0b2eeb499d39049f3',
+};
+
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+  || '876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com';
+
+/** @type {import('@expo/config').ExpoConfig} */
+module.exports = {
+  expo: {
+    name: 'Ledger',
+    slug: 'customer-ledger-tracking',
+    scheme: 'customer-ledger-tracking',
+    version: '1.0.3',
+    orientation: 'portrait',
+    userInterfaceStyle: 'light',
+    icon: './assets/icon.png',
+    splash: {
+      image: './assets/splash.png',
+      resizeMode: 'contain',
+      backgroundColor: '#1565c0',
+    },
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: 'com.bestrest.customerledger',
+    },
+    android: {
+      package: 'com.bestrest.customerledger',
+      adaptiveIcon: {
+        foregroundImage: './assets/adaptive-icon.png',
+        backgroundColor: '#1565c0',
+      },
+    },
+    plugins: [
+      'expo-asset',
+      'expo-font',
+    ],
+    extra: {
+      firebase,
+      apiBase: (process.env.EXPO_PUBLIC_API_BASE || 'https://infinity-home-pi.vercel.app').replace(/\/+$/, ''),
+      googleWebClientId,
+      eas: {
+        projectId: '5cca5827-6bfa-4a7d-98a4-3a670542a0eb',
+      },
+    },
+    owner: 'alielboussi',
+  },
+};

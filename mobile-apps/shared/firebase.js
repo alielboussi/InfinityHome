@@ -8,15 +8,34 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
+import {
+  DEFAULT_API_BASE,
+  DEFAULT_FIREBASE_CONFIG,
+} from './defaultFirebaseConfig';
+import { readExpoExtra } from './expoExtra';
 
-const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-};
+function pickConfigValue(envValue, extraValue, fallbackValue) {
+  const env = String(envValue || '').trim();
+  if (env) return env;
+  const extra = String(extraValue || '').trim();
+  if (extra) return extra;
+  return String(fallbackValue || '').trim();
+}
+
+function resolveFirebaseConfig() {
+  const extra = readExpoExtra();
+  const fromExtra = extra.firebase || {};
+  return {
+    apiKey: pickConfigValue(process.env.EXPO_PUBLIC_FIREBASE_API_KEY, fromExtra.apiKey, DEFAULT_FIREBASE_CONFIG.apiKey),
+    authDomain: pickConfigValue(process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN, fromExtra.authDomain, DEFAULT_FIREBASE_CONFIG.authDomain),
+    projectId: pickConfigValue(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID, fromExtra.projectId, DEFAULT_FIREBASE_CONFIG.projectId),
+    storageBucket: pickConfigValue(process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET, fromExtra.storageBucket, DEFAULT_FIREBASE_CONFIG.storageBucket),
+    messagingSenderId: pickConfigValue(process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID, fromExtra.messagingSenderId, DEFAULT_FIREBASE_CONFIG.messagingSenderId),
+    appId: pickConfigValue(process.env.EXPO_PUBLIC_FIREBASE_APP_ID, fromExtra.appId, DEFAULT_FIREBASE_CONFIG.appId),
+  };
+}
+
+const firebaseConfig = resolveFirebaseConfig();
 
 let authInstance = null;
 
@@ -83,4 +102,11 @@ export async function signOutFirebase() {
   return signOut(getFirebaseAuth());
 }
 
-export const API_BASE = (process.env.EXPO_PUBLIC_API_BASE || 'https://infinity-home-pi.vercel.app').replace(/\/+$/, '');
+export const API_BASE = (() => {
+  const extra = readExpoExtra();
+  return pickConfigValue(
+    process.env.EXPO_PUBLIC_API_BASE,
+    extra.apiBase,
+    DEFAULT_API_BASE,
+  ).replace(/\/+$/, '');
+})();
