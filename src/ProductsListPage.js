@@ -10,12 +10,12 @@ import { getFactoryStorageSummary, getFactoryStorageItems, createFactoryStorageI
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import { removeProductLocations, syncProductLocations } from './services/productLocations';
 import { applyInventoryBulk } from './utils/inventoryApi';
-import { canDeleteProducts, canManageProductInventory, getCurrentUser } from './accessControl';
+import { canDeleteProducts, canManageCatalog, canManageProductInventory, getCurrentUser } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { exportProductsListExcel } from './utils/productsListExport';
 import { getDuplicateProductNameInfo, normalizeProductNameKey } from './utils/productDuplicateNames';
 import { resolveProductImageUrl } from './utils/productImageUrl';
-import { logUserActivity } from './utils/userActivityLog';
+import { importProductsFromCsv, parseCsvLine } from './utils/productCsvImport';
 import {
   applyComboLocationPricing,
   applyProductLocationPricing,
@@ -29,9 +29,11 @@ import {
   fetchProductLocationPrices,
   saveComboLocationPrice,
   saveProductLocationPrice,
+  seedProductLocationPricesForLocations,
   upsertComboLocationPrices,
   upsertProductLocationPrices,
 } from './services/locationPricing';
+import { logUserActivity } from './utils/userActivityLog';
 
 const toolbarWrapperStyle = Object.freeze({
   width: '100%',
@@ -348,6 +350,7 @@ function ProductsListPage() {
   const canAdjustInventory = !isStockLockedUser && canManageProductInventory(currentUser);
   const canDelete = isStockLockedUser ? true : canDeleteProducts(currentUser);
   const canEditFactoryHolds = !isStockLockedUser && canManageProductInventory(currentUser);
+  const canManageCatalogPage = canManageCatalog(currentUser);
 
   const isUuid = useCallback((value) => {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1132,6 +1135,9 @@ function ProductsListPage() {
   const [bulkImportFile, setBulkImportFile] = useState(null);
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const [bulkImportMessage, setBulkImportMessage] = useState('');
+  const [productImportBusy, setProductImportBusy] = useState(false);
+  const [productImportMessage, setProductImportMessage] = useState('');
+  const productImportInputRef = useRef(null);
   /** 'name_asc' | 'no_locations_first' */
   const [listSortMode, setListSortMode] = useState('name_asc');
   const [showDuplicateNamesOnly, setShowDuplicateNamesOnly] = useState(false);
@@ -2288,32 +2294,6 @@ function ProductsListPage() {
     link.remove();
   };
 
-  const parseCsvLine = (line) => {
-    const out = [];
-    let cur = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i += 1) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          cur += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-        continue;
-      }
-      if (ch === ',' && !inQuotes) {
-        out.push(cur);
-        cur = '';
-        continue;
-      }
-      cur += ch;
-    }
-    out.push(cur);
-    return out;
-  };
-
   const handleImportInventoryCsv = async () => {
     if (!bulkImportFile || bulkImportBusy) return;
     setBulkImportBusy(true);
@@ -2350,6 +2330,53 @@ function ProductsListPage() {
       setBulkImportMessage(err?.message || 'Import failed.');
     } finally {
       setBulkImportBusy(false);
+    }
+  };
+
+  const handleProductImportFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || productImportBusy || !canManageCatalogPage) return;
+
+    setProductImportBusy(true);
+    setProductImportMessage('');
+    try {
+      const csvText = await file.text();
+      const result = await importProductsFromCsv({
+        csvText,
+        db,
+        categories,
+        units,
+        locationIds: (locations || []).map((loc) => loc.id),
+        syncProductLocations,
+        seedProductLocationPricesForLocations,
+      });
+
+      clearProductsListCaches();
+      await fetchAll();
+
+      const errorNote = result.errors.length
+        ? ` ${result.errors.length} row(s) failed.`
+        : '';
+      setProductImportMessage(
+        `Imported ${result.imported} product(s) across all ${locations.length} location(s).${errorNote}`,
+      );
+
+      if (result.errors.length) {
+        console.warn('[products-import]', result.errors);
+      }
+
+      logUserActivity({
+        actionType: 'product_create',
+        actionLabel: 'Products Imported',
+        details: `${result.imported} product(s) imported from CSV across all locations`,
+        reference: file.name,
+        entityType: 'product',
+      });
+    } catch (err) {
+      setProductImportMessage(err?.message || 'Product import failed.');
+    } finally {
+      setProductImportBusy(false);
     }
   };
 
@@ -2525,7 +2552,49 @@ function ProductsListPage() {
           >
             <FaFileExcel aria-hidden="true" />
           </button>
+          {canManageCatalogPage && (
+            <>
+              <input
+                ref={productImportInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleProductImportFileChange}
+                style={{ display: 'none' }}
+                aria-hidden="true"
+              />
+              <button
+                type="button"
+                onClick={() => productImportInputRef.current?.click()}
+                disabled={productImportBusy || locations.length === 0}
+                className="products-toolbar-btn"
+                title="Import products from CSV. All locations are applied automatically. SKU, price, and category columns are optional."
+              >
+                {productImportBusy ? 'Importing…' : 'Import CSV'}
+              </button>
+              <a
+                href="/import_template.csv"
+                download="import_template.csv"
+                className="products-toolbar-btn"
+                style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                title="Download CSV import template"
+              >
+                Template
+              </a>
+            </>
+          )}
         </div>
+        {(productImportMessage || bulkImportMessage) && (
+          <div className="products-list-toolbar-row">
+            <div className="products-toolbar-control-wrap" style={{ flex: '1 1 100%' }}>
+              {productImportMessage && (
+                <div style={{ color: '#9ad7ff', fontSize: '0.92rem' }}>{productImportMessage}</div>
+              )}
+              {bulkImportMessage && (
+                <div style={{ color: '#9ad7ff', fontSize: '0.92rem' }}>{bulkImportMessage}</div>
+              )}
+            </div>
+          </div>
+        )}
         <div className="products-list-toolbar-row products-list-toolbar-row--search">
           <div className="products-toolbar-control-wrap products-toolbar-control-wrap--search">
             <input

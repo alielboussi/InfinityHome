@@ -36,6 +36,12 @@ function levenshtein(a, b) {
 // Helper to normalize category names for comparison
 const normalize = str => str.toLowerCase().replace(/\s+/g, '');
 
+function escapeCsv(value) {
+  const raw = value == null ? '' : String(value);
+  if (/[",\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
+  return raw;
+}
+
 // Removed user permissions logic
 
 const initialForm = { name: '' };
@@ -172,6 +178,22 @@ const Categories = () => {
     setEditingId(null);
   };
 
+  const handleExportCategoriesCsv = () => {
+    const header = ['uuid', 'name'];
+    const lines = categories.map((category) => [
+      category.id,
+      category.name,
+    ].map(escapeCsv).join(','));
+    const csv = [header.map(escapeCsv).join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Categories_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   // Filter categories by search (show all if search is empty)
   const filteredCategories = search.trim() === ''
     ? categories
@@ -191,6 +213,15 @@ const Categories = () => {
       <div className="page-header-row">
         <BackToDashboard />
         <h2 className="categories-title">Categories</h2>
+        <button
+          type="button"
+          className="save-btn"
+          onClick={handleExportCategoriesCsv}
+          disabled={loading || categories.length === 0}
+          style={{ marginLeft: 'auto' }}
+        >
+          Export CSV
+        </button>
       </div>
       {canManageCatalogPage ? (
       <form className="category-form" onSubmit={handleSubmit}>
