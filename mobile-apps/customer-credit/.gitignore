@@ -1,6 +1,7 @@
 # Ignore local Play Console service account key
 google-play-service-account.json
 
+node_modules/
 .expo/
 dist-smoke/
 dist-smoke-v102/
