@@ -79,7 +79,9 @@ npm install
 npx expo start
 ```
 
-Sign in with a Firebase email/password account on launch. Data is scoped to the signed-in user (`owner_uid`).
+**Expo Go:** EAS Update is **disabled** for Ledger. Open it only via **Scan QR code** after `npx expo start` — not from the **Projects** card. If `customer-ledger-tracking` still appears under Projects, sign out of your Expo account in Expo Go (profile icon → Sign out); QR scanning works without being signed in. For staff phones, use the **standalone APK**, not Expo Go.
+
+Sign in with a Firebase email/password account on launch. Customers, products, sales, and payments are **shared across all signed-in users** (company-wide ledger).
 
 **Google sign-in:** set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in `.env` to the Firebase **Web client** OAuth ID (Firebase Console → Authentication → Sign-in method → Google → Web SDK configuration). Enable Google sign-in in Firebase Authentication.
 
@@ -90,7 +92,7 @@ Sign in with a Firebase email/password account on launch. Data is scoped to the 
 - `credit_app_customers/{id}/sales` — products taken
 - `credit_app_customers/{id}/payments` — payments / down payments
 - `credit_app_products` — local product catalog for this app only
-- `credit_app_meta/{userId}` — monthly report timestamp
+- `credit_app_meta/shared` — monthly report timestamp (shared)
 
 **Features:**
 - Add customers (name, phone, address, payment deadline in days)

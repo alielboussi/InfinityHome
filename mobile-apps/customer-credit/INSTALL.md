@@ -72,4 +72,17 @@ Some brands add an extra “security scan” step. Tap **Install anyway** or add
 | “App not installed” | Uninstall old version first; ensure enough storage |
 | Play Protect blocks install | Tap **Install anyway** or use Play internal testing |
 | App opens then closes | Install the latest v1.0.3+ APK (Firebase config fix) |
+| Google sign-in blocked (Error 400) | Install **v1.0.6+**; register the EAS keystore **SHA-1** in Firebase (see below) |
 | Name cut off on home screen | Install **Ledger** v1.0.3+ (short name) |
+
+### Google sign-in (Ledger v1.0.6+)
+
+Google sign-in is **not** related to APK signing. It needs the release keystore **SHA-1** registered in Firebase for package `com.bestrest.customerledger`.
+
+1. Open [Expo credentials](https://expo.dev/accounts/alielboussi/projects/customer-ledger-tracking/credentials) → **Android** → **Keystore** → copy **SHA-1 Certificate Fingerprint**.
+2. Firebase Console → **Project settings** → **Your apps** → **Ledger** (`com.bestrest.customerledger`) → **Add fingerprint** → paste SHA-1.
+3. Or from repo root (paste SHA-1 from step 1):
+   ```bash
+   LEDGER_ANDROID_SHA1=AA:BB:... node scripts/registerLedgerAndroidGoogleSignIn.mjs
+   ```
+4. Reinstall the latest APK. Email/password login works without this step.

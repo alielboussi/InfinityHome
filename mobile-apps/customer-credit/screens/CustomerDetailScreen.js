@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { HorizontalMoneyRow, ScreenWrap, SecondaryButton } from '../components/ui';
 import { deleteCustomer, getCustomer, listCustomerSales, listPayments } from '../db/repository';
 import { colors, styles } from '../theme';
-import { CURRENCIES, formatDate, formatMoney } from '../utils/format';
+import { CURRENCIES, formatDate, formatMoney, formatSaleTitle } from '../utils/format';
 
 function formatLedgerTotals(totals) {
   return CURRENCIES
@@ -98,8 +98,8 @@ export default function CustomerDetailScreen() {
         <Text style={styles.sectionTitle}>Products taken</Text>
         {sales.length ? sales.map((sale) => (
           <View key={sale.id} style={styles.card}>
-            <Text style={styles.cardTitle}>{sale.product_name}</Text>
-            {sale.description ? <Text style={styles.cardSub}>{sale.description}</Text> : null}
+            <Text style={styles.cardTitle}>{formatSaleTitle(sale)}</Text>
+            {sale.product_name && sale.description ? <Text style={styles.cardSub}>{sale.description}</Text> : null}
             <Text style={styles.cardSub}>
               {sale.quantity} × {formatMoney(sale.unit_price, sale.currency)} = {formatMoney(sale.quantity * sale.unit_price, sale.currency)}
             </Text>

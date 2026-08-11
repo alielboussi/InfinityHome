@@ -155,6 +155,7 @@ export default async function handler(req, res) {
         return;
       }
 
+      const nowIso = new Date().toISOString();
       const row = {
         name,
         phone: body?.phone || null,
@@ -163,6 +164,8 @@ export default async function handler(req, res) {
         city: body?.city || null,
         country: body?.country || null,
         tpin: body?.tpin || null,
+        created_at: nowIso,
+        updated_at: nowIso,
       };
 
       const { data, error } = await db
@@ -186,18 +189,71 @@ export default async function handler(req, res) {
         return;
       }
 
+      const nowIso = new Date().toISOString();
+      const unitRaw = body?.unit_id;
+      const unit_id = unitRaw != null && unitRaw !== ''
+        ? (Number.isFinite(Number(unitRaw)) ? Number(unitRaw) : unitRaw)
+        : null;
       const payload = {
         name,
         price: toNumberOr(0, body?.price),
-        unit_id: body?.unit_id != null && body?.unit_id !== '' ? Number(body.unit_id) : null,
+        unit_id,
         description: body?.description || null,
-        active: true,
+        active: body?.active !== false,
+        created_at: nowIso,
+        updated_at: nowIso,
       };
 
       const { data, error } = await db
         .from('quotation_products')
         .insert([payload])
-        .select('id, name, price, unit_id, description, active')
+        .select('id, name, price, unit_id, description, active, created_at, updated_at')
+        .single();
+      if (error) {
+        res.status(500).json({ ok: false, error: error.message });
+        return;
+      }
+
+      res.status(200).json({ ok: true, row: data });
+      return;
+    }
+
+    if (action === 'update-product') {
+      const id = String(body?.id || '').trim();
+      if (!id) {
+        res.status(400).json({ ok: false, error: 'Missing product id' });
+        return;
+      }
+
+      const patch = { updated_at: new Date().toISOString() };
+      if (body?.name != null) {
+        const name = String(body.name || '').trim();
+        if (!name) {
+          res.status(400).json({ ok: false, error: 'Product name cannot be empty' });
+          return;
+        }
+        patch.name = name;
+      }
+      if (body?.price != null) patch.price = toNumberOr(0, body.price);
+      if (body?.description != null) patch.description = body.description || null;
+      if (body?.active != null) patch.active = Boolean(body.active);
+      if (body?.unit_id !== undefined) {
+        const unitRaw = body.unit_id;
+        patch.unit_id = unitRaw != null && unitRaw !== ''
+          ? (Number.isFinite(Number(unitRaw)) ? Number(unitRaw) : unitRaw)
+          : null;
+      }
+
+      if (Object.keys(patch).length === 1) {
+        res.status(400).json({ ok: false, error: 'No product fields to update' });
+        return;
+      }
+
+      const { data, error } = await db
+        .from('quotation_products')
+        .update(patch)
+        .eq('id', id)
+        .select('id, name, price, unit_id, description, active, created_at, updated_at')
         .single();
       if (error) {
         res.status(500).json({ ok: false, error: error.message });
@@ -215,9 +271,12 @@ export default async function handler(req, res) {
         return;
       }
 
+      const nowIso = new Date().toISOString();
       const payload = {
         name,
         abbreviation: body?.abbreviation || null,
+        created_at: nowIso,
+        updated_at: nowIso,
       };
 
       const { data, error } = await db

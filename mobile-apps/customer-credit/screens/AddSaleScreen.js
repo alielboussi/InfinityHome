@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { CurrencyToggle, PrimaryButton, ScreenWrap } from '../components/ui';
-import { addCustomerSale, listCustomers, listProducts, saveProduct } from '../db/repository';
+import { addCustomerSale, listCustomers } from '../db/repository';
 import { colors, styles } from '../theme';
-import { DEFAULT_CURRENCY, formatMoney, normalizeCurrency, parseMoney } from '../utils/format';
+import { DEFAULT_CURRENCY, parseMoney } from '../utils/format';
 import { todayIsoDate } from '../utils/ids';
 
 export default function AddSaleScreen() {
@@ -13,7 +13,6 @@ export default function AddSaleScreen() {
   const initialCustomerId = route.params?.customerId || '';
   const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState(initialCustomerId);
-  const [products, setProducts] = useState([]);
   const [productName, setProductName] = useState('');
   const [description, setDescription] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
@@ -21,32 +20,17 @@ export default function AddSaleScreen() {
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY);
   const [saleDate, setSaleDate] = useState(todayIsoDate());
   const [notes, setNotes] = useState('');
-  const [selectedProductId, setSelectedProductId] = useState(null);
-  const [saveToCatalog, setSaveToCatalog] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [customerRows, productRows] = await Promise.all([
-        listCustomers(),
-        listProducts(),
-      ]);
+      const customerRows = await listCustomers();
       setCustomers(customerRows);
-      setProducts(productRows);
       if (!customerId && customerRows.length === 1) {
         setCustomerId(customerRows[0].id);
       }
     })();
   }, []);
-
-  const pickProduct = (product) => {
-    setSelectedProductId(product.id);
-    setProductName(product.name);
-    setDescription(product.description || '');
-    setUnitPrice(String(product.price ?? ''));
-    setCurrency(normalizeCurrency(product.currency));
-    setSaveToCatalog(false);
-  };
 
   const onSave = async () => {
     if (!customerId) {
@@ -56,20 +40,8 @@ export default function AddSaleScreen() {
 
     setSaving(true);
     try {
-      let productId = selectedProductId;
-      if (saveToCatalog && !productId) {
-        const saved = await saveProduct({
-          name: productName,
-          description,
-          price: parseMoney(unitPrice),
-          currency,
-        });
-        productId = saved.id;
-      }
-
       await addCustomerSale({
         customer_id: customerId,
-        product_id: productId,
         product_name: productName,
         description,
         unit_price: parseMoney(unitPrice),
@@ -114,31 +86,21 @@ export default function AddSaleScreen() {
           </Text>
         ) : null}
 
-        <Text style={styles.sectionTitle}>Pick from catalog (optional)</Text>
-        {products.map((product) => (
-          <Pressable
-            key={product.id}
-            style={[
-              styles.card,
-              selectedProductId === product.id && { borderColor: colors.primary, backgroundColor: colors.primarySoft },
-            ]}
-            onPress={() => pickProduct(product)}
-          >
-            <Text style={styles.cardTitle}>{product.name}</Text>
-            {product.description ? <Text style={styles.cardSub} numberOfLines={2}>{product.description}</Text> : null}
-            <Text style={styles.cardSub}>{formatMoney(product.price, product.currency)}</Text>
-          </Pressable>
-        ))}
-
-        <Text style={styles.label}>Product name *</Text>
-        <TextInput style={styles.input} value={productName} onChangeText={setProductName} placeholder="Product name" />
+        <Text style={styles.sectionTitle}>Sale details</Text>
+        <Text style={styles.label}>Product name (optional)</Text>
+        <TextInput
+          style={styles.input}
+          value={productName}
+          onChangeText={setProductName}
+          placeholder="Leave blank if not applicable"
+        />
 
         <Text style={styles.label}>Description</Text>
         <TextInput
           style={styles.textArea}
           value={description}
           onChangeText={setDescription}
-          placeholder="Product description (like quotation)"
+          placeholder="What was sold or taken (optional)"
           multiline
           textAlignVertical="top"
         />
@@ -153,16 +115,6 @@ export default function AddSaleScreen() {
         <TextInput style={styles.input} value={saleDate} onChangeText={setSaleDate} />
         <Text style={styles.label}>Notes</Text>
         <TextInput style={styles.input} value={notes} onChangeText={setNotes} placeholder="Optional" />
-
-        {!selectedProductId ? (
-          <View style={[styles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={styles.cardTitle}>Save to product catalog</Text>
-              <Text style={styles.cardSub}>Creates a reusable product for future sales.</Text>
-            </View>
-            <Switch value={saveToCatalog} onValueChange={setSaveToCatalog} />
-          </View>
-        ) : null}
 
         <PrimaryButton title={saving ? 'Saving…' : 'Record sale'} onPress={onSave} disabled={saving} />
       </ScrollView>

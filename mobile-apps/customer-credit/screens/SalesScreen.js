@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { PrimaryButton, ScreenWrap } from '../components/ui';
 import { listAllSales } from '../db/repository';
 import { colors, styles } from '../theme';
-import { formatDate, formatMoney } from '../utils/format';
+import { formatDate, formatMoney, formatSaleTitle } from '../utils/format';
 
 export default function SalesScreen() {
   const navigation = useNavigation();
@@ -30,7 +30,7 @@ export default function SalesScreen() {
         <PrimaryButton title="New sale" onPress={() => navigation.navigate('AddSale')} />
         <TextInput
           style={styles.input}
-          placeholder="Search customer or product…"
+          placeholder="Search customer, product, or description…"
           value={search}
           onChangeText={setSearch}
         />
@@ -46,9 +46,14 @@ export default function SalesScreen() {
             >
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{item.product_name}</Text>
+                  <Text style={styles.cardTitle}>{formatSaleTitle(item)}</Text>
                   <Text style={styles.cardSub}>{item.customer_name}</Text>
-                  {item.description ? <Text style={styles.cardSub} numberOfLines={2}>{item.description}</Text> : null}
+                  {item.product_name && item.description ? (
+                    <Text style={[styles.cardSub, { marginTop: 4 }]} numberOfLines={3}>{item.description}</Text>
+                  ) : null}
+                  {item.notes ? (
+                    <Text style={[styles.cardSub, { fontStyle: 'italic' }]} numberOfLines={2}>Note: {item.notes}</Text>
+                  ) : null}
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={{ fontWeight: '800', color: colors.primary }}>

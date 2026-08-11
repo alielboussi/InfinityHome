@@ -65,3 +65,13 @@ export function hasBalance(balance) {
 export function customerHasBalance(balanceByCurrency) {
   return CURRENCIES.some((currency) => hasBalance(balanceByCurrency?.[currency]));
 }
+
+export function formatSaleTitle(sale) {
+  const productName = String(sale?.product_name || '').trim();
+  if (productName) return productName;
+  const description = String(sale?.description || '').trim();
+  if (description) return description;
+  const notes = String(sale?.notes || '').trim();
+  if (notes) return notes;
+  return 'Sale';
+}

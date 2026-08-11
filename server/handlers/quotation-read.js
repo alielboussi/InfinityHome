@@ -15,6 +15,22 @@ function safeLimit(raw, fallback = 200, max = 500) {
   return Math.min(Math.floor(n), max);
 }
 
+function sortQuoteProducts(rows = []) {
+  return [...rows].sort((a, b) => {
+    const createdCmp = String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    if (createdCmp !== 0) return createdCmp;
+    return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+  });
+}
+
+function filterQuoteProducts(rows = [], query = '') {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((row) =>
+    String(row.name || '').toLowerCase().includes(q)
+    || String(row.description || '').toLowerCase().includes(q));
+}
+
 async function attachCustomerNames(db, quotes) {
   const rows = Array.isArray(quotes) ? quotes : [];
   const ids = Array.from(new Set(rows.map((q) => q?.customer_id).filter(Boolean).map((v) => String(v))));
@@ -103,18 +119,13 @@ export default async function handler(req, res) {
     if (action === 'list-products') {
       const limit = safeLimit(req.query?.limit, 200);
       const q = String(req.query?.q || '').trim();
-      let query = db
+      const { data, error } = await db
         .from('quotation_products')
-        .select('id, name, price, unit_id, description, active, image_url, qr_code_url')
-        .order('created_at', { ascending: false })
-        .limit(limit);
-      if (q) {
-        const like = `%${q}%`;
-        query = query.or(`name.ilike.${like},description.ilike.${like}`);
-      }
-      const { data, error } = await query;
+        .select('id, name, price, unit_id, description, active, image_url, qr_code_url, created_at, updated_at')
+        .limit(Math.min(limit * 3, 1500));
       if (error) throw error;
-      res.status(200).json({ ok: true, rows: data || [] });
+      const rows = filterQuoteProducts(sortQuoteProducts(data || []), q).slice(0, limit);
+      res.status(200).json({ ok: true, rows });
       return;
     }
 

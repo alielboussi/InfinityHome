@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "876299148810",
+    "project_id": "bestrest-portal-system-43108",
+    "storage_bucket": "bestrest-portal-system-43108.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:876299148810:android:a84ed178b9dcc4c59049f3",
+        "android_client_info": {
+          "package_name": "com.bestrest.customerledger"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABZmogUJBZoVpygrweBqyv3fcQK6rQut0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

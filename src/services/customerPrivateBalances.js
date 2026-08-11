@@ -3,8 +3,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  query,
-  where,
 } from 'firebase/firestore';
 import { firestoreDb, firebaseAuth } from '../firebase';
 
@@ -13,15 +11,17 @@ const COLLECTIONS = {
   meta: 'credit_app_meta',
 };
 
+const SHARED_META_ID = 'shared';
+
 const CURRENCIES = ['K', '$'];
 const DEFAULT_PAYMENT_DEADLINE_DAYS = 45;
 const MONTHLY_REPORT_DAYS = 30;
 const BALANCE_EPSILON = 0.01;
 
-function requireOwnerUid() {
-  const uid = firebaseAuth.currentUser?.uid;
-  if (!uid) throw new Error('You must be signed in with Firebase.');
-  return uid;
+function requireAuth() {
+  if (!firebaseAuth.currentUser?.uid) {
+    throw new Error('You must be signed in with Firebase.');
+  }
 }
 
 function normalizeCurrency(value) {
@@ -134,10 +134,8 @@ export function formatBalances(balanceByCurrency) {
 }
 
 export async function fetchCustomerPrivateBalancesDashboard() {
-  const ownerUid = requireOwnerUid();
-  const snap = await getDocs(
-    query(collection(firestoreDb, COLLECTIONS.customers), where('owner_uid', '==', ownerUid)),
-  );
+  requireAuth();
+  const snap = await getDocs(collection(firestoreDb, COLLECTIONS.customers));
   const customers = snap.docs.map((row) => ({ id: row.id, ...row.data() }));
   customers.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
 
@@ -155,7 +153,7 @@ export async function fetchCustomerPrivateBalancesDashboard() {
     });
   });
 
-  const metaSnap = await getDoc(doc(firestoreDb, COLLECTIONS.meta, ownerUid));
+  const metaSnap = await getDoc(doc(firestoreDb, COLLECTIONS.meta, SHARED_META_ID));
   const meta = metaSnap.exists() ? metaSnap.data() : {};
   const lastShown = meta.last_monthly_report_shown_at || '';
   const now = Date.now();

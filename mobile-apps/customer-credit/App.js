@@ -7,11 +7,9 @@ import FirebaseAuthGate from '../shared/AuthGate';
 import { getTabBarIcon } from './components/TabBarIcon';
 import DashboardScreen from './screens/DashboardScreen';
 import CustomersScreen from './screens/CustomersScreen';
-import ProductsScreen from './screens/ProductsScreen';
 import SalesScreen from './screens/SalesScreen';
 import CustomerFormScreen from './screens/CustomerFormScreen';
 import CustomerDetailScreen from './screens/CustomerDetailScreen';
-import ProductFormScreen from './screens/ProductFormScreen';
 import AddSaleScreen from './screens/AddSaleScreen';
 import AddPaymentScreen from './screens/AddPaymentScreen';
 import AppErrorBoundary from './components/ErrorBoundary';
@@ -34,7 +32,6 @@ function MainTabs() {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Dashboard' }} />
       <Tab.Screen name="Customers" component={CustomersScreen} options={{ title: 'Customers' }} />
-      <Tab.Screen name="Products" component={ProductsScreen} options={{ title: 'Products' }} />
       <Tab.Screen name="Sales" component={SalesScreen} options={{ title: 'Sales' }} />
     </Tab.Navigator>
   );
@@ -56,7 +53,6 @@ export default function App() {
           <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
           <Stack.Screen name="CustomerForm" component={CustomerFormScreen} options={{ title: 'Customer' }} />
           <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} options={{ title: 'Customer' }} />
-          <Stack.Screen name="ProductForm" component={ProductFormScreen} options={{ title: 'Product' }} />
           <Stack.Screen name="AddSale" component={AddSaleScreen} options={{ title: 'New sale' }} />
           <Stack.Screen name="AddPayment" component={AddPaymentScreen} options={{ title: 'Record payment' }} />
         </Stack.Navigator>

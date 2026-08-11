@@ -1,8 +1,8 @@
 import { newUuid } from './uuid.js';
 import {
-  allocateNumericId,
   ensureSequenceInitialized,
   getFirestore,
+  reserveNumericIdsFromSnap,
 } from './firestoreDb.js';
 import {
   assertReceiptNumberAvailable,
@@ -80,7 +80,27 @@ export async function finalizeFirestoreCheckout(payload = {}) {
   let paymentsInserted = 0;
 
   await db.runTransaction(async (tx) => {
-    saleId = await allocateNumericId(db, 'sales', tx);
+    const salesSeqRef = db.collection('_sequences').doc('sales');
+    const itemsSeqRef = db.collection('_sequences').doc('sales_items');
+    const [salesSeqSnap, itemsSeqSnap] = await Promise.all([
+      tx.get(salesSeqRef),
+      items.length > 0 ? tx.get(itemsSeqRef) : Promise.resolve(null),
+    ]);
+
+    const { ids: [allocatedSaleId], nextValue: salesSeqNext } = reserveNumericIdsFromSnap(
+      salesSeqSnap,
+      'sales',
+      1,
+    );
+    saleId = allocatedSaleId;
+
+    let itemIds = [];
+    let itemsSeqNext = null;
+    if (items.length > 0) {
+      const reservedItems = reserveNumericIdsFromSnap(itemsSeqSnap, 'sales_items', items.length);
+      itemIds = reservedItems.ids;
+      itemsSeqNext = reservedItems.nextValue;
+    }
 
     const salePayload = {
       ...sale,
@@ -93,12 +113,17 @@ export async function finalizeFirestoreCheckout(payload = {}) {
       updated_at: sale.updated_at || nowIso,
     };
     const saleRef = db.collection('sales').doc(String(saleId));
-    tx.set(saleRef, salePayload);
     saleRow = salePayload;
 
+    tx.set(salesSeqRef, { value: salesSeqNext }, { merge: true });
+    tx.set(saleRef, salePayload);
+
     const saleCurrency = salePayload.currency || sale.currency || null;
-    for (const item of items) {
-      const itemId = await allocateNumericId(db, 'sales_items', tx);
+    if (items.length > 0) {
+      tx.set(itemsSeqRef, { value: itemsSeqNext }, { merge: true });
+    }
+    items.forEach((item, index) => {
+      const itemId = itemIds[index];
       const itemRow = {
         id: itemId,
         sale_id: saleId,
@@ -111,7 +136,7 @@ export async function finalizeFirestoreCheckout(payload = {}) {
       };
       tx.set(db.collection('sales_items').doc(String(itemId)), itemRow);
       itemsInserted += 1;
-    }
+    });
 
     for (const payment of payments) {
       const paymentId = newUuid();

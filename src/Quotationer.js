@@ -6,7 +6,7 @@ import { fromPublic } from './dbSchema';
 import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import generateQuotePdf from './quotespdf';
 import { FaTrashAlt } from 'react-icons/fa';
-import { cacheGet, cacheSet } from './utils/staleCache';
+import { cacheGet, cacheSet, cacheClear } from './utils/staleCache';
 import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationConverted, isQuotationerOnlyUser, getUserDisplayName } from './accessControl';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
@@ -195,19 +195,31 @@ async function fallbackListQuotes(limit = 200) {
 }
 
 async function fallbackListProducts(query = '', limit = 200) {
-  const s = String(query || '').trim();
-  let req = db
+  const s = String(query || '').trim().toLowerCase();
+  const { data, error } = await db
     .from('quotation_products')
-    .select('id, name, price, unit_id, description, active, image_url, qr_code_url')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (s) {
-    const like = `%${s}%`;
-    req = req.or(`name.ilike.${like},description.ilike.${like}`);
-  }
-  const { data, error } = await req;
+    .select('id, name, price, unit_id, description, active, image_url, qr_code_url, created_at, updated_at')
+    .limit(Math.min(limit * 3, 1500));
   if (error) throw error;
-  return data || [];
+  let rows = [...(data || [])].sort((a, b) => {
+    const createdCmp = String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    if (createdCmp !== 0) return createdCmp;
+    return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+  });
+  if (s) {
+    rows = rows.filter((row) =>
+      String(row.name || '').toLowerCase().includes(s)
+      || String(row.description || '').toLowerCase().includes(s));
+  }
+  return rows.slice(0, limit);
+}
+
+function isActiveQuoteProduct(product) {
+  return product?.active !== false;
+}
+
+function invalidateQuoteProductCatalogCache() {
+  try { cacheClear(QUOTE_PRODUCT_CATALOG_CACHE_KEY); } catch {}
 }
 
 async function fallbackListUnits() {
@@ -417,7 +429,13 @@ export default function Quotationer() {
 
       {view === 'home' && (
         isQuotationerOnly ? (
-          <QuotationerLaybyDashboard displayName={getUserDisplayName(localUser)} />
+          <QuotationerLaybyDashboard
+            displayName={getUserDisplayName(localUser)}
+            onNewQuote={() => handleOpenQuote('')}
+            onList={() => setViewAndUrl('list')}
+            onCustomers={() => setViewAndUrl('customers')}
+            onProducts={() => setViewAndUrl('products')}
+          />
         ) : (
           <QuotationerHome
             onNewQuote={() => handleOpenQuote('')}
@@ -458,7 +476,7 @@ export default function Quotationer() {
   );
 }
 
-function QuotationerLaybyDashboard({ displayName }) {
+function QuotationerLaybyDashboard({ displayName, onNewQuote, onList, onCustomers, onProducts }) {
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -475,7 +493,7 @@ function QuotationerLaybyDashboard({ displayName }) {
             <h1>Dashboard</h1>
             <button type="button" className="logout-btn dashboard-hero-logout" onClick={handleLogout}>Logout</button>
           </div>
-          <p>Layby overview for quotation operations.</p>
+          <p>Layby overview and quotation tools.</p>
           <div className="dashboard-meta">
             <div className="meta-card">
               <span className="meta-label">Signed in</span>
@@ -488,6 +506,12 @@ function QuotationerLaybyDashboard({ displayName }) {
           </div>
         </div>
       </section>
+      <QuotationerHome
+        onNewQuote={onNewQuote}
+        onList={onList}
+        onCustomers={onCustomers}
+        onProducts={onProducts}
+      />
       <LaybyDashboardStats active />
     </>
   );
@@ -775,7 +799,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
         const cachedUnits = cacheGet(QUOTE_UNIT_CATALOG_CACHE_KEY);
         if (!cancelled) {
           if (Array.isArray(cachedCustomers)) setQuoteCustomers(cachedCustomers);
-          if (Array.isArray(cachedProducts)) setQuoteProducts(cachedProducts);
+          if (Array.isArray(cachedProducts)) setQuoteProducts(cachedProducts.filter(isActiveQuoteProduct));
           if (Array.isArray(cachedUnits)) setUnits(cachedUnits);
         }
       } catch {}
@@ -797,7 +821,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       }
       if (!cancelled) {
         const nextCustomers = (qcs || []).map(c => ({ ...c, name: titleCaseWords(c.name) }));
-        const nextProducts = qp || [];
+        const nextProducts = (qp || []).filter(isActiveQuoteProduct);
         const nextUnits = qu || [];
         setQuoteCustomers(nextCustomers);
         setQuoteProducts(nextProducts);
@@ -1241,6 +1265,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
             {addSearch.trim() && (
               <div className="quotes-create-product-results">
                 {(quoteProducts||[])
+                  .filter(isActiveQuoteProduct)
                   .filter(p => {
                     const s = addSearch.trim().toLowerCase();
                     return (p.name||'').toLowerCase().includes(s) || (p.description||'').toLowerCase().includes(s);
@@ -1258,6 +1283,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                     </div>
                   ))}
                 {!((quoteProducts||[]).some(p => {
+                  if (!isActiveQuoteProduct(p)) return false;
                   const s = addSearch.trim().toLowerCase();
                   return s && ((p.name||'').toLowerCase().includes(s) || (p.description||'').toLowerCase().includes(s));
                 })) && (
@@ -1717,6 +1743,7 @@ function QuoteProductsView({ onBackHome }) {
   const [units, setUnits] = React.useState([]);
   const [products, setProducts] = React.useState([]);
   const [form, setForm] = React.useState({ name: '', description: '', price: '', currency: 'K', unit_id: '' });
+  const [editingId, setEditingId] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [tableSearch, setTableSearch] = React.useState('');
   const [unitName, setUnitName] = React.useState('');
@@ -1826,23 +1853,50 @@ function QuoteProductsView({ onBackHome }) {
     if (e && e.preventDefault) e.preventDefault();
     if (!form.name) return;
     try {
-      await fetchQuotationWrite('create-product', {
+      const payload = {
         name: form.name,
         price: Number(form.price || 0),
-        unit_id: form.unit_id ? Number(form.unit_id) : null,
+        unit_id: form.unit_id ? form.unit_id : null,
         description: form.description || null,
-      });
+      };
+      if (editingId) {
+        await fetchQuotationWrite('update-product', { id: editingId, ...payload });
+      } else {
+        await fetchQuotationWrite('create-product', payload);
+      }
+      invalidateQuoteProductCatalogCache();
       setForm({ name: '', description: '', price: '', currency: 'K', unit_id: '' });
+      setEditingId('');
       await fetchProducts(tableSearch);
-    } catch (e) {
-      alert('Save failed: ' + (e.message || e));
+    } catch (e2) {
+      alert((editingId ? 'Update' : 'Save') + ' failed: ' + (e2.message || e2));
     }
   };
 
+  const startEdit = (product) => {
+    setEditingId(product.id);
+    setForm({
+      name: product.name || '',
+      description: product.description || '',
+      price: product.price == null ? '' : String(product.price),
+      currency: 'K',
+      unit_id: product.unit_id == null ? '' : String(product.unit_id),
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId('');
+    setForm({ name: '', description: '', price: '', currency: 'K', unit_id: '' });
+  };
+
   const toggleActive = async (id, active) => {
-    await db.from('quotation_products').update({ active: !active }).eq('id', id);
-    const { data: p } = await db.from('quotation_products').select('id, name, price, unit_id, description, active').order('created_at', { ascending: false }).limit(200);
-    setProducts(p || []);
+    try {
+      await fetchQuotationWrite('update-product', { id, active: !active });
+      invalidateQuoteProductCatalogCache();
+      await fetchProducts(tableSearch);
+    } catch (e2) {
+      alert('Update failed: ' + (e2.message || e2));
+    }
   };
 
   const deleteProduct = async (id) => {
@@ -1850,6 +1904,7 @@ function QuoteProductsView({ onBackHome }) {
     try {
       const { error } = await db.from('quotation_products').delete().eq('id', id);
       if (error) throw error;
+      invalidateQuoteProductCatalogCache();
       await fetchProducts(tableSearch);
     } catch (e) {
       alert('Delete failed. If this product is referenced by existing quotation items, deactivate it instead.\n\nDetails: ' + (e.message || e));
@@ -1960,7 +2015,14 @@ function QuoteProductsView({ onBackHome }) {
             </option>
           ))}
         </select>
-        <button className="action-button quotes-submit-5cm" style={compactButton} type="submit">Add</button>
+        <button className="action-button quotes-submit-5cm" style={compactButton} type="submit">
+          {editingId ? 'Save Changes' : 'Add'}
+        </button>
+        {editingId ? (
+          <button type="button" className="danger-button quotes-submit-5cm" style={compactDanger} onClick={cancelEdit}>
+            Cancel Edit
+          </button>
+        ) : null}
       </form>
 
       <QuoteDescriptionDialog
@@ -2006,6 +2068,9 @@ function QuoteProductsView({ onBackHome }) {
                     <td style={tableCellStyle}>{p.active ? 'Yes' : 'No'}</td>
                     <td style={{ ...tableCellStyle, width: '5.5cm' }}>
                       <div className="quotes-table-actions">
+                        <button type="button" className="action-button quotes-action-btn-5cm" style={compactButton} onClick={() => startEdit(p)}>
+                          Edit
+                        </button>
                         <button type="button" className="action-button quotes-action-btn-5cm" style={compactButton} onClick={() => toggleActive(p.id, p.active)}>
                           {p.active ? 'Deactivate' : 'Activate'}
                         </button>

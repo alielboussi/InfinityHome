@@ -77,14 +77,30 @@ export async function ensureSequenceInitialized(db, table) {
 
 /** Allocate next integer primary key inside a Firestore transaction. */
 export async function allocateNumericId(db, table, tx) {
-  const seqRef = db.collection('_sequences').doc(table);
-  const seqSnap = await tx.get(seqRef);
+  const [id] = await allocateNumericIds(db, table, 1, tx);
+  return id;
+}
+
+/** Reserve `count` consecutive ids from a sequence snapshot (after tx.get). */
+export function reserveNumericIdsFromSnap(seqSnap, table, count) {
+  const needed = Math.max(0, Number(count) || 0);
   if (!seqSnap.exists || !Number.isFinite(Number(seqSnap.data()?.value))) {
     throw new Error(`Sequence for ${table} is not initialized`);
   }
-  const next = Number(seqSnap.data().value) + 1;
-  tx.set(seqRef, { value: next }, { merge: true });
-  return next;
+  const start = Number(seqSnap.data().value);
+  const ids = Array.from({ length: needed }, (_, index) => start + index + 1);
+  return { ids, nextValue: start + needed };
+}
+
+/** Allocate multiple numeric ids with one sequence read/write inside a transaction. */
+export async function allocateNumericIds(db, table, count, tx) {
+  const seqRef = db.collection('_sequences').doc(table);
+  const seqSnap = await tx.get(seqRef);
+  const { ids, nextValue } = reserveNumericIdsFromSnap(seqSnap, table, count);
+  if (count > 0) {
+    tx.set(seqRef, { value: nextValue }, { merge: true });
+  }
+  return ids;
 }
 
 export async function queryCollectionWhere(db, table, filters = []) {

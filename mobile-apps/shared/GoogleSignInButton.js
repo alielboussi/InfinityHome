@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { getFirebaseAuth, signOutFirebase } from './firebase';
@@ -30,8 +32,7 @@ function getGoogleClientIds() {
   ).trim();
   return {
     webClientId,
-    androidClientId: String(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '').trim(),
-    iosClientId: String(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '').trim(),
+    iosClientId: String(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || extra.googleIosClientId || '').trim(),
   };
 }
 
@@ -40,13 +41,67 @@ export function isGoogleSignInConfigured() {
   return Boolean(webClientId);
 }
 
-export function GoogleSignInButton({ onError, onSuccess, disabled }) {
-  const { webClientId, androidClientId, iosClientId } = getGoogleClientIds();
+async function completeGoogleFirebaseSignIn(idToken, onError, onSuccess) {
+  if (!idToken) {
+    onError?.('Google sign-in did not return an ID token.');
+    return;
+  }
+  const credential = GoogleAuthProvider.credential(idToken);
+  await signInWithCredential(getFirebaseAuth(), credential);
+  const access = await verifyMobileLoginAccess();
+  if (!access.ok) {
+    await signOutFirebase();
+    onError?.(access.error || 'Login not allowed.');
+    return;
+  }
+  onSuccess?.();
+}
+
+function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled }) {
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    GoogleSignin.configure({
+      webClientId,
+      offlineAccess: false,
+    });
+  }, [webClientId]);
+
+  const onPress = async () => {
+    setBusy(true);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if (response.type !== 'success') {
+        if (response.type === 'cancelled') return;
+        onError?.('Google sign-in failed.');
+        return;
+      }
+      const idToken = response.data?.idToken;
+      await completeGoogleFirebaseSignIn(idToken, onError, onSuccess);
+    } catch (err) {
+      onError?.(err?.message || 'Google sign-in failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Pressable
+      style={[styles.button, (disabled || busy) && styles.buttonDisabled]}
+      onPress={onPress}
+      disabled={disabled || busy}
+    >
+      <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Continue with Google'}</Text>
+    </Pressable>
+  );
+}
+
+function BrowserGoogleSignInButton({ webClientId, iosClientId, onError, onSuccess, disabled }) {
   const [busy, setBusy] = useState(false);
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     webClientId,
-    androidClientId: androidClientId || webClientId,
-    iosClientId: iosClientId || webClientId,
+    ...(iosClientId ? { iosClientId } : {}),
     redirectUri: REDIRECT_URI,
   });
 
@@ -62,19 +117,7 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
       setBusy(true);
       try {
         const idToken = response.params?.id_token || response.authentication?.idToken;
-        if (!idToken) {
-          onError?.('Google sign-in did not return an ID token.');
-          return;
-        }
-        const credential = GoogleAuthProvider.credential(idToken);
-        await signInWithCredential(getFirebaseAuth(), credential);
-        const access = await verifyMobileLoginAccess();
-        if (!access.ok) {
-          await signOutFirebase();
-          onError?.(access.error || 'Login not allowed.');
-          return;
-        }
-        onSuccess?.();
+        await completeGoogleFirebaseSignIn(idToken, onError, onSuccess);
       } catch (err) {
         onError?.(err?.message || 'Google sign-in failed.');
       } finally {
@@ -82,8 +125,6 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
       }
     })();
   }, [response, busy, onError, onSuccess]);
-
-  if (!webClientId) return null;
 
   return (
     <Pressable
@@ -93,6 +134,33 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
     >
       <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Continue with Google'}</Text>
     </Pressable>
+  );
+}
+
+export function GoogleSignInButton({ onError, onSuccess, disabled }) {
+  const { webClientId, iosClientId } = getGoogleClientIds();
+
+  if (!webClientId) return null;
+
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    return (
+      <NativeGoogleSignInButton
+        webClientId={webClientId}
+        onError={onError}
+        onSuccess={onSuccess}
+        disabled={disabled}
+      />
+    );
+  }
+
+  return (
+    <BrowserGoogleSignInButton
+      webClientId={webClientId}
+      iosClientId={iosClientId}
+      onError={onError}
+      onSuccess={onSuccess}
+      disabled={disabled}
+    />
   );
 }
 
