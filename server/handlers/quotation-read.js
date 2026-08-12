@@ -2,6 +2,7 @@
 // Server-side reads for quotation modules (Firebase Admin SDK).
 
 import { getDataClient } from '../lib/getDataClient.js';
+import { sortQuotationRows } from '../../src/utils/quotationDisplay.js';
 
 function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -87,12 +88,12 @@ export default async function handler(req, res) {
       const limit = safeLimit(req.query?.limit, 200);
       const { data, error } = await db
         .from('quotations')
-        .select('id, quote_number, customer_id, created_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id')
-        .order('created_at', { ascending: false })
-        .limit(limit);
+        .select('id, quote_number, customer_id, created_at, updated_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id')
+        .limit(Math.min(limit * 3, 1500));
       if (error) throw error;
-      const rows = await attachCustomerNames(db, data || []);
-      res.status(200).json({ ok: true, rows });
+      const rows = sortQuotationRows(data || []).slice(0, limit);
+      const withNames = await attachCustomerNames(db, rows);
+      res.status(200).json({ ok: true, rows: withNames });
       return;
     }
 

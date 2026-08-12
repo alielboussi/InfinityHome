@@ -4,7 +4,11 @@ import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { getFirebaseAuth, signOutFirebase } from './firebase';
@@ -41,6 +45,24 @@ export function isGoogleSignInConfigured() {
   return Boolean(webClientId);
 }
 
+function formatGoogleSignInError(err) {
+  if (isErrorWithCode(err)) {
+    if (err.code === statusCodes.SIGN_IN_CANCELLED) return '';
+    if (err.code === statusCodes.IN_PROGRESS) return 'Google sign-in is already in progress.';
+    if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+      return 'Google Play Services is missing or outdated on this device.';
+    }
+    if (err.code === '10' || err.code === 10) {
+      return 'Google sign-in is not configured for this app build yet. Install the latest Ledger APK or contact support.';
+    }
+  }
+  const message = String(err?.message || err || 'Google sign-in failed.');
+  if (/DEVELOPER_ERROR/i.test(message) || /error code:\s*10/i.test(message)) {
+    return 'Google sign-in is not configured for this app build yet. Install the latest Ledger APK or contact support.';
+  }
+  return message;
+}
+
 async function completeGoogleFirebaseSignIn(idToken, onError, onSuccess) {
   if (!idToken) {
     onError?.('Google sign-in did not return an ID token.');
@@ -57,6 +79,17 @@ async function completeGoogleFirebaseSignIn(idToken, onError, onSuccess) {
   onSuccess?.();
 }
 
+async function resolveGoogleIdToken(response) {
+  const directToken = response?.data?.idToken || response?.idToken;
+  if (directToken) return directToken;
+  try {
+    const tokens = await GoogleSignin.getTokens();
+    return tokens?.idToken || null;
+  } catch {
+    return null;
+  }
+}
+
 function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled }) {
   const [busy, setBusy] = useState(false);
 
@@ -64,6 +97,7 @@ function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled })
     GoogleSignin.configure({
       webClientId,
       offlineAccess: false,
+      scopes: ['email', 'profile'],
     });
   }, [webClientId]);
 
@@ -72,15 +106,16 @@ function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled })
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const response = await GoogleSignin.signIn();
-      if (response.type !== 'success') {
-        if (response.type === 'cancelled') return;
+      if (response?.type === 'cancelled') return;
+      if (response?.type && response.type !== 'success') {
         onError?.('Google sign-in failed.');
         return;
       }
-      const idToken = response.data?.idToken;
+      const idToken = await resolveGoogleIdToken(response);
       await completeGoogleFirebaseSignIn(idToken, onError, onSuccess);
     } catch (err) {
-      onError?.(err?.message || 'Google sign-in failed.');
+      const message = formatGoogleSignInError(err);
+      if (message) onError?.(message);
     } finally {
       setBusy(false);
     }

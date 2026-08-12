@@ -298,6 +298,7 @@ export default async function handler(req, res) {
       res.status(400).json({ ok: false, error: 'Invalid payload: requires { quote, items[] }' });
       return;
     }
+    const nowIso = new Date().toISOString();
 
     // Resolve customer_id: accept either customers.id or quote_customers.id
     async function resolveCustomerId(inputId) {
@@ -421,7 +422,7 @@ export default async function handler(req, res) {
     let beforeItemsSnapshot = null;
     if (!quoteId) {
       // Create
-      const header = { ...baseHeader, quote_number: quote_number || 'QT#1' };
+      const header = { ...baseHeader, quote_number: quote_number || 'QT#1', created_at: nowIso, updated_at: nowIso };
       const { data: created, error: createErr } = await db
         .from('quotations')
         .insert([header])
@@ -494,7 +495,7 @@ export default async function handler(req, res) {
           return;
         }
       }
-      const header = { ...baseHeader, quote_number: quote_number || existing?.quote_number || null };
+      const header = { ...baseHeader, quote_number: quote_number || existing?.quote_number || null, updated_at: nowIso };
       const { error: updErr } = await db
         .from('quotations')
         .update(header)

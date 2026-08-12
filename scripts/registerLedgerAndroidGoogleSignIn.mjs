@@ -11,11 +11,31 @@ import path from 'path';
 const PROJECT_ID = 'bestrest-portal-system-43108';
 const ANDROID_APP_RESOURCE = 'projects/bestrest-portal-system-43108/androidApps/1:876299148810:android:a84ed178b9dcc4c59049f3';
 const APK_URL = process.env.LEDGER_APK_URL
-  || 'https://expo.dev/artifacts/eas/ITTfMyJOJeGa1c0tO_hIemaJuWHC-pH92kBGpvO4uNk.apk';
+  || 'https://expo.dev/artifacts/eas/hxocxxVTXP0b-r2cbNGw3y_v64k-XuuKNfFTgvINTH4.apk';
 const SERVICE_ACCOUNT_PATH = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
   || path.join(process.cwd(), 'bestrest-portal-system-43108-firebase-adminsdk-fbsvc-b259e84074.json');
 
 function extractSha1FromApk(apkPath) {
+  const apksignerCandidates = [
+    process.env.ANDROID_APKSIGNER,
+    process.env.ANDROID_HOME ? path.join(process.env.ANDROID_HOME, 'build-tools', '37.0.0', process.platform === 'win32' ? 'apksigner.bat' : 'apksigner') : null,
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Android', 'Sdk', 'build-tools', '37.0.0', process.platform === 'win32' ? 'apksigner.bat' : 'apksigner') : null,
+  ].filter(Boolean);
+
+  for (const apksigner of apksignerCandidates) {
+    if (!fs.existsSync(apksigner)) continue;
+    try {
+      const output = execSync(`"${apksigner}" verify --print-certs "${apkPath}"`, { encoding: 'utf8' });
+      const match = output.match(/certificate SHA-1 digest:\s*([0-9a-f:]+)/i);
+      if (match) {
+        const raw = match[1].toUpperCase();
+        return raw.includes(':') ? raw : raw.match(/.{1,2}/g).join(':');
+      }
+    } catch {
+      // try next signer path
+    }
+  }
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-apk-'));
   const certPath = path.join(tmpDir, 'cert.der');
   try {
@@ -27,7 +47,7 @@ function extractSha1FromApk(apkPath) {
     .map((name) => path.join(tmpDir, 'META-INF', name))
     .find((file) => fs.existsSync(file));
   if (!certFile) {
-    throw new Error('Could not find signing certificate in APK META-INF.');
+    throw new Error('Could not find signing certificate in APK. Use LEDGER_ANDROID_SHA1 or install Android build-tools apksigner.');
   }
   fs.copyFileSync(certFile, certPath);
   const output = execSync(`keytool -printcert -file "${certPath}"`, { encoding: 'utf8' });

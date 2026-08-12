@@ -43,14 +43,18 @@ async function sumSalesForCustomer(customerId) {
   const snap = await getDocs(salesCollection(customerId));
   const chargedByCurrency = emptyCurrencyMap();
   let firstSale = null;
+  let lastSale = null;
   snap.forEach((row) => {
     const data = row.data();
     const currency = normalizeCurrency(data.currency);
     chargedByCurrency[currency] += Number(data.quantity || 0) * Number(data.unit_price || 0);
     const saleDate = data.sale_date;
-    if (saleDate && (!firstSale || saleDate < firstSale)) firstSale = saleDate;
+    if (saleDate) {
+      if (!firstSale || saleDate < firstSale) firstSale = saleDate;
+      if (!lastSale || saleDate > lastSale) lastSale = saleDate;
+    }
   });
-  return { chargedByCurrency, firstSale };
+  return { chargedByCurrency, firstSale, lastSale };
 }
 
 async function sumPaymentsForCustomer(customerId) {
@@ -75,16 +79,18 @@ function computeBalanceByCurrency(chargedByCurrency, paidByCurrency) {
 }
 
 export async function enrichCustomer(customer) {
-  const [{ chargedByCurrency, firstSale }, paidByCurrency] = await Promise.all([
+  const [{ chargedByCurrency, firstSale, lastSale }, paidByCurrency] = await Promise.all([
     sumSalesForCustomer(customer.id),
     sumPaymentsForCustomer(customer.id),
   ]);
   const balanceByCurrency = computeBalanceByCurrency(chargedByCurrency, paidByCurrency);
-  const startDate = firstSale || customer.created_at;
+  const hasBalanceDue = customerHasBalance(balanceByCurrency);
+  const startDate = hasBalanceDue
+    ? (lastSale || firstSale || customer.created_at)
+    : (firstSale || customer.created_at);
   const deadlineDays = Number(customer.payment_deadline_days) || DEFAULT_PAYMENT_DEADLINE_DAYS;
   const daysElapsed = daysBetween(startDate);
   const daysRemaining = deadlineDays - daysElapsed;
-  const hasBalanceDue = customerHasBalance(balanceByCurrency);
   const overdue = hasBalanceDue && daysRemaining < 0;
 
   return {
@@ -97,6 +103,7 @@ export async function enrichCustomer(customer) {
     balance: balanceByCurrency,
     hasBalance: hasBalanceDue,
     firstSaleDate: firstSale,
+    lastSaleDate: lastSale,
     creditStartDate: startDate,
     daysElapsed,
     daysRemaining,

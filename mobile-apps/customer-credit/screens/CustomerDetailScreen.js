@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { HorizontalMoneyRow, ScreenWrap, SecondaryButton } from '../components/ui';
+import { HorizontalMoneyRow, PrimaryButton, ScreenWrap, SecondaryButton } from '../components/ui';
 import { deleteCustomer, getCustomer, listCustomerSales, listPayments } from '../db/repository';
 import { colors, styles } from '../theme';
 import { CURRENCIES, formatDate, formatMoney, formatSaleTitle } from '../utils/format';
@@ -88,7 +88,14 @@ export default function CustomerDetailScreen() {
         </View>
 
         <View style={{ gap: 10, marginBottom: 16 }}>
-          <SecondaryButton title="Record payment / down payment" onPress={() => navigation.navigate('AddPayment', { customerId })} />
+          <PrimaryButton
+            title="Add sale / amount due"
+            onPress={() => navigation.navigate('AddSale', { customerId })}
+          />
+          <SecondaryButton
+            title={customer.hasBalance ? 'Record another payment' : 'Record payment / down payment'}
+            onPress={() => navigation.navigate('AddPayment', { customerId })}
+          />
           <SecondaryButton title="Edit customer" onPress={() => navigation.navigate('CustomerForm', { customerId })} />
           <Pressable style={styles.btnDanger} onPress={onDelete}>
             <Text style={styles.btnDangerText}>Delete customer</Text>

@@ -17,11 +17,12 @@ import {
   normalizeQuotationItemRow,
   quotationHasOutstandingDue,
   resolveQuoteCustomerForSelect,
+  sortQuotationRows,
   sumPaymentRows,
 } from './utils/quotationDisplay';
 
 const NAV_BUTTON_STYLE = { padding: '8px 12px', fontSize: 13, background: '#0f7fff', color: '#fff', border: '1px solid #0c6ed8', borderRadius: 6, minHeight: 32 };
-const QUOTATION_LIST_CACHE_KEY = 'quotationer:list:v5';
+const QUOTATION_LIST_CACHE_KEY = 'quotationer:list:v6';
 const QUOTATION_LIST_CUSTOMER_MAP_CACHE_KEY = 'quotationer:list:customer-map:v2';
 const QUOTE_CUSTOMER_CATALOG_CACHE_KEY = 'quotationer:quote-customers:v1';
 const QUOTE_PRODUCT_CATALOG_CACHE_KEY = 'quotationer:quote-products:v1';
@@ -187,11 +188,10 @@ async function fetchQuotationWrite(action, payload = {}) {
 async function fallbackListQuotes(limit = 200) {
   const { data, error } = await db
     .from('quotations')
-    .select('id, quote_number, customer_id, created_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+    .select('id, quote_number, customer_id, created_at, updated_at, total, subtotal, status, currency, discount, vat_apply, vat_rate, sale_id, layby_id')
+    .limit(Math.min(limit * 3, 1500));
   if (error) throw error;
-  return data || [];
+  return sortQuotationRows(data || []).slice(0, limit);
 }
 
 async function fallbackListProducts(query = '', limit = 200) {
@@ -592,7 +592,7 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
         const cachedQuotes = cacheGet(QUOTATION_LIST_CACHE_KEY);
         const cachedCustomerMap = cacheGet(QUOTATION_LIST_CUSTOMER_MAP_CACHE_KEY);
         const hasCachedQuotes = Array.isArray(cachedQuotes);
-        if (hasCachedQuotes) setQuotes(cachedQuotes);
+        if (hasCachedQuotes) setQuotes(sortQuotationRows(cachedQuotes));
         if (cachedCustomerMap && typeof cachedCustomerMap === 'object') setCustomerMap(cachedCustomerMap);
         setLoading(!hasCachedQuotes);
       } catch {
@@ -611,7 +611,7 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
       }
       if (!cancelled) {
         if (!error) {
-          const nextQuotes = data || [];
+          const nextQuotes = sortQuotationRows(data || []);
           setQuotes(nextQuotes);
           try {
             const map = await buildQuotationCustomerMap(nextQuotes);
@@ -848,9 +848,10 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           const resolved = await resolveQuoteCustomerForSelect(hdr, (qcs || []).map(c => ({ ...c, name: titleCaseWords(c.name) })), db);
           if (!cancelled) {
             if (resolved.customers?.length) setQuoteCustomers(resolved.customers);
-            setQuote(hdr);
-            setCurrentQuoteId(hdr.id || quoteId || '');
-            setVatChoice(hdr.vat_apply ? 'vat16' : 'exclusive');
+            const loadedQuote = resolved.header || hdr;
+            setQuote(loadedQuote);
+            setCurrentQuoteId(loadedQuote.id || quoteId || '');
+            setVatChoice(loadedQuote.vat_apply ? 'vat16' : 'exclusive');
           }
           const user = readLocalUser();
           let hasOutstandingDue = true;
@@ -875,7 +876,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
 
   React.useEffect(() => {
     if (!quote.customer_id) return;
-    const cust = (quoteCustomers || []).find(c => c.id === quote.customer_id);
+    const cust = (quoteCustomers || []).find(c => String(c.id) === String(quote.customer_id));
     if (cust && cust.currency && cust.currency !== quote.currency) {
       setQuote(q => ({ ...q, currency: cust.currency }));
     }
@@ -978,7 +979,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       }
 
       try {
-        const selectedCustomer = quoteCustomers.find(c => c.id === (quote.customer_id || quote.customer_id));
+        const selectedCustomer = quoteCustomers.find(c => String(c.id) === String(quote.customer_id));
         const customerName = selectedCustomer?.name ? titleCaseWords(selectedCustomer.name) : undefined;
         const customerPhone = selectedCustomer?.phone || null;
         const customerAddress = selectedCustomer?.address || null;
@@ -1146,12 +1147,12 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           <div className="quotes-create-panel-row">
             <select
               className="quotes-select quotes-select-customer"
-              value={quote.customer_id || ''}
+              value={quote.customer_id != null && quote.customer_id !== '' ? String(quote.customer_id) : ''}
               onChange={e => setQuote(q => ({ ...q, customer_id: e.target.value || null }))}
               style={{ minWidth: 220 }}
             >
               <option value="">Select Customer</option>
-              {(quoteCustomers||[]).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {(quoteCustomers||[]).map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
             </select>
             <button className="action-button" type="button" style={compactButton} onClick={() => setShowCustomerManager(v => !v)}>
               {showCustomerManager ? 'Hide Customers' : 'Manage Customers'}

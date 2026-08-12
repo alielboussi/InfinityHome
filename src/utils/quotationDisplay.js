@@ -169,10 +169,33 @@ export async function resolveQuoteCustomerForSelect(hdr, quoteCustomers, db) {
   }
 
   if (extraCustomer) {
-    return { header: hdr, customers: [...catalog, extraCustomer] };
+    return {
+      header: { ...hdr, customer_id: extraCustomer.id },
+      customers: [...catalog, extraCustomer],
+    };
   }
 
   return { header: hdr, customers: catalog };
+}
+
+function parseQuoteNumberValue(quoteNumber) {
+  const match = String(quoteNumber || '').match(/^QT#(\d+)$/i);
+  return match ? Number.parseInt(match[1], 10) : 0;
+}
+
+/** Newest quotes first; falls back to quote number then id when dates are missing. */
+export function sortQuotationRows(rows = []) {
+  return [...rows].sort((a, b) => {
+    const aStamp = String(a.updated_at || a.created_at || '');
+    const bStamp = String(b.updated_at || b.created_at || '');
+    const createdCmp = bStamp.localeCompare(aStamp);
+    if (createdCmp !== 0) return createdCmp;
+
+    const numCmp = parseQuoteNumberValue(b.quote_number) - parseQuoteNumberValue(a.quote_number);
+    if (numCmp !== 0) return numCmp;
+
+    return String(b.id || '').localeCompare(String(a.id || ''));
+  });
 }
 
 export function sumPaymentRows(payments = []) {

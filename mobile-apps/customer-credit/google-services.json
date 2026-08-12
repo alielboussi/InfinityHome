@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "876299148810-gmf6hsqhi4nntp7u4iap1qvsvi3lh1d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bestrest.customerledger",
+            "certificate_hash": "2926ba2cd8e65770bd52cd184e6b2210a0ab5e55"
+          }
+        },
+        {
           "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
           "client_type": 3
         }
