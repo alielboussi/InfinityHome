@@ -519,6 +519,34 @@ function formatDateTimeParts(iso) {
 
 
 
+function formatSaleDateForMessage(isoOrDate) {
+  if (!isoOrDate) return '';
+  const raw = String(isoOrDate).trim();
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnly) {
+    return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  }
+  return formatDateTimeParts(raw).date;
+}
+
+function formatReceiptNumberForMessage(receiptNumber) {
+  return String(receiptNumber || '')
+    .split(',')
+    .map((part) => part.trim().replace(/^#+\s*/, ''))
+    .filter(Boolean)
+    .join(', ');
+}
+
+function resolveMessageDateIso({ sale, payments, eventType, fallbackIso }) {
+  if (eventType === 'payment' && Array.isArray(payments) && payments.length) {
+    const latest = payments[payments.length - 1];
+    if (latest?.payment_date) return latest.payment_date;
+  }
+  if (sale?.sale_date) return sale.sale_date;
+  if (sale?.created_at) return sale.created_at;
+  return fallbackIso || '';
+}
+
 function formatPaymentMethod(type) {
 
   const key = String(type || '').trim().toLowerCase();
@@ -800,33 +828,195 @@ function safeProductLabel(item, productMap) {
 
 
 
-function resolveItemUnitPrice(item, productMap) {
+function resolveItemUnitPrice(item, productMap, locationPriceMap) {
 
-  return resolveItemPrices(item, productMap).unit;
+  return resolveItemPrices(item, productMap, locationPriceMap).unit;
 
 }
 
 
 
-function resolveItemPrices(item, productMap) {
+async function loadProductLocationPriceMap(db, items, locationId) {
+
+  const map = new Map();
+
+  if (!locationId) return map;
+
+  const productIds = new Set(
+
+    (items || []).map((item) => item.product_id).filter(Boolean).map(String),
+
+  );
+
+  if (!productIds.size) return map;
+
+
+
+  let rows = [];
+
+  try {
+
+    const { getFirestore, queryCollectionWhere } = await import('../server/lib/firestoreDb.js');
+
+    const firestore = getFirestore();
+
+    if (firestore) {
+
+      rows = await queryCollectionWhere(firestore, 'product_location_prices', [
+
+        { field: 'location_id', op: '==', value: locationId },
+
+      ]);
+
+    }
+
+  } catch (err) {
+
+    console.warn('loadProductLocationPriceMap firestore query failed:', err?.message || err);
+
+  }
+
+
+
+  if (!rows.length) {
+
+    const { data, error } = await db
+
+      .from('product_location_prices')
+
+      .select('product_id, location_id, price, promotional_price')
+
+      .eq('location_id', locationId);
+
+    if (error) console.warn('loadProductLocationPriceMap client query failed:', error.message || error);
+
+    rows = data || [];
+
+  }
+
+
+
+  rows.forEach((row) => {
+
+    if (row?.product_id != null && productIds.has(String(row.product_id))) {
+
+      map.set(String(row.product_id), row);
+
+    }
+
+  });
+
+
+
+  return map;
+
+}
+
+
+
+function selectBestCatalogPrice(promo, standard) {
+
+  const promoValue = Number(promo);
+
+  if (promo != null && promo !== '' && !Number.isNaN(promoValue) && promoValue > 0) return promoValue;
+
+  const standardValue = Number(standard);
+
+  if (standard != null && standard !== '' && !Number.isNaN(standardValue) && standardValue > 0) return standardValue;
+
+  return 0;
+
+}
+
+
+
+function resolveLocationUnitPrice(locationRow) {
+
+  if (!locationRow) return 0;
+
+  return selectBestCatalogPrice(locationRow.promotional_price, locationRow.price);
+
+}
+
+
+
+function resolveItemPrices(item, productMap, locationPriceMap, options = {}) {
 
   const stored = Number(item.unit_price || 0);
 
-  const productId = item.product_id;
+  const productId = item.product_id != null ? String(item.product_id) : '';
 
-  if (productId && productMap.has(String(productId))) {
+  const impliedUnit = Number(options.impliedUnit || 0);
 
-    const product = productMap.get(String(productId));
 
-    const promo = Number(product.promotional_price || 0);
 
-    const standard = Number(product.price || 0);
+  const locationUnit = productId && locationPriceMap?.has(productId)
 
-    if (promo > 0) return { unit: promo, standard: standard > 0 ? standard : promo, usedPromo: true };
+    ? resolveLocationUnitPrice(locationPriceMap.get(productId))
 
-    if (standard > 0) return { unit: standard, standard, usedPromo: false };
+    : 0;
+
+
+
+  const product = productId && productMap.has(productId) ? productMap.get(productId) : null;
+
+  const catalogUnit = product
+
+    ? selectBestCatalogPrice(product.promotional_price, product.price)
+
+    : 0;
+
+
+
+  if (impliedUnit > 0) {
+
+    return { unit: impliedUnit, standard: impliedUnit, usedPromo: false };
 
   }
+
+
+
+  // Custom POS override (price differs from generic catalog).
+
+  if (stored > 0 && catalogUnit > 0 && Math.abs(stored - catalogUnit) > 0.009) {
+
+    return { unit: stored, standard: stored, usedPromo: false };
+
+  }
+
+  if (stored > 0 && catalogUnit <= 0) {
+
+    return { unit: stored, standard: stored, usedPromo: false };
+
+  }
+
+
+
+  // Location promo/price (e.g. Lusaka K2,200) beats generic catalog (K2,850).
+
+  if (locationUnit > 0) {
+
+    return { unit: locationUnit, standard: locationUnit, usedPromo: false };
+
+  }
+
+
+
+  if (stored > 0) {
+
+    return { unit: stored, standard: stored, usedPromo: false };
+
+  }
+
+
+
+  if (catalogUnit > 0) {
+
+    return { unit: catalogUnit, standard: catalogUnit, usedPromo: false };
+
+  }
+
+
 
   return { unit: stored, standard: stored, usedPromo: false };
 
@@ -834,7 +1024,17 @@ function resolveItemPrices(item, productMap) {
 
 
 
-function buildProductLines(items, currency, productMap, { saleId } = {}) {
+function buildProductLines(items, currency, productMap, {
+
+  saleId,
+
+  locationPriceMap,
+
+  saleTotal,
+
+  saleDiscount,
+
+} = {}) {
 
   const scoped = (items || []).filter((item) => {
 
@@ -846,7 +1046,7 @@ function buildProductLines(items, currency, productMap, { saleId } = {}) {
 
     if (!name || qty <= 0) return false;
 
-    const unit = resolveItemUnitPrice(item, productMap);
+    const unit = resolveItemUnitPrice(item, productMap, locationPriceMap);
 
     return unit > 0;
 
@@ -854,13 +1054,47 @@ function buildProductLines(items, currency, productMap, { saleId } = {}) {
 
 
 
-  return scoped.map((item) => {
+  const chargedSubtotal = Number(saleTotal || 0) + Number(saleDiscount || 0);
+
+  const resolved = scoped.map((item) => {
 
     const qty = Number(item.quantity || 0);
 
-    const name = safeProductLabel(item, productMap);
+    const { unit } = resolveItemPrices(item, productMap, locationPriceMap);
 
-    const { unit } = resolveItemPrices(item, productMap);
+    return { item, qty, unit };
+
+  });
+
+  let linesSubtotal = resolved.reduce((sum, row) => sum + row.qty * row.unit, 0);
+
+  if (chargedSubtotal > 0) {
+
+    if (linesSubtotal > 0 && Math.abs(linesSubtotal - chargedSubtotal) > 0.009) {
+
+      const factor = chargedSubtotal / linesSubtotal;
+
+      resolved.forEach((row) => {
+
+        row.unit *= factor;
+
+      });
+
+      linesSubtotal = chargedSubtotal;
+
+    } else if (resolved.length === 1 && resolved[0].qty > 0) {
+
+      resolved[0].unit = chargedSubtotal / resolved[0].qty;
+
+    }
+
+  }
+
+
+
+  return resolved.map(({ item, qty, unit }) => {
+
+    const name = safeProductLabel(item, productMap);
 
     const lineTotal = qty * unit;
 
@@ -950,10 +1184,6 @@ function buildSalePaidLines(payments, currency) {
 
 
 
-  const totalPaid = rows.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-
-  lines.push(`💳 Total Paid: ${formatAmount(totalPaid, currency)}`);
-
   return lines.join('\n');
 
 }
@@ -998,7 +1228,7 @@ function buildLaybyMessage({
 
 }) {
 
-  const { date, time } = formatDateTimeParts(dateTimeIso);
+  const date = formatSaleDateForMessage(dateTimeIso);
 
   const lines = [];
 
@@ -1050,17 +1280,9 @@ function buildLaybyMessage({
 
   pushLine(lines, '📍 Location', locationName);
 
-  if (date && time) {
+  pushLine(lines, '📅 Date', date);
 
-    lines.push(`📅 Date: ${date} & 🕐 Time ${time}`);
-
-  } else if (date) {
-
-    pushLine(lines, '📅 Date', date);
-
-  }
-
-  pushLine(lines, '🧾 Receipt #', receiptNumber);
+  pushLine(lines, '🧾 Receipt', formatReceiptNumberForMessage(receiptNumber));
 
   pushLine(lines, '👤 Customer Name', customerName);
 
@@ -1131,6 +1353,10 @@ function buildLaybyMessage({
   if (normalizedBalanceDue > 0) {
 
     lines.push(`⏳ Balance Due: ${formatAmount(normalizedBalanceDue, currency)}`);
+
+  } else {
+
+    lines.push("This customer's due balance is fully closed");
 
   }
 
@@ -1701,6 +1927,93 @@ async function deliverNotification(targets, message, mode, provider = 'whapi', {
 
 
 
+async function handleWhatsAppShopOrder(body) {
+
+  const order = body?.order || body || {};
+
+  const routing = resolveDeliveryTargets('sale', order?.customer_id || null, {
+
+    locationId: LUSAKA_BRANCH_ID,
+
+  });
+
+  if (!routing.targets.length) {
+
+    const err = new Error('WhatsApp env not configured (WHATSAPP_LUSAKA_SALES_GROUP_ID)');
+
+    err.status = 500;
+
+    throw err;
+
+  }
+
+
+
+  const customer = order.customer || {};
+
+  const name = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || 'Customer';
+
+  const currencyLabel = String(order.currency || 'K').toUpperCase() === 'USD' ? '$' : 'K';
+
+  const total = Number(order.total_amount || 0);
+
+  const totalFmt = total % 1 === 0 ? total.toLocaleString() : total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const itemLines = (order.items || []).map((item) => {
+
+    const lineTotal = Number(item.unit_price || 0) * Number(item.quantity || 0);
+
+    const lineFmt = lineTotal % 1 === 0 ? lineTotal.toLocaleString() : lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    return `• ${item.display_name} × ${item.quantity} — ${currencyLabel} ${lineFmt}`;
+
+  });
+
+
+
+  const message = [
+
+    '🛒 *New Online Order — Lusaka*',
+
+    '',
+
+    `👤 ${name}`,
+
+    `📞 ${customer.phone || '—'}`,
+
+    `✉️ ${customer.email || '—'}`,
+
+    `📍 ${[customer.address, customer.city].filter(Boolean).join(', ') || '—'}`,
+
+    '',
+
+    '🧾 *Items:*',
+
+    ...(itemLines.length ? itemLines : ['• (no items)']),
+
+    '',
+
+    `💰 Total: ${currencyLabel} ${totalFmt}`,
+
+    `🆔 Order: ${order.id || '—'}`,
+
+    '',
+
+    '_Status: pending confirmation_',
+
+  ].join('\n');
+
+
+
+  const deliveries = await deliverNotification(routing.targets, message, routing.mode, routing.provider, {});
+
+  return { ok: true, deliveries };
+
+}
+
+
+
+
 async function handleWhatsAppSale(body) {
 
   const saleId = body.saleId;
@@ -1781,12 +2094,6 @@ async function handleWhatsAppSale(body) {
 
 
 
-  const pdfUrl = String(body.pdfUrl || '').trim();
-
-  const pdfFilename = String(body.pdfFilename || '').trim() || 'sales-receipt.pdf';
-
-
-
   const { data: customer } = await db
 
     .from('customers')
@@ -1796,6 +2103,13 @@ async function handleWhatsAppSale(body) {
     .eq('id', sale.customer_id)
 
     .maybeSingle();
+
+  const pdfUrl = String(body.pdfUrl || '').trim();
+
+  const customerNameForFile = String(customer?.name || 'Customer').replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_').trim() || 'Customer';
+  const pdfFilename = String(body.pdfFilename || '').trim() || `${customerNameForFile}_Sales_Receipt.pdf`;
+
+  const isWebSale = String(body.channel || '').trim().toLowerCase() === 'web';
 
 
 
@@ -1849,11 +2163,23 @@ async function handleWhatsAppSale(body) {
 
   const productMap = await loadProductPriceMap(db, items);
 
-  const productLines = buildProductLines(items, currency, productMap, { saleId: sale.id });
+  const locationPriceMap = await loadProductLocationPriceMap(db, items, sale.location_id);
 
   const summaryTotal = Number(sale.total_amount || 0);
 
   const discountAmount = Number(sale.discount || 0);
+
+  const productLines = buildProductLines(items, currency, productMap, {
+
+    saleId: sale.id,
+
+    locationPriceMap,
+
+    saleTotal: summaryTotal,
+
+    saleDiscount: discountAmount,
+
+  });
 
   const balanceDue = Math.max(0, summaryTotal - payments.reduce((sum, p) => sum + Number(p.amount || 0), 0));
 
@@ -1867,7 +2193,7 @@ async function handleWhatsAppSale(body) {
 
     locationName,
 
-    dateTimeIso: sale.created_at || sale.sale_date,
+    dateTimeIso: sale.sale_date || sale.created_at,
 
     receiptNumber: sale.receipt_number,
 
@@ -1889,9 +2215,13 @@ async function handleWhatsAppSale(body) {
 
   });
 
+  const finalMessage = isWebSale
+    ? ['🛒 *Online shop order — payment received*', '', message].join('\n')
+    : message;
 
 
-  const deliveries = await deliverNotification(routing.targets, message, routing.mode, routing.provider, {
+
+  const deliveries = await deliverNotification(routing.targets, finalMessage, routing.mode, routing.provider, {
 
     pdfUrl,
 
@@ -2062,11 +2392,23 @@ async function handleWhatsAppAdjustment(body) {
 
   const productMap = await loadProductPriceMap(db, items);
 
-  const productLines = buildProductLines(items, currency, productMap, { saleId: sale.id });
+  const locationPriceMap = await loadProductLocationPriceMap(db, items, sale.location_id);
 
   const summaryTotal = Number(sale.total_amount || 0);
 
   const discountAmount = Number(sale.discount || 0);
+
+  const productLines = buildProductLines(items, currency, productMap, {
+
+    saleId: sale.id,
+
+    locationPriceMap,
+
+    saleTotal: summaryTotal,
+
+    saleDiscount: discountAmount,
+
+  });
 
   const paidTotal = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
@@ -2082,7 +2424,7 @@ async function handleWhatsAppAdjustment(body) {
 
     locationName,
 
-    dateTimeIso: sale.created_at || sale.sale_date,
+    dateTimeIso: sale.sale_date || sale.created_at,
 
     receiptNumber: sale.receipt_number,
 
@@ -2344,6 +2686,10 @@ async function handleWhatsAppLayby(body) {
 
   const productMap = await loadProductPriceMap(db, items);
 
+  const pricingLocationId = focusSale?.location_id || sales[0]?.location_id || null;
+
+  const locationPriceMap = await loadProductLocationPriceMap(db, items, pricingLocationId);
+
 
 
   const itemScopeSaleId = (eventType === 'new_layby' || eventType === 'quote_convert' || eventType === 'layby_addition') && focusSale
@@ -2351,8 +2697,6 @@ async function handleWhatsAppLayby(body) {
     ? focusSale.id
 
     : null;
-
-  const productLines = buildProductLines(items, currency, productMap, { saleId: itemScopeSaleId });
 
 
 
@@ -2367,6 +2711,18 @@ async function handleWhatsAppLayby(body) {
     : (Number(focusSale?.total_amount || 0) > 0 ? Number(focusSale.total_amount) : laybyTotal);
 
   const discountAmount = Number(focusSale?.discount || 0);
+
+  const productLines = buildProductLines(items, currency, productMap, {
+
+    saleId: itemScopeSaleId,
+
+    locationPriceMap,
+
+    saleTotal: summaryTotal,
+
+    saleDiscount: discountAmount,
+
+  });
 
 
 
@@ -2411,7 +2767,12 @@ async function handleWhatsAppLayby(body) {
 
     locationName,
 
-    dateTimeIso: focusSale?.created_at || focusSale?.sale_date || layby.updated_at || layby.created_at,
+    dateTimeIso: resolveMessageDateIso({
+      sale: focusSale,
+      payments: eventPayments,
+      eventType,
+      fallbackIso: layby.updated_at || layby.created_at,
+    }),
 
     receiptNumber: focusSale?.receipt_number || sales.map((sale) => sale.receipt_number).filter(Boolean).join(', '),
 
@@ -2934,6 +3295,18 @@ module.exports = async function handler(req, res) {
     if (action === 'whatsapp-lusaka-transfer' || action === 'lusaka-transfer') {
 
       const payload = await handleWhatsAppLusakaTransfer(body);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+
+
+    if (action === 'whatsapp-shop-order' || action === 'shop-order') {
+
+      const payload = await handleWhatsAppShopOrder(body);
 
       res.status(200).json(payload);
 

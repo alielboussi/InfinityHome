@@ -1,7 +1,7 @@
 // Proxy /api calls in CRA dev to a remote serverless host (e.g., Vercel)
 // WhatsApp notify routes run locally so new actions work before deploy.
 // Usage:
-//   - Set REACT_APP_API_BASE to your deployed host, e.g. https://infinity-home-pi.vercel.app
+//   - Set REACT_APP_API_BASE to your deployed host, e.g. https://www.infinity-home.online
 //   - Put Wasender / WhatsApp env vars in .env.local for local notify sends
 
 const path = require('path');
@@ -17,6 +17,7 @@ const WHATSAPP_NOTIFY_PATHS = new Set([
   '/api/whatsapp-layby',
   '/api/whatsapp-transfer',
   '/api/whatsapp-lusaka-transfer',
+  '/api/whatsapp-shop-order',
   '/api/monthly-balance-dues',
   '/api/monthly-balance-send',
   // Some proxy versions pass pathname without /api prefix.
@@ -26,6 +27,7 @@ const WHATSAPP_NOTIFY_PATHS = new Set([
   '/whatsapp-layby',
   '/whatsapp-transfer',
   '/whatsapp-lusaka-transfer',
+  '/whatsapp-shop-order',
   '/monthly-balance-dues',
   '/monthly-balance-send',
 ]);
@@ -73,6 +75,8 @@ const LOCAL_API_PATHS = new Set([
   '/api/layby-payments-delete',
   '/api/layby-delete-customer',
   '/api/product-locations',
+  '/api/shop-catalog',
+  '/api/web-orders',
 ]);
 
 const WHATSAPP_PATH_ACTION = {
@@ -81,6 +85,7 @@ const WHATSAPP_PATH_ACTION = {
   '/api/whatsapp-layby': 'whatsapp-layby',
   '/api/whatsapp-transfer': 'whatsapp-transfer',
   '/api/whatsapp-lusaka-transfer': 'whatsapp-lusaka-transfer',
+  '/api/whatsapp-shop-order': 'whatsapp-shop-order',
   '/api/monthly-balance-dues': 'monthly-balance-dues',
   '/api/monthly-balance-send': 'monthly-balance-send',
 };
@@ -130,15 +135,19 @@ function attachNotifyAction(req, fixedAction) {
 }
 
 function mountLocalNotify(app) {
-  let notifyHandler;
-  try {
-    // eslint-disable-next-line global-require, import/no-dynamic-require
-    notifyHandler = require('../api/notify.js');
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.warn('[proxy] Could not load local api/notify.js:', error?.message || error);
-    return;
-  }
+  let handlerPromise = null;
+  const loadHandler = () => {
+    if (!handlerPromise) {
+      handlerPromise = import('../api/notify.js')
+        .then((mod) => mod.default || mod)
+        .catch((error) => {
+          // eslint-disable-next-line no-console
+          console.warn('[proxy] Could not load local api/notify.js:', error?.message || error);
+          return null;
+        });
+    }
+    return handlerPromise;
+  };
 
   const handleNotify = async (req, res, fixedAction) => {
     if (req.method === 'GET' && !fixedAction) {
@@ -151,6 +160,11 @@ function mountLocalNotify(app) {
     }
 
     try {
+      const notifyHandler = await loadHandler();
+      if (!notifyHandler) {
+        res.status(503).json({ ok: false, stage: 'notify', error: 'Local notify API unavailable' });
+        return;
+      }
       if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
         req.body = await readJsonBody(req);
       }
@@ -439,6 +453,82 @@ function mountLocalApiHandler(app, route, modulePath, label, fixedAction) {
   console.log(`[proxy] Local ${route} handler enabled.`);
 }
 
+function mountLocalWebOrders(app) {
+  let handlerPromise = null;
+  const loadHandler = () => {
+    if (!handlerPromise) {
+      handlerPromise = import('../server/handlers/web-orders.js')
+        .then((mod) => mod.default || mod)
+        .catch((error) => {
+          console.warn('[proxy] Could not load local web-orders handler:', error?.message || error);
+          return null;
+        });
+    }
+    return handlerPromise;
+  };
+
+  const handle = async (req, res) => {
+    try {
+      const handler = await loadHandler();
+      if (!handler) {
+        res.status(503).json({ ok: false, error: 'Local web-orders API unavailable' });
+        return;
+      }
+      if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
+        req.body = await readJsonBody(req);
+      }
+      await handler(req, res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, error: error?.message || String(error) });
+      }
+    }
+  };
+
+  app.get('/api/web-orders', handle);
+  app.post('/api/web-orders', handle);
+  app.options('/api/web-orders', handle);
+  console.log('[proxy] Local /api/web-orders handler enabled.');
+}
+
+function mountLocalShopCatalog(app) {
+  let handlerPromise = null;
+  const loadHandler = () => {
+    if (!handlerPromise) {
+      handlerPromise = import('../server/handlers/shop-catalog.js')
+        .then((mod) => mod.default || mod)
+        .catch((error) => {
+          console.warn('[proxy] Could not load local shop-catalog handler:', error?.message || error);
+          return null;
+        });
+    }
+    return handlerPromise;
+  };
+
+  const handle = async (req, res) => {
+    try {
+      const handler = await loadHandler();
+      if (!handler) {
+        res.status(503).json({ ok: false, error: 'Local shop-catalog API unavailable' });
+        return;
+      }
+      if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
+        req.body = await readJsonBody(req);
+      }
+      await handler(req, res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, error: error?.message || String(error) });
+      }
+    }
+  };
+
+  app.get('/api/shop-catalog', handle);
+  app.post('/api/shop-catalog', handle);
+  app.options('/api/shop-catalog', handle);
+  console.log('[proxy] Local /api/shop-catalog handler enabled.');
+}
+
 function mountLocalProductLocations(app) {
   let handlerPromise = null;
   const loadHandler = () => {
@@ -508,6 +598,9 @@ module.exports = function setupProxy(app) {
   mountLocalCheckout(app);
   mountLocalTransactions(app);
   mountLocalProductLocations(app);
+  mountLocalApiHandler(app, '/api/inventory-bulk', '../server/handlers/inventory-bulk.js', 'inventory-bulk API');
+  mountLocalShopCatalog(app);
+  mountLocalWebOrders(app);
 
   const target = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
   if (!target) {

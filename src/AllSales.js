@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, no-empty-pattern */
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { FaFilePdf, FaWhatsapp } from 'react-icons/fa';
 import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
@@ -9,6 +10,9 @@ import { cacheGet, cacheSet } from './utils/staleCache';
 import { selectPrice } from './utils/setInventoryUtils';
 import { applyInventoryBulk } from './utils/inventoryApi';
 import { saveSaleEdit } from './services/salesEdit';
+import { notifyLaybyWhatsApp, notifySaleWhatsApp } from './services/whatsappNotify';
+import { downloadPosSalePdf } from './services/whatsappPdfs';
+import { isFahme } from './laybyRules';
 import { fetchLaybyPaymentsBySaleIds } from './services/laybyPayments';
 import { buildLaybySaleFinancials, computeLaybyTotalsByCurrency } from './utils/laybyRollup';
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
@@ -260,6 +264,8 @@ export default function AllSales() {
 
   // Delete confirmation modal state
   const [deleteModal, setDeleteModal] = useState({ open: false, saleId: null, meta: null, pin: '', loading: false, error: '' });
+  const [whatsappSaleId, setWhatsappSaleId] = useState(null);
+  const [pdfSaleId, setPdfSaleId] = useState(null);
 
   useEffect(() => {
     const modalOpen = Boolean(editing) || showPicker || deleteModal.open;
@@ -629,6 +635,63 @@ export default function AllSales() {
         .eq('id', laybyId);
     } catch (err) {
       console.warn('recomputeLaybyRollup failed', err);
+    }
+  };
+
+  const downloadSalePdf = async (row) => {
+    if (!row?.id) return;
+    const saleId = row.id;
+    setPdfSaleId(saleId);
+    try {
+      const result = await downloadPosSalePdf({ saleId });
+      if (!result?.ok) {
+        window.alert(result?.error || 'PDF download failed.');
+      }
+    } catch (err) {
+      window.alert(err?.message || 'PDF download failed.');
+    } finally {
+      setPdfSaleId(null);
+    }
+  };
+
+  const resendSaleWhatsApp = async (row) => {
+    if (!row?.id) return;
+    const saleId = row.id;
+    const customerId = row.customer_id;
+    const laybyId = row.layby_id || row.layby?.id || null;
+    setWhatsappSaleId(saleId);
+    try {
+      let result;
+      if (isFahme(customerId)) {
+        result = await notifyLaybyWhatsApp({
+          laybyId,
+          customerId,
+          eventType: 'statement',
+          saleId,
+        });
+      } else if (
+        String(row.computedStatus || row.status || '').toLowerCase() === 'layby'
+        || (laybyId && Number(row.outstanding || 0) > BALANCE_EPSILON)
+      ) {
+        const eventType = Number(row.paid || 0) <= BALANCE_EPSILON ? 'new_layby' : 'layby_addition';
+        result = await notifyLaybyWhatsApp({
+          laybyId,
+          customerId,
+          eventType,
+          saleId,
+        });
+      } else {
+        result = await notifySaleWhatsApp({ saleId });
+      }
+      if (!result?.ok) {
+        window.alert(result?.error || 'WhatsApp send failed.');
+      } else {
+        window.alert('WhatsApp message sent.');
+      }
+    } catch (err) {
+      window.alert(err?.message || 'WhatsApp send failed.');
+    } finally {
+      setWhatsappSaleId(null);
     }
   };
 
@@ -1031,6 +1094,26 @@ export default function AllSales() {
                       <td className="num-col outstanding-col">{formatCurrency(row.outstanding, row.currency || row.customer?.currency || 'K')}</td>
                       <td className="actions-col">
                         <div className="allsales-actions-group">
+                          <button
+                            type="button"
+                            className="allsales-pdf-btn allsales-action-btn"
+                            onClick={() => downloadSalePdf(row)}
+                            disabled={pdfSaleId === row.id}
+                            title="Download sale PDF receipt"
+                            aria-label="Download sale PDF receipt"
+                          >
+                            {pdfSaleId === row.id ? '…' : <FaFilePdf aria-hidden="true" />}
+                          </button>
+                          <button
+                            type="button"
+                            className="allsales-whatsapp-btn allsales-action-btn"
+                            onClick={() => resendSaleWhatsApp(row)}
+                            disabled={whatsappSaleId === row.id}
+                            title="Resend sale WhatsApp message"
+                            aria-label="Resend sale WhatsApp message"
+                          >
+                            {whatsappSaleId === row.id ? '…' : <FaWhatsapp aria-hidden="true" />}
+                          </button>
                           <button className="allsales-edit-btn allsales-action-btn" onClick={() => openEdit(row)}>Edit</button>
                           <button
                             className="allsales-delete-btn allsales-action-btn"

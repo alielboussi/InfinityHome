@@ -1,8 +1,14 @@
 import db from '../dataClient';
 import generateLaybyPdf from '../laybyPdf';
 import { fetchLaybyStatement } from './laybyStatement';
+import { fetchProductLocationPricesForLocation } from './locationPricing';
 import { computePooledLaybyTotalsByCurrency } from '../utils/laybyRollup';
 import { computeSaleFinancials } from '../utils/saleFinancials';
+import {
+  buildLocationPriceMap,
+  buildProductPriceMap,
+  reconcileSaleItemUnits,
+} from '../utils/saleDisplayPricing';
 import { isFahme } from '../laybyRules';
 
 function safeFilePart(value, fallback = 'Customer') {
@@ -102,76 +108,125 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
   }
 }
 
-export async function buildPosSalePdfUrlForWhatsApp({ saleId } = {}) {
-  if (saleId == null || String(saleId).trim() === '') return null;
-  try {
-    const { data: sale, error: saleErr } = await db
-      .from('sales')
-      .select('id, customer_id, sale_date, created_at, total_amount, currency, receipt_number, discount')
-      .eq('id', saleId)
-      .maybeSingle();
-    if (saleErr || !sale) return null;
+async function loadPosSaleReceiptData(saleId) {
+  const { data: sale, error: saleErr } = await db
+    .from('sales')
+    .select('id, customer_id, sale_date, created_at, total_amount, currency, receipt_number, discount, location_id')
+    .eq('id', saleId)
+    .maybeSingle();
+  if (saleErr || !sale) return null;
 
-    const [{ data: items }, { data: payments }, { data: customer }] = await Promise.all([
-      db
-        .from('sales_items')
-        .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
-        .eq('sale_id', sale.id),
-      db
-        .from('sales_payments')
-        .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, notes, currency')
-        .eq('sale_id', sale.id)
-        .order('payment_date', { ascending: true }),
-      sale.customer_id
-        ? db.from('customers').select('id, name, phone, address, city, tpin, currency').eq('id', sale.customer_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
+  const [{ data: items }, { data: payments }, { data: customer }] = await Promise.all([
+    db
+      .from('sales_items')
+      .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
+      .eq('sale_id', sale.id),
+    db
+      .from('sales_payments')
+      .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, notes, currency')
+      .eq('sale_id', sale.id)
+      .order('payment_date', { ascending: true }),
+    sale.customer_id
+      ? db.from('customers').select('id, name, phone, address, city, tpin, currency').eq('id', sale.customer_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
-    const fin = computeSaleFinancials({ sale, items: items || [], payments: payments || [] });
-    const statement = {
-      sales: [{
-        sale_id: sale.id,
-        id: sale.id,
-        sale_date: sale.sale_date || sale.created_at,
-        currency: sale.currency,
-        total_due: fin.total_due,
-        paid_amount: fin.paid_amount,
-        outstanding_amount: fin.outstanding_amount,
-        subtotal_before_discount: fin.subtotal_before_discount,
-        discount_amount: fin.discount_amount,
-      }],
-      items: (items || []).map((item) => ({
-        sale_id: item.sale_id,
-        product_id: item.product_id,
-        display_name: item.display_name,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        currency: item.currency,
-        color: item.color,
-      })),
-      payments: (payments || []).map((payment) => ({
-        ...payment,
-        payment_type: String(payment.payment_type || '').toLowerCase(),
-      })),
-    };
+  const productIds = new Set(
+    (items || []).map((item) => item.product_id).filter(Boolean).map(String),
+  );
+  const [{ data: products }, locationPriceRows] = await Promise.all([
+    productIds.size
+      ? db.from('products').select('id, name, price, promotional_price').in('id', Array.from(productIds))
+      : Promise.resolve({ data: [] }),
+    sale.location_id
+      ? fetchProductLocationPricesForLocation(db, sale.location_id)
+      : Promise.resolve([]),
+  ]);
 
-    const pdfLayby = {
+  const productMap = buildProductPriceMap(products || []);
+  const locationPriceMap = buildLocationPriceMap(locationPriceRows || [], productIds);
+  const displayItems = reconcileSaleItemUnits(items || [], {
+    saleTotal: sale.total_amount,
+    saleDiscount: sale.discount,
+    productMap,
+    locationPriceMap,
+  });
+
+  const fin = computeSaleFinancials({ sale, items: displayItems, payments: payments || [] });
+  const statement = {
+    sales: [{
+      sale_id: sale.id,
+      id: sale.id,
+      sale_date: sale.sale_date || sale.created_at,
+      currency: sale.currency,
+      total_due: fin.total_due,
+      paid_amount: fin.paid_amount,
+      outstanding_amount: fin.outstanding_amount,
+      subtotal_before_discount: fin.subtotal_before_discount,
+      discount_amount: fin.discount_amount,
+    }],
+    items: displayItems.map((item) => ({
+      sale_id: item.sale_id,
+      product_id: item.product_id,
+      display_name: item.display_name,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      currency: item.currency,
+      color: item.color,
+    })),
+    payments: (payments || []).map((payment) => ({
+      ...payment,
+      payment_type: String(payment.payment_type || '').toLowerCase(),
+    })),
+  };
+
+  return {
+    sale,
+    customer: customer || {},
+    statement,
+    pdfLayby: {
       id: null,
       sale_id: sale.id,
       customer_id: sale.customer_id,
       customerInfo: customer || {},
       currency: sale.currency,
-    };
+    },
+  };
+}
 
-    const blob = await generateLaybyPdf(pdfLayby, {
+export async function downloadPosSalePdf({ saleId } = {}) {
+  if (saleId == null || String(saleId).trim() === '') return { ok: false, error: 'Missing saleId' };
+  try {
+    const data = await loadPosSaleReceiptData(saleId);
+    if (!data) return { ok: false, error: 'Sale not found' };
+
+    const result = await generateLaybyPdf(data.pdfLayby, {
+      mode: 'download',
+      statement: data.statement,
+      posReceipt: true,
+    });
+    return result ? { ok: true } : { ok: false, error: 'PDF generation failed' };
+  } catch (e) {
+    console.warn('POS sale PDF download failed:', e?.message || e);
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+export async function buildPosSalePdfUrlForWhatsApp({ saleId } = {}) {
+  if (saleId == null || String(saleId).trim() === '') return null;
+  try {
+    const data = await loadPosSaleReceiptData(saleId);
+    if (!data) return null;
+
+    const blob = await generateLaybyPdf(data.pdfLayby, {
       mode: 'blob',
-      statement,
+      statement: data.statement,
       posReceipt: true,
     });
     if (!blob) return null;
 
-    const customerName = customer?.name || 'Customer';
-    const filePath = `sales/${sale.id}.pdf`;
+    const customerName = data.customer?.name || 'Customer';
+    const filePath = `sales/${data.sale.id}.pdf`;
     const url = await uploadPdfToStorage('laybypdfs', filePath, blob);
     if (!url) return null;
 
