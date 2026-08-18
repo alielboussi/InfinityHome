@@ -1,4 +1,10 @@
 import { fromPublic } from '../dbSchema';
+import { dedupeInventoryRows } from '../utils/inventoryApi';
+import {
+  applyExpectedQtyToInventoryRows,
+  computeExpectedInventoryMap,
+  fetchActiveStockPeriod,
+} from '../utils/computedInventoryQty';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
@@ -21,11 +27,12 @@ const isLocalHost = () => {
 };
 
 const shouldUseApi = () => {
-  const apiBase = getApiBase();
   const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
   if (forceApi) return true;
-  if (isLocalHost()) return true;
-  return Boolean(apiBase) || process.env.NODE_ENV === 'production';
+  if (isLocalHost()) return false;
+  const apiBase = getApiBase();
+  if (apiBase) return true;
+  return process.env.NODE_ENV === 'production';
 };
 
 const fetchAllInventoryRows = async (locationList) => {
@@ -107,7 +114,7 @@ export async function fetchInventorySnapshot(locations = null) {
     if (locationList.length === 1) periodQuery = periodQuery.eq('location_id', locationList[0]);
     if (locationList.length > 1) periodQuery = periodQuery.in('location_id', locationList);
     const { data: periodRows, error: periodErr } = await periodQuery;
-    if (periodErr) return { data: inventoryList, source: 'inventory' };
+    if (periodErr) return { data: dedupeInventoryRows(inventoryList), source: 'inventory' };
 
     const latestByLocation = new Map();
     (periodRows || []).forEach(row => {
@@ -117,13 +124,13 @@ export async function fetchInventorySnapshot(locations = null) {
     });
     const sessionIds = Array.from(latestByLocation.values()).map(row => row.id).filter(Boolean);
     if (!sessionIds.length) {
-      return { data: inventoryList, source: 'inventory' };
+      return { data: dedupeInventoryRows(inventoryList), source: 'inventory' };
     }
 
     const { data: openingRows, error: openingErr } = await fromPublic('opening_stock_entries')
       .select('session_id, product_id, qty')
       .in('session_id', sessionIds);
-    if (openingErr) return { data: inventoryList, source: 'inventory' };
+    if (openingErr) return { data: dedupeInventoryRows(inventoryList), source: 'inventory' };
 
     const locationBySession = new Map();
     latestByLocation.forEach(row => {
@@ -148,24 +155,11 @@ export async function fetchInventorySnapshot(locations = null) {
           location: locationId,
           quantity: Number(row.qty || 0),
         });
-        return;
       }
-
-      const locationPeriod = latestByLocation.get(String(locationId));
-      const isLocked = (locationPeriod?.status || '') === 'open_locked';
-      if (!isLocked) return;
-
-      const lockAt = Date.parse(locationPeriod.updated_at || locationPeriod.opened_at || '') || 0;
-      const existing = merged[existingIndex];
-      const invUpdatedAt = Date.parse(existing?.updated_at || '') || 0;
-      const openingQty = Number(row.qty || 0);
-      const invQty = Number(existing?.quantity || 0);
-      if (invUpdatedAt <= lockAt && openingQty !== invQty) {
-        merged[existingIndex] = { ...existing, quantity: openingQty };
-      }
+      // Never replace live inventory qty with opening_stock_entries — opening is variance baseline only.
     });
 
-    return { data: merged, source: 'inventory+opening_stock_entries' };
+    return { data: dedupeInventoryRows(merged), source: 'inventory+opening_stock_entries' };
   }
 
   let periodQuery = fromPublic('stock_periods')
@@ -204,4 +198,33 @@ export async function fetchInventorySnapshot(locations = null) {
   }));
 
   return { data: mapped, source: 'opening_stock_entries' };
+}
+
+async function overlayComputedInventory(db, inventoryRows, locationList) {
+  const targets = locationList.length
+    ? locationList
+    : [...new Set((inventoryRows || []).map((row) => String(row?.location || '')).filter(Boolean))];
+  let merged = inventoryRows || [];
+  for (const locationId of targets) {
+    const period = await fetchActiveStockPeriod(db, locationId);
+    if (!period?.id) continue;
+    const expectedMap = await computeExpectedInventoryMap(db, locationId);
+    merged = applyExpectedQtyToInventoryRows(merged, locationId, expectedMap);
+  }
+  return merged;
+}
+
+export async function fetchComputedInventorySnapshot(locations = null) {
+  const snapshot = await fetchInventorySnapshot(locations);
+  if (snapshot.error) return snapshot;
+  const locationList = Array.isArray(locations)
+    ? locations.filter(Boolean).map((v) => String(v)).filter(isUuid)
+    : (locations && isUuid(locations) ? [String(locations)] : []);
+  try {
+    const data = await overlayComputedInventory(fromPublic, snapshot.data || [], locationList);
+    return { ...snapshot, data: dedupeInventoryRows(data), source: 'computed_inventory' };
+  } catch (err) {
+    console.warn('[inventorySnapshot] computed overlay failed', err?.message || err);
+    return snapshot;
+  }
 }

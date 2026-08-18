@@ -2,6 +2,11 @@ import { applyInventoryDeduction } from '../lib/inventoryDeduction.js';
 import { applyFirestoreInventoryDeduction } from '../lib/firestoreInventoryDeduction.js';
 import { getDataClient } from '../lib/getDataClient.js';
 import { getFirestore } from '../lib/firestoreDb.js';
+import {
+  applyExpectedQtyToInventoryRows,
+  computeExpectedInventoryMap,
+  fetchActiveStockPeriod,
+} from '../../src/utils/computedInventoryQty.js';
 
 const chunkArray = (list, size) => {
   const chunks = [];
@@ -97,18 +102,8 @@ const mergeOpeningStockSnapshot = async ({ db, inventoryRows, locationList }) =>
         quantity: openingQty,
         updated_at: period?.updated_at || period?.opened_at || null,
       });
-      return;
     }
-
-    const period = latestByLocation.get(String(locationId));
-    if ((period?.status || '') !== 'open_locked') return;
-    const lockAt = Date.parse(period?.updated_at || period?.opened_at || '') || 0;
-    const existing = merged[existingIndex];
-    const invUpdatedAt = Date.parse(existing?.updated_at || '') || 0;
-    const invQty = Number(existing?.quantity || 0);
-    if (invUpdatedAt <= lockAt && openingQty !== invQty) {
-      merged[existingIndex] = { ...existing, quantity: openingQty };
-    }
+    // Never replace live inventory qty with opening_stock_entries — opening is variance baseline only.
   });
 
   return merged;
@@ -171,7 +166,17 @@ export default async function handler(req, res) {
         inventoryRows: data || [],
         locationList,
       });
-      res.status(200).json({ ok: true, data: merged || [] });
+      let computed = merged || [];
+      const targets = locationList.length
+        ? locationList
+        : [...new Set(computed.map((row) => String(row?.location || '')).filter(Boolean))];
+      for (const locationId of targets) {
+        const period = await fetchActiveStockPeriod(db, locationId);
+        if (!period?.id) continue;
+        const expectedMap = await computeExpectedInventoryMap(db, locationId);
+        computed = applyExpectedQtyToInventoryRows(computed, locationId, expectedMap);
+      }
+      res.status(200).json({ ok: true, data: computed || [] });
       return;
     }
 

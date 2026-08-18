@@ -12,6 +12,7 @@ import CustomerFormScreen from './screens/CustomerFormScreen';
 import CustomerDetailScreen from './screens/CustomerDetailScreen';
 import AddSaleScreen from './screens/AddSaleScreen';
 import AddPaymentScreen from './screens/AddPaymentScreen';
+import AddAdvanceScreen from './screens/AddAdvanceScreen';
 import AppErrorBoundary from './components/ErrorBoundary';
 import { colors } from './theme';
 
@@ -55,6 +56,7 @@ export default function App() {
           <Stack.Screen name="CustomerDetail" component={CustomerDetailScreen} options={{ title: 'Customer' }} />
           <Stack.Screen name="AddSale" component={AddSaleScreen} options={{ title: 'New sale' }} />
           <Stack.Screen name="AddPayment" component={AddPaymentScreen} options={{ title: 'Record payment' }} />
+          <Stack.Screen name="AddAdvance" component={AddAdvanceScreen} options={{ title: 'Advance paid' }} />
         </Stack.Navigator>
       </NavigationContainer>
     </FirebaseAuthGate>

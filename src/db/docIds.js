@@ -11,6 +11,7 @@ const DOC_ID_FIELDS = {
   inventory: ['product_id', 'location'],
   stock_transfer_entries: ['session_id', 'product_id'],
   product_images: 'product_id',
+  shop_listings: ['product_id', 'location_id'],
 };
 
 export function docIdForTable(table, row) {
@@ -31,16 +32,30 @@ export function docIdForTable(table, row) {
   throw new Error(`No document id for ${table}`);
 }
 
+const OPTIONAL_EMPTY_CONFLICT_FIELDS = new Set([
+  'reference',
+  'notes',
+  'color',
+  'allocation_batch_uuid',
+]);
+
 export function docIdFromOnConflict(row, onConflict) {
   const keys = String(onConflict || 'id')
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
-  const parts = keys.map((key) => row[key]);
-  if (parts.some((part) => part == null || part === '')) {
+  const parts = keys.map((key) => {
+    const val = row[key];
+    if (val == null || val === '') {
+      if (OPTIONAL_EMPTY_CONFLICT_FIELDS.has(key)) return '__';
+      return null;
+    }
+    return String(val);
+  });
+  if (parts.some((part) => part == null)) {
     throw new Error(`Missing onConflict fields: ${keys.join(',')}`);
   }
-  return parts.map((part) => String(part)).join('_');
+  return parts.join('_');
 }
 
 export { pickColumns, parseSelectSpec } from './selectSpec.js';

@@ -15,6 +15,7 @@ import {
   fetchProductLocationPriceRow,
   seedProductLocationPricesForLocations,
 } from './services/locationPricing';
+import { getNextAutoSku as allocateNextAutoSku } from './utils/autoSku';
 
 const initialForm = {
   name: "",
@@ -339,25 +340,7 @@ function Products() {
       || details.includes('products_sku_key');
   };
 
-  const getNextAutoSku = async () => {
-    const { data: allSkus, error } = await db.from('products').select('sku');
-    if (error || !Array.isArray(allSkus)) {
-      throw error || new Error('Failed to load existing SKUs.');
-    }
-    const used = new Set();
-    (allSkus || []).forEach(row => {
-      const raw = (row?.sku || '').toString().trim();
-      const m = raw.match(/^#?(\d+)$/);
-      if (m) {
-        const num = parseInt(m[1], 10);
-        if (!isNaN(num)) used.add(num);
-      }
-    });
-    let i = 1;
-    while (used.has(i)) i++;
-    const padded = String(i).padStart(5, '0');
-    return `#${padded}`;
-  };
+  const getNextAutoSku = () => allocateNextAutoSku(db);
 
   const getApiBase = () => {
     const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
@@ -460,6 +443,7 @@ function Products() {
         skuToUse = await getNextAutoSku();
       }
 
+      const nowIso = new Date().toISOString();
       // Prepare product data
       const baseProductData = {
         name: form.name,
@@ -471,7 +455,8 @@ function Products() {
         promo_end_date: form.promo_end_date || null,
         currency: form.currency,
         category_id: form.category_id ? parseInt(form.category_id) : null,
-        unit_of_measure_id: form.unit_of_measure_id ? parseInt(form.unit_of_measure_id) : null
+        unit_of_measure_id: form.unit_of_measure_id ? parseInt(form.unit_of_measure_id) : null,
+        ...(editingId ? { updated_at: nowIso } : { created_at: nowIso, updated_at: nowIso }),
       };
 
       // Insert product and get the ID
@@ -596,7 +581,8 @@ function Products() {
       if (wasEditing) {
         navigate('/products-list');
       } else {
-        window.location.reload();
+        setImageStatus({ type: 'success', text: 'Product saved successfully.' });
+        await fetchAll();
       }
     } catch (err) {
       if (isDuplicateSkuError(err)) {

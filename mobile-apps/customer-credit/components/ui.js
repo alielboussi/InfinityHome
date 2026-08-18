@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 import { colors, styles } from '../theme';
-import { CURRENCIES, formatMoney } from '../utils/format';
+import { CURRENCIES, formatAdvanceBalances, formatMoney } from '../utils/format';
 
 export function ScreenWrap({ children, style }) {
   return <View style={[styles.screen, style]}>{children}</View>;
@@ -82,8 +82,22 @@ export function HorizontalMoneyRow({ balanceByCurrency, amountStyle, dividerColo
 }
 
 export function StatCard({ label, value, tone = 'default' }) {
-  const bg = tone === 'danger' ? colors.dangerSoft : tone === 'warning' ? colors.warningSoft : colors.primarySoft;
-  const fg = tone === 'danger' ? colors.danger : tone === 'warning' ? colors.warning : colors.primary;
+  const bg =
+    tone === 'danger'
+      ? colors.dangerSoft
+      : tone === 'warning'
+        ? colors.warningSoft
+        : tone === 'success'
+          ? colors.successSoft
+          : colors.primarySoft;
+  const fg =
+    tone === 'danger'
+      ? colors.danger
+      : tone === 'warning'
+        ? colors.warning
+        : tone === 'success'
+          ? colors.success
+          : colors.primary;
   return (
     <View style={[styles.card, { flex: 1, backgroundColor: bg, borderColor: bg }]}>
       <Text style={{ fontSize: 12, fontWeight: '700', color: fg, textTransform: 'uppercase' }}>{label}</Text>
@@ -104,10 +118,17 @@ export function CustomerBalanceCard({ customer, onPress, compact = false }) {
           {customer.phone ? <Text style={styles.cardSub} numberOfLines={1}>{customer.phone}</Text> : null}
         </View>
         <View style={{ alignItems: 'flex-end', gap: 6 }}>
-          <HorizontalMoneyRow
-            balanceByCurrency={customer.balanceByCurrency}
-            amountStyle={{ fontSize: 15, fontWeight: '800', color: colors.primary }}
-          />
+          {customer.hasAdvanceCredit && !customer.hasBalance ? (
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.success }}>
+              Adv {formatAdvanceBalances(customer.advanceCreditByCurrency)}
+            </Text>
+          ) : null}
+          {customer.hasBalance ? (
+            <HorizontalMoneyRow
+              balanceByCurrency={customer.balanceByCurrency}
+              amountStyle={{ fontSize: 15, fontWeight: '800', color: colors.primary }}
+            />
+          ) : null}
           {customer.overdue ? (
             <View style={[styles.badge, { backgroundColor: colors.dangerSoft, marginTop: 0 }]}>
               <Text style={[styles.badgeText, { color: colors.danger }]}>
@@ -131,10 +152,18 @@ export function CustomerBalanceCard({ customer, onPress, compact = false }) {
       <Text style={styles.cardTitle}>{customer.name}</Text>
       {customer.phone ? <Text style={styles.cardSub}>{customer.phone}</Text> : null}
       <View style={{ marginTop: 8 }}>
-        <HorizontalMoneyRow
-          balanceByCurrency={customer.balanceByCurrency}
-          amountStyle={{ fontSize: 18, fontWeight: '800', color: colors.primary }}
-        />
+        {customer.hasBalance ? (
+          <HorizontalMoneyRow
+            balanceByCurrency={customer.balanceByCurrency}
+            amountStyle={{ fontSize: 18, fontWeight: '800', color: colors.primary }}
+          />
+        ) : customer.hasAdvanceCredit ? (
+          <Text style={{ fontSize: 18, fontWeight: '800', color: colors.success }}>
+            Adv {formatAdvanceBalances(customer.advanceCreditByCurrency)}
+          </Text>
+        ) : (
+          <Text style={[styles.cardSub, { fontWeight: '700', color: colors.success }]}>Settled</Text>
+        )}
       </View>
       {customer.overdue ? (
         <View style={[styles.badge, { backgroundColor: colors.dangerSoft }]}>

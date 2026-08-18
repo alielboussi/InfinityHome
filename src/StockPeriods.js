@@ -7,6 +7,12 @@ import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { applyInventoryBulk } from './utils/inventoryApi';
 import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
+import { getNextAutoSku } from './utils/autoSku';
+import {
+  buildExpectedQty,
+  sumInventoryAdjustmentsByProduct,
+} from './utils/inventoryVarianceAdjustments';
+import { collapseOpeningStockRows } from './utils/computedInventoryQty';
 
 const PERIOD_STATUS_OPEN = 'open';
 const PERIOD_STATUS_CLOSED = 'closed';
@@ -528,22 +534,7 @@ export default function StockPeriods() {
     setClosingDraftDirty(true);
   };
 
-  const generateAutoSku = async () => {
-    const { data: allSkus, error } = await fromPublic('products').select('sku');
-    if (error) throw error;
-    const used = new Set();
-    (allSkus || []).forEach(row => {
-      const raw = (row?.sku || '').toString().trim();
-      const match = raw.match(/^#?(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num)) used.add(num);
-      }
-    });
-    let i = 1;
-    while (used.has(i)) i++;
-    return `#${String(i).padStart(5, '0')}`;
-  };
+  const generateAutoSku = () => getNextAutoSku(db);
 
   const handleNewProductChange = (e) => {
     const { name, value, type, files, checked } = e.target;
@@ -657,6 +648,7 @@ export default function StockPeriods() {
         skuToUse = await generateAutoSku();
       }
 
+      const nowIso = new Date().toISOString();
       const productData = {
         name,
         sku: skuToUse,
@@ -667,6 +659,8 @@ export default function StockPeriods() {
         currency: newProductForm.currency,
         category_id: newProductForm.category_id ? parseInt(newProductForm.category_id, 10) : null,
         unit_of_measure_id: newProductForm.unit_of_measure_id ? parseInt(newProductForm.unit_of_measure_id, 10) : null,
+        created_at: nowIso,
+        updated_at: nowIso,
       };
 
       const { data: inserted, error: insertErr } = await fromPublic('products')
@@ -685,7 +679,6 @@ export default function StockPeriods() {
         if (locErr) throw locErr;
       }
 
-      const nowIso = new Date().toISOString();
       const { error: invErr } = await fromPublic('inventory')
         .insert([{ product_id: inserted.id, location: locationId, quantity: qty, updated_at: nowIso }]);
       if (invErr) throw invErr;
@@ -832,6 +825,8 @@ export default function StockPeriods() {
       row.opening > 0 ||
       row.transfersIn > 0 ||
       row.transfersOut > 0 ||
+      row.inventoryIn > 0 ||
+      row.inventoryOut > 0 ||
       row.salesQty > 0 ||
       row.hasClosingEntry ||
       row.hasInventory
@@ -919,17 +914,15 @@ export default function StockPeriods() {
   };
 
   const buildVarianceCsvLines = useCallback(() => {
-    const header = ['Product', 'SKU', 'Opening', 'Transfers In', 'Transfers Out', 'Sales', 'Expected', 'Closing', 'Variance'];
+    const header = ['Product', 'SKU', 'Opening', 'Inv In', 'Inv Out', 'Current Stock', 'Variance'];
     const lines = [header.join(',')];
     visibleTrackingRows.forEach(row => {
       lines.push([
         `"${String(row.name || '').replace(/"/g, '""')}"`,
         `"${String(row.sku || '').replace(/"/g, '""')}"`,
         row.opening,
-        row.transfersIn,
-        row.transfersOut,
-        row.salesQty,
-        row.expected,
+        row.inventoryIn,
+        row.inventoryOut,
         row.closingQty === null ? '' : row.closingQty,
         row.variance === null ? '' : row.variance,
       ].join(','));
@@ -1375,7 +1368,7 @@ export default function StockPeriods() {
 
       const [{ data: openingRows, error: openingErr }, { data: closingRows, error: closingErr }] = await Promise.all([
         fromPublic('opening_stock_entries')
-          .select('product_id, qty')
+          .select('id, product_id, qty')
           .eq('session_id', period.id),
         fromPublic('closing_stock_entries')
           .select('product_id, qty')
@@ -1480,14 +1473,7 @@ export default function StockPeriods() {
         salesItems = itemRows || [];
       }
 
-      const openingMap = new Map();
-      (openingRows || []).forEach(row => {
-        if (!row.product_id) return;
-        const qty = toNumber(row.qty);
-        if (qty <= 0) return;
-        const pid = String(row.product_id);
-        openingMap.set(pid, qty);
-      });
+      const openingMap = collapseOpeningStockRows(openingRows || [], period.id);
 
       const closingMap = new Map();
       (closingRows || []).forEach(row => {
@@ -1525,6 +1511,11 @@ export default function StockPeriods() {
         salesMap.set(pid, current + toNumber(row.quantity));
       });
 
+      const { inMap: inventoryInMap, outMap: inventoryOutMap } = await sumInventoryAdjustmentsByProduct(
+        fromPublic,
+        { locationId, startISO, endISO },
+      );
+
       const inventoryMap = new Map();
       (inventoryRows || []).forEach(row => {
         if (!row.product_id) return;
@@ -1536,6 +1527,8 @@ export default function StockPeriods() {
         ...Array.from(openingMap.keys()),
         ...Array.from(transfersInMap.keys()),
         ...Array.from(transfersOutMap.keys()),
+        ...Array.from(inventoryInMap.keys()),
+        ...Array.from(inventoryOutMap.keys()),
         ...Array.from(closingMap.keys()),
         ...Array.from(salesMap.keys()),
         ...Array.from(inventoryMap.keys()),
@@ -1546,15 +1539,25 @@ export default function StockPeriods() {
         const opening = openingMap.get(pid) || 0;
         const transfersIn = transfersInMap.get(pid) || 0;
         const transfersOut = transfersOutMap.get(pid) || 0;
+        const inventoryIn = inventoryInMap.get(pid) || 0;
+        const inventoryOut = inventoryOutMap.get(pid) || 0;
         const salesQty = salesMap.get(pid) || 0;
-        const expected = opening + transfersIn - transfersOut - salesQty;
+        const expected = buildExpectedQty({
+          opening,
+          transfersIn,
+          transfersOut,
+          inventoryIn,
+          inventoryOut,
+          sales: salesQty,
+        });
         const hasClosingEntry = closingMap.has(pid);
         const hasInventory = inventoryMap.has(pid);
         const closingQty = hasClosingEntry
           ? closingMap.get(pid)
           : (closingMode ? null : (hasInventory ? inventoryMap.get(pid) : (closeStarted && openingMap.has(pid) ? 0 : null)));
         const variance = closingQty === null ? null : (closingQty - expected);
-        const includeRow = opening > 0 || transfersIn > 0 || transfersOut > 0 || salesQty > 0 || hasClosingEntry || hasInventory;
+        const includeRow = opening > 0 || transfersIn > 0 || transfersOut > 0
+          || inventoryIn > 0 || inventoryOut > 0 || salesQty > 0 || hasClosingEntry || hasInventory;
         if (!includeRow) return null;
         return {
           product_id: pid,
@@ -1565,6 +1568,8 @@ export default function StockPeriods() {
           opening,
           transfersIn,
           transfersOut,
+          inventoryIn,
+          inventoryOut,
           salesQty,
           expected,
           closingQty,
@@ -1652,37 +1657,44 @@ export default function StockPeriods() {
     doc.text(`Location: ${locationName}`, doc.internal.pageSize.getWidth() / 2, 60, { align: 'center' });
     doc.text(
       rangeEnd
-        ? `Tracking: ${rangeStart} to ${rangeEnd}`
-        : `Tracking: ${rangeStart}`,
+        ? `Period: ${rangeStart} to ${rangeEnd}`
+        : `Period: ${rangeStart}`,
       doc.internal.pageSize.getWidth() / 2,
       74,
       { align: 'center' }
     );
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    doc.text(
+      'Opening Stock + Inventory In − Inventory Out → Current Stock (counted)',
+      doc.internal.pageSize.getWidth() / 2,
+      88,
+      { align: 'center' }
+    );
+    doc.setTextColor(0, 0, 0);
 
-    const body = rows.map(row => {
-      const openingPdf = row.opening;
-      const transfersInPdf = row.transfersIn;
-      const transfersOutPdf = row.transfersOut;
-      return [
-        `${row.name}${row.sku ? ` (${row.sku})` : ''}`,
-        formatNumber(openingPdf),
-        formatNumber(transfersInPdf),
-        formatNumber(transfersOutPdf),
-        formatNumber(row.salesQty),
-        formatNumber(row.expected),
-        row.closingQty === null ? '-' : formatNumber(row.closingQty),
-        row.variance === null ? '-' : formatNumber(row.variance),
-      ];
-    });
+    const body = rows.map(row => [
+      `${row.name}${row.sku ? ` (${row.sku})` : ''}`,
+      formatNumber(row.opening),
+      formatNumber(row.inventoryIn),
+      formatNumber(row.inventoryOut),
+      row.closingQty === null ? '-' : formatNumber(row.closingQty),
+      row.variance === null ? '-' : formatNumber(row.variance),
+    ]);
 
     autoTable(doc, {
-      startY: 100,
-      head: [['Product', 'Opening', 'Transfers In', 'Transfers Out', 'Sales', 'Expected', 'Closing', 'Variance']],
+      startY: 104,
+      head: [['Product', 'Opening', 'Inv In', 'Inv Out', 'Current Stock', 'Variance']],
       body,
-      styles: { fontSize: 9 },
+      styles: { fontSize: 10 },
       headStyles: { fillColor: [0, 180, 216] },
       columnStyles: {
         0: { cellWidth: 200 },
+        1: { halign: 'right' },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
       },
     });
 
@@ -2319,18 +2331,16 @@ export default function StockPeriods() {
                     <tr>
                       <th style={{ textAlign: 'left' }}>Product</th>
                       <th>Opening</th>
-                      <th>Transfers In</th>
-                      <th>Transfers Out</th>
-                      <th>Sales</th>
-                      <th>Expected</th>
-                      <th>Closing</th>
+                      <th>Inv In</th>
+                      <th>Inv Out</th>
+                      <th>Current Stock</th>
                       <th>Variance</th>
                     </tr>
                   </thead>
                   <tbody>
                     {visibleTrackingRows.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ textAlign: 'center', padding: 16 }}>
+                        <td colSpan={6} style={{ textAlign: 'center', padding: 16 }}>
                           No tracking data for this period yet.
                         </td>
                       </tr>
@@ -2339,10 +2349,8 @@ export default function StockPeriods() {
                       <tr key={row.product_id}>
                         <td style={{ textAlign: 'left' }}>{row.name} {row.sku ? `(${row.sku})` : ''}</td>
                         <td>{row.opening}</td>
-                        <td>{row.transfersIn}</td>
-                        <td>{row.transfersOut}</td>
-                        <td>{row.salesQty}</td>
-                        <td>{row.expected}</td>
+                        <td>{row.inventoryIn}</td>
+                        <td>{row.inventoryOut}</td>
                         <td>
                           {closingMode ? (
                             <input

@@ -5,7 +5,6 @@ import { FaCalendarAlt, FaCashRegister, FaFilePdf } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import db from './dataClient';
 import { isFahme, computeFahmeOverrides, computePosBadgeDue, FAHME_ID, computeLaybyRollups } from './laybyRules';
-import useLaybyData from './hooks/useLaybyData';
 import { checkout as checkoutApi } from './services/checkout';
 import { insertLaybyPayments } from './services/laybyPayments';
 import { insertSalesPayments } from './services/salesPayments';
@@ -15,11 +14,10 @@ import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { computeCustomerOutstandingLikeLaybyPage } from './utils/financials';
 import { logUserActivity } from './utils/userActivityLog';
-import { probeFirestoreOnce } from './utils/devProbe';
 import { notifyLaybyWhatsApp, notifySaleWhatsApp } from './services/whatsappNotify';
 import { previewPosSalePdfSample } from './services/whatsappPdfs';
 import { getCurrentUser, resolveSaleActor } from './accessControl';
-import { fetchInventorySnapshot } from './services/inventorySnapshot';
+import { fetchComputedInventorySnapshot } from './services/inventorySnapshot';
 import { fetchPosCatalogViaApi, fetchPosLocationsViaApi } from './services/posCatalogApi';
 import BackToDashboard from './BackToDashboard';
 import { syncProductLocations } from './services/productLocations';
@@ -32,8 +30,6 @@ import {
 import {
   fetchComboLocationPricesForLocation,
   fetchProductLocationPricesForLocation,
-  saveComboLocationPrice,
-  saveProductLocationPrice,
 } from './services/locationPricing';
 import { applySaleInventoryDeductionViaApi } from './utils/inventoryApi';
 import {
@@ -325,17 +321,10 @@ export default function POS({ isMobile = false }) {
   const [showCustomProductModal, setShowCustomProductModal] = useState(false);
   const [customProductForm, setCustomProductForm] = useState({ name: '', price: '', qty: 1 });
   const [customProductError, setCustomProductError] = useState('');
-  const [catalogPriceDrafts, setCatalogPriceDrafts] = useState({});
-  const [catalogPriceErrors, setCatalogPriceErrors] = useState({});
-  const [catalogPriceSaving, setCatalogPriceSaving] = useState('');
   const [posUser, setPosUser] = useState(() => getCurrentUser());
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [inventoryDeductedMsg, setInventoryDeductedMsg] = useState(""); // New state for inventory deducted message
   const [remainingDue, setRemainingDue] = useState(0); // Total due across active laybys
-  const [activeLaybyId, setActiveLaybyId] = useState(null); // first active layby for hook-driven rollup
-  // Hook for active layby (if any) to keep its rollup fresh without manual recompute
-  const { statement: activeLaybyStatement, rollups: activeLaybyRollups } = useLaybyData(selectedCustomer, activeLaybyId);
-  const activeLaybyOutstanding = activeLaybyRollups?.outstanding;
   // Fahme constants centralized in laybyRules.js
   // Decision modal when advance < sale total and outstanding remains
   const [showDecisionModal, setShowDecisionModal] = useState(false);
@@ -344,14 +333,13 @@ export default function POS({ isMobile = false }) {
   // Realtime ticks for key tables
   const rtTickCustomers = useRealtimeRefresh(['customers'], 250, isUuid(selectedCustomer) ? { customers: { column: 'id', value: selectedCustomer } } : undefined);
   // Include sales_items so any product/qty/price edits trigger refresh of outstanding & PDF data
-  const rtTickLayby = useRealtimeRefresh(['laybys','sales','sales_payments','sales_items'], 250, isUuid(selectedCustomer) ? {
+  const rtTickLayby = useRealtimeRefresh(['laybys', 'sales', 'sales_payments'], 250, isUuid(selectedCustomer) ? {
     laybys: { column: 'customer_id', value: selectedCustomer },
     sales: { column: 'customer_id', value: selectedCustomer },
     sales_payments: undefined,
-    sales_items: undefined,
   } : undefined);
   const rtTickCatalog = useRealtimeRefresh(
-    ['products','inventory','combos','combo_items','product_locations','combo_locations','product_location_prices','combo_location_prices'],
+    ['products','inventory','inventory_adjustments','opening_stock_entries','stock_periods','sales','sales_items','combos','combo_items','product_locations','combo_locations','product_location_prices','combo_location_prices'],
     250,
     isUuid(selectedLocation) ? {
       inventory: { column: 'location', value: selectedLocation },
@@ -362,8 +350,6 @@ export default function POS({ isMobile = false }) {
 
   // Removed: credit refresh logic and ledger reconciliation
 
-  // Dev-only probe to surface local environment misconfigurations
-  useEffect(() => { try { probeFirestoreOnce('POS'); } catch {} }, []);
   useEffect(() => { setPosUser(getCurrentUser()); }, []);
   useEffect(() => {
     const trimmed = receiptNumber.trim();
@@ -420,25 +406,12 @@ export default function POS({ isMobile = false }) {
     if (nextDate && nextDate !== date) setDate(nextDate);
   }, [dateInput, date]);
 
-  // When realtime changes occur on layby-related tables, refresh the selected customer's balances immediately
+  // When customer or layby-related realtime changes occur, refresh balances once
   useEffect(() => {
-    (async () => {
-      if (selectedCustomer) {
-        try {
-          await fetchCustomerLaybys(selectedCustomer);
-          const { data: freshCust } = await fromPublic('customers')
-            .select('id, credit_balance')
-            .eq('id', selectedCustomer)
-            .single();
-          if (freshCust) {
-            setCustomers(prev => prev.map(c => String(c.id) === String(selectedCustomer)
-              ? { ...c, credit_balance: Number(freshCust.credit_balance || 0) }
-              : c));
-          }
-        } catch {}
-      }
-    })();
-  }, [rtTickLayby]);
+    fetchCustomerLaybys(selectedCustomer);
+    const cust = customers.find(c => String(c.id) === String(selectedCustomer));
+    if (cust?.currency) setCurrency(normalizeCurrencyCode(cust.currency));
+  }, [selectedCustomer, rtTickLayby]);
 
   // Fetch locations and customers (hydrate from cache, then revalidate)
   useEffect(() => {
@@ -541,7 +514,7 @@ export default function POS({ isMobile = false }) {
       } catch {}
       // Fetch inventory minimal shape, then hydrate products and locations to avoid 406/400s
       const [invSnap, combosRes, comboLocationsRes, comboItemsRes, locRowsRes, productLocationPricesRes, comboLocationPricesRes] = await Promise.all([
-        fetchInventorySnapshot(selectedLocation),
+        fetchComputedInventorySnapshot(selectedLocation),
         fromPublic('combos')
           .select('id, combo_name, sku, standard_price, promotional_price, combo_price, currency'),
         fromPublic('combo_locations')
@@ -707,24 +680,7 @@ export default function POS({ isMobile = false }) {
 
 
 
-  // When customer changes, fetch laybys and refresh their current credit/ledger immediately
-  useEffect(() => {
-    // No credit refresh; only laybys and currency
-    if (selectedCustomer) {
-      // noop for credit
-    }
-    fetchCustomerLaybys(selectedCustomer);
-    // Also fetch credit ledger entries for the selected customer
-    // (Already called above when selectedCustomer exists)
-    // Set POS currency from selected customer's preferred currency when customer changes
-    const cust = customers.find(c => String(c.id) === String(selectedCustomer));
-    if (cust?.currency) setCurrency(normalizeCurrencyCode(cust.currency));
-  }, [selectedCustomer, rtTickLayby]);
 
-  // Refresh ledger when customer/ledger changes (realtime on customers & ledger tables)
-  useEffect(() => {
-    // No credit ledger polling
-  }, [rtTickCustomers]);
 
   // Fetch permissions and actions
   // Removed permissions fetching logic for open access
@@ -736,161 +692,6 @@ export default function POS({ isMobile = false }) {
 
   // Helper: get correct price (use promo if present and > 0, else use price if present and > 0)
   const getBestPrice = (item) => selectPrice(item.promotional_price, item.price);
-
-  const getCatalogPriceKey = (item, isSet = false) => `${isSet ? 'set' : 'product'}:${item?.id}`;
-
-  const needsCatalogPrice = (item) => getBestPrice(item) <= 0;
-
-  const patchPosCatalogCache = (mutator) => {
-    if (!selectedLocation) return;
-    try {
-      const cacheKey = `pos:catalog:${selectedLocation}`;
-      const snap = cacheGet(cacheKey);
-      if (!snap) return;
-      const next = mutator({
-        products: Array.isArray(snap.products) ? [...snap.products] : [],
-        sets: Array.isArray(snap.sets) ? [...snap.sets] : [],
-      });
-      cacheSet(cacheKey, next, 2 * 60 * 1000);
-    } catch {}
-  };
-
-  const saveCatalogPrice = async (item, isSet = false) => {
-    const key = getCatalogPriceKey(item, isSet);
-    const raw = String(catalogPriceDrafts[key] ?? '').trim();
-    const price = parseAmountInput(raw);
-    if (!Number.isFinite(price) || price <= 0) {
-      setCatalogPriceErrors((prev) => ({ ...prev, [key]: 'Enter a valid price greater than 0.' }));
-      return;
-    }
-
-    setCatalogPriceSaving(key);
-    setCatalogPriceErrors((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-
-    try {
-      if (isSet) {
-        await saveComboLocationPrice(db, {
-          comboId: item.id,
-          locationId: selectedLocation,
-          field: 'price',
-          value: price,
-          baseCombo: item,
-        });
-
-        const updatedSet = {
-          ...item,
-          price,
-          standard_price: price,
-          combo_price: price,
-          isSet: true,
-        };
-        setSets((prev) => prev.map((row) => (
-          String(row.id) === String(item.id) ? { ...row, ...updatedSet } : row
-        )));
-        patchPosCatalogCache((snap) => ({
-          ...snap,
-          sets: snap.sets.map((row) => (
-            String(row.id) === String(item.id) ? { ...row, ...updatedSet } : row
-          )),
-        }));
-      } else {
-        await saveProductLocationPrice(db, {
-          productId: item.id,
-          locationId: selectedLocation,
-          field: 'price',
-          value: price,
-          baseProduct: item,
-        });
-
-        const updatedProduct = { ...item, price };
-        setProducts((prev) => prev.map((row) => (
-          String(row.id) === String(item.id) ? { ...row, ...updatedProduct } : row
-        )));
-        patchPosCatalogCache((snap) => ({
-          ...snap,
-          products: snap.products.map((row) => (
-            String(row.id) === String(item.id) ? { ...row, ...updatedProduct } : row
-          )),
-        }));
-      }
-
-      const itemName = isSet ? (item.combo_name || item.name) : item.name;
-      logUserActivity({
-        actionType: 'product_price_change',
-        actionLabel: 'POS Catalog Price Set',
-        details: `${itemName} • price set to ${price}`,
-        reference: 'price',
-        entityType: isSet ? 'combo' : 'product',
-        entityId: String(item.id),
-        route: '/pos',
-      });
-
-      setCatalogPriceDrafts((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-    } catch (err) {
-      setCatalogPriceErrors((prev) => ({
-        ...prev,
-        [key]: err?.message || 'Failed to save price.',
-      }));
-    } finally {
-      setCatalogPriceSaving('');
-    }
-  };
-
-  const renderCatalogPriceEditor = (item, isSet = false) => {
-    const key = getCatalogPriceKey(item, isSet);
-    const saving = catalogPriceSaving === key;
-    const error = catalogPriceErrors[key];
-    return (
-      <div
-        className="pos-catalog-price-edit"
-        onClick={(event) => event.stopPropagation()}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="pos-catalog-price-edit__label">Set price to sell</div>
-        <input
-          type="number"
-          min="0"
-          step="any"
-          className="pos-catalog-price-edit__input"
-          placeholder={`Price (${currencyLabel})`}
-          value={catalogPriceDrafts[key] ?? ''}
-          onChange={(event) => {
-            const value = event.target.value;
-            setCatalogPriceDrafts((prev) => ({ ...prev, [key]: value }));
-            setCatalogPriceErrors((prev) => {
-              const next = { ...prev };
-              delete next[key];
-              return next;
-            });
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              saveCatalogPrice(item, isSet);
-            }
-          }}
-          disabled={saving}
-        />
-        <button
-          type="button"
-          className="pos-catalog-price-edit__save"
-          onClick={() => saveCatalogPrice(item, isSet)}
-          disabled={saving}
-        >
-          {saving ? 'Saving...' : 'Save Price'}
-        </button>
-        {error && <div className="pos-catalog-price-edit__error">{error}</div>}
-      </div>
-    );
-  };
 
   const parseAmountInput = (value) => {
     if (value === null || value === undefined) return 0;
@@ -955,13 +756,7 @@ export default function POS({ isMobile = false }) {
 
   const handleProductClick = (product) => {
     if (!product || Number(product.stock || 0) <= 0) return;
-    if (needsCatalogPrice(product)) return;
     addToCart(product);
-  };
-
-  const handleSetClick = (set) => {
-    if (needsCatalogPrice(set)) return;
-    addToCart(set);
   };
 
   // Update cart item
@@ -1178,11 +973,7 @@ export default function POS({ isMobile = false }) {
         error: `Payment (${paid.toFixed(2)}) exceeds subtotal (${subtotal.toFixed(2)}).`,
       };
     }
-    let outstandingNow = Math.max(0, subtotal - paid - discountAmount);
-    // Discounted sale paid in full at net price but not at sticker: keep net balance on layby.
-    if (discountAmount > 0 && paid + 0.0001 < subtotal && outstandingNow < 0.0001) {
-      outstandingNow = total;
-    }
+    const outstandingNow = Math.max(0, subtotal - paid - discountAmount);
     return { ok: true, appliedPay: paid, outstandingNow };
   };
 
@@ -1202,8 +993,7 @@ export default function POS({ isMobile = false }) {
   const paymentDueNow = settlementPreview.ok
     ? settlementPreview.outstandingNow
     : Math.max(0, subtotal - totalPaidNow - discountAmount);
-  const isPartialCheckout = paymentDueNow > 0.0001
-    || (discountAmount > 0 && totalPaidNow + 0.0001 < subtotal);
+  const isPartialCheckout = paymentDueNow > 0.0001;
 
   // Auto-fill payment to the net total (amount due after discount).
   const paymentManualSignature = (paymentLines || [])
@@ -1501,8 +1291,19 @@ export default function POS({ isMobile = false }) {
 
   let laybyId = null;
   let saleId = null;
+    let storedReceiptNumber = ctx.receiptNumber;
 
-    // Create or update layby FIRST when there is outstanding
+    const saleItems = [];
+    const setCartItems = (ctx.cart || []).filter((item) => item.isSet);
+    const comboIds = setCartItems.map((item) => (
+      typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : Number(item.id)
+    )).filter((id) => Number.isFinite(id));
+    const comboFetchPromise = comboIds.length
+      ? fromPublic('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds)
+      : Promise.resolve({ data: [] });
+    const comboItemsByComboId = new Map();
+
+    // Create or update layby FIRST when there is outstanding (runs in parallel with combo fetch)
     if (outstandingNow > 0) {
       if (existingLaybyId) {
         // We will update totals after inserting sale & payment via rollup; just capture id
@@ -1526,13 +1327,13 @@ export default function POS({ isMobile = false }) {
       }
     }
 
-    // Build sale header + items + payments and perform unified checkout via serverless API
-    let storedReceiptNumber = ctx.receiptNumber;
+    const { data: comboRows } = await comboFetchPromise;
+    (comboRows || []).forEach((row) => {
+      const key = String(row.combo_id);
+      if (!comboItemsByComboId.has(key)) comboItemsByComboId.set(key, []);
+      comboItemsByComboId.get(key).push(row);
+    });
 
-    // If this sale created the layby, back-link laybys.sale_id AFTER the sale is inserted
-
-    // Insert sale items
-    const saleItems = [];
     for (const item of ctx.cart) {
       if (item.isCustom) {
         saleItems.push({
@@ -1546,7 +1347,6 @@ export default function POS({ isMobile = false }) {
         });
       } else if (item.isSet) {
         const comboIdInt = typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : item.id;
-        // Add a priced parent line representing the set itself so accounts/PDF show the set name and price
         saleItems.push({
           sale_id: saleId,
           product_id: null,
@@ -1556,10 +1356,7 @@ export default function POS({ isMobile = false }) {
           currency: item.overrideCurrency || item.currency || ctx.currency,
           color: item.color || null
         });
-        const { data: comboItemsData } = await fromPublic('combo_items')
-          .select('product_id, quantity')
-          .eq('combo_id', comboIdInt);
-        for (const ci of comboItemsData || []) {
+        for (const ci of comboItemsByComboId.get(String(comboIdInt)) || []) {
           if (!isUuid(ci.product_id)) continue;
           saleItems.push({
             sale_id: saleId,
@@ -1635,6 +1432,34 @@ export default function POS({ isMobile = false }) {
     saleId = chkData?.sale?.id;
     const inventoryAlreadyApplied = chkData?.inventoryApplied === true;
 
+    const usageMap = {};
+    for (const si of saleItems) {
+      if (!si.product_id) continue;
+      usageMap[si.product_id] = (usageMap[si.product_id] || 0) + Number(si.quantity || 0);
+    }
+    const usedProducts = Object.keys(usageMap);
+    if (usedProducts.length > 0) {
+      try {
+        const usageSnapshot = { ...usageMap };
+        setProducts(prev => {
+          if (!Array.isArray(prev) || !prev.length) return prev;
+          return prev.map(p => {
+            const used = usageSnapshot[p.id];
+            if (!used) return p;
+            const newStock = (Number(p.stock) || 0) - Number(used || 0);
+            return { ...p, stock: newStock };
+          });
+        });
+        setSets(prev => Array.isArray(prev) ? prev.map(s => ({ ...s })) : prev);
+      } catch (optimisticErr) {
+        console.warn('Optimistic inventory update failed (non-fatal):', optimisticErr);
+      }
+      forceCatalogRefresh();
+      if (inventoryAlreadyApplied) {
+        setInventoryDeductedMsg(`Inventory updated for ${usedProducts.length} item(s).`);
+      }
+    }
+
     if (laybyId && saleId && paymentRows.length > 0) {
       try {
         const laybyPaymentRows = paymentRows.map(p => ({
@@ -1649,120 +1474,21 @@ export default function POS({ isMobile = false }) {
           allocation_batch_uuid: p.allocation_batch_uuid || null,
         }));
         const { error: laybyPayErr } = await insertLaybyPayments(laybyPaymentRows, { customerId });
-        if (laybyPayErr) {
-          console.warn('Failed to write layby payments', laybyPayErr);
-        }
+        if (laybyPayErr) console.warn('Failed to write layby payments', laybyPayErr);
       } catch (e) {
         console.warn('Layby payments write failed', e);
       }
     }
 
-    // Back-link layby.sale_id now that we have saleId
     if (laybyId && !existingLaybyId && saleId) {
       try { await fromPublic('laybys').update({ sale_id: saleId }).eq('id', laybyId); } catch {}
     }
 
-  // No credit consumption
-
-    // Recompute layby rollup after payment & sale when outstanding path
     if (laybyId) {
       await recomputeLaybyRollup(laybyId);
     }
 
-    let whatsappWarning = '';
-    try {
-      const notifyErrors = [];
-      const isFahmeCheckout = isFahme(customerId);
-      if (isFahmeCheckout) {
-        // Fahme accounts never publish individual sale details. Send only the
-        // refreshed customer layby statement PDF to the Fahme group.
-        const result = await notifyLaybyWhatsApp({
-          laybyId: laybyId || existingLaybyId || null,
-          customerId,
-          eventType: 'statement',
-          saleId,
-        });
-        if (!result?.ok) notifyErrors.push(result?.error || 'Fahme PDF WhatsApp failed');
-      } else if (laybyId && !existingLaybyId && outstandingNow > 0) {
-        const result = await notifyLaybyWhatsApp({
-          laybyId,
-          customerId,
-          eventType: 'new_layby',
-          saleId,
-        });
-        if (!result?.ok) notifyErrors.push(result?.error || 'Layby WhatsApp failed');
-      } else if (laybyId && existingLaybyId && (remainingPay > 0 || outstandingNow > 0)) {
-        const result = await notifyLaybyWhatsApp({
-          laybyId,
-          customerId,
-          eventType: 'layby_addition',
-          saleId,
-        });
-        if (!result?.ok) notifyErrors.push(result?.error || 'Layby WhatsApp failed');
-      }
-      if (!isFahmeCheckout && saleId && outstandingNow <= 0) {
-        const result = await notifySaleWhatsApp({ saleId });
-        if (!result?.ok) notifyErrors.push(result?.error || 'Sale WhatsApp failed');
-      }
-      if (notifyErrors.length) whatsappWarning = notifyErrors.join('; ');
-    } catch (e) {
-      console.warn('WhatsApp notify failed:', e?.message || e);
-      whatsappWarning = e?.message || 'WhatsApp alert failed';
-    }
-
-    // 3. Inventory deduction via server API (client writes go through Firestore security rules).
-    try {
-      const usageMap = {};
-      for (const si of saleItems) {
-        if (!si.product_id) continue;
-        usageMap[si.product_id] = (usageMap[si.product_id] || 0) + Number(si.quantity || 0);
-      }
-      const usedProducts = Object.keys(usageMap);
-      if (!inventoryAlreadyApplied && usedProducts.length > 0) {
-        const adjustedProducts = await applySaleInventoryDeductionViaApi({
-          items: saleItems,
-          locationId: ctx.selectedLocation,
-          saleId,
-          receiptNumber: storedReceiptNumber,
-          userUid: saleActor.user_uid,
-          userId: saleActor.user_id,
-        });
-        if (adjustedProducts > 0) {
-          setInventoryDeductedMsg(`Inventory updated for ${adjustedProducts} item(s).`);
-        }
-      } else if (inventoryAlreadyApplied && usedProducts.length > 0) {
-        setInventoryDeductedMsg(`Inventory updated for ${usedProducts.length} item(s).`);
-      }
-
-      if (usedProducts.length > 0) {
-        // Optimistic in-memory stock decrement so UI reflects change immediately without waiting for realtime
-        try {
-          const usageSnapshot = { ...usageMap };
-          setProducts(prev => {
-            if (!Array.isArray(prev) || !prev.length) return prev;
-            return prev.map(p => {
-              const used = usageSnapshot[p.id];
-              if (!used) return p;
-              const newStock = (Number(p.stock) || 0) - Number(used || 0);
-              return { ...p, stock: newStock };
-            });
-          });
-          // Lightly flag sets to refresh their computed quantity on next render by cloning state
-          setSets(prev => Array.isArray(prev) ? prev.map(s => ({ ...s })) : prev);
-        } catch (optimisticErr) {
-          console.warn('Optimistic inventory update failed (non-fatal):', optimisticErr);
-        }
-        forceCatalogRefresh();
-      }
-    } catch (invErr) {
-      console.error('Inventory deduction failed (sale still recorded)', invErr);
-    }
-
-    setCheckoutSuccess(
-      whatsappWarning
-        ? `Sale completed. WhatsApp alert failed: ${whatsappWarning}`
-        : 'Sale completed successfully!'
-    );
+    setCheckoutSuccess('Sale completed successfully!');
     const wasLayby = outstandingNow > 0;
     const wasNewLayby = wasLayby && !existingLaybyId;
     logUserActivity({
@@ -1774,27 +1500,82 @@ export default function POS({ isMobile = false }) {
       entityId: wasLayby ? String(laybyId) : (saleId != null ? String(saleId) : null),
     });
 
-    // Refresh balances and reset UI
-    try { if (selectedCustomer) await fetchCustomerLaybys(selectedCustomer); } catch {}
-
     setCart([]);
-  setPaymentLines([{ method: 'Cash', amount: '', ref: '' }]);
-  setReceiptNumber("");
+    setPaymentLines([{ method: 'Cash', amount: '', ref: '' }]);
+    setReceiptNumber("");
     setReceiptDuplicateError("");
     setSelectedCustomer("");
     setSearch("");
     setDiscountAll(0);
     setRemainingDue(0);
-  fetchCustomerLaybys("");
-    if (ctx.selectedLocation) {
-      // Minimal refresh: trigger catalog realtime or refetch via existing effect by touching state
-      // No-op: use rtTickCatalog to re-run fetch on next tick
-    }
+
+    void (async () => {
+      let whatsappWarning = '';
+      try {
+        const notifyErrors = [];
+        const isFahmeCheckout = isFahme(customerId);
+        if (isFahmeCheckout) {
+          const result = await notifyLaybyWhatsApp({
+            laybyId: laybyId || existingLaybyId || null,
+            customerId,
+            eventType: 'statement',
+            saleId,
+          });
+          if (!result?.ok) notifyErrors.push(result?.error || 'Fahme PDF WhatsApp failed');
+        } else if (laybyId && !existingLaybyId && outstandingNow > 0) {
+          const result = await notifyLaybyWhatsApp({
+            laybyId,
+            customerId,
+            eventType: 'new_layby',
+            saleId,
+          });
+          if (!result?.ok) notifyErrors.push(result?.error || 'Layby WhatsApp failed');
+        } else if (laybyId && existingLaybyId && (remainingPay > 0 || outstandingNow > 0)) {
+          const result = await notifyLaybyWhatsApp({
+            laybyId,
+            customerId,
+            eventType: 'layby_addition',
+            saleId,
+          });
+          if (!result?.ok) notifyErrors.push(result?.error || 'Layby WhatsApp failed');
+        }
+        if (!isFahmeCheckout && saleId && outstandingNow <= 0) {
+          const result = await notifySaleWhatsApp({ saleId });
+          if (!result?.ok) notifyErrors.push(result?.error || 'Sale WhatsApp failed');
+        }
+        if (notifyErrors.length) whatsappWarning = notifyErrors.join('; ');
+      } catch (e) {
+        console.warn('WhatsApp notify failed:', e?.message || e);
+        whatsappWarning = e?.message || 'WhatsApp alert failed';
+      }
+
+      if (whatsappWarning) {
+        setCheckoutSuccess(`Sale completed. WhatsApp alert failed: ${whatsappWarning}`);
+      }
+
+      if (!inventoryAlreadyApplied && usedProducts.length > 0) {
+        try {
+          const adjustedProducts = await applySaleInventoryDeductionViaApi({
+            items: saleItems,
+            locationId: ctx.selectedLocation,
+            saleId,
+            receiptNumber: storedReceiptNumber,
+            userUid: saleActor.user_uid,
+            userId: saleActor.user_id,
+          });
+          if (adjustedProducts > 0) {
+            setInventoryDeductedMsg(`Inventory updated for ${adjustedProducts} item(s).`);
+          }
+        } catch (invErr) {
+          console.error('Inventory deduction failed (sale still recorded)', invErr);
+        }
+      }
+
+    })();
 
     // If this was a newly created layby (partial sale path), perform SPA reset instead of full reload
     try {
       if (laybyId && !existingLaybyId && outstandingNow > 0) {
-        // Clear core state explicitly (already mostly done above) and navigate to /pos to ensure route-level remount if desired
         setTimeout(() => {
           try {
             setCart([]);
@@ -1805,7 +1586,6 @@ export default function POS({ isMobile = false }) {
             setSearch('');
             setDiscountAll(0);
             setRemainingDue(0);
-            // Use navigate to re-enter POS route cleanly (SPA soft reset)
             if (typeof navigate === 'function') navigate('/pos', { replace: true });
           } catch {}
         }, 400);
@@ -1906,16 +1686,6 @@ export default function POS({ isMobile = false }) {
     // Ensure list stored for UI components relying on customerLaybys
     setCustomerLaybys(list);
     setRemainingDue(totalOutstanding);
-    // Track first active layby for hook rollups
-    try {
-      const desiredCurrency = normalizeCurrencyCode(currency);
-      const firstActive = (list || []).find(l => {
-        if (String(l.status || '').toLowerCase() !== 'active') return false;
-        const laybyCurrency = normalizeCurrencyCode(l.sale_currency || l.currency || '');
-        return laybyCurrency ? laybyCurrency === desiredCurrency : false;
-      });
-      setActiveLaybyId(firstActive ? firstActive.id : (list?.[0]?.id || null));
-    } catch { setActiveLaybyId(null); }
   };
 
   // Removed: fetchCustomerCreditLedger
@@ -1981,10 +1751,11 @@ export default function POS({ isMobile = false }) {
       if (selectedLocation) {
         // Re-run fetchProductsAndSets logic
         async function refreshProductsAndSets() {
-          const { data: invRows2 } = await fromPublic('inventory')
-            .select('product_id, quantity')
-            .eq('location', selectedLocation);
-          const invData = invRows2 || [];
+          const invSnap2 = await fetchComputedInventorySnapshot(selectedLocation);
+          const invData = (invSnap2?.data || []).map((r) => ({
+            product_id: r.product_id,
+            quantity: r.quantity,
+          }));
           const prodIds2 = Array.from(new Set((invData || []).map(r => r.product_id).filter(Boolean)));
           let prodRows2 = [];
           let prodLocRows2 = [];
@@ -2447,20 +2218,14 @@ export default function POS({ isMobile = false }) {
             return (
             <button
               key={product.id}
-              className={`pos-product-btn${needsCatalogPrice(product) ? ' pos-product-btn--needs-price' : ''}`}
+              className="pos-product-btn"
               onClick={() => handleProductClick(product)}
               disabled={isUnavailable}
               style={isUnavailable ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
             >
               {product.name} ({product.sku})<br />Stock: {Math.max(0, displayStock)} {product.stockState === 'reserved' && '(reserved)'}<br />
-              {needsCatalogPrice(product) ? (
-                renderCatalogPriceEditor(product, false)
-              ) : (
-                <>
-                  <b>Price: {getBestPrice(product).toFixed(2)} {getCurrencyLabel(product.currency || currency)}</b>
-                  <div className="pos-product-meta">std: {String(product.price)} | promo: {String(product.promotional_price)}</div>
-                </>
-              )}
+              <b>Price: {getBestPrice(product).toFixed(2)} {getCurrencyLabel(product.currency || currency)}</b>
+              <div className="pos-product-meta">std: {String(product.price)} | promo: {String(product.promotional_price)}</div>
               {isUnavailable && (
                 <div style={{ marginTop: 6, fontSize: '0.8em', color: '#fff', background: badgeColor, display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
                   {badgeLabel}
@@ -2472,16 +2237,12 @@ export default function POS({ isMobile = false }) {
           ...filteredSets.map(set => (
             <button
               key={"set-" + set.id}
-              className={`pos-product-btn${needsCatalogPrice(set) ? ' pos-product-btn--needs-price' : ''}`}
-              onClick={() => handleSetClick(set)}
+              className="pos-product-btn"
+              onClick={() => addToCart(set)}
             >
               {set.combo_name} (Set) ({set.sku})<br />
               <span className="pos-product-stock">Stock: {set.stock}</span><br />
-              {needsCatalogPrice(set) ? (
-                renderCatalogPriceEditor(set, true)
-              ) : (
-                <b>Price: {getBestPrice(set).toFixed(2)} {getCurrencyLabel(set.currency || currency)}</b>
-              )}
+              <b>Price: {getBestPrice(set).toFixed(2)} {getCurrencyLabel(set.currency || currency)}</b>
             </button>
           ))
         ]}

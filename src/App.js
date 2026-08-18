@@ -32,6 +32,7 @@ import StocktakeControlPage from './StocktakeControlPage';
 import StocktakeAggregationPage from './StocktakeAggregationPage';
 import StocktakeCountRoute from './StocktakeCountRoute';
 import ProductsListPage from './ProductsListPage';
+import StockHistoryPage from './StockHistoryPage';
 import ZeroStockLocationReset from './ZeroStockLocationReset';
 import AllSales from './AllSales';
 import Reversal from './Reversal';
@@ -42,9 +43,13 @@ import UserActivityLog from './UserActivityLog';
 import UserAccessManagement from './UserAccessManagement';
 import DatabaseBackupPage from './DatabaseBackup.js';
 import CustomerPrivateBalances from './CustomerPrivateBalances';
+import EcommerceSetup from './EcommerceSetup';
+import EcommerceSales from './EcommerceSales';
+import ShopRoutes from './shop/ShopRoutes';
 import AppChrome from './AppChrome';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
 import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewCustomerPrivateBalances, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated } from './accessControl';
+import { isShopPublicPath } from './utils/shopConstants';
 import { bootstrapAppAuth } from './utils/authSession';
 
 function RouteActivityLogger() {
@@ -55,6 +60,7 @@ function RouteActivityLogger() {
 const DASHBOARD_THEME_PATHS = new Set([
       '/customers',
       '/products-list',
+      '/stock-history',
       '/pos',
       '/layby-management',
       '/quotes-board',
@@ -70,6 +76,8 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/transfers-report',
       '/sales-report',
       '/price-labels',
+      '/ecommerce-setup',
+      '/ecommerce-sales',
 ].map(path => path.toLowerCase()));
 
 // Quotation subpages already partially imported above; ensure routing covers /quotes and nested create path
@@ -110,7 +118,7 @@ function GlobalAuthGate() {
       React.useEffect(() => {
             if (checking) return;
             const path = location.pathname || '/';
-            if (path.startsWith('/login') || isPublicAppRoute(path)) return;
+            if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) return;
             if (!isAppAuthenticated()) {
                   const next = encodeURIComponent(path);
                   navigate(`/login?next=${next}`, { replace: true });
@@ -129,7 +137,7 @@ function SessionBootstrap({ children }) {
 
             (async () => {
                   const path = window.location.pathname || '/';
-                  if (path.startsWith('/login') || isPublicAppRoute(path)) {
+                  if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) {
                         if (active) setReady(true);
                         return;
                   }
@@ -178,7 +186,7 @@ function AccessGuard() {
       React.useEffect(() => {
             // Always allow login and the public count page
             const path = location.pathname || '';
-            if (path.startsWith('/login') || isPublicAppRoute(path)) return;
+            if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) return;
 
             if (!authUser) return; // no session: global gate will handle redirect to login
             if (!isPathAllowed(authUser, path)) {
@@ -216,10 +224,13 @@ function App() {
             if (typeof document === 'undefined') return undefined;
             const isCountRoute = isPublicAppRoute(location.pathname || '');
             const isLusakaStockRoute = (location.pathname || '').toLowerCase() === '/lusaka-stock';
+            const isShopRoute = isShopPublicPath(location.pathname || '');
             document.documentElement.classList.toggle('stocktake-count-route', isCountRoute);
             document.body.classList.toggle('stocktake-count-route', isCountRoute);
             document.documentElement.classList.toggle('lusaka-stock-route', isLusakaStockRoute);
             document.body.classList.toggle('lusaka-stock-route', isLusakaStockRoute);
+            document.documentElement.classList.toggle('shop-route', isShopRoute);
+            document.body.classList.toggle('shop-route', isShopRoute);
             return () => {
                   document.documentElement.classList.remove('stocktake-count-route');
                   document.body.classList.remove('stocktake-count-route');
@@ -243,6 +254,7 @@ function App() {
         <Route path="/stocktake/count/:locationSlug" element={<StocktakeCountRoute />} />
         <Route path="/stocktake/count" element={<Navigate to="/login" replace />} />
         <Route path="/count" element={<Navigate to="/login" replace />} />
+        <Route path="/shop/*" element={<ShopRoutes />} />
 
         <Route element={<RequireAuthLayout />}>
           <Route path="/" element={<HomeRedirect />} />
@@ -293,6 +305,9 @@ function App() {
           <Route path="/KitweStocktake" element={<Navigate to="/stocktake" replace />} />
           <Route path="/stocktake-entry" element={<Navigate to="/stocktake" replace />} />
           <Route path="/products-list" element={<ProductsListPage />} />
+          <Route path="/ecommerce-setup" element={<EcommerceSetup />} />
+          <Route path="/ecommerce-sales" element={<EcommerceSales />} />
+          <Route path="/stock-history" element={<StockHistoryPage />} />
           <Route path="/zero-stock-location" element={<ZeroStockLocationReset />} />
           <Route path="/stock-count" element={<Navigate to="/stocktake" replace />} />
           <Route path="/all-sales" element={<AllSales />} />

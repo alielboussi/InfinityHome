@@ -257,8 +257,6 @@ export default function LaybyManagement() {
   const [paymentRows, setPaymentRows] = useState([]);
   const [paymentsBusy, setPaymentsBusy] = useState(false);
   const [paymentsErr, setPaymentsErr] = useState('');
-  const [paymentsDebug, setPaymentsDebug] = useState(null);
-
   // Realtime refresh tick
   const [rtTick, setRtTick] = useState(0);
   const rtTimerRef = React.useRef(null);
@@ -290,26 +288,37 @@ export default function LaybyManagement() {
     };
   }, []);
 
-  const loadRows = async () => {
-    setLoading(true);
-    setError('');
+  const loadRows = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const built = await fetchLaybyCustomerRows();
       if (!built.length) {
         setRows([]);
-        setLoading(false);
+        try { cacheSet(LAYBY_ROWS_CACHE_KEY, [], LAYBY_ROWS_CACHE_TTL_MS); } catch {}
         return;
       }
       setRows(built);
+      try { cacheSet(LAYBY_ROWS_CACHE_KEY, built, LAYBY_ROWS_CACHE_TTL_MS); } catch {}
     } catch (e) {
-      setError(e?.message || 'Failed to load layby customers.');
+      if (!silent) setError(e?.message || 'Failed to load layby customers.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadRows();
+    let hasCache = false;
+    try {
+      const cached = cacheGet(LAYBY_ROWS_CACHE_KEY);
+      if (Array.isArray(cached) && cached.length) {
+        setRows(cached);
+        hasCache = true;
+      }
+    } catch {}
+    loadRows({ silent: hasCache });
   }, [rtTick]);
 
   useEffect(() => {
@@ -483,13 +492,7 @@ export default function LaybyManagement() {
     let fromQuote = false;
     let hadPaymentsBefore = false;
     const safetyTimer = setTimeout(() => {
-      setLoading(prev => {
-        if (prev) {
-          console.warn('Safety timeout: payment processing force-reset after 15s');
-          return false;
-        }
-        return prev;
-      });
+      setLoading(prev => (prev ? false : prev));
     }, 15000);
     try {
       const customerId = selectedLayby.customer_id;
@@ -797,7 +800,6 @@ export default function LaybyManagement() {
     setPaymentsBusy(true);
     setPaymentEditLayby(target);
     setPaymentRows([]);
-    setPaymentsDebug(null);
     try {
       const customerId = target?.customer_id || target?.customerId || target?.customerInfo?.id;
       if (!customerId) {
@@ -964,7 +966,6 @@ export default function LaybyManagement() {
       );
       payments = await appendLegacyDownPayments(payments, ids, salesById);
       const groupedPayments = groupPaymentsForEditor(payments);
-      setPaymentsDebug({ saleIds: ids.length, payments: groupedPayments.length });
       setPaymentRows(groupedPayments);
     } catch (e) {
       setPaymentsErr(e?.message || 'Failed to load payments');
@@ -1758,11 +1759,6 @@ export default function LaybyManagement() {
             <div style={{ color: 'var(--dash-accent, #63c7ff)', fontSize: 11, marginBottom: 8 }}>
               Rows: {paymentRows.length} · Missing IDs: {paymentRows.filter(r => !r.id || (!isUuid(r.id) && !String(r.id).startsWith('down-'))).length}
             </div>
-            {paymentsDebug && (
-              <div style={{ color: 'var(--dash-muted, #a5b4ad)', fontSize: 11, marginBottom: 8 }}>
-                Sale IDs: {paymentsDebug.saleIds} · Payment groups: {paymentsDebug.payments}
-              </div>
-            )}
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
               <button
                 type="button"

@@ -10,6 +10,7 @@ const COMPOSITE_DOC_IDS = {
   closing_stock_entries: ['session_id', 'product_id'],
   inventory: ['product_id', 'location'],
   stock_transfer_entries: ['session_id', 'product_id'],
+  shop_listings: ['product_id', 'location_id'],
 };
 
 const FIELD_DOC_IDS = {

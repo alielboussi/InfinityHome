@@ -28,6 +28,17 @@ export async function findExistingReceiptSale(db, receiptNumber, { excludeSaleId
   if (!receiptNumber || !db) return null;
   if (isFahmeCustomer(customerId)) return null;
 
+  const normalized = receiptNumberNormalizedField(receiptNumber);
+  if (normalized) {
+    const normalizedRows = await queryCollectionWhere(db, 'sales', [
+      { field: 'receipt_number_normalized', op: '==', value: normalized },
+    ]);
+    for (const row of normalizedRows) {
+      if (excludeSaleId != null && String(row.id) === String(excludeSaleId)) continue;
+      if (receiptNumbersEquivalent(row.receipt_number, receiptNumber)) return row;
+    }
+  }
+
   const variants = receiptVariants(receiptNumber);
   const seen = new Map();
   for (const variant of variants) {

@@ -82,23 +82,30 @@ export async function notifyLaybyWhatsApp({
     const resolvedLaybyId = await resolveCustomerLaybyId(laybyId, customerId);
     if (!resolvedLaybyId) return { ok: false, error: 'No active layby account found for customer' };
 
-    const freshSnapshot = await buildFreshLaybySnapshot({
-      laybyId: resolvedLaybyId,
-      customerId,
-      laybySnapshot,
-    });
-    const pdf = await buildLaybyPdfUrlForWhatsApp({
-      laybyId: resolvedLaybyId,
-      customerId: freshSnapshot?.customer_id || customerId,
-      laybySnapshot: freshSnapshot,
-    });
+    const needsPdf = eventType === 'statement';
+    let pdfUrl;
+    let pdfFilename;
+    if (needsPdf) {
+      const freshSnapshot = await buildFreshLaybySnapshot({
+        laybyId: resolvedLaybyId,
+        customerId,
+        laybySnapshot,
+      });
+      const pdf = await buildLaybyPdfUrlForWhatsApp({
+        laybyId: resolvedLaybyId,
+        customerId: freshSnapshot?.customer_id || customerId,
+        laybySnapshot: freshSnapshot,
+      });
+      pdfUrl = pdf?.url;
+      pdfFilename = pdf?.filename;
+    }
 
     return sendLaybyWhatsApp({
       laybyId: resolvedLaybyId,
       eventType,
       saleId,
-      pdfUrl: pdf?.url,
-      pdfFilename: pdf?.filename,
+      pdfUrl,
+      pdfFilename,
       laybyClosed,
       editSummary,
     });
@@ -108,17 +115,28 @@ export async function notifyLaybyWhatsApp({
   }
 }
 
-export async function notifySaleWhatsApp({ saleId } = {}) {
+export async function notifySaleWhatsApp({ saleId, channel, pdfUrl, pdfFilename } = {}) {
   if (saleId == null || String(saleId).trim() === '') {
     return { ok: false, error: 'Missing saleId' };
   }
 
   try {
-    const pdf = await buildPosSalePdfUrlForWhatsApp({ saleId });
+    let resolvedPdfUrl = String(pdfUrl || '').trim();
+    let resolvedPdfFilename = String(pdfFilename || '').trim();
+    if (!resolvedPdfUrl) {
+      const pdf = await buildPosSalePdfUrlForWhatsApp({ saleId });
+      resolvedPdfUrl = pdf?.url || '';
+      resolvedPdfFilename = pdf?.filename || resolvedPdfFilename;
+    }
+    if (!resolvedPdfFilename) {
+      resolvedPdfFilename = 'Sales_Receipt.pdf';
+    }
+
     return sendSaleWhatsApp({
       saleId,
-      pdfUrl: pdf?.url,
-      pdfFilename: pdf?.filename,
+      channel,
+      pdfUrl: resolvedPdfUrl || undefined,
+      pdfFilename: resolvedPdfFilename,
     });
   } catch (e) {
     console.warn('Sale WhatsApp notify failed:', e?.message || e);

@@ -112,9 +112,15 @@ function applyClientFilters(rows, filters, orExpr) {
       out = out.filter((row) => compareValues(row[filter.col], filter.val) < 0);
     } else if (filter.op === 'neq') {
       out = out.filter((row) => row[filter.col] !== filter.val && String(row[filter.col]) !== String(filter.val));
+    } else if (filter.op === 'is') {
+      if (filter.val === null) {
+        out = out.filter((row) => row[filter.col] == null || row[filter.col] === '');
+      } else {
+        out = out.filter((row) => row[filter.col] === filter.val || String(row[filter.col]) === String(filter.val));
+      }
     } else if (filter.op === 'not') {
       if (filter.mode === 'is' && filter.val === null) {
-        out = out.filter((row) => row[filter.col] != null);
+        out = out.filter((row) => row[filter.col] != null && row[filter.col] !== '');
       } else if (filter.mode === 'eq') {
         out = out.filter((row) => row[filter.col] !== filter.val);
       }
@@ -171,11 +177,13 @@ function buildServerQuery(db, table, filters, orderSpec, limitN) {
 function needsClientFiltering(filters, orExpr) {
   if (orExpr) return true;
   if (filters.some((f) => f.op === 'ilike')) return true;
+  if (filters.some((f) => f.op === 'eq' && f.col === 'id')) return true;
   const inequality = filters.filter((f) => (
     ['gte', 'lte', 'gt', 'lt', 'neq'].includes(f.op)
     || (f.op === 'not' && f.mode === 'eq')
   ));
   return filters.some((f) => f.op === 'in' && (f.vals?.length || 0) > IN_CHUNK)
+    || filters.some((f) => f.op === 'is')
     || filters.some((f) => f.op === 'not' && f.mode === 'is' && f.val === null)
     || inequality.length > 1;
 }
@@ -215,6 +223,11 @@ class FirestoreSelectQuery {
 
   not(col, mode, val) {
     this.filters.push({ op: 'not', col, mode, val });
+    return this;
+  }
+
+  is(col, val) {
+    this.filters.push({ op: 'is', col, val });
     return this;
   }
 
@@ -492,6 +505,11 @@ class FirestoreUpdateQuery {
 
   async execute() {
     try {
+      if (this.filters.length === 1 && this.filters[0].op === 'eq' && this.filters[0].col === 'id') {
+        const docId = String(this.filters[0].val);
+        await this.db.collection(this.table).doc(docId).set(this.patch, { merge: true });
+        return ok([{ id: docId, ...this.patch }]);
+      }
       const select = new FirestoreSelectQuery(this.db, this.table);
       select.filters = [...this.filters];
       const { data: rows, error } = await select.execute();
@@ -556,6 +574,11 @@ class FirestoreDeleteQuery {
 
   async execute() {
     try {
+      if (this.filters.length === 1 && this.filters[0].op === 'eq' && this.filters[0].col === 'id') {
+        const docId = String(this.filters[0].val);
+        await this.db.collection(this.table).doc(docId).delete();
+        return ok(null);
+      }
       const select = new FirestoreSelectQuery(this.db, this.table);
       select.filters = [...this.filters];
       const { data: rows, error } = await select.execute();
@@ -587,9 +610,23 @@ class FirestoreUpsertQuery {
     this.table = table;
     this.rows = Array.isArray(rows) ? rows : [rows];
     this.onConflict = opts.onConflict || 'id';
+    this.selectSpec = null;
+    this.wantSingle = false;
+    this.wantMaybeSingle = false;
   }
 
-  select() {
+  select(columns) {
+    this.selectSpec = columns || '*';
+    return this;
+  }
+
+  single() {
+    this.wantSingle = true;
+    return this;
+  }
+
+  maybeSingle() {
+    this.wantMaybeSingle = true;
     return this;
   }
 
@@ -615,7 +652,27 @@ class FirestoreUpsertQuery {
         if (batchCount >= 400) await flush();
       }
       await flush();
-      return ok(written);
+
+      let rows = written;
+      if (this.selectSpec) {
+        const parsedSelect = parseSelectSpec(this.selectSpec);
+        rows = written.map((row) => pickColumns(row, this.selectSpec, parsedSelect));
+      }
+
+      if (this.wantSingle) {
+        if (rows.length !== 1) {
+          return fail('JSON object requested, multiple (or no) rows returned', 'PGRST116');
+        }
+        return ok(rows[0]);
+      }
+      if (this.wantMaybeSingle) {
+        if (rows.length > 1) {
+          return fail('JSON object requested, multiple rows returned', 'PGRST116');
+        }
+        return ok(rows[0] || null);
+      }
+
+      return ok(rows);
     } catch (err) {
       return fail(err?.message || String(err));
     }

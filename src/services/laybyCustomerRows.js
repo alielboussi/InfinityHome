@@ -40,6 +40,127 @@ const toTime = (value) => {
 const sumDue = (totalsByCurrency) => Object.values(totalsByCurrency || {})
   .reduce((sum, totals) => sum + Number(totals?.due || 0), 0);
 
+const LAYBY_SALE_OR_FILTER = 'status.eq.layby,status.eq.active,layby_id.not.is.null';
+
+function filterCustomerSalesForStatement(customerId, laybys, salesByCustomer) {
+  const raw = (salesByCustomer.get(customerId) || []).slice();
+  const regularSales = raw.filter(
+    (sale) => !String(sale?.sale_id || '').toUpperCase().startsWith('PDF-'),
+  );
+  if (regularSales.length > 0) return regularSales;
+
+  const pdfTaggedSaleIds = new Set(
+    (laybys || [])
+      .filter((layby) => String(layby?.notes || '').toUpperCase().includes('PDF_ITEM_RESTORE_20260610'))
+      .map((layby) => String(layby?.sale_id || '').trim())
+      .filter(Boolean),
+  );
+  if (!pdfTaggedSaleIds.size) return raw;
+  const taggedOnly = raw.filter((sale) => pdfTaggedSaleIds.has(String(sale?.id || '').trim()));
+  return taggedOnly.length ? taggedOnly : raw;
+}
+
+function laybyHasOutstandingBalance(layby, financialsBySale) {
+  const saleId = String(layby?.sale_id || '').trim();
+  if (!saleId) return false;
+  const fin = financialsBySale.get(saleId) || {};
+  const outstanding = Number(fin?.outstanding_amount);
+  if (Number.isFinite(outstanding)) return outstanding > 0.009;
+  const total = Number(fin?.total_due || layby?.total_amount || 0);
+  const paid = Number(fin?.paid_amount || layby?.paid_amount || 0);
+  return Math.max(0, total - paid) > 0.009;
+}
+
+function laybysForCustomerTotals(laybys, financialsBySale) {
+  return (laybys || []).filter(
+    (layby) => isActiveLaybyStatus(layby?.status) || laybyHasOutstandingBalance(layby, financialsBySale),
+  );
+}
+
+function isLaybyLinkedSale(sale, laybyBySaleId) {
+  const status = String(sale?.status || '').trim().toLowerCase();
+  const saleId = String(sale?.id || '').trim();
+  return status === 'layby'
+    || status === 'active'
+    || sale?.layby_id != null
+    || (saleId && laybyBySaleId?.has(saleId));
+}
+
+/** Match All Sales outstanding: max(fin, layby, payments) with stale-fin guard. */
+function computeAllSalesStyleOutstanding({ sale, layby, fin, paymentAgg }) {
+  const total = fin ? Number(fin.total_due || 0) : Number(sale?.total_amount || 0);
+  const finPaid = fin ? Number(fin.paid_amount || 0) : 0;
+  const laybyPaid = layby ? Number(layby.paid_amount || 0) : 0;
+  const paymentPaid = Number(paymentAgg?.paid || 0);
+  const paymentDiscount = Number(paymentAgg?.paymentDiscount || 0);
+  const discount = fin ? Number(fin.discount_amount || 0) : Number(sale?.discount || 0);
+  const paid = Math.max(finPaid, laybyPaid, paymentPaid);
+  const dueFallback = Math.max(0, total - paid - Math.max(0, discount) - Math.max(0, paymentDiscount));
+  const finOutstanding = Number(fin?.outstanding_amount);
+  const finLooksStale = Number.isFinite(finOutstanding)
+    && paymentPaid > 0
+    && finOutstanding > dueFallback + 0.009;
+  return (Number.isFinite(finOutstanding) && !finLooksStale)
+    ? Math.max(0, finOutstanding)
+    : dueFallback;
+}
+
+function buildLaybyBySaleId(laybys) {
+  const map = new Map();
+  (laybys || []).forEach((layby) => {
+    const saleId = String(layby?.sale_id || '').trim();
+    if (saleId) map.set(saleId, layby);
+  });
+  return map;
+}
+
+function isLaybyActivitySale(sale, laybyBySaleId) {
+  const saleId = String(sale?.id || '').trim();
+  return isLaybyLinkedSale(sale, laybyBySaleId) || (saleId && laybyBySaleId.has(saleId));
+}
+
+function rebuildCandidateSales({ salesById, laybyIdSet, laybySaleIds, paymentSaleIdSet, laybyBySaleId }) {
+  const candidateSales = Array.from(salesById.values()).filter((sale) => {
+    const saleId = String(sale?.id || '').trim();
+    const laybyId = String(sale?.layby_id || '').trim();
+    const status = String(sale?.status || '').trim().toLowerCase();
+    return laybyIdSet.has(laybyId)
+      || status === 'layby'
+      || status === 'active'
+      || laybySaleIds.some((id) => String(id) === saleId)
+      || paymentSaleIdSet.has(saleId)
+      || laybyBySaleId.has(saleId);
+  });
+
+  const salesByCustomer = new Map();
+  candidateSales.forEach((sale) => {
+    const customerId = String(sale?.customer_id || '').trim();
+    if (!customerId) return;
+    if (!salesByCustomer.has(customerId)) salesByCustomer.set(customerId, []);
+    salesByCustomer.get(customerId).push(sale);
+  });
+
+  return { candidateSales, salesByCustomer };
+}
+
+function patchTotalsFromOutstandingSales(totalsByCurrency, statementSales, customer) {
+  const patched = { ...totalsByCurrency };
+  (statementSales || []).forEach((sale) => {
+    const outstanding = Math.max(0, Number(sale.outstanding_amount || 0));
+    if (outstanding <= 0.009) return;
+    const cur = normalizeCurrency(sale.currency, normalizeCurrency(customer?.currency || 'K', 'K'));
+    if (!patched[cur]) patched[cur] = { total: 0, paid: 0, discount: 0, due: 0 };
+    const totalDue = Number(sale.total_due || sale.total_amount || 0);
+    const paid = Number(sale.paid_amount || 0);
+    const discount = Number(sale.discount_amount || 0) + Number(sale.payment_discount_amount || 0);
+    patched[cur].due += outstanding;
+    patched[cur].total = Math.max(patched[cur].total, totalDue + Math.max(0, Number(sale.discount_amount || 0)));
+    patched[cur].paid = Math.max(patched[cur].paid, paid);
+    patched[cur].discount = Math.max(patched[cur].discount, discount);
+  });
+  return patched;
+}
+
 function resolveLinkedQuote({ saleId, laybyId, quotationBySaleId, quotationByLaybyId }) {
   const saleKey = String(saleId || '').trim();
   if (saleKey && quotationBySaleId.has(saleKey)) {
@@ -113,14 +234,14 @@ export async function fetchLaybyCustomerRows() {
     db
       .from('laybys')
       .select('id, sale_id, customer_id, total_amount, paid_amount, status, updated_at, created_at, origin, notes')
-      .not('customer_id', 'is', null),
+      .not('sale_id', 'is', null),
     fromPublic('layby_payments')
       .select('customer_id, sale_id')
       .not('customer_id', 'is', null),
     fromPublic('sales')
       .select('id, sale_id, customer_id, status, layby_id, sale_date, created_at, currency, total_amount, vat_apply, vat_rate, discount')
       .not('customer_id', 'is', null)
-      .or('status.eq.layby,layby_id.not.is.null'),
+      .or(LAYBY_SALE_OR_FILTER),
   ]);
   if (laybyErr) throw laybyErr;
   if (paymentSeedErr) throw paymentSeedErr;
@@ -148,8 +269,8 @@ export async function fetchLaybyCustomerRows() {
     if (!byCustomer.has(customerId)) byCustomer.set(customerId, []);
   });
 
-  const ids = Array.from(customerIds);
-  if (!ids.length) return [];
+  const idsAfterSeed = Array.from(customerIds);
+  if (!idsAfterSeed.length) return [];
 
   const paymentSaleIdSet = new Set(
     (paymentSeedRows || [])
@@ -180,16 +301,13 @@ export async function fetchLaybyCustomerRows() {
     }
   }
 
-  const { data: customerRows, error: custErr } = await fromPublic('customers')
-    .select('id, name, phone, currency')
-    .in('id', ids);
-  if (custErr) throw custErr;
-
   const laybyIdSet = new Set(
     (laybyRowsSeed || [])
       .map((row) => String(row?.id || '').trim())
       .filter(Boolean)
   );
+
+  const laybyBySaleId = buildLaybyBySaleId(laybyRowsSeed);
 
   const salesById = new Map();
   (salesSeedRows || []).forEach((sale) => {
@@ -198,9 +316,15 @@ export async function fetchLaybyCustomerRows() {
     salesById.set(saleId, sale);
   });
 
-  const missingSaleIds = laybySaleIds.filter((saleId) => !salesById.has(String(saleId)));
-  if (missingSaleIds.length) {
-    const chunks = chunkArray(missingSaleIds, 200);
+  const referencedSaleIds = Array.from(
+    new Set([
+      ...laybySaleIds.map((saleId) => String(saleId)),
+      ...paymentSaleIdSet,
+    ]),
+  ).filter((saleId) => saleId && !salesById.has(saleId));
+
+  if (referencedSaleIds.length) {
+    const chunks = chunkArray(referencedSaleIds, 200);
     for (const chunk of chunks) {
       const { data, error } = await fromPublic('sales')
         .select('id, sale_id, customer_id, status, layby_id, sale_date, created_at, currency, total_amount, vat_apply, vat_rate, discount')
@@ -210,26 +334,66 @@ export async function fetchLaybyCustomerRows() {
         const saleId = String(sale?.id || '').trim();
         if (!saleId) return;
         salesById.set(saleId, sale);
+        const customerId = String(sale?.customer_id || '').trim();
+        if (customerId) customerIds.add(customerId);
       });
     }
   }
 
-  const candidateSales = Array.from(salesById.values()).filter((sale) => {
-    const saleId = String(sale?.id || '').trim();
-    const laybyId = String(sale?.layby_id || '').trim();
-    const status = String(sale?.status || '').trim().toLowerCase();
-    return laybyIdSet.has(laybyId)
-      || status === 'layby'
-      || laybySaleIds.includes(sale?.id)
-      || paymentSaleIdSet.has(saleId);
+  (laybyRowsSeed || []).forEach((layby) => {
+    let customerId = String(layby?.customer_id || '').trim();
+    if (!customerId) {
+      const saleId = String(layby?.sale_id || '').trim();
+      const sale = saleId ? salesById.get(saleId) : null;
+      customerId = String(sale?.customer_id || '').trim();
+    }
+    if (!customerId) return;
+    customerIds.add(customerId);
+    if (!byCustomer.has(customerId)) byCustomer.set(customerId, []);
+    const bucket = byCustomer.get(customerId);
+    if (!bucket.some((row) => String(row?.id || '') === String(layby?.id || ''))) {
+      bucket.push(layby);
+    }
   });
 
-  const salesByCustomer = new Map();
-  candidateSales.forEach((sale) => {
+  const saleCountByCustomer = new Map();
+  salesById.forEach((sale) => {
     const customerId = String(sale?.customer_id || '').trim();
     if (!customerId) return;
-    if (!salesByCustomer.has(customerId)) salesByCustomer.set(customerId, []);
-    salesByCustomer.get(customerId).push(sale);
+    saleCountByCustomer.set(customerId, (saleCountByCustomer.get(customerId) || 0) + 1);
+  });
+
+  const customersMissingSales = Array.from(customerIds).filter((customerId) => {
+    if ((saleCountByCustomer.get(customerId) || 0) > 0) return false;
+    return (byCustomer.get(customerId)?.length)
+      || (paymentSeedRows || []).some(
+        (payment) => String(payment?.customer_id || '').trim() === String(customerId),
+      );
+  });
+
+  if (customersMissingSales.length) {
+    const chunks = chunkArray(customersMissingSales, 80);
+    for (const chunk of chunks) {
+      const { data, error } = await fromPublic('sales')
+        .select('id, sale_id, customer_id, status, layby_id, sale_date, created_at, currency, total_amount, vat_apply, vat_rate, discount')
+        .in('customer_id', chunk);
+      if (error) throw error;
+      (data || []).forEach((sale) => {
+        const saleId = String(sale?.id || '').trim();
+        if (!saleId) return;
+        salesById.set(saleId, sale);
+        const customerId = String(sale?.customer_id || '').trim();
+        if (customerId) customerIds.add(customerId);
+      });
+    }
+  }
+
+  const { candidateSales, salesByCustomer } = rebuildCandidateSales({
+    salesById,
+    laybyIdSet,
+    laybySaleIds,
+    paymentSaleIdSet,
+    laybyBySaleId,
   });
 
   const candidateSaleIds = Array.from(
@@ -237,6 +401,30 @@ export async function fetchLaybyCustomerRows() {
   );
 
   const financialsBySale = await fetchCanonicalFinancials(db, candidateSaleIds);
+
+  // Ensure customers with an outstanding layby-linked sale are always included.
+  candidateSales.forEach((sale) => {
+    const customerId = String(sale?.customer_id || '').trim();
+    const saleId = String(sale?.id || '').trim();
+    if (!customerId || !saleId) return;
+    const layby = laybyBySaleId.get(saleId);
+    if (!isLaybyActivitySale(sale, laybyBySaleId)) return;
+    const fin = financialsBySale.get(saleId) || {};
+    const outstanding = computeAllSalesStyleOutstanding({
+      sale,
+      layby,
+      fin,
+      paymentAgg: { paid: 0, paymentDiscount: 0 },
+    });
+    if (outstanding > 0.009) customerIds.add(customerId);
+  });
+  const ids = Array.from(customerIds);
+  if (!ids.length) return [];
+
+  const { data: customerRows, error: custErr } = await fromPublic('customers')
+    .select('id, name, phone, currency')
+    .in('id', ids);
+  if (custErr) throw custErr;
 
   const itemsBySale = new Map();
   if (candidateSaleIds.length) {
@@ -384,16 +572,10 @@ export async function fetchLaybyCustomerRows() {
   ids.forEach((customerId) => {
     const customer = customersMap[customerId] || { id: customerId, name: customerId, phone: '', currency: 'K' };
     const laybys = byCustomer.get(customerId) || [];
-    const activeLaybys = laybys.filter((layby) => isActiveLaybyStatus(layby?.status));
-    const pdfTaggedSaleIds = new Set(
-      (laybys || [])
-        .filter((layby) => String(layby?.notes || '').toUpperCase().includes('PDF_ITEM_RESTORE_20260610'))
-        .map((layby) => String(layby?.sale_id || '').trim())
-        .filter(Boolean)
-    );
+    const laybysForTotals = laybysForCustomerTotals(laybys, financialsBySale);
 
     const tableTotalsByCurrency = {};
-    activeLaybys.forEach((layby) => {
+    laybysForTotals.forEach((layby) => {
       const saleId = String(layby?.sale_id || '').trim();
       const sale = saleId ? salesById.get(saleId) : null;
       const linkedQuote = resolveLinkedQuote({
@@ -442,26 +624,9 @@ export async function fetchLaybyCustomerRows() {
       tableTotalsByCurrency[currency].due += dueAmount;
     });
 
-    const customerSalesRaw = (salesByCustomer.get(customerId) || [])
-      .filter((sale) => {
-        if (!pdfTaggedSaleIds.size) return true;
-        return pdfTaggedSaleIds.has(String(sale?.id || '').trim());
-      })
-      .slice();
-    const hasPdfBusinessSales = customerSalesRaw.some((sale) => String(sale?.sale_id || '').toUpperCase().startsWith('PDF-'));
-    const customerSales = (hasPdfBusinessSales
-      ? customerSalesRaw.filter((sale) => String(sale?.sale_id || '').toUpperCase().startsWith('PDF-'))
-      : customerSalesRaw)
+    const customerSales = filterCustomerSalesForStatement(customerId, laybys, salesByCustomer)
       .slice();
     customerSales.sort((left, right) => toTime(left?.sale_date || left?.created_at) - toTime(right?.sale_date || right?.created_at));
-
-    const customerLaybyPaymentTotal = customerSales.reduce((sum, sale) => {
-      const saleKey = String(sale?.id || '').trim();
-      if (!saleKey) return sum;
-      return sum + (paymentsBySale.get(saleKey) || []).reduce((saleSum, payment) => (
-        saleSum + Number(payment?.amount || 0)
-      ), 0);
-    }, 0);
 
     const statementSales = customerSales.map((sale) => {
       const saleId = sale?.id;
@@ -475,16 +640,20 @@ export async function fetchLaybyCustomerRows() {
       });
       const saleItems = itemsBySale.get(saleKey) || [];
       const paymentAgg = paymentAggBySale.get(saleKey) || { paid: 0, paymentDiscount: 0 };
+      const linkedLayby = laybyBySaleId.get(saleKey) || (laybys || []).find(
+        (layby) => String(layby?.sale_id || '').trim() === saleKey,
+      );
       const totalDue = computeSaleLaybyTotalDue({ sale, fin, items: saleItems, linkedQuote });
       const finPaid = Number(fin?.paid_amount || 0);
-      const paidAmount = Math.max(finPaid, Number(paymentAgg?.paid || 0));
+      const laybyPaid = linkedLayby ? Number(linkedLayby.paid_amount || 0) : 0;
+      const paidAmount = Math.max(finPaid, laybyPaid, Number(paymentAgg?.paid || 0));
       const discountAmount = Number(sale?.discount ?? fin?.discount_amount ?? linkedQuote?.discount ?? 0);
       const paymentDiscountAmount = Number(paymentAgg?.paymentDiscount || 0);
       const dueFallback = Math.max(0, totalDue - paidAmount - Math.max(0, paymentDiscountAmount));
       const finOutstanding = Number(fin?.outstanding_amount);
       const hasFinOutstanding = Number.isFinite(finOutstanding);
       const finLooksStale = hasFinOutstanding
-        && customerLaybyPaymentTotal > 0
+        && Number(paymentAgg?.paid || 0) > 0
         && finOutstanding > dueFallback + 0.009;
       const outstandingAmount = (hasFinOutstanding && !finLooksStale)
         ? Math.max(0, finOutstanding)
@@ -549,11 +718,7 @@ export async function fetchLaybyCustomerRows() {
         .filter(Boolean)
     );
 
-    const activeLaybysForSynthesis = (pdfTaggedSaleIds.size
-      ? activeLaybys.filter((layby) => pdfTaggedSaleIds.has(String(layby?.sale_id || '').trim()))
-      : activeLaybys);
-
-    const synthesizedSales = activeLaybysForSynthesis
+    const synthesizedSales = (laybysForTotals.length ? laybysForTotals : laybys)
       .map((layby) => {
         const saleIdRaw = String(layby?.sale_id ?? '').trim();
         const sale = saleIdRaw ? salesById.get(saleIdRaw) : null;
@@ -637,12 +802,47 @@ export async function fetchLaybyCustomerRows() {
     }
 
     const totalDue = sumDue(mergedTotalsByCurrency);
-    if (totalDue <= 0) return;
+    const statementOutstandingTotal = statementSales.reduce(
+      (sum, sale) => sum + Math.max(0, Number(sale.outstanding_amount || 0)),
+      0,
+    );
+    const customerLaybyBySaleId = buildLaybyBySaleId(laybys);
+    const allSalesOutstandingTotal = customerSales.reduce((sum, sale) => {
+      const saleKey = String(sale?.id || '').trim();
+      if (!saleKey || !isLaybyActivitySale(sale, customerLaybyBySaleId)) return sum;
+      const layby = customerLaybyBySaleId.get(saleKey);
+      const fin = financialsBySale.get(saleKey) || {};
+      const paymentAgg = paymentAggBySale.get(saleKey) || { paid: 0, paymentDiscount: 0 };
+      return sum + computeAllSalesStyleOutstanding({ sale, layby, fin, paymentAgg });
+    }, 0);
+    const tableFallbackDue = sumDue(tableTotalsByCurrency);
+    const effectiveDue = Math.max(
+      totalDue,
+      statementOutstandingTotal,
+      allSalesOutstandingTotal,
+      tableFallbackDue,
+    );
+
+    if (effectiveDue <= 0.009) return;
+
+    if (totalDue <= 0.009 && effectiveDue > 0.009) {
+      Object.assign(
+        mergedTotalsByCurrency,
+        patchTotalsFromOutstandingSales(mergedTotalsByCurrency, statementSales, customer),
+      );
+      if (sumDue(mergedTotalsByCurrency) <= 0.009 && tableFallbackDue > 0.009) {
+        Object.entries(tableTotalsByCurrency).forEach(([currency, totals]) => {
+          if (!mergedTotalsByCurrency[currency] || Number(mergedTotalsByCurrency[currency]?.due || 0) <= 0) {
+            mergedTotalsByCurrency[currency] = { ...totals };
+          }
+        });
+      }
+    }
 
     const activeStatement = filterStatementToOutstandingSales(mergedStatement);
     const outstandingSales = activeStatement?.sales || [];
 
-    const primaryLayby = activeLaybys
+    const primaryLayby = laybysForTotals
       .slice()
       .sort((left, right) => toTime(right.updated_at || right.created_at) - toTime(left.updated_at || left.created_at))[0]
       || laybys

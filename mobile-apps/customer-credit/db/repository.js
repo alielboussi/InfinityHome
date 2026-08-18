@@ -13,7 +13,7 @@ import {
   MONTHLY_REPORT_DAYS,
   SHARED_META_ID,
 } from './constants';
-import { daysBetween, emptyCurrencyMap, normalizeCurrency, customerHasBalance, CURRENCIES } from '../utils/format';
+import { daysBetween, emptyCurrencyMap, normalizeCurrency, customerHasBalance, customerHasAdvanceCredit, computeAdvanceCreditByCurrency, CURRENCIES } from '../utils/format';
 import { nowIso, todayIsoDate, uuid } from '../utils/ids';
 
 function requireAuthUid() {
@@ -84,7 +84,9 @@ export async function enrichCustomer(customer) {
     sumPaymentsForCustomer(customer.id),
   ]);
   const balanceByCurrency = computeBalanceByCurrency(chargedByCurrency, paidByCurrency);
+  const advanceCreditByCurrency = computeAdvanceCreditByCurrency(chargedByCurrency, paidByCurrency);
   const hasBalanceDue = customerHasBalance(balanceByCurrency);
+  const hasAdvanceCredit = customerHasAdvanceCredit(advanceCreditByCurrency);
   const startDate = hasBalanceDue
     ? (lastSale || firstSale || customer.created_at)
     : (firstSale || customer.created_at);
@@ -98,10 +100,13 @@ export async function enrichCustomer(customer) {
     chargedByCurrency,
     paidByCurrency,
     balanceByCurrency,
+    advanceCreditByCurrency,
     totalCharged: chargedByCurrency,
     totalPaid: paidByCurrency,
     balance: balanceByCurrency,
+    advanceCredit: advanceCreditByCurrency,
     hasBalance: hasBalanceDue,
+    hasAdvanceCredit,
     firstSaleDate: firstSale,
     lastSaleDate: lastSale,
     creditStartDate: startDate,
@@ -307,7 +312,12 @@ export async function listPayments(customerId) {
   if (!customer) return [];
   const snap = await getDocs(paymentsCollection(customerId));
   return snap.docs
-    .map((row) => ({ id: row.id, ...row.data(), is_down_payment: Boolean(row.data().is_down_payment) }))
+    .map((row) => ({
+      id: row.id,
+      ...row.data(),
+      is_down_payment: Boolean(row.data().is_down_payment),
+      is_advance: Boolean(row.data().is_advance || row.data().is_down_payment),
+    }))
     .sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date)));
 }
 
@@ -320,20 +330,46 @@ export async function addPayment(payload) {
   const amount = Math.max(0.01, Number(payload.amount) || 0);
   const id = uuid();
   const now = nowIso();
+  const isAdvance = Boolean(payload.is_advance || payload.is_down_payment);
   const record = {
     owner_uid: authUid,
     customer_id: customerId,
     amount,
     currency: normalizeCurrency(payload.currency),
     payment_date: payload.payment_date || todayIsoDate(),
-    is_down_payment: payload.is_down_payment ? 1 : 0,
+    is_down_payment: isAdvance ? 1 : 0,
+    is_advance: isAdvance ? 1 : 0,
     notes: String(payload.notes || '').trim(),
     created_at: now,
   };
 
   await setDoc(doc(paymentsCollection(customerId), id), record);
   await setDoc(customerRef(customerId), { updated_at: now }, { merge: true });
-  return { id, ...record, is_down_payment: Boolean(record.is_down_payment) };
+  return { id, ...record, is_down_payment: Boolean(record.is_down_payment), is_advance: Boolean(record.is_advance) };
+}
+
+export async function addAdvancePayment(payload) {
+  const customerId = payload.customer_id;
+  if (!customerId) throw new Error('Customer is required.');
+
+  const enriched = await getCustomer(customerId);
+  if (!enriched) throw new Error('Customer not found.');
+  if (enriched.hasBalance) {
+    throw new Error('This customer has an outstanding balance. Record a payment against the balance first, then add a new advance.');
+  }
+
+  const amount = Math.max(0.01, Number(payload.amount) || 0);
+  const currency = normalizeCurrency(payload.currency);
+  const notes = String(payload.notes || '').trim() || 'Advance paid amount';
+
+  return addPayment({
+    customer_id: customerId,
+    amount,
+    currency,
+    payment_date: payload.payment_date,
+    is_advance: true,
+    notes,
+  });
 }
 
 async function getMeta() {
@@ -348,11 +384,18 @@ async function setMeta(patch) {
 export async function getDashboardData() {
   const customers = await listCustomers();
   const withBalance = customers.filter((c) => c.hasBalance);
+  const withAdvance = customers.filter((c) => c.hasAdvanceCredit);
   const overdue = withBalance.filter((c) => c.overdue);
   const totalOutstandingByCurrency = emptyCurrencyMap();
+  const totalAdvanceCreditByCurrency = emptyCurrencyMap();
   withBalance.forEach((customer) => {
     CURRENCIES.forEach((currency) => {
       totalOutstandingByCurrency[currency] += Number(customer.balanceByCurrency?.[currency] || 0);
+    });
+  });
+  withAdvance.forEach((customer) => {
+    CURRENCIES.forEach((currency) => {
+      totalAdvanceCreditByCurrency[currency] += Number(customer.advanceCreditByCurrency?.[currency] || 0);
     });
   });
   const monthlyReport = await getMonthlyReportIfDue(withBalance);
@@ -360,14 +403,18 @@ export async function getDashboardData() {
   return {
     customers,
     withBalance,
+    withAdvance,
     overdue,
     totalOutstandingByCurrency,
+    totalAdvanceCreditByCurrency,
     monthlyReport,
     stats: {
       customerCount: customers.length,
       pendingCount: withBalance.length,
       overdueCount: overdue.length,
+      advanceCount: withAdvance.length,
       totalOutstandingByCurrency,
+      totalAdvanceCreditByCurrency,
     },
   };
 }

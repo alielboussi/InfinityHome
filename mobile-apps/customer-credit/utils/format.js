@@ -66,6 +66,28 @@ export function customerHasBalance(balanceByCurrency) {
   return CURRENCIES.some((currency) => hasBalance(balanceByCurrency?.[currency]));
 }
 
+export function computeAdvanceCreditByCurrency(chargedByCurrency, paidByCurrency) {
+  const advanceByCurrency = emptyCurrencyMap();
+  CURRENCIES.forEach((currency) => {
+    advanceByCurrency[currency] = Math.max(
+      0,
+      Number(paidByCurrency?.[currency] || 0) - Number(chargedByCurrency?.[currency] || 0),
+    );
+  });
+  return advanceByCurrency;
+}
+
+export function customerHasAdvanceCredit(advanceByCurrency) {
+  return CURRENCIES.some((currency) => hasBalance(advanceByCurrency?.[currency]));
+}
+
+export function formatAdvanceBalances(advanceByCurrency) {
+  const parts = CURRENCIES
+    .filter((currency) => hasBalance(advanceByCurrency?.[currency]))
+    .map((currency) => formatMoney(advanceByCurrency[currency], currency));
+  return parts.length ? parts.join(' · ') : '';
+}
+
 export function formatSaleTitle(sale) {
   const productName = String(sale?.product_name || '').trim();
   if (productName) return productName;

@@ -1,16 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
-import {
-  GoogleSignin,
-  isErrorWithCode,
-  statusCodes,
-} from '@react-native-google-signin/google-signin';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { Pressable, StyleSheet, Text } from 'react-native';
 import { getFirebaseAuth, signOutFirebase } from './firebase';
 import { verifyMobileLoginAccess } from './loginAccess';
 import { DEFAULT_GOOGLE_WEB_CLIENT_ID } from './defaultFirebaseConfig';
@@ -26,6 +20,10 @@ const REDIRECT_URI = makeRedirectUri({
   scheme: APP_SCHEME,
   path: 'oauth',
 });
+
+function isExpoGo() {
+  return Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+}
 
 function getGoogleClientIds() {
   const extra = readExpoExtra();
@@ -45,11 +43,12 @@ export function isGoogleSignInConfigured() {
   return Boolean(webClientId);
 }
 
-function formatGoogleSignInError(err) {
-  if (isErrorWithCode(err)) {
-    if (err.code === statusCodes.SIGN_IN_CANCELLED) return '';
-    if (err.code === statusCodes.IN_PROGRESS) return 'Google sign-in is already in progress.';
-    if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+function formatGoogleSignInError(err, nativeHelpers = null) {
+  const { isErrorWithCode, statusCodes } = nativeHelpers || {};
+  if (typeof isErrorWithCode === 'function' && isErrorWithCode(err)) {
+    if (err.code === statusCodes?.SIGN_IN_CANCELLED) return '';
+    if (err.code === statusCodes?.IN_PROGRESS) return 'Google sign-in is already in progress.';
+    if (err.code === statusCodes?.PLAY_SERVICES_NOT_AVAILABLE) {
       return 'Google Play Services is missing or outdated on this device.';
     }
     if (err.code === '10' || err.code === 10) {
@@ -79,7 +78,11 @@ async function completeGoogleFirebaseSignIn(idToken, onError, onSuccess) {
   onSuccess?.();
 }
 
-async function resolveGoogleIdToken(response) {
+async function loadNativeGoogleSignIn() {
+  return import('@react-native-google-signin/google-signin');
+}
+
+async function resolveGoogleIdToken(response, GoogleSignin) {
   const directToken = response?.data?.idToken || response?.idToken;
   if (directToken) return directToken;
   try {
@@ -93,17 +96,21 @@ async function resolveGoogleIdToken(response) {
 function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled }) {
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    GoogleSignin.configure({
-      webClientId,
-      offlineAccess: false,
-      scopes: ['email', 'profile'],
-    });
-  }, [webClientId]);
-
   const onPress = async () => {
     setBusy(true);
     try {
+      const {
+        GoogleSignin,
+        isErrorWithCode,
+        statusCodes,
+      } = await loadNativeGoogleSignIn();
+
+      GoogleSignin.configure({
+        webClientId,
+        offlineAccess: false,
+        scopes: ['email', 'profile'],
+      });
+
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const response = await GoogleSignin.signIn();
       if (response?.type === 'cancelled') return;
@@ -111,10 +118,16 @@ function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled })
         onError?.('Google sign-in failed.');
         return;
       }
-      const idToken = await resolveGoogleIdToken(response);
+      const idToken = await resolveGoogleIdToken(response, GoogleSignin);
       await completeGoogleFirebaseSignIn(idToken, onError, onSuccess);
     } catch (err) {
-      const message = formatGoogleSignInError(err);
+      let nativeHelpers = null;
+      try {
+        nativeHelpers = await loadNativeGoogleSignIn();
+      } catch {
+        nativeHelpers = null;
+      }
+      const message = formatGoogleSignInError(err, nativeHelpers);
       if (message) onError?.(message);
     } finally {
       setBusy(false);
@@ -178,6 +191,18 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
   if (!webClientId) return null;
 
   if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    if (isExpoGo()) {
+      return (
+        <BrowserGoogleSignInButton
+          webClientId={webClientId}
+          iosClientId={iosClientId}
+          onError={onError}
+          onSuccess={onSuccess}
+          disabled={disabled}
+        />
+      );
+    }
+
     return (
       <NativeGoogleSignInButton
         webClientId={webClientId}

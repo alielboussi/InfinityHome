@@ -56,7 +56,7 @@ module.exports = {
     ],
     extra: {
       firebase,
-      apiBase: (process.env.EXPO_PUBLIC_API_BASE || 'https://infinity-home-pi.vercel.app').replace(/\/+$/, ''),
+      apiBase: (process.env.EXPO_PUBLIC_API_BASE || 'https://www.infinity-home.online').replace(/\/+$/, ''),
       googleWebClientId,
       eas: {
         projectId: '5cca5827-6bfa-4a7d-98a4-3a670542a0eb',

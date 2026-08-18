@@ -1,0 +1,301 @@
+Infinity Home — URLs on www.infinity-home.online
+Generated: 2026-08-17
+Canonical base: https://www.infinity-home.online
+Apex redirects: https://infinity-home.online → https://www.infinity-home.online (308)
+Legacy redirects: infinity-home-pi.vercel.app, infinityhome.app → www.infinity-home.online
+
+================================================================================
+PUBLIC — NO STAFF LOGIN (customer / counter facing)
+================================================================================
+
+--- Online shop (e-commerce) ---
+https://www.infinity-home.online/shop
+https://www.infinity-home.online/shop/products
+https://www.infinity-home.online/shop/cart
+https://www.infinity-home.online/shop/checkout
+https://www.infinity-home.online/shop/order-success
+https://www.infinity-home.online/shop/about
+https://www.infinity-home.online/shop/support
+
+--- Stocktake count (mobile counters; login may be required per location) ---
+Pattern: https://www.infinity-home.online/stocktake/count/{location-slug}
+
+Known location slugs (from your setup):
+https://www.infinity-home.online/stocktake/count/carpentry
+https://www.infinity-home.online/stocktake/count/kitwe
+https://www.infinity-home.online/stocktake/count/lusaka
+https://www.infinity-home.online/stocktake/count/test
+https://www.infinity-home.online/stocktake/count/warehouse
+
+Note: Slugs are derived from location names in the system. New locations get
+/auto-generated slugs (lowercase, hyphens). Check Stocktake admin for the exact URL.
+
+--- Lusaka showroom stock display (public read-only board) ---
+https://www.infinity-home.online/lusaka-stock
+
+--- Staff login ---
+https://www.infinity-home.online/login
+
+================================================================================
+STAFF PORTAL — REQUIRES LOGIN
+================================================================================
+
+--- Home & dashboard ---
+https://www.infinity-home.online/
+https://www.infinity-home.online/dashboard
+
+--- Sales ---
+https://www.infinity-home.online/pos
+https://www.infinity-home.online/pos-mobile
+https://www.infinity-home.online/all-sales
+https://www.infinity-home.online/reversal
+https://www.infinity-home.online/sales-report
+https://www.infinity-home.online/sales-report-mobile
+
+--- Quotes ---
+https://www.infinity-home.online/quotationer
+https://www.infinity-home.online/quotes-board
+
+--- Customers & laybys ---
+https://www.infinity-home.online/customers
+https://www.infinity-home.online/layby-management
+https://www.infinity-home.online/layby-management-mobile
+https://www.infinity-home.online/ledger-mobile
+https://www.infinity-home.online/customer-private-balances
+
+--- Products & inventory ---
+https://www.infinity-home.online/products
+https://www.infinity-home.online/products-list
+https://www.infinity-home.online/categories
+https://www.infinity-home.online/sets
+https://www.infinity-home.online/incomplete-packages
+https://www.infinity-home.online/price-labels
+https://www.infinity-home.online/price-label-mobile
+https://www.infinity-home.online/stock-history
+https://www.infinity-home.online/zero-stock-location
+
+--- E-commerce admin ---
+https://www.infinity-home.online/ecommerce-setup
+https://www.infinity-home.online/ecommerce-sales
+
+--- Stocktake (staff control) ---
+https://www.infinity-home.online/stocktake
+https://www.infinity-home.online/stocktake/aggregation
+
+--- Stock reports (mobile) ---
+https://www.infinity-home.online/stock-app
+https://www.infinity-home.online/stock-report-mobile
+https://www.infinity-home.online/stock-report-mobile-locked
+https://www.infinity-home.online/incomplete-mobile-locked
+
+--- Transfers & warehouse ---
+https://www.infinity-home.online/All-Transfers
+https://www.infinity-home.online/All-Transfers-summary
+https://www.infinity-home.online/warehouse-deliveries
+https://www.infinity-home.online/warehouse-deliveries-admin
+https://www.infinity-home.online/lusaka-transfers
+https://www.infinity-home.online/transfers-report
+
+--- Administration ---
+https://www.infinity-home.online/company-settings
+https://www.infinity-home.online/user-activity
+https://www.infinity-home.online/user-access
+https://www.infinity-home.online/database-backup
+
+--- Legacy aliases (redirect to canonical routes) ---
+/LusakaStocktake, /KitweStocktake, /stock-periods, /stocktake-periods,
+/stocktake-count, /stocktake-entry, /stock-count → /stocktake
+/Kitwe-Lusaka, /warehouse-transfer, /outlet-transfer → transfer routes
+/quotes, /quotations, /QuotesDashboard → quotationer or quotes-board
+
+================================================================================
+API ENDPOINTS (serverless — same domain)
+================================================================================
+
+Base pattern: https://www.infinity-home.online/api/{path}
+Most POST endpoints expect JSON body + Firebase Bearer token (staff routes).
+
+--- E-commerce & shop ---
+GET/POST  https://www.infinity-home.online/api/shop-catalog
+GET/POST  https://www.infinity-home.online/api/web-orders
+          ?action=initiate-payment | payment-status | payment-callback | list | cancel | send-customer-receipt
+          Payment callback (MTN): .../api/web-orders?action=payment-callback&provider=mtn
+
+--- POS & checkout ---
+GET/POST  https://www.infinity-home.online/api/pos-catalog
+GET/POST  https://www.infinity-home.online/api/checkout
+GET/POST  https://www.infinity-home.online/api/inventory-snapshot
+GET/POST  https://www.infinity-home.online/api/opening-stock-entry
+GET/POST  https://www.infinity-home.online/api/inventory-bulk
+GET/POST  https://www.infinity-home.online/api/combo-locations
+GET/POST  https://www.infinity-home.online/api/product-locations
+
+--- Sales editing ---
+GET/POST  https://www.infinity-home.online/api/sales-edit
+GET/POST  https://www.infinity-home.online/api/sales-adjustment
+GET/POST  https://www.infinity-home.online/api/payments
+GET/POST  https://www.infinity-home.online/api/payments-list
+GET/POST  https://www.infinity-home.online/api/payments-delete
+
+--- Laybys & customers ---
+GET/POST  https://www.infinity-home.online/api/layby-statement
+GET/POST  https://www.infinity-home.online/api/layby-payments-delete
+GET/POST  https://www.infinity-home.online/api/layby-delete-customer
+GET/POST  https://www.infinity-home.online/api/quote-convert-layby
+GET/POST  https://www.infinity-home.online/api/customer-statement
+GET/POST  https://www.infinity-home.online/api/customer-totals
+
+--- Quotations ---
+GET/POST  https://www.infinity-home.online/api/quotation-read
+GET/POST  https://www.infinity-home.online/api/quotation-save
+
+--- Stocktake API (friendly paths rewrite to /api/stocktake?action=...) ---
+POST      https://www.infinity-home.online/api/stocktake-login
+GET/POST  https://www.infinity-home.online/api/auth-profile
+GET/POST  https://www.infinity-home.online/api/stocktake-locations
+GET/POST  https://www.infinity-home.online/api/stocktake-location-state
+GET/POST  https://www.infinity-home.online/api/stocktake-catalog
+GET/POST  https://www.infinity-home.online/api/stocktake-events-list
+GET/POST  https://www.infinity-home.online/api/stocktake-open-sessions
+GET/POST  https://www.infinity-home.online/api/stocktake-event-get
+POST      https://www.infinity-home.online/api/stocktake-event-create
+POST      https://www.infinity-home.online/api/stocktake-event-set-gate
+POST      https://www.infinity-home.online/api/stocktake-count-add
+GET/POST  https://www.infinity-home.online/api/stocktake-count-mine
+POST      https://www.infinity-home.online/api/stocktake-count-remove-mine
+POST      https://www.infinity-home.online/api/stocktake-count-clear-mine
+POST      https://www.infinity-home.online/api/stocktake-counts-import
+POST      https://www.infinity-home.online/api/stocktake-counts-clear
+GET       https://www.infinity-home.online/api/stocktake-import-template
+POST      https://www.infinity-home.online/api/stocktake-set-scan
+POST      https://www.infinity-home.online/api/stocktake-product-create
+POST      https://www.infinity-home.online/api/stocktake-set-create
+POST      https://www.infinity-home.online/api/stocktake-event-submit
+POST      https://www.infinity-home.online/api/stocktake-event-cancel
+GET/POST  https://www.infinity-home.online/api/stocktake-periods-list
+GET/POST  https://www.infinity-home.online/api/stocktake-period-detail
+GET/POST  https://www.infinity-home.online/api/stocktake-period-variance
+Direct:   https://www.infinity-home.online/api/stocktake?action={action}
+
+--- WhatsApp / notifications ---
+POST      https://www.infinity-home.online/api/whatsapp-sale
+POST      https://www.infinity-home.online/api/whatsapp-layby
+POST      https://www.infinity-home.online/api/whatsapp-transfer
+POST      https://www.infinity-home.online/api/whatsapp-lusaka-transfer
+POST      https://www.infinity-home.online/api/whatsapp-labels
+POST      https://www.infinity-home.online/api/whatsapp-shop-order
+GET/POST  https://www.infinity-home.online/api/monthly-balance-dues
+POST      https://www.infinity-home.online/api/monthly-balance-send
+(Aliases: /api/telegram-sale, /api/telegram-layby, /api/telegram-transfer)
+
+--- Labels ---
+GET/POST  https://www.infinity-home.online/api/label-print-job
+GET/POST  https://www.infinity-home.online/api/label-print-history
+GET/POST  https://www.infinity-home.online/api/labels
+
+--- Admin & factory ---
+GET/POST  https://www.infinity-home.online/api/factory-production-approve
+GET/POST  https://www.infinity-home.online/api/products-bulk-delete
+GET/POST  https://www.infinity-home.online/api/user-activity
+GET/POST  https://www.infinity-home.online/api/login-access
+GET/POST  https://www.infinity-home.online/api/db-backup
+
+--- Transfers ---
+GET/POST  https://www.infinity-home.online/api/transfer
+
+--- Health / diagnostics ---
+GET       https://www.infinity-home.online/api/health
+GET       https://www.infinity-home.online/api/diag
+GET       https://www.infinity-home.online/api/diag-env
+GET       https://www.infinity-home.online/api/diag-tables
+GET       https://www.infinity-home.online/api/diag-checkout
+
+--- Scheduled cron (Vercel internal) ---
+GET       https://www.infinity-home.online/api/notify?action=monthly-balance-dues
+          (runs monthly via Vercel cron — not for manual browser use)
+
+================================================================================
+MOBILE APPS (Expo — point at same API host)
+================================================================================
+
+Layby shell WebView:     https://www.infinity-home.online/layby-management
+API base (all Expo apps): https://www.infinity-home.online
+
+================================================================================
+MARKETING LINKS (suggested for ads)
+================================================================================
+
+Shop homepage:    https://www.infinity-home.online/shop
+Browse products:  https://www.infinity-home.online/shop/products
+Contact/support:  https://www.infinity-home.online/shop/support
+
+================================================================================
+OUTSIDE THE REPO — WHERE YOU MUST UPDATE THE DOMAIN
+================================================================================
+
+1) VERCEL (vercel.com → your project)
+   - Domains: wait until infinity-home.online shows "Valid Configuration"
+   - Environment variables (Production):
+       REACT_APP_CANONICAL_HOST=www.infinity-home.online
+       REACT_APP_CANONICAL_ORIGIN=https://www.infinity-home.online
+       MTN_MOMO_CALLBACK_HOST=https://www.infinity-home.online
+   - Redeploy after env changes
+
+2) FIREBASE CONSOLE (console.firebase.google.com)
+   - Authentication → Settings → Authorized domains
+   - ADD: infinity-home.online
+   - ADD: www.infinity-home.online
+   - Do NOT change authDomain (stays *.firebaseapp.com)
+
+3) GOOGLE CLOUD CONSOLE (only if staff use Google sign-in)
+   - APIs & Services → Credentials → OAuth 2.0 Client IDs
+   - Authorized JavaScript origins:
+       https://www.infinity-home.online
+       https://infinity-home.online
+   - Authorized redirect URIs (if listed):
+       https://www.infinity-home.online/__/auth/handler
+       (match whatever Firebase shows for your Web client)
+
+4) MTN MOMO — momodeveloper.mtn.com
+   - Recreate or update API User providerCallbackHost to:
+       www.infinity-home.online
+     (hostname only — no https://)
+   - If you cannot edit existing user, create a new sandbox API user with the new host
+
+5) MTN MOMO — developers.mtn.com (if you registered Payments V1 app there)
+   - App → Callback URL:
+       https://www.infinity-home.online/api/web-orders?action=payment-callback&provider=mtn
+
+6) WASENDERAPI (wasenderapi.com)
+   - No domain change required (API token only)
+   - Renew subscription if "past due" errors appear on POS WhatsApp alerts
+
+7) LABEL WORKER PC (if you run label-worker/worker.py locally)
+   - label-worker/.env:
+       INFINITY_API_BASE=https://www.infinity-home.online
+
+8) EXPO MOBILE APPS (each app folder .env)
+   - EXPO_PUBLIC_API_BASE=https://www.infinity-home.online
+   - EXPO_PUBLIC_APP_URL=https://www.infinity-home.online/layby-management (layby-shell)
+   - Rebuild/republish apps after changing
+
+9) DOMAIN REGISTRAR (where you bought infinity-home.online)
+   - If bought on Vercel: nameservers usually auto-configured
+   - If bought elsewhere: point nameservers to Vercel per "View DNS configuration"
+
+10) MARKETING & OPERATIONS (manual)
+    - Google / Meta / social ads → landing URL /shop
+    - WhatsApp business bio / link in chat
+    - Email signatures, invoices, printed QR codes
+    - Bookmarks on staff phones/tablets
+    - Google Search Console property (add new domain when live)
+
+11) NOT REQUIRED TO CHANGE
+    - Firebase Firestore / Storage rules (no domain in rules)
+    - WasenderAPI group IDs
+    - SMTP email (uses mail server host, not your app domain)
+    - Firebase project ID or storage bucket names
+
+================================================================================
+END
+================================================================================

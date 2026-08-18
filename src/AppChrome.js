@@ -5,9 +5,10 @@ import {
   FaCashRegister, FaReceipt, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags, FaLayerGroup,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaLock
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaLock, FaStore, FaShoppingBag
 } from 'react-icons/fa';
 import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute } from './accessControl';
+import { isShopPublicPath } from './utils/shopConstants';
 
 // Functional groupings for the slide-out navigation drawer.
 const NAV_GROUPS = [
@@ -40,10 +41,13 @@ const NAV_GROUPS = [
     title: 'Inventory',
     items: [
       { label: 'Products', route: '/products-list', icon: FaTags },
+      { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
       { label: 'Categories', route: '/categories', icon: FaThLarge },
       { label: 'Sets', route: '/sets', icon: FaLayerGroup },
       { label: 'Incomplete Packages', route: '/incomplete-packages', icon: FaBoxOpen },
       { label: 'Price Labels', route: '/price-labels', icon: FaPrint },
+      { label: 'E-commerce Setup', route: '/ecommerce-setup', icon: FaStore },
+      { label: 'E-commerce Sales', route: '/ecommerce-sales', icon: FaShoppingBag },
     ],
   },
   {
@@ -144,10 +148,13 @@ const TITLE_MAP = {
   '/customer-private-balances': 'Customer Private Balances',
   '/products': 'Products',
   '/products-list': 'Products',
+  '/stock-history': 'Stock History',
   '/categories': 'Categories',
   '/sets': 'Sets',
   '/price-labels': 'Price Labels',
   '/price-label-mobile': 'Price Labels',
+  '/ecommerce-setup': 'E-commerce Setup',
+  '/ecommerce-sales': 'E-commerce Sales',
   '/stocktake': 'Stocktake',
   '/stocktake/aggregation': 'Stocktake Aggregation',
   '/stocktake-periods': 'Stocktake',
@@ -192,6 +199,7 @@ export default function AppChrome() {
   const user = getCurrentUser();
   const isLogin = /^\/login(\b|\/|\?|#)/i.test(path);
   const isPublicCount = isPublicAppRoute(path);
+  const isShopRoute = isShopPublicPath(path);
   const isKioskStock = path.toLowerCase() === '/lusaka-stock';
   const hasUser = Boolean(user);
   const quotationerOnly = isQuotationerOnlyUser(user);
@@ -200,14 +208,14 @@ export default function AppChrome() {
   React.useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     // Count page is a standalone mobile surface — no pinned sidebar.
-    const pinned = hasUser && !isLogin && !isPublicCount && !isKioskStock;
+    const pinned = hasUser && !isLogin && !isPublicCount && !isKioskStock && !isShopRoute;
     document.body.classList.toggle('ent-sidebar-pinned', pinned);
     return () => {
       try { document.body.classList.remove('ent-sidebar-pinned'); } catch {}
     };
-  }, [isLogin, isPublicCount, isKioskStock, hasUser, user]);
+  }, [isLogin, isPublicCount, isKioskStock, isShopRoute, hasUser, user]);
 
-  if (isLogin || isPublicCount || isKioskStock || !user) return null;
+  if (isLogin || isPublicCount || isKioskStock || isShopRoute || !user) return null;
 
   const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
   const title = titleForPath(path, user, location.search);

@@ -28,7 +28,7 @@ const QUOTE_CUSTOMER_CATALOG_CACHE_KEY = 'quotationer:quote-customers:v1';
 const QUOTE_PRODUCT_CATALOG_CACHE_KEY = 'quotationer:quote-products:v1';
 const QUOTE_UNIT_CATALOG_CACHE_KEY = 'quotationer:quote-units:v1';
 const QUOTATION_CACHE_TTL_MS = 10 * 60 * 1000;
-const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://infinity-home-pi.vercel.app').replace(/\/+$/, '');
+const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
 
 const defaultQuote = { customer_id: null, discount: 0, vat_apply: false, vat_inclusive: false, vat_rate: 0.16, currency: 'K' };
 const titleCaseWords = (text) => String(text || '')

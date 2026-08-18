@@ -77,6 +77,7 @@ export default function DashboardScreen() {
 
   const stats = data?.stats || {};
   const outstanding = stats.totalOutstandingByCurrency || { K: 0, $: 0 };
+  const advanceCredit = stats.totalAdvanceCreditByCurrency || { K: 0, $: 0 };
   const displayName = displayNameForUser(user);
 
   return (
@@ -108,6 +109,7 @@ export default function DashboardScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
           <SummaryStat label="Pending" value={String(stats.pendingCount || 0)} tone="warning" />
           <SummaryStat label="Overdue" value={String(stats.overdueCount || 0)} tone="danger" />
+          <SummaryStat label="Advance" value={String(stats.advanceCount || 0)} tone="success" />
           <View style={[styles.card, { minWidth: 220, backgroundColor: colors.primarySoft, borderColor: colors.primarySoft }]}>
             <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary, textTransform: 'uppercase' }}>
               Outstanding
@@ -120,14 +122,38 @@ export default function DashboardScreen() {
               />
             </View>
           </View>
+          <View style={[styles.card, { minWidth: 220, backgroundColor: colors.successSoft, borderColor: colors.successSoft }]}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.success, textTransform: 'uppercase' }}>
+              Advance credit
+            </Text>
+            <View style={{ marginTop: 8 }}>
+              <HorizontalMoneyRow
+                balanceByCurrency={advanceCredit}
+                amountStyle={{ fontSize: 18, fontWeight: '800', color: colors.success }}
+                dividerColor="#b8e0c8"
+              />
+            </View>
+          </View>
         </ScrollView>
 
-        <View style={[styles.card, { marginTop: 12, marginBottom: 16 }]}>
+        <View style={[styles.card, { marginTop: 12, marginBottom: 8 }]}>
           <Text style={styles.sectionTitle}>Total outstanding</Text>
           <HorizontalMoneyRow
             balanceByCurrency={outstanding}
             amountStyle={{ fontSize: 26, fontWeight: '800', color: colors.text }}
           />
+        </View>
+
+        <View style={[styles.card, { marginBottom: 16, backgroundColor: colors.successSoft, borderColor: colors.successSoft }]}>
+          <Text style={[styles.sectionTitle, { color: colors.success }]}>Total advance credit on file</Text>
+          <HorizontalMoneyRow
+            balanceByCurrency={advanceCredit}
+            amountStyle={{ fontSize: 26, fontWeight: '800', color: colors.success }}
+            dividerColor="#b8e0c8"
+          />
+          <Text style={[styles.cardSub, { marginTop: 8 }]}>
+            {stats.advanceCount || 0} customer{(stats.advanceCount || 0) === 1 ? '' : 's'} with prepaid credit
+          </Text>
         </View>
 
         {data?.monthlyReport?.due ? (
@@ -181,6 +207,20 @@ export default function DashboardScreen() {
             ))}
           </>
         ) : null}
+
+        <Text style={styles.sectionTitle}>Prepaid customers</Text>
+        {data?.withAdvance?.length ? (
+          data.withAdvance.map((customer) => (
+            <CustomerBalanceCard
+              key={customer.id}
+              customer={customer}
+              compact
+              onPress={() => navigation.navigate('CustomerDetail', { customerId: customer.id })}
+            />
+          ))
+        ) : (
+          <Text style={styles.empty}>No customers with advance credit on file.</Text>
+        )}
 
         <Text style={styles.sectionTitle}>Pending balances</Text>
         {data?.withBalance?.length ? (

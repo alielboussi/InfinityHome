@@ -263,35 +263,30 @@ export async function checkout(payload) {
 
     const saleId = saleRow?.id;
 
-    // Insert items (JSON per-row to avoid CSV codepath dropping Content-Profile)
     let itemsInserted = 0;
     if (items && items.length > 0) {
-      const mapped = items.map((it) => {
-        return {
-          sale_id: saleId,
-          product_id: it.product_id ?? null,
-          display_name: it.display_name ?? null,
-          quantity: Number(it.quantity || 0),
-          unit_price: Number(it.unit_price || 0),
-          currency: it.currency || null,
-          color: it.color ?? null,
-        };
-      });
-      for (const row of mapped) {
-        const { error } = await scopedDb.from(salesItemsTable).insert(row, { returning: 'minimal' });
-        if (error) {
-          const rawMsg = String(error?.message || error?.details || '');
-          const msg = rawMsg.toLowerCase();
-          if (/null value in column "id" of relation "sales_items"/i.test(rawMsg)) {
-            return { data: null, error: new Error(`${rawMsg}. Remediation: verify Firestore sales_items writes and checkout item mapping.`) };
-          }
-          if (/not\s*found|404|relation .* does not exist|pgrst/i.test(msg)) {
-            return { data: null, error: new Error(`Insert into '${salesItemsTable}' failed (404). Collection may be missing or misnamed. Details: ${rawMsg || 'not found'}`) };
-          }
-          return { data: null, error: new Error(error.message || error.details || 'Insert sales_items failed') };
+      const mapped = items.map((it) => ({
+        sale_id: saleId,
+        product_id: it.product_id ?? null,
+        display_name: it.display_name ?? null,
+        quantity: Number(it.quantity || 0),
+        unit_price: Number(it.unit_price || 0),
+        currency: it.currency || null,
+        color: it.color ?? null,
+      }));
+      const { error } = await scopedDb.from(salesItemsTable).insert(mapped, { returning: 'minimal' });
+      if (error) {
+        const rawMsg = String(error?.message || error?.details || '');
+        const msg = rawMsg.toLowerCase();
+        if (/null value in column "id" of relation "sales_items"/i.test(rawMsg)) {
+          return { data: null, error: new Error(`${rawMsg}. Remediation: verify Firestore sales_items writes and checkout item mapping.`) };
         }
-        itemsInserted += 1;
+        if (/not\s*found|404|relation .* does not exist|pgrst/i.test(msg)) {
+          return { data: null, error: new Error(`Insert into '${salesItemsTable}' failed (404). Collection may be missing or misnamed. Details: ${rawMsg || 'not found'}`) };
+        }
+        return { data: null, error: new Error(error.message || error.details || 'Insert sales_items failed') };
       }
+      itemsInserted = mapped.length;
     }
 
     // Insert payments (JSON per-row to avoid CSV codepath dropping Content-Profile)
@@ -309,17 +304,15 @@ export async function checkout(payload) {
         allocation_batch_uuid: p.allocation_batch_uuid || batch,
         created_at: p.created_at || nowIso,
       }));
-      for (const row of mapped) {
-        const { error } = await scopedDb.from(salesPaymentsTable).insert(row, { returning: 'minimal' });
-        if (error) {
-          const msg = String(error?.message || error?.details || '').toLowerCase();
-          if (/not\s*found|404|relation .* does not exist|pgrst/i.test(msg)) {
-            return { data: null, error: new Error(`Insert into '${salesPaymentsTable}' failed (404). Details: ${error?.message || error?.details || 'not found'}`) };
-          }
-          return { data: null, error: new Error(error.message || error.details || 'Insert sales_payments failed') };
+      const { error } = await scopedDb.from(salesPaymentsTable).insert(mapped, { returning: 'minimal' });
+      if (error) {
+        const msg = String(error?.message || error?.details || '').toLowerCase();
+        if (/not\s*found|404|relation .* does not exist|pgrst/i.test(msg)) {
+          return { data: null, error: new Error(`Insert into '${salesPaymentsTable}' failed (404). Details: ${error?.message || error?.details || 'not found'}`) };
         }
-        paymentsInserted += 1;
+        return { data: null, error: new Error(error.message || error.details || 'Insert sales_payments failed') };
       }
+      paymentsInserted = mapped.length;
     }
 
     let inventoryApplied = false;

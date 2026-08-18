@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import db from './dataClient';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
 import { FaWhatsapp } from 'react-icons/fa';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
@@ -20,6 +20,7 @@ import {
 } from './services/locationPricing';
 import { brandLogoOnError, preloadBrandAssets, STATIC_BRAND_LOGO, STATIC_BRAND_STAMP } from './utils/brandAssets';
 import { buildPriceLabelFilename, renderLabelNodeToCanvas, waitForLayout } from './utils/labelPdfCapture';
+import { buildLabelImageQrValue } from './utils/labelImageQr';
 
 const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v3';
 
@@ -151,7 +152,7 @@ const PriceLabels = () => {
             if (sharedCatalog.locations?.length) setLocations(sharedCatalog.locations);
           }
           const cachedPrices = cacheGet(locationPriceCacheKey);
-          const p = cacheGet('labels:catalogProducts:v6');
+          const p = cacheGet('labels:catalogProducts:v7');
           const c = cacheGet('labels:catalogCombos:v6');
           if (p?.length) setCatalogProducts(p);
           if (c?.length) setCatalogCombos(c);
@@ -175,13 +176,35 @@ const PriceLabels = () => {
       let productLocationPriceRows = [];
       let comboLocationPriceRows = [];
       const [
-        { data: productsData },
-        { data: combosData },
+        { data: productsData, error: productsErr },
+        { data: combosData, error: combosErr },
+        { data: productImagesData },
       ] = await Promise.all([
         db.from('products').select('*'),
         db.from('combos').select('*'),
+        db.from('product_images').select('product_id, image_url'),
       ]);
+      if (productsErr) {
+        console.warn('[price-labels] products fetch failed', productsErr);
+      }
+      if (combosErr) {
+        console.warn('[price-labels] combos fetch failed', combosErr);
+      }
       if (fetchSeq !== fetchSeqRef.current) return;
+
+      const imagesByProduct = new Map();
+      (productImagesData || []).forEach((row) => {
+        const pid = String(row?.product_id || '');
+        if (!pid) return;
+        if (!imagesByProduct.has(pid)) imagesByProduct.set(pid, []);
+        imagesByProduct.get(pid).push({ image_url: row.image_url });
+      });
+
+      const nextProducts = (productsData || []).map((product) => ({
+        ...product,
+        product_images: imagesByProduct.get(String(product.id)) || product.product_images || [],
+      }));
+      const nextCombos = combosData || [];
       try {
         [productLocationPriceRows, comboLocationPriceRows] = await Promise.all([
           fetchProductLocationPrices(db),
@@ -191,15 +214,12 @@ const PriceLabels = () => {
         console.warn('[price-labels] location pricing unavailable', err);
       }
       if (fetchSeq !== fetchSeqRef.current) return;
-
-      const nextProducts = productsData || [];
-      const nextCombos = combosData || [];
       setCatalogProducts(nextProducts);
       setCatalogCombos(nextCombos);
       setProductLocationPrices(productLocationPriceRows);
       setComboLocationPrices(comboLocationPriceRows);
       try {
-        cacheSet('labels:catalogProducts:v6', nextProducts, 10 * 60 * 1000);
+        cacheSet('labels:catalogProducts:v7', nextProducts, 10 * 60 * 1000);
         cacheSet('labels:catalogCombos:v6', nextCombos, 10 * 60 * 1000);
         cacheSet(locationPriceCacheKey, {
           productLocationPrices: productLocationPriceRows,
@@ -266,47 +286,70 @@ const PriceLabels = () => {
     String(sku || '').replace(/^#/, '').trim().toLowerCase()
   ), []);
 
-  const comboNameKeys = useMemo(() => {
-    const keys = new Set();
-    (catalogCombos || []).forEach((combo) => {
-      const key = normalizeCatalogName(combo.combo_name);
-      if (key) keys.add(key);
+  const productSkuCounts = useMemo(() => {
+    const counts = new Map();
+    (catalogProducts || []).forEach((product) => {
+      const sku = normalizeSku(product?.sku);
+      if (sku) counts.set(sku, (counts.get(sku) || 0) + 1);
     });
-    return keys;
-  }, [catalogCombos, normalizeCatalogName]);
+    return counts;
+  }, [catalogProducts, normalizeSku]);
 
-  const comboSkuKeys = useMemo(() => {
-    const keys = new Set();
+  const comboSkuCounts = useMemo(() => {
+    const counts = new Map();
     (catalogCombos || []).forEach((combo) => {
-      const sku = normalizeSku(combo.sku);
-      if (sku) keys.add(sku);
+      const sku = normalizeSku(combo?.sku);
+      if (sku) counts.set(sku, (counts.get(sku) || 0) + 1);
     });
-    return keys;
+    return counts;
   }, [catalogCombos, normalizeSku]);
 
-  const productHasMatchingSet = useCallback((product) => {
+  // Only treat a product/set as the same item when names match, or SKU is unique across both tables.
+  const findMatchingSetForProduct = useCallback((product) => {
     const sku = normalizeSku(product?.sku);
     const nameKey = normalizeCatalogName(product?.name);
-    if (sku && comboSkuKeys.has(sku)) return true;
-    if (nameKey && comboNameKeys.has(nameKey)) return true;
-    return false;
-  }, [comboNameKeys, comboSkuKeys, normalizeCatalogName, normalizeSku]);
 
-  // Sets first; hide products when the same SKU/name exists as a set (Products List shows the set row).
+    if (nameKey) {
+      const byName = (catalogCombos || []).find(
+        (combo) => normalizeCatalogName(combo.combo_name) === nameKey,
+      );
+      if (byName) return byName;
+    }
+
+    if (
+      sku
+      && comboSkuCounts.get(sku) === 1
+      && productSkuCounts.get(sku) === 1
+    ) {
+      return (catalogCombos || []).find((combo) => normalizeSku(combo.sku) === sku) || null;
+    }
+
+    return null;
+  }, [catalogCombos, comboSkuCounts, normalizeCatalogName, normalizeSku, productSkuCounts]);
+
   useEffect(() => {
     if (!search.trim()) return setSearchResults([]);
     const q = search.toLowerCase();
     const matchesTerm = (value) => String(value || '').toLowerCase().includes(q);
-    const s = catalogCombos.filter((c) => matchesTerm(c.combo_name) || matchesTerm(c.sku));
-    const p = catalogProducts.filter((x) => (
-      (matchesTerm(x.name) || matchesTerm(x.sku))
-      && !productHasMatchingSet(x)
-    ));
-    setSearchResults([
-      ...s.map((c) => ({ type: 'set', id: c.id })),
-      ...p.map((x) => ({ type: 'product', id: x.id })),
-    ]);
-  }, [search, catalogProducts, catalogCombos, productHasMatchingSet]);
+    const resultByKey = new Map();
+
+    (catalogCombos || []).forEach((combo) => {
+      if (!matchesTerm(combo.combo_name) && !matchesTerm(combo.sku)) return;
+      resultByKey.set(`set:${combo.id}`, { type: 'set', id: combo.id });
+    });
+
+    (catalogProducts || []).forEach((product) => {
+      if (!matchesTerm(product.name) && !matchesTerm(product.sku)) return;
+      const matchingSet = findMatchingSetForProduct(product);
+      if (matchingSet) {
+        resultByKey.set(`set:${matchingSet.id}`, { type: 'set', id: matchingSet.id });
+        return;
+      }
+      resultByKey.set(`product:${product.id}`, { type: 'product', id: product.id });
+    });
+
+    setSearchResults(Array.from(resultByKey.values()));
+  }, [search, catalogProducts, catalogCombos, findMatchingSetForProduct]);
 
   const normalizeQty = (qty) => Math.max(1, parseInt(String(qty).replace(/[^\d]/g, ''), 10) || 1);
 
@@ -509,6 +552,9 @@ const PriceLabels = () => {
       }
 
       const pdfBlob = doc.output('blob');
+      if (!pdfBlob || pdfBlob.size < 4096) {
+        throw new Error('Generated PDF is empty. Please try again.');
+      }
       const filename = `${buildPriceLabelsFilename()}.pdf`;
 
       // Upload through the labels API (private bucket, returns signed URL)
@@ -587,6 +633,7 @@ const PriceLabels = () => {
     const promoPrice = priced.promo;
     const hasPromo = hasActivePromo(oldPrice, promoPrice);
     const discount = hasPromo ? getDiscountPercent(oldPrice, promoPrice) : null;
+    const imageQrValue = buildLabelImageQrValue(item, data);
 
     return (
       <div className="label-card">
@@ -619,12 +666,15 @@ const PriceLabels = () => {
         </div>
 
         <div className="label-bl">
-          <div className="label-qr"><QRCodeSVG value={(isProduct ? data.sku : data.sku) || ''} /></div>
-          <div className="label-sku"><span className="sku-label">Code:</span> {isProduct ? data.sku : data.sku}</div>
+          <div className="label-qr" aria-label="Product code QR">
+            <QRCodeCanvas value={(isProduct ? data.sku : data.sku) || ''} size={98} level="M" includeMargin />
+          </div>
+          <div className="label-sku">
+            <span className="sku-label">Code:</span> {isProduct ? data.sku : data.sku}
+          </div>
         </div>
 
         <div className="label-br">
-          {/* Old price (standard) with label and strike-through when promo exists */}
           {hasPromo ? (
             <div className="price-old price-old-labeled">
               <span className="price-old-label">Old Price:</span>{' '}
@@ -632,7 +682,15 @@ const PriceLabels = () => {
             </div>
           ) : null}
 
-          {/* Price line(s) */}
+          {imageQrValue ? (
+            <div className="label-photo-qr-block">
+              <div className="label-qr label-qr--photo" aria-label="Scan to view product photo">
+                <QRCodeCanvas value={imageQrValue} size={98} level="M" includeMargin />
+              </div>
+              <div className="label-photo-qr-caption">Product photo</div>
+            </div>
+          ) : null}
+
           {hasPromo ? (
             <div className="price-now promo">
               <span className="price-now-label">PROMO PRICE:</span> {formatCurrency(promoPrice)}!
@@ -761,6 +819,11 @@ const PriceLabels = () => {
           </ul>
         </div>
       )}
+      {search.trim() && searchResults.length === 0 ? (
+        <div className="label-search-results-note" role="status">
+          No products or sets matched &quot;{search.trim()}&quot;. Try Refresh if this item was added recently.
+        </div>
+      ) : null}
 
       <div className="label-selected-table">
         <h3>Labels to Print</h3>

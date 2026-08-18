@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-const APP_URL = process.env.EXPO_PUBLIC_APP_URL || 'https://infinity-home-pi.vercel.app/layby-management';
+const APP_URL = process.env.EXPO_PUBLIC_APP_URL || 'https://www.infinity-home.online/layby-management';
 
 export default function App() {
   return (

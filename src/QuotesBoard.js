@@ -25,7 +25,7 @@ const titleCaseWords = (text) => String(text || '')
   .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
   .join(' ');
 
-const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://infinity-home-pi.vercel.app').replace(/\/+$/, '');
+const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
 
 async function fetchQuotationRead(action, params = {}) {
   let headers = undefined;

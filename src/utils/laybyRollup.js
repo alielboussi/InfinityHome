@@ -52,7 +52,7 @@ export function resolveNegotiatedGrossSubtotal({
   return Math.max(0, gross);
 }
 
-export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v19';
+export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v21';
 
 export function parseFallbackSettlementDateTs(dateLabel) {
   const m = /^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/.exec(String(dateLabel || '').trim());

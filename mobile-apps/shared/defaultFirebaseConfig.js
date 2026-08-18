@@ -8,7 +8,7 @@ export const DEFAULT_FIREBASE_CONFIG = {
   appId: '1:876299148810:web:ad26d0b2eeb499d39049f3',
 };
 
-export const DEFAULT_API_BASE = 'https://infinity-home-pi.vercel.app';
+export const DEFAULT_API_BASE = 'https://www.infinity-home.online';
 
 export const DEFAULT_GOOGLE_WEB_CLIENT_ID =
   '876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com';

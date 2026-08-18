@@ -23,8 +23,14 @@ function loadImage(url) {
   });
 }
 
+function fmtQty(value) {
+  const num = Number(value ?? 0);
+  if (!Number.isFinite(num)) return '0';
+  return num.toLocaleString();
+}
+
 /**
- * Generate Stocktake Variance Report PDF (A4 portrait, blue border).
+ * Stocktake variance PDF — simple ledger columns per product.
  */
 export async function downloadStocktakeVariancePdf({ period, rows, company, locationName }) {
   const companyName = company?.company_name || company?.name || 'Best Rest Furniture';
@@ -38,72 +44,76 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
   const doc = new jsPDF('p', 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 28;
+  const margin = 32;
 
-  // Blue border
   doc.setDrawColor(30, 90, 180);
-  doc.setLineWidth(2.5);
+  doc.setLineWidth(2);
   doc.rect(14, 14, pageWidth - 28, pageHeight - 28);
 
   const logoImg = await loadImage(logoUrl);
   if (logoImg) {
     try {
-      const maxW = 70;
-      const maxH = 48;
-      const ratio = Math.min(maxW / logoImg.width, maxH / logoImg.height);
-      doc.addImage(logoImg, 'PNG', margin, 22, logoImg.width * ratio, logoImg.height * ratio);
+      const ratio = Math.min(60 / logoImg.width, 40 / logoImg.height);
+      doc.addImage(logoImg, 'PNG', margin, 20, logoImg.width * ratio, logoImg.height * ratio);
     } catch {
       // ignore logo failures
     }
   }
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(28);
-  doc.text(companyName, pageWidth / 2, 48, { align: 'center' });
+  doc.setFontSize(22);
+  doc.text(companyName, pageWidth / 2, 44, { align: 'center' });
 
-  doc.setFontSize(16);
-  doc.text('Stocktake Variance Report', pageWidth / 2, 78, { align: 'center' });
+  doc.setFontSize(14);
+  doc.text('Stocktake Variance Report', pageWidth / 2, 68, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(11);
-  let metaY = 96;
+  doc.setFontSize(10);
+  let metaY = 86;
   if (locationLabel) {
     doc.text(`Location: ${locationLabel}`, pageWidth / 2, metaY, { align: 'center' });
     metaY += 14;
   }
   doc.text(`Period: ${beginLabel} to ${endLabel}`, pageWidth / 2, metaY, { align: 'center' });
-  const tableStartY = metaY + 18;
+  metaY += 14;
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  doc.text('Opening Stock + Inventory In − Inventory Out → Current Stock (counted)', pageWidth / 2, metaY, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
 
   const body = (rows || []).map((r) => [
     r.sku || '',
     r.product_name || '',
-    Number(r.opening_stock_qty || 0),
-    Number(r.transfers_in || 0),
-    Number(r.transfers_out || 0),
-    Number(r.sales || 0),
-    Number(r.expected_qty || 0),
-    Number(r.closing_stock_qty || 0),
-    Number(r.variance || 0),
-    Number(r.variance_amount || 0).toFixed(2),
+    fmtQty(r.opening_stock_qty),
+    fmtQty(r.inventory_in),
+    fmtQty(r.inventory_out),
+    fmtQty(r.closing_stock_qty),
+    fmtQty(r.variance),
   ]);
 
   autoTable(doc, {
-    startY: tableStartY,
+    startY: metaY + 16,
     head: [[
       'SKU',
-      'PRODUCT NAME',
+      'PRODUCT',
       'OPENING',
-      'TRF IN',
-      'TRF OUT',
-      'SALES',
-      'EXPECTED',
-      'CLOSING',
+      'INV IN',
+      'INV OUT',
+      'CURRENT',
       'VARIANCE',
-      'VAR AMOUNT',
     ]],
     body,
-    styles: { fontSize: 7, cellPadding: 3 },
-    headStyles: { fillColor: [30, 90, 180], textColor: 255 },
+    styles: { fontSize: 9, cellPadding: 4 },
+    headStyles: { fillColor: [30, 90, 180], textColor: 255, fontSize: 9 },
+    columnStyles: {
+      0: { cellWidth: 52 },
+      1: { cellWidth: 'auto' },
+      2: { halign: 'right', cellWidth: 48 },
+      3: { halign: 'right', cellWidth: 44 },
+      4: { halign: 'right', cellWidth: 48 },
+      5: { halign: 'right', cellWidth: 52 },
+      6: { halign: 'right', cellWidth: 52 },
+    },
     margin: { left: margin, right: margin },
   });
 

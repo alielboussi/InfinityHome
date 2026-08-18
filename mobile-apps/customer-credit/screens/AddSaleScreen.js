@@ -4,7 +4,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { CurrencyToggle, PrimaryButton, ScreenWrap } from '../components/ui';
 import { addCustomerSale, listCustomers } from '../db/repository';
 import { colors, styles } from '../theme';
-import { DEFAULT_CURRENCY, formatBalances, parseMoney } from '../utils/format';
+import { DEFAULT_CURRENCY, formatAdvanceBalances, formatBalances, parseMoney } from '../utils/format';
 import { todayIsoDate } from '../utils/ids';
 
 export default function AddSaleScreen() {
@@ -77,7 +77,11 @@ export default function AddSaleScreen() {
             {customer.phone ? <Text style={styles.cardSub}>{customer.phone}</Text> : null}
             {customer.hasBalance ? (
               <Text style={{ marginTop: 6, fontWeight: '700', color: customer.overdue ? colors.danger : colors.primary }}>
-                Balance: {formatBalances(customer.balanceByCurrency)}
+                Balance due: {formatBalances(customer.balanceByCurrency)}
+              </Text>
+            ) : customer.hasAdvanceCredit ? (
+              <Text style={{ marginTop: 6, fontWeight: '700', color: colors.success }}>
+                Advance credit: {formatAdvanceBalances(customer.advanceCreditByCurrency)}
               </Text>
             ) : null}
           </Pressable>
@@ -88,8 +92,10 @@ export default function AddSaleScreen() {
         {selectedCustomer ? (
           <Text style={[styles.cardSub, { marginBottom: 12 }]}>
             {selectedCustomer.hasBalance
-              ? `This sale will be added to ${selectedCustomer.name}'s existing balance of ${formatBalances(selectedCustomer.balanceByCurrency)}.`
-              : `Sale will be recorded for ${selectedCustomer.name}.`}
+              ? `This sale will increase ${selectedCustomer.name}'s balance due of ${formatBalances(selectedCustomer.balanceByCurrency)}.`
+              : selectedCustomer.hasAdvanceCredit
+                ? `This sale will deduct from ${selectedCustomer.name}'s advance credit (${formatAdvanceBalances(selectedCustomer.advanceCreditByCurrency)}). Any excess becomes balance due.`
+                : `Sale will be recorded for ${selectedCustomer.name}.`}
           </Text>
         ) : null}
 

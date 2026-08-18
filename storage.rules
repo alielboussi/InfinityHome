@@ -15,6 +15,12 @@ service firebase.storage {
       allow write: if isSignedIn();
     }
 
+    // E-commerce storefront images (separate from internal product photos)
+    match /shopimages/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
     // Company logos (public URLs in PDFs/receipts)
     match /companylogos/{allPaths=**} {
       allow read: if true;

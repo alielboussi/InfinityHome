@@ -4,6 +4,10 @@ import { buildLiveConsolidatedWithSets } from '../src/utils/stocktakeLiveTotals.
 import { isSetProductId } from '../src/utils/stocktakeSubmitTotals.js';
 import { createFirestoreServerClient } from '../server/lib/firestoreServerClient.js';
 import { createFirestoreAnonClient } from '../server/lib/firestoreStocktakeAuth.js';
+import {
+  buildExpectedQty,
+  sumInventoryAdjustmentsByProduct,
+} from '../src/utils/inventoryVarianceAdjustments.js';
 
 const STOCKTAKE_ADMIN_EMAIL = 'alielboussi00@gmail.com';
 
@@ -1292,6 +1296,11 @@ async function buildVarianceRows(sb, period) {
   const transfersIn = await sumTransfers(sb, locationId, startISO, endISO, 'in');
   const transfersOut = await sumTransfers(sb, locationId, startISO, endISO, 'out');
   const salesMap = await sumSales(sb, locationId, startISO, endISO);
+  const { inMap: inventoryIn, outMap: inventoryOut } = await sumInventoryAdjustmentsByProduct(sb, {
+    locationId,
+    startISO,
+    endISO,
+  });
 
   const productIds = new Set([
     ...openingMap.keys(),
@@ -1299,6 +1308,8 @@ async function buildVarianceRows(sb, period) {
     ...transfersIn.keys(),
     ...transfersOut.keys(),
     ...salesMap.keys(),
+    ...inventoryIn.keys(),
+    ...inventoryOut.keys(),
   ]);
 
   const { data: products } = await sb
@@ -1340,6 +1351,8 @@ async function buildVarianceRows(sb, period) {
     let openQty = 0;
     let tin = 0;
     let tout = 0;
+    let invIn = 0;
+    let invOut = 0;
     let sales = 0;
     comps.forEach((comp) => {
       const need = Number(comp.quantity || 0);
@@ -1347,6 +1360,8 @@ async function buildVarianceRows(sb, period) {
       openQty += (openingMap.get(comp.product_id) || 0) / need;
       tin += (transfersIn.get(comp.product_id) || 0) / need;
       tout += (transfersOut.get(comp.product_id) || 0) / need;
+      invIn += (inventoryIn.get(comp.product_id) || 0) / need;
+      invOut += (inventoryOut.get(comp.product_id) || 0) / need;
       sales += (salesMap.get(comp.product_id) || 0) / need;
     });
     openQty = Math.floor(Math.min(...comps.map((comp) => {
@@ -1354,7 +1369,14 @@ async function buildVarianceRows(sb, period) {
       return (openingMap.get(comp.product_id) || 0) / need;
     })));
     // Prefer component-min for opening sets
-    const expected = openQty + Math.floor(tin) - Math.floor(tout) - Math.floor(sales);
+    const expected = buildExpectedQty({
+      opening: openQty,
+      transfersIn: Math.floor(tin),
+      transfersOut: Math.floor(tout),
+      inventoryIn: Math.floor(invIn),
+      inventoryOut: Math.floor(invOut),
+      sales: Math.floor(sales),
+    });
     const variance = maxSets - expected;
     const unit = Number(combo.standard_price ?? combo.combo_price ?? 0);
     setRows.push({
@@ -1363,6 +1385,8 @@ async function buildVarianceRows(sb, period) {
       opening_stock_qty: openQty,
       transfers_in: Math.floor(tin),
       transfers_out: Math.floor(tout),
+      inventory_in: Math.floor(invIn),
+      inventory_out: Math.floor(invOut),
       sales: Math.floor(sales),
       expected_qty: expected,
       closing_stock_qty: maxSets,
@@ -1375,15 +1399,25 @@ async function buildVarianceRows(sb, period) {
   const productRows = [];
   remaining.forEach((closingQty, productId) => {
     if (Math.abs(closingQty) < 1e-9 && !openingMap.has(productId) && !salesMap.has(productId)
-      && !transfersIn.has(productId) && !transfersOut.has(productId)) {
+      && !transfersIn.has(productId) && !transfersOut.has(productId)
+      && !inventoryIn.has(productId) && !inventoryOut.has(productId)) {
       return;
     }
     const p = productMap.get(productId) || {};
     const openingQty = openingMap.get(productId) || 0;
     const tin = transfersIn.get(productId) || 0;
     const tout = transfersOut.get(productId) || 0;
+    const invIn = inventoryIn.get(productId) || 0;
+    const invOut = inventoryOut.get(productId) || 0;
     const sales = salesMap.get(productId) || 0;
-    const expected = openingQty + tin - tout - sales;
+    const expected = buildExpectedQty({
+      opening: openingQty,
+      transfersIn: tin,
+      transfersOut: tout,
+      inventoryIn: invIn,
+      inventoryOut: invOut,
+      sales,
+    });
     const variance = closingQty - expected;
     const unit = activeUnitPrice(p, new Date(endISO));
     productRows.push({
@@ -1392,6 +1426,8 @@ async function buildVarianceRows(sb, period) {
       opening_stock_qty: openingQty,
       transfers_in: tin,
       transfers_out: tout,
+      inventory_in: invIn,
+      inventory_out: invOut,
       sales,
       expected_qty: expected,
       closing_stock_qty: closingQty,

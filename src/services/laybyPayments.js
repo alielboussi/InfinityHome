@@ -157,19 +157,25 @@ export async function insertLaybyPayments(rows = [], options = {}) {
   if (!list.length) return { data: { count: 0 } };
   const nowIso = new Date().toISOString();
   const customerId = options.customerId || null;
-  const mapped = list.map((p) => ({
-    sale_id: p.sale_id,
-    customer_id: p.customer_id || customerId,
-    payment_type: p.payment_type || 'cash',
-    amount: Number(p.amount || 0),
-    discount_amount: Number(p.discount_amount || 0),
-    currency: p.currency || null,
-    payment_date: p.payment_date || nowIso,
-    reference: (p.reference || '').trim(),
-    notes: (p.notes || '').trim(),
-    allocation_batch_uuid: p.allocation_batch_uuid || null,
-    created_at: p.created_at || nowIso,
-  }));
+  const mapped = list.map((p) => {
+    const saleId = p?.sale_id;
+    if (saleId == null || saleId === '') {
+      throw new Error('sale_id is required for layby payment');
+    }
+    return {
+      sale_id: saleId,
+      customer_id: p.customer_id || customerId,
+      payment_type: String(p.payment_type || 'cash').toLowerCase(),
+      amount: Number(p.amount || 0),
+      discount_amount: Number(p.discount_amount || 0),
+      currency: p.currency || null,
+      payment_date: p.payment_date || nowIso,
+      reference: (p.reference || '').trim(),
+      notes: (p.notes || '').trim(),
+      allocation_batch_uuid: p.allocation_batch_uuid || null,
+      created_at: p.created_at || nowIso,
+    };
+  });
 
   try {
     const { data, error } = await fromPublic('layby_payments')

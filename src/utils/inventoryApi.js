@@ -1,3 +1,5 @@
+import { docIdFromOnConflict } from '../db/docIds.js';
+
 const getApiBase = () => {
   const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
   if (!base) return '';
@@ -13,12 +15,14 @@ const isLocalHost = () => {
   }
 };
 
+/** Prefer direct Firestore on localhost so reads and writes hit the same database. */
 const shouldUseApi = () => {
-  const apiBase = getApiBase();
   const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
   if (forceApi) return true;
-  if (isLocalHost()) return true;
-  return Boolean(apiBase) || process.env.NODE_ENV === 'production';
+  if (isLocalHost()) return false;
+  const apiBase = getApiBase();
+  if (apiBase) return true;
+  return process.env.NODE_ENV === 'production';
 };
 
 const isForceApi = () => String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
@@ -30,6 +34,90 @@ const chunkArray = (list, size) => {
   }
   return chunks;
 };
+
+const inventoryRowKey = (row) => `${String(row?.product_id || '')}::${String(row?.location || '')}`;
+
+const pickCanonicalInventoryRow = (rows = []) => {
+  if (!rows.length) return null;
+  return [...rows].sort((a, b) => {
+    const aTs = Date.parse(a?.updated_at || '') || 0;
+    const bTs = Date.parse(b?.updated_at || '') || 0;
+    if (bTs !== aTs) return bTs - aTs;
+    const aOpening = String(a?.id || '').startsWith('opening-');
+    const bOpening = String(b?.id || '').startsWith('opening-');
+    if (aOpening !== bOpening) return aOpening ? 1 : -1;
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  })[0];
+};
+
+/** Collapse duplicate product+location rows (keeps newest real inventory row). */
+export function dedupeInventoryRows(rows = []) {
+  const byKey = new Map();
+  for (const row of rows || []) {
+    if (!row?.product_id || row?.location == null || row?.location === '') continue;
+    const key = inventoryRowKey(row);
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, row);
+      continue;
+    }
+    byKey.set(key, pickCanonicalInventoryRow([prev, row]));
+  }
+  return Array.from(byKey.values());
+}
+
+/** Sum quantity for one product+location after collapsing duplicates. */
+export function sumInventoryQuantity(rows = [], productId, locationId) {
+  const filtered = (rows || []).filter((row) => (
+    String(row?.product_id) === String(productId)
+    && String(row?.location) === String(locationId)
+  ));
+  const deduped = dedupeInventoryRows(filtered);
+  return deduped.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
+}
+
+/** Set absolute quantity for one product at one location (canonical composite doc). */
+export async function upsertInventoryQuantity(
+  { productId, locationId, quantity, updatedAt },
+  db,
+) {
+  if (!productId || !locationId) {
+    throw new Error('productId and locationId are required.');
+  }
+  if (!db) {
+    throw new Error('Data client required for inventory write.');
+  }
+
+  const nowIso = updatedAt || new Date().toISOString();
+  const targetQty = Number(quantity ?? 0);
+  const payload = {
+    product_id: productId,
+    location: locationId,
+    quantity: targetQty,
+    updated_at: nowIso,
+  };
+
+  const { error: upsertErr } = await db
+    .from('inventory')
+    .upsert([payload], { onConflict: 'product_id,location' });
+  if (upsertErr) throw upsertErr;
+
+  const canonicalId = docIdFromOnConflict(payload, 'product_id,location');
+  const { data: rows, error: lookupErr } = await db
+    .from('inventory')
+    .select('id')
+    .eq('product_id', productId)
+    .eq('location', locationId);
+  if (lookupErr) throw lookupErr;
+
+  for (const row of rows || []) {
+    if (row?.id == null || String(row.id) === String(canonicalId)) continue;
+    const { error: delErr } = await db.from('inventory').delete().eq('id', row.id);
+    if (delErr) console.warn('[inventory] legacy duplicate cleanup failed', delErr);
+  }
+
+  return { ok: true, quantity: targetQty, id: canonicalId };
+}
 
 export const postInventoryBulk = async (payload) => {
   const apiBase = getApiBase();

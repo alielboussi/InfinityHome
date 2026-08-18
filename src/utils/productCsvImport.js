@@ -1,3 +1,9 @@
+import {
+  collectUsedSkuNumbersFromRows,
+  fetchAllCatalogSkuRows,
+  nextAutoSkuFromUsedNumbers,
+} from './autoSku';
+
 export function parseCsvLine(line) {
   const out = [];
   let cur = '';
@@ -35,26 +41,6 @@ function isDuplicateSkuError(err) {
     || msg.includes('products_sku_key')
     || msg.includes('duplicate key')
     || details.includes('products_sku_key');
-}
-
-function collectUsedSkuNumbers(rows = []) {
-  const used = new Set();
-  (rows || []).forEach((row) => {
-    const raw = (row?.sku || '').toString().trim();
-    const match = raw.match(/^#?(\d+)$/);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (!Number.isNaN(num)) used.add(num);
-    }
-  });
-  return used;
-}
-
-function nextAutoSkuFromPool(usedNumbers) {
-  let i = 1;
-  while (usedNumbers.has(i)) i += 1;
-  usedNumbers.add(i);
-  return `#${String(i).padStart(5, '0')}`;
 }
 
 function parseOptionalNumber(value) {
@@ -142,7 +128,7 @@ async function insertProductWithSkuRetry(db, baseProductData, initialSku, usedSk
   while (attempt < 8) {
     if (usedManualSkus.has(String(skuCandidate).toLowerCase())) {
       if (baseProductData.sku_type) {
-        skuCandidate = nextAutoSkuFromPool(usedSkuNumbers);
+        skuCandidate = nextAutoSkuFromUsedNumbers(usedSkuNumbers);
         attempt += 1;
         continue;
       }
@@ -163,7 +149,7 @@ async function insertProductWithSkuRetry(db, baseProductData, initialSku, usedSk
     lastError = insertError;
     if (isDuplicateSkuError(insertError)) {
       if (baseProductData.sku_type) {
-        skuCandidate = nextAutoSkuFromPool(usedSkuNumbers);
+        skuCandidate = nextAutoSkuFromUsedNumbers(usedSkuNumbers);
         attempt += 1;
         continue;
       }
@@ -200,10 +186,9 @@ export async function importProductsFromCsv({
     throw new Error('No locations are available to assign imported products.');
   }
 
-  const { data: existingSkuRows, error: skuLoadError } = await db.from('products').select('sku');
-  if (skuLoadError) throw skuLoadError;
+  const existingSkuRows = await fetchAllCatalogSkuRows(db);
 
-  const usedSkuNumbers = collectUsedSkuNumbers(existingSkuRows || []);
+  const usedSkuNumbers = collectUsedSkuNumbersFromRows(existingSkuRows || []);
   const usedManualSkus = new Set(
     (existingSkuRows || [])
       .map((row) => String(row?.sku || '').trim().toLowerCase())
@@ -228,7 +213,7 @@ export async function importProductsFromCsv({
     try {
       const useAutoSku = shouldUseAutoSku(cols, headerIdx);
       const manualSku = headerIdx.sku >= 0 ? String(cols[headerIdx.sku] || '').trim() : '';
-      const sku = useAutoSku ? nextAutoSkuFromPool(usedSkuNumbers) : manualSku;
+      const sku = useAutoSku ? nextAutoSkuFromUsedNumbers(usedSkuNumbers) : manualSku;
       if (!sku) {
         throw new Error('SKU is required when sku_type is manual.');
       }

@@ -12,7 +12,7 @@ This worker polls `label_print_jobs` and prints labels over USB (Godex EZ120 rea
 
 Set these in `.env` next to `LabelPrinter.exe`:
 
-- `INFINITY_API_BASE=https://infinity-home-pi.vercel.app` (your deployed app URL)
+- `INFINITY_API_BASE=https://www.infinity-home.online` (your deployed app URL)
 - `LABEL_WORKER_SECRET=<same secret as Vercel env LABEL_WORKER_SECRET>`
 - `PRINTER_NAME` (the exact Windows printer name)
 
@@ -20,7 +20,7 @@ The worker polls `/api/labels?action=worker-pending` and updates job status via 
 
 Required env vars in `.env` next to `LabelPrinter.exe`:
 
-- `INFINITY_API_BASE=https://infinity-home-pi.vercel.app` (your deployed app URL)
+- `INFINITY_API_BASE=https://www.infinity-home.online` (your deployed app URL)
 - `LABEL_WORKER_SECRET=<same secret as Vercel env LABEL_WORKER_SECRET>`
 - `PRINTER_NAME` (the exact Windows printer name)
 

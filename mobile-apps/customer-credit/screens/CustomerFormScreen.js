@@ -1,20 +1,25 @@
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput } from 'react-native';
+import { Alert, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { PrimaryButton, ScreenWrap } from '../components/ui';
+import { CurrencyToggle, PrimaryButton, ScreenWrap } from '../components/ui';
 import { DEFAULT_PAYMENT_DEADLINE_DAYS } from '../db/constants';
-import { getCustomer, saveCustomer } from '../db/repository';
+import { addAdvancePayment, getCustomer, saveCustomer } from '../db/repository';
 import { styles } from '../theme';
+import { DEFAULT_CURRENCY, parseMoney } from '../utils/format';
 
 export default function CustomerFormScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const customerId = route.params?.customerId;
+  const isNew = !customerId;
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [paymentDeadlineDays, setPaymentDeadlineDays] = useState(String(DEFAULT_PAYMENT_DEADLINE_DAYS));
+  const [includeAdvance, setIncludeAdvance] = useState(false);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceCurrency, setAdvanceCurrency] = useState(DEFAULT_CURRENCY);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -41,6 +46,19 @@ export default function CustomerFormScreen() {
         notes,
         payment_deadline_days: paymentDeadlineDays,
       });
+
+      if (isNew && includeAdvance) {
+        const amount = parseMoney(advanceAmount);
+        if (amount > 0) {
+          await addAdvancePayment({
+            customer_id: saved.id,
+            amount,
+            currency: advanceCurrency,
+            notes: 'Advance paid amount',
+          });
+        }
+      }
+
       navigation.replace('CustomerDetail', { customerId: saved.id });
     } catch (err) {
       Alert.alert('Error', err?.message || 'Failed to save customer.');
@@ -74,6 +92,34 @@ export default function CustomerFormScreen() {
           placeholder="Notes"
           multiline
         />
+
+        {isNew ? (
+          <View style={[styles.card, { marginBottom: 12 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>Advance paid amount</Text>
+                <Text style={styles.cardSub}>
+                  Optional prepaid credit. Goods taken later will deduct from this amount first.
+                </Text>
+              </View>
+              <Switch value={includeAdvance} onValueChange={setIncludeAdvance} />
+            </View>
+            {includeAdvance ? (
+              <View style={{ marginTop: 12 }}>
+                <CurrencyToggle value={advanceCurrency} onChange={setAdvanceCurrency} />
+                <Text style={styles.label}>Advance amount</Text>
+                <TextInput
+                  style={styles.input}
+                  value={advanceAmount}
+                  onChangeText={setAdvanceAmount}
+                  keyboardType="decimal-pad"
+                  placeholder="e.g. 20000"
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         <PrimaryButton title={saving ? 'Saving…' : 'Save customer'} onPress={onSave} disabled={saving} />
       </ScrollView>
     </ScreenWrap>

@@ -11,8 +11,13 @@ import './global-theme.css';
 (() => {
   if (typeof window === 'undefined') return;
   const host = String(window.location.hostname || '').toLowerCase();
-  const canonicalHost = String(process.env.REACT_APP_CANONICAL_HOST || 'infinity-home-pi.vercel.app').toLowerCase();
-  const legacyHosts = new Set(['infinityhome.app', 'www.infinityhome.app']);
+  const canonicalHost = String(process.env.REACT_APP_CANONICAL_HOST || 'www.infinity-home.online').toLowerCase();
+  const legacyHosts = new Set([
+    'infinityhome.app',
+    'www.infinityhome.app',
+    'infinity-home-pi.vercel.app',
+    'infinity-home.online',
+  ]);
   const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(host);
   if (isLocal || !legacyHosts.has(host) || host === canonicalHost) return;
 

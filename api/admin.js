@@ -15,6 +15,8 @@ const HANDLER_LOADERS = {
   'user-activity': () => import('../server/handlers/user-activity.js'),
   'login-access': () => import('../server/handlers/login-access.js'),
   'db-backup': () => import('../server/handlers/db-backup.js'),
+  'shop-catalog': () => import('../server/handlers/shop-catalog.js'),
+  'web-orders': () => import('../server/handlers/web-orders.js'),
 };
 
 function resolveHandler(mod) {

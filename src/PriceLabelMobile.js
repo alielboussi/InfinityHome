@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import db from './dataClient';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
 import { sendLabelsWhatsApp } from './services/whatsapp';
 import {
@@ -16,6 +16,7 @@ import {
 } from './services/locationPricing';
 import { brandLogoOnError, preloadBrandAssets, STATIC_BRAND_LOGO, STATIC_BRAND_STAMP } from './utils/brandAssets';
 import { buildPriceLabelFilename, renderLabelNodeToCanvas, waitForLayout } from './utils/labelPdfCapture';
+import { buildLabelImageQrValue } from './utils/labelImageQr';
 
 // Mobile-first Price Labels: search, select, preview, save PDF and share
 export default function PriceLabelMobile() {
@@ -37,6 +38,7 @@ export default function PriceLabelMobile() {
 
   const loadCatalogForLocation = async (locationId) => {
     const { data: productsData } = await db.from('products').select('*');
+    const { data: productImagesData } = await db.from('product_images').select('product_id, image_url');
     const { data: combosData } = await db.from('combos').select('*');
     let productLocationPriceRows = [];
     let comboLocationPriceRows = [];
@@ -52,7 +54,18 @@ export default function PriceLabelMobile() {
     }
     const productMap = buildProductLocationPriceMap(productLocationPriceRows);
     const comboMap = buildComboLocationPriceMap(comboLocationPriceRows);
-    setProducts((productsData || []).map((row) => applyProductLocationPricing(row, locationId, productMap)));
+    const imagesByProduct = new Map();
+    (productImagesData || []).forEach((row) => {
+      const pid = String(row?.product_id || '');
+      if (!pid) return;
+      if (!imagesByProduct.has(pid)) imagesByProduct.set(pid, []);
+      imagesByProduct.get(pid).push({ image_url: row.image_url });
+    });
+    const productsWithImages = (productsData || []).map((row) => ({
+      ...row,
+      product_images: imagesByProduct.get(String(row.id)) || row.product_images || [],
+    }));
+    setProducts(productsWithImages.map((row) => applyProductLocationPricing(row, locationId, productMap)));
     setCombos((combosData || []).map((row) => applyComboLocationPricing(row, locationId, comboMap)));
   };
 
@@ -222,6 +235,9 @@ export default function PriceLabelMobile() {
 
       // Build a Blob of the PDF
       const pdfBlob = doc.output('blob');
+      if (!pdfBlob || pdfBlob.size < 4096) {
+        throw new Error('Generated PDF is empty. Please try again.');
+      }
       const filename = `${buildPriceLabelFilename(selectedLocationName)}.pdf`;
       const path = `mobile/${filename}`;
 
@@ -359,6 +375,7 @@ export default function PriceLabelMobile() {
     const oldPrice = isProduct ? data.price : data.standard_price || data.combo_price;
     const promoPrice = data.promotional_price;
     const hasPromo = promoPrice || promoPrice === 0;
+    const imageQrValue = buildLabelImageQrValue(item, data);
 
     return (
       <div className="label-card">
@@ -388,8 +405,12 @@ export default function PriceLabelMobile() {
         <div className="label-stamp"><img src={stampSrc} alt="stamp" crossOrigin="anonymous" /></div>
 
         <div className="label-bl">
-          <div className="label-qr"><QRCodeSVG value={(isProduct ? data.sku : data.sku) || ''} /></div>
-          <div className="label-sku"><span className="sku-label">Code:</span> {isProduct ? data.sku : data.sku}</div>
+          <div className="label-qr" aria-label="Product code QR">
+            <QRCodeCanvas value={(isProduct ? data.sku : data.sku) || ''} size={98} level="M" includeMargin />
+          </div>
+          <div className="label-sku">
+            <span className="sku-label">Code:</span> {isProduct ? data.sku : data.sku}
+          </div>
         </div>
 
         <div className="label-br">
@@ -397,6 +418,15 @@ export default function PriceLabelMobile() {
             <div className="price-old price-old-labeled">
               <span className="price-old-label">Old Price:</span>{' '}
               <span className="price-old-amount diagonal">{formatCurrency(oldPrice)}</span>
+            </div>
+          ) : null}
+
+          {imageQrValue ? (
+            <div className="label-photo-qr-block">
+              <div className="label-qr label-qr--photo" aria-label="Scan to view product photo">
+                <QRCodeCanvas value={imageQrValue} size={98} level="M" includeMargin />
+              </div>
+              <div className="label-photo-qr-caption">Product photo</div>
             </div>
           ) : null}
 

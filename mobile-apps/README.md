@@ -25,7 +25,7 @@ npm install
 npx expo start
 ```
 
-Scan the QR code with Expo Go. The app loads `https://infinity-home-pi.vercel.app/layby-management`.
+Scan the QR code with Expo Go. The app loads `https://www.infinity-home.online/layby-management`.
 
 ---
 
@@ -78,6 +78,15 @@ cp .env.example .env
 npm install
 npx expo start
 ```
+
+If `npx expo start` fails with **`TypeError: fetch failed`**, Expo cannot reach `api.expo.dev` (network/DNS/firewall). Start in offline mode instead:
+
+```bash
+npx expo start --offline
+# or: npm run start:offline
+```
+
+**Expo Go + Google sign-in:** Expo Go does not include the native Google Sign-In module. The app uses email/password in Expo Go, or **Continue with Google** via the browser-based flow. If you see `RNGoogleSignin could not be found`, restart Metro with cache clear: `npx expo start --offline -c`.
 
 **Expo Go:** EAS Update is **disabled** for Ledger. Open it only via **Scan QR code** after `npx expo start` — not from the **Projects** card. If `customer-ledger-tracking` still appears under Projects, sign out of your Expo account in Expo Go (profile icon → Sign out); QR scanning works without being signed in. For staff phones, use the **standalone APK**, not Expo Go.
 

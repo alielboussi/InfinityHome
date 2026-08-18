@@ -47,6 +47,7 @@ export async function finalizeFirestoreCheckout(payload = {}) {
   const sale = normalizeSaleActor(payload.sale || {});
   const items = Array.isArray(payload.items) ? payload.items : [];
   const payments = Array.isArray(payload.payments) ? payload.payments : [];
+  const deductionItems = Array.isArray(payload.deductionItems) ? payload.deductionItems : items;
 
   if (!sale?.total_amount || !sale?.customer_id) {
     const err = new Error('Missing required fields: customer_id, total_amount');
@@ -54,23 +55,20 @@ export async function finalizeFirestoreCheckout(payload = {}) {
     throw err;
   }
 
+  const hasReceipt = typeof sale?.receipt_number === 'string' && sale.receipt_number.trim() !== '';
+  const storedReceiptNumber = hasReceipt ? sale.receipt_number.trim() : null;
+
   await Promise.all([
     ensureSequenceInitialized(db, 'sales'),
     ensureSequenceInitialized(db, 'sales_items'),
+    hasReceipt
+      ? assertReceiptNumberAvailable(db, storedReceiptNumber, { customerId: sale.customer_id })
+          .catch((dupErr) => {
+            dupErr.status = 409;
+            throw dupErr;
+          })
+      : Promise.resolve(),
   ]);
-
-  const hasReceipt = typeof sale?.receipt_number === 'string' && sale.receipt_number.trim() !== '';
-  const storedReceiptNumber = hasReceipt ? sale.receipt_number.trim() : null;
-  if (hasReceipt) {
-    try {
-      await assertReceiptNumberAvailable(db, storedReceiptNumber, {
-        customerId: sale.customer_id,
-      });
-    } catch (dupErr) {
-      dupErr.status = 409;
-      throw dupErr;
-    }
-  }
 
   const nowIso = new Date().toISOString();
   const paymentsBatch = payments.length > 0 ? newUuid() : null;
@@ -158,9 +156,9 @@ export async function finalizeFirestoreCheckout(payload = {}) {
   });
 
   let inventoryApplied = false;
-  if (saleId != null && sale?.location_id && items.length > 0) {
+  if (saleId != null && sale?.location_id && deductionItems.length > 0) {
     await applyFirestoreInventoryDeduction(db, {
-      items,
+      items: deductionItems,
       locationId: sale.location_id,
       saleId,
       receiptNumber: storedReceiptNumber,

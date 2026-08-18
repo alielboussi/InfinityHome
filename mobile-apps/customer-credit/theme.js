@@ -8,6 +8,7 @@ export const colors = {
   warning: '#ef6c00',
   warningSoft: '#fff3e0',
   success: '#2e7d32',
+  successSoft: '#e8f5e9',
   text: '#1f2733',
   muted: '#5b6675',
   border: '#d5dbe2',

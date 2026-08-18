@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { HorizontalMoneyRow, PrimaryButton, ScreenWrap, SecondaryButton } from '../components/ui';
 import { deleteCustomer, getCustomer, listCustomerSales, listPayments } from '../db/repository';
 import { colors, styles } from '../theme';
-import { CURRENCIES, formatDate, formatMoney, formatSaleTitle } from '../utils/format';
+import { CURRENCIES, formatAdvanceBalances, formatDate, formatMoney, formatSaleTitle } from '../utils/format';
 
 function formatLedgerTotals(totals) {
   return CURRENCIES
@@ -65,18 +65,39 @@ export default function CustomerDetailScreen() {
           {customer.phone ? <Text style={styles.cardSub}>{customer.phone}</Text> : null}
           {customer.address ? <Text style={styles.cardSub}>{customer.address}</Text> : null}
           <View style={{ marginTop: 10 }}>
-            <HorizontalMoneyRow
-              balanceByCurrency={customer.balanceByCurrency}
-              amountStyle={{
-                fontSize: 24,
-                fontWeight: '800',
-                color: customer.overdue ? colors.danger : colors.primary,
-              }}
-            />
+            {customer.hasBalance ? (
+              <>
+                <Text style={[styles.cardSub, { fontWeight: '700', color: customer.overdue ? colors.danger : colors.primary }]}>
+                  Balance due
+                </Text>
+                <HorizontalMoneyRow
+                  balanceByCurrency={customer.balanceByCurrency}
+                  amountStyle={{
+                    fontSize: 24,
+                    fontWeight: '800',
+                    color: customer.overdue ? colors.danger : colors.primary,
+                  }}
+                />
+              </>
+            ) : customer.hasAdvanceCredit ? (
+              <>
+                <Text style={[styles.cardSub, { fontWeight: '700', color: colors.success }]}>Advance credit remaining</Text>
+                <Text style={{ fontSize: 24, fontWeight: '800', color: colors.success }}>
+                  {formatAdvanceBalances(customer.advanceCreditByCurrency)}
+                </Text>
+              </>
+            ) : (
+              <Text style={[styles.cardSub, { fontWeight: '700', color: colors.success }]}>Settled — no balance due</Text>
+            )}
           </View>
           <Text style={styles.cardSub}>
             Charged {formatLedgerTotals(customer.chargedByCurrency)} · Paid {formatLedgerTotals(customer.paidByCurrency)}
           </Text>
+          {customer.hasAdvanceCredit && customer.hasBalance ? (
+            <Text style={[styles.cardSub, { color: colors.warning, fontWeight: '600' }]}>
+              Advance credit: {formatAdvanceBalances(customer.advanceCreditByCurrency)}
+            </Text>
+          ) : null}
           <Text style={styles.cardSub}>
             Payment deadline: {customer.paymentDeadlineDays} days
             {customer.hasBalance
@@ -92,10 +113,17 @@ export default function CustomerDetailScreen() {
             title="Add sale / amount due"
             onPress={() => navigation.navigate('AddSale', { customerId })}
           />
-          <SecondaryButton
-            title={customer.hasBalance ? 'Record another payment' : 'Record payment / down payment'}
-            onPress={() => navigation.navigate('AddPayment', { customerId })}
-          />
+          {customer.hasBalance ? (
+            <SecondaryButton
+              title="Record payment"
+              onPress={() => navigation.navigate('AddPayment', { customerId })}
+            />
+          ) : (
+            <SecondaryButton
+              title={customer.hasAdvanceCredit ? 'Add more advance' : 'Add advance paid amount'}
+              onPress={() => navigation.navigate('AddAdvance', { customerId })}
+            />
+          )}
           <SecondaryButton title="Edit customer" onPress={() => navigation.navigate('CustomerForm', { customerId })} />
           <Pressable style={styles.btnDanger} onPress={onDelete}>
             <Text style={styles.btnDangerText}>Delete customer</Text>
@@ -119,7 +147,7 @@ export default function CustomerDetailScreen() {
           <View key={payment.id} style={styles.card}>
             <Text style={styles.cardTitle}>
               {formatMoney(payment.amount, payment.currency)}
-              {payment.is_down_payment ? ' · Down payment' : ''}
+              {payment.is_advance ? ' · Advance paid' : payment.is_down_payment ? ' · Down payment' : ''}
             </Text>
             <Text style={styles.cardSub}>{formatDate(payment.payment_date)}</Text>
             {payment.notes ? <Text style={styles.cardSub}>{payment.notes}</Text> : null}

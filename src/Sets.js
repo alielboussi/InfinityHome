@@ -10,6 +10,7 @@ import { cacheGet, cacheSet } from './utils/staleCache';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import { logUserActivity } from './utils/userActivityLog';
 import { seedComboLocationPricesForLocations } from './services/locationPricing';
+import { getNextAutoSku, skuExistsInCatalog } from './utils/autoSku';
 // Removed user permissions imports
 
 const SETS_BOOTSTRAP_CACHE_KEY = 'sets:bootstrap:v1';
@@ -125,34 +126,8 @@ export default function Sets() {
   const canDelete = canManageCatalogPage;
 
   // SKU helpers
-  const padSku = (n) => `#${String(n).padStart(5, '0')}`;
-  const numberFromSku = (s) => {
-    if (!s) return null;
-    const str = String(s).trim();
-    const m = str.match(/^#?(\d+)$/);
-    return m ? parseInt(m[1], 10) : null;
-  };
   const computeNextSku = async () => {
-    // Gather used numeric SKUs from combos and products to keep sequence unique across both
-    let comboSkuRows = Array.isArray(comboSkus) && comboSkus.length ? comboSkus.map((value) => ({ sku: value })) : null;
-    let productSkuRows = Array.isArray(products) && products.length ? products.map((product) => ({ sku: product.sku })) : null;
-    if (!comboSkuRows || !productSkuRows) {
-      const [combosRes, productsRes] = await Promise.all([
-        db.from('combos').select('sku'),
-        db.from('products').select('sku')
-      ]);
-      comboSkuRows = combosRes.data || comboSkuRows || [];
-      productSkuRows = productsRes.data || productSkuRows || [];
-      if (Array.isArray(combosRes.data)) {
-        setComboSkus((combosRes.data || []).map(row => row.sku).filter(Boolean));
-      }
-    }
-    const used = new Set();
-    (comboSkuRows || []).forEach(row => { const n = numberFromSku(row.sku); if (n !== null) used.add(n); });
-    (productSkuRows || []).forEach(row => { const n = numberFromSku(row.sku); if (n !== null) used.add(n); });
-    let i = 1;
-    while (used.has(i)) i += 1;
-    const next = padSku(i);
+    const next = await getNextAutoSku(db);
     setSku(next);
     return next;
   };
@@ -172,15 +147,10 @@ export default function Sets() {
         return;
       }
       setSkuChecking(true);
-      const [cRes, pRes] = await Promise.all([
-        db.from('combos').select('id').eq('sku', sku).limit(1),
-        db.from('products').select('id').eq('sku', sku).limit(1),
-      ]);
+      const exists = await skuExistsInCatalog(db, sku);
       if (!active) return;
       setSkuChecking(false);
-      const cDup = Array.isArray(cRes.data) && cRes.data.length > 0;
-      const pDup = Array.isArray(pRes.data) && pRes.data.length > 0;
-      setSkuExists(cDup || pDup);
+      setSkuExists(exists);
     };
     run();
     return () => { active = false; };
@@ -189,8 +159,8 @@ export default function Sets() {
   // Filter products for search (by name or SKU, or show all if search is empty)
   const filteredProducts = products.filter(p => {
     if (kitItems.some(item => item.product_id === p.id)) return false;
-    if (!search.trim()) return true;
-    const s = search.toLowerCase();
+    const s = search.trim().toLowerCase();
+    if (s.length < 2) return false;
     return (
       (p.name && p.name.toLowerCase().includes(s)) ||
       (p.sku && p.sku.toLowerCase().includes(s))
@@ -267,21 +237,14 @@ export default function Sets() {
       finalSku = await computeNextSku();
     }
     // Guard: duplicate SKU check right before creating (using array result, not maybeSingle)
-    const { data: skuRows } = await db
-      .from('combos')
-      .select('id')
-      .eq('sku', finalSku)
-      .limit(1);
-    if (Array.isArray(skuRows) && skuRows.length > 0) {
+    if (await skuExistsInCatalog(db, finalSku)) {
       if (skuMode === 'auto') {
-        // Race: recompute and retry once or twice
         let attempts = 0;
         let ok = false;
         while (attempts < 3 && !ok) {
           attempts += 1;
-          finalSku = await computeNextSku();
-          const { data: again } = await db.from('combos').select('id').eq('sku', finalSku).limit(1);
-          ok = !(Array.isArray(again) && again.length > 0);
+          finalSku = await getNextAutoSku(db);
+          ok = !(await skuExistsInCatalog(db, finalSku));
         }
         if (!ok) {
           alert('Unable to assign a unique SKU automatically. Please switch to Manual and set a unique SKU.');
@@ -445,7 +408,6 @@ export default function Sets() {
 
   // Removed permission access check
 
-  const shouldEnableScroll = (search.trim() !== "") || (kitItems.length > 0);
   const columnWarnings = [];
   if (!supportsUnitField) {
     columnWarnings.push(comboColumnSupport.unitReason || 'combos.unit_of_measure_id is missing – unit selection is disabled.');
@@ -460,7 +422,7 @@ export default function Sets() {
       style={{
         maxWidth: '100vw',
         height: '100vh',
-        overflowY: shouldEnableScroll ? 'auto' : 'hidden',
+        overflowY: 'auto',
         overflowX: 'hidden',
         padding: 0,
         margin: 0
@@ -587,7 +549,103 @@ export default function Sets() {
         <div style={{ color: '#9fb3c8', fontSize: '0.92rem', margin: '0 0 8px' }}>
           Standard and promotional prices are saved separately for each selected location.
         </div>
-        <div className="sets-form-spacer" aria-hidden="true" />
+
+        <div className="sets-kit-components-section">
+          <div className="sets-section-title">Kit Components</div>
+          <p className="sets-components-hint">
+            Search for products below and click a result to add it. Enter a quantity for each component before creating the set.
+          </p>
+          <div className="form-grid-search-row sets-search-row">
+            <div className="search-box">
+              <input
+                className="products-search-bar sets-components-search"
+                placeholder="Search product to add (type at least 2 letters)..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              {search.trim().length >= 2 && filteredProducts.length > 0 && (
+                <ul className="sets-components-dropdown">
+                  {filteredProducts.slice(0, 20).map(product => (
+                    <li
+                      key={product.id}
+                      className={kitItems.some(item => item.product_id === product.id) ? 'is-added' : ''}
+                      onClick={() => {
+                        if (!kitItems.some(item => item.product_id === product.id)) {
+                          setKitItems(prev => [...prev, { product_id: product.id, name: product.name, quantity: "" }]);
+                          setSearch("");
+                        }
+                      }}
+                    >
+                      {product.name}{' '}
+                      <span className="sets-components-dropdown__sku">({product.sku})</span>
+                      <span className="sets-components-dropdown__unit"> • {getProductUnit(product.id)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {search.trim().length >= 2 && filteredProducts.length === 0 && (
+                <div className="sets-components-empty">No matching products found.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="sets-components-table-wrap">
+            <table className="sets-components-table">
+              <thead>
+                <tr>
+                  <th>Product Name</th>
+                  <th>Unit</th>
+                  <th>Quantity</th>
+                  <th>Remove</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kitItems.map(item => (
+                  <tr key={item.product_id}>
+                    <td>{item.name}</td>
+                    <td>{getProductUnit(item.product_id)}</td>
+                    <td>
+                      <input
+                        type="number"
+                        min="1"
+                        className="sets-component-qty-input"
+                        value={item.quantity === "" ? "" : item.quantity}
+                        onChange={e => updateQty(item.product_id, e.target.value)}
+                      />
+                      <span className="sets-component-stock">
+                        (Stock: {productStock[item.product_id] || 0})
+                      </span>
+                    </td>
+                    <td>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          className="sets-delete-btn"
+                          onClick={() => removeProductFromKit(item.product_id)}
+                        >
+                          <FaTrash />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {kitItems.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="sets-components-table-empty">
+                      No components added yet. Use the search box above to add products to this set.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            {products.length === 0 && (
+              <div className="sets-components-load-error">
+                No products found in the database. Please check your connection and products collection.
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="sets-locations-section">
           <div className="sets-locations-row">
             <div className="sets-locations">
@@ -620,110 +678,19 @@ export default function Sets() {
               })}
               </div>
             </div>
-            <button
-              type="submit"
-              className="sets-save-btn"
-              disabled={skuMode==='manual' && skuExists}
-              title={skuMode==='manual' && skuExists ? 'SKU already exists' : undefined}
-              style={{background: '#00b4d8', color: '#fff', border: 'none', borderRadius: '6px', padding: '0.5rem 1.2rem', fontWeight: 'bold', fontSize: '0.98rem', boxShadow: '0 2px 8px #00b4d855', cursor: skuMode==='manual' && skuExists ? 'not-allowed' : 'pointer', opacity: skuMode==='manual' && skuExists ? 0.7 : 1, width: 'auto', alignSelf: 'flex-start'}}
-            >
-              Create Kit/Set
-            </button>
           </div>
         </div>
 
-        <div className="sets-kit-components-section">
-          <div className="sets-section-title">Kit Components</div>
-          <div className="form-grid-search-row sets-search-row">
-          <div className="search-box">
-            <input
-              className="products-search-bar sets-components-search"
-              placeholder="Search product to add..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            {/* Dropdown for matching products */}
-      {search.trim().length >= 3 && filteredProducts.length > 0 && (
-              <ul style={{position: 'absolute', top: '40px', left: 0, width: '100%', background: '#23272f', border: '1px solid #00b4d8', borderRadius: '6px', maxHeight: '180px', overflowY: 'auto', zIndex: 10, listStyle: 'none', margin: 0, padding: 0}}>
-                {filteredProducts.map(product => (
-                  <li
-                    key={product.id}
-                    style={{padding: '8px 12px', cursor: kitItems.some(item => item.product_id === product.id) ? 'not-allowed' : 'pointer', color: kitItems.some(item => item.product_id === product.id) ? '#888' : '#e0e6ed', background: kitItems.some(item => item.product_id === product.id) ? '#181818' : 'inherit'}}
-                    onClick={() => {
-                      if (!kitItems.some(item => item.product_id === product.id)) {
-                        setKitItems(prev => [...prev, { product_id: product.id, name: product.name, quantity: "" }]);
-                        setSearch(""); // Clear search after adding
-                      }
-                    }}
-                  >
-        {product.name} <span style={{color:'#00b4d8', fontSize:'0.9em'}}>({product.sku})</span>
-        <span style={{color:'#9aa', fontSize:'0.9em'}}> • {getProductUnit(product.id)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+        <div className="sets-submit-row">
+          <button
+            type="submit"
+            className="sets-save-btn"
+            disabled={skuMode==='manual' && skuExists}
+            title={skuMode==='manual' && skuExists ? 'SKU already exists' : undefined}
+          >
+            Create Kit/Set
+          </button>
         </div>
-        </div>
-
-        {/* Removed available products table. Products are now added via dropdown above. */}
-
-        {/* Show kit items table only when searching products or adding to kit */}
-        {(search.trim() !== "" || kitItems.length > 0) && (
-          <div className="products-list" style={{width: '100%', marginTop: '0.5rem', overflowY: 'auto', maxHeight: '350px'}}>
-            <table style={{width: '100%', minWidth: 700, background: 'transparent', color: '#e0e6ed', borderCollapse: 'collapse'}}>
-              <thead>
-                <tr style={{background: '#23272f'}}>
-                  <th style={{padding: '0.5rem', borderBottom: '1px solid #00b4d8', color: '#00b4d8', textAlign: 'left'}}>Product Name</th>
-                  <th style={{padding: '0.5rem', borderBottom: '1px solid #00b4d8', color: '#00b4d8', width: 120}}>Unit</th>
-                  <th style={{padding: '0.5rem', borderBottom: '1px solid #00b4d8', color: '#00b4d8', width: 120}}>Quantity</th>
-                  <th style={{padding: '0.5rem', borderBottom: '1px solid #00b4d8', color: '#00b4d8', width: 60}}>Remove</th>
-                </tr>
-              </thead>
-              <tbody>
-                {kitItems.map(item => (
-                  <tr key={item.product_id} style={{background: '#181818'}}>
-                    <td style={{textAlign: 'left'}}>{item.name}</td>
-                    <td>{getProductUnit(item.product_id)}</td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.quantity === "" ? "" : item.quantity}
-                        onChange={e => updateQty(item.product_id, e.target.value)}
-                        style={{ width: 70, borderColor: '#00b4d8', borderRadius: '4px', background: '#23272f', color: '#e0e6ed', padding: '4px 8px' }}
-                      />
-                      <span style={{ color: '#00b4d8', fontSize: '0.9em', marginLeft: 6 }}>
-                        (Stock: {productStock[item.product_id] || 0})
-                      </span>
-                    </td>
-                    <td>
-                      {canDelete && (
-                        <button
-                          type="button"
-                          className="sets-delete-btn"
-                          onClick={() => removeProductFromKit(item.product_id)}
-                          style={{background: '#ff4d4d', color: '#fff', border: 'none', borderRadius: '5px', padding: '6px 10px', fontSize: '1rem', cursor: 'pointer'}}>
-                          <FaTrash />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {kitItems.length === 0 && (
-                  <tr>
-                    <td colSpan={3} style={{ textAlign: "center", color: "#888" }}>No products added yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-            {products.length === 0 && (
-              <div style={{ color: '#ff4d4d', marginTop: '1rem', textAlign: 'center' }}>
-                No products found in the database. Please check your connection and products collection.
-              </div>
-            )}
-          </div>
-        )}
       </form>
       )}
     </div>

@@ -7,9 +7,11 @@ import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { deleteComboLocations, removeComboLocations, replaceComboLocations, upsertComboLocations } from './services/comboLocations';
 import { getFactoryStorageSummary, getFactoryStorageItems, createFactoryStorageItem, releaseFactoryStorageItem, updateFactoryStorageItem } from './services/factoryStorage';
-import { fetchInventorySnapshot } from './services/inventorySnapshot';
+import { fetchComputedInventorySnapshot } from './services/inventorySnapshot';
 import { removeProductLocations, syncProductLocations } from './services/productLocations';
-import { applyInventoryBulk } from './utils/inventoryApi';
+import { applyInventoryBulk, dedupeInventoryRows, upsertInventoryQuantity } from './utils/inventoryApi';
+import { docIdFromOnConflict } from './db/docIds';
+import { classifyInventoryAdjustmentDelta } from './utils/inventoryAdjustmentTypes';
 import { canDeleteProducts, canManageCatalog, canManageProductInventory, getCurrentUser } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { exportProductsListExcel } from './utils/productsListExport';
@@ -287,10 +289,13 @@ function ProductsListPage() {
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
   const [adjustProduct, setAdjustProduct] = useState(null);
   const [adjustQty, setAdjustQty] = useState(0);
-  const [qtyModalOpen, setQtyModalOpen] = useState(false);
-  const [qtyModalProduct, setQtyModalProduct] = useState(null);
-  const [qtyModalRows, setQtyModalRows] = useState([]);
-  const [qtyModalLoading, setQtyModalLoading] = useState(false);
+  const [imageChoiceProduct, setImageChoiceProduct] = useState(null);
+  const [nameEdit, setNameEdit] = useState(null);
+  const [categoryEditItem, setCategoryEditItem] = useState(null);
+  const [categorySearch, setCategorySearch] = useState('');
+  const [stockCorrection, setStockCorrection] = useState(null);
+  const [stockCorrectionLoading, setStockCorrectionLoading] = useState(false);
+  const nameInputRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [units, setUnits] = useState([]);
@@ -307,7 +312,6 @@ function ProductsListPage() {
   const [deleteTargets, setDeleteTargets] = useState([]);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [adjustSetMode, setAdjustSetMode] = useState('receive');
-  const [openActionMenuId, setOpenActionMenuId] = useState(null);
   const [inlinePriceEdit, setInlinePriceEdit] = useState(null);
   const inlinePriceInputRef = useRef(null);
   const inlinePriceDraftRef = useRef('');
@@ -399,13 +403,12 @@ function ProductsListPage() {
 
   const getActiveStockPeriod = useCallback(async (locId) => {
     if (!locId) return null;
-    // Only the current OPEN period accepts opening-stock edits.
-    // Periods are created by Stocktake Flow submit — never auto-create here.
+    // Sync opening_stock_entries for open and locked opening periods.
     const { data: existing, error } = await db
       .from('stock_periods')
       .select('id, status, begin_period_date, opened_at')
       .eq('location_id', locId)
-      .eq('status', PERIOD_STATUS_OPEN)
+      .in('status', [PERIOD_STATUS_OPEN, PERIOD_STATUS_LOCKED])
       .order('opened_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -485,19 +488,6 @@ function ProductsListPage() {
 
   const factoryStorageModalItemHeader = factoryStorageModalIsCombo ? 'Component' : 'Item';
 
-  const toggleActionMenu = useCallback((event, id) => {
-    event?.stopPropagation?.();
-    setOpenActionMenuId(prev => prev === id ? null : id);
-  }, []);
-
-  useEffect(() => {
-    const closeMenus = () => {
-      setOpenActionMenuId(null);
-    };
-    document.addEventListener('click', closeMenus);
-    return () => document.removeEventListener('click', closeMenus);
-  }, []);
-
   // Realtime tick for catalog and inventory-related tables
   const rtLocationFilter = selectedLocationIds.length === 1 ? selectedLocationIds[0] : '';
   const rtTickCatalog = useRealtimeRefresh(
@@ -510,23 +500,23 @@ function ProductsListPage() {
     } : undefined
   );
 
-  const handleOpenAdjustModal = (product) => {
+  const handleOpenAdjustModal = (product, presetLocationId = null) => {
     if (!canAdjustInventory) {
       alert('Inventory changes are disabled for your account.');
       return;
     }
-    const defaultLocationId = selectedLocationIds.length === 1
-      ? normalizeLocationId(selectedLocationIds[0])
-      : normalizeLocationId(locations[0]?.id || '');
+    const defaultLocationId = presetLocationId
+      ? normalizeLocationId(presetLocationId)
+      : (selectedLocationIds.length === 1
+        ? normalizeLocationId(selectedLocationIds[0])
+        : normalizeLocationId(locations[0]?.id || ''));
     setAdjustProduct(product);
     // Default mode for sets is 'receive'; for products it's normal adjust
     if (product.__isCombo) {
       setAdjustSetMode('receive');
       setAdjustQty(1);
     } else if (defaultLocationId) {
-      const inv = inventory.find(inv => inv.product_id === product.id && isSameLocation(inv.location, defaultLocationId));
-      const qty = inv ? Number(inv.quantity) : 0;
-      setAdjustQty(qty);
+      setAdjustQty(getStockForProduct(product.id, defaultLocationId));
     } else {
       setAdjustQty("");
     }
@@ -545,17 +535,52 @@ function ProductsListPage() {
     setAdjustModalOpen(true);
   };
 
-  const openQtyModal = useCallback((product) => {
-    if (!product) return;
-    setQtyModalProduct(product);
-    setQtyModalOpen(true);
-  }, []);
+  const openImageEditor = useCallback((item) => {
+    if (!canManageCatalogPage) {
+      alert('You do not have permission to edit product images.');
+      return;
+    }
+    setImageEditProduct(item);
+    setImageEditBulkProducts(null);
+    setImageEditFile(null);
+    setImageEditModalOpen(true);
+  }, [canManageCatalogPage]);
 
-  const closeQtyModal = useCallback(() => {
-    setQtyModalOpen(false);
-    setQtyModalProduct(null);
-    setQtyModalRows([]);
-    setQtyModalLoading(false);
+  const handleImageCellClick = useCallback((item) => {
+    if (!canManageCatalogPage) {
+      alert('You do not have permission to edit product images.');
+      return;
+    }
+    const imageUrl = getListItemImageUrl(item);
+    if (imageUrl) {
+      setImageChoiceProduct(item);
+      return;
+    }
+    openImageEditor(item);
+  }, [canManageCatalogPage, openImageEditor]);
+
+  const handleRemoveProductImage = useCallback(async (item) => {
+    if (!item) return;
+    setImageEditLoading(true);
+    try {
+      if (item.__isCombo) {
+        await db.from('combos').update({ picture_url: '' }).eq('id', item.id);
+      } else {
+        await db.from('product_images').delete().eq('product_id', item.id);
+        await db.from('products').update({ image_url: '' }).eq('id', item.id);
+      }
+      await purgeExistingStorageImages(item.id, Boolean(item.__isCombo));
+      setImageChoiceProduct(null);
+      setImageEditModalOpen(false);
+      setImageEditProduct(null);
+      setImageEditBulkProducts(null);
+      setImageEditFile(null);
+      await fetchAll();
+    } catch (err) {
+      alert('Failed to remove image: ' + (err.message || err));
+    } finally {
+      setImageEditLoading(false);
+    }
   }, []);
 
   const refreshFactoryStorageSummary = useCallback(async () => {
@@ -943,16 +968,21 @@ function ProductsListPage() {
               }
             }
             try {
+              const assemblyDelta = -need;
+              const { type: assemblyType, quantity: assemblyQty } = classifyInventoryAdjustmentDelta(assemblyDelta);
               await db.from('inventory_adjustments').insert({
                 product_id: it.product_id,
                 location_id: locationId,
-                quantity: -need,
-                adjustment_type: activePeriodId ? 'Opening Period Set Assembly' : 'Set Assembly',
+                quantity: assemblyQty,
+                adjustment_type: assemblyType,
                 adjusted_at: new Date().toISOString(),
                 metadata: {
                   user_id: currentUser?.id || null,
                   user_name: currentUserName,
                   source: 'products-list',
+                  delta: assemblyDelta,
+                  session_id: activePeriodId || null,
+                  set_mode: 'assemble',
                 }
               });
             } catch (e) {
@@ -1015,16 +1045,21 @@ function ProductsListPage() {
               }
             }
             try {
+              const receiveDelta = add;
+              const { type: receiveType, quantity: receiveQty } = classifyInventoryAdjustmentDelta(receiveDelta);
               await db.from('inventory_adjustments').insert({
                 product_id: it.product_id,
                 location_id: locationId,
-                quantity: add,
-                adjustment_type: activePeriodId ? 'Opening Period Set Receive' : 'Set Receive',
+                quantity: receiveQty,
+                adjustment_type: receiveType,
                 adjusted_at: new Date().toISOString(),
                 metadata: {
                   user_id: currentUser?.id || null,
                   user_name: currentUserName,
                   source: 'products-list',
+                  delta: receiveDelta,
+                  session_id: activePeriodId || null,
+                  set_mode: 'receive',
                 }
               });
             } catch (e) {
@@ -1048,9 +1083,16 @@ function ProductsListPage() {
         return;
       }
       const targetQty = Number(adjustQty);
-      const adjustmentType = activePeriodId
-        ? (activePeriod?.status === PERIOD_STATUS_LOCKED ? 'Opening Period Stock Adjustment' : 'Opening Period Stock')
-        : 'Manual Adjustment';
+      const { data: invRowsBefore, error: invBeforeErr } = await db
+        .from('inventory')
+        .select('id, quantity')
+        .eq('product_id', adjustProduct.id)
+        .eq('location', locationId);
+      if (invBeforeErr) throw invBeforeErr;
+      const previousQty = dedupeInventoryRows(Array.isArray(invRowsBefore) ? invRowsBefore : [])
+        .reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0);
+      const delta = targetQty - previousQty;
+      const { type: adjustmentType, quantity: adjustmentQty } = classifyInventoryAdjustmentDelta(delta);
       let locationSyncError = null;
       try {
         await syncProductLocations({ rows: [{ product_id: adjustProduct.id, location_id: locationId }] }, db);
@@ -1058,10 +1100,12 @@ function ProductsListPage() {
         locationSyncError = e;
         console.warn('[inventory] product_locations sync failed', e);
       }
-      // Upsert inventory (single call, avoids pre-select)
       try {
-        await applyInventoryBulk({
-          inserts: [{ product_id: adjustProduct.id, location: locationId, quantity: targetQty, updated_at: nowIso }],
+        await upsertInventoryQuantity({
+          productId: adjustProduct.id,
+          locationId,
+          quantity: targetQty,
+          updatedAt: nowIso,
         }, db);
       } catch (e) {
         if (locationSyncError) {
@@ -1070,35 +1114,53 @@ function ProductsListPage() {
         }
         throw e;
       }
+
+      const { data: verifyRows, error: verifyErr } = await db
+        .from('inventory')
+        .select('id, quantity, updated_at')
+        .eq('product_id', adjustProduct.id)
+        .eq('location', locationId);
+      if (verifyErr) throw verifyErr;
+      let verifiedQty = dedupeInventoryRows(Array.isArray(verifyRows) ? verifyRows : [])
+        .reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
+      if (Number(verifiedQty) !== Number(targetQty)) {
+        const canonicalId = docIdFromOnConflict(
+          { product_id: adjustProduct.id, location: locationId },
+          'product_id,location',
+        );
+        const { data: byIdRow } = await db
+          .from('inventory')
+          .select('quantity')
+          .eq('id', canonicalId)
+          .maybeSingle();
+        if (byIdRow != null) {
+          verifiedQty = Number(byIdRow.quantity || 0);
+        }
+      }
+      if (Number(verifiedQty) !== Number(targetQty)) {
+        throw new Error(`Inventory save did not stick (expected ${targetQty}, read back ${verifiedQty}). Please try again.`);
+      }
       localInventoryChanges.push({ productId: adjustProduct.id, locationId, quantity: targetQty });
-      const tasks = [
-        db.from('inventory_adjustments').insert({
+      if (delta !== 0) {
+        const { error: adjErr } = await db.from('inventory_adjustments').insert({
           product_id: adjustProduct.id,
           location_id: locationId,
-          quantity: targetQty,
+          quantity: adjustmentQty,
           adjustment_type: adjustmentType,
           adjusted_at: new Date().toISOString(),
           metadata: {
             user_id: currentUser?.id || null,
             user_name: currentUserName,
             source: 'products-list',
+            before_qty: previousQty,
+            after_qty: targetQty,
+            delta,
+            session_id: activePeriodId || null,
           }
-        })
-      ];
-      if (activePeriodId) {
-        tasks.push(
-          db
-            .from('opening_stock_entries')
-            .upsert(
-              { session_id: activePeriodId, product_id: adjustProduct.id, qty: targetQty },
-              { onConflict: 'session_id,product_id' }
-            )
-        );
-      }
-      const results = await Promise.allSettled(tasks);
-      const rejected = results.filter(r => r.status === 'rejected');
-      if (rejected.length) {
-        console.warn('[inventory] auxiliary writes failed', rejected.map(r => r.reason));
+        });
+        if (adjErr) {
+          console.warn('[inventory] adjustment log failed', adjErr);
+        }
       }
       setAdjustModalOpen(false);
       applyLocalInventoryChanges(localInventoryChanges);
@@ -1252,12 +1314,10 @@ function ProductsListPage() {
     }
   };
 
-  const fetchInventory = async (options = {}) => {
-    const { skipCache = false } = options || {};
-    const snapshot = await fetchInventorySnapshot();
+  const fetchInventory = async () => {
+    const snapshot = await fetchComputedInventorySnapshot();
     if (!snapshot.error) {
-      const nextInventory = snapshot.data || [];
-      setInventory(nextInventory);
+      setInventory(dedupeInventoryRows(snapshot.data || []));
     }
   };
 
@@ -1266,20 +1326,19 @@ function ProductsListPage() {
       .map((locId) => normalizeLocationId(locId))
       .filter(Boolean)));
     if (normalized.length === 0) {
-      await fetchInventory({ skipCache: true });
+      await fetchInventory();
       return;
     }
-    const snapshot = await fetchInventorySnapshot(normalized);
+    const snapshot = await fetchComputedInventorySnapshot(normalized);
     if (snapshot?.error) {
-      await fetchInventory({ skipCache: true });
+      await fetchInventory();
       return;
     }
-    const snapshotRows = Array.isArray(snapshot.data) ? snapshot.data : [];
+    const snapshotRows = dedupeInventoryRows(Array.isArray(snapshot.data) ? snapshot.data : []);
     setInventory((prev) => {
       const prevRows = Array.isArray(prev) ? prev : [];
       const filtered = prevRows.filter((row) => !normalized.includes(normalizeLocationId(row.location)));
-      const merged = [...filtered, ...snapshotRows];
-      return merged;
+      return dedupeInventoryRows([...filtered, ...snapshotRows]);
     });
   };
 
@@ -1309,7 +1368,7 @@ function ProductsListPage() {
     applyDeletedProductIds(deletedIds);
     await Promise.allSettled(deletedIds.map((id) => purgeExistingStorageImages(id, false)));
     await fetchAll();
-    await fetchInventory({ skipCache: true });
+    await fetchInventory();
     return deletedIds;
   }, [applyDeletedProductIds]);
 
@@ -1333,6 +1392,7 @@ function ProductsListPage() {
           product_id: change.productId,
           location: change.locationId,
           quantity: Number(change.quantity || 0),
+          updated_at: new Date().toISOString(),
         });
       });
       return next;
@@ -1348,8 +1408,215 @@ function ProductsListPage() {
       if (!lid) return true;
       return normalizeLocationId(inv.location) === lid;
     });
-    return rows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+    return dedupeInventoryRows(rows).reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
   }, [inventory, normalizeLocationId]);
+
+  const openLocationStockCorrection = useCallback((item, locationRow) => {
+    if (!canAdjustInventory) {
+      alert('Inventory changes are disabled for your account.');
+      return;
+    }
+    if (item.__isCombo) {
+      handleOpenAdjustModal(item, locationRow.id);
+      return;
+    }
+    setStockCorrection({
+      product: item,
+      locationId: locationRow.id,
+      locationName: locationRow.name,
+      mode: 'add',
+      qty: '1',
+    });
+  }, [canAdjustInventory]);
+
+  const handleStockCorrection = async () => {
+    if (!stockCorrection?.product) return;
+    const amount = Number(stockCorrection.qty);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Enter a positive amount.');
+      return;
+    }
+    const rawLocationId = stockCorrection.locationId;
+    const locationId = resolveLocationUuid(rawLocationId);
+    if (!locationId || !isUuid(locationId)) {
+      alert('Unable to resolve location for this adjustment.');
+      return;
+    }
+    const product = stockCorrection.product;
+    const currentQty = getStockForProduct(product.id, locationId);
+    const delta = stockCorrection.mode === 'add' ? amount : -amount;
+    const targetQty = currentQty + delta;
+
+    setStockCorrectionLoading(true);
+    try {
+      let activePeriod = null;
+      if (String(locationId) !== String(FACTORY_LOCATION_ID)) {
+        activePeriod = await getActiveStockPeriod(locationId);
+      }
+      const activePeriodId = activePeriod?.id || null;
+      const nowIso = new Date().toISOString();
+      const localInventoryChanges = [];
+      const previousQty = currentQty;
+      const { type: adjustmentType, quantity: adjustmentQty } = classifyInventoryAdjustmentDelta(delta);
+      try {
+        await syncProductLocations({ rows: [{ product_id: product.id, location_id: locationId }] }, db);
+      } catch (e) {
+        console.warn('[inventory] product_locations sync failed', e);
+      }
+      await upsertInventoryQuantity({
+        productId: product.id,
+        locationId,
+        quantity: targetQty,
+        updatedAt: nowIso,
+      }, db);
+
+      const { data: verifyRows, error: verifyErr } = await db
+        .from('inventory')
+        .select('id, quantity, updated_at')
+        .eq('product_id', product.id)
+        .eq('location', locationId);
+      if (verifyErr) throw verifyErr;
+      let verifiedQty = dedupeInventoryRows(Array.isArray(verifyRows) ? verifyRows : [])
+        .reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
+      if (Number(verifiedQty) !== Number(targetQty)) {
+        const canonicalId = docIdFromOnConflict(
+          { product_id: product.id, location: locationId },
+          'product_id,location',
+        );
+        const { data: byIdRow } = await db
+          .from('inventory')
+          .select('quantity')
+          .eq('id', canonicalId)
+          .maybeSingle();
+        if (byIdRow != null) {
+          verifiedQty = Number(byIdRow.quantity || 0);
+        }
+      }
+      if (Number(verifiedQty) !== Number(targetQty)) {
+        throw new Error(`Inventory save did not stick (expected ${targetQty}, read back ${verifiedQty}). Please try again.`);
+      }
+      localInventoryChanges.push({ productId: product.id, locationId, quantity: targetQty });
+      if (delta !== 0) {
+        const { error: adjErr } = await db.from('inventory_adjustments').insert({
+          product_id: product.id,
+          location_id: locationId,
+          quantity: adjustmentQty,
+          adjustment_type: adjustmentType,
+          adjusted_at: new Date().toISOString(),
+          metadata: {
+            user_id: currentUser?.id || null,
+            user_name: currentUserName,
+            source: 'products-list',
+            before_qty: previousQty,
+            after_qty: targetQty,
+            delta,
+            session_id: activePeriodId || null,
+          },
+        });
+        if (adjErr) {
+          console.warn('[inventory] adjustment log failed', adjErr);
+        }
+      }
+      applyLocalInventoryChanges(localInventoryChanges);
+      try { cacheClear(PRODUCTS_LIST_INVENTORY_CACHE_KEY); } catch {}
+      await refreshInventoryForLocations([locationId]);
+      logUserActivity({
+        actionType: 'inventory_adjustment',
+        actionLabel: 'Inventory Adjusted',
+        details: `${product.name} • ${stockCorrection.mode === 'add' ? '+' : '−'}${amount} at ${stockCorrection.locationName} • Qty ${targetQty}`,
+        reference: String(product.id),
+        entityType: 'product',
+        entityId: String(product.id),
+        metadata: { location_id: locationId, quantity: targetQty, adjustment_type: adjustmentType, delta },
+      });
+      setStockCorrection(null);
+    } catch (err) {
+      alert('Failed to adjust inventory: ' + (err.message || err));
+    } finally {
+      setStockCorrectionLoading(false);
+    }
+  };
+
+  const saveInlineName = async (item, isCombo, draftValue) => {
+    const trimmed = String(draftValue || '').trim();
+    const currentName = isCombo ? item.combo_name : item.name;
+    if (!trimmed || trimmed === String(currentName || '').trim()) {
+      setNameEdit(null);
+      return;
+    }
+    try {
+      if (isCombo) {
+        const { error } = await db.from('combos').update({ combo_name: trimmed }).eq('id', item.id);
+        if (error) throw error;
+        setCombos((prev) => prev.map((row) => (
+          String(row.id) === String(item.id) ? { ...row, combo_name: trimmed } : row
+        )));
+      } else {
+        const { error } = await db.from('products').update({ name: trimmed }).eq('id', item.id);
+        if (error) throw error;
+        setProducts((prev) => prev.map((row) => (
+          String(row.id) === String(item.id) ? { ...row, name: trimmed } : row
+        )));
+      }
+      logUserActivity({
+        actionType: 'product_update',
+        actionLabel: isCombo ? 'Set Renamed' : 'Product Renamed',
+        details: `${currentName} → ${trimmed}`,
+        reference: String(item.id),
+        entityType: isCombo ? 'combo' : 'product',
+        entityId: String(item.id),
+      });
+      setNameEdit(null);
+    } catch (err) {
+      alert('Failed to save name: ' + (err.message || err));
+    }
+  };
+
+  const saveCategoryForItem = async (item, isCombo, categoryId) => {
+    try {
+      if (isCombo) {
+        const { error } = await db.from('combos').update({ category_id: categoryId || null }).eq('id', item.id);
+        if (error) throw error;
+        setCombos((prev) => prev.map((row) => (
+          String(row.id) === String(item.id) ? { ...row, category_id: categoryId || null } : row
+        )));
+      } else {
+        const { error } = await db.from('products').update({ category_id: categoryId || null }).eq('id', item.id);
+        if (error) throw error;
+        setProducts((prev) => prev.map((row) => (
+          String(row.id) === String(item.id) ? { ...row, category_id: categoryId || null } : row
+        )));
+      }
+      const categoryName = categories.find((c) => String(c.id) === String(categoryId))?.name || 'None';
+      logUserActivity({
+        actionType: 'product_update',
+        actionLabel: isCombo ? 'Set Category Changed' : 'Product Category Changed',
+        details: `${isCombo ? item.combo_name : item.name} → ${categoryName}`,
+        reference: String(item.id),
+        entityType: isCombo ? 'combo' : 'product',
+        entityId: String(item.id),
+      });
+      setCategoryEditItem(null);
+      setCategorySearch('');
+    } catch (err) {
+      alert('Failed to update category: ' + (err.message || err));
+    }
+  };
+
+  const filteredCategoryOptions = useMemo(() => {
+    const term = (categorySearch || '').trim().toLowerCase();
+    const list = (categories || []).slice().sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }),
+    );
+    if (!term) return list;
+    return list.filter((cat) => String(cat.name || '').toLowerCase().includes(term));
+  }, [categories, categorySearch]);
+
+  useEffect(() => {
+    if (!nameEdit || !nameInputRef.current) return;
+    nameInputRef.current.focus();
+    nameInputRef.current.select();
+  }, [nameEdit?.rowKey]);
 
   const getStockForProductAcrossSelected = useCallback((productId) => {
     if (selectedLocationIds.length === 0) return getStockForProduct(productId, '');
@@ -1372,33 +1639,6 @@ function ProductsListPage() {
     }
     return Number.isFinite(minSets) ? minSets : 0;
   }, [comboItems, getStockForProduct]);
-
-  useEffect(() => {
-    if (!qtyModalOpen || !qtyModalProduct) {
-      setQtyModalRows([]);
-      setQtyModalLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setQtyModalLoading(true);
-    const rows = (locations || []).map((loc) => {
-      const qty = qtyModalProduct.__isCombo
-        ? computeComboMaxQty(qtyModalProduct.id, loc.id)
-        : getStockForProduct(qtyModalProduct.id, loc.id);
-      return {
-        id: loc.id,
-        name: loc.name,
-        qty: Number(qty || 0)
-      };
-    });
-    if (!cancelled) {
-      setQtyModalRows(rows);
-      setQtyModalLoading(false);
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [qtyModalOpen, qtyModalProduct, locations, computeComboMaxQty, getStockForProduct]);
 
   const getComboRemainders = useCallback((comboId, locId) => {
     const items = (comboItems || []).filter(ci => String(ci.combo_id) === String(comboId));
@@ -1983,7 +2223,8 @@ function ProductsListPage() {
       const nowIso = new Date().toISOString();
       for (const row of negativeResetTargets) {
         const currentQty = Number(row.quantity || 0);
-        const delta = -currentQty; // currentQty is negative, so delta is positive increase to reach zero
+        const delta = -currentQty;
+        const { type: resetType, quantity: resetQty } = classifyInventoryAdjustmentDelta(delta);
         const { error: invErr } = await db
           .from('inventory')
           .update({ quantity: 0 })
@@ -1992,11 +2233,14 @@ function ProductsListPage() {
         await db.from('inventory_adjustments').insert({
           product_id: row.product_id,
           location_id: row.location,
-          quantity: delta,
-          adjustment_type: 'Negative Reset to Zero',
+          quantity: resetQty,
+          adjustment_type: resetType,
           adjusted_at: nowIso,
           metadata: {
             prior_quantity: currentQty,
+            before_qty: currentQty,
+            after_qty: 0,
+            delta,
             reason: 'Bulk reset from ProductsListPage',
             user_id: currentUser?.id || null,
             user_name: currentUserName,
@@ -2702,10 +2946,10 @@ function ProductsListPage() {
                     </div>
                   </th>
                   <th className="products-list-cell-image-header" style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '3cm'}}>Image</th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '14%'}}>Name</th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>SKU</th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Category</th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '14%'}}>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '16%'}}>Name</th>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '8%'}}>SKU</th>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '12%'}}>Category</th>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '18%'}}>
                     <div className="products-list-location-header">
                       <span>Location</span>
                       <button
@@ -2726,10 +2970,8 @@ function ProductsListPage() {
                       </button>
                     </div>
                   </th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>Price</th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>Promo</th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '7%'}}>Edit</th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Inventory</th>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Price</th>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Promo</th>
                 </tr>
               </thead>
               <tbody>
@@ -2758,8 +3000,6 @@ function ProductsListPage() {
                   );
                   const rowKey = `${isCombo ? 'combo' : 'prod'}-${item.id}`;
                   const bulkKey = `${isCombo ? 'combo' : 'prod'}:${item.id}`;
-                  const actionMenuOpen = openActionMenuId === rowKey;
-                  const primaryInventoryLabel = isCombo ? 'Set Inventory' : 'Inventory';
                   const categoryName = categories.find((c) => String(c.id) === String(item.category_id))?.name;
                   const hasCategoryId = item.category_id !== null && item.category_id !== undefined && String(item.category_id) !== '';
                   const categoryMissing = hasCategoryId && !categoryName;
@@ -2812,21 +3052,38 @@ function ProductsListPage() {
                           const imageUrl = getListItemImageUrl(item);
                           const imageAlt = isCombo ? item.combo_name : item.name;
                           if (!imageUrl) {
-                            return <span className="products-list-thumb-empty" aria-hidden="true">—</span>;
+                            return (
+                              <span
+                                role="button"
+                                tabIndex={canManageCatalogPage ? 0 : -1}
+                                className={`products-list-thumb-empty products-list-thumb-empty--clickable${!canManageCatalogPage ? ' is-disabled' : ''}`}
+                                onClick={() => canManageCatalogPage && handleImageCellClick(item)}
+                                onKeyDown={(e) => {
+                                  if (!canManageCatalogPage) return;
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    handleImageCellClick(item);
+                                  }
+                                }}
+                                aria-label={`Set image for ${imageAlt}`}
+                              >
+                                —
+                              </span>
+                            );
                           }
                           return (
                             <div
-                              className="products-list-thumb-wrap"
+                              className="products-list-thumb-wrap products-list-thumb-wrap--editable"
                               role="button"
                               tabIndex={0}
-                              onClick={() => setExpandedImage(imageUrl)}
+                              onClick={() => handleImageCellClick(item)}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
-                                  setExpandedImage(imageUrl);
+                                  handleImageCellClick(item);
                                 }
                               }}
-                              aria-label={`View larger image for ${imageAlt}`}
+                              aria-label={`Edit image for ${imageAlt}`}
                             >
                               <img
                                 src={imageUrl}
@@ -2842,24 +3099,92 @@ function ProductsListPage() {
                         })()}
                       </td>
                       <td className="products-list-cell-name">
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => openQtyModal(item)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              openQtyModal(item);
-                            }
-                          }}
-                          className="products-list-name-link"
-                        >
-                          {isCombo ? item.combo_name : item.name}
-                        </span>
+                        {nameEdit?.rowKey === rowKey ? (
+                          <input
+                            ref={nameInputRef}
+                            type="text"
+                            className="products-list-inline-name-input"
+                            value={nameEdit.draft}
+                            onChange={(e) => setNameEdit((prev) => (prev ? { ...prev, draft: e.target.value } : prev))}
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setNameEdit(null);
+                              } else if (e.key === 'Enter') {
+                                e.preventDefault();
+                                await saveInlineName(item, isCombo, nameEdit.draft);
+                              }
+                            }}
+                            onBlur={async () => {
+                              if (!nameEdit || nameEdit.rowKey !== rowKey) return;
+                              await saveInlineName(item, isCombo, nameEdit.draft);
+                            }}
+                            aria-label={`Edit name for ${isCombo ? item.combo_name : item.name}`}
+                          />
+                        ) : (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              if (isCombo) {
+                                window.location.href = `/edit-set/${item.id}`;
+                                return;
+                              }
+                              if (!canManageCatalogPage) {
+                                alert('You do not have permission to edit product names.');
+                                return;
+                              }
+                              setNameEdit({
+                                rowKey,
+                                draft: item.name || '',
+                              });
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                if (isCombo) {
+                                  window.location.href = `/edit-set/${item.id}`;
+                                  return;
+                                }
+                                if (!canManageCatalogPage) return;
+                                setNameEdit({
+                                  rowKey,
+                                  draft: item.name || '',
+                                });
+                              }
+                            }}
+                            className="products-list-name-link"
+                            title={isCombo ? 'Open set editor' : 'Click to edit name'}
+                          >
+                            {isCombo ? item.combo_name : item.name}
+                          </span>
+                        )}
                       </td>
                       <td className="products-list-cell-sku">{isCombo ? item.sku : (item.sku || '(auto)')}</td>
                       <td className="products-list-cell-category">
-                        <span>{categoryName || (isCombo ? 'Set' : '-')}</span>
+                        <span
+                          role="button"
+                          tabIndex={canManageCatalogPage ? 0 : -1}
+                          className={`products-list-category-link${!canManageCatalogPage ? ' is-disabled' : ''}`}
+                          onClick={() => {
+                            if (!canManageCatalogPage) {
+                              alert('You do not have permission to edit categories.');
+                              return;
+                            }
+                            setCategoryEditItem({ item, isCombo });
+                            setCategorySearch('');
+                          }}
+                          onKeyDown={(e) => {
+                            if (!canManageCatalogPage) return;
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setCategoryEditItem({ item, isCombo });
+                              setCategorySearch('');
+                            }
+                          }}
+                        >
+                          {categoryName || (isCombo ? 'Set' : '-')}
+                        </span>
                         {categoryMissing && (
                           <span
                             style={{
@@ -2886,7 +3211,22 @@ function ProductsListPage() {
                           <ul className="products-list-location-qty-list" aria-label={`Stock by location for ${isCombo ? item.combo_name : item.name}`}>
                             {locationQtyRows.map((row) => (
                               <li key={row.id}>
-                                {row.name}: {row.qty.toLocaleString()}
+                                <span
+                                  role="button"
+                                  tabIndex={canAdjustInventory ? 0 : -1}
+                                  className={`products-list-location-qty-link${!canAdjustInventory ? ' is-disabled' : ''}`}
+                                  onClick={() => canAdjustInventory && openLocationStockCorrection(item, row)}
+                                  onKeyDown={(e) => {
+                                    if (!canAdjustInventory) return;
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      openLocationStockCorrection(item, row);
+                                    }
+                                  }}
+                                  title={canAdjustInventory ? `Adjust stock at ${row.name}` : 'Inventory changes disabled'}
+                                >
+                                  {row.name}: {row.qty.toLocaleString()}
+                                </span>
                               </li>
                             ))}
                           </ul>
@@ -2894,68 +3234,6 @@ function ProductsListPage() {
                       </td>
                       {renderEditablePriceCell(item, 'price', isCombo, rowKey, 'products-list-cell-price')}
                       {renderEditablePriceCell(item, 'promotional_price', isCombo, rowKey, 'products-list-cell-promo')}
-                      <td style={{textAlign: 'center', padding: '0.15rem'}}>
-                        <div style={{display: 'flex', justifyContent: 'center'}}>
-                          <div style={{position:'relative'}} onClick={e => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              className="products-list-action-btn products-list-action-btn--edit"
-                              onClick={(e) => toggleActionMenu(e, rowKey)}
-                            >Edit</button>
-                            {actionMenuOpen && (
-                              <div
-                                style={{
-                                  position:'absolute',
-                                  top:'calc(100% + 8px)',
-                                  left:'50%',
-                                  transform:'translateX(-50%)',
-                                  background:'#0f1729',
-                                  border:'1px solid #1f3b4d',
-                                  borderRadius:8,
-                                  boxShadow:'0 8px 18px rgba(0,0,0,0.45)',
-                                  minWidth:220,
-                                  maxWidth:260,
-                                  width:'max-content',
-                                  zIndex:2600,
-                                  display:'flex',
-                                  flexDirection:'column',
-                                  overflow:'hidden'
-                                }}
-                              >
-                                <button
-                                  style={{background:'transparent',color:'#e0e6ed',border:'none',padding:'10px 14px',textAlign:'left',cursor:'pointer'}}
-                                  onClick={() => {
-                                    if (isCombo) {
-                                      window.location.href = `/edit-set/${item.id}`;
-                                    } else {
-                                      window.location.href = `/products?edit=${item.id}`;
-                                    }
-                                    setOpenActionMenuId(null);
-                                  }}
-                                >{isCombo ? 'Edit Set' : 'Edit Product'}</button>
-                                <button
-                                  style={{background:'transparent',color:'#e0e6ed',border:'none',padding:'10px 14px',textAlign:'left',cursor:'pointer'}}
-                                  onClick={() => {
-                                    setImageEditProduct(item);
-                                    setImageEditBulkProducts(null);
-                                    setImageEditFile(null);
-                                    setImageEditModalOpen(true);
-                                    setOpenActionMenuId(null);
-                                  }}
-                                >Edit Image</button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="products-list-cell-action">
-                        <button
-                          type="button"
-                          className="products-list-action-btn products-list-action-btn--inventory"
-                          onClick={() => handleOpenAdjustModal(item)}
-                          disabled={!canAdjustInventory}
-                        >{primaryInventoryLabel}</button>
-                      </td>
                     </tr>
                   );
                 })}
@@ -3015,7 +3293,7 @@ function ProductsListPage() {
                       if (comboIds.length > 0) {
                         clearProductsListCaches();
                         await fetchAll();
-                        await fetchInventory({ skipCache: true });
+                        await fetchInventory();
                       }
 
                       setBulkApplyMessage(`Deleted ${targets.length} selected item${targets.length === 1 ? '' : 's'}.`);
@@ -3070,66 +3348,141 @@ function ProductsListPage() {
         </div>
       )}
 
-      {qtyModalOpen && qtyModalProduct && (
-        <div
-          style={{
-            position:'fixed',
-            top:0,
-            left:0,
-            width:'100vw',
-            height:'100vh',
-            background:'rgba(0,0,0,0.6)',
-            zIndex:2200,
-            display:'flex',
-            alignItems:'center',
-            justifyContent:'center'
-          }}
-          onClick={closeQtyModal}
-        >
-          <div
-            style={{background:'#23272f',padding:24,borderRadius:12,minWidth:320,maxWidth:520,border:'1px solid #00b4d8'}}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:12}}>
-              <h3 style={{margin:0}}>Location Stock</h3>
+      {imageChoiceProduct && (
+        <div className="products-image-modal-overlay" onClick={() => setImageChoiceProduct(null)}>
+          <div className="products-image-modal products-image-modal--compact" onClick={(e) => e.stopPropagation()}>
+            <h3 className="products-image-modal__title">Product Image</h3>
+            <div className="products-image-modal__meta">
+              {imageChoiceProduct.__isCombo ? imageChoiceProduct.combo_name : imageChoiceProduct.name}
+            </div>
+            <div className="products-image-modal__actions products-image-modal__actions--stack">
               <button
-                onClick={closeQtyModal}
-                style={{background:'#1f3b4d',color:'#e0e6ed',border:'none',borderRadius:'6px',padding:'6px 12px',cursor:'pointer'}}
-              >Close</button>
+                type="button"
+                className="products-image-modal__btn products-image-modal__btn--primary"
+                onClick={() => {
+                  const item = imageChoiceProduct;
+                  setImageChoiceProduct(null);
+                  openImageEditor(item);
+                }}
+              >
+                Replace Image
+              </button>
+              <button
+                type="button"
+                className="products-image-modal__btn products-image-modal__btn--danger"
+                disabled={imageEditLoading}
+                onClick={() => handleRemoveProductImage(imageChoiceProduct)}
+              >
+                {imageEditLoading ? 'Removing…' : 'Remove Image'}
+              </button>
+              <button
+                type="button"
+                className="products-image-modal__btn products-image-modal__btn--secondary"
+                onClick={() => setImageChoiceProduct(null)}
+              >
+                Cancel
+              </button>
             </div>
-            <div style={{marginBottom:12,color:'#9aa4b2'}}>
-              {qtyModalProduct.__isCombo ? (
-                <>Set: <b style={{color:'#e0e6ed'}}>{qtyModalProduct.combo_name}</b> (SKU: {qtyModalProduct.sku || '-'})</>
-              ) : (
-                <>Product: <b style={{color:'#e0e6ed'}}>{qtyModalProduct.name}</b> (SKU: {qtyModalProduct.sku || '-'})</>
-              )}
+          </div>
+        </div>
+      )}
+
+      {categoryEditItem && (
+        <div className="products-image-modal-overlay" onClick={() => { setCategoryEditItem(null); setCategorySearch(''); }}>
+          <div className="products-category-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="products-image-modal__title">Change Category</h3>
+            <div className="products-image-modal__meta">
+              {categoryEditItem.isCombo ? categoryEditItem.item.combo_name : categoryEditItem.item.name}
             </div>
-            {qtyModalLoading ? (
-              <div style={{color:'#9aa4b2'}}>Loading stock…</div>
-            ) : locations.length === 0 ? (
-              <div style={{color:'#9aa4b2'}}>No locations found.</div>
-            ) : (
-              <table style={{width:'100%',borderCollapse:'collapse'}}>
-                <thead>
-                  <tr>
-                    <th style={{textAlign:'left',padding:'6px 4px',borderBottom:'1px solid #1f3b4d'}}>Location</th>
-                    <th style={{textAlign:'right',padding:'6px 4px',borderBottom:'1px solid #1f3b4d'}}>
-                      {qtyModalProduct.__isCombo ? 'Buildable Sets' : 'Qty'}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {qtyModalRows.map((row) => (
-                    <tr key={row.id}>
-                      <td style={{padding:'6px 4px',borderBottom:'1px solid #1f3b4d'}}>{row.name}</td>
-                      <td style={{padding:'6px 4px',textAlign:'right',borderBottom:'1px solid #1f3b4d'}}>
-                        {Number(row.qty || 0).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            <input
+              type="search"
+              className="products-category-modal__search"
+              placeholder="Search categories…"
+              value={categorySearch}
+              onChange={(e) => setCategorySearch(e.target.value)}
+              autoFocus
+            />
+            <div className="products-category-modal__list" role="listbox" aria-label="Categories">
+              <button
+                type="button"
+                className={`products-category-modal__option${!categoryEditItem.item.category_id ? ' is-selected' : ''}`}
+                onClick={() => saveCategoryForItem(categoryEditItem.item, categoryEditItem.isCombo, null)}
+              >
+                — No category —
+              </button>
+              {filteredCategoryOptions.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`products-category-modal__option${String(categoryEditItem.item.category_id) === String(cat.id) ? ' is-selected' : ''}`}
+                  onClick={() => saveCategoryForItem(categoryEditItem.item, categoryEditItem.isCombo, cat.id)}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+            <div className="products-image-modal__actions">
+              <button
+                type="button"
+                className="products-image-modal__btn products-image-modal__btn--secondary"
+                onClick={() => { setCategoryEditItem(null); setCategorySearch(''); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stockCorrection && (
+        <div className="products-adjust-modal-overlay" onClick={() => !stockCorrectionLoading && setStockCorrection(null)}>
+          <div className="products-adjust-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="products-adjust-modal__title">Stock Correction</h3>
+            <div className="products-adjust-modal__meta">
+              Product: <b>{stockCorrection.product.name}</b> at <b>{stockCorrection.locationName}</b>
+            </div>
+            <div className="products-adjust-modal__hint products-adjust-modal__hint--bottom">
+              Current qty: <b>{getStockForProduct(stockCorrection.product.id, stockCorrection.locationId).toLocaleString()}</b>
+            </div>
+            <div className="products-adjust-modal__row">
+              <label className="products-adjust-modal__label">Action:</label>
+              <select
+                value={stockCorrection.mode}
+                onChange={(e) => setStockCorrection((prev) => (prev ? { ...prev, mode: e.target.value } : prev))}
+                className="products-adjust-modal__control"
+              >
+                <option value="add">Add stock (+)</option>
+                <option value="deduct">Deduct stock (−)</option>
+              </select>
+            </div>
+            <div className="products-adjust-modal__row">
+              <label className="products-adjust-modal__label">Amount:</label>
+              <input
+                type="number"
+                min={1}
+                value={stockCorrection.qty}
+                onChange={(e) => setStockCorrection((prev) => (prev ? { ...prev, qty: e.target.value } : prev))}
+                className="products-adjust-modal__control products-adjust-modal__qty-input"
+              />
+            </div>
+            <div className="products-adjust-modal__actions">
+              <button
+                type="button"
+                onClick={handleStockCorrection}
+                disabled={stockCorrectionLoading || !stockCorrection.qty}
+                className="products-adjust-modal__btn products-adjust-modal__btn--primary"
+              >
+                {stockCorrectionLoading ? 'Saving…' : 'Apply'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStockCorrection(null)}
+                disabled={stockCorrectionLoading}
+                className="products-adjust-modal__btn products-adjust-modal__btn--secondary"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3670,9 +4023,7 @@ function ProductsListPage() {
                         setAdjustQty(1);
                       }
                     } else {
-                      const inv = inventory.find(inv => inv.product_id === adjustProduct.id && isSameLocation(inv.location, lid));
-                      const qty = inv ? Number(inv.quantity) : 0;
-                      setAdjustQty(qty);
+                      setAdjustQty(getStockForProduct(adjustProduct.id, lid));
                     }
                   }
                 }}
@@ -3864,8 +4215,7 @@ function ProductsListPage() {
                 {selectedLocation
                   ? (
                     (() => {
-                      const inv = inventory.find(inv => inv.product_id === adjustProduct.id && isSameLocation(inv.location, selectedLocation));
-                      const qty = inv ? Number(inv.quantity) : 0;
+                      const qty = getStockForProduct(adjustProduct.id, selectedLocation);
                       const locName = locations.find(l => String(l.id) === String(selectedLocation))?.name || '';
                       return <span>Current Qty at {locName}: <b style={{color:'#e0e6ed'}}>{qty}</b></span>;
                     })()
