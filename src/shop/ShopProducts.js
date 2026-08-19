@@ -116,6 +116,10 @@ export default function ShopProducts() {
         return;
       }
       const qtyAvailable = variant ? Number(variant.stockQty || 0) : Number(product.qty || 0);
+      if (qtyAvailable < 1) {
+        setCartError(`${product.name} is out of stock`);
+        return;
+      }
       addToShopCart(product, 1, variant);
       bumpCart?.();
       setAddedId(variant ? `${product.id}::${variant.id}` : product.id);

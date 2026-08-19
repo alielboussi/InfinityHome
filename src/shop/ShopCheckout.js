@@ -32,37 +32,37 @@ export default function ShopCheckout() {
   const total = shopCartTotal(cart);
   const currency = cart[0]?.currency || 'K';
 
-  const deliverOrderNotifications = async (result) => {
-    const saleId = result?.sale?.id;
-    if (!saleId) return;
-
-    const pdf = await buildPosSalePdfUrlForWhatsApp({ saleId });
-    const notifyResult = await notifySaleWhatsApp({
-      saleId,
-      channel: 'web',
-      pdfUrl: pdf?.url,
-      pdfFilename: pdf?.filename,
-    });
-    if (!notifyResult?.ok) {
-      console.warn('Sale WhatsApp notify failed:', notifyResult?.error || notifyResult);
-    }
-
-    const email = String(result?.order?.customer?.email || form.email || '').trim();
-    if (email && pdf?.url) {
-      try {
-        await sendCustomerOrderReceipt({
-          orderId: result.order?.id,
-          pdfUrl: pdf.url,
-          pdfFilename: pdf.filename,
-        });
-      } catch (emailErr) {
-        console.warn('Customer receipt email failed:', emailErr?.message || emailErr);
-      }
-    }
-  };
-
   useEffect(() => {
     if (!awaitingOrder?.id) return undefined;
+
+    const deliverOrderNotifications = async (result) => {
+      const saleId = result?.sale?.id;
+      if (!saleId) return;
+
+      const pdf = await buildPosSalePdfUrlForWhatsApp({ saleId });
+      const notifyResult = await notifySaleWhatsApp({
+        saleId,
+        channel: 'web',
+        pdfUrl: pdf?.url,
+        pdfFilename: pdf?.filename,
+      });
+      if (!notifyResult?.ok) {
+        console.warn('Sale WhatsApp notify failed:', notifyResult?.error || notifyResult);
+      }
+
+      const email = String(result?.order?.customer?.email || form.email || '').trim();
+      if (email && pdf?.url) {
+        try {
+          await sendCustomerOrderReceipt({
+            orderId: result.order?.id,
+            pdfUrl: pdf.url,
+            pdfFilename: pdf.filename,
+          });
+        } catch (emailErr) {
+          console.warn('Customer receipt email failed:', emailErr?.message || emailErr);
+        }
+      }
+    };
 
     let cancelled = false;
     const poll = async () => {
@@ -108,7 +108,7 @@ export default function ShopCheckout() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [awaitingOrder, navigate]);
+  }, [awaitingOrder, navigate, form.email]);
 
   if (!cart.length && !awaitingOrder) {
     return (

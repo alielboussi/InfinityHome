@@ -1417,7 +1417,21 @@ function ProductsListPage() {
       return;
     }
     if (item.__isCombo) {
-      handleOpenAdjustModal(item, locationRow.id);
+      const locationId = normalizeLocationId(locationRow.id);
+      setAdjustProduct(item);
+      setAdjustSetMode('receive');
+      setAdjustQty(1);
+      setSelectedLocation(locationId || '');
+      setTransferMode('adjust');
+      setTransferFrom(locationId || '');
+      setTransferTo('');
+      setTransferQty('');
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      setManualTransferDate(`${yyyy}-${mm}-${dd}`);
+      setAdjustModalOpen(true);
       return;
     }
     setStockCorrection({
@@ -1427,7 +1441,7 @@ function ProductsListPage() {
       mode: 'add',
       qty: '1',
     });
-  }, [canAdjustInventory]);
+  }, [canAdjustInventory, normalizeLocationId]);
 
   const handleStockCorrection = async () => {
     if (!stockCorrection?.product) return;
@@ -1616,7 +1630,7 @@ function ProductsListPage() {
     if (!nameEdit || !nameInputRef.current) return;
     nameInputRef.current.focus();
     nameInputRef.current.select();
-  }, [nameEdit?.rowKey]);
+  }, [nameEdit]);
 
   const getStockForProductAcrossSelected = useCallback((productId) => {
     if (selectedLocationIds.length === 0) return getStockForProduct(productId, '');
