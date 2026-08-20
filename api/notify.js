@@ -1360,6 +1360,14 @@ function buildLaybyMessage({
 
   }
 
+  if (eventType === 'sale') {
+
+    lines.push('');
+
+    lines.push('These sale products have been deducted from your inventory. Kindly confirm your inventory.');
+
+  }
+
 
 
   if (Array.isArray(editSummary) && editSummary.length && eventType === 'quote_edit') {
@@ -2016,6 +2024,8 @@ async function handleWhatsAppShopOrder(body) {
 
 async function handleWhatsAppSale(body) {
 
+  const isPreview = body?.preview === true || String(body?.preview || '').trim() === '1';
+
   const saleId = body.saleId;
 
   if (saleId === undefined || saleId === null || String(saleId).trim() === '') {
@@ -2060,6 +2070,22 @@ async function handleWhatsAppSale(body) {
 
   if (String(sale.status || '').toLowerCase() === 'layby') {
 
+    if (isPreview) {
+
+      return {
+
+        ok: true,
+
+        preview: true,
+
+        message: 'This sale is marked as layby. The WhatsApp button sends a layby notification instead of a completed-sale receipt.',
+
+        skipped: 'layby',
+
+      };
+
+    }
+
     return { ok: true, skipped: 'layby' };
 
   }
@@ -2068,27 +2094,23 @@ async function handleWhatsAppSale(body) {
   // in WhatsApp groups. POS sends their consolidated layby statement instead.
   if (isFahmeCustomer(sale.customer_id)) {
 
+    if (isPreview) {
+
+      return {
+
+        ok: true,
+
+        preview: true,
+
+        message: 'Fahme account: WhatsApp sends the consolidated layby statement PDF (no individual sale text message).',
+
+        skipped: 'fahme_layby_pdf_only',
+
+      };
+
+    }
+
     return { ok: true, skipped: 'fahme_layby_pdf_only' };
-
-  }
-
-
-
-  const routing = resolveDeliveryTargets('sale', sale.customer_id, { locationId: sale.location_id });
-
-  if (!routing.targets.length) {
-
-    const err = new Error(
-      String(sale.location_id) === LUSAKA_BRANCH_ID
-        ? 'WhatsApp env not configured (WHATSAPP_LUSAKA_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)'
-        : 'WhatsApp env not configured (WHATSAPP_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)',
-    );
-
-    err.status = 500;
-
-    err.stage = 'env';
-
-    throw err;
 
   }
 
@@ -2218,6 +2240,44 @@ async function handleWhatsAppSale(body) {
   const finalMessage = isWebSale
     ? ['🛒 *Online shop order — payment received*', '', message].join('\n')
     : message;
+
+
+
+  if (isPreview) {
+
+    return {
+
+      ok: true,
+
+      preview: true,
+
+      message: finalMessage,
+
+      attachmentNote: 'Sales receipt PDF will be attached when sent.',
+
+    };
+
+  }
+
+
+
+  const routing = resolveDeliveryTargets('sale', sale.customer_id, { locationId: sale.location_id });
+
+  if (!routing.targets.length) {
+
+    const err = new Error(
+      String(sale.location_id) === LUSAKA_BRANCH_ID
+        ? 'WhatsApp env not configured (WHATSAPP_LUSAKA_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)'
+        : 'WhatsApp env not configured (WHATSAPP_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)',
+    );
+
+    err.status = 500;
+
+    err.stage = 'env';
+
+    throw err;
+
+  }
 
 
 
@@ -2460,6 +2520,8 @@ async function handleWhatsAppAdjustment(body) {
 
 async function handleWhatsAppLayby(body) {
 
+  const isPreview = body?.preview === true || String(body?.preview || '').trim() === '1';
+
   const laybyId = String(body.laybyId || '').trim();
 
   const eventType = String(body.eventType || '').trim() || 'layby_update';
@@ -2518,7 +2580,7 @@ async function handleWhatsAppLayby(body) {
 
   const routing = resolveDeliveryTargets('layby', layby.customer_id);
 
-  if (!routing.targets.length) {
+  if (!isPreview && !routing.targets.length) {
 
     const wantsFahme = isFahmeCustomer(layby.customer_id);
 
@@ -2800,7 +2862,7 @@ async function handleWhatsAppLayby(body) {
 
   });
 
-  if (isFahmeCustomer(layby.customer_id) && !pdfUrl) {
+  if (isFahmeCustomer(layby.customer_id) && !pdfUrl && !isPreview) {
 
     const err = new Error('Fahme WhatsApp notifications require the layby PDF');
 
@@ -2809,6 +2871,30 @@ async function handleWhatsAppLayby(body) {
     err.stage = 'pdf';
 
     throw err;
+
+  }
+
+
+
+  if (isPreview) {
+
+    const attachmentNote = isFahmeCustomer(layby.customer_id) || eventType === 'statement'
+      ? 'Layby statement PDF will be attached when sent.'
+      : (pdfUrl ? `PDF attached: ${pdfFilename}` : '');
+
+    const previewMessage = [message, attachmentNote].filter(Boolean).join('\n\n');
+
+    return {
+
+      ok: true,
+
+      preview: true,
+
+      message: previewMessage || attachmentNote || '(No text body — PDF only)',
+
+      attachmentNote,
+
+    };
 
   }
 
