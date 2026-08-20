@@ -5,8 +5,8 @@
   "scripts": {
     "start": "expo start",
     "start:offline": "expo start --offline",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "build:apk": "eas build --platform android --profile preview",
     "build:apk:prod": "eas build --platform android --profile production",
     "build:play": "eas build --platform android --profile production-play",

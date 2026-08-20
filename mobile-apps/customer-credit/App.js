@@ -41,7 +41,7 @@ function MainTabs() {
 export default function App() {
   return (
     <AppErrorBoundary>
-      <FirebaseAuthGate title="Ledger" showUserBar={false}>
+      <FirebaseAuthGate title="Ledger" showUserBar={false} staySignedIn>
       <NavigationContainer>
         <StatusBar style="light" />
         <Stack.Navigator

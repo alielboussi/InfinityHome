@@ -85,41 +85,48 @@ export async function assertLoginAllowed(authUser) {
   const db = getFirestore();
   if (!db) return { uid, email, login_enabled: true };
 
-  const ref = db.collection(COLLECTION).doc(uid);
-  const snap = await ref.get();
-  const now = new Date().toISOString();
   const displayName = authUser?.user_metadata?.full_name
     || authUser?.user_metadata?.name
     || authUser?.full_name
     || authUser?.displayName
     || null;
 
-  if (!snap.exists) {
+  try {
+    const ref = db.collection(COLLECTION).doc(uid);
+    const snap = await ref.get();
+    const now = new Date().toISOString();
+
+    if (!snap.exists) {
+      await ref.set({
+        uid,
+        email,
+        display_name: displayName,
+        login_enabled: true,
+        created_at: now,
+        updated_at: now,
+        last_seen_at: now,
+      });
+      return { uid, email, login_enabled: true };
+    }
+
+    const data = snap.data() || {};
+    if (data.login_enabled === false) {
+      throw disabledError();
+    }
+
     await ref.set({
-      uid,
       email,
-      display_name: displayName,
-      login_enabled: true,
-      created_at: now,
-      updated_at: now,
+      display_name: displayName || data.display_name || null,
       last_seen_at: now,
-    });
+      updated_at: now,
+    }, { merge: true });
+
+    return { uid, email, login_enabled: true };
+  } catch (err) {
+    if (err?.status === 403 || err?.code === 'login_disabled') throw err;
+    console.error('[loginAccess] Firestore check failed; allowing login:', err?.message || err);
     return { uid, email, login_enabled: true };
   }
-
-  const data = snap.data() || {};
-  if (data.login_enabled === false) {
-    throw disabledError();
-  }
-
-  await ref.set({
-    email,
-    display_name: displayName || data.display_name || null,
-    last_seen_at: now,
-    updated_at: now,
-  }, { merge: true });
-
-  return { uid, email, login_enabled: true };
 }
 
 export async function isLoginAllowedForUid(uid) {

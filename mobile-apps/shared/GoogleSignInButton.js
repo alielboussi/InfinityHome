@@ -5,8 +5,8 @@ import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { getFirebaseAuth, signOutFirebase } from './firebase';
-import { verifyMobileLoginAccess } from './loginAccess';
+import { getFirebaseAuth, signOutFirebase, ensureFirebaseAuthToken } from './firebase';
+import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
 import { DEFAULT_GOOGLE_WEB_CLIENT_ID } from './defaultFirebaseConfig';
 import { readExpoExtra } from './expoExtra';
 
@@ -69,8 +69,9 @@ async function completeGoogleFirebaseSignIn(idToken, onError, onSuccess) {
   }
   const credential = GoogleAuthProvider.credential(idToken);
   await signInWithCredential(getFirebaseAuth(), credential);
+  await ensureFirebaseAuthToken(true);
   const access = await verifyMobileLoginAccess();
-  if (!access.ok) {
+  if (shouldForceSignOutForAccessCheck(access)) {
     await signOutFirebase();
     onError?.(access.error || 'Login not allowed.');
     return;

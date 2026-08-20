@@ -256,7 +256,12 @@ async function handleAuthProfile(req, res) {
     const { verifyBearerUser } = await import('../server/lib/verifyBearerUser.js');
     authUser = await verifyBearerUser(req);
   } catch (err) {
-    res.status(401).json({ ok: false, error: err?.message || 'Invalid session' });
+    const status = err?.status === 403 ? 403 : 401;
+    res.status(status).json({
+      ok: false,
+      error: err?.message || 'Invalid session',
+      code: err?.code || null,
+    });
     return;
   }
 

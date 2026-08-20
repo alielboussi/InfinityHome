@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,13 +8,15 @@ import {
   View,
 } from 'react-native';
 import {
+  ensureFirebaseAuthToken,
+  getFirebaseAuth,
   getFirebaseIdToken,
   signInFirebase,
   signOutFirebase,
   subscribeFirebaseAuth,
 } from './firebase';
 import { GoogleSignInButton, isGoogleSignInConfigured } from './GoogleSignInButton';
-import { verifyMobileLoginAccess } from './loginAccess';
+import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
 
 export { getFirebaseIdToken };
 
@@ -26,44 +28,65 @@ export function useFirebaseUser() {
   return user;
 }
 
-export default function FirebaseAuthGate({ children, title = 'Infinity Home', showUserBar = true }) {
+export default function FirebaseAuthGate({
+  children,
+  title = 'Infinity Home',
+  showUserBar = true,
+  staySignedIn = true,
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const user = useFirebaseUser();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [accessChecked, setAccessChecked] = useState(false);
+  const verifiedUidRef = useRef('');
 
   useEffect(() => {
     let alive = true;
     if (!user) {
+      verifiedUidRef.current = '';
       setAccessChecked(true);
       return undefined;
     }
+
+    if (staySignedIn && verifiedUidRef.current === user.uid) {
+      setAccessChecked(true);
+      return undefined;
+    }
+
     setAccessChecked(false);
     (async () => {
+      await ensureFirebaseAuthToken(true);
       const access = await verifyMobileLoginAccess();
       if (!alive) return;
-      if (!access.ok) {
+      if (shouldForceSignOutForAccessCheck(access)) {
+        verifiedUidRef.current = '';
         await signOutFirebase();
         setError(access.error || 'Login not allowed.');
+      } else {
+        verifiedUidRef.current = user.uid;
       }
       setAccessChecked(true);
     })();
     return () => {
       alive = false;
     };
-  }, [user?.uid]);
+  }, [staySignedIn, user?.uid]);
 
   async function handleSignIn() {
     setError('');
     setBusy(true);
     try {
       await signInFirebase(email, password);
+      await ensureFirebaseAuthToken(true);
       const access = await verifyMobileLoginAccess();
-      if (!access.ok) {
+      if (shouldForceSignOutForAccessCheck(access)) {
+        verifiedUidRef.current = '';
         await signOutFirebase();
         setError(access.error || 'Login not allowed.');
+      } else if (getFirebaseAuth().currentUser?.uid) {
+        verifiedUidRef.current = getFirebaseAuth().currentUser.uid;
       }
     } catch (err) {
       setError(err?.message || 'Sign in failed');
@@ -75,6 +98,7 @@ export default function FirebaseAuthGate({ children, title = 'Infinity Home', sh
   async function handleSignOut() {
     setBusy(true);
     try {
+      verifiedUidRef.current = '';
       await signOutFirebase();
       setPassword('');
     } finally {

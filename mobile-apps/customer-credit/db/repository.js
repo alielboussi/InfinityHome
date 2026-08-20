@@ -6,7 +6,7 @@ import {
   getDocs,
   setDoc,
 } from 'firebase/firestore';
-import { getDb, getFirebaseAuth } from '../../shared/firebase';
+import { getDb, getFirebaseAuth, ensureFirebaseAuthToken } from '../../shared/firebase';
 import {
   COLLECTIONS,
   DEFAULT_PAYMENT_DEADLINE_DAYS,
@@ -20,6 +20,12 @@ function requireAuthUid() {
   const uid = getFirebaseAuth().currentUser?.uid;
   if (!uid) throw new Error('You must be signed in.');
   return uid;
+}
+
+async function ensureFirestoreAuth() {
+  requireAuthUid();
+  const token = await ensureFirebaseAuthToken(true);
+  if (!token) throw new Error('You must be signed in.');
 }
 
 function customerRef(customerId) {
@@ -118,12 +124,13 @@ export async function enrichCustomer(customer) {
 }
 
 async function fetchAllCustomers() {
+  await ensureFirestoreAuth();
   const snap = await getDocs(collection(getDb(), COLLECTIONS.customers));
   return snap.docs.map((row) => mapCustomerDoc(row)).filter(Boolean);
 }
 
 export async function listCustomers({ search = '' } = {}) {
-  requireAuthUid();
+  await ensureFirestoreAuth();
   const rows = await fetchAllCustomers();
   const term = String(search || '').trim().toLowerCase();
   const filtered = term

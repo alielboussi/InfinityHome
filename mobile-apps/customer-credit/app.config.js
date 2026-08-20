@@ -18,7 +18,7 @@ module.exports = {
     name: 'Ledger',
     slug: 'customer-ledger-tracking',
     scheme: 'customer-ledger-tracking',
-    version: '1.0.8',
+    version: '1.0.9',
     orientation: 'portrait',
     userInterfaceStyle: 'light',
     icon: './assets/icon.png',

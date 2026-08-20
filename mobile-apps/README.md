@@ -92,6 +92,8 @@ npx expo start --offline
 
 Sign in with a Firebase email/password account on launch. Customers, products, sales, and payments are **shared across all signed-in users** (company-wide ledger).
 
+**Session:** Ledger stays signed in when you switch apps or lock the phone. Use **Log out** on the dashboard to sign out. Disabled accounts are still blocked on the next login check.
+
 **Google sign-in:** set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in `.env` to the Firebase **Web client** OAuth ID (Firebase Console → Authentication → Sign-in method → Google → Web SDK configuration). Enable Google sign-in in Firebase Authentication.
 
 **Login access control:** disabled users are blocked on the portal and mobile apps via Administration → **User Login Access**.

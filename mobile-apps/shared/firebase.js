@@ -57,7 +57,7 @@ function initAuth(app) {
       });
     } catch (error) {
       if (error?.code === 'auth/already-initialized') {
-        return getAuth(app);
+        return authInstance || getAuth(app);
       }
       throw error;
     }
@@ -86,6 +86,28 @@ export function getFirebaseAuth() {
 
 export async function getFirebaseIdToken(forceRefresh = false) {
   const user = getFirebaseAuth().currentUser;
+  if (!user) return null;
+  return user.getIdToken(forceRefresh);
+}
+
+export async function waitForFirebaseAuthReady(timeoutMs = 8000) {
+  const auth = getFirebaseAuth();
+  if (auth.currentUser) return auth.currentUser;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      unsub();
+      resolve(auth.currentUser || null);
+    }, timeoutMs);
+    const unsub = onAuthStateChanged(auth, (user) => {
+      clearTimeout(timer);
+      unsub();
+      resolve(user);
+    });
+  });
+}
+
+export async function ensureFirebaseAuthToken(forceRefresh = true) {
+  const user = await waitForFirebaseAuthReady();
   if (!user) return null;
   return user.getIdToken(forceRefresh);
 }
