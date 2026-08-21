@@ -7,7 +7,10 @@ import Constants from 'expo-constants';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { getFirebaseAuth, signOutFirebase, ensureFirebaseAuthToken } from './firebase';
 import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
-import { DEFAULT_GOOGLE_WEB_CLIENT_ID } from './defaultFirebaseConfig';
+import {
+  DEFAULT_GOOGLE_ANDROID_CLIENT_ID,
+  DEFAULT_GOOGLE_WEB_CLIENT_ID,
+} from './defaultFirebaseConfig';
 import { readExpoExtra } from './expoExtra';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -16,13 +19,47 @@ const APP_SCHEME = Constants.expoConfig?.scheme
   || process.env.EXPO_PUBLIC_APP_SCHEME
   || 'customer-ledger-tracking';
 
-const REDIRECT_URI = makeRedirectUri({
-  scheme: APP_SCHEME,
-  path: 'oauth',
-});
+const DEFAULT_EXPO_PROJECT_FULL_NAME = '@alielboussi/customer-ledger-tracking';
 
 function isExpoGo() {
   return Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+}
+
+function getExpoProjectFullName() {
+  const extra = readExpoExtra();
+  return String(
+    Constants.expoConfig?.originalFullName
+    || extra.expoProjectFullName
+    || process.env.EXPO_PUBLIC_EXPO_PROJECT_FULL_NAME
+    || DEFAULT_EXPO_PROJECT_FULL_NAME,
+  ).trim();
+}
+
+function resolveGoogleOAuthConfig() {
+  const { webClientId, androidClientId, iosClientId } = getGoogleClientIds();
+
+  if (isExpoGo()) {
+    const projectFullName = getExpoProjectFullName();
+    return {
+      webClientId,
+      // Expo Go uses a browser OAuth flow — must use the Web client ID, not the APK Android client.
+      androidClientId: webClientId,
+      iosClientId: iosClientId || webClientId,
+      redirectUri: `https://auth.expo.io/${projectFullName}`,
+      expoGo: true,
+    };
+  }
+
+  return {
+    webClientId,
+    androidClientId,
+    iosClientId,
+    redirectUri: makeRedirectUri({
+      scheme: APP_SCHEME,
+      path: 'oauth',
+    }),
+    expoGo: false,
+  };
 }
 
 function getGoogleClientIds() {
@@ -32,8 +69,15 @@ function getGoogleClientIds() {
     || extra.googleWebClientId
     || DEFAULT_GOOGLE_WEB_CLIENT_ID,
   ).trim();
+  const androidClientId = String(
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+    || extra.googleAndroidClientId
+    || DEFAULT_GOOGLE_ANDROID_CLIENT_ID
+    || webClientId,
+  ).trim();
   return {
     webClientId,
+    androidClientId,
     iosClientId: String(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || extra.googleIosClientId || '').trim(),
   };
 }
@@ -146,12 +190,21 @@ function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled })
   );
 }
 
-function BrowserGoogleSignInButton({ webClientId, iosClientId, onError, onSuccess, disabled }) {
+function BrowserGoogleSignInButton({
+  webClientId,
+  androidClientId,
+  iosClientId,
+  redirectUri,
+  onError,
+  onSuccess,
+  disabled,
+}) {
   const [busy, setBusy] = useState(false);
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     webClientId,
+    ...(Platform.OS === 'android' ? { androidClientId: androidClientId || webClientId } : {}),
     ...(iosClientId ? { iosClientId } : {}),
-    redirectUri: REDIRECT_URI,
+    redirectUri,
   });
 
   useEffect(() => {
@@ -187,16 +240,37 @@ function BrowserGoogleSignInButton({ webClientId, iosClientId, onError, onSucces
 }
 
 export function GoogleSignInButton({ onError, onSuccess, disabled }) {
-  const { webClientId, iosClientId } = getGoogleClientIds();
+  const oauth = resolveGoogleOAuthConfig();
 
-  if (!webClientId) return null;
+  if (!oauth.webClientId) return null;
 
   if (Platform.OS === 'android' || Platform.OS === 'ios') {
     if (isExpoGo()) {
+      if (Platform.OS === 'android') {
+        return (
+          <>
+            <BrowserGoogleSignInButton
+              webClientId={oauth.webClientId}
+              androidClientId={oauth.androidClientId}
+              iosClientId={oauth.iosClientId}
+              redirectUri={oauth.redirectUri}
+              onError={onError}
+              onSuccess={onSuccess}
+              disabled={disabled}
+            />
+            <Text style={styles.expoGoHint}>
+              Expo Go: if Google fails, use email/password or install the Ledger APK.
+            </Text>
+          </>
+        );
+      }
+
       return (
         <BrowserGoogleSignInButton
-          webClientId={webClientId}
-          iosClientId={iosClientId}
+          webClientId={oauth.webClientId}
+          androidClientId={oauth.androidClientId}
+          iosClientId={oauth.iosClientId}
+          redirectUri={oauth.redirectUri}
           onError={onError}
           onSuccess={onSuccess}
           disabled={disabled}
@@ -206,7 +280,7 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
 
     return (
       <NativeGoogleSignInButton
-        webClientId={webClientId}
+        webClientId={oauth.webClientId}
         onError={onError}
         onSuccess={onSuccess}
         disabled={disabled}
@@ -216,8 +290,10 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
 
   return (
     <BrowserGoogleSignInButton
-      webClientId={webClientId}
-      iosClientId={iosClientId}
+      webClientId={oauth.webClientId}
+      androidClientId={oauth.androidClientId}
+      iosClientId={oauth.iosClientId}
+      redirectUri={oauth.redirectUri}
       onError={onError}
       onSuccess={onSuccess}
       disabled={disabled}
@@ -241,5 +317,12 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#0f172a',
     fontWeight: '700',
+  },
+  expoGoHint: {
+    marginTop: 10,
+    color: '#64748b',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
   },
 });

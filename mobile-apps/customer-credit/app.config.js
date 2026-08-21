@@ -10,6 +10,9 @@ const firebase = {
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
   || '876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com';
 
+const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+  || '876299148810-gmf6hsqhi4nntp7u4iap1qvsvi3lh1d.apps.googleusercontent.com';
+
 const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4';
 
 /** @type {import('@expo/config').ExpoConfig} */
@@ -58,6 +61,8 @@ module.exports = {
       firebase,
       apiBase: (process.env.EXPO_PUBLIC_API_BASE || 'https://www.infinity-home.online').replace(/\/+$/, ''),
       googleWebClientId,
+      googleAndroidClientId,
+      expoProjectFullName: '@alielboussi/customer-ledger-tracking',
       eas: {
         projectId: '5cca5827-6bfa-4a7d-98a4-3a670542a0eb',
       },
