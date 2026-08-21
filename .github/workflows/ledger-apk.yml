@@ -1,0 +1,49 @@
+name: Ledger APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sync-light]
+    paths:
+      - 'mobile-apps/customer-credit/**'
+      - 'mobile-apps/shared/**'
+      - '.github/workflows/ledger-apk.yml'
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile-apps/customer-credit/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mobile-apps/customer-credit
+        run: npm ci
+
+      - name: Prebuild Android project
+        working-directory: mobile-apps/customer-credit
+        run: npx expo prebuild --platform android --no-install
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build release APK
+        working-directory: mobile-apps/customer-credit/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ledger-${{ github.sha }}
+          path: mobile-apps/customer-credit/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
