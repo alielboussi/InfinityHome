@@ -25,7 +25,8 @@ export function computeQuotationTotals({ subtotal = 0, discount = 0, vatApply = 
     };
   }
 
-  const rate = Number(vatRate) > 0 ? Number(vatRate) : 0.16;
+  const rateRaw = Number(vatRate) > 0 ? Number(vatRate) : 0.16;
+  const rate = rateRaw > 1 ? rateRaw / 100 : rateRaw;
   const vatAmount = afterDiscount * rate;
   return {
     subtotal: safeSubtotal,
@@ -102,21 +103,24 @@ export function computeSaleLaybyTotalDue({ sale, fin, items, linkedQuote }) {
     });
   }
 
-  const vatApply = Boolean(sale?.vat_apply)
-    || Number(sale?.vat_rate || 0) > 0
+  const vatInclusive = Boolean(sale?.vat_inclusive ?? linkedQuote?.vat_inclusive);
+  const vatApply = !vatInclusive && (
+    Boolean(sale?.vat_apply)
     || resolveQuoteVatApply({
       vat_apply: sale?.vat_apply,
       vat_rate: sale?.vat_rate,
       subtotal,
       total: fin?.total_due ?? sale?.total_amount,
       discount,
-    }, subtotal, discount);
+    }, subtotal, discount)
+  );
 
+  const rateRaw = vatApply ? (Number(sale?.vat_rate) || 0.16) : 0;
   const computed = computeQuotationTotals({
     subtotal,
     discount,
     vatApply,
-    vatRate: vatApply ? (Number(sale?.vat_rate) || 0.16) : 0,
+    vatRate: rateRaw,
   }).total;
   const reported = Number(fin?.total_due ?? sale?.total_amount ?? 0);
   if (vatApply && computed > reported + 0.009) return computed;

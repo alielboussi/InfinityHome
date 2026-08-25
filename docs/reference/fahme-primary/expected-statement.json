@@ -1,0 +1,1469 @@
+{
+  "customerId": "d8e756ae-b8ea-4f90-b99a-70c1120f52b9",
+  "customerName": "Mohammad Fahme",
+  "currency": "USD",
+  "referencePdf": "Mohammad_Fahme_Layby_Statement_2026-07-29_USD.pdf",
+  "totals": {
+    "totalSale": 193570,
+    "totalDeposit": 152390,
+    "totalDue": 41180
+  },
+  "sales": [
+    {
+      "saleDate": "2025-01-13",
+      "receiptNumber": "FAHME-001",
+      "total_amount": 4800,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Recliner 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 1900,
+          "color": "1- Bordeux 1-Black"
+        },
+        {
+          "display_name": "Ombre Bedstead 180*200",
+          "quantity": 2,
+          "unit_price": 250,
+          "color": "Brick"
+        },
+        {
+          "display_name": "High Bedstead 180*200",
+          "quantity": 2,
+          "unit_price": 250,
+          "color": "Blue"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-01-17",
+      "receiptNumber": "FAHME-002",
+      "total_amount": 5520,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Lines Bedstead 160*200",
+          "quantity": 6,
+          "unit_price": 230,
+          "color": null
+        },
+        {
+          "display_name": "Lines Bedstead 180*200",
+          "quantity": 6,
+          "unit_price": 250,
+          "color": null
+        },
+        {
+          "display_name": "Soho Night Stand",
+          "quantity": 12,
+          "unit_price": 25,
+          "color": null
+        },
+        {
+          "display_name": "3 Doors Wardrobe",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "4 Doors Wardrobe",
+          "quantity": 2,
+          "unit_price": 370,
+          "color": null
+        },
+        {
+          "display_name": "Soho Night Stand",
+          "quantity": 40,
+          "unit_price": 25,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-01-21",
+      "receiptNumber": "FAHME-003",
+      "total_amount": 2460,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 375,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Sunflower Bedstead 160*200",
+          "quantity": 2,
+          "unit_price": 230,
+          "color": "1-Brown 1-Grey"
+        },
+        {
+          "display_name": "Lines Bedstead 180*200",
+          "quantity": 5,
+          "unit_price": 250,
+          "color": "3-Brown 1-Silver 1-Grey"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-01-24",
+      "receiptNumber": "FAHME-004",
+      "total_amount": 6470,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Jhonson 3+2+1+1 Sitting Set",
+          "quantity": 3,
+          "unit_price": 900,
+          "color": "1-Brown 1-Beige 1-Grey"
+        },
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": "Grey"
+        },
+        {
+          "display_name": "Viking 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1150,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Shoe Rack",
+          "quantity": 3,
+          "unit_price": 190,
+          "color": "1-Grey 1-Brown 1-Mahogany"
+        },
+        {
+          "display_name": "Bestrest Mattress 180*200",
+          "quantity": 5,
+          "unit_price": 260,
+          "color": "Red"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-01-29",
+      "receiptNumber": "FAHME-005",
+      "total_amount": 7870,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Sunflower Bedstead 180*200",
+          "quantity": 3,
+          "unit_price": 250,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Bestrest Mattress 180*200",
+          "quantity": 3,
+          "unit_price": 260,
+          "color": "Red"
+        },
+        {
+          "display_name": "Viking 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 1150,
+          "color": "1-Brown 1-Grey"
+        },
+        {
+          "display_name": "Cairo 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 900,
+          "color": "1-Grey 1-Brown"
+        },
+        {
+          "display_name": "Ruby Bedstead 160*200",
+          "quantity": 3,
+          "unit_price": 230,
+          "color": "2-Brown 1-Beige"
+        },
+        {
+          "display_name": "Ruby Bedstead 180*200",
+          "quantity": 3,
+          "unit_price": 250,
+          "color": "2-Brown 1-Silver"
+        },
+        {
+          "display_name": "High Class 3+3+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 800,
+          "color": "Grey"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-01-31",
+      "receiptNumber": "FAHME-006",
+      "total_amount": 6400,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Paris 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 2000,
+          "color": "1-Brown 1-Grey"
+        },
+        {
+          "display_name": "High Class 3+3+1+1 Sitting Set",
+          "quantity": 3,
+          "unit_price": 800,
+          "color": "1-Brown 1-Purple 1-Grey"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-02-06",
+      "receiptNumber": "FAHME-007",
+      "total_amount": 1540,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Annie Corner Set",
+          "quantity": 1,
+          "unit_price": 1000,
+          "color": "Grey"
+        },
+        {
+          "display_name": "Corner Shelf",
+          "quantity": 3,
+          "unit_price": 180,
+          "color": "2-Brown 1-Black"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-02-19",
+      "receiptNumber": "FAHME-008",
+      "total_amount": 2550,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Annie Corner Set",
+          "quantity": 1,
+          "unit_price": 1000,
+          "color": "Brown"
+        },
+        {
+          "display_name": "2 Doors Display",
+          "quantity": 2,
+          "unit_price": 275,
+          "color": "1-Grey 1-White"
+        },
+        {
+          "display_name": "Medusa Bunkbed",
+          "quantity": 1,
+          "unit_price": 1000,
+          "color": "White"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-03-01",
+      "receiptNumber": "FAHME-009",
+      "total_amount": 3300,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 750,
+          "color": "1-Grey 1-Brown"
+        },
+        {
+          "display_name": "L Shape Sofa Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": "1-Grey 1-Brown"
+        },
+        {
+          "display_name": "Sofa 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 600,
+          "color": "1-Green 1-Beige"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-03-26",
+      "receiptNumber": "FAHME-010",
+      "total_amount": 2600,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "L Shape Sitting Set",
+          "quantity": 7,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "L.V Bedstead 180*200",
+          "quantity": 1,
+          "unit_price": 250,
+          "color": null
+        },
+        {
+          "display_name": "Warda Bedstead 180*200",
+          "quantity": 1,
+          "unit_price": 250,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-04-02",
+      "receiptNumber": "FAHME-011",
+      "total_amount": 1500,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Sofa 3+2+1+1+Puff Sitting Set",
+          "quantity": 1,
+          "unit_price": 600,
+          "color": null
+        },
+        {
+          "display_name": "L Shape Sitting Set",
+          "quantity": 3,
+          "unit_price": 300,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-04-15",
+      "receiptNumber": "FAHME-012",
+      "total_amount": 1800,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "L Shape Sofa Set",
+          "quantity": 6,
+          "unit_price": 300,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-05-02",
+      "receiptNumber": "FAHME-013",
+      "total_amount": 2400,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "High Class 3+3+1+1 Sitting Set",
+          "quantity": 3,
+          "unit_price": 800,
+          "color": "2-Grey 1-Brown"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-05-15",
+      "receiptNumber": "FAHME-014",
+      "total_amount": 6210,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Paris 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 2000,
+          "color": "1-Grey 1-Brown"
+        },
+        {
+          "display_name": "Coc Console & Mirror",
+          "quantity": 2,
+          "unit_price": 290,
+          "color": null
+        },
+        {
+          "display_name": "King Wing Chair",
+          "quantity": 4,
+          "unit_price": 170,
+          "color": null
+        },
+        {
+          "display_name": "Exclusive Puff",
+          "quantity": 8,
+          "unit_price": 25,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-05-17",
+      "receiptNumber": "FAHME-015",
+      "total_amount": 6100,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Recliner 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1800,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Giza 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1250,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Paris 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 2000,
+          "color": "Grey"
+        },
+        {
+          "display_name": "Office Chair A052",
+          "quantity": 7,
+          "unit_price": 150,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-05-27",
+      "receiptNumber": "FAHME-016",
+      "total_amount": 5745,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Solar Panels",
+          "quantity": 10,
+          "unit_price": 85,
+          "color": null
+        },
+        {
+          "display_name": "Solar Indoor Lamps 200w",
+          "quantity": 3,
+          "unit_price": 40,
+          "color": null
+        },
+        {
+          "display_name": "Rosa Single Chairs",
+          "quantity": 6,
+          "unit_price": 150,
+          "color": null
+        },
+        {
+          "display_name": "Office Chair DPK108D",
+          "quantity": 6,
+          "unit_price": 150,
+          "color": null
+        },
+        {
+          "display_name": "Exclusive Puff",
+          "quantity": 7,
+          "unit_price": 25,
+          "color": null
+        },
+        {
+          "display_name": "Berlin 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1050,
+          "color": null
+        },
+        {
+          "display_name": "Viking 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1150,
+          "color": null
+        },
+        {
+          "display_name": "U Shape Sitting Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-06-17",
+      "receiptNumber": "FAHME-017",
+      "total_amount": 4135,
+      "discount": 600,
+      "items": [
+        {
+          "display_name": "Romeo 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1200,
+          "color": "Brown"
+        },
+        {
+          "display_name": "U Shape Sitting Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Royal Love Chair",
+          "quantity": 1,
+          "unit_price": 275,
+          "color": null
+        },
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 750,
+          "color": "1-Gold 1-Grey"
+        },
+        {
+          "display_name": "Coc Console + Mirror",
+          "quantity": 4,
+          "unit_price": 290,
+          "color": "1-Brown 1-Black"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-06-18",
+      "receiptNumber": "FAHME-018",
+      "total_amount": 2915,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 750,
+          "color": null
+        },
+        {
+          "display_name": "Modern 4 Seater Sofa",
+          "quantity": 1,
+          "unit_price": 540,
+          "color": null
+        },
+        {
+          "display_name": "Luxury Love Chair",
+          "quantity": 1,
+          "unit_price": 275,
+          "color": null
+        },
+        {
+          "display_name": "U Shape Sofa + Puff",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-06-19",
+      "receiptNumber": "FAHME-019",
+      "total_amount": 2190,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": null
+        },
+        {
+          "display_name": "Modern 4 Seater Sofa",
+          "quantity": 1,
+          "unit_price": 540,
+          "color": null
+        },
+        {
+          "display_name": "U Shape Sofa",
+          "quantity": 3,
+          "unit_price": 300,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-07-01",
+      "receiptNumber": "FAHME-020",
+      "total_amount": 7820,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Paris 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1800,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Giza 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1150,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Exclusive Puff",
+          "quantity": 30,
+          "unit_price": 25,
+          "color": null
+        },
+        {
+          "display_name": "Sunflower Bedstead 160*200",
+          "quantity": 2,
+          "unit_price": 230,
+          "color": null
+        },
+        {
+          "display_name": "Lines Bedstead 160*200",
+          "quantity": 2,
+          "unit_price": 230,
+          "color": null
+        },
+        {
+          "display_name": "Berlin 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 1050,
+          "color": "1-Brown 1-Green"
+        },
+        {
+          "display_name": "Viking 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1100,
+          "color": "Grey"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-07-11",
+      "receiptNumber": "FAHME-021",
+      "total_amount": 2250,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Relax 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": "Brown"
+        },
+        {
+          "display_name": "L Shape Sofa + Table #IS",
+          "quantity": 1,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "L Shape Sofa #IS",
+          "quantity": 4,
+          "unit_price": 300,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-07-16",
+      "receiptNumber": "FAHME-022",
+      "total_amount": 7570,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Viking 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1100,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Berlin 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1050,
+          "color": "Beige"
+        },
+        {
+          "display_name": "L Shape Sofa Set #IS",
+          "quantity": 4,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Armada Bedstead 180*200",
+          "quantity": 1,
+          "unit_price": 250,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Sunflower Bedstead 180*200",
+          "quantity": 3,
+          "unit_price": 250,
+          "color": null
+        },
+        {
+          "display_name": "King Wing Chair Single Seater",
+          "quantity": 2,
+          "unit_price": 190,
+          "color": null
+        },
+        {
+          "display_name": "Sleep Comfort Mattress 180*200",
+          "quantity": 8,
+          "unit_price": 290,
+          "color": "Black"
+        },
+        {
+          "display_name": "Olympus Mattress 160*200",
+          "quantity": 2,
+          "unit_price": 260,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-07-24",
+      "receiptNumber": "FAHME-023",
+      "total_amount": 2730,
+      "discount": 135,
+      "items": [
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Luxury 3+3+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 900,
+          "color": "Grey"
+        },
+        {
+          "display_name": "Soho Night Stand",
+          "quantity": 27,
+          "unit_price": 25,
+          "color": null
+        },
+        {
+          "display_name": "Fancy Pillows",
+          "quantity": 270,
+          "unit_price": 2,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-08-01",
+      "receiptNumber": "FAHME-024",
+      "total_amount": 7290,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Egyptian 3+2+1+1+Coffee Table",
+          "quantity": 1,
+          "unit_price": 2500,
+          "color": "Grey"
+        },
+        {
+          "display_name": "Hawaii Single Seater",
+          "quantity": 4,
+          "unit_price": 190,
+          "color": null
+        },
+        {
+          "display_name": "Bedstead 160*200",
+          "quantity": 3,
+          "unit_price": 230,
+          "color": null
+        },
+        {
+          "display_name": "Bedstead 180*200",
+          "quantity": 6,
+          "unit_price": 250,
+          "color": null
+        },
+        {
+          "display_name": "King Wing Chair",
+          "quantity": 6,
+          "unit_price": 190,
+          "color": null
+        },
+        {
+          "display_name": "Soho Night Stand",
+          "quantity": 28,
+          "unit_price": 25,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-08-19",
+      "receiptNumber": "FAHME-025",
+      "total_amount": 3260,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Paris 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1800,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Bedstead 200*200",
+          "quantity": 2,
+          "unit_price": 400,
+          "color": null
+        },
+        {
+          "display_name": "Sleep Comfort Mattress 200*200",
+          "quantity": 2,
+          "unit_price": 330,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-09-08",
+      "receiptNumber": "FAHME-026",
+      "total_amount": 4600,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Lara 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1000,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Viking 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1100,
+          "color": "Grey"
+        },
+        {
+          "display_name": "Lara Bedstead 180*200",
+          "quantity": 2,
+          "unit_price": 250,
+          "color": "1-Brown 1-Beige"
+        },
+        {
+          "display_name": "Diamond 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": "Brown"
+        },
+        {
+          "display_name": "L V Bedstead 180*200",
+          "quantity": 5,
+          "unit_price": 250,
+          "color": "Brown"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-10-03",
+      "receiptNumber": "FAHME-027",
+      "total_amount": 4850,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Diamond Sitting Set 3+2+1+1",
+          "quantity": 2,
+          "unit_price": 750,
+          "color": null
+        },
+        {
+          "display_name": "Viking Sitting Set 3+2+1+1",
+          "quantity": 2,
+          "unit_price": 1100,
+          "color": null
+        },
+        {
+          "display_name": "Giza Sitting Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 1150,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-10-10",
+      "receiptNumber": "FAHME-028",
+      "total_amount": 9550,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "U Shape Sitting Set",
+          "quantity": 3,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Cube Bedstead 200*200",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Lisa Bedstead 200*200",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Sleep Well Mattress 200*200",
+          "quantity": 5,
+          "unit_price": 330,
+          "color": null
+        },
+        {
+          "display_name": "Eva Mattress 180*200",
+          "quantity": 10,
+          "unit_price": 200,
+          "color": null
+        },
+        {
+          "display_name": "Anatasia Dining Table + 8 Chairs",
+          "quantity": 2,
+          "unit_price": 1100,
+          "color": null
+        },
+        {
+          "display_name": "Anatasia Dining Table + 6 Chairs",
+          "quantity": 2,
+          "unit_price": 800,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-10-14",
+      "receiptNumber": "FAHME-029",
+      "total_amount": 2230,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Anatasia Dining Table + 6 Chairs",
+          "quantity": 1,
+          "unit_price": 800,
+          "color": null
+        },
+        {
+          "display_name": "Anatasia Dining Table + 8 Chairs",
+          "quantity": 1,
+          "unit_price": 1100,
+          "color": null
+        },
+        {
+          "display_name": "Sleep Well Mattress 200*200",
+          "quantity": 1,
+          "unit_price": 330,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-10-16",
+      "receiptNumber": "FAHME-030",
+      "total_amount": 4400,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Luxury Sitting Set 3+3+1+1",
+          "quantity": 2,
+          "unit_price": 900,
+          "color": null
+        },
+        {
+          "display_name": "U Shape Corner Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Lines Bedstead 200*200",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Sleep Well Mattress 100*200 (25cm)",
+          "quantity": 5,
+          "unit_price": 120,
+          "color": null
+        },
+        {
+          "display_name": "Sleep Well Mattress 140*200 (25cm)",
+          "quantity": 5,
+          "unit_price": 160,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-10-24",
+      "receiptNumber": "FAHME-031",
+      "total_amount": 4275,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Viking Sitting Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 1100,
+          "color": null
+        },
+        {
+          "display_name": "Johanson Sitting Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 900,
+          "color": null
+        },
+        {
+          "display_name": "U Shape Sitting Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Double Door Displays",
+          "quantity": 2,
+          "unit_price": 275,
+          "color": null
+        },
+        {
+          "display_name": "Buffet + Mirror",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Round Dining Table",
+          "quantity": 3,
+          "unit_price": 175,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-01",
+      "receiptNumber": "FAHME-032",
+      "total_amount": 3000,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "U Shape Sitting Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Eva Mattress 180*200",
+          "quantity": 12,
+          "unit_price": 200,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-04",
+      "receiptNumber": "FAHME-033",
+      "total_amount": 7340,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Diamond Sitting Set 3+2+1+1",
+          "quantity": 2,
+          "unit_price": 750,
+          "color": null
+        },
+        {
+          "display_name": "U Shape Sitting Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Office Chair DP-K180D",
+          "quantity": 6,
+          "unit_price": 190,
+          "color": null
+        },
+        {
+          "display_name": "Eva Mattress 180*200",
+          "quantity": 11,
+          "unit_price": 200,
+          "color": null
+        },
+        {
+          "display_name": "Hawaii Round Chair",
+          "quantity": 10,
+          "unit_price": 190,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-06",
+      "receiptNumber": "FAHME-034",
+      "total_amount": 5550,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Diamond Sitting Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": null
+        },
+        {
+          "display_name": "Fashion Single Seater",
+          "quantity": 10,
+          "unit_price": 170,
+          "color": null
+        },
+        {
+          "display_name": "Eva Mattress 180*200",
+          "quantity": 8,
+          "unit_price": 200,
+          "color": null
+        },
+        {
+          "display_name": "Unique 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": "Brown"
+        },
+        {
+          "display_name": "Unique 3+2+1+1+ Puff Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": "Beige"
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-11",
+      "receiptNumber": "FAHME-035",
+      "total_amount": 4650,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Viking Sitting Set 3+2+1+1",
+          "quantity": 3,
+          "unit_price": 1100,
+          "color": null
+        },
+        {
+          "display_name": "U Shape Sofa Sitting Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Unique 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-12",
+      "receiptNumber": "FAHME-036",
+      "total_amount": 6200,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Luxury 3+3+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 900,
+          "color": null
+        },
+        {
+          "display_name": "Unique 3+2+1+1 Sitting Set",
+          "quantity": 2,
+          "unit_price": 700,
+          "color": null
+        },
+        {
+          "display_name": "Eva Mattress 180*200",
+          "quantity": 15,
+          "unit_price": 200,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-17",
+      "receiptNumber": "FAHME-037",
+      "total_amount": 4850,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Viking Sitting Set 3+2+1+1",
+          "quantity": 2,
+          "unit_price": 1100,
+          "color": null
+        },
+        {
+          "display_name": "Paris Sitting Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 1800,
+          "color": null
+        },
+        {
+          "display_name": "Solar Panels",
+          "quantity": 10,
+          "unit_price": 85,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-24",
+      "receiptNumber": "FAHME-038",
+      "total_amount": 2500,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Viking Sitting Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 1100,
+          "color": null
+        },
+        {
+          "display_name": "U Shape Sitting Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Anatasia Dining Table + 6 Chairs",
+          "quantity": 1,
+          "unit_price": 800,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-27",
+      "receiptNumber": "FAHME-039",
+      "total_amount": 8150,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Egypt Dining Table + 6 Chairs",
+          "quantity": 1,
+          "unit_price": 1650,
+          "color": null
+        },
+        {
+          "display_name": "Egypt Sitting Set 3+2+1+1",
+          "quantity": 2,
+          "unit_price": 2500,
+          "color": null
+        },
+        {
+          "display_name": "Diamond Sitting Set 3+2+1+1",
+          "quantity": 2,
+          "unit_price": 750,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-11-28",
+      "receiptNumber": "FAHME-040",
+      "total_amount": 7200,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "U Shape Sofa Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        },
+        {
+          "display_name": "Egypt Dining Table + 6 Chairs",
+          "quantity": 2,
+          "unit_price": 1650,
+          "color": null
+        },
+        {
+          "display_name": "Unique Sofa Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": null
+        },
+        {
+          "display_name": "Diamond Sitting Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 750,
+          "color": null
+        },
+        {
+          "display_name": "Mae 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 1800,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-12-12",
+      "receiptNumber": "FAHME-041",
+      "total_amount": 4300,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "Viking Sitting Set 3+2+1+1",
+          "quantity": 1,
+          "unit_price": 1100,
+          "color": null
+        },
+        {
+          "display_name": "Luxury Sitting Set 3+3+1+1",
+          "quantity": 1,
+          "unit_price": 900,
+          "color": null
+        },
+        {
+          "display_name": "Alanya 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 850,
+          "color": null
+        },
+        {
+          "display_name": "Lara 3+2+1+1 Sitting Set",
+          "quantity": 1,
+          "unit_price": 850,
+          "color": null
+        },
+        {
+          "display_name": "L Shape Sitting Set",
+          "quantity": 2,
+          "unit_price": 300,
+          "color": null
+        }
+      ]
+    },
+    {
+      "saleDate": "2025-12-23",
+      "receiptNumber": "FAHME-042",
+      "total_amount": 2500,
+      "discount": 0,
+      "items": [
+        {
+          "display_name": "High Class Sitting Set 3+3+1+1",
+          "quantity": 1,
+          "unit_price": 1000,
+          "color": null
+        },
+        {
+          "display_name": "New Sitting Set 3+2+1+1",
+          "quantity": 2,
+          "unit_price": 750,
+          "color": null
+        }
+      ]
+    }
+  ],
+  "payments": [
+    {
+      "amount": 20000,
+      "payment_date": "2024-12-20T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "1",
+      "notes": "Paid This Amount In Advance As Credit",
+      "currency": "USD"
+    },
+    {
+      "amount": 8440,
+      "payment_date": "2025-03-12T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "2",
+      "notes": "Paid By Sending Us Stock From His Warehouse",
+      "currency": "USD"
+    },
+    {
+      "amount": 9000,
+      "payment_date": "2025-06-30T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "3",
+      "notes": null,
+      "currency": "USD"
+    },
+    {
+      "amount": 10000,
+      "payment_date": "2025-09-17T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "4",
+      "notes": null,
+      "currency": "USD"
+    },
+    {
+      "amount": 2950,
+      "payment_date": "2025-09-30T00:00:00.000Z",
+      "payment_type": "goods",
+      "reference": "5",
+      "notes": "Paid by us getting sitting set from Mohammad Fahme",
+      "currency": "USD"
+    },
+    {
+      "amount": 10000,
+      "payment_date": "2025-10-07T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "6",
+      "notes": null,
+      "currency": "USD"
+    },
+    {
+      "amount": 5000,
+      "payment_date": "2025-11-10T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "7",
+      "notes": null,
+      "currency": "USD"
+    },
+    {
+      "amount": 10000,
+      "payment_date": "2025-11-10T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "8",
+      "notes": "Informed By Hassan Awad Through Whatsapp",
+      "currency": "USD"
+    },
+    {
+      "amount": 10000,
+      "payment_date": "2025-12-18T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "9",
+      "notes": null,
+      "currency": "USD"
+    },
+    {
+      "amount": 7000,
+      "payment_date": "2026-01-10T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "10",
+      "notes": "Whatsapp Alert",
+      "currency": "USD"
+    },
+    {
+      "amount": 20000,
+      "payment_date": "2026-02-24T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "11",
+      "notes": null,
+      "currency": "USD"
+    },
+    {
+      "amount": 20000,
+      "payment_date": "2026-05-12T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "12",
+      "notes": null,
+      "currency": "USD"
+    },
+    {
+      "amount": 20000,
+      "payment_date": "2026-07-29T00:00:00.000Z",
+      "payment_type": "cash",
+      "reference": "13",
+      "notes": "Statement settlement (Jul 2026 PDF)",
+      "currency": "USD"
+    }
+  ]
+}

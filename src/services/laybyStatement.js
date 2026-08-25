@@ -2,6 +2,7 @@ import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
+import { applyFahmeStatementLock, filterLockedFahmeSales, isFahmeStatementLocked } from '../utils/fahmeStatementLock';
 import { fetchMergedLaybyPayments } from './laybyPayments';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -49,7 +50,7 @@ export async function fetchLaybyStatement(customerId) {
     const laybySaleIds = new Set((laybyRows || []).map(r => String(r.sale_id || '')).filter(Boolean));
 
     const { data: salesRows, error: salesErr } = await fromPublic('sales')
-      .select('id, sale_date, currency, status, layby_id')
+      .select('id, sale_date, currency, status, layby_id, receipt_number, created_at')
       .eq('customer_id', customerId);
     if (salesErr) return { error: salesErr };
 
@@ -60,7 +61,11 @@ export async function fetchLaybyStatement(customerId) {
       return status === 'layby' || laybyIds.has(laybyId) || laybySaleIds.has(saleId);
     });
 
-    const saleIds = laybySales.map(s => s.id).filter(v => v != null);
+    const scopedLaybySales = isFahmeStatementLocked(rawId)
+      ? filterLockedFahmeSales(laybySales, rawId)
+      : laybySales;
+
+    const saleIds = scopedLaybySales.map(s => s.id).filter(v => v != null);
     if (!saleIds.length) return { data: { sales: [], items: [], payments: [] } };
 
     const finMap = await fetchCanonicalFinancials(db, saleIds);
@@ -86,7 +91,7 @@ export async function fetchLaybyStatement(customerId) {
       );
     } catch {}
 
-    const sales = laybySales.map(s => {
+    const sales = scopedLaybySales.map(s => {
       const fin = finMap.get(String(s.id)) || {};
       const quoteFin = quoteBySale.get(String(s.id));
       const shouldUseQuoteTotal = quoteFin && Math.abs(Number(fin.total_due || 0) - Number(quoteFin.total_due || 0)) > 0.009;
@@ -124,6 +129,21 @@ export async function fetchLaybyStatement(customerId) {
       notes: sanitizePaymentNote(p.notes),
       payment_type: String(p.payment_type || '').toLowerCase(),
     }));
+
+    const locked = applyFahmeStatementLock(rawId, {
+      sales,
+      items: items || [],
+      payments: normalizedPayments,
+    });
+    if (locked.statementLocked) {
+      return {
+        data: normalizeLaybyStatement({
+          sales: locked.sales,
+          items: locked.items,
+          payments: locked.payments,
+        }),
+      };
+    }
 
     return { data: normalizeLaybyStatement({ sales, items: items || [], payments: normalizedPayments }) };
   } catch (err) {

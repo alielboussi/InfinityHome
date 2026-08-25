@@ -101,6 +101,50 @@ export async function sendSaleWhatsApp(payload) {
   }
 }
 
+export async function previewSaleWhatsApp(payload) {
+  try {
+    const res = await fetch(notifyApiUrl('whatsapp-sale'), {
+      method: 'POST',
+      headers: notifyApiHeaders(),
+      body: JSON.stringify({ ...(payload || {}), action: 'whatsapp-sale', preview: true }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false) {
+      return formatWhatsAppError(res, json, 'sale preview');
+    }
+    return {
+      ok: true,
+      message: String(json?.message || json?.skipped || ''),
+      attachmentNote: String(json?.attachmentNote || ''),
+      skipped: json?.skipped || '',
+    };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+export async function previewLaybyWhatsApp(payload) {
+  try {
+    const res = await fetch(notifyApiUrl('whatsapp-layby'), {
+      method: 'POST',
+      headers: notifyApiHeaders(),
+      body: JSON.stringify({ ...(payload || {}), action: 'whatsapp-layby', preview: true }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false) {
+      return formatWhatsAppError(res, json, 'layby preview');
+    }
+    return {
+      ok: true,
+      message: String(json?.message || json?.skipped || ''),
+      attachmentNote: String(json?.attachmentNote || ''),
+      skipped: json?.skipped || '',
+    };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
 export async function sendTransferWhatsApp(payload) {
   try {
     const res = await fetch(notifyApiUrl('whatsapp-transfer'), {

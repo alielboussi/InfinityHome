@@ -189,6 +189,8 @@ function buildWhatsAppMessage({
   balanceDue,
   currency,
   previousDueBalance,
+  balanceDueDays,
+  balanceDueDeadline,
 }) {
   const lines = [];
 
@@ -242,6 +244,15 @@ function buildWhatsAppMessage({
   const due = Number(balanceDue || 0);
   if (due > BALANCE_EPSILON) {
     lines.push(`⏳ Balance Due: ${formatAmount(due, currency)}`);
+    const allowanceDays = Number(balanceDueDays || 0);
+    if (allowanceDays > 0) {
+      const deadlineLabel = balanceDueDeadline ? formatSaleDateForMessage(balanceDueDeadline) : '';
+      if (deadlineLabel) {
+        lines.push(`⏳ Balance completion period: ${allowanceDays} days (by ${deadlineLabel})`);
+      } else {
+        lines.push(`⏳ Balance completion period: ${allowanceDays} days`);
+      }
+    }
   } else if (eventType !== 'statement') {
     lines.push("This customer's due balance is fully closed");
   }
@@ -318,6 +329,19 @@ async function resolveLaybyId(laybyId, customerId) {
   return latestLayby?.id || null;
 }
 
+async function loadLaybyAllowance(laybyId) {
+  if (!laybyId) return { balanceDueDays: null, balanceDueDeadline: null };
+  const { data } = await fromPublic('laybys')
+    .select('balance_due_days, balance_due_deadline')
+    .eq('id', laybyId)
+    .maybeSingle();
+  const days = Number(data?.balance_due_days || 0);
+  return {
+    balanceDueDays: days > 0 ? Math.floor(days) : null,
+    balanceDueDeadline: data?.balance_due_deadline || null,
+  };
+}
+
 export async function buildClientWhatsAppPreviewForRow(row) {
   if (!row?.id) return { ok: false, error: 'Missing sale' };
 
@@ -339,6 +363,7 @@ export async function buildClientWhatsAppPreviewForRow(row) {
   if (isLaybyRow) {
     const resolvedLaybyId = await resolveLaybyId(laybyId, customerId);
     if (!resolvedLaybyId) return { ok: false, error: 'No layby account found for customer' };
+    const allowance = await loadLaybyAllowance(resolvedLaybyId);
 
     const eventType = Number(row.paid || 0) <= BALANCE_EPSILON ? 'new_layby' : 'layby_addition';
     const data = await loadSalePreviewData(saleId);
@@ -372,6 +397,8 @@ export async function buildClientWhatsAppPreviewForRow(row) {
       previousDueBalance: eventType === 'layby_addition'
         ? Math.max(0, Number(row.outstanding || 0) - balanceDue)
         : null,
+      balanceDueDays: allowance.balanceDueDays,
+      balanceDueDeadline: allowance.balanceDueDeadline,
     });
 
     return {

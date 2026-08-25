@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+dist-prebuild-check/
+dist-smoke/
+*.jks
+*.keystore
+*.apk
+.env
+.env.local

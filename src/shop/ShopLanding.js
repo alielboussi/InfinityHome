@@ -5,7 +5,6 @@ import {
   SHOP_DEFAULT_SETTINGS,
   SHOP_HERO_IMAGE,
   SHOP_WHY_CHOOSE,
-  SHOP_CATEGORY_SHOWCASE,
   SHOP_SUPPORT_EMAIL,
 } from '../utils/shopContent';
 import { buildShopWhatsAppUrl } from '../utils/shopConstants';
@@ -44,27 +43,6 @@ export default function ShopLanding() {
           <div className="shop-hero-banner__actions">
             <Link to="/shop/support" className="shop-btn shop-btn--outline-light shop-btn--lg">Get in touch</Link>
           </div>
-        </div>
-      </section>
-
-      <section className="shop-section shop-section--categories">
-        <div className="shop-section__head shop-section__head--center">
-          <p className="shop-section__eyebrow">Shop by room</p>
-          <h2>Explore our collections</h2>
-        </div>
-        <div className="shop-category-grid">
-          {SHOP_CATEGORY_SHOWCASE.map((cat) => (
-            <Link key={cat.slug} to={`/shop/products?category=${cat.slug}`} className="shop-category-card">
-              <img src={cat.image} alt={cat.title} loading="lazy" />
-              <div className="shop-category-card__overlay">
-                <div className="shop-category-card__text">
-                  <h3>{cat.title}</h3>
-                  <p>{cat.description}</p>
-                  <span className="shop-category-card__cta">Browse →</span>
-                </div>
-              </div>
-            </Link>
-          ))}
         </div>
       </section>
 

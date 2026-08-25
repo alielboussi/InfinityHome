@@ -75,6 +75,8 @@ const LOCAL_API_PATHS = new Set([
   '/api/layby-payments-delete',
   '/api/layby-delete-customer',
   '/api/product-locations',
+  '/api/products-bulk-delete',
+  '/api/inventory-bulk',
   '/api/shop-catalog',
   '/api/web-orders',
 ]);
@@ -599,6 +601,7 @@ module.exports = function setupProxy(app) {
   mountLocalTransactions(app);
   mountLocalProductLocations(app);
   mountLocalApiHandler(app, '/api/inventory-bulk', '../server/handlers/inventory-bulk.js', 'inventory-bulk API');
+  mountLocalApiHandler(app, '/api/products-bulk-delete', '../server/handlers/products-bulk-delete.js', 'products-bulk-delete API');
   mountLocalShopCatalog(app);
   mountLocalWebOrders(app);
 

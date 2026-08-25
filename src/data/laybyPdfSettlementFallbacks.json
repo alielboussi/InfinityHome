@@ -71,14 +71,12 @@
       "description": "",
       "paymentType": "Cash",
       "amount": 20000
-    }
-  ],
-  "mohammad fahme acc(2)": [
+    },
     {
-      "date": "22/05/2026",
-      "description": "",
+      "date": "29/07/2026",
+      "description": "Statement settlement (Jul 2026 PDF)",
       "paymentType": "Cash",
-      "amount": 2000
+      "amount": 20000
     }
   ]
 }

@@ -7,7 +7,7 @@ import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { deleteComboLocations, removeComboLocations, replaceComboLocations, upsertComboLocations } from './services/comboLocations';
 import { getFactoryStorageSummary, getFactoryStorageItems, createFactoryStorageItem, releaseFactoryStorageItem, updateFactoryStorageItem } from './services/factoryStorage';
-import { fetchComputedInventorySnapshot } from './services/inventorySnapshot';
+import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import { removeProductLocations, syncProductLocations } from './services/productLocations';
 import { applyInventoryBulk, dedupeInventoryRows, upsertInventoryQuantity } from './utils/inventoryApi';
 import { docIdFromOnConflict } from './db/docIds';
@@ -36,6 +36,7 @@ import {
   upsertProductLocationPrices,
 } from './services/locationPricing';
 import { logUserActivity } from './utils/userActivityLog';
+import { firebaseEnsureSession } from './utils/firebaseAuthApi';
 
 const toolbarWrapperStyle = Object.freeze({
   width: '100%',
@@ -130,7 +131,7 @@ const getListItemImageUrl = (item) => {
 
 const PRODUCT_IMAGE_BUCKET = 'productimages';
 const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v4';
-const PRODUCTS_LIST_INVENTORY_CACHE_KEY = 'products:list:inventory:v3';
+const PRODUCTS_LIST_INVENTORY_CACHE_KEY = 'products:list:inventory:v4';
 const PRODUCTS_LIST_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const PRODUCTS_LIST_INVENTORY_CACHE_TTL_MS = 2 * 60 * 1000;
 
@@ -143,8 +144,8 @@ const deleteProductsViaApi = async (productIds) => {
   const ids = Array.from(new Set((productIds || []).map(id => String(id)).filter(Boolean)));
   if (ids.length === 0) return [];
 
-  const { data: sessionData } = await db.auth.getSession();
-  const token = sessionData?.session?.access_token;
+  const sessionResult = await firebaseEnsureSession();
+  const token = sessionResult?.session?.access_token;
   if (!token) {
     throw new Error('Authentication required — please sign in again.');
   }
@@ -316,6 +317,8 @@ function ProductsListPage() {
   const inlinePriceInputRef = useRef(null);
   const inlinePriceDraftRef = useRef('');
   const inlinePriceSaveLockRef = useRef(false);
+  const inlineNameDraftRef = useRef('');
+  const inlineNameSaveLockRef = useRef(false);
   const factoryStorageActorRef = useRef(null);
   const factoryStorageLaunchRef = useRef(false);
   const catalogLoadSeqRef = useRef(0);
@@ -1212,11 +1215,6 @@ function ProductsListPage() {
   // (Planner removed per request) Keep only simple per-combo max display.
 
 
-  useEffect(() => {
-    fetchAll();
-    fetchInventory();
-  }, [rtTickCatalog]);
-
   const [categoryFilter, setCategoryFilter] = useState('');
 
   const fetchAll = async () => {
@@ -1314,12 +1312,31 @@ function ProductsListPage() {
     }
   };
 
-  const fetchInventory = async () => {
-    const snapshot = await fetchComputedInventorySnapshot();
+  const persistInventoryCache = useCallback((rows) => {
+    try {
+      cacheSet(PRODUCTS_LIST_INVENTORY_CACHE_KEY, rows, PRODUCTS_LIST_INVENTORY_CACHE_TTL_MS);
+    } catch {}
+  }, []);
+
+  const fetchInventory = useCallback(async () => {
+    try {
+      const cached = cacheGet(PRODUCTS_LIST_INVENTORY_CACHE_KEY);
+      if (Array.isArray(cached) && cached.length > 0) {
+        setInventory(dedupeInventoryRows(cached));
+      }
+    } catch {}
+    const snapshot = await fetchInventorySnapshot();
     if (!snapshot.error) {
-      setInventory(dedupeInventoryRows(snapshot.data || []));
+      const rows = dedupeInventoryRows(snapshot.data || []);
+      setInventory(rows);
+      persistInventoryCache(rows);
     }
-  };
+  }, [persistInventoryCache]);
+
+  useEffect(() => {
+    fetchAll();
+    fetchInventory();
+  }, [rtTickCatalog, fetchInventory]);
 
   const refreshInventoryForLocations = async (locationIds = []) => {
     const normalized = Array.from(new Set((locationIds || [])
@@ -1329,7 +1346,7 @@ function ProductsListPage() {
       await fetchInventory();
       return;
     }
-    const snapshot = await fetchComputedInventorySnapshot(normalized);
+    const snapshot = await fetchInventorySnapshot(normalized);
     if (snapshot?.error) {
       await fetchInventory();
       return;
@@ -1338,7 +1355,9 @@ function ProductsListPage() {
     setInventory((prev) => {
       const prevRows = Array.isArray(prev) ? prev : [];
       const filtered = prevRows.filter((row) => !normalized.includes(normalizeLocationId(row.location)));
-      return dedupeInventoryRows([...filtered, ...snapshotRows]);
+      const merged = dedupeInventoryRows([...filtered, ...snapshotRows]);
+      persistInventoryCache(merged);
+      return merged;
     });
   };
 
@@ -1370,7 +1389,7 @@ function ProductsListPage() {
     await fetchAll();
     await fetchInventory();
     return deletedIds;
-  }, [applyDeletedProductIds]);
+  }, [applyDeletedProductIds, fetchInventory]);
 
   const handleDeleteProduct = useCallback(async (productId) => {
     return handleDeleteProducts([productId]);
@@ -1400,16 +1419,27 @@ function ProductsListPage() {
   }, [normalizeLocationId]);
 
 
+  const inventoryQtyLookup = useMemo(() => {
+    const byKey = new Map();
+    const byProduct = new Map();
+    dedupeInventoryRows(inventory || []).forEach((row) => {
+      const pid = String(row.product_id);
+      const lid = normalizeLocationId(row.location);
+      const qty = Number(row.quantity) || 0;
+      const key = `${pid}::${lid}`;
+      byKey.set(key, (byKey.get(key) || 0) + qty);
+      byProduct.set(pid, (byProduct.get(pid) || 0) + qty);
+    });
+    return { byKey, byProduct };
+  }, [inventory, normalizeLocationId]);
+
   // Helpers for sets (memoized for stable identities in hooks)
   const getStockForProduct = useCallback((productId, locId) => {
+    const pid = String(productId);
     const lid = normalizeLocationId(locId);
-    const rows = (inventory || []).filter(inv => {
-      if (String(inv.product_id) !== String(productId)) return false;
-      if (!lid) return true;
-      return normalizeLocationId(inv.location) === lid;
-    });
-    return dedupeInventoryRows(rows).reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
-  }, [inventory, normalizeLocationId]);
+    if (!lid) return inventoryQtyLookup.byProduct.get(pid) || 0;
+    return inventoryQtyLookup.byKey.get(`${pid}::${lid}`) || 0;
+  }, [inventoryQtyLookup, normalizeLocationId]);
 
   const openLocationStockCorrection = useCallback((item, locationRow) => {
     if (!canAdjustInventory) {
@@ -1551,27 +1581,45 @@ function ProductsListPage() {
     }
   };
 
+  const cancelInlineName = useCallback(() => {
+    inlineNameDraftRef.current = '';
+    setNameEdit(null);
+  }, []);
+
   const saveInlineName = async (item, isCombo, draftValue) => {
+    if (inlineNameSaveLockRef.current) return false;
+    inlineNameSaveLockRef.current = true;
+
     const trimmed = String(draftValue || '').trim();
     const currentName = isCombo ? item.combo_name : item.name;
-    if (!trimmed || trimmed === String(currentName || '').trim()) {
-      setNameEdit(null);
-      return;
+    if (!trimmed) {
+      alert('Product name cannot be empty.');
+      inlineNameSaveLockRef.current = false;
+      return false;
     }
+    if (trimmed === String(currentName || '').trim()) {
+      cancelInlineName();
+      inlineNameSaveLockRef.current = false;
+      return true;
+    }
+
+    // Drop any in-flight catalog fetch so stale cache cannot overwrite this save.
+    catalogLoadSeqRef.current += 1;
     try {
+      const patch = isCombo ? { combo_name: trimmed } : { name: trimmed, updated_at: new Date().toISOString() };
+      const table = isCombo ? 'combos' : 'products';
+      const { error } = await db.from(table).update(patch).eq('id', item.id);
+      if (error) throw error;
       if (isCombo) {
-        const { error } = await db.from('combos').update({ combo_name: trimmed }).eq('id', item.id);
-        if (error) throw error;
         setCombos((prev) => prev.map((row) => (
           String(row.id) === String(item.id) ? { ...row, combo_name: trimmed } : row
         )));
       } else {
-        const { error } = await db.from('products').update({ name: trimmed }).eq('id', item.id);
-        if (error) throw error;
         setProducts((prev) => prev.map((row) => (
-          String(row.id) === String(item.id) ? { ...row, name: trimmed } : row
+          String(row.id) === String(item.id) ? { ...row, name: trimmed, updated_at: patch.updated_at } : row
         )));
       }
+      clearProductsListCaches();
       logUserActivity({
         actionType: 'product_update',
         actionLabel: isCombo ? 'Set Renamed' : 'Product Renamed',
@@ -1580,9 +1628,21 @@ function ProductsListPage() {
         entityType: isCombo ? 'combo' : 'product',
         entityId: String(item.id),
       });
-      setNameEdit(null);
+      inlineNameDraftRef.current = '';
+      cancelInlineName();
+      const searchTerm = String(search || '').trim();
+      if (searchTerm && !trimmed.toLowerCase().includes(searchTerm.toLowerCase())) {
+        setSearch('');
+        setBulkApplyMessage(`Renamed to "${trimmed}". Search filter cleared so the item stays visible.`);
+      } else {
+        setBulkApplyMessage(`Renamed to "${trimmed}".`);
+      }
+      inlineNameSaveLockRef.current = false;
+      return true;
     } catch (err) {
       alert('Failed to save name: ' + (err.message || err));
+      inlineNameSaveLockRef.current = false;
+      return false;
     }
   };
 
@@ -1628,8 +1688,14 @@ function ProductsListPage() {
 
   useEffect(() => {
     if (!nameEdit || !nameInputRef.current) return;
-    nameInputRef.current.focus();
-    nameInputRef.current.select();
+    const el = nameInputRef.current;
+    el.focus();
+    const end = el.value.length;
+    try {
+      el.setSelectionRange(end, end);
+    } catch {
+      // Some browsers reject selection on certain input types.
+    }
   }, [nameEdit]);
 
   const getStockForProductAcrossSelected = useCallback((productId) => {
@@ -3119,20 +3185,27 @@ function ProductsListPage() {
                             type="text"
                             className="products-list-inline-name-input"
                             value={nameEdit.draft}
-                            onChange={(e) => setNameEdit((prev) => (prev ? { ...prev, draft: e.target.value } : prev))}
+                            size={Math.max(24, Math.min((nameEdit.draft || '').length + 2, 72))}
+                            onChange={(e) => {
+                              inlineNameDraftRef.current = e.target.value;
+                              setNameEdit((prev) => (prev ? { ...prev, draft: e.target.value } : prev));
+                            }}
                             onKeyDown={async (e) => {
                               if (e.key === 'Escape') {
                                 e.preventDefault();
-                                setNameEdit(null);
+                                cancelInlineName();
                               } else if (e.key === 'Enter') {
                                 e.preventDefault();
-                                await saveInlineName(item, isCombo, nameEdit.draft);
+                                e.stopPropagation();
+                                await saveInlineName(item, isCombo, inlineNameDraftRef.current);
                               }
                             }}
-                            onBlur={async () => {
+                            onBlur={() => {
+                              if (inlineNameSaveLockRef.current) return;
                               if (!nameEdit || nameEdit.rowKey !== rowKey) return;
-                              await saveInlineName(item, isCombo, nameEdit.draft);
+                              cancelInlineName();
                             }}
+                            title="Press Enter to save, Escape to cancel"
                             aria-label={`Edit name for ${isCombo ? item.combo_name : item.name}`}
                           />
                         ) : (
@@ -3148,9 +3221,11 @@ function ProductsListPage() {
                                 alert('You do not have permission to edit product names.');
                                 return;
                               }
+                              const draft = item.name || '';
+                              inlineNameDraftRef.current = draft;
                               setNameEdit({
                                 rowKey,
-                                draft: item.name || '',
+                                draft,
                               });
                             }}
                             onKeyDown={(e) => {
@@ -3161,9 +3236,11 @@ function ProductsListPage() {
                                   return;
                                 }
                                 if (!canManageCatalogPage) return;
+                                const draft = item.name || '';
+                                inlineNameDraftRef.current = draft;
                                 setNameEdit({
                                   rowKey,
-                                  draft: item.name || '',
+                                  draft,
                                 });
                               }
                             }}

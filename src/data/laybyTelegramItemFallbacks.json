@@ -1,26 +1,4 @@
 {
-  "mohammad fahme acc(2)": [
-    {
-      "dmy": "05.03.2026",
-      "isoDate": "2026-03-05",
-      "items": [
-        {
-          "qty": 4,
-          "name": "Paris Sitting Set 3+2+1+1",
-          "price": 1800,
-          "amount": 7200,
-          "color": null
-        },
-        {
-          "qty": 10,
-          "name": "Copper Fiber Mattress 160*200",
-          "price": 180,
-          "amount": 1800,
-          "color": null
-        }
-      ]
-    }
-  ],
   "madam annie": [
     {
       "dmy": "16.04.2026",

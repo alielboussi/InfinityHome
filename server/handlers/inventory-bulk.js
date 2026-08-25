@@ -2,11 +2,6 @@ import { applyInventoryDeduction } from '../lib/inventoryDeduction.js';
 import { applyFirestoreInventoryDeduction } from '../lib/firestoreInventoryDeduction.js';
 import { getDataClient } from '../lib/getDataClient.js';
 import { getFirestore } from '../lib/firestoreDb.js';
-import {
-  applyExpectedQtyToInventoryRows,
-  computeExpectedInventoryMap,
-  fetchActiveStockPeriod,
-} from '../../src/utils/computedInventoryQty.js';
 
 const chunkArray = (list, size) => {
   const chunks = [];
@@ -135,6 +130,9 @@ export default async function handler(req, res) {
     const locationList = Array.isArray(locations) ? locations.filter(Boolean).map(v => String(v)) : (locations ? [String(locations)] : []);
 
     const shouldSnapshot = action === 'snapshot';
+    const liveSnapshot = body.live === true
+      || String(body.live || '').trim() === '1'
+      || String(req.query?.live || '').trim() === '1';
 
     if (action === 'sale-deduction') {
       const { items, locationId, saleId, receiptNumber, userUid, userId } = body;
@@ -161,22 +159,14 @@ export default async function handler(req, res) {
         res.status(500).json({ ok: false, error: error.message || String(error) });
         return;
       }
-      const merged = await mergeOpeningStockSnapshot({
-        db: db,
-        inventoryRows: data || [],
-        locationList,
-      });
-      let computed = merged || [];
-      const targets = locationList.length
-        ? locationList
-        : [...new Set(computed.map((row) => String(row?.location || '')).filter(Boolean))];
-      for (const locationId of targets) {
-        const period = await fetchActiveStockPeriod(db, locationId);
-        if (!period?.id) continue;
-        const expectedMap = await computeExpectedInventoryMap(db, locationId);
-        computed = applyExpectedQtyToInventoryRows(computed, locationId, expectedMap);
-      }
-      res.status(200).json({ ok: true, data: computed || [] });
+      const merged = liveSnapshot
+        ? (data || [])
+        : await mergeOpeningStockSnapshot({
+          db: db,
+          inventoryRows: data || [],
+          locationList,
+        });
+      res.status(200).json({ ok: true, data: merged || [] });
       return;
     }
 

@@ -1,5 +1,6 @@
 import { normalizeLaybyStatement } from './laybyStatementNormalize.js';
 import { computeQuotationTotals, resolveQuoteVatApply } from './quotationDisplay.js';
+import { buildLaybyCurrencyBucket, foldLaybyTotalsByCurrency } from './laybyColumnTotals.js';
 
 const normalizeCurrency = (cur) => ((cur === '$' || cur === 'USD') ? 'USD' : 'K');
 
@@ -52,7 +53,7 @@ export function resolveNegotiatedGrossSubtotal({
   return Math.max(0, gross);
 }
 
-export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v21';
+export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v29';
 
 export function parseFallbackSettlementDateTs(dateLabel) {
   const m = /^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/.exec(String(dateLabel || '').trim());
@@ -152,7 +153,8 @@ export function buildLaybySaleFinancials(statement) {
       const vatApply = Boolean(sale?.vat_apply)
         || resolveQuoteVatApply(sale, subtotalBeforeDiscount, saleDiscount);
       const vatRate = Number(sale?.vat_rate) > 0 ? Number(sale?.vat_rate) : 0.16;
-      const derivedTotal = vatApply
+      const vatInclusive = Boolean(sale?.vat_inclusive);
+      const derivedTotal = vatApply && !vatInclusive
         ? computeQuotationTotals({
             subtotal: subtotalBeforeDiscount,
             discount: saleDiscount,
@@ -177,7 +179,7 @@ export function buildLaybySaleFinancials(statement) {
       }
       const paid = toNumber(paymentAgg.paid);
       const paymentDiscount = toNumber(paymentAgg.paymentDiscount);
-      const netOwed = vatApply
+      const netOwed = vatApply && !vatInclusive
         ? computeQuotationTotals({
             subtotal: subtotalBeforeDiscount,
             discount: saleDiscount,
@@ -211,10 +213,7 @@ export function computeLaybyTotalsByCurrency(statement) {
   buildLaybySaleFinancials(statement).forEach((sale) => {
     const code = sale.currency || 'K';
     if (!totals[code]) totals[code] = { total: 0, paid: 0, discount: 0, due: 0 };
-    const grossTotal = toNumber(sale.subtotalBeforeDiscount) > 0
-      ? toNumber(sale.subtotalBeforeDiscount)
-      : toNumber(sale.total) + toNumber(sale.saleDiscount);
-    totals[code].total += grossTotal;
+    totals[code].total += toNumber(sale.total);
     totals[code].paid += toNumber(sale.paid);
     totals[code].discount += toNumber(sale.discount);
     totals[code].due += toNumber(sale.due);
@@ -222,7 +221,7 @@ export function computeLaybyTotalsByCurrency(statement) {
   return totals;
 }
 
-// PDF-aligned pooled settlement: sum gross sale totals, subtract deposits and all discounts.
+/** Pooled customer totals — uses laybyColumnTotals rules (see laybyColumnTotals.js). */
 export function computePooledLaybyTotalsByCurrency(statement) {
   const normalized = normalizeLaybyStatement(statement || {});
   const saleFinancials = buildLaybySaleFinancials(normalized);
@@ -231,11 +230,9 @@ export function computePooledLaybyTotalsByCurrency(statement) {
 
   saleFinancials.forEach((sale) => {
     const code = sale.currency || 'K';
-    if (!totals[code]) totals[code] = { total: 0, paid: 0, discount: 0, due: 0 };
-    const grossTotal = toNumber(sale.subtotalBeforeDiscount) > 0
-      ? toNumber(sale.subtotalBeforeDiscount)
-      : toNumber(sale.total) + toNumber(sale.saleDiscount);
-    totals[code].total += grossTotal;
+    if (!totals[code]) totals[code] = { total: 0, paid: 0, discount: 0, due: 0, saleDiscount: 0, paymentDiscount: 0 };
+    totals[code].total += toNumber(sale.total);
+    totals[code].saleDiscount += toNumber(sale.saleDiscount);
     saleDiscountByCurrency[code] = toNumber(saleDiscountByCurrency[code]) + toNumber(sale.saleDiscount);
   });
 
@@ -243,21 +240,31 @@ export function computePooledLaybyTotalsByCurrency(statement) {
   (normalized.payments || []).forEach((payment) => {
     const raw = String(payment?.currency || '').trim().toUpperCase();
     const code = (raw === '$' || raw === 'USD') ? 'USD' : 'K';
-    if (!totals[code]) totals[code] = { total: 0, paid: 0, discount: 0, due: 0 };
+    if (!totals[code]) totals[code] = { total: 0, paid: 0, discount: 0, due: 0, saleDiscount: 0, paymentDiscount: 0 };
     totals[code].paid += toNumber(payment?.amount);
     paymentDiscountByCurrency[code] = toNumber(paymentDiscountByCurrency[code]) + toNumber(payment?.discount_amount);
   });
 
+  const finalized = {};
   Object.entries(totals).forEach(([code, bucket]) => {
-    const saleDiscount = toNumber(saleDiscountByCurrency[code]);
     const paymentDiscount = toNumber(paymentDiscountByCurrency[code]);
-    bucket.total = roundLaybyMoney(bucket.total, code);
-    bucket.paid = roundLaybyMoney(bucket.paid, code);
-    bucket.discount = roundLaybyMoney(saleDiscount + paymentDiscount, code);
-    bucket.due = Math.max(0, roundLaybyMoney(bucket.total - bucket.paid - bucket.discount, code));
+    const built = buildLaybyCurrencyBucket({
+      contractTotal: roundLaybyMoney(bucket.total, code),
+      paid: roundLaybyMoney(bucket.paid, code),
+      saleDiscount: toNumber(saleDiscountByCurrency[code]),
+      paymentDiscount,
+    });
+    finalized[code] = built;
   });
 
-  return totals;
+  return finalized;
+}
+
+/** Fahme accounts are USD-only — fold mis-tagged K buckets without re-deriving due. */
+export function getDisplayTotalsByCurrency(row, { isFahmeCustomer } = {}) {
+  const raw = row?.totalsByCurrency || {};
+  if (!isFahmeCustomer) return raw;
+  return { USD: foldLaybyTotalsByCurrency(raw) };
 }
 
 export function sumLaybyCustomerTotalsByCurrency(rows) {

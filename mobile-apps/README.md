@@ -1,6 +1,6 @@
 # Infinity Home Mobile Apps (Expo SDK 52)
 
-Four Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator (SDK 54 for customer-credit; SDK 52 for others).
+Five Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator (SDK 54 for customer-credit and lusaka-stock; SDK 52 for others).
 
 ## Prerequisites
 
@@ -118,6 +118,41 @@ For trusted installs without sideload warnings, use **Google Play internal testi
 
 ---
 
+## 5. Lusaka Stock (`lusaka-stock/`)
+
+Read-only Lusaka branch stock viewer — same data as the web kiosk at `https://www.infinity-home.online/lusaka-stock`. Shows product/set photos, standard and promo prices, and available qty in a **2-column grid**. Search by name, SKU, or price.
+
+```bash
+cd mobile-apps/lusaka-stock
+cp .env.example .env
+# Edit .env with EXPO_PUBLIC_FIREBASE_* values (same project as the portal)
+npm install
+npm start
+```
+
+**Expo Go on your phone (not web):**
+1. Install **Expo Go** from the Play Store (SDK **54**).
+2. Run `npm start` on your PC — a **QR code** appears in the terminal.
+3. Open **Expo Go** on your phone → **Scan QR code** (do **not** press `w` in the terminal — that opens web).
+4. Phone and PC must be on the **same Wi‑Fi**. If the QR fails, try: `npx expo start --offline --lan`
+
+If `npx expo start` fails with **`Body is unusable: Body has already been read`**, use `npm start` (offline mode). Sign in with Firebase email/password or Google (Expo Go uses the browser OAuth flow). Stock refreshes every 60 seconds. Pull down to refresh manually.
+
+**Google sign-in (APK):** uses **native Google Sign-In** (same as Ledger), not `auth.expo.io`. Before building:
+
+```bash
+# From repo root — registers EAS release SHA-1 and writes google-services.json
+LUSAKA_STOCK_ANDROID_SHA1=AA:BB:... node scripts/setupLusakaStockGoogleSignIn.mjs
+```
+
+Then `npm run build:apk:prod` in `lusaka-stock/`. See `lusaka-stock/PRE_BUILD_CHECKLIST.md`.
+
+**Google sign-in (Expo Go):** browser OAuth with scheme `lusaka-stock://oauth`. If sign-in fails, add the redirect URI shown under the Google button in Google Cloud Console → Web client. Email/password always works.
+
+**Data:** inventory via `/api/inventory-bulk`, plus Firestore products, sets, location prices, and images for Lusaka (`f72aa989-3888-4a45-96ed-15dc45b5d399`).
+
+---
+
 ## Project layout
 
 ```
@@ -130,6 +165,7 @@ mobile-apps/
   warehouse-transfers/
   factory-production/
   customer-credit/
+  lusaka-stock/
   README.md
 ```
 

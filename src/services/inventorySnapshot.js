@@ -68,7 +68,11 @@ const fetchInventoryViaApi = async (locations) => {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'snapshot', locations: Array.isArray(locations) ? locations : (locations ? [locations] : []) }),
+    body: JSON.stringify({
+      action: 'snapshot',
+      live: true,
+      locations: Array.isArray(locations) ? locations : (locations ? [locations] : []),
+    }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.ok === false) {
@@ -84,19 +88,21 @@ export async function fetchInventorySnapshot(locations = null) {
 
   let inventoryRows = [];
   let inventoryErr = null;
-  let apiUsed = false;
-  if (shouldUseApi()) {
+
+  // Always prefer live Firestore rows. Production API snapshots may still apply computed
+  // overlay on older deploys, which shows false negatives on Products List.
+  const { data: directRows, error: directErr } = await fetchAllInventoryRows(locationList);
+  if (!directErr && Array.isArray(directRows) && directRows.length > 0) {
+    inventoryRows = directRows;
+  } else if (directErr) {
+    inventoryErr = directErr;
+  }
+
+  if (!inventoryRows.length && shouldUseApi()) {
     try {
       inventoryRows = await fetchInventoryViaApi(locationList);
-      apiUsed = true;
     } catch (err) {
       inventoryErr = err;
-    }
-  }
-  if (apiUsed && process.env.NODE_ENV !== 'production' && inventoryRows.length === 1000) {
-    const { data: fallbackRows, error: fallbackErr } = await fetchAllInventoryRows(locationList);
-    if (!fallbackErr && Array.isArray(fallbackRows) && fallbackRows.length >= inventoryRows.length) {
-      inventoryRows = fallbackRows;
     }
   }
   if (!inventoryRows.length) {

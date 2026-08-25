@@ -82,6 +82,7 @@
     { "source": "/api/whatsapp-shop-order", "destination": "/api/notify?action=whatsapp-shop-order" },
     { "source": "/api/monthly-balance-dues", "destination": "/api/notify?action=monthly-balance-dues" },
     { "source": "/api/monthly-balance-send", "destination": "/api/notify?action=monthly-balance-send" },
+    { "source": "/api/layby-overdue-reminders", "destination": "/api/notify?action=layby-overdue-reminders" },
     { "source": "/api/telegram-sale", "destination": "/api/notify?action=whatsapp-sale" },
     { "source": "/api/telegram-layby", "destination": "/api/notify?action=whatsapp-layby" },
     { "source": "/api/telegram-transfer", "destination": "/api/notify?action=whatsapp-transfer" },
@@ -116,6 +117,10 @@
     {
       "path": "/api/notify?action=monthly-balance-dues",
       "schedule": "0 6 30 * *"
+    },
+    {
+      "path": "/api/notify?action=layby-overdue-reminders",
+      "schedule": "0 7 * * *"
     }
   ]
 }

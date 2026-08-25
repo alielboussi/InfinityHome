@@ -18,6 +18,30 @@ function safeFilePart(value, fallback = 'Customer') {
 
 const PDF_UPLOAD_BUCKETS = ['laybypdfs', 'labels'];
 
+function resolveLabelsUploadApiUrl() {
+  const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
+  let host = '';
+  try { host = window?.location?.hostname || ''; } catch {}
+  const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
+  return (!isLocalHost && apiBase) ? `${apiBase}/api/labels` : '/api/labels';
+}
+
+async function uploadLaybyPdfThroughLabelsApi({ fileName, folder, blob }) {
+  const base64 = await blobToBase64(blob);
+  if (!base64) return null;
+
+  const resp = await fetch(resolveLabelsUploadApiUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileName, folder, pdfBase64: base64 }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(json?.error || `Layby PDF upload failed (${resp.status})`);
+  }
+  return json?.signedUrl || json?.publicUrl || null;
+}
+
 async function uploadPdfToBucket(bucket, filePath, blob) {
   const { error: uploadErr } = await db.storage
     .from(bucket)
@@ -31,6 +55,23 @@ async function uploadPdfToBucket(bucket, filePath, blob) {
 
   const { data: publicUrlData } = db.storage.from(bucket).getPublicUrl(filePath);
   return publicUrlData?.publicUrl || null;
+}
+
+async function blobToBase64(blob) {
+  if (!blob) return null;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(blob)) {
+    return blob.toString('base64');
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Failed to read PDF blob'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 export async function uploadPdfToStorage(bucket, filePath, blob) {
@@ -84,27 +125,52 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
       customerInfo: laybySnapshot?.customerInfo || laybySnapshot?.customer || customerInfo || {},
     };
 
+    const pooledTotals = laybySnapshot?.totalsByCurrency
+      || (isFahme(resolvedCustomerId) && statement
+        ? computePooledLaybyTotalsByCurrency(statement)
+        : null);
+
     const blob = await generateLaybyPdf(pdfLayby, {
       mode: 'blob',
       ...(statement ? { statement } : {}),
-      ...(isFahme(resolvedCustomerId) && statement
-        ? { totalsByCurrency: computePooledLaybyTotalsByCurrency(statement) }
-        : {}),
+      ...(pooledTotals ? { totalsByCurrency: pooledTotals } : {}),
     });
-    if (!blob) return null;
+    if (!blob) return { error: 'Layby PDF generation returned empty' };
 
     const customerName = pdfLayby.customerInfo?.name || 'Customer';
-    const filePath = `laybys/${laybyId || base.id || resolvedCustomerId}.pdf`;
-    const url = await uploadPdfToStorage('laybypdfs', filePath, blob);
-    if (!url) return null;
+    const filename = `${safeFilePart(customerName)}_Layby_Statement.pdf`;
+    const storageKey = `${laybyId || base.id || resolvedCustomerId}.pdf`;
+    const filePath = `laybys/${storageKey}`;
 
-    return {
-      url,
-      filename: `${safeFilePart(customerName)}_Layby_Statement.pdf`,
-    };
+    let url = null;
+    try {
+      url = await uploadPdfToStorage('laybypdfs', filePath, blob);
+    } catch (uploadErr) {
+      console.warn('Layby PDF client upload failed, trying labels API:', uploadErr?.message || uploadErr);
+    }
+
+    if (!url) {
+      try {
+        url = await uploadLaybyPdfThroughLabelsApi({
+          fileName: storageKey,
+          folder: 'laybys',
+          blob,
+        });
+      } catch (apiUploadErr) {
+        console.warn('Layby PDF labels API upload failed:', apiUploadErr?.message || apiUploadErr);
+      }
+    }
+
+    const base64 = url ? null : await blobToBase64(blob);
+
+    if (!url && !base64) {
+      return { error: 'Layby PDF could not be uploaded or encoded for WhatsApp' };
+    }
+
+    return { url, base64, filename };
   } catch (e) {
     console.warn('Layby PDF for WhatsApp failed:', e?.message || e);
-    return null;
+    return { error: e?.message || 'Layby PDF generation failed' };
   }
 }
 

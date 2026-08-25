@@ -3,9 +3,13 @@
 import { fetchCanonicalFinancials } from './utils/financials';
 
 export const FAHME_ID = 'd8e756ae-b8ea-4f90-b99a-70c1120f52b9';
+export const FAHME_ACC2_ID = 'efb21cad-1a8d-4d64-9487-51e816fcb429';
+export const FAHME_FALLBACK_KEY_PRIMARY = 'mohammad fahme';
+export const FAHME_FALLBACK_KEY_ACC2 = 'mohammad fahme acc(2)';
+export const FAHME_PLACEHOLDER_HOLD = false;
 export const FAHME_IDS = [
   FAHME_ID,
-  'efb21cad-1a8d-4d64-9487-51e816fcb429',
+  FAHME_ACC2_ID,
 ];
 
 export function isFahme(customerId) {
@@ -13,6 +17,35 @@ export function isFahme(customerId) {
   const key = String(customerId).trim().toLowerCase();
   return FAHME_IDS.some((id) => String(id).toLowerCase() === key);
 }
+
+/** Map Fahme customer id/name to PDF fallback JSON key (separate accounts, never merged). */
+export function resolveFahmeFallbackKey(customerId, customerName) {
+  const id = String(customerId || '').trim().toLowerCase();
+  const nameKey = String(customerName || '').trim().toLowerCase();
+  if (id === String(FAHME_ACC2_ID).toLowerCase() || nameKey === FAHME_FALLBACK_KEY_ACC2) {
+    return FAHME_FALLBACK_KEY_ACC2;
+  }
+  if (isFahme(customerId) || nameKey === FAHME_FALLBACK_KEY_PRIMARY) {
+    return FAHME_FALLBACK_KEY_PRIMARY;
+  }
+  return nameKey || FAHME_FALLBACK_KEY_PRIMARY;
+}
+
+export function isFahmeAcc2(customerId, customerName) {
+  return resolveFahmeFallbackKey(customerId, customerName) === FAHME_FALLBACK_KEY_ACC2;
+}
+
+/** Fahme accounts use live sales/items/payments only — no PDF fallback JSON.
+ *  Reference: docs/reference/fahme-primary/ and docs/reference/fahme-acc2/
+ *  Locked totals: src/data/fahmeStatementLocks.json (see fahmeStatementLock.js)
+ *  Payments must be deduped across sales_payments + layby_payments (fetchMergedLaybyPayments). */
+export function shouldUseFahmeLiveStatementOnly(customerId, customerName, opts = {}) {
+  if (opts?.liveDataOnly === true) return true;
+  return isFahme(customerId) || isFahmeAcc2(customerId, customerName);
+}
+
+// Back-compat alias (not a React hook) for stale dev bundles after rename.
+export const useFahmeLiveStatementOnly = shouldUseFahmeLiveStatementOnly;
 
 // Compute total/paid/outstanding per layby using computeSaleFinancials from base tables
 export async function computeLaybyRollups(db, laybys) {

@@ -5,7 +5,7 @@ import generateLaybyPdf from './laybyPdf';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { fetchLaybyStatement } from './services/laybyStatement';
-import { LAYBY_ROWS_CACHE_KEY } from './utils/laybyRollup';
+import { LAYBY_ROWS_CACHE_KEY, getDisplayTotalsByCurrency } from './utils/laybyRollup';
 import { isFahme } from './laybyRules';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 
@@ -21,19 +21,7 @@ const formatCurrency = (amount, currency = 'K') => {
   return `${label} ${formatted}`;
 };
 
-/** Fahme accounts are USD-only — fold mis-tagged K buckets into one USD total. */
-const getDisplayTotalsByCurrency = (row) => {
-  const raw = row?.totalsByCurrency || {};
-  if (!isFahme(row?.customerId)) return raw;
-  const folded = { total: 0, paid: 0, discount: 0, due: 0 };
-  Object.values(raw).forEach((vals) => {
-    folded.total += Number(vals?.total || 0);
-    folded.paid += Number(vals?.paid || 0);
-    folded.discount += Number(vals?.discount || 0);
-  });
-  folded.due = Math.max(0, folded.total - folded.paid - folded.discount);
-  return { USD: folded };
-};
+const getDisplayTotalsForRow = (row) => getDisplayTotalsByCurrency(row, { isFahmeCustomer: isFahme(row?.customerId) });
 
 const sumTotalsByCurrency = (rows) => {
   const out = {};
@@ -173,7 +161,7 @@ export default function LaybyManagementMobile() {
             <tbody>
               {filteredRows.map(row => {
                 const formatGroupCell = (field) => {
-                  const entries = Object.entries(row.totalsByCurrency || {});
+                  const entries = Object.entries(getDisplayTotalsForRow(row));
                   if (!entries.length) return '—';
                   return entries.map(([code, vals]) => formatCurrency(vals[field] || 0, code)).join(' | ');
                 };
@@ -213,7 +201,7 @@ export default function LaybyManagementMobile() {
                           const pdfLayby = { ...(primaryLayby || {}), sale_id: null, customer_id: row.customerId, customerInfo: row.customer || {} };
                           await generateLaybyPdf(pdfLayby, {
                             statement,
-                            totalsByCurrency: getDisplayTotalsByCurrency(row),
+                            totalsByCurrency: getDisplayTotalsForRow(row),
                           });
                         }}
                       >PDF</button>

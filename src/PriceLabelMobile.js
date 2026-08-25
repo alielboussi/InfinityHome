@@ -158,7 +158,7 @@ export default function PriceLabelMobile() {
 
   const addItem = (item) => {
     if (!selected.find((s) => s.type === item.type && s.id === item.id)) {
-      setSelected((prev) => [...prev, { ...item, qty: '' }]);
+      setSelected((prev) => [...prev, { ...item, qty: '', printStandardOnly: false }]);
     }
   };
   const handleAdd = (item) => {
@@ -167,6 +167,13 @@ export default function PriceLabelMobile() {
     setSearchResults([]);
   };
   const removeItem = (item) => setSelected((prev) => prev.filter((s) => !(s.type === item.type && s.id === item.id)));
+  const togglePrintStandardOnly = (item) => {
+    setSelected((prev) => prev.map((s) => (
+      s.type === item.type && s.id === item.id
+        ? { ...s, printStandardOnly: !s.printStandardOnly }
+        : s
+    )));
+  };
   const setQty = (item, qty) => {
     const normalized = qty === '' ? '' : Math.max(1, Number(qty) || 1);
     setSelected((prev) => prev.map((s) => (
@@ -374,7 +381,12 @@ export default function PriceLabelMobile() {
     const components = item.type === 'set' ? getComboComponents(item.id) : getProductComboComponents(data);
     const oldPrice = isProduct ? data.price : data.standard_price || data.combo_price;
     const promoPrice = data.promotional_price;
-    const hasPromo = promoPrice || promoPrice === 0;
+    const promoNum = Number(promoPrice);
+    const standardNum = Number(oldPrice);
+    const printStandardOnly = Boolean(item.printStandardOnly);
+    const hasPromo = !printStandardOnly
+      && Number.isFinite(promoNum) && promoNum > 0
+      && (!Number.isFinite(standardNum) || promoNum < standardNum);
     const imageQrValue = buildLabelImageQrValue(item, data);
 
     return (
@@ -487,7 +499,18 @@ export default function PriceLabelMobile() {
                     <td className="plm-td-name">{s.type === 'product' ? s.data.name : s.data.combo_name}</td>
                     <td className="plm-td-type">{s.type}</td>
                     <td className="plm-td-qty"><input type="number" min={1} placeholder="Qty" value={s.qty === '' ? '' : s.qty} onChange={(e) => setQty(s, e.target.value)} className="plm-qty" /></td>
-                    <td className="plm-td-action"><button className="plm-remove" onClick={() => removeItem(s)}>Delete</button></td>
+                    <td className="plm-td-action">
+                      <label className="labels-table-standard-only" title="Print at standard price only">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(s.printStandardOnly)}
+                          onChange={() => togglePrintStandardOnly(s)}
+                          aria-label="Standard price only"
+                        />
+                        <span>Std</span>
+                      </label>
+                      <button type="button" className="plm-remove" onClick={() => removeItem(s)}>Delete</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

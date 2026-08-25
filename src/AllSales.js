@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps, no-empty-pattern */
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FaFilePdf, FaWhatsapp } from 'react-icons/fa';
+import { FaChevronDown, FaChevronRight, FaFilePdf, FaWhatsapp } from 'react-icons/fa';
 import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
@@ -10,11 +10,12 @@ import { cacheGet, cacheSet } from './utils/staleCache';
 import { selectPrice } from './utils/setInventoryUtils';
 import { applyInventoryBulk } from './utils/inventoryApi';
 import { saveSaleEdit } from './services/salesEdit';
-import { notifyLaybyWhatsApp, notifySaleWhatsApp } from './services/whatsappNotify';
+import { notifyLaybyWhatsApp, notifySaleWhatsApp, previewSaleWhatsAppForRow } from './services/whatsappNotify';
 import { downloadPosSalePdf } from './services/whatsappPdfs';
 import { isFahme } from './laybyRules';
-import { fetchLaybyPaymentsBySaleIds } from './services/laybyPayments';
-import { buildLaybySaleFinancials, computeLaybyTotalsByCurrency } from './utils/laybyRollup';
+import { filterLaybyStatementSales, isSystemMigrationSale, isSystemReceiptTag } from './utils/laybyStatementSales';
+import { fetchMergedLaybyPayments } from './services/laybyPayments';
+import { buildLaybySaleFinancials, computePooledLaybyTotalsByCurrency } from './utils/laybyRollup';
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
 import { fetchPosLocationsViaApi } from './services/posCatalogApi';
@@ -31,7 +32,7 @@ function escapeCsv(value) {
   return raw;
 }
 
-const ALLSALES_CACHE_KEY = 'allsales:list:v9';
+const ALLSALES_CACHE_KEY = 'allsales:list:v12';
 
 function AllSalesModalPortal({ open, onBackdropClick, children }) {
   if (!open || typeof document === 'undefined') return null;
@@ -50,21 +51,7 @@ function laybysForCustomer(laybyRows, customerId) {
 }
 
 function filterStatementSalesForCustomer(sales, laybys) {
-  const pdfTaggedSaleIds = new Set(
-    (laybys || [])
-      .filter((layby) => String(layby?.notes || '').toUpperCase().includes('PDF_ITEM_RESTORE_20260610'))
-      .map((layby) => String(layby?.sale_id || '').trim())
-      .filter(Boolean)
-  );
-  let list = Array.isArray(sales) ? sales.slice() : [];
-  if (pdfTaggedSaleIds.size) {
-    list = list.filter((sale) => pdfTaggedSaleIds.has(String(sale?.id || '').trim()));
-  }
-  const hasPdfBusinessSales = list.some((sale) => String(sale?.sale_id || '').toUpperCase().startsWith('PDF-'));
-  if (hasPdfBusinessSales) {
-    list = list.filter((sale) => String(sale?.sale_id || '').toUpperCase().startsWith('PDF-'));
-  }
-  return list;
+  return filterLaybyStatementSales(sales, laybys);
 }
 
 function normalizeAllSalesCurrency(cur) {
@@ -85,17 +72,6 @@ function findLocationByName(locationsMap, name) {
   return Object.entries(locationsMap || {}).find(([, location]) => (
     String(location?.name || '').trim().toLowerCase() === needle
   )) || null;
-}
-
-function isSystemReceiptTag(receipt) {
-  const raw = String(receipt || '').trim();
-  return /^TG_DUE_/i.test(raw) || /^PDF_ITEM_RESTORE_/i.test(raw);
-}
-
-function isSystemMigrationSale(sale) {
-  if (isSystemReceiptTag(sale?.receipt_number)) return true;
-  const saleId = String(sale?.sale_id || '').trim();
-  return /^(TG-|PDF-)/i.test(saleId);
 }
 
 function formatDisplayReceipt(sale) {
@@ -266,16 +242,27 @@ export default function AllSales() {
   const [deleteModal, setDeleteModal] = useState({ open: false, saleId: null, meta: null, pin: '', loading: false, error: '' });
   const [whatsappSaleId, setWhatsappSaleId] = useState(null);
   const [pdfSaleId, setPdfSaleId] = useState(null);
+  const [expandedCustomers, setExpandedCustomers] = useState(() => new Set());
+  const [itemsBySaleId, setItemsBySaleId] = useState({});
+  const [itemsLoadingCustomerId, setItemsLoadingCustomerId] = useState(null);
+  const [whatsappPreview, setWhatsappPreview] = useState({
+    open: false,
+    loading: false,
+    title: '',
+    message: '',
+    attachmentNote: '',
+    error: '',
+  });
 
   useEffect(() => {
-    const modalOpen = Boolean(editing) || showPicker || deleteModal.open;
+    const modalOpen = Boolean(editing) || showPicker || deleteModal.open || whatsappPreview.open;
     if (!modalOpen || typeof document === 'undefined') return undefined;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = prevOverflow;
     };
-  }, [editing, showPicker, deleteModal.open]);
+  }, [editing, showPicker, deleteModal.open, whatsappPreview.open]);
   const getCurrentUser = () => {
     try { const raw = localStorage.getItem('user'); return raw ? JSON.parse(raw) : null; } catch { return null; }
   };
@@ -297,7 +284,7 @@ export default function AllSales() {
     setLoadError('');
     try {
       const salesRes = await fromPublic('sales')
-        .select('id, sale_id, sale_date, created_at, customer_id, location_id, layby_id, status, currency, total_amount, discount, receipt_number')
+        .select('id, sale_id, sale_date, created_at, customer_id, location_id, layby_id, status, currency, total_amount, discount, receipt_number, vat_apply, vat_inclusive, vat_rate')
         .order('sale_date', { ascending: false });
       if (salesRes.error) throw salesRes.error;
 
@@ -372,7 +359,7 @@ export default function AllSales() {
           .map((sale) => sale.id)
           .filter((id) => id != null);
         if (laybySaleIds.length) {
-          const { data: payRows } = await fetchLaybyPaymentsBySaleIds(laybySaleIds);
+          const { data: payRows } = await fetchMergedLaybyPayments({ saleIds: laybySaleIds });
           laybyPaymentRows = payRows || [];
           laybyPaymentRows.forEach((payment) => {
             const key = String(payment?.sale_id || '');
@@ -458,7 +445,7 @@ export default function AllSales() {
           byCustomer.get(key).push(row);
         });
 
-        byCustomer.forEach((rows, customerId) => {
+        for (const [customerId, rows] of byCustomer.entries()) {
           const laybys = laybysForCustomer(laybyRowsArray, customerId);
           const hasLaybyActivity = rows.some((row) => row.isLayby);
           const currency = normalizeAllSalesCurrency(
@@ -472,13 +459,15 @@ export default function AllSales() {
               acc.outstanding += Number(row.outstanding || 0);
               return acc;
             }, { total: 0, paid: 0, outstanding: 0, currency });
-            return;
+            continue;
           }
 
           const statementRows = filterStatementSalesForCustomer(rows, laybys);
           const statementSaleIds = new Set(statementRows.map((row) => String(row.id)));
           const statementSales = statementRows.map((row) => {
             const vf = vfMap[String(row.id)] || {};
+            const vatInclusive = row.vat_inclusive === true
+              || String(row.vat_inclusive || '').toLowerCase() === 'true';
             return {
               sale_id: row.id,
               id: row.id,
@@ -489,9 +478,16 @@ export default function AllSales() {
               total_amount: Number(vf.total_due ?? row.total_amount ?? 0),
               discount_amount: Number(vf.discount_amount ?? row.discount ?? 0),
               subtotal_before_discount: Number(vf.subtotal_before_discount ?? row.total_amount ?? 0),
+              vat_apply: vatInclusive ? false : Boolean(row.vat_apply ?? vf.vat_apply),
+              vat_inclusive: vatInclusive,
+              vat_rate: Number(row.vat_rate ?? vf.vat_rate ?? 0),
             };
           });
-          const statementPayments = laybyPaymentRows
+          const { data: customerPaymentRows } = await fetchMergedLaybyPayments({
+            customerId,
+            saleIds: statementRows.map((row) => row.id),
+          });
+          const statementPayments = (customerPaymentRows || [])
             .filter((payment) => statementSaleIds.has(String(payment?.sale_id || '')))
             .map((payment) => ({ ...payment, payment_type: String(payment.payment_type || '').toLowerCase() }));
           const normalized = normalizeLaybyStatement({
@@ -502,27 +498,21 @@ export default function AllSales() {
           buildLaybySaleFinancials(normalized).forEach((fin) => {
             saleFinMap.set(String(fin.saleId), fin);
           });
-          const totalsByCurrency = computeLaybyTotalsByCurrency(normalized);
+          const totalsByCurrency = computePooledLaybyTotalsByCurrency(normalized);
           const bucket = totalsByCurrency[currency]
+            || totalsByCurrency.USD
             || totalsByCurrency[Object.keys(totalsByCurrency)[0]]
             || { total: 0, paid: 0, due: 0 };
-          const laybyTableTotals = laybys.reduce((acc, layby) => {
-            const totalAmount = Number(layby?.total_amount || 0);
-            const paidAmount = Number(layby?.paid_amount || 0);
-            acc.total += totalAmount;
-            acc.paid += paidAmount;
-            return acc;
-          }, { total: 0, paid: 0 });
-          const total = Number(bucket.total || 0) || laybyTableTotals.total;
-          const paid = Math.max(Number(bucket.paid || 0), laybyTableTotals.paid);
-          const outstanding = Math.max(0, total - paid);
+          const total = Number(bucket.total || 0);
+          const paid = Number(bucket.paid || 0);
+          const outstanding = Number(bucket.due || 0);
           aggs[customerId] = {
             total,
             paid,
             outstanding,
             currency,
           };
-        });
+        }
 
         enriched = enriched.map((row) => {
           const fin = saleFinMap.get(String(row.id));
@@ -654,6 +644,42 @@ export default function AllSales() {
     }
   };
 
+  const openWhatsAppPreview = async (row) => {
+    if (!row?.id) return;
+    const receipt = row.receipt || row.receipt_number || row.id;
+    setWhatsappPreview({
+      open: true,
+      loading: true,
+      title: `WhatsApp preview — ${receipt}`,
+      message: '',
+      attachmentNote: '',
+      error: '',
+    });
+    try {
+      const result = await previewSaleWhatsAppForRow(row);
+      if (!result?.ok) {
+        setWhatsappPreview((prev) => ({
+          ...prev,
+          loading: false,
+          error: result?.error || 'Could not build WhatsApp preview.',
+        }));
+        return;
+      }
+      setWhatsappPreview((prev) => ({
+        ...prev,
+        loading: false,
+        message: result.message || '',
+        attachmentNote: result.attachmentNote || '',
+      }));
+    } catch (err) {
+      setWhatsappPreview((prev) => ({
+        ...prev,
+        loading: false,
+        error: err?.message || 'Could not build WhatsApp preview.',
+      }));
+    }
+  };
+
   const resendSaleWhatsApp = async (row) => {
     if (!row?.id) return;
     const saleId = row.id;
@@ -668,6 +694,7 @@ export default function AllSales() {
           customerId,
           eventType: 'statement',
           saleId,
+          locationId: row.location_id,
         });
       } else if (
         String(row.computedStatus || row.status || '').toLowerCase() === 'layby'
@@ -679,6 +706,7 @@ export default function AllSales() {
           customerId,
           eventType,
           saleId,
+          locationId: row.location_id,
         });
       } else {
         result = await notifySaleWhatsApp({ saleId });
@@ -874,6 +902,82 @@ export default function AllSales() {
     });
     return rows;
   }, [filtered, sortBy]);
+
+  const customerGroups = useMemo(() => {
+    const groups = [];
+    const indexByCustomer = new Map();
+    sortedRows.forEach((row) => {
+      const customerKey = String(row.customer_id || row.customerName || 'unknown');
+      if (!indexByCustomer.has(customerKey)) {
+        const entry = { customerKey, customerId: row.customer_id, customerName: row.customerName, rows: [] };
+        indexByCustomer.set(customerKey, entry);
+        groups.push(entry);
+      }
+      indexByCustomer.get(customerKey).rows.push(row);
+    });
+    groups.forEach((group) => {
+      const hasLaybyActivity = (group.rows || []).some((row) => row.isLayby);
+      if (!hasLaybyActivity) return;
+      group.rows.sort((a, b) => {
+        const ta = new Date(a.sale_date || a.created_at || 0).getTime();
+        const tb = new Date(b.sale_date || b.created_at || 0).getTime();
+        return ta - tb;
+      });
+    });
+    return groups;
+  }, [sortedRows]);
+
+  const ensureSaleItemsLoaded = async (saleIds) => {
+    const missing = (saleIds || []).map((id) => String(id)).filter((id) => id && !itemsBySaleId[id]);
+    if (!missing.length) return;
+    const { data, error } = await fromPublic('sales_items')
+      .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
+      .in('sale_id', missing);
+    if (error) throw error;
+    const productIds = [...new Set((data || []).map((row) => row?.product_id).filter(Boolean))];
+    let productNames = {};
+    if (productIds.length) {
+      const { data: products } = await fromPublic('products').select('id, name').in('id', productIds);
+      productNames = Object.fromEntries((products || []).map((product) => [String(product.id), product.name]));
+    }
+    setItemsBySaleId((prev) => {
+      const next = { ...prev };
+      (data || []).forEach((item) => {
+        const saleId = String(item?.sale_id || '');
+        if (!saleId) return;
+        if (!next[saleId]) next[saleId] = [];
+        next[saleId].push({
+          ...item,
+          label: String(item?.display_name || productNames[String(item?.product_id)] || 'Product').trim(),
+        });
+      });
+      missing.forEach((saleId) => {
+        if (!next[saleId]) next[saleId] = [];
+      });
+      return next;
+    });
+  };
+
+  const toggleCustomerExpanded = async (group) => {
+    const customerKey = String(group?.customerKey || '');
+    if (!customerKey) return;
+    const willExpand = !expandedCustomers.has(customerKey);
+    setExpandedCustomers((prev) => {
+      const next = new Set(prev);
+      if (next.has(customerKey)) next.delete(customerKey);
+      else next.add(customerKey);
+      return next;
+    });
+    if (!willExpand) return;
+    try {
+      setItemsLoadingCustomerId(customerKey);
+      await ensureSaleItemsLoaded((group?.rows || []).map((row) => row.id));
+    } catch (err) {
+      console.error('Failed to load sale items', err);
+    } finally {
+      setItemsLoadingCustomerId(null);
+    }
+  };
 
   const handleExportCsv = () => {
     if (!sortedRows.length) return;
@@ -1077,16 +1181,31 @@ export default function AllSales() {
               </tr>
             </thead>
             <tbody>
-              {(() => {
-                const lastIdxByCustomer = new Map();
-                sortedRows.forEach((r, idx) => lastIdxByCustomer.set(String(r.customer_id), idx));
+              {customerGroups.map((group) => {
+                const customerKey = String(group.customerKey || '');
+                const expanded = expandedCustomers.has(customerKey);
+                const loadingItems = itemsLoadingCustomerId === customerKey;
+                const agg = aggregatesByCustomer[String(group.customerId || '')];
                 const rows = [];
-                sortedRows.forEach((row, idx) => {
+                group.rows.forEach((row, rowIdx) => {
                   rows.push(
                     <tr key={row.id}>
                       <td className="date-col">{row.sale_date ? new Date(row.sale_date).toLocaleDateString() : ''}</td>
                       <td className="receipt-col" title={row.receipt}>{row.receipt}</td>
-                      <td className="customer-col" title={row.customerName || row.customer_id}>{row.customerName || row.customer_id}</td>
+                      <td className="customer-col" title={row.customerName || row.customer_id}>
+                        {rowIdx === 0 ? (
+                          <button
+                            type="button"
+                            className="allsales-expand-btn"
+                            onClick={() => toggleCustomerExpanded(group)}
+                            aria-expanded={expanded}
+                            aria-label={expanded ? 'Collapse customer sales' : 'Expand customer sales'}
+                          >
+                            {loadingItems ? '…' : (expanded ? <FaChevronDown aria-hidden="true" /> : <FaChevronRight aria-hidden="true" />)}
+                          </button>
+                        ) : null}
+                        <span>{row.customerName || row.customer_id}</span>
+                      </td>
                       <td className="location-col" title={row.locationName || row.location_id || ''}>{row.locationName || row.location_id || ''}</td>
                       <td className="status-col">{row.computedStatus || row.status}</td>
                       <td className="num-col total-col">{formatCurrency(row.total_amount, row.currency || row.customer?.currency || 'K')}</td>
@@ -1108,8 +1227,12 @@ export default function AllSales() {
                             type="button"
                             className="allsales-whatsapp-btn allsales-action-btn"
                             onClick={() => resendSaleWhatsApp(row)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              openWhatsAppPreview(row);
+                            }}
                             disabled={whatsappSaleId === row.id}
-                            title="Resend sale WhatsApp message"
+                            title="Resend sale WhatsApp (right-click to preview)"
                             aria-label="Resend sale WhatsApp message"
                           >
                             {whatsappSaleId === row.id ? '…' : <FaWhatsapp aria-hidden="true" />}
@@ -1120,33 +1243,58 @@ export default function AllSales() {
                             onClick={() => openDeleteConfirm(row)}
                           >Delete</button>
                         </div>
-                        {/* Removed: Mark Layby button */}
-                        {/* Removed: Set Correct Status per-sale button */}
                       </td>
                     </tr>
                   );
-                  const isLast = lastIdxByCustomer.get(String(row.customer_id)) === idx;
-                  if (isLast) {
-                    const agg = aggregatesByCustomer[String(row.customer_id)];
-                    if (agg) {
+                  if (expanded) {
+                    const saleItems = itemsBySaleId[String(row.id)] || [];
+                    if (!saleItems.length) {
                       rows.push(
-                        <tr key={`agg-${row.customer_id}-${idx}`} style={{ background: 'var(--dash-surface-2, #0e1a24)' }}>
-                          <td className="date-col"></td>
-                          <td className="receipt-col">—</td>
-                          <td className="customer-col" title={`${row.customerName || row.customer_id} - Totals`}>{row.customerName || row.customer_id} — Totals</td>
-                          <td className="location-col">—</td>
-                          <td className="status-col">active</td>
-                          <td className="num-col total-col">{formatCurrency(agg.total, agg.currency)}</td>
-                          <td className="num-col paid-col">{formatCurrency(agg.paid, agg.currency)}</td>
-                          <td className="num-col outstanding-col">{formatCurrency(agg.outstanding, agg.currency)}</td>
-                          <td className="actions-col">{/* Removed: Set Correct Status per-customer button */}</td>
+                        <tr key={`${row.id}-items-empty`} className="allsales-item-row">
+                          <td colSpan={9} className="allsales-item-cell">No line items recorded for this sale.</td>
                         </tr>
                       );
+                    } else {
+                      saleItems.forEach((item, itemIdx) => {
+                        const qty = Number(item?.quantity || 0);
+                        const price = Number(item?.unit_price || 0);
+                        const amount = qty * price;
+                        const currency = item?.currency || row.currency || row.customer?.currency || 'K';
+                        rows.push(
+                          <tr key={`${row.id}-item-${itemIdx}`} className="allsales-item-row">
+                            <td className="date-col"></td>
+                            <td className="receipt-col"></td>
+                            <td className="customer-col allsales-item-cell" colSpan={3}>
+                              {qty} × {item.label || 'Product'}
+                              {item?.color ? ` (${item.color})` : ''}
+                            </td>
+                            <td className="num-col total-col">{formatCurrency(price, currency)}</td>
+                            <td className="num-col paid-col"></td>
+                            <td className="num-col outstanding-col">{formatCurrency(amount, currency)}</td>
+                            <td className="actions-col"></td>
+                          </tr>
+                        );
+                      });
                     }
                   }
                 });
+                if (agg) {
+                  rows.push(
+                    <tr key={`agg-${group.customerId}`} className="allsales-customer-total-row">
+                      <td className="date-col"></td>
+                      <td className="receipt-col">—</td>
+                      <td className="customer-col" title={`${group.customerName || group.customerId} - Totals`}>{group.customerName || group.customerId} — Totals</td>
+                      <td className="location-col">—</td>
+                      <td className="status-col">active</td>
+                      <td className="num-col total-col">{formatCurrency(agg.total, agg.currency)}</td>
+                      <td className="num-col paid-col">{formatCurrency(agg.paid, agg.currency)}</td>
+                      <td className="num-col outstanding-col">{formatCurrency(agg.outstanding, agg.currency)}</td>
+                      <td className="actions-col"></td>
+                    </tr>
+                  );
+                }
                 return rows;
-              })()}
+              })}
               {sortedRows.length === 0 && (
                 <tr>
                   <td colSpan={9} style={{ textAlign: 'center', color: '#9aa4b2' }}>No results</td>
@@ -1406,6 +1554,55 @@ export default function AllSales() {
             <div className="allsales-modal-actions">
               <button className="allsales-cancel-btn" onClick={() => setDeleteModal({ open: false, saleId: null, meta: null, pin: '', loading: false, error: '' })} disabled={deleteModal.loading}>Cancel</button>
               <button className="allsales-delete-btn" onClick={confirmDeleteSale} disabled={deleteModal.loading}>{deleteModal.loading ? 'Deleting…' : 'Confirm Delete'}</button>
+            </div>
+          </div>
+        )}
+      </AllSalesModalPortal>
+
+      <AllSalesModalPortal
+        open={whatsappPreview.open}
+        onBackdropClick={() => setWhatsappPreview({
+          open: false,
+          loading: false,
+          title: '',
+          message: '',
+          attachmentNote: '',
+          error: '',
+        })}
+      >
+        {whatsappPreview.open && (
+          <div className="allsales-modal allsales-modal--whatsapp-preview" onClick={(e) => e.stopPropagation()}>
+            <h3>{whatsappPreview.title || 'WhatsApp preview'}</h3>
+            <p className="allsales-whatsapp-preview-hint">
+              Right-click preview — text below matches what will be sent. Asterisks mark WhatsApp bold (*like this*).
+            </p>
+            <div className="allsales-modal-body">
+              {whatsappPreview.loading && <div className="allsales-loading">Building preview…</div>}
+              {whatsappPreview.error && <div className="allsales-error-text">{whatsappPreview.error}</div>}
+              {!whatsappPreview.loading && !whatsappPreview.error && (
+                <>
+                  <pre className="allsales-whatsapp-preview-text">{whatsappPreview.message || '(No message text)'}</pre>
+                  {whatsappPreview.attachmentNote ? (
+                    <p className="allsales-whatsapp-preview-attachment">{whatsappPreview.attachmentNote}</p>
+                  ) : null}
+                </>
+              )}
+            </div>
+            <div className="allsales-modal-actions">
+              <button
+                type="button"
+                className="allsales-cancel-btn"
+                onClick={() => setWhatsappPreview({
+                  open: false,
+                  loading: false,
+                  title: '',
+                  message: '',
+                  attachmentNote: '',
+                  error: '',
+                })}
+              >
+                Close
+              </button>
             </div>
           </div>
         )}

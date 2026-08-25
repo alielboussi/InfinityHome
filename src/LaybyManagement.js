@@ -13,14 +13,15 @@ import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { insertLaybyPayments } from './services/laybyPayments';
 import { getCurrentUser, canManageLaybys } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
-import { buildLaybySaleFinancials, buildOutstandingLaybySales, computeLaybyTotalsByCurrency, filterStatementToOutstandingSales, formatLaybyTotalsLine, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
+import { buildLaybySaleFinancials, buildOutstandingLaybySales, computeLaybyTotalsByCurrency, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
 import { exportAllLaybyPdfsZip, exportLaybySummaryExcel } from './utils/laybyBulkExport';
 import { buildMonthlyBalanceDueMessages, laybyRowsToBalanceDueRows } from './utils/monthlyBalanceDuesMessage';
-import { notifyLaybyWhatsApp } from './services/whatsappNotify';
+import { notifyLaybyWhatsApp, previewLaybyWhatsAppForCustomerRow, resendLaybyWhatsAppForCustomerRow, laybyCustomerRowHasLusakaSaleAsync, resolveLaybyWhatsAppGroupLabel } from './services/whatsappNotify';
 import { sendMonthlyBalanceDueWhatsApp } from './services/whatsapp';
 import { isFahme } from './laybyRules';
+import { isFahmeStatementLocked, fahmeStatementLockedMessage } from './utils/fahmeStatementLock';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 import {
   clearQuoteLaybyPendingWhatsApp,
@@ -51,24 +52,13 @@ const normalizeCurrencyCode = (value, fallback = 'K') => {
 };
 
 /** Fahme accounts are USD-only — fold mis-tagged K buckets into one USD total so deposits accrue. */
-const getDisplayTotalsByCurrency = (row) => {
-  const raw = row?.totalsByCurrency || {};
-  if (!isFahme(row?.customerId)) return raw;
-  const folded = { total: 0, paid: 0, discount: 0, due: 0 };
-  Object.values(raw).forEach((vals) => {
-    folded.total += Number(vals?.total || 0);
-    folded.paid += Number(vals?.paid || 0);
-    folded.discount += Number(vals?.discount || 0);
-  });
-  folded.due = Math.max(0, folded.total - folded.paid - folded.discount);
-  return { USD: folded };
-};
+const getDisplayTotalsForRow = (row) => getDisplayTotalsByCurrency(row, { isFahmeCustomer: isFahme(row?.customerId) });
 
 /** Match layby table currency for payment entry and allocation fallbacks. */
 const resolveCustomerPaymentCurrency = ({ customerId, customer, totalsByCurrency } = {}) => {
   if (isFahme(customerId)) return 'USD';
   const preferred = normalizeCurrencyCode(customer?.currency, '');
-  const displayTotals = getDisplayTotalsByCurrency({ customerId, totalsByCurrency });
+  const displayTotals = getDisplayTotalsByCurrency({ totalsByCurrency }, { isFahmeCustomer: isFahme(customerId) });
   const entries = Object.entries(displayTotals || {});
   if (preferred) {
     const match = entries.find(([code]) => code === preferred);
@@ -238,6 +228,14 @@ export default function LaybyManagement() {
   const [monthlyBalanceBusy, setMonthlyBalanceBusy] = useState(false);
   const [bulkExportLabel, setBulkExportLabel] = useState('');
   const [whatsAppRowBusyId, setWhatsAppRowBusyId] = useState('');
+  const [whatsappPreview, setWhatsappPreview] = useState({
+    open: false,
+    loading: false,
+    title: '',
+    message: '',
+    attachmentNote: '',
+    error: '',
+  });
   const [quoteLinkIndex, setQuoteLinkIndex] = useState(emptyQuoteLinkIndex);
   const currentUser = useMemo(() => getCurrentUser(), []);
   const readOnly = !canManageLaybys(currentUser);
@@ -487,6 +485,12 @@ export default function LaybyManagement() {
       setLoading(false);
       return;
     }
+    const customerId = selectedLayby.customer_id || selectedLayby.customerId;
+    if (isFahmeStatementLocked(customerId)) {
+      setError(fahmeStatementLockedMessage(customerId));
+      setLoading(false);
+      return;
+    }
     let successFlag = false;
     let whatsappSaleId = null;
     let fromQuote = false;
@@ -495,7 +499,6 @@ export default function LaybyManagement() {
       setLoading(prev => (prev ? false : prev));
     }, 15000);
     try {
-      const customerId = selectedLayby.customer_id;
       const { data: custRow } = await db.from('customers').select('currency').eq('id', customerId).maybeSingle();
       const curr = resolveCustomerPaymentCurrency({
         customerId,
@@ -796,6 +799,11 @@ export default function LaybyManagement() {
   }
 
   async function openPaymentsEditor(target) {
+    const customerId = target?.customer_id || target?.customerId || target?.customerInfo?.id;
+    if (isFahmeStatementLocked(customerId)) {
+      setError(fahmeStatementLockedMessage(customerId));
+      return;
+    }
     setPaymentsErr('');
     setPaymentsBusy(true);
     setPaymentEditLayby(target);
@@ -980,12 +988,16 @@ export default function LaybyManagement() {
 
   async function savePayments() {
     if (!paymentEditLayby) return;
+    const customerId = paymentEditLayby?.customer_id
+      || paymentEditLayby?.customerId
+      || paymentEditLayby?.customerInfo?.id;
+    if (isFahmeStatementLocked(customerId)) {
+      setPaymentsErr(fahmeStatementLockedMessage(customerId));
+      return;
+    }
     setPaymentsBusy(true);
     setPaymentsErr('');
     try {
-      const customerId = paymentEditLayby?.customer_id
-        || paymentEditLayby?.customerId
-        || paymentEditLayby?.customerInfo?.id;
       const forceUsd = isFahme(customerId);
 
       for (const row of paymentRows) {
@@ -1337,15 +1349,45 @@ export default function LaybyManagement() {
     }
   }
 
+  async function openLaybyWhatsAppPreview(row) {
+    const customerName = row?.customer?.name || row?.customerId || 'Customer';
+    setWhatsappPreview({
+      open: true,
+      loading: true,
+      title: `WhatsApp preview — ${customerName}`,
+      message: '',
+      attachmentNote: '',
+      error: '',
+    });
+    try {
+      const result = await previewLaybyWhatsAppForCustomerRow(row);
+      if (!result?.ok) {
+        setWhatsappPreview((prev) => ({
+          ...prev,
+          loading: false,
+          error: result?.error || 'Could not build WhatsApp preview.',
+        }));
+        return;
+      }
+      setWhatsappPreview((prev) => ({
+        ...prev,
+        loading: false,
+        message: result.message || '',
+        attachmentNote: result.attachmentNote || '',
+      }));
+    } catch (e) {
+      setWhatsappPreview((prev) => ({
+        ...prev,
+        loading: false,
+        error: e?.message || 'Could not build WhatsApp preview.',
+      }));
+    }
+  }
+
   async function handleSendCustomerLaybyWhatsApp(row) {
     const customerId = row?.customerId;
-    const laybyId = row?.primaryLayby?.id || (row?.laybys || []).find((layby) => layby?.id)?.id;
     if (!customerId) {
       setError('Missing customer id for WhatsApp send.');
-      return;
-    }
-    if (!laybyId) {
-      setError('No layby id found for this customer.');
       return;
     }
     if (whatsAppRowBusyId) return;
@@ -1354,20 +1396,14 @@ export default function LaybyManagement() {
     setError('');
     setSuccess('');
     try {
-      const layby = row.primaryLayby || (row.laybys || []).find((entry) => entry?.id === laybyId);
-      const target = buildSelectedLaybyTarget(row, layby);
-      const result = await notifyLaybyWhatsApp({
-        laybyId,
-        customerId,
-        eventType: 'statement',
-        laybySnapshot: target,
-      });
+      const result = await resendLaybyWhatsAppForCustomerRow(row);
       if (!result?.ok) {
         setError(`WhatsApp send failed for ${row.customer?.name || customerId}: ${result?.error || 'Unknown error'}`);
         return;
       }
-      const groupLabel = isFahme(customerId) ? 'Fahme' : 'Layby';
-      setSuccess(`Layby PDF sent to ${groupLabel} WhatsApp group for ${row.customer?.name || customerId}.`);
+      const isLusakaSale = await laybyCustomerRowHasLusakaSaleAsync(row);
+      const groupLabel = resolveLaybyWhatsAppGroupLabel(customerId, isLusakaSale);
+      setSuccess(`Layby WhatsApp sent to ${groupLabel} group for ${row.customer?.name || customerId}.`);
     } catch (e) {
       console.warn('Customer layby WhatsApp send failed:', e?.message || e);
       setError(`WhatsApp send failed: ${e?.message || 'Unknown error'}`);
@@ -1466,7 +1502,7 @@ export default function LaybyManagement() {
             <tbody>
               {filteredRows.map(row => {
                 const formatGroupCell = (field) => {
-                  const entries = Object.entries(getDisplayTotalsByCurrency(row));
+                  const entries = Object.entries(getDisplayTotalsForRow(row));
                   if (!entries.length) return '—';
                   // Prefer customer currency when not Fahme (Fahme already folded to USD).
                   const preferred = isFahme(row.customerId)
@@ -1491,11 +1527,22 @@ export default function LaybyManagement() {
                 };
                 const editQuoteId = resolveRowQuoteId(row, quoteLinkIndex);
                 const showEditQuote = canOfferEditQuote(row);
+                const rowLocked = Boolean(row.statementLocked || isFahmeStatementLocked(row.customerId));
 
                 return (
                   <tr key={`row-${row.customerId}`} style={{ background: '#1a1f27' }}>
                     <td className="text-col" style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>
                       <div style={{ fontWeight: 700 }}>{row.customer?.name || row.customerId}</div>
+                      {row.placeholderHold && (
+                        <div style={{ fontSize: '0.75rem', color: '#9aa4b2', marginTop: 4 }}>
+                          Pending reconciliation — totals hidden while Acc(2) is being fixed
+                        </div>
+                      )}
+                      {rowLocked && (
+                        <div style={{ fontSize: '0.75rem', color: '#63c7ff', marginTop: 4 }}>
+                          Signed-off statement locked — totals match reference PDF
+                        </div>
+                      )}
                     </td>
                     <td className="text-col" style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{row.customer?.phone || '—'}</td>
                     <td className="num-col" style={{ whiteSpace: 'nowrap', overflow: 'visible' }}>{formatGroupCell('total')}</td>
@@ -1514,7 +1561,7 @@ export default function LaybyManagement() {
                           const target = buildSelectedLaybyTarget(row, primaryLayby);
                           if (target) setSelectedLayby(target);
                         }}
-                        disabled={!primaryLayby}
+                        disabled={!primaryLayby || rowLocked}
                       >
                         Add Payment
                       </button>
@@ -1522,6 +1569,7 @@ export default function LaybyManagement() {
                         style={{ width: '100%', background: '#6c5ce7', color: '#fff', borderRadius: 6, padding: '6px 10px', fontWeight: 600, fontSize: '0.82rem' }}
                         title="View and edit payments for this customer"
                         onClick={() => openPaymentsEditor(customerTarget)}
+                        disabled={rowLocked}
                       >
                         Edit Payments
                       </button>
@@ -1550,9 +1598,15 @@ export default function LaybyManagement() {
                         <button
                           type="button"
                           className="layby-export-btn layby-export-btn--whatsapp"
-                          title={isFahme(row.customerId) ? 'Send layby PDF to Fahme WhatsApp group' : 'Send layby PDF to Layby WhatsApp group'}
-                          aria-label="Send layby PDF to WhatsApp group"
+                          title={isFahme(row.customerId)
+                            ? 'Resend layby PDF to Fahme WhatsApp (right-click to preview)'
+                            : 'Resend layby WhatsApp to Layby or Lusaka group based on sale location (right-click to preview)'}
+                          aria-label="Resend layby WhatsApp message"
                           onClick={() => handleSendCustomerLaybyWhatsApp(row)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            openLaybyWhatsAppPreview(row);
+                          }}
                           disabled={!laybyId || Boolean(whatsAppRowBusyId)}
                           style={{ opacity: whatsAppRowBusyId === row.customerId ? 0.6 : 1 }}
                         >
@@ -1591,7 +1645,7 @@ export default function LaybyManagement() {
                             await generateLaybyPdf(pdfLayby, {
                               statement,
                               // Same folded USD totals shown in the Layby table (prevents Acc(2) settlement drift).
-                              totalsByCurrency: getDisplayTotalsByCurrency(row),
+                              totalsByCurrency: getDisplayTotalsForRow(row),
                             });
                           }}
                         >
@@ -1905,6 +1959,67 @@ export default function LaybyManagement() {
                 }}
               >
                 {paymentsBusy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {whatsappPreview.open && (
+        <div
+          className="layby-modal-overlay"
+          onClick={() => setWhatsappPreview({
+            open: false,
+            loading: false,
+            title: '',
+            message: '',
+            attachmentNote: '',
+            error: '',
+          })}
+        >
+          <div className="layby-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
+            <h3 style={{ marginTop: 0 }}>{whatsappPreview.title || 'WhatsApp preview'}</h3>
+            <p style={{ color: '#9aa4b2', fontSize: 12, marginTop: 0 }}>
+              Right-click preview — text below matches what will be sent to the Layby or Lusaka group based on sale location.
+            </p>
+            {whatsappPreview.loading && <div style={{ color: '#9aa4b2' }}>Building preview…</div>}
+            {whatsappPreview.error && <div style={{ color: '#ff5252' }}>{whatsappPreview.error}</div>}
+            {!whatsappPreview.loading && !whatsappPreview.error && (
+              <>
+                <pre style={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  background: '#0f141b',
+                  color: '#e8edf5',
+                  padding: 12,
+                  borderRadius: 8,
+                  fontSize: 13,
+                  lineHeight: 1.45,
+                  maxHeight: '50vh',
+                  overflow: 'auto',
+                }}
+                >
+                  {whatsappPreview.message || '(No message text)'}
+                </pre>
+                {whatsappPreview.attachmentNote ? (
+                  <p style={{ color: '#9aa4b2', fontSize: 12 }}>{whatsappPreview.attachmentNote}</p>
+                ) : null}
+              </>
+            )}
+            <div className="layby-modal-actions pos-modal-actions" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="pos-modal-btn-secondary"
+                onClick={() => setWhatsappPreview({
+                  open: false,
+                  loading: false,
+                  title: '',
+                  message: '',
+                  attachmentNote: '',
+                  error: '',
+                })}
+              >
+                Close
               </button>
             </div>
           </div>

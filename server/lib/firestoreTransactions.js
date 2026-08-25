@@ -8,6 +8,7 @@ import {
   updateWhereIn,
 } from './firestoreDb.js';
 import { normalizeLaybyStatement } from '../../src/utils/laybyStatementNormalize.js';
+import { applyFahmeStatementLock, filterLockedFahmeSales, isFahmeStatementLocked } from '../../src/utils/fahmeStatementLock.js';
 
 const ALLOWED_USER_ID = '1b5e098e-1206-447e-b4bc-6d009b85b5d3';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -87,6 +88,18 @@ async function computeSaleFinancials(db, saleIds) {
   return totalsBySale;
 }
 
+async function rejectLockedFahmePaymentsForSales(db, saleIds = []) {
+  const uniqueSaleIds = [...new Set((saleIds || []).filter((value) => value != null).map(String))];
+  for (const saleId of uniqueSaleIds) {
+    const rows = await queryWhereIn(db, 'sales', 'id', [saleId]);
+    const customerId = rows?.[0]?.customer_id;
+    if (!isFahmeStatementLocked(customerId)) continue;
+    const err = new Error('This layby statement is locked to the signed-off PDF. Payments cannot be added or changed.');
+    err.status = 403;
+    throw err;
+  }
+}
+
 export async function firestorePaymentsCreate(body = {}) {
   const db = getFirestore();
   const payments = Array.isArray(body.payments) ? body.payments : [];
@@ -128,6 +141,8 @@ export async function firestorePaymentsCreate(body = {}) {
       throw err;
     }
   }
+
+  await rejectLockedFahmePaymentsForSales(db, mapped.map((row) => row.sale_id));
 
   await insertRows(db, 'sales_payments', mapped);
   const batch = defaultBatch || mapped[0]?.allocation_batch_uuid || null;
@@ -185,7 +200,11 @@ export async function firestoreLaybyStatement(body = {}) {
     return status === 'layby' || laybyIds.has(laybyId) || laybySaleIds.has(saleId);
   });
 
-  const saleIds = laybySales.map((sale) => sale.id).filter((v) => v != null);
+  const scopedLaybySales = isFahmeStatementLocked(customerId)
+    ? filterLockedFahmeSales(laybySales, customerId)
+    : laybySales;
+
+  const saleIds = scopedLaybySales.map((sale) => sale.id).filter((v) => v != null);
   if (!saleIds.length) {
     return { ok: true, sales: [], items: [], payments: [] };
   }
@@ -221,7 +240,7 @@ export async function firestoreLaybyStatement(body = {}) {
       });
     });
 
-  const sales = laybySales.map((sale) => {
+  const sales = scopedLaybySales.map((sale) => {
     const fin = totalsBySale.get(String(sale.id)) || {};
     const quoteFin = quoteBySale.get(String(sale.id));
     const shouldUseQuoteTotal = quoteFin && Math.abs(Number(fin.total_due || 0) - Number(quoteFin.total_due || 0)) > 0.009;
@@ -250,6 +269,18 @@ export async function firestoreLaybyStatement(body = {}) {
     notes: sanitizePaymentNote(payment.notes),
     payment_type: String(payment.payment_type || '').toLowerCase(),
   }));
+
+  const locked = applyFahmeStatementLock(customerId, { sales, items, payments });
+  if (locked.statementLocked) {
+    return {
+      ok: true,
+      ...normalizeLaybyStatement({
+        sales: locked.sales,
+        items: locked.items,
+        payments: locked.payments,
+      }),
+    };
+  }
 
   return { ok: true, ...normalizeLaybyStatement({ sales, items, payments }) };
 }
@@ -286,6 +317,9 @@ export async function firestoreLaybyPaymentsDelete(body = {}) {
   const db = getFirestore();
   const rows = Array.isArray(body.rows) ? body.rows : [];
   if (!rows.length) return { ok: true, count: 0 };
+
+  const saleIds = rows.map((row) => row?.sale_id).filter((value) => value != null);
+  await rejectLockedFahmePaymentsForSales(db, saleIds);
 
   const laybyIds = rows
     .map((row) => String(row?.id || '').trim())

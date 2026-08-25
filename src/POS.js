@@ -17,7 +17,7 @@ import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp, notifySaleWhatsApp } from './services/whatsappNotify';
 import { previewPosSalePdfSample } from './services/whatsappPdfs';
 import { getCurrentUser, resolveSaleActor } from './accessControl';
-import { fetchComputedInventorySnapshot } from './services/inventorySnapshot';
+import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import { fetchPosCatalogViaApi, fetchPosLocationsViaApi } from './services/posCatalogApi';
 import BackToDashboard from './BackToDashboard';
 import { syncProductLocations } from './services/productLocations';
@@ -37,6 +37,33 @@ import {
   formatPosReceiptNumber,
   RECEIPT_DUPLICATE_ERROR,
 } from './utils/receiptNumber';
+import { parseBalanceDueDays, computeBalanceDueDeadline } from './utils/laybyBalanceAllowance';
+import { resolveProductImageUrl, resolveProductRecordImageUrl } from './utils/productImageUrl';
+
+const POS_PRODUCT_SELECT = 'id, name, sku, price, promotional_price, currency, image_url, product_images(image_url)';
+const POS_COMBO_SELECT = 'id, combo_name, sku, standard_price, promotional_price, combo_price, currency, picture_url';
+
+const mapProductWithImage = (product) => ({
+  ...product,
+  imageUrl: resolveProductRecordImageUrl(product),
+});
+
+const mapComboWithImage = (combo) => ({
+  ...combo,
+  imageUrl: resolveProductImageUrl(combo?.picture_url || '') || '',
+});
+
+function PosCardImage({ imageUrl, alt }) {
+  if (!imageUrl) return null;
+  return (
+    <div className="pos-product-thumb-wrap">
+      <img src={imageUrl} alt={alt || ''} className="pos-product-thumb" loading="lazy" />
+      <div className="pos-product-thumb-zoom" aria-hidden="true">
+        <img src={imageUrl} alt="" className="pos-product-thumb-zoom__img" />
+      </div>
+    </div>
+  );
+}
 
 const normalizeCurrencyCode = (raw) => {
   if (!raw) return 'K';
@@ -325,6 +352,7 @@ export default function POS({ isMobile = false }) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [inventoryDeductedMsg, setInventoryDeductedMsg] = useState(""); // New state for inventory deducted message
   const [remainingDue, setRemainingDue] = useState(0); // Total due across active laybys
+  const [balanceDueDays, setBalanceDueDays] = useState('');
   // Fahme constants centralized in laybyRules.js
   // Decision modal when advance < sale total and outstanding remains
   const [showDecisionModal, setShowDecisionModal] = useState(false);
@@ -514,9 +542,9 @@ export default function POS({ isMobile = false }) {
       } catch {}
       // Fetch inventory minimal shape, then hydrate products and locations to avoid 406/400s
       const [invSnap, combosRes, comboLocationsRes, comboItemsRes, locRowsRes, productLocationPricesRes, comboLocationPricesRes] = await Promise.all([
-        fetchComputedInventorySnapshot(selectedLocation),
+        fetchInventorySnapshot(selectedLocation),
         fromPublic('combos')
-          .select('id, combo_name, sku, standard_price, promotional_price, combo_price, currency'),
+          .select(POS_COMBO_SELECT),
         fromPublic('combo_locations')
           .select('combo_id, location_id'),
         fromPublic('combo_items')
@@ -547,7 +575,7 @@ export default function POS({ isMobile = false }) {
         const chunks = chunkArray(prodIds, 200);
         for (const chunk of chunks) {
           const { data: pRows, error: pErr } = await fromPublic('products')
-            .select('id, name, sku, price, promotional_price, currency')
+            .select(POS_PRODUCT_SELECT)
             .in('id', chunk);
           if (pErr) {
             directCatalogError = directCatalogError || pErr;
@@ -557,7 +585,7 @@ export default function POS({ isMobile = false }) {
         }
       } else {
         const { data: allProducts, error: allProductsErr } = await fromPublic('products')
-          .select('id, name, sku, price, promotional_price, currency');
+          .select(POS_PRODUCT_SELECT);
         if (allProductsErr) {
           directCatalogError = directCatalogError || allProductsErr;
         }
@@ -591,10 +619,10 @@ export default function POS({ isMobile = false }) {
       (prodRows || []).forEach(p => {
         if (allowedProductIds && !allowedProductIds.has(String(p.id))) return;
         const priced = applyProductLocationPricing(p, selectedLocation, productLocationPriceMap);
-        productMap[p.id] = {
+        productMap[p.id] = mapProductWithImage({
           ...priced,
           stock: Number(qtyByProduct[p.id] || 0),
-        };
+        });
       });
 
       const comboLocationsByCombo = buildComboLocationsByCombo(comboLocationsData || []);
@@ -619,7 +647,7 @@ export default function POS({ isMobile = false }) {
               const setQty = getSetQty(priced.id);
           const basePrice = (priced.combo_price ?? priced.standard_price ?? 0);
           const promoPrice = (priced.promotional_price ?? 0);
-          return {
+          return mapComboWithImage({
             ...priced,
             name: priced.combo_name, // ensure table shows the set name
             price: basePrice, // base price stored; UI uses getBestPrice(promotional_price, price)
@@ -627,7 +655,7 @@ export default function POS({ isMobile = false }) {
             currency: priced.currency ?? '',
             stock: setQty,
             isSet: true,
-          };
+          });
         })
         .filter(set => set.stock > 0);
       setSets(filteredSets);
@@ -994,6 +1022,9 @@ export default function POS({ isMobile = false }) {
     ? settlementPreview.outstandingNow
     : Math.max(0, subtotal - totalPaidNow - discountAmount);
   const isPartialCheckout = paymentDueNow > 0.0001;
+  const willCreateNewLayby = isPartialCheckout
+    && selectedCustomer
+    && !resolveActiveLayby(customerLaybys, normalizeCurrencyCode(currency));
 
   // Auto-fill payment to the net total (amount due after discount).
   const paymentManualSignature = (paymentLines || [])
@@ -1175,10 +1206,11 @@ export default function POS({ isMobile = false }) {
               discountAmount,
               subtotal,
               total,
-              receiptNumber: formattedReceipt,
-            },
-            existingLaybyId: activeLayby.id,
-          });
+            receiptNumber: formattedReceipt,
+          },
+          existingLaybyId: activeLayby.id,
+          balanceDueDays: null,
+        });
         } catch (err) {
           setCheckoutError(err.message || "Checkout failed.");
         }
@@ -1204,7 +1236,8 @@ export default function POS({ isMobile = false }) {
             subtotal,
             total,
             receiptNumber: formattedReceipt,
-          }
+          },
+          balanceDueDays,
         });
       } catch (err) {
         setCheckoutError(err.message || "Checkout failed.");
@@ -1239,7 +1272,7 @@ export default function POS({ isMobile = false }) {
   };
 
   // Helper to execute the checkout DB writes after user chooses to proceed with layby/completed
-  const finalizeCheckout = async ({ customerId, remainingPay, outstandingNow, ctx, existingLaybyId = null }) => {
+  const finalizeCheckout = async ({ customerId, remainingPay, outstandingNow, ctx, existingLaybyId = null, balanceDueDays: balanceDueDaysInput = null }) => {
     // Reverted to legacy flow (no RPC) due to schema mismatch (is_layby column not present in sales table in current environment)
     // 1. (Optional) Validate cart
     if (!ctx?.cart?.length) {
@@ -1309,18 +1342,23 @@ export default function POS({ isMobile = false }) {
         // We will update totals after inserting sale & payment via rollup; just capture id
         laybyId = existingLaybyId;
       } else {
+        const createdAt = new Date().toISOString();
+        const allowanceDays = parseBalanceDueDays(balanceDueDaysInput);
+        const laybyInsert = {
+          customer_id: customerId,
+          total_amount: 0, // will be recomputed after sale insertion
+          paid_amount: 0,
+          status: 'active',
+          created_at: createdAt,
+          updated_at: createdAt,
+          notes: null,
+        };
+        if (allowanceDays) {
+          laybyInsert.balance_due_days = allowanceDays;
+          laybyInsert.balance_due_deadline = computeBalanceDueDeadline(createdAt, allowanceDays);
+        }
         const { data: laybyData, error: laybyError } = await fromPublic('laybys')
-          .insert([
-            {
-              customer_id: customerId,
-              total_amount: 0, // will be recomputed after sale insertion
-              paid_amount: 0,
-              status: 'active',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              notes: null
-            }
-          ])
+          .insert([laybyInsert])
           .select();
         if (laybyError) throw laybyError;
         laybyId = laybyData?.[0]?.id;
@@ -1508,6 +1546,7 @@ export default function POS({ isMobile = false }) {
     setSearch("");
     setDiscountAll(0);
     setRemainingDue(0);
+    setBalanceDueDays('');
 
     void (async () => {
       let whatsappWarning = '';
@@ -1515,11 +1554,16 @@ export default function POS({ isMobile = false }) {
         const notifyErrors = [];
         const isFahmeCheckout = isFahme(customerId);
         if (isFahmeCheckout) {
+          const fahmeCustomer = customers.find((c) => String(c.id) === String(customerId));
           const result = await notifyLaybyWhatsApp({
             laybyId: laybyId || existingLaybyId || null,
             customerId,
             eventType: 'statement',
             saleId,
+            locationId: ctx.selectedLocation,
+            laybySnapshot: fahmeCustomer
+              ? { customer_id: customerId, customerInfo: fahmeCustomer }
+              : undefined,
           });
           if (!result?.ok) notifyErrors.push(result?.error || 'Fahme PDF WhatsApp failed');
         } else if (laybyId && !existingLaybyId && outstandingNow > 0) {
@@ -1528,6 +1572,7 @@ export default function POS({ isMobile = false }) {
             customerId,
             eventType: 'new_layby',
             saleId,
+            locationId: ctx.selectedLocation,
           });
           if (!result?.ok) notifyErrors.push(result?.error || 'Layby WhatsApp failed');
         } else if (laybyId && existingLaybyId && (remainingPay > 0 || outstandingNow > 0)) {
@@ -1536,6 +1581,7 @@ export default function POS({ isMobile = false }) {
             customerId,
             eventType: 'layby_addition',
             saleId,
+            locationId: ctx.selectedLocation,
           });
           if (!result?.ok) notifyErrors.push(result?.error || 'Layby WhatsApp failed');
         }
@@ -1614,7 +1660,8 @@ export default function POS({ isMobile = false }) {
           discountAmount: pendingCheckout.snapshot.discountAmount,
           total: pendingCheckout.snapshot.total,
           receiptNumber: pendingCheckout.snapshot.receiptNumber,
-        }
+        },
+        balanceDueDays,
       });
     } catch (err) {
       setCheckoutError(err.message || 'Checkout failed.');
@@ -1751,7 +1798,7 @@ export default function POS({ isMobile = false }) {
       if (selectedLocation) {
         // Re-run fetchProductsAndSets logic
         async function refreshProductsAndSets() {
-          const invSnap2 = await fetchComputedInventorySnapshot(selectedLocation);
+          const invSnap2 = await fetchInventorySnapshot(selectedLocation);
           const invData = (invSnap2?.data || []).map((r) => ({
             product_id: r.product_id,
             quantity: r.quantity,
@@ -1763,7 +1810,7 @@ export default function POS({ isMobile = false }) {
             const chunks = chunkArray(prodIds2, 200);
             for (const chunk of chunks) {
               const [{ data: pRows2 }, { data: plRows2 }] = await Promise.all([
-                fromPublic('products').select('id, name, sku, price, promotional_price, currency').in('id', chunk),
+                fromPublic('products').select(POS_PRODUCT_SELECT).in('id', chunk),
                 fromPublic('product_locations').select('product_id, location_id').in('product_id', chunk),
               ]);
               prodRows2 = prodRows2.concat(pRows2 || []);
@@ -1784,13 +1831,13 @@ export default function POS({ isMobile = false }) {
           });
           (prodRows2 || []).forEach(p => {
             if (!allowedProductIds2.has(p.id)) return;
-            productMap[p.id] = {
+            productMap[p.id] = mapProductWithImage({
               ...p,
               stock: Number(qtyByProduct2[p.id] || 0),
-            };
+            });
           });
           const { data: combosData } = await fromPublic("combos")
-            .select("id, combo_name, sku, standard_price, promotional_price, combo_price, currency");
+            .select(POS_COMBO_SELECT);
           const { data: comboLocationsData } = await fromPublic("combo_locations")
             .select("combo_id, location_id");
           const { data: comboItemsData } = await fromPublic("combo_items")
@@ -1821,7 +1868,7 @@ export default function POS({ isMobile = false }) {
           const filteredSets = combosForLocation
             .map(combo => {
               const setQty = getMaxSetQtyForCombo(combo.id);
-              return {
+              return mapComboWithImage({
                 ...combo,
                 name: combo.combo_name, // ensure set name appears in cart table
                 price: combo.combo_price ?? combo.standard_price ?? 0,
@@ -1829,7 +1876,7 @@ export default function POS({ isMobile = false }) {
                 currency: combo.currency ?? '',
                 stock: setQty,
                 isSet: true,
-              };
+              });
             })
             .filter(set => set.stock > 0);
           setSets(filteredSets);
@@ -2223,14 +2270,17 @@ export default function POS({ isMobile = false }) {
               disabled={isUnavailable}
               style={isUnavailable ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
             >
-              {product.name} ({product.sku})<br />Stock: {Math.max(0, displayStock)} {product.stockState === 'reserved' && '(reserved)'}<br />
-              <b>Price: {getBestPrice(product).toFixed(2)} {getCurrencyLabel(product.currency || currency)}</b>
-              <div className="pos-product-meta">std: {String(product.price)} | promo: {String(product.promotional_price)}</div>
-              {isUnavailable && (
-                <div style={{ marginTop: 6, fontSize: '0.8em', color: '#fff', background: badgeColor, display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
-                  {badgeLabel}
-                </div>
-              )}
+              <PosCardImage imageUrl={product.imageUrl} alt={product.name} />
+              <div className="pos-product-body">
+                {product.name} ({product.sku})<br />Stock: {Math.max(0, displayStock)} {product.stockState === 'reserved' && '(reserved)'}<br />
+                <b>Price: {getBestPrice(product).toFixed(2)} {getCurrencyLabel(product.currency || currency)}</b>
+                <div className="pos-product-meta">std: {String(product.price)} | promo: {String(product.promotional_price)}</div>
+                {isUnavailable && (
+                  <div style={{ marginTop: 6, fontSize: '0.8em', color: '#fff', background: badgeColor, display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+                    {badgeLabel}
+                  </div>
+                )}
+              </div>
             </button>
             );
           }),
@@ -2240,9 +2290,12 @@ export default function POS({ isMobile = false }) {
               className="pos-product-btn"
               onClick={() => addToCart(set)}
             >
-              {set.combo_name} (Set) ({set.sku})<br />
-              <span className="pos-product-stock">Stock: {set.stock}</span><br />
-              <b>Price: {getBestPrice(set).toFixed(2)} {getCurrencyLabel(set.currency || currency)}</b>
+              <PosCardImage imageUrl={set.imageUrl} alt={set.combo_name || set.name} />
+              <div className="pos-product-body">
+                {set.combo_name} (Set) ({set.sku})<br />
+                <span className="pos-product-stock">Stock: {set.stock}</span><br />
+                <b>Price: {getBestPrice(set).toFixed(2)} {getCurrencyLabel(set.currency || currency)}</b>
+              </div>
             </button>
           ))
         ]}
@@ -2433,6 +2486,23 @@ export default function POS({ isMobile = false }) {
           />
         </div>
         <div><b>Total: {total.toFixed(2)} {currencyLabel}</b></div>
+        {willCreateNewLayby && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <label htmlFor="pos-balance-due-days" style={{ fontSize: '0.95rem' }}>
+              Days to complete balance (optional)
+            </label>
+            <input
+              id="pos-balance-due-days"
+              type="number"
+              min="1"
+              step="1"
+              value={balanceDueDays}
+              onChange={(e) => setBalanceDueDays(e.target.value)}
+              placeholder="e.g. 30"
+              style={{ width: 90, fontSize: '0.95rem', height: 28 }}
+            />
+          </div>
+        )}
         {selectedCustomer && (
           <div><b>Amount due: {paymentDueNow.toFixed(2)} {currencyLabel}</b></div>
         )}

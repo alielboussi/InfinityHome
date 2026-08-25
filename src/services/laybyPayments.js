@@ -21,21 +21,33 @@ const buildPaymentKey = (row) => {
   return `${saleId}|${date}|${amount}|${discount}|${type}|${reference}|${notes}`;
 };
 
-const mapRows = (rows) => {
-  const normalized = (rows || []).map(p => ({
-    ...p,
-    payment_type: String(p.payment_type || '').toLowerCase(),
-  }));
+export function buildLaybyPaymentLooseKey(row) {
+  const saleId = String(row?.sale_id || '').trim();
+  const dateRaw = String(row?.payment_date || '').trim();
+  const day = dateRaw ? dateRaw.slice(0, 10) : '';
+  const amount = Number(row?.amount || 0);
+  const type = String(row?.payment_type || '').toLowerCase();
+  const reference = String(row?.reference || '').trim().replace(/^#/, '').toLowerCase();
+  return `${saleId}|${day}|${amount.toFixed(2)}|${type}|${reference}`;
+}
+
+export function dedupeLaybyPaymentRows(rows = [], { strict = false } = {}) {
   const seen = new Set();
   const deduped = [];
-  normalized.forEach((row) => {
-    const key = buildPaymentKey(row);
+  (rows || []).forEach((row) => {
+    const normalized = {
+      ...row,
+      payment_type: String(row?.payment_type || '').toLowerCase(),
+    };
+    const key = strict ? buildPaymentKey(normalized) : buildLaybyPaymentLooseKey(normalized);
     if (seen.has(key)) return;
     seen.add(key);
-    deduped.push(row);
+    deduped.push(normalized);
   });
   return deduped;
-};
+}
+
+const mapRows = (rows) => dedupeLaybyPaymentRows(rows, { strict: false });
 
 async function fetchSalesPaymentsBySaleIds(saleIds = []) {
   const ids = Array.isArray(saleIds) ? saleIds.filter((value) => value != null) : [];
@@ -85,13 +97,17 @@ export async function fetchMergedLaybyPayments({ customerId, saleIds = [] } = {}
   results.forEach((result) => {
     if (result?.error) return;
     (result?.data || []).forEach((row) => {
-      const key = buildPaymentKey(row);
+      const normalized = {
+        ...row,
+        payment_type: String(row?.payment_type || '').toLowerCase(),
+      };
+      const key = buildLaybyPaymentLooseKey(normalized);
       if (seen.has(key)) return;
       seen.add(key);
-      merged.push(row);
+      merged.push(normalized);
     });
   });
-  return { data: mapRows(merged) };
+  return { data: dedupeLaybyPaymentRows(merged) };
 }
 
 export async function fetchLaybyPaymentsBySaleIds(saleIds = []) {

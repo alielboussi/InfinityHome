@@ -373,7 +373,7 @@ const PriceLabels = () => {
     const payload = { type: item.type, id: item.id };
     setSelected((prev) => {
       const idx = prev.findIndex((s) => s.type === payload.type && s.id === payload.id);
-      if (idx === -1) return [...prev, { ...payload, qty, addedOrder: getNextAddedOrder() }];
+      if (idx === -1) return [...prev, { ...payload, qty, addedOrder: getNextAddedOrder(), printStandardOnly: false }];
       const next = [...prev];
       const existing = next[idx];
       next[idx] = { ...existing, qty: normalizeQty(existing.qty) + normalizeQty(qty) };
@@ -400,7 +400,7 @@ const PriceLabels = () => {
         const item = { type: 'product', id: product.id };
         const idx = next.findIndex((s) => s.type === item.type && s.id === item.id);
         if (idx === -1) {
-          next.push({ ...item, qty, addedOrder: getNextAddedOrder() });
+          next.push({ ...item, qty, addedOrder: getNextAddedOrder(), printStandardOnly: false });
         } else {
           next[idx] = {
             ...next[idx],
@@ -427,6 +427,13 @@ const PriceLabels = () => {
     setSearchResults([]);
   };
   const removeItem = (item) => setSelected((prev) => prev.filter((s) => !(s.type === item.type && s.id === item.id)));
+  const togglePrintStandardOnly = (item) => {
+    setSelected((prev) => prev.map((s) => (
+      s.type === item.type && s.id === item.id
+        ? { ...s, printStandardOnly: !s.printStandardOnly }
+        : s
+    )));
+  };
   const handleQtyChange = (item, rawValue) => {
     const cleaned = String(rawValue).replace(/[^\d]/g, '');
     setSelected((prev) => prev.map((s) => (
@@ -631,7 +638,8 @@ const PriceLabels = () => {
   const components = item.type === 'set' ? getComboComponents(item.id) : [];
     const oldPrice = priced.standard;
     const promoPrice = priced.promo;
-    const hasPromo = hasActivePromo(oldPrice, promoPrice);
+    const printStandardOnly = Boolean(item.printStandardOnly);
+    const hasPromo = !printStandardOnly && hasActivePromo(oldPrice, promoPrice);
     const discount = hasPromo ? getDiscountPercent(oldPrice, promoPrice) : null;
     const imageQrValue = buildLabelImageQrValue(item, data);
 
@@ -864,7 +872,23 @@ const PriceLabels = () => {
                       aria-label="Print quantity"
                     />
                   </td>
-                  <td><button type="button" onClick={() => removeItem(s)}>Remove</button></td>
+                  <td>
+                    <div className="labels-table-actions">
+                      <label
+                        className="labels-table-standard-only"
+                        title="Print or send at standard price only (no promo on label)"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(s.printStandardOnly)}
+                          onChange={() => togglePrintStandardOnly(s)}
+                          aria-label={`Print ${s.type === 'product' ? pricedItem.name : pricedItem.combo_name} at standard price only`}
+                        />
+                        <span>Std price</span>
+                      </label>
+                      <button type="button" onClick={() => removeItem(s)}>Remove</button>
+                    </div>
+                  </td>
                 </tr>
                 );
               })}

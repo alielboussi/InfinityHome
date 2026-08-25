@@ -242,6 +242,7 @@ async function selectProductsByIds(db, productIds) {
       price: row.price,
       promotional_price: row.promotional_price,
       currency: row.currency,
+      image_url: row.image_url || null,
     }));
   }
 
@@ -253,6 +254,7 @@ async function selectProductsByIds(db, productIds) {
     price: row.price,
     promotional_price: row.promotional_price,
     currency: row.currency,
+    image_url: row.image_url || null,
   }));
 }
 

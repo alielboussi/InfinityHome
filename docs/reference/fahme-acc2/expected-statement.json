@@ -1,0 +1,91 @@
+{
+  "customerId": "efb21cad-1a8d-4d64-9487-51e816fcb429",
+  "customerName": "Mohammad Fahme Acc(2)",
+  "currency": "USD",
+  "referencePdf": "Mohammad_Fahme_Acc2_Layby_Statement_2026-08-25_USD.pdf",
+  "referenceDate": "2026-08-25",
+  "totals": {
+    "totalSale": 30965,
+    "totalDeposit": 2000,
+    "totalDue": 28965
+  },
+  "sales": [
+    {
+      "receipt": "ACC2-050326",
+      "saleDate": "2026-03-05",
+      "amount": 9000,
+      "items": [
+        { "qty": 4, "unitPrice": 1800, "name": "Paris Sitting Set 3+2+1+1" },
+        { "qty": 10, "unitPrice": 180, "name": "Copper Fiber Mattress 160*200" }
+      ]
+    },
+    {
+      "receipt": "ACC2-270326",
+      "saleDate": "2026-03-27",
+      "amount": 3865,
+      "items": [
+        { "qty": 2, "unitPrice": 1100, "name": "Viking 3+2+1+1 Sitting Set" },
+        { "qty": 1, "unitPrice": 900, "name": "Luxury 3+3+1+1 Sitting Set" },
+        { "qty": 3, "unitPrice": 255, "name": "Grand Luxury Mattress 200*200" }
+      ]
+    },
+    {
+      "receipt": "ACC2-080426",
+      "saleDate": "2026-04-08",
+      "amount": 5800,
+      "items": [
+        { "qty": 1, "unitPrice": 900, "name": "Luxury 3+3+1+1 Sitting Set" },
+        { "qty": 3, "unitPrice": 1100, "name": "Anatasia Dining Table + 8 Chairs" },
+        { "qty": 2, "unitPrice": 800, "name": "Anatasia Dining Table + 6 Chairs" }
+      ]
+    },
+    {
+      "receipt": "ACC2-240426",
+      "saleDate": "2026-04-24",
+      "amount": 2200,
+      "items": [
+        { "qty": 2, "unitPrice": 1100, "name": "Viking Sitting Set 3+2+1+1" }
+      ]
+    },
+    {
+      "receipt": "ACC2-140526",
+      "saleDate": "2026-05-14",
+      "amount": 2250,
+      "items": [
+        { "qty": 3, "unitPrice": 750, "name": "New Sofa Set 3+2+1+1" }
+      ]
+    },
+    {
+      "receipt": "ACC2-040626",
+      "saleDate": "2026-06-04",
+      "amount": 550,
+      "items": [
+        { "qty": 2, "unitPrice": 275, "name": "Grand Luxury Mattress 200*200" }
+      ]
+    },
+    {
+      "receipt": "#900",
+      "saleDate": "2026-08-24",
+      "amount": 7300,
+      "items": [
+        { "qty": 1, "unitPrice": 1800, "name": "Paris Sitting Set 3+2+1+1" },
+        { "qty": 2, "unitPrice": 1100, "name": "Viking Sitting Set 3+2+1+1" },
+        { "qty": 15, "unitPrice": 220, "name": "Copper Fiber Mattress 180*200" }
+      ]
+    }
+  ],
+  "payments": [
+    {
+      "date": "2026-05-22",
+      "amount": 2000,
+      "type": "cash",
+      "reference": "22"
+    }
+  ],
+  "rules": {
+    "liveDataOnly": true,
+    "noPdfFallbacks": true,
+    "dedupePaymentsAcrossTables": true,
+    "vatInclusive": true
+  }
+}

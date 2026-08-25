@@ -6,6 +6,52 @@ const WHATSAPP_TEXT_LIMIT = 4096;
 const WHAPI_TIMEOUT_MS = Number(process.env.WHAPI_TIMEOUT_MS || 20000);
 const WASENDER_API_URL = String(process.env.WASENDER_API_URL || 'https://www.wasenderapi.com/api/send-message').trim();
 const WASENDER_TIMEOUT_MS = Number(process.env.WASENDER_TIMEOUT_MS || WHAPI_TIMEOUT_MS);
+const WASENDER_MIN_INTERVAL_MS = Math.max(
+  1000,
+  Number(process.env.WASENDER_MIN_INTERVAL_MS || 5500) || 5500,
+);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isWasenderRateLimitError(err) {
+  const parts = [
+    err?.message,
+    err?.details?.error?.message,
+    err?.details?.message,
+    typeof err?.details?.error === 'string' ? err.details.error : '',
+  ];
+  const msg = parts.filter(Boolean).join(' ').toLowerCase();
+  return msg.includes('account protection')
+    || msg.includes('every 5 second')
+    || msg.includes('rate limit');
+}
+
+function wasenderMessageId(response) {
+  return response?.data?.id || response?.message?.id || response?.id || null;
+}
+
+async function sendWasenderWithPacing(targets, sendFn) {
+  const unique = Array.from(new Set(targets));
+  const results = [];
+
+  for (let i = 0; i < unique.length; i += 1) {
+    if (i > 0) await sleep(WASENDER_MIN_INTERVAL_MS);
+    const to = unique[i];
+    let response;
+    try {
+      response = await sendFn(to);
+    } catch (err) {
+      if (!isWasenderRateLimitError(err)) throw err;
+      await sleep(WASENDER_MIN_INTERVAL_MS);
+      response = await sendFn(to);
+    }
+    results.push({ to, messageId: wasenderMessageId(response) });
+  }
+
+  return results;
+}
 
 
 
@@ -93,6 +139,48 @@ function normalizeBalanceDue(balanceDue, currency = 'K') {
 
 function isBalanceEffectivelyClosed(balanceDue, currency = 'K') {
   return normalizeBalanceDue(balanceDue, currency) <= 0;
+}
+
+function parseBalanceDueDays(value) {
+  const n = Math.floor(Number(String(value ?? '').trim()));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function computeBalanceDueDeadline(createdAtIso, days) {
+  const daysNum = parseBalanceDueDays(days);
+  if (!daysNum) return null;
+  const start = new Date(createdAtIso || new Date().toISOString());
+  if (Number.isNaN(start.getTime())) return null;
+  const deadline = new Date(start.getTime());
+  deadline.setUTCDate(deadline.getUTCDate() + daysNum);
+  return deadline.toISOString();
+}
+
+function buildLaybyPaymentLooseKey(row) {
+  const saleId = String(row?.sale_id || '').trim();
+  const dateRaw = String(row?.payment_date || '').trim();
+  const day = dateRaw ? dateRaw.slice(0, 10) : '';
+  const amount = Number(row?.amount || 0);
+  const type = String(row?.payment_type || '').toLowerCase();
+  const reference = String(row?.reference || '').trim().replace(/^#/, '').toLowerCase();
+  return `${saleId}|${day}|${amount.toFixed(2)}|${type}|${reference}`;
+}
+
+function dedupeLaybyPaymentRows(rows = []) {
+  const seen = new Set();
+  const deduped = [];
+  (rows || []).forEach((row) => {
+    const normalized = {
+      ...row,
+      payment_type: String(row?.payment_type || '').toLowerCase(),
+    };
+    const key = buildLaybyPaymentLooseKey(normalized);
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push(normalized);
+  });
+  return deduped;
 }
 
 const formatAmount = (amount, currency) => {
@@ -331,6 +419,42 @@ function resolveDeliveryTargets(kind, customerId, options = {}) {
   return recipients.length
     ? { mode: 'dm', targets: recipients, provider: 'meta' }
     : { mode: 'none', targets: [], provider: 'meta' };
+
+}
+
+
+
+function resolveLaybyNotificationTargets(customerId, { locationId } = {}) {
+
+  const locId = locationId != null ? String(locationId).trim() : '';
+
+  if (locId === LUSAKA_BRANCH_ID && !isFahmeCustomer(customerId)) {
+
+    const lusakaRouting = resolveDeliveryTargets('sale', customerId, { locationId: LUSAKA_BRANCH_ID });
+
+    return {
+
+      mode: lusakaRouting.mode,
+
+      provider: lusakaRouting.provider,
+
+      targets: lusakaRouting.targets,
+
+    };
+
+  }
+
+  const laybyRouting = resolveDeliveryTargets('layby', customerId);
+
+  return {
+
+    mode: laybyRouting.mode,
+
+    provider: laybyRouting.provider,
+
+    targets: laybyRouting.targets,
+
+  };
 
 }
 
@@ -674,6 +798,63 @@ function computeLaybyAdditionBalances(sales, payments, focusSaleId) {
     newSaleDue,
     balanceDue: previousDueBalance + newSaleDue,
   };
+}
+
+const LAYBY_SALE_SELECT = 'id, sale_date, created_at, currency, total_amount, location_id, receipt_number, discount';
+
+function mergeSaleRows(existing, extra) {
+  const rows = Array.isArray(existing) ? [...existing] : [];
+  const seen = new Set(rows.map((row) => String(row.id)));
+  (Array.isArray(extra) ? extra : [extra]).forEach((row) => {
+    if (!row?.id) return;
+    const key = String(row.id);
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(row);
+  });
+  return rows;
+}
+
+async function fetchSaleRowById(db, saleId) {
+  const id = saleId != null ? String(saleId).trim() : '';
+  if (!id) return null;
+  const { data } = await db
+    .from('sales')
+    .select(LAYBY_SALE_SELECT)
+    .eq('id', saleId)
+    .maybeSingle();
+  return data || null;
+}
+
+async function loadLaybySalesForNotify(db, layby, focusSaleId) {
+  let sales = [];
+  const laybyId = layby?.id;
+
+  if (laybyId != null) {
+    const { data: byLayby } = await db
+      .from('sales')
+      .select(LAYBY_SALE_SELECT)
+      .eq('layby_id', laybyId);
+    sales = mergeSaleRows(sales, byLayby);
+
+    const laybyIdNum = typeof laybyId === 'string' ? parseInt(laybyId, 10) : laybyId;
+    if (Number.isFinite(laybyIdNum) && String(laybyIdNum) !== String(laybyId)) {
+      const { data: byLaybyNum } = await db
+        .from('sales')
+        .select(LAYBY_SALE_SELECT)
+        .eq('layby_id', laybyIdNum);
+      sales = mergeSaleRows(sales, byLaybyNum);
+    }
+  }
+
+  const extraIds = [layby?.sale_id, focusSaleId].filter((value) => value != null);
+  for (const saleId of extraIds) {
+    if (sales.some((row) => String(row.id) === String(saleId))) continue;
+    const row = await fetchSaleRowById(db, saleId);
+    if (row) sales = mergeSaleRows(sales, [row]);
+  }
+
+  return sales;
 }
 
 function pickFocusSale(sales, focusSaleId) {
@@ -1226,6 +1407,10 @@ function buildLaybyMessage({
 
   previousDueBalance,
 
+  balanceDueDays,
+
+  balanceDueDeadline,
+
 }) {
 
   const date = formatSaleDateForMessage(dateTimeIso);
@@ -1242,9 +1427,13 @@ function buildLaybyMessage({
 
       : '📝 *Quote Edited (Lay-Buy Updated)*');
 
-  } else if (eventType === 'quote_convert' || eventType === 'layby_addition' || isQuoteLayby) {
+  } else if (eventType === 'quote_convert' || (isQuoteLayby && !['new_layby', 'payment', 'statement'].includes(eventType))) {
 
     lines.push('🏭 *Factory Production*');
+
+  } else if (eventType === 'layby_addition') {
+
+    lines.push('➕ *Layby Addition*');
 
   } else if (eventType === 'new_layby') {
 
@@ -1353,6 +1542,16 @@ function buildLaybyMessage({
   if (normalizedBalanceDue > 0) {
 
     lines.push(`⏳ Balance Due: ${formatAmount(normalizedBalanceDue, currency)}`);
+
+    const allowanceDays = Number(balanceDueDays || 0);
+    if (allowanceDays > 0) {
+      const deadlineLabel = balanceDueDeadline ? formatSaleDateForMessage(balanceDueDeadline) : '';
+      if (deadlineLabel) {
+        lines.push(`⏳ Balance completion period: ${allowanceDays} days (by ${deadlineLabel})`);
+      } else {
+        lines.push(`⏳ Balance completion period: ${allowanceDays} days`);
+      }
+    }
 
   } else {
 
@@ -1623,15 +1822,7 @@ async function deliverText(targets, text, mode, provider = 'whapi') {
 
   if (provider === 'wasender') {
 
-    for (const to of unique) {
-
-      const response = await sendWasenderMessage({ to, text: body });
-
-      results.push({ to, messageId: response?.data?.id || response?.message?.id || response?.id || null });
-
-    }
-
-    return results;
+    return sendWasenderWithPacing(unique, (to) => sendWasenderMessage({ to, text: body }));
 
   }
 
@@ -1652,15 +1843,7 @@ async function deliverText(targets, text, mode, provider = 'whapi') {
     } catch (whapiErr) {
       if (!canFallbackToWasender()) throw whapiErr;
 
-      for (const to of unique) {
-
-        const response = await sendWasenderMessage({ to, text: body });
-
-        results.push({ to, messageId: response?.data?.id || response?.message?.id || response?.id || null });
-
-      }
-
-      return results;
+      return sendWasenderWithPacing(unique, (to) => sendWasenderMessage({ to, text: body }));
     }
 
   }
@@ -1816,28 +1999,19 @@ async function deliverDocument(targets, link, filename, mode, provider = 'whapi'
 
   if (provider === 'wasender') {
 
-    const results = [];
     const documentUrl = await resolveWasenderDocumentUrl(link, filename || 'document.pdf');
 
-    for (const to of unique) {
+    return sendWasenderWithPacing(unique, (to) => sendWasenderMessage({
 
-      const response = await sendWasenderMessage({
+      to,
 
-        to,
+      text: caption,
 
-        text: caption,
+      documentUrl,
 
-        documentUrl,
+      fileName: filename || 'document.pdf',
 
-        fileName: filename || 'document.pdf',
-
-      });
-
-      results.push({ to, messageId: response?.data?.id || response?.message?.id || response?.id || null });
-
-    }
-
-    return results;
+    }));
 
   }
 
@@ -1874,17 +2048,17 @@ async function deliverDocument(targets, link, filename, mode, provider = 'whapi'
 
       const documentUrl = await resolveWasenderDocumentUrl(link, filename || 'document.pdf');
 
-      for (const to of unique) {
-        const response = await sendWasenderMessage({
-          to,
-          text: caption,
-          documentUrl,
-          fileName: filename || 'document.pdf',
-        });
-        results.push({ to, messageId: response?.data?.id || response?.message?.id || response?.id || null });
-      }
+      return sendWasenderWithPacing(unique, (to) => sendWasenderMessage({
 
-      return results;
+        to,
+
+        text: caption,
+
+        documentUrl,
+
+        fileName: filename || 'document.pdf',
+
+      }));
     }
 
   }
@@ -2518,6 +2692,35 @@ async function handleWhatsAppAdjustment(body) {
 
 
 
+async function tryResolveStoredLaybyPdfUrl(laybyId, customerId, filename = 'layby-statement.pdf') {
+  const candidates = [
+    `laybys/${String(laybyId || '').trim()}.pdf`,
+    `laybys/${String(customerId || '').trim()}.pdf`,
+  ].filter((path) => path !== 'laybys/.pdf');
+
+  try {
+    const { getStorageClient } = await import('../server/lib/firebaseStorage.js');
+    const storage = getStorageClient();
+    for (const bucket of ['laybypdfs', 'labels']) {
+      for (const objectPath of candidates) {
+        try {
+          const { data, error } = await storage
+            .from(bucket)
+            .createSignedUrl(objectPath, 3600, { download: filename });
+          if (!error && data?.signedUrl) return data.signedUrl;
+        } catch {
+          // try next path/bucket
+        }
+      }
+    }
+  } catch {
+    // storage not configured
+  }
+  return '';
+}
+
+
+
 async function handleWhatsAppLayby(body) {
 
   const isPreview = body?.preview === true || String(body?.preview || '').trim() === '1';
@@ -2537,6 +2740,10 @@ async function handleWhatsAppLayby(body) {
     : [];
 
   const pdfFilename = String(body.pdfFilename || '').trim() || 'layby-statement.pdf';
+  const pdfBase64 = String(body.pdfBase64 || '')
+    .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
+    .replace(/\s+/g, '');
+  let pdfLink = pdfUrl || pdfBase64;
 
   if (!laybyId) {
 
@@ -2558,7 +2765,7 @@ async function handleWhatsAppLayby(body) {
 
     .from('laybys')
 
-    .select('id, customer_id, total_amount, paid_amount, status, sale_id, created_at, updated_at')
+    .select('id, customer_id, total_amount, paid_amount, status, sale_id, created_at, updated_at, balance_due_days, balance_due_deadline')
 
     .eq('id', laybyId)
 
@@ -2578,28 +2785,6 @@ async function handleWhatsAppLayby(body) {
 
 
 
-  const routing = resolveDeliveryTargets('layby', layby.customer_id);
-
-  if (!isPreview && !routing.targets.length) {
-
-    const wantsFahme = isFahmeCustomer(layby.customer_id);
-
-    const missingHint = wantsFahme
-      ? 'Set WHATSAPP_FAHME_GROUP_ID=120363372527723284@g.us in Vercel, keep WHATSAPP_WASENDER_KINDS=sale,layby, then Redeploy'
-      : 'Set WHATSAPP_LAYBY_GROUP_ID (or WHATSAPP_LAYBY_RECIPIENTS) in Vercel, then Redeploy';
-
-    const err = new Error(`WhatsApp env not configured for ${wantsFahme ? 'Fahme' : 'layby'} (${missingHint})`);
-
-    err.status = 500;
-
-    err.stage = 'env';
-
-    throw err;
-
-  }
-
-
-
   const { data: customer } = await db
 
     .from('customers')
@@ -2612,15 +2797,7 @@ async function handleWhatsAppLayby(body) {
 
 
 
-  const { data: salesRows } = await db
-
-    .from('sales')
-
-    .select('id, sale_date, created_at, currency, total_amount, location_id, receipt_number, discount')
-
-    .eq('layby_id', laybyId);
-
-  const sales = Array.isArray(salesRows) ? salesRows : [];
+  const sales = await loadLaybySalesForNotify(db, layby, focusSaleId);
 
   const saleIds = sales.map((sale) => sale.id).filter((value) => value != null);
 
@@ -2680,29 +2857,20 @@ async function handleWhatsAppLayby(body) {
 
   if (saleIds.length) {
 
-    const { data: payRows } = await db
+    const [{ data: payRows }, { data: laybyPayRows }] = await Promise.all([
+      db
+        .from('sales_payments')
+        .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, notes')
+        .in('sale_id', saleIds)
+        .order('payment_date', { ascending: true }),
+      db
+        .from('layby_payments')
+        .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, notes')
+        .in('sale_id', saleIds)
+        .order('payment_date', { ascending: true }),
+    ]);
 
-      .from('sales_payments')
-
-      .select('sale_id, amount, discount_amount, payment_type, payment_date, reference, notes')
-
-      .in('sale_id', saleIds)
-
-      .order('payment_date', { ascending: true });
-
-    const seen = new Set();
-
-    (payRows || []).forEach((payment) => {
-
-      const key = `${payment.sale_id}|${payment.payment_date || ''}|${Number(payment.amount || 0)}|${Number(payment.discount_amount || 0)}|${String(payment.reference || '')}|${String(payment.notes || '')}|${String(payment.payment_type || '').toLowerCase()}`;
-
-      if (seen.has(key)) return;
-
-      seen.add(key);
-
-      payments.push(payment);
-
-    });
+    payments = dedupeLaybyPaymentRows([...(payRows || []), ...(laybyPayRows || [])]);
 
   }
 
@@ -2860,9 +3028,39 @@ async function handleWhatsAppLayby(body) {
 
     previousDueBalance,
 
+    balanceDueDays: parseBalanceDueDays(layby.balance_due_days),
+
+    balanceDueDeadline: layby.balance_due_deadline
+      || computeBalanceDueDeadline(layby.created_at, layby.balance_due_days),
+
   });
 
-  if (isFahmeCustomer(layby.customer_id) && !pdfUrl && !isPreview) {
+  const routingLocationId = focusSale?.location_id
+    || (body.locationId != null ? String(body.locationId).trim() : '')
+    || null;
+
+  const routing = resolveLaybyNotificationTargets(layby.customer_id, {
+    locationId: routingLocationId,
+  });
+
+  if (!isPreview && !routing.targets.length) {
+    const wantsFahme = isFahmeCustomer(layby.customer_id);
+    const missingHint = wantsFahme
+      ? 'Set WHATSAPP_FAHME_GROUP_ID=120363372527723284@g.us in Vercel, keep WHATSAPP_WASENDER_KINDS=sale,layby, then Redeploy'
+      : (routingLocationId === LUSAKA_BRANCH_ID
+        ? 'Set WHATSAPP_LUSAKA_SALES_GROUP_ID for Lusaka laybys in Vercel, then Redeploy'
+        : 'Set WHATSAPP_LAYBY_GROUP_ID (or WHATSAPP_LAYBY_RECIPIENTS) in Vercel, then Redeploy');
+    const err = new Error(`WhatsApp env not configured for ${wantsFahme ? 'Fahme' : 'layby'} (${missingHint})`);
+    err.status = 500;
+    err.stage = 'env';
+    throw err;
+  }
+
+  if (isFahmeCustomer(layby.customer_id) && !pdfLink && !isPreview) {
+    pdfLink = await tryResolveStoredLaybyPdfUrl(layby.id, layby.customer_id, pdfFilename);
+  }
+
+  if (isFahmeCustomer(layby.customer_id) && !pdfLink && !isPreview) {
 
     const err = new Error('Fahme WhatsApp notifications require the layby PDF');
 
@@ -2902,7 +3100,7 @@ async function handleWhatsAppLayby(body) {
 
   const deliveries = await deliverNotification(routing.targets, message, routing.mode, routing.provider, {
 
-    pdfUrl,
+    pdfUrl: pdfLink,
 
     pdfFilename,
 
@@ -2910,7 +3108,7 @@ async function handleWhatsAppLayby(body) {
 
 
 
-  return { ok: true, deliveries, pdfAttached: Boolean(pdfUrl) };
+  return { ok: true, deliveries, pdfAttached: Boolean(pdfLink) };
 
 }
 
@@ -3184,6 +3382,74 @@ async function handleMonthlyBalanceSend(body) {
 
 
 
+async function handleLaybyOverdueReminders(req) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const force = isTruthyForce(req.query?.force) || isTruthyForce(body.force);
+
+  const {
+    fetchLaybysNeedingOverdueReminder,
+    buildLaybyOverdueReminderMessages,
+  } = await import('../server/lib/laybyOverdueReminders.js');
+
+  if (!force && !assertCronAuthorized(req)) {
+    const err = new Error('Unauthorized cron request');
+    err.status = 401;
+    err.stage = 'auth';
+    throw err;
+  }
+
+  const db = await getDbClient();
+  let rows = [];
+  try {
+    rows = await fetchLaybysNeedingOverdueReminder(db);
+  } catch (error) {
+    const err = new Error(error?.message || 'Failed to load overdue laybys');
+    err.status = 500;
+    err.stage = 'laybys';
+    throw err;
+  }
+
+  if (!rows.length) {
+    return { ok: true, skipped: 'no_overdue_laybys', reminderCount: 0 };
+  }
+
+  const messages = buildLaybyOverdueReminderMessages(rows);
+  const routing = resolveDeliveryTargets('layby', null);
+  if (!routing.targets.length) {
+    const err = new Error('WhatsApp env not configured (WHATSAPP_LAYBY_GROUP_ID or WHATSAPP_LAYBY_RECIPIENTS)');
+    err.status = 500;
+    err.stage = 'env';
+    throw err;
+  }
+
+  const deliveries = [];
+  for (const message of messages) {
+    const batch = await deliverNotification(routing.targets, message, routing.mode, routing.provider, {});
+    deliveries.push(...batch);
+  }
+
+  const remindedAt = new Date().toISOString();
+  for (const row of rows) {
+    try {
+      await db
+        .from('laybys')
+        .update({ last_overdue_reminder_at: remindedAt, updated_at: remindedAt })
+        .eq('id', row.laybyId);
+    } catch (error) {
+      console.warn('Failed to update layby overdue reminder timestamp', row.laybyId, error?.message || error);
+    }
+  }
+
+  return {
+    ok: true,
+    reminderCount: rows.length,
+    messageCount: messages.length,
+    deliveries,
+  };
+}
+
+
+
 async function handleMonthlyBalanceDues(req) {
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -3295,10 +3561,11 @@ module.exports = async function handler(req, res) {
   const actionEarly = resolveAction(req);
 
   const isMonthlyCron = actionEarly === 'monthly-balance-dues' || actionEarly === 'monthly_balance_dues';
+  const isLaybyOverdueCron = actionEarly === 'layby-overdue-reminders' || actionEarly === 'layby_overdue_reminders';
 
 
 
-  if (req.method !== 'POST' && !(req.method === 'GET' && isMonthlyCron)) {
+  if (req.method !== 'POST' && !(req.method === 'GET' && (isMonthlyCron || isLaybyOverdueCron))) {
 
     res.setHeader('Allow', 'POST, GET, OPTIONS');
 
@@ -3417,6 +3684,18 @@ module.exports = async function handler(req, res) {
     if (action === 'monthly-balance-send' || action === 'monthly_balance_send') {
 
       const payload = await handleMonthlyBalanceSend(body);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+
+
+    if (action === 'layby-overdue-reminders' || action === 'layby_overdue_reminders') {
+
+      const payload = await handleLaybyOverdueReminders(req);
 
       res.status(200).json(payload);
 

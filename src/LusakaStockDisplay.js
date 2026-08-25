@@ -15,6 +15,13 @@ import {
   resolveProductLocationPricing,
 } from './utils/locationPricing';
 import { getMaxSetQty } from './utils/setInventoryUtils';
+import { buildProductById, buildSetComponents } from './utils/lusakaStockSetComponents';
+import {
+  buildSetComponentProductIds,
+  expandLusakaComboIds,
+  filterComboItemsForCombos,
+  mergeProductIdsForSets,
+} from './utils/lusakaStockSetMatching';
 import { clearStaleAppLogin } from './utils/authSession';
 import './lusaka-stock-display.css';
 
@@ -153,6 +160,68 @@ function StockCardImage({ row, onExpand }) {
   );
 }
 
+function StockCard({ row, onExpandImage }) {
+  const [showComponents, setShowComponents] = useState(false);
+  const hasComponents = row.type === 'set' && Array.isArray(row.components) && row.components.length > 0;
+
+  return (
+    <article className="lusaka-stock-display__card">
+      <StockCardImage row={row} onExpand={onExpandImage} />
+      <div className="lusaka-stock-display__body">
+        <div className="lusaka-stock-display__type">
+          {row.type === 'set' ? 'Set' : 'Product'}
+        </div>
+        <h2 className="lusaka-stock-display__name">{row.name}</h2>
+        {row.sku ? <div className="lusaka-stock-display__sku">{row.sku}</div> : null}
+        <div className="lusaka-stock-display__prices">
+          <div className="lusaka-stock-display__price-row">
+            <span className="lusaka-stock-display__price-label">Standard</span>
+            <span className="lusaka-stock-display__price-value">{row.standardPrice}</span>
+          </div>
+          <div className="lusaka-stock-display__price-row">
+            <span className="lusaka-stock-display__price-label">Promo</span>
+            <span className="lusaka-stock-display__price-value lusaka-stock-display__price-value--promo">
+              {row.promoPrice}
+            </span>
+          </div>
+        </div>
+        <div className="lusaka-stock-display__qty">
+          <span className="lusaka-stock-display__qty-label">Available</span>
+          <span className={`lusaka-stock-display__qty-value${row.qty > 0 ? '' : ' is-zero'}`}>
+            {row.qty}
+          </span>
+        </div>
+        {hasComponents ? (
+          <>
+            <button
+              type="button"
+              className={`lusaka-stock-display__components-toggle${showComponents ? ' is-open' : ''}`}
+              aria-expanded={showComponents}
+              aria-label={showComponents ? 'Hide set components' : 'Show set components'}
+              onClick={() => setShowComponents((open) => !open)}
+            >
+              <span className="lusaka-stock-display__components-caret" aria-hidden="true" />
+            </button>
+            {showComponents ? (
+              <ul className="lusaka-stock-display__components-list">
+                {row.components.map((component) => (
+                  <li key={component.productId} className="lusaka-stock-display__components-item">
+                    <div className="lusaka-stock-display__components-name">{component.name}</div>
+                    <div className="lusaka-stock-display__components-meta">
+                      {component.requiredQty > 1 ? `${component.requiredQty} per set · ` : ''}
+                      {component.qty} in stock
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 export default function LusakaStockDisplay() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -181,38 +250,59 @@ export default function LusakaStockDisplay() {
         fetchComboLocationPricesForLocation(db, LUSAKA_BRANCH_ID),
       ]);
       const inventoryRows = invSnap?.data || [];
-      const [productIdList, comboIdList] = await Promise.all([
+      const [productIdList, linkedComboIds] = await Promise.all([
         resolveLusakaProductIds(inventoryRows),
         resolveLusakaComboIds(),
       ]);
 
-      const [productRows, comboRows, itemRows, imageByProductId] = await Promise.all([
+      const [
+        { data: allCombosData },
+        { data: allComboItemsData },
+        productRows,
+        imageByProductId,
+      ] = await Promise.all([
+        db.from('combos').select('*'),
+        db.from('combo_items').select('combo_id, product_id, quantity'),
         fetchRowsByIds(
           'products',
           'id',
           'id, name, sku, currency, price, promotional_price, promo_start_date, promo_end_date, image_url, product_images(image_url)',
           productIdList,
         ),
-        fetchRowsByIds(
-          'combos',
-          'id',
-          'id, combo_name, sku, currency, combo_price, standard_price, promotional_price, promo_start_date, promo_end_date, picture_url',
-          comboIdList,
-        ),
-        fetchRowsByIds(
-          'combo_items',
-          'combo_id',
-          'combo_id, product_id, quantity',
-          comboIdList,
-        ),
         fetchProductImageMap(productIdList),
       ]);
 
+      const allCombos = allCombosData || [];
+      const allComboItems = allComboItemsData || [];
+      let mergedProducts = mergeProductImages(productRows, imageByProductId)
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+
+      let expandedComboIds = expandLusakaComboIds(linkedComboIds, mergedProducts, allCombos);
+      let itemRows = filterComboItemsForCombos(allComboItems, expandedComboIds);
+      const fullProductIdList = mergeProductIdsForSets(productIdList, itemRows, expandedComboIds);
+
+      if (fullProductIdList.length > productIdList.length) {
+        const extraRows = await fetchRowsByIds(
+          'products',
+          'id',
+          'id, name, sku, currency, price, promotional_price, promo_start_date, promo_end_date, image_url, product_images(image_url)',
+          fullProductIdList.filter((id) => !productIdList.includes(String(id))),
+        );
+        const extraImages = await fetchProductImageMap(
+          fullProductIdList.filter((id) => !productIdList.includes(String(id))),
+        );
+        mergedProducts = mergeProductImages(
+          [...mergedProducts, ...extraRows],
+          new Map([...imageByProductId, ...extraImages]),
+        ).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+        expandedComboIds = expandLusakaComboIds(linkedComboIds, mergedProducts, allCombos);
+        itemRows = filterComboItemsForCombos(allComboItems, expandedComboIds);
+      }
+
+      const comboRows = allCombos.filter((combo) => expandedComboIds.includes(String(combo.id)));
+
       setLocationName(locRow?.name || 'Lusaka');
-      setProducts(
-        mergeProductImages(productRows, imageByProductId)
-          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })),
-      );
+      setProducts(mergedProducts);
       setCombos(
         comboRows.sort((a, b) => String(a.combo_name || '').localeCompare(String(b.combo_name || ''), undefined, { sensitivity: 'base' })),
       );
@@ -239,9 +329,14 @@ export default function LusakaStockDisplay() {
     };
     run(true);
     const timer = setInterval(() => run(false), STOCK_SYNC_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') run(false);
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       alive = false;
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [refreshStock]);
 
@@ -274,25 +369,21 @@ export default function LusakaStockDisplay() {
       }
       const stock = {};
       items.forEach((item) => {
-        stock[item.product_id] = stockByProduct.get(String(item.product_id)) || 0;
+        stock[String(item.product_id)] = stockByProduct.get(String(item.product_id)) || 0;
       });
       map.set(String(combo.id), getMaxSetQty(items, stock));
     });
     return map;
   }, [combos, comboItems, stockByProduct]);
 
-  const setComponentProductIds = useMemo(() => {
-    const lusakaComboIds = new Set((combos || []).map((combo) => String(combo.id)));
-    const ids = new Set();
-    (comboItems || []).forEach((row) => {
-      if (!lusakaComboIds.has(String(row.combo_id))) return;
-      if (row?.product_id) ids.add(String(row.product_id));
-    });
-    return ids;
-  }, [combos, comboItems]);
+  const setComponentProductIds = useMemo(
+    () => buildSetComponentProductIds(combos, comboItems),
+    [combos, comboItems],
+  );
 
   const displayRows = useMemo(() => {
     const term = search.trim().toLowerCase();
+    const productById = buildProductById(products);
     const sets = (combos || []).map((combo) => {
       const pricing = resolveComboLocationPricing(combo, LUSAKA_BRANCH_ID, comboLocationPriceMap);
       return {
@@ -305,6 +396,7 @@ export default function LusakaStockDisplay() {
       imageUrl: resolveProductImageUrl(combo.picture_url),
       standardPrice: formatLusakaPrice(pricing.combo_price ?? pricing.standard_price, combo.currency),
       promoPrice: formatLusakaPrice(pricing.promotional_price, combo.currency),
+      components: buildSetComponents(combo.id, comboItems, productById, stockByProduct),
     };
     });
 
@@ -329,10 +421,17 @@ export default function LusakaStockDisplay() {
       .filter((row) => Number(row.qty) > 0)
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     if (!term) return merged;
-    return merged.filter((row) =>
-      row.name.toLowerCase().includes(term)
-      || String(row.sku || '').toLowerCase().includes(term));
-  }, [combos, products, search, setQtyByCombo, setComponentProductIds, stockByProduct, productLocationPriceMap, comboLocationPriceMap]);
+    return merged.filter((row) => {
+      if (row.name.toLowerCase().includes(term)) return true;
+      if (String(row.sku || '').toLowerCase().includes(term)) return true;
+      if (row.type === 'set' && Array.isArray(row.components)) {
+        return row.components.some((component) =>
+          String(component.name || '').toLowerCase().includes(term)
+          || String(component.sku || '').toLowerCase().includes(term));
+      }
+      return false;
+    });
+  }, [combos, products, comboItems, search, setQtyByCombo, setComponentProductIds, stockByProduct, productLocationPriceMap, comboLocationPriceMap]);
 
   const totalQty = useMemo(
     () => displayRows.reduce((sum, row) => sum + Number(row.qty || 0), 0),
@@ -401,34 +500,7 @@ export default function LusakaStockDisplay() {
               No in-stock products or sets at {locationName}.
             </div>
           ) : displayRows.map((row) => (
-            <article key={row.key} className="lusaka-stock-display__card">
-              <StockCardImage row={row} onExpand={setExpandedImage} />
-              <div className="lusaka-stock-display__body">
-                <div className="lusaka-stock-display__type">
-                  {row.type === 'set' ? 'Set' : 'Product'}
-                </div>
-                <h2 className="lusaka-stock-display__name">{row.name}</h2>
-                {row.sku ? <div className="lusaka-stock-display__sku">{row.sku}</div> : null}
-                <div className="lusaka-stock-display__prices">
-                  <div className="lusaka-stock-display__price-row">
-                    <span className="lusaka-stock-display__price-label">Standard</span>
-                    <span className="lusaka-stock-display__price-value">{row.standardPrice}</span>
-                  </div>
-                  <div className="lusaka-stock-display__price-row">
-                    <span className="lusaka-stock-display__price-label">Promo</span>
-                    <span className="lusaka-stock-display__price-value lusaka-stock-display__price-value--promo">
-                      {row.promoPrice}
-                    </span>
-                  </div>
-                </div>
-                <div className="lusaka-stock-display__qty">
-                  <span className="lusaka-stock-display__qty-label">Available</span>
-                  <span className={`lusaka-stock-display__qty-value${row.qty > 0 ? '' : ' is-zero'}`}>
-                    {row.qty}
-                  </span>
-                </div>
-              </div>
-            </article>
+            <StockCard key={row.key} row={row} onExpandImage={setExpandedImage} />
           ))}
         </div>
       )}

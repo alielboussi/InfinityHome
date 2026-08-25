@@ -15,38 +15,37 @@ import { readExpoExtra } from './expoExtra';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const APP_SCHEME = Constants.expoConfig?.scheme
-  || process.env.EXPO_PUBLIC_APP_SCHEME
-  || 'customer-ledger-tracking';
-
-const DEFAULT_EXPO_PROJECT_FULL_NAME = '@alielboussi/customer-ledger-tracking';
-
 function isExpoGo() {
   return Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
 }
 
-function getExpoProjectFullName() {
+function getAppScheme() {
   const extra = readExpoExtra();
   return String(
-    Constants.expoConfig?.originalFullName
-    || extra.expoProjectFullName
-    || process.env.EXPO_PUBLIC_EXPO_PROJECT_FULL_NAME
-    || DEFAULT_EXPO_PROJECT_FULL_NAME,
+    Constants.expoConfig?.scheme
+    || process.env.EXPO_PUBLIC_APP_SCHEME
+    || extra.appScheme
+    || 'customer-ledger-tracking',
   ).trim();
 }
 
 function resolveGoogleOAuthConfig() {
   const { webClientId, androidClientId, iosClientId } = getGoogleClientIds();
+  const scheme = getAppScheme();
+  const redirectUri = makeRedirectUri({
+    scheme,
+    path: 'oauth',
+  });
 
+  // Expo Go has no native Google module — browser OAuth with the app scheme.
+  // Installed APK/IPA use native Google Sign-In (same as Ledger).
   if (isExpoGo()) {
-    const projectFullName = getExpoProjectFullName();
     return {
       webClientId,
-      // Expo Go uses a browser OAuth flow — must use the Web client ID, not the APK Android client.
       androidClientId: webClientId,
       iosClientId: iosClientId || webClientId,
-      redirectUri: `https://auth.expo.io/${projectFullName}`,
-      expoGo: true,
+      redirectUri,
+      useBrowserOAuth: true,
     };
   }
 
@@ -54,11 +53,8 @@ function resolveGoogleOAuthConfig() {
     webClientId,
     androidClientId,
     iosClientId,
-    redirectUri: makeRedirectUri({
-      scheme: APP_SCHEME,
-      path: 'oauth',
-    }),
-    expoGo: false,
+    redirectUri,
+    useBrowserOAuth: false,
   };
 }
 
@@ -96,12 +92,12 @@ function formatGoogleSignInError(err, nativeHelpers = null) {
       return 'Google Play Services is missing or outdated on this device.';
     }
     if (err.code === '10' || err.code === 10) {
-      return 'Google sign-in is not configured for this app build yet. Install the latest Ledger APK or contact support.';
+      return 'Google sign-in is not configured for this APK yet. Use email/password, or ask support to register the app SHA-1 in Google Cloud Console.';
     }
   }
   const message = String(err?.message || err || 'Google sign-in failed.');
   if (/DEVELOPER_ERROR/i.test(message) || /error code:\s*10/i.test(message)) {
-    return 'Google sign-in is not configured for this app build yet. Install the latest Ledger APK or contact support.';
+    return 'Google sign-in is not configured for this APK yet. Use email/password, or ask support to register the app SHA-1 in Google Cloud Console.';
   }
   return message;
 }
@@ -244,28 +240,9 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
 
   if (!oauth.webClientId) return null;
 
-  if (Platform.OS === 'android' || Platform.OS === 'ios') {
-    if (isExpoGo()) {
-      if (Platform.OS === 'android') {
-        return (
-          <>
-            <BrowserGoogleSignInButton
-              webClientId={oauth.webClientId}
-              androidClientId={oauth.androidClientId}
-              iosClientId={oauth.iosClientId}
-              redirectUri={oauth.redirectUri}
-              onError={onError}
-              onSuccess={onSuccess}
-              disabled={disabled}
-            />
-            <Text style={styles.expoGoHint}>
-              Expo Go: if Google fails, use email/password or install the Ledger APK.
-            </Text>
-          </>
-        );
-      }
-
-      return (
+  if (oauth.useBrowserOAuth) {
+    return (
+      <>
         <BrowserGoogleSignInButton
           webClientId={oauth.webClientId}
           androidClientId={oauth.androidClientId}
@@ -275,9 +252,16 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
           onSuccess={onSuccess}
           disabled={disabled}
         />
-      );
-    }
+        {isExpoGo() ? (
+          <Text style={styles.expoGoHint}>
+            Expo Go: if Google fails, add this redirect URI in Google Cloud Console (Web client): {oauth.redirectUri}
+          </Text>
+        ) : null}
+      </>
+    );
+  }
 
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
     return (
       <NativeGoogleSignInButton
         webClientId={oauth.webClientId}
