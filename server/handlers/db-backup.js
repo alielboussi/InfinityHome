@@ -48,6 +48,7 @@ const BACKUP_TABLES = [
   'laybys',
   'layby_payments',
   'ledger_entries',
+  'ledger_contacts',
   'factory_sold_storage_items',
   'factory_sold_storage_events',
   'stock_periods',

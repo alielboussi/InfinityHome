@@ -19,6 +19,7 @@ import { buildLaybySaleFinancials, computePooledLaybyTotalsByCurrency } from './
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
 import { fetchPosLocationsViaApi } from './services/posCatalogApi';
+import { getStartingDueBalance, normalizeStartingDueCurrency } from './utils/startingDueBalance';
 import { logUserActivity } from './utils/userActivityLog';
 
 function formatCurrency(amount, currency = 'K') {
@@ -289,7 +290,7 @@ export default function AllSales() {
       if (salesRes.error) throw salesRes.error;
 
       const [custRes, locRes] = await Promise.all([
-        fromPublic('customers').select('id, name, phone, currency, city, address'),
+        fromPublic('customers').select('id, name, phone, currency, city, address, starting_due_balance'),
         fromPublic('locations').select('id, name'),
       ]);
       // Declare salesRows up-front to avoid TDZ errors when referenced below
@@ -453,12 +454,17 @@ export default function AllSales() {
           );
 
           if (!hasLaybyActivity) {
+            const startingDue = getStartingDueBalance(cMap[customerId]);
             aggs[customerId] = rows.reduce((acc, row) => {
               acc.total += Number(row.total_amount || 0);
               acc.paid += Number(row.paid || 0);
               acc.outstanding += Number(row.outstanding || 0);
               return acc;
             }, { total: 0, paid: 0, outstanding: 0, currency });
+            if (startingDue > 0.009) {
+              aggs[customerId].total += startingDue;
+              aggs[customerId].outstanding += startingDue;
+            }
             continue;
           }
 
@@ -506,10 +512,13 @@ export default function AllSales() {
           const total = Number(bucket.total || 0);
           const paid = Number(bucket.paid || 0);
           const outstanding = Number(bucket.due || 0);
+          const startingDue = getStartingDueBalance(cMap[customerId]);
+          const startingCurrency = normalizeStartingDueCurrency(cMap[customerId]?.currency, currency);
+          const includeStartingDue = startingDue > 0.009 && startingCurrency === currency;
           aggs[customerId] = {
-            total,
+            total: total + (includeStartingDue ? startingDue : 0),
             paid,
-            outstanding,
+            outstanding: outstanding + (includeStartingDue ? startingDue : 0),
             currency,
           };
         }

@@ -35,7 +35,7 @@ export async function fetchLaybyStatement(customerId) {
     if (resp.ok && json?.ok) return { data: json };
 
     const status = resp.status || 0;
-    const canFallback = status === 405 || status === 404 || status === 401 || status === 403 || status === 0;
+    const canFallback = status === 405 || status === 404 || status === 401 || status === 403 || status === 503 || status === 0;
     if (!canFallback) return { error: new Error(json?.error || json?.raw || `Failed to fetch layby statement (${status})`) };
   } catch (e) {
     // Continue to fallback

@@ -19,7 +19,7 @@ const shouldUseApi = () => {
   const apiBase = getApiBase();
   const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
   if (forceApi) return true;
-  if (isLocalHost()) return Boolean(apiBase);
+  if (isLocalHost()) return true;
   return Boolean(apiBase) || process.env.NODE_ENV === 'production';
 };
 
@@ -42,7 +42,9 @@ const wrapComboLocationApiError = (error, url) => {
 
 async function postComboLocations(payload) {
   const apiBase = getApiBase();
-  const url = apiBase ? `${apiBase}/api/combo-locations` : '/api/combo-locations';
+  const url = isLocalHost()
+    ? '/api/combo-locations'
+    : (apiBase ? `${apiBase}/api/combo-locations` : '/api/combo-locations');
   let response;
   try {
     response = await fetch(url, {

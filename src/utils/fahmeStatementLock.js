@@ -1,6 +1,6 @@
-import { buildLaybyCurrencyBucket } from './laybyColumnTotals';
-import laybyPdfSettlementFallbacks from '../data/laybyPdfSettlementFallbacks.json';
-import fahmeStatementLocks from '../data/fahmeStatementLocks.json';
+import { buildLaybyCurrencyBucket } from './laybyColumnTotals.js';
+import laybyPdfSettlementFallbacks from '../data/laybyPdfSettlementFallbacksData.js';
+import fahmeStatementLocks from '../data/fahmeStatementLocksData.js';
 
 const LOCK_BY_CUSTOMER_ID = new Map(
   Object.entries(fahmeStatementLocks || {}).map(([id, config]) => [

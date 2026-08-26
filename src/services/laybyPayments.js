@@ -173,13 +173,14 @@ export async function insertLaybyPayments(rows = [], options = {}) {
   if (!list.length) return { data: { count: 0 } };
   const nowIso = new Date().toISOString();
   const customerId = options.customerId || null;
+  const allowNullSaleId = Boolean(options.allowNullSaleId);
   const mapped = list.map((p) => {
     const saleId = p?.sale_id;
-    if (saleId == null || saleId === '') {
+    if ((saleId == null || saleId === '') && !allowNullSaleId) {
       throw new Error('sale_id is required for layby payment');
     }
     return {
-      sale_id: saleId,
+      sale_id: saleId == null || saleId === '' ? null : saleId,
       customer_id: p.customer_id || customerId,
       payment_type: String(p.payment_type || 'cash').toLowerCase(),
       amount: Number(p.amount || 0),
@@ -192,6 +193,17 @@ export async function insertLaybyPayments(rows = [], options = {}) {
       created_at: p.created_at || nowIso,
     };
   });
+
+  const allCustomerOnly = allowNullSaleId && mapped.every((row) => row.sale_id == null);
+  if (allCustomerOnly) {
+    try {
+      const { data, error } = await fromPublic('layby_payments').insert(mapped);
+      if (error) return { error };
+      return { data: { count: Array.isArray(data) ? data.length : mapped.length } };
+    } catch (err) {
+      return { error: err };
+    }
+  }
 
   try {
     const { data, error } = await fromPublic('layby_payments')
@@ -235,7 +247,7 @@ export async function deleteLaybyPayments(rows = []) {
     const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
     const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(hostname);
     const status = resp.status || 0;
-    const canFallback = isLocal && (status === 0 || status === 401 || status === 403 || status === 404 || status === 405);
+    const canFallback = isLocal && (status === 0 || status === 401 || status === 403 || status === 404 || status === 405 || status === 503);
     if (!canFallback) return { error: new Error(json?.error || json?.raw || `Failed to delete layby payments (${status})`) };
   } catch (e) {
     const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';

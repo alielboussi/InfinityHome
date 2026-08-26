@@ -1,6 +1,11 @@
 // Consolidated notifications serverless API (WasenderApi / Whapi.Cloud groups or Meta Cloud API).
 
-
+import {
+  isBasyouniCustomer,
+  usesCashBookWhatsAppRouting,
+  usesCompactDownpaymentWhatsApp,
+  BASYOUNI_CASH_BOOK_GROUP_ID,
+} from '../src/utils/whatsappCustomerRules.js';
 
 const WHATSAPP_TEXT_LIMIT = 4096;
 const WHAPI_TIMEOUT_MS = Number(process.env.WHAPI_TIMEOUT_MS || 20000);
@@ -77,6 +82,8 @@ const RECIPIENT_KEYS = {
 
   labels: ['WHATSAPP_LABELS_RECIPIENTS', 'WHATSAPP_RECIPIENTS'],
 
+  ledger: ['WHATSAPP_LEDGER_RECIPIENTS', 'WHATSAPP_RECIPIENTS'],
+
 };
 
 
@@ -99,6 +106,8 @@ const GROUP_KEYS = {
 
   monthlyBalance: 'WHATSAPP_MONTHLY_BALANCE_GROUP_ID',
 
+  ledger: 'WHATSAPP_LEDGER_GROUP_ID',
+
 };
 
 // Documented in docs/whatsapp-groups.txt — safe fallback when env group id is unset.
@@ -110,6 +119,7 @@ const DOCUMENTED_WHATSAPP_GROUP_IDS = {
   sale: '120363420239254016@g.us',
   layby: '120363429021437712@g.us',
   fahme: '120363372527723284@g.us',
+  ledger: '120363246815974105@g.us',
 };
 
 
@@ -257,7 +267,7 @@ function normalizeWasenderKind(kind) {
 
 function parseWasenderKinds() {
   const raw = String(process.env.WHATSAPP_WASENDER_KINDS || '').trim().toLowerCase();
-  if (raw === 'all') return ['sale', 'layby', 'transfer', 'labels'];
+  if (raw === 'all') return ['sale', 'layby', 'transfer', 'labels', 'ledger'];
   if (raw) {
     const kinds = raw.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
     if (kinds.length && !kinds.includes('labels') && kinds.some((kind) => ['sale', 'layby', 'transfer'].includes(kind))) {
@@ -455,6 +465,42 @@ function resolveLaybyNotificationTargets(customerId, { locationId } = {}) {
     targets: laybyRouting.targets,
 
   };
+
+}
+
+
+
+function resolveCashBookGroupId() {
+
+  return readGroupId('ledger') || BASYOUNI_CASH_BOOK_GROUP_ID || DOCUMENTED_WHATSAPP_GROUP_IDS.ledger;
+
+}
+
+
+
+function resolveCustomerWhatsAppRouting(kind, customerId, customerName, options = {}) {
+
+  if (usesCashBookWhatsAppRouting(customerId, customerName)) {
+
+    const group = resolveCashBookGroupId();
+
+    const provider = getConfiguredProviderForKind(kind);
+
+    return group
+
+      ? { mode: 'group', targets: [group], provider }
+
+      : { mode: 'none', targets: [], provider };
+
+  }
+
+  if (kind === 'layby') {
+
+    return resolveLaybyNotificationTargets(customerId, options);
+
+  }
+
+  return resolveDeliveryTargets(kind, customerId, options);
 
 }
 
@@ -1587,6 +1633,132 @@ function buildLaybyMessage({
 
 
 
+function buildCashBookDownpaymentMessage({
+
+  dateTimeIso,
+
+  customerName,
+
+  customerPhone,
+
+  currency,
+
+  currentDueBalance,
+
+  paidAmount,
+
+  remainingDueBalance,
+
+}) {
+
+  const lines = [];
+
+  pushLine(lines, '📅 Date', formatSaleDateForMessage(dateTimeIso));
+
+  pushLine(lines, '👤 Customer Name', customerName);
+
+  pushLine(lines, '📞 Customer Number', customerPhone);
+
+  lines.push('');
+
+  lines.push(`📋 Summary: ${formatAmount(currentDueBalance, currency)}`);
+
+  lines.push(`💵 Paid ${formatAmount(paidAmount, currency)}`);
+
+  lines.push(`💵 Remaining Due Balance ${formatAmount(remainingDueBalance, currency)}`);
+
+  return lines.join('\n').trim();
+
+}
+
+
+
+function buildCashBookPosSaleMessage({
+
+  onCredit,
+
+  locationName,
+
+  dateTimeIso,
+
+  receiptNumber,
+
+  customerName,
+
+  customerPhone,
+
+  productLines,
+
+  discountAmount,
+
+  summaryTotal,
+
+  payments,
+
+  balanceDue,
+
+  currency,
+
+}) {
+
+  const lines = [];
+
+  lines.push(onCredit ? '🧾 *On Credit*' : '✅ *Completed Sale*');
+
+  pushLine(lines, '📍 Location', locationName);
+
+  pushLine(lines, '📅 Date', formatSaleDateForMessage(dateTimeIso));
+
+  pushLine(lines, '🧾 Receipt', formatReceiptNumberForMessage(receiptNumber));
+
+  pushLine(lines, '👤 Customer Name', customerName);
+
+  pushLine(lines, '📞 Customer Number', customerPhone);
+
+  if (productLines?.length) {
+
+    lines.push('');
+
+    lines.push('🛒 *Products:*');
+
+    lines.push(productLines.join(`\n${PRODUCT_LINE_SEP}\n`));
+
+  }
+
+  if (Number(discountAmount || 0) > 0) {
+
+    lines.push('');
+
+    pushLine(lines, 'Discount', formatAmount(discountAmount, currency));
+
+  }
+
+  lines.push('');
+
+  lines.push(`📋 Summary: ${formatAmount(summaryTotal, currency)}`);
+
+  const paidLine = onCredit
+
+    ? buildPaidLine(payments, currency)
+
+    : buildSalePaidLines(payments, currency);
+
+  if (paidLine) lines.push(paidLine);
+
+  const remaining = normalizeBalanceDue(balanceDue, currency);
+
+  if (onCredit && remaining > 0) {
+
+    lines.push(`💵 Remaining Due Balance ${formatAmount(remaining, currency)}`);
+
+  }
+
+  return lines.join('\n').trim();
+
+}
+
+
+
 async function sendMetaWhatsAppMessage({ to, type, payload }) {
 
   const { accessToken, phoneNumberId, apiVersion } = getMetaWhatsAppConfig();
@@ -2244,23 +2416,37 @@ async function handleWhatsAppSale(body) {
 
   if (String(sale.status || '').toLowerCase() === 'layby') {
 
-    if (isPreview) {
+    const { data: customerForLaybySkip } = await db
 
-      return {
+      .from('customers')
 
-        ok: true,
+      .select('name')
 
-        preview: true,
+      .eq('id', sale.customer_id)
 
-        message: 'This sale is marked as layby. The WhatsApp button sends a layby notification instead of a completed-sale receipt.',
+      .maybeSingle();
 
-        skipped: 'layby',
+    if (!isBasyouniCustomer(sale.customer_id, customerForLaybySkip?.name)) {
 
-      };
+      if (isPreview) {
+
+        return {
+
+          ok: true,
+
+          preview: true,
+
+          message: 'This sale is marked as layby. The WhatsApp button sends a layby notification instead of a completed-sale receipt.',
+
+          skipped: 'layby',
+
+        };
+
+      }
+
+      return { ok: true, skipped: 'layby' };
 
     }
-
-    return { ok: true, skipped: 'layby' };
 
   }
 
@@ -2379,37 +2565,69 @@ async function handleWhatsAppSale(body) {
 
   const balanceDue = Math.max(0, summaryTotal - payments.reduce((sum, p) => sum + Number(p.amount || 0), 0));
 
+  const customerName = customer?.name || '';
 
+  const basyouni = isBasyouniCustomer(sale.customer_id, customerName);
 
-  const message = buildLaybyMessage({
+  const message = basyouni
 
-    eventType: 'sale',
+    ? buildCashBookPosSaleMessage({
 
-    isQuoteLayby: false,
+      onCredit: balanceDue > 0.009,
 
-    locationName,
+      locationName,
 
-    dateTimeIso: sale.sale_date || sale.created_at,
+      dateTimeIso: sale.sale_date || sale.created_at,
 
-    receiptNumber: sale.receipt_number,
+      receiptNumber: sale.receipt_number,
 
-    customerName: customer?.name,
+      customerName: customer?.name,
 
-    customerPhone: customer?.phone,
+      customerPhone: customer?.phone,
 
-    productLines,
+      productLines,
 
-    discountAmount,
+      discountAmount,
 
-    summaryTotal,
+      summaryTotal,
 
-    payments,
+      payments,
 
-    balanceDue: 0,
+      balanceDue,
 
-    currency,
+      currency,
 
-  });
+    })
+
+    : buildLaybyMessage({
+
+      eventType: 'sale',
+
+      isQuoteLayby: false,
+
+      locationName,
+
+      dateTimeIso: sale.sale_date || sale.created_at,
+
+      receiptNumber: sale.receipt_number,
+
+      customerName: customer?.name,
+
+      customerPhone: customer?.phone,
+
+      productLines,
+
+      discountAmount,
+
+      summaryTotal,
+
+      payments,
+
+      balanceDue: 0,
+
+      currency,
+
+    });
 
   const finalMessage = isWebSale
     ? ['🛒 *Online shop order — payment received*', '', message].join('\n')
@@ -2435,14 +2653,20 @@ async function handleWhatsAppSale(body) {
 
 
 
-  const routing = resolveDeliveryTargets('sale', sale.customer_id, { locationId: sale.location_id });
+  const routing = basyouni
+
+    ? resolveCustomerWhatsAppRouting('sale', sale.customer_id, customerName, { locationId: sale.location_id })
+
+    : resolveDeliveryTargets('sale', sale.customer_id, { locationId: sale.location_id });
 
   if (!routing.targets.length) {
 
     const err = new Error(
-      String(sale.location_id) === LUSAKA_BRANCH_ID
-        ? 'WhatsApp env not configured (WHATSAPP_LUSAKA_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)'
-        : 'WhatsApp env not configured (WHATSAPP_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)',
+      basyouni
+        ? 'WhatsApp env not configured (WHATSAPP_LEDGER_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)'
+        : (String(sale.location_id) === LUSAKA_BRANCH_ID
+          ? 'WhatsApp env not configured (WHATSAPP_LUSAKA_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)'
+          : 'WhatsApp env not configured (WHATSAPP_SALES_GROUP_ID + WASENDER_API_TOKEN or WHATSAPP_API_TOKEN)'),
     );
 
     err.status = 500;
@@ -2989,78 +3213,168 @@ async function handleWhatsAppLayby(body) {
 
 
 
-  const message = isFahmeCustomer(layby.customer_id) ? '' : buildLaybyMessage({
+  const customerName = customer?.name || '';
 
-    eventType,
+  const basyouni = isBasyouniCustomer(layby.customer_id, customerName);
 
-    isQuoteLayby,
+  const fahme = isFahmeCustomer(layby.customer_id);
 
-    locationName,
+  const compactPayment = eventType === 'payment'
 
-    dateTimeIso: resolveMessageDateIso({
-      sale: focusSale,
-      payments: eventPayments,
-      eventType,
-      fallbackIso: layby.updated_at || layby.created_at,
-    }),
+    && usesCompactDownpaymentWhatsApp(layby.customer_id, customerName);
 
-    receiptNumber: focusSale?.receipt_number || sales.map((sale) => sale.receipt_number).filter(Boolean).join(', '),
+  const cashBookLaybySale = basyouni
 
-    customerName: customer?.name,
+    && ['new_layby', 'layby_addition', 'quote_convert'].includes(eventType);
 
-    customerPhone: customer?.phone,
+  const messageDateIso = resolveMessageDateIso({
 
-    productLines,
-
-    discountAmount,
-
-    summaryTotal,
+    sale: focusSale,
 
     payments: eventPayments,
 
-    balanceDue,
+    eventType,
 
-    currency,
-
-    laybyClosed: effectiveLaybyClosed,
-
-    editSummary,
-
-    previousDueBalance,
-
-    balanceDueDays: parseBalanceDueDays(layby.balance_due_days),
-
-    balanceDueDeadline: layby.balance_due_deadline
-      || computeBalanceDueDeadline(layby.created_at, layby.balance_due_days),
+    fallbackIso: layby.updated_at || layby.created_at,
 
   });
+
+
+
+  let message = '';
+
+  if (compactPayment) {
+
+    const paidAmount = eventPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+    const paidDiscount = eventPayments.reduce((sum, payment) => sum + Number(payment.discount_amount || 0), 0);
+
+    const applied = paidAmount + paidDiscount;
+
+    const remaining = balanceDue;
+
+    message = buildCashBookDownpaymentMessage({
+
+      dateTimeIso: messageDateIso,
+
+      customerName: customer?.name,
+
+      customerPhone: customer?.phone,
+
+      currency,
+
+      currentDueBalance: remaining + applied,
+
+      paidAmount: applied,
+
+      remainingDueBalance: remaining,
+
+    });
+
+  } else if (cashBookLaybySale) {
+
+    message = buildCashBookPosSaleMessage({
+
+      onCredit: true,
+
+      locationName,
+
+      dateTimeIso: messageDateIso,
+
+      receiptNumber: focusSale?.receipt_number || sales.map((sale) => sale.receipt_number).filter(Boolean).join(', '),
+
+      customerName: customer?.name,
+
+      customerPhone: customer?.phone,
+
+      productLines,
+
+      discountAmount,
+
+      summaryTotal,
+
+      payments: eventPayments,
+
+      balanceDue,
+
+      currency,
+
+    });
+
+  } else if (!fahme) {
+
+    message = buildLaybyMessage({
+
+      eventType,
+
+      isQuoteLayby,
+
+      locationName,
+
+      dateTimeIso: messageDateIso,
+
+      receiptNumber: focusSale?.receipt_number || sales.map((sale) => sale.receipt_number).filter(Boolean).join(', '),
+
+      customerName: customer?.name,
+
+      customerPhone: customer?.phone,
+
+      productLines,
+
+      discountAmount,
+
+      summaryTotal,
+
+      payments: eventPayments,
+
+      balanceDue,
+
+      currency,
+
+      laybyClosed: effectiveLaybyClosed,
+
+      editSummary,
+
+      previousDueBalance,
+
+      balanceDueDays: parseBalanceDueDays(layby.balance_due_days),
+
+      balanceDueDeadline: layby.balance_due_deadline
+
+        || computeBalanceDueDeadline(layby.created_at, layby.balance_due_days),
+
+    });
+
+  }
 
   const routingLocationId = focusSale?.location_id
     || (body.locationId != null ? String(body.locationId).trim() : '')
     || null;
 
-  const routing = resolveLaybyNotificationTargets(layby.customer_id, {
+  const routing = resolveCustomerWhatsAppRouting('layby', layby.customer_id, customerName, {
     locationId: routingLocationId,
   });
 
   if (!isPreview && !routing.targets.length) {
     const wantsFahme = isFahmeCustomer(layby.customer_id);
-    const missingHint = wantsFahme
-      ? 'Set WHATSAPP_FAHME_GROUP_ID=120363372527723284@g.us in Vercel, keep WHATSAPP_WASENDER_KINDS=sale,layby, then Redeploy'
-      : (routingLocationId === LUSAKA_BRANCH_ID
-        ? 'Set WHATSAPP_LUSAKA_SALES_GROUP_ID for Lusaka laybys in Vercel, then Redeploy'
-        : 'Set WHATSAPP_LAYBY_GROUP_ID (or WHATSAPP_LAYBY_RECIPIENTS) in Vercel, then Redeploy');
-    const err = new Error(`WhatsApp env not configured for ${wantsFahme ? 'Fahme' : 'layby'} (${missingHint})`);
+    const missingHint = basyouni
+      ? 'Set WHATSAPP_LEDGER_GROUP_ID=120363246815974105@g.us in Vercel, then Redeploy'
+      : (wantsFahme
+        ? 'Set WHATSAPP_FAHME_GROUP_ID=120363372527723284@g.us in Vercel, keep WHATSAPP_WASENDER_KINDS=sale,layby, then Redeploy'
+        : (routingLocationId === LUSAKA_BRANCH_ID
+          ? 'Set WHATSAPP_LUSAKA_SALES_GROUP_ID for Lusaka laybys in Vercel, then Redeploy'
+          : 'Set WHATSAPP_LAYBY_GROUP_ID (or WHATSAPP_LAYBY_RECIPIENTS) in Vercel, then Redeploy'));
+    const err = new Error(`WhatsApp env not configured for ${basyouni ? 'Basyouni cash book' : wantsFahme ? 'Fahme' : 'layby'} (${missingHint})`);
     err.status = 500;
     err.stage = 'env';
     throw err;
   }
 
-  if (isFahmeCustomer(layby.customer_id) && !pdfLink && !isPreview) {
+  if (fahme && eventType !== 'payment' && !pdfLink && !isPreview) {
     pdfLink = await tryResolveStoredLaybyPdfUrl(layby.id, layby.customer_id, pdfFilename);
   }
 
-  if (isFahmeCustomer(layby.customer_id) && !pdfLink && !isPreview) {
+  if (fahme && eventType !== 'payment' && !pdfLink && !isPreview) {
 
     const err = new Error('Fahme WhatsApp notifications require the layby PDF');
 
@@ -3299,6 +3613,134 @@ async function handleWhatsAppTransfer(body) {
     truncated: rawMessage.length > WHATSAPP_TEXT_LIMIT,
 
   };
+
+}
+
+
+
+function formatLedgerUsd(amount) {
+
+  const n = Number(amount || 0);
+
+  const abs = Math.abs(n);
+
+  const formatted = abs % 1 === 0
+
+    ? abs.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+
+    : abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return `${n < 0 ? '-$ ' : '$ '}${formatted}`;
+
+}
+
+
+
+function formatLedgerDate(value) {
+
+  const raw = String(value || '').trim();
+
+  if (!raw) return '—';
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const d = new Date(raw);
+
+  if (Number.isNaN(d.getTime())) return raw;
+
+  const y = d.getFullYear();
+
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+
+  const day = String(d.getDate()).padStart(2, '0');
+
+  return `${y}-${m}-${day}`;
+
+}
+
+
+
+function buildLedgerWhatsAppMessage(body = {}) {
+
+  const direction = String(body.direction || '').toLowerCase();
+
+  const isDeposit = direction === 'credit';
+
+  const header = isDeposit ? '*Ledger — Deposit*' : '*Ledger — Withdrawal*';
+
+  const entryDate = formatLedgerDate(body.entryDate || body.createdAt || body.created_at);
+
+  const personName = String(body.personName || body.person_name || '').trim() || '—';
+
+  const reason = String(body.reason || '').trim() || '—';
+
+  const amount = formatLedgerUsd(body.amount);
+
+  const previousBalance = formatLedgerUsd(body.previousBalance);
+
+  const newBalance = formatLedgerUsd(body.newBalance);
+
+  return [
+
+    header,
+
+    `Date: ${entryDate}`,
+
+    '',
+
+    `Previous balance: ${previousBalance}`,
+
+    '',
+
+    personName,
+
+    amount,
+
+    `"${reason}"`,
+
+    '',
+
+    `New balance: ${newBalance}`,
+
+  ].join('\n');
+
+}
+
+
+
+async function handleWhatsAppLedger(body) {
+
+  const preview = Boolean(body.preview);
+
+  const message = buildLedgerWhatsAppMessage(body);
+
+  if (preview) {
+
+    return { ok: true, message, preview: true };
+
+  }
+
+
+
+  const routing = resolveDeliveryTargets('ledger', null);
+
+  if (!routing.targets.length) {
+
+    const err = new Error('WhatsApp env not configured (WHATSAPP_LEDGER_GROUP_ID or WHATSAPP_LEDGER_RECIPIENTS)');
+
+    err.status = 500;
+
+    err.stage = 'env';
+
+    throw err;
+
+  }
+
+
+
+  const deliveries = await deliverText(routing.targets, message.slice(0, WHATSAPP_TEXT_LIMIT), routing.mode, routing.provider);
+
+  return { ok: true, deliveries, message };
 
 }
 
@@ -3624,6 +4066,18 @@ module.exports = async function handler(req, res) {
     if (action === 'whatsapp-transfer' || action === 'transfer') {
 
       const payload = await handleWhatsAppTransfer(body);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+
+
+    if (action === 'whatsapp-ledger' || action === 'ledger') {
+
+      const payload = await handleWhatsAppLedger(body);
 
       res.status(200).json(payload);
 

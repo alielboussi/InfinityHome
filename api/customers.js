@@ -11,6 +11,7 @@ import {
   buildFinancialsMap,
   computeSaleFinancials,
 } from '../src/utils/saleFinancials.js';
+import { mergeStartingDueIntoCustomerTotals } from '../src/utils/startingDueBalance.js';
 
 function normalizePhone(phone) {
   const raw = (phone || '').toString();
@@ -129,8 +130,19 @@ async function handleCustomerTotals(req, res, db) {
   }
 
   const saleIds = (salesRows || []).map((sale) => sale.id).filter((value) => value != null);
+
+  const { data: customerRows, error: customerErr } = await db
+    .from('customers')
+    .select('id, currency, starting_due_balance')
+    .in('id', customerIds);
+  if (customerErr) {
+    res.status(500).json({ ok: false, error: customerErr.message || String(customerErr) });
+    return;
+  }
+
   if (!saleIds.length) {
-    res.status(200).json({ ok: true, totals: {} });
+    const totals = mergeStartingDueIntoCustomerTotals({}, customerRows || []);
+    res.status(200).json({ ok: true, totals });
     return;
   }
 
@@ -145,7 +157,10 @@ async function handleCustomerTotals(req, res, db) {
     return;
   }
 
-  const totals = aggregateCustomerTotals(salesRows || [], finMap, payRows || []);
+  const totals = mergeStartingDueIntoCustomerTotals(
+    aggregateCustomerTotals(salesRows || [], finMap, payRows || []),
+    customerRows || [],
+  );
 
   res.status(200).json({ ok: true, totals });
 }
@@ -165,7 +180,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { data, error } = await db
         .from('customers')
-        .select('id, name, phone, currency, opening_balance, credit_balance')
+        .select('id, name, phone, currency, opening_balance, credit_balance, starting_due_balance, starting_due_balance_date')
         .order('name', { ascending: true });
       if (error) { res.status(500).json({ ok: false, error: error.message }); return; }
       res.status(200).json({ ok: true, rows: data || [] });
@@ -193,6 +208,18 @@ export default async function handler(req, res) {
         city: (body.city || '').toString().trim() || null,
         tpin: (body.tpin || '').toString().trim() || null,
         currency: (body.currency || '').toString().trim() || 'K',
+        starting_due_balance: (() => {
+          const parsed = Number(body.starting_due_balance ?? 0);
+          return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+        })(),
+        starting_due_balance_date: (() => {
+          const parsed = Number(body.starting_due_balance ?? 0);
+          if (!Number.isFinite(parsed) || parsed <= 0) return null;
+          const raw = String(body.starting_due_balance_date || '').trim();
+          if (!raw) return null;
+          const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
+        })(),
       };
 
       if (!id && !payload.name && !payload.phone) {
@@ -225,7 +252,7 @@ export default async function handler(req, res) {
             const hit = (existingByPhone || []).find(r => normalizePhone(r.phone) === phoneDigits);
             if (hit) {
               const update = {};
-              for (const k of ['name','phone','country','address','city','tpin','currency']) {
+              for (const k of ['name','phone','country','address','city','tpin','currency','starting_due_balance','starting_due_balance_date']) {
                 const v = payload[k]; if (v && String(hit[k] || '') !== String(v)) update[k] = v;
               }
               if (Object.keys(update).length > 0) {
@@ -248,7 +275,7 @@ export default async function handler(req, res) {
           const hit = (existingByName || []).find(r => canonName(r.name) === nameKey);
           if (hit) {
             const update = {};
-            for (const k of ['name','phone','country','address','city','tpin','currency']) {
+            for (const k of ['name','phone','country','address','city','tpin','currency','starting_due_balance','starting_due_balance_date']) {
               const v = payload[k]; if (v && String(hit[k] || '') !== String(v)) update[k] = v;
             }
             if (Object.keys(update).length > 0) {

@@ -80,6 +80,7 @@
     { "source": "/api/whatsapp-labels", "destination": "/api/notify?action=whatsapp-labels" },
     { "source": "/api/whatsapp-lusaka-transfer", "destination": "/api/notify?action=whatsapp-lusaka-transfer" },
     { "source": "/api/whatsapp-shop-order", "destination": "/api/notify?action=whatsapp-shop-order" },
+    { "source": "/api/whatsapp-ledger", "destination": "/api/notify?action=whatsapp-ledger" },
     { "source": "/api/monthly-balance-dues", "destination": "/api/notify?action=monthly-balance-dues" },
     { "source": "/api/monthly-balance-send", "destination": "/api/notify?action=monthly-balance-send" },
     { "source": "/api/layby-overdue-reminders", "destination": "/api/notify?action=layby-overdue-reminders" },

@@ -1,5 +1,6 @@
 import db from '../dataClient';
 import { isFahme } from '../laybyRules';
+import { usesCashBookWhatsAppRouting } from '../utils/whatsappCustomerRules';
 import { previewLaybyWhatsApp, previewSaleWhatsApp, sendLaybyWhatsApp, sendSaleWhatsApp } from './whatsapp';
 import { buildClientWhatsAppPreviewForRow } from './whatsappMessagePreview';
 import { buildLaybyPdfUrlForWhatsApp, buildPosSalePdfUrlForWhatsApp } from './whatsappPdfs';
@@ -385,7 +386,8 @@ export async function laybyCustomerRowHasLusakaSaleAsync(row) {
   return String(sale?.location_id || '') === LUSAKA_BRANCH_ID;
 }
 
-export function resolveLaybyWhatsAppGroupLabel(customerId, isLusakaSale) {
+export function resolveLaybyWhatsAppGroupLabel(customerId, isLusakaSale, customerName) {
+  if (usesCashBookWhatsAppRouting(customerId, customerName)) return 'Cash Book';
   if (isFahme(customerId)) return 'Fahme';
   if (isLusakaSale) return 'Lusaka';
   return 'Layby';

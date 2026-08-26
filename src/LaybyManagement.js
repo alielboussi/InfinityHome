@@ -14,6 +14,11 @@ import { insertLaybyPayments } from './services/laybyPayments';
 import { getCurrentUser, canManageLaybys } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { buildLaybySaleFinancials, buildOutstandingLaybySales, computeLaybyTotalsByCurrency, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
+import {
+  applyStartingDuePaymentReduction,
+  getStartingDueBalance,
+  splitPaymentAcrossStartingDue,
+} from './utils/startingDueBalance';
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
 import { exportAllLaybyPdfsZip, exportLaybySummaryExcel } from './utils/laybyBulkExport';
@@ -499,7 +504,8 @@ export default function LaybyManagement() {
       setLoading(prev => (prev ? false : prev));
     }, 15000);
     try {
-      const { data: custRow } = await db.from('customers').select('currency').eq('id', customerId).maybeSingle();
+      const { data: custRow } = await db.from('customers').select('currency, starting_due_balance').eq('id', customerId).maybeSingle();
+      const startingDue = getStartingDueBalance({ ...(selectedLayby.customerInfo || {}), ...(custRow || {}) });
       const curr = resolveCustomerPaymentCurrency({
         customerId,
         customer: { ...(selectedLayby.customerInfo || {}), currency: custRow?.currency || selectedLayby.customerInfo?.currency },
@@ -627,7 +633,7 @@ export default function LaybyManagement() {
         }
       }
 
-      if (!owing.length) {
+      if (!owing.length && startingDue <= 0.009) {
         setError('Customer account has no outstanding balance.');
         setLoading(false);
         return;
@@ -650,7 +656,8 @@ export default function LaybyManagement() {
         console.warn('Failed to load sale currencies for payment allocation', currencyLoadErr?.message || currencyLoadErr);
       }
 
-      const totalOutstanding = owing.reduce((a, r) => a + Number(r.due || 0), 0);
+      const salesOutstanding = owing.reduce((a, r) => a + Number(r.due || 0), 0);
+      const totalOutstanding = salesOutstanding + startingDue;
       let paymentBudget = Math.min(rawAmount, totalOutstanding);
       let remainingDiscount = Math.min(rawDiscount, Math.max(0, totalOutstanding - paymentBudget));
       if (paymentBudget <= 0 && remainingDiscount <= 0) {
@@ -659,10 +666,93 @@ export default function LaybyManagement() {
         return;
       }
 
+      const trimmedNote = (paymentNote || '').trim();
+      const trimmedReceipt = (receipt || '').trim();
+      if (!trimmedReceipt || /^-+$/.test(trimmedReceipt)) {
+        setError('Receipt # is required.');
+        setLoading(false);
+        return;
+      }
+
       const poolSaleId = selectedLayby?.primaryLayby?.sale_id
         || selectedLayby?.sale_id
         || owing[0]?.saleId
         || null;
+
+      const allocationBatchUuid = (typeof window !== 'undefined' && window.crypto?.randomUUID)
+        ? window.crypto.randomUUID()
+        : `batch-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(16)}`;
+
+      if (!poolSaleId && startingDue > 0.009) {
+        const openingInserts = [];
+        for (const line of activePaymentLines) {
+          const lineAmount = Math.min(Number(line.amount || 0), paymentBudget);
+          if (!(lineAmount > 0)) continue;
+          paymentBudget -= lineAmount;
+          openingInserts.push({
+            customer_id: customerId,
+            amount: lineAmount,
+            payment_type: line.type || 'cash',
+            currency: curr,
+            payment_date: paymentDate,
+            reference: trimmedReceipt || null,
+            notes: trimmedNote || null,
+            allocation_batch_uuid: allocationBatchUuid,
+            discount_amount: 0,
+          });
+        }
+        const discountPaymentType = activePaymentLines[0]?.type || 'cash';
+        if (remainingDiscount > 0) {
+          openingInserts.push({
+            customer_id: customerId,
+            amount: 0,
+            payment_type: discountPaymentType,
+            currency: curr,
+            payment_date: paymentDate,
+            reference: trimmedReceipt || null,
+            notes: trimmedNote || null,
+            allocation_batch_uuid: allocationBatchUuid,
+            discount_amount: remainingDiscount,
+          });
+        }
+        if (!openingInserts.length) {
+          setError('Calculated allocation empty.');
+          setLoading(false);
+          return;
+        }
+        const { error: laybyPayErr } = await insertLaybyPayments(openingInserts, {
+          customerId,
+          allowNullSaleId: true,
+        });
+        if (laybyPayErr) throw laybyPayErr;
+
+        const { payToStarting } = splitPaymentAcrossStartingDue({
+          paymentAmount: rawAmount,
+          paymentDiscount: rawDiscount,
+          salesOutstanding: 0,
+          startingDue,
+        });
+        if (payToStarting > 0.009) {
+          await applyStartingDuePaymentReduction(db, customerId, payToStarting);
+        }
+
+        successFlag = true;
+        cacheClear(LAYBY_ROWS_CACHE_KEY);
+        setSuccess(`Payment of ${formatCurrency(rawAmount, curr)} recorded against opening balance.`);
+        await refreshCustomerRowFast(customerId);
+        void (async () => {
+          try {
+            await reconcileCustomerLaybys(customerId);
+          } catch (refreshErr) {
+            console.warn('Background layby reconcile failed after payment', refreshErr?.message || refreshErr);
+          } finally {
+            cacheClear(LAYBY_ROWS_CACHE_KEY);
+            setRtTick(t => t + 1);
+          }
+        })();
+        return;
+      }
+
       if (!poolSaleId) {
         setError('Unable to resolve layby account for this payment.');
         setLoading(false);
@@ -671,14 +761,6 @@ export default function LaybyManagement() {
       const poolCurrency = saleCurrencyById.get(String(poolSaleId))
         || owing[0]?.currency
         || curr;
-
-      const trimmedNote = (paymentNote || '').trim();
-      const trimmedReceipt = (receipt || '').trim();
-      if (!trimmedReceipt || /^-+$/.test(trimmedReceipt)) {
-        setError('Receipt # is required.');
-        setLoading(false);
-        return;
-      }
 
       const saleIdsForCheck = Array.from(new Set((owing || []).map((row) => row.saleId).filter((id) => id != null)));
       const laybyIdForQuote = selectedLayby?.primaryLayby?.id || selectedLayby?.id;
@@ -689,9 +771,6 @@ export default function LaybyManagement() {
       ]);
 
       const inserts = [];
-      const allocationBatchUuid = (typeof window !== 'undefined' && window.crypto?.randomUUID)
-        ? window.crypto.randomUUID()
-        : `batch-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(16)}`;
 
       // Pool all down payments against one customer balance (single sale anchor row).
       for (const line of activePaymentLines) {
@@ -742,6 +821,16 @@ export default function LaybyManagement() {
       }));
       const { error: laybyPayErr } = await insertLaybyPayments(laybyRows, { customerId });
       if (laybyPayErr) throw laybyPayErr;
+
+      const { payToStarting } = splitPaymentAcrossStartingDue({
+        paymentAmount: rawAmount,
+        paymentDiscount: rawDiscount,
+        salesOutstanding,
+        startingDue,
+      });
+      if (payToStarting > 0.009) {
+        await applyStartingDuePaymentReduction(db, customerId, payToStarting);
+      }
 
       successFlag = true;
       cacheClear(LAYBY_ROWS_CACHE_KEY);
@@ -1402,7 +1491,7 @@ export default function LaybyManagement() {
         return;
       }
       const isLusakaSale = await laybyCustomerRowHasLusakaSaleAsync(row);
-      const groupLabel = resolveLaybyWhatsAppGroupLabel(customerId, isLusakaSale);
+      const groupLabel = resolveLaybyWhatsAppGroupLabel(customerId, isLusakaSale, row?.customer?.name);
       setSuccess(`Layby WhatsApp sent to ${groupLabel} group for ${row.customer?.name || customerId}.`);
     } catch (e) {
       console.warn('Customer layby WhatsApp send failed:', e?.message || e);
@@ -1558,10 +1647,10 @@ export default function LaybyManagement() {
                             setPaymentDate(getTodayInputValue());
                           } catch {}
                           setPaymentEntryLines([defaultPaymentEntryLine()]);
-                          const target = buildSelectedLaybyTarget(row, primaryLayby);
+                          const target = buildSelectedLaybyTarget(row, primaryLayby || row.primaryLayby);
                           if (target) setSelectedLayby(target);
                         }}
-                        disabled={!primaryLayby || rowLocked}
+                        disabled={sumRowDue(row) <= 0.009 || rowLocked}
                       >
                         Add Payment
                       </button>
@@ -1672,6 +1761,14 @@ export default function LaybyManagement() {
           customer: selectedLayby.customerInfo,
           totalsByCurrency: selectedLayby.totalsByCurrency,
         });
+        const displayTotals = getDisplayTotalsByCurrency(
+          { totalsByCurrency: selectedLayby.totalsByCurrency },
+          { isFahmeCustomer: isFahme(selectedLayby.customer_id || selectedLayby.customerId) },
+        );
+        const currentDue = Number(displayTotals[paymentCurrency]?.due || 0);
+        const paymentTotal = (paymentEntryLines || []).reduce((sum, line) => sum + parseAmountInput(line.amount), 0);
+        const discountTotal = parseAmountInput(paymentDiscount);
+        const dueRemaining = Math.max(0, currentDue - paymentTotal - discountTotal);
         return (
         <div className="layby-modal-overlay" onClick={(e) => { if (e.target.classList.contains('layby-modal-overlay')) { setSelectedLayby(null); } }}>
           <div className="layby-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -1725,8 +1822,16 @@ export default function LaybyManagement() {
                       >
                         Add Another Payment
                       </button>
-                      <div>
-                        Total: <b>{formatCurrency((paymentEntryLines || []).reduce((sum, line) => sum + parseAmountInput(line.amount), 0), paymentCurrency)}</b>
+                      <div style={{ textAlign: 'right' }}>
+                        <div>
+                          Total: <b>{formatCurrency(paymentTotal, paymentCurrency)}</b>
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: '0.95em' }}>
+                          Due remaining:{' '}
+                          <b style={{ color: dueRemaining <= 0.009 ? '#2ecc71' : undefined }}>
+                            {formatCurrency(dueRemaining, paymentCurrency)}
+                          </b>
+                        </div>
                       </div>
                     </div>
                   </div>

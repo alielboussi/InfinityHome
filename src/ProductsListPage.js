@@ -285,8 +285,6 @@ function ProductsListPage() {
   const [imageEditFile, setImageEditFile] = useState(null);
   const [imageEditLoading, setImageEditLoading] = useState(false);
   const [expandedImage, setExpandedImage] = useState(null);
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editProduct, setEditProduct] = useState(null);
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
   const [adjustProduct, setAdjustProduct] = useState(null);
   const [adjustQty, setAdjustQty] = useState(0);
@@ -358,6 +356,18 @@ function ProductsListPage() {
   const canDelete = isStockLockedUser ? true : canDeleteProducts(currentUser);
   const canEditFactoryHolds = !isStockLockedUser && canManageProductInventory(currentUser);
   const canManageCatalogPage = canManageCatalog(currentUser);
+
+  const openItemEditor = useCallback((item, isCombo) => {
+    if (isCombo) {
+      navigate(`/edit-set/${item.id}`);
+      return;
+    }
+    if (!canManageCatalogPage) {
+      alert('You do not have permission to edit products.');
+      return;
+    }
+    navigate(`/products?edit=${encodeURIComponent(item.id)}&return=${encodeURIComponent('/products-list')}`);
+  }, [canManageCatalogPage, navigate]);
 
   const isUuid = useCallback((value) => {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -3052,6 +3062,7 @@ function ProductsListPage() {
                   </th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Price</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Promo</th>
+                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '5%'}}>Edit</th>
                 </tr>
               </thead>
               <tbody>
@@ -3325,6 +3336,17 @@ function ProductsListPage() {
                       </td>
                       {renderEditablePriceCell(item, 'price', isCombo, rowKey, 'products-list-cell-price')}
                       {renderEditablePriceCell(item, 'promotional_price', isCombo, rowKey, 'products-list-cell-promo')}
+                      <td className="products-list-cell-action">
+                        <button
+                          type="button"
+                          className="products-list-action-btn products-list-action-btn--edit"
+                          onClick={() => openItemEditor(item, isCombo)}
+                          title={isCombo ? `Edit set ${item.combo_name}` : `Edit product ${item.name}`}
+                          aria-label={isCombo ? `Edit set ${item.combo_name}` : `Edit product ${item.name}`}
+                        >
+                          Edit
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}

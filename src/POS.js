@@ -26,10 +26,12 @@ import {
   applyProductLocationPricing,
   buildComboLocationPriceMap,
   buildProductLocationPriceMap,
+  buildProductLocationPriceUpsert,
 } from './utils/locationPricing';
 import {
   fetchComboLocationPricesForLocation,
   fetchProductLocationPricesForLocation,
+  upsertProductLocationPrices,
 } from './services/locationPricing';
 import { applySaleInventoryDeductionViaApi } from './utils/inventoryApi';
 import {
@@ -345,6 +347,12 @@ export default function POS({ isMobile = false }) {
   const [customPriceIdx, setCustomPriceIdx] = useState(null);
   const [customPriceValue, setCustomPriceValue] = useState('');
   const [customPriceError, setCustomPriceError] = useState('');
+  const [productContextMenu, setProductContextMenu] = useState(null);
+  const [showProductPriceModal, setShowProductPriceModal] = useState(false);
+  const [productPriceTarget, setProductPriceTarget] = useState(null);
+  const [productPriceForm, setProductPriceForm] = useState({ price: '', promotional_price: '' });
+  const [productPriceError, setProductPriceError] = useState('');
+  const [productPriceSaving, setProductPriceSaving] = useState(false);
   const [showCustomProductModal, setShowCustomProductModal] = useState(false);
   const [customProductForm, setCustomProductForm] = useState({ name: '', price: '', qty: 1 });
   const [customProductError, setCustomProductError] = useState('');
@@ -816,6 +824,100 @@ export default function POS({ isMobile = false }) {
     }
     updateCartItem(customPriceIdx, { price, overrideCurrency: currency });
     closeCustomPriceModal();
+  };
+
+  const closeProductContextMenu = () => setProductContextMenu(null);
+
+  const openProductContextMenu = (e, product) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setProductContextMenu({ product, x: e.clientX, y: e.clientY });
+  };
+
+  const closeProductPriceModal = () => {
+    setShowProductPriceModal(false);
+    setProductPriceTarget(null);
+    setProductPriceForm({ price: '', promotional_price: '' });
+    setProductPriceError('');
+    setProductPriceSaving(false);
+  };
+
+  const openProductPriceModal = (product) => {
+    setProductPriceTarget(product);
+    setProductPriceForm({
+      price: product?.price != null && product.price !== '' ? String(product.price) : '',
+      promotional_price: product?.promotional_price != null && product.promotional_price !== ''
+        ? String(product.promotional_price)
+        : '',
+    });
+    setProductPriceError('');
+    setShowProductPriceModal(true);
+  };
+
+  const handleEditProductFromPos = (product) => {
+    if (!product?.id) return;
+    navigate(`/products?edit=${encodeURIComponent(product.id)}&return=${encodeURIComponent('/pos')}`);
+  };
+
+  const handleSaveProductPrice = async () => {
+    if (!productPriceTarget?.id) return;
+    const rawPrice = String(productPriceForm.price ?? '').trim();
+    const price = Number(rawPrice);
+    if (rawPrice === '' || !Number.isFinite(price) || price < 0) {
+      setProductPriceError('Enter a valid standard price (0 or greater).');
+      return;
+    }
+    const rawPromo = String(productPriceForm.promotional_price ?? '').trim();
+    let promotional_price = null;
+    if (rawPromo !== '') {
+      promotional_price = Number(rawPromo);
+      if (!Number.isFinite(promotional_price) || promotional_price < 0) {
+        setProductPriceError('Promotional price must be 0 or greater.');
+        return;
+      }
+    }
+    setProductPriceSaving(true);
+    setProductPriceError('');
+    try {
+      const nowIso = new Date().toISOString();
+      const { error: updateError } = await db.from('products').update({
+        price,
+        promotional_price,
+        updated_at: nowIso,
+      }).eq('id', productPriceTarget.id);
+      if (updateError) throw updateError;
+
+      if (selectedLocation && isUuid(selectedLocation)) {
+        await upsertProductLocationPrices(db, [buildProductLocationPriceUpsert({
+          productId: productPriceTarget.id,
+          locationId: selectedLocation,
+          price,
+          promotionalPrice: promotional_price,
+        })]);
+      }
+
+      setProducts((prev) => prev.map((p) => (
+        String(p.id) === String(productPriceTarget.id)
+          ? { ...p, price, promotional_price }
+          : p
+      )));
+
+      const locationName = locations.find((loc) => String(loc.id) === String(selectedLocation))?.name || 'location';
+      logUserActivity({
+        actionType: 'product_price_change',
+        actionLabel: 'POS Product Price Change',
+        details: `${productPriceTarget.name} (${productPriceTarget.sku}) @ ${locationName} • Price ${price}${promotional_price != null ? ` • Promo ${promotional_price}` : ''}`,
+        reference: productPriceTarget.sku,
+        entityType: 'product',
+        entityId: String(productPriceTarget.id),
+      });
+
+      closeProductPriceModal();
+      forceCatalogRefresh();
+    } catch (err) {
+      setProductPriceError(err?.message || 'Failed to save price.');
+      setProductPriceSaving(false);
+    }
   };
 
   // Remove cart item
@@ -2267,6 +2369,7 @@ export default function POS({ isMobile = false }) {
               key={product.id}
               className="pos-product-btn"
               onClick={() => handleProductClick(product)}
+              onContextMenu={(e) => openProductContextMenu(e, product)}
               disabled={isUnavailable}
               style={isUnavailable ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
             >
@@ -2385,6 +2488,90 @@ export default function POS({ isMobile = false }) {
       </table>
 
       {/* Removed: Add Credit modal */}
+      {productContextMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+            onClick={closeProductContextMenu}
+            onContextMenu={(e) => { e.preventDefault(); closeProductContextMenu(); }}
+          />
+          <div
+            role="menu"
+            style={{
+              position: 'fixed',
+              top: productContextMenu.y,
+              left: productContextMenu.x,
+              zIndex: 9999,
+              background: '#fff',
+              border: '1px solid #d0d7de',
+              borderRadius: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              minWidth: 160,
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+              onClick={() => { openProductPriceModal(productContextMenu.product); closeProductContextMenu(); }}
+            >
+              Set price
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #eee', background: 'transparent', cursor: 'pointer' }}
+              onClick={() => { handleEditProductFromPos(productContextMenu.product); closeProductContextMenu(); }}
+            >
+              Edit product
+            </button>
+          </div>
+        </>
+      )}
+      {showProductPriceModal && productPriceTarget && (
+        <div className="pos-modal">
+          <div className="pos-modal-content">
+            <h3>Set price — {productPriceTarget.name}</h3>
+            {selectedLocation && (
+              <div style={{ fontSize: '0.85em', color: '#666', marginBottom: 10 }}>
+                Location: {locations.find((loc) => String(loc.id) === String(selectedLocation))?.name || 'Current POS location'}
+              </div>
+            )}
+            <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>Standard price</label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={productPriceForm.price}
+              onChange={(e) => { setProductPriceForm((f) => ({ ...f, price: e.target.value })); setProductPriceError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProductPrice(); } }}
+              autoFocus
+              className="pos-modal-input-narrow"
+              disabled={productPriceSaving}
+            />
+            <label style={{ display: 'block', marginTop: 10, marginBottom: 4, fontSize: '0.9em' }}>Promotional price (optional)</label>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={productPriceForm.promotional_price}
+              onChange={(e) => { setProductPriceForm((f) => ({ ...f, promotional_price: e.target.value })); setProductPriceError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProductPrice(); } }}
+              className="pos-modal-input-narrow"
+              disabled={productPriceSaving}
+            />
+            {productPriceError && <div className="pos-modal-error">{productPriceError}</div>}
+            <div className="pos-modal-actions">
+              <button type="button" className="pos-modal-btn-primary" onClick={handleSaveProductPrice} disabled={productPriceSaving}>
+                {productPriceSaving ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" className="pos-modal-btn-secondary" onClick={closeProductPriceModal} disabled={productPriceSaving}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Custom Price Modal */}
       {showCustomPriceModal && (
         <div className="pos-modal">

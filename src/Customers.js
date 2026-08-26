@@ -4,9 +4,20 @@ import BackToDashboard from './BackToDashboard';
 import { cacheGet, cacheSet } from './utils/staleCache';
 // Removed unused navigate import (was not used, eliminating CI lint error)
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
+import { parseStartingDueInput, parseStartingDueDateInput } from './utils/startingDueBalance';
 // Removed user permissions logic
 
-const initialForm = { name: '', phonePrefix: '+260', phone: '', address: '', city: '', tpin: '' };
+const initialForm = {
+  name: '',
+  phonePrefix: '+260',
+  phone: '',
+  address: '',
+  city: '',
+  tpin: '',
+  currency: 'K',
+  starting_due_balance: '',
+  starting_due_balance_date: '',
+};
 
 const Customers = () => {
   const [customers, setCustomers] = useState([]);
@@ -66,7 +77,7 @@ const Customers = () => {
       }
     } catch { setLoading(true); }
     try {
-      const { data, error } = await db.from('customers').select('id, name, phone, address, city, tpin, created_at');
+      const { data, error } = await db.from('customers').select('id, name, phone, address, city, tpin, currency, starting_due_balance, starting_due_balance_date, created_at');
       if (error) throw error;
       setCustomers(data || []);
       try { cacheSet('customers:list:v1', data || [], 5 * 60 * 1000); } catch {}
@@ -114,11 +125,34 @@ const Customers = () => {
           ...rest,
           name: capitalizeWords(f.name),
           phone: fullPhone,
+          currency: (f.currency || 'K').trim() || 'K',
+          starting_due_balance: (() => {
+            const parsed = parseStartingDueInput(f.starting_due_balance);
+            return Number.isFinite(parsed) ? parsed : 0;
+          })(),
+          starting_due_balance_date: (() => {
+            const parsedBalance = parseStartingDueInput(f.starting_due_balance);
+            if (!Number.isFinite(parsedBalance) || parsedBalance <= 0) return null;
+            return parseStartingDueDateInput(f.starting_due_balance_date);
+          })(),
         };
-        // Currency and opening balance removed per request
         return payload;
       };
       const formToSave = buildPayload(form);
+      if (!Number.isFinite(parseStartingDueInput(form.starting_due_balance))) {
+        setError('Enter a valid starting due balance or leave blank.');
+        setSaving(false);
+        return;
+      }
+      if (
+        parseStartingDueInput(form.starting_due_balance) > 0
+        && form.starting_due_balance_date
+        && !parseStartingDueDateInput(form.starting_due_balance_date)
+      ) {
+        setError('Enter a valid starting due balance date or leave blank.');
+        setSaving(false);
+        return;
+      }
       // Phone, address, city, tpin are optional
       if (editingId) {
         // Update
@@ -162,7 +196,14 @@ const Customers = () => {
       phone: customer.phone || '',
       address: customer.address || '',
       city: customer.city || '',
-      tpin: customer.tpin || ''
+      tpin: customer.tpin || '',
+      currency: customer.currency || 'K',
+      starting_due_balance: customer.starting_due_balance != null && Number(customer.starting_due_balance) > 0
+        ? String(customer.starting_due_balance)
+        : '',
+      starting_due_balance_date: customer.starting_due_balance_date
+        ? String(customer.starting_due_balance_date).slice(0, 10)
+        : '',
     });
     setEditingId(customer.id);
   };
@@ -205,7 +246,7 @@ const Customers = () => {
       const pattern = `%${t}%`;
       const { data, error } = await db
       .from('customers')
-      .select('id, name, phone, address, city, tpin')
+      .select('id, name, phone, address, city, tpin, currency, starting_due_balance, starting_due_balance_date')
       .or(`name.ilike.${pattern},phone.ilike.${pattern}`)
       .order('name', { ascending: true });
       if (error) throw error;
@@ -312,6 +353,31 @@ const Customers = () => {
               value={form.tpin}
               onChange={handleChange}
             />
+            <select
+              name="currency"
+              value={form.currency}
+              onChange={handleChange}
+              title="Currency for starting due balance"
+            >
+              <option value="K">Kwacha (K)</option>
+              <option value="USD">US Dollar ($)</option>
+            </select>
+            <input
+              name="starting_due_balance"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Starting due balance (optional)"
+              value={form.starting_due_balance}
+              onChange={handleChange}
+            />
+            <input
+              name="starting_due_balance_date"
+              type="date"
+              title="Date for starting due balance"
+              value={form.starting_due_balance_date}
+              onChange={handleChange}
+            />
             <div className="form-actions">
               <button type="submit" disabled={saving} className="save-btn">
                 {editingId ? 'Update' : 'Add'}
@@ -322,6 +388,11 @@ const Customers = () => {
             </div>
           </div>
         </form>
+      )}
+      {canAdd && (
+        <div style={{ color: '#8ab', fontSize: '0.9rem', margin: '0 0 12px' }}>
+          Starting due balance is added to layby/POS customer dues. Set the date when the balance started. Down payments reduce it like any other balance.
+        </div>
       )}
       {error && <div className="customers-error">{error}</div>}
 

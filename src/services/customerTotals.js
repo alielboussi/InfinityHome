@@ -1,5 +1,6 @@
 import db from '../dataClient';
 import { fetchCanonicalFinancials, aggregateCustomerTotals } from '../utils/financials';
+import { mergeStartingDueIntoCustomerTotals } from '../utils/startingDueBalance';
 
 export async function fetchCustomerTotals(customerIds) {
   const ids = Array.isArray(customerIds) ? customerIds.filter(Boolean) : [];
@@ -28,8 +29,17 @@ export async function fetchCustomerTotals(customerIds) {
       .select('id, customer_id, currency, total_amount, discount')
       .in('customer_id', ids);
     if (salesErr) return { error: salesErr };
+
+    const { data: customerRows, error: customerErr } = await db
+      .from('customers')
+      .select('id, currency, starting_due_balance')
+      .in('id', ids);
+    if (customerErr) return { error: customerErr };
+
     const saleIds = (salesRows || []).map(s => s.id).filter(v => v != null);
-    if (!saleIds.length) return { data: {} };
+    if (!saleIds.length) {
+      return { data: mergeStartingDueIntoCustomerTotals({}, customerRows || []) };
+    }
 
     const finMap = await fetchCanonicalFinancials(db, saleIds);
     const { data: payRows, error: payErr } = await db
@@ -38,7 +48,12 @@ export async function fetchCustomerTotals(customerIds) {
       .in('sale_id', saleIds);
     if (payErr) return { error: payErr };
 
-    return { data: aggregateCustomerTotals(salesRows || [], finMap, payRows || []) };
+    return {
+      data: mergeStartingDueIntoCustomerTotals(
+        aggregateCustomerTotals(salesRows || [], finMap, payRows || []),
+        customerRows || [],
+      ),
+    };
   } catch (err) {
     return { error: err };
   }

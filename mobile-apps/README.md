@@ -1,6 +1,6 @@
 # Infinity Home Mobile Apps (Expo SDK 52)
 
-Five Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator (SDK 54 for customer-credit and lusaka-stock; SDK 52 for others).
+Six Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator (SDK 54 for customer-credit, lusaka-stock, and product-pricing; SDK 52 for others).
 
 ## Prerequisites
 
@@ -153,6 +153,27 @@ Then `npm run build:apk:prod` in `lusaka-stock/`. See `lusaka-stock/PRE_BUILD_CH
 
 ---
 
+## 6. Product Pricing (`product-pricing/`)
+
+Update portal **products-list** prices and photos from a phone.
+
+```bash
+cd mobile-apps/product-pricing
+cp ../lusaka-stock/assets/icon.png assets/
+cp ../lusaka-stock/assets/splash.png assets/
+cp ../lusaka-stock/assets/adaptive-icon.png assets/
+npm install
+npm start
+```
+
+**Sign-in:** Firebase email/password only (no Google).
+
+**Screens:** dashboard (pick Kitwe/Lusaka/Factory) → searchable single-column catalog → product edit (standard price, promo price, photo). **Scan QR** uses the SKU on price labels.
+
+**Data:** same Firestore + Storage paths as `src/ProductsListPage.js` — updates show on `/products-list` immediately.
+
+---
+
 ## Project layout
 
 ```
@@ -166,6 +187,7 @@ mobile-apps/
   factory-production/
   customer-credit/
   lusaka-stock/
+  product-pricing/
   README.md
 ```
 

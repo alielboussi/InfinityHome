@@ -8,6 +8,7 @@ import {
   salePaymentDedupKey,
   sumDedupedItemsNet,
 } from './saleFinancials';
+import { getStartingDueBalance } from './startingDueBalance';
 
 export { computeSaleFinancials, aggregateCustomerTotals, buildFinancialsMap } from './saleFinancials';
 
@@ -172,6 +173,16 @@ export async function computeCustomerDueRemainingLikePdf(db, customerId) {
 export async function computeCustomerOutstandingLikeLaybyPage(db, customerId) {
   if (!customerId) return 0;
   try {
+    let startingDue = 0;
+    try {
+      const { data: customerRow } = await db
+        .from('customers')
+        .select('starting_due_balance')
+        .eq('id', customerId)
+        .maybeSingle();
+      startingDue = getStartingDueBalance(customerRow || {});
+    } catch {}
+
     const { data: laybys } = await fromPublic('laybys').select('id').eq('customer_id', customerId);
     const laybyIds = Array.from(new Set((laybys || []).map((r) => r.id).filter((v) => v != null))).map((v) => String(v));
 
@@ -192,7 +203,7 @@ export async function computeCustomerOutstandingLikeLaybyPage(db, customerId) {
     }
 
     const saleIds = Array.from(saleIdSet);
-    if (!saleIds.length) return 0;
+    if (!saleIds.length) return startingDue;
 
     const { sales, items, payments } = await fetchSalesBundle(db, saleIds);
     const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
@@ -250,7 +261,7 @@ export async function computeCustomerOutstandingLikeLaybyPage(db, customerId) {
       paid += Number(fin.paid_amount || 0);
     });
 
-    return Math.max(0, total - paid);
+    return Math.max(0, total - paid) + startingDue;
   } catch {
     return 0;
   }

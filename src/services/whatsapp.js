@@ -22,6 +22,7 @@ const NOTIFY_ROUTE_BY_ACTION = {
   'whatsapp-layby': '/api/whatsapp-layby',
   'whatsapp-transfer': '/api/whatsapp-transfer',
   'whatsapp-lusaka-transfer': '/api/whatsapp-lusaka-transfer',
+  'whatsapp-ledger': '/api/whatsapp-ledger',
   'monthly-balance-dues': '/api/monthly-balance-dues',
   'monthly-balance-send': '/api/monthly-balance-send',
 };
@@ -197,6 +198,40 @@ export async function sendLabelsWhatsApp({ pdfUrl, pdfBase64, pdfFilename, messa
       return formatWhatsAppError(res, json, 'labels');
     }
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+export async function sendLedgerWhatsApp(payload) {
+  try {
+    const res = await fetch(notifyApiUrl('whatsapp-ledger'), {
+      method: 'POST',
+      headers: notifyApiHeaders(),
+      body: JSON.stringify({ ...(payload || {}), action: 'whatsapp-ledger' }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false) {
+      return formatWhatsAppError(res, json, 'ledger');
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+export async function previewLedgerWhatsApp(payload) {
+  try {
+    const res = await fetch(notifyApiUrl('whatsapp-ledger'), {
+      method: 'POST',
+      headers: notifyApiHeaders(),
+      body: JSON.stringify({ ...(payload || {}), action: 'whatsapp-ledger', preview: true }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false) {
+      return formatWhatsAppError(res, json, 'ledger preview');
+    }
+    return { ok: true, message: String(json?.message || '') };
   } catch (e) {
     return { ok: false, error: e?.message || String(e) };
   }

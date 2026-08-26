@@ -187,11 +187,22 @@ function parseQuoteNumberValue(quoteNumber) {
   return match ? Number.parseInt(match[1], 10) : 0;
 }
 
+function quotationSortStamp(row) {
+  const stamp = String(row?.updated_at || row?.created_at || '');
+  if (stamp) return stamp;
+  const num = parseQuoteNumberValue(row?.quote_number);
+  if (num > 0) {
+    // Missing dates: keep high QT numbers near the top instead of sinking to the bottom.
+    return `9999-12-31T${String(num).padStart(8, '0')}`;
+  }
+  return '';
+}
+
 /** Newest quotes first; falls back to quote number then id when dates are missing. */
 export function sortQuotationRows(rows = []) {
   return [...rows].sort((a, b) => {
-    const aStamp = String(a.updated_at || a.created_at || '');
-    const bStamp = String(b.updated_at || b.created_at || '');
+    const aStamp = quotationSortStamp(a);
+    const bStamp = quotationSortStamp(b);
     const createdCmp = bStamp.localeCompare(aStamp);
     if (createdCmp !== 0) return createdCmp;
 

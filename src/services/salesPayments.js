@@ -41,7 +41,7 @@ export async function insertSalesPayments(payments, opts = {}) {
     const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
     const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(hostname);
     const status = resp.status || 0;
-    const canFallback = (status === 405) || (isLocal && (status === 0 || status === 401 || status === 403 || status === 404));
+    const canFallback = (status === 405) || (isLocal && (status === 0 || status === 401 || status === 403 || status === 404 || status === 503));
     if (!canFallback) return { error: new Error(json?.error || json?.raw || `Failed to insert payments (${status})`) };
   } catch (e) {
     // Network error: try fallback only in localhost
@@ -109,7 +109,7 @@ export async function fetchSalesPaymentsBySaleIds(saleIds = []) {
     const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
     const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(hostname);
     const status = resp.status || 0;
-    const canFallback = isLocal && (status === 0 || status === 401 || status === 403 || status === 404);
+    const canFallback = isLocal && (status === 0 || status === 401 || status === 403 || status === 404 || status === 503);
     if (!canFallback) return { error: new Error(json?.error || json?.raw || `Failed to fetch payments (${status})`) };
   } catch (e) {
     const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
@@ -152,7 +152,7 @@ export async function deleteSalesPayments(paymentIds = []) {
     const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';
     const isLocal = /^(localhost|127\.0\.0\.1)$/i.test(hostname);
     const status = resp.status || 0;
-    const canFallback = isLocal && (status === 0 || status === 401 || status === 403 || status === 404 || status === 405);
+    const canFallback = isLocal && (status === 0 || status === 401 || status === 403 || status === 404 || status === 405 || status === 503);
     if (!canFallback) return { error: new Error(json?.error || json?.raw || `Failed to delete payments (${status})`) };
   } catch (e) {
     const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) ? window.location.hostname : '';

@@ -9,6 +9,13 @@ import { fetchMergedLaybyPayments, buildLaybyPaymentLooseKey, dedupeLaybyPayment
 import { isFahme, isFahmeAcc2, resolveFahmeFallbackKey, FAHME_ID, FAHME_PLACEHOLDER_HOLD, shouldUseFahmeLiveStatementOnly } from '../laybyRules';
 import { filterCustomerSalesForLaybyStatement } from '../utils/laybyStatementSales';
 import { applyFahmeStatementLock, filterLockedFahmePayments, filterLockedFahmeSales, isFahmeStatementLocked } from '../utils/fahmeStatementLock';
+import {
+  applyStartingDueToTotalsByCurrency,
+  buildStartingDuePrimaryLayby,
+  buildStartingDueStatementSale,
+  getStartingDueBalance,
+  getStartingDueBalanceDate,
+} from '../utils/startingDueBalance';
 import laybyPdfSettlementFallbacks from '../data/laybyPdfSettlementFallbacks.json';
 
 const CLOSED_LAYBY_STATUSES = new Set(['completed', 'cancelled', 'voided', 'closed', 'settled', 'paid', 'refunded']);
@@ -469,11 +476,21 @@ export async function fetchLaybyCustomerRows() {
     });
     if (outstanding > 0.009) customerIds.add(customerId);
   });
+
+  try {
+    const { data: startingDueRows } = await fromPublic('customers').select('id, starting_due_balance, starting_due_balance_date');
+    (startingDueRows || []).forEach((row) => {
+      if (getStartingDueBalance(row) > 0.009) customerIds.add(String(row.id));
+    });
+  } catch (startingDueErr) {
+    console.warn('Failed to load customers with starting due balance', startingDueErr?.message || startingDueErr);
+  }
+
   const ids = Array.from(customerIds);
   if (!ids.length) return [];
 
   const { data: customerRows, error: custErr } = await fromPublic('customers')
-    .select('id, name, phone, currency')
+    .select('id, name, phone, currency, starting_due_balance, starting_due_balance_date')
     .in('id', ids);
   if (custErr) throw custErr;
 
@@ -910,7 +927,10 @@ export async function fetchLaybyCustomerRows() {
       });
     }
 
-    const totalDue = sumDue(mergedTotalsByCurrency);
+    let mergedTotalsWithStarting = applyStartingDueToTotalsByCurrency(mergedTotalsByCurrency, customer);
+    const startingDueAmount = getStartingDueBalance(customer);
+
+    const totalDue = sumDue(mergedTotalsWithStarting);
     const statementOutstandingTotal = statementSales.reduce(
       (sum, sale) => sum + Math.max(0, Number(sale.outstanding_amount || 0)),
       0,
@@ -934,9 +954,9 @@ export async function fetchLaybyCustomerRows() {
       : sumDue(tableTotalsByCurrency);
     const effectiveDue = Math.max(
       totalDue,
-      statementOutstandingTotal,
-      allSalesOutstandingTotal,
-      tableFallbackDue,
+      statementOutstandingTotal + startingDueAmount,
+      allSalesOutstandingTotal + startingDueAmount,
+      tableFallbackDue + startingDueAmount,
     );
 
     if (effectiveDue <= 0.009) return;
@@ -969,12 +989,22 @@ export async function fetchLaybyCustomerRows() {
           items: locked.items,
           payments: locked.payments,
         });
-        mergedTotalsByCurrency = locked.totalsByCurrency || mergedTotalsByCurrency;
+        mergedTotalsWithStarting = locked.totalsByCurrency || mergedTotalsWithStarting;
       }
     }
 
     const activeStatement = filterStatementToOutstandingSales(mergedStatement);
     const outstandingSales = activeStatement?.sales || [];
+    const mergedTotalsByCurrencyFinal = mergedTotalsWithStarting;
+
+    const openingBalanceSale = buildStartingDueStatementSale(customer);
+    const fullStatementWithOpening = openingBalanceSale
+      ? normalizeLaybyStatement({
+        sales: [openingBalanceSale, ...(mergedStatement?.sales || [])],
+        items: mergedStatement?.items || [],
+        payments: mergedStatement?.payments || [],
+      })
+      : mergedStatement;
 
     const primaryLayby = laybysForTotals
       .slice()
@@ -1013,12 +1043,14 @@ export async function fetchLaybyCustomerRows() {
       quotationsByCustomerId,
     });
 
+    const resolvedPrimaryLayby = primaryLayby || buildStartingDuePrimaryLayby(customerId, customer);
+
     built.push({
       customerId,
       customer,
       statement: activeStatement,
-      fullStatement: mergedStatement,
-      totalsByCurrency: mergedTotalsByCurrency,
+      fullStatement: fullStatementWithOpening,
+      totalsByCurrency: mergedTotalsByCurrencyFinal,
       linkedQuoteId: linkedQuote?.id || null,
       totalsDebug: {
         source: statementLocked ? 'signed_off_pdf_lock' : 'bulk_statement+table_fallback',
@@ -1026,11 +1058,13 @@ export async function fetchLaybyCustomerRows() {
         outstandingSaleCount: outstandingSales.length,
         groupedPayments: (mergedStatement?.payments || []).length,
         tableFallbackDue: sumDue(tableTotalsByCurrency),
+        startingDueBalance: startingDueAmount,
+        startingDueBalanceDate: getStartingDueBalanceDate(customer),
         statementError: null,
         statementLocked,
       },
       laybys,
-      primaryLayby,
+      primaryLayby: resolvedPrimaryLayby,
       lastUpdated,
       statementLocked,
     });
