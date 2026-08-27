@@ -17,6 +17,7 @@ import {
 import { brandLogoOnError, preloadBrandAssets, STATIC_BRAND_LOGO, STATIC_BRAND_STAMP } from './utils/brandAssets';
 import { buildPriceLabelFilename, renderLabelNodeToCanvas, waitForLayout } from './utils/labelPdfCapture';
 import { buildLabelImageQrValue } from './utils/labelImageQr';
+import { matchesComboId } from './utils/comboId';
 
 // Mobile-first Price Labels: search, select, preview, save PDF and share
 export default function PriceLabelMobile() {
@@ -181,7 +182,7 @@ export default function PriceLabelMobile() {
     )));
   };
 
-  const getComboComponents = (comboId) => comboItems.filter((c) => c.combo_id === comboId);
+  const getComboComponents = (comboId) => comboItems.filter((c) => matchesComboId(c.combo_id, comboId));
   const getProductComboComponents = (product) => {
     if (!product) return [];
     const bySku = (product.sku && combos.find((c) => (c.sku || '').toString() === (product.sku || '').toString())) || null;
@@ -406,9 +407,9 @@ export default function PriceLabelMobile() {
         {components && components.length > 0 && (
           <ul className="label-components">
             {components.map((c) => {
-              const prod = products.find((p) => p.id === c.product_id) || {};
+              const prod = products.find((p) => String(p.id) === String(c.product_id)) || {};
               return (
-                <li key={c.product_id}>{prod.name || c.product_id} x{c.quantity}</li>
+                <li key={`${String(c.product_id)}-${c.quantity}`}>{prod.name || c.product_id} x{c.quantity}</li>
               );
             })}
           </ul>

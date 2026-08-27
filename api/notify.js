@@ -3642,19 +3642,21 @@ function formatLedgerDate(value) {
 
   if (!raw) return '—';
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  let match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    return `${String(match[3]).padStart(2, '0')}/${Number(match[2])}/${match[1]}`;
+  }
+
+  match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (match) {
+    return `${String(match[1]).padStart(2, '0')}/${Number(match[2])}/${match[3]}`;
+  }
 
   const d = new Date(raw);
 
   if (Number.isNaN(d.getTime())) return raw;
 
-  const y = d.getFullYear();
-
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-
-  const day = String(d.getDate()).padStart(2, '0');
-
-  return `${y}-${m}-${day}`;
+  return `${String(d.getDate()).padStart(2, '0')}/${d.getMonth() + 1}/${d.getFullYear()}`;
 
 }
 
@@ -3666,13 +3668,15 @@ function buildLedgerWhatsAppMessage(body = {}) {
 
   const isDeposit = direction === 'credit';
 
-  const header = isDeposit ? '*Ledger — Deposit*' : '*Ledger — Withdrawal*';
+  const typeLabel = isDeposit ? 'Paid In' : 'Paid Out';
+
+  const header = `*Ledger — ${typeLabel}*`;
 
   const entryDate = formatLedgerDate(body.entryDate || body.createdAt || body.created_at);
 
   const personName = String(body.personName || body.person_name || '').trim() || '—';
 
-  const reason = String(body.reason || '').trim() || '—';
+  const reason = String(body.reason || '').trim();
 
   const amount = formatLedgerUsd(body.amount);
 
@@ -3680,9 +3684,11 @@ function buildLedgerWhatsAppMessage(body = {}) {
 
   const newBalance = formatLedgerUsd(body.newBalance);
 
-  return [
+  const lines = [
 
     header,
+
+    `Type: ${typeLabel}`,
 
     `Date: ${entryDate}`,
 
@@ -3696,14 +3702,38 @@ function buildLedgerWhatsAppMessage(body = {}) {
 
     amount,
 
-    `"${reason}"`,
+  ];
 
-    '',
+  if (reason && reason !== '—') {
+    lines.push(`"${reason}"`);
+  }
 
-    `New balance: ${newBalance}`,
+  lines.push('', `New balance: ${newBalance}`);
 
-  ].join('\n');
+  return lines.join('\n');
 
+}
+
+
+
+function buildLedgerPeriodCloseCaption(body = {}) {
+  const periodLabel = String(body.periodLabel || 'Period').trim();
+  const dateFrom = formatLedgerDate(body.dateFrom);
+  const dateTo = formatLedgerDate(body.dateTo);
+  const closingBalance = formatLedgerUsd(body.closingBalance);
+  const lines = [
+    '*Ledger — Period closed*',
+    periodLabel,
+  ];
+  if (dateFrom && dateTo && dateFrom !== '—' && dateTo !== '—') {
+    lines.push(`${dateFrom} – ${dateTo}`);
+  } else if (dateFrom && dateFrom !== '—') {
+    lines.push(`From ${dateFrom}`);
+  } else if (dateTo && dateTo !== '—') {
+    lines.push(`To ${dateTo}`);
+  }
+  lines.push('', `Closing balance: ${closingBalance}`, '', 'Statement attached.');
+  return lines.join('\n');
 }
 
 
@@ -3711,6 +3741,38 @@ function buildLedgerWhatsAppMessage(body = {}) {
 async function handleWhatsAppLedger(body) {
 
   const preview = Boolean(body.preview);
+  const pdfUrl = String(body.pdfUrl || '').trim();
+  const pdfBase64 = String(body.pdfBase64 || '')
+    .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
+    .replace(/\s+/g, '');
+  const documentLink = pdfUrl || pdfBase64;
+  const periodClose = Boolean(body.periodClose);
+
+  if (periodClose && documentLink) {
+    const caption = buildLedgerPeriodCloseCaption(body);
+    if (preview) {
+      return { ok: true, message: caption, preview: true };
+    }
+
+    const routing = resolveDeliveryTargets('ledger', null);
+    if (!routing.targets.length) {
+      const err = new Error('WhatsApp env not configured (WHATSAPP_LEDGER_GROUP_ID or WHATSAPP_LEDGER_RECIPIENTS)');
+      err.status = 500;
+      err.stage = 'env';
+      throw err;
+    }
+
+    const filename = String(body.pdfFilename || 'Ledger_Period_Statement.pdf').trim() || 'Ledger_Period_Statement.pdf';
+    const deliveries = await deliverDocument(
+      routing.targets,
+      documentLink,
+      filename,
+      routing.mode,
+      routing.provider,
+      caption,
+    );
+    return { ok: true, deliveries, message: caption };
+  }
 
   const message = buildLedgerWhatsAppMessage(body);
 
@@ -3986,7 +4048,7 @@ async function handleMonthlyBalanceDues(req) {
 
 
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
 
   setCors(res);
 

@@ -43,10 +43,25 @@ export function scoreVectors(a, b) {
   return cosineSimilarity(a, b);
 }
 
-export async function computeVectorFromUrl(url) {
+function buildCatalogEmbedText({ name, sku } = {}) {
+  return [name, sku].map((part) => String(part || '').trim()).filter(Boolean).join(' ');
+}
+
+function computeTextBoost(name, sku, textHint) {
+  const hint = String(textHint || '').trim().toLowerCase();
+  if (!hint) return 0;
+  const haystack = `${name || ''} ${sku || ''}`.toLowerCase();
+  const tokens = hint.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return 0;
+  const matched = tokens.filter((token) => haystack.includes(token)).length;
+  return matched / tokens.length;
+}
+
+export async function computeVectorFromUrl(url, { name, sku, text } = {}) {
+  const embedText = String(text || '').trim() || buildCatalogEmbedText({ name, sku });
   if (isGeminiEmbeddingEnabled()) {
     return {
-      values: await embedImageFromUrl(url),
+      values: await embedImageFromUrl(url, { text: embedText }),
       model: GEMINI_EMBEDDING_VERSION,
       method: 'gemini',
     };
@@ -58,10 +73,12 @@ export async function computeVectorFromUrl(url) {
   };
 }
 
-export async function computeVectorFromBase64(base64) {
+export async function computeVectorFromBase64(base64, { text } = {}) {
+  const embedText = String(text || '').trim();
   if (isGeminiEmbeddingEnabled()) {
+    const queryText = embedText ? `Search query: ${embedText}` : '';
     return {
-      values: await embedImageFromBase64(base64),
+      values: await embedImageFromBase64(base64, { text: queryText }),
       model: GEMINI_EMBEDDING_VERSION,
       method: 'gemini',
     };
@@ -72,6 +89,8 @@ export async function computeVectorFromBase64(base64) {
     method: 'fingerprint',
   };
 }
+
+export { computeTextBoost };
 
 export async function pauseBetweenEmbeds(method, embeddedCount) {
   if (method !== 'gemini' || embeddedCount <= 0) return;

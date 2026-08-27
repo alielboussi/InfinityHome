@@ -12,6 +12,10 @@ export default function CachedProductImage({
 }) {
   if (!uri) return null;
 
+  const resolvedRecyclingKey = recyclingKey == null || recyclingKey === ''
+    ? undefined
+    : String(recyclingKey);
+
   return (
     <Image
       source={{ uri }}
@@ -20,7 +24,7 @@ export default function CachedProductImage({
       cachePolicy="disk"
       transition={120}
       placeholder={{ blurhash }}
-      recyclingKey={recyclingKey}
+      recyclingKey={resolvedRecyclingKey}
       onError={onError}
     />
   );

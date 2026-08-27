@@ -1,12 +1,18 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import db from './dataClient';
+import { getDocById } from './db/firestoreAdapter';
 import { FaTrash } from "react-icons/fa";
 import useComboColumnSupport from "./hooks/useComboColumnSupport";
 import { insertComboItems } from "./services/comboItems";
 import { logUserActivity } from './utils/userActivityLog';
 import { replaceComboLocations } from "./services/comboLocations";
+import {
+  buildComboIdCandidates,
+  filterRowsByComboId,
+  matchesComboId,
+} from './utils/comboId';
 import {
   buildComboLocationPriceMap,
   resolveComboLocationPricing,
@@ -16,9 +22,61 @@ import {
   seedComboLocationPricesForLocations,
 } from './services/locationPricing';
 
+function sameProductId(a, b) {
+  return String(a) === String(b);
+}
+
+function mapKitItems(rows = [], products = []) {
+  const seen = new Set();
+  const mapped = [];
+  for (const item of rows || []) {
+    const productKey = String(item.product_id);
+    if (seen.has(productKey)) continue;
+    seen.add(productKey);
+    const product = (products || []).find((row) => sameProductId(row.id, item.product_id));
+    mapped.push({
+      product_id: item.product_id,
+      name: product?.name || item.name || '',
+      quantity: Number(item.quantity || 1) || 1,
+    });
+  }
+  return mapped;
+}
+
+async function loadComboRecord(comboId) {
+  const candidates = buildComboIdCandidates(comboId);
+  for (const candidate of candidates) {
+    const row = await getDocById('combos', candidate);
+    if (row) return row;
+  }
+  const { data, error } = await db.from('combos').select('*').eq('id', String(comboId)).maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function loadComboRelatedRows(table, comboId, select = '*') {
+  const candidates = buildComboIdCandidates(comboId);
+  if (!candidates.length) return [];
+  const { data, error } = await db.from(table).select(select).in('combo_id', candidates);
+  if (!error && Array.isArray(data) && data.length) return data;
+  const { data: allRows, error: allErr } = await db.from(table).select(select);
+  if (allErr) {
+    if (error) throw error;
+    throw allErr;
+  }
+  return filterRowsByComboId(allRows, comboId);
+}
+
+async function deleteComboItemsForCombo(comboId) {
+  const rows = await loadComboRelatedRows('combo_items', comboId, 'id, combo_id, product_id');
+  if (!rows.length) return;
+  await Promise.all(rows.map((row) => db.from('combo_items').delete().eq('id', row.id)));
+}
+
 export default function EditSet() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const comboFilterValue = id ? String(id) : "";
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -46,6 +104,23 @@ export default function EditSet() {
   const comboColumnSupport = useComboColumnSupport();
   const supportsCategoryField = comboColumnSupport.category;
   const supportsUnitField = comboColumnSupport.unit;
+  const prefilledRef = useRef(location.state?.prefilled || null);
+  const loadSeqRef = useRef(0);
+
+  const applyComboToForm = useCallback((comboData) => {
+    if (!comboData) return;
+    setCombo(comboData);
+    setKitName(comboData?.combo_name || "");
+    setSku(comboData?.sku || "");
+    setStandardPrice(comboData?.standard_price || comboData?.combo_price || "");
+    setPromotionalPrice(comboData?.promotional_price || "");
+    setPromoStart(comboData?.promo_start_date || "");
+    setPromoEnd(comboData?.promo_end_date || "");
+    setImageUrl(comboData?.picture_url || "");
+    setCurrency(comboData?.currency || "");
+    setSelectedCategory(comboData?.category_id ? String(comboData.category_id) : "");
+    setSelectedUnit(comboData?.unit_of_measure_id ? String(comboData.unit_of_measure_id) : "");
+  }, []);
 
   const applyPricingLocationToSet = async (comboData, locationId) => {
     if (!comboData?.id || !locationId) return;
@@ -69,6 +144,9 @@ export default function EditSet() {
   }, [pricingLocationId, combo?.id]);
 
   useEffect(() => {
+    const loadSeq = ++loadSeqRef.current;
+    let cancelled = false;
+
     async function fetchData() {
       setLoading(true);
       setLoadError("");
@@ -77,73 +155,86 @@ export default function EditSet() {
         setLoading(false);
         return;
       }
-      // Fetch combo and populate fields directly from combos table
-      const { data: comboData, error: comboErr } = await db
-        .from("combos")
-        .select("*")
-        .eq("id", comboFilterValue)
-        .maybeSingle();
-      if (comboErr) {
-        console.error("Failed to load set", comboErr);
-        setLoadError(comboErr.message || "Unable to load set");
+
+      const prefilled = prefilledRef.current;
+      if (prefilled?.combo && matchesComboId(prefilled.combo.id, comboFilterValue)) {
+        applyComboToForm(prefilled.combo);
+      }
+      if (Array.isArray(prefilled?.components) && prefilled.components.length) {
+        setComboItems(prefilled.components);
+        setKitItems(mapKitItems(prefilled.components));
+      }
+      if (Array.isArray(prefilled?.locationIds) && prefilled.locationIds.length) {
+        setSelectedLocations(prefilled.locationIds.map((value) => String(value)));
+        setPricingLocationId(String(prefilled.locationIds[0]));
+      }
+      prefilledRef.current = null;
+
+      try {
+        const comboData = await loadComboRecord(comboFilterValue);
+        if (cancelled || loadSeq !== loadSeqRef.current) return;
+        if (!comboData) {
+          setLoadError("Set not found");
+          setCombo(null);
+          setLoading(false);
+          return;
+        }
+        applyComboToForm(comboData);
+
+        const [
+          itemsData,
+          prods,
+          locs,
+          comboLocs,
+          unitsData,
+          cats,
+        ] = await Promise.all([
+          loadComboRelatedRows('combo_items', comboFilterValue, '*'),
+          db.from("products").select("id, name, sku"),
+          db.from("locations").select("id, name"),
+          loadComboRelatedRows('combo_locations', comboFilterValue, 'location_id, combo_id'),
+          db.from("unit_of_measure").select("id, name"),
+          db.from("categories").select("id, name"),
+        ]);
+
+        if (cancelled || loadSeq !== loadSeqRef.current) return;
+
+        if (prods.error) console.error("Failed to load products", prods.error);
+        if (locs.error) console.error("Failed to load locations", locs.error);
+        if (unitsData.error) console.error("Failed to load units", unitsData.error);
+        if (cats.error) console.error("Failed to load categories", cats.error);
+
+        const productRows = prods.data || [];
+        setProducts(productRows);
+        setLocations(locs.data || []);
+        setUnits(unitsData.data || []);
+        setCategories(cats.data || []);
+        setComboItems(itemsData || []);
+        setKitItems(mapKitItems(itemsData, productRows));
+
+        const locationIds = (comboLocs || []).map((cl) => String(cl.location_id));
+        setSelectedLocations(locationIds);
+        const initialPricingLocation = locationIds[0] || (locs.data?.[0]?.id ? String(locs.data[0].id) : '');
+        setPricingLocationId(initialPricingLocation);
+        if (initialPricingLocation) {
+          await applyPricingLocationToSet(comboData, initialPricingLocation);
+        }
+      } catch (err) {
+        if (cancelled || loadSeq !== loadSeqRef.current) return;
+        console.error("Failed to load set", err);
+        setLoadError(err?.message || "Unable to load set");
         setCombo(null);
-        setLoading(false);
-        return;
+      } finally {
+        if (!cancelled && loadSeq === loadSeqRef.current) {
+          setLoading(false);
+        }
       }
-      if (!comboData) {
-        setLoadError("Set not found");
-        setCombo(null);
-        setLoading(false);
-        return;
-      }
-      setCombo(comboData);
-      setKitName(comboData?.combo_name || "");
-      setSku(comboData?.sku || "");
-      setStandardPrice(comboData?.standard_price || comboData?.combo_price || "");
-      setPromotionalPrice(comboData?.promotional_price || "");
-      setPromoStart(comboData?.promo_start_date || "");
-      setPromoEnd(comboData?.promo_end_date || "");
-      setImageUrl(comboData?.picture_url || "");
-      setCurrency(comboData?.currency || "");
-      setSelectedCategory(comboData?.category_id ? String(comboData.category_id) : "");
-      setSelectedUnit(comboData?.unit_of_measure_id ? String(comboData.unit_of_measure_id) : "");
-      // Fetch combo_items
-      const { data: itemsData, error: itemsErr } = await db.from("combo_items").select("*").eq("combo_id", comboFilterValue);
-      if (itemsErr) {
-        console.error("Failed to load set components", itemsErr);
-      }
-      setComboItems(itemsData || []);
-      setKitItems((itemsData || []).map(item => ({ product_id: item.product_id, quantity: item.quantity })));
-      // Fetch products, locations, units, categories
-      const { data: prods, error: prodErr } = await db.from("products").select("id, name, sku");
-      if (prodErr) console.error("Failed to load products", prodErr);
-      setProducts(prods || []);
-      const { data: locs, error: locErr } = await db.from("locations").select("id, name");
-      if (locErr) console.error("Failed to load locations", locErr);
-      setLocations(locs || []);
-      // fetch selected locations for this combo
-      const { data: comboLocs, error: comboLocErr } = await db
-        .from("combo_locations")
-        .select("location_id")
-        .eq("combo_id", comboFilterValue);
-      if (comboLocErr) console.error("Failed to load set locations", comboLocErr);
-      const locationIds = (comboLocs || []).map((cl) => String(cl.location_id));
-      setSelectedLocations(locationIds);
-      const initialPricingLocation = locationIds[0] || (locs?.[0]?.id ? String(locs[0].id) : '');
-      setPricingLocationId(initialPricingLocation);
-      if (initialPricingLocation) {
-        await applyPricingLocationToSet(comboData, initialPricingLocation);
-      }
-      const { data: unitsData, error: unitErr } = await db.from("unit_of_measure").select("id, name");
-      if (unitErr) console.error("Failed to load units", unitErr);
-      setUnits(unitsData || []);
-      const { data: cats, error: catErr } = await db.from("categories").select("id, name");
-      if (catErr) console.error("Failed to load categories", catErr);
-      setCategories(cats || []);
-      setLoading(false);
     }
     fetchData();
-  }, [comboFilterValue]);
+    return () => {
+      cancelled = true;
+    };
+  }, [applyComboToForm, comboFilterValue]);
 
   // Add product to kit
   const addProductToKit = (product) => {
@@ -152,7 +243,7 @@ export default function EditSet() {
 
   // Filter products for search (exclude already added)
   const filteredProducts = products.filter(p => {
-    if (kitItems.some(item => String(item.product_id) === String(p.id))) return false;
+    if (kitItems.some(item => sameProductId(item.product_id, p.id))) return false;
     if (!search.trim()) return true;
     const s = search.toLowerCase();
     return (
@@ -165,23 +256,23 @@ export default function EditSet() {
   const updateQty = (product_id, qty) => {
     if (qty < 1) qty = 1;
     setKitItems(kitItems.map(item =>
-      item.product_id === product_id ? { ...item, quantity: qty } : item
+      sameProductId(item.product_id, product_id) ? { ...item, quantity: qty } : item
     ));
   };
 
   // Remove product from kit
   const removeProductFromKit = (product_id) => {
-    setKitItems(kitItems.filter(item => item.product_id !== product_id));
+    setKitItems(kitItems.filter(item => !sameProductId(item.product_id, product_id)));
   };
 
   // Save changes
   const handleSave = async (e) => {
     e.preventDefault();
-  if (!kitName || !standardPrice || kitItems.length === 0) {
-      alert("Please fill all required fields and add at least one product.");
+    if (!kitName || !standardPrice) {
+      alert("Please fill all required fields.");
       return;
     }
-  if (!pricingLocationId) {
+    if (!pricingLocationId) {
       alert("Select a pricing location.");
       return;
     }
@@ -235,15 +326,17 @@ export default function EditSet() {
       return;
     }
     // Update combo_items: delete old, then insert current list with id fallback support
-    await db.from("combo_items").delete().eq("combo_id", comboFilterValue);
     try {
-      await insertComboItems(
-        kitItems.map(item => ({
-          combo_id: comboFilterValue,
-          product_id: item.product_id,
-          quantity: item.quantity,
-        }))
-      );
+      await deleteComboItemsForCombo(comboFilterValue);
+      if (kitItems.length > 0) {
+        await insertComboItems(
+          kitItems.map(item => ({
+            combo_id: comboFilterValue,
+            product_id: item.product_id,
+            quantity: item.quantity,
+          }))
+        );
+      }
     } catch (itemError) {
       console.error("Error updating combo components", itemError);
       alert("Error updating combo components: " + (itemError.message || "Unknown error"));
@@ -421,7 +514,7 @@ export default function EditSet() {
             {search.trim().length >= 3 && filteredProducts.length > 0 && (
               <ul style={{position: 'absolute', top: '40px', left: 0, width: '100%', background: '#23272f', border: '1px solid #00b4d8', borderRadius: '6px', maxHeight: '180px', overflowY: 'auto', zIndex: 10, listStyle: 'none', margin: 0, padding: 0}}>
                 {filteredProducts.map(product => {
-                  const already = kitItems.some(item => String(item.product_id) === String(product.id));
+                  const already = kitItems.some(item => sameProductId(item.product_id, product.id));
                   return (
                     <li
                       key={product.id}
@@ -452,10 +545,10 @@ export default function EditSet() {
             </thead>
             <tbody>
               {kitItems.map(item => {
-                const prod = products.find(p => p.id === item.product_id);
+                const prod = products.find(p => sameProductId(p.id, item.product_id));
                 return (
-                  <tr key={item.product_id} style={{background: '#181818'}}>
-                    <td style={{textAlign: 'left'}}>{prod ? prod.name : item.product_id}</td>
+                  <tr key={String(item.product_id)} style={{background: '#181818'}}>
+                    <td style={{textAlign: 'left'}}>{prod?.name || item.name || item.product_id}</td>
                     <td>
                       <input
                         type="number"

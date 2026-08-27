@@ -12,6 +12,7 @@ export default function VisualSearchResultsModal({
   matches,
   loading,
   error,
+  note,
   onClose,
   onSelect,
 }) {
@@ -23,6 +24,7 @@ export default function VisualSearchResultsModal({
           <Text style={styles.hint}>Pick the closest product or set. Scores are suggestions, not guarantees.</Text>
 
           {loading ? <Text style={styles.status}>Searching catalog…</Text> : null}
+          {note ? <Text style={styles.note}>{note}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <FlatList
@@ -81,6 +83,7 @@ const styles = StyleSheet.create({
   title: { color: theme.text, fontSize: 20, fontWeight: '900' },
   hint: { color: theme.muted, fontSize: 12, marginTop: 6, marginBottom: 12, lineHeight: 16 },
   status: { color: theme.muted, marginBottom: 12 },
+  note: { color: theme.accent, marginBottom: 12, fontSize: 12, lineHeight: 16 },
   error: { color: theme.danger, marginBottom: 12 },
   list: { maxHeight: 420 },
   row: {

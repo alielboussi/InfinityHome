@@ -4,7 +4,7 @@ import { fetchImageBuffer } from './imageFingerprint.js';
 const MODEL = 'gemini-embedding-2';
 const OUTPUT_DIMENSIONALITY = 768;
 
-export const GEMINI_EMBEDDING_VERSION = `${MODEL}:${OUTPUT_DIMENSIONALITY}`;
+export const GEMINI_EMBEDDING_VERSION = `${MODEL}:${OUTPUT_DIMENSIONALITY}:catalog-v2`;
 
 export function getGeminiApiKey() {
   return String(process.env.GEMINI_API_KEY || '').trim();
@@ -12,6 +12,20 @@ export function getGeminiApiKey() {
 
 export function isGeminiEmbeddingEnabled() {
   return Boolean(getGeminiApiKey());
+}
+
+function buildEmbeddingParts(jpegBuffer, text) {
+  const parts = [{
+    inline_data: {
+      mime_type: 'image/jpeg',
+      data: jpegBuffer.toString('base64'),
+    },
+  }];
+  const label = String(text || '').trim();
+  if (label) {
+    parts.push({ text: label });
+  }
+  return parts;
 }
 
 async function prepareImageForEmbedding(buffer) {
@@ -22,7 +36,7 @@ async function prepareImageForEmbedding(buffer) {
     .toBuffer();
 }
 
-async function requestGeminiEmbedding(jpegBuffer) {
+async function requestGeminiEmbedding(jpegBuffer, text) {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured.');
 
@@ -36,12 +50,7 @@ async function requestGeminiEmbedding(jpegBuffer) {
       },
       body: JSON.stringify({
         content: {
-          parts: [{
-            inline_data: {
-              mime_type: 'image/jpeg',
-              data: jpegBuffer.toString('base64'),
-            },
-          }],
+          parts: buildEmbeddingParts(jpegBuffer, text),
         },
         output_dimensionality: OUTPUT_DIMENSIONALITY,
       }),
@@ -63,19 +72,19 @@ async function requestGeminiEmbedding(jpegBuffer) {
   return values;
 }
 
-export async function embedImageBuffer(buffer) {
+export async function embedImageBuffer(buffer, { text } = {}) {
   const prepared = await prepareImageForEmbedding(buffer);
-  return requestGeminiEmbedding(prepared);
+  return requestGeminiEmbedding(prepared, text);
 }
 
-export async function embedImageFromUrl(url) {
+export async function embedImageFromUrl(url, { text } = {}) {
   const buffer = await fetchImageBuffer(url);
-  return embedImageBuffer(buffer);
+  return embedImageBuffer(buffer, { text });
 }
 
-export async function embedImageFromBase64(base64) {
+export async function embedImageFromBase64(base64, { text } = {}) {
   const raw = String(base64 || '').trim();
   const payload = raw.includes(',') ? raw.split(',').pop() : raw;
   const buffer = Buffer.from(payload, 'base64');
-  return embedImageBuffer(buffer);
+  return embedImageBuffer(buffer, { text });
 }

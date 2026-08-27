@@ -113,15 +113,33 @@ function addPageNumbers(doc) {
   } catch {}
 }
 
-/**
- * A4 portrait cash-book PDF with opening balance, running balance, logos, and watermark.
- */
-export async function downloadLedgerPdf({
+function fmtLedgerDisplayDate(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return `${String(d.getDate()).padStart(2, '0')}/${d.getMonth() + 1}/${d.getFullYear()}`;
+}
+
+function buildLedgerPdfFilename({
+  dateFrom = '',
+  dateTo = '',
+  periodLabel = '',
+} = {}) {
+  const safeFrom = (dateFrom || 'all').replace(/[^0-9-/]/g, '');
+  const safeTo = (dateTo || 'all').replace(/[^0-9-/]/g, '');
+  const periodPart = periodLabel
+    ? `${periodLabel.replace(/[^a-zA-Z0-9]+/g, '_')}_`
+    : '';
+  return `Ledger_CashBook_${periodPart}${safeFrom}_to_${safeTo}.pdf`;
+}
+
+async function buildLedgerPdfDoc({
   openingBalance = 0,
   rows = [],
   dateFrom = '',
   dateTo = '',
   personFilter = '',
+  periodLabel = '',
 } = {}) {
   const company = await getCompanySettings();
   const companyName = company?.company_name || company?.name || 'Best Rest Furniture';
@@ -149,6 +167,7 @@ export async function downloadLedgerPdf({
   metaY += 16;
 
   const rangeParts = [];
+  if (periodLabel) rangeParts.push(periodLabel);
   if (dateFrom) rangeParts.push(`From ${dateFrom}`);
   if (dateTo) rangeParts.push(`To ${dateTo}`);
   const rangeLabel = rangeParts.length ? rangeParts.join(' · ') : 'All dates';
@@ -171,7 +190,7 @@ export async function downloadLedgerPdf({
     const deposit = isCredit ? fmtUsd(row.amount) : '';
     const payment = !isCredit ? fmtUsd(row.amount) : '';
     return [
-      fmtDateTime(row.created_at),
+      fmtLedgerDisplayDate(row.created_at),
       row.person_name || '—',
       row.reason || '',
       deposit,
@@ -182,7 +201,7 @@ export async function downloadLedgerPdf({
 
   autoTable(doc, {
     startY: metaY,
-    head: [['Date', 'Person', 'Description', 'Deposit', 'Payment', 'Balance']],
+    head: [['Date', 'Person', 'Description', 'Paid In', 'Paid Out', 'Balance']],
     body: tableBody,
     margin: { left: margin, right: margin },
     styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' },
@@ -214,9 +233,23 @@ export async function downloadLedgerPdf({
 
   addPageNumbers(doc);
 
-  const safeFrom = (dateFrom || 'all').replace(/[^0-9-]/g, '');
-  const safeTo = (dateTo || 'all').replace(/[^0-9-]/g, '');
-  const fileName = `Ledger_CashBook_${safeFrom}_to_${safeTo}.pdf`;
+  return doc;
+}
+
+export async function createLedgerPdfBase64(options = {}) {
+  const doc = await buildLedgerPdfDoc(options);
+  const fileName = buildLedgerPdfFilename(options);
+  const dataUri = doc.output('datauristring');
+  const base64 = String(dataUri || '').replace(/^data:application\/pdf;filename=.*?;base64,/i, '').replace(/^data:application\/pdf;base64,/i, '');
+  return { base64, fileName };
+}
+
+/**
+ * A4 portrait cash-book PDF with opening balance, running balance, logos, and watermark.
+ */
+export async function downloadLedgerPdf(options = {}) {
+  const doc = await buildLedgerPdfDoc(options);
+  const fileName = buildLedgerPdfFilename(options);
   doc.save(fileName);
   return true;
 }

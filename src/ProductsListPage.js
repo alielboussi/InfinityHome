@@ -37,6 +37,7 @@ import {
 } from './services/locationPricing';
 import { logUserActivity } from './utils/userActivityLog';
 import { firebaseEnsureSession } from './utils/firebaseAuthApi';
+import { filterRowsByComboId } from './utils/comboId';
 
 const toolbarWrapperStyle = Object.freeze({
   width: '100%',
@@ -359,7 +360,18 @@ function ProductsListPage() {
 
   const openItemEditor = useCallback((item, isCombo) => {
     if (isCombo) {
-      navigate(`/edit-set/${item.id}`);
+      const components = filterRowsByComboId(comboItems, item.id);
+      const locationIds = filterRowsByComboId(comboLocations, item.id)
+        .map((row) => String(row.location_id));
+      navigate(`/edit-set/${item.id}`, {
+        state: {
+          prefilled: {
+            combo: item,
+            components,
+            locationIds,
+          },
+        },
+      });
       return;
     }
     if (!canManageCatalogPage) {
@@ -367,7 +379,7 @@ function ProductsListPage() {
       return;
     }
     navigate(`/products?edit=${encodeURIComponent(item.id)}&return=${encodeURIComponent('/products-list')}`);
-  }, [canManageCatalogPage, navigate]);
+  }, [canManageCatalogPage, comboItems, comboLocations, navigate]);
 
   const isUuid = useCallback((value) => {
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

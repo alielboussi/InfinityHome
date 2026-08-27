@@ -1,10 +1,19 @@
 import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
+import {
+  buildLedgerPeriodReportRows,
+  buildLedgerPeriods,
+  isPeriodCloseEntry,
+  PERIOD_CLOSE_PERSON,
+  PERIOD_CLOSE_REFERENCE,
+} from '../utils/ledgerPeriods';
 import { newUuid } from '../utils/uuid';
 import { sendLedgerWhatsApp } from './whatsapp';
+import { createLedgerPdfBase64 } from '../utils/ledgerPdf';
 
 const LEDGER_CURRENCY = 'USD';
 const LEDGER_PAYMENT_METHOD = 'cash';
+const BALANCE_EPSILON = 0.01;
 
 function normalizeCurrency(cur) {
   const s = (cur || '').toString().trim().toUpperCase();
@@ -20,34 +29,113 @@ function normalizePersonKey(name) {
 
 export function todayLocalDateString() {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return formatLedgerInputDateFromParts({
+    d: d.getDate(),
+    m: d.getMonth() + 1,
+    y: d.getFullYear(),
+  });
+}
+
+function validateLedgerDateParts({ y, m, d }) {
+  const dt = new Date(y, m - 1, d);
+  if (
+    Number.isNaN(dt.getTime())
+    || dt.getFullYear() !== y
+    || dt.getMonth() !== m - 1
+    || dt.getDate() !== d
+  ) {
+    throw new Error('Invalid transaction date');
+  }
+  return dt;
+}
+
+export function parseLedgerInputDate(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+
+  let match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
+  }
+
+  match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (match) {
+    return { d: Number(match[1]), m: Number(match[2]), y: Number(match[3]) };
+  }
+
+  return null;
+}
+
+export function formatLedgerInputDateFromParts({ d, m, y }) {
+  return `${String(d).padStart(2, '0')}/${m}/${y}`;
+}
+
+export function formatLedgerInputDate(value) {
+  const parts = parseLedgerInputDate(value);
+  if (!parts) return String(value || '').trim();
+  return formatLedgerInputDateFromParts(parts);
+}
+
+export function ledgerInputDateToApiDate(value) {
+  const parts = parseLedgerInputDate(value);
+  if (!parts) return '';
+  return `${parts.y}-${String(parts.m).padStart(2, '0')}-${String(parts.d).padStart(2, '0')}`;
+}
+
+export function entryDateFromIso(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return formatLedgerInputDate(iso);
+  return formatLedgerInputDateFromParts({
+    d: d.getDate(),
+    m: d.getMonth() + 1,
+    y: d.getFullYear(),
+  });
+}
+
+export function resolveLedgerEntryDate(entryDate, fallbackDate) {
+  const raw = String(entryDate || '').trim();
+  if (raw) {
+    const parts = parseLedgerInputDate(raw);
+    if (!parts) throw new Error('Invalid transaction date. Use dd/m/yyyy.');
+    validateLedgerDateParts(parts);
+    return formatLedgerInputDateFromParts(parts);
+  }
+  const fallback = String(fallbackDate || '').trim();
+  if (fallback) {
+    const parts = parseLedgerInputDate(fallback);
+    if (!parts) throw new Error('Invalid transaction date. Use dd/m/yyyy.');
+    validateLedgerDateParts(parts);
+    return formatLedgerInputDateFromParts(parts);
+  }
+  return todayLocalDateString();
 }
 
 function resolveEntryCreatedAt(entryDate) {
   const raw = String(entryDate || '').trim();
   if (!raw) return new Date().toISOString();
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) throw new Error('Invalid transaction date');
-  const y = Number(match[1]);
-  const m = Number(match[2]);
-  const d = Number(match[3]);
+  const parts = parseLedgerInputDate(raw);
+  if (!parts) throw new Error('Invalid transaction date. Use dd/m/yyyy.');
   const now = new Date();
-  const dt = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
-  if (Number.isNaN(dt.getTime())) throw new Error('Invalid transaction date');
+  const dt = validateLedgerDateParts(parts);
+  dt.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
   return dt.toISOString();
+}
+
+async function fetchOpeningBalanceAmount(currency = LEDGER_CURRENCY) {
+  const { data } = await fetchLedgerOpeningBalance(currency);
+  return Number(data?.amount || 0);
 }
 
 async function computeBalanceBeforeTimestamp(currency, beforeIso) {
   const cur = normalizeCurrency(currency);
+  const openingBalance = await fetchOpeningBalanceAmount(cur);
   const { data, error } = await fromPublic('ledger_entries')
     .select('direction, amount, currency, created_at')
     .eq('currency', cur)
     .lt('created_at', beforeIso);
   if (error) throw error;
-  return computeBalanceFromRows(data || []);
+  return openingBalance + computeBalanceFromRows(data || []);
 }
 
 function computeBalanceFromRows(rows = []) {
@@ -61,21 +149,110 @@ function computeBalanceFromRows(rows = []) {
 
 async function computeBalanceFromEntries(currency = LEDGER_CURRENCY) {
   const cur = normalizeCurrency(currency);
-  const { data, error } = await fromPublic('ledger_entries')
-    .select('direction, amount, currency, created_at')
-    .eq('currency', cur);
+  const [openingBalance, entriesRes] = await Promise.all([
+    fetchOpeningBalanceAmount(cur),
+    fromPublic('ledger_entries')
+      .select('direction, amount, currency, created_at')
+      .eq('currency', cur),
+  ]);
+  const { data, error } = entriesRes;
   if (error) throw error;
   const rows = data || [];
-  const balance = computeBalanceFromRows(rows);
+  const balance = openingBalance + computeBalanceFromRows(rows);
   const lastEntryAt = rows.reduce((latest, row) => {
     const stamp = row.created_at || '';
     return stamp > latest ? stamp : latest;
   }, '');
   return {
     balance,
+    openingBalance,
     entryCount: rows.length,
     lastEntryAt: lastEntryAt || null,
   };
+}
+
+export async function fetchLedgerOpeningBalance(currency = LEDGER_CURRENCY) {
+  try {
+    const cur = normalizeCurrency(currency);
+    const { data, error } = await fromPublic('ledger_settings')
+      .select('id, currency, opening_balance, opening_balance_date, opening_balance_note, updated_at')
+      .eq('currency', cur)
+      .maybeSingle();
+    if (error) throw error;
+    return {
+      data: {
+        amount: Number(data?.opening_balance || 0),
+        entryDate: data?.opening_balance_date || '',
+        note: data?.opening_balance_note || '',
+        updatedAt: data?.updated_at || null,
+      },
+    };
+  } catch (error) {
+    return { error };
+  }
+}
+
+export async function setLedgerOpeningBalance({
+  amount,
+  entryDate,
+  note,
+  currency = LEDGER_CURRENCY,
+} = {}) {
+  const cur = normalizeCurrency(currency);
+  const amt = Number(amount);
+  if (!Number.isFinite(amt)) {
+    return { error: new Error('Starting balance must be a number') };
+  }
+
+  let balanceDate = '';
+  try {
+    const rawDate = String(entryDate || '').trim();
+    if (rawDate) {
+      resolveEntryCreatedAt(rawDate);
+      balanceDate = rawDate;
+    }
+  } catch (error) {
+    return { error };
+  }
+
+  const trimmedNote = String(note || '').trim();
+  const nowIso = new Date().toISOString();
+  const payload = {
+    currency: cur,
+    opening_balance: amt,
+    opening_balance_date: balanceDate || null,
+    opening_balance_note: trimmedNote || null,
+    updated_at: nowIso,
+  };
+
+  try {
+    const { data: existing, error: findErr } = await fromPublic('ledger_settings')
+      .select('id')
+      .eq('currency', cur)
+      .maybeSingle();
+    if (findErr) throw findErr;
+
+    if (existing?.id) {
+      const { data, error } = await db
+        .from('ledger_settings')
+        .update(payload)
+        .eq('id', existing.id)
+        .select('id, currency, opening_balance, opening_balance_date, opening_balance_note, updated_at')
+        .single();
+      if (error) throw error;
+      return { data };
+    }
+
+    const { data, error } = await db
+      .from('ledger_settings')
+      .insert([{ id: cur, ...payload, created_at: nowIso }])
+      .select('id, currency, opening_balance, opening_balance_date, opening_balance_note, updated_at')
+      .single();
+    if (error) throw error;
+    return { data };
+  } catch (error) {
+    return { error };
+  }
 }
 
 export async function fetchLedgerBalances() {
@@ -204,8 +381,8 @@ export function filterLedgerEntries(entries, query) {
   return (entries || []).filter((entry) => matchesLedgerSearch(entry, query));
 }
 
-export function buildLedgerReportRows(allEntriesAsc = [], { dateFrom, dateTo, personName } = {}) {
-  let running = 0;
+export function buildLedgerReportRows(allEntriesAsc = [], { dateFrom, dateTo, personName, baseOpeningBalance = 0 } = {}) {
+  let running = Number(baseOpeningBalance || 0);
   const withBalance = (allEntriesAsc || []).map((entry) => {
     const amt = Number(entry.amount || 0);
     if (entry.direction === 'credit') running += amt;
@@ -217,7 +394,7 @@ export function buildLedgerReportRows(allEntriesAsc = [], { dateFrom, dateTo, pe
   const endMs = dateTo ? new Date(`${dateTo}T23:59:59.999Z`).getTime() : Infinity;
   const personKey = normalizePersonKey(personName);
 
-  let openingBalance = 0;
+  let openingBalance = Number(baseOpeningBalance || 0);
   const displayRows = [];
 
   withBalance.forEach((row) => {
@@ -248,10 +425,145 @@ export async function fetchLedgerEntriesUpTo({ currency, dateTo } = {}) {
 }
 
 export async function fetchLedgerReport({ currency, dateFrom, dateTo, personName } = {}) {
-  const { data, error } = await fetchLedgerEntriesUpTo({ currency, dateTo });
+  const [{ data, error }, openingRes] = await Promise.all([
+    fetchLedgerEntriesUpTo({ currency, dateTo }),
+    fetchLedgerOpeningBalance(currency),
+  ]);
   if (error) return { error };
-  const report = buildLedgerReportRows(data, { dateFrom, dateTo, personName });
+  const report = buildLedgerReportRows(data, {
+    dateFrom,
+    dateTo,
+    personName,
+    baseOpeningBalance: Number(openingRes?.data?.amount || 0),
+  });
   return { data: report };
+}
+
+export async function fetchLedgerPeriods(currency = LEDGER_CURRENCY) {
+  try {
+    const [entriesRes, openingRes] = await Promise.all([
+      fetchLedgerEntriesUpTo({ currency }),
+      fetchLedgerOpeningBalance(currency),
+    ]);
+    if (entriesRes.error) throw entriesRes.error;
+    const periods = buildLedgerPeriods({
+      openingBalance: Number(openingRes?.data?.amount || 0),
+      openingBalanceDate: openingRes?.data?.entryDate || '',
+      entries: entriesRes.data || [],
+    }).map((period) => ({
+      ...period,
+      dateFrom: period.startMs != null && Number.isFinite(period.startMs) && period.startMs > 0
+        ? entryDateFromIso(new Date(period.startMs + 1).toISOString())
+        : (openingRes?.data?.entryDate ? formatLedgerInputDate(openingRes.data.entryDate) : ''),
+      dateTo: period.endMs ? entryDateFromIso(new Date(period.endMs).toISOString()) : '',
+    }));
+    return { data: periods };
+  } catch (error) {
+    return { error };
+  }
+}
+
+export async function fetchLedgerPeriodReport({ periodIndex, currency = LEDGER_CURRENCY } = {}) {
+  try {
+    const idx = Number(periodIndex);
+    if (!Number.isInteger(idx) || idx < 0) {
+      return { error: new Error('Invalid period') };
+    }
+
+    const [entriesRes, periodsRes] = await Promise.all([
+      fetchLedgerEntriesUpTo({ currency }),
+      fetchLedgerPeriods(currency),
+    ]);
+    if (entriesRes.error) throw entriesRes.error;
+    if (periodsRes.error) throw periodsRes.error;
+
+    const period = (periodsRes.data || [])[idx];
+    if (!period) return { error: new Error('Period not found') };
+
+    const report = buildLedgerPeriodReportRows(entriesRes.data || [], {
+      startMs: period.startMs,
+      endMs: period.endMs,
+      baseOpeningBalance: period.baseOpeningBalance,
+    });
+
+    return {
+      data: {
+        ...report,
+        period,
+      },
+    };
+  } catch (error) {
+    return { error };
+  }
+}
+
+export async function closeLedgerBalance({
+  entryDate,
+  currency = LEDGER_CURRENCY,
+} = {}) {
+  const cur = normalizeCurrency(currency);
+  const { balance } = await computeBalanceFromEntries(cur);
+  if (Math.abs(balance) < BALANCE_EPSILON) {
+    return { error: new Error('Balance is already zero') };
+  }
+
+  const direction = balance > 0 ? 'debit' : 'credit';
+  const amount = Math.round(Math.abs(balance) * 100) / 100;
+
+  const result = await addLedgerEntry({
+    direction,
+    amount,
+    currency: cur,
+    personName: PERIOD_CLOSE_PERSON,
+    reason: 'Period close — balance zeroed',
+    reference: PERIOD_CLOSE_REFERENCE,
+    entryDate,
+  });
+
+  if (!result.error) {
+    sendClosedPeriodWhatsAppPdf(cur).catch(() => {});
+  }
+
+  return result;
+}
+
+async function sendClosedPeriodWhatsAppPdf(currency = LEDGER_CURRENCY) {
+  const periodsRes = await fetchLedgerPeriods(currency);
+  if (periodsRes.error) return;
+
+  const closedPeriods = (periodsRes.data || []).filter((period) => period.closed);
+  const period = closedPeriods[closedPeriods.length - 1];
+  if (!period) return;
+
+  const reportRes = await fetchLedgerPeriodReport({
+    periodIndex: period.index,
+    currency,
+  });
+  if (reportRes.error) return;
+
+  const rows = reportRes.data?.rows || [];
+  const openingBalance = Number(reportRes.data?.openingBalance || 0);
+  const closingBalance = rows.length
+    ? Number(rows[rows.length - 1].balanceAfter || 0)
+    : openingBalance;
+
+  const { base64, fileName } = await createLedgerPdfBase64({
+    openingBalance,
+    rows,
+    dateFrom: period.dateFrom || '',
+    dateTo: period.dateTo || '',
+    periodLabel: period.label || '',
+  });
+
+  await sendLedgerWhatsApp({
+    periodClose: true,
+    periodLabel: period.label || '',
+    dateFrom: period.dateFrom || '',
+    dateTo: period.dateTo || '',
+    closingBalance,
+    pdfBase64: base64,
+    pdfFilename: fileName,
+  });
 }
 
 export async function fetchLedgerEntries({ limit = 50, currency, dateFrom, dateTo, personName } = {}) {
@@ -301,9 +613,6 @@ export async function addLedgerEntry({
   if (!trimmedPerson) {
     return { error: new Error('Person name is required') };
   }
-  if (!trimmedReason) {
-    return { error: new Error('Description is required') };
-  }
 
   try {
     const createdAt = resolveEntryCreatedAt(entryDate);
@@ -321,7 +630,7 @@ export async function addLedgerEntry({
       payment_method: LEDGER_PAYMENT_METHOD,
       person_name: trimmedPerson,
       person_id: resolvedPersonId,
-      reason: trimmedReason,
+      reason: trimmedReason || null,
       reference: reference ? String(reference).trim() : null,
       location_id: location_id || null,
       created_at: createdAt,
@@ -339,7 +648,7 @@ export async function addLedgerEntry({
       direction: dir,
       amount: amt,
       personName: trimmedPerson,
-      reason: trimmedReason,
+      reason: trimmedReason || null,
       previousBalance,
       newBalance,
       currency: cur,
@@ -353,4 +662,10 @@ export async function addLedgerEntry({
   }
 }
 
-export { LEDGER_CURRENCY, LEDGER_PAYMENT_METHOD };
+export {
+  isPeriodCloseEntry,
+  LEDGER_CURRENCY,
+  LEDGER_PAYMENT_METHOD,
+  PERIOD_CLOSE_PERSON,
+  PERIOD_CLOSE_REFERENCE,
+};

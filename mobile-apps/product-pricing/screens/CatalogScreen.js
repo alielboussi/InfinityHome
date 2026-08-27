@@ -28,7 +28,7 @@ import {
   countMissingDisplayableImages,
   probeCatalogImageStatuses,
 } from '../services/imageProbe';
-import { requestEmbeddingBackfill, searchProductsByPhoto } from '../services/visualSearch';
+import { fetchEmbeddingStatus, runEmbeddingBackfillLoop, searchProductsByPhoto } from '../services/visualSearch';
 import { theme } from '../theme';
 import { uriToBase64 } from '../utils/imageBase64';
 import { promptVisualSearchPhoto } from '../utils/productImagePicker';
@@ -40,6 +40,19 @@ const GRID_GAP = 10;
 function getCardWidth() {
   const { width } = Dimensions.get('window');
   return (width - H_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
+}
+
+const INITIAL_EMBEDDING_NOTE = 'Indexing photos · checking…';
+
+function formatEmbeddingNote(result) {
+  const methodLabel = result?.searchMethod === 'gemini' ? 'AI' : 'basic';
+  if (Number(result?.remaining) > 0) {
+    return `Indexing photos (${methodLabel}) · ${result.remaining} left`;
+  }
+  if (Number(result?.totalWithImages) > 0) {
+    return `Photo search ready — ${result.totalWithImages} indexed (${methodLabel})`;
+  }
+  return `Indexing photos (${methodLabel}) · checking…`;
 }
 
 export default function CatalogScreen({ navigation, route, userEmail }) {
@@ -60,10 +73,39 @@ export default function CatalogScreen({ navigation, route, userEmail }) {
   const [visualMatches, setVisualMatches] = useState([]);
   const [visualLoading, setVisualLoading] = useState(false);
   const [visualError, setVisualError] = useState('');
+  const [visualSearchNote, setVisualSearchNote] = useState('');
   const [visualModalOpen, setVisualModalOpen] = useState(false);
-  const [embeddingNote, setEmbeddingNote] = useState('');
+  const [embeddingNote, setEmbeddingNote] = useState(INITIAL_EMBEDDING_NOTE);
   const probeCancelRef = useRef(false);
-  const backfillStartedRef = useRef(false);
+  const backfillActiveRef = useRef(false);
+
+  const startEmbeddingIndex = useCallback(async () => {
+    if (backfillActiveRef.current) return;
+    backfillActiveRef.current = true;
+    setEmbeddingNote(INITIAL_EMBEDDING_NOTE);
+
+    try {
+      const status = await fetchEmbeddingStatus().catch(() => null);
+      if (status) {
+        setEmbeddingNote(formatEmbeddingNote(status));
+      }
+
+      const summary = await runEmbeddingBackfillLoop({
+        limit: 50,
+        onProgress: (result) => {
+          setEmbeddingNote(formatEmbeddingNote(result));
+        },
+      });
+
+      if (summary.remaining > 0) {
+        setEmbeddingNote(`Photo search partial — ${summary.remaining} photos still need indexing`);
+      }
+    } catch {
+      setEmbeddingNote('Photo search will work after the portal API is deployed.');
+    } finally {
+      backfillActiveRef.current = false;
+    }
+  }, []);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -79,22 +121,6 @@ export default function CatalogScreen({ navigation, route, userEmail }) {
       if (prefetchUrls.length) {
         Image.prefetch(prefetchUrls).catch(() => {});
       }
-
-      if (!backfillStartedRef.current) {
-        backfillStartedRef.current = true;
-        requestEmbeddingBackfill({ limit: 40 })
-          .then((result) => {
-            const methodLabel = result?.searchMethod === 'gemini' ? 'AI' : 'basic';
-            if (result?.remaining > 0) {
-              setEmbeddingNote(`Indexed ${result.embedded || 0} photos (${methodLabel}) · ${result.remaining} still queued`);
-            } else if (result?.totalWithImages) {
-              setEmbeddingNote(`Photo search ready — ${result.totalWithImages} indexed (${methodLabel})`);
-            }
-          })
-          .catch(() => {
-            setEmbeddingNote('Photo search will work after the portal API is deployed.');
-          });
-      }
     } catch (err) {
       setError(err?.message || 'Failed to load products.');
     } finally {
@@ -106,6 +132,10 @@ export default function CatalogScreen({ navigation, route, userEmail }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    startEmbeddingIndex();
+  }, [startEmbeddingIndex]);
 
   useEffect(() => {
     if (initialSearch) setSearch(initialSearch);
@@ -175,13 +205,20 @@ export default function CatalogScreen({ navigation, route, userEmail }) {
 
   const runVisualSearch = async (uri) => {
     setVisualError('');
+    setVisualSearchNote('');
     setVisualMatches([]);
     setVisualModalOpen(true);
     setVisualLoading(true);
     try {
       const imageBase64 = await uriToBase64(uri);
-      const matches = await searchProductsByPhoto(imageBase64);
-      setVisualMatches(matches.map((row) => ({
+      const textHint = search.trim();
+      const result = await searchProductsByPhoto(imageBase64, { textHint });
+      if (result.indexingIncomplete) {
+        setVisualSearchNote('Catalog still indexing — results improve as more photos are processed.');
+      } else if (textHint) {
+        setVisualSearchNote(`Using search hint “${textHint}” with your photo.`);
+      }
+      setVisualMatches((result.matches || []).map((row) => ({
         ...row,
         id: row.entityId,
         name: row.name,
@@ -359,7 +396,7 @@ export default function CatalogScreen({ navigation, route, userEmail }) {
               refreshing={refreshing}
               onRefresh={() => {
                 setRefreshing(true);
-                backfillStartedRef.current = false;
+                startEmbeddingIndex();
                 load({ silent: true });
               }}
               tintColor={theme.border}
@@ -406,6 +443,7 @@ export default function CatalogScreen({ navigation, route, userEmail }) {
         matches={visualMatches}
         loading={visualLoading}
         error={visualError}
+        note={visualSearchNote}
         onClose={() => setVisualModalOpen(false)}
         onSelect={handleVisualSelect}
       />

@@ -21,6 +21,7 @@ import {
 import { brandLogoOnError, preloadBrandAssets, STATIC_BRAND_LOGO, STATIC_BRAND_STAMP } from './utils/brandAssets';
 import { buildPriceLabelFilename, renderLabelNodeToCanvas, waitForLayout } from './utils/labelPdfCapture';
 import { buildLabelImageQrValue } from './utils/labelImageQr';
+import { matchesComboId } from './utils/comboId';
 
 const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v3';
 
@@ -447,7 +448,7 @@ const PriceLabels = () => {
     )));
   };
 
-  const getComboComponents = (comboId) => comboItems.filter((c) => c.combo_id === comboId);
+  const getComboComponents = (comboId) => comboItems.filter((c) => matchesComboId(c.combo_id, comboId));
 
   // Note: Do not infer combo components for standalone products. Only explicit sets show components.
 
@@ -661,9 +662,9 @@ const PriceLabels = () => {
         {components && components.length > 0 && (
           <ul className="label-components">
             {components.map((c) => {
-              const prod = catalogProducts.find((p) => p.id === c.product_id) || {};
+              const prod = catalogProducts.find((p) => String(p.id) === String(c.product_id)) || {};
               return (
-                <li key={c.product_id}>{prod.name || c.product_id} x{c.quantity}</li>
+                <li key={`${String(c.product_id)}-${c.quantity}`}>{prod.name || c.product_id} x{c.quantity}</li>
               );
             })}
           </ul>

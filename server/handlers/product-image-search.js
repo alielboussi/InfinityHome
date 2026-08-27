@@ -3,6 +3,7 @@ import { requireBearerUser } from '../lib/verifyBearerUser.js';
 import {
   computeVectorFromBase64,
   computeVectorFromUrl,
+  computeTextBoost,
   extractStoredVector,
   getActiveEmbeddingMethod,
   getActiveEmbeddingVersion,
@@ -86,15 +87,15 @@ async function embedCatalogRow(db, row, { force = false } = {}) {
       return { skipped: true, docId };
     }
   }
-  const vectorResult = await computeVectorFromUrl(row.imageUrl);
+  const vectorResult = await computeVectorFromUrl(row.imageUrl, {
+    name: row.name,
+    sku: row.sku,
+  });
   await saveEmbedding(db, row, vectorResult);
   return { skipped: false, docId, method: vectorResult.method };
 }
 
-async function handleBackfill(req, res, db) {
-  const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const limit = Math.min(60, Math.max(1, Number(body.limit) || 25));
-  const force = Boolean(body.force);
+async function listPendingEmbeddings(db, { force = false } = {}) {
   const rows = await loadCatalogImageRows(db);
   const pending = [];
 
@@ -110,6 +111,29 @@ async function handleBackfill(req, res, db) {
     pending.push(row);
   }
 
+  return {
+    totalWithImages: rows.length,
+    pending,
+  };
+}
+
+async function handleStatus(_req, res, db) {
+  const { totalWithImages, pending } = await listPendingEmbeddings(db);
+  res.status(200).json({
+    ok: true,
+    searchMethod: getActiveEmbeddingMethod(),
+    embeddingModel: getActiveEmbeddingVersion(),
+    totalWithImages,
+    pending: pending.length,
+    remaining: pending.length,
+  });
+}
+
+async function handleBackfill(req, res, db) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const limit = Math.min(60, Math.max(1, Number(body.limit) || 25));
+  const force = Boolean(body.force);
+  const { totalWithImages, pending } = await listPendingEmbeddings(db, { force });
   const batch = pending.slice(0, limit);
   let embedded = 0;
   let failed = 0;
@@ -133,7 +157,7 @@ async function handleBackfill(req, res, db) {
     ok: true,
     searchMethod: method,
     embeddingModel: getActiveEmbeddingVersion(),
-    totalWithImages: rows.length,
+    totalWithImages,
     pending: pending.length,
     processed: batch.length,
     embedded,
@@ -153,7 +177,10 @@ async function handleEmbedOne(req, res, db) {
     return;
   }
 
-  const vectorResult = await computeVectorFromUrl(imageUrl);
+  const vectorResult = await computeVectorFromUrl(imageUrl, {
+    name: String(body.name || '').trim(),
+    sku: String(body.sku || '').trim(),
+  });
   await saveEmbedding(db, {
     entityType,
     entityId,
@@ -174,22 +201,27 @@ async function handleEmbedOne(req, res, db) {
 async function handleSearch(req, res, db) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const imageBase64 = String(body.imageBase64 || body.image_base64 || '').trim();
+  const textHint = String(body.textHint || body.query || body.search || '').trim();
   if (!imageBase64) {
     res.status(400).json({ ok: false, error: 'imageBase64 is required.' });
     return;
   }
 
-  const queryVector = await computeVectorFromBase64(imageBase64);
+  const queryVector = await computeVectorFromBase64(imageBase64, { text: textHint });
   const snap = await db.collection(COLLECTION).get();
   const matches = [];
+  let searchableCount = 0;
 
   snap.docs.forEach((doc) => {
     const data = doc.data() || {};
     const storedVector = extractStoredVector(data);
     if (!Array.isArray(storedVector) || !storedVector.length) return;
     if (!hasValidStoredVector(data)) return;
-    const score = scoreVectors(queryVector.values, storedVector);
-    if (score <= 0) return;
+    searchableCount += 1;
+    const visualScore = scoreVectors(queryVector.values, storedVector);
+    if (visualScore <= 0) return;
+    const textBoost = computeTextBoost(data.name, data.sku, textHint);
+    const score = Math.min(1, visualScore + (textBoost * 0.28));
     matches.push({
       entityType: data.entity_type || 'product',
       entityId: String(data.entity_id || ''),
@@ -197,6 +229,8 @@ async function handleSearch(req, res, db) {
       sku: data.sku || '',
       imageUrl: data.image_url || '',
       score,
+      visualScore,
+      textBoost,
       __isCombo: data.entity_type === 'combo',
     });
   });
@@ -207,11 +241,15 @@ async function handleSearch(req, res, db) {
     ok: true,
     searchMethod: queryVector.method,
     embeddingModel: queryVector.model,
+    searchableCount,
+    indexedCount: snap.size,
+    indexingIncomplete: searchableCount < 50,
     matches: matches.slice(0, 12).map((row) => ({
       ...row,
       score: Number(row.score.toFixed(4)),
+      visualScore: Number(row.visualScore.toFixed(4)),
+      textBoost: Number(row.textBoost.toFixed(4)),
     })),
-    indexedCount: snap.size,
   });
 }
 
@@ -235,6 +273,10 @@ export default async function handler(req, res) {
       await handleBackfill(req, res, db);
       return;
     }
+    if (action === 'status') {
+      await handleStatus(req, res, db);
+      return;
+    }
     if (action === 'embed') {
       await handleEmbedOne(req, res, db);
       return;
@@ -246,7 +288,7 @@ export default async function handler(req, res) {
 
     res.status(400).json({
       ok: false,
-      error: 'Unknown action. Use search, backfill, or embed.',
+      error: 'Unknown action. Use search, backfill, status, or embed.',
     });
   } catch (err) {
     const status = err?.status || 500;
