@@ -23,6 +23,7 @@ import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
 import { exportAllLaybyPdfsZip, exportLaybySummaryExcel } from './utils/laybyBulkExport';
 import { buildMonthlyBalanceDueMessages, laybyRowsToBalanceDueRows } from './utils/monthlyBalanceDuesMessage';
+import { enrichBalanceDueRowsWithLaybyPdfs } from './utils/monthlyBalanceDueEnrichment';
 import { notifyLaybyWhatsApp, previewLaybyWhatsAppForCustomerRow, resendLaybyWhatsAppForCustomerRow, laybyCustomerRowHasLusakaSaleAsync, resolveLaybyWhatsAppGroupLabel } from './services/whatsappNotify';
 import { sendMonthlyBalanceDueWhatsApp } from './services/whatsapp';
 import { isFahme } from './laybyRules';
@@ -1423,7 +1424,8 @@ export default function LaybyManagement() {
     setError('');
     setSuccess('');
     try {
-      const messages = buildMonthlyBalanceDueMessages(balanceRows);
+      const enrichedRows = await enrichBalanceDueRowsWithLaybyPdfs(balanceRows, rows);
+      const messages = buildMonthlyBalanceDueMessages(enrichedRows);
       const result = await sendMonthlyBalanceDueWhatsApp({ messages });
       if (!result?.ok) {
         setError(result?.error || 'Failed to send monthly balance WhatsApp message.');

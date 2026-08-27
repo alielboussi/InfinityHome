@@ -2917,30 +2917,8 @@ async function handleWhatsAppAdjustment(body) {
 
 
 async function tryResolveStoredLaybyPdfUrl(laybyId, customerId, filename = 'layby-statement.pdf') {
-  const candidates = [
-    `laybys/${String(laybyId || '').trim()}.pdf`,
-    `laybys/${String(customerId || '').trim()}.pdf`,
-  ].filter((path) => path !== 'laybys/.pdf');
-
-  try {
-    const { getStorageClient } = await import('../server/lib/firebaseStorage.js');
-    const storage = getStorageClient();
-    for (const bucket of ['laybypdfs', 'labels']) {
-      for (const objectPath of candidates) {
-        try {
-          const { data, error } = await storage
-            .from(bucket)
-            .createSignedUrl(objectPath, 3600, { download: filename });
-          if (!error && data?.signedUrl) return data.signedUrl;
-        } catch {
-          // try next path/bucket
-        }
-      }
-    }
-  } catch {
-    // storage not configured
-  }
-  return '';
+  const { resolveStoredLaybyPdfUrl } = await import('../server/lib/laybyPdfStorage.js');
+  return resolveStoredLaybyPdfUrl(laybyId, customerId, filename);
 }
 
 
@@ -3716,11 +3694,10 @@ function buildLedgerWhatsAppMessage(body = {}) {
 
 
 
-function buildLedgerPeriodCloseCaption(body = {}) {
+function buildLedgerPeriodCloseStatusMessage(body = {}) {
   const periodLabel = String(body.periodLabel || 'Period').trim();
   const dateFrom = formatLedgerDate(body.dateFrom);
   const dateTo = formatLedgerDate(body.dateTo);
-  const closingBalance = formatLedgerUsd(body.closingBalance);
   const lines = [
     '*Ledger — Period closed*',
     periodLabel,
@@ -3732,8 +3709,23 @@ function buildLedgerPeriodCloseCaption(body = {}) {
   } else if (dateTo && dateTo !== '—') {
     lines.push(`To ${dateTo}`);
   }
-  lines.push('', `Closing balance: ${closingBalance}`, '', 'Statement attached.');
+  lines.push('', 'Closing balance: $ 0', '', 'Period statement PDF follows.');
   return lines.join('\n');
+}
+
+function buildLedgerPeriodClosePdfCaption(body = {}) {
+  const periodLabel = String(body.periodLabel || 'Period').trim();
+  const dateFrom = formatLedgerDate(body.dateFrom);
+  const dateTo = formatLedgerDate(body.dateTo);
+  const lines = [`*${periodLabel}*`];
+  if (dateFrom && dateTo && dateFrom !== '—' && dateTo !== '—') {
+    lines.push(`${dateFrom} – ${dateTo}`);
+  }
+  return lines.join('\n');
+}
+
+function buildLedgerPeriodCloseCaption(body = {}) {
+  return buildLedgerPeriodCloseStatusMessage(body);
 }
 
 
@@ -3749,9 +3741,14 @@ async function handleWhatsAppLedger(body) {
   const periodClose = Boolean(body.periodClose);
 
   if (periodClose && documentLink) {
-    const caption = buildLedgerPeriodCloseCaption(body);
+    const statusMessage = buildLedgerPeriodCloseStatusMessage(body);
+    const pdfCaption = buildLedgerPeriodClosePdfCaption(body);
     if (preview) {
-      return { ok: true, message: caption, preview: true };
+      return {
+        ok: true,
+        message: `${statusMessage}\n\n[PDF would follow: ${String(body.pdfFilename || 'Ledger_Period_Statement.pdf')}]`,
+        preview: true,
+      };
     }
 
     const routing = resolveDeliveryTargets('ledger', null);
@@ -3763,15 +3760,25 @@ async function handleWhatsAppLedger(body) {
     }
 
     const filename = String(body.pdfFilename || 'Ledger_Period_Statement.pdf').trim() || 'Ledger_Period_Statement.pdf';
-    const deliveries = await deliverDocument(
+    const textDeliveries = await deliverText(
+      routing.targets,
+      statusMessage.slice(0, WHATSAPP_TEXT_LIMIT),
+      routing.mode,
+      routing.provider,
+    );
+    const docDeliveries = await deliverDocument(
       routing.targets,
       documentLink,
       filename,
       routing.mode,
       routing.provider,
-      caption,
+      pdfCaption,
     );
-    return { ok: true, deliveries, message: caption };
+    return {
+      ok: true,
+      deliveries: [...textDeliveries, ...docDeliveries],
+      message: statusMessage,
+    };
   }
 
   const message = buildLedgerWhatsAppMessage(body);
@@ -3966,6 +3973,8 @@ async function handleMonthlyBalanceDues(req) {
 
     buildMonthlyBalanceDueMessages,
 
+    enrichBalanceDueRowsWithStoredPdfs,
+
     isScheduledMonthlyRunDay,
 
   } = await import('../server/lib/monthlyBalanceDues.js');
@@ -3995,6 +4004,7 @@ async function handleMonthlyBalanceDues(req) {
   let rows = [];
   try {
     rows = await fetchCustomersWithBalanceDue(db);
+    rows = await enrichBalanceDueRowsWithStoredPdfs(rows);
   } catch (error) {
     const err = new Error(error?.message || 'Failed to load customer balances');
     err.status = 500;

@@ -34,3 +34,8 @@ export function usesCashBookWhatsAppRouting(customerId, customerName) {
 export function usesCompactDownpaymentWhatsApp(customerId, customerName) {
   return isFahme(customerId) || isBasyouniCustomer(customerId, customerName);
 }
+
+/** Monthly layby balance WhatsApp digest — Fahme + Basyouni use separate channels. */
+export function isExcludedFromMonthlyBalanceDue(customerId, customerName) {
+  return isFahme(customerId) || isBasyouniCustomer(customerId, customerName);
+}

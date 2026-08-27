@@ -160,8 +160,9 @@ export default function DatabaseBackup() {
             </div>
           </div>
           <div className="db-backup-notes">
-            <p><strong>Included:</strong> public app tables (products, sales, customers, laybys, quotes, stock, etc.).</p>
-            <p><strong>Not included:</strong> Firebase Auth login accounts, or files in Storage (product images). Recreate Auth users on a new project; image URLs may still point at the old host.</p>
+            <p><strong>Recommended:</strong> Automated full backup runs every 5 days (Firestore + Storage + Auth) to Google Cloud Storage when <code>FIREBASE_BACKUP_BUCKET</code> is configured.</p>
+            <p><strong>This page (legacy):</strong> JSON export of named Firestore tables only — not suitable for disaster recovery.</p>
+            <p><strong>Not included here:</strong> Firebase Auth, Storage files, or collections outside the hardcoded list.</p>
             <p><strong>New project:</strong> create the project → run schema/migrations → point the app env at it → Import here.</p>
           </div>
         </section>

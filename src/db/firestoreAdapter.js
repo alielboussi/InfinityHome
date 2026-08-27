@@ -451,6 +451,9 @@ class FirestoreUpdateQuery {
     this.table = table;
     this.patch = patch;
     this.filters = [];
+    this.selectSpec = null;
+    this.wantSingle = false;
+    this.wantMaybeSingle = false;
   }
 
   eq(col, val) {
@@ -463,8 +466,40 @@ class FirestoreUpdateQuery {
     return this;
   }
 
-  select() {
+  select(columns) {
+    this.selectSpec = columns || '*';
     return this;
+  }
+
+  single() {
+    this.wantSingle = true;
+    return this;
+  }
+
+  maybeSingle() {
+    this.wantMaybeSingle = true;
+    return this;
+  }
+
+  finalizeRows(rows) {
+    let result = Array.isArray(rows) ? rows : [];
+    if (this.selectSpec) {
+      const parsedSelect = parseSelectSpec(this.selectSpec);
+      result = result.map((row) => pickColumns(row, this.selectSpec, parsedSelect));
+    }
+    if (this.wantSingle) {
+      if (result.length !== 1) {
+        return fail('JSON object requested, multiple (or no) rows returned', 'PGRST116');
+      }
+      return ok(result[0]);
+    }
+    if (this.wantMaybeSingle) {
+      if (result.length > 1) {
+        return fail('JSON object requested, multiple rows returned', 'PGRST116');
+      }
+      return ok(result[0] || null);
+    }
+    return ok(result);
   }
 
   async execute() {
@@ -472,19 +507,23 @@ class FirestoreUpdateQuery {
       if (this.filters.length === 1 && this.filters[0].op === 'eq' && this.filters[0].col === 'id') {
         const docId = String(this.filters[0].val);
         const ref = doc(firestoreDb, this.table, docId);
+        const snap = await getDoc(ref);
+        const existing = snap.exists() ? { id: docId, ...snap.data() } : { id: docId };
         await updateDoc(ref, this.patch);
-        return ok([{ id: docId, ...this.patch }]);
+        return this.finalizeRows([{ ...existing, ...this.patch }]);
       }
       const select = new FirestoreSelectQuery(this.table);
       select.filters = [...this.filters];
       const { data: rows, error } = await select.execute();
       if (error) return { data: null, error };
       const targets = Array.isArray(rows) ? rows : [];
+      const updated = [];
       for (const row of targets) {
         const id = docIdForTable(this.table, row);
         await updateDoc(doc(firestoreDb, this.table, id), this.patch);
+        updated.push({ ...row, ...this.patch });
       }
-      return ok(targets.map((row) => ({ ...row, ...this.patch })));
+      return this.finalizeRows(updated);
     } catch (err) {
       return fail(err?.message || String(err));
     }

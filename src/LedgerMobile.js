@@ -89,6 +89,7 @@ export default function LedgerMobile() {
   const [showStartingBalanceForm, setShowStartingBalanceForm] = React.useState(false);
   const [exportingPdf, setExportingPdf] = React.useState(false);
   const [closingBalance, setClosingBalance] = React.useState(false);
+  const [closeBalanceDate, setCloseBalanceDate] = React.useState('');
   const [periods, setPeriods] = React.useState([]);
   const [selectedPeriodIndex, setSelectedPeriodIndex] = React.useState('');
   const [refreshTick, setRefreshTick] = React.useState(0);
@@ -220,20 +221,21 @@ export default function LedgerMobile() {
     }
     const action = balance > 0 ? 'paid out' : 'paid in';
     const amount = Math.abs(balance);
+
+    let resolvedEntryDate;
+    try {
+      resolvedEntryDate = resolveLedgerEntryDate(closeBalanceDate, lastEntryDate);
+    } catch (dateErr) {
+      setError(dateErr?.message || 'Invalid closing date');
+      return;
+    }
+
     const confirmed = window.confirm(
-      `Close this period by recording ${formatMoney(amount)} ${action} to bring the balance to $ 0?`,
+      `Close this period by recording ${formatMoney(amount)} ${action} on ${resolvedEntryDate} to bring the balance to $ 0?\n\nA WhatsApp message will be sent to the ledger group confirming balance $ 0, followed by the period PDF.`,
     );
     if (!confirmed) return;
 
     setClosingBalance(true);
-    let resolvedEntryDate;
-    try {
-      resolvedEntryDate = resolveLedgerEntryDate(entryDate, lastEntryDate);
-    } catch (dateErr) {
-      setClosingBalance(false);
-      setError(dateErr?.message || 'Invalid transaction date');
-      return;
-    }
 
     const { error: err } = await closeLedgerBalance({
       entryDate: resolvedEntryDate,
@@ -244,7 +246,8 @@ export default function LedgerMobile() {
       setError(err.message || 'Failed to close balance');
       return;
     }
-    setInfo(`Period closed. Balance is now ${formatMoney(0)}.`);
+    setInfo(`Period closed on ${resolvedEntryDate}. Balance is $ 0 — WhatsApp status sent, then period PDF.`);
+    setCloseBalanceDate(resolvedEntryDate);
     setEntryDate('');
     setLastEntryDate(resolvedEntryDate);
     try {
@@ -395,6 +398,21 @@ export default function LedgerMobile() {
               {openingBalance ? ` · includes ${formatMoney(openingBalance)} starting balance` : ''}
               {balance < 0 ? ' · advance / owed (negative allowed)' : ''}
             </div>
+            <div style={{ marginTop: 12 }}>
+              <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Closing date (optional)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={closeBalanceDate}
+                onChange={(e) => setCloseBalanceDate(e.target.value)}
+                placeholder="dd/m/yyyy"
+                disabled={closingBalance || Math.abs(balance) < 0.01}
+                style={{ width: '100%', maxWidth: 220, padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+              />
+              <div style={{ fontSize: 11, color: theme.muted, marginTop: 4 }}>
+                Date for the closing entry. Leave blank to use {lastEntryDate ? `the last date (${lastEntryDate})` : 'today'}.
+              </div>
+            </div>
             <button
               type="button"
               onClick={handleCloseBalance}
@@ -413,7 +431,7 @@ export default function LedgerMobile() {
               {closingBalance ? 'Closing balance…' : 'Close balance'}
             </button>
             <div style={{ fontSize: 11, color: theme.muted, marginTop: 6 }}>
-              Ends the current period by paying in or out to reach $ 0.
+              Ends the current period by paying in or out to reach $ 0. Sends WhatsApp (balance $ 0) then the period PDF.
             </div>
           </>
         )}

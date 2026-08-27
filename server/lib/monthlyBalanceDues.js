@@ -1,35 +1,10 @@
 import { aggregateCustomerTotals, buildFinancialsMap } from '../../src/utils/saleFinancials.js';
-
-const FAHME_CUSTOMER_IDS = new Set([
-  'd8e756ae-b8ea-4f90-b99a-70c1120f52b9',
-  'efb21cad-1a8d-4d64-9487-51e816fcb429',
-]);
+import { isExcludedFromMonthlyBalanceDue } from '../../src/utils/whatsappCustomerRules.js';
+import { buildMonthlyBalanceDueMessages } from '../../src/utils/monthlyBalanceDuesMessage.js';
+import { resolveStoredLaybyPdfUrl } from './laybyPdfStorage.js';
 
 const BALANCE_THRESHOLD = 1;
-const WHATSAPP_TEXT_LIMIT = 4096;
 const LUSAKA_TZ = 'Africa/Lusaka';
-
-function isFahmeCustomer(customerId) {
-  if (!customerId) return false;
-  return FAHME_CUSTOMER_IDS.has(String(customerId).trim().toLowerCase());
-}
-
-function normalizeCurrency(raw) {
-  const val = String(raw || '').trim().toUpperCase();
-  if (val === '$' || val === 'USD') return 'USD';
-  if (val === 'K' || val === 'ZMW') return 'K';
-  return val || 'K';
-}
-
-function formatAmount(amount, currency) {
-  const n = Number(amount || 0);
-  const decimals = n % 1 !== 0;
-  const fmt = Number.isFinite(n)
-    ? n.toLocaleString('en-US', { minimumFractionDigits: decimals ? 2 : 0, maximumFractionDigits: 2 })
-    : '0';
-  const label = normalizeCurrency(currency) === 'USD' ? '$' : 'K';
-  return `${label} ${fmt}`;
-}
 
 function normalizeBalanceDue(balanceDue, currency = 'K') {
   const due = Math.max(0, Number(balanceDue || 0));
@@ -99,15 +74,37 @@ async function computeTotalsForCustomers(db, customerIds) {
 export async function fetchCustomersWithBalanceDue(db) {
   const { data: customers, error: custErr } = await db
     .from('customers')
-    .select('id, name, currency')
+    .select('id, name, currency, phone')
     .order('name', { ascending: true });
   if (custErr) throw custErr;
 
-  const eligible = (customers || []).filter((row) => row?.id && !isFahmeCustomer(row.id));
+  const eligible = (customers || []).filter((row) => (
+    row?.id && !isExcludedFromMonthlyBalanceDue(row.id, row.name)
+  ));
   if (!eligible.length) return [];
 
-  const totalsByCustomer = await computeTotalsForCustomers(db, eligible.map((row) => row.id));
+  const customerIds = eligible.map((row) => row.id);
+  const totalsByCustomer = await computeTotalsForCustomers(db, customerIds);
   const nameById = new Map(eligible.map((row) => [String(row.id), String(row.name || 'Unknown').trim() || 'Unknown']));
+  const phoneById = new Map(eligible.map((row) => [String(row.id), String(row.phone || '').trim()]));
+
+  const { data: laybyRows, error: laybyErr } = await db
+    .from('laybys')
+    .select('id, customer_id, updated_at, created_at')
+    .in('customer_id', customerIds);
+  if (laybyErr) throw laybyErr;
+
+  const laybyIdByCustomer = new Map();
+  (laybyRows || []).forEach((layby) => {
+    const customerId = String(layby?.customer_id || '').trim();
+    if (!customerId) return;
+    const existing = laybyIdByCustomer.get(customerId);
+    const existingTime = existing?.updated_at || existing?.created_at || '';
+    const candidateTime = layby?.updated_at || layby?.created_at || '';
+    if (!existing || String(candidateTime) > String(existingTime)) {
+      laybyIdByCustomer.set(customerId, layby);
+    }
+  });
 
   const rows = [];
   Object.entries(totalsByCustomer).forEach(([customerId, byCurrency]) => {
@@ -119,9 +116,12 @@ export async function fetchCustomersWithBalanceDue(db) {
       .filter((entry) => entry.outstanding > 0);
 
     if (!balances.length) return;
+    const layby = laybyIdByCustomer.get(String(customerId)) || null;
     rows.push({
       customerId,
+      laybyId: layby?.id || null,
       name: nameById.get(String(customerId)) || 'Unknown',
+      phone: phoneById.get(String(customerId)) || '',
       balances,
       totalOutstanding: balances.reduce((sum, entry) => sum + entry.outstanding, 0),
     });
@@ -131,76 +131,16 @@ export async function fetchCustomersWithBalanceDue(db) {
   return rows;
 }
 
-function formatReportDate(date = new Date()) {
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: LUSAKA_TZ,
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }).format(date);
-  } catch {
-    return date.toISOString().slice(0, 10);
+export async function enrichBalanceDueRowsWithStoredPdfs(rows = []) {
+  const enriched = [];
+  for (const row of rows) {
+    const laybyPdfUrl = await resolveStoredLaybyPdfUrl(row.laybyId, row.customerId);
+    enriched.push({ ...row, laybyPdfUrl: laybyPdfUrl || '' });
   }
+  return enriched;
 }
 
-function buildMonthlyBalanceFooter(rows) {
-  const totals = {};
-  rows.forEach((row) => {
-    (row.balances || []).forEach((entry) => {
-      const currency = normalizeCurrency(entry.currency);
-      totals[currency] = (totals[currency] || 0) + Number(entry.outstanding || 0);
-    });
-  });
-  const totalLine = Object.entries(totals)
-    .map(([currency, amount]) => formatAmount(amount, currency))
-    .join(' · ');
-  return `\n\nTotal outstanding: ${totalLine}\nTotal customers: ${rows.length}`;
-}
-
-export function buildMonthlyBalanceDueMessages(rows, { reportDate = new Date() } = {}) {
-  const dateLabel = formatReportDate(reportDate);
-  const header = `📋 *Monthly Balance Due — ${dateLabel}*`;
-  const intro = 'Customers with outstanding balances (Fahme accounts excluded):';
-
-  if (!rows.length) {
-    return [`${header}\n\n${intro}\n\nNo customers with balance due.`];
-  }
-
-  const lines = rows.map((row) => {
-    const amounts = row.balances
-      .map((entry) => formatAmount(entry.outstanding, entry.currency))
-      .join(' · ');
-    return `• ${row.name} — ${amounts}`;
-  });
-
-  const footer = buildMonthlyBalanceFooter(rows);
-  const messages = [];
-  let buffer = [];
-
-  const emit = (withFooter = false) => {
-    if (!buffer.length) return;
-    const part = messages.length + 1;
-    const title = part === 1 ? header : `${header} (part ${part})`;
-    let text = `${title}\n\n${intro}\n\n${buffer.join('\n')}`;
-    if (withFooter) text += footer;
-    messages.push(text);
-    buffer = [];
-  };
-
-  for (const line of lines) {
-    const part = messages.length + 1;
-    const title = part === 1 ? header : `${header} (part ${part})`;
-    const trial = `${title}\n\n${intro}\n\n${[...buffer, line].join('\n')}${footer}`;
-    if (trial.length > WHATSAPP_TEXT_LIMIT - 20 && buffer.length) {
-      emit(false);
-    }
-    buffer.push(line);
-  }
-
-  emit(true);
-  return messages;
-}
+export { buildMonthlyBalanceDueMessages };
 
 export function isScheduledMonthlyRunDay(date = new Date()) {
   try {

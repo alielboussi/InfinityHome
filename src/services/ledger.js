@@ -560,7 +560,7 @@ async function sendClosedPeriodWhatsAppPdf(currency = LEDGER_CURRENCY) {
     periodLabel: period.label || '',
     dateFrom: period.dateFrom || '',
     dateTo: period.dateTo || '',
-    closingBalance,
+    closingBalance: 0,
     pdfBase64: base64,
     pdfFilename: fileName,
   });

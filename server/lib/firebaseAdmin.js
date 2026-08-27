@@ -33,6 +33,10 @@ function parseServiceAccount() {
   return null;
 }
 
+export function getServiceAccountConfig() {
+  return parseServiceAccount();
+}
+
 export function getFirebaseAdminApp() {
   if (initialized && admin.apps.length) return admin.apps[0];
   const serviceAccount = parseServiceAccount();

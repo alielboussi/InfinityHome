@@ -2,6 +2,9 @@
   "functions": {
     "api/stocktake.js": {
       "maxDuration": 60
+    },
+    "api/admin.js": {
+      "maxDuration": 300
     }
   },
   "redirects": [
@@ -103,6 +106,7 @@
     { "source": "/api/user-activity", "destination": "/api/admin?adminAction=user-activity" },
     { "source": "/api/login-access", "destination": "/api/admin?adminAction=login-access" },
     { "source": "/api/db-backup", "destination": "/api/admin?adminAction=db-backup" },
+    { "source": "/api/full-firebase-backup", "destination": "/api/admin?adminAction=full-firebase-backup" },
 
     { "source": "/api/product-image-search", "destination": "/api/admin?adminAction=product-image-search" },
 
@@ -120,6 +124,10 @@
     {
       "path": "/api/notify?action=monthly-balance-dues",
       "schedule": "0 6 30 * *"
+    },
+    {
+      "path": "/api/full-firebase-backup",
+      "schedule": "0 4 */5 * *"
     },
     {
       "path": "/api/notify?action=layby-overdue-reminders",

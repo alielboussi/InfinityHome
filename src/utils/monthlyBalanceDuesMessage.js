@@ -1,4 +1,5 @@
 import { isFahme } from '../laybyRules';
+import { isExcludedFromMonthlyBalanceDue } from './whatsappCustomerRules';
 
 const BALANCE_THRESHOLD = 1;
 const WHATSAPP_TEXT_LIMIT = 4096;
@@ -47,11 +48,28 @@ function displayTotalsByCurrency(row) {
   return { USD: folded };
 }
 
-/** Map Layby Management rows to monthly balance due rows (Fahme excluded). */
+function formatCustomerPhone(phone) {
+  return String(phone || '').trim();
+}
+
+export function formatMonthlyBalanceCustomerBlock(row) {
+  const amounts = (row.balances || [])
+    .map((entry) => formatAmount(entry.outstanding, entry.currency))
+    .join(' · ');
+  const lines = [`• ${row.name} — ${amounts}`];
+  const phone = formatCustomerPhone(row.phone);
+  if (phone) lines.push(`  ${phone}`);
+  const pdfUrl = String(row.laybyPdfUrl || '').trim();
+  if (pdfUrl) lines.push(`  Layby PDF: ${pdfUrl}`);
+  return lines.join('\n');
+}
+
+/** Map Layby Management rows to monthly balance due rows (Fahme & Basyouni excluded). */
 export function laybyRowsToBalanceDueRows(laybyRows = []) {
   const rows = [];
   (laybyRows || []).forEach((row) => {
-    if (!row?.customerId || isFahme(row.customerId)) return;
+    const customerName = String(row.customer?.name || '').trim();
+    if (!row?.customerId || isExcludedFromMonthlyBalanceDue(row.customerId, customerName)) return;
     const totals = displayTotalsByCurrency(row);
     const balances = Object.entries(totals)
       .map(([currency, vals]) => ({
@@ -60,9 +78,12 @@ export function laybyRowsToBalanceDueRows(laybyRows = []) {
       }))
       .filter((entry) => entry.outstanding >= BALANCE_THRESHOLD);
     if (!balances.length) return;
+    const laybyId = row.primaryLayby?.id || row.laybys?.[0]?.id || null;
     rows.push({
       customerId: row.customerId,
+      laybyId,
       name: String(row.customer?.name || 'Unknown').trim() || 'Unknown',
+      phone: formatCustomerPhone(row.customer?.phone),
       balances,
     });
   });
@@ -87,18 +108,13 @@ function buildMonthlyBalanceFooter(rows) {
 export function buildMonthlyBalanceDueMessages(rows, { reportDate = new Date() } = {}) {
   const dateLabel = formatReportDate(reportDate);
   const header = `📋 *Monthly Balance Due — ${dateLabel}*`;
-  const intro = 'Customers with outstanding balances (Fahme accounts excluded):';
+  const intro = 'Customers with outstanding balances (Fahme & Basyouni excluded):';
 
   if (!rows.length) {
     return [`${header}\n\n${intro}\n\nNo customers with balance due.`];
   }
 
-  const lines = rows.map((row) => {
-    const amounts = row.balances
-      .map((entry) => formatAmount(entry.outstanding, entry.currency))
-      .join(' · ');
-    return `• ${row.name} — ${amounts}`;
-  });
+  const lines = rows.map((row) => formatMonthlyBalanceCustomerBlock(row));
 
   const footer = buildMonthlyBalanceFooter(rows);
   const messages = [];
