@@ -11,8 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { findProductBySku } from '../services/catalog';
 import { theme } from '../theme';
 
-export default function ScanScreen({ navigation, route }) {
-  const { locationId, locationName } = route.params || {};
+export default function ScanScreen({ navigation }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Point at the product QR code (SKU).');
@@ -26,7 +25,7 @@ export default function ScanScreen({ navigation, route }) {
     setBusy(true);
     setMessage(`Looking up ${code}…`);
     try {
-      const product = await findProductBySku(code, locationId);
+      const product = await findProductBySku(code);
       if (!product) {
         setMessage(`No product found for SKU "${code}".`);
         scanLockRef.current = false;
@@ -35,8 +34,7 @@ export default function ScanScreen({ navigation, route }) {
       }
       navigation.replace('ProductEdit', {
         productId: product.id,
-        locationId,
-        locationName,
+        isCombo: Boolean(product.__isCombo),
       });
     } catch (err) {
       setMessage(err?.message || 'Scan failed.');
@@ -71,7 +69,7 @@ export default function ScanScreen({ navigation, route }) {
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>← Back</Text>
+          <Text style={styles.back}>← Products</Text>
         </Pressable>
         <Text style={styles.title}>Scan product QR</Text>
       </View>

@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -19,26 +20,9 @@ import {
 import { getDb, getFirebaseApp } from '../../shared/firebase';
 import { readExpoExtra } from '../../shared/expoExtra';
 import { isMissingDisplayableImage } from './imageProbe';
+import { requestImageEmbedding } from './visualSearch';
 
 const PRODUCT_IMAGE_BUCKET = 'productimages';
-
-function chunkArray(list, size) {
-  const chunks = [];
-  for (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));
-  return chunks;
-}
-
-function toNumber(value) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
-function parsePriceInput(value, { allowEmpty = false } = {}) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return allowEmpty ? null : NaN;
-  const parsed = Number(raw.replace(/,/g, ''));
-  return Number.isFinite(parsed) ? parsed : NaN;
-}
 
 function storageBucketName() {
   const extra = readExpoExtra();
@@ -57,97 +41,123 @@ function buildPublicUrl(objectPath) {
 
 function resolveImageUrl(product, imageByProductId) {
   const joined = imageByProductId.get(String(product.id));
-  const raw = String(product.image_url || joined || '').trim();
-  return raw;
+  return String(product.image_url || joined || '').trim();
 }
 
-function applyLocationPricing(product, locationId, priceMap) {
-  const override = priceMap.get(`${String(product.id)}:${String(locationId)}`);
+function mapProductRow(product, imageMap) {
   return {
     ...product,
-    price: override?.price != null && override?.price !== '' ? override.price : product.price,
-    promotional_price: override?.promotional_price != null && override?.promotional_price !== ''
-      ? override.promotional_price
-      : product.promotional_price,
-    _locationOverride: override || null,
+    __isCombo: false,
+    name: String(product.name || '').trim(),
+    imageUrl: resolveImageUrl(product, imageMap),
   };
 }
 
-async function fetchProductImageMap(productIds) {
-  const map = new Map();
-  for (const chunk of chunkArray(productIds, 30)) {
-    await Promise.all(chunk.map(async (productId) => {
-      const pid = String(productId);
-      const snap = await getDoc(doc(getDb(), 'product_images', pid));
-      const url = String(snap.data()?.image_url || '').trim();
-      if (url) map.set(pid, url);
-    }));
-  }
-  return map;
+function mapComboRow(combo) {
+  return {
+    id: combo.id,
+    name: String(combo.combo_name || '').trim(),
+    combo_name: combo.combo_name,
+    sku: combo.sku,
+    price: combo.combo_price ?? combo.standard_price,
+    promotional_price: combo.promotional_price,
+    currency: combo.currency,
+    picture_url: combo.picture_url,
+    __isCombo: true,
+    imageUrl: String(combo.picture_url || '').trim(),
+  };
 }
 
-async function fetchLocationPriceMap(locationId) {
+async function fetchProductImageMap(productIds = null) {
   const map = new Map();
-  const snap = await getDocs(query(
-    collection(getDb(), 'product_location_prices'),
-    where('location_id', '==', locationId),
-  ));
+  if (Array.isArray(productIds) && productIds.length === 1) {
+    const pid = String(productIds[0]);
+    const snap = await getDoc(doc(getDb(), 'product_images', pid));
+    const url = String(snap.data()?.image_url || '').trim();
+    if (url) map.set(pid, url);
+    return map;
+  }
+
+  const snap = await getDocs(collection(getDb(), 'product_images'));
   snap.docs.forEach((row) => {
     const data = row.data() || {};
-    const key = `${String(data.product_id)}:${String(data.location_id)}`;
-    map.set(key, { id: row.id, ...data });
+    const pid = String(data.product_id || row.id);
+    const url = String(data.image_url || '').trim();
+    if (url) map.set(pid, url);
   });
   return map;
 }
 
-export async function fetchCatalogProducts(locationId) {
-  const snap = await getDocs(collection(getDb(), 'products'));
-  const products = snap.docs
-    .map((row) => ({ id: row.id, ...row.data() }))
-    .filter((row) => row?.name)
-    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-
-  const productIds = products.map((row) => row.id);
-  const [imageMap, priceMap] = await Promise.all([
-    fetchProductImageMap(productIds),
-    fetchLocationPriceMap(locationId),
+export async function fetchCatalogProducts() {
+  const [productsSnap, combosSnap, imageMap] = await Promise.all([
+    getDocs(collection(getDb(), 'products')),
+    getDocs(collection(getDb(), 'combos')),
+    fetchProductImageMap(),
   ]);
 
-  return products.map((product) => {
-    const priced = applyLocationPricing(product, locationId, priceMap);
-    return {
-      ...priced,
-      imageUrl: resolveImageUrl(product, imageMap),
-    };
-  });
+  const products = productsSnap.docs
+    .map((row) => mapProductRow({ id: row.id, ...row.data() }, imageMap))
+    .filter((row) => row.name);
+
+  const combos = combosSnap.docs
+    .map((row) => mapComboRow({ id: row.id, ...row.data() }))
+    .filter((row) => row.name);
+
+  return [...products, ...combos].sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
-export async function fetchProductById(productId, locationId) {
+export async function fetchCatalogItemById(itemId, { isCombo = false } = {}) {
+  const id = String(itemId || '').trim();
+  if (!id) return null;
+  if (isCombo) return fetchComboById(id);
+  return fetchProductById(id);
+}
+
+export async function fetchProductById(productId) {
   const pid = String(productId || '').trim();
   if (!pid) return null;
   const snap = await getDoc(doc(getDb(), 'products', pid));
   if (!snap.exists()) return null;
   const product = { id: snap.id, ...snap.data() };
-  const [imageMap, priceMap] = await Promise.all([
-    fetchProductImageMap([pid]),
-    fetchLocationPriceMap(locationId),
-  ]);
-  const priced = applyLocationPricing(product, locationId, priceMap);
-  return {
-    ...priced,
-    imageUrl: resolveImageUrl(product, imageMap),
-  };
+  const imageMap = await fetchProductImageMap([pid]);
+  return mapProductRow(product, imageMap);
 }
 
-export async function findProductBySku(sku, locationId) {
+export async function fetchComboById(comboId) {
+  const cid = String(comboId || '').trim();
+  if (!cid) return null;
+  const snap = await getDoc(doc(getDb(), 'combos', cid));
+  if (!snap.exists()) return null;
+  return mapComboRow({ id: snap.id, ...snap.data() });
+}
+
+export async function fetchComboItems(comboId) {
+  const cid = String(comboId || '').trim();
+  if (!cid) return [];
+  const snap = await getDocs(query(collection(getDb(), 'combo_items'), where('combo_id', '==', cid)));
+  return snap.docs.map((row) => ({ id: row.id, ...row.data() }));
+}
+
+export async function fetchProductsLookup() {
+  const snap = await getDocs(collection(getDb(), 'products'));
+  return snap.docs
+    .map((row) => ({ id: row.id, name: row.data()?.name, sku: row.data()?.sku }))
+    .filter((row) => row.name)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+export async function findProductBySku(sku) {
   const raw = String(sku || '').trim();
   if (!raw) return null;
   const candidates = [...new Set([raw, raw.toUpperCase(), raw.toLowerCase()])];
   for (const candidate of candidates) {
-    const snap = await getDocs(query(collection(getDb(), 'products'), where('sku', '==', candidate)));
-    if (!snap.empty) {
-      const product = { id: snap.docs[0].id, ...snap.docs[0].data() };
-      return fetchProductById(product.id, locationId);
+    const productSnap = await getDocs(query(collection(getDb(), 'products'), where('sku', '==', candidate)));
+    if (!productSnap.empty) {
+      return fetchProductById(productSnap.docs[0].id);
+    }
+    const comboSnap = await getDocs(query(collection(getDb(), 'combos'), where('sku', '==', candidate)));
+    if (!comboSnap.empty) {
+      return fetchComboById(comboSnap.docs[0].id);
     }
   }
   return null;
@@ -157,11 +167,15 @@ export function productHasImage(product, imageStatusById = {}) {
   return !isMissingDisplayableImage(product, imageStatusById);
 }
 
+export function catalogItemKey(item) {
+  return `${item?.__isCombo ? 'combo' : 'product'}_${item?.id}`;
+}
+
 export function filterCatalogProducts(products, searchText, options = {}) {
   const { missingImageOnly = false, imageStatusById = {} } = options;
   let rows = products || [];
   if (missingImageOnly) {
-    rows = rows.filter((product) => isMissingDisplayableImage(product, imageStatusById));
+    rows = rows.filter((product) => isMissingDisplayableImage(product, imageStatusById, catalogItemKey(product)));
   }
   const q = String(searchText || '').trim().toLowerCase();
   if (!q) return rows;
@@ -174,51 +188,8 @@ export function filterCatalogProducts(products, searchText, options = {}) {
   });
 }
 
-export async function saveProductPrices({
-  productId,
-  locationId,
-  standardPrice,
-  promoPrice,
-  baseProduct,
-  locationOverride,
-}) {
-  const pid = String(productId || '').trim();
-  const lid = String(locationId || '').trim();
-  if (!pid || !lid) throw new Error('Product and location are required.');
-
-  const parsedStandard = parsePriceInput(standardPrice);
-  if (!Number.isFinite(parsedStandard) || parsedStandard < 0) {
-    throw new Error('Enter a valid standard price.');
-  }
-  const promoRaw = String(promoPrice ?? '').trim();
-  const parsedPromo = promoRaw === '' ? null : parsePriceInput(promoPrice, { allowEmpty: true });
-  if (promoRaw !== '' && (!Number.isFinite(parsedPromo) || parsedPromo < 0)) {
-    throw new Error('Enter a valid promo price or leave blank.');
-  }
-
-  const docId = `${pid}_${lid}`;
-  const payload = {
-    product_id: pid,
-    location_id: lid,
-    price: parsedStandard,
-    promotional_price: parsedPromo,
-    promo_start_date: locationOverride?.promo_start_date ?? baseProduct?.promo_start_date ?? null,
-    promo_end_date: locationOverride?.promo_end_date ?? baseProduct?.promo_end_date ?? null,
-    updated_at: new Date().toISOString(),
-  };
-  await setDoc(doc(getDb(), 'product_location_prices', docId), payload, { merge: true });
-
-  await updateDoc(doc(getDb(), 'products', pid), {
-    price: parsedStandard,
-    promotional_price: parsedPromo,
-    updated_at: new Date().toISOString(),
-  });
-
-  return payload;
-}
-
-async function purgeProductImages(productId) {
-  const folderRef = ref(getStorage(getFirebaseApp()), `${PRODUCT_IMAGE_BUCKET}/products/${productId}`);
+async function purgeStorageFolder(folderPath) {
+  const folderRef = ref(getStorage(getFirebaseApp()), `${PRODUCT_IMAGE_BUCKET}/${folderPath}`);
   try {
     const listed = await listAll(folderRef);
     await Promise.all(listed.items.map((item) => deleteObject(item)));
@@ -227,14 +198,15 @@ async function purgeProductImages(productId) {
   }
 }
 
-export async function uploadProductImage(productId, localUri) {
+export async function uploadProductImage(productId, localUri, { isCombo = false, itemMeta = {} } = {}) {
   const pid = String(productId || '').trim();
-  if (!pid) throw new Error('Product id is required.');
+  if (!pid) throw new Error('Item id is required.');
   if (!localUri) throw new Error('Choose an image first.');
 
-  await purgeProductImages(pid);
+  const folder = isCombo ? `sets/${pid}` : `products/${pid}`;
+  await purgeStorageFolder(folder);
   const nonce = Date.now();
-  const objectPath = `products/${pid}/main-${nonce}.jpg`;
+  const objectPath = `${folder}/main-${nonce}.jpg`;
   const storagePath = `${PRODUCT_IMAGE_BUCKET}/${objectPath}`;
 
   const response = await fetch(localUri);
@@ -249,6 +221,21 @@ export async function uploadProductImage(productId, localUri) {
     // fallback to constructed URL
   }
 
+  if (isCombo) {
+    await updateDoc(doc(getDb(), 'combos', pid), {
+      picture_url: publicUrl,
+      updated_at: new Date().toISOString(),
+    });
+    requestImageEmbedding({
+      entityType: 'combo',
+      entityId: pid,
+      imageUrl: publicUrl,
+      name: itemMeta.name,
+      sku: itemMeta.sku,
+    }).catch(() => {});
+    return publicUrl;
+  }
+
   await setDoc(doc(getDb(), 'product_images', pid), {
     product_id: pid,
     image_url: publicUrl,
@@ -259,7 +246,68 @@ export async function uploadProductImage(productId, localUri) {
     updated_at: new Date().toISOString(),
   });
 
+  requestImageEmbedding({
+    entityType: 'product',
+    entityId: pid,
+    imageUrl: publicUrl,
+    name: itemMeta.name,
+    sku: itemMeta.sku,
+  }).catch(() => {});
+
   return publicUrl;
 }
 
-export { parsePriceInput, toNumber };
+export async function updateCatalogItemName(item, name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw new Error('Name cannot be empty.');
+  const id = String(item?.id || '').trim();
+  if (!id) throw new Error('Item id is required.');
+
+  if (item?.__isCombo) {
+    await updateDoc(doc(getDb(), 'combos', id), {
+      combo_name: trimmed,
+      updated_at: new Date().toISOString(),
+    });
+    return trimmed;
+  }
+
+  await updateDoc(doc(getDb(), 'products', id), {
+    name: trimmed,
+    updated_at: new Date().toISOString(),
+  });
+  return trimmed;
+}
+
+export async function saveComboItems(comboId, items) {
+  const cid = String(comboId || '').trim();
+  if (!cid) throw new Error('Set id is required.');
+
+  const normalized = (items || [])
+    .map((row) => ({
+      product_id: String(row.product_id || '').trim(),
+      quantity: Math.max(1, Number(row.quantity) || 1),
+    }))
+    .filter((row) => row.product_id);
+
+  const existingSnap = await getDocs(query(collection(getDb(), 'combo_items'), where('combo_id', '==', cid)));
+  await Promise.all(existingSnap.docs.map((row) => deleteDoc(doc(getDb(), 'combo_items', row.id))));
+
+  await Promise.all(normalized.map((row) => {
+    const docId = `${cid}_${row.product_id}`;
+    return setDoc(doc(getDb(), 'combo_items', docId), {
+      id: docId,
+      combo_id: cid,
+      product_id: row.product_id,
+      quantity: row.quantity,
+    });
+  }));
+
+  await updateDoc(doc(getDb(), 'combos', cid), {
+    updated_at: new Date().toISOString(),
+  });
+
+  return normalized;
+}
+
+// Backwards-compatible exports
+export const updateProductName = (productId, name) => updateCatalogItemName({ id: productId, __isCombo: false }, name);

@@ -1,5 +1,5 @@
 // Generated from laybyPdfSettlementFallbacks.json for Node + browser ESM compatibility.
-export default {
+const laybyPdfSettlementFallbacksData = {
   "mohammad fahme": [
     {
       "date": "20/12/2024",
@@ -81,3 +81,5 @@ export default {
     }
   ]
 };
+
+export default laybyPdfSettlementFallbacksData;

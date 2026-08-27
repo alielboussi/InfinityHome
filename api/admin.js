@@ -17,6 +17,7 @@ const HANDLER_LOADERS = {
   'db-backup': () => import('../server/handlers/db-backup.js'),
   'shop-catalog': () => import('../server/handlers/shop-catalog.js'),
   'web-orders': () => import('../server/handlers/web-orders.js'),
+  'product-image-search': () => import('../server/handlers/product-image-search.js'),
 };
 
 function resolveHandler(mod) {

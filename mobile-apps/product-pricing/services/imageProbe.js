@@ -1,7 +1,7 @@
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 
-const PROBE_TIMEOUT_MS = 8000;
-const PROBE_CONCURRENCY = 8;
+const PROBE_TIMEOUT_MS = 6000;
+const PROBE_CONCURRENCY = 12;
 
 export async function probeImageUrl(url) {
   const raw = String(url || '').trim();
@@ -65,13 +65,18 @@ export async function probeCatalogImageStatuses(products, onStatus) {
   await Promise.all(workers);
 }
 
-export function isMissingDisplayableImage(product, imageStatusById = {}) {
+export function isMissingDisplayableImage(product, imageStatusById = {}, statusKey = null) {
   const url = String(product?.imageUrl || product?.image_url || '').trim();
   if (!url) return true;
-  const status = imageStatusById[product.id];
+  const key = statusKey || product?.id;
+  const status = imageStatusById[key];
+  if (status === 'checking' || status === undefined) return false;
   return status === 'broken' || status === 'none';
 }
 
-export function countMissingDisplayableImages(products, imageStatusById = {}) {
-  return (products || []).filter((product) => isMissingDisplayableImage(product, imageStatusById)).length;
+export function countMissingDisplayableImages(products, imageStatusById = {}, keyFn) {
+  const resolveKey = keyFn || ((product) => `${product?.__isCombo ? 'combo' : 'product'}_${product?.id}`);
+  return (products || []).filter((product) => (
+    isMissingDisplayableImage(product, imageStatusById, resolveKey(product))
+  )).length;
 }

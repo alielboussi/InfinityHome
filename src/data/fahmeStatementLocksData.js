@@ -1,5 +1,5 @@
 // Generated from fahmeStatementLocks.json for Node + browser ESM compatibility.
-export default {
+const fahmeStatementLocksData = {
   "d8e756ae-b8ea-4f90-b99a-70c1120f52b9": {
     "label": "Mohammad Fahme",
     "referencePdf": "Mohammad_Fahme_Layby_Statement_2026-07-29_USD.pdf",
@@ -35,3 +35,5 @@ export default {
     }
   }
 };
+
+export default fahmeStatementLocksData;

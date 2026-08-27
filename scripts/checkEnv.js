@@ -55,7 +55,7 @@ try {
   console.warn('[env:warn] Could not write .env.production.local: ' + (err?.message || err));
 }
 
-const optionalServerVars = ['FIREBASE_SERVICE_ACCOUNT', 'FIREBASE_SERVICE_ACCOUNT_PATH', 'LABEL_WORKER_SECRET'];
+const optionalServerVars = ['FIREBASE_SERVICE_ACCOUNT', 'FIREBASE_SERVICE_ACCOUNT_PATH', 'LABEL_WORKER_SECRET', 'GEMINI_API_KEY'];
 const present = optionalServerVars.filter((k) => process.env[k] && String(process.env[k]).trim());
 const absent = optionalServerVars.filter((k) => !present.includes(k));
 console.log('[env:info] Serverless env present: ' + (present.length ? present.join(', ') : '(none)'));

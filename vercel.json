@@ -104,6 +104,8 @@
     { "source": "/api/login-access", "destination": "/api/admin?adminAction=login-access" },
     { "source": "/api/db-backup", "destination": "/api/admin?adminAction=db-backup" },
 
+    { "source": "/api/product-image-search", "destination": "/api/admin?adminAction=product-image-search" },
+
     { "source": "/api/shop-catalog", "destination": "/api/admin?adminAction=shop-catalog" },
     { "source": "/api/web-orders", "destination": "/api/admin?adminAction=web-orders" },
 

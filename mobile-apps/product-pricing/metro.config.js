@@ -28,6 +28,8 @@ config.resolver.extraNodeModules = {
   'expo-constants': path.resolve(appNodeModules, 'expo-constants'),
   'expo-camera': path.resolve(appNodeModules, 'expo-camera'),
   'expo-image-picker': path.resolve(appNodeModules, 'expo-image-picker'),
+  'expo-image': path.resolve(appNodeModules, 'expo-image'),
+  'expo-splash-screen': path.resolve(appNodeModules, 'expo-splash-screen'),
   'expo-file-system': path.resolve(appNodeModules, 'expo-file-system'),
 };
 

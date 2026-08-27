@@ -153,24 +153,23 @@ Then `npm run build:apk:prod` in `lusaka-stock/`. See `lusaka-stock/PRE_BUILD_CH
 
 ---
 
-## 6. Product Pricing (`product-pricing/`)
+## 6. Product Photos (`product-pricing/`)
 
-Update portal **products-list** prices and photos from a phone.
+Add and replace portal **product photos** from a phone. Prices are read-only on cards.
 
 ```bash
 cd mobile-apps/product-pricing
-cp ../lusaka-stock/assets/icon.png assets/
-cp ../lusaka-stock/assets/splash.png assets/
-cp ../lusaka-stock/assets/adaptive-icon.png assets/
 npm install
 npm start
 ```
 
 **Sign-in:** Firebase email/password only (no Google).
 
-**Screens:** dashboard (pick Kitwe/Lusaka/Factory) → searchable single-column catalog → product edit (standard price, promo price, photo). **Scan QR** uses the SKU on price labels.
+**Screens:** products grid (two-column square cards) → product photo screen. **Scan QR** uses the SKU on price labels. No location picker — photos are global per product.
 
-**Data:** same Firestore + Storage paths as `src/ProductsListPage.js` — updates show on `/products-list` immediately.
+**Data:** `product_images`, `products.image_url`, Firebase Storage `productimages/…` — same as `src/ProductsListPage.js`.
+
+**APK:** `npm run build:apk` after `npx eas-cli login` + `npx eas-cli init` (see `product-pricing/README.md`).
 
 ---
 

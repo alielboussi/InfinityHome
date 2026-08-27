@@ -1,34 +1,45 @@
-import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ProductImagePreview from '../components/ProductImagePreview';
 import {
-  fetchProductById,
-  saveProductPrices,
+  fetchCatalogItemById,
   uploadProductImage,
 } from '../services/catalog';
 import { theme } from '../theme';
+import { promptReplaceProductImage } from '../utils/productImagePicker';
+
+function formatPrice(value, currency) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return '—';
+  const c = String(currency || 'K').toUpperCase();
+  const sym = c === 'USD' || c === '$' ? '$' : 'K';
+  return `${sym} ${Math.round(num).toLocaleString('en-US')}`;
+}
 
 export default function ProductEditScreen({ navigation, route }) {
-  const { productId, locationId, locationName } = route.params || {};
+  const { productId, isCombo, promptImageReplace } = route.params || {};
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [product, setProduct] = useState(null);
-  const [standardPrice, setStandardPrice] = useState('');
-  const [promoPrice, setPromoPrice] = useState('');
   const [imageUri, setImageUri] = useState('');
   const [pickedUri, setPickedUri] = useState('');
   const [error, setError] = useState('');
+  const promptedReplaceRef = useRef(false);
+
+  const handleReplaceImage = useCallback(() => {
+    promptReplaceProductImage({
+      onPicked: (uri) => setPickedUri(uri),
+    });
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -36,15 +47,13 @@ export default function ProductEditScreen({ navigation, route }) {
       setLoading(true);
       setError('');
       try {
-        const row = await fetchProductById(productId, locationId);
+        const row = await fetchCatalogItemById(productId, { isCombo: Boolean(isCombo) });
         if (!alive) return;
         if (!row) {
-          setError('Product not found.');
+          setError(isCombo ? 'Set not found.' : 'Product not found.');
           return;
         }
         setProduct(row);
-        setStandardPrice(row.price != null ? String(row.price) : '');
-        setPromoPrice(row.promotional_price != null ? String(row.promotional_price) : '');
         setImageUri(row.imageUrl || '');
       } catch (err) {
         if (alive) setError(err?.message || 'Failed to load product.');
@@ -53,74 +62,51 @@ export default function ProductEditScreen({ navigation, route }) {
       }
     })();
     return () => { alive = false; };
-  }, [productId, locationId]);
+  }, [productId, isCombo]);
 
-  const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo library access to upload a product image.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-    });
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      setPickedUri(result.assets[0].uri);
-    }
-  };
-
-  const takePhoto = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow camera access to take a product photo.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.85,
-    });
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      setPickedUri(result.assets[0].uri);
-    }
-  };
+  useEffect(() => {
+    if (!promptImageReplace || loading || !product || promptedReplaceRef.current) return;
+    promptedReplaceRef.current = true;
+    const timer = setTimeout(() => handleReplaceImage(), 350);
+    return () => clearTimeout(timer);
+  }, [promptImageReplace, loading, product, handleReplaceImage]);
 
   const onSave = async () => {
     if (!product) return;
+    if (!pickedUri) {
+      navigation.goBack();
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      await saveProductPrices({
-        productId: product.id,
-        locationId,
-        standardPrice,
-        promoPrice,
-        baseProduct: product,
-        locationOverride: product._locationOverride,
+      const publicUrl = await uploadProductImage(product.id, pickedUri, {
+        isCombo: Boolean(product.__isCombo),
+        itemMeta: { name: product.name, sku: product.sku },
       });
-      if (pickedUri) {
-        const publicUrl = await uploadProductImage(product.id, pickedUri);
-        setImageUri(publicUrl);
-        setPickedUri('');
-      }
-      Alert.alert('Saved', 'Product updated on the portal products-list.');
+      setImageUri(publicUrl);
+      setPickedUri('');
+      Alert.alert('Saved', `${product.__isCombo ? 'Set' : 'Product'} photo updated on the portal.`);
       navigation.goBack();
     } catch (err) {
-      setError(err?.message || 'Failed to save product.');
+      setError(err?.message || 'Failed to upload photo.');
     } finally {
       setSaving(false);
     }
   };
 
   const previewUri = pickedUri || imageUri;
+  const promo = Number(product?.promotional_price);
+  const hasPromo = Number.isFinite(promo) && promo > 0;
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()}>
-          <Text style={styles.back}>← Back</Text>
+          <Text style={styles.back}>← Products</Text>
         </Pressable>
-        <Text style={styles.title}>Edit product</Text>
-        <Text style={styles.subtitle}>{locationName}</Text>
+        <Text style={styles.title}>{product?.__isCombo ? 'Set photo' : 'Product photo'}</Text>
+        <Text style={styles.subtitle}>Add or replace the portal image</Text>
       </View>
 
       {loading ? (
@@ -133,48 +119,40 @@ export default function ProductEditScreen({ navigation, route }) {
               {product.sku ? <Text style={styles.sku}>SKU: {product.sku}</Text> : null}
 
               <View style={styles.imageCard}>
-                {previewUri ? (
-                  <Image source={{ uri: previewUri }} style={styles.image} resizeMode="cover" />
-                ) : (
-                  <View style={styles.imagePlaceholder}>
-                    <Text style={styles.placeholderText}>No image yet</Text>
-                  </View>
-                )}
-                <View style={styles.imageActions}>
-                  <Pressable style={styles.secondaryButton} onPress={pickImage}>
-                    <Text style={styles.secondaryButtonText}>Choose photo</Text>
-                  </Pressable>
-                  <Pressable style={styles.secondaryButton} onPress={takePhoto}>
-                    <Text style={styles.secondaryButtonText}>Take photo</Text>
-                  </Pressable>
+                <ProductImagePreview
+                  uri={previewUri}
+                  title={product.name}
+                  onLongPressReplace={handleReplaceImage}
+                  hint="Tap image to enlarge · Hold to replace"
+                />
+                <Pressable style={styles.replaceLink} onPress={handleReplaceImage}>
+                  <Text style={styles.replaceLinkText}>Replace image</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.priceCard}>
+                <Text style={styles.priceCardTitle}>Prices (read-only)</Text>
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Standard</Text>
+                  <Text style={styles.priceValue}>{formatPrice(product.price, product.currency)}</Text>
+                </View>
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Promo</Text>
+                  <Text style={[styles.priceValue, hasPromo && styles.promoValue]}>
+                    {hasPromo ? formatPrice(promo, product.currency) : '—'}
+                  </Text>
                 </View>
               </View>
 
-              <Text style={styles.label}>Standard price</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="decimal-pad"
-                value={standardPrice}
-                onChangeText={setStandardPrice}
-                placeholder="0"
-                placeholderTextColor={theme.muted}
-              />
-
-              <Text style={styles.label}>Promo price</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="decimal-pad"
-                value={promoPrice}
-                onChangeText={setPromoPrice}
-                placeholder="Leave blank to clear"
-                placeholderTextColor={theme.muted}
-              />
-
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
-              <Pressable style={styles.primaryButton} onPress={onSave} disabled={saving}>
+              <Pressable
+                style={[styles.primaryButton, !pickedUri && styles.primaryButtonMuted]}
+                onPress={onSave}
+                disabled={saving}
+              >
                 <Text style={styles.primaryButtonText}>
-                  {saving ? 'Saving…' : 'Save to portal'}
+                  {saving ? 'Uploading…' : pickedUri ? 'Save photo to portal' : 'Back to products'}
                 </Text>
               </Pressable>
             </>
@@ -205,44 +183,36 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 16,
   },
-  image: { width: '100%', height: 220, borderRadius: 10, marginBottom: 12 },
-  imagePlaceholder: {
-    height: 220,
-    borderRadius: 10,
-    backgroundColor: theme.surfaceAlt,
+  replaceLink: {
+    marginTop: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
+    paddingVertical: 8,
   },
-  placeholderText: { color: theme.muted },
-  imageActions: { flexDirection: 'row', gap: 8 },
-  secondaryButton: {
-    flex: 1,
+  replaceLinkText: { color: theme.border, fontWeight: '700' },
+  priceCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.borderSoft,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    backgroundColor: theme.surfaceAlt,
+    padding: 14,
+    marginBottom: 16,
   },
-  secondaryButtonText: { color: theme.text, fontWeight: '700' },
-  label: { color: theme.muted, fontSize: 12, marginBottom: 6, marginTop: 4 },
-  input: {
-    backgroundColor: theme.surfaceAlt,
-    borderWidth: 1,
-    borderColor: theme.borderSoft,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    color: theme.text,
-    marginBottom: 12,
-  },
+  priceCardTitle: { color: theme.muted, fontSize: 12, marginBottom: 10, fontWeight: '700' },
+  priceRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  priceLabel: { color: theme.muted, fontSize: 14 },
+  priceValue: { color: theme.text, fontWeight: '700', fontSize: 14 },
+  promoValue: { color: theme.accent },
   primaryButton: {
     backgroundColor: theme.border,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     marginTop: 8,
+  },
+  primaryButtonMuted: {
+    backgroundColor: theme.surfaceAlt,
+    borderWidth: 1,
+    borderColor: theme.borderSoft,
   },
   primaryButtonText: { color: '#052018', fontWeight: '900', fontSize: 16 },
   error: { color: theme.danger, marginBottom: 12 },

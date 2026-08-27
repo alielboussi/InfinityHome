@@ -10,7 +10,7 @@ const firebase = {
 /** @type {import('@expo/config').ExpoConfig} */
 module.exports = {
   expo: {
-    name: 'Product Pricing',
+    name: 'Product Photos',
     slug: 'product-pricing',
     scheme: 'product-pricing',
     platforms: ['ios', 'android'],
@@ -40,6 +40,15 @@ module.exports = {
       permissions: ['CAMERA'],
     },
     plugins: [
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/splash.png',
+          resizeMode: 'contain',
+          backgroundColor: '#0a0a08',
+          imageWidth: 280,
+        },
+      ],
       'expo-asset',
       'expo-font',
       [
