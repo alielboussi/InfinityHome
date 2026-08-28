@@ -13,7 +13,7 @@ import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { insertLaybyPayments } from './services/laybyPayments';
 import { getCurrentUser, canManageLaybys } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
-import { buildLaybySaleFinancials, buildPooledLaybyPaymentTarget, computeLaybyTotalsByCurrency, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
+import { buildLaybySaleFinancials, buildPooledLaybyPaymentTarget, computeLaybyTotalsByCurrency, computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
 import {
   applyStartingDuePaymentReduction,
   getStartingDueBalance,
@@ -1698,16 +1698,25 @@ export default function LaybyManagement() {
                           aria-label="Download layby PDF"
                           onClick={async () => {
                             const customerId = row.customerId;
+                            const primaryLayby = row.primaryLayby || (row.laybys || []).find((layby) => layby?.id) || null;
+                            const laybyId = primaryLayby?.id || (row.laybys || []).find((layby) => layby?.id)?.id;
+                            const scopeOptions = {
+                              laybyId,
+                              laybySaleId: primaryLayby?.sale_id || null,
+                            };
                             let statement = {
                               sales: row.fullStatement?.sales || [],
                               items: row.fullStatement?.items || [],
                               payments: row.fullStatement?.payments || [],
                             };
+                            if (laybyId) {
+                              statement = filterStatementToLaybyAccount(statement, scopeOptions);
+                            }
                             // Fahme (and empty cache): always refresh so PDF matches current Layby totals.
                             const shouldRefreshStatement = isFahme(customerId)
                               || (!statement.sales.length && !statement.items.length && !statement.payments.length);
                             if (shouldRefreshStatement) {
-                              const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId);
+                              const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId, scopeOptions);
                               if (statementErr && !statement.sales.length) {
                                 setError(statementErr?.message || 'Failed to build customer statement');
                                 return;
@@ -1720,11 +1729,17 @@ export default function LaybyManagement() {
                                 };
                               }
                             }
-                            const pdfLayby = { ...(primaryLayby || {}), sale_id: null, customer_id: row.customerId, customerInfo: row.customer || {} };
+                            const pdfLayby = {
+                              ...(primaryLayby || {}),
+                              id: laybyId || primaryLayby?.id,
+                              sale_id: primaryLayby?.sale_id || null,
+                              customer_id: row.customerId,
+                              customerInfo: row.customer || {},
+                            };
+                            const totalsByCurrency = computePooledLaybyTotalsByCurrency(statement);
                             await generateLaybyPdf(pdfLayby, {
                               statement,
-                              // Same folded USD totals shown in the Layby table (prevents Acc(2) settlement drift).
-                              totalsByCurrency: getDisplayTotalsForRow(row),
+                              totalsByCurrency,
                             });
                           }}
                         >

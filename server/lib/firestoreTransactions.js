@@ -8,6 +8,7 @@ import {
   updateWhereIn,
 } from './firestoreDb.js';
 import { normalizeLaybyStatement } from '../../src/utils/laybyStatementNormalize.js';
+import { filterStatementToLaybyAccount } from '../../src/utils/laybyRollup.js';
 import { applyFahmeStatementLock, filterLockedFahmeSales, isFahmeStatementLocked } from '../../src/utils/fahmeStatementLock.js';
 
 const ALLOWED_USER_ID = '1b5e098e-1206-447e-b4bc-6d009b85b5d3';
@@ -177,6 +178,8 @@ export async function firestorePaymentsDelete(body = {}) {
 export async function firestoreLaybyStatement(body = {}) {
   const db = getFirestore();
   const customerId = body.customerId || body.customer_id;
+  const laybyId = String(body.laybyId || body.layby_id || '').trim();
+  const laybySaleId = String(body.laybySaleId || body.layby_sale_id || body.saleId || '').trim();
   if (!customerId || !isUuid(customerId)) {
     const err = new Error('customerId is required');
     err.status = 400;
@@ -188,6 +191,10 @@ export async function firestoreLaybyStatement(body = {}) {
   ]);
   const laybyIds = new Set((laybyRows || []).map((r) => String(r.id || '')).filter(Boolean));
   const laybySaleIds = new Set((laybyRows || []).map((r) => String(r.sale_id || '')).filter(Boolean));
+  const scopedLaybyRow = laybyId
+    ? (laybyRows || []).find((row) => String(row.id || '') === laybyId)
+    : null;
+  const resolvedLaybySaleId = laybySaleId || String(scopedLaybyRow?.sale_id || '').trim();
 
   const salesRows = await queryCollectionWhere(db, 'sales', [
     { field: 'customer_id', op: '==', value: customerId },
@@ -273,17 +280,22 @@ export async function firestoreLaybyStatement(body = {}) {
 
   const locked = applyFahmeStatementLock(customerId, { sales, items, payments });
   if (locked.statementLocked) {
-    return {
-      ok: true,
-      ...normalizeLaybyStatement({
-        sales: locked.sales,
-        items: locked.items,
-        payments: locked.payments,
-      }),
-    };
+    const lockedStatement = normalizeLaybyStatement({
+      sales: locked.sales,
+      items: locked.items,
+      payments: locked.payments,
+    });
+    const scoped = laybyId || resolvedLaybySaleId
+      ? filterStatementToLaybyAccount(lockedStatement, { laybyId, laybySaleId: resolvedLaybySaleId })
+      : lockedStatement;
+    return { ok: true, ...scoped };
   }
 
-  return { ok: true, ...normalizeLaybyStatement({ sales, items, payments }) };
+  const fullStatement = normalizeLaybyStatement({ sales, items, payments });
+  const scoped = laybyId || resolvedLaybySaleId
+    ? filterStatementToLaybyAccount(fullStatement, { laybyId, laybySaleId: resolvedLaybySaleId })
+    : fullStatement;
+  return { ok: true, ...scoped };
 }
 
 export async function firestoreLaybyDeleteCustomer(body = {}) {

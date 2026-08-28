@@ -10,7 +10,7 @@ import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import { fetchLaybyStatement } from './services/laybyStatement';
 import { fetchLaybyPaymentsByCustomerId, fetchMergedLaybyPayments, dedupeLaybyPaymentRows, buildLaybyPaymentLooseKey } from './services/laybyPayments';
 import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
-import { pickStatementFileDate, resolvePosSaleDate, normalizeLaybyDateKey, computePooledLaybyTotalsByCurrency } from './utils/laybyRollup';
+import { pickStatementFileDate, resolvePosSaleDate, normalizeLaybyDateKey, computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount } from './utils/laybyRollup';
 import { isFahme, isFahmeAcc2, resolveFahmeFallbackKey, FAHME_FALLBACK_KEY_PRIMARY, shouldUseFahmeLiveStatementOnly } from './laybyRules';
 import laybyPdfItemFallbacks from './data/laybyPdfItemFallbacks.json';
 import laybyPdfSettlementFallbacks from './data/laybyPdfSettlementFallbacks.json';
@@ -659,6 +659,29 @@ async function appendLegacyDownPayments({ payments = [], sales = [] }) {
 const LAYBY_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isLaybyUuid = (value) => LAYBY_UUID_RE.test(String(value || '').trim());
 
+function scopeRelatedToLaybyAccount(related, layby) {
+  const laybyId = layby?.id;
+  if (!laybyId) return related;
+  const scoped = filterStatementToLaybyAccount({
+    sales: (related.sales || []).map((sale) => ({
+      ...sale,
+      sale_id: sale.sale_id || sale.id || sale.saleId,
+    })),
+    items: related.items || [],
+    payments: related.payments || [],
+  }, { laybyId, laybySaleId: layby.sale_id });
+  related.sales = scoped.sales.map((sale) => ({ id: sale.sale_id || sale.id, ...sale }));
+  related.items = scoped.items;
+  related.payments = scoped.payments;
+  const allowedSaleIds = new Set(
+    scoped.sales.map((sale) => String(sale.sale_id || sale.id || '').trim()).filter(Boolean),
+  );
+  Object.keys(related.finBySale || {}).forEach((key) => {
+    if (!allowedSaleIds.has(key)) delete related.finBySale[key];
+  });
+  return related;
+}
+
 function readRowTotalsUsd(opts) {
   const raw = opts?.totalsByCurrency || {};
   const entry = raw.USD || raw.$ || raw.usd || null;
@@ -1110,6 +1133,19 @@ function loadImage(url) {
 // opts.mode: 'download' | 'blob' | 'arraybuffer' (default 'download')
 export async function generateLaybyPdf(layby, opts = {}) {
   try {
+    if (layby?.id && !opts?.posReceipt && opts?.statement) {
+      const scopedStatement = filterStatementToLaybyAccount(opts.statement, {
+        laybyId: layby.id,
+        laybySaleId: layby.sale_id,
+      });
+      opts = {
+        ...opts,
+        statement: scopedStatement,
+        ...(opts.totalsByCurrency
+          ? { totalsByCurrency: computePooledLaybyTotalsByCurrency(scopedStatement) }
+          : {}),
+      };
+    }
     const company = await getCompanySettings();
     const companyName = safe(company?.company_name || company?.name, 'Best Rest Furniture');
     const companyAddress = safe(company?.company_address || company?.address, '');
@@ -1409,7 +1445,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       }
         if (!rpcUsed && !related.sales.length && layby?.customer_id) {
           try {
-            const { data: apiData, error: apiErr } = await fetchLaybyStatement(layby.customer_id);
+            const { data: apiData, error: apiErr } = await fetchLaybyStatement(layby.customer_id, { laybyId });
             if (!apiErr && apiData?.sales) {
               related.sales = (apiData.sales || []).map(s => ({ id: s.sale_id || s.id || s.saleId, ...s }));
               related.items = Array.isArray(apiData.items) ? apiData.items : [];
@@ -1528,6 +1564,9 @@ export async function generateLaybyPdf(layby, opts = {}) {
         } catch {}
       }
       // Do not augment RPC with other customer sales; keep only layby-linked sales.
+      }
+      if (layby?.id && !opts?.posReceipt) {
+        scopeRelatedToLaybyAccount(related, layby);
       }
     } catch (fetchErr) {
       // eslint-disable-next-line no-console

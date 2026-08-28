@@ -5,7 +5,7 @@ import generateLaybyPdf from './laybyPdf';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { fetchLaybyStatement } from './services/laybyStatement';
-import { LAYBY_ROWS_CACHE_KEY, getDisplayTotalsByCurrency } from './utils/laybyRollup';
+import { LAYBY_ROWS_CACHE_KEY, computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount, getDisplayTotalsByCurrency } from './utils/laybyRollup';
 import { isFahme } from './laybyRules';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 
@@ -181,15 +181,23 @@ export default function LaybyManagementMobile() {
                         style={{ background: '#00bfff', color: '#fff', borderRadius: 6, padding: '4px 10px', fontWeight: 600, fontSize: '0.76rem', minWidth: 60, maxWidth: 80, height: 26, marginRight: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
                         onClick={async () => {
                           const customerId = row.customerId;
+                          const laybyId = primaryLayby?.id || (row.laybys || []).find((layby) => layby?.id)?.id;
+                          const scopeOptions = {
+                            laybyId,
+                            laybySaleId: primaryLayby?.sale_id || null,
+                          };
                           let statement = {
                             sales: row.fullStatement?.sales || [],
                             items: row.fullStatement?.items || [],
                             payments: row.fullStatement?.payments || [],
                           };
+                          if (laybyId) {
+                            statement = filterStatementToLaybyAccount(statement, scopeOptions);
+                          }
                           const shouldRefreshStatement = isFahme(customerId)
                             || (!statement.sales.length && !statement.items.length && !statement.payments.length);
                           if (shouldRefreshStatement) {
-                            const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId);
+                            const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId, scopeOptions);
                             if (!statementErr && statementRes) {
                               statement = {
                                 sales: statementRes?.sales || [],
@@ -198,10 +206,16 @@ export default function LaybyManagementMobile() {
                               };
                             }
                           }
-                          const pdfLayby = { ...(primaryLayby || {}), sale_id: null, customer_id: row.customerId, customerInfo: row.customer || {} };
+                          const pdfLayby = {
+                            ...(primaryLayby || {}),
+                            id: laybyId || primaryLayby?.id,
+                            sale_id: primaryLayby?.sale_id || null,
+                            customer_id: row.customerId,
+                            customerInfo: row.customer || {},
+                          };
                           await generateLaybyPdf(pdfLayby, {
                             statement,
-                            totalsByCurrency: getDisplayTotalsForRow(row),
+                            totalsByCurrency: computePooledLaybyTotalsByCurrency(statement),
                           });
                         }}
                       >PDF</button>

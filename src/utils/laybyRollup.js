@@ -399,3 +399,36 @@ export function filterStatementToOutstandingSales(statement) {
     payments: normalized.payments || [],
   };
 }
+
+/** Keep only sales/items/payments for one layby account (quote/POS conversion PDFs stay individual). */
+export function filterStatementToLaybyAccount(statement, { laybyId, laybySaleId } = {}) {
+  const laybyIdStr = String(laybyId || '').trim();
+  const anchorSaleId = String(laybySaleId || '').trim();
+  if (!laybyIdStr && !anchorSaleId) {
+    return normalizeLaybyStatement(statement || {});
+  }
+
+  const normalized = normalizeLaybyStatement(statement || {});
+  const saleBelongsToLayby = (sale) => {
+    const saleId = String(sale?.sale_id ?? sale?.id ?? sale?.saleId ?? '').trim();
+    const saleLaybyId = String(sale?.layby_id || '').trim();
+    if (laybyIdStr && saleLaybyId === laybyIdStr) return true;
+    if (anchorSaleId && saleId === anchorSaleId) return true;
+    return false;
+  };
+
+  const sales = (normalized.sales || []).filter(saleBelongsToLayby);
+  const saleIds = new Set(
+    sales.map((sale) => String(sale?.sale_id ?? sale?.id ?? sale?.saleId ?? '').trim()).filter(Boolean),
+  );
+
+  const items = (normalized.items || []).filter((item) => saleIds.has(String(item?.sale_id || '').trim()));
+  const payments = (normalized.payments || []).filter((payment) => {
+    const paymentSaleId = String(payment?.sale_id || '').trim();
+    if (paymentSaleId && saleIds.has(paymentSaleId)) return true;
+    const paymentLaybyId = String(payment?.layby_id || '').trim();
+    return laybyIdStr && paymentLaybyId === laybyIdStr;
+  });
+
+  return normalizeLaybyStatement({ sales, items, payments });
+}

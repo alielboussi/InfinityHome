@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import generateLaybyPdf from '../laybyPdf';
 import { fetchLaybyStatement } from '../services/laybyStatement';
+import { filterStatementToLaybyAccount } from './laybyRollup';
 
 const formatCurrencyPlain = (amount, currency = 'K') => {
   const n = Number(amount || 0);
@@ -25,13 +26,21 @@ const safeFileStem = (name) => (
 );
 
 async function buildRowStatement(row) {
+  const primaryLayby = row.primaryLayby || (row.laybys || []).find((layby) => layby?.id) || null;
+  const scopeOptions = {
+    laybyId: primaryLayby?.id || null,
+    laybySaleId: primaryLayby?.sale_id || null,
+  };
   let statement = {
     sales: row.fullStatement?.sales || [],
     items: row.fullStatement?.items || [],
     payments: row.fullStatement?.payments || [],
   };
+  if (scopeOptions.laybyId) {
+    statement = filterStatementToLaybyAccount(statement, scopeOptions);
+  }
   if (!statement.sales.length && !statement.items.length && !statement.payments.length) {
-    const { data, error } = await fetchLaybyStatement(row.customerId);
+    const { data, error } = await fetchLaybyStatement(row.customerId, scopeOptions);
     if (error) throw error;
     statement = {
       sales: data?.sales || [],
@@ -82,9 +91,11 @@ export async function exportAllLaybyPdfsZip(rows, { onProgress } = {}) {
     onProgress?.(index + 1, list.length, row.customer?.name || row.customerId);
     try {
       const statement = await buildRowStatement(row);
+      const primaryLayby = row.primaryLayby || (row.laybys || []).find((layby) => layby?.id) || null;
       const pdfLayby = {
-        ...(row.primaryLayby || {}),
-        sale_id: null,
+        ...(primaryLayby || {}),
+        id: primaryLayby?.id || null,
+        sale_id: primaryLayby?.sale_id || null,
         customer_id: row.customerId,
         customerInfo: row.customer || {},
       };

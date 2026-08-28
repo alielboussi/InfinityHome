@@ -2,7 +2,7 @@ import db from '../dataClient';
 import generateLaybyPdf from '../laybyPdf';
 import { fetchLaybyStatement } from './laybyStatement';
 import { fetchProductLocationPricesForLocation } from './locationPricing';
-import { computePooledLaybyTotalsByCurrency } from '../utils/laybyRollup';
+import { computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount } from '../utils/laybyRollup';
 import { computeSaleFinancials } from '../utils/saleFinancials';
 import {
   buildLocationPriceMap,
@@ -93,9 +93,17 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
     const resolvedCustomerId = customerId || laybySnapshot?.customer_id;
     if (!resolvedCustomerId) return null;
 
+    const base = laybySnapshot?.primaryLayby || laybySnapshot || { id: laybyId, customer_id: resolvedCustomerId };
+    const resolvedLaybyId = laybyId || base.id;
+    const resolvedLaybySaleId = base.sale_id || laybySnapshot?.sale_id || null;
+    const scopeOptions = {
+      laybyId: resolvedLaybyId,
+      laybySaleId: resolvedLaybySaleId,
+    };
+
     let statement = laybySnapshot?.statement || laybySnapshot?.fullStatement || null;
     if (!statement || (!statement.sales?.length && !statement.items?.length && !statement.payments?.length)) {
-      const { data: statementRes } = await fetchLaybyStatement(resolvedCustomerId);
+      const { data: statementRes } = await fetchLaybyStatement(resolvedCustomerId, scopeOptions);
       if (statementRes) {
         statement = {
           sales: statementRes?.sales || [],
@@ -103,9 +111,9 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
           payments: statementRes?.payments || [],
         };
       }
+    } else if (resolvedLaybyId) {
+      statement = filterStatementToLaybyAccount(statement, scopeOptions);
     }
-
-    const base = laybySnapshot?.primaryLayby || laybySnapshot || { id: laybyId, customer_id: resolvedCustomerId };
     let customerInfo = laybySnapshot?.customerInfo || laybySnapshot?.customer || {};
     if (!customerInfo?.name && resolvedCustomerId) {
       const { data: customer } = await db
@@ -124,8 +132,9 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
       customerInfo: laybySnapshot?.customerInfo || laybySnapshot?.customer || customerInfo || {},
     };
 
-    const pooledTotals = laybySnapshot?.totalsByCurrency
-      || (statement ? computePooledLaybyTotalsByCurrency(statement) : null);
+    const pooledTotals = statement
+      ? computePooledLaybyTotalsByCurrency(statement)
+      : (laybySnapshot?.totalsByCurrency || null);
 
     const blob = await generateLaybyPdf(pdfLayby, {
       mode: 'blob',

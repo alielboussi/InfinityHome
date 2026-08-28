@@ -3,6 +3,7 @@ import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
 import { applyFahmeStatementLock, filterLockedFahmeSales, isFahmeStatementLocked } from '../utils/fahmeStatementLock';
+import { filterStatementToLaybyAccount } from '../utils/laybyRollup';
 import { fetchMergedLaybyPayments } from './laybyPayments';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,8 +19,10 @@ const sanitizePaymentNote = (note) => {
 };
 
 
-export async function fetchLaybyStatement(customerId) {
+export async function fetchLaybyStatement(customerId, options = {}) {
   const rawId = String(customerId || '').trim();
+  const laybyId = String(options?.laybyId || options?.layby_id || '').trim();
+  const laybySaleId = String(options?.laybySaleId || options?.layby_sale_id || options?.saleId || '').trim();
   if (!rawId || rawId === 'undefined' || rawId === 'null' || !isUuid(rawId)) {
     return { error: new Error('customerId is required') };
   }
@@ -27,7 +30,11 @@ export async function fetchLaybyStatement(customerId) {
     const resp = await fetch('/api/layby-statement', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customerId: rawId }),
+      body: JSON.stringify({
+        customerId: rawId,
+        ...(laybyId ? { laybyId } : {}),
+        ...(laybySaleId ? { laybySaleId } : {}),
+      }),
     });
     const text = await resp.text().catch(() => '');
     let json = {};
@@ -137,16 +144,24 @@ export async function fetchLaybyStatement(customerId) {
       payments: normalizedPayments,
     });
     if (locked.statementLocked) {
+      const lockedStatement = normalizeLaybyStatement({
+        sales: locked.sales,
+        items: locked.items,
+        payments: locked.payments,
+      });
       return {
-        data: normalizeLaybyStatement({
-          sales: locked.sales,
-          items: locked.items,
-          payments: locked.payments,
-        }),
+        data: laybyId || laybySaleId
+          ? filterStatementToLaybyAccount(lockedStatement, { laybyId, laybySaleId })
+          : lockedStatement,
       };
     }
 
-    return { data: normalizeLaybyStatement({ sales, items: items || [], payments: normalizedPayments }) };
+    const fullStatement = normalizeLaybyStatement({ sales, items: items || [], payments: normalizedPayments });
+    return {
+      data: laybyId || laybySaleId
+        ? filterStatementToLaybyAccount(fullStatement, { laybyId, laybySaleId })
+        : fullStatement,
+    };
   } catch (err) {
     return { error: err };
   }
