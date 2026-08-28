@@ -9,7 +9,6 @@ import {
   buildProductPriceMap,
   reconcileSaleItemUnits,
 } from '../utils/saleDisplayPricing';
-import { isFahme } from '../laybyRules';
 
 function safeFilePart(value, fallback = 'Customer') {
   const cleaned = String(value || '').replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_').trim();
@@ -126,9 +125,7 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
     };
 
     const pooledTotals = laybySnapshot?.totalsByCurrency
-      || (isFahme(resolvedCustomerId) && statement
-        ? computePooledLaybyTotalsByCurrency(statement)
-        : null);
+      || (statement ? computePooledLaybyTotalsByCurrency(statement) : null);
 
     const blob = await generateLaybyPdf(pdfLayby, {
       mode: 'blob',

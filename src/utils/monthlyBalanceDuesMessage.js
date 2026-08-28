@@ -1,4 +1,5 @@
 import { isFahme } from '../laybyRules';
+import { laybyCustomerRowHasLusakaSale } from '../services/whatsappNotify';
 import { isExcludedFromMonthlyBalanceDue } from './whatsappCustomerRules';
 
 const BALANCE_THRESHOLD = 1;
@@ -56,20 +57,19 @@ export function formatMonthlyBalanceCustomerBlock(row) {
   const amounts = (row.balances || [])
     .map((entry) => formatAmount(entry.outstanding, entry.currency))
     .join(' · ');
-  const lines = [`• ${row.name} — ${amounts}`];
   const phone = formatCustomerPhone(row.phone);
-  if (phone) lines.push(`  ${phone}`);
-  const pdfUrl = String(row.laybyPdfUrl || '').trim();
-  if (pdfUrl) lines.push(`  Layby PDF: ${pdfUrl}`);
-  return lines.join('\n');
+  const line = `• ${row.name} — ${amounts}`;
+  if (phone) return `${line} · ${phone}`;
+  return line;
 }
 
-/** Map Layby Management rows to monthly balance due rows (Fahme & Basyouni excluded). */
+/** Map Layby Management rows to monthly balance due rows (Kitwe only; Fahme & Basyouni excluded). */
 export function laybyRowsToBalanceDueRows(laybyRows = []) {
   const rows = [];
   (laybyRows || []).forEach((row) => {
     const customerName = String(row.customer?.name || '').trim();
     if (!row?.customerId || isExcludedFromMonthlyBalanceDue(row.customerId, customerName)) return;
+    if (laybyCustomerRowHasLusakaSale(row)) return;
     const totals = displayTotalsByCurrency(row);
     const balances = Object.entries(totals)
       .map(([currency, vals]) => ({
@@ -108,7 +108,7 @@ function buildMonthlyBalanceFooter(rows) {
 export function buildMonthlyBalanceDueMessages(rows, { reportDate = new Date() } = {}) {
   const dateLabel = formatReportDate(reportDate);
   const header = `📋 *Monthly Balance Due — ${dateLabel}*`;
-  const intro = 'Customers with outstanding balances (Fahme & Basyouni excluded):';
+  const intro = 'Kitwe layby customers with outstanding balances (Fahme & Basyouni excluded):';
 
   if (!rows.length) {
     return [`${header}\n\n${intro}\n\nNo customers with balance due.`];

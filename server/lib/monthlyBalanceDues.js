@@ -1,7 +1,7 @@
 import { aggregateCustomerTotals, buildFinancialsMap } from '../../src/utils/saleFinancials.js';
 import { isExcludedFromMonthlyBalanceDue } from '../../src/utils/whatsappCustomerRules.js';
 import { buildMonthlyBalanceDueMessages } from '../../src/utils/monthlyBalanceDuesMessage.js';
-import { resolveStoredLaybyPdfUrl } from './laybyPdfStorage.js';
+import { LUSAKA_BRANCH_ID } from '../../src/utils/locationIds.js';
 
 const BALANCE_THRESHOLD = 1;
 const LUSAKA_TZ = 'Africa/Lusaka';
@@ -71,6 +71,64 @@ async function computeTotalsForCustomers(db, customerIds) {
   return aggregateCustomerTotals(normalizedSales, finMap, payRows);
 }
 
+async function fetchLusakaLaybyCustomerIds(db, laybyIdByCustomer) {
+  const lusakaCustomers = new Set();
+  const customerIds = [...laybyIdByCustomer.keys()];
+  const laybyIds = [...laybyIdByCustomer.values()].map((layby) => layby?.id).filter(Boolean);
+  if (!customerIds.length) return lusakaCustomers;
+
+  const [{ data: byCustomer, error: byCustomerErr }, { data: byLayby, error: byLaybyErr }] = await Promise.all([
+    db
+      .from('sales')
+      .select('customer_id')
+      .in('customer_id', customerIds)
+      .eq('location_id', LUSAKA_BRANCH_ID)
+      .not('layby_id', 'is', null),
+    laybyIds.length
+      ? db
+        .from('sales')
+        .select('layby_id')
+        .in('layby_id', laybyIds)
+        .eq('location_id', LUSAKA_BRANCH_ID)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (byCustomerErr) throw byCustomerErr;
+  if (byLaybyErr) throw byLaybyErr;
+
+  (byCustomer || []).forEach((sale) => {
+    const customerId = String(sale?.customer_id || '').trim();
+    if (customerId) lusakaCustomers.add(customerId);
+  });
+
+  const laybyToCustomer = new Map(
+    [...laybyIdByCustomer.entries()].map(([customerId, layby]) => [String(layby?.id || ''), customerId])
+  );
+  (byLayby || []).forEach((sale) => {
+    const customerId = laybyToCustomer.get(String(sale?.layby_id || ''));
+    if (customerId) lusakaCustomers.add(String(customerId));
+  });
+
+  const anchorSaleIds = [...laybyIdByCustomer.values()]
+    .map((layby) => layby?.sale_id)
+    .filter(Boolean);
+  if (anchorSaleIds.length) {
+    const { data: anchorSales, error: anchorErr } = await db
+      .from('sales')
+      .select('id, location_id')
+      .in('id', anchorSaleIds)
+      .eq('location_id', LUSAKA_BRANCH_ID);
+    if (anchorErr) throw anchorErr;
+    const lusakaAnchorIds = new Set((anchorSales || []).map((sale) => String(sale.id)));
+    laybyIdByCustomer.forEach((layby, customerId) => {
+      if (lusakaAnchorIds.has(String(layby?.sale_id || ''))) {
+        lusakaCustomers.add(String(customerId));
+      }
+    });
+  }
+
+  return lusakaCustomers;
+}
+
 export async function fetchCustomersWithBalanceDue(db) {
   const { data: customers, error: custErr } = await db
     .from('customers')
@@ -90,7 +148,7 @@ export async function fetchCustomersWithBalanceDue(db) {
 
   const { data: laybyRows, error: laybyErr } = await db
     .from('laybys')
-    .select('id, customer_id, updated_at, created_at')
+    .select('id, customer_id, sale_id, updated_at, created_at')
     .in('customer_id', customerIds);
   if (laybyErr) throw laybyErr;
 
@@ -106,8 +164,11 @@ export async function fetchCustomersWithBalanceDue(db) {
     }
   });
 
+  const lusakaLaybyCustomerIds = await fetchLusakaLaybyCustomerIds(db, laybyIdByCustomer);
+
   const rows = [];
   Object.entries(totalsByCustomer).forEach(([customerId, byCurrency]) => {
+    if (lusakaLaybyCustomerIds.has(String(customerId))) return;
     const balances = Object.entries(byCurrency || {})
       .map(([currency, agg]) => ({
         currency,
@@ -132,12 +193,7 @@ export async function fetchCustomersWithBalanceDue(db) {
 }
 
 export async function enrichBalanceDueRowsWithStoredPdfs(rows = []) {
-  const enriched = [];
-  for (const row of rows) {
-    const laybyPdfUrl = await resolveStoredLaybyPdfUrl(row.laybyId, row.customerId);
-    enriched.push({ ...row, laybyPdfUrl: laybyPdfUrl || '' });
-  }
-  return enriched;
+  return (rows || []).slice();
 }
 
 export { buildMonthlyBalanceDueMessages };

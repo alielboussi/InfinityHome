@@ -2,7 +2,6 @@ import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
-import { buildLaybyCurrencyBucket } from '../utils/laybyColumnTotals';
 import { computePooledLaybyTotalsByCurrency, filterFahmePooledStatementPayments, filterStatementToOutstandingSales, resolveNegotiatedGrossSubtotal } from '../utils/laybyRollup';
 import { computeQuotationDisplayTotal, computeSaleLaybyTotalDue, resolveQuoteVatApply } from '../utils/quotationDisplay';
 import { fetchMergedLaybyPayments, buildLaybyPaymentLooseKey, dedupeLaybyPaymentRows } from './laybyPayments';
@@ -135,43 +134,6 @@ function isLaybyAnchorSale(layby, saleKey) {
   return Boolean(layby) && String(layby?.sale_id || '').trim() === String(saleKey || '').trim();
 }
 
-/** One layby row backing many sales (Fahme pooled) — use layby contract + payment sum. */
-function buildSinglePooledLaybyTotals({
-  layby,
-  statementSales,
-  statementPayments,
-  saleCurrencyById,
-  customer,
-}) {
-  if (!layby) return null;
-  const currency = normalizeCurrency(
-    saleCurrencyById.get(String(layby?.sale_id || '')),
-    normalizeCurrency(customer?.currency || 'K', 'K'),
-  );
-  const paid = (statementPayments || []).reduce((sum, payment) => sum + Number(payment?.amount || 0), 0);
-  const paymentDiscount = (statementPayments || []).reduce(
-    (sum, payment) => sum + Number(payment?.discount_amount || 0),
-    0,
-  );
-  const saleDiscount = (statementSales || []).reduce(
-    (sum, sale) => sum + Number(sale?.discount_amount || 0),
-    0,
-  );
-  const salesTotal = (statementSales || []).reduce(
-    (sum, sale) => sum + Number(sale?.total_due || sale?.total_amount || 0),
-    0,
-  );
-  const contractTotal = Math.max(Number(layby?.total_amount || 0), salesTotal);
-  return {
-    [currency]: buildLaybyCurrencyBucket({
-      contractTotal,
-      paid,
-      saleDiscount,
-      paymentDiscount,
-    }),
-  };
-}
-
 function isLaybyActivitySale(sale, laybyBySaleId) {
   const saleId = String(sale?.id || '').trim();
   return isLaybyLinkedSale(sale, laybyBySaleId) || (saleId && laybyBySaleId.has(saleId));
@@ -199,24 +161,6 @@ function rebuildCandidateSales({ salesById, laybyIdSet, laybySaleIds, paymentSal
   });
 
   return { candidateSales, salesByCustomer };
-}
-
-function patchTotalsFromOutstandingSales(totalsByCurrency, statementSales, customer) {
-  const patched = { ...totalsByCurrency };
-  (statementSales || []).forEach((sale) => {
-    const outstanding = Math.max(0, Number(sale.outstanding_amount || 0));
-    if (outstanding <= 0.009) return;
-    const cur = normalizeCurrency(sale.currency, normalizeCurrency(customer?.currency || 'K', 'K'));
-    if (!patched[cur]) patched[cur] = { total: 0, paid: 0, discount: 0, due: 0 };
-    const totalDue = Number(sale.total_due || sale.total_amount || 0);
-    const paid = Number(sale.paid_amount || 0);
-    const discount = Number(sale.discount_amount || 0) + Number(sale.payment_discount_amount || 0);
-    patched[cur].due += outstanding;
-    patched[cur].total = Math.max(patched[cur].total, totalDue);
-    patched[cur].paid = Math.max(patched[cur].paid, paid);
-    patched[cur].discount = Math.max(patched[cur].discount, discount);
-  });
-  return patched;
 }
 
 function resolveLinkedQuote({ saleId, laybyId, quotationBySaleId, quotationByLaybyId }) {
@@ -866,7 +810,7 @@ export async function fetchLaybyCustomerRows() {
 
         return {
           sale_id: syntheticSaleId,
-          sale_date: layby?.updated_at || layby?.created_at || null,
+          sale_date: sale?.sale_date || sale?.created_at || layby?.created_at || null,
           currency,
           layby_id: layby?.id || null,
           total_due: totalAmount,
@@ -894,86 +838,13 @@ export async function fetchLaybyCustomerRows() {
     const hasStatementSales = (mergedStatement?.sales || []).length > 0;
     let mergedTotalsByCurrency = { ...statementTotalsByCurrency };
 
-    if (useSinglePooledLaybyTotals) {
-      const pooledTotals = buildSinglePooledLaybyTotals({
-        layby: laybysForTotals[0],
-        statementSales,
-        statementPayments,
-        saleCurrencyById,
-        customer,
-      });
-      if (pooledTotals) mergedTotalsByCurrency = pooledTotals;
-    } else if (!hasStatementPayments && !hasStatementSales) {
-      Object.entries(tableTotalsByCurrency).forEach(([currency, totals]) => {
-        const existing = mergedTotalsByCurrency[currency];
-        if (!existing || Number(existing?.due || 0) <= 0) {
-          mergedTotalsByCurrency[currency] = { ...totals };
-        }
-      });
-    } else {
-      Object.entries(tableTotalsByCurrency).forEach(([currency, tableTotals]) => {
-        const existing = mergedTotalsByCurrency[currency];
-        if (!existing) {
-          mergedTotalsByCurrency[currency] = { ...tableTotals };
-          return;
-        }
-        if (Number(tableTotals.total || 0) > Number(existing.total || 0) + 0.5) {
-          mergedTotalsByCurrency[currency] = {
-            ...existing,
-            total: Number(existing.total || 0),
-            due: Number(existing.due || 0),
-          };
-        }
-      });
+    if (!hasStatementPayments && !hasStatementSales && sumDue(tableTotalsByCurrency) > 0.009) {
+      mergedTotalsByCurrency = { ...tableTotalsByCurrency };
     }
 
     let mergedTotalsWithStarting = applyStartingDueToTotalsByCurrency(mergedTotalsByCurrency, customer);
-    const startingDueAmount = getStartingDueBalance(customer);
 
-    const totalDue = sumDue(mergedTotalsWithStarting);
-    const statementOutstandingTotal = statementSales.reduce(
-      (sum, sale) => sum + Math.max(0, Number(sale.outstanding_amount || 0)),
-      0,
-    );
-    const customerLaybyBySaleId = buildLaybyBySaleId(laybys);
-    const allSalesOutstandingTotal = customerSales.reduce((sum, sale) => {
-      const saleKey = String(sale?.id || '').trim();
-      if (!saleKey || !isLaybyActivitySale(sale, customerLaybyBySaleId)) return sum;
-      const layby = resolveLinkedLaybyForSale({
-        sale,
-        saleKey,
-        laybyBySaleId: customerLaybyBySaleId,
-        laybyById,
-      });
-      const fin = financialsBySale.get(saleKey) || {};
-      const paymentAgg = paymentAggBySale.get(saleKey) || { paid: 0, paymentDiscount: 0 };
-      return sum + computeAllSalesStyleOutstanding({ sale, layby, fin, paymentAgg });
-    }, 0);
-    const tableFallbackDue = useSinglePooledLaybyTotals
-      ? sumDue(mergedTotalsByCurrency)
-      : sumDue(tableTotalsByCurrency);
-    const effectiveDue = Math.max(
-      totalDue,
-      statementOutstandingTotal + startingDueAmount,
-      allSalesOutstandingTotal + startingDueAmount,
-      tableFallbackDue + startingDueAmount,
-    );
-
-    if (effectiveDue <= 0.009) return;
-
-    if (!useSinglePooledLaybyTotals && totalDue <= 0.009 && effectiveDue > 0.009) {
-      Object.assign(
-        mergedTotalsByCurrency,
-        patchTotalsFromOutstandingSales(mergedTotalsByCurrency, statementSales, customer),
-      );
-      if (sumDue(mergedTotalsByCurrency) <= 0.009 && tableFallbackDue > 0.009) {
-        Object.entries(tableTotalsByCurrency).forEach(([currency, totals]) => {
-          if (!mergedTotalsByCurrency[currency] || Number(mergedTotalsByCurrency[currency]?.due || 0) <= 0) {
-            mergedTotalsByCurrency[currency] = { ...totals };
-          }
-        });
-      }
-    }
+    if (sumDue(mergedTotalsWithStarting) <= 0.009) return;
 
     let statementLocked = false;
     if (isFahmeStatementLocked(customerId)) {
@@ -1044,6 +915,7 @@ export async function fetchLaybyCustomerRows() {
     });
 
     const resolvedPrimaryLayby = primaryLayby || buildStartingDuePrimaryLayby(customerId, customer);
+    const startingDueAmount = getStartingDueBalance(customer);
 
     built.push({
       customerId,
@@ -1053,7 +925,7 @@ export async function fetchLaybyCustomerRows() {
       totalsByCurrency: mergedTotalsByCurrencyFinal,
       linkedQuoteId: linkedQuote?.id || null,
       totalsDebug: {
-        source: statementLocked ? 'signed_off_pdf_lock' : 'bulk_statement+table_fallback',
+        source: statementLocked ? 'signed_off_pdf_lock' : 'pooled_statement',
         saleCount: mergedStatement?.sales?.length || 0,
         outstandingSaleCount: outstandingSales.length,
         groupedPayments: (mergedStatement?.payments || []).length,

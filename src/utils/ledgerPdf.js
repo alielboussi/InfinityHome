@@ -13,25 +13,6 @@ function fmtUsd(amount) {
   return `${n < 0 ? '-$ ' : '$ '}${formatted}`;
 }
 
-function fmtDate(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function fmtDateTime(value) {
-  if (!value) return '';
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return fmtDate(value);
-  }
-}
-
 function loadImageFromSrc(src) {
   return new Promise((resolve) => {
     if (!src) return resolve(null);
@@ -234,6 +215,13 @@ async function buildLedgerPdfDoc({
   addPageNumbers(doc);
 
   return doc;
+}
+
+export async function createLedgerPdfBlob(options = {}) {
+  const doc = await buildLedgerPdfDoc(options);
+  const fileName = buildLedgerPdfFilename(options);
+  const blob = doc.output('blob');
+  return { blob, fileName };
 }
 
 export async function createLedgerPdfBase64(options = {}) {

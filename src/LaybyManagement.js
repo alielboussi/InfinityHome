@@ -13,7 +13,7 @@ import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { insertLaybyPayments } from './services/laybyPayments';
 import { getCurrentUser, canManageLaybys } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
-import { buildLaybySaleFinancials, buildOutstandingLaybySales, computeLaybyTotalsByCurrency, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
+import { buildLaybySaleFinancials, buildPooledLaybyPaymentTarget, computeLaybyTotalsByCurrency, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
 import {
   applyStartingDuePaymentReduction,
   getStartingDueBalance,
@@ -23,10 +23,10 @@ import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
 import { exportAllLaybyPdfsZip, exportLaybySummaryExcel } from './utils/laybyBulkExport';
 import { buildMonthlyBalanceDueMessages, laybyRowsToBalanceDueRows } from './utils/monthlyBalanceDuesMessage';
-import { enrichBalanceDueRowsWithLaybyPdfs } from './utils/monthlyBalanceDueEnrichment';
-import { notifyLaybyWhatsApp, previewLaybyWhatsAppForCustomerRow, resendLaybyWhatsAppForCustomerRow, laybyCustomerRowHasLusakaSaleAsync, resolveLaybyWhatsAppGroupLabel } from './services/whatsappNotify';
+import { notifyLaybyWhatsApp, previewLaybyWhatsAppForCustomerRow, resendLaybyWhatsAppForCustomerRow, laybyCustomerRowHasLusakaSaleAsync, filterKitweLaybyRowsForMonthlyBalance, resolveLaybyWhatsAppGroupLabel } from './services/whatsappNotify';
 import { sendMonthlyBalanceDueWhatsApp } from './services/whatsapp';
 import { isFahme } from './laybyRules';
+import { assertLaybyPaymentReceiptAvailable } from './utils/receiptNumber';
 import { isFahmeStatementLocked, fahmeStatementLockedMessage } from './utils/fahmeStatementLock';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 import {
@@ -532,13 +532,17 @@ export default function LaybyManagement() {
       }
 
       const loadOutstandingFromStatement = async () => {
-        const cachedStatement = selectedLayby?.statement;
-        if (cachedStatement && (cachedStatement.sales?.length || cachedStatement.items?.length || cachedStatement.payments?.length)) {
-          return buildOutstandingLaybySales(cachedStatement);
+        const cachedStatement = selectedLayby?.fullStatement || selectedLayby?.statement;
+        const poolSaleId = selectedLayby?.primaryLayby?.sale_id
+          || selectedLayby?.sale_id
+          || null;
+        if (cachedStatement && (cachedStatement.sales?.length || cachedStatement.payments?.length)) {
+          const pooled = buildPooledLaybyPaymentTarget(cachedStatement, poolSaleId);
+          if (pooled.length) return pooled;
         }
         const { data: statementData, error: statementErr } = await fetchLaybyStatement(customerId);
         if (statementErr) throw statementErr;
-        return buildOutstandingLaybySales(statementData || {});
+        return buildPooledLaybyPaymentTarget(statementData || {}, poolSaleId);
       };
 
       let owing = [];
@@ -572,7 +576,9 @@ export default function LaybyManagement() {
               customer_id: customerId,
               status: 'layby',
               layby_id: selectedLayby.id,
-              sale_date: new Date().toISOString(),
+              sale_date: paymentDate
+                ? new Date(`${paymentDate}T12:00:00`).toISOString()
+                : new Date().toISOString(),
               currency: curr,
               total_amount: Number(selectedLayby.total_amount || 0) || rawAmount || 0,
               discount: 0,
@@ -596,41 +602,14 @@ export default function LaybyManagement() {
         } catch {}
 
         if (!owing.length) {
-          const saleIds = salesList.map(s => s.id);
-          const [{ data: allItems }, { data: allPays }] = await Promise.all([
-            fromPublic('sales_items').select('sale_id, quantity, unit_price').in('sale_id', saleIds),
-            fromPublic('sales_payments').select('sale_id, amount, discount_amount').in('sale_id', saleIds),
-          ]);
-          const itemsBySale = new Map();
-          (allItems || []).forEach(r => { if (!itemsBySale.has(r.sale_id)) itemsBySale.set(r.sale_id, []); itemsBySale.get(r.sale_id).push(r); });
-          const paysBySale = new Map();
-          (allPays || []).forEach(r => { if (!paysBySale.has(r.sale_id)) paysBySale.set(r.sale_id, []); paysBySale.get(r.sale_id).push(r); });
-
-          owing = salesList
-            .map(s => {
-              const its = itemsBySale.get(s.id) || [];
-              const ps = paysBySale.get(s.id) || [];
-              let subtotal = its.reduce((a, r) => a + Number(r.unit_price || 0) * Number(r.quantity || 0), 0);
-              if (subtotal === 0 && Number(s.total_amount || 0) > 0) subtotal = Number(s.total_amount || 0);
-              const disc = Number(s.discount || 0);
-              const net = Math.max(0, subtotal - (Number.isFinite(disc) ? disc : 0));
-              const paid = ps.reduce((a, p) => a + Number(p.amount || 0), 0);
-              const paidDisc = ps.reduce((a, p) => a + Number(p.discount_amount || 0), 0);
-              const out = Math.max(0, net - paid - paidDisc);
-              return {
-                saleId: s.id,
-                saleKey: String(s.id || ''),
-                currency: s.currency || curr,
-                due: out,
-                sortTime: new Date(s.sale_date || s.created_at || 0).getTime() || 0,
-                sortIndex: 0,
-              };
-            })
-            .filter(row => Number(row.due || 0) > 0)
-            .sort((a, b) => {
-              if (a.sortTime !== b.sortTime) return a.sortTime - b.sortTime;
-              return String(a.saleKey || '').localeCompare(String(b.saleKey || ''), undefined, { numeric: true, sensitivity: 'base' });
-            });
+          try {
+            const { data: statementData } = await fetchLaybyStatement(customerId);
+            const poolSaleId = selectedLayby?.primaryLayby?.sale_id
+              || selectedLayby?.sale_id
+              || salesList[0]?.id
+              || null;
+            owing = buildPooledLaybyPaymentTarget(statementData || {}, poolSaleId);
+          } catch {}
         }
       }
 
@@ -658,7 +637,9 @@ export default function LaybyManagement() {
       }
 
       const salesOutstanding = owing.reduce((a, r) => a + Number(r.due || 0), 0);
-      const totalOutstanding = salesOutstanding + startingDue;
+      const displayedDue = sumRowDue(selectedLayby);
+      const pooledOutstanding = Math.max(salesOutstanding, displayedDue);
+      const totalOutstanding = pooledOutstanding + startingDue;
       let paymentBudget = Math.min(rawAmount, totalOutstanding);
       let remainingDiscount = Math.min(rawDiscount, Math.max(0, totalOutstanding - paymentBudget));
       if (paymentBudget <= 0 && remainingDiscount <= 0) {
@@ -671,6 +652,13 @@ export default function LaybyManagement() {
       const trimmedReceipt = (receipt || '').trim();
       if (!trimmedReceipt || /^-+$/.test(trimmedReceipt)) {
         setError('Receipt # is required.');
+        setLoading(false);
+        return;
+      }
+      try {
+        await assertLaybyPaymentReceiptAvailable(db, trimmedReceipt, { customerId });
+      } catch (receiptErr) {
+        setError(receiptErr?.message || 'Receipt number already exists.');
         setLoading(false);
         return;
       }
@@ -1414,18 +1402,18 @@ export default function LaybyManagement() {
 
   async function handleSendMonthlyBalanceWhatsApp() {
     if (monthlyBalanceBusy || bulkExportBusy) return;
-    const balanceRows = laybyRowsToBalanceDueRows(rows);
+    const kitweRows = await filterKitweLaybyRowsForMonthlyBalance(rows);
+    const balanceRows = laybyRowsToBalanceDueRows(kitweRows);
     if (!balanceRows.length) {
-      setError('No customers with an outstanding balance to include.');
+      setError('No Kitwe layby customers with an outstanding balance to include.');
       return;
     }
-    if (!window.confirm(`Send monthly balance due for ${balanceRows.length} customer(s) to the Layby WhatsApp group?`)) return;
+    if (!window.confirm(`Send monthly balance due for ${balanceRows.length} Kitwe layby customer(s) to the Layby WhatsApp group?`)) return;
     setMonthlyBalanceBusy(true);
     setError('');
     setSuccess('');
     try {
-      const enrichedRows = await enrichBalanceDueRowsWithLaybyPdfs(balanceRows, rows);
-      const messages = buildMonthlyBalanceDueMessages(enrichedRows);
+      const messages = buildMonthlyBalanceDueMessages(balanceRows);
       const result = await sendMonthlyBalanceDueWhatsApp({ messages });
       if (!result?.ok) {
         setError(result?.error || 'Failed to send monthly balance WhatsApp message.');
@@ -1523,8 +1511,8 @@ export default function LaybyManagement() {
             <button
               type="button"
               className="layby-mgmt-download-btn layby-mgmt-download-btn--whatsapp"
-              title={monthlyBalanceBusy ? 'Sending monthly balance...' : 'Send monthly balance due to WhatsApp group'}
-              aria-label="Send monthly balance due to WhatsApp"
+              title={monthlyBalanceBusy ? 'Sending monthly balance...' : 'Send Kitwe layby monthly balance due to WhatsApp group'}
+              aria-label="Send Kitwe layby monthly balance due to WhatsApp"
               onClick={handleSendMonthlyBalanceWhatsApp}
               disabled={bulkExportBusy || monthlyBalanceBusy || !rows.length}
             >

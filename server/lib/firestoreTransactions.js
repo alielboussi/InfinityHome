@@ -253,9 +253,10 @@ export async function firestoreLaybyStatement(body = {}) {
 
     return {
       sale_id: sale.id,
-      sale_date: sale.sale_date,
+      sale_date: sale.sale_date || sale.created_at || null,
       currency: sale.currency || quoteFin?.currency || fin.currency || null,
       layby_id: sale.layby_id || null,
+      receipt_number: sale.receipt_number || null,
       total_due: totalDue,
       paid_amount: paidAmount,
       outstanding_amount: Number(fin.outstanding_amount ?? Math.max(0, totalDue - paidAmount)),

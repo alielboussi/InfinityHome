@@ -58,3 +58,44 @@ export async function assertReceiptNumberAvailable(db, salesTable, receiptNumber
     throw err;
   }
 }
+
+/** Layby down-payment receipt must not belong to another customer's sale or payment. */
+export async function assertLaybyPaymentReceiptAvailable(db, receiptNumber, { customerId } = {}) {
+  const raw = String(receiptNumber || '').trim();
+  if (!raw || /^-+$/.test(raw)) return;
+  const payCustomerId = String(customerId || '').trim();
+
+  const existingSale = await findExistingReceiptSale(db, 'sales', raw);
+  if (existingSale) {
+    const { data: saleRow, error: saleErr } = await db
+      .from('sales')
+      .select('id, customer_id')
+      .eq('id', existingSale.id)
+      .maybeSingle();
+    if (saleErr) throw saleErr;
+    const saleCustomerId = String(saleRow?.customer_id || '').trim();
+    if (saleCustomerId && payCustomerId && saleCustomerId !== payCustomerId) {
+      const err = new Error(RECEIPT_DUPLICATE_ERROR);
+      err.code = 'DUPLICATE_RECEIPT';
+      throw err;
+    }
+  }
+
+  const orExpr = buildReceiptDuplicateOrFilter(raw);
+  if (!orExpr) return;
+  const { data: paymentRows, error: payErr } = await db
+    .from('layby_payments')
+    .select('id, customer_id, reference')
+    .or(orExpr)
+    .limit(50);
+  if (payErr) throw payErr;
+  for (const row of Array.isArray(paymentRows) ? paymentRows : []) {
+    const rowCustomerId = String(row?.customer_id || '').trim();
+    if (!receiptNumbersEquivalent(row?.reference, raw)) continue;
+    if (rowCustomerId && payCustomerId && rowCustomerId !== payCustomerId) {
+      const err = new Error(RECEIPT_DUPLICATE_ERROR);
+      err.code = 'DUPLICATE_RECEIPT';
+      throw err;
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { buildLaybyPdfUrlForWhatsApp } from '../services/whatsappPdfs';
+import { buildLaybyPdfShortLink } from './laybyPdfShortLink';
 
 function laybyRowByCustomerId(laybyRows = []) {
   return new Map(
@@ -24,7 +25,11 @@ export async function enrichBalanceDueRowsWithLaybyPdfs(balanceRows = [], laybyR
       });
       laybyPdfUrl = String(pdf?.url || '').trim();
     }
-    enriched.push({ ...row, laybyPdfUrl });
+    enriched.push({
+      ...row,
+      laybyPdfUrl: laybyPdfUrl || '',
+      laybyPdfShortUrl: buildLaybyPdfShortLink(row.customerId),
+    });
   }
 
   return enriched;

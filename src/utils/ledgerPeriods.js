@@ -77,6 +77,22 @@ export function buildLedgerPeriods({
   return periods;
 }
 
+export function findPeriodByCloseEntryId(periods = [], entryId) {
+  const id = String(entryId || '').trim();
+  if (!id) return null;
+  return (periods || []).find((period) => period.closed && String(period.closeEntryId) === id) || null;
+}
+
+export function isEntryInOpenPeriod(entry, periods = []) {
+  if (isPeriodCloseEntry(entry)) return false;
+  const openPeriod = (periods || []).find((period) => !period.closed);
+  if (!openPeriod) return false;
+  const ts = entryTimestampMs(entry);
+  if (!Number.isFinite(ts)) return false;
+  const startBound = openPeriod.startMs != null ? openPeriod.startMs : -Infinity;
+  return ts > startBound;
+}
+
 export function buildLedgerPeriodReportRows(allEntriesAsc = [], {
   startMs = null,
   endMs = null,

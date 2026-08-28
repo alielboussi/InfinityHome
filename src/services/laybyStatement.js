@@ -103,9 +103,10 @@ export async function fetchLaybyStatement(customerId) {
         : Number(fin.subtotal_before_discount || 0);
       return {
         sale_id: s.id,
-        sale_date: s.sale_date,
+        sale_date: s.sale_date || s.created_at || null,
         currency: s.currency || quoteFin?.currency || fin.currency || null,
         layby_id: s.layby_id || null,
+        receipt_number: s.receipt_number || null,
         total_due: totalDue,
         paid_amount: paidAmount,
         outstanding_amount: Number(fin.outstanding_amount || Math.max(0, totalDue - paidAmount)),

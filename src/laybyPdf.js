@@ -10,6 +10,7 @@ import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import { fetchLaybyStatement } from './services/laybyStatement';
 import { fetchLaybyPaymentsByCustomerId, fetchMergedLaybyPayments, dedupeLaybyPaymentRows, buildLaybyPaymentLooseKey } from './services/laybyPayments';
 import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
+import { pickStatementFileDate, resolvePosSaleDate, normalizeLaybyDateKey, computePooledLaybyTotalsByCurrency } from './utils/laybyRollup';
 import { isFahme, isFahmeAcc2, resolveFahmeFallbackKey, FAHME_FALLBACK_KEY_PRIMARY, shouldUseFahmeLiveStatementOnly } from './laybyRules';
 import laybyPdfItemFallbacks from './data/laybyPdfItemFallbacks.json';
 import laybyPdfSettlementFallbacks from './data/laybyPdfSettlementFallbacks.json';
@@ -174,15 +175,21 @@ function pickBestFallbackSection(dateKeyStr, salesForDate, available, finBySale)
   if (available.length === 1) {
     if (isMigrationDate || targetTotal <= 0) return available[0];
     const onlySection = available[0];
+    const sectionIso = String(onlySection?.isoDate || '');
+    if (sectionIso && sectionIso === String(dateKeyStr || '')) return onlySection;
+    if (targetTotal > 0 && amountsRoughlyMatch(sectionItemsTotal(onlySection), targetTotal)) {
+      return onlySection;
+    }
     const targetTs = Date.parse(`${dateKeyStr}T00:00:00Z`);
-    const sectionTs = Date.parse(`${onlySection?.isoDate || ''}T00:00:00Z`);
+    const sectionTs = Date.parse(`${sectionIso}T00:00:00Z`);
     if (Number.isFinite(targetTs) && Number.isFinite(sectionTs)) {
       const diff = Math.abs(sectionTs - targetTs);
-      const maxDiffMs = 120 * 24 * 60 * 60 * 1000;
-      if (diff <= maxDiffMs) return onlySection;
+      const maxDiffMs = 7 * 24 * 60 * 60 * 1000;
+      if (diff <= maxDiffMs && amountsRoughlyMatch(sectionItemsTotal(onlySection), targetTotal)) {
+        return onlySection;
+      }
     }
-    // One telegram/PDF section for this customer — prefer real items over "brought forward".
-    return onlySection;
+    return null;
   }
 
   const targetTs = Date.parse(`${dateKeyStr}T00:00:00Z`);
@@ -198,8 +205,12 @@ function pickBestFallbackSection(dateKeyStr, salesForDate, available, finBySale)
         best = section;
       }
     });
-    const maxDiffMs = (isMigrationDate ? 365 : 45) * 24 * 60 * 60 * 1000;
-    if (best && bestDiff <= maxDiffMs) return best;
+    const maxDiffMs = (isMigrationDate ? 365 : 7) * 24 * 60 * 60 * 1000;
+    if (best && bestDiff <= maxDiffMs) {
+      if (targetTotal <= 0 || amountsRoughlyMatch(sectionItemsTotal(best), targetTotal)) {
+        return best;
+      }
+    }
   }
 
   if (isMigrationDate && targetTotal > 0) {
@@ -209,7 +220,9 @@ function pickBestFallbackSection(dateKeyStr, salesForDate, available, finBySale)
         diff: Math.abs(sectionItemsTotal(section) - targetTotal),
       }))
       .sort((left, right) => left.diff - right.diff);
-    if (ranked.length) return ranked[0].section;
+    if (ranked.length && amountsRoughlyMatch(sectionItemsTotal(ranked[0].section), targetTotal)) {
+      return ranked[0].section;
+    }
   }
 
   return null;
@@ -288,18 +301,6 @@ function findFallbackSectionByAmount(targetTotal, fallbackSections) {
     .sort((left, right) => left.diff - right.diff);
   if (ranked[0]?.section) return ranked[0].section;
 
-  if (sections.length === 1) return sections[0];
-
-  const relaxed = sections
-    .map((section) => ({
-      section,
-      diff: Math.abs(sectionItemsTotal(section) - total),
-    }))
-    .sort((left, right) => left.diff - right.diff);
-  const best = relaxed[0];
-  if (best && best.diff <= Math.max(total, sectionItemsTotal(best.section)) * 0.25) {
-    return best.section;
-  }
   return null;
 }
 
@@ -307,13 +308,86 @@ function resolveItemFallbackSection(dateKeyStr, salesForDate, fallbackSections, 
   const sections = (fallbackSections || []).filter((section) => Array.isArray(section?.items) && section.items.length);
   if (!sections.length) return null;
 
+  const direct = sections.find((section) => String(section?.isoDate || '') === String(dateKeyStr || ''));
+  if (direct) return direct;
+
   const byAmount = findFallbackSectionByAmount(canonicalTotal, sections);
   if (byAmount) return byAmount;
 
-  const byDate = pickBestFallbackSection(dateKeyStr, salesForDate, sections, finBySale);
-  if (byDate) return byDate;
+  const isMigrationDate = (salesForDate || []).some(isSystemMigrationSale);
+  if (isMigrationDate) {
+    const byDate = pickBestFallbackSection(dateKeyStr, salesForDate, sections, finBySale);
+    if (byDate) return byDate;
+  }
 
-  return sections.length === 1 ? sections[0] : null;
+  return null;
+}
+
+function saleHasStoredItemLines(saleId, itemRowsBySale) {
+  const key = String(saleId || '');
+  if (!key) return false;
+  return (itemRowsBySale[key] || []).some((item) => String(item?.display_name || item?.product_name || '').trim());
+}
+
+function customerHasLiveSaleItemLines(itemRowsBySale) {
+  return Object.values(itemRowsBySale || {}).some((rows) => (
+    (rows || []).some((item) => String(item?.display_name || item?.product_name || '').trim())
+  ));
+}
+
+function buildItemRowsBySale(items) {
+  return (items || []).reduce((acc, row) => {
+    const key = String(row?.sale_id || '');
+    if (!key) return acc;
+    (acc[key] = acc[key] || []).push(row);
+    return acc;
+  }, {});
+}
+
+function normalizeProductLabel(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function buildProductSignature(rows) {
+  return (rows || [])
+    .map((row) => `${normalizeProductLabel(row?.name)}|${Number(row?.qty || 0)}`)
+    .filter((entry) => entry && !entry.startsWith('|'))
+    .sort()
+    .join('||');
+}
+
+/** Drop migration rollups and item-less header sales once real POS line items exist. */
+function dedupeRedundantLaybySalesForPdf(sales, itemRowsBySale, finBySale) {
+  let list = dedupeSystemMigrationSales(sales, finBySale);
+  if (!customerHasLiveSaleItemLines(itemRowsBySale)) return list;
+
+  return list.filter((sale) => {
+    const saleId = String(sale?.id ?? sale?.sale_id ?? '');
+    if (saleHasStoredItemLines(saleId, itemRowsBySale)) return true;
+
+    if (isSystemMigrationSale(sale)) {
+      const amount = saleGrossAmountForMatch(sale, finBySale);
+      const representedByItemizedSale = list.some((other) => {
+        const otherId = String(other?.id ?? other?.sale_id ?? '');
+        if (!otherId || otherId === saleId) return false;
+        if (!saleHasStoredItemLines(otherId, itemRowsBySale)) return false;
+        return amountsRoughlyMatch(saleGrossAmountForMatch(other, finBySale), amount);
+      });
+      return !representedByItemizedSale;
+    }
+
+    // Item-less payment/header rows should not create a second product table.
+    return false;
+  });
+}
+
+function rowsAreLivePosLinesForDate(rows, salesForDate, saleRowId) {
+  const saleIds = new Set((salesForDate || []).map((sale) => saleRowId(sale)).filter(Boolean));
+  if (!saleIds.size) return false;
+  return (rows || []).every((row) => {
+    const saleId = String(row?.saleId || '');
+    return saleId && saleIds.has(saleId);
+  });
 }
 
 // Toggle for internal debug logging (set to true to re-enable logs during development)
@@ -328,7 +402,7 @@ const safeLog = (type, ...args) => { if (!PDF_DEBUG) return; // eslint-disable-n
 // Dynamic sales column selection with graceful fallback.
 // We attempt optional columns and remove any that trigger a 400 error so no warning appears to user.
 // Note: down_payment removed; use sales_payments + computeSaleFinancials instead
-const SALES_MANDATORY = ['id','sale_date','currency','layby_id','total_amount','customer_id'];
+const SALES_MANDATORY = ['id','sale_date','created_at','currency','layby_id','total_amount','customer_id','receipt_number'];
 const SALES_OPTIONAL = ['discount']; // removed sale_discount (column no longer present)
 async function selectSales(whereFn, single = false) {
   let cols = [...SALES_MANDATORY, ...SALES_OPTIONAL];
@@ -349,6 +423,106 @@ async function selectSales(whereFn, single = false) {
     if (PDF_DEBUG) console.warn('[LaybyPDF] sales select error', error.message || error);
     return { data: null, error };
   }
+}
+
+async function enrichSalesFromPos(sales) {
+  const rows = (sales || []).slice();
+  const needsFetch = rows.filter((sale) => {
+    const id = sale?.id ?? sale?.sale_id;
+    if (!id) return false;
+    const key = String(id);
+    if (key.startsWith('fallback-') || key.startsWith('layby:')) return false;
+    return !sale?.sale_date || !sale?.receipt_number;
+  });
+  if (!needsFetch.length) return rows;
+  const ids = [...new Set(needsFetch.map((sale) => sale.id ?? sale.sale_id))]
+    .map((value) => (typeof value === 'string' ? parseInt(value, 10) : value))
+    .filter((value) => Number.isFinite(value));
+  if (!ids.length) return rows;
+  const { data } = await fromPublic('sales').select('id, sale_date, created_at, receipt_number').in('id', ids);
+  const metaById = new Map(
+    (data || []).map((row) => [String(row.id), row]),
+  );
+  return rows.map((sale) => {
+    const id = String(sale?.id ?? sale?.sale_id ?? '');
+    const row = metaById.get(id);
+    if (!row) return sale;
+    const next = { ...sale };
+    if (!next.sale_date) next.sale_date = row.sale_date || row.created_at || null;
+    if (!next.created_at && row.created_at) next.created_at = row.created_at;
+    if (!next.receipt_number && row.receipt_number) next.receipt_number = row.receipt_number;
+    return next;
+  });
+}
+
+async function fetchQuoteRefsForPdf(sales, laybyId) {
+  const quoteRefBySaleId = new Map();
+  const saleIds = [...new Set(
+    (sales || [])
+      .map((sale) => String(sale?.id ?? sale?.sale_id ?? '').trim())
+      .filter((id) => id && !id.startsWith('fallback-') && !id.startsWith('layby:')),
+  )];
+  const numericIds = saleIds
+    .map((id) => (typeof id === 'string' ? parseInt(id, 10) : id))
+    .filter((value) => Number.isFinite(value));
+  const tasks = [];
+  if (numericIds.length) {
+    tasks.push(
+      db.from('quotations')
+        .select('sale_id, quote_number')
+        .in('sale_id', numericIds)
+        .order('created_at', { ascending: false }),
+    );
+  }
+  if (laybyId && isLaybyUuid(laybyId)) {
+    tasks.push(
+      db.from('quotations')
+        .select('sale_id, quote_number')
+        .eq('layby_id', laybyId)
+        .order('created_at', { ascending: false }),
+    );
+  }
+  if (!tasks.length) return quoteRefBySaleId;
+  const results = await Promise.all(tasks);
+  results.forEach(({ data }) => {
+    (data || []).forEach((row) => {
+      const saleId = String(row?.sale_id || '').trim();
+      const quoteNumber = String(row?.quote_number || '').trim();
+      if (!saleId || !quoteNumber || quoteRefBySaleId.has(saleId)) return;
+      quoteRefBySaleId.set(saleId, quoteNumber);
+    });
+  });
+  return quoteRefBySaleId;
+}
+
+function formatPdfDateSectionLabel(dateKeyStr, salesForDate, quoteRefBySaleId, prettyDMY) {
+  const datePart = prettyDMY(dateKeyStr, '.') || String(dateKeyStr || '').trim();
+  const refs = [];
+  const seen = new Set();
+  (salesForDate || []).forEach((sale) => {
+    const saleId = String(sale?.id ?? sale?.sale_id ?? '').trim();
+    const quoteNumber = quoteRefBySaleId?.get(saleId) || sale?.quote_number;
+    if (quoteNumber) {
+      const label = String(quoteNumber).trim();
+      const key = label.toLowerCase();
+      if (label && !seen.has(key)) {
+        seen.add(key);
+        refs.push(label);
+      }
+      return;
+    }
+    const receipt = sanitizePaymentReference(sale?.receipt_number);
+    if (receipt) {
+      const key = receipt.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        refs.push(receipt);
+      }
+    }
+  });
+  if (!datePart) return refs.join(', ');
+  if (!refs.length) return datePart;
+  return `${datePart} · ${refs.join(', ')}`;
 }
 
 let cachedCompany = null;
@@ -570,22 +744,14 @@ function isSettlementLineAlreadyListed(paymentLines, line, amount, lineTs, desc)
 }
 
 function paymentRowToSettlementLine(payment) {
-  const dateLabel = payment?.payment_date ? new Date(payment.payment_date).toLocaleDateString('en-GB') : '';
-  const paymentType = titleCase(String(payment?.payment_type || 'cash').replace(/_/g, ' '));
-  let note = sanitizePaymentNote(payment?.notes || '').trim();
-  const reference = sanitizePaymentReference(payment?.reference);
-  if (reference && !note.includes(reference)) {
-    note = note ? `${note} (${reference})` : reference;
-  }
-  if (note && (isSystemReceiptTag(note) || isPlaceholderReference(note))) note = '';
-  if (note.toLowerCase() === paymentType.toLowerCase()) note = '';
-  return {
-    description: settlementLineDescription({ dateLabel, note, paymentType }),
-    paymentType,
-    amount: Number(payment?.amount || 0),
-    date: payment?.payment_date || null,
-    discount_amount: Number(payment?.discount_amount || 0),
-  };
+  return batchGroupedPaymentToSettlementLine({
+    payment_date: payment?.payment_date || payment?.date || null,
+    payment_type: payment?.payment_type || 'cash',
+    notes: payment?.notes || '',
+    reference: payment?.reference || '',
+    amount: payment?.amount || 0,
+    discount_amount: payment?.discount_amount || 0,
+  });
 }
 
 function isPaymentCoveredByFallbackRow(payment, fallbackRows) {
@@ -598,6 +764,71 @@ function isPaymentCoveredByFallbackRow(payment, fallbackRows) {
     const fallbackDay = new Date(fallbackTs).toISOString().slice(0, 10);
     return paymentDay === fallbackDay;
   });
+}
+
+function filterPdfCustomerPayments(payments, customerId) {
+  const cid = String(customerId || '').trim();
+  if (!cid) return payments || [];
+  return (payments || []).filter((payment) => {
+    const payCustomerId = String(payment?.customer_id || '').trim();
+    return !payCustomerId || payCustomerId === cid;
+  });
+}
+
+function filterPaymentsForPdfSettlement(payments, { customerId, allowedSaleIds, isFahmeCustomer }) {
+  return filterPdfCustomerPayments(payments, customerId).filter((payment) => {
+    if (!(Number(payment?.amount || 0) > 0 || Number(payment?.discount_amount || 0) > 0)) return false;
+    if (isFahmeCustomer) return true;
+    const saleId = String(payment?.sale_id || '').trim();
+    if (!saleId) return true;
+    return allowedSaleIds.has(saleId);
+  });
+}
+
+function batchGroupedPaymentToSettlementLine(entry) {
+  const dateLabel = entry?.payment_date ? new Date(entry.payment_date).toLocaleDateString('en-GB') : '';
+  const paymentType = titleCase(String(entry?.payment_type || 'cash').replace(/_/g, ' '));
+  let note = sanitizePaymentNote(entry?.notes || '').trim();
+  const cleanRef = sanitizePaymentReference(entry?.reference);
+  if (note && (isSystemReceiptTag(note) || isPlaceholderReference(note))) note = '';
+  if (note.toLowerCase() === paymentType.toLowerCase()) note = '';
+  const descriptionParts = [];
+  if (dateLabel) descriptionParts.push(`(${dateLabel})`);
+  if (note) descriptionParts.push(note);
+  if (cleanRef) descriptionParts.push(`Ref: ${cleanRef}`);
+  return {
+    description: descriptionParts.join(' - ') || 'Down Payment',
+    paymentType,
+    amount: Number(entry?.amount || 0),
+    date: entry?.payment_date || null,
+    discount_amount: Number(entry?.discount_amount || 0),
+  };
+}
+
+function buildSettlementPaymentLinesFromPayments(payments) {
+  return groupPaymentsByAllocationBatch(payments)
+    .filter((row) => Number(row?.amount || 0) > 0 || Number(row?.discount_amount || 0) > 0)
+    .map(batchGroupedPaymentToSettlementLine);
+}
+
+function resolvePdfSettlementTotals({ opts, related, currency, paymentLines }) {
+  const rowTotalsFromMgmt = readRowTotalsFromOpts(opts, currency);
+  const pooled = computePooledLaybyTotalsByCurrency(normalizeLaybyStatement({
+    sales: related?.sales || [],
+    items: related?.items || [],
+    payments: related?.payments || [],
+  }));
+  const code = String(currency || 'K').trim().toUpperCase();
+  const pooledBucket = pooled[code] || pooled.K || pooled.USD || Object.values(pooled)[0] || null;
+  const linePaid = (paymentLines || []).reduce((sum, line) => sum + Number(line?.amount || 0), 0);
+  const lineDiscount = (paymentLines || []).reduce((sum, line) => sum + Number(line?.discount_amount || 0), 0);
+  const paidTotal = rowTotalsFromMgmt && Number.isFinite(Number(rowTotalsFromMgmt.paid))
+    ? Number(rowTotalsFromMgmt.paid)
+    : (Number(pooledBucket?.paid || 0) > 0.009 ? Number(pooledBucket.paid) : linePaid);
+  const dueRemaining = rowTotalsFromMgmt && Number.isFinite(Number(rowTotalsFromMgmt.due))
+    ? Math.max(0, Number(rowTotalsFromMgmt.due))
+    : Math.max(0, Number(pooledBucket?.due ?? (Number(pooledBucket?.total || 0) - paidTotal - lineDiscount)));
+  return { paidTotal, dueRemaining, discountTotal: lineDiscount };
 }
 
 function groupPaymentsByAllocationBatch(payments = []) {
@@ -1313,7 +1544,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       if (saleIdsForQuote.length) {
         const { data: qBySale } = await db
           .from('quotations')
-          .select('id, sale_id, created_at')
+          .select('id, sale_id, created_at, quote_number')
           .in('sale_id', saleIdsForQuote)
           .order('created_at', { ascending: false })
           .limit(1);
@@ -1322,7 +1553,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       if (!quoteRow && layby?.id && isLaybyUuid(layby.id) && !opts?.posReceipt) {
         const { data: qByLayby } = await db
           .from('quotations')
-          .select('id, sale_id, created_at')
+          .select('id, sale_id, created_at, quote_number')
           .eq('layby_id', layby.id)
           .order('created_at', { ascending: false })
           .limit(1);
@@ -1349,7 +1580,19 @@ export async function generateLaybyPdf(layby, opts = {}) {
         }
         const baseSaleId = quoteRow.sale_id || layby?.sale_id || null;
         if (baseSaleId && (!related.sales || related.sales.length === 0)) {
-          related.sales = [{ id: baseSaleId, sale_date: quoteRow.created_at || layby?.created_at || null }];
+          let saleDate = null;
+          let saleRow = null;
+          try {
+            const { data } = await selectSales((q) => q.eq('id', baseSaleId), true);
+            saleRow = data || null;
+            saleDate = saleRow?.sale_date || saleRow?.created_at || null;
+          } catch {}
+          related.sales = [{
+            id: baseSaleId,
+            sale_date: saleDate || quoteRow.created_at || layby?.created_at || null,
+            receipt_number: saleRow?.receipt_number || null,
+            quote_number: quoteRow?.quote_number || null,
+          }];
         }
         if (qItems && qItems.length) {
           related.items = qItems.map(it => ({
@@ -1371,7 +1614,13 @@ export async function generateLaybyPdf(layby, opts = {}) {
         related.payments = (payRows || []).map(p => ({ ...p, payment_type: String(p.payment_type || '').toLowerCase() }));
       }
       if ((!related.sales || related.sales.length === 0) && layby?.sale_id != null) {
-        related.sales = [{ id: layby.sale_id, sale_date: layby?.created_at || null, currency: layby?.sale_currency || layby?.customerInfo?.currency || null }];
+        const { data: saleRow } = await selectSales((q) => q.eq('id', layby.sale_id), true);
+        related.sales = [{
+          ...(saleRow || {}),
+          id: layby.sale_id,
+          sale_date: saleRow?.sale_date || saleRow?.created_at || layby?.created_at || null,
+          currency: saleRow?.currency || layby?.sale_currency || layby?.customerInfo?.currency || null,
+        }];
       }
     } catch {}
 
@@ -1390,6 +1639,10 @@ export async function generateLaybyPdf(layby, opts = {}) {
       );
     }
 
+    related.payments = dedupeLaybyPaymentRows(
+      filterPdfCustomerPayments(related.payments || [], layby?.customer_id || customer?.id),
+    );
+
     if (useLiveStatementOnly) {
       related.items = (related.items || []).filter((item) => {
         const label = String(item?.display_name || item?.product_name || '').trim();
@@ -1399,23 +1652,16 @@ export async function generateLaybyPdf(layby, opts = {}) {
     }
 
     // ---------------------------
-    // Group items by sale date (or created_at fallback)
-    // Use timezone-safe normalization: prefer raw YYYY-MM-DD if present,
-    // fall back to local Date getters (not toISOString) to avoid day shift.
+    // Group items by POS sale date (never layby.updated_at — that changes on payment).
     // ---------------------------
-    const normalizeYYYYMMDD = (raw) => {
-      const str = String(raw || '');
-      const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-      try {
-        const dt = new Date(str);
-        if (isNaN(dt.getTime())) return '';
-        const y = dt.getFullYear();
-        const mo = String(dt.getMonth() + 1).padStart(2, '0');
-        const da = String(dt.getDate()).padStart(2, '0');
-        return `${y}-${mo}-${da}`;
-      } catch { return ''; }
-    };
+    related.sales = await enrichSalesFromPos(related.sales || []);
+    related.sales = (related.sales || []).map((sale) => {
+      const saleDate = resolvePosSaleDate(sale, layby);
+      return saleDate && saleDate !== sale?.sale_date
+        ? { ...sale, sale_date: saleDate }
+        : sale;
+    });
+    const normalizeYYYYMMDD = (raw) => normalizeLaybyDateKey(raw);
     const prettyDMY = (yyyy_mm_dd, sep = '.') => {
       if (!yyyy_mm_dd) return '';
       const parts = yyyy_mm_dd.split('-');
@@ -1423,9 +1669,11 @@ export async function generateLaybyPdf(layby, opts = {}) {
       const [y, m, d] = parts;
       return `${d}${sep}${m}${sep}${y}`;
     };
-    const dateKey = s => normalizeYYYYMMDD(s.sale_date || s.created_at || '') || 'unknown';
+    const dateKey = (s) => normalizeYYYYMMDD(resolvePosSaleDate(s, layby) || '') || 'unknown';
     const saleRowId = (sale) => String(sale?.id ?? sale?.sale_id ?? '');
-    related.sales = dedupeSystemMigrationSales(related.sales, related.finBySale || {});
+    const itemRowsBySale = buildItemRowsBySale(related.items);
+    const preferLivePosItemBreakdown = customerHasLiveSaleItemLines(itemRowsBySale) && !useLiveStatementOnly;
+    related.sales = dedupeRedundantLaybySalesForPdf(related.sales, itemRowsBySale, related.finBySale || {});
     const salesByDate = {};
     related.sales.forEach(s => {
       const k = dateKey(s);
@@ -1591,13 +1839,18 @@ export async function generateLaybyPdf(layby, opts = {}) {
       }
     } catch {}
     // Normalize sale_id keys as strings to avoid number/string mismatches
-    const itemRowsBySale = related.items.reduce((acc, r) => {
-      const key = String(r.sale_id);
-      (acc[key] = acc[key] || []).push(r); return acc;
-    }, {});
   const dateSections = Object.keys(salesByDate).sort();
+  const quoteRefBySaleId = await fetchQuoteRefsForPdf(related.sales, layby?.id);
   const hasAnyItems = related.items && related.items.length > 0;
   const usedFallbackIsoDates = new Set();
+  const liveItemDates = new Set();
+  related.sales.forEach((sale) => {
+    if (saleHasStoredItemLines(saleRowId(sale), itemRowsBySale)) {
+      const iso = dateKey(sale);
+      if (iso && iso !== 'unknown') liveItemDates.add(iso);
+    }
+  });
+  liveItemDates.forEach((iso) => usedFallbackIsoDates.add(iso));
   const fallbackAssignments = assignFallbackSectionsByDate(
     dateSections,
     salesByDate,
@@ -1606,6 +1859,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
   );
   // Running cumulative due shown between tables
   let cumulativeDueAcrossDates = 0;
+  const renderedProductSignatures = new Set();
   const isPosReceipt = Boolean(opts?.posReceipt);
 
     // Credit tracking removed: all payments are treated uniformly.
@@ -1780,12 +2034,18 @@ export async function generateLaybyPdf(layby, opts = {}) {
         return true;
       });
       // If filtering removed everything, restore original only when fallback JSON may still apply.
-      if (!rows.length && !useLiveStatementOnly) rows = originalRows;
+      if (!rows.length && !useLiveStatementOnly && !preferLivePosItemBreakdown) rows = originalRows;
       const isPlaceholderRow = (row) => {
         const name = String(row?.name || '').trim();
         return isPlaceholderItemName(name) || isMigrationCarryRow(row);
       };
       const placeholderOnly = rows.length > 0 && rows.every(isPlaceholderRow);
+      const salesAllItemless = salesForDate.every((sale) => !saleHasStoredItemLines(saleRowId(sale), itemRowsBySale));
+      const liveItemsExistElsewhere = customerHasLiveSaleItemLines(itemRowsBySale)
+        && salesForDate.every((sale) => !saleHasStoredItemLines(saleRowId(sale), itemRowsBySale));
+      const hasDateMatchedFallback = (fallbackSections || []).some(
+        (section) => String(section?.isoDate || '') === String(dateKeyStr || '') && Array.isArray(section?.items) && section.items.length,
+      );
       const fallbackSection = resolveFallbackSectionForDate(
         dateKeyStr,
         salesForDate,
@@ -1797,7 +2057,15 @@ export async function generateLaybyPdf(layby, opts = {}) {
       const fallbackItemsForDate = fallbackSection?.items
         || fallbackItemsByDate.get(dateKeyStr)
         || null;
-      if (!useLiveStatementOnly && (placeholderOnly || !rows.length) && fallbackItemsForDate) {
+      const fallbackMatchesThisDate = fallbackItemsByDate.has(dateKeyStr)
+        || String(fallbackSection?.isoDate || '') === String(dateKeyStr || '');
+      if (
+        !useLiveStatementOnly
+        && !preferLivePosItemBreakdown
+        && (placeholderOnly || !rows.length)
+        && fallbackItemsForDate
+        && (!liveItemsExistElsewhere || fallbackMatchesThisDate)
+      ) {
         if (fallbackSection?.isoDate) usedFallbackIsoDates.add(String(fallbackSection.isoDate));
         rows = (fallbackItemsForDate || []).map((item) => ({
           qty: Number(item?.qty || 0),
@@ -1827,8 +2095,11 @@ export async function generateLaybyPdf(layby, opts = {}) {
       const finBySaleForAlign = related.finBySale || {};
       const finRowsForAlign = salesForDate.map((s) => finBySaleForAlign[saleRowId(s)]).filter(Boolean);
       const canonicalTotalForAlign = finRowsForAlign.reduce((sum, row) => sum + Number(row.total_due || 0), 0);
+      if (!rows.length && liveItemsExistElsewhere && salesAllItemless && !hasDateMatchedFallback) {
+        return;
+      }
       // Prefer real/fallback product lines only — never invent a carry-forward balance row.
-      if (!useLiveStatementOnly && !rows.length && canonicalTotalForAlign > 0) {
+      if (!useLiveStatementOnly && !preferLivePosItemBreakdown && !rows.length && canonicalTotalForAlign > 0) {
         const itemFallback = resolveItemFallbackSection(
           dateKeyStr,
           salesForDate,
@@ -1861,9 +2132,15 @@ export async function generateLaybyPdf(layby, opts = {}) {
           && name !== 'item breakdown not captured (total carried)';
       });
       if (!rows.length) return;
+      const productSignature = buildProductSignature(rows);
+      const rowsAreBorrowed = salesAllItemless || rows.every((row) => !row?.saleId);
+      if (productSignature && rowsAreBorrowed && renderedProductSignatures.has(productSignature)) {
+        return;
+      }
+      if (productSignature && rows.length) renderedProductSignatures.add(productSignature);
       // For regular customers, keep per-date visible line totals aligned with canonical sale totals
       // so PDF values match layby-management aggregates.
-      if (!isFahmeCustomer && canonicalTotalForAlign > 0) {
+      if (!isFahmeCustomer && canonicalTotalForAlign > 0 && rowsAreLivePosLinesForDate(rows, salesForDate, saleRowId)) {
         const targetRows = rows.filter((row) => Number(row?.amount || 0) > 0 && String(row?.type || 'regular') === 'regular');
         const sourceSum = targetRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
         if (targetRows.length && sourceSum > 0 && Math.abs(sourceSum - canonicalTotalForAlign) > 0.01) {
@@ -1953,7 +2230,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
   // Track per-date Net to aggregate later (grand total pre-discount)
   dateTotals.push(net);
       dateDiscountTotals.push(discount);
-  const dateLabel = prettyDMY(dateKeyStr, '.');
+  const dateLabel = formatPdfDateSectionLabel(dateKeyStr, salesForDate, quoteRefBySaleId, prettyDMY);
 
       // Estimate single-page height
       let blockHeight = headerHeight + headerHeight; // date + columns header
@@ -2194,17 +2471,14 @@ export async function generateLaybyPdf(layby, opts = {}) {
       }
         // Build payment events as one row per original down-payment batch.
   const paymentLines = [];
-  const saleById = {}; related.sales.forEach(s => { saleById[s.id] = s; });
   const allowedSaleIds = new Set((related.sales || []).map(s => String(s.id || s.sale_id)));
   if (layby?.sale_id != null) allowedSaleIds.add(String(layby.sale_id));
-  // Fahme history is rendered from synthetic fallback sale ids, so live payments
-  // must not be filtered against those ids or new down payments disappear.
-  const settlementPaymentsAll = isFahmeCustomer
-    ? (related.payments || []).filter((p) => Number(p?.amount || 0) > 0 || Number(p?.discount_amount || 0) > 0)
-    : (related.payments || []).filter(p => allowedSaleIds.has(String(p.sale_id)));
+  const settlementPaymentsAll = filterPaymentsForPdfSettlement(related.payments || [], {
+    customerId: layby?.customer_id || customer?.id,
+    allowedSaleIds,
+    isFahmeCustomer,
+  });
   const pdfBatchTag = 'PDF_ITEM_RESTORE_20260610/';
-  // Only treat as frozen PDF-restore when the layby notes explicitly say so.
-  // Do NOT lock Fahme accounts forever just because historical JSON fallbacks exist.
   const isPdfRestoreCustomer = useLiveStatementOnly
     ? false
     : String(layby?.notes || '').toUpperCase().includes('PDF_ITEM_RESTORE_20260610');
@@ -2215,56 +2489,14 @@ export async function generateLaybyPdf(layby, opts = {}) {
   const settlementPayments = (isPdfRestoreCustomer && settlementPaymentsTagged.length)
     ? settlementPaymentsTagged
     : settlementPaymentsAll;
-      const groupedByBatch = new Map();
-      settlementPayments.forEach((payment, index) => {
-        const batchKey = String(payment?.allocation_batch_uuid || '').trim();
-        const key = batchKey || `single:${index}`;
-        const paymentAmount = Number(payment?.amount || 0);
-        const paymentDiscount = Number(payment?.discount_amount || 0);
-        if (!groupedByBatch.has(key)) {
-          groupedByBatch.set(key, {
-            amount: paymentAmount,
-            discount_amount: paymentDiscount,
-            date: payment?.payment_date || null,
-            paymentType: titleCase(String(payment?.payment_type || 'cash').replace(/_/g, ' ')),
-            note: sanitizePaymentNote(payment?.notes || '').trim(),
-            reference: String(payment?.reference || '').trim(),
-          });
-          return;
-        }
-        const entry = groupedByBatch.get(key);
-        if (batchKey) {
-          entry.amount = Math.max(entry.amount, paymentAmount);
-          entry.discount_amount = Math.max(entry.discount_amount, paymentDiscount);
-        } else {
-          entry.amount += paymentAmount;
-          entry.discount_amount += paymentDiscount;
-        }
-        if (!entry.date && payment?.payment_date) entry.date = payment.payment_date;
-        if (!entry.note) entry.note = sanitizePaymentNote(payment?.notes || '').trim();
-        if (!entry.reference) entry.reference = String(payment?.reference || '').trim();
-        if (!entry.paymentType) entry.paymentType = titleCase(String(payment?.payment_type || 'cash').replace(/_/g, ' '));
-      });
-
-      Array.from(groupedByBatch.values()).forEach((entry) => {
-        const dateLabel = entry.date ? new Date(entry.date).toLocaleDateString('en-GB') : '';
-        const descriptionParts = [];
-        if (dateLabel) descriptionParts.push(`(${dateLabel})`);
-        const noteIsSystemTag = isSystemReceiptTag(entry.note);
-        const cleanNote = entry.note && !noteIsSystemTag && !isPlaceholderReference(entry.note) ? entry.note : '';
-        const cleanRef = sanitizePaymentReference(entry.reference);
-        if (cleanNote) descriptionParts.push(cleanNote);
-        if (cleanRef) descriptionParts.push(`Ref: ${cleanRef}`);
-        const description = descriptionParts.join(' - ') || 'Down Payment';
-        paymentLines.push({
-          description,
-          paymentType: entry.paymentType || 'Cash',
-          amount: Number(entry.amount || 0),
-          date: entry.date || null,
-          discount_amount: Number(entry.discount_amount || 0),
-        });
-      });
-      const livePaymentLines = paymentLines.slice();
+  paymentLines.push(...buildSettlementPaymentLinesFromPayments(settlementPayments));
+  const livePaymentLines = paymentLines.slice();
+  const hasMeaningfulLivePayments = groupPaymentsByAllocationBatch(settlementPaymentsAll)
+    .some((payment) => (
+      Number(payment?.amount || 0) > 0
+      && !isSystemReceiptTag(payment?.reference)
+      && !isSystemReceiptTag(payment?.notes)
+    ));
 
       const buildFallbackSettlementLines = () => {
         const lines = [];
@@ -2328,8 +2560,8 @@ export async function generateLaybyPdf(layby, opts = {}) {
           || isSystemReceiptTag(payment?.notes)
         ));
 
-      // Do not re-wipe Fahme/restore settlements — that dropped newly added down payments.
-      if (!isPdfRestoreCustomer && !isFahmeCustomer && fallbackSettlementRows.length && (
+      // Do not re-wipe live settlements — telegram JSON is migration history only.
+      if (!isPdfRestoreCustomer && !isFahmeCustomer && fallbackSettlementRows.length && !hasMeaningfulLivePayments && (
         !paymentLines.length || hasOnlySystemTaggedLines || settlementPaymentsAreMigrationOnly
       )) {
         const fallbackLines = buildFallbackSettlementLines();
@@ -2354,18 +2586,15 @@ export async function generateLaybyPdf(layby, opts = {}) {
           discount_amount: 0,
         });
       }
-    // Settlement Due Remaining = accrued total due across all sales minus down-payments/discounts.
-    // Prefer Layby Management row totals for Fahme so Settlement matches the table row.
-    const lastCumulativeDue = cumulativeDueAcrossDates;
-    const paidTotal = paymentLines.reduce((a,l)=> a + Number(l.amount || 0), 0);
-    const discountTotal = paymentLines.reduce((sum, p) => sum + Number(p.discount_amount || 0), 0);
-    const downPaymentTotal = paidTotal;
-    const rowTotalsFromMgmt = readRowTotalsFromOpts(opts, currency);
-    const dueRemaining = rowTotalsFromMgmt && Number.isFinite(Number(rowTotalsFromMgmt.due))
-      ? Math.max(0, Number(rowTotalsFromMgmt.due || 0))
-      : (rowTotalsUsd && isFahmeCustomer && Number(rowTotalsUsd.due || 0) >= 0)
-        ? Math.max(0, Number(rowTotalsUsd.due || 0))
-        : Math.max(0, Number(lastCumulativeDue || 0) - paidTotal - discountTotal);
+    // Settlement Due Remaining must match Layby Management pooled totals.
+    const settlementTotals = resolvePdfSettlementTotals({
+      opts,
+      related,
+      currency: saleCurrency || layby?.sale_currency || customer?.currency || 'K',
+      paymentLines,
+    });
+    const downPaymentTotal = settlementTotals.paidTotal;
+    const dueRemaining = settlementTotals.dueRemaining;
       if (paymentLines.length) {
         // Desired gap between main table and settlement: 3cm (~85pt)
         const CM = 28.346; const desiredGap = 3 * CM; // ≈85.04pt
@@ -2558,8 +2787,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
     } catch {}
 
   const safeCustomer = (custName || 'Customer').replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') || 'Customer';
-  // (C + D) Append statement date and currency code
-  const statementDate = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+  const statementDate = pickStatementFileDate(related.sales);
   // Attempt a primary currency guess: use layby.currency or first sale currency or 'K'
   const primaryCurrency = (saleCurrency || layby?.sale_currency || customer?.currency || 'K').toUpperCase();
   const currencyCode = ACRONYM_KEEP.has(primaryCurrency) ? primaryCurrency : primaryCurrency.replace(/[^A-Z]/g,'');

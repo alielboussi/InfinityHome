@@ -3,13 +3,16 @@ import { fromPublic } from '../dbSchema';
 import {
   buildLedgerPeriodReportRows,
   buildLedgerPeriods,
+  findPeriodByCloseEntryId,
+  isEntryInOpenPeriod,
   isPeriodCloseEntry,
   PERIOD_CLOSE_PERSON,
   PERIOD_CLOSE_REFERENCE,
 } from '../utils/ledgerPeriods';
 import { newUuid } from '../utils/uuid';
 import { sendLedgerWhatsApp } from './whatsapp';
-import { createLedgerPdfBase64 } from '../utils/ledgerPdf';
+import { createLedgerPdfBlob } from '../utils/ledgerPdf';
+import { uploadPdfToStorage } from './whatsappPdfs';
 
 const LEDGER_CURRENCY = 'USD';
 const LEDGER_PAYMENT_METHOD = 'cash';
@@ -521,33 +524,37 @@ export async function closeLedgerBalance({
   });
 
   if (!result.error) {
-    sendClosedPeriodWhatsAppPdf(cur).catch(() => {});
+    sendLedgerPeriodWhatsAppPdf({
+      periodIndex: null,
+      currency: cur,
+      includeStatusMessage: true,
+    }).catch(() => {});
   }
 
   return result;
 }
 
-async function sendClosedPeriodWhatsAppPdf(currency = LEDGER_CURRENCY) {
+async function buildPeriodWhatsAppPayload({ periodIndex, currency = LEDGER_CURRENCY } = {}) {
   const periodsRes = await fetchLedgerPeriods(currency);
-  if (periodsRes.error) return;
+  if (periodsRes.error) throw periodsRes.error;
 
   const closedPeriods = (periodsRes.data || []).filter((period) => period.closed);
-  const period = closedPeriods[closedPeriods.length - 1];
-  if (!period) return;
+  const period = periodIndex != null
+    ? (periodsRes.data || []).find((row) => row.index === periodIndex)
+    : closedPeriods[closedPeriods.length - 1];
+  if (!period || !period.closed) {
+    throw new Error('Closed period not found');
+  }
 
   const reportRes = await fetchLedgerPeriodReport({
     periodIndex: period.index,
     currency,
   });
-  if (reportRes.error) return;
+  if (reportRes.error) throw reportRes.error;
 
   const rows = reportRes.data?.rows || [];
   const openingBalance = Number(reportRes.data?.openingBalance || 0);
-  const closingBalance = rows.length
-    ? Number(rows[rows.length - 1].balanceAfter || 0)
-    : openingBalance;
-
-  const { base64, fileName } = await createLedgerPdfBase64({
+  const { blob, fileName } = await createLedgerPdfBlob({
     openingBalance,
     rows,
     dateFrom: period.dateFrom || '',
@@ -555,15 +562,141 @@ async function sendClosedPeriodWhatsAppPdf(currency = LEDGER_CURRENCY) {
     periodLabel: period.label || '',
   });
 
-  await sendLedgerWhatsApp({
-    periodClose: true,
-    periodLabel: period.label || '',
-    dateFrom: period.dateFrom || '',
-    dateTo: period.dateTo || '',
-    closingBalance: 0,
-    pdfBase64: base64,
+  let pdfUrl = '';
+  try {
+    pdfUrl = await uploadPdfToStorage('labels', `ledger/${fileName}`, blob);
+  } catch (uploadErr) {
+    console.warn('Ledger PDF upload failed, falling back to base64:', uploadErr?.message || uploadErr);
+  }
+
+  return {
+    period,
+    pdfUrl,
     pdfFilename: fileName,
+    pdfBase64: pdfUrl ? undefined : await blobToBase64(blob),
+  };
+}
+
+async function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Failed to read PDF blob'));
+    reader.readAsDataURL(blob);
   });
+}
+
+export async function sendLedgerPeriodWhatsAppPdf({
+  periodIndex = null,
+  currency = LEDGER_CURRENCY,
+  includeStatusMessage = false,
+} = {}) {
+  try {
+    const payload = await buildPeriodWhatsAppPayload({ periodIndex, currency });
+    const result = await sendLedgerWhatsApp({
+      periodClose: true,
+      periodClosePdfOnly: !includeStatusMessage,
+      periodLabel: payload.period.label || '',
+      dateFrom: payload.period.dateFrom || '',
+      dateTo: payload.period.dateTo || '',
+      closingBalance: 0,
+      pdfUrl: payload.pdfUrl || undefined,
+      pdfBase64: payload.pdfBase64,
+      pdfFilename: payload.pdfFilename,
+    });
+    if (!result?.ok) {
+      return { error: new Error(result?.error || 'Failed to send period PDF on WhatsApp') };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { error };
+  }
+}
+
+export async function updateLedgerEntry(entryId, {
+  direction,
+  amount,
+  currency = LEDGER_CURRENCY,
+  reason,
+  personName,
+  entryDate,
+} = {}) {
+  const id = String(entryId || '').trim();
+  if (!id) return { error: new Error('Missing entry id') };
+
+  const dir = (direction || '').toLowerCase();
+  const cur = normalizeCurrency(currency);
+  const amt = Number(amount || 0);
+  const trimmedPerson = String(personName || '').trim();
+  const trimmedReason = String(reason || '').trim();
+
+  if (!['credit', 'debit'].includes(dir)) {
+    return { error: new Error('Direction must be credit or debit') };
+  }
+  if (cur !== LEDGER_CURRENCY) {
+    return { error: new Error('Ledger is USD ($) only') };
+  }
+  if (!(amt > 0)) {
+    return { error: new Error('Amount must be greater than zero') };
+  }
+  if (!trimmedPerson) {
+    return { error: new Error('Person name is required') };
+  }
+
+  try {
+    const { data: existing, error: fetchErr } = await fromPublic('ledger_entries')
+      .select('id, direction, amount, currency, reason, reference, person_name, person_id, payment_method, location_id, created_at, created_by')
+      .eq('id', id)
+      .single();
+    if (fetchErr) throw fetchErr;
+    if (!existing) return { error: new Error('Entry not found') };
+    if (isPeriodCloseEntry(existing)) {
+      return { error: new Error('Period close entries cannot be edited') };
+    }
+
+    const periodsRes = await fetchLedgerPeriods(cur);
+    if (periodsRes.error) throw periodsRes.error;
+    if (!isEntryInOpenPeriod(existing, periodsRes.data)) {
+      return { error: new Error('Only entries in the current open period can be edited') };
+    }
+
+    const openPeriod = (periodsRes.data || []).find((period) => !period.closed);
+    const createdAt = resolveEntryCreatedAt(
+      entryDate || entryDateFromIso(existing.created_at),
+    );
+    const entryMs = new Date(createdAt).getTime();
+    if (openPeriod?.startMs != null && Number.isFinite(entryMs) && entryMs <= openPeriod.startMs) {
+      return { error: new Error('Date must fall within the current open period') };
+    }
+
+    const contactRes = await upsertLedgerContact(trimmedPerson);
+    if (contactRes.error) throw contactRes.error;
+
+    const payload = {
+      direction: dir,
+      amount: amt,
+      person_name: trimmedPerson,
+      person_id: contactRes.data?.id || existing.person_id || null,
+      reason: trimmedReason || null,
+      created_at: createdAt,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await db
+      .from('ledger_entries')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return { data };
+  } catch (error) {
+    return { error };
+  }
 }
 
 export async function fetchLedgerEntries({ limit = 50, currency, dateFrom, dateTo, personName } = {}) {
@@ -663,6 +796,8 @@ export async function addLedgerEntry({
 }
 
 export {
+  findPeriodByCloseEntryId,
+  isEntryInOpenPeriod,
   isPeriodCloseEntry,
   LEDGER_CURRENCY,
   LEDGER_PAYMENT_METHOD,

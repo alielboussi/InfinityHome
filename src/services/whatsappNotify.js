@@ -244,7 +244,7 @@ function pickLatestLaybySale(row) {
     return {
       id: fallbackId,
       sale_id: fallbackId,
-      sale_date: row?.primaryLayby?.updated_at || row?.primaryLayby?.created_at || null,
+      sale_date: row?.primaryLayby?.created_at || null,
       status: 'layby',
     };
   }
@@ -384,6 +384,16 @@ export async function laybyCustomerRowHasLusakaSaleAsync(row) {
   if (!laybyId) return false;
   const sale = await fetchLatestLaybySaleRow(laybyId);
   return String(sale?.location_id || '') === LUSAKA_BRANCH_ID;
+}
+
+/** Monthly balance WhatsApp is Kitwe laybys only — drop rows whose layby sale is in Lusaka. */
+export async function filterKitweLaybyRowsForMonthlyBalance(laybyRows = []) {
+  const kept = [];
+  for (const row of laybyRows || []) {
+    const isLusaka = await laybyCustomerRowHasLusakaSaleAsync(row);
+    if (!isLusaka) kept.push(row);
+  }
+  return kept;
 }
 
 export function resolveLaybyWhatsAppGroupLabel(customerId, isLusakaSale, customerName) {

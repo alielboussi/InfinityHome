@@ -52,11 +52,19 @@ export function parseStartingDueInput(value) {
   return parsed;
 }
 
+function cloneTotalsByCurrency(totalsByCurrency) {
+  const next = {};
+  Object.entries(totalsByCurrency || {}).forEach(([code, bucket]) => {
+    next[code] = { ...(bucket || {}) };
+  });
+  return next;
+}
+
 export function applyStartingDueToTotalsByCurrency(totalsByCurrency, customer) {
   const amount = getStartingDueBalance(customer);
-  if (amount <= 0.009) return { ...(totalsByCurrency || {}) };
   const currency = normalizeStartingDueCurrency(customer?.currency);
-  const next = { ...(totalsByCurrency || {}) };
+  const next = cloneTotalsByCurrency(totalsByCurrency);
+  if (amount <= 0.009) return next;
   const existing = next[currency] || { total: 0, paid: 0, discount: 0, due: 0 };
   next[currency] = {
     total: toAmount(existing.total) + amount,

@@ -3739,14 +3739,18 @@ async function handleWhatsAppLedger(body) {
     .replace(/\s+/g, '');
   const documentLink = pdfUrl || pdfBase64;
   const periodClose = Boolean(body.periodClose);
+  const periodClosePdfOnly = Boolean(body.periodClosePdfOnly);
 
   if (periodClose && documentLink) {
     const statusMessage = buildLedgerPeriodCloseStatusMessage(body);
     const pdfCaption = buildLedgerPeriodClosePdfCaption(body);
     if (preview) {
+      const previewText = periodClosePdfOnly
+        ? `[PDF only: ${String(body.pdfFilename || 'Ledger_Period_Statement.pdf')}]`
+        : `${statusMessage}\n\n[PDF would follow: ${String(body.pdfFilename || 'Ledger_Period_Statement.pdf')}]`;
       return {
         ok: true,
-        message: `${statusMessage}\n\n[PDF would follow: ${String(body.pdfFilename || 'Ledger_Period_Statement.pdf')}]`,
+        message: previewText,
         preview: true,
       };
     }
@@ -3760,12 +3764,16 @@ async function handleWhatsAppLedger(body) {
     }
 
     const filename = String(body.pdfFilename || 'Ledger_Period_Statement.pdf').trim() || 'Ledger_Period_Statement.pdf';
-    const textDeliveries = await deliverText(
-      routing.targets,
-      statusMessage.slice(0, WHATSAPP_TEXT_LIMIT),
-      routing.mode,
-      routing.provider,
-    );
+    const deliveries = [];
+    if (!periodClosePdfOnly) {
+      const textDeliveries = await deliverText(
+        routing.targets,
+        statusMessage.slice(0, WHATSAPP_TEXT_LIMIT),
+        routing.mode,
+        routing.provider,
+      );
+      deliveries.push(...textDeliveries);
+    }
     const docDeliveries = await deliverDocument(
       routing.targets,
       documentLink,
@@ -3774,10 +3782,11 @@ async function handleWhatsAppLedger(body) {
       routing.provider,
       pdfCaption,
     );
+    deliveries.push(...docDeliveries);
     return {
       ok: true,
-      deliveries: [...textDeliveries, ...docDeliveries],
-      message: statusMessage,
+      deliveries,
+      message: periodClosePdfOnly ? pdfCaption : statusMessage,
     };
   }
 

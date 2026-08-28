@@ -178,6 +178,12 @@ export default async function handler(req, res) {
     const action = resolveAction(req);
 
     if (req.method === 'GET') {
+      if (action === 'layby-pdf') {
+        const { handleLaybyPdfRedirect } = await import('../server/lib/laybyPdfRedirect.js');
+        await handleLaybyPdfRedirect(req, res, db);
+        return;
+      }
+
       const { data, error } = await db
         .from('customers')
         .select('id, name, phone, currency, opening_balance, credit_balance, starting_due_balance, starting_due_balance_date')

@@ -11,13 +11,17 @@ import {
   fetchLedgerPeriods,
   fetchLedgerReport,
   filterLedgerEntries,
+  findPeriodByCloseEntryId,
   formatLedgerInputDate,
+  isEntryInOpenPeriod,
   isPeriodCloseEntry,
   LEDGER_CURRENCY,
   LEDGER_PAYMENT_METHOD,
   ledgerInputDateToApiDate,
   resolveLedgerEntryDate,
+  sendLedgerPeriodWhatsAppPdf,
   setLedgerOpeningBalance,
+  updateLedgerEntry,
 } from './services/ledger';
 import { downloadLedgerPdf } from './utils/ledgerPdf';
 import BackToDashboard from './BackToDashboard';
@@ -28,15 +32,6 @@ function formatMoney(amount) {
     ? n.toLocaleString()
     : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `$ ${formatted}`;
-}
-
-function formatDateTime(value) {
-  if (!value) return '-';
-  try {
-    return new Date(value).toLocaleString();
-  } catch (_) {
-    return value;
-  }
 }
 
 const HISTORY_FETCH_LIMIT = 200;
@@ -93,6 +88,14 @@ export default function LedgerMobile() {
   const [periods, setPeriods] = React.useState([]);
   const [selectedPeriodIndex, setSelectedPeriodIndex] = React.useState('');
   const [refreshTick, setRefreshTick] = React.useState(0);
+  const [sendingPeriodPdfId, setSendingPeriodPdfId] = React.useState('');
+  const [editingEntryId, setEditingEntryId] = React.useState('');
+  const [editDirection, setEditDirection] = React.useState('credit');
+  const [editAmount, setEditAmount] = React.useState('');
+  const [editPersonName, setEditPersonName] = React.useState('');
+  const [editDescription, setEditDescription] = React.useState('');
+  const [editEntryDate, setEditEntryDate] = React.useState('');
+  const [savingEdit, setSavingEdit] = React.useState(false);
 
   React.useEffect(() => {
     try {
@@ -254,6 +257,77 @@ export default function LedgerMobile() {
       window.localStorage.setItem(LAST_ENTRY_DATE_KEY, resolvedEntryDate);
     } catch (_) {}
     setRefreshTick((t) => t + 1);
+  };
+
+  const beginEditEntry = (entry) => {
+    setError('');
+    setInfo('');
+    setEditingEntryId(String(entry.id));
+    setEditDirection(entry.direction === 'debit' ? 'debit' : 'credit');
+    setEditAmount(String(entry.amount ?? ''));
+    setEditPersonName(String(entry.person_name || ''));
+    setEditDescription(String(entry.reason || ''));
+    setEditEntryDate(entryDateFromIso(entry.created_at));
+  };
+
+  const cancelEditEntry = () => {
+    setEditingEntryId('');
+    setEditAmount('');
+    setEditPersonName('');
+    setEditDescription('');
+    setEditEntryDate('');
+  };
+
+  const handleSaveEditEntry = async () => {
+    if (!editingEntryId) return;
+    setError('');
+    setInfo('');
+    let resolvedEntryDate;
+    try {
+      resolvedEntryDate = resolveLedgerEntryDate(editEntryDate, lastEntryDate);
+    } catch (dateErr) {
+      setError(dateErr?.message || 'Invalid transaction date');
+      return;
+    }
+    setSavingEdit(true);
+    const { error: err } = await updateLedgerEntry(editingEntryId, {
+      direction: editDirection,
+      amount: editAmount,
+      currency: LEDGER_CURRENCY,
+      personName: editPersonName,
+      reason: editDescription,
+      entryDate: resolvedEntryDate,
+    });
+    setSavingEdit(false);
+    if (err) {
+      setError(err.message || 'Failed to update entry');
+      return;
+    }
+    setInfo('Entry updated.');
+    cancelEditEntry();
+    setRefreshTick((t) => t + 1);
+  };
+
+  const handleSendPeriodPdf = async (entry) => {
+    const period = findPeriodByCloseEntryId(periods, entry.id);
+    if (!period) {
+      setError('Could not find the closed period for this entry.');
+      return;
+    }
+    setError('');
+    setInfo('');
+    setSendingPeriodPdfId(String(entry.id));
+    const { error: err } = await sendLedgerPeriodWhatsAppPdf({
+      periodIndex: period.index,
+      currency: LEDGER_CURRENCY,
+      includeStatusMessage: false,
+    });
+    setSendingPeriodPdfId('');
+    if (err) {
+      setError(err.message || 'Failed to send period PDF on WhatsApp');
+      return;
+    }
+    setInfo(`${period.label} PDF sent to the ledger WhatsApp group.`);
   };
 
   const handleDownloadPdf = async () => {
@@ -763,11 +837,143 @@ export default function LedgerMobile() {
           )}
           {!loadingEntries && displayedEntries.map((entry) => {
             const periodClose = isPeriodCloseEntry(entry);
+            const closedPeriod = periodClose ? findPeriodByCloseEntryId(periods, entry.id) : null;
+            const canEdit = isEntryInOpenPeriod(entry, periods);
+            const isEditing = String(editingEntryId) === String(entry.id);
+            const sendingPdf = String(sendingPeriodPdfId) === String(entry.id);
             return (
             <div key={entry.id} style={{ padding: 12, background: theme.surface, border: `1px solid ${periodClose ? theme.border : theme.borderSoft}`, borderRadius: 10 }}>
+              {isEditing ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ fontWeight: 800 }}>Edit entry</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setEditDirection('credit')}
+                      style={{
+                        padding: 10,
+                        borderRadius: 8,
+                        border: `2px solid ${editDirection === 'credit' ? '#16c784' : theme.border}`,
+                        background: editDirection === 'credit' ? 'rgba(22, 199, 132, 0.15)' : theme.surfaceAlt,
+                        color: theme.text,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Paid In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditDirection('debit')}
+                      style={{
+                        padding: 10,
+                        borderRadius: 8,
+                        border: `2px solid ${editDirection === 'debit' ? '#e14b4b' : theme.border}`,
+                        background: editDirection === 'debit' ? 'rgba(225, 75, 75, 0.15)' : theme.surfaceAlt,
+                        color: theme.text,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Paid Out
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    onWheel={preventInputWheelScroll}
+                    onWheelCapture={preventInputWheelScroll}
+                    placeholder="Amount (USD)"
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                  />
+                  <input
+                    type="text"
+                    list="ledger-contact-names"
+                    value={editPersonName}
+                    onChange={(e) => setEditPersonName(e.target.value)}
+                    placeholder="Person"
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={editEntryDate}
+                    onChange={(e) => setEditEntryDate(e.target.value)}
+                    placeholder="dd/m/yyyy"
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                  />
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    rows={2}
+                    placeholder="Description (optional)"
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, resize: 'vertical', boxSizing: 'border-box' }}
+                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={handleSaveEditEntry}
+                      disabled={savingEdit}
+                      style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', fontWeight: 800, background: theme.border, color: '#0a0a08' }}
+                    >
+                      {savingEdit ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEditEntry}
+                      disabled={savingEdit}
+                      style={{ flex: 1, padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, fontWeight: 700 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+              <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 800 }}>{formatMoney(entry.amount)}</div>
-                <span style={{
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {periodClose && closedPeriod ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSendPeriodPdf(entry)}
+                      disabled={sendingPdf}
+                      title={`Send ${closedPeriod.label} PDF to ledger WhatsApp group`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '4px 8px',
+                        borderRadius: 8,
+                        border: `1.5px solid ${theme.border}`,
+                        background: theme.surfaceAlt,
+                        color: theme.text,
+                        fontWeight: 700,
+                        cursor: sendingPdf ? 'wait' : 'pointer',
+                      }}
+                    >
+                      <span aria-hidden="true">📄</span>
+                      {sendingPdf ? 'Sending…' : 'Send PDF'}
+                    </button>
+                  ) : null}
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => beginEditEntry(entry)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: 8,
+                        border: `1.5px solid ${theme.border}`,
+                        background: theme.surfaceAlt,
+                        color: theme.text,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  <span style={{
                   padding: '4px 8px',
                   borderRadius: 8,
                   background: periodClose
@@ -785,12 +991,15 @@ export default function LedgerMobile() {
                 >
                   {periodClose ? 'Period close' : entry.direction === 'credit' ? 'Paid In' : 'Paid Out'}
                 </span>
+                </div>
               </div>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
                 {entry.person_name || entry.reference || '—'}
               </div>
               <div style={{ fontSize: 13, marginBottom: 4, wordBreak: 'break-word' }}>{entry.reason || '—'}</div>
               <div style={{ fontSize: 12, opacity: 0.8 }}>{entryDateFromIso(entry.created_at)} · cash</div>
+              </>
+              )}
             </div>
             );
           })}

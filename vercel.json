@@ -71,6 +71,8 @@
     { "source": "/api/customer-statement", "destination": "/api/customers?action=statement" },
     { "source": "/api/customer-totals", "destination": "/api/customers?action=totals" },
 
+    { "source": "/l/:customerId", "destination": "/api/customers?action=layby-pdf&customerId=:customerId" },
+
     { "source": "/api/pos-catalog", "destination": "/api/admin?adminAction=pos-catalog" },
     { "source": "/api/quotation-read", "destination": "/api/admin?adminAction=quotation-read" },
 

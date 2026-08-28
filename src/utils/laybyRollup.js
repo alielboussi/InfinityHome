@@ -22,6 +22,44 @@ const toSortTime = (sale) => {
   return Number.isFinite(time) ? time : 0;
 };
 
+/** POS sale date — never use layby.updated_at (changes when payments are recorded). */
+export function resolvePosSaleDate(sale, layby = null) {
+  const fromSale = sale?.sale_date || sale?.created_at;
+  if (fromSale) return fromSale;
+  const laybySaleId = String(layby?.sale_id || '').trim();
+  const saleId = String(sale?.id ?? sale?.sale_id ?? '').trim();
+  if (laybySaleId && saleId && laybySaleId === saleId) {
+    return layby?.created_at || null;
+  }
+  return null;
+}
+
+export function normalizeLaybyDateKey(raw) {
+  const str = String(raw || '');
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  try {
+    const dt = new Date(str);
+    if (Number.isNaN(dt.getTime())) return '';
+    const y = dt.getFullYear();
+    const mo = String(dt.getMonth() + 1).padStart(2, '0');
+    const da = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${mo}-${da}`;
+  } catch {
+    return '';
+  }
+}
+
+/** Latest POS sale date for statement PDF filenames. */
+export function pickStatementFileDate(sales = []) {
+  const keys = (sales || [])
+    .map((sale) => normalizeLaybyDateKey(resolvePosSaleDate(sale)))
+    .filter(Boolean)
+    .sort();
+  if (!keys.length) return new Date().toISOString().slice(0, 10);
+  return keys[keys.length - 1];
+}
+
 /** Prefer negotiated layby totals when line-item sums are still at list price. */
 export function resolveNegotiatedGrossSubtotal({
   itemSubtotal = 0,
@@ -53,7 +91,7 @@ export function resolveNegotiatedGrossSubtotal({
   return Math.max(0, gross);
 }
 
-export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v29';
+export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v31';
 
 export function parseFallbackSettlementDateTs(dateLabel) {
   const m = /^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/.exec(String(dateLabel || '').trim());
@@ -260,6 +298,33 @@ export function computePooledLaybyTotalsByCurrency(statement) {
   return finalized;
 }
 
+export function sumPooledLaybyDue(statement) {
+  const totals = computePooledLaybyTotalsByCurrency(statement);
+  return Object.values(totals || {}).reduce((sum, bucket) => sum + toNumber(bucket?.due), 0);
+}
+
+/** One pooled payment target — down payments credit the whole customer balance, not per-sale buckets. */
+export function buildPooledLaybyPaymentTarget(statement, poolSaleId) {
+  const normalized = normalizeLaybyStatement(statement || {});
+  const due = sumPooledLaybyDue(normalized);
+  if (due <= 0.009) return [];
+  const poolKey = String(poolSaleId || '').trim();
+  const sale = (normalized.sales || []).find((row) => {
+    const id = String(row?.sale_id ?? row?.id ?? '').trim();
+    return poolKey && id === poolKey;
+  }) || (normalized.sales || [])[0] || null;
+  const resolvedSaleId = poolKey || String(sale?.sale_id ?? sale?.id ?? '').trim();
+  if (!resolvedSaleId) return [];
+  return [{
+    saleId: resolvedSaleId,
+    saleKey: resolvedSaleId,
+    currency: sale?.currency || 'K',
+    due,
+    sortTime: toSortTime(sale || {}),
+    sortIndex: 0,
+  }];
+}
+
 /** Fahme accounts are USD-only — fold mis-tagged K buckets without re-deriving due. */
 export function getDisplayTotalsByCurrency(row, { isFahmeCustomer } = {}) {
   const raw = row?.totalsByCurrency || {};
@@ -311,6 +376,11 @@ export function buildOutstandingLaybySales(statement) {
 
 export function filterStatementToOutstandingSales(statement) {
   const normalized = normalizeLaybyStatement(statement || {});
+  const pooledDue = sumPooledLaybyDue(normalized);
+  if (pooledDue <= 0.009) {
+    return { sales: [], items: [], payments: [] };
+  }
+
   const outstandingSaleIds = new Set(
     buildLaybySaleFinancials(normalized)
       .filter((sale) => toNumber(sale.due) > 0)
@@ -318,13 +388,14 @@ export function filterStatementToOutstandingSales(statement) {
       .filter(Boolean)
   );
 
+  // Pooled balance still owed but payments sit on one anchor sale — keep full statement.
   if (!outstandingSaleIds.size) {
-    return { sales: [], items: [], payments: [] };
+    return normalized;
   }
 
   return {
     sales: (normalized.sales || []).filter((sale) => outstandingSaleIds.has(String(sale?.sale_id ?? sale?.id ?? '').trim())),
     items: (normalized.items || []).filter((item) => outstandingSaleIds.has(String(item?.sale_id || '').trim())),
-    payments: (normalized.payments || []).filter((payment) => outstandingSaleIds.has(String(payment?.sale_id || '').trim())),
+    payments: normalized.payments || [],
   };
 }
