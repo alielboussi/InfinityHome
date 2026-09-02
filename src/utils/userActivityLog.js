@@ -22,25 +22,25 @@ export async function logUserActivity({
   metadata = null,
   route = null,
 } = {}) {
-  const user = getCurrentUser();
-  if (!user?.id && !user?.email) return;
-
-  await ensureAuthSession();
-  const token = await getAccessToken();
-  if (!token) return;
-
-  const payload = {
-    actionType: String(actionType || 'action').trim(),
-    actionLabel: String(actionLabel || 'Action').trim(),
-    details: details ? String(details) : '',
-    reference: reference != null ? String(reference) : null,
-    entityType: entityType != null ? String(entityType) : null,
-    entityId: entityId != null ? String(entityId) : null,
-    metadata: metadata && typeof metadata === 'object' ? metadata : null,
-    route: route || (typeof window !== 'undefined' ? window.location.pathname : null),
-  };
-
   try {
+    const user = getCurrentUser();
+    if (!user?.id && !user?.email) return;
+
+    await ensureAuthSession();
+    const token = await getAccessToken();
+    if (!token) return;
+
+    const payload = {
+      actionType: String(actionType || 'action').trim(),
+      actionLabel: String(actionLabel || 'Action').trim(),
+      details: details ? String(details) : '',
+      reference: reference != null ? String(reference) : null,
+      entityType: entityType != null ? String(entityType) : null,
+      entityId: entityId != null ? String(entityId) : null,
+      metadata: metadata && typeof metadata === 'object' ? metadata : null,
+      route: route || (typeof window !== 'undefined' ? window.location.pathname : null),
+    };
+
     const headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -59,7 +59,7 @@ export async function logUserActivity({
       if (timer) clearTimeout(timer);
     }
   } catch (err) {
-    console.warn('[user-activity] failed to log action', err);
+    console.warn('[user-activity] failed to log action', err?.message || err);
   }
 }
 

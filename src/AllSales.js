@@ -19,7 +19,7 @@ import { buildLaybySaleFinancials, computePooledLaybyTotalsByCurrency } from './
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
 import { fetchPosLocationsViaApi } from './services/posCatalogApi';
-import { getStartingDueBalance, normalizeStartingDueCurrency } from './utils/startingDueBalance';
+import { getStartingDueBalance, applyStartingDueToTotalsByCurrency } from './utils/startingDueBalance';
 import { logUserActivity } from './utils/userActivityLog';
 
 function formatCurrency(amount, currency = 'K') {
@@ -454,22 +454,27 @@ export default function AllSales() {
           );
 
           if (!hasLaybyActivity) {
-            const startingDue = getStartingDueBalance(cMap[customerId]);
-            aggs[customerId] = rows.reduce((acc, row) => {
+            const base = rows.reduce((acc, row) => {
               acc.total += Number(row.total_amount || 0);
               acc.paid += Number(row.paid || 0);
               acc.outstanding += Number(row.outstanding || 0);
               return acc;
-            }, { total: 0, paid: 0, outstanding: 0, currency });
-            if (startingDue > 0.009) {
-              aggs[customerId].total += startingDue;
-              aggs[customerId].outstanding += startingDue;
-            }
+            }, { total: 0, paid: 0, outstanding: 0 });
+            const totalsByCurrency = applyStartingDueToTotalsByCurrency(
+              { [currency]: { total: base.total, paid: base.paid, discount: 0, due: base.outstanding } },
+              cMap[customerId] || {},
+            );
+            const bucket = totalsByCurrency[currency] || { total: base.total, paid: base.paid, due: base.outstanding };
+            aggs[customerId] = {
+              total: Number(bucket.total || 0),
+              paid: Number(bucket.paid || 0),
+              outstanding: Number(bucket.due || 0),
+              currency,
+            };
             continue;
           }
 
           const statementRows = filterStatementSalesForCustomer(rows, laybys);
-          const statementSaleIds = new Set(statementRows.map((row) => String(row.id)));
           const statementSales = statementRows.map((row) => {
             const vf = vfMap[String(row.id)] || {};
             const vatInclusive = row.vat_inclusive === true
@@ -494,7 +499,6 @@ export default function AllSales() {
             saleIds: statementRows.map((row) => row.id),
           });
           const statementPayments = (customerPaymentRows || [])
-            .filter((payment) => statementSaleIds.has(String(payment?.sale_id || '')))
             .map((payment) => ({ ...payment, payment_type: String(payment.payment_type || '').toLowerCase() }));
           const normalized = normalizeLaybyStatement({
             sales: statementSales,
@@ -504,21 +508,18 @@ export default function AllSales() {
           buildLaybySaleFinancials(normalized).forEach((fin) => {
             saleFinMap.set(String(fin.saleId), fin);
           });
-          const totalsByCurrency = computePooledLaybyTotalsByCurrency(normalized);
+          const totalsByCurrency = applyStartingDueToTotalsByCurrency(
+            computePooledLaybyTotalsByCurrency(normalized),
+            cMap[customerId] || {},
+          );
           const bucket = totalsByCurrency[currency]
             || totalsByCurrency.USD
             || totalsByCurrency[Object.keys(totalsByCurrency)[0]]
             || { total: 0, paid: 0, due: 0 };
-          const total = Number(bucket.total || 0);
-          const paid = Number(bucket.paid || 0);
-          const outstanding = Number(bucket.due || 0);
-          const startingDue = getStartingDueBalance(cMap[customerId]);
-          const startingCurrency = normalizeStartingDueCurrency(cMap[customerId]?.currency, currency);
-          const includeStartingDue = startingDue > 0.009 && startingCurrency === currency;
           aggs[customerId] = {
-            total: total + (includeStartingDue ? startingDue : 0),
-            paid,
-            outstanding: outstanding + (includeStartingDue ? startingDue : 0),
+            total: Number(bucket.total || 0),
+            paid: Number(bucket.paid || 0),
+            outstanding: Number(bucket.due || 0),
             currency,
           };
         }

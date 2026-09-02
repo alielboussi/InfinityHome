@@ -131,6 +131,7 @@ export async function finalizeFirestoreCheckout(payload = {}) {
         unit_price: Number(item.unit_price || 0),
         currency: saleCurrency,
         color: item.color || null,
+        qty_unit: item.qty_unit || null,
       };
       tx.set(db.collection('sales_items').doc(String(itemId)), itemRow);
       itemsInserted += 1;

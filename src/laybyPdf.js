@@ -11,6 +11,7 @@ import { fetchLaybyStatement } from './services/laybyStatement';
 import { fetchLaybyPaymentsByCustomerId, fetchMergedLaybyPayments, dedupeLaybyPaymentRows, buildLaybyPaymentLooseKey } from './services/laybyPayments';
 import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
 import { pickStatementFileDate, resolvePosSaleDate, normalizeLaybyDateKey, computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount } from './utils/laybyRollup';
+import { getStartingDueBalance, getStartingDueBalanceDate } from './utils/startingDueBalance';
 import { isFahme, isFahmeAcc2, resolveFahmeFallbackKey, FAHME_FALLBACK_KEY_PRIMARY, shouldUseFahmeLiveStatementOnly } from './laybyRules';
 import laybyPdfItemFallbacks from './data/laybyPdfItemFallbacks.json';
 import laybyPdfSettlementFallbacks from './data/laybyPdfSettlementFallbacks.json';
@@ -46,6 +47,23 @@ function posPaymentTypeLabel(type = '') {
     down_payment: 'Down Payment',
   };
   return map[key] || titleCase(String(type || '').replace(/_/g, ' '));
+}
+
+function isSqMQtyUnit(unit) {
+  const normalized = String(unit || '').trim().toLowerCase().replace(/\s+/g, '');
+  return normalized === 'm2' || normalized === 'm²' || normalized === 'sqm';
+}
+
+function formatSqMQtyValue(qty) {
+  const n = Number(qty);
+  if (!Number.isFinite(n)) return '';
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
+}
+
+function buildPdfQtyDisplay(qty, unit) {
+  if (!isSqMQtyUnit(unit)) return undefined;
+  const value = formatSqMQtyValue(qty);
+  return value ? `${value} m²` : '';
 }
 
 function isSystemReceiptTag(value) {
@@ -682,6 +700,66 @@ function scopeRelatedToLaybyAccount(related, layby) {
   return related;
 }
 
+function isStartingDueSale(sale) {
+  const saleId = String(sale?.sale_id ?? sale?.id ?? '').trim();
+  if (saleId === 'starting_due_balance') return true;
+  if (sale?._startingDue) return true;
+  return String(sale?.origin || '').trim().toLowerCase() === 'starting_due_balance';
+}
+
+async function resolveCustomerStartingDueForPdf(customer, customerId) {
+  let merged = { ...(customer || {}) };
+  if (customerId) {
+    try {
+      const { data } = await db
+        .from('customers')
+        .select('starting_due_balance, starting_due_balance_date, currency')
+        .eq('id', customerId)
+        .maybeSingle();
+      if (data) merged = { ...merged, ...data };
+    } catch {}
+  }
+  return {
+    customer: merged,
+    startingDueAmount: getStartingDueBalance(merged),
+    startingDueDate: getStartingDueBalanceDate(merged),
+  };
+}
+
+function buildProductTableFooterDefs({
+  net,
+  discount,
+  totalAfterDiscount,
+  isPosReceipt,
+  useRunningDueBalance,
+  previousDueBalance,
+  numberFmt,
+}) {
+  if (!isPosReceipt && useRunningDueBalance) {
+    const tableDue = previousDueBalance + totalAfterDiscount;
+    return [
+      { label: 'Total', value: numberFmt(totalAfterDiscount) },
+      { label: 'Previous Due Balance', value: numberFmt(previousDueBalance) },
+      { label: 'Due Balance', value: numberFmt(tableDue) },
+    ];
+  }
+  const footerDefs = [
+    { label: 'Net', value: numberFmt(net) },
+    ...(discount > 0 ? [{ label: 'Discount', value: `-${numberFmt(discount)}` }] : []),
+    { label: 'VAT @ 16%', value: 'Inclusive' },
+    { label: 'Total', value: numberFmt(totalAfterDiscount) },
+  ];
+  if (!isPosReceipt) {
+    footerDefs.push({ label: 'Due', value: numberFmt(totalAfterDiscount) });
+  }
+  return footerDefs;
+}
+
+function startingDueBalanceDescription(startingDueDate, prettyDMY) {
+  const dateLabel = startingDueDate ? prettyDMY(startingDueDate) : '';
+  return dateLabel ? `(${dateLabel}) - Starting balance` : 'Starting balance';
+}
+
 function readRowTotalsUsd(opts) {
   const raw = opts?.totalsByCurrency || {};
   const entry = raw.USD || raw.$ || raw.usd || null;
@@ -798,10 +876,10 @@ function filterPdfCustomerPayments(payments, customerId) {
   });
 }
 
-function filterPaymentsForPdfSettlement(payments, { customerId, allowedSaleIds, isFahmeCustomer }) {
+function filterPaymentsForPdfSettlement(payments, { customerId, allowedSaleIds, isFahmeCustomer, useRunningDueBalance }) {
   return filterPdfCustomerPayments(payments, customerId).filter((payment) => {
     if (!(Number(payment?.amount || 0) > 0 || Number(payment?.discount_amount || 0) > 0)) return false;
-    if (isFahmeCustomer) return true;
+    if (isFahmeCustomer || useRunningDueBalance) return true;
     const saleId = String(payment?.sale_id || '').trim();
     if (!saleId) return true;
     return allowedSaleIds.has(saleId);
@@ -1085,6 +1163,16 @@ async function augmentFahmeSettlementPayments(related, customerId) {
   } catch {}
 }
 
+async function augmentPooledCustomerSettlementPayments(related, customerId) {
+  const id = String(customerId || '').trim();
+  if (!id) return;
+  try {
+    const { data, error } = await fetchMergedLaybyPayments({ customerId: id });
+    if (error || !Array.isArray(data)) return;
+    mergeLaybyPaymentRows(related, data);
+  } catch {}
+}
+
 function normalizeSettlementLineDescriptions(paymentLines) {
   paymentLines.forEach((line) => {
     const dateLabel = line?.date
@@ -1245,6 +1333,9 @@ export async function generateLaybyPdf(layby, opts = {}) {
       ? resolveFahmeFallbackKey(fahmeCustomerId, custName)
       : fallbackCustomerKey;
     const useLiveStatementOnly = shouldUseFahmeLiveStatementOnly(fahmeCustomerId, custName, opts);
+    const startingDueResolved = await resolveCustomerStartingDueForPdf(customer, fahmeCustomerId);
+    const startingDueAmount = isFahmeCustomer ? 0 : startingDueResolved.startingDueAmount;
+    const startingDueDate = isFahmeCustomer ? null : startingDueResolved.startingDueDate;
     let fallbackSectionsPrimary = [];
     if (useLiveStatementOnly) {
       fallbackSectionsPrimary = [];
@@ -1525,7 +1616,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
           } catch {}
           const { data: itemRows, error: itemsErr } = await db
             .from('sales_items')
-            .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
+            .select('sale_id, product_id, display_name, quantity, unit_price, currency, color, qty_unit')
             .in('sale_id', saleIdsNumeric);
           if (itemsErr && PDF_DEBUG) { try { console.error('[LaybyPDF] sales_items fetch error', itemsErr.message || itemsErr); } catch {} }
           related.items = itemRows || [];
@@ -1713,6 +1804,8 @@ export async function generateLaybyPdf(layby, opts = {}) {
     const itemRowsBySale = buildItemRowsBySale(related.items);
     const preferLivePosItemBreakdown = customerHasLiveSaleItemLines(itemRowsBySale) && !useLiveStatementOnly;
     related.sales = dedupeRedundantLaybySalesForPdf(related.sales, itemRowsBySale, related.finBySale || {});
+    related.sales = (related.sales || []).filter((sale) => !isStartingDueSale(sale));
+    if (related.finBySale?.starting_due_balance) delete related.finBySale.starting_due_balance;
     const salesByDate = {};
     related.sales.forEach(s => {
       const k = dateKey(s);
@@ -1896,10 +1989,13 @@ export async function generateLaybyPdf(layby, opts = {}) {
     fallbackSections,
     related.finBySale || {}
   );
-  // Running cumulative due shown between tables
-  let cumulativeDueAcrossDates = 0;
+  // Running cumulative due shown between tables (or carried from opening balance).
+  const useRunningDueBalance = !isFahmeCustomer && startingDueAmount > 0.009;
+  let cumulativeDueAcrossDates = useRunningDueBalance ? startingDueAmount : 0;
   const renderedProductSignatures = new Set();
   const isPosReceipt = Boolean(opts?.posReceipt);
+  const receiptUsesSqMQty = isPosReceipt && (related.items || []).some((item) => isSqMQtyUnit(item?.qty_unit));
+  const qtyColumnLabel = receiptUsesSqMQty ? 'Qty m²' : 'Qty';
 
     // Credit tracking removed: all payments are treated uniformly.
 
@@ -1944,6 +2040,45 @@ export async function generateLaybyPdf(layby, opts = {}) {
       }
     }
 
+    if (useRunningDueBalance) {
+      const tableWidth = colWidths.qty + colWidths.name + colWidths.price + colWidths.amount;
+      const typeColWidth = 140;
+      const amountColWidth = 120;
+      const descColWidth = tableWidth - typeColWidth - amountColWidth;
+      const descX = tableMarginLeft + cellPaddingX;
+      const typeX = tableMarginLeft + descColWidth + cellPaddingX;
+      const amountX = tableMarginLeft + tableWidth - cellPaddingX;
+      const sectionTopY = yCursor;
+      const sectionHeight = 10 + headerHeight + rowLineHeight + 8;
+      ensureSpace(sectionHeight);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('Starting Due Balance', tableMarginLeft, yCursor);
+      yCursor += 10;
+      doc.setFillColor(0, 132, 170);
+      try { doc.rect(tableMarginLeft, yCursor, tableWidth, headerHeight, 'F'); } catch {}
+      doc.setTextColor(255);
+      doc.setFontSize(11);
+      doc.text('Description', descX, yCursor + headerHeight / 2 + 1, { baseline: 'middle' });
+      doc.text('Payment Type', typeX, yCursor + headerHeight / 2 + 1, { baseline: 'middle' });
+      doc.text('Amount', amountX, yCursor + headerHeight / 2 + 1, { align: 'right', baseline: 'middle' });
+      yCursor += headerHeight;
+      doc.setTextColor(0);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10.5);
+      const openingDescription = startingDueBalanceDescription(startingDueDate, prettyDMY);
+      doc.text(openingDescription, descX, yCursor + rowLineHeight / 2, { baseline: 'middle' });
+      doc.text('-', typeX, yCursor + rowLineHeight / 2, { baseline: 'middle' });
+      doc.text(numberFmt(startingDueAmount), amountX, yCursor + rowLineHeight / 2, { align: 'right', baseline: 'middle' });
+      yCursor += rowLineHeight;
+      if (DRAW_TABLE_BORDERS) {
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.9);
+        doc.rect(tableMarginLeft, sectionTopY, tableWidth, yCursor - sectionTopY);
+      }
+      yCursor += 20;
+    }
+
   const dateTotals = [];
   const dateDiscountTotals = []; // track discounts per date section
   let hasCanonicalOutstanding = false;
@@ -1975,7 +2110,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
   doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(255);
   const xStart = tableMarginLeft;
   const headY = yCursor + headerHeight/2;
-  doc.text('Qty', xStart + cellPaddingX, headY, { baseline: 'middle' });
+  doc.text(qtyColumnLabel, xStart + cellPaddingX, headY, { baseline: 'middle' });
   doc.text('Product Name', xStart + colWidths.qty + cellPaddingX, headY, { baseline: 'middle' });
   doc.text('Price', xStart + colWidths.qty + colWidths.name + colWidths.price - cellPaddingX, headY, { align: 'right', baseline: 'middle' });
   doc.text('Amount', xStart + colWidths.qty + colWidths.name + colWidths.price + colWidths.amount - cellPaddingX, headY, { align: 'right', baseline: 'middle' });
@@ -1995,7 +2130,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       if (DRAW_TABLE_BORDERS) [xQty, xName, xPrice, xAmount].forEach(x => doc.line(x, tableTopY, x, tableBottomY));
     }
 
-    if (!dateSections.length) {
+    if (!dateSections.length && !useRunningDueBalance) {
       ensureSpace(24);
       doc.setFont('helvetica','italic'); doc.setFontSize(12);
       doc.text('No recorded sale item lines for this layby.', tableMarginLeft, yCursor);
@@ -2059,7 +2194,11 @@ export async function generateLaybyPdf(layby, opts = {}) {
         const saleId = it.sale?.id;
         const detailLines = [];
         if (it.color) detailLines.push(`Color: ${it.color}`);
-        rows.push({ qty, name, price, amount, saleId, type: 'regular', indent: 0, detailLines });
+        const usesSqM = isSqMQtyUnit(it.qty_unit);
+        const qtyDisplay = usesSqM && !(isPosReceipt && receiptUsesSqMQty)
+          ? buildPdfQtyDisplay(qty, it.qty_unit)
+          : undefined;
+        rows.push({ qty, name, price, amount, saleId, type: 'regular', indent: 0, detailLines, qtyDisplay });
       });
       // Remove any empty/zero rows (qty 0 OR amount 0) unless there is a non-zero price *and* quantity.
       const originalRows = rows.slice();
@@ -2277,8 +2416,10 @@ export async function generateLaybyPdf(layby, opts = {}) {
         blockHeight += rowLineHeight;
         if (r._detailHeight) blockHeight += r._detailHeight + 2;
       });
-  // footer rows we will render: Net, Discount (if any), VAT Inclusive, Total, Due (= Total)
-  const footerRowCount = (isPosReceipt ? 3 : 4) + (discount > 0 ? 1 : 0);
+  // footer rows we will render: Net, Discount (if any), VAT Inclusive, Total, Due (+ Previous Due when opening balance)
+  const footerRowCount = useRunningDueBalance && !isPosReceipt
+    ? 3
+    : ((isPosReceipt ? 3 : 4) + (discount > 0 ? 1 : 0));
   blockHeight += rowLineHeight * footerRowCount;
 
       const totalsHeight = headerHeight * 2; // Net + Total lines plus spacing (VAT is label-only) roughly
@@ -2335,15 +2476,17 @@ export async function generateLaybyPdf(layby, opts = {}) {
         doc.setFont('helvetica','bold'); doc.setFontSize(10.5);
         const labelX = xStart + colWidths.qty + colWidths.name + colWidths.price - cellPaddingX;
         const valueX = xStart + colWidths.qty + colWidths.name + colWidths.price + colWidths.amount - cellPaddingX;
-        // Footer shows figures before any payments are applied; Due equals Total for the date section
-        const footerDefs = [
-          { label: 'Net', value: numberFmt(net) },
-          ...(discount > 0 ? [{ label: 'Discount', value: '-' + numberFmt(discount) }] : []),
-          { label: 'VAT @ 16%', value: 'Inclusive' },
-          { label: 'Total', value: numberFmt(totalAfterDiscount) },
-          ...(!isPosReceipt ? [{ label: 'Due', value: numberFmt(dueForDate) }] : []),
-        ];
-        const HEAVY_FOOTER = new Set(['Net','VAT @ 16%','Due','Balance Closed','Full Payment Closed']);
+        const previousDueBalance = cumulativeDueAcrossDates;
+        const footerDefs = buildProductTableFooterDefs({
+          net,
+          discount,
+          totalAfterDiscount,
+          isPosReceipt,
+          useRunningDueBalance,
+          previousDueBalance,
+          numberFmt,
+        });
+        const HEAVY_FOOTER = new Set(['Net','VAT @ 16%','Due','Due Balance','Previous Due Balance','Balance Closed','Full Payment Closed']);
         footerDefs.forEach((rw, fIdx) => {
           const midY = yCursor + rowLineHeight/2;
           doc.text(rw.label, labelX, midY, { align: 'right', baseline: 'middle' });
@@ -2359,17 +2502,19 @@ export async function generateLaybyPdf(layby, opts = {}) {
         if (DRAW_TABLE_BORDERS) { doc.setDrawColor(0,0,0); doc.setLineWidth(0.9); doc.rect(tableMarginLeft, tableTopY - 2, xEnd - tableMarginLeft, tableBottomY - (tableTopY - 2)); }
         // Vertical grid lines full height of content below merged date row, but not drawing extra lines inside footer beyond separation already drawn.
         drawVerticals(tableTopY + headerHeight - 2, tableBottomY);
-        // --- Cumulative Due row (merged, between tables) ---
-        const newCum = cumulativeDueAcrossDates + dueForDate;
-        if (!isPosReceipt && cumulativeDueAcrossDates > 0) {
-          // ensure small gap below table
-          const midYcum = yCursor + rowLineHeight/2;
-          doc.setFont('helvetica','bold'); doc.setFontSize(11);
-          doc.text('Total Due', labelX, midYcum, { align: 'right', baseline: 'middle' });
-          doc.text(numberFmt(newCum), valueX, midYcum, { align: 'right', baseline: 'middle' });
-          yCursor += rowLineHeight + 8;
+        if (useRunningDueBalance) {
+          cumulativeDueAcrossDates = previousDueBalance + totalAfterDiscount;
+        } else {
+          const newCum = cumulativeDueAcrossDates + dueForDate;
+          if (!isPosReceipt && cumulativeDueAcrossDates > 0) {
+            const midYcum = yCursor + rowLineHeight/2;
+            doc.setFont('helvetica','bold'); doc.setFontSize(11);
+            doc.text('Total Due', labelX, midYcum, { align: 'right', baseline: 'middle' });
+            doc.text(numberFmt(newCum), valueX, midYcum, { align: 'right', baseline: 'middle' });
+            yCursor += rowLineHeight + 8;
+          }
+          cumulativeDueAcrossDates = newCum;
         }
-        cumulativeDueAcrossDates = newCum;
         return;
       }
 
@@ -2441,16 +2586,18 @@ export async function generateLaybyPdf(layby, opts = {}) {
           const discount2 = Math.min(Number(viewDiscount2 || 0), netIncl);
           const totalAfterDiscount2 = Math.max(0, netIncl - discount2);
           const dueForDate2 = totalAfterDiscount2;
-          // Save for post-table cumulative Total Due line
           remainingDueForThisDate = dueForDate2;
-          const footerDefs = [
-            { label: 'Net', value: numberFmt(netIncl) },
-            ...(discount2 > 0 ? [{ label: 'Discount', value: '-' + numberFmt(discount2) }] : []),
-            { label: 'VAT @ 16%', value: 'Inclusive' },
-            { label: 'Total', value: numberFmt(totalAfterDiscount2) },
-            ...(!isPosReceipt ? [{ label: 'Due', value: numberFmt(dueForDate2) }] : []),
-          ];
-          const HEAVY_FOOTER = new Set(['Net','VAT @ 16%','Due','Balance Closed','Full Payment Closed']);
+          const previousDueBalance2 = cumulativeDueAcrossDates;
+          const footerDefs = buildProductTableFooterDefs({
+            net: netIncl,
+            discount: discount2,
+            totalAfterDiscount: totalAfterDiscount2,
+            isPosReceipt,
+            useRunningDueBalance,
+            previousDueBalance: previousDueBalance2,
+            numberFmt,
+          });
+          const HEAVY_FOOTER = new Set(['Net','VAT @ 16%','Due','Due Balance','Previous Due Balance','Balance Closed','Full Payment Closed']);
           const footerMeta = [];
           footerDefs.forEach(rw => {
             const midY = yCursor + rowLineHeight/2;
@@ -2475,18 +2622,21 @@ export async function generateLaybyPdf(layby, opts = {}) {
         drawVerticals(verticalInnerStartY, segBottom);
         // If this segment completes the date section, show cumulative due row below
         if (remainingRows === 0 && remainingDueForThisDate != null) {
-          const newCum2 = cumulativeDueAcrossDates + remainingDueForThisDate;
-          if (!isPosReceipt && cumulativeDueAcrossDates > 0) {
-            // small gap
-            const labelXcum = tableMarginLeft + colWidths.qty + colWidths.name + colWidths.price - 10;
-            const valueXcum = tableMarginLeft + colWidths.qty + colWidths.name + colWidths.price + colWidths.amount;
-            const midYcum = yCursor + rowLineHeight/2;
-            doc.setFont('helvetica','bold'); doc.setFontSize(11);
-            doc.text('Total Due', labelXcum, midYcum, { align: 'right', baseline: 'middle' });
-            doc.text(numberFmt(newCum2), valueXcum, midYcum, { align: 'right', baseline: 'middle' });
-            yCursor += rowLineHeight + 8;
+          if (useRunningDueBalance) {
+            cumulativeDueAcrossDates = cumulativeDueAcrossDates + remainingDueForThisDate;
+          } else {
+            const newCum2 = cumulativeDueAcrossDates + remainingDueForThisDate;
+            if (!isPosReceipt && cumulativeDueAcrossDates > 0) {
+              const labelXcum = tableMarginLeft + colWidths.qty + colWidths.name + colWidths.price - 10;
+              const valueXcum = tableMarginLeft + colWidths.qty + colWidths.name + colWidths.price + colWidths.amount;
+              const midYcum = yCursor + rowLineHeight/2;
+              doc.setFont('helvetica','bold'); doc.setFontSize(11);
+              doc.text('Total Due', labelXcum, midYcum, { align: 'right', baseline: 'middle' });
+              doc.text(numberFmt(newCum2), valueXcum, midYcum, { align: 'right', baseline: 'middle' });
+              yCursor += rowLineHeight + 8;
+            }
+            cumulativeDueAcrossDates = newCum2;
           }
-          cumulativeDueAcrossDates = newCum2;
         }
         if (remainingRows > 0) { addPageWithWatermarkIfNeeded(true); yCursor = margin; }
       }
@@ -2507,6 +2657,11 @@ export async function generateLaybyPdf(layby, opts = {}) {
       if (isFahmeCustomer) {
         await augmentFahmeSettlementPayments(related, fahmeCustomerId);
         related.payments = (related.payments || []).map(p => ({ ...p, payment_type: String(p.payment_type || '').toLowerCase() }));
+      } else if (useRunningDueBalance) {
+        await augmentPooledCustomerSettlementPayments(related, layby?.customer_id || customer?.id);
+        related.payments = dedupeLaybyPaymentRows(
+          (related.payments || []).map(p => ({ ...p, payment_type: String(p.payment_type || '').toLowerCase() })),
+        );
       }
         // Build payment events as one row per original down-payment batch.
   const paymentLines = [];
@@ -2516,6 +2671,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
     customerId: layby?.customer_id || customer?.id,
     allowedSaleIds,
     isFahmeCustomer,
+    useRunningDueBalance,
   });
   const pdfBatchTag = 'PDF_ITEM_RESTORE_20260610/';
   const isPdfRestoreCustomer = useLiveStatementOnly
@@ -2632,8 +2788,16 @@ export async function generateLaybyPdf(layby, opts = {}) {
       currency: saleCurrency || layby?.sale_currency || customer?.currency || 'K',
       paymentLines,
     });
-    const downPaymentTotal = settlementTotals.paidTotal;
-    const dueRemaining = settlementTotals.dueRemaining;
+    const downPaymentTotal = useRunningDueBalance
+      ? paymentLines.reduce((sum, line) => sum + Number(line?.amount || 0), 0)
+      : settlementTotals.paidTotal;
+    let dueRemaining = settlementTotals.dueRemaining;
+    if (useRunningDueBalance) {
+      const owedTotal = cumulativeDueAcrossDates > 0.009
+        ? cumulativeDueAcrossDates
+        : startingDueAmount;
+      dueRemaining = Math.max(0, owedTotal - downPaymentTotal);
+    }
       if (paymentLines.length) {
         // Desired gap between main table and settlement: 3cm (~85pt)
         const CM = 28.346; const desiredGap = 3 * CM; // ≈85.04pt

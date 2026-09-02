@@ -354,7 +354,7 @@ export default function POS({ isMobile = false }) {
   const [productPriceError, setProductPriceError] = useState('');
   const [productPriceSaving, setProductPriceSaving] = useState(false);
   const [showCustomProductModal, setShowCustomProductModal] = useState(false);
-  const [customProductForm, setCustomProductForm] = useState({ name: '', price: '', qty: 1 });
+  const [customProductForm, setCustomProductForm] = useState({ name: '', price: '', qty: 1, qtyInSqM: false });
   const [customProductError, setCustomProductError] = useState('');
   const [posUser, setPosUser] = useState(() => getCurrentUser());
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -768,6 +768,7 @@ export default function POS({ isMobile = false }) {
     const name = customProductForm.name.trim();
     const price = Number(customProductForm.price);
     const qty = Number(customProductForm.qty);
+    const qtyInSqM = Boolean(customProductForm.qtyInSqM);
     if (!name || isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
       setCustomProductError('Enter valid name, price, and quantity.');
       return;
@@ -783,11 +784,12 @@ export default function POS({ isMobile = false }) {
         isCustom: true,
         isSet: false,
         currency,
-        color: ''
+        color: '',
+        qtyUnit: qtyInSqM ? 'm2' : null,
       }
     ]);
     setShowCustomProductModal(false);
-    setCustomProductForm({ name: '', price: '', qty: 1 });
+    setCustomProductForm({ name: '', price: '', qty: 1, qtyInSqM: false });
   };
 
   const handleProductClick = (product) => {
@@ -1483,7 +1485,8 @@ export default function POS({ isMobile = false }) {
           quantity: Number(item.qty),
           unit_price: Number(item.price),
           currency: item.currency || ctx.currency,
-          color: item.color || null
+          color: item.color || null,
+          qty_unit: item.qtyUnit === 'm2' ? 'm2' : null,
         });
       } else if (item.isSet) {
         const comboIdInt = typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : item.id;
@@ -2423,7 +2426,20 @@ export default function POS({ isMobile = false }) {
                 {item.name}{item.isCustom && <span style={{ color: '#00b4d8', fontSize: '0.9em', marginLeft: 4 }}>(Custom)</span>}
                 {item.isSet && <span style={{ color: '#00b4d8', fontSize: '0.9em', marginLeft: 8 }}>(Stock: {item.stock})</span>}
               </td>
-              <td className="num-col" style={{ padding: 4 }}><input type="number" min="1" max={item.stock || 9999} value={item.qty} onChange={e => updateCartItem(idx, { qty: Number(e.target.value) })} style={{ width: 48, fontSize: '0.95rem', height: 24, textAlign: 'center' }} /></td>
+              <td className="num-col" style={{ padding: 4 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <input
+                    type="number"
+                    min={item.qtyUnit === 'm2' ? 0.01 : 1}
+                    step={item.qtyUnit === 'm2' ? 0.01 : 1}
+                    max={item.stock || 9999}
+                    value={item.qty}
+                    onChange={e => updateCartItem(idx, { qty: Number(e.target.value) })}
+                    style={{ width: item.qtyUnit === 'm2' ? 64 : 48, fontSize: '0.95rem', height: 24, textAlign: 'center' }}
+                  />
+                  {item.qtyUnit === 'm2' ? <span style={{ fontSize: '0.85rem', color: '#64748b' }}>m²</span> : null}
+                </span>
+              </td>
               <td className="text-col" style={{ padding: 4 }}>
                 <input
                   type="text"
@@ -2621,11 +2637,20 @@ export default function POS({ isMobile = false }) {
               type="number"
               placeholder="Quantity"
               value={customProductForm.qty}
-              min={1}
+              min={customProductForm.qtyInSqM ? 0.01 : 1}
+              step={customProductForm.qtyInSqM ? 0.01 : 1}
               onChange={e => setCustomProductForm(f => ({ ...f, qty: e.target.value }))}
               style={{ width: 80, marginBottom: 8 }}
               required
             />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={Boolean(customProductForm.qtyInSqM)}
+                onChange={e => setCustomProductForm(f => ({ ...f, qtyInSqM: e.target.checked }))}
+              />
+              <span>Quantity in square meters (m²)</span>
+            </label>
             {customProductError && <div style={{ color: '#ff5252', marginBottom: 8 }}>{customProductError}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={addCustomProductToCart} style={{ background: '#00b4d8', color: '#fff', fontWeight: 600, border: 'none', borderRadius: 6, padding: '8px 18px' }}>Add</button>

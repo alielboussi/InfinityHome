@@ -191,7 +191,7 @@ async function loadPosSaleReceiptData(saleId) {
   const [{ data: items }, { data: payments }, { data: customer }] = await Promise.all([
     db
       .from('sales_items')
-      .select('sale_id, product_id, display_name, quantity, unit_price, currency, color')
+      .select('sale_id, product_id, display_name, quantity, unit_price, currency, color, qty_unit')
       .eq('sale_id', sale.id),
     db
       .from('sales_payments')
@@ -245,6 +245,7 @@ async function loadPosSaleReceiptData(saleId) {
       unit_price: item.unit_price,
       currency: item.currency,
       color: item.color,
+      qty_unit: item.qty_unit || null,
     })),
     payments: (payments || []).map((payment) => ({
       ...payment,

@@ -273,6 +273,7 @@ export async function checkout(payload) {
         unit_price: Number(it.unit_price || 0),
         currency: it.currency || null,
         color: it.color ?? null,
+        qty_unit: it.qty_unit ?? null,
       }));
       const { error } = await scopedDb.from(salesItemsTable).insert(mapped, { returning: 'minimal' });
       if (error) {

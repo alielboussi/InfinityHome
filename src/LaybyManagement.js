@@ -15,9 +15,7 @@ import { getCurrentUser, canManageLaybys } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { buildLaybySaleFinancials, buildPooledLaybyPaymentTarget, computeLaybyTotalsByCurrency, computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
 import {
-  applyStartingDuePaymentReduction,
   getStartingDueBalance,
-  splitPaymentAcrossStartingDue,
 } from './utils/startingDueBalance';
 import { normalizeLaybyStatement } from './utils/laybyStatementNormalize';
 import BackToDashboard from './BackToDashboard';
@@ -672,13 +670,13 @@ export default function LaybyManagement() {
         ? window.crypto.randomUUID()
         : `batch-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(16)}`;
 
-      if (!poolSaleId && startingDue > 0.009) {
-        const openingInserts = [];
+      if (startingDue > 0.009) {
+        const pooledInserts = [];
         for (const line of activePaymentLines) {
           const lineAmount = Math.min(Number(line.amount || 0), paymentBudget);
           if (!(lineAmount > 0)) continue;
           paymentBudget -= lineAmount;
-          openingInserts.push({
+          pooledInserts.push({
             customer_id: customerId,
             amount: lineAmount,
             payment_type: line.type || 'cash',
@@ -692,7 +690,7 @@ export default function LaybyManagement() {
         }
         const discountPaymentType = activePaymentLines[0]?.type || 'cash';
         if (remainingDiscount > 0) {
-          openingInserts.push({
+          pooledInserts.push({
             customer_id: customerId,
             amount: 0,
             payment_type: discountPaymentType,
@@ -704,30 +702,20 @@ export default function LaybyManagement() {
             discount_amount: remainingDiscount,
           });
         }
-        if (!openingInserts.length) {
+        if (!pooledInserts.length) {
           setError('Calculated allocation empty.');
           setLoading(false);
           return;
         }
-        const { error: laybyPayErr } = await insertLaybyPayments(openingInserts, {
+        const { error: laybyPayErr } = await insertLaybyPayments(pooledInserts, {
           customerId,
           allowNullSaleId: true,
         });
         if (laybyPayErr) throw laybyPayErr;
 
-        const { payToStarting } = splitPaymentAcrossStartingDue({
-          paymentAmount: rawAmount,
-          paymentDiscount: rawDiscount,
-          salesOutstanding: 0,
-          startingDue,
-        });
-        if (payToStarting > 0.009) {
-          await applyStartingDuePaymentReduction(db, customerId, payToStarting);
-        }
-
         successFlag = true;
         cacheClear(LAYBY_ROWS_CACHE_KEY);
-        setSuccess(`Payment of ${formatCurrency(rawAmount, curr)} recorded against opening balance.`);
+        setSuccess(`Payment of ${formatCurrency(rawAmount, curr)} recorded against customer balance.`);
         await refreshCustomerRowFast(customerId);
         void (async () => {
           try {
@@ -810,16 +798,6 @@ export default function LaybyManagement() {
       }));
       const { error: laybyPayErr } = await insertLaybyPayments(laybyRows, { customerId });
       if (laybyPayErr) throw laybyPayErr;
-
-      const { payToStarting } = splitPaymentAcrossStartingDue({
-        paymentAmount: rawAmount,
-        paymentDiscount: rawDiscount,
-        salesOutstanding,
-        startingDue,
-      });
-      if (payToStarting > 0.009) {
-        await applyStartingDuePaymentReduction(db, customerId, payToStarting);
-      }
 
       successFlag = true;
       cacheClear(LAYBY_ROWS_CACHE_KEY);

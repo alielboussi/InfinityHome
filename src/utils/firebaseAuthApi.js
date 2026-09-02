@@ -113,7 +113,12 @@ export async function firebaseSignOut() {
 export async function firebaseGetAccessToken(forceRefresh = false) {
   const user = firebaseAuth.currentUser;
   if (!user) return null;
-  return user.getIdToken(forceRefresh);
+  try {
+    return await user.getIdToken(forceRefresh);
+  } catch (err) {
+    console.warn('[firebase] getIdToken failed:', err?.message || err);
+    return null;
+  }
 }
 
 export async function waitForFirebaseAuthReady(timeoutMs = 8000) {

@@ -8,7 +8,6 @@ import {
   salePaymentDedupKey,
   sumDedupedItemsNet,
 } from './saleFinancials';
-import { getStartingDueBalance } from './startingDueBalance';
 
 export { computeSaleFinancials, aggregateCustomerTotals, buildFinancialsMap } from './saleFinancials';
 
@@ -171,98 +170,6 @@ export async function computeCustomerDueRemainingLikePdf(db, customerId) {
 }
 
 export async function computeCustomerOutstandingLikeLaybyPage(db, customerId) {
-  if (!customerId) return 0;
-  try {
-    let startingDue = 0;
-    try {
-      const { data: customerRow } = await db
-        .from('customers')
-        .select('starting_due_balance')
-        .eq('id', customerId)
-        .maybeSingle();
-      startingDue = getStartingDueBalance(customerRow || {});
-    } catch {}
-
-    const { data: laybys } = await fromPublic('laybys').select('id').eq('customer_id', customerId);
-    const laybyIds = Array.from(new Set((laybys || []).map((r) => r.id).filter((v) => v != null))).map((v) => String(v));
-
-    const { data: salesByCustomer } = await db
-      .schema('public')
-      .from('sales')
-      .select('id, customer_id, sale_date, created_at, total_amount, discount, currency')
-      .eq('customer_id', customerId);
-    const saleIdSet = new Set((salesByCustomer || []).map((s) => s.id).filter((v) => v != null));
-
-    if (laybyIds.length) {
-      const { data: salesByLayby } = await db
-        .schema('public')
-        .from('sales')
-        .select('id, layby_id, total_amount, discount, currency, sale_date, created_at')
-        .in('layby_id', laybyIds);
-      (salesByLayby || []).forEach((s) => { if (s?.id != null) saleIdSet.add(s.id); });
-    }
-
-    const saleIds = Array.from(saleIdSet);
-    if (!saleIds.length) return startingDue;
-
-    const { sales, items, payments } = await fetchSalesBundle(db, saleIds);
-    const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
-    const itemsBySale = groupRowsBySaleId(items);
-    const paymentsBySale = groupRowsBySaleId(payments);
-
-    const dateKeyOf = (raw) => {
-      const str = String(raw || '');
-      const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-      try {
-        const dt = new Date(str);
-        if (isNaN(dt.getTime())) return '';
-        const y = dt.getFullYear();
-        const mo = String(dt.getMonth() + 1).padStart(2, '0');
-        const da = String(dt.getDate()).padStart(2, '0');
-        return `${y}-${mo}-${da}`;
-      } catch { return ''; }
-    };
-
-    const byDate = new Map();
-    saleIds.forEach((id) => {
-      const sale = salesById.get(String(id)) || {};
-      const dk = dateKeyOf(sale.sale_date || sale.created_at || '');
-      const arr = byDate.get(dk) || [];
-      arr.push(String(id));
-      byDate.set(dk, arr);
-    });
-
-    let total = 0;
-    byDate.forEach((idsForDate) => {
-      const itemsNet = idsForDate.reduce((a, sid) => a + sumDedupedItemsNet(itemsBySale.get(String(sid)) || [], sid), 0);
-      const viewNet = idsForDate.reduce((a, sid) => {
-        const sale = salesById.get(String(sid)) || { id: sid };
-        const fin = computeSaleFinancials({ sale, items: itemsBySale.get(String(sid)) || [], payments: [] });
-        return a + Number(fin.subtotal_before_discount || 0);
-      }, 0);
-      const disc = idsForDate.reduce((a, sid) => {
-        const sale = salesById.get(String(sid)) || { id: sid };
-        const fin = computeSaleFinancials({ sale, items: itemsBySale.get(String(sid)) || [], payments: [] });
-        return a + Number(fin.discount_amount || 0);
-      }, 0);
-      const net = itemsNet > 0 ? itemsNet : viewNet;
-      const effDisc = Math.min(Math.max(0, disc), net);
-      total += Math.max(0, net - effDisc);
-    });
-
-    let paid = 0;
-    saleIds.forEach((id) => {
-      const fin = computeSaleFinancials({
-        sale: salesById.get(String(id)) || { id },
-        items: itemsBySale.get(String(id)) || [],
-        payments: paymentsBySale.get(String(id)) || [],
-      });
-      paid += Number(fin.paid_amount || 0);
-    });
-
-    return Math.max(0, total - paid) + startingDue;
-  } catch {
-    return 0;
-  }
+  const { computeCustomerLaybyDueTotal } = await import('./customerLaybyDue');
+  return computeCustomerLaybyDueTotal(customerId);
 }

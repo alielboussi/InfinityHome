@@ -1,3 +1,5 @@
+import { computeLaybyColumnDue } from './laybyColumnTotals';
+
 const toAmount = (value) => {
   const numeric = Number(value ?? 0);
   return Number.isFinite(numeric) ? numeric : 0;
@@ -11,7 +13,7 @@ export function normalizeStartingDueCurrency(value, fallback = 'K') {
   return raw;
 }
 
-/** Remaining opening due stored on the customer record (decreases as payments apply). */
+/** Locked opening due on the customer record (never auto-reduced by payments). */
 export function getStartingDueBalance(customer) {
   const amount = toAmount(customer?.starting_due_balance);
   return amount > 0.009 ? amount : 0;
@@ -66,11 +68,18 @@ export function applyStartingDueToTotalsByCurrency(totalsByCurrency, customer) {
   const next = cloneTotalsByCurrency(totalsByCurrency);
   if (amount <= 0.009) return next;
   const existing = next[currency] || { total: 0, paid: 0, discount: 0, due: 0 };
+  const priorTotal = toAmount(existing.total);
+  const priorPaid = toAmount(existing.paid);
+  const priorDue = toAmount(existing.due);
+  const paymentDiscount = Math.max(0, priorTotal - priorPaid - priorDue);
+  const total = priorTotal + amount;
+  const paid = priorPaid;
+  const due = computeLaybyColumnDue({ contractTotal: total, paid, paymentDiscount });
   next[currency] = {
-    total: toAmount(existing.total) + amount,
-    paid: toAmount(existing.paid),
-    discount: toAmount(existing.discount),
-    due: toAmount(existing.due) + amount,
+    ...existing,
+    total,
+    paid,
+    due,
     startingDue: amount,
   };
   return next;
@@ -96,26 +105,28 @@ export function splitPaymentAcrossStartingDue({
   };
 }
 
-export async function applyStartingDuePaymentReduction(db, customerId, amount) {
-  const applied = Math.max(0, toAmount(amount));
-  if (!customerId || applied <= 0.009) return;
-  const { data: row, error } = await db
-    .from('customers')
-    .select('starting_due_balance')
-    .eq('id', customerId)
-    .maybeSingle();
-  if (error) throw error;
-  const current = getStartingDueBalance(row || {});
-  const next = Math.max(0, current - applied);
-  if (Math.abs(next - current) <= 0.009) return;
-  const { error: updateErr } = await db
-    .from('customers')
-    .update({
-      starting_due_balance: next,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', customerId);
-  if (updateErr) throw updateErr;
+/** One pooled customer balance — reduce opening portion first, remainder stays customer-level (not per sale date). */
+export function allocatePooledStartingDuePayment({
+  paymentAmount = 0,
+  paymentDiscount = 0,
+  startingDue = 0,
+} = {}) {
+  const totalPay = Math.max(0, toAmount(paymentAmount)) + Math.max(0, toAmount(paymentDiscount));
+  const openingDue = Math.max(0, toAmount(startingDue));
+  const payToStarting = Math.min(openingDue, totalPay);
+  return {
+    payToStarting,
+    payToSalesPool: Math.max(0, totalPay - payToStarting),
+    totalOutstanding: openingDue,
+  };
+}
+
+/**
+ * @deprecated Starting due balance is locked on the customer record.
+ * Payments reduce pooled due via layby_payments only — do not mutate starting_due_balance.
+ */
+export async function applyStartingDuePaymentReduction() {
+  return undefined;
 }
 
 export function buildStartingDuePrimaryLayby(customerId, customer) {
@@ -174,8 +185,17 @@ export function mergeStartingDueIntoCustomerTotals(totals = {}, customers = []) 
       next[customerId][code] = { total: 0, paid: 0, discount: 0, outstanding: 0 };
     }
     const bucket = next[customerId][code];
-    bucket.total = Number(bucket.total || 0) + amount;
-    bucket.outstanding = Number(bucket.outstanding || 0) + amount;
+    const priorTotal = toAmount(bucket.total);
+    const priorPaid = toAmount(bucket.paid);
+    const priorOutstanding = toAmount(bucket.outstanding);
+    const paymentDiscount = Math.max(0, priorTotal - priorPaid - priorOutstanding);
+    const total = priorTotal + amount;
+    bucket.total = total;
+    bucket.outstanding = computeLaybyColumnDue({
+      contractTotal: total,
+      paid: priorPaid,
+      paymentDiscount,
+    });
   });
   return next;
 }

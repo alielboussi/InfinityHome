@@ -6,6 +6,7 @@ import {
   usesCompactDownpaymentWhatsApp,
   BASYOUNI_CASH_BOOK_GROUP_ID,
 } from '../src/utils/whatsappCustomerRules.js';
+import { getStartingDueBalance } from '../src/utils/startingDueBalance.js';
 
 const WHATSAPP_TEXT_LIMIT = 4096;
 const WHAPI_TIMEOUT_MS = Number(process.env.WHAPI_TIMEOUT_MS || 20000);
@@ -844,6 +845,47 @@ function computeLaybyAdditionBalances(sales, payments, focusSaleId) {
     newSaleDue,
     balanceDue: previousDueBalance + newSaleDue,
   };
+}
+
+/** Basyouni cash book: one pooled due (opening balance + all layby sales − customer-level payments). */
+async function computeBasyouniCashBookBalanceDue(db, customerId, customerRow = {}) {
+  const startingDueBalance = getStartingDueBalance(customerRow);
+  const cid = String(customerId || '').trim();
+  if (!cid) {
+    return { balanceDue: startingDueBalance, startingDueBalance };
+  }
+
+  const { data: salesRows } = await db
+    .from('sales')
+    .select(LAYBY_SALE_SELECT)
+    .eq('customer_id', customerId);
+  const sales = (salesRows || []).filter((sale) => String(sale?.status || '').toLowerCase() === 'layby');
+  const saleIds = sales.map((sale) => sale.id).filter((value) => value != null);
+
+  const paymentSelect = 'sale_id, amount, discount_amount, payment_type, payment_date, reference, notes';
+  const [{ data: payRows }, { data: laybyPayRows }, { data: customerLaybyPay }] = await Promise.all([
+    saleIds.length
+      ? db.from('sales_payments').select(paymentSelect).in('sale_id', saleIds).order('payment_date', { ascending: true })
+      : Promise.resolve({ data: [] }),
+    saleIds.length
+      ? db.from('layby_payments').select(paymentSelect).in('sale_id', saleIds).order('payment_date', { ascending: true })
+      : Promise.resolve({ data: [] }),
+    db.from('layby_payments').select(paymentSelect).eq('customer_id', customerId).order('payment_date', { ascending: true }),
+  ]);
+
+  const payments = dedupeLaybyPaymentRows([...(payRows || []), ...(laybyPayRows || []), ...(customerLaybyPay || [])]);
+  let salesOutstanding = 0;
+  sales.forEach((sale) => {
+    const salePayments = payments.filter((payment) => String(payment.sale_id) === String(sale.id));
+    salesOutstanding += computeSaleLaybyOutstanding(sale, salePayments);
+  });
+
+  const customerPoolCredits = payments
+    .filter((payment) => !payment?.sale_id)
+    .reduce((sum, payment) => sum + Number(payment.amount || 0) + Number(payment.discount_amount || 0), 0);
+
+  const balanceDue = Math.max(0, startingDueBalance + salesOutstanding - customerPoolCredits);
+  return { balanceDue, startingDueBalance };
 }
 
 const LAYBY_SALE_SELECT = 'id, sale_date, created_at, currency, total_amount, location_id, receipt_number, discount';
@@ -1699,6 +1741,8 @@ function buildCashBookPosSaleMessage({
 
   currency,
 
+  startingDueBalance,
+
 }) {
 
   const lines = [];
@@ -1734,6 +1778,10 @@ function buildCashBookPosSaleMessage({
   }
 
   lines.push('');
+
+  if (Number(startingDueBalance || 0) > 0.009) {
+    lines.push(`📌 Starting Due Balance ${formatAmount(startingDueBalance, currency)}`);
+  }
 
   lines.push(`📋 Summary: ${formatAmount(summaryTotal, currency)}`);
 
@@ -2480,7 +2528,7 @@ async function handleWhatsAppSale(body) {
 
     .from('customers')
 
-    .select('name, phone, address, city, tpin, currency')
+    .select('name, phone, address, city, tpin, currency, starting_due_balance, starting_due_balance_date')
 
     .eq('id', sale.customer_id)
 
@@ -2569,11 +2617,19 @@ async function handleWhatsAppSale(body) {
 
   const basyouni = isBasyouniCustomer(sale.customer_id, customerName);
 
+  let cashBookStartingDue = 0;
+  let resolvedBalanceDue = balanceDue;
+  if (basyouni) {
+    const cashBookBalances = await computeBasyouniCashBookBalanceDue(db, sale.customer_id, customer);
+    cashBookStartingDue = cashBookBalances.startingDueBalance;
+    resolvedBalanceDue = cashBookBalances.balanceDue;
+  }
+
   const message = basyouni
 
     ? buildCashBookPosSaleMessage({
 
-      onCredit: balanceDue > 0.009,
+      onCredit: resolvedBalanceDue > 0.009,
 
       locationName,
 
@@ -2593,9 +2649,11 @@ async function handleWhatsAppSale(body) {
 
       payments,
 
-      balanceDue,
+      balanceDue: resolvedBalanceDue,
 
       currency,
+
+      startingDueBalance: cashBookStartingDue,
 
     })
 
@@ -2991,7 +3049,7 @@ async function handleWhatsAppLayby(body) {
 
     .from('customers')
 
-    .select('name, phone, address, city, tpin, currency')
+    .select('name, phone, address, city, tpin, currency, starting_due_balance, starting_due_balance_date')
 
     .eq('id', layby.customer_id)
 
@@ -3189,8 +3247,6 @@ async function handleWhatsAppLayby(body) {
 
   balanceDue = normalizeBalanceDue(balanceDue, currency);
 
-
-
   const customerName = customer?.name || '';
 
   const basyouni = isBasyouniCustomer(layby.customer_id, customerName);
@@ -3204,6 +3260,13 @@ async function handleWhatsAppLayby(body) {
   const cashBookLaybySale = basyouni
 
     && ['new_layby', 'layby_addition', 'quote_convert'].includes(eventType);
+
+  let cashBookStartingDue = 0;
+  if (basyouni && (cashBookLaybySale || compactPayment)) {
+    const cashBookBalances = await computeBasyouniCashBookBalanceDue(db, layby.customer_id, customer);
+    balanceDue = normalizeBalanceDue(cashBookBalances.balanceDue, currency);
+    cashBookStartingDue = cashBookBalances.startingDueBalance;
+  }
 
   const messageDateIso = resolveMessageDateIso({
 
@@ -3276,6 +3339,8 @@ async function handleWhatsAppLayby(body) {
       balanceDue,
 
       currency,
+
+      startingDueBalance: cashBookStartingDue,
 
     });
 

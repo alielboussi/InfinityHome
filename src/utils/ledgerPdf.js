@@ -139,7 +139,7 @@ async function buildLedgerPdfDoc({
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   const titleY = Math.max(logoBottom + 14, margin + 52);
-  doc.text('Overseas Piggy Bank — Cash Book', pageWidth / 2, titleY, { align: 'center' });
+  doc.text('Cashbook', pageWidth / 2, titleY, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
@@ -180,20 +180,55 @@ async function buildLedgerPdfDoc({
     ];
   });
 
+  const tableWidth = pageWidth - (margin * 2);
+  const columnWidths = {
+    date: 72,
+    person: 76,
+    paidIn: 60,
+    paidOut: 60,
+    balance: 68,
+  };
+  const descriptionWidth = tableWidth
+    - columnWidths.date
+    - columnWidths.person
+    - columnWidths.paidIn
+    - columnWidths.paidOut
+    - columnWidths.balance;
+
   autoTable(doc, {
     startY: metaY,
     head: [['Date', 'Person', 'Description', 'Paid In', 'Paid Out', 'Balance']],
     body: tableBody,
+    tableWidth,
     margin: { left: margin, right: margin },
-    styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' },
-    headStyles: { fillColor: [0, 132, 170], textColor: 255, fontStyle: 'bold' },
+    styles: {
+      fontSize: 9,
+      cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
+      overflow: 'linebreak',
+      halign: 'center',
+      valign: 'middle',
+    },
+    headStyles: {
+      fillColor: [0, 132, 170],
+      textColor: 255,
+      fontStyle: 'bold',
+      halign: 'center',
+      valign: 'middle',
+      minCellHeight: 18,
+    },
     columnStyles: {
-      0: { cellWidth: 88 },
-      1: { cellWidth: 72 },
-      2: { cellWidth: 'auto' },
-      3: { cellWidth: 62, halign: 'right' },
-      4: { cellWidth: 62, halign: 'right' },
-      5: { cellWidth: 72, halign: 'right', fontStyle: 'bold' },
+      0: { cellWidth: columnWidths.date, halign: 'center' },
+      1: { cellWidth: columnWidths.person, halign: 'center' },
+      2: { cellWidth: descriptionWidth, halign: 'center' },
+      3: { cellWidth: columnWidths.paidIn, halign: 'center' },
+      4: { cellWidth: columnWidths.paidOut, halign: 'center' },
+      5: { cellWidth: columnWidths.balance, halign: 'center', fontStyle: 'bold' },
+    },
+    didParseCell: (data) => {
+      if (data.section === 'head') {
+        data.cell.styles.halign = 'center';
+        data.cell.styles.valign = 'middle';
+      }
     },
     alternateRowStyles: { fillColor: [250, 252, 253] },
     didDrawPage: () => {
