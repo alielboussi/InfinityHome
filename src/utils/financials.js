@@ -6,7 +6,6 @@ import {
   computeSaleFinancials,
   groupRowsBySaleId,
   salePaymentDedupKey,
-  sumDedupedItemsNet,
 } from './saleFinancials';
 
 export { computeSaleFinancials, aggregateCustomerTotals, buildFinancialsMap } from './saleFinancials';
