@@ -117,13 +117,19 @@ function buildSalePaidLines(payments, currency) {
   return lines.join('\n');
 }
 
+function formatPaymentDateForLine(payment) {
+  return formatSaleDateForMessage(payment?.payment_date || payment?.created_at || '');
+}
+
 function buildPaidLine(payments, currency) {
   const rows = (payments || []).filter((payment) => Number(payment.amount || 0) > 0);
   if (!rows.length) return '';
   return rows.map((payment) => {
     const emoji = getPaymentMethodEmoji(payment.payment_type);
     const method = paymentMethodDisplayName(payment.payment_type);
-    return `${emoji} Paid ${formatAmount(payment.amount, currency)} BY: ${method}`;
+    const date = formatPaymentDateForLine(payment);
+    const line = `${emoji} Paid ${formatAmount(payment.amount, currency)} BY: ${method}`;
+    return date ? `${line} — ${date}` : line;
   }).join('\n');
 }
 

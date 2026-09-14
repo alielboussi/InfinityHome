@@ -1375,6 +1375,10 @@ function buildProductLines(items, currency, productMap, {
 
 
 
+function formatPaymentDateForLine(payment) {
+  return formatSaleDateForMessage(payment?.payment_date || payment?.created_at || '');
+}
+
 function buildPaidLine(payments, currency) {
 
   const rows = (payments || []).filter((payment) => Number(payment.amount || 0) > 0);
@@ -1387,7 +1391,11 @@ function buildPaidLine(payments, currency) {
 
     const method = formatPaymentMethod(payment.payment_type);
 
-    return `${emoji} Paid ${formatAmount(payment.amount, currency)} BY: ${method}`;
+    const date = formatPaymentDateForLine(payment);
+
+    const line = `${emoji} Paid ${formatAmount(payment.amount, currency)} BY: ${method}`;
+
+    return date ? `${line} — ${date}` : line;
 
   }).join('\n');
 
@@ -2004,7 +2012,8 @@ async function sendWasenderMessage({ to, text, documentUrl, fileName }) {
 
   const json = await resp.json().catch(() => ({}));
 
-  if (!resp.ok) {
+  const wasenderFailed = !resp.ok || json?.success === false;
+  if (wasenderFailed) {
 
     const msg = json?.error?.message || json?.message || json?.error || 'Wasender send failed';
 

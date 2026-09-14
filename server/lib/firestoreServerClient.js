@@ -174,6 +174,20 @@ function buildServerQuery(db, table, filters, orderSpec, limitN) {
   return q;
 }
 
+function findIdEqualityFilter(filters) {
+  return (filters || []).find((f) => f.op === 'eq' && f.col === 'id') || null;
+}
+
+async function fetchRowsByDocumentId(db, table, id, extraFilters = [], orExpr = null) {
+  const docId = String(id ?? '').trim();
+  if (!docId) return [];
+  const snap = await db.collection(table).doc(docId).get();
+  if (!snap.exists) return [];
+  const rows = [{ id: snap.id, ...snap.data() }];
+  if (!extraFilters.length && !orExpr) return rows;
+  return applyClientFilters(rows, extraFilters, orExpr);
+}
+
 function needsClientFiltering(filters, orExpr) {
   if (orExpr) return true;
   if (filters.some((f) => f.op === 'ilike')) return true;
@@ -295,6 +309,12 @@ class FirestoreSelectQuery {
   async execute() {
     try {
       if (this.headOnly && this.countExact) {
+        const idEqFilter = findIdEqualityFilter(this.filters);
+        if (idEqFilter && !this.orExpr) {
+          const extraFilters = this.filters.filter((f) => f !== idEqFilter);
+          const rows = await fetchRowsByDocumentId(this.db, this.table, idEqFilter.val, extraFilters);
+          return { data: null, error: null, count: rows.length };
+        }
         const select = new FirestoreSelectQuery(this.db, this.table);
         select.filters = [...this.filters];
         select.orExpr = this.orExpr;
@@ -304,7 +324,14 @@ class FirestoreSelectQuery {
       }
 
       let rows;
-      if (needsClientFiltering(this.filters, this.orExpr)) {
+      const idEqFilter = findIdEqualityFilter(this.filters);
+      if (idEqFilter && !this.orExpr) {
+        const extraFilters = this.filters.filter((f) => f !== idEqFilter);
+        rows = await fetchRowsByDocumentId(this.db, this.table, idEqFilter.val, extraFilters);
+        rows = sortRows(rows, this.orderSpec);
+        if (this.offset) rows = rows.slice(this.offset);
+        if (this.limitN != null) rows = rows.slice(0, this.limitN);
+      } else if (needsClientFiltering(this.filters, this.orExpr)) {
         rows = applyClientFilters(await fetchAllDocs(this.db, this.table), this.filters, this.orExpr);
         rows = sortRows(rows, this.orderSpec);
         if (this.offset) rows = rows.slice(this.offset);

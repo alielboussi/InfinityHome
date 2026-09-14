@@ -6,7 +6,11 @@
 //   - a quote_customers.id (uuid) — in this case we will resolve/create a real customers row and link to it
 // Response: { ok: true, id, quote }
 
-import { computeQuotationTotals, computeQuotationDisplayTotal } from '../../src/utils/quotationDisplay.js';
+import {
+  computeQuotationTotals,
+  computeQuotationDisplayTotal,
+  resolveQuoteLineQuantity,
+} from '../../src/utils/quotationDisplay.js';
 import { buildQuoteLaybyEditSummary } from '../../src/utils/quoteLaybyEditNotify.js';
 import { getDataClient } from '../lib/getDataClient.js';
 
@@ -97,7 +101,7 @@ async function syncConvertedQuoteToLaybySale(db, {
     sale_id: saleId,
     product_id: item.product_id ?? null,
     display_name: item.name_override || null,
-    quantity: Number(item.quantity || 0),
+      quantity: resolveQuoteLineQuantity(item.quantity, item.unit_price),
     unit_price: Number(item.unit_price || 0),
     currency: quote.currency || 'K',
     color: null,
@@ -365,7 +369,7 @@ export default async function handler(req, res) {
       name_override: it.name || it.name_override || null,
       description: it.description || null,
       unit_id: it.unit_id != null && it.unit_id !== '' ? Number(it.unit_id) : null,
-      quantity: Number(it.quantity || 0),
+      quantity: resolveQuoteLineQuantity(it.quantity, it.unit_price),
       unit_price: Number(it.unit_price || 0),
       sort_order: idx + 1,
     }));

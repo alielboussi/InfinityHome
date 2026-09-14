@@ -1,4 +1,4 @@
-import { computeLaybyColumnDue } from './laybyColumnTotals';
+import { computeLaybyColumnDue } from './laybyColumnTotals.js';
 
 const toAmount = (value) => {
   const numeric = Number(value ?? 0);

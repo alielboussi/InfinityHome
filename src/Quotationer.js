@@ -11,10 +11,13 @@ import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationCon
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
+import { enrichQuotationListTotals } from './services/quotationListTotals';
 import {
+  applyQuotationTotalsFromItems,
   computeQuotationDisplayTotal,
   computeQuotationTotals,
   normalizeQuotationItemRow,
+  resolveQuoteLineQuantity,
   quotationHasOutstandingDue,
   resolveQuoteCustomerForSelect,
   sortQuotationRows,
@@ -160,6 +163,8 @@ async function fetchQuotationWrite(action, payload = {}) {
     const token = data?.session?.access_token;
     if (token) authHeaders = { Authorization: `Bearer ${token}` };
   } catch {}
+  const bypass = String(process.env.REACT_APP_VERCEL_BYPASS || '').trim();
+  if (bypass) authHeaders['x-vercel-protection-bypass'] = bypass;
 
   const attempts = [
     '/api/quotation-save',
@@ -169,17 +174,24 @@ async function fetchQuotationWrite(action, payload = {}) {
 
   let lastError = null;
   for (const url of attempts) {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders,
-      },
-      body: JSON.stringify({ action, ...payload }),
-    });
-    const out = await resp.json().catch(() => ({}));
-    if (resp.ok && out?.ok) return out;
-    lastError = out?.error || `quotation-write failed (${resp.status})`;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          ...(action ? { action } : {}),
+          ...payload,
+        }),
+      });
+      const out = await resp.json().catch(() => ({}));
+      if (resp.ok && out?.ok) return out;
+      lastError = out?.error || `quotation-write failed (${resp.status})`;
+    } catch (error) {
+      lastError = error?.message || String(error);
+    }
   }
 
   throw new Error(lastError || 'quotation-write failed');
@@ -611,7 +623,12 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
       }
       if (!cancelled) {
         if (!error) {
-          const nextQuotes = sortQuotationRows(data || []);
+          let nextQuotes = sortQuotationRows(data || []);
+          try {
+            nextQuotes = await enrichQuotationListTotals(nextQuotes);
+          } catch (enrichErr) {
+            console.warn('Quote list total enrichment failed:', enrichErr?.message || enrichErr);
+          }
           setQuotes(nextQuotes);
           try {
             const map = await buildQuotationCustomerMap(nextQuotes);
@@ -848,10 +865,12 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           const resolved = await resolveQuoteCustomerForSelect(hdr, (qcs || []).map(c => ({ ...c, name: titleCaseWords(c.name) })), db);
           if (!cancelled) {
             if (resolved.customers?.length) setQuoteCustomers(resolved.customers);
-            const loadedQuote = resolved.header || hdr;
+            const normalizedLines = (lines || []).map(normalizeQuotationItemRow);
+            const loadedQuote = applyQuotationTotalsFromItems(resolved.header || hdr, normalizedLines);
             setQuote(loadedQuote);
             setCurrentQuoteId(loadedQuote.id || quoteId || '');
             setVatChoice(loadedQuote.vat_apply ? 'vat16' : 'exclusive');
+            if (!cancelled) setItems(normalizedLines);
           }
           const user = readLocalUser();
           let hasOutstandingDue = true;
@@ -864,9 +883,6 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
             } catch {}
           }
           if (!cancelled) setLocked(!canEditQuotation(user, hdr, { hasOutstandingDue }));
-        }
-        if (!cancelled) {
-          setItems((lines || []).map(normalizeQuotationItemRow));
         }
       }
     }
@@ -899,7 +915,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       name: qp.name,
       description: normalizeDescription(qp.description),
       unit_id: qp.unit_id,
-      quantity: '',
+      quantity: 1,
       unit_price: Number(qp.price || 0),
       image_url: qp.image_url,
       qr_code_url: qp.qr_code_url,
@@ -915,14 +931,16 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
     ...it,
     name: it.name || '',
     description: normalizeDescription(it.description || ''),
-    quantity: it.quantity === '' ? '' : Number(it.quantity || 0),
+    quantity: resolveQuoteLineQuantity(it.quantity, it.unit_price),
     unit_id: it.unit_id ? Number(it.unit_id) : null,
     unit_price: it.unit_price === '' ? 0 : Number(it.unit_price || 0),
   }));
 
   const computeTotals = () => {
     const effectiveItems = getNormalizedItems();
-    const subtotal = effectiveItems.reduce((s, it) => s + (Number(it.quantity || 0) * Number(it.unit_price || 0)), 0);
+    const subtotal = effectiveItems.reduce((s, it) => (
+      s + resolveQuoteLineQuantity(it.quantity, it.unit_price) * Number(it.unit_price || 0)
+    ), 0);
     const vatApply = vatChoice === 'vat16';
     return computeQuotationTotals({
       subtotal,
@@ -942,21 +960,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
     setSaving(true);
     try {
       const payload = { id: currentQuoteId || undefined, quote, items: getNormalizedItems(), vatChoice };
-      const apiBaseRaw = process.env.REACT_APP_API_BASE || '';
-      const apiBase = apiBaseRaw.replace(/\/+$/, ''); // trim trailing slashes to avoid double slashes in URL
-      const url = apiBase ? `${apiBase}/api/quotation-save` : '/api/quotation-save';
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const out = await resp.json().catch(() => ({}));
-      if (!resp.ok || !out.ok) {
-        if (resp.status === 404 || resp.status === 405) {
-          throw new Error('Save API not available in this dev mode. Run "vercel dev" to enable /api routes locally, or set REACT_APP_API_BASE to your deployed URL and call that.');
-        }
-        throw new Error(out.error || `Save failed (${resp.status})`);
-      }
+      const out = await fetchQuotationWrite(null, payload);
       const createdQuoteId = out.id;
       if (!createdQuoteId) throw new Error('Quote saved but no id returned');
       if (createdQuoteId && !currentQuoteId) setCurrentQuoteId(createdQuoteId);
@@ -1310,7 +1314,9 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                   const currencyLabel = quote.currency || 'K';
                   const qtyValue = it.quantity === '' ? '' : it.quantity;
                   const unitPriceValue = it.unit_price === '' || it.unit_price == null ? '' : it.unit_price;
-                  const lineTotal = (Number(it.quantity || 0) * Number(it.unit_price || 0)).toFixed(2);
+                  const lineTotal = (
+                    resolveQuoteLineQuantity(it.quantity, it.unit_price) * Number(it.unit_price || 0)
+                  ).toFixed(2);
                   return (
                     <tr key={it.id}>
                       <td style={{ ...tableCellStyle, width: '42%' }}>

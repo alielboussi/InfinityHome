@@ -9,6 +9,7 @@ import { LAYBY_ROWS_CACHE_KEY } from './utils/laybyRollup';
 import BackToDashboard from './BackToDashboard';
 import { canDeleteQuotationData, canEditQuotation, isQuotationerOnlyUser } from './accessControl';
 import { computeQuotationDisplayTotal, quotationHasOutstandingDue, sortQuotationRows } from './utils/quotationDisplay';
+import { enrichQuotationListTotals } from './services/quotationListTotals';
 
 const readLocalUser = () => {
   try {
@@ -107,7 +108,13 @@ export default function QuotesBoard() {
       }
       if (!cancelled) {
         if (!error) {
-          setQuotes(sortQuotationRows(data || []));
+          let rows = sortQuotationRows(data || []);
+          try {
+            rows = await enrichQuotationListTotals(rows);
+          } catch (enrichErr) {
+            console.warn('Quote list total enrichment failed:', enrichErr?.message || enrichErr);
+          }
+          setQuotes(rows);
           try {
             const ids = Array.from(new Set((data || []).map(q => q.customer_id).filter(Boolean)));
             let map = {};

@@ -88,6 +88,9 @@ const LOCAL_API_PATHS = new Set([
   '/api/inventory-bulk',
   '/api/shop-catalog',
   '/api/web-orders',
+  '/api/admin',
+  '/api/quotation-save',
+  '/api/quotation-read',
 ]);
 
 const WHATSAPP_PATH_ACTION = {
@@ -148,13 +151,19 @@ function attachNotifyAction(req, fixedAction) {
 
 function mountLocalNotify(app) {
   let handlerPromise = null;
+  let lastLoadError = null;
   const loadHandler = () => {
     if (!handlerPromise) {
       handlerPromise = importProjectModule('../api/notify.js')
-        .then((mod) => mod.default || mod)
+        .then((mod) => {
+          lastLoadError = null;
+          return mod.default || mod;
+        })
         .catch((error) => {
+          lastLoadError = error;
+          handlerPromise = null;
           // eslint-disable-next-line no-console
-          console.warn('[proxy] Could not load local api/notify.js:', error?.message || error);
+          console.warn('[proxy] Could not load local api/notify.js:', error?.stack || error?.message || error);
           return null;
         });
     }
@@ -174,7 +183,12 @@ function mountLocalNotify(app) {
     try {
       const notifyHandler = await loadHandler();
       if (!notifyHandler) {
-        res.status(503).json({ ok: false, stage: 'notify', error: 'Local notify API unavailable' });
+        const detail = lastLoadError?.message || 'unknown load error';
+        res.status(503).json({
+          ok: false,
+          stage: 'notify',
+          error: `Local notify API unavailable: ${detail}`,
+        });
         return;
       }
       if (req.method === 'POST' && (!req.body || typeof req.body !== 'object')) {
@@ -624,6 +638,63 @@ function mountLocalComboLocations(app) {
   console.log('[proxy] Local /api/combo-locations handler enabled.');
 }
 
+function mountLocalAdmin(app) {
+  let handlerPromise = null;
+  let lastLoadError = null;
+  const loadHandler = () => {
+    if (!handlerPromise) {
+      handlerPromise = importProjectModule('../api/admin.js')
+        .then((mod) => {
+          lastLoadError = null;
+          return mod.default || mod;
+        })
+        .catch((error) => {
+          lastLoadError = error;
+          handlerPromise = null;
+          console.warn('[proxy] Could not load local api/admin.js:', error?.stack || error?.message || error);
+          return null;
+        });
+    }
+    return handlerPromise;
+  };
+
+  const handleAdmin = async (req, res, fixedAdminAction) => {
+    try {
+      const handler = await loadHandler();
+      if (!handler) {
+        res.status(503).json({
+          ok: false,
+          error: `Local admin API unavailable: ${lastLoadError?.message || 'unknown load error'}`,
+        });
+        return;
+      }
+      if (fixedAdminAction) {
+        req.query = { ...(req.query || {}), adminAction: fixedAdminAction };
+      }
+      if ((req.method === 'POST' || req.method === 'DELETE') && (!req.body || typeof req.body !== 'object')) {
+        req.body = await readJsonBody(req);
+      }
+      await handler(req, res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({ ok: false, error: error?.message || String(error) });
+      }
+    }
+  };
+
+  [
+    ['/api/admin', null],
+    ['/api/quotation-save', 'quotation-save'],
+    ['/api/quotation-read', 'quotation-read'],
+  ].forEach(([route, action]) => {
+    app.get(route, (req, res) => { handleAdmin(req, res, action); });
+    app.post(route, (req, res) => { handleAdmin(req, res, action); });
+    app.options(route, (req, res) => { handleAdmin(req, res, action); });
+  });
+
+  console.log('[proxy] Local /api/admin, /api/quotation-save, and /api/quotation-read handlers enabled.');
+}
+
 function mountLocalCheckout(app) {
   mountLocalApiHandler(app, '/api/checkout', '../api/checkout.js', 'checkout API');
 }
@@ -650,6 +721,7 @@ module.exports = function setupProxy(app) {
   mountLocalUserActivity(app);
   mountLocalLoginAccess(app);
   mountLocalCheckout(app);
+  mountLocalAdmin(app);
   mountLocalTransactions(app);
   mountLocalProductLocations(app);
   mountLocalComboLocations(app);

@@ -1,11 +1,25 @@
+/** Qty for line math: blank defaults to 1; explicit 0 stays 0 unless price is set (legacy saves). */
+export function resolveQuoteLineQuantity(quantity, unitPrice = 0) {
+  if (quantity === '' || quantity === null || quantity === undefined) return 1;
+  const n = Number(quantity);
+  if (!Number.isFinite(n)) return 0;
+  if (n <= 0 && Number(unitPrice || 0) > 0) return 1;
+  return n;
+}
+
 export function normalizeQuotationItemRow(row) {
   if (!row) return row;
+  const unit_price = row.unit_price == null || row.unit_price === '' ? '' : row.unit_price;
+  let quantity = row.quantity == null || row.quantity === '' ? '' : row.quantity;
+  if (Number(quantity) === 0 && Number(unit_price || 0) > 0) {
+    quantity = 1;
+  }
   return {
     ...row,
     name: row.name_override || row.name || row.product_name || '',
     description: row.description || '',
-    quantity: row.quantity == null || row.quantity === '' ? '' : row.quantity,
-    unit_price: row.unit_price == null || row.unit_price === '' ? '' : row.unit_price,
+    quantity,
+    unit_price,
   };
 }
 
@@ -37,14 +51,52 @@ export function computeQuotationTotals({ subtotal = 0, discount = 0, vatApply = 
   };
 }
 
-export function computeQuotationDisplayTotal(quote) {
+export function computeQuotationSubtotalFromItems(items = []) {
+  return (items || []).reduce((sum, it) => {
+    const price = Number(it.unit_price || 0);
+    const qty = resolveQuoteLineQuantity(it.quantity, price);
+    return sum + qty * price;
+  }, 0);
+}
+
+/** Recompute header subtotal/total from lines when stored totals are zero (legacy saves). */
+export function applyQuotationTotalsFromItems(quote, items = []) {
+  if (!quote) return quote;
+  const subtotalFromItems = computeQuotationSubtotalFromItems(items);
+  if (subtotalFromItems <= 0) return quote;
+  const storedSub = Number(quote.subtotal || 0);
+  const storedTotal = Number(quote.total || 0);
+  if (storedSub > 0.009 && storedTotal > 0.009) return quote;
+
+  const discount = Number(quote.discount || 0);
+  const vatApply = resolveQuoteVatApply(quote, subtotalFromItems, discount);
+  const totals = computeQuotationTotals({
+    subtotal: subtotalFromItems,
+    discount,
+    vatApply,
+    vatRate: vatApply ? (Number(quote.vat_rate) > 0 ? Number(quote.vat_rate) : 0.16) : 0,
+  });
+  return {
+    ...quote,
+    subtotal: totals.subtotal,
+    total: totals.total,
+  };
+}
+
+export function computeQuotationDisplayTotal(quote, items = null) {
   if (!quote) return 0;
+  const subtotalFromItems = Array.isArray(items) && items.length
+    ? computeQuotationSubtotalFromItems(items)
+    : 0;
   const subtotal = Number(quote.subtotal);
   const discount = Number(quote.discount || 0);
   const storedTotal = Number(quote.total || 0);
-  const effectiveSubtotal = Number.isFinite(subtotal) && subtotal >= 0
+  let effectiveSubtotal = Number.isFinite(subtotal) && subtotal > 0
     ? subtotal
     : (storedTotal > 0 ? storedTotal : 0);
+  if (effectiveSubtotal <= 0 && subtotalFromItems > 0) {
+    effectiveSubtotal = subtotalFromItems;
+  }
   const vatApply = resolveQuoteVatApply(quote, effectiveSubtotal, discount);
 
   if (effectiveSubtotal > 0 || storedTotal > 0) {

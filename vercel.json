@@ -3,6 +3,9 @@
     "api/stocktake.js": {
       "maxDuration": 60
     },
+    "api/notify.js": {
+      "maxDuration": 60
+    },
     "api/admin.js": {
       "maxDuration": 300
     }
