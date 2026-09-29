@@ -1,5 +1,5 @@
 // Client service to call unified checkout API
-// Falls back to direct Firestore writes in local dev (where /api routes are not served by CRA)
+// Falls back to direct Firestore writes on localhost only when REACT_APP_API_BASE is unset
 
 import db from '../dataClient';
 import { resolveSaleActor } from '../accessControl';
@@ -10,6 +10,7 @@ import {
   isDuplicateReceiptError,
   RECEIPT_DUPLICATE_ERROR,
 } from '../utils/receiptNumber';
+import { apiUrl, isLocalDev, shouldUseRemoteApi, withApiHeaders } from '../utils/apiUrl';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
@@ -152,24 +153,15 @@ async function applyInventoryDeduction(db, { items = [], locationId, saleId, rec
 export async function checkout(payload) {
   const normalizedPayload = normalizeCheckoutPayload(payload || {});
   // 1) Attempt serverless API (Vercel) — available in production
-  const isLocalHost = (() => {
-    try {
-      const h = typeof window !== 'undefined' ? window.location.hostname : '';
-      return /^(localhost|127\.0\.0\.1)$/i.test(h);
-    } catch { return false; }
-  })();
-
+  const isLocalHost = isLocalDev();
   const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
-  const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/,'');
-  // Prefer relative path in localhost so CRA proxy handles CORS; use absolute only when not on localhost
-  const apiUrl = isLocalHost ? '/api/checkout' : (apiBase ? `${apiBase}/api/checkout` : '/api/checkout');
-  const shouldTryApi = !isLocalHost || forceApi || Boolean(apiBase);
+  const shouldTryApi = shouldUseRemoteApi();
   if (shouldTryApi) {
     let isKnownApiBug = false;
     try {
-      const resp = await fetch(apiUrl, {
+      const resp = await fetch(apiUrl('/api/checkout'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withApiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(normalizedPayload || {}),
       });
       const text = await resp.text().catch(() => '');
@@ -206,7 +198,7 @@ export async function checkout(payload) {
       if (isKnownApiBug) {
         console.warn('[checkout] Remote API missing randomUUID import; using local Firestore fallback.');
       } else {
-        console.warn('[checkout] API call failed; falling back to browser writes. Check dev proxy and REACT_APP_API_BASE.');
+        console.warn('[checkout] API call failed; falling back to browser writes. Set REACT_APP_API_BASE to your production URL for localhost API calls.');
       }
     } catch {}
   }

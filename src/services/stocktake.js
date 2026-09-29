@@ -1,6 +1,9 @@
 import db from '../dataClient';
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
+import { buildCountSheetRows } from '../utils/stocktakeCountSheetRows';
 import { signInWithEmailPassword } from '../utils/authLogin';
 import { buildLiveConsolidatedWithSets } from '../utils/stocktakeLiveTotals';
+import { fetchWarehouseStocktakeCatalog, fetchMyWarehouseCounts, clearMyWarehouseCounts, addWarehousePacketCount, addWarehouseProductCount, removeMyWarehousePacketCount, removeMyWarehouseProductCount } from './warehouseStocktake';
 
 const API_TIMEOUT_MS = 12000;
 
@@ -43,9 +46,9 @@ async function fetchJson(url, options = {}, timeoutMs = API_TIMEOUT_MS) {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    const response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(apiUrl(url), {
       ...options,
+      headers: withApiHeaders({ 'Content-Type': 'application/json', ...(options.headers || {}) }),
       signal: controller?.signal,
     });
     const data = await response.json().catch(() => ({}));
@@ -290,6 +293,8 @@ async function clientClearCounts(eventId) {
   const { error } = await db.from('stocktake_counts').delete().eq('event_id', eventId);
   if (error) throw error;
   await db.from('stocktake_set_scans').delete().eq('event_id', eventId);
+  await db.from('stocktake_warehouse_counts').delete().eq('event_id', eventId);
+  await db.from('stocktake_assembly_counts').delete().eq('event_id', eventId);
   return { ok: true };
 }
 
@@ -319,6 +324,7 @@ async function clientClearMyCounts(eventId, userEmail = currentEmail()) {
   if (error) throw error;
   await db.from('stocktake_count_log').delete().eq('event_id', eventId).eq('user_email', userEmail);
   await db.from('stocktake_set_scans').delete().eq('event_id', eventId).eq('user_email', userEmail);
+  await clearMyWarehouseCounts(eventId, userEmail);
   return { ok: true };
 }
 
@@ -442,6 +448,18 @@ async function clientFetchCatalog(locationId, q = '') {
     return cached.data;
   }
 
+  const warehouseCatalog = await fetchWarehouseStocktakeCatalog(locationId, term);
+  if (warehouseCatalog.warehouseMode) {
+    const payload = {
+      ok: true,
+      products: warehouseCatalog.products || [],
+      sets: [],
+      warehouseMode: true,
+    };
+    catalogCache.set(cacheKey, { data: payload, at: Date.now() });
+    return payload;
+  }
+
   const locationProductIdsPromise = resolveLocationProductIds(locationId);
   const comboLocsPromise = db
     .from('combo_locations')
@@ -509,7 +527,9 @@ async function clientFetchCatalog(locationId, q = '') {
     }));
   }
 
-  const payload = { ok: true, products, sets };
+  const whProducts = (warehouseCatalog.products || []).map((p) => ({ ...p, type: p.type || 'warehouse_product' }));
+  const mergedProducts = [...products, ...whProducts];
+  const payload = { ok: true, products: mergedProducts, sets, warehouseMode: false };
   catalogCache.set(cacheKey, { data: payload, at: Date.now() });
   return payload;
 }
@@ -759,10 +779,43 @@ export async function addCount(eventId, productId, qty, userEmail = currentEmail
 
 export async function fetchMyCounts(eventId, userEmail = currentEmail()) {
   const params = new URLSearchParams({ eventId, userEmail });
-  return withApiOrClient(
-    () => fetchJson(`/api/stocktake-count-mine?${params}`),
-    () => clientFetchMyCounts(eventId, userEmail),
-  );
+  let legacyRows = [];
+  try {
+    const data = await withApiOrClient(
+      () => fetchJson(`/api/stocktake-count-mine?${params}`),
+      () => clientFetchMyCounts(eventId, userEmail),
+    );
+    legacyRows = data?.rows || [];
+  } catch (err) {
+    if (!isApiUnavailable(err)) throw err;
+    const legacy = await clientFetchMyCounts(eventId, userEmail);
+    legacyRows = legacy?.rows || [];
+  }
+  const warehouse = await fetchMyWarehouseCounts(eventId, userEmail);
+  return {
+    ok: true,
+    rows: [...legacyRows, ...(warehouse.rows || [])],
+  };
+}
+
+export async function addWarehouseStocktakeCount(eventId, item, qty, userEmail = currentEmail()) {
+  if (item?.type === 'warehouse_packet') {
+    return addWarehousePacketCount(eventId, item.id, qty, userEmail);
+  }
+  if (item?.type === 'warehouse_product') {
+    return addWarehouseProductCount(eventId, item.id, qty, userEmail);
+  }
+  throw new Error('Unknown warehouse stocktake item type');
+}
+
+export async function removeMyWarehouseStocktakeCount(eventId, item, userEmail = currentEmail()) {
+  if (item?.type === 'warehouse_packet') {
+    return removeMyWarehousePacketCount(eventId, item.id || item.product_id, userEmail);
+  }
+  if (item?.type === 'warehouse_product') {
+    return removeMyWarehouseProductCount(eventId, item.id || item.product_id, userEmail);
+  }
+  throw new Error('Unknown warehouse stocktake item type');
 }
 
 export async function scanSet(eventId, comboId, qty, userEmail = currentEmail()) {
@@ -889,5 +942,81 @@ export async function getPeriodVariance(periodId) {
       throw new Error('Variance report needs the Vercel stocktake API. Try again when the deployment is responding.');
     }
     throw err;
+  }
+}
+
+const COUNT_SHEET_TIMEOUT_MS = 120000;
+
+async function fetchCountSheetFromApi(periodId) {
+  const q = `periodId=${encodeURIComponent(periodId)}`;
+  const urls = [
+    `/api/stocktake-period-count-sheet?${q}`,
+    `/api/stocktake?action=period-count-sheet&${q}`,
+  ];
+  let lastErr;
+  for (const url of urls) {
+    try {
+      return await fetchJson(url, {}, COUNT_SHEET_TIMEOUT_MS);
+    } catch (err) {
+      lastErr = err;
+      const status = Number(err?.status || 0);
+      if (status === 404 || status === 405 || status === 400) continue;
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function fetchCountSheetFromClient(periodId) {
+  const { data: period, error: periodErr } = await db
+    .from('stock_periods')
+    .select('*')
+    .eq('id', periodId)
+    .maybeSingle();
+  if (periodErr) throw periodErr;
+  if (!period) throw new Error('Period not found');
+  if (period.status !== 'open') {
+    throw new Error('Count sheet is only for the current open period (before closing stock is entered).');
+  }
+  const { data: closing } = await db
+    .from('closing_stock_entries')
+    .select('product_id')
+    .eq('session_id', periodId)
+    .limit(1);
+  if ((closing || []).length) {
+    throw new Error('Closing stock is already recorded for this period.');
+  }
+
+  const rows = await buildCountSheetRows(db, period);
+  const [{ data: company }, { data: location }] = await Promise.all([
+    db.from('company_settings').select('*').limit(1).maybeSingle(),
+    db.from('locations').select('id, name').eq('id', period.location_id).maybeSingle(),
+  ]);
+  return {
+    ok: true,
+    period,
+    rows,
+    company: company || null,
+    locationName: location?.name || '',
+    generatedAt: new Date().toISOString(),
+    source: 'client',
+  };
+}
+
+export async function getPeriodCountSheet(periodId, { onProgress } = {}) {
+  const report = (pct, label) => onProgress?.({ phase: 'data', pct, label });
+  try {
+    report(8, 'Contacting stocktake API…');
+    const data = await fetchCountSheetFromApi(periodId);
+    report(22, `Loaded ${(data.rows || []).length} product line(s) from server.`);
+    return data;
+  } catch (err) {
+    const status = Number(err?.status || 0);
+    const canFallback = isApiUnavailable(err) || status === 404 || status === 405 || status === 400;
+    if (!canFallback) throw err;
+    report(10, 'API unavailable — building count sheet in browser (may take longer)…');
+    const data = await fetchCountSheetFromClient(periodId);
+    report(22, `Loaded ${(data.rows || []).length} product line(s).`);
+    return data;
   }
 }

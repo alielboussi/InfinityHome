@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import generateLaybyPdf from '../laybyPdf';
 import { fetchLaybyStatement } from '../services/laybyStatement';
-import { filterStatementToLaybyAccount } from './laybyRollup';
+import { buildPooledCustomerPdfPayload } from './laybyRollup';
 
 const formatCurrencyPlain = (amount, currency = 'K') => {
   const n = Number(amount || 0);
@@ -25,30 +25,23 @@ const safeFileStem = (name) => (
   String(name || 'Customer').replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_') || 'Customer'
 );
 
-async function buildRowStatement(row) {
-  const primaryLayby = row.primaryLayby || (row.laybys || []).find((layby) => layby?.id) || null;
-  const scopeOptions = {
-    laybyId: primaryLayby?.id || null,
-    laybySaleId: primaryLayby?.sale_id || null,
-  };
-  let statement = {
-    sales: row.fullStatement?.sales || [],
-    items: row.fullStatement?.items || [],
-    payments: row.fullStatement?.payments || [],
-  };
-  if (scopeOptions.laybyId) {
-    statement = filterStatementToLaybyAccount(statement, scopeOptions);
+async function buildRowPdfPayload(row) {
+  const { statement, totalsByCurrency, pooledCustomerStatement } = buildPooledCustomerPdfPayload(row);
+  if (statement.sales?.length || statement.payments?.length) {
+    return { statement, totalsByCurrency, pooledCustomerStatement };
   }
-  if (!statement.sales.length && !statement.items.length && !statement.payments.length) {
-    const { data, error } = await fetchLaybyStatement(row.customerId, scopeOptions);
-    if (error) throw error;
-    statement = {
-      sales: data?.sales || [],
-      items: data?.items || [],
-      payments: data?.payments || [],
-    };
-  }
-  return statement;
+  const { data, error } = await fetchLaybyStatement(row.customerId);
+  if (error) throw error;
+  const refreshed = {
+    sales: data?.sales || [],
+    items: data?.items || [],
+    payments: data?.payments || [],
+  };
+  return {
+    statement: refreshed,
+    totalsByCurrency: row.totalsByCurrency || buildPooledCustomerPdfPayload({ ...row, fullStatement: refreshed }).totalsByCurrency,
+    pooledCustomerStatement: true,
+  };
 }
 
 export function exportLaybySummaryExcel(rows, filename) {
@@ -90,7 +83,7 @@ export async function exportAllLaybyPdfsZip(rows, { onProgress } = {}) {
     const row = list[index];
     onProgress?.(index + 1, list.length, row.customer?.name || row.customerId);
     try {
-      const statement = await buildRowStatement(row);
+      const { statement, totalsByCurrency, pooledCustomerStatement } = await buildRowPdfPayload(row);
       const primaryLayby = row.primaryLayby || (row.laybys || []).find((layby) => layby?.id) || null;
       const pdfLayby = {
         ...(primaryLayby || {}),
@@ -99,7 +92,12 @@ export async function exportAllLaybyPdfsZip(rows, { onProgress } = {}) {
         customer_id: row.customerId,
         customerInfo: row.customer || {},
       };
-      const blob = await generateLaybyPdf(pdfLayby, { statement, mode: 'blob' });
+      const blob = await generateLaybyPdf(pdfLayby, {
+        statement,
+        totalsByCurrency,
+        pooledCustomerStatement,
+        mode: 'blob',
+      });
       if (!blob) continue;
 
       const currency = Object.keys(row.totalsByCurrency || {})[0] || 'K';

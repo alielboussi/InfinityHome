@@ -13,6 +13,7 @@ import {
   sumInventoryAdjustmentsByProduct,
 } from './utils/inventoryVarianceAdjustments';
 import { collapseOpeningStockRows } from './utils/computedInventoryQty';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 
 const PERIOD_STATUS_OPEN = 'open';
 const PERIOD_STATUS_CLOSED = 'closed';
@@ -279,11 +280,9 @@ export default function StockPeriods() {
   }, [getApiBase]);
 
   const postProductLocations = useCallback(async (rows) => {
-    const apiBase = getApiBase();
-    const url = apiBase ? `${apiBase}/api/product-locations` : '/api/product-locations';
-    const response = await fetch(url, {
+    const response = await fetch(apiUrl('/api/product-locations'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ rows }),
     });
     const data = await response.json().catch(() => ({}));
@@ -885,11 +884,10 @@ export default function StockPeriods() {
   };
 
   const postOpeningEntry = useCallback(async (payload) => {
-    const apiBase = getApiBase();
-    const entryUrl = apiBase ? `${apiBase}/api/opening-stock-entry` : '/api/opening-stock-entry';
+    const entryUrl = apiUrl('/api/opening-stock-entry');
     const response = await fetch(entryUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
     const data = await response.json().catch(() => ({}));
@@ -897,7 +895,7 @@ export default function StockPeriods() {
       throw new Error(data?.error || 'Failed to save opening entry.');
     }
     return data || {};
-  }, [getApiBase]);
+  }, []);
 
   const handleExportOpeningCsv = () => {
     if (!openingSessionList.length) return;

@@ -5,6 +5,8 @@ import { FaDownload, FaFileImport, FaPlus, FaQrcode, FaTrashAlt } from 'react-ic
 import db from './dataClient';
 import {
   addCount,
+  addWarehouseStocktakeCount,
+  removeMyWarehouseStocktakeCount,
   clearMyCounts,
   createProduct,
   createSet,
@@ -93,7 +95,7 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
   const [search, setSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalog, setCatalog] = useState({ products: [], sets: [] });
+  const [catalog, setCatalog] = useState({ products: [], sets: [], warehouseMode: false });
   const [popupItem, setPopupItem] = useState(null);
   const [popupQty, setPopupQty] = useState('1');
   const [actionItem, setActionItem] = useState(null);
@@ -207,7 +209,11 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
     if (!locationId) return { products: [], sets: [] };
     try {
       const data = await fetchCatalog(locationId, q);
-      const next = { products: data.products || [], sets: data.sets || [] };
+      const next = {
+        products: data.products || [],
+        sets: data.sets || [],
+        warehouseMode: Boolean(data.warehouseMode),
+      };
       setCatalog(next);
       return next;
     } catch (err) {
@@ -388,11 +394,14 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
               const sets = data.sets || [];
               const lower = code.toLowerCase();
               const exactSet = sets.find((s) => String(s.sku || '').trim().toLowerCase() === lower);
-              const exactProduct = products.find((p) => String(p.sku || '').trim().toLowerCase() === lower);
+              const exactProduct = products.find((p) => {
+                const sku = String(p.sku || '').trim().toLowerCase();
+                return sku === lower || sku === lower.replace(/^#/, '');
+              });
               const hit = exactSet
                 ? { ...exactSet, type: 'set' }
                 : exactProduct
-                  ? { ...exactProduct, type: 'product' }
+                  ? { ...exactProduct, type: exactProduct.type || 'product' }
                   : null;
               if (hit) {
                 setPopupItem(hit);
@@ -423,7 +432,10 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
 
   const results = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const products = (catalog.products || []).map((p) => ({ ...p, type: 'product' }));
+    const products = (catalog.products || []).map((p) => ({
+      ...p,
+      type: p.type || 'product',
+    }));
     const sets = (catalog.sets || []).map((s) => ({ ...s, type: 'set' }));
     return [...sets, ...products];
   }, [catalog, searchQuery]);
@@ -628,12 +640,17 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
     }
   };
 
-  const handleRemoveMyProductCount = async (productId) => {
+  const handleRemoveMyProductCount = async (item) => {
+    const productId = item?.product_id || item?.id;
     if (!eventId || !user?.email || !productId) return;
     setBusy(true);
     setError('');
     try {
-      await removeMyCount(eventId, productId, user.email);
+      if (item?.type === 'warehouse_packet' || item?.type === 'warehouse_product') {
+        await removeMyWarehouseStocktakeCount(eventId, item, user.email);
+      } else {
+        await removeMyCount(eventId, productId, user.email);
+      }
       await refreshCart(user.email, eventId);
       setToast('Removed from your cart.');
       setActionItem(null);
@@ -656,6 +673,8 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
     try {
       if (popupItem.type === 'set') {
         await scanSet(eventId, popupItem.id, qty, user.email);
+      } else if (popupItem.type === 'warehouse_packet' || popupItem.type === 'warehouse_product') {
+        await addWarehouseStocktakeCount(eventId, popupItem, qty, user.email);
       } else {
         await addCount(eventId, popupItem.id, qty, user.email);
       }
@@ -866,30 +885,34 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
                 <FaFileImport />
                 <span>Import</span>
               </button>
-              <button
-                type="button"
-                className="stc-toolbar-btn"
-                disabled={busy}
-                onClick={() => {
-                  setShowProductForm(true);
-                  setSetFormOpen(false);
-                }}
-              >
-                <FaPlus />
-                <span>Product</span>
-              </button>
-              <button
-                type="button"
-                className="stc-toolbar-btn"
-                disabled={busy}
-                onClick={() => {
-                  setSetFormOpen(true);
-                  setShowProductForm(false);
-                }}
-              >
-                <FaPlus />
-                <span>Set</span>
-              </button>
+              {!catalog.warehouseMode && (
+                <button
+                  type="button"
+                  className="stc-toolbar-btn"
+                  disabled={busy}
+                  onClick={() => {
+                    setShowProductForm(true);
+                    setSetFormOpen(false);
+                  }}
+                >
+                  <FaPlus />
+                  <span>Product</span>
+                </button>
+              )}
+              {!catalog.warehouseMode && (
+                <button
+                  type="button"
+                  className="stc-toolbar-btn"
+                  disabled={busy}
+                  onClick={() => {
+                    setSetFormOpen(true);
+                    setShowProductForm(false);
+                  }}
+                >
+                  <FaPlus />
+                  <span>Set</span>
+                </button>
+              )}
               <input
                 ref={importFileRef}
                 type="file"
@@ -901,7 +924,9 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
             <details className="stc-help-details">
               <summary>Excel import format</summary>
               <p>
-                Columns: SKU, Product Name, Quantity. Products/components only (not sets). Quantities apply only to this location.
+                {catalog.warehouseMode
+                  ? 'Warehouse: count packets only (scan or search). Submit from Stocktake control applies packet quantities.'
+                  : 'Columns: SKU, Product Name, Quantity. Legacy products/components and warehouse catalog products (SKU) can be counted. Sets use the Set flow.'}
               </p>
             </details>
 
@@ -965,6 +990,8 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
                     }}
                   >
                     {item.type === 'set' && <span className="stc-badge">SET</span>}
+                    {item.type === 'warehouse_packet' && <span className="stc-badge">PACKET</span>}
+                    {item.type === 'warehouse_product' && <span className="stc-badge">WH PRODUCT</span>}
                     {item.name || item.combo_name}
                     {item.sku ? ` (${item.sku})` : ''}
                   </button>
@@ -1012,14 +1039,18 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
                   <tr><td colSpan={3} className="stc-note stc-note-muted">Nothing counted yet.</td></tr>
                 ) : cart.map((row) => (
                   <tr
-                    key={row.product_id}
-                    onPointerDown={() => beginLongPress({ ...row, id: row.product_id, type: 'product' })}
+                    key={`${row.type || 'product'}-${row.product_id}`}
+                    onPointerDown={() => beginLongPress({
+                      ...row,
+                      id: row.product_id,
+                      type: row.type || 'product',
+                    })}
                     onPointerUp={cancelLongPress}
                     onPointerLeave={cancelLongPress}
                     onPointerCancel={cancelLongPress}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      setActionItem({ ...row, id: row.product_id, type: 'product' });
+                      setActionItem({ ...row, id: row.product_id, type: row.type || 'product' });
                     }}
                   >
                     <td>{row.name}{row.sku ? ` (${row.sku})` : ''}</td>
@@ -1061,7 +1092,7 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
                   type="button"
                   className="stc-btn stc-btn-danger"
                   disabled={busy}
-                  onClick={() => handleRemoveMyProductCount(actionItem.id || actionItem.product_id)}
+                  onClick={() => handleRemoveMyProductCount(actionItem)}
                 >
                   Remove count
                 </button>

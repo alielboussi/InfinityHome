@@ -8,6 +8,7 @@ import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import BackToDashboard from './BackToDashboard';
 import { logUserActivity } from './utils/userActivityLog';
 import { sendLabelsWhatsApp } from './services/whatsapp';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import {
   applyComboLocationPricing,
   applyProductLocationPricing,
@@ -283,50 +284,13 @@ const PriceLabels = () => {
       .trim()
   ), []);
 
-  const normalizeSku = useCallback((sku) => (
-    String(sku || '').replace(/^#/, '').trim().toLowerCase()
-  ), []);
-
-  const productSkuCounts = useMemo(() => {
-    const counts = new Map();
-    (catalogProducts || []).forEach((product) => {
-      const sku = normalizeSku(product?.sku);
-      if (sku) counts.set(sku, (counts.get(sku) || 0) + 1);
-    });
-    return counts;
-  }, [catalogProducts, normalizeSku]);
-
-  const comboSkuCounts = useMemo(() => {
-    const counts = new Map();
-    (catalogCombos || []).forEach((combo) => {
-      const sku = normalizeSku(combo?.sku);
-      if (sku) counts.set(sku, (counts.get(sku) || 0) + 1);
-    });
-    return counts;
-  }, [catalogCombos, normalizeSku]);
-
-  // Only treat a product/set as the same item when names match, or SKU is unique across both tables.
   const findMatchingSetForProduct = useCallback((product) => {
-    const sku = normalizeSku(product?.sku);
     const nameKey = normalizeCatalogName(product?.name);
-
-    if (nameKey) {
-      const byName = (catalogCombos || []).find(
-        (combo) => normalizeCatalogName(combo.combo_name) === nameKey,
-      );
-      if (byName) return byName;
-    }
-
-    if (
-      sku
-      && comboSkuCounts.get(sku) === 1
-      && productSkuCounts.get(sku) === 1
-    ) {
-      return (catalogCombos || []).find((combo) => normalizeSku(combo.sku) === sku) || null;
-    }
-
-    return null;
-  }, [catalogCombos, comboSkuCounts, normalizeCatalogName, normalizeSku, productSkuCounts]);
+    if (!nameKey) return null;
+    return (catalogCombos || []).find(
+      (combo) => normalizeCatalogName(combo.combo_name) === nameKey,
+    ) || null;
+  }, [catalogCombos, normalizeCatalogName]);
 
   useEffect(() => {
     if (!search.trim()) return setSearchResults([]);
@@ -575,16 +539,9 @@ const PriceLabels = () => {
       }
       const pdfBase64 = btoa(binary);
 
-      const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
-      const host = (() => {
-        try { return window?.location?.hostname || ''; } catch { return ''; }
-      })();
-      const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
-      const apiUrl = (!isLocalHost && apiBase) ? `${apiBase}/api/labels` : '/api/labels';
-
-      const resp = await fetch(apiUrl, {
+      const resp = await fetch(apiUrl('/api/labels'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withApiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ fileName: filename, folder: 'desktop', pdfBase64 }),
       });
       const json = await resp.json().catch(() => ({}));

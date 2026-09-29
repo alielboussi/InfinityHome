@@ -1,26 +1,7 @@
-const getApiBase = () => {
-  const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
-  if (!base) return '';
-  return base.replace(/\/+$/, '');
-};
-
-const isLocalHost = () => {
-  try {
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    return /^(localhost|127\.0\.0\.1)$/i.test(host);
-  } catch {
-    return false;
-  }
-};
-
-const buildApiUrl = (path) => {
-  const apiBase = getApiBase();
-  if (isLocalHost()) return path;
-  return apiBase ? `${apiBase}${path}` : path;
-};
+import { apiUrl } from '../utils/apiUrl';
 
 export async function fetchPosLocationsViaApi() {
-  const url = buildApiUrl('/api/pos-catalog?action=locations');
+  const url = apiUrl('/api/pos-catalog?action=locations');
   const response = await fetch(url, { method: 'GET' });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {
@@ -30,7 +11,7 @@ export async function fetchPosLocationsViaApi() {
 }
 
 export async function fetchPosCatalogViaApi({ locationId, productIds = [] } = {}) {
-  const url = buildApiUrl('/api/pos-catalog');
+  const url = apiUrl('/api/pos-catalog');
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

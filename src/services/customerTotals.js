@@ -1,14 +1,15 @@
 import db from '../dataClient';
 import { fetchCanonicalFinancials, aggregateCustomerTotals } from '../utils/financials';
 import { mergeStartingDueIntoCustomerTotals } from '../utils/startingDueBalance';
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 
 export async function fetchCustomerTotals(customerIds) {
   const ids = Array.isArray(customerIds) ? customerIds.filter(Boolean) : [];
   if (!ids.length) return { data: {} };
   try {
-    const resp = await fetch('/api/customer-totals', {
+    const resp = await fetch(apiUrl('/api/customer-totals'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ customerIds: ids }),
     });
     const text = await resp.text().catch(() => '');

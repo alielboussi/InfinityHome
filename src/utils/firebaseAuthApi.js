@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { firebaseAuth } from '../firebase';
 import { resolveSessionUserFromAuth } from '../accessControl';
+import { apiUrl, withApiHeaders } from './apiUrl';
 
 function formatAuthError(message) {
   const msg = String(message || 'Invalid email or password.').trim() || 'Invalid email or password.';
@@ -32,9 +33,9 @@ export function userFromFirebaseAuth(firebaseUser) {
 async function verifyLoginAccessFromToken(token) {
   if (!token) return { ok: true };
   try {
-    const response = await fetch('/api/auth-profile', {
+    const response = await fetch(apiUrl('/api/auth-profile'), {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: withApiHeaders({ Authorization: `Bearer ${token}` }),
       cache: 'no-store',
     });
     const payload = await response.json().catch(() => ({}));

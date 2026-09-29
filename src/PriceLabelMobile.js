@@ -4,6 +4,7 @@ import db from './dataClient';
 import { QRCodeCanvas } from 'qrcode.react';
 import { jsPDF } from 'jspdf';
 import { sendLabelsWhatsApp } from './services/whatsapp';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import {
   applyComboLocationPricing,
   applyProductLocationPricing,
@@ -264,21 +265,11 @@ export default function PriceLabelMobile() {
           return btoa(binary);
         };
         pdfBase64 = toBase64(arrayBuffer);
-        const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
-        const host = (() => {
-          try { return window?.location?.hostname || ''; } catch { return ''; }
-        })();
-        const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
-        const apiUrl = (!isLocalHost && apiBase) ? `${apiBase}/api/labels` : '/api/labels';
-        const bypass = (process.env.REACT_APP_VERCEL_BYPASS || '').trim();
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
-        const resp = await fetch(apiUrl, {
+        const resp = await fetch(apiUrl('/api/labels'), {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(bypass ? { 'x-vercel-protection-bypass': bypass } : {}),
-          },
+          headers: withApiHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ fileName: filename, folder: 'mobile', pdfBase64 }),
           signal: controller.signal,
         });

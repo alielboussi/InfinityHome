@@ -80,3 +80,13 @@ try {
 } catch (e) {
   console.warn('[api-budget:warn] Could not check api/*.js budget: ' + (e?.message || e));
 }
+
+try {
+  require('child_process').execSync('node scripts/verifyMobileAccessManifest.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[mobile-manifest:fail] verifyMobileAccessManifest.js failed.');
+  process.exit(1);
+}

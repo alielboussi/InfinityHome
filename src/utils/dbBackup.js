@@ -1,4 +1,5 @@
 import db from '../dataClient';
+import { apiUrl, withApiHeaders } from './apiUrl';
 
 async function getAuthHeaders() {
   try {
@@ -12,8 +13,8 @@ async function getAuthHeaders() {
 
 async function apiGet(query) {
   const headers = await getAuthHeaders();
-  const response = await fetch(`/api/db-backup?${query}&_=${Date.now()}`, {
-    headers,
+  const response = await fetch(apiUrl(`/api/db-backup?${query}&_=${Date.now()}`), {
+    headers: withApiHeaders(headers),
     cache: 'no-store',
   });
   const raw = await response.text();
@@ -39,9 +40,9 @@ async function apiPost(op, body) {
     'Content-Type': 'application/json',
     ...(await getAuthHeaders()),
   };
-  const response = await fetch(`/api/db-backup?op=${encodeURIComponent(op)}`, {
+  const response = await fetch(apiUrl(`/api/db-backup?op=${encodeURIComponent(op)}`), {
     method: 'POST',
-    headers,
+    headers: withApiHeaders(headers),
     body: JSON.stringify(body),
   });
   const raw = await response.text();

@@ -1,12 +1,13 @@
 import db from '../dataClient';
 import { fetchCanonicalFinancials } from '../utils/financials';
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 
 export async function fetchCustomerStatement(customerId) {
   if (!customerId) return { error: new Error('customerId is required') };
   try {
-    const resp = await fetch('/api/customer-statement', {
+    const resp = await fetch(apiUrl('/api/customer-statement'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ customerId }),
     });
     const text = await resp.text().catch(() => '');

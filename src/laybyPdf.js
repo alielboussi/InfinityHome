@@ -1221,7 +1221,7 @@ function loadImage(url) {
 // opts.mode: 'download' | 'blob' | 'arraybuffer' (default 'download')
 export async function generateLaybyPdf(layby, opts = {}) {
   try {
-    if (layby?.id && !opts?.posReceipt && opts?.statement) {
+    if (layby?.id && !opts?.posReceipt && !opts?.pooledCustomerStatement && opts?.statement) {
       const scopedStatement = filterStatementToLaybyAccount(opts.statement, {
         laybyId: layby.id,
         laybySaleId: layby.sale_id,
@@ -1230,8 +1230,8 @@ export async function generateLaybyPdf(layby, opts = {}) {
         ...opts,
         statement: scopedStatement,
         ...(opts.totalsByCurrency
-          ? { totalsByCurrency: computePooledLaybyTotalsByCurrency(scopedStatement) }
-          : {}),
+          ? {}
+          : { totalsByCurrency: computePooledLaybyTotalsByCurrency(scopedStatement) }),
       };
     }
     const company = await getCompanySettings();
@@ -1656,7 +1656,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
       }
       // Do not augment RPC with other customer sales; keep only layby-linked sales.
       }
-      if (layby?.id && !opts?.posReceipt) {
+      if (layby?.id && !opts?.posReceipt && !opts?.pooledCustomerStatement) {
         scopeRelatedToLaybyAccount(related, layby);
       }
     } catch (fetchErr) {
@@ -2316,28 +2316,7 @@ export async function generateLaybyPdf(layby, opts = {}) {
         return;
       }
       if (productSignature && rows.length) renderedProductSignatures.add(productSignature);
-      // For regular customers, keep per-date visible line totals aligned with canonical sale totals
-      // so PDF values match layby-management aggregates.
-      if (!isFahmeCustomer && canonicalTotalForAlign > 0 && rowsAreLivePosLinesForDate(rows, salesForDate, saleRowId)) {
-        const targetRows = rows.filter((row) => Number(row?.amount || 0) > 0 && String(row?.type || 'regular') === 'regular');
-        const sourceSum = targetRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-        if (targetRows.length && sourceSum > 0 && Math.abs(sourceSum - canonicalTotalForAlign) > 0.01) {
-          const ratio = canonicalTotalForAlign / sourceSum;
-          let allocated = 0;
-          targetRows.forEach((row, index) => {
-            let nextAmount;
-            if (index === targetRows.length - 1) {
-              nextAmount = Number((canonicalTotalForAlign - allocated).toFixed(2));
-            } else {
-              nextAmount = Number((Number(row.amount || 0) * ratio).toFixed(2));
-              allocated += nextAmount;
-            }
-            row.amount = Math.max(0, nextAmount);
-            const qty = Math.max(1, Number(row.qty || 1));
-            row.price = Number((row.amount / qty).toFixed(2));
-          });
-        }
-      }
+      // Keep catalog unit prices on line items; sale discount is shown in the footer totals.
       const computeDetailSegments = (row) => {
         const lines = (row.detailLines || []).map(line => String(line || '').trim()).filter(Boolean);
         if (!lines.length) return [];
@@ -2393,15 +2372,11 @@ export async function generateLaybyPdf(layby, opts = {}) {
   if (!useLiveStatementOnly && isFahmeCustomer && Number(fallbackSection?.discount || 0) > 0) {
     viewDiscount = Math.max(viewDiscount, Number(fallbackSection.discount || 0));
   }
-  const forceCanonicalDateTotal = canonicalTotalForDate > 0 && !isFahmeCustomer;
-  // Fahme: drive Net/Due from visible item lines (fallback history + live extras) so settlement matches the PDF body.
-  // Prefer canonical date totals to match layby-management exactly when available.
-  const net = forceCanonicalDateTotal
+  const net = netFromItems > 0 ? netFromItems : viewNet;
+  const discount = Math.min(Math.max(0, Number(viewDiscount || 0)), Math.max(0, net));
+  const totalAfterDiscount = canonicalTotalForDate > 0
     ? canonicalTotalForDate
-    : (netFromItems > 0 ? netFromItems : viewNet);
-  // Cap discount so it never exceeds net (guards against view/items mismatch)
-  const discount = forceCanonicalDateTotal ? 0 : Math.min(Number(viewDiscount || 0), net);
-  const totalAfterDiscount = forceCanonicalDateTotal ? canonicalTotalForDate : Math.max(0, net - discount);
+    : Math.max(0, net - discount);
   const viewOutstanding = finRowsForDate.length ? finRowsForDate.reduce((a,v)=> a + Number(v.outstanding_amount || 0), 0) : null;
   const dueForDate = totalAfterDiscount;
   const closed = finRowsForDate.length ? (viewOutstanding === 0 && totalAfterDiscount > 0) : (totalAfterDiscount === 0 && net > 0);

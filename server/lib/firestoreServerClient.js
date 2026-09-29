@@ -33,6 +33,10 @@ const UUID_ID_TABLES = new Set([
   'stocktake_count_log',
   'stocktake_gate_audit',
   'stocktake_set_scans',
+  'warehouse_assemblies',
+  'warehouse_packets',
+  'warehouse_packet_inventory',
+  'warehouse_colors',
 ]);
 
 const IN_CHUNK = 30;

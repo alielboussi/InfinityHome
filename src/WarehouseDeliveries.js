@@ -104,6 +104,7 @@ export default function WarehouseDeliveries() {
   const [currentUserId, setCurrentUserId] = useState('');
   const [usersById, setUsersById] = useState(new Map());
   const [isIpadSafari, setIsIpadSafari] = useState(() => detectIpadSafari());
+  const [hassanAlert, setHassanAlert] = useState(null);
   const canAccept = currentUserId === WAREHOUSE_ACCEPT_USER_ID;
 
   useEffect(() => {
@@ -128,6 +129,18 @@ export default function WarehouseDeliveries() {
       const sessionsList = sessionData || [];
       setSessions(sessionsList);
 
+      if (canAccept) {
+        const pendingAlert = sessionsList.find(
+          (s) => s?.metadata?.hassan_alert_pending === true,
+        );
+        if (pendingAlert) {
+          setHassanAlert((prev) => {
+            if (prev?.id === pendingAlert.id) return prev;
+            return pendingAlert;
+          });
+        }
+      }
+
       const ids = sessionsList.map((s) => s.id).filter(Boolean);
       if (!ids.length) {
         setEntriesBySession({});
@@ -137,7 +150,7 @@ export default function WarehouseDeliveries() {
 
       const { data: entryRows, error: entryErr } = await db
         .from('warehouse_delivery_entries')
-        .select('id, session_id, product_id, combo_id, kind, name, sku, quantity, original_quantity, edited_quantity, expected_dest_stock, per_set_qty, max_qty')
+        .select('id, session_id, product_id, combo_id, kind, name, sku, quantity, original_quantity, edited_quantity, expected_dest_stock, per_set_qty, max_qty, metadata')
         .in('session_id', ids)
         .order('created_at', { ascending: true });
       if (entryErr) throw entryErr;
@@ -195,7 +208,25 @@ export default function WarehouseDeliveries() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canAccept]);
+
+  const dismissHassanAlert = async () => {
+    if (!hassanAlert?.id) {
+      setHassanAlert(null);
+      return;
+    }
+    const sessionId = hassanAlert.id;
+    const meta = { ...(hassanAlert.metadata || {}), hassan_alert_pending: false };
+    try {
+      await db
+        .from('warehouse_delivery_sessions')
+        .update({ metadata: meta })
+        .eq('id', sessionId);
+    } catch (err) {
+      console.warn('Failed to clear Hassan alert flag:', err);
+    }
+    setHassanAlert(null);
+  };
 
   useEffect(() => {
     try {
@@ -224,9 +255,10 @@ export default function WarehouseDeliveries() {
 
   useEffect(() => {
     loadDeliveries();
-    const id = setInterval(() => loadDeliveries(), 60000);
+    const ms = canAccept ? 15000 : 60000;
+    const id = setInterval(() => loadDeliveries(), ms);
     return () => clearInterval(id);
-  }, [loadDeliveries]);
+  }, [loadDeliveries, canAccept]);
 
   const expectedForLine = (line) => {
     if (line.expected_dest_stock != null) return Number(line.expected_dest_stock);
@@ -336,6 +368,55 @@ export default function WarehouseDeliveries() {
         )}
         {loading && <div>Loading deliveries...</div>}
         {error && <div style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</div>}
+        {canAccept && hassanAlert && (
+          <div
+            role="alert"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 9999,
+              padding: 20,
+            }}
+          >
+            <div
+              style={{
+                background: '#1e293b',
+                border: '2px solid #38bdf8',
+                borderRadius: 12,
+                padding: 24,
+                maxWidth: 420,
+                width: '100%',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+              }}
+            >
+              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>New delivery sent</div>
+              <div style={{ color: '#cbd5e1', marginBottom: 16 }}>
+                Delivery note <b>{hassanAlert.delivery_number || hassanAlert.id}</b> was submitted from the warehouse app.
+                Review lines below and accept when stock arrives.
+              </div>
+              <button
+                type="button"
+                onClick={dismissHassanAlert}
+                style={{
+                  background: '#38bdf8',
+                  color: '#0f172a',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '12px 20px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  width: '100%',
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        )}
         {!loading && sessions.length === 0 && (
           <div style={{ color: '#9fb3c8' }}>No pending deliveries.</div>
         )}
@@ -386,6 +467,13 @@ export default function WarehouseDeliveries() {
                       </div>
                     );
                   }
+                  if (line.kind === 'assembly-header') {
+                    return (
+                      <div key={line.id} style={{ fontWeight: 700, marginTop: 10, color: '#e2e8f0' }}>
+                        {line.name}
+                      </div>
+                    );
+                  }
                   const expected = expectedForLine(line);
                   return (
                     <div
@@ -394,12 +482,16 @@ export default function WarehouseDeliveries() {
                         display: 'grid',
                         gridTemplateColumns: '1fr 90px 110px',
                         gap: 8,
-                        paddingLeft: line.kind === 'set-component' ? 16 : 0,
+                        paddingLeft: line.kind === 'set-component' || line.kind === 'packet-line' ? 16 : 0,
                         marginTop: 6,
-                        color: line.kind === 'set-component' ? '#cbd5e1' : undefined,
+                        color: line.kind === 'set-component' || line.kind === 'packet-line' ? '#cbd5e1' : undefined,
                       }}
                     >
-                      <span>{line.kind === 'set-component' ? `- ${line.name}` : line.name}</span>
+                      <span>
+                        {line.kind === 'set-component' || line.kind === 'packet-line'
+                          ? `- ${line.name}`
+                          : line.name}
+                      </span>
                       <span style={{ textAlign: 'right' }}>{deliveryLineQty(line)}</span>
                       <span style={{ textAlign: 'right' }}>{expected == null ? '—' : expected}</span>
                     </div>

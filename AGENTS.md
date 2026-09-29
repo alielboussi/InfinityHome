@@ -1,5 +1,10 @@
 # Repository Rules
 
+## Local `npm start` (no dev proxy)
+
+- `src/setupProxy.js` is removed. Localhost calls production APIs through `src/utils/apiUrl.js` when `REACT_APP_API_BASE` is set in `.env.local`.
+- See `docs/local-development.md`.
+
 ## Vercel API Budget
 
 - Keep physical Vercel serverless API files in `api/*.js` below 10 whenever possible.
@@ -14,12 +19,5 @@
 - Layby Management table, PDF export, and WhatsApp resend must all use `computePooledLaybyTotalsByCurrency` / `buildLaybyCurrencyBucket` from that module (via `laybyRollup.js`).
 - **Total Sale** = net contract value (after sale discount + VAT). **Total Due** = Total Sale − deposits − payment discounts only. Never subtract sale discount twice.
 - Regression check: `node scripts/verifyLaybyColumnTotals.js`
-- Fahme Acc(2) signed-off statement: `docs/reference/fahme-acc2/` — run `node scripts/verifyFahmeAcc2Statement.js`
-- Primary Mohammad Fahme signed-off statement: `docs/reference/fahme-primary/` — run `node scripts/verifyFahmePrimaryStatement.js`
-
-## Fahme signed-off statement lock
-
-- Locked customer IDs and frozen totals live in `src/data/fahmeStatementLocks.json`.
-- Helpers: `src/utils/fahmeStatementLock.js` — filters sales/payments and forces PDF totals for Layby table, PDF, WhatsApp, and `/api/layby-statement`.
-- **Do not** add new sales/deposits for locked Fahme accounts in normal ops; payment create/delete is blocked server-side (403).
-- To change a locked statement, update the reference JSON/PDF under `docs/reference/fahme-*`, then adjust `fahmeStatementLocks.json` and re-run the matching verify script.
+- Mohammad Fahme accounts use the same pooled statement rollup as all layby customers (no frozen totals or payment blocks).
+- Optional reference snapshots for regression: `docs/reference/fahme-acc2/` (`node scripts/verifyFahmeAcc2Statement.js`), `docs/reference/fahme-primary/` (`node scripts/verifyFahmePrimaryStatement.js`).

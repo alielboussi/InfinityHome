@@ -1,4 +1,5 @@
 import { getFirestore } from './firestoreDb.js';
+import { defaultMobileAccessGrant, normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
 
 const COLLECTION = 'app_login_access';
 const ADMIN_EMAIL = 'alielboussi00@gmail.com';
@@ -55,7 +56,16 @@ export async function setLoginAccessEnabled({
 
   const email = normalizeEmail(existing.data()?.email);
   if (PROTECTED_EMAILS.has(email)) {
-    throw new Error('This administrator account cannot be disabled.');
+    if (loginEnabled === false) {
+      throw new Error('This administrator account cannot be disabled.');
+    }
+    const now = new Date().toISOString();
+    await ref.set({
+      updated_at: now,
+      updated_by: normalizeEmail(actorEmail) || null,
+    }, { merge: true });
+    const updated = await ref.get();
+    return { id: updated.id, ...updated.data() };
   }
 
   const now = new Date().toISOString();
@@ -105,6 +115,7 @@ export async function assertLoginAllowed(authUser) {
         created_at: now,
         updated_at: now,
         last_seen_at: now,
+        mobile_access: defaultMobileAccessGrant(),
       });
       return { uid, email, login_enabled: true };
     }
@@ -114,12 +125,16 @@ export async function assertLoginAllowed(authUser) {
       throw disabledError();
     }
 
-    await ref.set({
+    const patch = {
       email,
       display_name: displayName || data.display_name || null,
       last_seen_at: now,
       updated_at: now,
-    }, { merge: true });
+    };
+    if (!data.mobile_access) {
+      patch.mobile_access = defaultMobileAccessGrant();
+    }
+    await ref.set(patch, { merge: true });
 
     return { uid, email, login_enabled: true };
   } catch (err) {
@@ -133,4 +148,37 @@ export async function isLoginAllowedForUid(uid) {
   const record = await getLoginAccessRecord(uid);
   if (!record) return true;
   return record.login_enabled !== false;
+}
+
+export async function updateMobileAccessGrant({
+  uid,
+  mobileAccess,
+  mobileDisplayName,
+  actorEmail,
+}) {
+  const db = getFirestore();
+  if (!db || !uid) throw new Error('User id is required.');
+  const ref = db.collection(COLLECTION).doc(String(uid));
+  const existing = await ref.get();
+  if (!existing.exists) {
+    throw new Error('User has not signed in yet.');
+  }
+  const now = new Date().toISOString();
+  const patch = {
+    updated_at: now,
+    mobile_access_updated_by: normalizeEmail(actorEmail) || null,
+  };
+  if (mobileAccess && typeof mobileAccess === 'object') {
+    patch.mobile_access = normalizeMobileAccessGrant(mobileAccess);
+  }
+  if (mobileDisplayName !== undefined) {
+    const trimmed = String(mobileDisplayName || '').trim();
+    patch.mobile_display_name = trimmed || null;
+  }
+  if (!patch.mobile_access && mobileDisplayName === undefined) {
+    throw new Error('Nothing to update.');
+  }
+  await ref.set(patch, { merge: true });
+  const updated = await ref.get();
+  return { id: updated.id, ...updated.data() };
 }

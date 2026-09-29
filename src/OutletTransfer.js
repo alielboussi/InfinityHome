@@ -4,6 +4,7 @@ import db from './dataClient';
 import { useNavigate } from 'react-router-dom';
 import { FaFilePdf } from 'react-icons/fa';
 import { buildTransferPdf, triggerDownload } from './utils/transferPdf';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 
 /*
   OutletTransfer.js
@@ -597,7 +598,7 @@ export default function OutletTransfer() {
     try {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 10000);
-      const resp = await fetch('/api/transfer', {
+      const resp = await fetch(apiUrl('/api/transfer'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'upload-pdf', sessionId, fileName, pdfBase64 }),

@@ -18,8 +18,7 @@ export function buildSkuCounts(rows, skuField = 'sku') {
   return counts;
 }
 
-export function findMatchingSetForProduct(product, allCombos, productSkuCounts, comboSkuCounts) {
-  const sku = normalizeSku(product?.sku);
+export function findMatchingSetForProduct(product, allCombos, _productSkuCounts, _comboSkuCounts) {
   const nameKey = normalizeCatalogName(product?.name);
 
   if (nameKey) {
@@ -29,13 +28,8 @@ export function findMatchingSetForProduct(product, allCombos, productSkuCounts, 
     if (byName) return byName;
   }
 
-  if (
-    sku
-    && comboSkuCounts.get(sku) === 1
-    && productSkuCounts.get(sku) === 1
-  ) {
-    return (allCombos || []).find((combo) => normalizeSku(combo.sku) === sku) || null;
-  }
+  // Do not link product ↔ set by SKU alone — duplicate SKUs across different items
+  // (e.g. Bowl Chair and Lena Bedroom Set both #00411) must not swap search results.
 
   return null;
 }

@@ -2,6 +2,7 @@
 // Primary path: serverless API (/api/payments). Fallback: direct Firestore client insert in local dev.
 
 import db from '../dataClient';
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import { newUuid } from '../utils/uuid';
 
 /**
@@ -27,9 +28,9 @@ export async function insertSalesPayments(payments, opts = {}) {
     }
   }
   try {
-    const resp = await fetch('/api/payments', {
+    const resp = await fetch(apiUrl('/api/payments'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ payments }),
     });
     const text = await resp.text().catch(()=> '');
@@ -96,7 +97,7 @@ export async function fetchSalesPaymentsBySaleIds(saleIds = []) {
   const ids = Array.isArray(saleIds) ? saleIds.filter(v => v !== null && v !== undefined) : [];
   if (!ids.length) return { data: [] };
   try {
-    const resp = await fetch('/api/payments-list', {
+    const resp = await fetch(apiUrl('/api/payments-list'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ saleIds: ids }),
@@ -139,7 +140,7 @@ export async function deleteSalesPayments(paymentIds = []) {
   const ids = Array.isArray(paymentIds) ? paymentIds.filter(v => v !== null && v !== undefined) : [];
   if (!ids.length) return { data: { count: 0 } };
   try {
-    const resp = await fetch('/api/payments-delete', {
+    const resp = await fetch(apiUrl('/api/payments-delete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),

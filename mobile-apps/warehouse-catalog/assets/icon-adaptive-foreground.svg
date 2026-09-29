@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Warehouse Catalog foreground">
+  <defs>
+    <linearGradient id="glass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e0f2fe"/>
+      <stop offset="100%" stop-color="#bae6fd"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(512 420)" opacity="0.92">
+    <path d="M-200 80 L0 -120 L200 80 V220 H-200 Z" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M-200 80 L0 -120 L200 80" fill="none" stroke="#94a3b8" stroke-width="8" stroke-linejoin="round"/>
+    <rect x="-120" y="100" width="240" height="120" rx="8" fill="#e2e8f0" stroke="#94a3b8" stroke-width="5"/>
+    <path d="M-100 115 H100 M-100 135 H100 M-100 155 H100 M-100 175 H100 M-100 195 H100" stroke="#94a3b8" stroke-width="4" opacity="0.65"/>
+    <rect x="-40" y="130" width="80" height="90" rx="6" fill="#cbd5e1" stroke="#64748b" stroke-width="4"/>
+  </g>
+  <g transform="translate(512 560)">
+    <path d="M-200 -70 L-200 -130 L-140 -130" fill="none" stroke="#0ea5e9" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M200 -70 L200 -130 L140 -130" fill="none" stroke="#0ea5e9" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M-200 70 L-200 130 L-140 130" fill="none" stroke="#0ea5e9" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M200 70 L200 130 L140 130" fill="none" stroke="#0ea5e9" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="-170" y="-45" width="340" height="90" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="4"/>
+    <g transform="translate(-150 -25)">
+      <rect x="0" y="0" width="10" height="50" rx="2" fill="#0f172a"/>
+      <rect x="16" y="0" width="5" height="50" rx="1" fill="#0f172a"/>
+      <rect x="26" y="0" width="14" height="50" rx="2" fill="#0f172a"/>
+      <rect x="46" y="0" width="6" height="50" rx="1" fill="#0f172a"/>
+      <rect x="58" y="0" width="10" height="50" rx="2" fill="#0f172a"/>
+      <rect x="74" y="0" width="4" height="50" rx="1" fill="#0f172a"/>
+      <rect x="84" y="0" width="16" height="50" rx="2" fill="#0f172a"/>
+      <rect x="106" y="0" width="6" height="50" rx="1" fill="#0f172a"/>
+      <rect x="118" y="0" width="10" height="50" rx="2" fill="#0f172a"/>
+      <rect x="134" y="0" width="5" height="50" rx="1" fill="#0f172a"/>
+      <rect x="145" y="0" width="12" height="50" rx="2" fill="#0f172a"/>
+      <rect x="163" y="0" width="6" height="50" rx="1" fill="#0f172a"/>
+      <rect x="175" y="0" width="10" height="50" rx="2" fill="#0f172a"/>
+      <rect x="191" y="0" width="4" height="50" rx="1" fill="#0f172a"/>
+      <rect x="201" y="0" width="14" height="50" rx="2" fill="#0f172a"/>
+      <rect x="221" y="0" width="8" height="50" rx="2" fill="#0f172a"/>
+      <rect x="235" y="0" width="6" height="50" rx="1" fill="#0f172a"/>
+      <rect x="247" y="0" width="12" height="50" rx="2" fill="#0f172a"/>
+      <rect x="265" y="0" width="5" height="50" rx="1" fill="#0f172a"/>
+      <rect x="276" y="0" width="10" height="50" rx="2" fill="#0f172a"/>
+      <rect x="292" y="0" width="8" height="50" rx="2" fill="#0f172a"/>
+    </g>
+  </g>
+  <g transform="translate(620 500)">
+    <circle cx="0" cy="0" r="118" fill="url(#glass)" stroke="#0284c7" stroke-width="10"/>
+    <circle cx="0" cy="0" r="88" fill="#ffffff" opacity="0.55"/>
+    <path d="M82 82 L165 165" stroke="#0284c7" stroke-width="18" stroke-linecap="round"/>
+    <g transform="translate(-42 -28)" opacity="0.85">
+      <rect x="0" y="0" width="6" height="56" rx="1" fill="#334155"/>
+      <rect x="10" y="0" width="3" height="56" rx="1" fill="#334155"/>
+      <rect x="17" y="0" width="9" height="56" rx="1" fill="#334155"/>
+      <rect x="30" y="0" width="4" height="56" rx="1" fill="#334155"/>
+      <rect x="38" y="0" width="7" height="56" rx="1" fill="#334155"/>
+      <rect x="49" y="0" width="3" height="56" rx="1" fill="#334155"/>
+      <rect x="56" y="0" width="10" height="56" rx="1" fill="#334155"/>
+      <rect x="70" y="0" width="5" height="56" rx="1" fill="#334155"/>
+      <rect x="79" y="0" width="6" height="56" rx="1" fill="#334155"/>
+    </g>
+  </g>
+</svg>

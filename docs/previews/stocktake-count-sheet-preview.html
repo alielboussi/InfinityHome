@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Stock Count Sheet — layout preview</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #e8eef5;
+      font-family: Helvetica, Arial, sans-serif;
+      color: #111;
+    }
+    .page {
+      max-width: 794px;
+      margin: 0 auto;
+      background: #fff;
+      border: 3px solid #1e5ab4;
+      padding: 28px 32px 36px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.12);
+    }
+    .company { text-align: center; font-size: 26px; font-weight: 700; margin: 8px 0 4px; }
+    .title { text-align: center; font-size: 17px; font-weight: 700; margin-bottom: 16px; }
+    .meta { text-align: center; font-size: 13px; line-height: 1.5; }
+    .footnote { text-align: center; font-size: 11px; color: #505050; margin-top: 6px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 12px;
+    }
+    th {
+      background: #1e5ab4;
+      color: #fff;
+      text-align: left;
+      padding: 8px 6px;
+      font-weight: 600;
+    }
+    th.num, td.num { text-align: right; }
+    th.tick, td.tick { text-align: center; width: 48px; }
+    td { border-bottom: 1px solid #dde3ec; padding: 7px 6px; vertical-align: middle; }
+    .box {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 1.5px solid #282828;
+      vertical-align: middle;
+    }
+    .caption { text-align: center; font-size: 11px; color: #666; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="company">Best Rest Furniture</div>
+    <div class="title">Stock Count Sheet</div>
+    <div class="meta">
+      Location: Lusaka<br />
+      Period began: 2026-09-01 · System stock as at 2026-09-30
+    </div>
+    <div class="footnote">
+      Tick each row after you have physically verified that line. CURRENT = system stock before closing counts.
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>PRODUCT</th>
+          <th class="num">OPENING</th>
+          <th class="num">INV IN</th>
+          <th class="num">INV OUT</th>
+          <th class="num">CURRENT</th>
+          <th class="tick">TICK</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>BRF-204</td>
+          <td>Queen Base — Grey</td>
+          <td class="num">12</td>
+          <td class="num">4</td>
+          <td class="num">2</td>
+          <td class="num">14</td>
+          <td class="tick"><span class="box"></span></td>
+        </tr>
+        <tr>
+          <td>BRF-881</td>
+          <td>Memory Foam Pillow</td>
+          <td class="num">48</td>
+          <td class="num">0</td>
+          <td class="num">6</td>
+          <td class="num">42</td>
+          <td class="tick"><span class="box"></span></td>
+        </tr>
+        <tr>
+          <td>SET-QN-GY</td>
+          <td>Queen Set — Grey (set)</td>
+          <td class="num">3</td>
+          <td class="num">1</td>
+          <td class="num">0</td>
+          <td class="num">4</td>
+          <td class="tick"><span class="box"></span></td>
+        </tr>
+        <tr>
+          <td>BRF-112</td>
+          <td>Side Table Oak</td>
+          <td class="num">8</td>
+          <td class="num">2</td>
+          <td class="num">1</td>
+          <td class="num">9</td>
+          <td class="tick"><span class="box"></span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="caption">Sample data for layout only — your PDF uses live stock for the open period.</p>
+  </div>
+</body>
+</html>

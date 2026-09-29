@@ -2,6 +2,7 @@ import db from '../dataClient';
 import { checkout as checkoutApi } from './checkout';
 import { resolveSaleActor, getCurrentUser } from '../accessControl';
 import { logUserActivity } from '../utils/userActivityLog';
+import { apiUrl, isLocalDev } from '../utils/apiUrl';
 import { computeQuoteLaybyTotal } from '../utils/quotationDisplay';
 
 const toNumber = (value) => {
@@ -35,27 +36,11 @@ async function getAuthHeaders({ includeBypass = false } = {}) {
 }
 
 function buildConvertApiUrls() {
-  // On localhost, only use same-origin /api paths (CRA proxy adds bypass server-side; no CORS).
-  if (isLocalHost()) {
-    return [
-      '/api/quote-convert-layby',
-      '/api/transactions?action=quote-convert-layby',
-      '/api/admin?adminAction=quote-convert-layby',
-    ];
-  }
-
-  const apiBase = String(process.env.REACT_APP_API_BASE || '').trim().replace(/\/+$/, '');
-  const urls = [];
-  if (apiBase) {
-    urls.push(`${apiBase}/api/quote-convert-layby`);
-    urls.push(`${apiBase}/api/transactions?action=quote-convert-layby`);
-    urls.push(`${apiBase}/api/admin?adminAction=quote-convert-layby`);
-  } else {
-    urls.push('/api/quote-convert-layby');
-    urls.push('/api/transactions?action=quote-convert-layby');
-    urls.push('/api/admin?adminAction=quote-convert-layby');
-  }
-  return [...new Set(urls.filter(Boolean))];
+  return [
+    apiUrl('/api/quote-convert-layby'),
+    apiUrl('/api/transactions?action=quote-convert-layby'),
+    apiUrl('/api/admin?adminAction=quote-convert-layby'),
+  ];
 }
 
 function isCrossOriginUrl(url) {

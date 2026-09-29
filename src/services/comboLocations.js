@@ -1,27 +1,9 @@
 import db from '../dataClient';
+import { apiUrl, getApiBase, isLocalDev, shouldUseRemoteApi, withApiHeaders } from '../utils/apiUrl';
 
-const getApiBase = () => {
-  const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
-  if (!base) return '';
-  return base.replace(/\/+$/, '');
-};
+const isLocalHost = () => isLocalDev();
 
-const isLocalHost = () => {
-  try {
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    return /^(localhost|127\.0\.0\.1)$/i.test(host);
-  } catch {
-    return false;
-  }
-};
-
-const shouldUseApi = () => {
-  const apiBase = getApiBase();
-  const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
-  if (forceApi) return true;
-  if (isLocalHost()) return true;
-  return Boolean(apiBase) || process.env.NODE_ENV === 'production';
-};
+const shouldUseApi = () => shouldUseRemoteApi();
 
 const wrapLocalDevRlsError = (error) => {
   const message = String(error?.message || error || 'Unknown error');
@@ -41,15 +23,12 @@ const wrapComboLocationApiError = (error, url) => {
 };
 
 async function postComboLocations(payload) {
-  const apiBase = getApiBase();
-  const url = isLocalHost()
-    ? '/api/combo-locations'
-    : (apiBase ? `${apiBase}/api/combo-locations` : '/api/combo-locations');
+  const url = apiUrl('/api/combo-locations');
   let response;
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
   } catch (error) {

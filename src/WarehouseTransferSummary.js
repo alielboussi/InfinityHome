@@ -6,6 +6,7 @@ import autoTable from 'jspdf-autotable';
 import { applyInventoryBulk } from './utils/inventoryApi';
 import { syncProductLocations } from './services/productLocations';
 import BackToDashboard from './BackToDashboard';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 
 const FROM_LOCATION_ID = '39ffaa82-8aee-4a33-8de8-06584cbaffcf';
 const KITWE_LOCATION_ID = '454a092c-5b12-441e-b99d-216f6fa72198';
@@ -28,9 +29,9 @@ async function sendTransferWhatsAppMessage(message) {
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 8000);
-    await fetch('/api/whatsapp-transfer', {
+    await fetch(apiUrl('/api/whatsapp-transfer'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ message }),
       signal: controller.signal,
     });
@@ -554,7 +555,7 @@ export default function WarehouseTransferSummary(){
       try {
         const controller = new AbortController();
         const t = setTimeout(()=>controller.abort(), 10000);
-        const resp = await fetch('/api/transfer', {
+        const resp = await fetch(apiUrl('/api/transfer'), {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ action: 'upload-pdf', sessionId, fileName, pdfBase64 }), signal: controller.signal
         });

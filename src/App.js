@@ -32,6 +32,11 @@ import StocktakeControlPage from './StocktakeControlPage';
 import StocktakeAggregationPage from './StocktakeAggregationPage';
 import StocktakeCountRoute from './StocktakeCountRoute';
 import ProductsListPage from './ProductsListPage';
+import WarehouseProductsPage from './WarehouseProductsPage';
+import WarehousePacketsPage from './WarehousePacketsPage';
+import WarehouseProductEditPage from './WarehouseProductEditPage';
+import WarehouseProductTransferPage from './WarehouseProductTransferPage';
+import WarehousePacketEditPage from './WarehousePacketEditPage';
 import StockHistoryPage from './StockHistoryPage';
 import ZeroStockLocationReset from './ZeroStockLocationReset';
 import AllSales from './AllSales';
@@ -305,6 +310,13 @@ function App() {
           <Route path="/KitweStocktake" element={<Navigate to="/stocktake" replace />} />
           <Route path="/stocktake-entry" element={<Navigate to="/stocktake" replace />} />
           <Route path="/products-list" element={<ProductsListPage />} />
+          <Route path="/warehouse-products/packets/new" element={<WarehousePacketEditPage />} />
+          <Route path="/warehouse-products/packets/:packetId/edit" element={<WarehousePacketEditPage />} />
+          <Route path="/warehouse-products/packets" element={<WarehousePacketsPage />} />
+          <Route path="/warehouse-products/new" element={<WarehouseProductEditPage />} />
+          <Route path="/warehouse-products/:productId/transfer" element={<WarehouseProductTransferPage />} />
+          <Route path="/warehouse-products/:productId/edit" element={<WarehouseProductEditPage />} />
+          <Route path="/warehouse-products" element={<WarehouseProductsPage />} />
           <Route path="/ecommerce-setup" element={<EcommerceSetup />} />
           <Route path="/ecommerce-sales" element={<EcommerceSales />} />
           <Route path="/stock-history" element={<StockHistoryPage />} />

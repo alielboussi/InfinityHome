@@ -2,13 +2,14 @@ import db from '../dataClient';
 import generateLaybyPdf from '../laybyPdf';
 import { fetchLaybyStatement } from './laybyStatement';
 import { fetchProductLocationPricesForLocation } from './locationPricing';
-import { computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount } from '../utils/laybyRollup';
+import { buildPooledCustomerPdfPayload, computePooledLaybyTotalsByCurrency } from '../utils/laybyRollup';
 import { computeSaleFinancials } from '../utils/saleFinancials';
 import {
   buildLocationPriceMap,
   buildProductPriceMap,
   reconcileSaleItemUnits,
 } from '../utils/saleDisplayPricing';
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 
 function safeFilePart(value, fallback = 'Customer') {
   const cleaned = String(value || '').replace(/[^a-zA-Z0-9 _-]/g, '').replace(/\s+/g, '_').trim();
@@ -18,11 +19,7 @@ function safeFilePart(value, fallback = 'Customer') {
 const PDF_UPLOAD_BUCKETS = ['laybypdfs', 'labels'];
 
 function resolveLabelsUploadApiUrl() {
-  const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
-  let host = '';
-  try { host = window?.location?.hostname || ''; } catch {}
-  const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
-  return (!isLocalHost && apiBase) ? `${apiBase}/api/labels` : '/api/labels';
+  return apiUrl('/api/labels');
 }
 
 async function uploadLaybyPdfThroughLabelsApi({ fileName, folder, blob }) {
@@ -31,7 +28,7 @@ async function uploadLaybyPdfThroughLabelsApi({ fileName, folder, blob }) {
 
   const resp = await fetch(resolveLabelsUploadApiUrl(), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withApiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ fileName, folder, pdfBase64: base64 }),
   });
   const json = await resp.json().catch(() => ({}));
@@ -95,24 +92,30 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
 
     const base = laybySnapshot?.primaryLayby || laybySnapshot || { id: laybyId, customer_id: resolvedCustomerId };
     const resolvedLaybyId = laybyId || base.id;
-    const resolvedLaybySaleId = base.sale_id || laybySnapshot?.sale_id || null;
-    const scopeOptions = {
-      laybyId: resolvedLaybyId,
-      laybySaleId: resolvedLaybySaleId,
-    };
+    let statement = null;
+    let totalsByCurrency = laybySnapshot?.totalsByCurrency || null;
+    let pooledCustomerStatement = false;
 
-    let statement = laybySnapshot?.statement || laybySnapshot?.fullStatement || null;
-    if (!statement || (!statement.sales?.length && !statement.items?.length && !statement.payments?.length)) {
-      const { data: statementRes } = await fetchLaybyStatement(resolvedCustomerId, scopeOptions);
+    if (laybySnapshot?.fullStatement || laybySnapshot?.totalsByCurrency) {
+      const payload = buildPooledCustomerPdfPayload(laybySnapshot);
+      statement = payload.statement;
+      totalsByCurrency = payload.totalsByCurrency;
+      pooledCustomerStatement = payload.pooledCustomerStatement;
+    } else {
+      statement = laybySnapshot?.statement || laybySnapshot?.fullStatement || null;
+    }
+
+    if (!statement || (!statement.sales?.length && !statement.payments?.length)) {
+      const { data: statementRes } = await fetchLaybyStatement(resolvedCustomerId);
       if (statementRes) {
         statement = {
           sales: statementRes?.sales || [],
           items: statementRes?.items || [],
           payments: statementRes?.payments || [],
         };
+        totalsByCurrency = computePooledLaybyTotalsByCurrency(statement);
+        pooledCustomerStatement = true;
       }
-    } else if (resolvedLaybyId) {
-      statement = filterStatementToLaybyAccount(statement, scopeOptions);
     }
     let customerInfo = laybySnapshot?.customerInfo || laybySnapshot?.customer || {};
     if (!customerInfo?.name && resolvedCustomerId) {
@@ -132,14 +135,15 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
       customerInfo: laybySnapshot?.customerInfo || laybySnapshot?.customer || customerInfo || {},
     };
 
-    const pooledTotals = statement
+    const pooledTotals = totalsByCurrency || (statement
       ? computePooledLaybyTotalsByCurrency(statement)
-      : (laybySnapshot?.totalsByCurrency || null);
+      : null);
 
     const blob = await generateLaybyPdf(pdfLayby, {
       mode: 'blob',
       ...(statement ? { statement } : {}),
       ...(pooledTotals ? { totalsByCurrency: pooledTotals } : {}),
+      ...(pooledCustomerStatement ? { pooledCustomerStatement: true } : {}),
     });
     if (!blob) return { error: 'Layby PDF generation returned empty' };
 

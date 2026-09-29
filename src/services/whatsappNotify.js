@@ -5,7 +5,7 @@ import { previewLaybyWhatsApp, previewSaleWhatsApp, sendLaybyWhatsApp, sendSaleW
 import { buildClientWhatsAppPreviewForRow } from './whatsappMessagePreview';
 import { buildLaybyPdfUrlForWhatsApp, buildPosSalePdfUrlForWhatsApp } from './whatsappPdfs';
 import { fetchLaybyStatement } from './laybyStatement';
-import { filterStatementToLaybyAccount } from '../utils/laybyRollup';
+import { buildPooledCustomerPdfPayload } from '../utils/laybyRollup';
 import { LUSAKA_BRANCH_ID } from '../utils/locationIds';
 
 async function loadCustomerInfo(customerId) {
@@ -54,15 +54,22 @@ async function buildFreshLaybySnapshot({ laybyId, customerId, laybySnapshot } = 
     || laybySnapshot?.customer
     || await loadCustomerInfo(resolvedCustomerId);
 
+  if (laybySnapshot?.fullStatement || laybySnapshot?.totalsByCurrency) {
+    const payload = buildPooledCustomerPdfPayload(laybySnapshot);
+    return {
+      ...(laybySnapshot || {}),
+      id: laybyId || laybySnapshot?.id || laybySnapshot?.primaryLayby?.id,
+      primaryLayby: laybySnapshot?.primaryLayby || laybySnapshot,
+      customer_id: resolvedCustomerId,
+      customerInfo,
+      statement: payload.statement,
+      fullStatement: payload.statement,
+      totalsByCurrency: payload.totalsByCurrency,
+    };
+  }
+
   const loadStatement = async () => {
-    const resolvedLaybyId = laybyId || laybySnapshot?.id || laybySnapshot?.primaryLayby?.id || null;
-    const resolvedLaybySaleId = laybySnapshot?.primaryLayby?.sale_id
-      || laybySnapshot?.sale_id
-      || null;
-    const { data: statementRes } = await fetchLaybyStatement(resolvedCustomerId, {
-      laybyId: resolvedLaybyId,
-      laybySaleId: resolvedLaybySaleId,
-    });
+    const { data: statementRes } = await fetchLaybyStatement(resolvedCustomerId);
     if (!statementRes) return null;
     return {
       sales: statementRes?.sales || [],
@@ -71,20 +78,10 @@ async function buildFreshLaybySnapshot({ laybyId, customerId, laybySnapshot } = 
     };
   };
 
-  let statement = laybySnapshot?.statement || laybySnapshot?.fullStatement || null;
-  const resolvedLaybyId = laybyId || laybySnapshot?.id || laybySnapshot?.primaryLayby?.id || null;
-  const resolvedLaybySaleId = laybySnapshot?.primaryLayby?.sale_id
-    || laybySnapshot?.sale_id
-    || null;
-  if (statement && resolvedLaybyId) {
-    statement = filterStatementToLaybyAccount(statement, {
-      laybyId: resolvedLaybyId,
-      laybySaleId: resolvedLaybySaleId,
-    });
-  }
-  if (!statement || (!statement.sales?.length && !statement.items?.length && !statement.payments?.length)) {
+  let statement = laybySnapshot?.fullStatement || laybySnapshot?.statement || null;
+  if (!statement || (!statement.sales?.length && !statement.payments?.length)) {
     statement = await loadStatement();
-    if (!statement?.sales?.length && !statement?.items?.length && !statement?.payments?.length) {
+    if (!statement?.sales?.length && !statement?.payments?.length) {
       await new Promise((resolve) => { setTimeout(resolve, 600); });
       statement = await loadStatement();
     }

@@ -4,6 +4,7 @@ import db from './dataClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { applyInventoryBulk } from './utils/inventoryApi';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import { syncProductLocations } from './services/productLocations';
 
 const FROM_LOCATION_ID = '454a092c-5b12-441e-b99d-216f6fa72198';
@@ -392,7 +393,7 @@ export default function OutletTransferSummary() {
       try {
         const controller = new AbortController();
         const t = setTimeout(() => controller.abort(), 10000);
-        const resp = await fetch('/api/transfer', {
+        const resp = await fetch(apiUrl('/api/transfer'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'upload-pdf', sessionId, fileName, pdfBase64 }), signal: controller.signal
         });

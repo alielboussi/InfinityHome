@@ -1,3 +1,5 @@
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
+
 async function parseJson(resp) {
   const text = await resp.text().catch(() => '');
   if (!text) return {};
@@ -6,12 +8,6 @@ async function parseJson(resp) {
   } catch {
     return { raw: text };
   }
-}
-
-function apiUrl(path) {
-  const base = String(process.env.REACT_APP_API_BASE || '').trim().replace(/\/+$/, '');
-  if (base) return `${base}${path}`;
-  return path;
 }
 
 async function staffAuthHeaders() {

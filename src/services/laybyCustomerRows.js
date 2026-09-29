@@ -2,12 +2,11 @@ import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
-import { computePooledLaybyTotalsByCurrency, filterFahmePooledStatementPayments, filterStatementToOutstandingSales, resolveNegotiatedGrossSubtotal } from '../utils/laybyRollup';
+import { computePooledLaybyTotalsByCurrency, filterStatementPaymentsToSaleScope, filterStatementToOutstandingSales, resolveNegotiatedGrossSubtotal } from '../utils/laybyRollup';
 import { computeQuotationDisplayTotal, computeSaleLaybyTotalDue, resolveQuoteVatApply } from '../utils/quotationDisplay';
 import { fetchMergedLaybyPayments, buildLaybyPaymentLooseKey, dedupeLaybyPaymentRows } from './laybyPayments';
-import { isFahme, isFahmeAcc2, resolveFahmeFallbackKey, FAHME_ID, FAHME_PLACEHOLDER_HOLD, shouldUseFahmeLiveStatementOnly } from '../laybyRules';
+import { FAHME_ID, FAHME_PLACEHOLDER_HOLD, shouldUseFahmeLiveStatementOnly } from '../laybyRules';
 import { filterCustomerSalesForLaybyStatement } from '../utils/laybyStatementSales';
-import { applyFahmeStatementLock, filterLockedFahmePayments, filterLockedFahmeSales, isFahmeStatementLocked } from '../utils/fahmeStatementLock';
 import {
   applyStartingDueToTotalsByCurrency,
   buildStartingDuePrimaryLayby,
@@ -15,8 +14,6 @@ import {
   getStartingDueBalance,
   getStartingDueBalanceDate,
 } from '../utils/startingDueBalance';
-import laybyPdfSettlementFallbacks from '../data/laybyPdfSettlementFallbacks.json';
-
 const CLOSED_LAYBY_STATUSES = new Set(['completed', 'cancelled', 'voided', 'closed', 'settled', 'paid', 'refunded']);
 
 const normalizeCurrency = (value, fallback = 'K') => {
@@ -617,9 +614,7 @@ export async function fetchLaybyCustomerRows() {
       .slice();
     customerSales.sort((left, right) => toTime(left?.sale_date || left?.created_at) - toTime(right?.sale_date || right?.created_at));
 
-    const scopedCustomerSales = isFahmeStatementLocked(customerId)
-      ? filterLockedFahmeSales(customerSales, customerId)
-      : customerSales;
+    const scopedCustomerSales = customerSales;
 
     const useSinglePooledLaybyTotals = laybysForTotals.length === 1
       && (scopedCustomerSales.length > 1 || shouldUseFahmeLiveStatementOnly(customerId, customer?.name));
@@ -753,30 +748,21 @@ export async function fetchLaybyCustomerRows() {
     });
     (paymentsByCustomer.get(String(customerId)) || []).forEach((payment) => pushCustomerPayment(payment));
 
-    let statementPayments = dedupeLaybyPaymentRows(customerPayments);
-    if (isFahmeStatementLocked(customerId)) {
-      statementPayments = filterLockedFahmePayments(statementPayments, customerId);
-    } else if (
-      isFahme(customerId)
-      && !isFahmeAcc2(customerId, customer?.name)
-      && !shouldUseFahmeLiveStatementOnly(customerId, customer?.name)
-    ) {
-      const fallbackKey = resolveFahmeFallbackKey(customerId, customer?.name);
-      const fallbackRows = laybyPdfSettlementFallbacks[fallbackKey] || [];
-      statementPayments = filterFahmePooledStatementPayments(customerPayments, fallbackRows);
-    }
+    const statementSaleIds = new Set(
+      statementSales
+        .map((sale) => String(sale?.sale_id ?? sale?.id ?? '').trim())
+        .filter(Boolean),
+    );
+    const statementPayments = filterStatementPaymentsToSaleScope(
+      dedupeLaybyPaymentRows(customerPayments),
+      statementSaleIds,
+    );
 
     const normalizedStatement = normalizeLaybyStatement({
       sales: statementSales,
       items: customerItems,
       payments: statementPayments,
     });
-
-    const statementSaleIds = new Set(
-      statementSales
-        .map((sale) => String(sale?.sale_id ?? sale?.id ?? '').trim())
-        .filter(Boolean)
-    );
 
     const synthesizedSales = (laybysForTotals.length ? laybysForTotals : laybys)
       .map((layby) => {
@@ -846,24 +832,6 @@ export async function fetchLaybyCustomerRows() {
 
     if (sumDue(mergedTotalsWithStarting) <= 0.009) return;
 
-    let statementLocked = false;
-    if (isFahmeStatementLocked(customerId)) {
-      const locked = applyFahmeStatementLock(customerId, {
-        sales: mergedStatement?.sales || [],
-        items: mergedStatement?.items || [],
-        payments: mergedStatement?.payments || [],
-      });
-      if (locked.statementLocked) {
-        statementLocked = true;
-        mergedStatement = normalizeLaybyStatement({
-          sales: locked.sales,
-          items: locked.items,
-          payments: locked.payments,
-        });
-        mergedTotalsWithStarting = locked.totalsByCurrency || mergedTotalsWithStarting;
-      }
-    }
-
     const activeStatement = filterStatementToOutstandingSales(mergedStatement);
     const outstandingSales = activeStatement?.sales || [];
     const mergedTotalsByCurrencyFinal = mergedTotalsWithStarting;
@@ -925,7 +893,7 @@ export async function fetchLaybyCustomerRows() {
       totalsByCurrency: mergedTotalsByCurrencyFinal,
       linkedQuoteId: linkedQuote?.id || null,
       totalsDebug: {
-        source: statementLocked ? 'signed_off_pdf_lock' : 'pooled_statement',
+        source: 'pooled_statement',
         saleCount: mergedStatement?.sales?.length || 0,
         outstandingSaleCount: outstandingSales.length,
         groupedPayments: (mergedStatement?.payments || []).length,
@@ -933,12 +901,10 @@ export async function fetchLaybyCustomerRows() {
         startingDueBalance: startingDueAmount,
         startingDueBalanceDate: getStartingDueBalanceDate(customer),
         statementError: null,
-        statementLocked,
       },
       laybys,
       primaryLayby: resolvedPrimaryLayby,
       lastUpdated,
-      statementLocked,
     });
   });
 

@@ -91,7 +91,7 @@ export function resolveNegotiatedGrossSubtotal({
   return Math.max(0, gross);
 }
 
-export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v31';
+export const LAYBY_ROWS_CACHE_KEY = 'layby-mgmt:rows:v33';
 
 export function parseFallbackSettlementDateTs(dateLabel) {
   const m = /^([0-9]{2})\/([0-9]{2})\/([0-9]{4})$/.exec(String(dateLabel || '').trim());
@@ -323,6 +323,33 @@ export function buildPooledLaybyPaymentTarget(statement, poolSaleId) {
     sortTime: toSortTime(sale || {}),
     sortIndex: 0,
   }];
+}
+
+/** Keep only payments for sales on this statement (or customer-level rows with no sale_id). */
+export function filterStatementPaymentsToSaleScope(payments, saleIds) {
+  const allowed = saleIds instanceof Set
+    ? saleIds
+    : new Set(
+      (Array.isArray(saleIds) ? saleIds : [])
+        .map((id) => String(id ?? '').trim())
+        .filter(Boolean),
+    );
+  return (payments || []).filter((payment) => {
+    const saleId = String(payment?.sale_id ?? '').trim();
+    if (!saleId) return true;
+    return allowed.has(saleId);
+  });
+}
+
+/** Full pooled customer statement for PDF export — same source as Layby Management row. */
+export function buildPooledCustomerPdfPayload(row) {
+  const statement = normalizeLaybyStatement({
+    sales: row?.fullStatement?.sales || row?.statement?.sales || [],
+    items: row?.fullStatement?.items || row?.statement?.items || [],
+    payments: row?.fullStatement?.payments || row?.statement?.payments || [],
+  });
+  const totalsByCurrency = row?.totalsByCurrency || computePooledLaybyTotalsByCurrency(statement);
+  return { statement, totalsByCurrency, pooledCustomerStatement: true };
 }
 
 /** Fahme accounts are USD-only — fold mis-tagged K buckets without re-deriving due. */

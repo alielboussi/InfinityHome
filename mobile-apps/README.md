@@ -153,6 +153,19 @@ Then `npm run build:apk:prod` in `lusaka-stock/`. See `lusaka-stock/PRE_BUILD_CH
 
 ---
 
+## 7. Warehouse Catalog (`warehouse-catalog/`) — **draft**
+
+Expo Go app for warehouse floor: dashboard, permissions from **User Login Access**, Google + biometric unlock. Scan/forms and Kitwe delivery flows are phased in — see `warehouse-catalog/README.md`.
+
+```bash
+cd mobile-apps/warehouse-catalog
+cp .env.example .env
+npm install
+npm start
+```
+
+---
+
 ## 6. Product Photos (`product-pricing/`)
 
 Add and replace portal **product photos** from a phone. Prices are read-only on cards.
@@ -187,6 +200,8 @@ mobile-apps/
   customer-credit/
   lusaka-stock/
   product-pricing/
+  warehouse-catalog/
+  mobileAccessManifest.js   # screen + permission registry (web + mobile)
   README.md
 ```
 

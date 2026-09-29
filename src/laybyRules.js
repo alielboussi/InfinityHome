@@ -35,9 +35,8 @@ export function isFahmeAcc2(customerId, customerName) {
   return resolveFahmeFallbackKey(customerId, customerName) === FAHME_FALLBACK_KEY_ACC2;
 }
 
-/** Fahme accounts use live sales/items/payments only — no PDF fallback JSON.
- *  Reference: docs/reference/fahme-primary/ and docs/reference/fahme-acc2/
- *  Locked totals: src/data/fahmeStatementLocks.json (see fahmeStatementLock.js)
+/** Fahme accounts use live sales/items/payments only — same pooled rollup as Layby Management.
+ *  Reference snapshots: docs/reference/fahme-primary/ and docs/reference/fahme-acc2/
  *  Payments must be deduped across sales_payments + layby_payments (fetchMergedLaybyPayments). */
 export function shouldUseFahmeLiveStatementOnly(customerId, customerName, opts = {}) {
   if (opts?.liveDataOnly === true) return true;

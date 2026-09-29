@@ -1,24 +1,13 @@
 import { resolveSaleActor, getCurrentUser } from '../accessControl';
-
-const isLocalHost = () => {
-  try {
-    const h = typeof window !== 'undefined' ? window.location.hostname : '';
-    return /^(localhost|127\.0\.0\.1)$/i.test(h);
-  } catch {
-    return false;
-  }
-};
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 
 export async function applySalesAdjustment(payload) {
-  const localHost = isLocalHost();
-  const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
-  const apiUrl = localHost ? '/api/sales-adjustment' : (apiBase ? `${apiBase}/api/sales-adjustment` : '/api/sales-adjustment');
   const user = getCurrentUser();
   const actor = resolveSaleActor(user);
 
-  const resp = await fetch(apiUrl, {
+  const resp = await fetch(apiUrl('/api/sales-adjustment'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withApiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       ...(payload || {}),
       user_uid: payload?.user_uid ?? actor.user_uid,

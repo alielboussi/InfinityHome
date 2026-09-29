@@ -13,7 +13,6 @@
     "font-awesome": "^4.7.0",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",
-    "http-proxy-middleware": "^2.0.6",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
     "jszip": "^3.10.1",
@@ -28,12 +27,11 @@
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
   },
-  "proxy": "",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "prebuild": "node scripts/checkEnv.js",
-    "postinstall": "node scripts/silenceHtml5QrcodeSourceMaps.js",
+    "postinstall": "node scripts/silenceHtml5QrcodeSourceMaps.js && node scripts/patchWebpackDevServerMiddleware.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

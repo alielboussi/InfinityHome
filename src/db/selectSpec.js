@@ -24,6 +24,7 @@ const BELONGS_TO_FK = {
   locations: 'location_id',
   products: 'product_id',
   combos: 'combo_id',
+  warehouse_assemblies: 'assembly_id',
 };
 
 const CHILD_FK = {
@@ -31,6 +32,10 @@ const CHILD_FK = {
   product_images: 'product_id',
   combo_locations: 'combo_id',
   combo_items: 'combo_id',
+  warehouse_packets: 'assembly_id',
+  warehouse_assembly_locations: 'assembly_id',
+  warehouse_assembly_colors: 'assembly_id',
+  warehouse_assembly_packets: 'assembly_id',
   sale_items: 'sale_id',
   layby_payments: 'layby_id',
   quotation_items: 'quotation_id',

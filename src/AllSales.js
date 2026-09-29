@@ -12,6 +12,7 @@ import { applyInventoryBulk } from './utils/inventoryApi';
 import { saveSaleEdit } from './services/salesEdit';
 import { notifyLaybyWhatsApp, notifySaleWhatsApp, previewSaleWhatsAppForRow } from './services/whatsappNotify';
 import { downloadPosSalePdf } from './services/whatsappPdfs';
+import { apiUrl } from './utils/apiUrl';
 import { isFahme } from './laybyRules';
 import { filterLaybyStatementSales, isSystemMigrationSale, isSystemReceiptTag } from './utils/laybyStatementSales';
 import { fetchMergedLaybyPayments } from './services/laybyPayments';
@@ -300,7 +301,7 @@ export default function AllSales() {
       let locRows = locRes.error ? [] : (locRes.data || []);
       if (custRes.error || custRows.length === 0) {
         try {
-          const resp = await fetch('/api/customers');
+          const resp = await fetch(apiUrl('/api/customers'));
           const json = await resp.json();
           if (json?.ok && Array.isArray(json.rows)) custRows = json.rows;
         } catch {}

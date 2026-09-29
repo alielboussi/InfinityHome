@@ -5,7 +5,7 @@ import generateLaybyPdf from './laybyPdf';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { fetchLaybyStatement } from './services/laybyStatement';
-import { LAYBY_ROWS_CACHE_KEY, computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount, getDisplayTotalsByCurrency } from './utils/laybyRollup';
+import { LAYBY_ROWS_CACHE_KEY, buildPooledCustomerPdfPayload, computePooledLaybyTotalsByCurrency, getDisplayTotalsByCurrency } from './utils/laybyRollup';
 import { isFahme } from './laybyRules';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 
@@ -182,28 +182,16 @@ export default function LaybyManagementMobile() {
                         onClick={async () => {
                           const customerId = row.customerId;
                           const laybyId = primaryLayby?.id || (row.laybys || []).find((layby) => layby?.id)?.id;
-                          const scopeOptions = {
-                            laybyId,
-                            laybySaleId: primaryLayby?.sale_id || null,
-                          };
-                          let statement = {
-                            sales: row.fullStatement?.sales || [],
-                            items: row.fullStatement?.items || [],
-                            payments: row.fullStatement?.payments || [],
-                          };
-                          if (laybyId) {
-                            statement = filterStatementToLaybyAccount(statement, scopeOptions);
-                          }
-                          const shouldRefreshStatement = isFahme(customerId)
-                            || (!statement.sales.length && !statement.items.length && !statement.payments.length);
-                          if (shouldRefreshStatement) {
-                            const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId, scopeOptions);
-                            if (!statementErr && statementRes) {
+                          let { statement, totalsByCurrency, pooledCustomerStatement } = buildPooledCustomerPdfPayload(row);
+                          if (!statement.sales?.length && !statement.payments?.length) {
+                            const { data: statementRes } = await fetchLaybyStatement(customerId);
+                            if (statementRes) {
                               statement = {
                                 sales: statementRes?.sales || [],
                                 items: statementRes?.items || [],
                                 payments: statementRes?.payments || [],
                               };
+                              totalsByCurrency = computePooledLaybyTotalsByCurrency(statement);
                             }
                           }
                           const pdfLayby = {
@@ -215,7 +203,8 @@ export default function LaybyManagementMobile() {
                           };
                           await generateLaybyPdf(pdfLayby, {
                             statement,
-                            totalsByCurrency: computePooledLaybyTotalsByCurrency(statement),
+                            totalsByCurrency,
+                            pooledCustomerStatement,
                           });
                         }}
                       >PDF</button>

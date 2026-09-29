@@ -21,6 +21,7 @@ import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import { fetchPosCatalogViaApi, fetchPosLocationsViaApi } from './services/posCatalogApi';
 import BackToDashboard from './BackToDashboard';
 import { syncProductLocations } from './services/productLocations';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import {
   applyComboLocationPricing,
   applyProductLocationPricing,
@@ -116,30 +117,10 @@ const parseDateDisplay = (displayDate) => {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
-const getApiBase = () => {
-  const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
-  return base ? base.replace(/\/+$/, '') : '';
-};
-
-const isLocalHost = () => {
-  try {
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    return /^(localhost|127\.0\.0\.1)$/i.test(host);
-  } catch {
-    return false;
-  }
-};
-
-const buildApiUrl = (path) => {
-  const apiBase = getApiBase();
-  if (isLocalHost()) return path;
-  return apiBase ? `${apiBase}${path}` : path;
-};
-
 const saveCustomerViaApi = async (payload) => {
-  const response = await fetch(buildApiUrl('/api/customers'), {
+  const response = await fetch(apiUrl('/api/customers'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withApiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload || {}),
   });
   const data = await response.json().catch(() => ({}));
@@ -495,7 +476,7 @@ export default function POS({ isMobile = false }) {
           rows = data || [];
         } catch (directErr) {
           try {
-            const resp = await fetch('/api/customers');
+            const resp = await fetch(apiUrl('/api/customers'));
             const json = await resp.json();
             if (json?.ok && Array.isArray(json.rows)) {
               rows = json.rows;
@@ -728,6 +709,12 @@ export default function POS({ isMobile = false }) {
 
   // Helper: get correct price (use promo if present and > 0, else use price if present and > 0)
   const getBestPrice = (item) => selectPrice(item.promotional_price, item.price);
+
+  const formatPosPrice = (amount, curr = currency) => {
+    const value = Number(amount || 0);
+    if (!Number.isFinite(value)) return `0.00 ${getCurrencyLabel(curr)}`;
+    return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${getCurrencyLabel(curr)}`;
+  };
 
   const parseAmountInput = (value) => {
     if (value === null || value === undefined) return 0;
@@ -2379,8 +2366,7 @@ export default function POS({ isMobile = false }) {
               <PosCardImage imageUrl={product.imageUrl} alt={product.name} />
               <div className="pos-product-body">
                 {product.name} ({product.sku})<br />Stock: {Math.max(0, displayStock)} {product.stockState === 'reserved' && '(reserved)'}<br />
-                <b>Price: {getBestPrice(product).toFixed(2)} {getCurrencyLabel(product.currency || currency)}</b>
-                <div className="pos-product-meta">std: {String(product.price)} | promo: {String(product.promotional_price)}</div>
+                <b className="pos-product-price">Price: {formatPosPrice(getBestPrice(product), product.currency || currency)}</b>
                 {isUnavailable && (
                   <div style={{ marginTop: 6, fontSize: '0.8em', color: '#fff', background: badgeColor, display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
                     {badgeLabel}
@@ -2400,7 +2386,7 @@ export default function POS({ isMobile = false }) {
               <div className="pos-product-body">
                 {set.combo_name} (Set) ({set.sku})<br />
                 <span className="pos-product-stock">Stock: {set.stock}</span><br />
-                <b>Price: {getBestPrice(set).toFixed(2)} {getCurrencyLabel(set.currency || currency)}</b>
+                <b className="pos-product-price">Price: {formatPosPrice(getBestPrice(set), set.currency || currency)}</b>
               </div>
             </button>
           ))

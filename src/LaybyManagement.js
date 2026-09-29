@@ -13,7 +13,8 @@ import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { insertLaybyPayments } from './services/laybyPayments';
 import { getCurrentUser, canManageLaybys } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
-import { buildLaybySaleFinancials, buildPooledLaybyPaymentTarget, computeLaybyTotalsByCurrency, computePooledLaybyTotalsByCurrency, filterStatementToLaybyAccount, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
+import { buildLaybySaleFinancials, buildPooledCustomerPdfPayload, buildPooledLaybyPaymentTarget, computeLaybyTotalsByCurrency, computePooledLaybyTotalsByCurrency, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
 import {
   getStartingDueBalance,
 } from './utils/startingDueBalance';
@@ -25,7 +26,6 @@ import { notifyLaybyWhatsApp, previewLaybyWhatsAppForCustomerRow, resendLaybyWha
 import { sendMonthlyBalanceDueWhatsApp } from './services/whatsapp';
 import { isFahme } from './laybyRules';
 import { assertLaybyPaymentReceiptAvailable } from './utils/receiptNumber';
-import { isFahmeStatementLocked, fahmeStatementLockedMessage } from './utils/fahmeStatementLock';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 import {
   clearQuoteLaybyPendingWhatsApp,
@@ -490,11 +490,6 @@ export default function LaybyManagement() {
       return;
     }
     const customerId = selectedLayby.customer_id || selectedLayby.customerId;
-    if (isFahmeStatementLocked(customerId)) {
-      setError(fahmeStatementLockedMessage(customerId));
-      setLoading(false);
-      return;
-    }
     let successFlag = false;
     let whatsappSaleId = null;
     let fromQuote = false;
@@ -855,11 +850,6 @@ export default function LaybyManagement() {
   }
 
   async function openPaymentsEditor(target) {
-    const customerId = target?.customer_id || target?.customerId || target?.customerInfo?.id;
-    if (isFahmeStatementLocked(customerId)) {
-      setError(fahmeStatementLockedMessage(customerId));
-      return;
-    }
     setPaymentsErr('');
     setPaymentsBusy(true);
     setPaymentEditLayby(target);
@@ -1047,10 +1037,6 @@ export default function LaybyManagement() {
     const customerId = paymentEditLayby?.customer_id
       || paymentEditLayby?.customerId
       || paymentEditLayby?.customerInfo?.id;
-    if (isFahmeStatementLocked(customerId)) {
-      setPaymentsErr(fahmeStatementLockedMessage(customerId));
-      return;
-    }
     setPaymentsBusy(true);
     setPaymentsErr('');
     try {
@@ -1247,7 +1233,7 @@ export default function LaybyManagement() {
 
       const apiAttempt = async () => {
         try {
-          const resp = await fetch('/api/layby-delete-customer', {
+          const resp = await fetch(apiUrl('/api/layby-delete-customer'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ laybyIds, userId: currentUser?.id || null }),
@@ -1584,8 +1570,6 @@ export default function LaybyManagement() {
                 };
                 const editQuoteId = resolveRowQuoteId(row, quoteLinkIndex);
                 const showEditQuote = canOfferEditQuote(row);
-                const rowLocked = Boolean(row.statementLocked || isFahmeStatementLocked(row.customerId));
-
                 return (
                   <tr key={`row-${row.customerId}`} style={{ background: '#1a1f27' }}>
                     <td className="text-col" style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>
@@ -1593,11 +1577,6 @@ export default function LaybyManagement() {
                       {row.placeholderHold && (
                         <div style={{ fontSize: '0.75rem', color: '#9aa4b2', marginTop: 4 }}>
                           Pending reconciliation — totals hidden while Acc(2) is being fixed
-                        </div>
-                      )}
-                      {rowLocked && (
-                        <div style={{ fontSize: '0.75rem', color: '#63c7ff', marginTop: 4 }}>
-                          Signed-off statement locked — totals match reference PDF
                         </div>
                       )}
                     </td>
@@ -1618,7 +1597,7 @@ export default function LaybyManagement() {
                           const target = buildSelectedLaybyTarget(row, primaryLayby || row.primaryLayby);
                           if (target) setSelectedLayby(target);
                         }}
-                        disabled={sumRowDue(row) <= 0.009 || rowLocked}
+                        disabled={sumRowDue(row) <= 0.009}
                       >
                         Add Payment
                       </button>
@@ -1626,7 +1605,6 @@ export default function LaybyManagement() {
                         style={{ width: '100%', background: '#6c5ce7', color: '#fff', borderRadius: 6, padding: '6px 10px', fontWeight: 600, fontSize: '0.82rem' }}
                         title="View and edit payments for this customer"
                         onClick={() => openPaymentsEditor(customerTarget)}
-                        disabled={rowLocked}
                       >
                         Edit Payments
                       </button>
@@ -1678,33 +1656,20 @@ export default function LaybyManagement() {
                             const customerId = row.customerId;
                             const primaryLayby = row.primaryLayby || (row.laybys || []).find((layby) => layby?.id) || null;
                             const laybyId = primaryLayby?.id || (row.laybys || []).find((layby) => layby?.id)?.id;
-                            const scopeOptions = {
-                              laybyId,
-                              laybySaleId: primaryLayby?.sale_id || null,
-                            };
-                            let statement = {
-                              sales: row.fullStatement?.sales || [],
-                              items: row.fullStatement?.items || [],
-                              payments: row.fullStatement?.payments || [],
-                            };
-                            if (laybyId) {
-                              statement = filterStatementToLaybyAccount(statement, scopeOptions);
-                            }
-                            // Fahme (and empty cache): always refresh so PDF matches current Layby totals.
-                            const shouldRefreshStatement = isFahme(customerId)
-                              || (!statement.sales.length && !statement.items.length && !statement.payments.length);
-                            if (shouldRefreshStatement) {
-                              const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId, scopeOptions);
-                              if (statementErr && !statement.sales.length) {
+                            let { statement, totalsByCurrency, pooledCustomerStatement } = buildPooledCustomerPdfPayload(row);
+                            if (!statement.sales?.length && !statement.payments?.length) {
+                              const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId);
+                              if (statementErr) {
                                 setError(statementErr?.message || 'Failed to build customer statement');
                                 return;
                               }
-                              if (!statementErr && statementRes) {
+                              if (statementRes) {
                                 statement = {
                                   sales: statementRes?.sales || [],
                                   items: statementRes?.items || [],
                                   payments: statementRes?.payments || [],
                                 };
+                                totalsByCurrency = computePooledLaybyTotalsByCurrency(statement);
                               }
                             }
                             const pdfLayby = {
@@ -1714,10 +1679,10 @@ export default function LaybyManagement() {
                               customer_id: row.customerId,
                               customerInfo: row.customer || {},
                             };
-                            const totalsByCurrency = computePooledLaybyTotalsByCurrency(statement);
                             await generateLaybyPdf(pdfLayby, {
                               statement,
                               totalsByCurrency,
+                              pooledCustomerStatement,
                             });
                           }}
                         >

@@ -1,34 +1,11 @@
-const getApiBase = () => {
-  const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
-  if (!base) return '';
-  return base.replace(/\/+$/, '');
-};
+import { apiUrl, shouldUseRemoteApi, withApiHeaders } from '../utils/apiUrl';
 
-const isLocalHost = () => {
-  try {
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    return /^(localhost|127\.0\.0\.1)$/i.test(host);
-  } catch {
-    return false;
-  }
-};
-
-const shouldUseApi = () => {
-  const apiBase = getApiBase();
-  const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
-  if (forceApi) return true;
-  if (isLocalHost()) return true;
-  return Boolean(apiBase) || process.env.NODE_ENV === 'production';
-};
+const shouldUseApi = () => shouldUseRemoteApi();
 
 async function postProductLocations(payload) {
-  const apiBase = getApiBase();
-  const url = isLocalHost()
-    ? '/api/product-locations'
-    : (apiBase ? `${apiBase}/api/product-locations` : '/api/product-locations');
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl('/api/product-locations'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withApiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));

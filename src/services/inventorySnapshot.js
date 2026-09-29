@@ -5,35 +5,16 @@ import {
   computeExpectedInventoryMap,
   fetchActiveStockPeriod,
 } from '../utils/computedInventoryQty';
+import { apiUrl, isLocalDev, shouldUseRemoteApi, withApiHeaders } from '../utils/apiUrl';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
 
 const OPEN_STATUSES = ['open', 'open_locked'];
 
-const getApiBase = () => {
-  const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
-  if (!base) return '';
-  return base.replace(/\/+$/, '');
-};
+const isLocalHost = () => isLocalDev();
 
-const isLocalHost = () => {
-  try {
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    return /^(localhost|127\.0\.0\.1)$/i.test(host);
-  } catch {
-    return false;
-  }
-};
-
-const shouldUseApi = () => {
-  const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
-  if (forceApi) return true;
-  if (isLocalHost()) return false;
-  const apiBase = getApiBase();
-  if (apiBase) return true;
-  return process.env.NODE_ENV === 'production';
-};
+const shouldUseApi = () => shouldUseRemoteApi();
 
 const fetchAllInventoryRows = async (locationList) => {
   const pageSize = 1000;
@@ -61,13 +42,9 @@ const fetchAllInventoryRows = async (locationList) => {
 };
 
 const fetchInventoryViaApi = async (locations) => {
-  const apiBase = getApiBase();
-  const url = isLocalHost()
-    ? '/api/inventory-bulk'
-    : (apiBase ? `${apiBase}/api/inventory-bulk` : '/api/inventory-bulk');
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl('/api/inventory-bulk'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withApiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       action: 'snapshot',
       live: true,

@@ -1,5 +1,6 @@
 import { firebaseSignInWithGoogle, firebaseResolveAppUserFromSession, firebaseGetAccessToken } from './firebaseAuthApi';
 import { resolveSessionUserFromAuth } from '../accessControl';
+import { apiUrl, withApiHeaders } from './apiUrl';
 
 function normalizeReturnPath(returnPath = '/login') {
   const path = String(returnPath || '/login').trim() || '/login';
@@ -34,9 +35,9 @@ export async function resolveAppUserFromSession() {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), 2500) : null;
   try {
-    const response = await fetch('/api/auth-profile', {
+    const response = await fetch(apiUrl('/api/auth-profile'), {
       method: 'GET',
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: withApiHeaders({ Authorization: `Bearer ${accessToken}` }),
       cache: 'no-store',
       signal: controller?.signal,
     });

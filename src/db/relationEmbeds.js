@@ -14,6 +14,9 @@ const CHILD_FK = {
   product_images: 'product_id',
   combo_locations: 'combo_id',
   combo_items: 'combo_id',
+  warehouse_packets: 'assembly_id',
+  warehouse_assembly_locations: 'assembly_id',
+  warehouse_assembly_colors: 'assembly_id',
   sale_items: 'sale_id',
   layby_payments: 'layby_id',
   quotation_items: 'quotation_id',
@@ -25,6 +28,7 @@ const BELONGS_TO_FK = {
   customers: 'customer_id',
   users: 'user_id',
   locations: 'location_id',
+  warehouse_assemblies: 'assembly_id',
 };
 
 async function fetchByFieldIn(table, field, values) {

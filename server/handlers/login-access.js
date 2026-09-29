@@ -3,6 +3,7 @@ import {
   isLoginAccessAdmin,
   listLoginAccessRecords,
   setLoginAccessEnabled,
+  updateMobileAccessGrant,
 } from '../lib/loginAccess.js';
 
 async function requireAdmin(req) {
@@ -34,16 +35,41 @@ export default async function handler(req, res) {
         return;
       }
       const loginEnabled = body.login_enabled ?? body.loginEnabled;
-      if (typeof loginEnabled !== 'boolean') {
-        res.status(400).json({ ok: false, error: 'login_enabled boolean is required' });
+      const mobileAccess = body.mobile_access ?? body.mobileAccess;
+      const mobileDisplayName = body.mobile_display_name ?? body.mobileDisplayName;
+      const updatingMobile = mobileAccess && typeof mobileAccess === 'object';
+      const updatingDisplayName = mobileDisplayName !== undefined;
+      const updatingCatalog = updatingMobile || updatingDisplayName;
+      let user = null;
+
+      if (typeof loginEnabled === 'boolean' && !updatingCatalog) {
+        user = await setLoginAccessEnabled({
+          uid,
+          loginEnabled,
+          actorEmail: actor.email,
+        });
+      }
+
+      if (updatingCatalog) {
+        user = await updateMobileAccessGrant({
+          uid,
+          mobileAccess: updatingMobile ? mobileAccess : undefined,
+          mobileDisplayName: updatingDisplayName ? mobileDisplayName : undefined,
+          actorEmail: actor.email,
+        });
+      }
+
+      if (user) {
+        res.status(200).json({ ok: true, user });
         return;
       }
-      const user = await setLoginAccessEnabled({
-        uid,
-        loginEnabled,
-        actorEmail: actor.email,
+
+      res.status(400).json({
+        ok: false,
+        error: updatingCatalog
+          ? 'Failed to save warehouse catalog access (deploy latest API).'
+          : 'login_enabled or mobile_access is required',
       });
-      res.status(200).json({ ok: true, user });
       return;
     }
 

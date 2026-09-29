@@ -62,6 +62,8 @@
     { "source": "/api/stocktake-periods-list", "destination": "/api/stocktake?action=periods-list" },
     { "source": "/api/stocktake-period-detail", "destination": "/api/stocktake?action=period-detail" },
     { "source": "/api/stocktake-period-variance", "destination": "/api/stocktake?action=period-variance" },
+    { "source": "/api/stocktake-period-count-sheet", "destination": "/api/stocktake?action=period-count-sheet" },
+    { "source": "/api/warehouse-mobile", "destination": "/api/stocktake?action=warehouse-mobile" },
 
     { "source": "/api/payments", "destination": "/api/transactions?action=payments" },
     { "source": "/api/payments-list", "destination": "/api/transactions?action=payments-list" },

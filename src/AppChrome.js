@@ -41,6 +41,7 @@ const NAV_GROUPS = [
     title: 'Inventory',
     items: [
       { label: 'Products', route: '/products-list', icon: FaTags },
+      { label: 'Products (Warehouse)', route: '/warehouse-products', icon: FaBoxOpen },
       { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
       { label: 'Categories', route: '/categories', icon: FaThLarge },
       { label: 'Sets', route: '/sets', icon: FaLayerGroup },
@@ -55,6 +56,12 @@ const NAV_GROUPS = [
     items: [
       { label: 'Stocktake', route: '/stocktake', icon: FaBoxes },
       { label: 'Stocktake Aggregation', route: '/stocktake/aggregation', icon: FaClipboardList, adminOnly: true },
+    ],
+  },
+  {
+    title: 'Transfers',
+    items: [
+      { label: 'Lusaka Transfers', route: '/lusaka-transfers', icon: FaExchangeAlt },
     ],
   },
   {
@@ -148,6 +155,8 @@ const TITLE_MAP = {
   '/customer-private-balances': 'Customer Private Balances',
   '/products': 'Products',
   '/products-list': 'Products',
+  '/warehouse-products': 'Products (Warehouse)',
+  '/warehouse-products/packets': 'Packets (Warehouse)',
   '/stock-history': 'Stock History',
   '/categories': 'Categories',
   '/sets': 'Sets',

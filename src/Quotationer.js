@@ -12,6 +12,7 @@ import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
 import { enrichQuotationListTotals } from './services/quotationListTotals';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import {
   applyQuotationTotalsFromItems,
   computeQuotationDisplayTotal,
@@ -103,14 +104,14 @@ async function fetchQuotationRead(action, params = {}) {
   const canonicalQuotationRead = `${CANONICAL_APP_ORIGIN}/api/quotation-read?${new URLSearchParams({ action, ...params }).toString()}`;
 
   const attempts = [
-    relQuotationRead,
-    relAdminRead,
+    apiUrl(relQuotationRead),
+    apiUrl(relAdminRead),
     canonicalQuotationRead,
   ];
 
   let lastError = null;
   for (const url of attempts) {
-    const resp = await fetch(url, headers ? { headers } : undefined);
+    const resp = await fetch(url, headers ? { headers: withApiHeaders(headers) } : undefined);
     const payload = await resp.json().catch(() => ({}));
     if (resp.ok && payload?.ok) {
       return payload.rows || [];
@@ -133,10 +134,10 @@ async function fetchQuotationDetail(quoteId) {
   const relAdminRead = `/api/admin?${new URLSearchParams({ adminAction: 'quotation-read', action: 'get-quote', id: quoteId }).toString()}`;
   const canonicalQuotationRead = `${CANONICAL_APP_ORIGIN}/api/quotation-read?${params.toString()}`;
 
-  const attempts = [relQuotationRead, relAdminRead, canonicalQuotationRead];
+  const attempts = [apiUrl(relQuotationRead), apiUrl(relAdminRead), canonicalQuotationRead];
   let lastError = null;
   for (const url of attempts) {
-    const resp = await fetch(url, headers ? { headers } : undefined);
+    const resp = await fetch(url, headers ? { headers: withApiHeaders(headers) } : undefined);
     const payload = await resp.json().catch(() => ({}));
     if (resp.ok && payload?.ok && payload?.quote) {
       return { quote: payload.quote, items: payload.items || [] };
@@ -167,8 +168,8 @@ async function fetchQuotationWrite(action, payload = {}) {
   if (bypass) authHeaders['x-vercel-protection-bypass'] = bypass;
 
   const attempts = [
-    '/api/quotation-save',
-    '/api/admin?adminAction=quotation-save',
+    apiUrl('/api/quotation-save'),
+    apiUrl('/api/admin?adminAction=quotation-save'),
     `${CANONICAL_APP_ORIGIN}/api/quotation-save`,
   ];
 
@@ -177,10 +178,10 @@ async function fetchQuotationWrite(action, payload = {}) {
     try {
       const resp = await fetch(url, {
         method: 'POST',
-        headers: {
+        headers: withApiHeaders({
           'Content-Type': 'application/json',
           ...authHeaders,
-        },
+        }),
         body: JSON.stringify({
           ...(action ? { action } : {}),
           ...payload,

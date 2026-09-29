@@ -2,9 +2,9 @@ import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { fetchCanonicalFinancials } from '../utils/financials';
 import { normalizeLaybyStatement } from '../utils/laybyStatementNormalize';
-import { applyFahmeStatementLock, filterLockedFahmeSales, isFahmeStatementLocked } from '../utils/fahmeStatementLock';
-import { filterStatementToLaybyAccount } from '../utils/laybyRollup';
+import { filterStatementPaymentsToSaleScope, filterStatementToLaybyAccount } from '../utils/laybyRollup';
 import { fetchMergedLaybyPayments } from './laybyPayments';
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
@@ -27,9 +27,9 @@ export async function fetchLaybyStatement(customerId, options = {}) {
     return { error: new Error('customerId is required') };
   }
   try {
-    const resp = await fetch('/api/layby-statement', {
+    const resp = await fetch(apiUrl('/api/layby-statement'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         customerId: rawId,
         ...(laybyId ? { laybyId } : {}),
@@ -68,11 +68,7 @@ export async function fetchLaybyStatement(customerId, options = {}) {
       return status === 'layby' || laybyIds.has(laybyId) || laybySaleIds.has(saleId);
     });
 
-    const scopedLaybySales = isFahmeStatementLocked(rawId)
-      ? filterLockedFahmeSales(laybySales, rawId)
-      : laybySales;
-
-    const saleIds = scopedLaybySales.map(s => s.id).filter(v => v != null);
+    const saleIds = laybySales.map(s => s.id).filter(v => v != null);
     if (!saleIds.length) return { data: { sales: [], items: [], payments: [] } };
 
     const finMap = await fetchCanonicalFinancials(db, saleIds);
@@ -98,7 +94,7 @@ export async function fetchLaybyStatement(customerId, options = {}) {
       );
     } catch {}
 
-    const sales = scopedLaybySales.map(s => {
+    const sales = laybySales.map(s => {
       const fin = finMap.get(String(s.id)) || {};
       const quoteFin = quoteBySale.get(String(s.id));
       const shouldUseQuoteTotal = quoteFin && Math.abs(Number(fin.total_due || 0) - Number(quoteFin.total_due || 0)) > 0.009;
@@ -132,29 +128,15 @@ export async function fetchLaybyStatement(customerId, options = {}) {
 
     const allPayments = payments || [];
 
-    const normalizedPayments = allPayments.map(p => ({
-      ...p,
-      notes: sanitizePaymentNote(p.notes),
-      payment_type: String(p.payment_type || '').toLowerCase(),
-    }));
-
-    const locked = applyFahmeStatementLock(rawId, {
-      sales,
-      items: items || [],
-      payments: normalizedPayments,
-    });
-    if (locked.statementLocked) {
-      const lockedStatement = normalizeLaybyStatement({
-        sales: locked.sales,
-        items: locked.items,
-        payments: locked.payments,
-      });
-      return {
-        data: laybyId || laybySaleId
-          ? filterStatementToLaybyAccount(lockedStatement, { laybyId, laybySaleId })
-          : lockedStatement,
-      };
-    }
+    const scopedSaleIds = new Set(saleIds.map((id) => String(id)));
+    const normalizedPayments = filterStatementPaymentsToSaleScope(
+      allPayments.map(p => ({
+        ...p,
+        notes: sanitizePaymentNote(p.notes),
+        payment_type: String(p.payment_type || '').toLowerCase(),
+      })),
+      scopedSaleIds,
+    );
 
     const fullStatement = normalizeLaybyStatement({ sales, items: items || [], payments: normalizedPayments });
     return {

@@ -1,5 +1,6 @@
 import { getCurrentUser } from '../accessControl';
 import { ensureAuthSession } from './authSession';
+import { apiUrl, withApiHeaders } from './apiUrl';
 import { firebaseGetAccessToken } from './firebaseAuthApi';
 
 async function getAccessToken() {
@@ -41,14 +42,14 @@ export async function logUserActivity({
       route: route || (typeof window !== 'undefined' ? window.location.pathname : null),
     };
 
-    const headers = {
+    const headers = withApiHeaders({
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
-    };
+    });
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 4000) : null;
     try {
-      const response = await fetch('/api/user-activity', {
+      const response = await fetch(apiUrl('/api/user-activity'), {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
@@ -66,8 +67,8 @@ export async function logUserActivity({
 export async function fetchUserActivityLog({ limit = 250 } = {}) {
   const headers = await getAuthHeaders();
   const response = await fetch(
-    `/api/user-activity?limit=${encodeURIComponent(String(limit))}&_=${Date.now()}`,
-    { headers, cache: 'no-store' },
+    apiUrl(`/api/user-activity?limit=${encodeURIComponent(String(limit))}&_=${Date.now()}`),
+    { headers: withApiHeaders(headers), cache: 'no-store' },
   );
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.ok) {
@@ -78,9 +79,9 @@ export async function fetchUserActivityLog({ limit = 250 } = {}) {
 
 export async function clearUserActivityLog() {
   const headers = await getAuthHeaders();
-  const response = await fetch('/api/user-activity', {
+  const response = await fetch(apiUrl('/api/user-activity'), {
     method: 'DELETE',
-    headers,
+    headers: withApiHeaders(headers),
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.ok) {

@@ -8,6 +8,11 @@ import {
   buildExpectedQty,
   sumInventoryAdjustmentsByProduct,
 } from '../src/utils/inventoryVarianceAdjustments.js';
+import { buildCountSheetRows } from '../src/utils/stocktakeCountSheetRows.js';
+import {
+  applyWarehouseStocktakeOnSubmit,
+  shouldSkipLegacyInventoryForLocation,
+} from '../server/lib/warehouseStocktakeApply.js';
 
 const STOCKTAKE_ADMIN_EMAIL = 'alielboussi00@gmail.com';
 
@@ -40,7 +45,9 @@ const ACTION_METHOD = {
   'periods-list': 'GET',
   'period-detail': 'GET',
   'period-variance': 'GET',
+  'period-count-sheet': 'GET',
   'location-state': 'GET',
+  'warehouse-mobile': 'POST',
 };
 
 const ACTION_ALIAS = {
@@ -68,7 +75,9 @@ const ACTION_ALIAS = {
   'stocktake-periods-list': 'periods-list',
   'stocktake-period-detail': 'period-detail',
   'stocktake-period-variance': 'period-variance',
+  'stocktake-period-count-sheet': 'period-count-sheet',
   'stocktake-location-state': 'location-state',
+  'warehouse-mobile': 'warehouse-mobile',
 };
 
 function setCors(res, methods = 'GET, POST, OPTIONS') {
@@ -270,9 +279,31 @@ async function handleAuthProfile(req, res) {
     return;
   }
 
+  let mobileAccess = null;
+  let loginRecord = null;
+  try {
+    const { getLoginAccessRecord } = await import('../server/lib/loginAccess.js');
+    const { normalizeMobileAccessGrant } = await import('../server/lib/mobileAccessDefaults.js');
+    loginRecord = await getLoginAccessRecord(authUser.id);
+    mobileAccess = normalizeMobileAccessGrant(loginRecord?.mobile_access);
+  } catch (_) {
+    // non-fatal for profile
+  }
+
+  const profileUser = buildAuthUserPayload(authUser);
+  if (loginRecord?.display_name) {
+    profileUser.display_name = loginRecord.display_name;
+  }
+  if (loginRecord?.mobile_display_name) {
+    profileUser.mobile_display_name = loginRecord.mobile_display_name;
+  }
+
   res.status(200).json({
     ok: true,
-    user: buildAuthUserPayload(authUser),
+    user: {
+      ...profileUser,
+      mobile_access: mobileAccess,
+    },
   });
 }
 
@@ -1548,6 +1579,15 @@ async function handleEventSubmit(req, res) {
   const locationId = event.location_id;
   const now = new Date().toISOString();
 
+  const { data: locRows, error: locRowsErr } = await sb.from('locations').select('id, name');
+  if (locRowsErr) return res.status(500).json({ ok: false, error: locRowsErr.message });
+  try {
+    await applyWarehouseStocktakeOnSubmit(sb, eventId, locationId);
+  } catch (whErr) {
+    return res.status(500).json({ ok: false, error: whErr.message || 'Warehouse stocktake apply failed.' });
+  }
+  const skipLegacyInventory = shouldSkipLegacyInventoryForLocation(locationId, locRows);
+
   const { data: countRows, error: cErr } = await fetchAllPaged((from, to) =>
     sb.from('stocktake_counts')
       .select('product_id, qty')
@@ -1610,7 +1650,7 @@ async function handleEventSubmit(req, res) {
     if (r.product_id && !totals.has(r.product_id)) totals.set(r.product_id, 0);
   });
 
-  const invPayload = Array.from(totals.entries()).map(([product_id, quantity]) => ({
+  const invPayload = skipLegacyInventory ? [] : Array.from(totals.entries()).map(([product_id, quantity]) => ({
     product_id,
     location: locationId,
     quantity,
@@ -1852,6 +1892,41 @@ async function handlePeriodVariance(req, res) {
   });
 }
 
+async function handlePeriodCountSheet(req, res) {
+  const periodId = req.query?.periodId;
+  if (!periodId) return res.status(400).json({ ok: false, error: 'periodId required' });
+  const sb = getService();
+  const { data: period, error } = await sb.from('stock_periods').select('*').eq('id', periodId).maybeSingle();
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+  if (!period) return res.status(404).json({ ok: false, error: 'Period not found' });
+  if (period.status !== 'open') {
+    return res.status(409).json({ ok: false, error: 'Count sheet is only for the current open period (before closing stock is entered).' });
+  }
+  const { data: closing } = await sb
+    .from('closing_stock_entries')
+    .select('product_id')
+    .eq('session_id', periodId)
+    .limit(1);
+  if ((closing || []).length) {
+    return res.status(409).json({ ok: false, error: 'Closing stock is already recorded for this period.' });
+  }
+  const rows = await buildCountSheetRows(sb, period);
+  const { data: company } = await sb.from('company_settings').select('*').limit(1).maybeSingle();
+  const { data: location } = await sb
+    .from('locations')
+    .select('id, name')
+    .eq('id', period.location_id)
+    .maybeSingle();
+  res.status(200).json({
+    ok: true,
+    period,
+    rows,
+    company: company || null,
+    locationName: location?.name || '',
+    generatedAt: new Date().toISOString(),
+  });
+}
+
 export default async function handler(req, res) {
   const action = resolveAction(req);
   const method = ACTION_METHOD[action];
@@ -1890,6 +1965,11 @@ export default async function handler(req, res) {
       case 'periods-list': return handlePeriodsList(req, res);
       case 'period-detail': return handlePeriodDetail(req, res);
       case 'period-variance': return handlePeriodVariance(req, res);
+      case 'period-count-sheet': return handlePeriodCountSheet(req, res);
+      case 'warehouse-mobile': {
+        const mod = await import('../server/handlers/warehouse-mobile.js');
+        return mod.default(req, res);
+      }
       default: return res.status(400).json({ ok: false, error: 'Unknown action' });
     }
   } catch (e) {

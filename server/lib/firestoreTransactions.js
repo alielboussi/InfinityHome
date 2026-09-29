@@ -8,8 +8,7 @@ import {
   updateWhereIn,
 } from './firestoreDb.js';
 import { normalizeLaybyStatement } from '../../src/utils/laybyStatementNormalize.js';
-import { filterStatementToLaybyAccount } from '../../src/utils/laybyRollup.js';
-import { applyFahmeStatementLock, filterLockedFahmeSales, isFahmeStatementLocked } from '../../src/utils/fahmeStatementLock.js';
+import { filterStatementPaymentsToSaleScope, filterStatementToLaybyAccount } from '../../src/utils/laybyRollup.js';
 
 const ALLOWED_USER_ID = '1b5e098e-1206-447e-b4bc-6d009b85b5d3';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -47,9 +46,35 @@ function paymentMergeKey(row) {
 }
 
 function mergePaymentRows(rows = []) {
-  const seen = new Set();
-  const merged = [];
+  const batchGrouped = new Map();
+  const noBatch = [];
   for (const row of rows) {
+    const batch = String(row?.allocation_batch_uuid || '').trim();
+    if (!batch) {
+      noBatch.push(row);
+      continue;
+    }
+    const key = `batch:${batch}`;
+    if (!batchGrouped.has(key)) {
+      batchGrouped.set(key, { ...row });
+      continue;
+    }
+    const entry = batchGrouped.get(key);
+    const rowAmount = Number(row?.amount || 0);
+    const rowDiscount = Number(row?.discount_amount || 0);
+    const prevAmount = Number(entry.amount || 0);
+    // One allocation batch may split amount + payment discount across multiple rows.
+    entry.amount = Math.max(prevAmount, rowAmount);
+    entry.discount_amount = Math.max(Number(entry.discount_amount || 0), rowDiscount);
+    if (rowAmount > prevAmount) {
+      if (row.id) entry.id = row.id;
+      if (row.payment_date) entry.payment_date = row.payment_date;
+      if (row.reference) entry.reference = row.reference;
+    }
+  }
+  const merged = [...batchGrouped.values()];
+  const seen = new Set();
+  for (const row of noBatch) {
     const key = paymentMergeKey(row);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -87,18 +112,6 @@ async function computeSaleFinancials(db, saleIds) {
   });
 
   return totalsBySale;
-}
-
-async function rejectLockedFahmePaymentsForSales(db, saleIds = []) {
-  const uniqueSaleIds = [...new Set((saleIds || []).filter((value) => value != null).map(String))];
-  for (const saleId of uniqueSaleIds) {
-    const rows = await queryWhereIn(db, 'sales', 'id', [saleId]);
-    const customerId = rows?.[0]?.customer_id;
-    if (!isFahmeStatementLocked(customerId)) continue;
-    const err = new Error('This layby statement is locked to the signed-off PDF. Payments cannot be added or changed.');
-    err.status = 403;
-    throw err;
-  }
 }
 
 export async function firestorePaymentsCreate(body = {}) {
@@ -142,8 +155,6 @@ export async function firestorePaymentsCreate(body = {}) {
       throw err;
     }
   }
-
-  await rejectLockedFahmePaymentsForSales(db, mapped.map((row) => row.sale_id));
 
   await insertRows(db, 'sales_payments', mapped);
   const batch = defaultBatch || mapped[0]?.allocation_batch_uuid || null;
@@ -207,11 +218,7 @@ export async function firestoreLaybyStatement(body = {}) {
     return status === 'layby' || laybyIds.has(laybyId) || laybySaleIds.has(saleId);
   });
 
-  const scopedLaybySales = isFahmeStatementLocked(customerId)
-    ? filterLockedFahmeSales(laybySales, customerId)
-    : laybySales;
-
-  const saleIds = scopedLaybySales.map((sale) => sale.id).filter((v) => v != null);
+  const saleIds = laybySales.map((sale) => sale.id).filter((v) => v != null);
   if (!saleIds.length) {
     return { ok: true, sales: [], items: [], payments: [] };
   }
@@ -247,7 +254,7 @@ export async function firestoreLaybyStatement(body = {}) {
       });
     });
 
-  const sales = scopedLaybySales.map((sale) => {
+  const sales = laybySales.map((sale) => {
     const fin = totalsBySale.get(String(sale.id)) || {};
     const quoteFin = quoteBySale.get(String(sale.id));
     const shouldUseQuoteTotal = quoteFin && Math.abs(Number(fin.total_due || 0) - Number(quoteFin.total_due || 0)) > 0.009;
@@ -272,24 +279,15 @@ export async function firestoreLaybyStatement(body = {}) {
     };
   });
 
-  const payments = mergePaymentRows([...laybyPay, ...salesPay, ...customerLaybyPay]).map((payment) => ({
-    ...payment,
-    notes: sanitizePaymentNote(payment.notes),
-    payment_type: String(payment.payment_type || '').toLowerCase(),
-  }));
-
-  const locked = applyFahmeStatementLock(customerId, { sales, items, payments });
-  if (locked.statementLocked) {
-    const lockedStatement = normalizeLaybyStatement({
-      sales: locked.sales,
-      items: locked.items,
-      payments: locked.payments,
-    });
-    const scoped = laybyId || resolvedLaybySaleId
-      ? filterStatementToLaybyAccount(lockedStatement, { laybyId, laybySaleId: resolvedLaybySaleId })
-      : lockedStatement;
-    return { ok: true, ...scoped };
-  }
+  const scopedSaleIds = new Set(saleIds.map((id) => String(id)));
+  const payments = filterStatementPaymentsToSaleScope(
+    mergePaymentRows([...laybyPay, ...salesPay, ...customerLaybyPay]).map((payment) => ({
+      ...payment,
+      notes: sanitizePaymentNote(payment.notes),
+      payment_type: String(payment.payment_type || '').toLowerCase(),
+    })),
+    scopedSaleIds,
+  );
 
   const fullStatement = normalizeLaybyStatement({ sales, items, payments });
   const scoped = laybyId || resolvedLaybySaleId
@@ -330,9 +328,6 @@ export async function firestoreLaybyPaymentsDelete(body = {}) {
   const db = getFirestore();
   const rows = Array.isArray(body.rows) ? body.rows : [];
   if (!rows.length) return { ok: true, count: 0 };
-
-  const saleIds = rows.map((row) => row?.sale_id).filter((value) => value != null);
-  await rejectLockedFahmePaymentsForSales(db, saleIds);
 
   const laybyIds = rows
     .map((row) => String(row?.id || '').trim())

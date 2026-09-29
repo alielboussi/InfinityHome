@@ -1,5 +1,6 @@
 import { fromPublic } from '../dbSchema';
 import db from '../dataClient';
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
@@ -234,7 +235,7 @@ export async function deleteLaybyPayments(rows = []) {
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) return { data: { count: 0 } };
   try {
-    const resp = await fetch('/api/layby-payments-delete', {
+    const resp = await fetch(apiUrl('/api/layby-payments-delete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rows: list }),

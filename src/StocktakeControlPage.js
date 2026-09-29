@@ -8,13 +8,14 @@ import {
   fetchLocations,
   getEvent,
   getPeriodDetail,
+  getPeriodCountSheet,
   getPeriodVariance,
   importCounts,
   listEvents,
   listPeriods,
 } from './services/stocktake';
 import { downloadStocktakeQtySample, parseStocktakeQtyFile } from './utils/stocktakeQtyImport';
-import { downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
+import { downloadStocktakeCountSheetPdf, downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
 import { stocktakeCountUrlForLocation } from './utils/stocktakeLocationSlug';
 import { logUserActivity } from './utils/userActivityLog';
 import './stocktake-count.css';
@@ -33,6 +34,7 @@ export default function StocktakeControlPage() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const [importSummary, setImportSummary] = useState('');
+  const [countSheetProgress, setCountSheetProgress] = useState(null);
   const fileRef = useRef(null);
 
   const activeCounting = event?.status === 'counting';
@@ -215,6 +217,35 @@ export default function StocktakeControlPage() {
     });
   }, 'Variance PDF downloaded.');
 
+  const handleDownloadCountSheet = () => run(async () => {
+    if (!periodId) throw new Error('No period selected. Click View on the open period first.');
+    setCountSheetProgress({ pct: 2, label: 'Starting…' });
+    try {
+      const data = await getPeriodCountSheet(periodId, {
+        onProgress: (info) => {
+          setCountSheetProgress((prev) => ({
+            pct: info.pct ?? prev?.pct ?? 5,
+            label: info.label || prev?.label || 'Loading…',
+          }));
+        },
+      });
+      const lineCount = (data.rows || []).length;
+      if (!lineCount) {
+        throw new Error('No stock lines for this period yet (no opening stock or movements to list).');
+      }
+      await downloadStocktakeCountSheetPdf({
+        period: data.period,
+        rows: data.rows,
+        company: data.company,
+        locationName: data.locationName || locationName,
+        generatedAt: data.generatedAt,
+        onProgress: (info) => setCountSheetProgress({ pct: info.pct ?? 50, label: info.label || 'Working…' }),
+      });
+    } finally {
+      setTimeout(() => setCountSheetProgress(null), 2000);
+    }
+  }, 'Count sheet PDF downloaded.');
+
   const handleDownloadSample = () => run(async () => {
     if (!locationId) throw new Error('Select a location first.');
     const data = await fetchImportTemplate(locationId);
@@ -260,6 +291,7 @@ export default function StocktakeControlPage() {
 
   const period = periodDetail?.period;
   const canDownloadPdf = period?.status === 'closed';
+  const canDownloadCountSheet = period?.status === 'open' && !(periodDetail?.closing || []).length;
 
   return (
     <div className="stock-periods-page">
@@ -440,15 +472,39 @@ export default function StocktakeControlPage() {
                 <button
                   type="button"
                   className="stock-periods-btn stock-periods-btn-primary"
+                  disabled={!canDownloadCountSheet || busy}
+                  onClick={handleDownloadCountSheet}
+                >
+                  Download count sheet PDF
+                </button>
+                <button
+                  type="button"
+                  className="stock-periods-btn stock-periods-btn-secondary"
                   disabled={!canDownloadPdf || busy}
                   onClick={handleDownloadPdf}
                 >
                   Download Variance PDF
                 </button>
-                {!canDownloadPdf && (
-                  <span className="stock-periods-note">PDF available after this period is closed by a stocktake submit.</span>
+                {canDownloadCountSheet && (
+                  <span className="stock-periods-note">
+                    Print the count sheet before closing stock is entered. Tick each row on paper after verifying.
+                  </span>
+                )}
+                {!canDownloadPdf && !canDownloadCountSheet && (
+                  <span className="stock-periods-note">Variance PDF is available after this period is closed by a stocktake submit.</span>
                 )}
               </div>
+              {countSheetProgress && (
+                <div className="stock-periods-progress" role="status" aria-live="polite">
+                  <div className="stock-periods-progress-label">{countSheetProgress.label}</div>
+                  <div className="stock-periods-progress-track">
+                    <div
+                      className="stock-periods-progress-fill"
+                      style={{ width: `${Math.min(100, Math.max(0, countSheetProgress.pct || 0))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="stock-periods-section-title" style={{ marginTop: 16 }}>Opening stock</div>
               <table className="pos-table stock-periods-table">

@@ -10,6 +10,7 @@ import { getFactoryStorageSummary, getFactoryStorageItems, createFactoryStorageI
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
 import { removeProductLocations, syncProductLocations } from './services/productLocations';
 import { applyInventoryBulk, dedupeInventoryRows, upsertInventoryQuantity } from './utils/inventoryApi';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import { docIdFromOnConflict } from './db/docIds';
 import { classifyInventoryAdjustmentDelta } from './utils/inventoryAdjustmentTypes';
 import { canDeleteProducts, canManageCatalog, canManageProductInventory, getCurrentUser } from './accessControl';
@@ -151,7 +152,7 @@ const deleteProductsViaApi = async (productIds) => {
     throw new Error('Authentication required — please sign in again.');
   }
 
-  const response = await fetch('/api/products-bulk-delete', {
+  const response = await fetch(apiUrl('/api/products-bulk-delete'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

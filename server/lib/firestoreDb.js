@@ -11,6 +11,13 @@ const COMPOSITE_DOC_IDS = {
   inventory: ['product_id', 'location'],
   stock_transfer_entries: ['session_id', 'product_id'],
   shop_listings: ['product_id', 'location_id'],
+  warehouse_packet_inventory: ['packet_id', 'location_id'],
+  warehouse_assembly_locations: ['assembly_id', 'location_id'],
+  warehouse_assembly_inventory: ['assembly_id', 'location_id'],
+  warehouse_assembly_colors: ['assembly_id', 'color_id'],
+  warehouse_assembly_packets: ['assembly_id', 'packet_id'],
+  stocktake_warehouse_counts: ['event_id', 'packet_id', 'user_email'],
+  stocktake_assembly_counts: ['event_id', 'assembly_id', 'user_email'],
 };
 
 const FIELD_DOC_IDS = {

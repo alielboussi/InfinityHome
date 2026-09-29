@@ -1,3 +1,5 @@
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
+
 function formatWhatsAppError(res, json, label) {
   const detail = json?.error || json?.stage || `HTTP ${res.status}`;
   const detailsError = json?.details?.error;
@@ -15,7 +17,7 @@ function formatWhatsAppError(res, json, label) {
   return { ok: false, error: message };
 }
 
-// Dedicated notify routes (match setupProxy + vercel.json rewrites).
+// Dedicated notify routes (match vercel.json rewrites).
 const NOTIFY_ROUTE_BY_ACTION = {
   'whatsapp-labels': '/api/whatsapp-labels',
   'whatsapp-sale': '/api/whatsapp-sale',
@@ -27,28 +29,14 @@ const NOTIFY_ROUTE_BY_ACTION = {
   'monthly-balance-send': '/api/monthly-balance-send',
 };
 
-// In dev, WhatsApp notify routes run locally via setupProxy (.env.local Wasender vars).
 function notifyApiUrl(action) {
-  const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
-  let host = '';
-  try { host = window?.location?.hostname || ''; } catch {}
-  const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
-  const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
-  const isWhatsAppRoute = Boolean(NOTIFY_ROUTE_BY_ACTION[action]);
   const path = NOTIFY_ROUTE_BY_ACTION[action]
     || `/api/notify?action=${encodeURIComponent(action)}`;
-  const useRemote = Boolean(apiBase && (!isLocalHost || (forceApi && !isWhatsAppRoute)));
-  return useRemote ? `${apiBase}${path}` : path;
+  return apiUrl(path);
 }
 
 function notifyApiHeaders() {
-  const headers = { 'Content-Type': 'application/json' };
-  const bypass = (process.env.REACT_APP_VERCEL_BYPASS || '').trim();
-  let host = '';
-  try { host = window?.location?.hostname || ''; } catch {}
-  const isLocalHost = /^(localhost|127\.0\.0\.1)$/i.test(host);
-  if (bypass && !isLocalHost) headers['x-vercel-protection-bypass'] = bypass;
-  return headers;
+  return withApiHeaders({ 'Content-Type': 'application/json' });
 }
 
 export async function sendLaybyWhatsApp(payload) {

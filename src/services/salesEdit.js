@@ -1,6 +1,7 @@
 // Client service to save sales edits via server API (Firebase Admin on the server).
 
 import db from '../dataClient';
+import { apiUrl, getApiBase, isLocalDev, shouldUseRemoteApi, withApiHeaders } from '../utils/apiUrl';
 
 const isLocalHost = () => {
   try {
@@ -120,17 +121,15 @@ async function applySaleEditDirect(payload) {
 }
 
 export async function saveSaleEdit(payload) {
-  const localHost = isLocalHost();
-  const apiBase = (process.env.REACT_APP_API_BASE || '').trim().replace(/\/?$/, '');
-  const apiUrl = localHost ? '/api/sales-edit' : (apiBase ? `${apiBase}/api/sales-edit` : '/api/sales-edit');
+  const localHost = isLocalDev();
   const forceApi = String(process.env.REACT_APP_FORCE_API || '').trim() === '1';
-  const shouldTryApi = forceApi || localHost || Boolean(apiBase) || process.env.NODE_ENV === 'production';
+  const shouldTryApi = shouldUseRemoteApi();
 
   if (shouldTryApi) {
     try {
-      const resp = await fetch(apiUrl, {
+      const resp = await fetch(apiUrl('/api/sales-edit'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: withApiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload || {}),
       });
       const text = await resp.text().catch(() => '');
@@ -142,7 +141,7 @@ export async function saveSaleEdit(payload) {
 
       const status = resp.status || 0;
       const message = json?.error || json?.message || json?.detail || json?.raw || text || `Sales edit API error (${status || 'network'})`;
-      const canFallback = localHost && !forceApi && (status === 0 || status === 401 || status === 403 || status === 404 || status === 405);
+      const canFallback = localHost && !getApiBase() && !forceApi && (status === 0 || status === 401 || status === 403 || status === 404 || status === 405);
       if (!canFallback) return { data: null, error: new Error(message) };
     } catch (err) {
       if (!localHost || forceApi) {

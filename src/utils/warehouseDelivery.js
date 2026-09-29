@@ -33,12 +33,46 @@ export function deliverySenderName(session, usersById = null) {
 export function groupWarehouseDisplayLines(entries) {
   const parents = (entries || []).filter((e) => e.kind === 'set-parent');
   const components = (entries || []).filter((e) => e.kind === 'set-component');
-  const products = (entries || []).filter((e) => e.kind === 'product' || !e.kind);
+  const packets = (entries || []).filter((e) => e.kind === 'packet');
+  const products = (entries || []).filter(
+    (e) => e.kind !== 'set-parent' && e.kind !== 'set-component' && e.kind !== 'packet',
+  );
   const output = [];
   parents.forEach((parent) => {
     output.push(parent);
     output.push(...components.filter((c) => String(c.combo_id) === String(parent.combo_id)));
   });
+  output.push(...groupWarehousePacketLinesByAssembly(packets));
   output.push(...products);
   return output;
+}
+
+/** Mobile deliveries: bold group headers per finished product (metadata.assembly_name). */
+export function groupWarehousePacketLinesByAssembly(packetEntries) {
+  const list = packetEntries || [];
+  if (!list.length) return [];
+  const order = [];
+  const byKey = new Map();
+  list.forEach((line) => {
+    const key = String(line?.metadata?.assembly_name || line?.metadata?.assembly_id || '_packets');
+    if (!byKey.has(key)) {
+      byKey.set(key, []);
+      order.push(key);
+    }
+    byKey.get(key).push(line);
+  });
+  const out = [];
+  order.forEach((key) => {
+    const rows = byKey.get(key) || [];
+    const label = key === '_packets' ? 'Packets' : key;
+    out.push({
+      id: `asm-header-${key}`,
+      kind: 'assembly-header',
+      name: label,
+    });
+    rows.forEach((row) => {
+      out.push({ ...row, kind: 'packet-line' });
+    });
+  });
+  return out;
 }

@@ -14,6 +14,7 @@ import {
 } from './utils/lusakaTransfer';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
 import { sendLusakaTransferPdfWhatsApp } from './services/whatsapp';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 
 const BUCKET = 'WarehouseTransfers';
 
@@ -72,7 +73,7 @@ async function uploadTransferPdf(sessionId, pdfBlob, fileName) {
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 12000);
-    const resp = await fetch('/api/transfer', {
+    const resp = await fetch(apiUrl('/api/transfer'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'upload-pdf', sessionId, fileName, pdfBase64 }),

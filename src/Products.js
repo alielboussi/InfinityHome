@@ -16,6 +16,7 @@ import {
   seedProductLocationPricesForLocations,
 } from './services/locationPricing';
 import { getNextAutoSku as allocateNextAutoSku } from './utils/autoSku';
+import { apiUrl, shouldUseRemoteApi, withApiHeaders } from './utils/apiUrl';
 
 const initialForm = {
   name: "",
@@ -342,33 +343,9 @@ function Products() {
 
   const getNextAutoSku = () => allocateNextAutoSku(db);
 
-  const getApiBase = () => {
-    const base = process.env.REACT_APP_API_BASE && process.env.REACT_APP_API_BASE.trim();
-    if (!base) return '';
-    return base.replace(/\/+$/, '');
-  };
+  const productLocationsApiUrl = () => apiUrl('/api/product-locations');
 
-  const isLocalHost = () => {
-    try {
-      const host = typeof window !== 'undefined' ? window.location.hostname : '';
-      return /^(localhost|127\.0\.0\.1)$/i.test(host);
-    } catch {
-      return false;
-    }
-  };
-
-  const productLocationsApiUrl = () => (
-    isLocalHost()
-      ? '/api/product-locations'
-      : (getApiBase() ? `${getApiBase()}/api/product-locations` : '/api/product-locations')
-  );
-
-  const shouldUseApi = () => {
-    if (isLocalHost()) return false;
-    const apiBase = getApiBase();
-    if (apiBase) return true;
-    return process.env.NODE_ENV === 'production';
-  };
+  const shouldUseApi = () => shouldUseRemoteApi();
 
   const fetchProductLocationsForProduct = async (productId) => {
     const url = productLocationsApiUrl();

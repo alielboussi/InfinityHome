@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Warehouse Catalog — icon preview</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, Segoe UI, sans-serif;
+      background: #0b1220;
+      color: #e2e8f0;
+      padding: 32px 20px 48px;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 8px; font-weight: 700; }
+    p { color: #94a3b8; margin: 0 0 28px; max-width: 52rem; line-height: 1.5; }
+    .grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      align-items: flex-end;
+    }
+    .card {
+      text-align: center;
+    }
+    .card span {
+      display: block;
+      margin-top: 10px;
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+    .mask-circle {
+      width: 192px;
+      height: 192px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: #0f172a;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    }
+    .mask-squircle {
+      width: 192px;
+      height: 192px;
+      border-radius: 42px;
+      overflow: hidden;
+      background: #0f172a;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    }
+    .mask-square {
+      width: 192px;
+      height: 192px;
+      overflow: hidden;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    }
+    .mask-circle img,
+    .mask-squircle img,
+    .mask-square img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .adaptive-demo {
+      width: 192px;
+      height: 192px;
+      border-radius: 50%;
+      overflow: hidden;
+      position: relative;
+      background: #0f172a;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    }
+    .adaptive-demo .bg { position: absolute; inset: 0; background: #ffffff; }
+    .adaptive-demo .fg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .safe {
+      position: absolute;
+      inset: 17%;
+      border: 2px dashed rgba(56, 189, 248, 0.45);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .hero {
+      margin-bottom: 36px;
+    }
+    .hero img {
+      width: min(320px, 90vw);
+      height: auto;
+      border-radius: 24px;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+  <h1>Warehouse Catalog — APK icon preview</h1>
+  <p>
+    Theme: <strong>warehouse</strong> + <strong>barcode scanner</strong> + <strong>magnifier</strong> on a <strong>white</strong> rounded tile.
+    Regenerate PNGs with <code>node scripts/generateWarehouseCatalogIcon.js</code>.
+  </p>
+
+  <div class="hero">
+    <img src="./icon.png" alt="Full 1024px app icon"/>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="mask-circle">
+        <img src="./icon.png" alt="Circle mask"/>
+      </div>
+      <span>Circle launcher</span>
+    </div>
+    <div class="card">
+      <div class="mask-squircle">
+        <img src="./icon.png" alt="Squircle mask"/>
+      </div>
+      <span>Rounded square</span>
+    </div>
+    <div class="card">
+      <div class="adaptive-demo">
+        <div class="bg"></div>
+        <img class="fg" src="./adaptive-icon.png" alt="Adaptive foreground"/>
+        <div class="safe" title="Android safe zone"></div>
+      </div>
+      <span>Adaptive (fg + #0f172a)</span>
+    </div>
+    <div class="card">
+      <div class="mask-squircle">
+        <img src="./icon-preview-rounded.png" alt="Rounded tile"/>
+      </div>
+      <span>Rounded tile (built-in)</span>
+    </div>
+    <div class="card">
+      <div class="mask-circle">
+        <img src="./icon-preview-android-circle.png" alt="Circle launcher"/>
+      </div>
+      <span>Circle launcher</span>
+    </div>
+  </div>
+</body>
+</html>
