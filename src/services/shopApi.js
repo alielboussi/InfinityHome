@@ -1,4 +1,4 @@
-import { apiUrl, withApiHeaders } from '../utils/apiUrl';
+import { apiUrl } from '../utils/apiUrl';
 
 async function parseJson(resp) {
   const text = await resp.text().catch(() => '');

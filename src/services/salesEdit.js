@@ -3,15 +3,6 @@
 import db from '../dataClient';
 import { apiUrl, getApiBase, isLocalDev, shouldUseRemoteApi, withApiHeaders } from '../utils/apiUrl';
 
-const isLocalHost = () => {
-  try {
-    const h = typeof window !== 'undefined' ? window.location.hostname : '';
-    return /^(localhost|127\.0\.0\.1)$/i.test(h);
-  } catch {
-    return false;
-  }
-};
-
 const toNumber = (value) => {
   const n = Number(value || 0);
   return Number.isFinite(n) ? n : 0;

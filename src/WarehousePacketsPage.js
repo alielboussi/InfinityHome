@@ -38,7 +38,7 @@ export default function WarehousePacketsPage() {
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [search, setSearch] = useState('');
   const [assignmentFilter, setAssignmentFilter] = useState(PACKET_FILTER.ALL);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);

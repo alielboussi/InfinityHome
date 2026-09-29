@@ -6,7 +6,7 @@ import { normalizeWarehouseSku, normalizeWarehouseSkuKey } from './warehouseAsse
  */
 function stripIstikbalXScanPrefix(code) {
   const raw = normalizeWarehouseSku(code);
-  if (!raw || raw.length < 3 || raw[0] !== 'X' && raw[0] !== 'x') return raw;
+  if (!raw || raw.length < 3 || (raw[0] !== 'X' && raw[0] !== 'x')) return raw;
   const scanDigit = raw[1];
   if (!/\d/.test(scanDigit)) return raw;
 

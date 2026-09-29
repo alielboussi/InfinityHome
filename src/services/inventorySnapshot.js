@@ -5,14 +5,12 @@ import {
   computeExpectedInventoryMap,
   fetchActiveStockPeriod,
 } from '../utils/computedInventoryQty';
-import { apiUrl, isLocalDev, shouldUseRemoteApi, withApiHeaders } from '../utils/apiUrl';
+import { apiUrl, shouldUseRemoteApi, withApiHeaders } from '../utils/apiUrl';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value) => UUID_RE.test(String(value || '').trim());
 
 const OPEN_STATUSES = ['open', 'open_locked'];
-
-const isLocalHost = () => isLocalDev();
 
 const shouldUseApi = () => shouldUseRemoteApi();
 

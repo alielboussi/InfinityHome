@@ -12,7 +12,6 @@ import {
   fetchWarehouseCatalog,
   setWarehouseAssemblyQuantity,
   setWarehousePacketQuantity,
-  WAREHOUSE_INVENTORY_MODE,
 } from './services/warehouseCatalog';
 import { completeUnitsAtLocation } from './services/warehouseTransfer';
 import {
@@ -54,7 +53,7 @@ export default function WarehouseProductsPage() {
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -173,6 +172,7 @@ export default function WarehouseProductsPage() {
     inventory,
     packetsByAssembly,
     assemblyPacketRows,
+    packets,
     warehouseLocationId,
   ]);
 

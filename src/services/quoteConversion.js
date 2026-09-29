@@ -2,7 +2,7 @@ import db from '../dataClient';
 import { checkout as checkoutApi } from './checkout';
 import { resolveSaleActor, getCurrentUser } from '../accessControl';
 import { logUserActivity } from '../utils/userActivityLog';
-import { apiUrl, isLocalDev } from '../utils/apiUrl';
+import { apiUrl } from '../utils/apiUrl';
 import { computeQuoteLaybyTotal } from '../utils/quotationDisplay';
 
 const toNumber = (value) => {

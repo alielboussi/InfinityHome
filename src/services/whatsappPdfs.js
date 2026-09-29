@@ -91,7 +91,6 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
     if (!resolvedCustomerId) return null;
 
     const base = laybySnapshot?.primaryLayby || laybySnapshot || { id: laybyId, customer_id: resolvedCustomerId };
-    const resolvedLaybyId = laybyId || base.id;
     let statement = null;
     let totalsByCurrency = laybySnapshot?.totalsByCurrency || null;
     let pooledCustomerStatement = false;

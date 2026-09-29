@@ -1,7 +1,5 @@
 import { docIdFromOnConflict } from '../db/docIds.js';
-import { apiUrl, getApiBase, isLocalDev, shouldUseRemoteApi, withApiHeaders } from './apiUrl.js';
-
-const isLocalHost = () => isLocalDev();
+import { apiUrl, shouldUseRemoteApi, withApiHeaders } from './apiUrl.js';
 
 /** Use production /api when REACT_APP_API_BASE is set on localhost. */
 const shouldUseApi = () => shouldUseRemoteApi();

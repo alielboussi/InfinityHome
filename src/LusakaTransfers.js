@@ -14,7 +14,7 @@ import {
 } from './utils/lusakaTransfer';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
 import { sendLusakaTransferPdfWhatsApp } from './services/whatsapp';
-import { apiUrl, withApiHeaders } from './utils/apiUrl';
+import { apiUrl } from './utils/apiUrl';
 
 const BUCKET = 'WarehouseTransfers';
 

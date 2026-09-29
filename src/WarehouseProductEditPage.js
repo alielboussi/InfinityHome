@@ -57,8 +57,6 @@ export default function WarehouseProductEditPage() {
   const [assemblies, setAssemblies] = useState([]);
   const [packets, setPackets] = useState([]);
   const [assemblyPacketRows, setAssemblyPacketRows] = useState([]);
-  const [assemblyLocations, setAssemblyLocations] = useState([]);
-  const [assemblyColors, setAssemblyColors] = useState([]);
   const [variantColors, setVariantColors] = useState([]);
   const [categories, setCategories] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -78,8 +76,6 @@ export default function WarehouseProductEditPage() {
       setAssemblies(data.assemblies || []);
       setPackets(data.packets);
       setAssemblyPacketRows(data.assemblyPackets || []);
-      setAssemblyLocations(data.assemblyLocations);
-      setAssemblyColors(data.assemblyColors);
       setVariantColors(data.colors);
       setCategories(data.categories);
       setLocations(data.locations);
