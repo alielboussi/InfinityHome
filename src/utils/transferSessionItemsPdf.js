@@ -105,7 +105,7 @@ export async function downloadTransferSessionItemsPdf({
       },
       tableWidth: pageWidth - margin * 2,
     },
-  }) ?? metaY + 16;
+  });
 
   doc.setPage(doc.internal.getNumberOfPages());
   appendStocktakePageNumbers(doc);
