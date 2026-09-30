@@ -4,12 +4,7 @@ import { buildLiveConsolidatedWithSets } from '../src/utils/stocktakeLiveTotals.
 import { isSetProductId } from '../src/utils/stocktakeSubmitTotals.js';
 import { createFirestoreServerClient } from '../server/lib/firestoreServerClient.js';
 import { createFirestoreAnonClient } from '../server/lib/firestoreStocktakeAuth.js';
-import {
-  buildExpectedQty,
-  sumInventoryAdjustmentsByProduct,
-} from '../src/utils/inventoryVarianceAdjustments.js';
 import { buildCountSheetRows } from '../src/utils/stocktakeCountSheetRows.js';
-import { fetchStocktakeProductRowsAtLocation } from '../src/utils/stocktakeLocationStock.js';
 import {
   applyWarehouseStocktakeOnSubmit,
   shouldSkipLegacyInventoryForLocation,
@@ -196,6 +191,67 @@ async function fetchProductsByIds(sb, productIds) {
   }
   all.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
   return all;
+}
+
+/** Opening qty recorded for this stock period (from stocktake submit), not live inventory. */
+async function fetchPeriodOpeningRows(sb, periodId) {
+  const { data: rows, error } = await sb
+    .from('opening_stock_entries')
+    .select('product_id, qty')
+    .eq('session_id', periodId);
+  if (error) throw error;
+  const entries = (rows || []).filter((r) => r?.product_id && Number(r.qty || 0) > 0);
+  if (!entries.length) return [];
+
+  const productMap = new Map(
+    (await fetchProductsByIds(sb, entries.map((r) => r.product_id))).map((p) => [String(p.id), p]),
+  );
+
+  return entries
+    .map((r) => {
+      const pid = String(r.product_id);
+      const p = productMap.get(pid) || {};
+      return {
+        product_id: r.product_id,
+        qty: Number(r.qty || 0),
+        name: p.name || pid,
+        sku: p.sku || '',
+      };
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
+}
+
+async function fetchPeriodClosingRows(sb, periodId) {
+  const { data: closing, error } = await sb
+    .from('closing_stock_entries')
+    .select('product_id, qty, products(name, sku)')
+    .eq('session_id', periodId);
+  if (error) throw error;
+
+  const entries = (closing || []).filter((r) => r?.product_id);
+  const needsLookup = entries.filter((r) => !r.products?.name);
+  let productMap = new Map();
+  if (needsLookup.length) {
+    productMap = new Map(
+      (await fetchProductsByIds(sb, needsLookup.map((r) => r.product_id))).map((p) => [String(p.id), p]),
+    );
+  }
+
+  return entries
+    .map((r) => {
+      const pid = String(r.product_id);
+      const p = r.products || productMap.get(pid) || {};
+      const name = Array.isArray(p) ? p[0]?.name : (p.name || pid);
+      const sku = Array.isArray(p) ? p[0]?.sku : (p.sku || '');
+      return {
+        product_id: r.product_id,
+        qty: Number(r.qty || 0),
+        name,
+        sku: sku || '',
+      };
+    })
+    .filter((r) => r.qty > 0)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
 }
 
 async function loadLocationImportProductsJoined(sb, locationId) {
@@ -1415,10 +1471,66 @@ function activeUnitPrice(product, atDate = new Date()) {
   return promo;
 }
 
+function normalizeProductId(id) {
+  if (id == null || id === '') return '';
+  return String(id);
+}
+
+function mapGetQty(map, productId) {
+  if (!map || productId == null) return 0;
+  const key = normalizeProductId(productId);
+  if (map.has(key)) return Number(map.get(key) || 0);
+  if (map.has(productId)) return Number(map.get(productId) || 0);
+  return 0;
+}
+
+/** Include lines that were in opening stock (>0) or added mid-period (activity / counted closing). */
+function includeInVarianceReport({ openingQty, closingQty, transfersIn, sales }) {
+  const o = Number(openingQty || 0);
+  const c = Number(closingQty || 0);
+  const t = Number(transfersIn || 0);
+  const s = Number(sales || 0);
+  if (o > 0) return true;
+  if (c > 0 || t > 0 || s > 0) return true;
+  return false;
+}
+
+function buildVarianceLedgerRow({
+  sku,
+  product_name,
+  openingQty,
+  transfersIn,
+  sales,
+  closingQty,
+  unitPrice,
+  is_set = false,
+}) {
+  const o = Number(openingQty || 0);
+  const tin = Number(transfersIn || 0);
+  const s = Number(sales || 0);
+  const closing = Number(closingQty || 0);
+  const currentStock = o + tin - s;
+  const variance = currentStock - closing;
+  const unit = Number(unitPrice || 0);
+  return {
+    sku: sku || '',
+    product_name: product_name || '',
+    opening_stock_qty: o,
+    transfers_in: tin,
+    sales: s,
+    current_stock_qty: currentStock,
+    closing_stock_qty: closing,
+    variance,
+    variance_amount: variance * unit,
+    is_set,
+  };
+}
+
 async function buildVarianceRows(sb, period) {
   const locationId = period.location_id;
   const startISO = period.begin_period_date || period.opened_at;
   const endISO = period.end_period_date || period.closed_at || new Date().toISOString();
+  const priceAt = new Date(endISO);
 
   const { data: opening } = await sb
     .from('opening_stock_entries')
@@ -1429,34 +1541,56 @@ async function buildVarianceRows(sb, period) {
     .select('product_id, qty')
     .eq('session_id', period.id);
 
-  const openingMap = new Map((opening || []).map((r) => [r.product_id, Number(r.qty || 0)]));
-  const closingMap = new Map((closing || []).map((r) => [r.product_id, Number(r.qty || 0)]));
+  const openingMap = new Map();
+  (opening || []).forEach((r) => {
+    const pid = normalizeProductId(r?.product_id);
+    if (!pid) return;
+    openingMap.set(pid, Number(r.qty || 0));
+  });
+  const closingMap = new Map();
+  (closing || []).forEach((r) => {
+    const pid = normalizeProductId(r?.product_id);
+    if (!pid) return;
+    closingMap.set(pid, Number(r.qty || 0));
+  });
   const transfersIn = await sumTransfers(sb, locationId, startISO, endISO, 'in');
-  const transfersOut = await sumTransfers(sb, locationId, startISO, endISO, 'out');
   const salesMap = await sumSales(sb, locationId, startISO, endISO);
-  const { inMap: inventoryIn, outMap: inventoryOut } = await sumInventoryAdjustmentsByProduct(sb, {
-    locationId,
-    startISO,
-    endISO,
+
+  const candidateProductIds = new Set();
+  openingMap.forEach((_, id) => candidateProductIds.add(id));
+  closingMap.forEach((_, id) => candidateProductIds.add(id));
+  transfersIn.forEach((qty, id) => {
+    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
+  });
+  salesMap.forEach((qty, id) => {
+    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
   });
 
-  const productIds = new Set([
-    ...openingMap.keys(),
-    ...closingMap.keys(),
-    ...transfersIn.keys(),
-    ...transfersOut.keys(),
-    ...salesMap.keys(),
-    ...inventoryIn.keys(),
-    ...inventoryOut.keys(),
-  ]);
+  const includedProductIds = new Set();
+  candidateProductIds.forEach((id) => {
+    const pid = normalizeProductId(id);
+    if (!pid) return;
+    const openingQty = mapGetQty(openingMap, pid);
+    const closingQty = mapGetQty(closingMap, pid);
+    const tin = mapGetQty(transfersIn, pid);
+    const sales = mapGetQty(salesMap, pid);
+    if (includeInVarianceReport({ openingQty, closingQty, transfersIn: tin, sales })) {
+      includedProductIds.add(pid);
+    }
+  });
 
-  const { data: products } = await sb
-    .from('products')
-    .select('id, name, sku, price, promotional_price, promo_start_date, promo_end_date')
-    .in('id', Array.from(productIds));
-  const productMap = new Map((products || []).map((p) => [p.id, p]));
+  const productIdsForFetch = [...includedProductIds];
+  const productMap = new Map();
+  for (const chunk of chunkArray(productIdsForFetch, 150)) {
+    if (!chunk.length) continue;
+    const { data: products, error } = await sb
+      .from('products')
+      .select('id, name, sku, price, promotional_price, promo_start_date, promo_end_date')
+      .in('id', chunk);
+    if (error) throw error;
+    (products || []).forEach((p) => productMap.set(normalizeProductId(p.id), p));
+  }
 
-  // Load combos for set reconstruction on closing qtys
   const { data: comboLocs } = await sb.from('combo_locations').select('combo_id').eq('location_id', locationId);
   const comboIds = (comboLocs || []).map((r) => r.combo_id);
   let combos = [];
@@ -1468,111 +1602,92 @@ async function buildVarianceRows(sb, period) {
     comboItems = ci || [];
   }
 
-  const remaining = new Map(closingMap);
+  const remaining = new Map();
+  closingMap.forEach((qty, pid) => remaining.set(pid, qty));
+
   const setRows = [];
   for (const combo of combos) {
     const comps = comboItems.filter((i) => i.combo_id === combo.id);
     if (!comps.length) continue;
     let maxSets = Infinity;
     comps.forEach((comp) => {
-      const have = remaining.get(comp.product_id) || 0;
+      const have = mapGetQty(remaining, comp.product_id);
       const need = Number(comp.quantity || 0);
       if (need <= 0) return;
       maxSets = Math.min(maxSets, Math.floor(have / need));
     });
-    if (!Number.isFinite(maxSets) || maxSets <= 0) continue;
-    comps.forEach((comp) => {
-      const need = Number(comp.quantity || 0) * maxSets;
-      remaining.set(comp.product_id, (remaining.get(comp.product_id) || 0) - need);
-    });
-    // Aggregate opening/transfers/sales for set display approximately from components
-    let openQty = 0;
-    let tin = 0;
-    let tout = 0;
-    let invIn = 0;
-    let invOut = 0;
-    let sales = 0;
+    if (!Number.isFinite(maxSets) || maxSets < 0) maxSets = 0;
+
+    const openQty = Math.floor(Math.min(...comps.map((comp) => {
+      const need = Number(comp.quantity || 0) || 1;
+      return mapGetQty(openingMap, comp.product_id) / need;
+    })));
+    let tinSets = 0;
+    let salesSets = 0;
     comps.forEach((comp) => {
       const need = Number(comp.quantity || 0);
       if (need <= 0) return;
-      openQty += (openingMap.get(comp.product_id) || 0) / need;
-      tin += (transfersIn.get(comp.product_id) || 0) / need;
-      tout += (transfersOut.get(comp.product_id) || 0) / need;
-      invIn += (inventoryIn.get(comp.product_id) || 0) / need;
-      invOut += (inventoryOut.get(comp.product_id) || 0) / need;
-      sales += (salesMap.get(comp.product_id) || 0) / need;
+      tinSets += mapGetQty(transfersIn, comp.product_id) / need;
+      salesSets += mapGetQty(salesMap, comp.product_id) / need;
     });
-    openQty = Math.floor(Math.min(...comps.map((comp) => {
-      const need = Number(comp.quantity || 0) || 1;
-      return (openingMap.get(comp.product_id) || 0) / need;
-    })));
-    // Prefer component-min for opening sets
-    const expected = buildExpectedQty({
-      opening: openQty,
-      transfersIn: Math.floor(tin),
-      transfersOut: Math.floor(tout),
-      inventoryIn: Math.floor(invIn),
-      inventoryOut: Math.floor(invOut),
-      sales: Math.floor(sales),
-    });
-    const variance = maxSets - expected;
+    const tinFloored = Math.floor(tinSets);
+    const salesFloored = Math.floor(salesSets);
+
+    if (!includeInVarianceReport({
+      openingQty: openQty,
+      closingQty: maxSets,
+      transfersIn: tinFloored,
+      sales: salesFloored,
+    })) {
+      continue;
+    }
+
+    if (maxSets > 0) {
+      comps.forEach((comp) => {
+        const pid = normalizeProductId(comp.product_id);
+        const need = Number(comp.quantity || 0) * maxSets;
+        if (!pid) return;
+        remaining.set(pid, mapGetQty(remaining, pid) - need);
+      });
+    }
+
     const unit = Number(combo.standard_price ?? combo.combo_price ?? 0);
-    setRows.push({
+    setRows.push(buildVarianceLedgerRow({
       sku: combo.sku || '',
       product_name: combo.combo_name,
-      opening_stock_qty: openQty,
-      transfers_in: Math.floor(tin),
-      transfers_out: Math.floor(tout),
-      inventory_in: Math.floor(invIn),
-      inventory_out: Math.floor(invOut),
-      sales: Math.floor(sales),
-      expected_qty: expected,
-      closing_stock_qty: maxSets,
-      variance,
-      variance_amount: variance * unit,
+      openingQty: openQty,
+      transfersIn: tinFloored,
+      sales: salesFloored,
+      closingQty: maxSets,
+      unitPrice: unit,
       is_set: true,
-    });
+    }));
   }
 
   const productRows = [];
   remaining.forEach((closingQty, productId) => {
-    if (Math.abs(closingQty) < 1e-9 && !openingMap.has(productId) && !salesMap.has(productId)
-      && !transfersIn.has(productId) && !transfersOut.has(productId)
-      && !inventoryIn.has(productId) && !inventoryOut.has(productId)) {
+    const pid = normalizeProductId(productId);
+    if (!pid || !includedProductIds.has(pid)) return;
+
+    const openingQty = mapGetQty(openingMap, pid);
+    const tin = mapGetQty(transfersIn, pid);
+    const sales = mapGetQty(salesMap, pid);
+    if (!includeInVarianceReport({ openingQty, closingQty, transfersIn: tin, sales })) {
       return;
     }
-    const p = productMap.get(productId) || {};
-    const openingQty = openingMap.get(productId) || 0;
-    const tin = transfersIn.get(productId) || 0;
-    const tout = transfersOut.get(productId) || 0;
-    const invIn = inventoryIn.get(productId) || 0;
-    const invOut = inventoryOut.get(productId) || 0;
-    const sales = salesMap.get(productId) || 0;
-    const expected = buildExpectedQty({
-      opening: openingQty,
-      transfersIn: tin,
-      transfersOut: tout,
-      inventoryIn: invIn,
-      inventoryOut: invOut,
-      sales,
-    });
-    const variance = closingQty - expected;
-    const unit = activeUnitPrice(p, new Date(endISO));
-    productRows.push({
+
+    const p = productMap.get(pid) || {};
+    const unit = activeUnitPrice(p, priceAt);
+    productRows.push(buildVarianceLedgerRow({
       sku: p.sku || '',
-      product_name: p.name || productId,
-      opening_stock_qty: openingQty,
-      transfers_in: tin,
-      transfers_out: tout,
-      inventory_in: invIn,
-      inventory_out: invOut,
+      product_name: p.name || pid,
+      openingQty,
+      transfersIn: tin,
       sales,
-      expected_qty: expected,
-      closing_stock_qty: closingQty,
-      variance,
-      variance_amount: variance * unit,
+      closingQty,
+      unitPrice: unit,
       is_set: false,
-    });
+    }));
   });
 
   return [...setRows, ...productRows].sort((a, b) => String(a.product_name).localeCompare(String(b.product_name)));
@@ -1948,6 +2063,27 @@ async function handlePeriodsList(req, res) {
   res.status(200).json({ ok: true, rows: data || [] });
 }
 
+async function fetchPeriodDetailOpeningRows(sb, period) {
+  const { data: closingPeek } = await sb
+    .from('closing_stock_entries')
+    .select('product_id')
+    .eq('session_id', period.id)
+    .limit(1);
+  const hasClosing = (closingPeek || []).length > 0;
+
+  if (period.status === 'open' && !hasClosing) {
+    const rows = await buildCountSheetRows(sb, period);
+    return rows.map((r, idx) => ({
+      product_id: r.product_id || `row:${r.sku || idx}`,
+      name: r.product_name,
+      sku: r.sku || '',
+      qty: Number(r.closing_stock_qty ?? r.expected_qty ?? 0),
+      is_set: Boolean(r.is_set),
+    }));
+  }
+  return fetchPeriodOpeningRows(sb, period.id);
+}
+
 async function handlePeriodDetail(req, res) {
   const periodId = req.query?.periodId;
   if (!periodId) return res.status(400).json({ ok: false, error: 'periodId required' });
@@ -1956,22 +2092,16 @@ async function handlePeriodDetail(req, res) {
   if (error) return res.status(500).json({ ok: false, error: error.message });
   if (!period) return res.status(404).json({ ok: false, error: 'Period not found' });
 
-  const opening = await fetchStocktakeProductRowsAtLocation(sb, period.location_id);
-  const { data: closing } = await sb
-    .from('closing_stock_entries')
-    .select('product_id, qty, products(name, sku)')
-    .eq('session_id', periodId);
+  const [opening, closing] = await Promise.all([
+    fetchPeriodDetailOpeningRows(sb, period),
+    fetchPeriodClosingRows(sb, periodId),
+  ]);
 
   res.status(200).json({
     ok: true,
     period,
     opening,
-    closing: (closing || []).map((r) => ({
-      product_id: r.product_id,
-      qty: Number(r.qty || 0),
-      name: r.products?.name,
-      sku: r.products?.sku,
-    })),
+    closing,
   });
 }
 

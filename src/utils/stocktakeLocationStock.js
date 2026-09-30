@@ -17,6 +17,23 @@ export function positiveInventoryByProductAtLocation(inventoryRows, locationId) 
   return byProduct;
 }
 
+/** All product ids linked to a location (product_locations + inventory rows, including qty 0). */
+export function catalogProductIdsFromRows({ locationId, inventoryRows, productLocationRows, comboItemRows }) {
+  const loc = String(locationId || '');
+  const ids = new Set();
+  (productLocationRows || []).forEach((row) => {
+    if (row?.product_id) ids.add(row.product_id);
+  });
+  dedupeInventoryRows((inventoryRows || []).filter((row) => String(row.location) === loc))
+    .forEach((row) => {
+      if (row?.product_id) ids.add(row.product_id);
+    });
+  (comboItemRows || []).forEach((row) => {
+    if (row?.product_id) ids.add(row.product_id);
+  });
+  return ids;
+}
+
 export async function fetchStocktakeProductRowsAtLocation(sb, locationId) {
   const loc = String(locationId || '');
   if (!loc) return [];

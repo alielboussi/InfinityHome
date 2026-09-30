@@ -144,14 +144,18 @@ export default function StocktakePeriodsPage() {
             )}
           </div>
 
-          <div className="stock-periods-section-title" style={{ marginTop: 16 }}>Current stock (on hand)</div>
+          <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
+            {period?.status === 'open' && !(detail.closing || []).length
+              ? 'Expected stock to count'
+              : 'Opening stock (this period)'}
+          </div>
           <table className="pos-table stock-periods-table">
             <thead>
               <tr><th>Product</th><th>SKU</th><th>Qty</th></tr>
             </thead>
             <tbody>
               {(detail.opening || []).length === 0 ? (
-                <tr><td colSpan={3}>No products with stock on hand at this location.</td></tr>
+                <tr><td colSpan={3}>No opening stock recorded for this period yet.</td></tr>
               ) : detail.opening.map((r) => (
                 <tr key={r.product_id}>
                   <td>{r.name}</td>

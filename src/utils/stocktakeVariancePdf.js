@@ -42,6 +42,15 @@ function fmtQty(value) {
   return num.toLocaleString();
 }
 
+function fmtMoney(value) {
+  const num = Number(value ?? 0);
+  if (!Number.isFinite(num)) return '0.00';
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** 5 cm signature box (jsPDF uses pt; 1 cm ≈ 28.35 pt). */
+const SIGNATURE_BOX_PT = 5 * 28.35;
+
 /** Centered lines with normal word spacing (no justify stretch). Returns Y after last line. */
 function drawCenteredWrappedText(doc, text, centerX, startY, maxWidth, lineHeight = 11) {
   const paragraphs = String(text || '').split(/\n/);
@@ -123,6 +132,43 @@ async function drawStocktakeReportHeader(doc, {
   return { margin, metaY, pageWidth };
 }
 
+/** Supervisor + stocktake conductor signature blocks (5 cm boxes). */
+function drawStocktakeApprovalSignatures(doc, startY, margin, pageWidth) {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const colGap = 28;
+  const colWidth = (pageWidth - margin * 2 - colGap) / 2;
+  const leftX = margin;
+  const rightX = margin + colWidth + colGap;
+  const nameLineW = colWidth - 118;
+
+  let y = startY;
+  const blockHeight = 18 + 14 + SIGNATURE_BOX_PT + 16;
+  if (y + blockHeight > pageHeight - margin) {
+    doc.addPage();
+    y = 48;
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(40, 40, 40);
+  doc.setLineWidth(0.5);
+
+  const drawColumn = (x, nameLabel, signatureLabel) => {
+    doc.text(nameLabel, x, y);
+    doc.line(x + 108, y + 2, x + 108 + nameLineW, y + 2);
+    const sigY = y + 16;
+    doc.text(signatureLabel, x, sigY);
+    const boxY = sigY + 10;
+    doc.rect(x, boxY, SIGNATURE_BOX_PT, SIGNATURE_BOX_PT);
+  };
+
+  drawColumn(leftX, 'Supervisor Name:', 'Supervisor Signature:');
+  drawColumn(rightX, 'Stocktake Conductor Name:', 'Stocktake Conductor Signature:');
+
+  return y + blockHeight;
+}
+
 /**
  * Stocktake variance PDF — simple ledger columns per product.
  */
@@ -134,23 +180,30 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
   const locationLabel = locationName || period?.location_name || '';
 
   const doc = new jsPDF('p', 'pt', 'a4');
-  const { margin, metaY } = await drawStocktakeReportHeader(doc, {
+  const { margin, metaY, pageWidth } = await drawStocktakeReportHeader(doc, {
     company,
     title: 'Stocktake Variance Report',
     locationLabel,
     periodLine: `Period: ${beginLabel} to ${endLabel}`,
-    footnote: 'Opening Stock + Inventory In − Inventory Out → Current Stock (counted)',
+    footnote: 'Current Stock = Opening + Transfers In − Sales. Variance Qty = Current − Closing (counted). Amount uses promo price when active, else standard price.',
   });
 
-  const body = (rows || []).map((r) => [
-    r.sku || '',
-    r.product_name || '',
-    fmtQty(r.opening_stock_qty),
-    fmtQty(r.inventory_in),
-    fmtQty(r.inventory_out),
-    fmtQty(r.closing_stock_qty),
-    fmtQty(r.variance),
-  ]);
+  const body = (rows || []).map((r) => {
+    const current = r.current_stock_qty ?? (
+      Number(r.opening_stock_qty || 0) + Number(r.transfers_in || 0) - Number(r.sales || 0)
+    );
+    return [
+      r.sku || '',
+      r.product_name || '',
+      fmtQty(r.opening_stock_qty),
+      fmtQty(r.transfers_in),
+      fmtQty(r.sales),
+      fmtQty(current),
+      fmtQty(r.closing_stock_qty),
+      fmtQty(r.variance),
+      fmtMoney(r.variance_amount),
+    ];
+  });
 
   autoTable(doc, {
     startY: metaY + 16,
@@ -158,25 +211,32 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
       'SKU',
       'PRODUCT',
       'OPENING',
-      'INV IN',
-      'INV OUT',
+      'ADJ IN',
+      'SALES',
       'CURRENT',
-      'VARIANCE',
+      'CLOSING',
+      'VAR QTY',
+      'AMOUNT',
     ]],
     body,
-    styles: { fontSize: 9, cellPadding: 4 },
-    headStyles: { fillColor: [30, 90, 180], textColor: 255, fontSize: 9 },
+    styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak' },
+    headStyles: { fillColor: [30, 90, 180], textColor: 255, fontSize: 7 },
     columnStyles: {
-      0: { cellWidth: 52 },
+      0: { cellWidth: 40 },
       1: { cellWidth: 'auto' },
-      2: { halign: 'right', cellWidth: 48 },
-      3: { halign: 'right', cellWidth: 44 },
-      4: { halign: 'right', cellWidth: 48 },
-      5: { halign: 'right', cellWidth: 52 },
-      6: { halign: 'right', cellWidth: 52 },
+      2: { halign: 'right', cellWidth: 36 },
+      3: { halign: 'right', cellWidth: 34 },
+      4: { halign: 'right', cellWidth: 34 },
+      5: { halign: 'right', cellWidth: 38 },
+      6: { halign: 'right', cellWidth: 38 },
+      7: { halign: 'right', cellWidth: 38 },
+      8: { halign: 'right', cellWidth: 48 },
     },
     margin: { left: margin, right: margin },
   });
+
+  const tableEndY = doc.lastAutoTable?.finalY ?? metaY + 16;
+  drawStocktakeApprovalSignatures(doc, tableEndY + 28, margin, pageWidth);
 
   const filename = `Variance Report_${beginLabel}_${endLabel}.pdf`;
   doc.save(filename);
@@ -288,7 +348,7 @@ export async function downloadStocktakeCountSheetPdf({
   report(5, 'Creating PDF document…');
   const doc = new jsPDF('p', 'pt', 'a4');
   report(15, 'Drawing header…');
-  const { margin, metaY } = await drawStocktakeReportHeader(doc, {
+  const { margin, metaY, pageWidth } = await drawStocktakeReportHeader(doc, {
     company,
     title: 'Stock Count Sheet',
     locationLabel,
@@ -352,6 +412,9 @@ export async function downloadStocktakeCountSheetPdf({
       doc.rect(x, y, size, size);
     },
   });
+
+  const tableEndY = doc.lastAutoTable?.finalY ?? metaY + 16;
+  drawStocktakeApprovalSignatures(doc, tableEndY + 24, margin, pageWidth);
 
   report(92, 'Saving PDF file…');
   await yieldToMain();

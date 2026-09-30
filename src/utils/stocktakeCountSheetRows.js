@@ -2,7 +2,8 @@ import {
   buildExpectedQty,
   sumInventoryAdjustmentsByProduct,
 } from './inventoryVarianceAdjustments';
-import { positiveInventoryByProductAtLocation } from './stocktakeLocationStock';
+import { buildLiveConsolidatedWithSets } from './stocktakeLiveTotals';
+import { catalogProductIdsFromRows, positiveInventoryByProductAtLocation } from './stocktakeLocationStock';
 
 export async function sumTransfers(sb, locationId, startISO, endISO, direction) {
   const locCol = direction === 'in' ? 'to_location' : 'from_location';
@@ -106,9 +107,35 @@ export async function buildCountSheetRows(sb, period) {
     .from('inventory')
     .select('product_id, quantity, location')
     .eq('location', locationId);
-  const onHandByProduct = positiveInventoryByProductAtLocation(liveInv, locationId);
 
-  const productIds = new Set(onHandByProduct.keys());
+  const { data: locProducts } = await sb
+    .from('product_locations')
+    .select('product_id')
+    .eq('location_id', locationId);
+
+  const { data: comboLocs } = await sb.from('combo_locations').select('combo_id').eq('location_id', locationId);
+  const comboIds = (comboLocs || []).map((r) => r.combo_id);
+  let combos = [];
+  let comboItems = [];
+  if (comboIds.length) {
+    const { data: c } = await sb.from('combos').select('id, combo_name, sku').in('id', comboIds);
+    const { data: ci } = await sb.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds);
+    combos = c || [];
+    comboItems = ci || [];
+  }
+
+  const productIds = catalogProductIdsFromRows({
+    locationId,
+    inventoryRows: liveInv,
+    productLocationRows: locProducts,
+    comboItemRows: comboItems,
+  });
+  positiveInventoryByProductAtLocation(liveInv, locationId).forEach((_qty, productId) => {
+    productIds.add(productId);
+  });
+  openingMap.forEach((qty, productId) => {
+    if (Number(qty) > 0) productIds.add(productId);
+  });
   if (!productIds.size) return [];
 
   const idList = Array.from(productIds);
@@ -135,17 +162,6 @@ export async function buildCountSheetRows(sb, period) {
       sales: salesMap.get(productId) || 0,
     }));
   });
-
-  const { data: comboLocs } = await sb.from('combo_locations').select('combo_id').eq('location_id', locationId);
-  const comboIds = (comboLocs || []).map((r) => r.combo_id);
-  let combos = [];
-  let comboItems = [];
-  if (comboIds.length) {
-    const { data: c } = await sb.from('combos').select('id, combo_name, sku').in('id', comboIds);
-    const { data: ci } = await sb.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds);
-    combos = c || [];
-    comboItems = ci || [];
-  }
 
   const remaining = new Map(expectedByProduct);
   const setRows = [];
@@ -191,6 +207,7 @@ export async function buildCountSheetRows(sb, period) {
       sales: Math.floor(sales),
     });
     setRows.push({
+      product_id: `set:${combo.id}`,
       sku: combo.sku || '',
       product_name: combo.combo_name,
       opening_stock_qty: openQty,
@@ -207,8 +224,6 @@ export async function buildCountSheetRows(sb, period) {
 
   const productRows = [];
   remaining.forEach((systemQty, productId) => {
-    const onHand = onHandByProduct.get(String(productId)) || 0;
-    if (onHand <= 0) return;
     if (systemQty <= 0) return;
     const p = productMap.get(productId) || {};
     const openingQty = openingMap.get(productId) || 0;
@@ -218,6 +233,7 @@ export async function buildCountSheetRows(sb, period) {
     const invOut = inventoryOut.get(productId) || 0;
     const sales = salesMap.get(productId) || 0;
     productRows.push({
+      product_id: productId,
       sku: p.sku || '',
       product_name: p.name || productId,
       opening_stock_qty: openingQty,
@@ -232,7 +248,76 @@ export async function buildCountSheetRows(sb, period) {
     });
   });
 
-  return [...setRows, ...productRows]
+  let merged = [...setRows, ...productRows]
     .filter((row) => Number(row.closing_stock_qty) > 0)
     .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name)));
+
+  merged = await mergeActiveSessionCountRows(sb, locationId, combos, comboItems, merged);
+  return merged;
+}
+
+function countSheetRowKey(row) {
+  const sku = String(row?.sku || '').trim().toLowerCase();
+  const name = String(row?.product_name || row?.name || '').trim().toLowerCase();
+  const kind = row?.is_set || String(row?.product_id || '').startsWith('set:') ? 'set' : 'product';
+  return `${kind}:${sku}:${name}`;
+}
+
+/** Lines counted in an open session but not yet in system expected stock (e.g. set components). */
+async function mergeActiveSessionCountRows(sb, locationId, combos, comboItems, rows) {
+  const { data: event } = await sb
+    .from('stocktake_events')
+    .select('id')
+    .eq('location_id', locationId)
+    .eq('status', 'counting')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!event?.id) return rows;
+
+  const [{ data: counts }, { data: setScans }] = await Promise.all([
+    sb.from('stocktake_counts').select('product_id, qty, standalone_qty, user_email').eq('event_id', event.id),
+    sb.from('stocktake_set_scans').select('combo_id, user_email, set_qty, updated_at').eq('event_id', event.id),
+  ]);
+  if (!(counts?.length || setScans?.length)) return rows;
+
+  const liveRows = buildLiveConsolidatedWithSets({
+    counts: counts || [],
+    combos: combos || [],
+    comboItems: comboItems || [],
+    setScans: setScans || [],
+  });
+
+  const existing = new Set(rows.map((r) => countSheetRowKey(r)));
+  const extra = [];
+  liveRows.forEach((lr) => {
+    const isSet = lr.row_type === 'set';
+    const draft = {
+      product_id: lr.product_id,
+      sku: lr.sku || '',
+      product_name: lr.name || '',
+      is_set: isSet,
+    };
+    const key = countSheetRowKey(draft);
+    if (existing.has(key)) return;
+    const qty = Number(lr.qty || 0);
+    if (qty <= 0) return;
+    existing.add(key);
+    extra.push({
+      ...draft,
+      opening_stock_qty: 0,
+      transfers_in: 0,
+      transfers_out: 0,
+      inventory_in: 0,
+      inventory_out: 0,
+      sales: 0,
+      expected_qty: qty,
+      closing_stock_qty: qty,
+    });
+  });
+
+  if (!extra.length) return rows;
+  return [...rows, ...extra].sort((a, b) =>
+    String(a.product_name).localeCompare(String(b.product_name), undefined, { sensitivity: 'base' }),
+  );
 }
