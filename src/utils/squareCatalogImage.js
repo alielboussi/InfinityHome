@@ -28,7 +28,7 @@ function canvasToBlob(canvas, type, quality) {
 }
 
 /**
- * Center-crop to square and resize for sharp list thumbnails (no client upscale on hover).
+ * Fit the full image inside a square canvas (letterbox, no cropping) for list + hover.
  * @param {File} file
  * @param {number} [size=512]
  * @returns {Promise<File>}
@@ -39,9 +39,11 @@ export async function fileToSquareCatalogImage(file, size = WAREHOUSE_CATALOG_IM
   const h = img.naturalHeight || img.height;
   if (!w || !h) throw new Error('Invalid image dimensions');
 
-  const side = Math.min(w, h);
-  const sx = (w - side) / 2;
-  const sy = (h - side) / 2;
+  const scale = Math.min(size / w, size / h);
+  const dw = w * scale;
+  const dh = h * scale;
+  const dx = (size - dw) / 2;
+  const dy = (size - dh) / 2;
 
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -50,7 +52,7 @@ export async function fileToSquareCatalogImage(file, size = WAREHOUSE_CATALOG_IM
   if (!ctx) throw new Error('Canvas not supported');
   ctx.fillStyle = '#f8fafc';
   ctx.fillRect(0, 0, size, size);
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+  ctx.drawImage(img, 0, 0, w, h, dx, dy, dw, dh);
 
   const blob = await canvasToBlob(canvas, 'image/jpeg', 0.92);
   const base = (file.name || 'product').replace(/\.[^.]+$/, '');

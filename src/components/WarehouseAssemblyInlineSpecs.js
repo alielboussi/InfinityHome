@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { patchWarehouseAssemblyFields } from '../services/warehouseCatalog';
 import {
-  assemblyVolumeM3,
   formatAssemblyDimensions,
   formatAssemblyVolumeAmount,
 } from '../utils/warehouseAssemblySpecs';

@@ -4894,7 +4894,8 @@ body {
 .warehouse-products-page .warehouse-assembly-thumb__img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
   display: block;
   background: #f1f5f9;
 }
@@ -4911,7 +4912,8 @@ body {
 .warehouse-assembly-thumb-flyout__img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
   display: block;
   background: #f1f5f9;
   border-radius: 8px;

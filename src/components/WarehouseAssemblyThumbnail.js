@@ -4,7 +4,6 @@ import { uploadWarehouseAssemblyImage } from '../services/warehouseCatalog';
 import { rewriteLegacyStorageUrl } from '../utils/storageImageUrl';
 import { fileToSquareCatalogImage } from '../utils/squareCatalogImage';
 
-const THUMB_PX = 72;
 const ZOOM_MAX_PX = 512;
 
 function clampZoomPosition(rect, displayPx) {
