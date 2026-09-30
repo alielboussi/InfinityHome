@@ -531,10 +531,26 @@ export default function StocktakeCountSessionPage({ locationSlug = '' }) {
     setError('');
     setGoogleLoading(true);
     try {
-      await startGoogleSignIn({ returnPath: countReturnPath });
+      const result = await startGoogleSignIn();
+      if (!result?.ok) {
+        setError(result?.error || 'Google sign-in did not complete.');
+        return;
+      }
+      const profileUser = result.user || (await resolveAppUserFromSession()).user;
+      if (!profileUser || !applyCountUser(profileUser)) {
+        setError('Google account is not authorized for stock count or has no email.');
+        return;
+      }
+      setToast('Logged in with Google.');
     } catch (err) {
+      const code = String(err?.code || '');
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setError('');
+      } else {
+        setError(err?.message || 'Could not complete Google sign-in.');
+      }
+    } finally {
       setGoogleLoading(false);
-      setError(err?.message || 'Could not start Google sign-in.');
     }
   };
 
