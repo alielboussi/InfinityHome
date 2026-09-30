@@ -59,7 +59,6 @@ async function drawAggregationHeader(doc, {
   const companyName = company?.company_name || company?.name || 'Best Rest Furniture';
   const logoUrl = rewriteLegacyStorageUrl(company?.company_logo || company?.logo || '', { bucket: 'companylogos' });
   const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 28;
 
   const logoImg = await loadImage(logoUrl);

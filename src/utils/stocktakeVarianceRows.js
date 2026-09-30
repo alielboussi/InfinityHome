@@ -250,18 +250,6 @@ async function sumSales(sb, locationId, startISO, endISO) {
   return map;
 }
 
-function activeUnitPrice(product, atDate = new Date()) {
-  const promo = Number(product?.promotional_price);
-  const standard = Number(product?.price || 0);
-  if (!Number.isFinite(promo) || promo <= 0) return standard;
-  const start = product.promo_start_date ? new Date(product.promo_start_date) : null;
-  const end = product.promo_end_date ? new Date(product.promo_end_date) : null;
-  const t = atDate.getTime();
-  if (start && t < start.getTime()) return standard;
-  if (end && t > end.getTime()) return standard;
-  return promo;
-}
-
 function normalizeProductId(id) {
   if (id == null || id === '') return '';
   return String(id);

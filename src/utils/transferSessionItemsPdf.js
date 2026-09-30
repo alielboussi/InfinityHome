@@ -69,7 +69,7 @@ export async function downloadTransferSessionItemsPdf({
     ];
   });
 
-  const tableEndY = renderSegmentedStocktakeTable(doc, {
+  renderSegmentedStocktakeTable(doc, {
     startY: metaY + 12,
     margin,
     colSpan: 4,
