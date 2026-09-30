@@ -252,7 +252,7 @@ export async function downloadProductsListVariancePdf({
     margin: { left: margin, right: margin },
   });
 
-  const safeScope = (filterLabel || 'filtered').replace(/[^\w\-]+/g, '_').slice(0, 40);
+  const safeScope = (filterLabel || 'filtered').replace(/[^\w-]+/g, '_').slice(0, 40);
   const filename = `Products_Variance_${beginLabel}_${safeScope}.pdf`;
   doc.save(filename);
   return filename;

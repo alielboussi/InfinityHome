@@ -1,4 +1,4 @@
-const DOC_ID_FIELDS = {
+export const DOC_ID_FIELDS = {
   user_acl: 'user_uid',
   stocktake_location_state: 'location_id',
   auth_user_map: 'public_user_id',

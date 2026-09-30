@@ -1,10 +1,21 @@
-import { DOC_ID_FIELDS } from '../db/docIds.js';
+import { DOC_ID_FIELDS as DOC_ID_FIELDS_IMPORT } from '../db/docIds.js';
 import {
   analyzeAssemblyPacketBom,
   assemblyUsesPacketBom,
   assemblableUnits,
 } from './warehouseAssemblyMath.js';
 import { buildPacketsByAssembly } from './warehouseAssemblyPacketPool.js';
+
+const WAREHOUSE_COMPOSITE_DOC_KEYS = {
+  warehouse_packet_inventory: ['packet_id', 'location_id'],
+  warehouse_assembly_inventory: ['assembly_id', 'location_id'],
+};
+
+function compositeKeysForTable(table) {
+  const imported = DOC_ID_FIELDS_IMPORT?.[table];
+  if (Array.isArray(imported) && imported.length === 2) return imported;
+  return WAREHOUSE_COMPOSITE_DOC_KEYS[table];
+}
 
 function normalizeQtyRow(row) {
   const qty = Number(row?.quantity ?? row?.qty ?? 0);
@@ -13,7 +24,7 @@ function normalizeQtyRow(row) {
 
 /** Firestore composite docs may only store qty in data — recover keys from doc id. */
 export function hydrateCompositeTableRows(table, rows, { locations } = {}) {
-  const keys = DOC_ID_FIELDS[table];
+  const keys = compositeKeysForTable(table);
   if (!Array.isArray(keys) || keys.length !== 2) {
     return (rows || []).map(normalizeQtyRow);
   }
