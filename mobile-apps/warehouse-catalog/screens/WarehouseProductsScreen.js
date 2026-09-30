@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { attachWarehouseStockTotals } from '../../../src/utils/warehouseCatalogStock';
+import { attachWarehouseStockTotals } from '../shared/warehouseCatalogStock';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
@@ -230,6 +230,7 @@ export default function WarehouseProductsScreen({ navigation }) {
         <ActivityIndicator color="#38bdf8" style={{ marginTop: 24 }} />
       ) : (
         <FlatList
+          key="warehouse-products-grid-2"
           data={filtered}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}

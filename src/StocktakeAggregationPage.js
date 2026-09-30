@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import db from './dataClient';
 import {
+  fetchCatalog,
   fetchLocationState,
   fetchLocations,
   getEvent,
   getPeriodVariance,
   listEvents,
+  setAggregationManualCount,
   submitEvent,
 } from './services/stocktake';
 import { downloadStocktakeAggregationPdf } from './utils/stocktakeAggregationPdf';
@@ -76,10 +78,20 @@ export default function StocktakeAggregationPage() {
   const [toast, setToast] = useState('');
   const [search, setSearch] = useState('');
   const [expandedRows, setExpandedRows] = useState(() => new Set());
+  const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [productResults, setProductResults] = useState([]);
+  const [productSearchBusy, setProductSearchBusy] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [manualQty, setManualQty] = useState('');
 
   const locationName = locations.find((loc) => loc.id === locationId)?.name || '';
   const activeCounting = event?.status === 'counting';
-  const hasCounts = consolidated.length > 0;
+  const submitTotals = useMemo(
+    () => buildFinalTotals(consolidated, qtyDraft),
+    [consolidated, qtyDraft],
+  );
+  const hasCounts = submitTotals.length > 0;
 
   const refreshSession = useCallback(async (locId, selectedEventId) => {
     if (!locId) return;
@@ -159,7 +171,38 @@ export default function StocktakeAggregationPage() {
 
   useEffect(() => {
     setExpandedRows(new Set());
+    setAddPanelOpen(false);
+    setProductSearch('');
+    setProductResults([]);
+    setSelectedProduct(null);
+    setManualQty('');
   }, [eventId, locationId]);
+
+  useEffect(() => {
+    if (!addPanelOpen || !locationId) return undefined;
+    const term = productSearch.trim();
+    if (term.length < 2) {
+      setProductResults([]);
+      return undefined;
+    }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      setProductSearchBusy(true);
+      try {
+        const catalog = await fetchCatalog(locationId, term);
+        const products = (catalog?.products || []).filter((p) => p.id && !p.is_set);
+        if (alive) setProductResults(products.slice(0, 40));
+      } catch {
+        if (alive) setProductResults([]);
+      } finally {
+        if (alive) setProductSearchBusy(false);
+      }
+    }, 280);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [addPanelOpen, locationId, productSearch]);
 
   const toggleExpanded = (rowKey) => {
     setExpandedRows((prev) => {
@@ -224,12 +267,11 @@ export default function StocktakeAggregationPage() {
     if (!window.confirm(msg)) return;
 
     run(async () => {
-      const hasDraftEdits = Object.keys(qtyDraft).length > 0;
       const finalTotals = buildFinalTotals(consolidated, qtyDraft);
-      const result = await submitEvent(
-        event.id,
-        hasDraftEdits && finalTotals.length ? { finalTotals } : {},
-      );
+      if (!finalTotals.length) {
+        throw new Error('No product totals to submit.');
+      }
+      const result = await submitEvent(event.id, { finalTotals });
       await logUserActivity({
         actionType: 'stocktake_submit',
         actionLabel: result.submitType === 'initial'
@@ -256,13 +298,48 @@ export default function StocktakeAggregationPage() {
     }, 'Submitted. Inventory and stock periods updated.');
   };
 
+  const handleAddManualProduct = () => {
+    if (!event?.id) return;
+    const qty = Number(manualQty);
+    if (!selectedProduct?.id) {
+      setError('Choose a product from the search results.');
+      return;
+    }
+    if (!Number.isFinite(qty) || qty < 0) {
+      setError('Enter a valid quantity (0 or more).');
+      return;
+    }
+    run(async () => {
+      await setAggregationManualCount(event.id, selectedProduct.id, qty);
+      await logUserActivity({
+        actionType: 'stocktake_aggregation_add_product',
+        actionLabel: 'Add product to stocktake session',
+        entityType: 'stocktake_event',
+        entityId: event.id,
+        metadata: {
+          locationId,
+          productId: selectedProduct.id,
+          qty,
+          sku: selectedProduct.sku || null,
+        },
+      });
+      const detail = await getEvent(event.id);
+      setEvent(detail.event);
+      setConsolidated(detail.consolidated || []);
+      setSelectedProduct(null);
+      setManualQty('');
+      setProductSearch('');
+      setProductResults([]);
+    }, 'Product added to this count session.');
+  };
+
   return (
     <div className="stock-periods-page">
       <div className="stock-periods-card">
         <div className="stock-periods-section-title">Stocktake Aggregation</div>
         <div className="stock-periods-note">
-          Admin review of aggregated counter totals. Adjust component quantities if needed, download the full PDF,
-          then submit to apply opening stock or close the period.
+          Admin review of aggregated counter totals. Add missing products from the location catalog, adjust component
+          quantities if needed, download the full PDF, then submit to apply opening stock or close the period.
         </div>
 
         <label className="stock-periods-label">Location</label>
@@ -315,7 +392,90 @@ export default function StocktakeAggregationPage() {
                 </button>
               </div>
 
-              <label className="stock-periods-label">Search products</label>
+              <div className="stock-periods-actions" style={{ marginBottom: 12 }}>
+                <button
+                  type="button"
+                  className="stock-periods-btn stock-periods-btn-secondary"
+                  disabled={busy}
+                  onClick={() => setAddPanelOpen((open) => !open)}
+                >
+                  {addPanelOpen ? 'Hide add product' : 'Add product from catalog'}
+                </button>
+              </div>
+
+              {addPanelOpen && (
+                <div className="stock-periods-card" style={{ marginBottom: 12, padding: 12 }}>
+                  <div className="stock-periods-note" style={{ marginBottom: 8 }}>
+                    Search products assigned to {locationName || 'this location'} (same catalog as stocktake).
+                    The quantity is recorded on this session and included in opening stock when you submit.
+                  </div>
+                  <label className="stock-periods-label">Find product</label>
+                  <input
+                    type="search"
+                    className="pos-control"
+                    value={productSearch}
+                    placeholder="Type name or SKU (min. 2 characters)…"
+                    onChange={(e) => {
+                      setProductSearch(e.target.value);
+                      setSelectedProduct(null);
+                    }}
+                  />
+                  {productSearchBusy ? (
+                    <div className="stock-periods-note" style={{ marginTop: 6 }}>Searching…</div>
+                  ) : null}
+                  {productResults.length > 0 && (
+                    <ul className="stocktake-live-user-list" style={{ marginTop: 8, maxHeight: 200, overflow: 'auto' }}>
+                      {productResults.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            className="stock-periods-btn stock-periods-btn-secondary"
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              marginBottom: 4,
+                              borderColor: selectedProduct?.id === p.id ? '#38bdf8' : undefined,
+                            }}
+                            onClick={() => setSelectedProduct(p)}
+                          >
+                            <strong>{p.name || p.id}</strong>
+                            {p.sku ? ` · ${p.sku}` : ''}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {selectedProduct && (
+                    <div style={{ marginTop: 10 }}>
+                      <div className="stock-periods-note">
+                        Selected: <strong>{selectedProduct.name}</strong>
+                        {selectedProduct.sku ? ` (${selectedProduct.sku})` : ''}
+                      </div>
+                      <label className="stock-periods-label" style={{ marginTop: 8 }}>Quantity for this session</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        className="pos-control"
+                        style={{ maxWidth: 140 }}
+                        value={manualQty}
+                        onChange={(e) => setManualQty(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="stock-periods-btn stock-periods-btn-primary"
+                        style={{ marginLeft: 8, marginTop: 8 }}
+                        disabled={busy}
+                        onClick={handleAddManualProduct}
+                      >
+                        Add to session
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <label className="stock-periods-label">Search aggregated list</label>
               <input
                 type="search"
                 className="pos-control"
@@ -434,7 +594,7 @@ export default function StocktakeAggregationPage() {
               </table>
               <div className="stock-periods-note" style={{ marginTop: 10 }}>
                 Set rows show complete sets derived from components. Component lines under each set are what get written to inventory on submit.
-                Use the triangle to see each counter&apos;s contribution. Edit leftover component quantities only — set qty is read-only.
+                Use the triangle to see each counter&apos;s contribution (including manual catalog adds). Edit leftover component quantities only — set qty is read-only.
               </div>
             </>
           )}

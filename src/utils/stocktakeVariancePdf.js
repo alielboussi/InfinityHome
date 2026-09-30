@@ -42,6 +42,24 @@ function fmtQty(value) {
   return num.toLocaleString();
 }
 
+/** Centered lines with normal word spacing (no justify stretch). Returns Y after last line. */
+function drawCenteredWrappedText(doc, text, centerX, startY, maxWidth, lineHeight = 11) {
+  const paragraphs = String(text || '').split(/\n/);
+  let y = startY;
+  paragraphs.forEach((paragraph) => {
+    const lines = doc.splitTextToSize(paragraph, maxWidth);
+    if (!lines.length) {
+      y += lineHeight;
+      return;
+    }
+    lines.forEach((line) => {
+      doc.text(line, centerX, y, { align: 'center' });
+      y += lineHeight;
+    });
+  });
+  return y;
+}
+
 async function drawStocktakeReportHeader(doc, {
   company,
   title,
@@ -88,17 +106,18 @@ async function drawStocktakeReportHeader(doc, {
     doc.text(periodLine, pageWidth / 2, metaY, { align: 'center' });
     metaY += 14;
   }
+  const metaMaxWidth = pageWidth - margin * 2;
   if (subtitle) {
     doc.setFontSize(10);
-    doc.text(subtitle, pageWidth / 2, metaY, { align: 'center' });
-    metaY += 14;
+    metaY = drawCenteredWrappedText(doc, subtitle, pageWidth / 2, metaY, metaMaxWidth, 12);
+    metaY += 4;
   }
   if (footnote) {
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
-    doc.text(footnote, pageWidth / 2, metaY, { align: 'center' });
+    metaY = drawCenteredWrappedText(doc, footnote, pageWidth / 2, metaY, metaMaxWidth, 11);
     doc.setTextColor(0, 0, 0);
-    metaY += 14;
+    metaY += 4;
   }
 
   return { margin, metaY, pageWidth };
@@ -160,6 +179,81 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
   });
 
   const filename = `Variance Report_${beginLabel}_${endLabel}.pdf`;
+  doc.save(filename);
+  return filename;
+}
+
+/**
+ * Products-list period stock PDF — Opening + Stock In − Sales = Current.
+ */
+export async function downloadProductsListVariancePdf({
+  period,
+  rows,
+  company,
+  locationName,
+  filterLabel,
+}) {
+  const begin = period?.begin_period_date || period?.opened_at;
+  const end = period?.end_period_date || period?.closed_at;
+  const beginLabel = fmtDate(begin);
+  const endLabel = fmtDate(end) || 'Open';
+  const locationLabel = locationName || period?.location_name || '';
+  const scopeLine = filterLabel ? `Scope: ${filterLabel}` : '';
+
+  const doc = new jsPDF('p', 'pt', 'a4');
+  const { margin, metaY } = await drawStocktakeReportHeader(doc, {
+    company,
+    title: 'Product List Stock Report',
+    subtitle: scopeLine,
+    locationLabel,
+    periodLine: `Period: ${beginLabel} to ${endLabel}`,
+    footnote: 'Opening + Stock In - Sales = Current Stock.\nStock In = inventory adjustments in + transfers in.',
+  });
+
+  const body = (rows || []).map((r) => [
+    r.sku || '',
+    r.product_name || '',
+    fmtQty(r.opening_stock_qty),
+    fmtQty(r.stock_in ?? r.adjustments_add),
+    fmtQty(r.sales),
+    fmtQty(r.current_stock_qty),
+  ]);
+
+  autoTable(doc, {
+    startY: metaY + 16,
+    head: [[
+      'SKU',
+      'Product',
+      'Opening',
+      'Stock In',
+      'Sales',
+      'Current',
+    ]],
+    body,
+    styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' },
+    headStyles: {
+      fillColor: [30, 90, 180],
+      textColor: 255,
+      fontSize: 9,
+      fontStyle: 'bold',
+      halign: 'center',
+      valign: 'middle',
+      overflow: 'linebreak',
+      cellWidth: 'wrap',
+    },
+    columnStyles: {
+      0: { cellWidth: 52, halign: 'left' },
+      1: { cellWidth: 'auto', halign: 'left' },
+      2: { halign: 'right', cellWidth: 52 },
+      3: { halign: 'right', cellWidth: 52 },
+      4: { halign: 'right', cellWidth: 48 },
+      5: { halign: 'right', cellWidth: 52 },
+    },
+    margin: { left: margin, right: margin },
+  });
+
+  const safeScope = (filterLabel || 'filtered').replace(/[^\w\-]+/g, '_').slice(0, 40);
+  const filename = `Products_Variance_${beginLabel}_${safeScope}.pdf`;
   doc.save(filename);
   return filename;
 }

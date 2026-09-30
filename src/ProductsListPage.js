@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { FaFileExcel } from 'react-icons/fa';
+import { FaFileExcel, FaFilePdf } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
@@ -16,6 +16,8 @@ import { classifyInventoryAdjustmentDelta } from './utils/inventoryAdjustmentTyp
 import { canDeleteProducts, canManageCatalog, canManageProductInventory, getCurrentUser } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { exportProductsListExcel } from './utils/productsListExport';
+import { buildProductsListVarianceRows } from './utils/productsListVarianceReport';
+import { downloadProductsListVariancePdf } from './utils/stocktakeVariancePdf';
 import { getDuplicateProductNameInfo, normalizeProductNameKey } from './utils/productDuplicateNames';
 import { resolveProductImageUrl } from './utils/productImageUrl';
 import { importProductsFromCsv, parseCsvLine } from './utils/productCsvImport';
@@ -1224,6 +1226,7 @@ function ProductsListPage() {
   const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const [bulkImportMessage, setBulkImportMessage] = useState('');
   const [productImportBusy, setProductImportBusy] = useState(false);
+  const [varianceReportBusy, setVarianceReportBusy] = useState(false);
   const [productImportMessage, setProductImportMessage] = useState('');
   const productImportInputRef = useRef(null);
   /** 'name_asc' | 'no_locations_first' */
@@ -2384,6 +2387,66 @@ function ProductsListPage() {
     });
   };
 
+  const handleDownloadVarianceReport = async () => {
+    if (selectedLocationIds.length !== 1) {
+      alert('Select exactly one location in the Location filter to generate a stock report.');
+      return;
+    }
+    const productsOnly = displayedProducts.filter((item) => !item.__isCombo);
+    if (!productsOnly.length) {
+      alert('No products match the current filters (combos are not included).');
+      return;
+    }
+    const locationId = normalizeLocationId(selectedLocationIds[0]);
+    setVarianceReportBusy(true);
+    try {
+      const activePeriod = await getActiveStockPeriod(locationId);
+      if (!activePeriod?.id) {
+        alert('No open or locked stock period found for this location.');
+        return;
+      }
+      const { data: period, error: periodErr } = await db
+        .from('stock_periods')
+        .select('*')
+        .eq('id', activePeriod.id)
+        .maybeSingle();
+      if (periodErr) throw periodErr;
+      if (!period) {
+        alert('Could not load the stock period for this location.');
+        return;
+      }
+      const rows = await buildProductsListVarianceRows(db, {
+        period,
+        locationId,
+        productIds: productsOnly.map((p) => p.id),
+        getCurrentQty: (productId) => getStockForProduct(productId, locationId),
+      });
+      const { data: company } = await db.from('company_settings').select('*').limit(1).maybeSingle();
+      const locName = (locations || []).find((loc) => isSameLocation(loc.id, locationId))?.name || '';
+      let filterLabel = `${productsOnly.length} product${productsOnly.length === 1 ? '' : 's'}`;
+      if (categoryFilter) {
+        const catName = categories.find((c) => String(c.id) === String(categoryFilter))?.name;
+        if (catName) filterLabel = `Category: ${catName}`;
+      }
+      if (productsOnly.length === 1) {
+        filterLabel = productsOnly[0].name || filterLabel;
+      } else if (search && String(search).trim()) {
+        filterLabel = `Search: ${String(search).trim()} (${productsOnly.length})`;
+      }
+      await downloadProductsListVariancePdf({
+        period,
+        rows,
+        company,
+        locationName: locName,
+        filterLabel,
+      });
+    } catch (err) {
+      alert('Failed to generate stock report: ' + (err.message || err));
+    } finally {
+      setVarianceReportBusy(false);
+    }
+  };
+
   function formatWithCurrency(value, currency) {
     const num = Number(value);
     if (!Number.isFinite(num) || num <= 0) return '-';
@@ -2898,6 +2961,18 @@ function ProductsListPage() {
             aria-label="Download product list Excel"
           >
             <FaFileExcel aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadVarianceReport}
+            disabled={varianceReportBusy || selectedLocationIds.length !== 1}
+            className="products-toolbar-icon-btn"
+            title={selectedLocationIds.length !== 1
+              ? 'Select one location to download a stock PDF for the filtered products'
+              : 'Stock report PDF for filtered products (category/search)'}
+            aria-label="Download stock report PDF"
+          >
+            {varianceReportBusy ? '…' : <FaFilePdf aria-hidden="true" />}
           </button>
           {canManageCatalogPage && (
             <>

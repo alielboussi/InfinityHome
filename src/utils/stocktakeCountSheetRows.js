@@ -4,7 +4,7 @@ import {
 } from './inventoryVarianceAdjustments';
 import { positiveInventoryByProductAtLocation } from './stocktakeLocationStock';
 
-async function sumTransfers(sb, locationId, startISO, endISO, direction) {
+export async function sumTransfers(sb, locationId, startISO, endISO, direction) {
   const locCol = direction === 'in' ? 'to_location' : 'from_location';
   const map = new Map();
 
@@ -44,7 +44,7 @@ async function sumTransfers(sb, locationId, startISO, endISO, direction) {
   return map;
 }
 
-async function sumSales(sb, locationId, startISO, endISO) {
+export async function sumSales(sb, locationId, startISO, endISO) {
   const map = new Map();
   const startDate = String(startISO).slice(0, 10);
   const endDate = String(endISO).slice(0, 10);

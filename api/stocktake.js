@@ -39,6 +39,7 @@ const ACTION_METHOD = {
   'count-mine': 'GET',
   'count-remove-mine': 'POST',
   'count-clear-mine': 'POST',
+  'aggregation-set-count': 'POST',
   'counts-import': 'POST',
   'counts-clear': 'POST',
   'import-template': 'GET',
@@ -69,6 +70,7 @@ const ACTION_ALIAS = {
   'stocktake-count-mine': 'count-mine',
   'stocktake-count-remove-mine': 'count-remove-mine',
   'stocktake-count-clear-mine': 'count-clear-mine',
+  'stocktake-aggregation-set-count': 'aggregation-set-count',
   'stocktake-counts-import': 'counts-import',
   'stocktake-counts-clear': 'counts-clear',
   'stocktake-import-template': 'import-template',
@@ -967,6 +969,35 @@ async function assertComboEnabledAtLocation(sb, comboId, locationId) {
     const err = new Error('Set is not enabled for this location.');
     err.status = 403;
     throw err;
+  }
+}
+
+async function handleAggregationSetCount(req, res) {
+  const body = req.body || {};
+  const eventId = body.eventId;
+  const productId = body.productId;
+  const qty = body.qty;
+  const userEmail = emailOf(body);
+  if (!eventId || !productId || !userEmail) {
+    return res.status(400).json({ ok: false, error: 'eventId, productId, and userEmail required' });
+  }
+  if (!isStocktakeAdmin(userEmail)) {
+    return res.status(403).json({ ok: false, error: 'Stocktake aggregation is admin-only.' });
+  }
+  try {
+    const sb = getService();
+    const event = await assertCountingAllowed(sb, eventId);
+    await assertProductEnabledAtLocation(sb, productId, event.location_id);
+    await assertNotSetSkuProduct(sb, productId, event.location_id);
+    const row = await setCountAbsolute(sb, {
+      eventId,
+      productId,
+      qty,
+      userEmail,
+    });
+    res.status(200).json({ ok: true, row });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || String(err) });
   }
 }
 
@@ -1946,6 +1977,7 @@ export default async function handler(req, res) {
       case 'count-mine': return handleCountMine(req, res);
       case 'count-remove-mine': return handleCountRemoveMine(req, res);
       case 'count-clear-mine': return handleCountClearMine(req, res);
+      case 'aggregation-set-count': return handleAggregationSetCount(req, res);
       case 'counts-import': return handleCountsImport(req, res);
       case 'counts-clear': return handleCountsClear(req, res);
       case 'import-template': return handleImportTemplate(req, res);

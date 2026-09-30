@@ -329,6 +329,61 @@ async function clientClearMyCounts(eventId, userEmail = currentEmail()) {
   return { ok: true };
 }
 
+async function clientSetAggregationCount(eventId, productId, qty, userEmail = currentEmail()) {
+  const value = Number(qty);
+  if (!Number.isFinite(value) || value < 0) throw new Error('qty must be >= 0');
+  if (!userEmail) throw new Error('userEmail required');
+
+  const { data: event, error: evErr } = await db
+    .from('stocktake_events')
+    .select('status, location_id')
+    .eq('id', eventId)
+    .maybeSingle();
+  if (evErr) throw evErr;
+  if (!event || event.status !== 'counting') throw new Error('Counting session is not open.');
+
+  const { data: locRow, error: locErr } = await db
+    .from('product_locations')
+    .select('product_id')
+    .eq('product_id', productId)
+    .eq('location_id', event.location_id)
+    .maybeSingle();
+  if (locErr) throw locErr;
+  if (!locRow) throw new Error('Product is not enabled for this location.');
+
+  const { data: existing } = await db
+    .from('stocktake_counts')
+    .select('id, qty')
+    .eq('event_id', eventId)
+    .eq('product_id', productId)
+    .eq('user_email', userEmail)
+    .maybeSingle();
+
+  const prev = Number(existing?.qty || 0);
+  const { data: row, error } = await db
+    .from('stocktake_counts')
+    .upsert([{
+      event_id: eventId,
+      product_id: productId,
+      user_email: userEmail,
+      qty: value,
+      updated_at: new Date().toISOString(),
+    }], { onConflict: 'event_id,product_id,user_email' })
+    .select('*')
+    .single();
+  if (error) throw error;
+
+  await db.from('stocktake_count_log').insert([{
+    event_id: eventId,
+    product_id: productId,
+    user_email: userEmail,
+    qty_added: value - prev,
+    qty_after: value,
+  }]);
+
+  return { ok: true, row };
+}
+
 async function clientAddCount(eventId, productId, qty, userEmail = currentEmail()) {
   const add = Number(qty);
   if (!Number.isFinite(add) || add <= 0) throw new Error('qty must be > 0');
@@ -770,6 +825,18 @@ export async function addCount(eventId, productId, qty, userEmail = currentEmail
       body: JSON.stringify({ eventId, productId, qty, userEmail }),
     }),
     () => clientAddCount(eventId, productId, qty, userEmail),
+  );
+}
+
+/** Admin aggregation: set absolute qty for a location product on the open count session. */
+export async function setAggregationManualCount(eventId, productId, qty, userEmail = currentEmail()) {
+  return withApiOrClient(
+    () => fetchJson('/api/stocktake-aggregation-set-count', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, productId, qty, userEmail }),
+    }),
+    () => clientSetAggregationCount(eventId, productId, qty, userEmail),
+    { fallbackOnServerError: true },
   );
 }
 
