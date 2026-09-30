@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { FaDownload, FaFileImport, FaPlus, FaQrcode, FaTrashAlt } from 'react-icons/fa';
 import db from './dataClient';
@@ -81,8 +80,6 @@ function displayCountUserName(user) {
 }
 
 export default function StocktakeCountSessionPage({ locationSlug = '' }) {
-  const routerLocation = useLocation();
-  const countReturnPath = routerLocation.pathname || `/stocktake/count/${locationSlug}`;
   const [user, setUser] = useState(() => readCountUser());
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
