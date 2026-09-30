@@ -49,12 +49,20 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
   const [appDisplayName, setAppDisplayName] = useState(() => userRow?.mobile_display_name || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState('');
 
   useEffect(() => {
     setGrant(normalizeGrant(userRow?.mobile_access));
     setAppDisplayName(userRow?.mobile_display_name || '');
     setError('');
+    setToast('');
   }, [userRow?.id, userRow?.mobile_access, userRow?.mobile_display_name]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(''), 3200);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const setScreenAccess = (screenId, allowed) => {
     setGrant((prev) => ({
@@ -78,6 +86,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
         userRow.login_enabled,
       );
       onSaved?.(updated);
+      setToast('Warehouse Catalog access saved.');
     } catch (err) {
       setError(err?.message || 'Failed to save mobile access');
     } finally {
@@ -169,6 +178,12 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
               })}
             </tbody>
           </table>
+        </div>
+      ) : null}
+
+      {toast ? (
+        <div className="stock-periods-toast" role="status" aria-live="polite">
+          {toast}
         </div>
       ) : null}
     </div>

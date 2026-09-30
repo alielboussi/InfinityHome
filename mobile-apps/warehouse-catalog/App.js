@@ -46,7 +46,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="WarehouseProducts"
-        options={{ title: 'Warehouse products' }}
+        options={{ title: 'Warehouse Products' }}
         component={WarehouseProductsScreen}
       />
       <Stack.Screen name="WarehouseScan" options={{ title: 'Scan barcode' }} component={ScanScreen} />

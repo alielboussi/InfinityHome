@@ -16,6 +16,7 @@ import {
   subscribeFirebaseAuth,
 } from './firebase';
 import { GoogleSignInButton, isGoogleSignInConfigured } from './GoogleSignInButton';
+import { resetBiometricUnlock } from './biometricSession';
 import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
 
 export { getFirebaseIdToken };
@@ -46,7 +47,8 @@ export default function FirebaseAuthGate({
     let alive = true;
     if (!user) {
       verifiedUidRef.current = '';
-      setAccessChecked(true);
+      setAccessChecked(false);
+      resetBiometricUnlock();
       return undefined;
     }
 
@@ -99,6 +101,8 @@ export default function FirebaseAuthGate({
     setBusy(true);
     try {
       verifiedUidRef.current = '';
+      setAccessChecked(false);
+      resetBiometricUnlock();
       await signOutFirebase();
       setPassword('');
     } finally {
@@ -106,7 +110,7 @@ export default function FirebaseAuthGate({
     }
   }
 
-  if (user === undefined || (user && !accessChecked)) {
+  if (user === undefined) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
@@ -145,6 +149,14 @@ export default function FirebaseAuthGate({
             onSuccess={() => setError('')}
           />
         ) : null}
+      </View>
+    );
+  }
+
+  if (!accessChecked) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
       </View>
     );
   }

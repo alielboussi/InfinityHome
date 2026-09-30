@@ -1,4 +1,4 @@
-import { normalizeWarehouseSku, normalizeWarehouseSkuKey } from './warehouseAssemblyMath';
+import { normalizeWarehouseSku, normalizeWarehouseSkuKey } from './warehouseAssemblyMath.js';
 
 /**
  * Istikbal carton scan: X + duplicated leading digit + SKU body + optional "-lot".

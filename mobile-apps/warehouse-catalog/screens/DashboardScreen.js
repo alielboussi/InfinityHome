@@ -36,7 +36,7 @@ export default function DashboardScreen({ grant, userEmail, userDisplayName, nav
         <View style={styles.inner}>
           <Text style={styles.title}>Warehouse dashboard</Text>
           <Text style={styles.sub}>
-            Enable Warehouse products on /user-access to open the catalog.
+            Enable Warehouse Products on /user-access to open the catalog.
           </Text>
           {items.length === 0 ? (
             <Text style={styles.hint}>No screens enabled — ask an administrator.</Text>

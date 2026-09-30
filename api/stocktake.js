@@ -13,6 +13,7 @@ import {
   applyWarehouseStocktakeOnSubmit,
   shouldSkipLegacyInventoryForLocation,
 } from '../server/lib/warehouseStocktakeApply.js';
+import handleWarehouseMobile from '../server/handlers/warehouse-mobile.js';
 
 const STOCKTAKE_ADMIN_EMAIL = 'alielboussi00@gmail.com';
 
@@ -1966,10 +1967,8 @@ export default async function handler(req, res) {
       case 'period-detail': return handlePeriodDetail(req, res);
       case 'period-variance': return handlePeriodVariance(req, res);
       case 'period-count-sheet': return handlePeriodCountSheet(req, res);
-      case 'warehouse-mobile': {
-        const mod = await import('../server/handlers/warehouse-mobile.js');
-        return mod.default(req, res);
-      }
+      case 'warehouse-mobile':
+        return handleWarehouseMobile(req, res);
       default: return res.status(400).json({ ok: false, error: 'Unknown action' });
     }
   } catch (e) {

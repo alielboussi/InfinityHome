@@ -45,7 +45,7 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_products',
-    label: 'Warehouse products',
+    label: 'Warehouse Products',
     description: 'Browse products and packets; add via scan or forms',
     permissionMatrix: true,
   },
