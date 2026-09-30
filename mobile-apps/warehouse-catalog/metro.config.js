@@ -7,6 +7,7 @@ const projectRoot = __dirname;
 const appNodeModules = path.join(projectRoot, 'node_modules');
 const sharedDir = path.resolve(projectRoot, '..', 'shared');
 const sharedLink = path.join(projectRoot, 'shared');
+const repoSrcDir = path.resolve(projectRoot, '..', '..', 'src');
 
 function normalizePath(filePath) {
   return path.normalize(filePath).replace(/\\/g, '/').toLowerCase();
@@ -20,6 +21,13 @@ function isSharedFile(originModulePath) {
   const sharedNorm = normalizePath(sharedDir);
   const linkNorm = normalizePath(sharedLink);
   return norm.startsWith(`${sharedNorm}/`) || norm.startsWith(`${linkNorm}/`);
+}
+
+function isRepoSrcFile(originModulePath) {
+  if (!originModulePath) return false;
+  const norm = normalizePath(originModulePath);
+  const srcNorm = normalizePath(repoSrcDir);
+  return norm.startsWith(`${srcNorm}/`);
 }
 
 function resolveFromApp(moduleName) {
@@ -43,6 +51,7 @@ const config = getDefaultConfig(projectRoot);
 const watchFolders = new Set(config.watchFolders || []);
 watchFolders.add(sharedDir);
 if (fs.existsSync(sharedLink)) watchFolders.add(sharedLink);
+if (fs.existsSync(repoSrcDir)) watchFolders.add(repoSrcDir);
 config.watchFolders = [...watchFolders];
 
 config.resolver.nodeModulesPaths = [appNodeModules];
@@ -65,7 +74,7 @@ const priorResolve = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const isBare = !moduleName.startsWith('.') && !moduleName.startsWith('\0');
 
-  if (isBare && isSharedFile(context.originModulePath)) {
+  if (isBare && (isSharedFile(context.originModulePath) || isRepoSrcFile(context.originModulePath))) {
     const filePath = resolveFromApp(moduleName);
     if (filePath) {
       return { type: 'sourceFile', filePath };

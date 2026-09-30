@@ -1,4 +1,5 @@
 import { newUuid } from './uuid.js';
+import { attachWarehouseStockTotals } from '../../src/utils/warehouseCatalogStock.js';
 import {
   analyzeAssemblyPacketBom,
   normalizeWarehouseColorKey,
@@ -13,6 +14,8 @@ const ASSEMBLY_LOCATIONS = 'warehouse_assembly_locations';
 const COLORS = 'warehouse_colors';
 const ASSEMBLY_COLORS = 'warehouse_assembly_colors';
 const ASSEMBLY_PACKETS = 'warehouse_assembly_packets';
+const PACKET_INVENTORY = 'warehouse_packet_inventory';
+const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 
 const WAREHOUSE_ITEM_KIND = Object.freeze({ PRODUCT: 'product', PACKET: 'packet' });
 
@@ -33,6 +36,8 @@ export async function fetchCatalogForMobile(sb) {
     { data: colors, error: colorsErr },
     { data: categories, error: categoriesErr },
     { data: locations, error: locationsErr },
+    { data: inventory, error: inventoryErr },
+    { data: assemblyInventory, error: assemblyInvErr },
   ] = await Promise.all([
     sb.from(ASSEMBLIES).select('*').order('name', { ascending: true }),
     sb.from(PACKETS).select('*').order('packet_number', { ascending: true }),
@@ -42,6 +47,8 @@ export async function fetchCatalogForMobile(sb) {
     sb.from(COLORS).select('*').order('name', { ascending: true }),
     sb.from('categories').select('id, name').order('name', { ascending: true }),
     sb.from('locations').select('id, name').order('name', { ascending: true }),
+    sb.from(PACKET_INVENTORY).select('*'),
+    sb.from(ASSEMBLY_INVENTORY).select('*'),
   ]);
 
   if (assembliesErr) throw new Error(assembliesErr.message || 'Failed to load products');
@@ -52,12 +59,16 @@ export async function fetchCatalogForMobile(sb) {
   if (colorsErr) throw new Error(colorsErr.message || 'Failed to load variant colors');
   if (categoriesErr) throw new Error(categoriesErr.message || 'Failed to load categories');
   if (locationsErr) throw new Error(locationsErr.message || 'Failed to load locations');
+  if (inventoryErr) throw new Error(inventoryErr.message || 'Failed to load packet stock');
+  if (assemblyInvErr) throw new Error(assemblyInvErr.message || 'Failed to load finished stock');
 
   const warehouseLocation = resolveWarehouseLocation(locations);
 
-  return {
+  return attachWarehouseStockTotals({
     assemblies: assemblies || [],
     packets: packets || [],
+    inventory: inventory || [],
+    assemblyInventory: assemblyInventory || [],
     assemblyLocations: assemblyLocations || [],
     assemblyColors: assemblyColors || [],
     assemblyPackets: assemblyPackets || [],
@@ -66,7 +77,7 @@ export async function fetchCatalogForMobile(sb) {
     locations: locations || [],
     warehouseLocationId: warehouseLocation?.id ?? null,
     warehouseLocationName: warehouseLocation?.name ?? 'Warehouse',
-  };
+  });
 }
 
 export async function createCategoryForMobile(sb, rawName) {

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -10,8 +11,33 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { attachWarehouseStockTotals } from '../../../src/utils/warehouseCatalogStock';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+
+function resolveAssemblyImageUri(assembly) {
+  const candidates = [
+    assembly?.image_url,
+    assembly?.thumbnail_url,
+    assembly?.cover_image_url,
+    assembly?.photo_url,
+  ];
+  const hit = candidates.find((v) => v && String(v).trim());
+  return hit ? String(hit).trim() : null;
+}
+
+function ProductThumbnail({ assembly }) {
+  const uri = resolveAssemblyImageUri(assembly);
+  if (uri) {
+    return <Image source={{ uri }} style={styles.thumb} resizeMode="cover" accessibilityLabel="" />;
+  }
+  return (
+    <View style={styles.thumbPlaceholder}>
+      <Text style={styles.thumbPlaceholderIcon} accessibilityElementsHidden>▦</Text>
+      <Text style={styles.thumbPlaceholderText}>Photo</Text>
+    </View>
+  );
+}
 
 export default function WarehouseProductsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -49,6 +75,30 @@ export default function WarehouseProductsScreen({ navigation }) {
     const map = new Map((catalog?.categories || []).map((c) => [String(c.id), c.name]));
     return (id) => map.get(String(id)) || '';
   }, [catalog?.categories]);
+
+  const stockMaps = useMemo(() => {
+    if (!catalog?.assemblies) {
+      return { assemblyWarehouseQty: {}, packetWarehouseQty: {} };
+    }
+    const enriched = attachWarehouseStockTotals({
+      assemblies: catalog.assemblies,
+      packets: catalog.packets || [],
+      inventory: catalog.inventory || [],
+      assemblyInventory: catalog.assemblyInventory || [],
+      assemblyPackets: catalog.assemblyPackets || [],
+      locations: catalog.locations || [],
+      warehouseLocationId: catalog.warehouseLocationId ?? null,
+      warehouseLocationName: catalog.warehouseLocationName,
+    });
+    return {
+      assemblyWarehouseQty: enriched.assemblyWarehouseQty || {},
+      packetWarehouseQty: enriched.packetWarehouseQty || {},
+    };
+  }, [catalog]);
+
+  const assemblyWarehouseQty = stockMaps.assemblyWarehouseQty;
+  const packetWarehouseQty = stockMaps.packetWarehouseQty;
+  const warehouseLabel = catalog?.warehouseLocationName || 'Warehouse';
 
   const filtered = useMemo(() => {
     const assemblies = catalog?.assemblies || [];
@@ -99,43 +149,56 @@ export default function WarehouseProductsScreen({ navigation }) {
     navigation.navigate('WarehouseScan', { warehouseLocationId: catalog?.warehouseLocationId });
   };
 
-  const renderPacket = (packet) => (
-    <View key={packet.id} style={styles.packetRow}>
-      <Text style={styles.packetSku}>{packet.sku}</Text>
-      <Text style={styles.packetName} numberOfLines={2}>{packet.name}</Text>
-      <Text style={styles.packetMeta}>#{packet.packet_number ?? '—'}</Text>
-    </View>
-  );
+  const formatQty = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    return String(Math.max(0, Math.floor(n)));
+  };
+
+  const renderPacket = (packet) => {
+    const whQty = packetWarehouseQty[String(packet.id)] ?? 0;
+    return (
+      <View key={packet.id} style={styles.packetRow}>
+        <Text style={styles.packetSku} numberOfLines={1}>{packet.sku}</Text>
+        <Text style={styles.packetName} numberOfLines={2}>{packet.name}</Text>
+        <Text style={styles.packetQty}>WH {formatQty(whQty)}</Text>
+      </View>
+    );
+  };
 
   const renderItem = ({ item: assembly }) => {
     const id = String(assembly.id);
     const isOpen = expanded.has(id);
     const pktList = packetsByAssembly.get(id) || [];
     const cat = categoryName(assembly.category_id);
+    const finishedQty = assemblyWarehouseQty[id] ?? 0;
 
     return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Pressable
-            style={styles.expandBtn}
-            onPress={() => toggleExpanded(id)}
-            accessibilityLabel={isOpen ? 'Collapse packets' : 'Expand packets'}
-          >
-            <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
-          </Pressable>
-          <View style={styles.cardMain}>
-            <Text style={styles.cardTitle}>{assembly.name}</Text>
-            <Text style={styles.cardMeta}>
-              <Text style={styles.cardSku}>{assembly.family_sku}</Text>
-              {cat ? ` · ${cat}` : ''}
-              {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
-            </Text>
+      <View style={styles.gridCard}>
+        <Pressable
+          onPress={() => toggleExpanded(id)}
+          style={styles.cardPress}
+          accessibilityLabel={isOpen ? 'Collapse packets' : 'Expand packets'}
+        >
+          <ProductThumbnail assembly={assembly} />
+          <View style={styles.qtyRibbon}>
+            <Text style={styles.qtyRibbonLabel}>{warehouseLabel}</Text>
+            <Text style={styles.qtyRibbonValue}>{formatQty(finishedQty)}</Text>
           </View>
-        </View>
+          <View style={styles.expandFab} pointerEvents="none">
+            <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
+          </View>
+          <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
+          <Text style={styles.cardSku} numberOfLines={1}>{assembly.family_sku}</Text>
+          <Text style={styles.cardMeta} numberOfLines={2}>
+            {cat || '—'}
+            {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
+          </Text>
+        </Pressable>
         {isOpen ? (
           <View style={styles.packetList}>
             {pktList.length === 0 ? (
-              <Text style={styles.packetEmpty}>No packets linked yet.</Text>
+              <Text style={styles.packetEmpty}>No packets linked.</Text>
             ) : (
               pktList.map(renderPacket)
             )}
@@ -170,6 +233,8 @@ export default function WarehouseProductsScreen({ navigation }) {
           data={filtered}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
+          numColumns={2}
+          columnWrapperStyle={styles.gridRow}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
             <Text style={styles.empty}>No products yet. Tap + to add a packet or product.</Text>
@@ -231,48 +296,84 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addBtnText: { color: '#e2e8f0', fontSize: 26, fontWeight: '300', marginTop: -2 },
-  listContent: { paddingHorizontal: 12, paddingBottom: 24 },
-  card: {
+  listContent: { paddingHorizontal: 10, paddingBottom: 24 },
+  gridRow: { gap: 8, marginBottom: 8 },
+  gridCard: {
+    flex: 1,
     backgroundColor: '#1e293b',
     borderRadius: 10,
-    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#334155',
     overflow: 'hidden',
+    minWidth: 0,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', padding: 10 },
-  expandBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 6,
+  cardPress: { padding: 8, paddingBottom: 10 },
+  thumb: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 8,
     backgroundColor: '#0f172a',
+  },
+  thumbPlaceholder: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 8,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
   },
-  expandIcon: { color: '#94a3b8', fontSize: 12 },
+  thumbPlaceholderIcon: { color: '#475569', fontSize: 28, marginBottom: 4 },
+  thumbPlaceholderText: { color: '#64748b', fontSize: 12, fontWeight: '600' },
+  qtyRibbon: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  qtyRibbonLabel: { color: '#94a3b8', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+  qtyRibbonValue: { color: '#38bdf8', fontSize: 16, fontWeight: '800' },
+  expandFab: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  expandIcon: { color: '#94a3b8', fontSize: 10 },
   expandIconOpen: { transform: [{ rotate: '90deg' }] },
-  cardMain: { flex: 1 },
-  cardTitle: { color: '#f8fafc', fontSize: 16, fontWeight: '700' },
-  cardMeta: { color: '#94a3b8', marginTop: 4, fontSize: 13 },
-  cardSku: { fontFamily: 'monospace', color: '#cbd5e1' },
+  cardTitle: { color: '#f8fafc', fontSize: 14, fontWeight: '700', marginTop: 8 },
+  cardSku: { color: '#cbd5e1', fontFamily: 'monospace', fontSize: 11, marginTop: 4 },
+  cardMeta: { color: '#94a3b8', marginTop: 4, fontSize: 11, lineHeight: 15 },
   packetList: {
     borderTopWidth: 1,
     borderTopColor: '#334155',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     backgroundColor: '#0f172a',
   },
   packetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    gap: 8,
+    paddingVertical: 5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#334155',
   },
-  packetSku: { color: '#38bdf8', fontFamily: 'monospace', fontSize: 12, width: 110 },
-  packetName: { flex: 1, color: '#e2e8f0', fontSize: 13 },
-  packetMeta: { color: '#64748b', fontSize: 12 },
-  packetEmpty: { color: '#64748b', fontStyle: 'italic', paddingVertical: 4 },
+  packetSku: { color: '#38bdf8', fontFamily: 'monospace', fontSize: 10 },
+  packetName: { color: '#e2e8f0', fontSize: 11, marginTop: 2 },
+  packetQty: { color: '#a5f3fc', fontSize: 11, fontWeight: '700', marginTop: 2 },
+  packetEmpty: { color: '#64748b', fontStyle: 'italic', paddingVertical: 4, fontSize: 11 },
   error: { color: '#f87171', paddingHorizontal: 12, marginBottom: 8 },
   empty: { color: '#64748b', textAlign: 'center', marginTop: 32, paddingHorizontal: 24 },
   modalBackdrop: {
