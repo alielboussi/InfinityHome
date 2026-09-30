@@ -8,10 +8,10 @@ export function drawStocktakeApprovalSignatures(doc, startY, margin, pageWidth) 
   const colWidth = (pageWidth - margin * 2 - colGap) / 2;
   const leftX = margin;
   const rightX = margin + colWidth + colGap;
-  const nameLineW = Math.min(colWidth - 24, 200);
+  const nameLineGap = 4;
 
   let y = startY;
-  const blockHeight = 12 + 14 + 18 + SIGNATURE_BOX_PT + 24;
+  const blockHeight = 10 + 18 + SIGNATURE_BOX_PT + 24;
   if (y + blockHeight > pageHeight - margin) {
     doc.addPage();
     y = 48;
@@ -25,14 +25,12 @@ export function drawStocktakeApprovalSignatures(doc, startY, margin, pageWidth) 
 
   const drawColumn = (x, colW, nameLabel, signatureLabel) => {
     const nameW = doc.getTextWidth(nameLabel);
-    doc.text(nameLabel, x + (colW - nameW) / 2, y);
-    const lineX = x + (colW - nameLineW) / 2;
-    doc.line(lineX, y + 12, lineX + nameLineW, y + 12);
-    const sigY = y + 28;
-    const sigLabelW = doc.getTextWidth(signatureLabel);
-    doc.text(signatureLabel, x + (colW - sigLabelW) / 2, sigY);
-    const boxX = x + (colW - SIGNATURE_BOX_PT) / 2;
-    doc.rect(boxX, sigY + 10, SIGNATURE_BOX_PT, SIGNATURE_BOX_PT);
+    doc.text(nameLabel, x, y);
+    const lineY = y + 3;
+    doc.line(x + nameW + nameLineGap, lineY, x + colW, lineY);
+    const sigY = y + 24;
+    doc.text(signatureLabel, x, sigY);
+    doc.rect(x, sigY + 10, SIGNATURE_BOX_PT, SIGNATURE_BOX_PT);
   };
 
   drawColumn(leftX, colWidth, 'Supervisor Name:', 'Supervisor Signature:');

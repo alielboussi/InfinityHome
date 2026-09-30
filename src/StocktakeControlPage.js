@@ -7,21 +7,18 @@ import {
   fetchLocationState,
   fetchLocations,
   getEvent,
-  computeOpeningAggregationForPeriod,
   getPeriodDetail,
   getPeriodCountSheet,
-  getPeriodVariance,
   importCounts,
   listEvents,
   listPeriods,
 } from './services/stocktake';
 import { downloadStocktakeQtySample, parseStocktakeQtyFile } from './utils/stocktakeQtyImport';
-import { downloadPeriodOpeningAggregationPdf } from './utils/stocktakeAggregationPdf';
-import { downloadStocktakeCountSheetPdf, downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
+import StocktakePeriodPdfActions from './components/StocktakePeriodPdfActions';
+import { downloadStocktakeCountSheetPdf } from './utils/stocktakeVariancePdf';
 import { formatStockPeriodDateTime, formatStockPeriodRange } from './utils/stocktakePeriodDisplay';
 import { stocktakeCountUrlForLocation } from './utils/stocktakeLocationSlug';
 import { logUserActivity } from './utils/userActivityLog';
-import db from './dataClient';
 import './stocktake-count.css';
 
 export default function StocktakeControlPage() {
@@ -210,35 +207,6 @@ export default function StocktakeControlPage() {
     }, 'All counts cleared.');
   };
 
-  const handleDownloadPdf = () => run(async () => {
-    if (!periodId) return;
-    const data = await getPeriodVariance(periodId);
-    await downloadStocktakeVariancePdf({
-      period: data.period,
-      rows: data.rows,
-      company: data.company,
-      locationName: data.locationName || locationName,
-    });
-  }, 'Variance PDF downloaded.');
-
-  const handleDownloadOpeningAggregationPdf = () => run(async () => {
-    const opening = (periodDetail?.opening || []).filter((r) => Number(r.qty || 0) > 0);
-    let rows = periodDetail?.opening_aggregation || [];
-    if (!rows.length && opening.length) {
-      rows = await computeOpeningAggregationForPeriod(periodDetail.period, opening);
-    }
-    if (!rows.length) {
-      throw new Error('No opening stock for this period yet.');
-    }
-    const { data: company } = await db.from('company_settings').select('*').limit(1).maybeSingle();
-    await downloadPeriodOpeningAggregationPdf({
-      period: periodDetail.period,
-      rows,
-      company: company || null,
-      locationName,
-    });
-  }, 'Opening aggregation PDF downloaded — please collect signatures.');
-
   const handleDownloadCountSheet = () => run(async () => {
     if (!periodId) throw new Error('No period selected. Click View on the open period first.');
     setCountSheetProgress({ pct: 2, label: 'Starting…' });
@@ -312,11 +280,7 @@ export default function StocktakeControlPage() {
   };
 
   const period = periodDetail?.period;
-  const canDownloadPdf = String(period?.status || '').toLowerCase() === 'closed';
   const canDownloadCountSheet = period?.status === 'open' && !(periodDetail?.closing || []).length;
-  const hasOpeningForAggregation = (periodDetail?.opening_aggregation || []).length > 0
-    || (periodDetail?.opening || []).some((r) => Number(r.qty || 0) > 0);
-  const canDownloadOpeningAggregation = hasOpeningForAggregation;
 
   return (
     <div className="stock-periods-page">
@@ -496,42 +460,36 @@ export default function StocktakeControlPage() {
               <div className="stock-periods-note" style={{ marginBottom: 8 }}>
                 {formatStockPeriodRange(period)}
               </div>
-              <div className="stock-periods-actions">
-                {canDownloadCountSheet && (
+              <StocktakePeriodPdfActions
+                period={period}
+                detail={periodDetail}
+                locationName={locationName}
+                busy={busy}
+                disabled={busy}
+                setBusy={setBusy}
+                onToast={setToast}
+                onError={setError}
+              />
+              {canDownloadCountSheet && (
+                <div className="stock-periods-actions" style={{ marginTop: 8 }}>
                   <button
                     type="button"
-                    className="stock-periods-btn stock-periods-btn-primary"
+                    className="stock-periods-btn stock-periods-btn-primary stock-periods-pdf-btn"
                     disabled={busy}
                     onClick={handleDownloadCountSheet}
                   >
-                    Download count sheet PDF
+                    Count sheet PDF (pre-close)
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="stock-periods-btn stock-periods-btn-primary"
-                  disabled={!canDownloadOpeningAggregation || busy}
-                  onClick={handleDownloadOpeningAggregationPdf}
-                >
-                  Download opening aggregation PDF (signatures)
-                </button>
-                <button
-                  type="button"
-                  className="stock-periods-btn stock-periods-btn-primary"
-                  disabled={!canDownloadPdf || busy}
-                  onClick={handleDownloadPdf}
-                >
-                  Download Variance PDF
-                </button>
-                {canDownloadCountSheet && (
                   <span className="stock-periods-note">
-                    Print the count sheet before closing stock is entered. Tick each row on paper after verifying.
+                    Print before closing stock is entered. Tick each row on paper after verifying.
                   </span>
-                )}
-                {!canDownloadPdf && !canDownloadCountSheet && (
-                  <span className="stock-periods-note">Variance PDF is available after this period is closed by a stocktake submit.</span>
-                )}
-              </div>
+                </div>
+              )}
+              {period?.status === 'open' && !canDownloadCountSheet && (
+                <p className="stock-periods-note" style={{ marginTop: 8 }}>
+                  Closing and variance PDFs unlock after this period is closed by a stocktake submit.
+                </p>
+              )}
               {countSheetProgress && (
                 <div className="stock-periods-progress" role="status" aria-live="polite">
                   <div className="stock-periods-progress-label">{countSheetProgress.label}</div>

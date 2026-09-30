@@ -1137,8 +1137,16 @@ async function clientGetPeriodDetail(periodId) {
   const closing = await clientFetchPeriodStockRows('closing_stock_entries', periodId);
 
   const openingAggregation = await computeOpeningAggregationForPeriod(period, opening);
+  const closingAggregation = await computeOpeningAggregationForPeriod(period, closing);
 
-  return { ok: true, period, opening, closing, opening_aggregation: openingAggregation };
+  return {
+    ok: true,
+    period,
+    opening,
+    closing,
+    opening_aggregation: openingAggregation,
+    closing_aggregation: closingAggregation,
+  };
 }
 
 export async function computeOpeningAggregationForPeriod(period, openingRows) {
@@ -1181,10 +1189,18 @@ async function enrichPeriodDetail(periodId, data) {
     openingAggregation = await computeOpeningAggregationForPeriod(period, opening);
   }
 
+  let closingAggregation = data?.closing_aggregation || [];
+  const closing = data?.closing || [];
+  if (!closingAggregation.length && closing.length) {
+    closingAggregation = await computeOpeningAggregationForPeriod(period, closing);
+  }
+
   return {
     ...data,
     opening,
+    closing,
     opening_aggregation: openingAggregation,
+    closing_aggregation: closingAggregation,
   };
 }
 

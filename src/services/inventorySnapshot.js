@@ -56,10 +56,29 @@ const fetchInventoryViaApi = async (locations) => {
   return data?.data || [];
 };
 
-export async function fetchInventorySnapshot(locations = null) {
+/**
+ * Authoritative on-hand qty from `inventory` only (no opening-stock overlay).
+ * Use for customer-facing stock displays after stocktake submit.
+ */
+export async function fetchLiveLocationInventory(locations = null) {
+  const locationList = Array.isArray(locations)
+    ? locations.filter(Boolean).map((v) => String(v)).filter(isUuid)
+    : (locations && isUuid(locations) ? [String(locations)] : []);
+
+  const { data, error } = await fetchAllInventoryRows(locationList);
+  if (error) return { error };
+  return { data: dedupeInventoryRows(data || []), source: 'inventory' };
+}
+
+export async function fetchInventorySnapshot(locations = null, options = {}) {
+  const inventoryOnly = options?.inventoryOnly === true;
   const locationList = Array.isArray(locations)
     ? locations.filter(Boolean).map(v => String(v)).filter(isUuid)
     : (locations && isUuid(locations) ? [String(locations)] : []);
+
+  if (inventoryOnly) {
+    return fetchLiveLocationInventory(locationList.length ? locationList : locations);
+  }
 
   let inventoryRows = [];
   let inventoryErr = null;

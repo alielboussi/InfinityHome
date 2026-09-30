@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import db from './dataClient';
-import { fetchInventorySnapshot } from './services/inventorySnapshot';
+import { fetchLiveLocationInventory } from './services/inventorySnapshot';
+import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import {
   fetchComboLocationPricesForLocation,
   fetchProductLocationPricesForLocation,
@@ -112,7 +113,7 @@ async function resolveLusakaComboIds() {
   return Array.from(new Set((data || []).map((row) => String(row.combo_id)).filter(Boolean)));
 }
 
-const STOCK_SYNC_MS = 60_000;
+const STOCK_SYNC_MS = 30_000;
 
 function StockCardImage({ row, onExpand }) {
   const [failed, setFailed] = useState(false);
@@ -245,7 +246,7 @@ export default function LusakaStockDisplay() {
     try {
       const [{ data: locRow }, invSnap, productPriceRows, comboPriceRows] = await Promise.all([
         db.from('locations').select('id, name').eq('id', LUSAKA_BRANCH_ID).maybeSingle(),
-        fetchInventorySnapshot(LUSAKA_BRANCH_ID),
+        fetchLiveLocationInventory(LUSAKA_BRANCH_ID),
         fetchProductLocationPricesForLocation(db, LUSAKA_BRANCH_ID),
         fetchComboLocationPricesForLocation(db, LUSAKA_BRANCH_ID),
       ]);
@@ -321,6 +322,16 @@ export default function LusakaStockDisplay() {
     }
   }, []);
 
+  const inventoryRtTick = useRealtimeRefresh(
+    ['inventory', 'product_locations'],
+    300,
+    {
+      inventory: { column: 'location', value: LUSAKA_BRANCH_ID },
+      product_locations: { column: 'location_id', value: LUSAKA_BRANCH_ID },
+    },
+    { enabled: true },
+  );
+
   useEffect(() => {
     let alive = true;
     const run = async (initial) => {
@@ -339,6 +350,10 @@ export default function LusakaStockDisplay() {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [refreshStock]);
+
+  useEffect(() => {
+    if (inventoryRtTick > 0) refreshStock({ initial: false });
+  }, [inventoryRtTick, refreshStock]);
 
   const stockByProduct = useMemo(() => {
     const map = new Map();

@@ -1617,6 +1617,16 @@ async function handleEventSubmit(req, res) {
     }
   }
 
+  const locLinkRows = Array.from(totals.keys())
+    .filter((product_id) => product_id && !isSetProductId(product_id))
+    .map((product_id) => ({ product_id, location_id: locationId }));
+  if (locLinkRows.length) {
+    for (const chunk of chunkArray(locLinkRows, 500)) {
+      const { error: plErr } = await sb.from('product_locations').upsert(chunk, { onConflict: 'product_id,location_id' });
+      if (plErr) return res.status(500).json({ ok: false, error: plErr.message });
+    }
+  }
+
   // Keep count rows + count_log for audit; session is closed so carts stop accepting edits.
   await sb.from('stocktake_gate_audit').insert([{
     event_id: eventId,
@@ -1837,9 +1847,10 @@ async function handlePeriodDetail(req, res) {
   if (!period) return res.status(404).json({ ok: false, error: 'Period not found' });
 
   const opening = await fetchPeriodDetailOpeningRows(sb, period);
-  const [closing, openingAggregation] = await Promise.all([
-    fetchPeriodClosingRows(sb, periodId),
+  const closing = await fetchPeriodClosingRows(sb, periodId);
+  const [openingAggregation, closingAggregation] = await Promise.all([
     fetchOpeningAggregationForPeriod(sb, period, opening),
+    fetchOpeningAggregationForPeriod(sb, period, closing),
   ]);
 
   res.status(200).json({
@@ -1848,6 +1859,7 @@ async function handlePeriodDetail(req, res) {
     opening,
     closing,
     opening_aggregation: openingAggregation,
+    closing_aggregation: closingAggregation,
   });
 }
 

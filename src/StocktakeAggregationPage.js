@@ -5,13 +5,12 @@ import {
   fetchLocationState,
   fetchLocations,
   getEvent,
-  getPeriodVariance,
   listEvents,
   setAggregationManualCount,
   submitEvent,
 } from './services/stocktake';
+import { downloadStocktakeSubmitPdfBundle } from './components/StocktakePeriodPdfActions';
 import { downloadStocktakeAggregationPdf } from './utils/stocktakeAggregationPdf';
-import { downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
 import { buildFinalTotals, buildFlattenedAggregationProductRows, isComponentRow } from './utils/stocktakeSubmitTotals';
 import { logUserActivity } from './utils/userActivityLog';
 import './stocktake-count.css';
@@ -295,25 +294,26 @@ export default function StocktakeAggregationPage() {
         metadata: { submitType: result.submitType, locationId, adminAggregation: true },
       });
 
-      let varianceNote = '';
-      if (result.submitType === 'rollover' && result.closedPeriod?.id) {
-        try {
-          const variance = await getPeriodVariance(result.closedPeriod.id);
-          await downloadStocktakeVariancePdf({
-            period: variance.period,
-            rows: variance.rows,
-            company: variance.company,
-            locationName: variance.locationName || locationName,
-          });
-          varianceNote = ' Variance PDF downloaded.';
-        } catch (pdfErr) {
-          console.warn('Variance PDF auto-download failed', pdfErr);
-          varianceNote = ' Period closed — open Stock Periods to download the variance PDF.';
+      let pdfNote = '';
+      try {
+        const { downloaded } = await downloadStocktakeSubmitPdfBundle({
+          submitType: result.submitType,
+          closedPeriod: result.closedPeriod,
+          openedPeriod: result.openedPeriod,
+          aggregationRows: pdfRows,
+          locationName,
+          company,
+        });
+        if (downloaded.length) {
+          pdfNote = ` PDFs downloaded: ${downloaded.join(', ')}.`;
         }
+      } catch (pdfErr) {
+        console.warn('Period PDF auto-download failed', pdfErr);
+        pdfNote = ' Download PDFs from Stocktake → Periods if needed.';
       }
 
       await refreshSession(locationId, '');
-      setToast(`Submitted. Inventory and stock periods updated.${varianceNote}`);
+      setToast(`Submitted. Inventory and stock periods updated.${pdfNote}`);
     });
   };
 

@@ -79,7 +79,7 @@ async function main() {
 
   const begin = periodForReport.begin_period_date || periodForReport.opened_at;
   const end = periodForReport.end_period_date || periodForReport.closed_at;
-  const periodLine = `Period: ${fmtDateTime(begin)} → ${fmtDateTime(end)}`;
+  const periodLine = `Period: ${fmtDateTime(begin)} to ${fmtDateTime(end)}`;
   const companyName = company?.company_name || company?.name || 'Best Rest Furniture';
 
   const doc = new jsPDF('l', 'pt', 'a4');

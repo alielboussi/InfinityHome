@@ -32,7 +32,7 @@ function fmtDateTime(value) {
 function formatStocktakePeriodRange(begin, end) {
   const a = fmtDateTime(begin);
   const b = fmtDateTime(end);
-  if (a && b) return `Period: ${a} → ${b}`;
+  if (a && b) return `Period: ${a} to ${b}`;
   if (a) return `Period: ${a}`;
   return '';
 }

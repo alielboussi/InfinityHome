@@ -804,6 +804,10 @@ body.stocktake-count-route .App {
     grid-template-columns: 1fr !important;
   }
 
+  .stock-periods-pdf-actions {
+    grid-template-columns: 1fr !important;
+  }
+
   .stock-periods-table {
     display: block;
     overflow-x: auto;

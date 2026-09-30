@@ -8080,6 +8080,8 @@ button, input { outline:none; }
 .stock-periods-page { padding:24px; max-width:1400px; margin:0 auto; color:#e0e6ed; }
 .stock-periods-card { background:#1a1f27; border:1px solid #00b4d8; border-radius:10px; padding:14px 16px; margin-bottom:16px; }
 .stock-periods-actions { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap:12px; margin-bottom:12px; }
+.stock-periods-pdf-actions { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin-bottom:12px; align-items:stretch; }
+.stock-periods-pdf-btn { width:100%; font-size:14px; font-weight:700; font-family:inherit; text-align:center; min-height:44px; }
 .stock-periods-filters { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap:12px; margin-top:12px; }
 .stock-periods-filters .stock-periods-label { min-width:0; }
 .stock-periods-filters .stock-periods-label .pos-control { width:100%; max-width:100%; min-width:0; }

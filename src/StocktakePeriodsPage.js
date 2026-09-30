@@ -1,15 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import db from './dataClient';
 import {
   fetchLocations,
-  computeOpeningAggregationForPeriod,
   getPeriodDetail,
-  getPeriodVariance,
   listPeriods,
 } from './services/stocktake';
-import { formatStockPeriodDateTime } from './utils/stocktakePeriodDisplay';
-import { downloadPeriodOpeningAggregationPdf } from './utils/stocktakeAggregationPdf';
-import { downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
+import StocktakePeriodPdfActions from './components/StocktakePeriodPdfActions';
+import { formatStockPeriodDateTime, formatStockPeriodRange } from './utils/stocktakePeriodDisplay';
 import './stocktake-count.css';
 
 export default function StocktakePeriodsPage() {
@@ -57,63 +53,14 @@ export default function StocktakePeriodsPage() {
   }, [periodId]);
 
   const period = detail?.period;
-  const canDownloadPdf = String(period?.status || '').toLowerCase() === 'closed';
-  const canDownloadOpeningAggregation = (detail?.opening_aggregation || []).length > 0
-    || (detail?.opening || []).some((r) => Number(r.qty || 0) > 0);
-
   const locationName = locations.find((l) => l.id === locationId)?.name || '';
-
-  const handleDownloadOpeningAggregationPdf = async () => {
-    if (!canDownloadOpeningAggregation) return;
-    setBusy(true);
-    setError('');
-    try {
-      let rows = detail.opening_aggregation || [];
-      const opening = (detail.opening || []).filter((r) => Number(r.qty || 0) > 0);
-      if (!rows.length && opening.length) {
-        rows = await computeOpeningAggregationForPeriod(period, opening);
-      }
-      const { data: company } = await db.from('company_settings').select('*').limit(1).maybeSingle();
-      await downloadPeriodOpeningAggregationPdf({
-        period,
-        rows,
-        company: company || null,
-        locationName,
-      });
-      setToast('Opening aggregation PDF downloaded — please collect signatures.');
-    } catch (err) {
-      setError(err.message || 'Failed to build PDF');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDownloadPdf = async () => {
-    if (!periodId || !canDownloadPdf) return;
-    setBusy(true);
-    setError('');
-    try {
-      const data = await getPeriodVariance(periodId);
-      await downloadStocktakeVariancePdf({
-        period: data.period,
-        rows: data.rows,
-        company: data.company,
-        locationName: data.locationName,
-      });
-      setToast('Variance PDF downloaded.');
-    } catch (err) {
-      setError(err.message || 'Failed to build PDF');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <div className="stock-periods-page">
       <div className="stock-periods-card">
         <div className="stock-periods-section-title">Opening Stock by Period</div>
         <div className="stock-periods-note">
-          View opening (and closing) stock entered from stocktake submissions. Variance PDF unlocks when a period is closed.
+          Download opening stock, closing stock, and variance report PDFs for each period.
         </div>
         <label className="stock-periods-label">Location</label>
         <select className="pos-control" value={locationId} onChange={(e) => setLocationId(e.target.value)} disabled={busy}>
@@ -164,27 +111,19 @@ export default function StocktakePeriodsPage() {
           <div className="stock-periods-section-title">
             Period detail — {period?.status}
           </div>
-          <div className="stock-periods-actions">
-            <button
-              type="button"
-              className="stock-periods-btn stock-periods-btn-primary"
-              disabled={!canDownloadOpeningAggregation || busy}
-              onClick={handleDownloadOpeningAggregationPdf}
-            >
-              Download opening aggregation PDF (signatures)
-            </button>
-            <button
-              type="button"
-              className="stock-periods-btn stock-periods-btn-primary"
-              disabled={!canDownloadPdf || busy}
-              onClick={handleDownloadPdf}
-            >
-              Download Variance PDF
-            </button>
-            {!canDownloadPdf && (
-              <span className="stock-periods-note">PDF enabled only after this period is closed by a stocktake submit.</span>
-            )}
+          <div className="stock-periods-note" style={{ marginBottom: 8 }}>
+            {formatStockPeriodRange(period)}
           </div>
+          <StocktakePeriodPdfActions
+            period={period}
+            detail={detail}
+            locationName={locationName}
+            busy={busy}
+            disabled={busy}
+            setBusy={setBusy}
+            onToast={setToast}
+            onError={setError}
+          />
 
           {(detail.opening_aggregation || []).length > 0 && (
             <>

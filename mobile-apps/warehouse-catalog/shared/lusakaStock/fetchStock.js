@@ -93,7 +93,7 @@ async function fetchInventoryViaApi(locationId, apiBase) {
   const response = await fetch(`${base}/api/inventory-bulk`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'snapshot', locations: [locationId] }),
+    body: JSON.stringify({ action: 'snapshot', live: true, locations: [locationId] }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {

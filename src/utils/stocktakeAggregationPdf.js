@@ -87,6 +87,7 @@ async function drawAggregationHeader(doc, {
     metaY += 16;
   }
   if (periodLine) {
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.text(periodLine, pageWidth / 2, metaY, { align: 'center' });
     metaY += 16;
@@ -161,6 +162,7 @@ function appendAggregationSignOff(doc, tableEndY, margin, pageWidth) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text('Supervisor and stocktake conductor: print name, then sign in the boxes below.', margin, y + 14);
+  doc.setFont('helvetica', 'normal');
   drawStocktakeApprovalSignatures(doc, y + 28, margin, pageWidth);
 }
 
@@ -190,4 +192,32 @@ export async function downloadPeriodOpeningAggregationPdf({
   const beginStamp = begin ? fmtDateTime(begin).replace(/[,: ]+/g, '_') : 'period';
   const safeLocation = String(locationName || 'location').replace(/[^\w-]+/g, '_');
   doc.save(`Opening_Aggregation_${safeLocation}_${beginStamp}.pdf`);
+}
+
+/**
+ * Closing stock counted at period end — same aggregation layout as opening (signatures).
+ */
+export async function downloadPeriodClosingAggregationPdf({
+  period,
+  rows,
+  company,
+  locationName,
+}) {
+  const doc = new jsPDF('p', 'pt', 'a4');
+  const periodLine = formatStockPeriodRange(period);
+  const { margin, metaY, pageWidth } = await drawAggregationHeader(doc, {
+    company,
+    title: 'Closing Stock — Aggregation',
+    locationName,
+    periodLine,
+    subtitle: 'Counted quantities at period close — please sign below after verifying.',
+  });
+
+  const tableEndY = renderAggregationTable(doc, { rows, startY: metaY + 8, margin });
+  appendAggregationSignOff(doc, tableEndY, margin, pageWidth);
+
+  const end = period?.end_period_date || period?.closed_at || period?.begin_period_date;
+  const endStamp = end ? fmtDateTime(end).replace(/[,: ]+/g, '_') : 'period';
+  const safeLocation = String(locationName || 'location').replace(/[^\w-]+/g, '_');
+  doc.save(`Closing_Aggregation_${safeLocation}_${endStamp}.pdf`);
 }

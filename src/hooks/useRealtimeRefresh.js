@@ -6,7 +6,8 @@ import { isRealtimeEnabled } from '../utils/realtimeConfig';
  * Subscribe to Firestore realtime for a set of tables and emit a debounced tick
  * whenever any change happens. Use the returned `tick` in effect deps to refetch.
  */
-export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable = undefined) {
+export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable = undefined, options = {}) {
+  const forceEnabled = options?.enabled === true;
   const [tick, setTick] = React.useState(0);
   const timerRef = React.useRef(null);
   const [isVisible, setIsVisible] = React.useState(() => {
@@ -22,7 +23,7 @@ export function useRealtimeRefresh(tables = [], debounceMs = 250, filtersByTable
     return () => document.removeEventListener('visibilitychange', handler);
   }, []);
   React.useEffect(() => {
-    if (!isRealtimeEnabled()) return;
+    if (!forceEnabled && !isRealtimeEnabled()) return;
     if (!Array.isArray(tables) || tables.length === 0) return;
     if (!isVisible) return; // don't subscribe when tab is hidden
     const channelName = 'rt-' + tables.join(',') + (filtersByTable ? ':' + JSON.stringify(filtersByTable) : '');

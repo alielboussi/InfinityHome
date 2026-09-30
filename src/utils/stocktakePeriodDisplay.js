@@ -23,7 +23,7 @@ export function formatStockPeriodRange(period) {
   const end = period.end_period_date || period.closed_at;
   const a = formatStockPeriodDateTime(begin);
   const b = end ? formatStockPeriodDateTime(end) : 'Open';
-  return `Period: ${a} → ${b}`;
+  return `Period: ${a} to ${b}`;
 }
 
 /** Aggregation-style rows (set + component lines) from flat opening stock. */
