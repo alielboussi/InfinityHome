@@ -5,6 +5,7 @@ import {
   listPeriods,
 } from './services/stocktake';
 import StocktakePeriodPdfActions from './components/StocktakePeriodPdfActions';
+import StockPeriodOpeningClosingTable from './components/StockPeriodOpeningClosingTable';
 import { formatStockPeriodDateTime, formatStockPeriodRange } from './utils/stocktakePeriodDisplay';
 import './stocktake-count.css';
 
@@ -125,65 +126,26 @@ export default function StocktakePeriodsPage() {
             onError={setError}
           />
 
-          {(detail.opening_aggregation || []).length > 0 && (
-            <>
-              <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
-                Opening stock (aggregation view)
-              </div>
-              <table className="pos-table stock-periods-table">
-                <thead>
-                  <tr>
-                    <th>Product / Set</th>
-                    <th>SKU</th>
-                    <th>Type</th>
-                    <th>Qty</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.opening_aggregation.map((r, idx) => (
-                    <tr key={`${r.sku}-${r.name}-${idx}`}>
-                      <td>{r.name}</td>
-                      <td>{r.sku || '—'}</td>
-                      <td>Product</td>
-                      <td>{r.qty}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
+          {(period?.status === 'closed' || (detail.closing || []).length > 0) && (
+            <StockPeriodOpeningClosingTable
+              openingAggregation={detail.opening_aggregation}
+              closingAggregation={detail.closing_aggregation}
+            />
           )}
 
-          <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
-            {period?.status === 'open' && !(detail.closing || []).length
-              ? 'Expected stock to count'
-              : 'Opening stock (this period)'}
-          </div>
-          <table className="pos-table stock-periods-table">
-            <thead>
-              <tr><th>Product</th><th>SKU</th><th>Qty</th></tr>
-            </thead>
-            <tbody>
-              {(detail.opening || []).length === 0 ? (
-                <tr><td colSpan={3}>No opening stock recorded for this period yet.</td></tr>
-              ) : detail.opening.map((r) => (
-                <tr key={r.product_id}>
-                  <td>{r.name}</td>
-                  <td>{r.sku || '—'}</td>
-                  <td>{r.qty}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {(detail.closing || []).length > 0 && (
+          {period?.status === 'open' && !(detail.closing || []).length && (
             <>
-              <div className="stock-periods-section-title" style={{ marginTop: 16 }}>Closing stock</div>
+              <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
+                Expected stock to count
+              </div>
               <table className="pos-table stock-periods-table">
                 <thead>
                   <tr><th>Product</th><th>SKU</th><th>Qty</th></tr>
                 </thead>
                 <tbody>
-                  {detail.closing.map((r) => (
+                  {(detail.opening || []).length === 0 ? (
+                    <tr><td colSpan={3}>No lines to count for this period yet.</td></tr>
+                  ) : detail.opening.map((r) => (
                     <tr key={r.product_id}>
                       <td>{r.name}</td>
                       <td>{r.sku || '—'}</td>
@@ -194,6 +156,7 @@ export default function StocktakePeriodsPage() {
               </table>
             </>
           )}
+
         </div>
       )}
     </div>

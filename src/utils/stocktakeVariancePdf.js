@@ -1,7 +1,11 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { appendStocktakePageNumbers } from './stocktakePdfPageNumbers';
+import { renderSegmentedStocktakeTable } from './stocktakePdfSetGroups';
 import { drawStocktakeApprovalSignatures } from './stocktakePdfSignatures';
+import { fmtStocktakeCurrency, fmtStocktakeQty } from './stocktakePdfFormat';
+import { planSetPriceCellMerges } from './stocktakeSetComponentPricing';
 
 function fmtDateFile(value) {
   if (!value) return '';
@@ -61,16 +65,68 @@ function loadImage(url, timeoutMs = 4000) {
   });
 }
 
-function fmtQty(value) {
-  const num = Number(value ?? 0);
-  if (!Number.isFinite(num)) return '0';
-  return num.toLocaleString();
+function resolveRowDisplayPrice(row) {
+  const display = Number(row?.display_unit_price);
+  if (Number.isFinite(display) && display > 0) return display;
+  const direct = Number(row?.unit_price);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const variance = Number(row?.variance ?? 0);
+  if (variance !== 0) {
+    const amount = Number(row?.variance_amount ?? 0);
+    if (Number.isFinite(amount)) return amount / variance;
+  }
+  const fallback = Number(row?.unit_price ?? 0) || 0;
+  return fallback > 0 ? fallback : '';
 }
 
-function fmtMoney(value) {
-  const num = Number(value ?? 0);
-  if (!Number.isFinite(num)) return '0.00';
-  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function buildVariancePdfTableBody(rows) {
+  const dataRows = (rows || []).filter((r) => r.row_type !== 'set_header');
+  const mergePlan = planSetPriceCellMerges(dataRows, resolveRowDisplayPrice);
+  let totalAmount = 0;
+
+  const body = dataRows.map((r, index) => {
+    const current = r.current_stock_qty ?? (
+      Number(r.opening_stock_qty || 0) + Number(r.transfers_in || 0) - Number(r.sales || 0)
+    );
+    const amount = Number(r.variance_amount ?? 0);
+    if (Number.isFinite(amount)) totalAmount += amount;
+
+    const leading = [
+      r.sku || '',
+      r.product_name || '',
+      fmtStocktakeQty(r.opening_stock_qty),
+      fmtStocktakeQty(r.transfers_in),
+      fmtStocktakeQty(r.sales),
+      fmtStocktakeQty(current),
+      fmtStocktakeQty(r.closing_stock_qty),
+    ];
+    const tail = [
+      fmtStocktakeQty(r.variance),
+      fmtStocktakeCurrency(amount),
+    ];
+
+    const cellPlan = mergePlan[index];
+    if (cellPlan?.kind === 'mergeContinue') {
+      return [...leading, ...tail];
+    }
+    if (cellPlan?.kind === 'mergeStart') {
+      const priceText = cellPlan.price === '' || cellPlan.price == null
+        ? ''
+        : fmtStocktakeCurrency(cellPlan.price);
+      const priceCell = {
+        content: priceText,
+        rowSpan: cellPlan.rowSpan,
+        styles: { valign: 'middle', halign: 'center', fillColor: [255, 255, 255] },
+      };
+      return [...leading, priceCell, ...tail];
+    }
+
+    const displayPrice = resolveRowDisplayPrice(r);
+    const priceCell = displayPrice === '' ? '' : fmtStocktakeCurrency(displayPrice);
+    return [...leading, priceCell, ...tail];
+  });
+
+  return { body, totalAmount };
 }
 
 /** Centered lines with normal word spacing (no justify stretch). Returns Y after last line. */
@@ -104,10 +160,6 @@ async function drawStocktakeReportHeader(doc, {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 32;
-
-  doc.setDrawColor(30, 90, 180);
-  doc.setLineWidth(2);
-  doc.rect(14, 14, pageWidth - 28, pageHeight - 28);
 
   const logoImg = await loadImage(logoUrl);
   if (logoImg) {
@@ -173,39 +225,12 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
     footnote: 'Current = Opening + Transfers In − Sales.\nVariance Qty = Closing (counted) − Current.\nAmount = unit price × variance (promo when active, else standard).',
   });
 
-  const body = [];
-  (rows || []).forEach((r) => {
-    if (r.row_type === 'set_header') {
-      body.push([{
-        content: r.product_name || '',
-        colSpan: 9,
-        styles: {
-          fontStyle: 'bold',
-          halign: 'left',
-          fillColor: [245, 248, 252],
-          textColor: [20, 20, 20],
-        },
-      }]);
-      return;
-    }
-    const current = r.current_stock_qty ?? (
-      Number(r.opening_stock_qty || 0) + Number(r.transfers_in || 0) - Number(r.sales || 0)
-    );
-    body.push([
-      r.sku || '',
-      r.product_name || '',
-      fmtQty(r.opening_stock_qty),
-      fmtQty(r.transfers_in),
-      fmtQty(r.sales),
-      fmtQty(current),
-      fmtQty(r.closing_stock_qty),
-      fmtQty(r.variance),
-      fmtMoney(r.variance_amount),
-    ]);
-  });
+  const { body, totalAmount } = buildVariancePdfTableBody(rows);
 
-  autoTable(doc, {
+  const tableEndY = renderSegmentedStocktakeTable(doc, {
     startY: metaY + 12,
+    margin,
+    colSpan: 10,
     head: [[
       'SKU',
       'Product',
@@ -214,45 +239,51 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
       'Sales',
       'Current',
       'Closing',
-      'Var',
+      'Price',
+      'Variance',
       'Amount',
     ]],
     body,
-    styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak' },
-    headStyles: {
-      fillColor: [30, 90, 180],
-      textColor: 255,
-      fontSize: 8,
-      halign: 'center',
-      valign: 'middle',
+    foot: [[
+      { content: '', colSpan: 8 },
+      { content: 'Total', styles: { halign: 'center', fontStyle: 'bold' } },
+      { content: fmtStocktakeCurrency(totalAmount), styles: { halign: 'center', fontStyle: 'bold' } },
+    ]],
+    tableOptions: {
+      styles: { fontSize: 7.5, cellPadding: 2.5, overflow: 'linebreak', halign: 'center', valign: 'middle' },
+      headStyles: {
+        fillColor: [30, 90, 180],
+        textColor: 255,
+        fontSize: 7.5,
+        halign: 'center',
+        valign: 'middle',
+        lineColor: [30, 90, 180],
+      },
+      footStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [20, 20, 20],
+        fontStyle: 'bold',
+        halign: 'center',
+        lineColor: [140, 140, 140],
+      },
+      columnStyles: {
+        0: { cellWidth: 48 },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 36 },
+        3: { cellWidth: 40 },
+        4: { cellWidth: 36 },
+        5: { cellWidth: 42 },
+        6: { cellWidth: 42 },
+        7: { cellWidth: 52 },
+        8: { cellWidth: 44 },
+        9: { cellWidth: 56 },
+      },
+      tableWidth: pageWidth - margin * 2,
     },
-    columnStyles: {
-      0: { cellWidth: 52, halign: 'left' },
-      1: { cellWidth: 'auto', halign: 'left' },
-      2: { halign: 'right', cellWidth: 44 },
-      3: { halign: 'right', cellWidth: 44 },
-      4: { halign: 'right', cellWidth: 40 },
-      5: { halign: 'right', cellWidth: 48 },
-      6: { halign: 'right', cellWidth: 48 },
-      7: { halign: 'right', cellWidth: 40 },
-      8: { halign: 'right', cellWidth: 56 },
-    },
-    margin: { left: margin, right: margin },
-    tableWidth: pageWidth - margin * 2,
-    didDrawCell: (data) => {
-      if (data.section !== 'body') return;
-      const raw = data.row.raw;
-      const isHeader = Array.isArray(raw) && raw[0]?.colSpan === 9;
-      if (!isHeader) return;
-      const cell = data.cell;
-      doc.setDrawColor(30, 90, 180);
-      doc.setLineWidth(0.75);
-      doc.line(cell.x, cell.y + cell.height - 1.5, cell.x + cell.width, cell.y + cell.height - 1.5);
-    },
-  });
-
-  const tableEndY = doc.lastAutoTable?.finalY ?? metaY + 16;
-  drawStocktakeApprovalSignatures(doc, tableEndY + 28, margin, pageWidth);
+  }) ?? metaY + 16;
+  doc.setPage(doc.internal.getNumberOfPages());
+  drawStocktakeApprovalSignatures(doc, tableEndY + 22, margin, pageWidth);
+  appendStocktakePageNumbers(doc);
 
   const filename = `Variance Report_${beginLabel}_${endLabel}.pdf`;
   doc.save(filename);
@@ -289,10 +320,10 @@ export async function downloadProductsListVariancePdf({
   const body = (rows || []).map((r) => [
     r.sku || '',
     r.product_name || '',
-    fmtQty(r.opening_stock_qty),
-    fmtQty(r.stock_in ?? r.adjustments_add),
-    fmtQty(r.sales),
-    fmtQty(r.current_stock_qty),
+    fmtStocktakeQty(r.opening_stock_qty),
+    fmtStocktakeQty(r.stock_in ?? r.adjustments_add),
+    fmtStocktakeQty(r.sales),
+    fmtStocktakeQty(r.current_stock_qty),
   ]);
 
   autoTable(doc, {
@@ -306,7 +337,7 @@ export async function downloadProductsListVariancePdf({
       'Current',
     ]],
     body,
-    styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' },
+    styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak', halign: 'center', valign: 'middle' },
     headStyles: {
       fillColor: [30, 90, 180],
       textColor: 255,
@@ -318,12 +349,12 @@ export async function downloadProductsListVariancePdf({
       cellWidth: 'wrap',
     },
     columnStyles: {
-      0: { cellWidth: 52, halign: 'left' },
-      1: { cellWidth: 'auto', halign: 'left' },
-      2: { halign: 'right', cellWidth: 52 },
-      3: { halign: 'right', cellWidth: 52 },
-      4: { halign: 'right', cellWidth: 48 },
-      5: { halign: 'right', cellWidth: 52 },
+      0: { cellWidth: 52 },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 52 },
+      3: { cellWidth: 52 },
+      4: { cellWidth: 48 },
+      5: { cellWidth: 52 },
     },
     margin: { left: margin, right: margin },
   });
@@ -378,10 +409,10 @@ export async function downloadStocktakeCountSheetPdf({
     body.push([
       r.sku || '',
       r.product_name || '',
-      fmtQty(r.opening_stock_qty),
-      fmtQty(r.transfers_in),
-      fmtQty(r.sales),
-      fmtQty(r.closing_stock_qty),
+      fmtStocktakeQty(r.opening_stock_qty),
+      fmtStocktakeQty(r.transfers_in),
+      fmtStocktakeQty(r.sales),
+      fmtStocktakeQty(r.closing_stock_qty),
       '',
     ]);
     if (rowList.length > 80 && (i % 50 === 0 || i === rowList.length - 1)) {
@@ -406,16 +437,22 @@ export async function downloadStocktakeCountSheetPdf({
       'Tick',
     ]],
     body,
-    styles: { fontSize: 9, cellPadding: 4 },
-    headStyles: { fillColor: [30, 90, 180], textColor: 255, fontSize: 8 },
+    styles: { fontSize: 9, cellPadding: 4, halign: 'center', valign: 'middle' },
+    headStyles: {
+      fillColor: [30, 90, 180],
+      textColor: 255,
+      fontSize: 8,
+      halign: 'center',
+      valign: 'middle',
+    },
     columnStyles: {
       0: { cellWidth: 46 },
       1: { cellWidth: 'auto' },
-      2: { halign: 'right', cellWidth: 52 },
-      3: { halign: 'right', cellWidth: 48 },
-      4: { halign: 'right', cellWidth: 40 },
-      5: { halign: 'right', cellWidth: 52 },
-      6: { halign: 'center', cellWidth: 32 },
+      2: { cellWidth: 52 },
+      3: { cellWidth: 48 },
+      4: { cellWidth: 40 },
+      5: { cellWidth: 52 },
+      6: { cellWidth: 32 },
     },
     margin: { left: margin, right: margin },
     didDrawCell: (data) => {
@@ -430,7 +467,9 @@ export async function downloadStocktakeCountSheetPdf({
   });
 
   const tableEndY = doc.lastAutoTable?.finalY ?? metaY + 16;
-  drawStocktakeApprovalSignatures(doc, tableEndY + 24, margin, pageWidth);
+  doc.setPage(doc.internal.getNumberOfPages());
+  drawStocktakeApprovalSignatures(doc, tableEndY + 22, margin, pageWidth);
+  appendStocktakePageNumbers(doc);
 
   report(92, 'Saving PDF file…');
   await yieldToMain();

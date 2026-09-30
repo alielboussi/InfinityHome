@@ -5615,6 +5615,118 @@ body {
   margin-top: 2px;
 }
 
+.products-list-toolbar-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.products-list-toolbar-grid .products-toolbar-control-wrap {
+  flex: unset;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.products-list-toolbar-grid .products-toolbar-btn {
+  width: 100%;
+  min-width: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.products-toolbar-icon-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  width: 100%;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.products-toolbar-icon-group .products-toolbar-icon-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 32px;
+  border: none;
+  background: transparent;
+}
+
+.products-toolbar-more-wrap {
+  position: relative;
+  width: 100%;
+  height: 36px;
+  z-index: 45;
+}
+
+.products-toolbar-more-trigger {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #000;
+}
+
+.products-toolbar-more-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px 0;
+  z-index: 50;
+}
+
+.products-toolbar-more-menu button,
+.products-toolbar-more-menu a {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: #111;
+  text-decoration: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.products-toolbar-more-menu button:hover:not(:disabled),
+.products-toolbar-more-menu a:hover {
+  background: #eff6ff;
+}
+
+.products-toolbar-more-menu button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .products-list-toolbar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .products-toolbar-control-wrap {
   width: auto;
   flex: 1 1 140px;

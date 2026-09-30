@@ -1,0 +1,16 @@
+---
+description: All stocktake PDFs (opening, closing, variance, count sheet, review) are locked for all locations until the user explicitly requests changes
+alwaysApply: true
+---
+
+# Stocktake PDF pipeline — do not edit without explicit user command
+
+Read **`docs/stocktake-pdf-pipeline.md`** before touching **any** stocktake PDF or its row/layout logic.
+
+**Locked PDF types (all locations):** opening stock, closing stock, variance report, pre-submit aggregation review, count sheet — including auto-download on admin submit and manual period PDF buttons.
+
+Also locked: period row resolvers (`stocktakePeriodPdfRows.js`), set price merge (`stocktakeSetComponentPricing.js`), period-close inventory (`reconcileInventoryFromVariance`).
+
+- Applies to **all locations** (no per-location forks).
+- **Forbidden** unless the user clearly asks to change stocktake PDFs (opening/closing included), variance, or period stock behaviour: edits to files listed in that doc, reverting to aggregation set-group rows for period PDFs, or “cleanup” refactors in this area.
+- **Allowed** only when the user explicitly commands a change to this pipeline; then update `docs/stocktake-pdf-pipeline.md` if behaviour changes.

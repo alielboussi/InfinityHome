@@ -12,6 +12,7 @@ import {
 } from '../server/lib/warehouseStocktakeApply.js';
 import handleWarehouseMobile from '../server/handlers/warehouse-mobile.js';
 import { buildVarianceRows } from '../server/lib/stocktakeVarianceRows.js';
+import { reconcileInventoryFromVariance } from '../src/utils/reconcileInventoryFromVariance.js';
 
 const STOCKTAKE_ADMIN_EMAIL = 'alielboussi00@gmail.com';
 
@@ -157,20 +158,8 @@ function chunkArray(list, size) {
 async function loadLocationProductIds(sb, locationId) {
   const productIdSet = new Set();
   const [{ data: plRows, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
-    fetchAllPaged((from, to) =>
-      sb.from('product_locations')
-        .select('product_id')
-        .eq('location_id', locationId)
-        .order('product_id', { ascending: true })
-        .range(from, to),
-    ),
-    fetchAllPaged((from, to) =>
-      sb.from('inventory')
-        .select('product_id')
-        .eq('location', locationId)
-        .order('id', { ascending: true })
-        .range(from, to),
-    ),
+    sb.from('product_locations').select('product_id').eq('location_id', locationId),
+    sb.from('inventory').select('product_id').eq('location', locationId),
   ]);
   if (plErr) throw plErr;
   if (invErr) throw invErr;
@@ -1579,29 +1568,14 @@ async function handleEventSubmit(req, res) {
 
   // Location scope: zero any product linked to this location (product_locations OR inventory)
   // that was not counted. Other locations are never touched.
-  const [{ data: locProducts, error: locErr }, { data: invAtLocation, error: invListErr }] = await Promise.all([
-    fetchAllPaged((from, to) =>
-      sb.from('product_locations')
-        .select('product_id')
-        .eq('location_id', locationId)
-        .order('product_id', { ascending: true })
-        .range(from, to)
-    ),
-    fetchAllPaged((from, to) =>
-      sb.from('inventory')
-        .select('product_id')
-        .eq('location', locationId)
-        .order('product_id', { ascending: true })
-        .range(from, to)
-    ),
-  ]);
-  if (locErr) return res.status(500).json({ ok: false, error: locErr.message });
-  if (invListErr) return res.status(500).json({ ok: false, error: invListErr.message });
-  (locProducts || []).forEach((r) => {
-    if (r.product_id && !totals.has(r.product_id)) totals.set(r.product_id, 0);
-  });
-  (invAtLocation || []).forEach((r) => {
-    if (r.product_id && !totals.has(r.product_id)) totals.set(r.product_id, 0);
+  let locationProductIds;
+  try {
+    locationProductIds = await loadLocationProductIds(sb, locationId);
+  } catch (locScopeErr) {
+    return res.status(500).json({ ok: false, error: locScopeErr.message || 'Failed to load location product scope.' });
+  }
+  locationProductIds.forEach((product_id) => {
+    if (product_id && !totals.has(product_id)) totals.set(product_id, 0);
   });
 
   const invPayload = skipLegacyInventory ? [] : Array.from(totals.entries()).map(([product_id, quantity]) => ({
@@ -1766,6 +1740,14 @@ async function handleEventSubmit(req, res) {
     }
 
     varianceRows = await buildVarianceRows(sb, closed);
+    try {
+      await reconcileInventoryFromVariance(sb, closed, { updatedAt: now });
+    } catch (reconcileErr) {
+      return res.status(500).json({
+        ok: false,
+        error: reconcileErr.message || 'Inventory could not be synced to variance closing quantities.',
+      });
+    }
 
     const { error: evRollErr } = await sb.from('stocktake_events').update({
       status: 'submitted',

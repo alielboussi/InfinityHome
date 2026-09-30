@@ -11,6 +11,7 @@ import {
 } from './services/stocktake';
 import { downloadStocktakeSubmitPdfBundle } from './components/StocktakePeriodPdfActions';
 import { downloadStocktakeAggregationPdf } from './utils/stocktakeAggregationPdf';
+import { periodPdfRowsFromScannedAggregation } from './utils/stocktakePeriodPdfRows';
 import { buildFinalTotals, buildFlattenedAggregationProductRows, isComponentRow } from './utils/stocktakeSubmitTotals';
 import { logUserActivity } from './utils/userActivityLog';
 import './stocktake-count.css';
@@ -249,7 +250,7 @@ export default function StocktakeAggregationPage() {
     await downloadStocktakeAggregationPdf({
       locationName,
       sessionLabel: event?.is_initial ? 'Initial opening stock review' : 'Period rollover review',
-      rows: pdfRows,
+      rows: periodPdfRowsFromScannedAggregation(pdfRows),
       company,
       generatedAt: new Date(),
     });

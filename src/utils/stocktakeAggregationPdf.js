@@ -1,8 +1,18 @@
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { rewriteLegacyStorageUrl } from './storageImageUrl';
 import { formatStockPeriodRange } from './stocktakePeriodDisplay';
-import { drawStocktakeApprovalSignatures } from './stocktakePdfSignatures';
+import {
+  countPeriodLedgerProductLines,
+  sumPeriodLedgerQty,
+} from './periodPdfFromVariance';
+import { appendStocktakePageNumbers } from './stocktakePdfPageNumbers';
+import { renderSegmentedStocktakeTable } from './stocktakePdfSetGroups';
+import {
+  drawStocktakeApprovalSignatures,
+  pdfSignatureBottomLimit,
+  stocktakeSignatureBlockHeight,
+  SIGNATURE_BOX_HEIGHT_PT,
+} from './stocktakePdfSignatures';
 
 function fmtDateTime(value = new Date()) {
   const d = value instanceof Date ? value : new Date(value);
@@ -30,17 +40,13 @@ function loadImage(url) {
 }
 
 function aggregationTableBody(rows) {
-  return (rows || []).map((row) => {
-    let typeLabel = 'Product';
-    if (row.row_type === 'set') typeLabel = 'Set';
-    else if (row.row_type === 'component') typeLabel = 'Component';
-    return [
-      typeLabel,
+  return (rows || [])
+    .filter((row) => row.row_type !== 'set_header')
+    .map((row) => [
       row.sku || '',
-      row.name || '',
+      row.name || row.product_name || '',
       Number(row.qty || 0),
-    ];
-  });
+    ]);
 }
 
 async function drawAggregationHeader(doc, {
@@ -55,10 +61,6 @@ async function drawAggregationHeader(doc, {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 28;
-
-  doc.setDrawColor(30, 90, 180);
-  doc.setLineWidth(2.5);
-  doc.rect(14, 14, pageWidth - 28, pageHeight - 28);
 
   const logoImg = await loadImage(logoUrl);
   if (logoImg) {
@@ -103,24 +105,42 @@ async function drawAggregationHeader(doc, {
 
 function renderAggregationTable(doc, { rows, startY, margin }) {
   const body = aggregationTableBody(rows);
-  const totalQty = (rows || []).reduce((sum, row) => sum + Number(row.qty || 0), 0);
+  const lineCount = countPeriodLedgerProductLines(rows);
+  const totalQty = sumPeriodLedgerQty(rows);
 
-  autoTable(doc, {
+  return renderSegmentedStocktakeTable(doc, {
     startY,
-    head: [['TYPE', 'SKU', 'PRODUCT / SET', 'QTY']],
+    margin,
+    colSpan: 3,
+    head: [['SKU', 'PRODUCT', 'QTY']],
     body,
-    foot: [['', '', 'TOTAL LINES', String((rows || []).length)], ['', '', 'SUM OF QTY', String(totalQty)]],
-    styles: { fontSize: 8, cellPadding: 3 },
-    headStyles: { fillColor: [30, 90, 180], textColor: 255 },
-    footStyles: { fillColor: [240, 244, 250], textColor: [20, 20, 20], fontStyle: 'bold' },
-    margin: { left: margin, right: margin },
-    columnStyles: {
-      0: { cellWidth: 52 },
-      3: { halign: 'right' },
+    foot: [['', 'TOTAL LINES', String(lineCount)], ['', 'SUM OF QTY', String(totalQty)]],
+    tableOptions: {
+      styles: { fontSize: 8, cellPadding: 3, halign: 'center', valign: 'middle' },
+      headStyles: {
+        fillColor: [30, 90, 180],
+        textColor: 255,
+        halign: 'center',
+        valign: 'middle',
+      },
+      footStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [20, 20, 20],
+        fontStyle: 'bold',
+        halign: 'center',
+        lineColor: [140, 140, 140],
+      },
+      columnStyles: {
+        0: { cellWidth: 72 },
+        2: { cellWidth: 48 },
+      },
     },
   });
+}
 
-  return doc.lastAutoTable?.finalY ?? startY;
+function finalizeAggregationPdf(doc, tableEndY, margin, pageWidth) {
+  appendAggregationSignOff(doc, tableEndY, margin, pageWidth);
+  appendStocktakePageNumbers(doc);
 }
 
 /**
@@ -142,7 +162,7 @@ export async function downloadStocktakeAggregationPdf({
   });
 
   const tableEndY = renderAggregationTable(doc, { rows, startY: metaY + 8, margin });
-  appendAggregationSignOff(doc, tableEndY, margin, pageWidth);
+  finalizeAggregationPdf(doc, tableEndY, margin, pageWidth);
 
   const safeLocation = String(locationName || 'location').replace(/[^\w-]+/g, '_');
   const stamp = fmtDateTime(generatedAt).replace(/[,: ]+/g, '_');
@@ -150,20 +170,24 @@ export async function downloadStocktakeAggregationPdf({
 }
 
 function appendAggregationSignOff(doc, tableEndY, margin, pageWidth) {
+  const headingBlock = 14;
+  const gapBeforeSignatures = 20;
+  const bottomLimit = pdfSignatureBottomLimit(doc, margin);
   let y = tableEndY + 24;
-  const pageHeight = doc.internal.pageSize.getHeight();
-  if (y > pageHeight - margin - 120) {
+  doc.setPage(doc.internal.getNumberOfPages());
+  const blockNeed = headingBlock + gapBeforeSignatures + stocktakeSignatureBlockHeight(SIGNATURE_BOX_HEIGHT_PT);
+  if (y + blockNeed > bottomLimit) {
     doc.addPage();
-    y = 48;
+    y = margin + 12;
   }
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text('Sign-off', margin, y);
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text('Supervisor and stocktake conductor: print name, then sign in the boxes below.', margin, y + 14);
+  doc.text('Sign-off', pageWidth / 2, y, { align: 'center' });
   doc.setFont('helvetica', 'normal');
-  drawStocktakeApprovalSignatures(doc, y + 28, margin, pageWidth);
+  doc.setFontSize(7);
+  doc.text('Print name on the line, then sign in the box.', pageWidth / 2, y + 11, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  drawStocktakeApprovalSignatures(doc, y + headingBlock + gapBeforeSignatures, margin, pageWidth);
 }
 
 /**
@@ -179,14 +203,14 @@ export async function downloadPeriodOpeningAggregationPdf({
   const periodLine = formatStockPeriodRange(period);
   const { margin, metaY, pageWidth } = await drawAggregationHeader(doc, {
     company,
-    title: 'Opening Stock — Aggregation',
+    title: 'Opening Stock',
     locationName,
     periodLine,
     subtitle: 'Please sign below after verifying counts.',
   });
 
   const tableEndY = renderAggregationTable(doc, { rows, startY: metaY + 8, margin });
-  appendAggregationSignOff(doc, tableEndY, margin, pageWidth);
+  finalizeAggregationPdf(doc, tableEndY, margin, pageWidth);
 
   const begin = period?.begin_period_date || period?.opened_at;
   const beginStamp = begin ? fmtDateTime(begin).replace(/[,: ]+/g, '_') : 'period';
@@ -207,14 +231,14 @@ export async function downloadPeriodClosingAggregationPdf({
   const periodLine = formatStockPeriodRange(period);
   const { margin, metaY, pageWidth } = await drawAggregationHeader(doc, {
     company,
-    title: 'Closing Stock — Aggregation',
+    title: 'Closing Stock',
     locationName,
     periodLine,
     subtitle: 'Counted quantities at period close — please sign below after verifying.',
   });
 
   const tableEndY = renderAggregationTable(doc, { rows, startY: metaY + 8, margin });
-  appendAggregationSignOff(doc, tableEndY, margin, pageWidth);
+  finalizeAggregationPdf(doc, tableEndY, margin, pageWidth);
 
   const end = period?.end_period_date || period?.closed_at || period?.begin_period_date;
   const endStamp = end ? fmtDateTime(end).replace(/[,: ]+/g, '_') : 'period';

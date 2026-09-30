@@ -1,36 +1,22 @@
 import React from 'react';
 import db from '../dataClient';
-import {
-  computeOpeningAggregationForPeriod,
-  getPeriodVariance,
-} from '../services/stocktake';
+import { getPeriodVariance } from '../services/stocktake';
 import {
   downloadPeriodClosingAggregationPdf,
   downloadPeriodOpeningAggregationPdf,
 } from '../utils/stocktakeAggregationPdf';
+import { periodLedgerPdfRowsFromVariance } from '../utils/periodPdfFromVariance';
+import {
+  periodPdfRowsFromScannedAggregation,
+  resolveClosingPdfRows,
+  resolveOpeningPdfRows,
+  rolloverOpeningPdfRowsFromClosedVariance,
+} from '../utils/stocktakePeriodPdfRows';
 import { downloadStocktakeVariancePdf } from '../utils/stocktakeVariancePdf';
 
 async function loadCompany() {
   const { data: company } = await db.from('company_settings').select('*').limit(1).maybeSingle();
   return company || null;
-}
-
-async function resolveOpeningRows(detail) {
-  let rows = detail?.opening_aggregation || [];
-  const opening = (detail?.opening || []).filter((r) => Number(r.qty || 0) > 0);
-  if (!rows.length && opening.length) {
-    rows = await computeOpeningAggregationForPeriod(detail.period, opening);
-  }
-  return rows;
-}
-
-async function resolveClosingRows(detail) {
-  let rows = detail?.closing_aggregation || [];
-  const closing = (detail?.closing || []).filter((r) => Number(r.qty || 0) > 0);
-  if (!rows.length && closing.length) {
-    rows = await computeOpeningAggregationForPeriod(detail.period, closing);
-  }
-  return rows;
 }
 
 /**
@@ -47,8 +33,7 @@ export default function StocktakePeriodPdfActions({
   setBusy,
 }) {
   const isClosed = String(period?.status || '').toLowerCase() === 'closed';
-  const hasOpening = (detail?.opening_aggregation || []).length > 0
-    || (detail?.opening || []).some((r) => Number(r.qty || 0) > 0);
+  const hasOpening = (detail?.opening || []).some((r) => Number(r.qty || 0) > 0);
   const hasClosing = (detail?.closing || []).some((r) => Number(r.qty || 0) > 0);
 
   const run = async (fn, toastMsg) => {
@@ -66,9 +51,13 @@ export default function StocktakePeriodPdfActions({
   };
 
   const handleOpening = () => run(async () => {
-    const rows = await resolveOpeningRows(detail);
-    if (!rows.length) throw new Error('No opening stock for this period yet.');
     const company = await loadCompany();
+    const rows = await resolveOpeningPdfRows({
+      period,
+      detail,
+      getPeriodVariance,
+    });
+    if (!rows.length) throw new Error('No opening stock for this period yet.');
     await downloadPeriodOpeningAggregationPdf({
       period,
       rows,
@@ -78,9 +67,13 @@ export default function StocktakePeriodPdfActions({
   }, 'Opening stock PDF downloaded.');
 
   const handleClosing = () => run(async () => {
-    const rows = await resolveClosingRows(detail);
-    if (!rows.length) throw new Error('No closing stock for this period yet.');
     const company = await loadCompany();
+    const rows = await resolveClosingPdfRows({
+      period,
+      detail,
+      getPeriodVariance,
+    });
+    if (!rows.length) throw new Error('No closing stock for this period yet.');
     await downloadPeriodClosingAggregationPdf({
       period,
       rows,
@@ -142,12 +135,11 @@ export async function downloadStocktakeSubmitPdfBundle({
   company,
 }) {
   const co = company || await loadCompany();
-  const rows = aggregationRows || [];
-  if (!rows.length) return { downloaded: [] };
-
   const downloaded = [];
 
   if (submitType === 'initial' && openedPeriod) {
+    const rows = periodPdfRowsFromScannedAggregation(aggregationRows || []);
+    if (!rows.length) return { downloaded: [] };
     await downloadPeriodOpeningAggregationPdf({
       period: openedPeriod,
       rows,
@@ -159,26 +151,29 @@ export async function downloadStocktakeSubmitPdfBundle({
   }
 
   if (submitType === 'rollover' && closedPeriod) {
-    await downloadPeriodClosingAggregationPdf({
-      period: closedPeriod,
-      rows,
-      company: co,
-      locationName,
-    });
-    downloaded.push('closing');
-
-    if (openedPeriod) {
-      await downloadPeriodOpeningAggregationPdf({
-        period: openedPeriod,
-        rows,
-        company: co,
-        locationName,
-      });
-      downloaded.push('opening');
-    }
-
     try {
       const variance = await getPeriodVariance(closedPeriod.id);
+      const closingRows = periodLedgerPdfRowsFromVariance(variance.rows, 'closing');
+
+      await downloadPeriodClosingAggregationPdf({
+        period: closedPeriod,
+        rows: closingRows,
+        company: variance.company || co,
+        locationName: variance.locationName || locationName,
+      });
+      downloaded.push('closing');
+
+      if (openedPeriod) {
+        const openingRows = rolloverOpeningPdfRowsFromClosedVariance(variance.rows);
+        await downloadPeriodOpeningAggregationPdf({
+          period: openedPeriod,
+          rows: openingRows,
+          company: variance.company || co,
+          locationName: variance.locationName || locationName,
+        });
+        downloaded.push('opening');
+      }
+
       await downloadStocktakeVariancePdf({
         period: variance.period,
         rows: variance.rows,
@@ -187,7 +182,7 @@ export async function downloadStocktakeSubmitPdfBundle({
       });
       downloaded.push('variance');
     } catch (err) {
-      console.warn('Variance PDF auto-download failed', err);
+      console.warn('Period PDF auto-download failed', err);
     }
   }
 

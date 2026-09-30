@@ -1,4 +1,10 @@
 import { isSetProductId } from './stocktakeSubmitTotals.js';
+import {
+  applyComboLocationPrices,
+  buildComboMembershipIndex,
+  indexComboItems,
+  resolveSetComponentPricing,
+} from './stocktakeSetComponentPricing.js';
 
 function chunkArray(list, size) {
   const chunks = [];
@@ -20,12 +26,37 @@ async function fetchAllPaged(buildQuery, pageSize = 1000) {
   return { data: all, error: null };
 }
 
-function sumStockEntriesByProduct(rows) {
-  const byProduct = new Map();
+/** One logical qty per product: canonical composite doc wins; else sum legacy rows. */
+function collapseStockEntryRowsByProduct(rows) {
+  const groups = new Map();
   (rows || []).forEach((r) => {
     if (!r?.product_id) return;
     const pid = String(r.product_id);
-    byProduct.set(pid, (byProduct.get(pid) || 0) + Number(r.qty || 0));
+    if (!groups.has(pid)) groups.set(pid, []);
+    groups.get(pid).push(r);
+  });
+  const out = [];
+  groups.forEach((list) => {
+    if (list.length === 1) {
+      out.push(list[0]);
+      return;
+    }
+    const compositeRows = list.filter((r) => String(r.id || '').includes('_'));
+    if (compositeRows.length >= 1) {
+      out.push(compositeRows[0]);
+      return;
+    }
+    const totalQty = list.reduce((sum, r) => sum + Number(r.qty || 0), 0);
+    out.push({ ...list[0], qty: totalQty });
+  });
+  return out;
+}
+
+function sumStockEntriesByProduct(rows) {
+  const byProduct = new Map();
+  collapseStockEntryRowsByProduct(rows).forEach((r) => {
+    const pid = String(r.product_id);
+    byProduct.set(pid, Number(r.qty || 0));
   });
   return byProduct;
 }
@@ -82,6 +113,10 @@ async function fetchOpeningQtyMap(sb, period) {
       .range(from, to),
   );
   if (error) throw error;
+  const hadOpeningRow = new Set();
+  (openingRaw || []).forEach((r) => {
+    if (r?.product_id) hadOpeningRow.add(normalizeProductId(r.product_id));
+  });
   const openingMap = sumStockEntriesByProduct(openingRaw);
 
   const { data: initEvent } = await sb
@@ -103,8 +138,10 @@ async function fetchOpeningQtyMap(sb, period) {
     );
     if (cErr) throw cErr;
     sumCountRowsByProduct(countRows).forEach((qty, pid) => {
+      const key = normalizeProductId(pid);
+      if (hadOpeningRow.has(key)) return;
       if (Number(qty || 0) > 0) {
-        openingMap.set(normalizeProductId(pid), qty);
+        openingMap.set(key, qty);
       }
     });
   }
@@ -268,14 +305,9 @@ function mapGetQty(map, productId) {
   return 0;
 }
 
-function includeInVarianceReport({ openingQty, closingQty, transfersIn, sales }) {
-  const o = Number(openingQty || 0);
-  const c = Number(closingQty || 0);
-  const t = Number(transfersIn || 0);
-  const s = Number(sales || 0);
-  if (o > 0) return true;
-  if (c > 0 || t > 0 || s > 0) return true;
-  return false;
+/** Variance lines are only for products that were in this period's opening stock (qty > 0). */
+function includeInVarianceReport({ openingQty }) {
+  return Number(openingQty || 0) > 0;
 }
 
 function buildVarianceLedgerRow({
@@ -307,6 +339,8 @@ function buildVarianceLedgerRow({
     closing_stock_qty: closing,
     variance,
     variance_amount: variance * unit,
+    unit_price: unit,
+    display_unit_price: unit,
     is_set,
   };
 }
@@ -324,12 +358,7 @@ export async function buildVarianceRows(sb, period) {
   const salesMap = await sumSales(sb, locationId, startISO, endISO);
 
   const candidateProductIds = new Set();
-  openingMap.forEach((_, id) => candidateProductIds.add(id));
-  closingMap.forEach((_, id) => candidateProductIds.add(id));
-  transfersIn.forEach((qty, id) => {
-    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
-  });
-  salesMap.forEach((qty, id) => {
+  openingMap.forEach((qty, id) => {
     if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
   });
 
@@ -341,10 +370,37 @@ export async function buildVarianceRows(sb, period) {
     const closingQty = mapGetQty(closingMap, pid);
     const tin = mapGetQty(transfersIn, pid);
     const sales = mapGetQty(salesMap, pid);
-    if (includeInVarianceReport({ openingQty, closingQty, transfersIn: tin, sales })) {
+    if (includeInVarianceReport({ openingQty })) {
       includedProductIds.add(pid);
     }
   });
+
+  let comboMap = new Map();
+  let itemsByCombo = new Map();
+  let memberships = new Map();
+  const locationIdForCombos = period.location_id;
+  if (locationIdForCombos) {
+    const { data: comboLocs } = await sb
+      .from('combo_locations')
+      .select('combo_id')
+      .eq('location_id', locationIdForCombos);
+    const comboIds = [...new Set((comboLocs || []).map((r) => r.combo_id).filter(Boolean))];
+    if (comboIds.length) {
+      const [{ data: combos }, { data: comboItems }, { data: comboLocPrices }] = await Promise.all([
+        sb.from('combos').select(
+          'id, combo_name, sku, combo_price, standard_price, promotional_price, promo_start_date, promo_end_date',
+        ).in('id', comboIds),
+        sb.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds),
+        sb.from('combo_location_prices').select('*').eq('location_id', locationIdForCombos).in('combo_id', comboIds),
+      ]);
+      comboMap = applyComboLocationPrices(combos || [], locationIdForCombos, comboLocPrices || []);
+      itemsByCombo = indexComboItems(comboItems || []);
+      memberships = buildComboMembershipIndex(comboItems || []);
+      (comboItems || []).forEach((row) => {
+        if (row?.product_id) includedProductIds.add(normalizeProductId(row.product_id));
+      });
+    }
+  }
 
   const productIdsForFetch = [...includedProductIds];
   const productMap = new Map();
@@ -358,27 +414,6 @@ export async function buildVarianceRows(sb, period) {
     (products || []).forEach((p) => productMap.set(normalizeProductId(p.id), p));
   }
 
-  const { data: comboLocs } = await sb.from('combo_locations').select('combo_id').eq('location_id', locationId);
-  const comboIds = (comboLocs || []).map((r) => r.combo_id);
-  let combos = [];
-  let comboItems = [];
-  if (comboIds.length) {
-    const { data: c } = await sb.from('combos').select('id, combo_name, sku, standard_price, combo_price').in('id', comboIds);
-    const { data: ci } = await sb.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds);
-    combos = c || [];
-    comboItems = ci || [];
-  }
-
-  const productToCombo = new Map();
-  combos.forEach((combo) => {
-    comboItems
-      .filter((i) => i.combo_id === combo.id)
-      .forEach((ci) => {
-        const pid = normalizeProductId(ci.product_id);
-        if (pid) productToCombo.set(pid, combo);
-      });
-  });
-
   const productRows = [];
   includedProductIds.forEach((productId) => {
     const pid = normalizeProductId(productId);
@@ -388,82 +423,40 @@ export async function buildVarianceRows(sb, period) {
     const closingQty = mapGetQty(closingMap, pid);
     const tin = mapGetQty(transfersIn, pid);
     const sales = mapGetQty(salesMap, pid);
-    if (!includeInVarianceReport({ openingQty, closingQty, transfersIn: tin, sales })) {
+    if (!includeInVarianceReport({ openingQty })) {
       return;
     }
 
     const p = productMap.get(pid) || {};
-    const unit = activeUnitPrice(p, priceAt);
+    const { unitPrice, displayPrice, setComboId } = resolveSetComponentPricing({
+      productId: pid,
+      productMap,
+      comboMap,
+      itemsByCombo,
+      memberships,
+      includedProductIds,
+      priceAt,
+    });
+    const row = buildVarianceLedgerRow({
+      sku: p.sku || '',
+      product_name: p.name || pid,
+      product_id: pid,
+      openingQty,
+      transfersIn: tin,
+      sales,
+      closingQty,
+      unitPrice,
+      is_set: false,
+    });
+    row.display_unit_price = displayPrice;
+    if (setComboId != null) row.set_combo_id = setComboId;
     productRows.push({
-      ...buildVarianceLedgerRow({
-        sku: p.sku || '',
-        product_name: p.name || pid,
-        product_id: pid,
-        openingQty,
-        transfersIn: tin,
-        sales,
-        closingQty,
-        unitPrice: unit,
-        is_set: false,
-      }),
+      ...row,
       row_type: 'product',
     });
   });
 
-  return orderVarianceRowsWithSetHeaders(productRows, productToCombo, combos);
-}
-
-/** Liva opening stock uses #00298 wardrobe; group all Liva BOM lines under the 6-door set title. */
-function resolveComboGroupForProduct(pid, productToCombo, combos) {
-  const combo = productToCombo.get(pid);
-  if (!combo) return null;
-  const liva6 = (combos || []).find((c) => /6\s*door/i.test(String(c.combo_name || '')));
-  const livaSliding = (combos || []).find((c) =>
-    c.id === 44 || /wardrobe sliding door/i.test(String(c.combo_name || '')),
+  return productRows.sort((a, b) =>
+    String(a.product_name || '').localeCompare(String(b.product_name || ''), undefined, { sensitivity: 'base' }),
   );
-  if (liva6 && livaSliding && (combo.id === livaSliding.id || combo.id === liva6.id)) {
-    return liva6;
-  }
-  return combo;
-}
-
-/** Component-level lines grouped under set title rows (no separate set SKU line). */
-function orderVarianceRowsWithSetHeaders(productRows, productToCombo, combos) {
-  const byCombo = new Map();
-  const standalone = [];
-
-  (productRows || []).forEach((row) => {
-    const pid = normalizeProductId(row.product_id);
-    const combo = resolveComboGroupForProduct(pid, productToCombo, combos);
-    if (combo) {
-      const key = String(combo.id);
-      if (!byCombo.has(key)) byCombo.set(key, { combo, rows: [] });
-      byCombo.get(key).rows.push(row);
-    } else {
-      standalone.push(row);
-    }
-  });
-
-  const out = [];
-  standalone
-    .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), undefined, { sensitivity: 'base' }))
-    .forEach((r) => out.push(r));
-
-  const comboGroups = [...byCombo.values()].sort((a, b) =>
-    String(a.combo.combo_name || '').localeCompare(String(b.combo.combo_name || ''), undefined, { sensitivity: 'base' }),
-  );
-
-  comboGroups.forEach(({ combo, rows }) => {
-    if (!rows.length) return;
-    out.push({
-      row_type: 'set_header',
-      product_name: combo.combo_name || combo.name || 'Set',
-      sku: combo.sku || '',
-    });
-    rows
-      .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name), undefined, { sensitivity: 'base' }))
-      .forEach((r) => out.push(r));
-  });
-
-  return out;
 }
