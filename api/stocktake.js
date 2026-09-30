@@ -1867,7 +1867,13 @@ async function handleEventSubmit(req, res) {
       .select('*')
       .single();
     if (closeErr) return res.status(500).json({ ok: false, error: closeErr.message });
-    closedPeriod = closed;
+    const closedPeriodId = closed?.id ?? openPeriod.id;
+    if (closedPeriodId == null || closedPeriodId === '') {
+      return res.status(500).json({ ok: false, error: 'Failed to resolve closed period id after rollover.' });
+    }
+    closedPeriod = closed && typeof closed === 'object' && !Array.isArray(closed)
+      ? { ...closed, id: closed.id ?? closedPeriodId }
+      : { id: closedPeriodId, status: 'closed' };
 
     const { data: nextPeriod, error: nErr } = await sb
       .from('stock_periods')
@@ -1882,6 +1888,9 @@ async function handleEventSubmit(req, res) {
       .select('*')
       .single();
     if (nErr) return res.status(500).json({ ok: false, error: nErr.message });
+    if (!nextPeriod?.id) {
+      return res.status(500).json({ ok: false, error: 'Failed to open next stock period after rollover.' });
+    }
     openedPeriod = nextPeriod;
 
     const openingRows = Array.from(totals.entries()).map(([product_id, qty]) => ({
@@ -1901,7 +1910,7 @@ async function handleEventSubmit(req, res) {
       counting_enabled: false,
       submitted_at: now,
       submitted_by_email: userEmail || null,
-      closed_period_id: closed.id,
+      closed_period_id: closedPeriodId,
       opened_period_id: nextPeriod.id,
     }).eq('id', eventId);
     if (evRollErr) return res.status(500).json({ ok: false, error: evRollErr.message });

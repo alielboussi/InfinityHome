@@ -49,6 +49,14 @@ function fail(message, code) {
   return { data: null, error: { message, code: code || 'firestore' } };
 }
 
+function withoutUndefined(obj) {
+  const out = {};
+  Object.entries(obj || {}).forEach(([key, val]) => {
+    if (val !== undefined) out[key] = val;
+  });
+  return out;
+}
+
 function compareValues(a, b) {
   if (a === b) return 0;
   if (a == null) return -1;
@@ -538,8 +546,19 @@ class FirestoreUpdateQuery {
     try {
       if (this.filters.length === 1 && this.filters[0].op === 'eq' && this.filters[0].col === 'id') {
         const docId = String(this.filters[0].val);
-        await this.db.collection(this.table).doc(docId).set(this.patch, { merge: true });
-        return ok([{ id: docId, ...this.patch }]);
+        const cleanPatch = withoutUndefined(this.patch);
+        await this.db.collection(this.table).doc(docId).set(cleanPatch, { merge: true });
+        const parsedSelect = parseSelectSpec(this.selectSpec);
+        let rows = [{ id: docId, ...cleanPatch }].map((row) => pickColumns(row, this.selectSpec, parsedSelect));
+        if (this.wantSingle) {
+          if (rows.length !== 1) return fail('JSON object requested, multiple (or no) rows returned', 'PGRST116');
+          return ok(rows[0]);
+        }
+        if (this.wantMaybeSingle) {
+          if (rows.length > 1) return fail('JSON object requested, multiple rows returned', 'PGRST116');
+          return ok(rows[0] || null);
+        }
+        return ok(rows);
       }
       const select = new FirestoreSelectQuery(this.db, this.table);
       select.filters = [...this.filters];
@@ -549,7 +568,7 @@ class FirestoreUpdateQuery {
       const updated = [];
       for (const row of targets) {
         const id = docIdForRow(this.table, row);
-        const next = { ...row, ...this.patch };
+        const next = { ...row, ...withoutUndefined(this.patch) };
         await this.db.collection(this.table).doc(id).set(next, { merge: true });
         updated.push(next);
       }
