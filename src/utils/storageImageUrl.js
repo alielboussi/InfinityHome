@@ -1,11 +1,13 @@
 const PRODUCT_IMAGE_BUCKET = 'productimages';
 const LEGACY_PUBLIC_PREFIX = '/storage/v1/object/public/';
+/** Same default as mobile apps — used when rewriting legacy Supabase URLs if env is unset. */
+const DEFAULT_FIREBASE_STORAGE_BUCKET = 'bestrest-portal-system-43108.firebasestorage.app';
 
 function resolveBucketName(options = {}) {
   return String(
     options.bucketName
     || (typeof process !== 'undefined' && process.env?.REACT_APP_FIREBASE_STORAGE_BUCKET)
-    || '',
+    || DEFAULT_FIREBASE_STORAGE_BUCKET,
   ).trim();
 }
 
@@ -75,6 +77,7 @@ export function rewriteLegacyStorageUrl(rawUrl, options = {}) {
   const raw = String(rawUrl || '').trim();
   if (!raw) return raw;
   if (/firebasestorage\.googleapis\.com/i.test(raw)) return raw;
+  if (/\.firebasestorage\.app/i.test(raw) && /\/o\//i.test(raw)) return raw;
 
   const bucket = String(options.bucket || '').trim();
   const legacyMatch = raw.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/i);

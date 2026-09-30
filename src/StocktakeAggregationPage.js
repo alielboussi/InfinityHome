@@ -100,9 +100,9 @@ export default function StocktakeAggregationPage() {
       listEvents(locId),
     ]);
     setInitialCompleted(Boolean(stateRes.state?.initial_completed));
-    const active = selectedEventId
-      || (listRes.rows || []).find((entry) => entry.status === 'counting')?.id
-      || '';
+    const active = selectedEventId !== undefined
+      ? String(selectedEventId || '')
+      : ((listRes.rows || []).find((entry) => entry.status === 'counting')?.id || '');
     setEventId(active);
     if (active) {
       const detail = await getEvent(active);
@@ -271,16 +271,31 @@ export default function StocktakeAggregationPage() {
       if (!finalTotals.length) {
         throw new Error('No product totals to submit.');
       }
-      const result = await submitEvent(event.id, { finalTotals });
+      const submittedEventId = event.id;
+      const result = await submitEvent(submittedEventId, { finalTotals });
+      const closedEvent = result?.event;
+      if (closedEvent?.status === 'counting') {
+        throw new Error('Submit did not close the counting session on the server. Try again or check Stocktake control.');
+      }
+
+      setEventId('');
+      setEvent(null);
+      setConsolidated([]);
+      setQtyDraft({});
+      setSearch('');
+      setExpandedRows(new Set());
+
       await logUserActivity({
         actionType: 'stocktake_submit',
         actionLabel: result.submitType === 'initial'
           ? 'Admin submit initial stocktake'
           : 'Admin submit stocktake rollover',
         entityType: 'stocktake_event',
-        entityId: event.id,
+        entityId: submittedEventId,
         metadata: { submitType: result.submitType, locationId, adminAggregation: true },
       });
+
+      let varianceNote = '';
       if (result.submitType === 'rollover' && result.closedPeriod?.id) {
         try {
           const variance = await getPeriodVariance(result.closedPeriod.id);
@@ -290,12 +305,16 @@ export default function StocktakeAggregationPage() {
             company: variance.company,
             locationName: variance.locationName || locationName,
           });
+          varianceNote = ' Variance PDF downloaded.';
         } catch (pdfErr) {
           console.warn('Variance PDF auto-download failed', pdfErr);
+          varianceNote = ' Period closed — open Stock Periods to download the variance PDF.';
         }
       }
-      await refreshSession(locationId);
-    }, 'Submitted. Inventory and stock periods updated.');
+
+      await refreshSession(locationId, '');
+      setToast(`Submitted. Inventory and stock periods updated.${varianceNote}`);
+    });
   };
 
   const handleAddManualProduct = () => {
@@ -337,17 +356,19 @@ export default function StocktakeAggregationPage() {
         (row) => row.row_type === 'product' && String(row.product_id) === addedId,
       );
 
-      setSearch(addedProduct.name || componentRow?.name || '');
-      setExpandedRows(new Set());
+      if (componentRow?.key) {
+        setExpandedRows((prev) => new Set([...prev, componentRow.key]));
+      }
 
       setSelectedProduct(null);
       setManualQty('');
       setProductSearch('');
       setProductResults([]);
 
+      const label = componentRow?.name || addedProduct.name || 'product';
       const toastMsg = componentRow
-        ? `Added ${qty} as standalone component — see “${componentRow.name}” in the aggregated list (Type: Component).`
-        : `Added ${qty} to session — search the aggregated list for “${addedProduct.name}”.`;
+        ? `Added ${qty} as standalone component — “${label}” (Type: Component) in the list below.`
+        : `Added ${qty} to session for “${label}”.`;
       setToast(toastMsg);
     });
   };

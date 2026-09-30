@@ -1818,7 +1818,7 @@ async function handleEventSubmit(req, res) {
       updated_at: now,
     }], { onConflict: 'location_id' });
 
-    await sb.from('stocktake_events').update({
+    const { error: evInitErr } = await sb.from('stocktake_events').update({
       status: 'submitted',
       counting_enabled: false,
       submitted_at: now,
@@ -1826,6 +1826,7 @@ async function handleEventSubmit(req, res) {
       is_initial: true,
       opened_period_id: period.id,
     }).eq('id', eventId);
+    if (evInitErr) return res.status(500).json({ ok: false, error: evInitErr.message });
   } else {
     submitType = 'rollover';
     const { data: openPeriod, error: opErr } = await sb
@@ -1895,7 +1896,7 @@ async function handleEventSubmit(req, res) {
 
     varianceRows = await buildVarianceRows(sb, closed);
 
-    await sb.from('stocktake_events').update({
+    const { error: evRollErr } = await sb.from('stocktake_events').update({
       status: 'submitted',
       counting_enabled: false,
       submitted_at: now,
@@ -1903,9 +1904,14 @@ async function handleEventSubmit(req, res) {
       closed_period_id: closed.id,
       opened_period_id: nextPeriod.id,
     }).eq('id', eventId);
+    if (evRollErr) return res.status(500).json({ ok: false, error: evRollErr.message });
   }
 
-  const { data: updatedEvent } = await sb.from('stocktake_events').select('*').eq('id', eventId).maybeSingle();
+  const { data: updatedEvent, error: evReadErr } = await sb.from('stocktake_events').select('*').eq('id', eventId).maybeSingle();
+  if (evReadErr) return res.status(500).json({ ok: false, error: evReadErr.message });
+  if (updatedEvent?.status === 'counting') {
+    return res.status(500).json({ ok: false, error: 'Counting session could not be closed after submit.' });
+  }
 
   res.status(200).json({
     ok: true,

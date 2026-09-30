@@ -588,6 +588,19 @@ export async function uploadWarehouseAssemblyImage(assemblyId, file) {
   return publicUrl;
 }
 
+/** Clear product photo from storage and warehouse_assemblies.image_url. */
+export async function removeWarehouseAssemblyImage(assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) throw new Error('Product id is required');
+
+  await purgeWarehouseAssemblyImages(id);
+  const { error: updErr } = await db.from(ASSEMBLIES).update({
+    image_url: null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id);
+  if (updErr) throw new Error(updErr.message || 'Failed to remove image from product');
+}
+
 const INLINE_ASSEMBLY_NUMERIC_FIELDS = new Set([
   'dim_length',
   'dim_width',

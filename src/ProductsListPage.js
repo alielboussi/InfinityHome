@@ -130,12 +130,12 @@ const getListItemImageUrl = (item) => {
   if (item?.__isCombo) {
     return resolveProductImageUrl(item.picture_url || '');
   }
-  return item?.image_url || '';
+  return resolveProductImageUrl(item?.image_url || '');
 };
 
 const PRODUCT_IMAGE_BUCKET = 'productimages';
-const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v4';
-const PRODUCTS_LIST_INVENTORY_CACHE_KEY = 'products:list:inventory:v4';
+const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v5';
+const PRODUCTS_LIST_INVENTORY_CACHE_KEY = 'products:list:inventory:v5';
 const PRODUCTS_LIST_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const PRODUCTS_LIST_INVENTORY_CACHE_TTL_MS = 2 * 60 * 1000;
 

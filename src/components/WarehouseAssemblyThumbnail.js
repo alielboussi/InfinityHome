@@ -1,6 +1,9 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { uploadWarehouseAssemblyImage } from '../services/warehouseCatalog';
+import {
+  removeWarehouseAssemblyImage,
+  uploadWarehouseAssemblyImage,
+} from '../services/warehouseCatalog';
 import { rewriteLegacyStorageUrl } from '../utils/storageImageUrl';
 import { fileToSquareCatalogImage } from '../utils/squareCatalogImage';
 
@@ -35,7 +38,6 @@ export default function WarehouseAssemblyThumbnail({
   const wrapRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState(null);
-  const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const rawUrl = assembly?.image_url ? String(assembly.image_url).trim() : '';
   const displayUrl = rawUrl
     ? rewriteLegacyStorageUrl(rawUrl, { bucket: 'productimages' })
@@ -44,6 +46,22 @@ export default function WarehouseAssemblyThumbnail({
   const openPicker = () => {
     if (!canEdit || busy) return;
     inputRef.current?.click();
+  };
+
+  const onRemovePhoto = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canEdit || busy || !assembly?.id || !displayUrl) return;
+    if (!window.confirm('Remove this product photo?')) return;
+    setBusy(true);
+    try {
+      await removeWarehouseAssemblyImage(assembly.id);
+      onUpdated?.(assembly.id, '');
+    } catch (err) {
+      onError?.(err?.message || 'Failed to remove image');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onFileChange = async (event) => {
@@ -66,22 +84,12 @@ export default function WarehouseAssemblyThumbnail({
     ? (displayUrl ? 'Change product photo' : 'Add product photo')
     : (displayUrl ? 'Product photo' : 'No photo');
 
-  const onThumbImgLoad = useCallback((event) => {
-    const img = event.currentTarget;
-    setNaturalSize({
-      w: img.naturalWidth || 0,
-      h: img.naturalHeight || 0,
-    });
-  }, []);
-
   const showZoom = useCallback(() => {
     if (!displayUrl || !wrapRef.current) return;
     const rect = wrapRef.current.getBoundingClientRect();
-    const nw = naturalSize.w || ZOOM_MAX_PX;
-    const nh = naturalSize.h || ZOOM_MAX_PX;
-    const displayPx = Math.min(ZOOM_MAX_PX, nw, nh) || ZOOM_MAX_PX;
+    const displayPx = ZOOM_MAX_PX;
     setZoom({ ...clampZoomPosition(rect, displayPx), url: displayUrl, displayPx });
-  }, [displayUrl, naturalSize.h, naturalSize.w]);
+  }, [displayUrl]);
 
   const hideZoom = useCallback(() => {
     setZoom(null);
@@ -110,7 +118,6 @@ export default function WarehouseAssemblyThumbnail({
               src={displayUrl}
               alt=""
               className="warehouse-assembly-thumb__img"
-              onLoad={onThumbImgLoad}
             />
           ) : (
           <span className="warehouse-assembly-thumb__placeholder">
@@ -120,6 +127,16 @@ export default function WarehouseAssemblyThumbnail({
         )}
           {busy ? <span className="warehouse-assembly-thumb__busy" aria-hidden>…</span> : null}
         </button>
+        {canEdit && displayUrl ? (
+          <button
+            type="button"
+            className="warehouse-assembly-thumb__remove"
+            onClick={onRemovePhoto}
+            disabled={busy}
+          >
+            Remove photo
+          </button>
+        ) : null}
       </div>
       {zoom && typeof document !== 'undefined'
         ? createPortal(
