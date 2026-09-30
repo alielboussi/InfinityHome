@@ -14357,6 +14357,30 @@ body.enterprise-theme .lusaka-transfers-container .report-blank {
   color: var(--ent-muted, #5b6675) !important;
 }
 
+.lusaka-transfers-container .lusaka-transfer-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin: 0 2px;
+  padding: 0;
+  border: 1px solid var(--ent-border, #c5cdd8);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ent-primary, #1e5ab4);
+  cursor: pointer;
+}
+
+.lusaka-transfers-container .lusaka-transfer-icon-btn:hover:not(:disabled) {
+  background: #eef4fc;
+}
+
+.lusaka-transfers-container .lusaka-transfer-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 body.enterprise-theme .lusaka-transfers-container .report-error {
   background: #fef2f2 !important;
   border: 1px solid #fecaca !important;

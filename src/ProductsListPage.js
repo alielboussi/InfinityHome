@@ -18,6 +18,7 @@ import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
 import { exportProductsListExcel } from './utils/productsListExport';
 import { buildProductsListVarianceRows } from './utils/productsListVarianceReport';
 import { downloadProductsListVariancePdf } from './utils/stocktakeVariancePdf';
+import { productsListStockMoveDisabledMessage } from './utils/productsListStockPolicy';
 import { getDuplicateProductNameInfo, normalizeProductNameKey } from './utils/productDuplicateNames';
 import { resolveProductImageUrl } from './utils/productImageUrl';
 import { importProductsFromCsv, parseCsvLine } from './utils/productCsvImport';
@@ -533,6 +534,10 @@ function ProductsListPage() {
       alert('Inventory changes are disabled for your account.');
       return;
     }
+    if (!product?.__isCombo) {
+      alert(productsListStockMoveDisabledMessage());
+      return;
+    }
     const defaultLocationId = presetLocationId
       ? normalizeLocationId(presetLocationId)
       : (selectedLocationIds.length === 1
@@ -903,6 +908,10 @@ function ProductsListPage() {
 
   const handleAdjustInventory = async () => {
     if (!adjustProduct) return;
+    if (!adjustProduct.__isCombo) {
+      alert(productsListStockMoveDisabledMessage());
+      return;
+    }
     setAdjustLoading(true);
     try {
       const rawLocationId = selectedLocation || locations[0]?.id;
@@ -1219,6 +1228,8 @@ function ProductsListPage() {
   const [bulkLocationIds, setBulkLocationIds] = useState([]);
   const [bulkLocationMenuOpen, setBulkLocationMenuOpen] = useState(false);
   const bulkLocationMenuRef = useRef(null);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const toolsMenuRef = useRef(null);
   const [bulkApplyLoading, setBulkApplyLoading] = useState(false);
   const [bulkApplyMessage, setBulkApplyMessage] = useState('');
   const [bulkSelectionMap, setBulkSelectionMap] = useState({});
@@ -1472,139 +1483,31 @@ function ProductsListPage() {
       alert('Inventory changes are disabled for your account.');
       return;
     }
-    if (item.__isCombo) {
-      const locationId = normalizeLocationId(locationRow.id);
-      setAdjustProduct(item);
-      setAdjustSetMode('receive');
-      setAdjustQty(1);
-      setSelectedLocation(locationId || '');
-      setTransferMode('adjust');
-      setTransferFrom(locationId || '');
-      setTransferTo('');
-      setTransferQty('');
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      setManualTransferDate(`${yyyy}-${mm}-${dd}`);
-      setAdjustModalOpen(true);
+    if (!item.__isCombo) {
+      alert(productsListStockMoveDisabledMessage());
       return;
     }
-    setStockCorrection({
-      product: item,
-      locationId: locationRow.id,
-      locationName: locationRow.name,
-      mode: 'add',
-      qty: '1',
-    });
+    const locationId = normalizeLocationId(locationRow.id);
+    setAdjustProduct(item);
+    setAdjustSetMode('receive');
+    setAdjustQty(1);
+    setSelectedLocation(locationId || '');
+    setTransferMode('adjust');
+    setTransferFrom(locationId || '');
+    setTransferTo('');
+    setTransferQty('');
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    setManualTransferDate(`${yyyy}-${mm}-${dd}`);
+    setAdjustModalOpen(true);
   }, [canAdjustInventory, normalizeLocationId]);
 
   const handleStockCorrection = async () => {
     if (!stockCorrection?.product) return;
-    const amount = Number(stockCorrection.qty);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      alert('Enter a positive amount.');
-      return;
-    }
-    const rawLocationId = stockCorrection.locationId;
-    const locationId = resolveLocationUuid(rawLocationId);
-    if (!locationId || !isUuid(locationId)) {
-      alert('Unable to resolve location for this adjustment.');
-      return;
-    }
-    const product = stockCorrection.product;
-    const currentQty = getStockForProduct(product.id, locationId);
-    const delta = stockCorrection.mode === 'add' ? amount : -amount;
-    const targetQty = currentQty + delta;
-
-    setStockCorrectionLoading(true);
-    try {
-      let activePeriod = null;
-      if (String(locationId) !== String(FACTORY_LOCATION_ID)) {
-        activePeriod = await getActiveStockPeriod(locationId);
-      }
-      const activePeriodId = activePeriod?.id || null;
-      const nowIso = new Date().toISOString();
-      const localInventoryChanges = [];
-      const previousQty = currentQty;
-      const { type: adjustmentType, quantity: adjustmentQty } = classifyInventoryAdjustmentDelta(delta);
-      try {
-        await syncProductLocations({ rows: [{ product_id: product.id, location_id: locationId }] }, db);
-      } catch (e) {
-        console.warn('[inventory] product_locations sync failed', e);
-      }
-      await upsertInventoryQuantity({
-        productId: product.id,
-        locationId,
-        quantity: targetQty,
-        updatedAt: nowIso,
-      }, db);
-
-      const { data: verifyRows, error: verifyErr } = await db
-        .from('inventory')
-        .select('id, quantity, updated_at')
-        .eq('product_id', product.id)
-        .eq('location', locationId);
-      if (verifyErr) throw verifyErr;
-      let verifiedQty = dedupeInventoryRows(Array.isArray(verifyRows) ? verifyRows : [])
-        .reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
-      if (Number(verifiedQty) !== Number(targetQty)) {
-        const canonicalId = docIdFromOnConflict(
-          { product_id: product.id, location: locationId },
-          'product_id,location',
-        );
-        const { data: byIdRow } = await db
-          .from('inventory')
-          .select('quantity')
-          .eq('id', canonicalId)
-          .maybeSingle();
-        if (byIdRow != null) {
-          verifiedQty = Number(byIdRow.quantity || 0);
-        }
-      }
-      if (Number(verifiedQty) !== Number(targetQty)) {
-        throw new Error(`Inventory save did not stick (expected ${targetQty}, read back ${verifiedQty}). Please try again.`);
-      }
-      localInventoryChanges.push({ productId: product.id, locationId, quantity: targetQty });
-      if (delta !== 0) {
-        const { error: adjErr } = await db.from('inventory_adjustments').insert({
-          product_id: product.id,
-          location_id: locationId,
-          quantity: adjustmentQty,
-          adjustment_type: adjustmentType,
-          adjusted_at: new Date().toISOString(),
-          metadata: {
-            user_id: currentUser?.id || null,
-            user_name: currentUserName,
-            source: 'products-list',
-            before_qty: previousQty,
-            after_qty: targetQty,
-            delta,
-            session_id: activePeriodId || null,
-          },
-        });
-        if (adjErr) {
-          console.warn('[inventory] adjustment log failed', adjErr);
-        }
-      }
-      applyLocalInventoryChanges(localInventoryChanges);
-      try { cacheClear(PRODUCTS_LIST_INVENTORY_CACHE_KEY); } catch {}
-      await refreshInventoryForLocations([locationId]);
-      logUserActivity({
-        actionType: 'inventory_adjustment',
-        actionLabel: 'Inventory Adjusted',
-        details: `${product.name} • ${stockCorrection.mode === 'add' ? '+' : '−'}${amount} at ${stockCorrection.locationName} • Qty ${targetQty}`,
-        reference: String(product.id),
-        entityType: 'product',
-        entityId: String(product.id),
-        metadata: { location_id: locationId, quantity: targetQty, adjustment_type: adjustmentType, delta },
-      });
-      setStockCorrection(null);
-    } catch (err) {
-      alert('Failed to adjust inventory: ' + (err.message || err));
-    } finally {
-      setStockCorrectionLoading(false);
-    }
+    alert(productsListStockMoveDisabledMessage());
+    setStockCorrection(null);
   };
 
   const cancelInlineName = useCallback(() => {
@@ -2051,6 +1954,23 @@ function ProductsListPage() {
   useEffect(() => {
     if (!needsBulkLocation) setBulkLocationMenuOpen(false);
   }, [needsBulkLocation]);
+
+  useEffect(() => {
+    if (!toolsMenuOpen) return undefined;
+    const onPointerDown = (event) => {
+      const root = toolsMenuRef.current;
+      if (root && !root.contains(event.target)) setToolsMenuOpen(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setToolsMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [toolsMenuOpen]);
 
   const toggleBulkLocationId = useCallback((locId) => {
     const id = String(locId || '');
@@ -2797,7 +2717,7 @@ function ProductsListPage() {
         <h1 className="products-title" style={{ margin: 0 }}>All Products</h1>
       </div>
       <div className="products-list-toolbar">
-        <div className="products-list-toolbar-row">
+        <div className="products-list-toolbar-grid">
           <div className="products-toolbar-control-wrap">
             <select
               value={categoryFilter}
@@ -2831,8 +2751,9 @@ function ProductsListPage() {
             type="button"
             onClick={() => navigate('/products')}
             className="products-toolbar-btn"
+            title="Create a new product"
           >
-            Add Prod
+            Add product
           </button>
           <div className="products-toolbar-control-wrap products-toolbar-bulk-wrap">
             <select
@@ -2847,14 +2768,14 @@ function ProductsListPage() {
                 setBulkAction(value === 'remove_location' ? 'remove_location' : 'add_location');
               }}
               className="products-toolbar-select products-toolbar-bulk-select pos-control"
-              aria-label="Bulk location action"
+              aria-label="Bulk action"
             >
               <option value="add_location">Add to location…</option>
               <option value="remove_location">Remove from location…</option>
               <option value="set_field">Set field…</option>
             </select>
           </div>
-          {needsBulkLocation && (
+          {needsBulkLocation ? (
             <div
               className="products-toolbar-control-wrap products-toolbar-bulk-locations-wrap"
               ref={bulkLocationMenuRef}
@@ -2889,23 +2810,57 @@ function ProductsListPage() {
                 </div>
               )}
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleApplyBulkUpdate}
+              disabled={bulkApplyLoading || selectedBulkItems.length === 0}
+              className="products-toolbar-btn products-toolbar-btn--apply"
+              title={`Apply bulk action (${selectedBulkItems.length} selected)`}
+            >
+              {bulkApplyLoading ? 'Applying…' : `Apply (${selectedBulkItems.length})`}
+            </button>
           )}
-          <button
-            type="button"
-            onClick={handleApplyBulkUpdate}
-            disabled={bulkApplyLoading || selectedBulkItems.length === 0 || (needsBulkLocation && bulkLocationIds.length === 0)}
-            className="products-toolbar-btn products-toolbar-btn--apply"
-            title={bulkApplyLoading ? 'Applying…' : `Apply bulk action (${selectedBulkItems.length} selected)`}
-          >
-            {bulkApplyLoading
-              ? 'Applying...'
-              : bulkAction === 'add_location'
-                ? `Add Location (${selectedBulkItems.length})`
-                : bulkAction === 'remove_location'
-                  ? `Remove Location (${selectedBulkItems.length})`
-                  : `Apply Bulk (${selectedBulkItems.length})`}
-          </button>
-          {canDelete && (
+          {needsBulkLocation ? (
+            <button
+              type="button"
+              onClick={handleApplyBulkUpdate}
+              disabled={bulkApplyLoading || selectedBulkItems.length === 0 || bulkLocationIds.length === 0}
+              className="products-toolbar-btn products-toolbar-btn--apply"
+              title={`Apply bulk action (${selectedBulkItems.length} selected)`}
+            >
+              {bulkApplyLoading ? 'Applying…' : `Apply (${selectedBulkItems.length})`}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDuplicateNamesOnly((active) => !active)}
+              className={`products-toolbar-btn products-toolbar-btn--duplicates${showDuplicateNamesOnly ? ' is-active' : ''}`}
+              title={showDuplicateNamesOnly
+                ? 'Showing duplicate names — click to show all products'
+                : 'Show products with duplicate names'}
+              aria-pressed={showDuplicateNamesOnly}
+            >
+              {showDuplicateNamesOnly
+                ? `Duplicates (${duplicateNameInfo.productCount})`
+                : `Duplicates${duplicateNameInfo.groupCount > 0 ? ` (${duplicateNameInfo.groupCount})` : ''}`}
+            </button>
+          )}
+          {needsBulkLocation ? (
+            <button
+              type="button"
+              onClick={() => setShowDuplicateNamesOnly((active) => !active)}
+              className={`products-toolbar-btn products-toolbar-btn--duplicates${showDuplicateNamesOnly ? ' is-active' : ''}`}
+              title={showDuplicateNamesOnly
+                ? 'Showing duplicate names — click to show all products'
+                : 'Show products with duplicate names'}
+              aria-pressed={showDuplicateNamesOnly}
+            >
+              {showDuplicateNamesOnly
+                ? `Duplicates (${duplicateNameInfo.productCount})`
+                : `Duplicates${duplicateNameInfo.groupCount > 0 ? ` (${duplicateNameInfo.groupCount})` : ''}`}
+            </button>
+          ) : (canDelete ? (
             <button
               type="button"
               onClick={() => {
@@ -2920,90 +2875,124 @@ function ProductsListPage() {
               }}
               disabled={selectedBulkItems.length === 0}
               className="products-toolbar-btn products-toolbar-btn--delete"
+              title="Delete selected products or sets"
             >
               {`Delete (${selectedBulkItems.length})`}
             </button>
-          )}
-          {selectedBulkProductRows.length >= 2 && (
-            <button
-              type="button"
-              onClick={() => {
-                setImageEditProduct(null);
-                setImageEditBulkProducts(selectedBulkProductRows);
-                setImageEditFile(null);
-                setImageEditModalOpen(true);
-              }}
-              disabled={imageEditLoading}
-              className="products-toolbar-btn products-toolbar-btn--apply"
-              title="Upload one image and apply it to all selected products"
-            >
-              {`Same Image (${selectedBulkProductRows.length})`}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowDuplicateNamesOnly((active) => !active)}
-            className={`products-toolbar-btn products-toolbar-btn--duplicates${showDuplicateNamesOnly ? ' is-active' : ''}`}
-            title={showDuplicateNamesOnly
-              ? 'Showing products with similar names (case, spacing, or word order). Click to show all products.'
-              : 'Show products that share the same name when spacing, case, or word order is ignored'}
-            aria-pressed={showDuplicateNamesOnly}
-          >
-            {showDuplicateNamesOnly
-              ? `Duplicates (${duplicateNameInfo.productCount})`
-              : `Find Duplicates${duplicateNameInfo.groupCount > 0 ? ` (${duplicateNameInfo.groupCount})` : ''}`}
-          </button>
-          <button
-            type="button"
-            onClick={handleExportProductsExcel}
-            className="products-toolbar-icon-btn"
-            title="Download product list (Excel)"
-            aria-label="Download product list Excel"
-          >
-            <FaFileExcel aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadVarianceReport}
-            disabled={varianceReportBusy || selectedLocationIds.length !== 1}
-            className="products-toolbar-icon-btn"
-            title={selectedLocationIds.length !== 1
-              ? 'Select one location to download a stock PDF for the filtered products'
-              : 'Stock report PDF for filtered products (category/search)'}
-            aria-label="Download stock report PDF"
-          >
-            {varianceReportBusy ? '…' : <FaFilePdf aria-hidden="true" />}
-          </button>
-          {canManageCatalogPage && (
-            <>
-              <input
-                ref={productImportInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                onChange={handleProductImportFileChange}
-                style={{ display: 'none' }}
-                aria-hidden="true"
-              />
+          ) : (
+            <span className="products-toolbar-btn" style={{ visibility: 'hidden', pointerEvents: 'none' }} aria-hidden="true">—</span>
+          ))}
+          {needsBulkLocation ? (
+            canDelete ? (
               <button
                 type="button"
-                onClick={() => productImportInputRef.current?.click()}
-                disabled={productImportBusy || locations.length === 0}
-                className="products-toolbar-btn"
-                title="Import products from CSV. All locations are applied automatically. SKU, price, and category columns are optional."
+                onClick={() => {
+                  const targets = selectedBulkItems.map(item => ({ id: String(item.id), isCombo: !!item.isCombo }));
+                  if (targets.length === 0) {
+                    alert('Select at least one row using the Bulk checkboxes.');
+                    return;
+                  }
+                  setDeleteTargets(targets);
+                  setDeleteConfirmText('');
+                  setDeleteConfirmOpen(true);
+                }}
+                disabled={selectedBulkItems.length === 0}
+                className="products-toolbar-btn products-toolbar-btn--delete"
+                title="Delete selected products or sets"
               >
-                {productImportBusy ? 'Importing…' : 'Import CSV'}
+                {`Delete (${selectedBulkItems.length})`}
               </button>
-              <a
-                href="/import_template.csv"
-                download="import_template.csv"
-                className="products-toolbar-btn"
-                style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-                title="Download CSV import template"
-              >
-                Template
-              </a>
-            </>
+            ) : (
+              <span className="products-toolbar-btn" style={{ visibility: 'hidden', pointerEvents: 'none' }} aria-hidden="true">—</span>
+            )
+          ) : (
+            <span className="products-toolbar-btn" style={{ visibility: 'hidden', pointerEvents: 'none' }} aria-hidden="true">—</span>
           )}
+          <div className="products-toolbar-icon-group">
+            <button
+              type="button"
+              onClick={handleExportProductsExcel}
+              className="products-toolbar-icon-btn"
+              title="Download product list (Excel)"
+              aria-label="Download product list Excel"
+            >
+              <FaFileExcel aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadVarianceReport}
+              disabled={varianceReportBusy || selectedLocationIds.length !== 1}
+              className="products-toolbar-icon-btn"
+              title={selectedLocationIds.length !== 1
+                ? 'Select one location for stock PDF'
+                : 'Stock report PDF for filtered products'}
+              aria-label="Download stock report PDF"
+            >
+              {varianceReportBusy ? '…' : <FaFilePdf aria-hidden="true" />}
+            </button>
+          </div>
+          <div className="products-toolbar-more-wrap" ref={toolsMenuRef}>
+            <button
+              type="button"
+              className="products-toolbar-more-trigger"
+              onClick={() => setToolsMenuOpen((open) => !open)}
+              aria-expanded={toolsMenuOpen}
+              aria-haspopup="menu"
+            >
+              More ▾
+            </button>
+            {toolsMenuOpen && (
+              <div className="products-toolbar-more-menu" role="menu">
+                {selectedBulkProductRows.length >= 2 && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={imageEditLoading}
+                    onClick={() => {
+                      setToolsMenuOpen(false);
+                      setImageEditProduct(null);
+                      setImageEditBulkProducts(selectedBulkProductRows);
+                      setImageEditFile(null);
+                      setImageEditModalOpen(true);
+                    }}
+                  >
+                    Same image ({selectedBulkProductRows.length})
+                  </button>
+                )}
+                {canManageCatalogPage && (
+                  <>
+                    <input
+                      ref={productImportInputRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleProductImportFileChange}
+                      style={{ display: 'none' }}
+                      aria-hidden="true"
+                    />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={productImportBusy || locations.length === 0}
+                      onClick={() => {
+                        setToolsMenuOpen(false);
+                        productImportInputRef.current?.click();
+                      }}
+                    >
+                      {productImportBusy ? 'Importing…' : 'Import CSV'}
+                    </button>
+                    <a
+                      role="menuitem"
+                      href="/import_template.csv"
+                      download="import_template.csv"
+                      onClick={() => setToolsMenuOpen(false)}
+                    >
+                      CSV template
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         {(productImportMessage || bulkImportMessage) && (
           <div className="products-list-toolbar-row">
@@ -3401,22 +3390,30 @@ function ProductsListPage() {
                           <ul className="products-list-location-qty-list" aria-label={`Stock by location for ${isCombo ? item.combo_name : item.name}`}>
                             {locationQtyRows.map((row) => (
                               <li key={row.id}>
-                                <span
-                                  role="button"
-                                  tabIndex={canAdjustInventory ? 0 : -1}
-                                  className={`products-list-location-qty-link${!canAdjustInventory ? ' is-disabled' : ''}`}
-                                  onClick={() => canAdjustInventory && openLocationStockCorrection(item, row)}
-                                  onKeyDown={(e) => {
-                                    if (!canAdjustInventory) return;
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.preventDefault();
-                                      openLocationStockCorrection(item, row);
-                                    }
-                                  }}
-                                  title={canAdjustInventory ? `Adjust stock at ${row.name}` : 'Inventory changes disabled'}
-                                >
-                                  {row.name}: {row.qty.toLocaleString()}
-                                </span>
+                                {isCombo && canAdjustInventory ? (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    className="products-list-location-qty-link"
+                                    onClick={() => openLocationStockCorrection(item, row)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        openLocationStockCorrection(item, row);
+                                      }
+                                    }}
+                                    title={`Adjust set stock at ${row.name}`}
+                                  >
+                                    {row.name}: {row.qty.toLocaleString()}
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="products-list-location-qty-plain"
+                                    title={!isCombo ? productsListStockMoveDisabledMessage() : undefined}
+                                  >
+                                    {row.name}: {row.qty.toLocaleString()}
+                                  </span>
+                                )}
                               </li>
                             ))}
                           </ul>
@@ -4199,15 +4196,6 @@ function ProductsListPage() {
                 <>Product: <b>{adjustProduct.name}</b> (SKU: {adjustProduct.sku})</>
               )}
             </div>
-            {!adjustProduct.__isCombo && (
-              <div className="products-adjust-modal__row">
-                <label className="products-adjust-modal__label">Mode:</label>
-                <select value={transferMode} onChange={e=>setTransferMode(e.target.value)} className="products-adjust-modal__control">
-                  <option value="adjust">Adjust</option>
-                  <option value="transfer">Transfer</option>
-                </select>
-              </div>
-            )}
             <div className="products-adjust-modal__row">
               <label className="products-adjust-modal__label">Location:</label>
               <select
@@ -4235,8 +4223,7 @@ function ProductsListPage() {
                 ))}
               </select>
             </div>
-            {/* Transfer sub-form when in transfer mode for single product */}
-            {!adjustProduct.__isCombo && transferMode==='transfer' && (
+            {false && !adjustProduct.__isCombo && transferMode === 'transfer' && (
               <div className="products-adjust-modal__transfer-block">
                 <div className="products-adjust-modal__hint">Move stock between locations</div>
                 <div className="products-adjust-modal__transfer-row">

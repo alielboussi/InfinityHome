@@ -85,23 +85,31 @@ function buildVariancePdfTableBody(rows) {
   let totalAmount = 0;
 
   const body = dataRows.map((r, index) => {
-    const current = r.current_stock_qty ?? (
-      Number(r.opening_stock_qty || 0) + Number(r.transfers_in || 0) - Number(r.sales || 0)
-    );
-    const amount = Number(r.variance_amount ?? 0);
+    const opening = Number(r.opening_stock_qty || 0);
+    const tin = Number(r.transfers_in || 0);
+    const tout = Number(r.transfers_out || 0);
+    const sold = Number(r.sales || 0);
+    const closing = Number(r.closing_stock_qty || 0);
+    const current = opening + tin - tout - sold;
+    const variance = closing - current;
+    const unitForAmount = resolveRowDisplayPrice({ ...r, variance });
+    const amount = Number.isFinite(Number(unitForAmount)) && unitForAmount !== ''
+      ? variance * Number(unitForAmount)
+      : 0;
     if (Number.isFinite(amount)) totalAmount += amount;
 
     const leading = [
       r.sku || '',
       r.product_name || '',
-      fmtStocktakeQty(r.opening_stock_qty),
-      fmtStocktakeQty(r.transfers_in),
-      fmtStocktakeQty(r.sales),
+      fmtStocktakeQty(opening),
+      fmtStocktakeQty(tin),
+      fmtStocktakeQty(tout),
+      fmtStocktakeQty(sold),
       fmtStocktakeQty(current),
-      fmtStocktakeQty(r.closing_stock_qty),
+      fmtStocktakeQty(closing),
     ];
     const tail = [
-      fmtStocktakeQty(r.variance),
+      fmtStocktakeQty(variance),
       fmtStocktakeCurrency(amount),
     ];
 
@@ -147,7 +155,7 @@ function drawCenteredWrappedText(doc, text, centerX, startY, maxWidth, lineHeigh
   return y;
 }
 
-async function drawStocktakeReportHeader(doc, {
+export async function drawStocktakeReportHeader(doc, {
   company,
   title,
   subtitle,
@@ -222,7 +230,7 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
     title: 'Stocktake Variance Report',
     locationLabel,
     periodLine: formatStocktakePeriodRange(begin, end),
-    footnote: 'Current = Opening + Transfers In − Sales.\nVariance Qty = Closing (counted) − Current.\nAmount = unit price × variance (promo when active, else standard).',
+    footnote: 'Current = Opening + Trans In − Trans Out − Sales.\nVariance Qty = Closing (counted) − Current.\nAmount = unit price × variance (promo when active, else standard).',
   });
 
   const { body, totalAmount } = buildVariancePdfTableBody(rows);
@@ -230,12 +238,13 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
   const tableEndY = renderSegmentedStocktakeTable(doc, {
     startY: metaY + 12,
     margin,
-    colSpan: 10,
+    colSpan: 11,
     head: [[
       'SKU',
       'Product',
       'Open',
       'Trans In',
+      'Trans Out',
       'Sales',
       'Current',
       'Closing',
@@ -245,7 +254,7 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
     ]],
     body,
     foot: [[
-      { content: '', colSpan: 8 },
+      { content: '', colSpan: 9 },
       { content: 'Total', styles: { halign: 'center', fontStyle: 'bold' } },
       { content: fmtStocktakeCurrency(totalAmount), styles: { halign: 'center', fontStyle: 'bold' } },
     ]],
@@ -267,16 +276,17 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
         lineColor: [140, 140, 140],
       },
       columnStyles: {
-        0: { cellWidth: 48 },
+        0: { cellWidth: 44 },
         1: { cellWidth: 'auto' },
-        2: { cellWidth: 36 },
-        3: { cellWidth: 40 },
+        2: { cellWidth: 32 },
+        3: { cellWidth: 36 },
         4: { cellWidth: 36 },
-        5: { cellWidth: 42 },
-        6: { cellWidth: 42 },
-        7: { cellWidth: 52 },
-        8: { cellWidth: 44 },
-        9: { cellWidth: 56 },
+        5: { cellWidth: 32 },
+        6: { cellWidth: 38 },
+        7: { cellWidth: 38 },
+        8: { cellWidth: 48 },
+        9: { cellWidth: 40 },
+        10: { cellWidth: 52 },
       },
       tableWidth: pageWidth - margin * 2,
     },

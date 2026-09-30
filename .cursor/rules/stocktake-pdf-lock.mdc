@@ -3,14 +3,29 @@ description: All stocktake PDFs (opening, closing, variance, count sheet, review
 alwaysApply: true
 ---
 
-# Stocktake PDF pipeline — do not edit without explicit user command
+# STOCKTAKE_PIPELINE_LOCKED — periods, counts, PDFs (all locations)
 
-Read **`docs/stocktake-pdf-pipeline.md`** before touching **any** stocktake PDF or its row/layout logic.
+Marker tag: `STOCKTAKE_PIPELINE_LOCKED` (enforced by `scripts/verifyStocktakeLockMarkers.js` on build).
 
-**Locked PDF types (all locations):** opening stock, closing stock, variance report, pre-submit aggregation review, count sheet — including auto-download on admin submit and manual period PDF buttons.
+**AI agents:** Treat stocktake / period / variance / PDF logic as **frozen** until the product owner **explicitly** requests a change in the chat (e.g. "change variance PDF", "update stocktake period close"). Incidental bugs elsewhere do **not** justify edits here.
 
-Also locked: period row resolvers (`stocktakePeriodPdfRows.js`), set price merge (`stocktakeSetComponentPricing.js`), period-close inventory (`reconcileInventoryFromVariance`).
+Read **`docs/stocktake-pdf-pipeline.md`** before any authorized touch.
 
-- Applies to **all locations** (no per-location forks).
-- **Forbidden** unless the user clearly asks to change stocktake PDFs (opening/closing included), variance, or period stock behaviour: edits to files listed in that doc, reverting to aggregation set-group rows for period PDFs, or “cleanup” refactors in this area.
-- **Allowed** only when the user explicitly commands a change to this pipeline; then update `docs/stocktake-pdf-pipeline.md` if behaviour changes.
+## Locked scope
+
+- **PDFs:** opening, closing, variance, aggregation review, count sheet; auto-download on submit; manual period PDF buttons.
+- **Periods & counts:** `stock_periods`, opening/closing stock entries, stocktake events/counts, rollover submit in `api/stocktake.js`.
+- **Ledger:** `stocktakeVarianceLedger.js`, `buildVarianceRows`, `reconcileInventoryFromVariance`.
+- **Data in variance (all future periods):** period **sales** from POS (`sales` + `sales_items` for the period `location_id`); **transfers** from `stock_transfer_sessions` / `stock_transfer_entries` (`sumTransfers` — **approved** on `/transfers` plus legacy null-status product-list sessions).
+
+## Automation (no manual work per period)
+
+Rollover close → `buildVarianceRows` → inventory reconcile → closing + variance + next opening PDFs. Opening/closing re-downloads use the same variance rows (imputed opening when needed).
+
+## Rules
+
+- **All locations** — no per-outlet forks.
+- **Forbidden** without explicit owner command: any edit to manifest files in `docs/stocktake-pdf-pipeline.md`, refactors, formatting, or "improvements".
+- **Authorized changes only:** update the doc + run `node scripts/verifyStocktakeVarianceLedger.js` and `node scripts/verifyStocktakeTransferVariance.js`; keep lock markers (`STOCKTAKE_PIPELINE_LOCKED`) in touched files.
+
+File-pattern rule: `.cursor/rules/stocktake-locked-files.mdc` (applies when those paths are open/edited).

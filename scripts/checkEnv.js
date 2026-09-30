@@ -90,3 +90,19 @@ try {
   console.error('[mobile-manifest:fail] verifyMobileAccessManifest.js failed.');
   process.exit(1);
 }
+
+for (const script of [
+  'scripts/verifyStocktakeVarianceLedger.js',
+  'scripts/verifyStocktakeTransferVariance.js',
+  'scripts/verifyStocktakeLockMarkers.js',
+]) {
+  try {
+    require('child_process').execSync(`node ${script}`, {
+      cwd: process.cwd(),
+      stdio: 'inherit',
+    });
+  } catch (e) {
+    console.error(`[stocktake-lock:fail] ${script} failed.`);
+    process.exit(1);
+  }
+}

@@ -1,3 +1,4 @@
+/** STOCKTAKE_PIPELINE_LOCKED — see docs/stocktake-pdf-pipeline.md */
 import { buildVarianceRows } from './stocktakeVarianceRows.js';
 import { dedupeInventoryRows, upsertInventoryQuantity } from './inventoryApi.js';
 

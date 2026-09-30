@@ -16,6 +16,7 @@ export const HASSAN_AWAD = Object.freeze({
     '/quotes-board',
     '/warehouse-deliveries',
     '/layby-management',
+    '/transfers',
     '/lusaka-transfers',
   ]),
   quotationerOnly: true,

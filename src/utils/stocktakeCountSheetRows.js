@@ -4,46 +4,9 @@ import {
 } from './inventoryVarianceAdjustments';
 import { buildLiveConsolidatedWithSets } from './stocktakeLiveTotals';
 import { catalogProductIdsFromRows, positiveInventoryByProductAtLocation } from './stocktakeLocationStock';
+import { sumTransfers } from './stocktakeTransferSessions';
 
-export async function sumTransfers(sb, locationId, startISO, endISO, direction) {
-  const locCol = direction === 'in' ? 'to_location' : 'from_location';
-  const map = new Map();
-
-  const { data: sessionsDt } = await sb
-    .from('stock_transfer_sessions')
-    .select('id')
-    .eq(locCol, locationId)
-    .eq('status', 'approved')
-    .not('transfer_datetime', 'is', null)
-    .gte('transfer_datetime', startISO)
-    .lte('transfer_datetime', endISO);
-
-  const startDate = String(startISO).slice(0, 10);
-  const endDate = String(endISO).slice(0, 10);
-  const { data: sessionsDate } = await sb
-    .from('stock_transfer_sessions')
-    .select('id')
-    .eq(locCol, locationId)
-    .eq('status', 'approved')
-    .is('transfer_datetime', null)
-    .gte('transfer_date', startDate)
-    .lte('transfer_date', endDate);
-
-  const ids = [...new Set([
-    ...(sessionsDt || []).map((s) => s.id),
-    ...(sessionsDate || []).map((s) => s.id),
-  ])];
-  if (!ids.length) return map;
-
-  const { data: entries } = await sb
-    .from('stock_transfer_entries')
-    .select('product_id, quantity')
-    .in('session_id', ids);
-  (entries || []).forEach((e) => {
-    map.set(e.product_id, (map.get(e.product_id) || 0) + Number(e.quantity || 0));
-  });
-  return map;
-}
+export { sumTransfers };
 
 export async function sumSales(sb, locationId, startISO, endISO) {
   const map = new Map();

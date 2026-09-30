@@ -61,7 +61,7 @@ const NAV_GROUPS = [
   {
     title: 'Transfers',
     items: [
-      { label: 'Lusaka Transfers', route: '/lusaka-transfers', icon: FaExchangeAlt },
+      { label: 'Transfers', route: '/transfers', icon: FaExchangeAlt },
     ],
   },
   {
@@ -110,7 +110,7 @@ const QUOTATIONER_ONLY_NAV_GROUPS = [
     id: 'transfers',
     title: 'Transfers',
     items: [
-      { label: 'Lusaka Transfers', route: '/lusaka-transfers', icon: FaExchangeAlt },
+      { label: 'Transfers', route: '/transfers', icon: FaExchangeAlt },
     ],
   },
   {
@@ -175,7 +175,8 @@ const TITLE_MAP = {
   '/transfers-report': 'Transfers Report',
   '/warehouse-deliveries': 'Warehouse Deliveries',
   '/warehouse-deliveries-admin': 'Warehouse Deliveries',
-  '/lusaka-transfers': 'Lusaka Transfers',
+  '/transfers': 'Transfers',
+  '/lusaka-transfers': 'Transfers',
   '/company-settings': 'Company Settings',
   '/user-activity': 'User Activity',
   '/user-access': 'User Login Access',

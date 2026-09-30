@@ -339,7 +339,8 @@ function App() {
           <Route path="/Factory-Kitwe-summary" element={<Navigate to="/All-Transfers-summary" replace />} />
           <Route path="/warehouse-deliveries" element={<WarehouseDeliveries />} />
           <Route path="/warehouse-deliveries-admin" element={<WarehouseDeliveriesAdmin />} />
-          <Route path="/lusaka-transfers" element={<LusakaTransfers />} />
+          <Route path="/transfers" element={<LusakaTransfers />} />
+          <Route path="/lusaka-transfers" element={<Navigate to="/transfers" replace />} />
           <Route path="/Kitwe-Lusaka" element={<Navigate to="/All-Transfers" replace />} />
           <Route path="/Kitwe-Lusaka-summary" element={<Navigate to="/All-Transfers-summary" replace />} />
           <Route path="/warehouse-transfer" element={<Navigate to="/All-Transfers" replace />} />

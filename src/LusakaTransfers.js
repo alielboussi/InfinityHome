@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { FaEye, FaFilePdf } from 'react-icons/fa';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import { getCurrentUser } from './accessControl';
@@ -15,6 +16,8 @@ import {
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
 import { sendLusakaTransferPdfWhatsApp } from './services/whatsapp';
 import { apiUrl } from './utils/apiUrl';
+import { loadTransferSessionDetail } from './utils/transferSessionDetail';
+import { downloadTransferSessionItemsPdf } from './utils/transferSessionItemsPdf';
 
 const BUCKET = 'WarehouseTransfers';
 
@@ -24,10 +27,11 @@ function buildSearchOrFilter(term) {
   return `name.ilike.${like},sku.ilike.${like}`;
 }
 
-async function fetchKitweProductIds() {
+async function fetchProductIdsAtLocation(locationId) {
+  if (!locationId) return new Set();
   const [{ data: linked, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
-    db.from('product_locations').select('product_id').eq('location_id', LUSAKA_TRANSFER_FROM_ID),
-    db.from('inventory').select('product_id').eq('location', LUSAKA_TRANSFER_FROM_ID),
+    db.from('product_locations').select('product_id').eq('location_id', locationId),
+    db.from('inventory').select('product_id').eq('location', locationId),
   ]);
   if (plErr) throw plErr;
   if (invErr) throw invErr;
@@ -37,7 +41,7 @@ async function fetchKitweProductIds() {
   return ids;
 }
 
-async function searchKitweProducts(term, allowedIds) {
+async function searchProductsAtLocation(term, allowedIds) {
   const trimmed = String(term || '').trim();
   if (!trimmed || !allowedIds.size) return [];
 
@@ -101,8 +105,8 @@ async function uploadTransferPdf(sessionId, pdfBlob, fileName) {
   return pdfUrl;
 }
 
-async function enableEligibleCombosAtDestination(productIds) {
-  if (!productIds.length) return;
+async function enableEligibleCombosAtDestination(productIds, fromLocationId, toLocationId) {
+  if (!productIds.length || !fromLocationId || !toLocationId) return;
   const { data: comboItems } = await db
     .from('combo_items')
     .select('combo_id, product_id, quantity')
@@ -113,7 +117,7 @@ async function enableEligibleCombosAtDestination(productIds) {
   const { data: srcComboLocs } = await db
     .from('combo_locations')
     .select('combo_id')
-    .eq('location_id', LUSAKA_TRANSFER_FROM_ID)
+    .eq('location_id', fromLocationId)
     .in('combo_id', comboIds);
   const sourceComboIds = new Set((srcComboLocs || []).map((row) => String(row.combo_id)));
 
@@ -132,7 +136,7 @@ async function enableEligibleCombosAtDestination(productIds) {
   const { data: invRows } = await db
     .from('inventory')
     .select('product_id, quantity')
-    .eq('location', LUSAKA_TRANSFER_TO_ID)
+    .eq('location', toLocationId)
     .in('product_id', allComponentIds);
   const stock = {};
   (invRows || []).forEach((row) => {
@@ -142,7 +146,7 @@ async function enableEligibleCombosAtDestination(productIds) {
   const rows = [];
   itemsByCombo.forEach((items, comboId) => {
     if (getMaxSetQty(items, stock) > 0) {
-      rows.push({ combo_id: comboId, location_id: LUSAKA_TRANSFER_TO_ID });
+      rows.push({ combo_id: comboId, location_id: toLocationId });
     }
   });
   if (rows.length) await upsertComboLocations(rows);
@@ -150,8 +154,9 @@ async function enableEligibleCombosAtDestination(productIds) {
 
 export default function LusakaTransfers() {
   const searchRef = useRef(null);
-  const [fromName, setFromName] = useState('');
-  const [toName, setToName] = useState('');
+  const [locations, setLocations] = useState([]);
+  const [fromLocationId, setFromLocationId] = useState(LUSAKA_TRANSFER_FROM_ID);
+  const [toLocationId, setToLocationId] = useState(LUSAKA_TRANSFER_TO_ID);
   const [company, setCompany] = useState(null);
   const [allowedProductIds, setAllowedProductIds] = useState(() => new Set());
   const [search, setSearch] = useState('');
@@ -164,21 +169,23 @@ export default function LusakaTransfers() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [history, setHistory] = useState([]);
+  const [viewDetail, setViewDetail] = useState(null);
+  const [viewBusy, setViewBusy] = useState(false);
+  const [pdfBusyId, setPdfBusyId] = useState('');
+
+  const fromName = (locations || []).find((row) => String(row.id) === String(fromLocationId))?.name || '';
+  const toName = (locations || []).find((row) => String(row.id) === String(toLocationId))?.name || '';
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const [{ data: locs }, { data: companyRow }, allowed] = await Promise.all([
-        db.from('locations').select('id, name').in('id', [LUSAKA_TRANSFER_FROM_ID, LUSAKA_TRANSFER_TO_ID]),
+        db.from('locations').select('id, name').order('name'),
         db.from('company_settings').select('*').limit(1).maybeSingle(),
-        fetchKitweProductIds(),
+        fetchProductIdsAtLocation(fromLocationId),
       ]);
-
-      const fromLoc = (locs || []).find((row) => String(row.id) === LUSAKA_TRANSFER_FROM_ID);
-      const toLoc = (locs || []).find((row) => String(row.id) === LUSAKA_TRANSFER_TO_ID);
-      setFromName(fromLoc?.name || 'Kitwe');
-      setToName(toLoc?.name || 'Lusaka');
+      setLocations(locs || []);
       setCompany(companyRow || null);
       setAllowedProductIds(allowed);
     } catch (err) {
@@ -186,27 +193,39 @@ export default function LusakaTransfers() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fromLocationId]);
 
   const loadHistory = useCallback(async () => {
+    if (!fromLocationId || !toLocationId) {
+      setHistory([]);
+      return;
+    }
     try {
       const { data } = await db
         .from('stock_transfer_sessions')
-        .select('id, delivery_number, transfer_datetime, created_at, total_qty, status, metadata')
-        .eq('from_location', LUSAKA_TRANSFER_FROM_ID)
-        .eq('to_location', LUSAKA_TRANSFER_TO_ID)
+        .select('id, delivery_number, transfer_datetime, created_at, total_qty, status, metadata, from_location, to_location, pdf_url')
+        .eq('from_location', fromLocationId)
+        .eq('to_location', toLocationId)
         .order('created_at', { ascending: false })
         .limit(8);
       setHistory(data || []);
     } catch {
       setHistory([]);
     }
-  }, []);
+  }, [fromLocationId, toLocationId]);
 
   useEffect(() => {
     loadCatalog();
+  }, [loadCatalog]);
+
+  useEffect(() => {
     loadHistory();
-  }, [loadCatalog, loadHistory]);
+  }, [loadHistory]);
+
+  useEffect(() => {
+    setSelected([]);
+    setSearch('');
+  }, [fromLocationId, toLocationId]);
 
   useEffect(() => {
     const term = search.trim();
@@ -224,7 +243,7 @@ export default function LusakaTransfers() {
     let active = true;
     setSearching(true);
     const timer = setTimeout(() => {
-      searchKitweProducts(term, allowedProductIds)
+      searchProductsAtLocation(term, allowedProductIds)
         .then((rows) => {
           if (active) setSearchResults(rows);
         })
@@ -280,12 +299,55 @@ export default function LusakaTransfers() {
 
   const grandTotal = selected.reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
 
+  const openTransferView = async (sessionRow) => {
+    if (!sessionRow?.id) return;
+    setViewBusy(true);
+    setError('');
+    try {
+      const detail = await loadTransferSessionDetail(sessionRow.id);
+      setViewDetail(detail);
+    } catch (err) {
+      setError(err?.message || 'Could not load transfer lines.');
+    } finally {
+      setViewBusy(false);
+    }
+  };
+
+  const downloadTransferPdf = async (sessionRow) => {
+    if (!sessionRow?.id) return;
+    setPdfBusyId(sessionRow.id);
+    setError('');
+    try {
+      const detail = await loadTransferSessionDetail(sessionRow.id);
+      await downloadTransferSessionItemsPdf({
+        session: detail.session,
+        lines: detail.lines,
+        company,
+        routeLabel: detail.routeLabel,
+        fromName: detail.fromName,
+        toName: detail.toName,
+      });
+    } catch (err) {
+      setError(err?.message || 'Could not build PDF.');
+    } finally {
+      setPdfBusyId('');
+    }
+  };
+
   async function handleTransfer() {
     const lineItems = aggregateTransferLineItems(
       selected.map((row) => ({ ...row, qty: Number(row.qty) || 0 })),
     );
     if (!lineItems.length) {
       setError('Add at least one product with a quantity greater than zero.');
+      return;
+    }
+    if (!fromLocationId || !toLocationId) {
+      setError('Choose from and to locations.');
+      return;
+    }
+    if (String(fromLocationId) === String(toLocationId)) {
+      setError('From and to locations must be different.');
       return;
     }
 
@@ -301,8 +363,8 @@ export default function LusakaTransfers() {
       const { data: session, error: sessionErr } = await db
         .from('stock_transfer_sessions')
         .insert({
-          from_location: LUSAKA_TRANSFER_FROM_ID,
-          to_location: LUSAKA_TRANSFER_TO_ID,
+          from_location: fromLocationId,
+          to_location: toLocationId,
           user_uid: user?.id || null,
           transfer_date: capturedAt.toISOString().slice(0, 10),
           created_at: capturedAt.toISOString(),
@@ -313,7 +375,7 @@ export default function LusakaTransfers() {
           metadata: {
             transfer_number: deliveryNumber,
             created_by_email: user?.email || null,
-            flow: 'lusaka-transfer',
+            flow: 'stock-transfer',
           },
         })
         .select()
@@ -334,7 +396,7 @@ export default function LusakaTransfers() {
         .from('inventory')
         .select('id, product_id, location, quantity')
         .in('product_id', productIds)
-        .in('location', [LUSAKA_TRANSFER_FROM_ID, LUSAKA_TRANSFER_TO_ID]);
+        .in('location', [fromLocationId, toLocationId]);
       if (invFetchErr) throw invFetchErr;
 
       const invByKey = new Map();
@@ -346,8 +408,8 @@ export default function LusakaTransfers() {
       const destAfterMap = new Map();
 
       lineItems.forEach((row) => {
-        const srcKey = `${row.product_id}|${LUSAKA_TRANSFER_FROM_ID}`;
-        const dstKey = `${row.product_id}|${LUSAKA_TRANSFER_TO_ID}`;
+        const srcKey = `${row.product_id}|${fromLocationId}`;
+        const dstKey = `${row.product_id}|${toLocationId}`;
         const srcExisting = invByKey.get(srcKey);
         const dstExisting = invByKey.get(dstKey);
         const dstBefore = dstExisting ? Number(dstExisting.quantity) || 0 : 0;
@@ -362,7 +424,7 @@ export default function LusakaTransfers() {
         } else {
           inventoryInserts.push({
             product_id: row.product_id,
-            location: LUSAKA_TRANSFER_FROM_ID,
+            location: fromLocationId,
             quantity: -row.qty,
           });
         }
@@ -375,7 +437,7 @@ export default function LusakaTransfers() {
         } else {
           inventoryInserts.push({
             product_id: row.product_id,
-            location: LUSAKA_TRANSFER_TO_ID,
+            location: toLocationId,
             quantity: row.qty,
           });
         }
@@ -388,11 +450,11 @@ export default function LusakaTransfers() {
       await syncProductLocations({
         rows: lineItems.map((row) => ({
           product_id: row.product_id,
-          location_id: LUSAKA_TRANSFER_TO_ID,
+          location_id: toLocationId,
         })),
       }, db);
 
-      await enableEligibleCombosAtDestination(productIds);
+      await enableEligibleCombosAtDestination(productIds, fromLocationId, toLocationId);
 
       const pdfEntries = lineItems.map((row) => ({
         kind: 'product',
@@ -427,7 +489,7 @@ export default function LusakaTransfers() {
           metadata: {
             transfer_number: deliveryNumber,
             created_by_email: user?.email || null,
-            flow: 'lusaka-transfer',
+            flow: 'stock-transfer',
             pdf_url: pdfUrl,
           },
         }).eq('id', sessionId);
@@ -470,21 +532,39 @@ export default function LusakaTransfers() {
     <div className="lusaka-transfers-container" style={{ maxWidth: 1100, margin: '24px auto', padding: '0 16px 32px' }}>
       <div className="page-header-row">
         <BackToDashboard />
-        <h2 style={{ margin: 0 }}>Lusaka Transfers</h2>
+        <h2 style={{ margin: 0 }}>Transfers</h2>
       </div>
       <p className="meta-label" style={{ margin: '0 0 16px', lineHeight: 1.5 }}>
-        Transfer components only from {fromName || 'Kitwe'} to {toName || 'Lusaka'}.
-        Sets are not sent as whole units; they become available at Lusaka when enough components arrive.
+        Move stock between locations. Inventory is deducted at the source and added at the destination.
+        Approved transfers in the period appear on variance reports (Trans In / Trans Out).
       </p>
 
       <div className="report-filters">
         <div className="report-filter-block">
-          <label>From (locked)</label>
-          <div><strong>{fromName || LUSAKA_TRANSFER_FROM_ID}</strong></div>
+          <label htmlFor="transfer-from">From location</label>
+          <select
+            id="transfer-from"
+            value={fromLocationId}
+            onChange={(e) => setFromLocationId(e.target.value)}
+            disabled={busy}
+          >
+            {(locations || []).map((loc) => (
+              <option key={loc.id} value={loc.id}>{loc.name}</option>
+            ))}
+          </select>
         </div>
         <div className="report-filter-block">
-          <label>To (locked)</label>
-          <div><strong>{toName || LUSAKA_TRANSFER_TO_ID}</strong></div>
+          <label htmlFor="transfer-to">To location</label>
+          <select
+            id="transfer-to"
+            value={toLocationId}
+            onChange={(e) => setToLocationId(e.target.value)}
+            disabled={busy}
+          >
+            {(locations || []).map((loc) => (
+              <option key={loc.id} value={loc.id}>{loc.name}</option>
+            ))}
+          </select>
         </div>
         <div className="report-filter-block">
           <label htmlFor="transfer-ref">Transfer reference (optional)</label>
@@ -528,7 +608,7 @@ export default function LusakaTransfers() {
         </div>
         {!loading && !allowedProductIds.size && (
           <div className="report-blank" style={{ width: '100%', marginTop: 10 }}>
-            No products are linked to {fromName || 'this location'} yet. Tick Kitwe on product creation or add inventory at Kitwe.
+            No products are linked to {fromName || 'this location'} yet. Add the location on the product or inventory at the source.
           </div>
         )}
         {search.trim() && (
@@ -637,6 +717,7 @@ export default function LusakaTransfers() {
                 <th>Reference</th>
                 <th>Date</th>
                 <th style={{ textAlign: 'right' }}>Qty</th>
+                <th style={{ textAlign: 'center', width: 88 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -645,10 +726,88 @@ export default function LusakaTransfers() {
                   <td>{row.delivery_number || row.id}</td>
                   <td>{new Date(row.transfer_datetime || row.created_at).toLocaleString()}</td>
                   <td style={{ textAlign: 'right' }}>{row.total_qty ?? '-'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      className="lusaka-transfer-icon-btn"
+                      title="View items"
+                      aria-label="View transfer items"
+                      disabled={viewBusy}
+                      onClick={() => openTransferView(row)}
+                    >
+                      <FaEye />
+                    </button>
+                    <button
+                      type="button"
+                      className="lusaka-transfer-icon-btn"
+                      title="Download PDF"
+                      aria-label="Download transfer items PDF"
+                      disabled={pdfBusyId === row.id}
+                      onClick={() => downloadTransferPdf(row)}
+                    >
+                      <FaFilePdf />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {viewDetail && (
+        <div className="products-adjust-modal-overlay" onClick={() => !viewBusy && setViewDetail(null)}>
+          <div className="products-adjust-modal" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="products-adjust-modal__title">Transfer items</h3>
+            <div className="products-adjust-modal__meta">
+              <b>{viewDetail.session.delivery_number || viewDetail.session.id}</b>
+              {' · '}
+              {viewDetail.routeLabel}
+            </div>
+            <table className="report-table" style={{ width: '100%', marginTop: 12 }}>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Name</th>
+                  <th>Transfer Route</th>
+                  <th style={{ textAlign: 'right' }}>Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {viewDetail.lines.map((line, idx) => (
+                  <tr key={`${line.sku}-${idx}`}>
+                    <td>{line.sku || '—'}</td>
+                    <td>{line.name}</td>
+                    <td>{line.routeLabel}</td>
+                    <td style={{ textAlign: 'right' }}>{line.qty}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} style={{ textAlign: 'right', fontWeight: 600 }}>Total</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{viewDetail.totalQty}</td>
+                </tr>
+              </tfoot>
+            </table>
+            <div className="products-adjust-modal__actions" style={{ marginTop: 16 }}>
+              <button
+                type="button"
+                className="products-adjust-modal__btn products-adjust-modal__btn--primary"
+                onClick={() => downloadTransferPdf(viewDetail.session)}
+                disabled={pdfBusyId === viewDetail.session.id}
+              >
+                Download PDF
+              </button>
+              <button
+                type="button"
+                className="products-adjust-modal__btn products-adjust-modal__btn--secondary"
+                onClick={() => setViewDetail(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

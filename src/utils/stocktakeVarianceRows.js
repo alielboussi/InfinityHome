@@ -1,3 +1,4 @@
+/** STOCKTAKE_PIPELINE_LOCKED — POS sales + transfers feed variance; see docs/stocktake-pdf-pipeline.md */
 import { isSetProductId } from './stocktakeSubmitTotals.js';
 import {
   applyComboLocationPrices,
@@ -5,6 +6,13 @@ import {
   indexComboItems,
   resolveSetComponentPricing,
 } from './stocktakeSetComponentPricing.js';
+import { sumTransfers } from './stocktakeTransferSessions.js';
+import {
+  computeVarianceLedgerQtys,
+  resolveOpeningQtyForVariance,
+} from './stocktakeVarianceLedger.js';
+
+export { computeVarianceLedgerQtys, resolveOpeningQtyForVariance } from './stocktakeVarianceLedger.js';
 
 function chunkArray(list, size) {
   const chunks = [];
@@ -178,46 +186,6 @@ async function fetchClosingQtyMap(sb, closingSessionId, rolloverEventId) {
   return closingMap;
 }
 
-async function sumTransfers(sb, locationId, startISO, endISO, direction) {
-  const locCol = direction === 'in' ? 'to_location' : 'from_location';
-  const map = new Map();
-
-  const { data: sessionsDt } = await sb
-    .from('stock_transfer_sessions')
-    .select('id')
-    .eq(locCol, locationId)
-    .eq('status', 'approved')
-    .not('transfer_datetime', 'is', null)
-    .gte('transfer_datetime', startISO)
-    .lte('transfer_datetime', endISO);
-
-  const startDate = String(startISO).slice(0, 10);
-  const endDate = String(endISO).slice(0, 10);
-  const { data: sessionsDate } = await sb
-    .from('stock_transfer_sessions')
-    .select('id')
-    .eq(locCol, locationId)
-    .eq('status', 'approved')
-    .is('transfer_datetime', null)
-    .gte('transfer_date', startDate)
-    .lte('transfer_date', endDate);
-
-  const ids = [...new Set([
-    ...(sessionsDt || []).map((s) => s.id),
-    ...(sessionsDate || []).map((s) => s.id),
-  ])];
-  if (!ids.length) return map;
-
-  const { data: entries } = await sb
-    .from('stock_transfer_entries')
-    .select('product_id, quantity')
-    .in('session_id', ids);
-  (entries || []).forEach((e) => {
-    map.set(e.product_id, (map.get(e.product_id) || 0) + Number(e.quantity || 0));
-  });
-  return map;
-}
-
 function saleEffectiveMs(sale) {
   if (sale?.created_at) {
     const t = new Date(sale.created_at).getTime();
@@ -275,7 +243,9 @@ async function sumSales(sb, locationId, startISO, endISO) {
     .select('product_id, quantity')
     .in('sale_id', ids);
   (items || []).forEach((e) => {
-    map.set(e.product_id, (map.get(e.product_id) || 0) + Number(e.quantity || 0));
+    const pid = normalizeProductId(e.product_id);
+    if (!pid) return;
+    map.set(pid, (map.get(pid) || 0) + Number(e.quantity || 0));
   });
   return map;
 }
@@ -305,38 +275,58 @@ function mapGetQty(map, productId) {
   return 0;
 }
 
-/** Variance lines are only for products that were in this period's opening stock (qty > 0). */
-function includeInVarianceReport({ openingQty }) {
-  return Number(openingQty || 0) > 0;
+function includeInVarianceReport({
+  recordedOpening,
+  sales,
+  closingQty,
+  transfersIn,
+  transfersOut,
+}) {
+  const openingQty = resolveOpeningQtyForVariance({
+    recordedOpening,
+    sales,
+    transfersIn,
+    transfersOut,
+    closingQty,
+  });
+  if (Number(openingQty || 0) > 0) return true;
+  if (Number(sales || 0) > 0) return true;
+  if (Number(closingQty || 0) > 0) return true;
+  if (Number(transfersIn || 0) > 0 || Number(transfersOut || 0) > 0) return true;
+  return false;
 }
 
 function buildVarianceLedgerRow({
   sku,
   product_name,
   product_id,
-  openingQty,
+  recordedOpening,
   transfersIn,
+  transfersOut,
   sales,
   closingQty,
   unitPrice,
   is_set = false,
 }) {
-  const o = Number(openingQty || 0);
-  const tin = Number(transfersIn || 0);
-  const s = Number(sales || 0);
-  const closing = Number(closingQty || 0);
-  const currentStock = o + tin - s;
-  const variance = closing - currentStock;
+  const ledger = computeVarianceLedgerQtys({
+    recordedOpening,
+    sales,
+    transfersIn,
+    transfersOut,
+    closingQty,
+  });
   const unit = Number(unitPrice || 0);
+  const variance = ledger.variance;
   return {
     sku: sku || '',
     product_name: product_name || '',
     product_id: product_id || null,
-    opening_stock_qty: o,
-    transfers_in: tin,
-    sales: s,
-    current_stock_qty: currentStock,
-    closing_stock_qty: closing,
+    opening_stock_qty: ledger.opening_stock_qty,
+    transfers_in: ledger.transfers_in,
+    transfers_out: ledger.transfers_out,
+    sales: ledger.sales,
+    current_stock_qty: ledger.current_stock_qty,
+    closing_stock_qty: ledger.closing_stock_qty,
     variance,
     variance_amount: variance * unit,
     unit_price: unit,
@@ -354,11 +344,26 @@ export async function buildVarianceRows(sb, period) {
     fetchOpeningQtyMap(sb, period),
     fetchClosingQtyMap(sb, closingSessionId, rolloverEventId),
   ]);
-  const transfersIn = await sumTransfers(sb, locationId, startISO, endISO, 'in');
+  const [transfersIn, transfersOut] = await Promise.all([
+    sumTransfers(sb, locationId, startISO, endISO, 'in'),
+    sumTransfers(sb, locationId, startISO, endISO, 'out'),
+  ]);
   const salesMap = await sumSales(sb, locationId, startISO, endISO);
 
   const candidateProductIds = new Set();
   openingMap.forEach((qty, id) => {
+    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
+  });
+  salesMap.forEach((qty, id) => {
+    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
+  });
+  closingMap.forEach((qty, id) => {
+    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
+  });
+  transfersIn.forEach((qty, id) => {
+    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
+  });
+  transfersOut.forEach((qty, id) => {
     if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
   });
 
@@ -366,11 +371,18 @@ export async function buildVarianceRows(sb, period) {
   candidateProductIds.forEach((id) => {
     const pid = normalizeProductId(id);
     if (!pid) return;
-    const openingQty = mapGetQty(openingMap, pid);
+    const recordedOpening = mapGetQty(openingMap, pid);
     const closingQty = mapGetQty(closingMap, pid);
     const tin = mapGetQty(transfersIn, pid);
+    const tout = mapGetQty(transfersOut, pid);
     const sales = mapGetQty(salesMap, pid);
-    if (includeInVarianceReport({ openingQty })) {
+    if (includeInVarianceReport({
+      recordedOpening,
+      sales,
+      closingQty,
+      transfersIn: tin,
+      transfersOut: tout,
+    })) {
       includedProductIds.add(pid);
     }
   });
@@ -419,11 +431,18 @@ export async function buildVarianceRows(sb, period) {
     const pid = normalizeProductId(productId);
     if (!pid) return;
 
-    const openingQty = mapGetQty(openingMap, pid);
+    const recordedOpening = mapGetQty(openingMap, pid);
     const closingQty = mapGetQty(closingMap, pid);
     const tin = mapGetQty(transfersIn, pid);
+    const tout = mapGetQty(transfersOut, pid);
     const sales = mapGetQty(salesMap, pid);
-    if (!includeInVarianceReport({ openingQty })) {
+    if (!includeInVarianceReport({
+      recordedOpening,
+      sales,
+      closingQty,
+      transfersIn: tin,
+      transfersOut: tout,
+    })) {
       return;
     }
 
@@ -441,8 +460,9 @@ export async function buildVarianceRows(sb, period) {
       sku: p.sku || '',
       product_name: p.name || pid,
       product_id: pid,
-      openingQty,
+      recordedOpening,
       transfersIn: tin,
+      transfersOut: tout,
       sales,
       closingQty,
       unitPrice,

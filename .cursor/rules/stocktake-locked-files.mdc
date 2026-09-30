@@ -1,0 +1,25 @@
+---
+description: Hard stop when editing stocktake periods, counts, variance, or PDF pipeline files
+globs: src/utils/stocktake*.js,src/utils/periodPdfFromVariance.js,src/utils/reconcileInventoryFromVariance.js,src/components/StocktakePeriodPdfActions.js,src/Stocktake{Aggregation,Control,Periods}Page.js,src/StocktakeCount*.js,src/services/stocktake.js,api/stocktake.js,docs/stocktake-pdf-pipeline.md,scripts/verifyStocktake*.js
+alwaysApply: false
+---
+
+# STOCKTAKE_PIPELINE_LOCKED — authorization required
+
+These paths implement **stock periods**, **stocktake counts**, **opening/closing entries**, **variance ledger**, and **all stocktake PDFs** (all locations).
+
+## Do not edit without explicit owner authorization
+
+Unless the user's message **clearly and explicitly** asks to change stocktake periods, stocktake counting, variance reports, period PDFs, or period-close inventory behaviour:
+
+- **Do not** modify, refactor, reformat, optimize, or "fix" any file matching this rule's globs.
+- **Do not** change `sumSales` (POS `/sales` by `location_id`), `sumTransfers` (`/transfers` approved + legacy sessions), or `buildVarianceRows` inclusion rules.
+- **Do not** bypass automation (manual PDF rows, per-location forks, one-off scripts for routine closes).
+
+## When authorized
+
+1. Read `docs/stocktake-pdf-pipeline.md` in full.
+2. Update that doc and `scripts/verifyStocktakeVarianceLedger.js` (and transfer verify if rules change).
+3. Preserve: **Current** = Opening + Trans In − Trans Out − Sales; **Variance** = Closing − Current; opening/closing PDFs from `buildVarianceRows`.
+
+Owner reference: `AGENTS.md` § Stocktake PDFs (LOCKED).

@@ -1,3 +1,4 @@
+/** STOCKTAKE_PIPELINE_LOCKED — see docs/stocktake-pdf-pipeline.md */
 import React from 'react';
 import db from '../dataClient';
 import { getPeriodVariance } from '../services/stocktake';
@@ -33,8 +34,11 @@ export default function StocktakePeriodPdfActions({
   setBusy,
 }) {
   const isClosed = String(period?.status || '').toLowerCase() === 'closed';
-  const hasOpening = (detail?.opening || []).some((r) => Number(r.qty || 0) > 0);
-  const hasClosing = (detail?.closing || []).some((r) => Number(r.qty || 0) > 0);
+  const hasOpeningRaw = (detail?.opening || []).some((r) => Number(r.qty || 0) > 0);
+  const hasClosingRaw = (detail?.closing || []).some((r) => Number(r.qty || 0) > 0);
+  // Closed-period PDFs use variance ledger (incl. imputed opening); do not gate on raw entries only.
+  const hasOpening = isClosed || hasOpeningRaw;
+  const hasClosing = isClosed || hasClosingRaw;
 
   const run = async (fn, toastMsg) => {
     if (disabled || busy) return;
@@ -125,7 +129,10 @@ export default function StocktakePeriodPdfActions({
   );
 }
 
-/** Auto-download after admin aggregation submit (rollover or initial). */
+/**
+ * Auto-download after admin aggregation submit (rollover or initial).
+ * LOCKED: rollover uses getPeriodVariance → same rows as manual variance/opening/closing PDFs.
+ */
 export async function downloadStocktakeSubmitPdfBundle({
   submitType,
   closedPeriod,

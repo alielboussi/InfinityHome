@@ -1256,6 +1256,14 @@ export async function getPeriodVariance(periodId) {
   }
 }
 
+/** Variance ledger rows (incl. imputed opening) for period PDFs — any period status. */
+export async function getPeriodLedgerVarianceRows(periodId) {
+  const { data: period, error } = await db.from('stock_periods').select('*').eq('id', periodId).maybeSingle();
+  if (error) throw error;
+  if (!period) throw new Error('Period not found');
+  return buildVarianceRows(db, period);
+}
+
 const COUNT_SHEET_TIMEOUT_MS = 120000;
 
 async function fetchCountSheetFromApi(periodId) {

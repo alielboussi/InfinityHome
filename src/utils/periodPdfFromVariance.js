@@ -1,3 +1,4 @@
+/** STOCKTAKE_PIPELINE_LOCKED — see docs/stocktake-pdf-pipeline.md */
 /**
  * Opening / closing period PDF rows — same products, order, and qtys as the variance report.
  */
@@ -9,7 +10,8 @@ export function periodLedgerPdfRowsFromVariance(varianceRows, mode) {
       sku: row.sku || '',
       name: row.product_name || row.name || '',
       qty: Number(row[qtyKey] ?? 0),
-    }));
+    }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
 }
 
 export function countPeriodLedgerProductLines(rows) {

@@ -22,12 +22,15 @@
 - Mohammad Fahme accounts use the same pooled statement rollup as all layby customers (no frozen totals or payment blocks).
 - Optional reference snapshots for regression: `docs/reference/fahme-acc2/` (`node scripts/verifyFahmeAcc2Statement.js`), `docs/reference/fahme-primary/` (`node scripts/verifyFahmePrimaryStatement.js`).
 
-## Stocktake PDFs (all locations) — LOCKED
+## Stocktake PDFs (all locations) — STOCKTAKE_PIPELINE_LOCKED
 
-**AI agents: do not edit stocktake PDF code unless the user explicitly asks to change that behaviour.** This lock covers **every** stocktake PDF type at **every** location: **opening stock**, **closing stock**, **variance report**, pre-submit aggregation review, and count sheet — plus row resolvers, auto-download on submit, and period-close inventory. No drive-by fixes, refactors, or “improvements”. Full spec and file list: **`docs/stocktake-pdf-pipeline.md`**.
+**AI agents: do not edit stocktake / period / count / variance / PDF code unless the user explicitly asks to change that behaviour in the current message.** This lock covers **stock periods**, **stocktake counts**, **every** stocktake PDF at **every** location, period-close inventory, and variance inputs (**POS sales** + **`/transfers`**). No drive-by fixes, refactors, or “improvements”. Full spec: **`docs/stocktake-pdf-pipeline.md`**; file-pattern rule: **`.cursor/rules/stocktake-locked-files.mdc`**.
 
 Summary (all locations):
 
-- **Opening / closing PDFs:** flat component lines A–Z; closed periods match variance qtys; shared grid/signatures/borders via `stocktakeAggregationPdf.js` + table theme helpers.
-- **Variance PDF:** white grid cells; merged **Price** for consecutive `set_combo_id` rows (including empty price), centred when present.
+- **Opening / closing PDFs:** flat component lines A–Z; qtys from `buildVarianceRows` (imputed opening when needed); shared grid/signatures/borders via `stocktakeAggregationPdf.js` + table theme helpers.
+- **Variance PDF:** white grid cells; merged **Price** for consecutive `set_combo_id` rows (including empty price), centred when present; **Current** and **Variance** from locked formulas in `stocktakeVarianceLedger.js`.
+- **Automation:** rollover submit closes period → variance rows → inventory reconcile → auto closing/variance/next-opening PDFs; no manual PDF fixups per period.
+- **Regression:** `node scripts/verifyStocktakeVarianceLedger.js`, `node scripts/verifyStocktakeTransferVariance.js`, `node scripts/verifyStocktakeLockMarkers.js` (also run on `npm run build` via `checkEnv.js`)
+- **Variance data:** period sales from POS (`sumSales`); transfers from `/transfers` approved + legacy sessions (`sumTransfers`)
 - **Submit / UI:** `StocktakePeriodPdfActions.js`, `StocktakeAggregationPage.js` bundle; inventory close via `reconcileInventoryFromVariance` in `api/stocktake.js`.

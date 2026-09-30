@@ -1,9 +1,12 @@
+/** STOCKTAKE_PIPELINE_LOCKED — see docs/stocktake-pdf-pipeline.md */
 /**
  * Single source of truth for opening/closing period PDF line items (all locations).
- * — Flat component/product lines only (set scans expanded); A–Z by name.
+ * — Flat component/product lines only; A–Z by name.
+ * — Prefer variance ledger rows (`buildVarianceRows` / imputed opening) whenever a period id exists.
  * — Closed periods: same products/qtys as variance (`periodLedgerPdfRowsFromVariance`).
- * — Open periods: flat qty from period stock entries (never set-group aggregation rows).
+ * — Open periods: variance rows when available; else flat qty from period stock entries.
  */
+import { getPeriodLedgerVarianceRows } from '../services/stocktake';
 import { periodLedgerPdfRowsFromVariance } from './periodPdfFromVariance';
 
 export function periodPdfRowsFromScannedAggregation(rows) {
@@ -28,25 +31,53 @@ export function flatProductLedgerRowsFromPeriodEntries(entries) {
   );
 }
 
-export async function resolveOpeningPdfRows({ period, detail, getPeriodVariance }) {
+async function fetchVarianceRowsForLedgerPdf(period, getPeriodVariance) {
+  if (!period?.id) return null;
   const isClosed = String(period?.status || '').toLowerCase() === 'closed';
-  if (isClosed && period?.id && getPeriodVariance) {
+  if (isClosed && getPeriodVariance) {
     const data = await getPeriodVariance(period.id);
-    return periodLedgerPdfRowsFromVariance(data.rows, 'opening');
+    return data?.rows ?? null;
+  }
+  return getPeriodLedgerVarianceRows(period.id);
+}
+
+function ledgerPdfRowsFromVariance(varianceRows, mode) {
+  const rows = periodLedgerPdfRowsFromVariance(varianceRows, mode);
+  if (mode === 'opening') {
+    return rows.filter((row) => Number(row.qty || 0) > 0);
+  }
+  return rows;
+}
+
+export async function resolveOpeningPdfRows({ period, detail, getPeriodVariance }) {
+  try {
+    const varianceRows = await fetchVarianceRowsForLedgerPdf(period, getPeriodVariance);
+    if (varianceRows?.length) {
+      const rows = ledgerPdfRowsFromVariance(varianceRows, 'opening');
+      if (rows.length) return rows;
+    }
+  } catch {
+    /* fall back to stored entries */
   }
   return flatProductLedgerRowsFromPeriodEntries(detail?.opening);
 }
 
 export async function resolveClosingPdfRows({ period, detail, getPeriodVariance }) {
-  const isClosed = String(period?.status || '').toLowerCase() === 'closed';
-  if (isClosed && period?.id && getPeriodVariance) {
-    const data = await getPeriodVariance(period.id);
-    return periodLedgerPdfRowsFromVariance(data.rows, 'closing');
+  try {
+    const varianceRows = await fetchVarianceRowsForLedgerPdf(period, getPeriodVariance);
+    if (varianceRows?.length) {
+      const rows = ledgerPdfRowsFromVariance(varianceRows, 'closing');
+      if (rows.length) return rows;
+    }
+  } catch {
+    /* fall back to stored entries */
   }
   return flatProductLedgerRowsFromPeriodEntries(detail?.closing);
 }
 
 /** Next period opening PDF after rollover = prior period closing qtys from variance. */
 export function rolloverOpeningPdfRowsFromClosedVariance(varianceRows) {
-  return periodLedgerPdfRowsFromVariance(varianceRows, 'closing');
+  return periodLedgerPdfRowsFromVariance(varianceRows, 'closing').filter(
+    (row) => Number(row.qty || 0) > 0,
+  );
 }
