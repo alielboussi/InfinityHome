@@ -66,13 +66,17 @@ async function opScanResolve(body) {
   const scan = String(body.scan || '').trim();
   if (!scan) throw new Error('Scan value is required.');
   const sb = getService();
+  const assemblyFields = 'id, name, family_sku, packet_count, image_url, dim_length, dim_width, dim_height, category_id, inventory_mode';
   const [{ data: packets }, { data: assemblies }] = await Promise.all([
     sb.from('warehouse_packets').select('id, sku, name, packet_number, assembly_id, qty_per_unit'),
-    sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count'),
+    sb.from('warehouse_assemblies').select(assemblyFields),
   ]);
   const packet = resolvePacketFromScan(scan, packets || []);
   if (packet) {
-    return { kind: 'packet', packet };
+    const assembly = packet.assembly_id
+      ? (assemblies || []).find((a) => String(a.id) === String(packet.assembly_id))
+      : null;
+    return { kind: 'packet', packet, assembly };
   }
   const key = normalizeWarehouseSkuKey(normalizeWarehouseSku(scan));
   const assembly = (assemblies || []).find(

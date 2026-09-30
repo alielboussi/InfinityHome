@@ -27,6 +27,7 @@ npm start
 |-------|--------|
 | **0 (now)** | Auth, biometrics, dashboard shell, `/user-access` mobile matrix, `auth-profile` returns `mobile_access` |
 | **1** | Barcode scan → resolve SKU → create packet/product forms (parity with web) + duplicate SKU checks via existing catalog services |
+| **1b** | **Label SKU (OCR):** align printed unit code in the **yellow box**, capture (crop + OCR that region only) → product info. Requires a **native rebuild** (`@react-native-ml-kit/text-recognition`); manual type works without OCR. |
 | **2** | Kitwe scan session: packets only, group by `warehouse_assemblies`, submit `warehouse_delivery_sessions` |
 | **3** | Hassan portal: line-level tick → partial Kitwe inventory (reuse `update_warehouse_delivery_items` RPC) |
 | **4** | Retire bridge when `/products-list` is gone; transfers credit warehouse showrooms only |

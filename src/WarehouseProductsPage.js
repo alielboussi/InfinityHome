@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FaPlus } from 'react-icons/fa';
 import BackToDashboard from './BackToDashboard';
+import WarehouseAssemblyInlineSpecs from './components/WarehouseAssemblyInlineSpecs';
+import WarehouseAssemblyThumbnail from './components/WarehouseAssemblyThumbnail';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
 import WarehouseColorChip from './components/WarehouseColorChip';
 import { canManageCatalog, getCurrentUser } from './accessControl';
@@ -272,6 +274,18 @@ export default function WarehouseProductsPage() {
     navigate(`/warehouse-products/${assembly.id}/transfer`);
   };
 
+  const handleAssemblyImageUpdated = useCallback((assemblyId, imageUrl) => {
+    setAssemblies((prev) => prev.map((row) => (
+      String(row.id) === String(assemblyId) ? { ...row, image_url: imageUrl } : row
+    )));
+  }, []);
+
+  const handleAssemblyFieldsUpdated = useCallback((assemblyId, patch) => {
+    setAssemblies((prev) => prev.map((row) => (
+      String(row.id) === String(assemblyId) ? { ...row, ...patch } : row
+    )));
+  }, []);
+
   return (
     <div className="products-container warehouse-products-page" style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
       <div className="page-header-row">
@@ -368,6 +382,12 @@ export default function WarehouseProductsPage() {
                     >
                       <span className="warehouse-assembly-card__expand-icon" aria-hidden />
                     </button>
+                    <WarehouseAssemblyThumbnail
+                      assembly={assembly}
+                      canEdit={canManage}
+                      onUpdated={handleAssemblyImageUpdated}
+                      onError={(msg) => setError(msg)}
+                    />
                     <div className="warehouse-assembly-card__main">
                       <div className="warehouse-assembly-card__title-row">
                         <span className="warehouse-kind-badge warehouse-kind-badge--product">Product</span>
@@ -387,6 +407,12 @@ export default function WarehouseProductsPage() {
                         <span>{categoryName(assembly.category_id)}</span>
                         <span>{locNames.length ? locNames.join(', ') : 'No showroom locations'}</span>
                       </div>
+                      <WarehouseAssemblyInlineSpecs
+                        assembly={assembly}
+                        canEdit={canManage}
+                        onUpdated={handleAssemblyFieldsUpdated}
+                        onError={(msg) => setError(msg)}
+                      />
                       {assembly.has_color_variants && assemblyColorsList.length > 0 ? (
                         <div className="warehouse-assembly-card__colors">
                           {assemblyColorsList.map((c) => (

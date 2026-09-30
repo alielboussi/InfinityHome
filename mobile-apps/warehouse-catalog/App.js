@@ -11,6 +11,8 @@ import WarehouseProductsScreen from './screens/WarehouseProductsScreen';
 import ScanScreen from './screens/ScanScreen';
 import PacketFormScreen from './screens/PacketFormScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
+import WarehouseOcrSkuScreen from './screens/WarehouseOcrSkuScreen';
+import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -50,6 +52,16 @@ function MainStack() {
         component={WarehouseProductsScreen}
       />
       <Stack.Screen name="WarehouseScan" options={{ title: 'Scan barcode' }} component={ScanScreen} />
+      <Stack.Screen
+        name="WarehouseOcrSku"
+        options={{ title: 'Label SKU (text)' }}
+        component={WarehouseOcrSkuScreen}
+      />
+      <Stack.Screen
+        name="WarehouseProductDetail"
+        options={{ title: 'Product info' }}
+        component={WarehouseProductDetailScreen}
+      />
       <Stack.Screen name="PacketForm" options={{ title: 'Packet' }} component={PacketFormScreen} />
       <Stack.Screen name="ProductForm" options={{ title: 'Product' }} component={ProductFormScreen} />
     </Stack.Navigator>

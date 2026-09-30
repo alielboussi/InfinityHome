@@ -4846,24 +4846,108 @@ body {
 .warehouse-products-page .warehouse-assembly-card {
   border: 1px solid #c5d0dc;
   border-radius: 10px;
-  overflow: hidden;
+  overflow: visible;
   background: #ffffff;
   color: #0f172a;
 }
 .warehouse-products-page .warehouse-assembly-card__header {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  grid-template-areas: "expand main stock actions";
+  grid-template-columns: auto auto 1fr auto auto;
+  grid-template-areas: "expand thumb main stock actions";
   gap: 0.65rem 1rem;
   align-items: start;
   padding: 12px 14px;
 }
+.warehouse-products-page .warehouse-assembly-thumb-wrap {
+  grid-area: thumb;
+  position: relative;
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+}
+.warehouse-products-page .warehouse-assembly-thumb {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 1px dashed #94a3b8;
+  border-radius: 10px;
+  background: #f1f5f9;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.warehouse-products-page .warehouse-assembly-thumb.has-image {
+  border-style: solid;
+  border-color: #cbd5e1;
+}
+.warehouse-products-page .warehouse-assembly-thumb:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+.warehouse-products-page .warehouse-assembly-thumb:not(:disabled):hover {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+.warehouse-products-page .warehouse-assembly-thumb__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #f1f5f9;
+}
+/* Fixed flyout (portal to body) — not clipped by product card overflow */
+.warehouse-assembly-thumb-flyout {
+  box-sizing: border-box;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.28);
+  pointer-events: none;
+}
+.warehouse-assembly-thumb-flyout__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #f1f5f9;
+  border-radius: 8px;
+  image-rendering: auto;
+}
+.warehouse-products-page .warehouse-assembly-thumb__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.7rem;
+  color: #64748b;
+  line-height: 1.1;
+  padding: 4px;
+  text-align: center;
+}
+.warehouse-products-page .warehouse-assembly-thumb__placeholder-icon {
+  font-size: 1.1rem;
+  opacity: 0.7;
+}
+.warehouse-products-page .warehouse-assembly-thumb__busy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.75);
+  font-weight: 700;
+  color: #0f172a;
+}
 @media (max-width: 719px) {
   .warehouse-products-page .warehouse-assembly-card__header {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto auto 1fr auto;
     grid-template-areas:
-      "expand main stock"
-      "expand main actions";
+      "expand thumb main stock"
+      "expand thumb main actions";
   }
 }
 .warehouse-products-page .warehouse-assembly-card__expand {
@@ -4917,6 +5001,67 @@ body {
   color: #0f172a;
   font-size: 1.05rem;
   font-weight: 700;
+}
+.warehouse-products-page .warehouse-assembly-card__specs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.warehouse-products-page .warehouse-inline-spec {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.88rem;
+  color: #334155;
+}
+.warehouse-products-page .warehouse-inline-spec__label {
+  font-weight: 600;
+  color: #0f172a;
+  flex-shrink: 0;
+}
+.warehouse-products-page .warehouse-inline-spec__value {
+  color: #475569;
+}
+.warehouse-products-page .warehouse-inline-spec__dims {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+.warehouse-products-page .warehouse-inline-spec__input {
+  width: 3.25rem;
+  padding: 2px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  text-align: right;
+  background: #fff;
+  color: #0f172a;
+}
+.warehouse-products-page .warehouse-inline-spec__input--wide {
+  width: 4.5rem;
+}
+.warehouse-products-page .warehouse-inline-spec__input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+.warehouse-products-page .warehouse-inline-spec__sep {
+  color: #64748b;
+  font-weight: 500;
+  user-select: none;
+}
+.warehouse-products-page .warehouse-inline-spec__unit {
+  color: #64748b;
+  font-size: 0.85rem;
+}
+.warehouse-products-page .warehouse-inline-spec--locked .warehouse-inline-spec__value {
+  color: #475569;
+}
+.warehouse-products-page .warehouse-inline-spec__value--calc {
+  font-variant-numeric: tabular-nums;
 }
 .warehouse-products-page .warehouse-assembly-card__meta {
   display: flex;

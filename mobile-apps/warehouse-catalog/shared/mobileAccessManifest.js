@@ -56,6 +56,18 @@ export const MOBILE_SCREENS = Object.freeze([
     permissionMatrix: false,
   },
   {
+    id: 'warehouse_ocr_sku',
+    label: 'Label SKU (OCR)',
+    description: 'Read printed finished-product unit code from label',
+    permissionMatrix: false,
+  },
+  {
+    id: 'warehouse_product_detail',
+    label: 'Product info',
+    description: 'Photo, dimensions, warehouse stock (from SKU lookup)',
+    permissionMatrix: false,
+  },
+  {
     id: 'warehouse_packet_form',
     label: 'Add / edit packet',
     description: 'Packet form (inside warehouse products)',
@@ -77,6 +89,8 @@ const SCREEN_NAV_ROUTE = Object.freeze({
 
 const WAREHOUSE_PRODUCTS_CHILD_SCREENS = Object.freeze([
   'warehouse_scan',
+  'warehouse_ocr_sku',
+  'warehouse_product_detail',
   'warehouse_packet_form',
   'warehouse_product_form',
 ]);

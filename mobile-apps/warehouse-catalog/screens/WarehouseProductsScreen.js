@@ -15,6 +15,32 @@ import { attachWarehouseStockTotals } from '../shared/warehouseCatalogStock';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
+function formatDimensionsLine(assembly) {
+  const l = assembly?.dim_length;
+  const w = assembly?.dim_width;
+  const h = assembly?.dim_height;
+  const hasAny = [l, w, h].some((v) => v != null && v !== '' && Number.isFinite(Number(v)));
+  if (!hasAny) return '';
+  const fmt = (v) => {
+    if (v == null || v === '') return '—';
+    const n = Number(v);
+    return Number.isFinite(n) ? String(n) : '—';
+  };
+  return `Dimensions: ${fmt(l)} × ${fmt(w)} × ${fmt(h)} cm`;
+}
+
+function formatVolumeLine(assembly) {
+  const l = Number(assembly?.dim_length);
+  const w = Number(assembly?.dim_width);
+  const h = Number(assembly?.dim_height);
+  if (!Number.isFinite(l) || !Number.isFinite(w) || !Number.isFinite(h)) return '';
+  if (l <= 0 || w <= 0 || h <= 0) return '';
+  const m3 = (l * w * h) / 1_000_000;
+  if (!Number.isFinite(m3)) return '';
+  const display = m3.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return `Volume (m³): ${display}`;
+}
+
 function resolveAssemblyImageUri(assembly) {
   const candidates = [
     assembly?.image_url,
@@ -149,6 +175,11 @@ export default function WarehouseProductsScreen({ navigation }) {
     navigation.navigate('WarehouseScan', { warehouseLocationId: catalog?.warehouseLocationId });
   };
 
+  const openOcrSku = () => {
+    setAddOpen(false);
+    navigation.navigate('WarehouseOcrSku', { warehouseLocationId: catalog?.warehouseLocationId });
+  };
+
   const formatQty = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return '0';
@@ -172,6 +203,8 @@ export default function WarehouseProductsScreen({ navigation }) {
     const pktList = packetsByAssembly.get(id) || [];
     const cat = categoryName(assembly.category_id);
     const finishedQty = assemblyWarehouseQty[id] ?? 0;
+    const dimLine = formatDimensionsLine(assembly);
+    const volumeLine = formatVolumeLine(assembly);
 
     return (
       <View style={styles.gridCard}>
@@ -194,6 +227,12 @@ export default function WarehouseProductsScreen({ navigation }) {
             {cat || '—'}
             {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
           </Text>
+          {dimLine ? (
+            <Text style={styles.cardSpec} numberOfLines={2}>{dimLine}</Text>
+          ) : null}
+          {volumeLine ? (
+            <Text style={styles.cardSpec} numberOfLines={1}>{volumeLine}</Text>
+          ) : null}
         </Pressable>
         {isOpen ? (
           <View style={styles.packetList}>
@@ -220,6 +259,13 @@ export default function WarehouseProductsScreen({ navigation }) {
           autoCapitalize="none"
           autoCorrect={false}
         />
+        <Pressable
+          style={styles.ocrBtn}
+          onPress={openOcrSku}
+          accessibilityLabel="Scan printed SKU from label"
+        >
+          <Text style={styles.ocrBtnText}>Label</Text>
+        </Pressable>
         <Pressable style={styles.addBtn} onPress={() => setAddOpen(true)} accessibilityLabel="Add">
           <Text style={styles.addBtnText}>+</Text>
         </Pressable>
@@ -251,6 +297,9 @@ export default function WarehouseProductsScreen({ navigation }) {
             <Text style={styles.modalTitle}>Add</Text>
             <Pressable style={styles.modalOption} onPress={openScan}>
               <Text style={styles.modalOptionText}>Scan barcode (Code 128 / QR)</Text>
+            </Pressable>
+            <Pressable style={styles.modalOption} onPress={openOcrSku}>
+              <Text style={styles.modalOptionText}>Label text — finished SKU (OCR)</Text>
             </Pressable>
             <Pressable style={styles.modalOption} onPress={() => openPacketForm({}, false)}>
               <Text style={styles.modalOptionText}>New packet</Text>
@@ -286,6 +335,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: '#f8fafc',
   },
+  ocrBtn: {
+    paddingHorizontal: 10,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: '#0c4a6e',
+    borderWidth: 1,
+    borderColor: '#0ea5e9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ocrBtnText: { color: '#e0f2fe', fontSize: 12, fontWeight: '700' },
   addBtn: {
     width: 44,
     height: 44,
@@ -359,6 +419,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: '#f8fafc', fontSize: 14, fontWeight: '700', marginTop: 8 },
   cardSku: { color: '#cbd5e1', fontFamily: 'monospace', fontSize: 11, marginTop: 4 },
   cardMeta: { color: '#94a3b8', marginTop: 4, fontSize: 11, lineHeight: 15 },
+  cardSpec: { color: '#cbd5e1', marginTop: 3, fontSize: 10, lineHeight: 14 },
   packetList: {
     borderTopWidth: 1,
     borderTopColor: '#334155',

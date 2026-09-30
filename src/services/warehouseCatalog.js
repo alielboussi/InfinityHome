@@ -538,3 +538,81 @@ export async function setWarehousePacketQuantity(packetId, locationId, quantity)
   }, { onConflict: 'packet_id,location_id' });
   if (error) throw new Error(error.message || 'Failed to update quantity');
 }
+
+const WAREHOUSE_IMAGE_BUCKET = 'productimages';
+
+function warehouseAssemblyImageFolder(assemblyId) {
+  return `warehouse-assemblies/${String(assemblyId)}`;
+}
+
+async function purgeWarehouseAssemblyImages(assemblyId) {
+  const folderPath = warehouseAssemblyImageFolder(assemblyId);
+  try {
+    const bucket = db.storage.from(WAREHOUSE_IMAGE_BUCKET);
+    const { data: entries, error } = await bucket.list(folderPath, { limit: 100 });
+    if (error || !Array.isArray(entries) || !entries.length) return;
+    const targets = entries.map((entry) => `${folderPath}/${entry.name}`);
+    await bucket.remove(targets);
+  } catch (err) {
+    console.warn('Failed to purge warehouse assembly images', err);
+  }
+}
+
+/** Upload product photo; stored on warehouse_assemblies.image_url (syncs to mobile catalog). */
+export async function uploadWarehouseAssemblyImage(assemblyId, file) {
+  const id = String(assemblyId || '').trim();
+  if (!id) throw new Error('Product id is required');
+  if (!file) throw new Error('No image file selected');
+
+  await purgeWarehouseAssemblyImages(id);
+  const fallbackExt = 'jpg';
+  const rawExt = (file.name || '').split('.').pop();
+  const ext = (rawExt || fallbackExt).replace(/[^0-9a-z]/gi, '').toLowerCase() || fallbackExt;
+  const filePath = `${warehouseAssemblyImageFolder(id)}/main-${Date.now()}.${ext}`;
+
+  const bucket = db.storage.from(WAREHOUSE_IMAGE_BUCKET);
+  const { error: uploadError } = await bucket.upload(filePath, file, { upsert: true });
+  if (uploadError) throw new Error(uploadError.message || 'Image upload failed');
+
+  const { data: publicUrlData } = bucket.getPublicUrl(filePath);
+  const publicUrl = publicUrlData?.publicUrl;
+  if (!publicUrl) throw new Error('Failed to get public URL for image.');
+
+  const now = new Date().toISOString();
+  const { error: updErr } = await db.from(ASSEMBLIES).update({
+    image_url: publicUrl,
+    updated_at: now,
+  }).eq('id', id);
+  if (updErr) throw new Error(updErr.message || 'Failed to save image on product');
+
+  return publicUrl;
+}
+
+const INLINE_ASSEMBLY_NUMERIC_FIELDS = new Set([
+  'dim_length',
+  'dim_width',
+  'dim_height',
+]);
+
+/** Partial update for inline edits on the warehouse products list. */
+export async function patchWarehouseAssemblyFields(assemblyId, fields) {
+  const id = String(assemblyId || '').trim();
+  if (!id) throw new Error('Product id is required');
+  const patch = { updated_at: new Date().toISOString() };
+  Object.entries(fields || {}).forEach(([key, raw]) => {
+    if (!INLINE_ASSEMBLY_NUMERIC_FIELDS.has(key)) return;
+    if (raw === '' || raw == null) {
+      patch[key] = null;
+      return;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) {
+      throw new Error(`Invalid value for ${key}`);
+    }
+    patch[key] = n;
+  });
+  if (Object.keys(patch).length <= 1) return { id };
+  const { error } = await db.from(ASSEMBLIES).update(patch).eq('id', id);
+  if (error) throw new Error(error.message || 'Failed to update product');
+  return { id, ...patch };
+}

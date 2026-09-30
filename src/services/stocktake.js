@@ -1,7 +1,6 @@
 import db from '../dataClient';
 import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import { buildCountSheetRows } from '../utils/stocktakeCountSheetRows';
-import { positiveInventoryByProductAtLocation } from '../utils/stocktakeLocationStock';
 import { signInWithEmailPassword } from '../utils/authLogin';
 import { buildLiveConsolidatedWithSets } from '../utils/stocktakeLiveTotals';
 import { fetchWarehouseStocktakeCatalog, fetchMyWarehouseCounts, clearMyWarehouseCounts, addWarehousePacketCount, addWarehouseProductCount, removeMyWarehousePacketCount, removeMyWarehouseProductCount } from './warehouseStocktake';
@@ -452,12 +451,20 @@ async function resolveLocationProductIds(locationId) {
     return cached.ids;
   }
 
-  const { data: invRows, error: invErr } = await db
-    .from('inventory')
-    .select('product_id, quantity, location')
-    .eq('location', locationId);
+  const [{ data: plRows, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
+    db.from('product_locations').select('product_id').eq('location_id', locationId),
+    db.from('inventory').select('product_id').eq('location', locationId),
+  ]);
+  if (plErr) throw plErr;
   if (invErr) throw invErr;
-  const list = [...positiveInventoryByProductAtLocation(invRows, locationId).keys()];
+  const idSet = new Set();
+  (plRows || []).forEach((row) => {
+    if (row?.product_id) idSet.add(String(row.product_id));
+  });
+  (invRows || []).forEach((row) => {
+    if (row?.product_id) idSet.add(String(row.product_id));
+  });
+  const list = [...idSet];
   locationProductIdsCache.set(locationId, { ids: list, at: Date.now() });
   return list;
 }

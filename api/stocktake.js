@@ -9,10 +9,7 @@ import {
   sumInventoryAdjustmentsByProduct,
 } from '../src/utils/inventoryVarianceAdjustments.js';
 import { buildCountSheetRows } from '../src/utils/stocktakeCountSheetRows.js';
-import {
-  fetchStocktakeProductRowsAtLocation,
-  positiveInventoryByProductAtLocation,
-} from '../src/utils/stocktakeLocationStock.js';
+import { fetchStocktakeProductRowsAtLocation } from '../src/utils/stocktakeLocationStock.js';
 import {
   applyWarehouseStocktakeOnSubmit,
   shouldSkipLegacyInventoryForLocation,
@@ -388,13 +385,8 @@ async function handleCatalog(req, res) {
 
   const sb = getService();
 
-  const { data: invRows, error: invErr } = await sb
-    .from('inventory')
-    .select('product_id, quantity, location')
-    .eq('location', locationId);
-  if (invErr) return res.status(500).json({ ok: false, error: invErr.message });
-
-  const productIds = [...positiveInventoryByProductAtLocation(invRows, locationId).keys()];
+  const productIds = await loadLocationProductIds(sb, locationId);
+  const productIdSet = new Set(productIds.map(String));
 
   let products = [];
   if (productIds.length) {
