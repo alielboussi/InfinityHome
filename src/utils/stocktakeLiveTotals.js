@@ -100,6 +100,36 @@ export function buildLiveConsolidatedWithSets({
     });
   });
 
+  // If a set was scanned but component lines were only partially saved, top up pools from BOM × set scans.
+  (combos || []).forEach((combo) => {
+    const scanRows = scansByCombo.get(combo.id) || [];
+    const scanTotal = scanRows.reduce((sum, u) => sum + num(u.qty), 0);
+    if (scanTotal <= 0) return;
+    const comps = (comboItems || []).filter((i) => i.combo_id === combo.id);
+    comps.forEach((comp) => {
+      const pid = comp.product_id;
+      if (!pid) return;
+      const need = num(comp.quantity);
+      if (need <= 0) return;
+      const required = scanTotal * need;
+      const have = remaining.get(pid) || 0;
+      if (have >= required) return;
+      const delta = required - have;
+      remaining.set(pid, have + delta);
+      if (!productMap.has(pid)) {
+        productMap.set(pid, {
+          product_id: pid,
+          qty: 0,
+          byUser: [],
+          name: null,
+          sku: null,
+        });
+      }
+      const entry = productMap.get(pid);
+      entry.qty += delta;
+    });
+  });
+
   const sortedCombos = (combos || []).slice().sort((a, b) =>
     String(a.combo_name || a.name || '').localeCompare(String(b.combo_name || b.name || ''), undefined, {
       sensitivity: 'base',

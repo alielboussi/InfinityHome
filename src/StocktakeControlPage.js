@@ -7,6 +7,7 @@ import {
   fetchLocationState,
   fetchLocations,
   getEvent,
+  computeOpeningAggregationForPeriod,
   getPeriodDetail,
   getPeriodCountSheet,
   getPeriodVariance,
@@ -15,9 +16,12 @@ import {
   listPeriods,
 } from './services/stocktake';
 import { downloadStocktakeQtySample, parseStocktakeQtyFile } from './utils/stocktakeQtyImport';
+import { downloadPeriodOpeningAggregationPdf } from './utils/stocktakeAggregationPdf';
 import { downloadStocktakeCountSheetPdf, downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
+import { formatStockPeriodDateTime, formatStockPeriodRange } from './utils/stocktakePeriodDisplay';
 import { stocktakeCountUrlForLocation } from './utils/stocktakeLocationSlug';
 import { logUserActivity } from './utils/userActivityLog';
+import db from './dataClient';
 import './stocktake-count.css';
 
 export default function StocktakeControlPage() {
@@ -217,6 +221,24 @@ export default function StocktakeControlPage() {
     });
   }, 'Variance PDF downloaded.');
 
+  const handleDownloadOpeningAggregationPdf = () => run(async () => {
+    const opening = (periodDetail?.opening || []).filter((r) => Number(r.qty || 0) > 0);
+    let rows = periodDetail?.opening_aggregation || [];
+    if (!rows.length && opening.length) {
+      rows = await computeOpeningAggregationForPeriod(periodDetail.period, opening);
+    }
+    if (!rows.length) {
+      throw new Error('No opening stock for this period yet.');
+    }
+    const { data: company } = await db.from('company_settings').select('*').limit(1).maybeSingle();
+    await downloadPeriodOpeningAggregationPdf({
+      period: periodDetail.period,
+      rows,
+      company: company || null,
+      locationName,
+    });
+  }, 'Opening aggregation PDF downloaded — please collect signatures.');
+
   const handleDownloadCountSheet = () => run(async () => {
     if (!periodId) throw new Error('No period selected. Click View on the open period first.');
     setCountSheetProgress({ pct: 2, label: 'Starting…' });
@@ -290,8 +312,11 @@ export default function StocktakeControlPage() {
   };
 
   const period = periodDetail?.period;
-  const canDownloadPdf = period?.status === 'closed';
+  const canDownloadPdf = String(period?.status || '').toLowerCase() === 'closed';
   const canDownloadCountSheet = period?.status === 'open' && !(periodDetail?.closing || []).length;
+  const hasOpeningForAggregation = (periodDetail?.opening_aggregation || []).length > 0
+    || (periodDetail?.opening || []).some((r) => Number(r.qty || 0) > 0);
+  const canDownloadOpeningAggregation = hasOpeningForAggregation;
 
   return (
     <div className="stock-periods-page">
@@ -445,8 +470,8 @@ export default function StocktakeControlPage() {
                   <tr><td colSpan={4}>No periods yet. Complete a stocktake submit first.</td></tr>
                 ) : periods.map((p) => (
                   <tr key={p.id}>
-                    <td>{p.begin_period_date || p.opened_at ? new Date(p.begin_period_date || p.opened_at).toLocaleString() : '—'}</td>
-                    <td>{p.end_period_date || p.closed_at ? new Date(p.end_period_date || p.closed_at).toLocaleString() : '—'}</td>
+                    <td>{formatStockPeriodDateTime(p.begin_period_date || p.opened_at)}</td>
+                    <td>{formatStockPeriodDateTime(p.end_period_date || p.closed_at)}</td>
                     <td>{p.status}</td>
                     <td>
                       <button
@@ -468,18 +493,31 @@ export default function StocktakeControlPage() {
               <div className="stock-periods-section-title">
                 Period detail — {period?.status}
               </div>
+              <div className="stock-periods-note" style={{ marginBottom: 8 }}>
+                {formatStockPeriodRange(period)}
+              </div>
               <div className="stock-periods-actions">
+                {canDownloadCountSheet && (
+                  <button
+                    type="button"
+                    className="stock-periods-btn stock-periods-btn-primary"
+                    disabled={busy}
+                    onClick={handleDownloadCountSheet}
+                  >
+                    Download count sheet PDF
+                  </button>
+                )}
                 <button
                   type="button"
                   className="stock-periods-btn stock-periods-btn-primary"
-                  disabled={!canDownloadCountSheet || busy}
-                  onClick={handleDownloadCountSheet}
+                  disabled={!canDownloadOpeningAggregation || busy}
+                  onClick={handleDownloadOpeningAggregationPdf}
                 >
-                  Download count sheet PDF
+                  Download opening aggregation PDF (signatures)
                 </button>
                 <button
                   type="button"
-                  className="stock-periods-btn stock-periods-btn-secondary"
+                  className="stock-periods-btn stock-periods-btn-primary"
                   disabled={!canDownloadPdf || busy}
                   onClick={handleDownloadPdf}
                 >
@@ -506,33 +544,9 @@ export default function StocktakeControlPage() {
                 </div>
               )}
 
-              <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
-                {canDownloadCountSheet ? 'Expected stock to count' : 'Opening stock (this period)'}
-              </div>
-              <table className="pos-table stock-periods-table">
-                <thead>
-                  <tr><th>Product</th><th>SKU</th><th>Qty</th></tr>
-                </thead>
-                <tbody>
-                  {(periodDetail.opening || []).length === 0 ? (
-                    <tr><td colSpan={3}>
-                      {canDownloadCountSheet
-                        ? 'No lines to count for this period yet.'
-                        : 'No opening stock recorded for this period yet.'}
-                    </td></tr>
-                  ) : periodDetail.opening.map((r) => (
-                    <tr key={r.product_id}>
-                      <td>{r.name}</td>
-                      <td>{r.sku || '—'}</td>
-                      <td>{r.qty}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {(periodDetail.closing || []).length > 0 && (
+              {!canDownloadCountSheet && (periodDetail.closing || []).length > 0 && (
                 <>
-                  <div className="stock-periods-section-title" style={{ marginTop: 16 }}>Closing stock</div>
+                  <div className="stock-periods-section-title" style={{ marginTop: 16 }}>Closing stock (counted at submit)</div>
                   <table className="pos-table stock-periods-table">
                     <thead>
                       <tr><th>Product</th><th>SKU</th><th>Qty</th></tr>
@@ -549,6 +563,64 @@ export default function StocktakeControlPage() {
                   </table>
                 </>
               )}
+
+              {(periodDetail.opening_aggregation || []).length > 0 && (
+                <>
+                  <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
+                    Opening stock (aggregation view)
+                  </div>
+                  <div className="stock-periods-note" style={{ marginBottom: 8 }}>
+                    Same layout as stocktake aggregation — sets rolled up from opening component qty.
+                  </div>
+                  <table className="pos-table stock-periods-table">
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left' }}>Product / Set</th>
+                        <th>SKU</th>
+                        <th>Type</th>
+                        <th>Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {periodDetail.opening_aggregation.map((r, idx) => (
+                        <tr key={`${r.sku}-${r.name}-${idx}`}>
+                          <td style={{ textAlign: 'left' }}>{r.name}</td>
+                          <td>{r.sku || '—'}</td>
+                          <td>Product</td>
+                          <td>{r.qty}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+
+              <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
+                {canDownloadCountSheet ? 'Expected stock to count' : 'Opening stock (flat list)'}
+              </div>
+              <table className="pos-table stock-periods-table">
+                <thead>
+                  <tr><th>Product</th><th>SKU</th><th>Qty</th></tr>
+                </thead>
+                <tbody>
+                  {(periodDetail.opening || []).length === 0 ? (
+                    <tr><td colSpan={3}>
+                      {canDownloadCountSheet
+                        ? 'No lines to count for this period yet.'
+                        : (periodDetail.closing || []).length > 0
+                          ? 'No opening stock rows with qty > 0 for this period. Counted lines are in closing stock above.'
+                          : 'No opening stock recorded for this period yet. If this is an older period, deploy the latest stocktake API or refresh after deploy.'}
+                    </td></tr>
+                  ) : periodDetail.opening.map((r) => (
+                    <tr key={r.product_id}>
+                      <td>{r.name}</td>
+                      <td>{r.sku || '—'}</td>
+                      <td>{r.qty}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
             </div>
           )}
         </>

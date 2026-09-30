@@ -1,16 +1,20 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { formatStockPeriodRange } from './stocktakePeriodDisplay';
+import { drawStocktakeApprovalSignatures } from './stocktakePdfSignatures';
 
 function fmtDateTime(value = new Date()) {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value || '');
   return d.toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
     day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
   });
 }
 
@@ -25,19 +29,29 @@ function loadImage(url) {
   });
 }
 
-/**
- * Professional PDF of aggregated stocktake counts (pre-submit review).
- */
-export async function downloadStocktakeAggregationPdf({
-  locationName,
-  sessionLabel,
-  rows,
+function aggregationTableBody(rows) {
+  return (rows || []).map((row) => {
+    let typeLabel = 'Product';
+    if (row.row_type === 'set') typeLabel = 'Set';
+    else if (row.row_type === 'component') typeLabel = 'Component';
+    return [
+      typeLabel,
+      row.sku || '',
+      row.name || '',
+      Number(row.qty || 0),
+    ];
+  });
+}
+
+async function drawAggregationHeader(doc, {
   company,
-  generatedAt = new Date(),
+  title,
+  locationName,
+  periodLine,
+  subtitle,
 }) {
   const companyName = company?.company_name || company?.name || 'Best Rest Furniture';
   const logoUrl = rewriteLegacyStorageUrl(company?.company_logo || company?.logo || '', { bucket: 'companylogos' });
-  const doc = new jsPDF('p', 'pt', 'a4');
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 28;
@@ -59,37 +73,39 @@ export async function downloadStocktakeAggregationPdf({
   }
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(24);
+  doc.setFontSize(22);
   doc.text(companyName, pageWidth / 2, 46, { align: 'center' });
 
   doc.setFontSize(15);
-  doc.text('Stock Count Aggregation', pageWidth / 2, 72, { align: 'center' });
+  doc.text(title, pageWidth / 2, 72, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
-  doc.text(`Location: ${locationName || '—'}`, pageWidth / 2, 92, { align: 'center' });
-  doc.text(`Generated: ${fmtDateTime(generatedAt)}`, pageWidth / 2, 108, { align: 'center' });
-  if (sessionLabel) {
+  let metaY = 92;
+  if (locationName) {
+    doc.text(`Location: ${locationName}`, pageWidth / 2, metaY, { align: 'center' });
+    metaY += 16;
+  }
+  if (periodLine) {
     doc.setFontSize(10);
-    doc.text(sessionLabel, pageWidth / 2, 122, { align: 'center' });
+    doc.text(periodLine, pageWidth / 2, metaY, { align: 'center' });
+    metaY += 16;
+  }
+  if (subtitle) {
+    doc.setFontSize(10);
+    doc.text(subtitle, pageWidth / 2, metaY, { align: 'center' });
+    metaY += 14;
   }
 
-  const body = (rows || []).map((row) => {
-    let typeLabel = 'Product';
-    if (row.row_type === 'set') typeLabel = 'Set';
-    else if (row.row_type === 'component') typeLabel = 'Component';
-    return [
-      typeLabel,
-      row.sku || '',
-      row.name || '',
-      Number(row.qty || 0),
-    ];
-  });
+  return { margin, metaY, pageWidth };
+}
 
+function renderAggregationTable(doc, { rows, startY, margin }) {
+  const body = aggregationTableBody(rows);
   const totalQty = (rows || []).reduce((sum, row) => sum + Number(row.qty || 0), 0);
 
   autoTable(doc, {
-    startY: sessionLabel ? 134 : 120,
+    startY,
     head: [['TYPE', 'SKU', 'PRODUCT / SET', 'QTY']],
     body,
     foot: [['', '', 'TOTAL LINES', String((rows || []).length)], ['', '', 'SUM OF QTY', String(totalQty)]],
@@ -103,7 +119,75 @@ export async function downloadStocktakeAggregationPdf({
     },
   });
 
+  return doc.lastAutoTable?.finalY ?? startY;
+}
+
+/**
+ * Professional PDF of aggregated stocktake counts (pre-submit review).
+ */
+export async function downloadStocktakeAggregationPdf({
+  locationName,
+  sessionLabel,
+  rows,
+  company,
+  generatedAt = new Date(),
+}) {
+  const doc = new jsPDF('p', 'pt', 'a4');
+  const { margin, metaY, pageWidth } = await drawAggregationHeader(doc, {
+    company,
+    title: 'Stock Count Aggregation',
+    locationName,
+    subtitle: sessionLabel ? sessionLabel : `Generated: ${fmtDateTime(generatedAt)}`,
+  });
+
+  const tableEndY = renderAggregationTable(doc, { rows, startY: metaY + 8, margin });
+  appendAggregationSignOff(doc, tableEndY, margin, pageWidth);
+
   const safeLocation = String(locationName || 'location').replace(/[^\w-]+/g, '_');
   const stamp = fmtDateTime(generatedAt).replace(/[,: ]+/g, '_');
   doc.save(`Stock_Aggregation_${safeLocation}_${stamp}.pdf`);
+}
+
+function appendAggregationSignOff(doc, tableEndY, margin, pageWidth) {
+  let y = tableEndY + 24;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  if (y > pageHeight - margin - 120) {
+    doc.addPage();
+    y = 48;
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('Sign-off', margin, y);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('Supervisor and stocktake conductor: print name, then sign in the boxes below.', margin, y + 14);
+  drawStocktakeApprovalSignatures(doc, y + 28, margin, pageWidth);
+}
+
+/**
+ * Opening stock for a closed/open period — aggregation layout with signature blocks for sign-off.
+ */
+export async function downloadPeriodOpeningAggregationPdf({
+  period,
+  rows,
+  company,
+  locationName,
+}) {
+  const doc = new jsPDF('p', 'pt', 'a4');
+  const periodLine = formatStockPeriodRange(period);
+  const { margin, metaY, pageWidth } = await drawAggregationHeader(doc, {
+    company,
+    title: 'Opening Stock — Aggregation',
+    locationName,
+    periodLine,
+    subtitle: 'Please sign below after verifying counts.',
+  });
+
+  const tableEndY = renderAggregationTable(doc, { rows, startY: metaY + 8, margin });
+  appendAggregationSignOff(doc, tableEndY, margin, pageWidth);
+
+  const begin = period?.begin_period_date || period?.opened_at;
+  const beginStamp = begin ? fmtDateTime(begin).replace(/[,: ]+/g, '_') : 'period';
+  const safeLocation = String(locationName || 'location').replace(/[^\w-]+/g, '_');
+  doc.save(`Opening_Aggregation_${safeLocation}_${beginStamp}.pdf`);
 }

@@ -5,11 +5,13 @@ import { isSetProductId } from '../src/utils/stocktakeSubmitTotals.js';
 import { createFirestoreServerClient } from '../server/lib/firestoreServerClient.js';
 import { createFirestoreAnonClient } from '../server/lib/firestoreStocktakeAuth.js';
 import { buildCountSheetRows } from '../src/utils/stocktakeCountSheetRows.js';
+import { buildOpeningStockAggregationRows } from '../src/utils/stocktakePeriodDisplay.js';
 import {
   applyWarehouseStocktakeOnSubmit,
   shouldSkipLegacyInventoryForLocation,
 } from '../server/lib/warehouseStocktakeApply.js';
 import handleWarehouseMobile from '../server/handlers/warehouse-mobile.js';
+import { buildVarianceRows } from '../server/lib/stocktakeVarianceRows.js';
 
 const STOCKTAKE_ADMIN_EMAIL = 'alielboussi00@gmail.com';
 
@@ -193,27 +195,72 @@ async function fetchProductsByIds(sb, productIds) {
   return all;
 }
 
+function sumStockEntriesByProduct(rows) {
+  const byProduct = new Map();
+  (rows || []).forEach((r) => {
+    if (!r?.product_id) return;
+    const pid = String(r.product_id);
+    byProduct.set(pid, (byProduct.get(pid) || 0) + Number(r.qty || 0));
+  });
+  return byProduct;
+}
+
 /** Opening qty recorded for this stock period (from stocktake submit), not live inventory. */
 async function fetchPeriodOpeningRows(sb, periodId) {
-  const { data: rows, error } = await sb
-    .from('opening_stock_entries')
-    .select('product_id, qty')
-    .eq('session_id', periodId);
+  const sessionId = String(periodId ?? '');
+  if (!sessionId) return [];
+
+  const { data: rows, error } = await fetchAllPaged((from, to) =>
+    sb.from('opening_stock_entries')
+      .select('product_id, qty')
+      .eq('session_id', sessionId)
+      .order('product_id', { ascending: true })
+      .range(from, to),
+  );
   if (error) throw error;
-  const entries = (rows || []).filter((r) => r?.product_id && Number(r.qty || 0) > 0);
+
+  const byProduct = sumStockEntriesByProduct(rows);
+
+  const { data: initEvent } = await sb
+    .from('stocktake_events')
+    .select('id')
+    .eq('opened_period_id', sessionId)
+    .eq('is_initial', true)
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (initEvent?.id) {
+    const { data: countRows, error: countErr } = await fetchAllPaged((from, to) =>
+      sb.from('stocktake_counts')
+        .select('product_id, qty')
+        .eq('event_id', initEvent.id)
+        .order('product_id', { ascending: true })
+        .range(from, to),
+    );
+    if (countErr) throw countErr;
+    (countRows || []).forEach((r) => {
+      if (!r?.product_id || isSetProductId(r.product_id)) return;
+      const pid = String(r.product_id);
+      const qty = Number(r.qty || 0);
+      if (qty <= 0) return;
+      byProduct.set(pid, qty);
+    });
+  }
+
+  const entries = [...byProduct.entries()].filter(([, qty]) => qty > 0);
   if (!entries.length) return [];
 
   const productMap = new Map(
-    (await fetchProductsByIds(sb, entries.map((r) => r.product_id))).map((p) => [String(p.id), p]),
+    (await fetchProductsByIds(sb, entries.map(([productId]) => productId))).map((p) => [String(p.id), p]),
   );
 
   return entries
-    .map((r) => {
-      const pid = String(r.product_id);
+    .map(([product_id, qty]) => {
+      const pid = String(product_id);
       const p = productMap.get(pid) || {};
       return {
-        product_id: r.product_id,
-        qty: Number(r.qty || 0),
+        product_id,
+        qty,
         name: p.name || pid,
         sku: p.sku || '',
       };
@@ -222,35 +269,36 @@ async function fetchPeriodOpeningRows(sb, periodId) {
 }
 
 async function fetchPeriodClosingRows(sb, periodId) {
-  const { data: closing, error } = await sb
-    .from('closing_stock_entries')
-    .select('product_id, qty, products(name, sku)')
-    .eq('session_id', periodId);
+  const sessionId = String(periodId ?? '');
+  if (!sessionId) return [];
+
+  const { data: closing, error } = await fetchAllPaged((from, to) =>
+    sb.from('closing_stock_entries')
+      .select('product_id, qty, products(name, sku)')
+      .eq('session_id', sessionId)
+      .order('product_id', { ascending: true })
+      .range(from, to),
+  );
   if (error) throw error;
 
-  const entries = (closing || []).filter((r) => r?.product_id);
-  const needsLookup = entries.filter((r) => !r.products?.name);
-  let productMap = new Map();
-  if (needsLookup.length) {
-    productMap = new Map(
-      (await fetchProductsByIds(sb, needsLookup.map((r) => r.product_id))).map((p) => [String(p.id), p]),
-    );
-  }
+  const byProduct = sumStockEntriesByProduct(closing);
+  const productIds = [...byProduct.keys()].filter((pid) => (byProduct.get(pid) || 0) > 0);
+  if (!productIds.length) return [];
 
-  return entries
-    .map((r) => {
-      const pid = String(r.product_id);
-      const p = r.products || productMap.get(pid) || {};
-      const name = Array.isArray(p) ? p[0]?.name : (p.name || pid);
-      const sku = Array.isArray(p) ? p[0]?.sku : (p.sku || '');
+  const productMap = new Map(
+    (await fetchProductsByIds(sb, productIds)).map((p) => [String(p.id), p]),
+  );
+
+  return productIds
+    .map((pid) => {
+      const p = productMap.get(pid) || {};
       return {
-        product_id: r.product_id,
-        qty: Number(r.qty || 0),
-        name,
-        sku: sku || '',
+        product_id: pid,
+        qty: byProduct.get(pid) || 0,
+        name: p.name || pid,
+        sku: p.sku || '',
       };
     })
-    .filter((r) => r.qty > 0)
     .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
 }
 
@@ -1263,6 +1311,19 @@ async function handleSetScan(req, res) {
       return res.status(400).json({ ok: false, error: 'Set has no components.' });
     }
 
+    const added = [];
+    for (const comp of components) {
+      const qtyAdd = Number(comp.quantity || 0) * setQty;
+      if (qtyAdd <= 0) continue;
+      const row = await addCountLine(sb, {
+        eventId,
+        productId: comp.product_id,
+        qtyAdd,
+        userEmail,
+      });
+      added.push(row);
+    }
+
     const { data: existingScan } = await sb
       .from('stocktake_set_scans')
       .select('id, set_qty')
@@ -1278,19 +1339,6 @@ async function handleSetScan(req, res) {
       set_qty: nextSetQty,
       updated_at: new Date().toISOString(),
     }], { onConflict: 'event_id,combo_id,user_email' });
-
-    const added = [];
-    for (const comp of components) {
-      const qtyAdd = Number(comp.quantity || 0) * setQty;
-      if (qtyAdd <= 0) continue;
-      const row = await addCountLine(sb, {
-        eventId,
-        productId: comp.product_id,
-        qtyAdd,
-        userEmail,
-      });
-      added.push(row);
-    }
 
     res.status(200).json({ ok: true, setQty: nextSetQty, componentsAdded: added.length });
   } catch (err) {
@@ -1380,317 +1428,6 @@ async function handleSetCreate(req, res) {
       components: itemRows,
     },
   });
-}
-
-async function sumTransfers(sb, locationId, startISO, endISO, direction) {
-  const locCol = direction === 'in' ? 'to_location' : 'from_location';
-  const map = new Map();
-
-  const { data: sessionsDt } = await sb
-    .from('stock_transfer_sessions')
-    .select('id')
-    .eq(locCol, locationId)
-    .eq('status', 'approved')
-    .not('transfer_datetime', 'is', null)
-    .gte('transfer_datetime', startISO)
-    .lte('transfer_datetime', endISO);
-
-  const startDate = String(startISO).slice(0, 10);
-  const endDate = String(endISO).slice(0, 10);
-  const { data: sessionsDate } = await sb
-    .from('stock_transfer_sessions')
-    .select('id')
-    .eq(locCol, locationId)
-    .eq('status', 'approved')
-    .is('transfer_datetime', null)
-    .gte('transfer_date', startDate)
-    .lte('transfer_date', endDate);
-
-  const ids = [...new Set([
-    ...(sessionsDt || []).map((s) => s.id),
-    ...(sessionsDate || []).map((s) => s.id),
-  ])];
-  if (!ids.length) return map;
-
-  const { data: entries } = await sb
-    .from('stock_transfer_entries')
-    .select('product_id, quantity')
-    .in('session_id', ids);
-  (entries || []).forEach((e) => {
-    map.set(e.product_id, (map.get(e.product_id) || 0) + Number(e.quantity || 0));
-  });
-  return map;
-}
-
-async function sumSales(sb, locationId, startISO, endISO) {
-  const map = new Map();
-  const startDate = String(startISO).slice(0, 10);
-  const endDate = String(endISO).slice(0, 10);
-
-  const { data: byDate } = await sb
-    .from('sales')
-    .select('id')
-    .eq('location_id', locationId)
-    .not('sale_date', 'is', null)
-    .gte('sale_date', startDate)
-    .lte('sale_date', endDate);
-
-  const { data: byCreated } = await sb
-    .from('sales')
-    .select('id')
-    .eq('location_id', locationId)
-    .is('sale_date', null)
-    .gte('created_at', startISO)
-    .lte('created_at', endISO);
-
-  const ids = [...new Set([
-    ...(byDate || []).map((s) => s.id),
-    ...(byCreated || []).map((s) => s.id),
-  ])];
-  if (!ids.length) return map;
-
-  const { data: items } = await sb
-    .from('sales_items')
-    .select('product_id, quantity')
-    .in('sale_id', ids);
-  (items || []).forEach((e) => {
-    map.set(e.product_id, (map.get(e.product_id) || 0) + Number(e.quantity || 0));
-  });
-  return map;
-}
-
-function activeUnitPrice(product, atDate = new Date()) {
-  const promo = Number(product?.promotional_price);
-  const standard = Number(product?.price || 0);
-  if (!Number.isFinite(promo) || promo <= 0) return standard;
-  const start = product.promo_start_date ? new Date(product.promo_start_date) : null;
-  const end = product.promo_end_date ? new Date(product.promo_end_date) : null;
-  const t = atDate.getTime();
-  if (start && t < start.getTime()) return standard;
-  if (end && t > end.getTime()) return standard;
-  return promo;
-}
-
-function normalizeProductId(id) {
-  if (id == null || id === '') return '';
-  return String(id);
-}
-
-function mapGetQty(map, productId) {
-  if (!map || productId == null) return 0;
-  const key = normalizeProductId(productId);
-  if (map.has(key)) return Number(map.get(key) || 0);
-  if (map.has(productId)) return Number(map.get(productId) || 0);
-  return 0;
-}
-
-/** Include lines that were in opening stock (>0) or added mid-period (activity / counted closing). */
-function includeInVarianceReport({ openingQty, closingQty, transfersIn, sales }) {
-  const o = Number(openingQty || 0);
-  const c = Number(closingQty || 0);
-  const t = Number(transfersIn || 0);
-  const s = Number(sales || 0);
-  if (o > 0) return true;
-  if (c > 0 || t > 0 || s > 0) return true;
-  return false;
-}
-
-function buildVarianceLedgerRow({
-  sku,
-  product_name,
-  openingQty,
-  transfersIn,
-  sales,
-  closingQty,
-  unitPrice,
-  is_set = false,
-}) {
-  const o = Number(openingQty || 0);
-  const tin = Number(transfersIn || 0);
-  const s = Number(sales || 0);
-  const closing = Number(closingQty || 0);
-  const currentStock = o + tin - s;
-  const variance = currentStock - closing;
-  const unit = Number(unitPrice || 0);
-  return {
-    sku: sku || '',
-    product_name: product_name || '',
-    opening_stock_qty: o,
-    transfers_in: tin,
-    sales: s,
-    current_stock_qty: currentStock,
-    closing_stock_qty: closing,
-    variance,
-    variance_amount: variance * unit,
-    is_set,
-  };
-}
-
-async function buildVarianceRows(sb, period) {
-  const locationId = period.location_id;
-  const startISO = period.begin_period_date || period.opened_at;
-  const endISO = period.end_period_date || period.closed_at || new Date().toISOString();
-  const priceAt = new Date(endISO);
-
-  const { data: opening } = await sb
-    .from('opening_stock_entries')
-    .select('product_id, qty')
-    .eq('session_id', period.id);
-  const { data: closing } = await sb
-    .from('closing_stock_entries')
-    .select('product_id, qty')
-    .eq('session_id', period.id);
-
-  const openingMap = new Map();
-  (opening || []).forEach((r) => {
-    const pid = normalizeProductId(r?.product_id);
-    if (!pid) return;
-    openingMap.set(pid, Number(r.qty || 0));
-  });
-  const closingMap = new Map();
-  (closing || []).forEach((r) => {
-    const pid = normalizeProductId(r?.product_id);
-    if (!pid) return;
-    closingMap.set(pid, Number(r.qty || 0));
-  });
-  const transfersIn = await sumTransfers(sb, locationId, startISO, endISO, 'in');
-  const salesMap = await sumSales(sb, locationId, startISO, endISO);
-
-  const candidateProductIds = new Set();
-  openingMap.forEach((_, id) => candidateProductIds.add(id));
-  closingMap.forEach((_, id) => candidateProductIds.add(id));
-  transfersIn.forEach((qty, id) => {
-    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
-  });
-  salesMap.forEach((qty, id) => {
-    if (Number(qty || 0) > 0) candidateProductIds.add(normalizeProductId(id));
-  });
-
-  const includedProductIds = new Set();
-  candidateProductIds.forEach((id) => {
-    const pid = normalizeProductId(id);
-    if (!pid) return;
-    const openingQty = mapGetQty(openingMap, pid);
-    const closingQty = mapGetQty(closingMap, pid);
-    const tin = mapGetQty(transfersIn, pid);
-    const sales = mapGetQty(salesMap, pid);
-    if (includeInVarianceReport({ openingQty, closingQty, transfersIn: tin, sales })) {
-      includedProductIds.add(pid);
-    }
-  });
-
-  const productIdsForFetch = [...includedProductIds];
-  const productMap = new Map();
-  for (const chunk of chunkArray(productIdsForFetch, 150)) {
-    if (!chunk.length) continue;
-    const { data: products, error } = await sb
-      .from('products')
-      .select('id, name, sku, price, promotional_price, promo_start_date, promo_end_date')
-      .in('id', chunk);
-    if (error) throw error;
-    (products || []).forEach((p) => productMap.set(normalizeProductId(p.id), p));
-  }
-
-  const { data: comboLocs } = await sb.from('combo_locations').select('combo_id').eq('location_id', locationId);
-  const comboIds = (comboLocs || []).map((r) => r.combo_id);
-  let combos = [];
-  let comboItems = [];
-  if (comboIds.length) {
-    const { data: c } = await sb.from('combos').select('id, combo_name, sku, standard_price, combo_price').in('id', comboIds);
-    const { data: ci } = await sb.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds);
-    combos = c || [];
-    comboItems = ci || [];
-  }
-
-  const remaining = new Map();
-  closingMap.forEach((qty, pid) => remaining.set(pid, qty));
-
-  const setRows = [];
-  for (const combo of combos) {
-    const comps = comboItems.filter((i) => i.combo_id === combo.id);
-    if (!comps.length) continue;
-    let maxSets = Infinity;
-    comps.forEach((comp) => {
-      const have = mapGetQty(remaining, comp.product_id);
-      const need = Number(comp.quantity || 0);
-      if (need <= 0) return;
-      maxSets = Math.min(maxSets, Math.floor(have / need));
-    });
-    if (!Number.isFinite(maxSets) || maxSets < 0) maxSets = 0;
-
-    const openQty = Math.floor(Math.min(...comps.map((comp) => {
-      const need = Number(comp.quantity || 0) || 1;
-      return mapGetQty(openingMap, comp.product_id) / need;
-    })));
-    let tinSets = 0;
-    let salesSets = 0;
-    comps.forEach((comp) => {
-      const need = Number(comp.quantity || 0);
-      if (need <= 0) return;
-      tinSets += mapGetQty(transfersIn, comp.product_id) / need;
-      salesSets += mapGetQty(salesMap, comp.product_id) / need;
-    });
-    const tinFloored = Math.floor(tinSets);
-    const salesFloored = Math.floor(salesSets);
-
-    if (!includeInVarianceReport({
-      openingQty: openQty,
-      closingQty: maxSets,
-      transfersIn: tinFloored,
-      sales: salesFloored,
-    })) {
-      continue;
-    }
-
-    if (maxSets > 0) {
-      comps.forEach((comp) => {
-        const pid = normalizeProductId(comp.product_id);
-        const need = Number(comp.quantity || 0) * maxSets;
-        if (!pid) return;
-        remaining.set(pid, mapGetQty(remaining, pid) - need);
-      });
-    }
-
-    const unit = Number(combo.standard_price ?? combo.combo_price ?? 0);
-    setRows.push(buildVarianceLedgerRow({
-      sku: combo.sku || '',
-      product_name: combo.combo_name,
-      openingQty: openQty,
-      transfersIn: tinFloored,
-      sales: salesFloored,
-      closingQty: maxSets,
-      unitPrice: unit,
-      is_set: true,
-    }));
-  }
-
-  const productRows = [];
-  remaining.forEach((closingQty, productId) => {
-    const pid = normalizeProductId(productId);
-    if (!pid || !includedProductIds.has(pid)) return;
-
-    const openingQty = mapGetQty(openingMap, pid);
-    const tin = mapGetQty(transfersIn, pid);
-    const sales = mapGetQty(salesMap, pid);
-    if (!includeInVarianceReport({ openingQty, closingQty, transfersIn: tin, sales })) {
-      return;
-    }
-
-    const p = productMap.get(pid) || {};
-    const unit = activeUnitPrice(p, priceAt);
-    productRows.push(buildVarianceLedgerRow({
-      sku: p.sku || '',
-      product_name: p.name || pid,
-      openingQty,
-      transfersIn: tin,
-      sales,
-      closingQty,
-      unitPrice: unit,
-      is_set: false,
-    }));
-  });
-
-  return [...setRows, ...productRows].sort((a, b) => String(a.product_name).localeCompare(String(b.product_name)));
 }
 
 async function handleCountsClear(req, res) {
@@ -2063,11 +1800,18 @@ async function handlePeriodsList(req, res) {
   res.status(200).json({ ok: true, rows: data || [] });
 }
 
+async function fetchOpeningAggregationForPeriod(sb, period, openingRows) {
+  if (!(openingRows || []).length) return [];
+  const { combos, comboItems } = await loadLocationCombos(sb, period.location_id);
+  return buildOpeningStockAggregationRows(openingRows, combos, comboItems);
+}
+
 async function fetchPeriodDetailOpeningRows(sb, period) {
+  const periodId = String(period?.id ?? '');
   const { data: closingPeek } = await sb
     .from('closing_stock_entries')
     .select('product_id')
-    .eq('session_id', period.id)
+    .eq('session_id', periodId)
     .limit(1);
   const hasClosing = (closingPeek || []).length > 0;
 
@@ -2081,7 +1825,7 @@ async function fetchPeriodDetailOpeningRows(sb, period) {
       is_set: Boolean(r.is_set),
     }));
   }
-  return fetchPeriodOpeningRows(sb, period.id);
+  return fetchPeriodOpeningRows(sb, periodId);
 }
 
 async function handlePeriodDetail(req, res) {
@@ -2092,9 +1836,10 @@ async function handlePeriodDetail(req, res) {
   if (error) return res.status(500).json({ ok: false, error: error.message });
   if (!period) return res.status(404).json({ ok: false, error: 'Period not found' });
 
-  const [opening, closing] = await Promise.all([
-    fetchPeriodDetailOpeningRows(sb, period),
+  const opening = await fetchPeriodDetailOpeningRows(sb, period);
+  const [closing, openingAggregation] = await Promise.all([
     fetchPeriodClosingRows(sb, periodId),
+    fetchOpeningAggregationForPeriod(sb, period, opening),
   ]);
 
   res.status(200).json({
@@ -2102,6 +1847,7 @@ async function handlePeriodDetail(req, res) {
     period,
     opening,
     closing,
+    opening_aggregation: openingAggregation,
   });
 }
 
@@ -2116,6 +1862,7 @@ async function handlePeriodVariance(req, res) {
     return res.status(409).json({ ok: false, error: 'Variance PDF is only available after period close.' });
   }
   const rows = await buildVarianceRows(sb, period);
+  const periodForReport = { ...period };
   const { data: company } = await sb.from('company_settings').select('*').limit(1).maybeSingle();
   const { data: location } = await sb
     .from('locations')
@@ -2124,7 +1871,7 @@ async function handlePeriodVariance(req, res) {
     .maybeSingle();
   res.status(200).json({
     ok: true,
-    period,
+    period: periodForReport,
     rows,
     company: company || null,
     locationName: location?.name || '',

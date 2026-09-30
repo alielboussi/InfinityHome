@@ -76,6 +76,67 @@ export function buildPdfRows(consolidated, qtyDraft = {}) {
   return out.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
 }
 
+function cleanAggregationProductName(name) {
+  return String(name || '')
+    .replace(/^\s*↳\s*/, '')
+    .replace(/^\s*!!\s*/, '')
+    .trim();
+}
+
+/**
+ * Aggregation export: expand sets into component lines only (no set headers).
+ * All lines are row_type "product" so PDF/UI match standalone products.
+ */
+export function buildFlattenedAggregationProductRows(consolidated, qtyDraft = {}) {
+  const out = [];
+
+  (consolidated || []).forEach((row) => {
+    if (row.row_type === 'set') {
+      const setQty = Number(row.qty) || 0;
+      (row.components || []).forEach((comp) => {
+        const need = Number(comp.need_per_set ?? comp.quantity) || 0;
+        const qty = need * setQty;
+        if (qty <= 0) return;
+        out.push({
+          row_type: 'product',
+          product_id: comp.product_id,
+          sku: comp.sku || '',
+          name: cleanAggregationProductName(comp.name || comp.product_id),
+          qty,
+        });
+      });
+      return;
+    }
+    if (!isComponentRow(row)) return;
+    const pid = String(row.product_id);
+    const draftQty = Object.prototype.hasOwnProperty.call(qtyDraft, pid) ? qtyDraft[pid] : null;
+    const qty = draftQty === null || draftQty === '' ? Number(row.qty) || 0 : Number(draftQty) || 0;
+    if (qty <= 0) return;
+    out.push({
+      row_type: 'product',
+      product_id: row.product_id,
+      sku: row.sku || '',
+      name: cleanAggregationProductName(row.name || pid),
+      qty,
+    });
+  });
+
+  const merged = new Map();
+  out.forEach((row) => {
+    const key = String(row.product_id || row.sku || row.name);
+    if (!merged.has(key)) {
+      merged.set(key, { ...row });
+      return;
+    }
+    const prev = merged.get(key);
+    prev.qty = Number(prev.qty || 0) + Number(row.qty || 0);
+  });
+
+  return [...merged.values()].sort((a, b) =>
+    String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }),
+  );
+}
+
 export function isSetProductId(productId) {
   return String(productId || '').startsWith('set:');
 }

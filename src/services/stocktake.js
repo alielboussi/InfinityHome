@@ -1,6 +1,9 @@
 import db from '../dataClient';
 import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import { buildCountSheetRows } from '../utils/stocktakeCountSheetRows';
+import { buildOpeningStockAggregationRows } from '../utils/stocktakePeriodDisplay';
+import { buildVarianceRows } from '../utils/stocktakeVarianceRows';
+import { isSetProductId } from '../utils/stocktakeSubmitTotals';
 import { signInWithEmailPassword } from '../utils/authLogin';
 import { buildLiveConsolidatedWithSets } from '../utils/stocktakeLiveTotals';
 import { fetchWarehouseStocktakeCatalog, fetchMyWarehouseCounts, clearMyWarehouseCounts, addWarehousePacketCount, addWarehouseProductCount, removeMyWarehousePacketCount, removeMyWarehouseProductCount } from './warehouseStocktake';
@@ -1013,25 +1016,227 @@ export async function listPeriods(locationId) {
   );
 }
 
+async function clientFetchPeriodStockRows(table, periodId) {
+  const sessionId = String(periodId ?? '');
+  if (!sessionId) return [];
+  const pageSize = 1000;
+  const all = [];
+  for (let offset = 0; offset < 20000; offset += pageSize) {
+    const { data, error } = await db
+      .from(table)
+      .select('product_id, qty')
+      .eq('session_id', sessionId)
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const rows = data || [];
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  const byProduct = new Map();
+  all.forEach((r) => {
+    if (!r?.product_id) return;
+    const pid = String(r.product_id);
+    byProduct.set(pid, (byProduct.get(pid) || 0) + Number(r.qty || 0));
+  });
+  const ids = [...byProduct.entries()].filter(([, qty]) => qty > 0).map(([id]) => id);
+  if (!ids.length) return [];
+
+  const productMap = new Map();
+  for (let i = 0; i < ids.length; i += 150) {
+    const chunk = ids.slice(i, i + 150);
+    const { data: products, error: pErr } = await db
+      .from('products')
+      .select('id, name, sku')
+      .in('id', chunk);
+    if (pErr) throw pErr;
+    (products || []).forEach((p) => productMap.set(String(p.id), p));
+  }
+
+  return ids
+    .map((pid) => {
+      const p = productMap.get(pid) || {};
+      return {
+        product_id: pid,
+        qty: byProduct.get(pid) || 0,
+        name: p.name || pid,
+        sku: p.sku || '',
+      };
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
+}
+
+async function clientGetPeriodDetail(periodId) {
+  const { data: period, error } = await db.from('stock_periods').select('*').eq('id', periodId).maybeSingle();
+  if (error) throw error;
+  if (!period) throw new Error('Period not found');
+
+  const { data: closingPeek } = await db
+    .from('closing_stock_entries')
+    .select('product_id')
+    .eq('session_id', String(periodId))
+    .limit(1);
+  const hasClosing = (closingPeek || []).length > 0;
+
+  let opening = [];
+  if (period.status === 'open' && !hasClosing) {
+    const rows = await buildCountSheetRows(db, period);
+    opening = rows.map((r, idx) => ({
+      product_id: r.product_id || `row:${r.sku || idx}`,
+      name: r.product_name,
+      sku: r.sku || '',
+      qty: Number(r.closing_stock_qty ?? r.expected_qty ?? 0),
+      is_set: Boolean(r.is_set),
+    }));
+  } else {
+    opening = await clientFetchPeriodStockRows('opening_stock_entries', periodId);
+    const { data: initEvent } = await db
+      .from('stocktake_events')
+      .select('id')
+      .eq('opened_period_id', periodId)
+      .eq('is_initial', true)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (initEvent?.id) {
+      const { data: countRows, error: countErr } = await db
+        .from('stocktake_counts')
+        .select('product_id, qty')
+        .eq('event_id', initEvent.id);
+      if (countErr) throw countErr;
+      const byId = new Map(opening.map((r) => [String(r.product_id), r]));
+      (countRows || []).forEach((r) => {
+        if (!r?.product_id || isSetProductId(r.product_id)) return;
+        const pid = String(r.product_id);
+        const qty = Number(r.qty || 0);
+        if (qty <= 0) return;
+        const existing = byId.get(pid);
+        if (existing) {
+          existing.qty = qty;
+        } else {
+          const row = { product_id: pid, qty, name: pid, sku: '' };
+          byId.set(pid, row);
+          opening.push(row);
+        }
+      });
+      const productIds = [...byId.keys()];
+      for (let i = 0; i < productIds.length; i += 150) {
+        const chunk = productIds.slice(i, i + 150);
+        const { data: products } = await db.from('products').select('id, name, sku').in('id', chunk);
+        (products || []).forEach((p) => {
+          const row = byId.get(String(p.id));
+          if (row) {
+            row.name = p.name || row.name;
+            row.sku = p.sku || '';
+          }
+        });
+      }
+      opening = [...byId.values()].filter((r) => Number(r.qty || 0) > 0)
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: 'base' }));
+    }
+  }
+  const closing = await clientFetchPeriodStockRows('closing_stock_entries', periodId);
+
+  const openingAggregation = await computeOpeningAggregationForPeriod(period, opening);
+
+  return { ok: true, period, opening, closing, opening_aggregation: openingAggregation };
+}
+
+export async function computeOpeningAggregationForPeriod(period, openingRows) {
+  const opening = (openingRows || []).filter((r) => Number(r.qty || 0) > 0);
+  if (!period?.location_id || !opening.length) return [];
+
+  const { data: comboLocs } = await db.from('combo_locations').select('combo_id').eq('location_id', period.location_id);
+  const comboIds = (comboLocs || []).map((r) => r.combo_id).filter(Boolean);
+  let combos = [];
+  let comboItems = [];
+  if (comboIds.length) {
+    const [{ data: c }, { data: ci }] = await Promise.all([
+      db.from('combos').select('id, combo_name, sku').in('id', comboIds),
+      db.from('combo_items').select('combo_id, product_id, quantity').in('combo_id', comboIds),
+    ]);
+    combos = c || [];
+    comboItems = ci || [];
+  }
+  return buildOpeningStockAggregationRows(opening, combos, comboItems);
+}
+
+async function enrichPeriodDetail(periodId, data) {
+  const period = data?.period;
+  let opening = data?.opening || [];
+  let openingAggregation = data?.opening_aggregation || [];
+
+  if (!openingAggregation.length && !opening.length) {
+    try {
+      const client = await clientGetPeriodDetail(periodId);
+      if ((client.opening || []).length) {
+        opening = client.opening;
+        openingAggregation = client.opening_aggregation || [];
+      }
+    } catch {
+      // keep API payload
+    }
+  }
+
+  if (!openingAggregation.length && opening.length) {
+    openingAggregation = await computeOpeningAggregationForPeriod(period, opening);
+  }
+
+  return {
+    ...data,
+    opening,
+    opening_aggregation: openingAggregation,
+  };
+}
+
 export async function getPeriodDetail(periodId) {
+  if (shouldUseClientPeriodVariance()) {
+    return clientGetPeriodDetail(periodId);
+  }
   try {
-    return await fetchJson(`/api/stocktake-period-detail?periodId=${encodeURIComponent(periodId)}`);
+    const data = await fetchJson(`/api/stocktake-period-detail?periodId=${encodeURIComponent(periodId)}`);
+    return enrichPeriodDetail(periodId, data);
   } catch (err) {
     if (!isApiUnavailable(err)) throw err;
-    const { data, error } = await db.from('stock_periods').select('*').eq('id', periodId).maybeSingle();
-    if (error) throw error;
-    return { ok: true, period: data, rows: [] };
+    return clientGetPeriodDetail(periodId);
   }
 }
 
+async function clientGetPeriodVariance(periodId) {
+  const { data: period, error } = await db.from('stock_periods').select('*').eq('id', periodId).maybeSingle();
+  if (error) throw error;
+  if (!period) throw new Error('Period not found');
+  if (period.status !== 'closed') {
+    throw new Error('Variance PDF is only available after period close.');
+  }
+  const rows = await buildVarianceRows(db, period);
+  const [{ data: company }, { data: location }] = await Promise.all([
+    db.from('company_settings').select('*').limit(1).maybeSingle(),
+    db.from('locations').select('id, name').eq('id', period.location_id).maybeSingle(),
+  ]);
+  return {
+    ok: true,
+    period,
+    rows,
+    company: company || null,
+    locationName: location?.name || '',
+  };
+}
+
+function shouldUseClientPeriodVariance() {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname || '';
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
 export async function getPeriodVariance(periodId) {
+  if (shouldUseClientPeriodVariance()) {
+    return clientGetPeriodVariance(periodId);
+  }
   try {
     return await fetchJson(`/api/stocktake-period-variance?periodId=${encodeURIComponent(periodId)}`);
   } catch (err) {
-    if (isApiUnavailable(err)) {
-      throw new Error('Variance report needs the Vercel stocktake API. Try again when the deployment is responding.');
-    }
-    throw err;
+    if (!isApiUnavailable(err)) throw err;
+    return clientGetPeriodVariance(periodId);
   }
 }
 

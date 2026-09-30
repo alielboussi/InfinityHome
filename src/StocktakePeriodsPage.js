@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
+import db from './dataClient';
 import {
   fetchLocations,
+  computeOpeningAggregationForPeriod,
   getPeriodDetail,
   getPeriodVariance,
   listPeriods,
 } from './services/stocktake';
+import { formatStockPeriodDateTime } from './utils/stocktakePeriodDisplay';
+import { downloadPeriodOpeningAggregationPdf } from './utils/stocktakeAggregationPdf';
 import { downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
 import './stocktake-count.css';
 
@@ -53,7 +57,36 @@ export default function StocktakePeriodsPage() {
   }, [periodId]);
 
   const period = detail?.period;
-  const canDownloadPdf = period?.status === 'closed';
+  const canDownloadPdf = String(period?.status || '').toLowerCase() === 'closed';
+  const canDownloadOpeningAggregation = (detail?.opening_aggregation || []).length > 0
+    || (detail?.opening || []).some((r) => Number(r.qty || 0) > 0);
+
+  const locationName = locations.find((l) => l.id === locationId)?.name || '';
+
+  const handleDownloadOpeningAggregationPdf = async () => {
+    if (!canDownloadOpeningAggregation) return;
+    setBusy(true);
+    setError('');
+    try {
+      let rows = detail.opening_aggregation || [];
+      const opening = (detail.opening || []).filter((r) => Number(r.qty || 0) > 0);
+      if (!rows.length && opening.length) {
+        rows = await computeOpeningAggregationForPeriod(period, opening);
+      }
+      const { data: company } = await db.from('company_settings').select('*').limit(1).maybeSingle();
+      await downloadPeriodOpeningAggregationPdf({
+        period,
+        rows,
+        company: company || null,
+        locationName,
+      });
+      setToast('Opening aggregation PDF downloaded — please collect signatures.');
+    } catch (err) {
+      setError(err.message || 'Failed to build PDF');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleDownloadPdf = async () => {
     if (!periodId || !canDownloadPdf) return;
@@ -65,6 +98,7 @@ export default function StocktakePeriodsPage() {
         period: data.period,
         rows: data.rows,
         company: data.company,
+        locationName: data.locationName,
       });
       setToast('Variance PDF downloaded.');
     } catch (err) {
@@ -110,8 +144,8 @@ export default function StocktakePeriodsPage() {
                 <tr><td colSpan={4}>No periods yet. Complete an initial stocktake first.</td></tr>
               ) : periods.map((p) => (
                 <tr key={p.id}>
-                  <td>{p.begin_period_date || p.opened_at ? new Date(p.begin_period_date || p.opened_at).toLocaleString() : '—'}</td>
-                  <td>{p.end_period_date || p.closed_at ? new Date(p.end_period_date || p.closed_at).toLocaleString() : '—'}</td>
+                  <td>{formatStockPeriodDateTime(p.begin_period_date || p.opened_at)}</td>
+                  <td>{formatStockPeriodDateTime(p.end_period_date || p.closed_at)}</td>
                   <td>{p.status}</td>
                   <td>
                     <button type="button" className="stock-periods-btn stock-periods-btn-secondary" onClick={() => setPeriodId(p.id)}>
@@ -134,6 +168,14 @@ export default function StocktakePeriodsPage() {
             <button
               type="button"
               className="stock-periods-btn stock-periods-btn-primary"
+              disabled={!canDownloadOpeningAggregation || busy}
+              onClick={handleDownloadOpeningAggregationPdf}
+            >
+              Download opening aggregation PDF (signatures)
+            </button>
+            <button
+              type="button"
+              className="stock-periods-btn stock-periods-btn-primary"
               disabled={!canDownloadPdf || busy}
               onClick={handleDownloadPdf}
             >
@@ -143,6 +185,34 @@ export default function StocktakePeriodsPage() {
               <span className="stock-periods-note">PDF enabled only after this period is closed by a stocktake submit.</span>
             )}
           </div>
+
+          {(detail.opening_aggregation || []).length > 0 && (
+            <>
+              <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
+                Opening stock (aggregation view)
+              </div>
+              <table className="pos-table stock-periods-table">
+                <thead>
+                  <tr>
+                    <th>Product / Set</th>
+                    <th>SKU</th>
+                    <th>Type</th>
+                    <th>Qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.opening_aggregation.map((r, idx) => (
+                    <tr key={`${r.sku}-${r.name}-${idx}`}>
+                      <td>{r.name}</td>
+                      <td>{r.sku || '—'}</td>
+                      <td>Product</td>
+                      <td>{r.qty}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
 
           <div className="stock-periods-section-title" style={{ marginTop: 16 }}>
             {period?.status === 'open' && !(detail.closing || []).length

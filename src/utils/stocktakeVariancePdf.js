@@ -1,8 +1,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { drawStocktakeApprovalSignatures } from './stocktakePdfSignatures';
 
-function fmtDate(value) {
+function fmtDateFile(value) {
   if (!value) return '';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
@@ -10,6 +11,30 @@ function fmtDate(value) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/** Period stamp with date and time (24h, en-GB — matches stocktake period UI). */
+function fmtDateTime(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+function formatStocktakePeriodRange(begin, end) {
+  const a = fmtDateTime(begin);
+  const b = fmtDateTime(end);
+  if (a && b) return `Period: ${a} → ${b}`;
+  if (a) return `Period: ${a}`;
+  return '';
 }
 
 function loadImage(url, timeoutMs = 4000) {
@@ -47,9 +72,6 @@ function fmtMoney(value) {
   if (!Number.isFinite(num)) return '0.00';
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
-/** 5 cm signature box (jsPDF uses pt; 1 cm ≈ 28.35 pt). */
-const SIGNATURE_BOX_PT = 5 * 28.35;
 
 /** Centered lines with normal word spacing (no justify stretch). Returns Y after last line. */
 function drawCenteredWrappedText(doc, text, centerX, startY, maxWidth, lineHeight = 11) {
@@ -111,62 +133,25 @@ async function drawStocktakeReportHeader(doc, {
     doc.text(`Location: ${locationLabel}`, pageWidth / 2, metaY, { align: 'center' });
     metaY += 14;
   }
+  const metaMaxWidth = pageWidth - margin * 2 - 8;
   if (periodLine) {
-    doc.text(periodLine, pageWidth / 2, metaY, { align: 'center' });
-    metaY += 14;
+    metaY = drawCenteredWrappedText(doc, periodLine, pageWidth / 2, metaY, metaMaxWidth, 12);
+    metaY += 4;
   }
-  const metaMaxWidth = pageWidth - margin * 2;
   if (subtitle) {
     doc.setFontSize(10);
     metaY = drawCenteredWrappedText(doc, subtitle, pageWidth / 2, metaY, metaMaxWidth, 12);
     metaY += 4;
   }
   if (footnote) {
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setTextColor(80, 80, 80);
-    metaY = drawCenteredWrappedText(doc, footnote, pageWidth / 2, metaY, metaMaxWidth, 11);
+    metaY = drawCenteredWrappedText(doc, footnote, pageWidth / 2, metaY, metaMaxWidth, 10);
     doc.setTextColor(0, 0, 0);
     metaY += 4;
   }
 
   return { margin, metaY, pageWidth };
-}
-
-/** Supervisor + stocktake conductor signature blocks (5 cm boxes). */
-function drawStocktakeApprovalSignatures(doc, startY, margin, pageWidth) {
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const colGap = 28;
-  const colWidth = (pageWidth - margin * 2 - colGap) / 2;
-  const leftX = margin;
-  const rightX = margin + colWidth + colGap;
-  const nameLineW = colWidth - 118;
-
-  let y = startY;
-  const blockHeight = 18 + 14 + SIGNATURE_BOX_PT + 16;
-  if (y + blockHeight > pageHeight - margin) {
-    doc.addPage();
-    y = 48;
-  }
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(0, 0, 0);
-  doc.setDrawColor(40, 40, 40);
-  doc.setLineWidth(0.5);
-
-  const drawColumn = (x, nameLabel, signatureLabel) => {
-    doc.text(nameLabel, x, y);
-    doc.line(x + 108, y + 2, x + 108 + nameLineW, y + 2);
-    const sigY = y + 16;
-    doc.text(signatureLabel, x, sigY);
-    const boxY = sigY + 10;
-    doc.rect(x, boxY, SIGNATURE_BOX_PT, SIGNATURE_BOX_PT);
-  };
-
-  drawColumn(leftX, 'Supervisor Name:', 'Supervisor Signature:');
-  drawColumn(rightX, 'Stocktake Conductor Name:', 'Stocktake Conductor Signature:');
-
-  return y + blockHeight;
 }
 
 /**
@@ -175,24 +160,38 @@ function drawStocktakeApprovalSignatures(doc, startY, margin, pageWidth) {
 export async function downloadStocktakeVariancePdf({ period, rows, company, locationName }) {
   const begin = period?.begin_period_date || period?.opened_at;
   const end = period?.end_period_date || period?.closed_at;
-  const beginLabel = fmtDate(begin);
-  const endLabel = fmtDate(end);
+  const beginLabel = fmtDateFile(begin);
+  const endLabel = fmtDateFile(end);
   const locationLabel = locationName || period?.location_name || '';
 
-  const doc = new jsPDF('p', 'pt', 'a4');
+  const doc = new jsPDF('l', 'pt', 'a4');
   const { margin, metaY, pageWidth } = await drawStocktakeReportHeader(doc, {
     company,
     title: 'Stocktake Variance Report',
     locationLabel,
-    periodLine: `Period: ${beginLabel} to ${endLabel}`,
-    footnote: 'Current Stock = Opening + Transfers In − Sales. Variance Qty = Current − Closing (counted). Amount uses promo price when active, else standard price.',
+    periodLine: formatStocktakePeriodRange(begin, end),
+    footnote: 'Current = Opening + Transfers In − Sales.\nVariance Qty = Closing (counted) − Current.\nAmount = unit price × variance (promo when active, else standard).',
   });
 
-  const body = (rows || []).map((r) => {
+  const body = [];
+  (rows || []).forEach((r) => {
+    if (r.row_type === 'set_header') {
+      body.push([{
+        content: r.product_name || '',
+        colSpan: 9,
+        styles: {
+          fontStyle: 'bold',
+          halign: 'left',
+          fillColor: [245, 248, 252],
+          textColor: [20, 20, 20],
+        },
+      }]);
+      return;
+    }
     const current = r.current_stock_qty ?? (
       Number(r.opening_stock_qty || 0) + Number(r.transfers_in || 0) - Number(r.sales || 0)
     );
-    return [
+    body.push([
       r.sku || '',
       r.product_name || '',
       fmtQty(r.opening_stock_qty),
@@ -202,37 +201,54 @@ export async function downloadStocktakeVariancePdf({ period, rows, company, loca
       fmtQty(r.closing_stock_qty),
       fmtQty(r.variance),
       fmtMoney(r.variance_amount),
-    ];
+    ]);
   });
 
   autoTable(doc, {
-    startY: metaY + 16,
+    startY: metaY + 12,
     head: [[
       'SKU',
-      'PRODUCT',
-      'OPENING',
-      'ADJ IN',
-      'SALES',
-      'CURRENT',
-      'CLOSING',
-      'VAR QTY',
-      'AMOUNT',
+      'Product',
+      'Open',
+      'Trans In',
+      'Sales',
+      'Current',
+      'Closing',
+      'Var',
+      'Amount',
     ]],
     body,
-    styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak' },
-    headStyles: { fillColor: [30, 90, 180], textColor: 255, fontSize: 7 },
+    styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak' },
+    headStyles: {
+      fillColor: [30, 90, 180],
+      textColor: 255,
+      fontSize: 8,
+      halign: 'center',
+      valign: 'middle',
+    },
     columnStyles: {
-      0: { cellWidth: 40 },
-      1: { cellWidth: 'auto' },
-      2: { halign: 'right', cellWidth: 36 },
-      3: { halign: 'right', cellWidth: 34 },
-      4: { halign: 'right', cellWidth: 34 },
-      5: { halign: 'right', cellWidth: 38 },
-      6: { halign: 'right', cellWidth: 38 },
-      7: { halign: 'right', cellWidth: 38 },
-      8: { halign: 'right', cellWidth: 48 },
+      0: { cellWidth: 52, halign: 'left' },
+      1: { cellWidth: 'auto', halign: 'left' },
+      2: { halign: 'right', cellWidth: 44 },
+      3: { halign: 'right', cellWidth: 44 },
+      4: { halign: 'right', cellWidth: 40 },
+      5: { halign: 'right', cellWidth: 48 },
+      6: { halign: 'right', cellWidth: 48 },
+      7: { halign: 'right', cellWidth: 40 },
+      8: { halign: 'right', cellWidth: 56 },
     },
     margin: { left: margin, right: margin },
+    tableWidth: pageWidth - margin * 2,
+    didDrawCell: (data) => {
+      if (data.section !== 'body') return;
+      const raw = data.row.raw;
+      const isHeader = Array.isArray(raw) && raw[0]?.colSpan === 9;
+      if (!isHeader) return;
+      const cell = data.cell;
+      doc.setDrawColor(30, 90, 180);
+      doc.setLineWidth(0.75);
+      doc.line(cell.x, cell.y + cell.height - 1.5, cell.x + cell.width, cell.y + cell.height - 1.5);
+    },
   });
 
   const tableEndY = doc.lastAutoTable?.finalY ?? metaY + 16;
@@ -255,8 +271,8 @@ export async function downloadProductsListVariancePdf({
 }) {
   const begin = period?.begin_period_date || period?.opened_at;
   const end = period?.end_period_date || period?.closed_at;
-  const beginLabel = fmtDate(begin);
-  const endLabel = fmtDate(end) || 'Open';
+  const beginLabel = fmtDateFile(begin);
+  const endLabel = fmtDateFile(end) || 'Open';
   const locationLabel = locationName || period?.location_name || '';
   const scopeLine = filterLabel ? `Scope: ${filterLabel}` : '';
 
@@ -340,8 +356,8 @@ export async function downloadStocktakeCountSheetPdf({
 }) {
   const report = (pct, label) => onProgress?.({ phase: 'pdf', pct, label });
   const begin = period?.begin_period_date || period?.opened_at;
-  const beginLabel = fmtDate(begin);
-  const asOfLabel = fmtDate(generatedAt || new Date());
+  const beginLabel = fmtDateFile(begin);
+  const asOfLabel = fmtDateFile(generatedAt || new Date());
   const locationLabel = locationName || period?.location_name || '';
   const rowList = rows || [];
 

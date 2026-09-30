@@ -12,7 +12,7 @@ import {
 } from './services/stocktake';
 import { downloadStocktakeAggregationPdf } from './utils/stocktakeAggregationPdf';
 import { downloadStocktakeVariancePdf } from './utils/stocktakeVariancePdf';
-import { buildFinalTotals, buildPdfRows, isComponentRow } from './utils/stocktakeSubmitTotals';
+import { buildFinalTotals, buildFlattenedAggregationProductRows, isComponentRow } from './utils/stocktakeSubmitTotals';
 import { logUserActivity } from './utils/userActivityLog';
 import './stocktake-count.css';
 
@@ -214,7 +214,7 @@ export default function StocktakeAggregationPage() {
   };
 
   const pdfRows = useMemo(
-    () => buildPdfRows(consolidated, qtyDraft),
+    () => buildFlattenedAggregationProductRows(consolidated, qtyDraft),
     [consolidated, qtyDraft],
   );
 
