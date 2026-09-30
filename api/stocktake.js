@@ -10,6 +10,10 @@ import {
 } from '../src/utils/inventoryVarianceAdjustments.js';
 import { buildCountSheetRows } from '../src/utils/stocktakeCountSheetRows.js';
 import {
+  fetchStocktakeProductRowsAtLocation,
+  positiveInventoryByProductAtLocation,
+} from '../src/utils/stocktakeLocationStock.js';
+import {
   applyWarehouseStocktakeOnSubmit,
   shouldSkipLegacyInventoryForLocation,
 } from '../server/lib/warehouseStocktakeApply.js';
@@ -382,18 +386,13 @@ async function handleCatalog(req, res) {
 
   const sb = getService();
 
-  // Match All Products: enabled via product_locations OR inventory at this location.
-  const [{ data: productLocs, error: plErr }, { data: invRows, error: invErr }] = await Promise.all([
-    sb.from('product_locations').select('product_id').eq('location_id', locationId),
-    sb.from('inventory').select('product_id').eq('location', locationId),
-  ]);
-  if (plErr) return res.status(500).json({ ok: false, error: plErr.message });
+  const { data: invRows, error: invErr } = await sb
+    .from('inventory')
+    .select('product_id, quantity, location')
+    .eq('location', locationId);
   if (invErr) return res.status(500).json({ ok: false, error: invErr.message });
 
-  const productIdSet = new Set();
-  (productLocs || []).forEach((r) => { if (r.product_id) productIdSet.add(String(r.product_id)); });
-  (invRows || []).forEach((r) => { if (r.product_id) productIdSet.add(String(r.product_id)); });
-  const productIds = [...productIdSet];
+  const productIds = [...positiveInventoryByProductAtLocation(invRows, locationId).keys()];
 
   let products = [];
   if (productIds.length) {
@@ -1840,10 +1839,7 @@ async function handlePeriodDetail(req, res) {
   if (error) return res.status(500).json({ ok: false, error: error.message });
   if (!period) return res.status(404).json({ ok: false, error: 'Period not found' });
 
-  const { data: opening } = await sb
-    .from('opening_stock_entries')
-    .select('product_id, qty, products(name, sku)')
-    .eq('session_id', periodId);
+  const opening = await fetchStocktakeProductRowsAtLocation(sb, period.location_id);
   const { data: closing } = await sb
     .from('closing_stock_entries')
     .select('product_id, qty, products(name, sku)')
@@ -1852,12 +1848,7 @@ async function handlePeriodDetail(req, res) {
   res.status(200).json({
     ok: true,
     period,
-    opening: (opening || []).map((r) => ({
-      product_id: r.product_id,
-      qty: Number(r.qty || 0),
-      name: r.products?.name,
-      sku: r.products?.sku,
-    })),
+    opening,
     closing: (closing || []).map((r) => ({
       product_id: r.product_id,
       qty: Number(r.qty || 0),

@@ -2,6 +2,7 @@ import {
   buildExpectedQty,
   sumInventoryAdjustmentsByProduct,
 } from './inventoryVarianceAdjustments';
+import { positiveInventoryByProductAtLocation } from './stocktakeLocationStock';
 
 async function sumTransfers(sb, locationId, startISO, endISO, direction) {
   const locCol = direction === 'in' ? 'to_location' : 'from_location';
@@ -101,14 +102,13 @@ export async function buildCountSheetRows(sb, period) {
     endISO,
   });
 
-  const productIds = new Set([
-    ...openingMap.keys(),
-    ...transfersIn.keys(),
-    ...transfersOut.keys(),
-    ...salesMap.keys(),
-    ...inventoryIn.keys(),
-    ...inventoryOut.keys(),
-  ]);
+  const { data: liveInv } = await sb
+    .from('inventory')
+    .select('product_id, quantity, location')
+    .eq('location', locationId);
+  const onHandByProduct = positiveInventoryByProductAtLocation(liveInv, locationId);
+
+  const productIds = new Set(onHandByProduct.keys());
   if (!productIds.size) return [];
 
   const idList = Array.from(productIds);
@@ -207,11 +207,9 @@ export async function buildCountSheetRows(sb, period) {
 
   const productRows = [];
   remaining.forEach((systemQty, productId) => {
-    if (Math.abs(systemQty) < 1e-9 && !openingMap.has(productId) && !salesMap.has(productId)
-      && !transfersIn.has(productId) && !transfersOut.has(productId)
-      && !inventoryIn.has(productId) && !inventoryOut.has(productId)) {
-      return;
-    }
+    const onHand = onHandByProduct.get(String(productId)) || 0;
+    if (onHand <= 0) return;
+    if (systemQty <= 0) return;
     const p = productMap.get(productId) || {};
     const openingQty = openingMap.get(productId) || 0;
     const tin = transfersIn.get(productId) || 0;
@@ -234,5 +232,7 @@ export async function buildCountSheetRows(sb, period) {
     });
   });
 
-  return [...setRows, ...productRows].sort((a, b) => String(a.product_name).localeCompare(String(b.product_name)));
+  return [...setRows, ...productRows]
+    .filter((row) => Number(row.closing_stock_qty) > 0)
+    .sort((a, b) => String(a.product_name).localeCompare(String(b.product_name)));
 }
