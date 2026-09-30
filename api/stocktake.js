@@ -109,6 +109,30 @@ function emailOf(body = {}, query = {}) {
   return String(body.userEmail || body.email || query.userEmail || query.email || '').trim().toLowerCase();
 }
 
+function firstRow(data) {
+  if (data == null) return null;
+  return Array.isArray(data) ? (data[0] ?? null) : data;
+}
+
+function throwIfDbError(error) {
+  if (!error) return;
+  const err = new Error(error.message || String(error));
+  if (error.code) err.code = error.code;
+  throw err;
+}
+
+async function fetchStocktakeCountRow(sb, { eventId, productId, userEmail }, columns = 'id, qty, standalone_qty') {
+  const { data, error } = await sb
+    .from('stocktake_counts')
+    .select(columns)
+    .eq('event_id', eventId)
+    .eq('product_id', productId)
+    .eq('user_email', userEmail)
+    .limit(1);
+  throwIfDbError(error);
+  return firstRow(data);
+}
+
 function cleanTerm(value) {
   return String(value || '').trim().replace(/[,*%]/g, '');
 }
@@ -545,7 +569,7 @@ async function handleEventGet(req, res) {
 
   const { data: counts, error: cErr } = await sb
     .from('stocktake_counts')
-    .select('product_id, user_email, qty, updated_at, products(name, sku)')
+    .select('product_id, user_email, qty, standalone_qty, updated_at, products(name, sku)')
     .eq('event_id', eventId);
   if (cErr) return res.status(500).json({ ok: false, error: cErr.message });
 
@@ -667,13 +691,7 @@ async function addCountLine(sb, { eventId, productId, qtyAdd, userEmail }) {
   const add = Number(qtyAdd);
   if (!Number.isFinite(add) || add <= 0) throw new Error('qty must be > 0');
 
-  const { data: existing } = await sb
-    .from('stocktake_counts')
-    .select('id, qty')
-    .eq('event_id', eventId)
-    .eq('product_id', productId)
-    .eq('user_email', userEmail)
-    .maybeSingle();
+  const existing = await fetchStocktakeCountRow(sb, { eventId, productId, userEmail }, 'id, qty');
 
   const nextQty = Number(existing?.qty || 0) + add;
   const payload = {
@@ -691,13 +709,53 @@ async function addCountLine(sb, { eventId, productId, qtyAdd, userEmail }) {
     .single();
   if (error) throw error;
 
-  await sb.from('stocktake_count_log').insert([{
+  const { error: logErr } = await sb.from('stocktake_count_log').insert([{
     event_id: eventId,
     product_id: productId,
     user_email: userEmail,
     qty_added: add,
     qty_after: nextQty,
   }]);
+  throwIfDbError(logErr);
+
+  return row;
+}
+
+/** Admin aggregation: add qty counted as standalone component (not consumed into derived sets). */
+async function addAggregationStandaloneCount(sb, { eventId, productId, qtyAdd, userEmail }) {
+  const add = Number(qtyAdd);
+  if (!Number.isFinite(add) || add <= 0) throw new Error('qty must be > 0');
+
+  const existing = await fetchStocktakeCountRow(sb, { eventId, productId, userEmail });
+
+  const prev = Number(existing?.qty || 0);
+  const prevStandalone = Number(existing?.standalone_qty || 0);
+  const nextQty = prev + add;
+  const nextStandalone = prevStandalone + add;
+  const payload = {
+    event_id: eventId,
+    product_id: productId,
+    user_email: userEmail,
+    qty: nextQty,
+    standalone_qty: nextStandalone,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: row, error } = await sb
+    .from('stocktake_counts')
+    .upsert([payload], { onConflict: 'event_id,product_id,user_email' })
+    .select('*')
+    .single();
+  if (error) throw error;
+
+  const { error: logErr } = await sb.from('stocktake_count_log').insert([{
+    event_id: eventId,
+    product_id: productId,
+    user_email: userEmail,
+    qty_added: add,
+    qty_after: nextQty,
+  }]);
+  throwIfDbError(logErr);
 
   return row;
 }
@@ -706,13 +764,7 @@ async function setCountAbsolute(sb, { eventId, productId, qty, userEmail }) {
   const value = Number(qty);
   if (!Number.isFinite(value) || value < 0) throw new Error('qty must be >= 0');
 
-  const { data: existing } = await sb
-    .from('stocktake_counts')
-    .select('id, qty')
-    .eq('event_id', eventId)
-    .eq('product_id', productId)
-    .eq('user_email', userEmail)
-    .maybeSingle();
+  const existing = await fetchStocktakeCountRow(sb, { eventId, productId, userEmail }, 'id, qty');
 
   const prev = Number(existing?.qty || 0);
   const payload = {
@@ -908,6 +960,31 @@ async function assertProductEnabledAtLocation(sb, productId, locationId) {
   }
 }
 
+/** product_locations or legacy inventory row — matches stocktake catalog search. */
+async function assertProductInStocktakeCatalog(sb, productId, locationId) {
+  const { data: plRows, error: plErr } = await sb
+    .from('product_locations')
+    .select('product_id')
+    .eq('product_id', productId)
+    .eq('location_id', locationId)
+    .limit(1);
+  throwIfDbError(plErr);
+  if (firstRow(plRows)) return;
+
+  const { data: invRows, error: invErr } = await sb
+    .from('inventory')
+    .select('product_id')
+    .eq('product_id', productId)
+    .eq('location', locationId)
+    .limit(1);
+  throwIfDbError(invErr);
+  if (firstRow(invRows)) return;
+
+  const err = new Error('Product is not assigned to this location. Enable it on Products list first.');
+  err.status = 403;
+  throw err;
+}
+
 async function assertNotSetSkuProduct(sb, productId, locationId) {
   const { data: product, error: pErr } = await sb
     .from('products')
@@ -968,10 +1045,13 @@ async function handleAggregationSetCount(req, res) {
   const body = req.body || {};
   const eventId = body.eventId;
   const productId = body.productId;
-  const qty = body.qty;
+  const qtyAdd = body.qtyAdd ?? body.qty;
   const userEmail = emailOf(body);
   if (!eventId || !productId || !userEmail) {
     return res.status(400).json({ ok: false, error: 'eventId, productId, and userEmail required' });
+  }
+  if (!Number.isFinite(Number(qtyAdd)) || Number(qtyAdd) <= 0) {
+    return res.status(400).json({ ok: false, error: 'qtyAdd (or qty) must be a number greater than 0' });
   }
   if (!isStocktakeAdmin(userEmail)) {
     return res.status(403).json({ ok: false, error: 'Stocktake aggregation is admin-only.' });
@@ -979,12 +1059,11 @@ async function handleAggregationSetCount(req, res) {
   try {
     const sb = getService();
     const event = await assertCountingAllowed(sb, eventId);
-    await assertProductEnabledAtLocation(sb, productId, event.location_id);
-    await assertNotSetSkuProduct(sb, productId, event.location_id);
-    const row = await setCountAbsolute(sb, {
+    await assertProductInStocktakeCatalog(sb, productId, event.location_id);
+    const row = await addAggregationStandaloneCount(sb, {
       eventId,
       productId,
-      qty,
+      qtyAdd,
       userEmail,
     });
     res.status(200).json({ ok: true, row });

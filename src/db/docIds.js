@@ -19,6 +19,7 @@ export const DOC_ID_FIELDS = {
   warehouse_assembly_packets: ['assembly_id', 'packet_id'],
   stocktake_warehouse_counts: ['event_id', 'packet_id', 'user_email'],
   stocktake_assembly_counts: ['event_id', 'assembly_id', 'user_email'],
+  stocktake_counts: ['event_id', 'product_id', 'user_email'],
 };
 
 export function docIdForTable(table, row) {

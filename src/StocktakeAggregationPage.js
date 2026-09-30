@@ -299,18 +299,22 @@ export default function StocktakeAggregationPage() {
   };
 
   const handleAddManualProduct = () => {
-    if (!event?.id) return;
+    if (!event?.id) {
+      setError('No open counting session — start stocktake on the Stocktake page first.');
+      return;
+    }
     const qty = Number(manualQty);
     if (!selectedProduct?.id) {
       setError('Choose a product from the search results.');
       return;
     }
-    if (!Number.isFinite(qty) || qty < 0) {
-      setError('Enter a valid quantity (0 or more).');
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError('Enter a quantity of at least 1.');
       return;
     }
+    const addedProduct = selectedProduct;
     run(async () => {
-      await setAggregationManualCount(event.id, selectedProduct.id, qty);
+      await setAggregationManualCount(event.id, addedProduct.id, qty);
       await logUserActivity({
         actionType: 'stocktake_aggregation_add_product',
         actionLabel: 'Add product to stocktake session',
@@ -318,19 +322,34 @@ export default function StocktakeAggregationPage() {
         entityId: event.id,
         metadata: {
           locationId,
-          productId: selectedProduct.id,
+          productId: addedProduct.id,
           qty,
-          sku: selectedProduct.sku || null,
+          sku: addedProduct.sku || null,
         },
       });
       const detail = await getEvent(event.id);
       setEvent(detail.event);
-      setConsolidated(detail.consolidated || []);
+      const nextConsolidated = detail.consolidated || [];
+      setConsolidated(nextConsolidated);
+
+      const addedId = String(addedProduct.id);
+      const componentRow = nextConsolidated.find(
+        (row) => row.row_type === 'product' && String(row.product_id) === addedId,
+      );
+
+      setSearch(addedProduct.name || componentRow?.name || '');
+      setExpandedRows(new Set());
+
       setSelectedProduct(null);
       setManualQty('');
       setProductSearch('');
       setProductResults([]);
-    }, 'Product added to this count session.');
+
+      const toastMsg = componentRow
+        ? `Added ${qty} as standalone component — see “${componentRow.name}” in the aggregated list (Type: Component).`
+        : `Added ${qty} to session — search the aggregated list for “${addedProduct.name}”.`;
+      setToast(toastMsg);
+    });
   };
 
   return (
@@ -407,7 +426,7 @@ export default function StocktakeAggregationPage() {
                 <div className="stock-periods-card" style={{ marginBottom: 12, padding: 12 }}>
                   <div className="stock-periods-note" style={{ marginBottom: 8 }}>
                     Search products assigned to {locationName || 'this location'} (same catalog as stocktake).
-                    The quantity is recorded on this session and included in opening stock when you submit.
+                    Adds <strong>standalone component</strong> qty only (not rolled into SET rows). Included in opening stock on submit.
                   </div>
                   <label className="stock-periods-label">Find product</label>
                   <input

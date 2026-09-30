@@ -49,6 +49,12 @@ export function consolidateCountRows(rows) {
  * @param {Array} args.comboItems - { combo_id, product_id, quantity }
  * @param {Array} [args.setScans] - { combo_id, user_email, set_qty, updated_at }
  */
+function setPoolQtyFromRow(row) {
+  const total = num(row?.qty);
+  const standalone = num(row?.standalone_qty);
+  return Math.max(0, total - standalone);
+}
+
 export function buildLiveConsolidatedWithSets({
   counts = [],
   combos = [],
@@ -56,9 +62,19 @@ export function buildLiveConsolidatedWithSets({
   setScans = [],
 } = {}) {
   const productMap = consolidateCountRows(counts);
+  const standaloneByProduct = new Map();
   const remaining = new Map();
-  productMap.forEach((entry, productId) => {
-    remaining.set(productId, entry.qty);
+  (counts || []).forEach((row) => {
+    const pid = row?.product_id;
+    if (!pid) return;
+    const stand = num(row.standalone_qty);
+    if (stand > 0) {
+      standaloneByProduct.set(pid, (standaloneByProduct.get(pid) || 0) + stand);
+    }
+    const pool = setPoolQtyFromRow(row);
+    if (pool > 0) {
+      remaining.set(pid, (remaining.get(pid) || 0) + pool);
+    }
   });
 
   const itemsByCombo = new Map();
@@ -139,21 +155,24 @@ export function buildLiveConsolidatedWithSets({
 
   const productRows = [];
   productMap.forEach((entry, productId) => {
+    const stand = standaloneByProduct.get(productId) || 0;
     const left = remaining.get(productId) || 0;
-    if (left <= 1e-9) return;
-    const total = entry.qty;
-    const usedInSets = Math.max(0, total - left);
+    const displayQty = left + stand;
+    if (displayQty <= 1e-9) return;
+    const poolTotal = Math.max(0, entry.qty - stand);
+    const usedInSets = Math.max(0, poolTotal - left);
     productRows.push({
       key: `product:${productId}`,
       row_type: 'product',
       product_id: productId,
       name: entry.name || productId,
       sku: entry.sku || null,
-      qty: left,
+      qty: displayQty,
       byUser: entry.byUser || [],
-      total_counted: total,
+      total_counted: entry.qty,
       used_in_sets: usedInSets,
-      source: 'product',
+      standalone_qty: stand,
+      source: stand > 0 && left <= 1e-9 ? 'aggregation_manual' : 'product',
     });
   });
 

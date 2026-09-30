@@ -174,7 +174,7 @@ async function clientGetEvent(eventId) {
 
   const { data: counts, error: cErr } = await db
     .from('stocktake_counts')
-    .select('product_id, user_email, qty, updated_at, products(name, sku)')
+    .select('product_id, user_email, qty, standalone_qty, updated_at, products(name, sku)')
     .eq('event_id', eventId);
   if (cErr) throw cErr;
 
@@ -328,10 +328,10 @@ async function clientClearMyCounts(eventId, userEmail = currentEmail()) {
   return { ok: true };
 }
 
-async function clientSetAggregationCount(eventId, productId, qty, userEmail = currentEmail()) {
-  const value = Number(qty);
-  if (!Number.isFinite(value) || value < 0) throw new Error('qty must be >= 0');
-  if (!userEmail) throw new Error('userEmail required');
+async function clientSetAggregationCount(eventId, productId, qtyAdd, userEmail = currentEmail()) {
+  const add = Number(qtyAdd);
+  if (!Number.isFinite(add) || add <= 0) throw new Error('qty must be > 0');
+  if (!userEmail) throw new Error('Sign in again — user email is missing for stocktake.');
 
   const { data: event, error: evErr } = await db
     .from('stocktake_events')
@@ -341,31 +341,49 @@ async function clientSetAggregationCount(eventId, productId, qty, userEmail = cu
   if (evErr) throw evErr;
   if (!event || event.status !== 'counting') throw new Error('Counting session is not open.');
 
-  const { data: locRow, error: locErr } = await db
-    .from('product_locations')
-    .select('product_id')
-    .eq('product_id', productId)
-    .eq('location_id', event.location_id)
-    .maybeSingle();
+  const [{ data: locRow, error: locErr }, { data: invRow, error: invErr }] = await Promise.all([
+    db
+      .from('product_locations')
+      .select('product_id')
+      .eq('product_id', productId)
+      .eq('location_id', event.location_id)
+      .maybeSingle(),
+    db
+      .from('inventory')
+      .select('product_id')
+      .eq('product_id', productId)
+      .eq('location', event.location_id)
+      .limit(1)
+      .maybeSingle(),
+  ]);
   if (locErr) throw locErr;
-  if (!locRow) throw new Error('Product is not enabled for this location.');
+  if (invErr) throw invErr;
+  if (!locRow && !invRow) {
+    throw new Error('Product is not assigned to this location. Enable it on Products list first.');
+  }
 
-  const { data: existing } = await db
+  const { data: existingRows, error: exErr } = await db
     .from('stocktake_counts')
-    .select('id, qty')
+    .select('id, qty, standalone_qty')
     .eq('event_id', eventId)
     .eq('product_id', productId)
     .eq('user_email', userEmail)
-    .maybeSingle();
+    .limit(1);
+  if (exErr) throw exErr;
+  const existing = Array.isArray(existingRows) ? existingRows[0] : existingRows;
 
   const prev = Number(existing?.qty || 0);
+  const prevStandalone = Number(existing?.standalone_qty || 0);
+  const nextQty = prev + add;
+  const nextStandalone = prevStandalone + add;
   const { data: row, error } = await db
     .from('stocktake_counts')
     .upsert([{
       event_id: eventId,
       product_id: productId,
       user_email: userEmail,
-      qty: value,
+      qty: nextQty,
+      standalone_qty: nextStandalone,
       updated_at: new Date().toISOString(),
     }], { onConflict: 'event_id,product_id,user_email' })
     .select('*')
@@ -376,8 +394,8 @@ async function clientSetAggregationCount(eventId, productId, qty, userEmail = cu
     event_id: eventId,
     product_id: productId,
     user_email: userEmail,
-    qty_added: value - prev,
-    qty_after: value,
+    qty_added: add,
+    qty_after: nextQty,
   }]);
 
   return { ok: true, row };
@@ -835,14 +853,16 @@ export async function addCount(eventId, productId, qty, userEmail = currentEmail
   );
 }
 
-/** Admin aggregation: set absolute qty for a location product on the open count session. */
-export async function setAggregationManualCount(eventId, productId, qty, userEmail = currentEmail()) {
+/** Admin aggregation: add standalone component qty (not rolled into derived sets). */
+export async function setAggregationManualCount(eventId, productId, qtyAdd, userEmail = currentEmail()) {
+  const email = userEmail || currentEmail();
+  const qty = Number(qtyAdd);
   return withApiOrClient(
     () => fetchJson('/api/stocktake-aggregation-set-count', {
       method: 'POST',
-      body: JSON.stringify({ eventId, productId, qty, userEmail }),
+      body: JSON.stringify({ eventId, productId, qtyAdd: qty, qty, userEmail: email }),
     }),
-    () => clientSetAggregationCount(eventId, productId, qty, userEmail),
+    () => clientSetAggregationCount(eventId, productId, qty, email),
     { fallbackOnServerError: true },
   );
 }
