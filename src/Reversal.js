@@ -97,7 +97,7 @@ export default function Reversal() {
     setLoading(true);
     setError('');
     try {
-      const existing = await findExistingReceiptSale(fromPublic('sales'), 'sales', receiptRaw);
+      const existing = await findExistingReceiptSale(db, 'sales', receiptRaw);
       if (!existing) throw new Error('Receipt not found. Check the number and try again.');
 
       const { data: saleRow, error: saleErr } = await fromPublic('sales')
@@ -111,8 +111,7 @@ export default function Reversal() {
         throw new Error('Only completed or layby sales can be adjusted.');
       }
 
-      const { data: itemRows, error: itemsErr } = await db
-        .from('sales_items')
+      const { data: itemRows, error: itemsErr } = await fromPublic('sales_items')
         .select('id, product_id, display_name, quantity, unit_price, currency, color')
         .eq('sale_id', saleRow.id)
         .order('id', { ascending: true });

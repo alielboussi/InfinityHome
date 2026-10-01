@@ -148,11 +148,12 @@
   max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 32px);
   box-sizing: border-box;
-  background: #23272f;
-  color: #e0e6ed;
+  background: var(--dash-surface, #fff);
+  color: var(--dash-text, #0f172a);
+  border: 1px solid var(--dash-border-soft, #e2e8f0);
   border-radius: 10px;
   padding: 14px 16px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -164,13 +165,13 @@
   margin: 0 0 4px;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--dash-accent, #00b4d8);
 }
 
 .reversal-receipt-lead {
   margin: 0 0 10px;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--dash-text-muted, #64748b);
   line-height: 1.35;
 }
 
@@ -181,7 +182,7 @@
 .reversal-receipt-label {
   display: block;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--dash-text-muted, #64748b);
   margin-bottom: 4px;
 }
 
@@ -190,16 +191,16 @@
   box-sizing: border-box;
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid #475569;
-  background: #181c23;
-  color: #e0e6ed;
+  border: 1px solid var(--dash-border-soft, #cbd5e1);
+  background: var(--dash-surface-2, #f8fafc);
+  color: var(--dash-text, #0f172a);
   font-size: 14px;
 }
 
 .reversal-receipt-input:focus {
   outline: none;
-  border-color: #00bfff;
-  box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.2);
+  border-color: var(--dash-accent, #00b4d8);
+  box-shadow: 0 0 0 2px rgba(0, 180, 216, 0.2);
 }
 
 .reversal-receipt-error {
@@ -219,9 +220,9 @@
 .reversal-receipt-cancel {
   padding: 8px 14px;
   border-radius: 6px;
-  border: 1px solid #475569;
-  background: transparent;
-  color: #94a3b8;
+  border: 1px solid var(--dash-border-soft, #cbd5e1);
+  background: var(--dash-surface-2, #f8fafc);
+  color: var(--dash-text, #0f172a);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -229,8 +230,8 @@
 }
 
 .reversal-receipt-cancel:hover:not(:disabled) {
-  color: #e2e8f0;
-  border-color: #64748b;
+  border-color: var(--dash-accent, #00b4d8);
+  color: var(--dash-accent, #00b4d8);
 }
 
 .reversal-receipt-cancel:disabled {
