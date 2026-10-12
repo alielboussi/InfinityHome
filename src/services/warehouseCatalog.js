@@ -9,10 +9,7 @@ import {
   isWarehouseKitShowroomLocation,
   warehouseCatalogAllowsSetCreate,
 } from '../constants/warehouseShowroomLocations';
-import {
-  isWarehouseProductAssembly,
-  validateSetComponentAssembly,
-} from '../utils/warehouseCatalogHierarchy';
+import { validateSetComponentAssembly } from '../utils/warehouseCatalogHierarchy';
 import { expandWarehouseSetItemsRows } from '../utils/warehouseSetItems';
 import {
   normalizeWarehousePacketScan,

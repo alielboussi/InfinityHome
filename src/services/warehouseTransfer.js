@@ -106,7 +106,6 @@ export async function recomputeWarehouseLocationStock(locationId) {
   for (const assembly of assemblies || []) {
     if (isWarehouseSetAssembly(assembly)) continue;
     const pktList = packetsByAssembly.get(String(assembly.id)) || [];
-    const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
     const usePacketMath = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
     if (usePacketMath) {
       const complete = await syncAssemblyInventoryFromPackets(

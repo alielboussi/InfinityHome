@@ -10,10 +10,7 @@ import {
   transferWarehouseAssemblyToCatalogProduct,
   matchCatalogProductsByAssemblySku,
 } from './services/warehouseTransfer';
-import {
-  analyzeAssemblyPacketBom,
-  assemblyDerivesWarehouseStockFromPackets,
-} from './utils/warehouseAssemblyMath';
+import { assemblyDerivesWarehouseStockFromPackets } from './utils/warehouseAssemblyMath';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
 
 export default function WarehouseProductTransferPage() {
@@ -113,11 +110,6 @@ export default function WarehouseProductTransferPage() {
   const pktList = useMemo(
     () => packetsByAssembly.get(String(productId)) || [],
     [packetsByAssembly, productId],
-  );
-
-  const bom = useMemo(
-    () => analyzeAssemblyPacketBom(assembly?.packet_count, pktList),
-    [assembly, pktList],
   );
 
   const usePacketStock = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);

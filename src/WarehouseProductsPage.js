@@ -143,7 +143,6 @@ export default function WarehouseProductsPage() {
   const stockForAssemblyAtLocation = useCallback((assembly, locId, stockMap) => {
     const pktList = packetsByAssembly.get(String(assembly.id)) || [];
     const invMap = assemblyInventoryByAssembly.get(String(assembly.id));
-    const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
     const usePacketMath = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
     if (usePacketMath) {
       return completeUnitsAtLocation(pktList, inventory, locId, assembly.packet_count, {
