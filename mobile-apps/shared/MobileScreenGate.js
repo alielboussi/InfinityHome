@@ -9,7 +9,7 @@ export default function MobileScreenGate({ screenId, grant, navigation, children
 
   useEffect(() => {
     if (!grant || allowed) return;
-    navigation.replace('Dashboard');
+    navigation.navigate('Dashboard');
   }, [allowed, grant, navigation]);
 
   if (!grant) {

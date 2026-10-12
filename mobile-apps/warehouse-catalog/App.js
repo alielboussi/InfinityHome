@@ -9,8 +9,6 @@ import BiometricGate from './shared/BiometricGate';
 import FirebaseAuthGate from './shared/AuthGate';
 import { MobileAccessGrantProvider } from './shared/MobileAccessGrantContext';
 import { useMobileAccessGrant } from './shared/useMobileAccessGrant';
-
-enableScreens(true);
 import DashboardScreen from './screens/DashboardScreen';
 import WarehouseProductsScreen from './screens/WarehouseProductsScreen';
 import WarehousePacketsScreen from './screens/WarehousePacketsScreen';
@@ -22,6 +20,8 @@ import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen
 import WarehouseStockCountScreen from './screens/WarehouseStockCountScreen';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { stackScreenOptions, theme } from './shared/theme';
+
+enableScreens(true);
 
 const Stack = createNativeStackNavigator();
 

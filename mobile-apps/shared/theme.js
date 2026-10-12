@@ -25,4 +25,5 @@ export const stackScreenOptions = {
   headerTitleStyle: { fontWeight: '700', fontSize: 17 },
   headerShadowVisible: false,
   contentStyle: { backgroundColor: theme.bg },
+  freezeOnBlur: false,
 };
