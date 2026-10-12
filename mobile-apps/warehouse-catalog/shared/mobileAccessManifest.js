@@ -29,6 +29,11 @@ export function isMobileScreenAccessAllowed(grant, screenId) {
   return grant?.screens?.[screenId]?.view === 'allow';
 }
 
+/** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
+export function isWarehouseProductStockQtyEditAllowed(grant) {
+  return grant?.warehouse_product_stock_qty === 'allow';
+}
+
 /** Screens that can appear as buttons on the mobile dashboard. */
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',

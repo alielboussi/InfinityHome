@@ -27,6 +27,7 @@ import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,
+  normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
 import {
   useKeepSoftKeyboardOnScanSubmit,
@@ -133,8 +134,8 @@ export default function WarehouseStockCountScreen() {
     keepFocusAfterSubmit();
   };
 
-  const handleScanSubmit = () => {
-    const normalized = normalizeWarehousePacketScan(scanValue);
+  const handleScanSubmit = (overrideValue) => {
+    const normalized = normalizeWarehousePacketScan(overrideValue ?? scanValue);
     if (!session) {
       setError('Start a session before scanning.');
       keepFocusAfterSubmit();
@@ -209,6 +210,8 @@ export default function WarehouseStockCountScreen() {
           stripScanTerminator,
           keepFocusAfterSubmit,
           transform: (v) => v.toUpperCase(),
+          normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'packet'),
+          onWedgeComplete: (v) => handleScanSubmit(v),
         })}
         placeholder="Scan or type SKU…"
         placeholderTextColor={theme.textDim}
@@ -216,7 +219,7 @@ export default function WarehouseStockCountScreen() {
         autoCorrect={false}
         blurOnSubmit={false}
         returnKeyType="done"
-        onSubmitEditing={handleScanSubmit}
+        onSubmitEditing={() => handleScanSubmit()}
         showSoftInputOnFocus
       />
       <Pressable style={styles.secondaryBtn} onPress={handleScanSubmit}>

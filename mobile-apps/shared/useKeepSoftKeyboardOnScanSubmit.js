@@ -38,13 +38,29 @@ export function useKeepSoftKeyboardOnScanSubmit(inputRef) {
   return { keepFocusAfterSubmit, wrapOnBlur, stripScanTerminator };
 }
 
-/** Strip wedge Enter/newlines from pasted or scanned text; refocus when a terminator was present. */
-export function wedgeAwareTextChange(setter, { stripScanTerminator, keepFocusAfterSubmit, transform } = {}) {
+/**
+ * Strip wedge Enter/newlines; optional SKU normalize (portal barcode rules).
+ * `onWedgeComplete` runs synchronously with the normalized value (use for scan submit).
+ */
+export function wedgeAwareTextChange(setter, {
+  stripScanTerminator,
+  keepFocusAfterSubmit,
+  transform,
+  normalize,
+  onWedgeComplete,
+} = {}) {
   return (text) => {
     const hadTerminator = /[\r\n]/.test(String(text || ''));
     let next = stripScanTerminator ? stripScanTerminator(text) : String(text || '');
     if (transform) next = transform(next);
+    if (normalize) {
+      const normalized = normalize(next);
+      if (normalized) next = normalized;
+    }
     setter(next);
-    if (hadTerminator && keepFocusAfterSubmit) keepFocusAfterSubmit();
+    if (hadTerminator) {
+      if (onWedgeComplete) onWedgeComplete(next);
+      if (keepFocusAfterSubmit) keepFocusAfterSubmit();
+    }
   };
 }

@@ -16,6 +16,7 @@ import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
+  normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
 import { theme } from '../shared/theme';
 import {
@@ -29,8 +30,6 @@ const INVENTORY_PACKETS = 'packets';
 export default function ProductFormScreen({ route, navigation }) {
   const prefill = route.params?.prefill || {};
   const existing = Boolean(route.params?.existing && prefill.id);
-  const warehouseLocationId = route.params?.warehouseLocationId
-    || route.params?.catalogSnapshot?.warehouseLocationId;
   const [catalog, setCatalog] = useState(route.params?.catalogSnapshot || null);
   const [name, setName] = useState(prefill.name || '');
   const [turkishName, setTurkishName] = useState('');
@@ -64,6 +63,20 @@ export default function ProductFormScreen({ route, navigation }) {
     wrapOnBlur: wrapPacketSearchBlur,
     stripScanTerminator: stripPacketSearchTerminator,
   } = useKeepSoftKeyboardOnScanSubmit(packetSearchInputRef);
+
+  const warehouseLocationId = useMemo(
+    () => catalog?.warehouseLocationId
+      || route.params?.warehouseLocationId
+      || route.params?.catalogSnapshot?.warehouseLocationId
+      || null,
+    [catalog, route.params?.warehouseLocationId, route.params?.catalogSnapshot],
+  );
+  const warehouseLocationName = useMemo(
+    () => catalog?.warehouseLocationName
+      || route.params?.catalogSnapshot?.warehouseLocationName
+      || 'Warehouse',
+    [catalog, route.params?.catalogSnapshot],
+  );
 
   const focusSku = useCallback(() => {
     setTimeout(() => skuInputRef.current?.focus?.(), 50);
@@ -229,7 +242,9 @@ export default function ProductFormScreen({ route, navigation }) {
       return;
     }
     if (!warehouseLocationId) {
-      setError('Warehouse location is not configured.');
+      setError(
+        'Warehouse location could not be resolved. Open Warehouse Products on the web once to confirm catalog loads, then retry.',
+      );
       return;
     }
     const normalizedSku = normalizeWarehouseProductSku(familySku);
@@ -312,6 +327,7 @@ export default function ProductFormScreen({ route, navigation }) {
           stripScanTerminator: stripSkuTerminator,
           keepFocusAfterSubmit: keepSkuKeyboard,
           transform: (v) => v.toUpperCase(),
+          normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'product'),
         })}
         onSubmitEditing={onProductSkuSubmit}
       />
@@ -429,6 +445,7 @@ export default function ProductFormScreen({ route, navigation }) {
               stripScanTerminator: stripPacketSearchTerminator,
               keepFocusAfterSubmit: keepPacketSearchKeyboard,
               transform: (v) => v.toUpperCase(),
+              normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'packet'),
             })}
             autoCapitalize="characters"
             blurOnSubmit={false}

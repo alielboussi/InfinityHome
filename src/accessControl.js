@@ -2,6 +2,7 @@
 // Do NOT load roles or route access from public.users or Firebase Auth metadata.role.
 
 import { isStocktakeCountLocationPath } from './utils/stocktakeLocationSlug.js';
+import { isWarehouseProductStockQtyEditAllowed } from './mobile/mobileAccessManifest';
 
 const USER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -285,6 +286,13 @@ const COMPANY_SETTINGS_ROUTE = '/company-settings';
 
 export function canViewStockControl(user) {
   return getUserEmail(user) === STOCK_CONTROL_EMAIL;
+}
+
+/** Warehouse products — finished qty (increments only); configured on /user-access. */
+export function canEditWarehouseProductStockQty(user, mobileAccessGrant) {
+  if (!user) return false;
+  if (getUserEmail(user) === STOCK_CONTROL_EMAIL) return true;
+  return isWarehouseProductStockQtyEditAllowed(mobileAccessGrant);
 }
 
 export function canViewStocktakeAggregation(user) {

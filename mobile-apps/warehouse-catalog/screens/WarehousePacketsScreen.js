@@ -16,6 +16,7 @@ import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,
+  normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
 import {
   useKeepSoftKeyboardOnScanSubmit,
@@ -325,7 +326,14 @@ export default function WarehousePacketsScreen({ navigation }) {
             stripScanTerminator,
             keepFocusAfterSubmit,
             transform: (v) => v.toUpperCase(),
+            normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'packet'),
           })}
+          onBlur={() => {
+            const v = search.trim();
+            if (!v) return;
+            const normalized = normalizeWarehousePacketScan(v);
+            if (normalized && normalized !== v) setSearch(normalized);
+          }}
           autoCapitalize="characters"
           autoCorrect={false}
           blurOnSubmit={false}

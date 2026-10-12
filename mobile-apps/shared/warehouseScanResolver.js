@@ -70,6 +70,29 @@ export function normalizeWarehouseProductSku(raw) {
   return canonicalWarehouseSku(code);
 }
 
+export function normalizeWarehouseCatalogSearchQuery(raw) {
+  const trimmed = normalizeWarehouseSku(raw);
+  if (!trimmed) return '';
+  if (trimmed.length > 14 && /^\d{14}/.test(trimmed)) {
+    return normalizeWarehouseProductSku(trimmed);
+  }
+  if (/^X/i.test(trimmed)) {
+    return normalizeWarehousePacketScan(trimmed);
+  }
+  const upper = canonicalWarehouseSku(trimmed);
+  const product = normalizeWarehouseProductSku(trimmed);
+  const packet = normalizeWarehousePacketScan(trimmed);
+  if (product !== upper) return product;
+  if (packet !== upper) return packet;
+  return product;
+}
+
+export function normalizeWarehouseWedgeScanInput(raw, mode = 'auto') {
+  if (mode === 'packet') return normalizeWarehousePacketScan(raw);
+  if (mode === 'product') return normalizeWarehouseProductSku(raw);
+  return normalizeWarehouseCatalogSearchQuery(raw);
+}
+
 export function normalizeWarehousePacketScan(raw) {
   let code = stripFactoryLotSuffix(normalizeWarehouseSku(raw));
   if (!code) return '';

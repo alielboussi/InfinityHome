@@ -79,6 +79,33 @@ export function normalizeWarehouseProductSku(raw) {
  * Normalize a raw scanner string for **warehouse packets** (carton SKU).
  * Uses X / XX carton rules only — never strips a 14-digit product lot prefix.
  */
+/**
+ * Catalog search bar: strip lot / X-prefix like the portal, for display + matching.
+ */
+export function normalizeWarehouseCatalogSearchQuery(raw) {
+  const trimmed = normalizeWarehouseSku(raw);
+  if (!trimmed) return '';
+  if (trimmed.length > 14 && /^\d{14}/.test(trimmed)) {
+    return normalizeWarehouseProductSku(trimmed);
+  }
+  if (/^X/i.test(trimmed)) {
+    return normalizeWarehousePacketScan(trimmed);
+  }
+  const upper = canonicalWarehouseSku(trimmed);
+  const product = normalizeWarehouseProductSku(trimmed);
+  const packet = normalizeWarehousePacketScan(trimmed);
+  if (product !== upper) return product;
+  if (packet !== upper) return packet;
+  return product;
+}
+
+/** Wedge / scanner field — `mode`: 'packet' | 'product' | 'auto' (catalog search rules). */
+export function normalizeWarehouseWedgeScanInput(raw, mode = 'auto') {
+  if (mode === 'packet') return normalizeWarehousePacketScan(raw);
+  if (mode === 'product') return normalizeWarehouseProductSku(raw);
+  return normalizeWarehouseCatalogSearchQuery(raw);
+}
+
 export function normalizeWarehousePacketScan(raw) {
   let code = stripFactoryLotSuffix(normalizeWarehouseSku(raw));
   if (!code) return '';

@@ -8,13 +8,14 @@ import WarehouseAssemblyInlineSpecs from './components/WarehouseAssemblyInlineSp
 import WarehouseAssemblyThumbnail from './components/WarehouseAssemblyThumbnail';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
 import WarehouseColorChip from './components/WarehouseColorChip';
-import { canManageCatalog, getCurrentUser } from './accessControl';
+import { canEditWarehouseProductStockQty, canManageCatalog, getCurrentUser } from './accessControl';
+import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import {
   deleteWarehouseAssembly,
   deleteWarehousePacket,
   fetchWarehouseCatalog,
-  setWarehouseAssemblyQuantity,
+  setWarehouseAssemblyProductQuantity,
   setWarehousePacketQuantity,
 } from './services/warehouseCatalog';
 import { completeUnitsAtLocation } from './services/warehouseTransfer';
@@ -33,16 +34,22 @@ import {
   finishedUnitsFromBoxCount,
   formatWarehouseBoxAndUnitStock,
 } from './utils/warehouseUnitsPerCarton';
-import { normalizeWarehouseSku } from './utils/warehouseAssemblyMath';
 import {
   expandWarehouseSkuMatchKeys,
+  normalizeWarehouseCatalogSearchQuery,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
 } from './utils/warehouseScanResolver';
 
 export default function WarehouseProductsPage() {
   const navigate = useNavigate();
-  const canManage = useMemo(() => canManageCatalog(getCurrentUser()), []);
+  const sessionUser = useMemo(() => getCurrentUser(), []);
+  const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
+  const { grant: mobileAccessGrant } = useAuthProfileMobileGrant();
+  const canEditProductStock = useMemo(
+    () => canEditWarehouseProductStockQty(sessionUser, mobileAccessGrant),
+    [sessionUser, mobileAccessGrant],
+  );
   const rtTick = useRealtimeRefresh([
     'warehouse_assemblies',
     'warehouse_packets',
@@ -86,7 +93,7 @@ export default function WarehouseProductsPage() {
       setWarehouseLocationId(data.warehouseLocationId);
       setWarehouseLocationName(data.warehouseLocationName);
       if (!data.warehouseLocationId) {
-        setError('No Warehouse location found. Add a location named "Warehouse".');
+        setError('Warehouse location could not be resolved for this catalog.');
       }
     } catch (err) {
       setError(err?.message || 'Failed to load warehouse catalog');
@@ -271,18 +278,21 @@ export default function WarehouseProductsPage() {
   };
 
   const handleAssemblyQtyBlur = async (
-    assemblyId,
+    assembly,
+    pktList,
     locationId,
     rawValue,
-    { inputIsBoxes, unitsPerBox } = {},
+    { inputIsBoxes, unitsPerBox, currentUnits } = {},
   ) => {
-    if (!canManage || !locationId) return;
+    if (!canEditProductStock || !locationId || !assembly) return;
     const entered = Math.max(0, Number(rawValue) || 0);
     const qty = inputIsBoxes && unitsPerBox > 1
       ? finishedUnitsFromBoxCount(entered, unitsPerBox)
       : entered;
+    const floorCurrent = Math.max(0, Math.floor(Number(currentUnits) || 0));
+    if (Math.floor(qty) === floorCurrent) return;
     try {
-      await setWarehouseAssemblyQuantity(assemblyId, locationId, qty);
+      await setWarehouseAssemblyProductQuantity(assembly.id, locationId, qty, { incrementOnly: true });
       await load();
     } catch (err) {
       setError(err?.message || 'Quantity update failed');
@@ -354,10 +364,8 @@ export default function WarehouseProductsPage() {
         onBlur={(e) => {
           const v = e.target.value.trim();
           if (!v) return;
-          const compact = normalizeWarehouseSku(v);
-          if (compact.length > 14 && /^\d{14}/.test(compact)) {
-            setSearch(normalizeWarehouseProductSku(v));
-          }
+          const normalized = normalizeWarehouseCatalogSearchQuery(v);
+          if (normalized && normalized !== v) setSearch(normalized);
         }}
       />
 
@@ -472,13 +480,38 @@ export default function WarehouseProductsPage() {
                           ? `Complete units @ ${warehouseLocationName}`
                           : `Finished @ ${warehouseLocationName}`}
                       </div>
-                      <strong
-                        className={`warehouse-assembly-card__stock-qty${
-                          complete > 0 ? ' warehouse-assembly-card__stock-qty--positive' : ''
-                        }`}
-                      >
-                        {stockDisplay}
-                      </strong>
+                      {canEditProductStock && warehouseLocationId ? (
+                        <input
+                          type="number"
+                          min={complete}
+                          step="1"
+                          className="warehouse-qty-input warehouse-assembly-card__stock-qty-input"
+                          defaultValue={complete}
+                          key={`product-qty-${assembly.id}-${complete}`}
+                          title="Increases only — linked packet cartons scale automatically"
+                          onBlur={(e) => handleAssemblyQtyBlur(
+                            assembly,
+                            pktList,
+                            warehouseLocationId,
+                            e.target.value,
+                            {
+                              currentUnits: complete,
+                              inputIsBoxes: warehouseBoxEntry && !usePacketStock,
+                              unitsPerBox,
+                            },
+                          )}
+                          style={{ width: 72, textAlign: 'right' }}
+                          aria-label={`Complete units at ${warehouseLocationName}`}
+                        />
+                      ) : (
+                        <strong
+                          className={`warehouse-assembly-card__stock-qty${
+                            complete > 0 ? ' warehouse-assembly-card__stock-qty--positive' : ''
+                          }`}
+                        >
+                          {stockDisplay}
+                        </strong>
+                      )}
                       {usePacketStock && complete === 0 ? (
                         <p className="warehouse-assembly-card__stock-hint">
                           {warehousePacketOnHand === 0
@@ -576,22 +609,26 @@ export default function WarehouseProductsPage() {
                             )}
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            {canManage ? (
+                            {canEditProductStock ? (
                               <div className="warehouse-finished-stock-qty-cell">
                                 <input
                                   type="number"
-                                  min="0"
+                                  min={warehouseDisplayQty}
                                   step="1"
                                   className="warehouse-qty-input"
                                   defaultValue={warehouseDisplayQty}
                                   key={`asm-${assembly.id}-wh-${warehouseDisplayQty}`}
                                   onBlur={(e) => handleAssemblyQtyBlur(
-                                    assembly.id,
+                                    assembly,
+                                    pktList,
                                     warehouseLocationId,
                                     e.target.value,
-                                    warehouseBoxEntry
-                                      ? { inputIsBoxes: true, unitsPerBox }
-                                      : {},
+                                    {
+                                      currentUnits: warehouseOnHand,
+                                      ...(warehouseBoxEntry
+                                        ? { inputIsBoxes: true, unitsPerBox }
+                                        : {}),
+                                    },
                                   )}
                                   style={{ width: 72, textAlign: 'right' }}
                                   aria-label={warehouseBoxEntry

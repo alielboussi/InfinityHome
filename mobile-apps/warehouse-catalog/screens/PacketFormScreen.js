@@ -11,7 +11,10 @@ import WarehouseCatalogFormScroll, {
   useScrollFieldIntoView,
 } from '../shared/WarehouseCatalogFormScroll';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
-import { normalizeWarehousePacketScan } from '../shared/warehouseScanResolver';
+import {
+  normalizeWarehousePacketScan,
+  normalizeWarehouseWedgeScanInput,
+} from '../shared/warehouseScanResolver';
 import {
   useKeepSoftKeyboardOnScanSubmit,
   wedgeAwareTextChange,
@@ -22,7 +25,7 @@ export default function PacketFormScreen({ route, navigation }) {
   const prefill = route.params?.prefill || {};
   const packetId = prefill.id != null ? String(prefill.id) : '';
   const isEdit = Boolean(packetId);
-  const warehouseLocationId = route.params?.warehouseLocationId;
+  const [catalog, setCatalog] = useState(null);
 
   const [sku, setSku] = useState(prefill.sku || '');
   const [name, setName] = useState(prefill.name || '');
@@ -49,6 +52,11 @@ export default function PacketFormScreen({ route, navigation }) {
 
   const title = useMemo(() => (isEdit ? 'Edit packet' : 'New packet'), [isEdit]);
 
+  const warehouseLocationId = useMemo(
+    () => catalog?.warehouseLocationId || route.params?.warehouseLocationId || null,
+    [catalog, route.params?.warehouseLocationId],
+  );
+
   const applyPrefill = useCallback(() => {
     const p = route.params?.prefill || {};
     setSku(p.sku || '');
@@ -65,11 +73,21 @@ export default function PacketFormScreen({ route, navigation }) {
     }, 50);
   }, []);
 
+  const refreshCatalog = useCallback(async () => {
+    try {
+      const data = await warehouseMobileRequest('catalog-list');
+      setCatalog(data);
+    } catch {
+      /* keep route params if refresh fails */
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
+      refreshCatalog();
       if (isEdit) applyPrefill();
       else focusSku();
-    }, [applyPrefill, focusSku, isEdit]),
+    }, [applyPrefill, focusSku, isEdit, refreshCatalog]),
   );
 
   useEffect(() => {
@@ -154,6 +172,7 @@ export default function PacketFormScreen({ route, navigation }) {
           stripScanTerminator,
           keepFocusAfterSubmit: keepSkuKeyboard,
           transform: (v) => v.toUpperCase(),
+          normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'packet'),
         })}
         editable
         mono

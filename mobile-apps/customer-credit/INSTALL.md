@@ -80,10 +80,11 @@ Some brands add an extra “security scan” step. Tap **Install anyway** or add
 Google sign-in is **not** related to APK signing. It needs the release keystore **SHA-1** registered in Firebase for package `com.bestrest.customerledger`, and the app must include the updated `google-services.json` (v1.0.8+).
 
 1. Open [Expo credentials](https://expo.dev/accounts/alielboussi/projects/customer-ledger-tracking/credentials) → **Android** → **Keystore** → copy **SHA-1 Certificate Fingerprint**.
-2. Firebase Console → **Project settings** → **Your apps** → **Ledger** (`com.bestrest.customerledger`) → **Add fingerprint** → paste SHA-1.
-3. Or from repo root (paste SHA-1 from step 1):
+2. **If you deleted the Ledger app in Firebase** (this is **Firebase Console**, not Firestore): from repo root:
    ```bash
-   LEDGER_ANDROID_SHA1=AA:BB:... node scripts/registerLedgerAndroidGoogleSignIn.mjs
-   node scripts/refreshLedgerGoogleServices.mjs
+   LEDGER_ANDROID_SHA1=AA:BB:... node scripts/setupLedgerGoogleSignIn.mjs
    ```
-4. Rebuild and reinstall the latest APK (`npm run build:apk:prod`). Email/password login works without this step.
+   That recreates `com.bestrest.customerledger`, re-registers SHA-1, and refreshes `google-services.json` for future builds.
+3. **Or manually:** Firebase → **Project settings** → **Add app** → Android → package `com.bestrest.customerledger` → add the same SHA-1 fingerprint.
+4. **Existing APK:** Google sign-in usually works again **without rebuilding** once SHA-1 matches the keystore that signed the installed APK. Wait a few minutes and retry. Rebuild only if sign-in still fails after that.
+5. Email/password login works without any of the above.

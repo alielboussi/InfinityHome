@@ -40,6 +40,7 @@ function normalizeGrant(raw) {
     ...base,
     ...raw,
     landing_screen: base.landing_screen,
+    warehouse_product_stock_qty: raw.warehouse_product_stock_qty === 'allow' ? 'allow' : 'deny',
     screens: { ...base.screens, ...(raw.screens || {}) },
   };
 }
@@ -127,6 +128,23 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
       </div>
 
       {error ? <div className="report-error mobile-access-panel__error">{error}</div> : null}
+
+      <div className="mobile-access-panel__section">
+        <label className="mobile-access-check-row">
+          <input
+            type="checkbox"
+            checked={grant.warehouse_product_stock_qty === 'allow'}
+            onChange={(e) => setGrant((prev) => ({
+              ...prev,
+              warehouse_product_stock_qty: e.target.checked ? 'allow' : 'deny',
+            }))}
+          />
+          <span>
+            Edit <strong>product</strong> stock quantity (web + app) — <em>increments only</em>;
+            linked packet cartons scale automatically (e.g. 1→3 units: 4+5 cartons → 12+15).
+          </span>
+        </label>
+      </div>
 
       <div className="mobile-access-panel__section">
         <label className="mobile-access-name-label" htmlFor="mobile-app-display-name">

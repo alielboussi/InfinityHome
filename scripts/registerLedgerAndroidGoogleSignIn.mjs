@@ -9,7 +9,7 @@ import os from 'os';
 import path from 'path';
 
 const PROJECT_ID = 'bestrest-portal-system-43108';
-const ANDROID_APP_RESOURCE = 'projects/bestrest-portal-system-43108/androidApps/1:876299148810:android:a84ed178b9dcc4c59049f3';
+const PACKAGE_NAME = 'com.bestrest.customerledger';
 const APK_URL = process.env.LEDGER_APK_URL
   || 'https://expo.dev/artifacts/eas/hxocxxVTXP0b-r2cbNGw3y_v64k-XuuKNfFTgvINTH4.apk';
 const SERVICE_ACCOUNT_PATH = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
@@ -56,6 +56,22 @@ function extractSha1FromApk(apkPath) {
   return match[1].toUpperCase();
 }
 
+async function resolveAndroidAppResource(token) {
+  const res = await fetch(`https://firebase.googleapis.com/v1beta1/projects/${PROJECT_ID}/androidApps`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const payload = await res.json();
+  if (!res.ok) throw new Error(payload?.error?.message || JSON.stringify(payload));
+  const hit = (payload.apps || []).find((app) => {
+    const name = String(app.name || '');
+    return name.includes(PACKAGE_NAME) || String(app.packageName || '') === PACKAGE_NAME;
+  });
+  if (!hit?.name) {
+    throw new Error(`Ledger Android app missing in Firebase. Run: LEDGER_ANDROID_SHA1=... node scripts/setupLedgerGoogleSignIn.mjs`);
+  }
+  return hit.name;
+}
+
 async function registerSha(sha1) {
   const serviceAccount = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_PATH, 'utf8'));
   const auth = new GoogleAuth({
@@ -64,8 +80,9 @@ async function registerSha(sha1) {
   });
   const client = await auth.getClient();
   const { token } = await client.getAccessToken();
+  const androidAppResource = await resolveAndroidAppResource(token);
 
-  const listRes = await fetch(`https://firebase.googleapis.com/v1beta1/${ANDROID_APP_RESOURCE}/sha`, {
+  const listRes = await fetch(`https://firebase.googleapis.com/v1beta1/${androidAppResource}/sha`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const existing = await listRes.json();
@@ -77,7 +94,7 @@ async function registerSha(sha1) {
     return;
   }
 
-  const createRes = await fetch(`https://firebase.googleapis.com/v1beta1/${ANDROID_APP_RESOURCE}/sha`, {
+  const createRes = await fetch(`https://firebase.googleapis.com/v1beta1/${androidAppResource}/sha`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,

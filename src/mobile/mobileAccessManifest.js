@@ -29,6 +29,11 @@ export function isMobileScreenAccessAllowed(grant, screenId) {
   return grant?.screens?.[screenId]?.view === 'allow';
 }
 
+/** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
+export function isWarehouseProductStockQtyEditAllowed(grant) {
+  return grant?.warehouse_product_stock_qty === 'allow';
+}
+
 /** Screens that can appear as buttons on the mobile dashboard. */
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
@@ -134,6 +139,7 @@ export function defaultMobileAccessGrant() {
   return {
     app: 'warehouse-catalog',
     landing_screen: DEFAULT_MOBILE_LANDING_SCREEN,
+    warehouse_product_stock_qty: 'deny',
     screens,
   };
 }
@@ -230,6 +236,10 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   if (packetsAllowedForForms && !productsAllowed) {
     merged.screens.warehouse_packet_form = buildMobileScreenAccessRow(true);
   }
+
+  merged.warehouse_product_stock_qty = merged.warehouse_product_stock_qty === 'allow'
+    ? 'allow'
+    : 'deny';
 
   return merged;
 }

@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 
 const PROJECT_ID = 'bestrest-portal-system-43108';
-const ANDROID_APP_RESOURCE = 'projects/bestrest-portal-system-43108/androidApps/1:876299148810:android:a84ed178b9dcc4c59049f3';
+const PACKAGE_NAME = 'com.bestrest.customerledger';
 const OUTPUT_PATH = path.join(process.cwd(), 'mobile-apps', 'customer-credit', 'google-services.json');
 const SERVICE_ACCOUNT_PATH = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
   || path.join(process.cwd(), 'bestrest-portal-system-43108-firebase-adminsdk-fbsvc-b259e84074.json');
@@ -19,7 +19,19 @@ async function main() {
   });
   const client = await auth.getClient();
   const { token } = await client.getAccessToken();
-  const res = await fetch(`https://firebase.googleapis.com/v1beta1/${ANDROID_APP_RESOURCE}/config`, {
+  const listRes = await fetch(`https://firebase.googleapis.com/v1beta1/projects/${PROJECT_ID}/androidApps`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const listPayload = await listRes.json();
+  if (!listRes.ok) throw new Error(listPayload?.error?.message || JSON.stringify(listPayload));
+  const hit = (listPayload.apps || []).find((app) => {
+    const name = String(app.name || '');
+    return name.includes(PACKAGE_NAME) || String(app.packageName || '') === PACKAGE_NAME;
+  });
+  if (!hit?.name) {
+    throw new Error('Ledger Android app missing. Run scripts/setupLedgerGoogleSignIn.mjs first.');
+  }
+  const res = await fetch(`https://firebase.googleapis.com/v1beta1/${hit.name}/config`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const payload = await res.json();

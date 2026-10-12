@@ -19,8 +19,12 @@ import {
   findOrCreateWarehouseColorServer,
   saveAssemblyForMobile,
   savePacketForMobile,
+  setAssemblyProductQuantityForMobile,
   setPacketQuantityForMobile,
 } from '../lib/warehouseCatalogMobile.js';
+import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
+import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
+import { isWarehouseProductStockQtyEditAllowed } from '../../src/mobile/mobileAccessManifest.js';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
@@ -400,6 +404,9 @@ export default async function handler(req, res) {
           assembly: await saveAssemblyForMobile(getService(), body),
           created_by: user?.email || null,
         };
+      case 'assembly-product-quantity-set':
+        result = await opAssemblyProductQuantitySet(body, user);
+        break;
         break;
       case 'bom-validate':
         result = await opBomValidate(body);

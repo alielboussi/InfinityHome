@@ -19,6 +19,7 @@ import {
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
   normalizeWarehouseSku,
+  normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
 import {
   useKeepSoftKeyboardOnScanSubmit,
@@ -110,7 +111,7 @@ export default function ScanScreen({ navigation, route }) {
   };
 
   const onScanValue = async (scanValue) => {
-    const scan = String(scanValue || '').trim();
+    const scan = normalizeWarehouseWedgeScanInput(String(scanValue || '').trim(), 'auto');
     if (!scan || busy) return;
     setBusy(true);
     setMessage('');

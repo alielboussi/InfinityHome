@@ -7,10 +7,18 @@ import {
   normalizeWarehouseSkuKey,
   WAREHOUSE_INVENTORY_MODE,
 } from '../../src/utils/warehouseAssemblyMath.js';
+import { resolveWarehouseLocation } from '../../src/utils/resolveWarehouseLocation.js';
 import {
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
 } from '../../src/utils/warehouseScanResolver.js';
+import { buildPacketsByAssembly } from '../../src/utils/warehouseAssemblyPacketPool.js';
+import {
+  assertWarehouseProductQtyIncrementOnly,
+  currentAssemblyWarehouseUnits,
+  packetUpdatesForAssemblyTargetUnits,
+} from '../../src/utils/warehouseAssemblyProductQuantity.js';
+import { assemblyDerivesWarehouseStockFromPackets } from '../../src/utils/warehouseAssemblyMath.js';
 import { setWarehousePacketQuantityServer } from './warehouseLocationStockRecompute.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
@@ -23,13 +31,6 @@ const PACKET_INVENTORY = 'warehouse_packet_inventory';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 
 const WAREHOUSE_ITEM_KIND = Object.freeze({ PRODUCT: 'product', PACKET: 'packet' });
-
-export function resolveWarehouseLocation(locations) {
-  const rows = locations || [];
-  const exact = rows.find((l) => String(l.name || '').trim().toLowerCase() === 'warehouse');
-  if (exact) return exact;
-  return rows.find((l) => String(l.name || '').toLowerCase().includes('warehouse')) || null;
-}
 
 export async function fetchCatalogForMobile(sb) {
   const [
@@ -67,7 +68,7 @@ export async function fetchCatalogForMobile(sb) {
   if (inventoryErr) throw new Error(inventoryErr.message || 'Failed to load packet stock');
   if (assemblyInvErr) throw new Error(assemblyInvErr.message || 'Failed to load finished stock');
 
-  const warehouseLocation = resolveWarehouseLocation(locations);
+  const warehouseLocation = resolveWarehouseLocation(locations, { packets });
 
   return attachWarehouseStockTotals({
     assemblies: assemblies || [],
@@ -432,6 +433,95 @@ export async function savePacketForMobile(sb, body) {
   }
 
   return { packet: { ...existing, ...row, id: packetId } };
+}
+
+export async function setAssemblyProductQuantityForMobile(sb, body) {
+  const assemblyId = String(body.assembly_id || '');
+  const locationId = String(body.warehouse_location_id || body.location_id || '');
+  const target = Math.max(0, Math.floor(Number(body.quantity) || 0));
+  if (!assemblyId) throw new Error('assembly_id is required.');
+  if (!locationId) throw new Error('warehouse_location_id is required.');
+
+  const [
+    { data: assembly, error: aErr },
+    { data: allPackets, error: pErr },
+    { data: assemblyPacketRows, error: apErr },
+    { data: inventoryRows, error: iErr },
+    { data: assemblyInvRows, error: aiErr },
+  ] = await Promise.all([
+    sb.from(ASSEMBLIES).select('*').eq('id', assemblyId).maybeSingle(),
+    sb.from(PACKETS).select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
+    sb.from(ASSEMBLY_PACKETS).select('*'),
+    sb.from(PACKET_INVENTORY).select('packet_id, quantity').eq('location_id', locationId),
+    sb.from(ASSEMBLY_INVENTORY).select('assembly_id, location_id, quantity').eq('location_id', locationId),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load product');
+  if (pErr) throw new Error(pErr.message || 'Failed to load packets');
+  if (apErr) throw new Error(apErr.message || 'Failed to load packet links');
+  if (iErr) throw new Error(iErr.message || 'Failed to load packet stock');
+  if (aiErr) throw new Error(aiErr.message || 'Failed to load product stock');
+  if (!assembly) throw new Error('Product not found.');
+
+  const packetsByAssembly = buildPacketsByAssembly(assemblyPacketRows || [], allPackets || []);
+  const pktList = packetsByAssembly.get(assemblyId) || [];
+
+  const inventoryByPacketId = new Map();
+  (inventoryRows || []).forEach((row) => {
+    inventoryByPacketId.set(String(row.packet_id), Number(row.quantity) || 0);
+  });
+  pktList.forEach((p) => {
+    if (!inventoryByPacketId.has(String(p.id))) inventoryByPacketId.set(String(p.id), 0);
+  });
+
+  const assemblyInventoryByLoc = new Map();
+  const locMap = new Map();
+  (assemblyInvRows || []).forEach((row) => {
+    if (String(row.assembly_id) !== assemblyId) return;
+    locMap.set(String(row.location_id), Number(row.quantity) || 0);
+  });
+  assemblyInventoryByLoc.set(assemblyId, locMap);
+
+  const poolOpts = {
+    assemblyId,
+    assemblyPacketRows: assemblyPacketRows || [],
+    catalogPackets: allPackets || [],
+  };
+
+  const current = currentAssemblyWarehouseUnits(assembly, pktList, locationId, {
+    inventoryByPacketId,
+    assemblyInventoryByLoc,
+    poolOpts,
+  });
+  assertWarehouseProductQtyIncrementOnly(current, target);
+
+  const packetUpdates = packetUpdatesForAssemblyTargetUnits(assembly, pktList, target);
+  if (packetUpdates?.length) {
+    for (const row of packetUpdates) {
+      await setWarehousePacketQuantityServer(sb, row.packetId, locationId, row.quantity);
+    }
+  } else if (assemblyDerivesWarehouseStockFromPackets(assembly, pktList)) {
+    throw new Error('Complete the packet BOM before setting product quantity.');
+  } else {
+    const { error } = await sb.from(ASSEMBLY_INVENTORY).upsert({
+      assembly_id: assemblyId,
+      location_id: locationId,
+      quantity: target,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'assembly_id,location_id' });
+    if (error) throw new Error(error.message || 'Failed to update finished quantity');
+    const { recomputeWarehouseLocationStockServer } = await import('./warehouseLocationStockRecompute.js');
+    await recomputeWarehouseLocationStockServer(sb, locationId);
+  }
+
+  const catalog = await fetchCatalogForMobile(sb);
+  return {
+    assembly_id: assemblyId,
+    quantity: target,
+    previous: current,
+    warehouseLocationId: catalog.warehouseLocationId,
+    assemblyWarehouseQty: catalog.assemblyWarehouseQty || {},
+    packetWarehouseQty: catalog.packetWarehouseQty || {},
+  };
 }
 
 export async function setPacketQuantityForMobile(sb, body) {

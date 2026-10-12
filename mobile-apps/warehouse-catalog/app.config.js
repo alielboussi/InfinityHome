@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 const firebase = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyDH7wLdDQui32tzfdvXA5p1VBKxqLQbqjw',
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'bestrest-portal-system-43108.firebaseapp.com',
@@ -10,8 +13,24 @@ const firebase = {
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
   || '876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com';
 
+function readAndroidOAuthClientIdFromGoogleServices() {
+  try {
+    const filePath = path.join(__dirname, 'google-services.json');
+    if (!fs.existsSync(filePath)) return null;
+    const json = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const client = (json.client || []).find(
+      (row) => row?.client_info?.android_client_info?.package_name === 'com.bestrest.warehousecatalog',
+    );
+    const androidOAuth = (client?.oauth_client || []).find((row) => Number(row.client_type) === 1);
+    return androidOAuth?.client_id || null;
+  } catch {
+    return null;
+  }
+}
+
 const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
-  || '876299148810-gmf6hsqhi4nntp7u4iap1qvsvi3lh1d.apps.googleusercontent.com';
+  || readAndroidOAuthClientIdFromGoogleServices()
+  || '876299148810-roqunrqeh8k2c0jpracks0j6nqe77tsv.apps.googleusercontent.com';
 
 const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4';
 
@@ -22,7 +41,7 @@ module.exports = {
     slug: 'warehouse-catalog',
     scheme: 'warehouse-catalog',
     platforms: ['ios', 'android'],
-    version: '0.1.0',
+    version: '0.1.1',
     orientation: 'portrait',
     userInterfaceStyle: 'dark',
     icon: './assets/icon.png',
@@ -42,6 +61,7 @@ module.exports = {
     },
     android: {
       package: 'com.bestrest.warehousecatalog',
+      googleServicesFile: './google-services.json',
       softwareKeyboardLayoutMode: 'resize',
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
