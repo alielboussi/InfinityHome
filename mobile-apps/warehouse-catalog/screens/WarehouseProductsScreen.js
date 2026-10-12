@@ -22,7 +22,7 @@ import {
   normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
 import { isWarehouseProductStockQtyEditAllowed } from '../shared/mobileAccessManifest';
-import { useMobileAccessGrant } from '../shared/useMobileAccessGrant';
+import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
 import { wedgeAwareTextChange } from '../shared/useKeepSoftKeyboardOnScanSubmit';
 import {
   analyzeAssemblyPacketBom,
@@ -84,7 +84,7 @@ function ProductThumbnail({ assembly }) {
 
 export default function WarehouseProductsScreen({ navigation, route }) {
   const catalogMode = route?.params?.catalogMode === 'incomplete' ? 'incomplete' : 'complete';
-  const { grant } = useMobileAccessGrant();
+  const grant = useSharedMobileAccessGrant();
   const canEditProductStock = isWarehouseProductStockQtyEditAllowed(grant);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

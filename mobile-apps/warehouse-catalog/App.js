@@ -2,10 +2,15 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { enableScreens } from 'react-native-screens';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import AppErrorBoundary from './shared/AppErrorBoundary';
 import BiometricGate from './shared/BiometricGate';
 import FirebaseAuthGate from './shared/AuthGate';
+import { MobileAccessGrantProvider } from './shared/MobileAccessGrantContext';
 import { useMobileAccessGrant } from './shared/useMobileAccessGrant';
+
+enableScreens(true);
 import DashboardScreen from './screens/DashboardScreen';
 import WarehouseProductsScreen from './screens/WarehouseProductsScreen';
 import WarehousePacketsScreen from './screens/WarehousePacketsScreen';
@@ -32,6 +37,7 @@ function MainStack() {
   }
 
   return (
+    <MobileAccessGrantProvider grant={grant}>
     <Stack.Navigator initialRouteName="Dashboard" screenOptions={stackScreenOptions}>
       <Stack.Screen name="Dashboard" options={{ headerShown: false }}>
         {(props) => (
@@ -43,17 +49,25 @@ function MainStack() {
           />
         )}
       </Stack.Screen>
-      <Stack.Screen name="WarehouseProducts" options={{ title: 'Warehouse catalog' }}>
+      <Stack.Screen
+        name="WarehouseProducts"
+        options={{ title: 'Warehouse catalog' }}
+        initialParams={{ catalogMode: 'complete' }}
+      >
         {(props) => (
           <MobileScreenGate screenId="warehouse_products" grant={grant} navigation={props.navigation}>
-            <WarehouseProductsScreen {...props} route={{ ...props.route, params: { catalogMode: 'complete' } }} />
+            <WarehouseProductsScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>
-      <Stack.Screen name="WarehouseIncompleteProducts" options={{ title: 'Incomplete products' }}>
+      <Stack.Screen
+        name="WarehouseIncompleteProducts"
+        options={{ title: 'Incomplete products' }}
+        initialParams={{ catalogMode: 'incomplete' }}
+      >
         {(props) => (
           <MobileScreenGate screenId="warehouse_incomplete_products" grant={grant} navigation={props.navigation}>
-            <WarehouseProductsScreen {...props} route={{ ...props.route, params: { catalogMode: 'incomplete' } }} />
+            <WarehouseProductsScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>
@@ -91,6 +105,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen name="ProductForm" options={{ title: 'Product' }} component={ProductFormScreen} />
     </Stack.Navigator>
+    </MobileAccessGrantProvider>
   );
 }
 
@@ -102,7 +117,9 @@ export default function App() {
           <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
             <StatusBar style="light" />
             <NavigationContainer>
-              <MainStack />
+              <AppErrorBoundary>
+                <MainStack />
+              </AppErrorBoundary>
             </NavigationContainer>
           </SafeAreaView>
         </BiometricGate>
