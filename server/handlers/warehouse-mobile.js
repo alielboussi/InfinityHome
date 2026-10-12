@@ -6,13 +6,20 @@ import {
   normalizeWarehouseSku,
   normalizeWarehouseSkuKey,
 } from '../../src/utils/warehouseAssemblyMath.js';
-import { resolvePacketFromScan } from '../../src/utils/warehouseScanResolver.js';
+import {
+  expandWarehouseSkuMatchKeys,
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+  resolvePacketFromScan,
+} from '../../src/utils/warehouseScanResolver.js';
 import { buildPacketsByAssembly } from '../../src/utils/warehouseAssemblyPacketPool.js';
 import {
   createCategoryForMobile,
   fetchCatalogForMobile,
   findOrCreateWarehouseColorServer,
   saveAssemblyForMobile,
+  savePacketForMobile,
+  setPacketQuantityForMobile,
 } from '../lib/warehouseCatalogMobile.js';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
@@ -78,10 +85,14 @@ async function opScanResolve(body) {
       : null;
     return { kind: 'packet', packet, assembly };
   }
-  const key = normalizeWarehouseSkuKey(normalizeWarehouseSku(scan));
-  const assembly = (assemblies || []).find(
-    (a) => normalizeWarehouseSkuKey(a.family_sku) === key,
-  );
+  const productKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(scan));
+  const assembly = (assemblies || []).find((a) => {
+    const stored = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(a.family_sku));
+    for (const k of productKeys) {
+      if (k && stored.has(k)) return true;
+    }
+    return false;
+  });
   if (assembly) {
     return { kind: 'assembly', assembly };
   }
@@ -90,10 +101,10 @@ async function opScanResolve(body) {
 
 async function opPacketCreate(body, user) {
   const sb = getService();
-  const sku = normalizeWarehouseSku(body.sku);
+  const sku = normalizeWarehousePacketScan(body.sku);
   const name = String(body.name || '').trim();
   const packetNumber = Number(body.packet_number);
-  const qtyPerUnit = 1;
+  const qtyPerUnit = Math.max(1, Math.floor(Number(body.qty_per_unit) || 1));
   const warehouseLocationId = body.warehouse_location_id;
   const initialQty = Math.max(0, Number(body.initial_quantity) || 0);
   if (!sku || !name) throw new Error('SKU and name are required.');
@@ -362,6 +373,15 @@ export default async function handler(req, res) {
         break;
       case 'packet-create':
         result = await opPacketCreate(body, user);
+        break;
+      case 'packet-update':
+        result = {
+          ...(await savePacketForMobile(getService(), body)),
+          updated_by: user?.email || null,
+        };
+        break;
+      case 'packet-quantity-set':
+        result = await setPacketQuantityForMobile(getService(), body);
         break;
       case 'assembly-create':
         result = await opAssemblyCreate(body, user);

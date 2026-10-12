@@ -1,7 +1,7 @@
 import db from '../dataClient';
 import { resolveWarehouseLocation, showroomLocations } from './warehouseCatalog';
 import { normalizeWarehouseSkuKey } from '../utils/warehouseAssemblyMath';
-import { normalizeWarehouseScan } from '../utils/warehouseScanResolver';
+import { normalizeWarehousePacketScan } from '../utils/warehouseScanResolver';
 
 const PACKETS = 'warehouse_packets';
 const ASSEMBLIES = 'warehouse_assemblies';
@@ -288,7 +288,7 @@ export async function applyWarehouseStocktakeSubmit(eventId, locationId, warehou
 export async function findPacketByScan(scan, packets) {
   const list = packets || await loadAllPackets();
   const rawKey = normalizeWarehouseSkuKey(scan);
-  const normKey = normalizeWarehouseSkuKey(normalizeWarehouseScan(scan));
+  const normKey = normalizeWarehouseSkuKey(normalizeWarehousePacketScan(scan));
   const hit = list.find((p) => {
     const k = normalizeWarehouseSkuKey(p.sku);
     return k === rawKey || k === normKey;

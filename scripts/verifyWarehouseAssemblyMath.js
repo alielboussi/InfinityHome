@@ -2,6 +2,7 @@ const assert = require('assert');
 const {
   analyzeAssemblyPacketBom,
   assemblableUnits,
+  assemblyDerivesWarehouseStockFromPackets,
 } = require('../src/utils/warehouseAssemblyMath.js');
 
 const classic = [
@@ -110,5 +111,22 @@ assert.strictEqual(
   ),
   5,
 );
+
+const fourteenPkt = Array.from({ length: 14 }, (_, i) => ({
+  id: `p${i + 1}`,
+  packet_number: i + 1,
+  qty_per_unit: 1,
+}));
+const finishedModeAssembly = {
+  inventory_mode: 'finished',
+  packet_count: 14,
+  units_per_carton: 2,
+};
+assert.strictEqual(
+  assemblyDerivesWarehouseStockFromPackets(finishedModeAssembly, fourteenPkt),
+  true,
+);
+const inv14 = new Map(fourteenPkt.map((p) => [p.id, 14]));
+assert.strictEqual(assemblableUnits(fourteenPkt, inv14, 14), 14);
 
 console.log('verifyWarehouseAssemblyMath: ok');

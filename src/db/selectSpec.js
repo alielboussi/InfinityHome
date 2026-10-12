@@ -36,6 +36,7 @@ const CHILD_FK = {
   warehouse_assembly_locations: 'assembly_id',
   warehouse_assembly_colors: 'assembly_id',
   warehouse_assembly_packets: 'assembly_id',
+  warehouse_set_items: 'location_id',
   sale_items: 'sale_id',
   layby_payments: 'layby_id',
   quotation_items: 'quotation_id',

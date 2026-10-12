@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +13,17 @@ import { useFocusEffect } from '@react-navigation/native';
 import { attachWarehouseStockTotals } from '../shared/warehouseCatalogStock';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import {
+  expandWarehouseSkuMatchKeys,
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+  normalizeWarehouseSku,
+} from '../shared/warehouseScanResolver';
+import { theme } from '../shared/theme';
+
+function isSetAssembly(assembly) {
+  return String(assembly?.item_kind || '').toLowerCase() === 'set';
+}
 
 function formatDimensionsLine(assembly) {
   const l = assembly?.dim_length;
@@ -71,8 +81,6 @@ export default function WarehouseProductsScreen({ navigation }) {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
   const [catalog, setCatalog] = useState(null);
-  const [addOpen, setAddOpen] = useState(false);
-
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -126,20 +134,38 @@ export default function WarehouseProductsScreen({ navigation }) {
   const packetWarehouseQty = stockMaps.packetWarehouseQty;
   const warehouseLabel = catalog?.warehouseLocationName || 'Warehouse';
 
+  const productAssemblies = useMemo(
+    () => (catalog?.assemblies || []).filter((a) => !isSetAssembly(a)),
+    [catalog?.assemblies],
+  );
+
   const filtered = useMemo(() => {
-    const assemblies = catalog?.assemblies || [];
-    const q = search.trim().toLowerCase();
-    if (!q) return assemblies;
-    return assemblies.filter((a) => {
+    const raw = search.trim();
+    if (!raw) return productAssemblies;
+    const qLower = raw.toLowerCase();
+    const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
+    const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
+
+    const keysOverlap = (storedSku, queryKeys, normalizer) => {
+      const storedKeys = expandWarehouseSkuMatchKeys(normalizer(storedSku));
+      for (const k of queryKeys) {
+        if (k && storedKeys.has(k)) return true;
+      }
+      return false;
+    };
+
+    return productAssemblies.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
-      if (String(a.name || '').toLowerCase().includes(q)) return true;
-      if (String(a.family_sku || '').toLowerCase().includes(q)) return true;
+      if (String(a.name || '').toLowerCase().includes(qLower)) return true;
+      if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
+      if (keysOverlap(a.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
       return pktList.some(
-        (p) => String(p.name || '').toLowerCase().includes(q)
-          || String(p.sku || '').toLowerCase().includes(q),
+        (p) => String(p.name || '').toLowerCase().includes(qLower)
+          || String(p.sku || '').toLowerCase().includes(qLower)
+          || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
       );
     });
-  }, [catalog?.assemblies, packetsByAssembly, search]);
+  }, [productAssemblies, packetsByAssembly, search]);
 
   const toggleExpanded = (id) => {
     setExpanded((prev) => {
@@ -151,33 +177,13 @@ export default function WarehouseProductsScreen({ navigation }) {
     });
   };
 
-  const openPacketForm = (prefill = {}, existing = false) => {
-    setAddOpen(false);
-    navigation.navigate('PacketForm', {
-      prefill,
-      existing,
-      warehouseLocationId: catalog?.warehouseLocationId,
-    });
-  };
-
-  const openProductForm = (prefill = {}, existing = false) => {
-    setAddOpen(false);
+  const openNewProductForm = () => {
     navigation.navigate('ProductForm', {
-      prefill,
-      existing,
+      prefill: {},
+      existing: false,
       warehouseLocationId: catalog?.warehouseLocationId,
       catalogSnapshot: catalog,
     });
-  };
-
-  const openScan = () => {
-    setAddOpen(false);
-    navigation.navigate('WarehouseScan', { warehouseLocationId: catalog?.warehouseLocationId });
-  };
-
-  const openOcrSku = () => {
-    setAddOpen(false);
-    navigation.navigate('WarehouseOcrSku', { warehouseLocationId: catalog?.warehouseLocationId });
   };
 
   const formatQty = (value) => {
@@ -208,32 +214,38 @@ export default function WarehouseProductsScreen({ navigation }) {
 
     return (
       <View style={styles.gridCard}>
-        <Pressable
-          onPress={() => toggleExpanded(id)}
-          style={styles.cardPress}
-          accessibilityLabel={isOpen ? 'Collapse packets' : 'Expand packets'}
-        >
-          <ProductThumbnail assembly={assembly} />
-          <View style={styles.qtyRibbon}>
-            <Text style={styles.qtyRibbonLabel}>{warehouseLabel}</Text>
-            <Text style={styles.qtyRibbonValue}>{formatQty(finishedQty)}</Text>
-          </View>
-          <View style={styles.expandFab} pointerEvents="none">
+        <View style={styles.cardPress}>
+          <Pressable
+            onPress={() => navigation.navigate('WarehouseProductDetail', { assemblyId: id })}
+            accessibilityLabel={`Open ${assembly.name}`}
+          >
+            <ProductThumbnail assembly={assembly} />
+            <View style={styles.qtyRibbon} pointerEvents="none">
+              <Text style={styles.qtyRibbonLabel}>{warehouseLabel}</Text>
+              <Text style={styles.qtyRibbonValue}>{formatQty(finishedQty)}</Text>
+            </View>
+            <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
+            <Text style={styles.cardSku} numberOfLines={1}>{assembly.family_sku}</Text>
+            <Text style={styles.cardMeta} numberOfLines={2}>
+              {cat || '—'}
+              {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
+            </Text>
+            {dimLine ? (
+              <Text style={styles.cardSpec} numberOfLines={2}>{dimLine}</Text>
+            ) : null}
+            {volumeLine ? (
+              <Text style={styles.cardSpec} numberOfLines={1}>{volumeLine}</Text>
+            ) : null}
+          </Pressable>
+          <Pressable
+            style={styles.expandFab}
+            onPress={() => toggleExpanded(id)}
+            hitSlop={8}
+            accessibilityLabel={isOpen ? 'Hide packets' : 'Show packets'}
+          >
             <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
-          </View>
-          <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
-          <Text style={styles.cardSku} numberOfLines={1}>{assembly.family_sku}</Text>
-          <Text style={styles.cardMeta} numberOfLines={2}>
-            {cat || '—'}
-            {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
-          </Text>
-          {dimLine ? (
-            <Text style={styles.cardSpec} numberOfLines={2}>{dimLine}</Text>
-          ) : null}
-          {volumeLine ? (
-            <Text style={styles.cardSpec} numberOfLines={1}>{volumeLine}</Text>
-          ) : null}
-        </Pressable>
+          </Pressable>
+        </View>
         {isOpen ? (
           <View style={styles.packetList}>
             {pktList.length === 0 ? (
@@ -249,24 +261,35 @@ export default function WarehouseProductsScreen({ navigation }) {
 
   return (
     <View style={styles.wrap}>
+      <View style={styles.listHeader}>
+        <Text style={styles.listHeaderTitle}>{warehouseLabel} products</Text>
+        <Text style={styles.listHeaderMeta}>
+          {filtered.length} item{filtered.length === 1 ? '' : 's'}
+        </Text>
+      </View>
       <View style={styles.toolbar}>
         <TextInput
           style={styles.search}
           placeholder="Search SKU or name…"
-          placeholderTextColor="#64748b"
+          placeholderTextColor={theme.textDim}
           value={search}
           onChangeText={setSearch}
           autoCapitalize="none"
           autoCorrect={false}
+          onBlur={() => {
+            const v = search.trim();
+            if (!v) return;
+            const compact = normalizeWarehouseSku(v);
+            if (compact.length > 14 && /^\d{14}/.test(compact)) {
+              setSearch(normalizeWarehouseProductSku(v));
+            }
+          }}
         />
         <Pressable
-          style={styles.ocrBtn}
-          onPress={openOcrSku}
-          accessibilityLabel="Scan printed SKU from label"
+          style={styles.addBtn}
+          onPress={openNewProductForm}
+          accessibilityLabel="Add new product"
         >
-          <Text style={styles.ocrBtnText}>Label</Text>
-        </Pressable>
-        <Pressable style={styles.addBtn} onPress={() => setAddOpen(true)} accessibilityLabel="Add">
           <Text style={styles.addBtnText}>+</Text>
         </Pressable>
       </View>
@@ -284,41 +307,26 @@ export default function WarehouseProductsScreen({ navigation }) {
           columnWrapperStyle={styles.gridRow}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
-            <Text style={styles.empty}>No products yet. Tap + to add a packet or product.</Text>
+            <Text style={styles.empty}>No products yet. Tap + to add a product.</Text>
           }
           refreshing={loading}
           onRefresh={load}
         />
       )}
 
-      <Modal visible={addOpen} transparent animationType="fade" onRequestClose={() => setAddOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setAddOpen(false)}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Add</Text>
-            <Pressable style={styles.modalOption} onPress={openScan}>
-              <Text style={styles.modalOptionText}>Scan barcode (Code 128 / QR)</Text>
-            </Pressable>
-            <Pressable style={styles.modalOption} onPress={openOcrSku}>
-              <Text style={styles.modalOptionText}>Label text — finished SKU (OCR)</Text>
-            </Pressable>
-            <Pressable style={styles.modalOption} onPress={() => openPacketForm({}, false)}>
-              <Text style={styles.modalOptionText}>New packet</Text>
-            </Pressable>
-            <Pressable style={styles.modalOption} onPress={() => openProductForm({}, false)}>
-              <Text style={styles.modalOptionText}>New product</Text>
-            </Pressable>
-            <Pressable style={styles.modalCancel} onPress={() => setAddOpen(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: '#0f172a' },
+  wrap: { flex: 1, backgroundColor: theme.bg },
+  listHeader: {
+    paddingHorizontal: theme.space.md,
+    paddingTop: theme.space.sm,
+    paddingBottom: theme.space.xs,
+  },
+  listHeaderTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  listHeaderMeta: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -329,30 +337,20 @@ const styles = StyleSheet.create({
   search: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    borderColor: theme.border,
+    borderRadius: theme.radiusSm,
+    paddingHorizontal: theme.space.md,
     paddingVertical: 10,
-    color: '#f8fafc',
+    color: theme.text,
+    fontSize: 15,
   },
-  ocrBtn: {
-    paddingHorizontal: 10,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: '#0c4a6e',
-    borderWidth: 1,
-    borderColor: '#0ea5e9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ocrBtnText: { color: '#e0f2fe', fontSize: 12, fontWeight: '700' },
   addBtn: {
     width: 44,
     height: 44,
-    borderRadius: 8,
-    backgroundColor: '#1e3a5f',
+    borderRadius: theme.radiusSm,
+    backgroundColor: theme.surfaceElevated,
     borderWidth: 1,
-    borderColor: '#38bdf8',
+    borderColor: theme.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -361,14 +359,14 @@ const styles = StyleSheet.create({
   gridRow: { gap: 8, marginBottom: 8 },
   gridCard: {
     flex: 1,
-    backgroundColor: '#1e293b',
-    borderRadius: 10,
+    backgroundColor: theme.surface,
+    borderRadius: theme.radius,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: theme.border,
     overflow: 'hidden',
     minWidth: 0,
   },
-  cardPress: { padding: 8, paddingBottom: 10 },
+  cardPress: { padding: 8, paddingBottom: 10, position: 'relative' },
   thumb: {
     width: '100%',
     aspectRatio: 1,
@@ -405,14 +403,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 14,
     right: 14,
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    width: 32,
+    height: 32,
+    borderRadius: theme.radiusSm,
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: theme.border,
+    zIndex: 2,
   },
   expandIcon: { color: '#94a3b8', fontSize: 10 },
   expandIconOpen: { transform: [{ rotate: '90deg' }] },
@@ -438,25 +437,4 @@ const styles = StyleSheet.create({
   packetEmpty: { color: '#64748b', fontStyle: 'italic', paddingVertical: 4, fontSize: 11 },
   error: { color: '#f87171', paddingHorizontal: 12, marginBottom: 8 },
   empty: { color: '#64748b', textAlign: 'center', marginTop: 32, paddingHorizontal: 24 },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: '#1e293b',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    paddingBottom: 28,
-  },
-  modalTitle: { color: '#f8fafc', fontSize: 18, fontWeight: '700', marginBottom: 12 },
-  modalOption: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
-  },
-  modalOptionText: { color: '#e2e8f0', fontSize: 16 },
-  modalCancel: { marginTop: 12, paddingVertical: 12, alignItems: 'center' },
-  modalCancelText: { color: '#94a3b8', fontSize: 16 },
 });

@@ -1,18 +1,45 @@
 import { normalizeWarehouseSku, normalizeWarehouseSkuKey } from './warehouseAssemblyMath.js';
 
-/**
- * Istikbal carton scan: X + duplicated leading digit + SKU body + optional "-lot".
- * e.g. X112VEM… → 12VEM…, X220AHEGEV… → 20AHEGEV…
- */
-function stripIstikbalXScanPrefix(code) {
-  const raw = normalizeWarehouseSku(code);
-  if (!raw || raw.length < 3 || (raw[0] !== 'X' && raw[0] !== 'x')) return raw;
-  const scanDigit = raw[1];
-  if (!/\d/.test(scanDigit)) return raw;
+function canonicalWarehouseSku(code) {
+  return normalizeWarehouseSku(code).toUpperCase();
+}
 
+/** Factory lot suffix on label barcodes, e.g. …-242813004516 */
+function stripFactoryLotSuffix(code) {
+  const raw = normalizeWarehouseSku(code);
+  if (!raw) return '';
+  const dash = raw.indexOf('-');
+  if (dash < 0) return raw;
+  const suffix = raw.slice(dash + 1);
+  if (/^\d{6,}$/.test(suffix)) return raw.slice(0, dash);
+  return raw;
+}
+
+/**
+ * Finished-product label: 14-digit factory lot prefix + family SKU body.
+ * Only strips when the first 14 characters are digits (manual short SKUs unchanged).
+ */
+function stripProductLotPrefix(code) {
+  const raw = normalizeWarehouseSku(code);
+  if (!raw) return '';
+  if (raw.length > 14 && /^\d{14}/.test(raw)) {
+    return raw.slice(14);
+  }
+  return raw;
+}
+
+/**
+ * Packet carton: X + optional duplicated leading digit + SKU body.
+ * e.g. X112VEM… → 12VEM…, X213TAI… → 13TAI…
+ * Packing-list SKUs like 23A9… stay as X23A9… → 23A9… (two digits + letter).
+ * XX + digit → strip both X and the following single digit.
+ */
+function stripIstikbalXDigitScanPrefix(code) {
+  const raw = normalizeWarehouseSku(code);
+  if (!raw || raw.length < 3 || !/^X\d/i.test(raw)) return raw;
+  const scanDigit = raw[1];
   let body = raw.slice(1);
-  const dash = body.indexOf('-');
-  if (dash >= 0) body = body.slice(0, dash);
+  if (/^\d{2}[A-Z]/i.test(body)) return body;
   if (body.length && body[0] === scanDigit) body = body.slice(1);
   return body;
 }
@@ -32,29 +59,58 @@ export function expandWarehouseSkuMatchKeys(sku) {
 }
 
 /**
- * Normalize a raw scanner string to a canonical packet SKU candidate.
- * Supports Istikbal-style X1/X2/X3…-lot, YY…+family, and plain codes.
+ * Normalize a raw scanner string for **warehouse products** (family SKU).
+ * Strips 14-digit lot prefix; does not apply packet X-prefix rules.
  */
-export function normalizeWarehouseScan(raw) {
-  let code = normalizeWarehouseSku(raw);
+export function normalizeWarehouseProductSku(raw) {
+  let code = stripFactoryLotSuffix(normalizeWarehouseSku(raw));
+  if (!code) return '';
+  code = stripProductLotPrefix(code);
+
+  const yyFamily = code.match(/^YY\d+(\d{2}[A-Z0-9]+)$/i);
+  if (yyFamily) {
+    return canonicalWarehouseSku(yyFamily[1]);
+  }
+
+  return canonicalWarehouseSku(code);
+}
+
+/**
+ * Normalize a raw scanner string for **warehouse packets** (carton SKU).
+ * Uses X / XX carton rules only — never strips a 14-digit product lot prefix.
+ */
+export function normalizeWarehousePacketScan(raw) {
+  let code = stripFactoryLotSuffix(normalizeWarehouseSku(raw));
   if (!code) return '';
 
   if (/^X\d/i.test(code)) {
-    code = stripIstikbalXScanPrefix(code);
+    code = stripIstikbalXDigitScanPrefix(code);
+  } else if (/^X{2,}/i.test(code)) {
+    code = normalizeWarehouseSku(code.replace(/^X+/i, ''));
   }
 
   const yyFamily = code.match(/^YY\d+(\d{2}[A-Z0-9]+)$/i);
   if (yyFamily) {
-    return normalizeWarehouseSku(yyFamily[1]);
+    return canonicalWarehouseSku(yyFamily[1]);
   }
 
-  return code;
+  return canonicalWarehouseSku(code);
 }
 
-function collectScanCandidateKeys(scan) {
+/** @deprecated use normalizeWarehousePacketScan */
+export function normalizeWarehouseScan(raw) {
+  return normalizeWarehousePacketScan(raw);
+}
+
+/** @deprecated use normalizeWarehouseProductSku or normalizeWarehousePacketScan */
+export function normalizeWarehouseCatalogSku(raw) {
+  return normalizeWarehousePacketScan(raw);
+}
+
+function collectPacketScanCandidateKeys(scan) {
   const keys = new Set();
   const raw = normalizeWarehouseSku(scan);
-  const normalized = normalizeWarehouseScan(scan);
+  const normalized = normalizeWarehousePacketScan(scan);
   [raw, normalized].forEach((value) => {
     expandWarehouseSkuMatchKeys(value).forEach((k) => keys.add(k));
   });
@@ -66,7 +122,7 @@ function collectScanCandidateKeys(scan) {
  * @param {Array<{ id: string, sku: string, sku_aliases?: string[] }>} packets
  */
 export function resolvePacketFromScan(scan, packets) {
-  const candidates = collectScanCandidateKeys(scan);
+  const candidates = collectPacketScanCandidateKeys(scan);
 
   for (const packet of packets || []) {
     const keys = new Set();

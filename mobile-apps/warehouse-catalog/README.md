@@ -35,3 +35,14 @@ npm start
 Register every new screen in `src/mobile/mobileAccessManifest.js` (and `App.js` routes) — CI verifies via `scripts/verifyMobileAccessManifest.js`.
 
 **Expo SDK:** 57 (matches current Expo Go from Play Store).
+
+## App icon
+
+Launcher assets live in `assets/icon.png` and `assets/adaptive-icon.png` (rounded tile, red border). Regenerate after changing art:
+
+```bash
+npm run icons
+# or from repo root: node scripts/applyIconKitchenToWarehouseCatalog.js
+```
+
+**Expo Go** always shows the Expo logo on the home screen. Install a **development build** or release APK/AAB to see this app’s icon (`app.config.js` → `icon` / `android.adaptiveIcon`).

@@ -2,11 +2,24 @@ import db from '../dataClient';
 import {
   analyzeAssemblyPacketBom,
   normalizeWarehouseColorKey,
-  normalizeWarehouseSku,
   normalizeWarehouseSkuKey,
   WAREHOUSE_INVENTORY_MODE,
 } from '../utils/warehouseAssemblyMath';
-import { resolvePacketFromScan } from '../utils/warehouseScanResolver';
+import {
+  isWarehouseKitShowroomLocation,
+  warehouseCatalogAllowsSetCreate,
+} from '../constants/warehouseShowroomLocations';
+import {
+  isWarehouseProductAssembly,
+  validateSetComponentAssembly,
+} from '../utils/warehouseCatalogHierarchy';
+import { expandWarehouseSetItemsRows } from '../utils/warehouseSetItems';
+import {
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+  resolvePacketFromScan,
+} from '../utils/warehouseScanResolver';
+import { titleCaseWords } from '../utils/titleCaseWords';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const PACKETS = 'warehouse_packets';
@@ -16,12 +29,14 @@ const COLORS = 'warehouse_colors';
 const ASSEMBLY_COLORS = 'warehouse_assembly_colors';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 const ASSEMBLY_PACKETS = 'warehouse_assembly_packets';
+const SET_ITEMS = 'warehouse_set_items';
 
 export { WAREHOUSE_INVENTORY_MODE };
 
 export const WAREHOUSE_ITEM_KIND = Object.freeze({
   PRODUCT: 'product',
   PACKET: 'packet',
+  SET: 'set',
 });
 
 export function resolveWarehouseLocation(locations) {
@@ -46,6 +61,7 @@ export async function fetchWarehouseCatalog() {
     { data: assemblyInventory, error: assemblyInvErr },
     { data: assemblyColors, error: assemblyColorsErr },
     { data: assemblyPackets, error: assemblyPacketsErr },
+    { data: setItems, error: setItemsErr },
     { data: colors, error: colorsErr },
     { data: categories, error: categoriesErr },
     { data: locations, error: locationsErr },
@@ -57,6 +73,7 @@ export async function fetchWarehouseCatalog() {
     db.from(ASSEMBLY_INVENTORY).select('*'),
     db.from(ASSEMBLY_COLORS).select('*'),
     db.from(ASSEMBLY_PACKETS).select('*'),
+    db.from(SET_ITEMS).select('*'),
     db.from(COLORS).select('*').order('name', { ascending: true }),
     db.from('categories').select('id, name').order('name', { ascending: true }),
     db.from('locations').select('id, name').order('name', { ascending: true }),
@@ -68,6 +85,7 @@ export async function fetchWarehouseCatalog() {
   if (assemblyLocErr) throw new Error(assemblyLocErr.message || 'Failed to load product locations');
   if (assemblyColorsErr) throw new Error(assemblyColorsErr.message || 'Failed to load product colors');
   if (assemblyPacketsErr) throw new Error(assemblyPacketsErr.message || 'Failed to load product packet links');
+  if (setItemsErr) throw new Error(setItemsErr.message || 'Failed to load warehouse set lines');
   if (colorsErr) throw new Error(colorsErr.message || 'Failed to load variant colors');
   if (assemblyInvErr) throw new Error(assemblyInvErr.message || 'Failed to load finished stock');
   if (categoriesErr) throw new Error(categoriesErr.message || 'Failed to load categories');
@@ -82,6 +100,7 @@ export async function fetchWarehouseCatalog() {
     assemblyLocations: assemblyLocations || [],
     assemblyColors: assemblyColors || [],
     assemblyPackets: assemblyPackets || [],
+    setItems: expandWarehouseSetItemsRows(setItems || []),
     assemblyInventory: assemblyInventory || [],
     colors: colors || [],
     categories: categories || [],
@@ -129,17 +148,17 @@ async function assertUniqueWarehouseSku(sku, {
     }
   }
 
+  const excludedPacketIds = new Set(
+    [excludePacketId, ...(linkedPacketIds || [])]
+      .filter(Boolean)
+      .map(String),
+  );
   const packetClash = (packets || []).find(
     (row) => normalizeWarehouseSkuKey(row.sku) === key
-      && String(row.id) !== String(excludePacketId || ''),
+      && !excludedPacketIds.has(String(row.id)),
   );
   if (packetClash) {
-    const linkedPacketOk = (linkedPacketIds || []).some(
-      (pid) => String(pid) === String(packetClash.id),
-    );
-    if (!linkedPacketOk) {
-      throw new Error(`SKU already used by warehouse packet "${packetClash.name || packetClash.sku}".`);
-    }
+    throw new Error(`SKU already used by warehouse packet "${packetClash.name || packetClash.sku}".`);
   }
 
   const legacyClash = (legacyProducts || []).find(
@@ -246,6 +265,52 @@ function normalizePacketLinks(packetLinks, legacyPacketIds) {
   })).filter((link) => link.packet_id);
 }
 
+/** Remove a duplicate packet (same SKU + name) when saving a finished product; returns its inventory rows. */
+async function detachPacketInventoryForFinishedProduct({ familySku, name, assemblyId }) {
+  const key = normalizeWarehouseSkuKey(familySku);
+  if (!key) return [];
+  const { data: packets, error: pErr } = await db.from(PACKETS).select('id, name, sku');
+  if (pErr) throw new Error(pErr.message || 'Failed to load packets');
+  const nameNorm = String(name || '').trim().toLowerCase();
+  const match = (packets || []).find(
+    (p) => normalizeWarehouseSkuKey(p.sku) === key
+      && String(p.name || '').trim().toLowerCase() === nameNorm,
+  );
+  if (!match) return [];
+  const { data: links, error: lErr } = await db
+    .from(ASSEMBLY_PACKETS)
+    .select('assembly_id')
+    .eq('packet_id', match.id);
+  if (lErr) throw new Error(lErr.message || 'Failed to read packet links');
+  const foreign = (links || []).filter(
+    (row) => assemblyId && String(row.assembly_id) !== String(assemblyId),
+  );
+  if (foreign.length > 0) return [];
+  if (!assemblyId && (links || []).length > 0) return [];
+  const { data: invRows, error: invErr } = await db.from(INVENTORY).select('*').eq('packet_id', match.id);
+  if (invErr) throw new Error(invErr.message || 'Failed to read packet stock');
+  await deleteWarehousePacket(match.id);
+  return invRows || [];
+}
+
+async function mergePacketInventoryIntoAssembly(assemblyId, inventoryRows) {
+  const aid = String(assemblyId || '');
+  if (!aid) return;
+  for (const row of inventoryRows || []) {
+    const locId = row?.location_id;
+    if (!locId) continue;
+    const add = Math.max(0, Number(row.quantity) || 0);
+    if (add <= 0) continue;
+    const { data: existing } = await db.from(ASSEMBLY_INVENTORY)
+      .select('quantity')
+      .eq('assembly_id', aid)
+      .eq('location_id', locId)
+      .maybeSingle();
+    const prev = Math.max(0, Number(existing?.quantity) || 0);
+    await setWarehouseAssemblyQuantity(aid, locId, prev + add);
+  }
+}
+
 async function refreshPacketPrimaryAssemblyId(packetId) {
   const pid = String(packetId || '');
   if (!pid) return;
@@ -306,50 +371,139 @@ async function syncAssemblyPackets(assemblyId, packetLinks, warehouseLocationId,
   }
 }
 
-export async function saveWarehouseAssembly(payload, { id } = {}) {
-  const name = String(payload?.name || '').trim();
-  const familySku = normalizeWarehouseSku(payload?.family_sku);
+async function syncAssemblySetItems(setAssemblyId, setLocationId, setComponents, assembliesById) {
+  const setId = String(setAssemblyId || '');
+  const locationId = String(setLocationId || '');
+  if (!setId) return;
+  if (!isWarehouseKitShowroomLocation(locationId)) {
+    throw new Error('Set kitting location must be Kitwe or Lusaka.');
+  }
+  await db.from(SET_ITEMS).delete().eq('set_assembly_id', setId).eq('location_id', locationId);
+  const now = new Date().toISOString();
+  const rows = [];
+  const seen = new Set();
+  (setComponents || []).forEach((line) => {
+    const componentId = String(line?.component_assembly_id || '').trim();
+    const lineKey = `${componentId}`;
+    if (!componentId || componentId === setId || seen.has(lineKey)) return;
+    const component = assembliesById?.get(componentId);
+    validateSetComponentAssembly(component, { setAssemblyId: setId });
+    seen.add(lineKey);
+    rows.push({
+      location_id: locationId,
+      set_assembly_id: setId,
+      component_assembly_id: componentId,
+      quantity: Math.max(1, Number(line?.quantity) || 1),
+      updated_at: now,
+    });
+  });
+  if (!rows.length) {
+    throw new Error('Add at least one product to this set.');
+  }
+  const { error } = await db.from(SET_ITEMS).upsert(rows, {
+    onConflict: 'location_id,set_assembly_id,component_assembly_id',
+  });
+  if (error) throw new Error(error.message || 'Failed to save set components');
+}
+
+export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {}) {
+  const name = titleCaseWords(String(payload?.name || '').trim());
+  const familySku = normalizeWarehouseProductSku(payload?.family_sku);
   const categoryId = payload?.category_id || null;
   const retailProductId = payload?.retail_product_id || null;
   const locationIds = payload?.location_ids || [];
   const packetLinks = payload?.packet_links;
   const packetIds = payload?.packet_ids || [];
   const warehouseLocationId = payload?.warehouse_location_id;
-  const inventoryMode = payload?.inventory_mode === WAREHOUSE_INVENTORY_MODE.FINISHED
+  const isSet = payload?.catalog_kind === 'set'
+    || String(payload?.item_kind || '').toLowerCase() === WAREHOUSE_ITEM_KIND.SET;
+  const setComponents = payload?.set_components || [];
+  const setLocationId = payload?.set_location_id || null;
+  const inventoryMode = isSet
     ? WAREHOUSE_INVENTORY_MODE.FINISHED
-    : WAREHOUSE_INVENTORY_MODE.PACKETS;
+    : (payload?.inventory_mode === WAREHOUSE_INVENTORY_MODE.FINISHED
+      ? WAREHOUSE_INVENTORY_MODE.FINISHED
+      : WAREHOUSE_INVENTORY_MODE.PACKETS);
   const packetCountRaw = payload?.packet_count;
   const packetCount = packetCountRaw === '' || packetCountRaw == null
     ? null
     : Number(packetCountRaw);
   const hasColorVariants = Boolean(payload?.has_color_variants);
   const colorIds = hasColorVariants ? (payload?.color_ids || []) : [];
+  const unitsPerCartonRaw = payload?.units_per_carton;
+  let unitsPerCarton = unitsPerCartonRaw === '' || unitsPerCartonRaw == null
+    ? 1
+    : Math.max(1, Math.floor(Number(unitsPerCartonRaw) || 1));
+  if (!isSet && inventoryMode === WAREHOUSE_INVENTORY_MODE.PACKETS) {
+    unitsPerCarton = 1;
+  }
 
   if (!name) throw new Error('Name is required');
   if (!familySku) throw new Error('Product SKU is required');
-  if (inventoryMode === WAREHOUSE_INVENTORY_MODE.PACKETS) {
-    if (!Number.isFinite(packetCount) || packetCount < 1) {
-      throw new Error('Total packets is required when tracking stock by cartons.');
-    }
-  } else if (packetCount != null && (!Number.isFinite(packetCount) || packetCount < 1)) {
-    throw new Error('Total packets must be at least 1 when set.');
+  if (isSet && !isWarehouseKitShowroomLocation(setLocationId)) {
+    throw new Error('Choose Kitwe or Lusaka for this set recipe.');
   }
-  const packetLinkRows = normalizePacketLinks(packetLinks, packetIds);
+  if (isSet && !id && !warehouseCatalogAllowsSetCreate()) {
+    throw new Error('Sets are built at showroom locations from products — not created in Warehouse.');
+  }
+  if (isSet) {
+    const strayPackets = normalizePacketLinks(packetLinks, packetIds);
+    if (strayPackets.length > 0 || (packetCount != null && Number(packetCount) > 0)) {
+      throw new Error('Sets are built from products only — packets belong on products.');
+    }
+  }
+  if (!isSet && (setComponents || []).some((line) => String(line?.component_assembly_id || '').trim())) {
+    throw new Error('Only sets combine products — add packets to build a product.');
+  }
+
+  const packetLinkRows = isSet ? [] : normalizePacketLinks(packetLinks, packetIds);
   const linkedPacketIds = packetLinkRows.map((link) => link.packet_id);
+
+  let absorbedPacketInventory = [];
+  if (!isSet && inventoryMode === WAREHOUSE_INVENTORY_MODE.FINISHED && packetLinkRows.length === 0) {
+    absorbedPacketInventory = await detachPacketInventoryForFinishedProduct({
+      familySku,
+      name,
+      assemblyId: id,
+    });
+  }
+
+  let existingLinkedPacketIds = [];
+  if (id) {
+    const { data: existingLinks, error: linkErr } = await db
+      .from(ASSEMBLY_PACKETS)
+      .select('packet_id')
+      .eq('assembly_id', id);
+    if (linkErr) throw new Error(linkErr.message || 'Failed to read packet links');
+    existingLinkedPacketIds = (existingLinks || []).map((row) => row.packet_id);
+  }
+
   await assertUniqueWarehouseSku(familySku, {
     excludeAssemblyId: id,
-    linkedPacketIds,
+    linkedPacketIds: [...linkedPacketIds, ...existingLinkedPacketIds],
+    excludePacketId,
   });
+
+  if (!isSet) {
+    if (inventoryMode === WAREHOUSE_INVENTORY_MODE.PACKETS) {
+      if (!Number.isFinite(packetCount) || packetCount < 1) {
+        throw new Error('Total packets is required when tracking stock by cartons.');
+      }
+    } else if (packetCount != null && (!Number.isFinite(packetCount) || packetCount < 1)) {
+      throw new Error('Total packets must be at least 1 when set.');
+    }
+  }
 
   const row = {
     name,
     family_sku: familySku,
     category_id: categoryId,
     retail_product_id: retailProductId,
-    packet_count: packetCount == null ? null : packetCount,
+    packet_count: isSet ? null : (packetCount == null ? null : packetCount),
     inventory_mode: inventoryMode,
     has_color_variants: hasColorVariants,
-    item_kind: WAREHOUSE_ITEM_KIND.PRODUCT,
+    item_kind: isSet ? WAREHOUSE_ITEM_KIND.SET : WAREHOUSE_ITEM_KIND.PRODUCT,
+    units_per_carton: isSet ? null : unitsPerCarton,
     updated_at: new Date().toISOString(),
   };
 
@@ -366,13 +520,29 @@ export async function saveWarehouseAssembly(payload, { id } = {}) {
     assemblyId = data.id;
   }
 
+  const { data: allAssemblies } = await db.from(ASSEMBLIES).select('id, item_kind');
+  const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
+
   await syncAssemblyLocations(assemblyId, locationIds);
   await syncAssemblyColors(assemblyId, colorIds);
-  if (warehouseLocationId) {
+
+  if (isSet) {
+    await db.from(ASSEMBLY_PACKETS).delete().eq('assembly_id', assemblyId);
+    await syncAssemblySetItems(assemblyId, setLocationId, setComponents, assembliesById);
+  } else if (warehouseLocationId) {
     await syncAssemblyPackets(assemblyId, packetLinks, warehouseLocationId, packetIds);
     if (inventoryMode === WAREHOUSE_INVENTORY_MODE.PACKETS && packetCount != null) {
       await validateAssemblyPacketNumbers(assemblyId, packetCount);
     }
+  }
+
+  if (absorbedPacketInventory.length) {
+    await mergePacketInventoryIntoAssembly(assemblyId, absorbedPacketInventory);
+  }
+
+  if (warehouseLocationId && !isSet) {
+    const { recomputeWarehouseLocationStock } = await import('./warehouseTransfer');
+    await recomputeWarehouseLocationStock(warehouseLocationId);
   }
 
   return { ...row, id: assemblyId };
@@ -393,6 +563,8 @@ export async function setWarehouseAssemblyQuantity(assemblyId, locationId, quant
 export async function deleteWarehouseAssembly(assemblyId) {
   const id = String(assemblyId || '');
   if (!id) return;
+  await db.from(SET_ITEMS).delete().eq('set_assembly_id', id);
+  await db.from(SET_ITEMS).delete().eq('component_assembly_id', id);
   const { data: links } = await db.from(ASSEMBLY_PACKETS).select('packet_id').eq('assembly_id', id);
   await db.from(ASSEMBLY_PACKETS).delete().eq('assembly_id', id);
   for (const row of links || []) {
@@ -406,8 +578,8 @@ export async function deleteWarehouseAssembly(assemblyId) {
 
 export async function saveWarehousePacket(payload, { id } = {}) {
   const assemblyId = payload?.assembly_id || null;
-  const sku = normalizeWarehouseSku(payload?.sku);
-  const name = String(payload?.name || '').trim();
+  const sku = normalizeWarehousePacketScan(payload?.sku);
+  const name = titleCaseWords(String(payload?.name || '').trim());
   const warehouseLocationId = payload?.warehouse_location_id;
   const packetNumber = Number(payload?.packet_number);
   const qtyPerUnit = Math.max(1, Number(payload?.qty_per_unit) || 1);
@@ -453,11 +625,13 @@ export async function saveWarehousePacket(payload, { id } = {}) {
     }
   }
 
+  const categoryId = payload?.category_id || null;
+
   const row = {
     assembly_id: assemblyId,
     sku,
     name,
-    category_id: null,
+    category_id: categoryId,
     location_id: warehouseLocationId,
     packet_number: packetNumber,
     qty_per_unit: qtyPerUnit,
@@ -502,6 +676,40 @@ export async function saveWarehousePacket(payload, { id } = {}) {
   return data;
 }
 
+/** Replace a packet with a finished warehouse product (same SKU/name); packet row is removed. */
+export async function convertWarehousePacketToProduct(packetId, {
+  warehouseLocationId,
+  locationIds = [],
+} = {}) {
+  const pid = String(packetId || '');
+  if (!pid) throw new Error('Packet is required');
+  if (!warehouseLocationId) throw new Error('Warehouse location is not configured');
+
+  const { data: packet, error: pErr } = await db.from(PACKETS).select('*').eq('id', pid).maybeSingle();
+  if (pErr) throw new Error(pErr.message || 'Failed to load packet');
+  if (!packet) throw new Error('Packet not found');
+
+  const { data: inventoryRows, error: invErr } = await db.from(INVENTORY).select('*').eq('packet_id', pid);
+  if (invErr) throw new Error(invErr.message || 'Failed to read packet stock');
+
+  await deleteWarehousePacket(pid);
+
+  const result = await saveWarehouseAssembly({
+    name: packet.name,
+    family_sku: packet.sku,
+    category_id: packet.category_id || null,
+    inventory_mode: WAREHOUSE_INVENTORY_MODE.FINISHED,
+    catalog_kind: 'product',
+    packet_links: [],
+    location_ids: locationIds,
+    warehouse_location_id: warehouseLocationId,
+  }, { id: null });
+
+  await mergePacketInventoryIntoAssembly(result.id, inventoryRows);
+
+  return { assemblyId: result.id };
+}
+
 export async function deleteWarehousePacket(packetId) {
   const id = String(packetId || '');
   if (!id) return;
@@ -517,12 +725,13 @@ export async function incrementWarehousePacketByScan(scan, warehouseLocationId, 
   const packet = resolvePacketFromScan(scan, packets || []);
   if (!packet) throw new Error(`No packet matches scan: ${String(scan || '').slice(0, 40)}`);
 
-  const { data: inv } = await db.from(INVENTORY)
+  const { data: packetInventory } = await db.from(INVENTORY)
     .select('quantity')
     .eq('packet_id', packet.id)
     .eq('location_id', warehouseLocationId)
     .maybeSingle();
-  const next = Math.max(0, (Number(inv?.quantity) || 0) + Number(delta || 0));
+  const prevQty = Math.max(0, Number(packetInventory?.quantity) || 0);
+  const next = Math.max(0, prevQty + Number(delta || 0));
   await setWarehousePacketQuantity(packet.id, warehouseLocationId, next);
   return { packet, quantity: next };
 }
@@ -537,6 +746,8 @@ export async function setWarehousePacketQuantity(packetId, locationId, quantity)
     updated_at: new Date().toISOString(),
   }, { onConflict: 'packet_id,location_id' });
   if (error) throw new Error(error.message || 'Failed to update quantity');
+  const { recomputeWarehouseLocationStock } = await import('./warehouseTransfer');
+  await recomputeWarehouseLocationStock(locationId);
 }
 
 const WAREHOUSE_IMAGE_BUCKET = 'productimages';
@@ -612,6 +823,20 @@ export async function patchWarehouseAssemblyFields(assemblyId, fields) {
   const id = String(assemblyId || '').trim();
   if (!id) throw new Error('Product id is required');
   const patch = { updated_at: new Date().toISOString() };
+
+  if (Object.prototype.hasOwnProperty.call(fields || {}, 'family_sku')) {
+    const familySku = normalizeWarehouseProductSku(fields.family_sku);
+    if (!familySku) throw new Error('SKU is required');
+    await assertUniqueWarehouseSku(familySku, { excludeAssemblyId: id });
+    patch.family_sku = familySku;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(fields || {}, 'name')) {
+    const name = String(fields.name || '').trim();
+    if (!name) throw new Error('Product name is required');
+    patch.name = name;
+  }
+
   Object.entries(fields || {}).forEach(([key, raw]) => {
     if (!INLINE_ASSEMBLY_NUMERIC_FIELDS.has(key)) return;
     if (raw === '' || raw == null) {

@@ -406,7 +406,7 @@ async function handleAuthProfile(req, res) {
     const { getLoginAccessRecord } = await import('../server/lib/loginAccess.js');
     const { normalizeMobileAccessGrant } = await import('../server/lib/mobileAccessDefaults.js');
     loginRecord = await getLoginAccessRecord(authUser.id);
-    mobileAccess = normalizeMobileAccessGrant(loginRecord?.mobile_access);
+    mobileAccess = normalizeMobileAccessGrant(loginRecord?.mobile_access, authUser.email);
   } catch (_) {
     // non-fatal for profile
   }

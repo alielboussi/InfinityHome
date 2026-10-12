@@ -2,6 +2,7 @@ import {
   effectivePacketOnHandForAssembly,
   normalizeAssemblyPacketRows,
 } from './warehouseAssemblyPacketPool.js';
+import { assemblyUsesFinishedBoxReceiving } from './warehouseUnitsPerCarton.js';
 
 function resolveSharedPacketRows({ assemblyId, assemblyPacketRows, catalogPackets } = {}) {
   if (!assemblyId) return null;
@@ -80,6 +81,17 @@ export function analyzeAssemblyPacketBom(packetCount, packets) {
     cartonsPerUnit,
     isComplete,
   };
+}
+
+/**
+ * Warehouse finished qty comes from packet on-hand when the carton BOM is complete
+ * (e.g. 14/14), except single-box finished receiving (one packet × qty per box).
+ */
+export function assemblyDerivesWarehouseStockFromPackets(assembly, pktList) {
+  const bom = analyzeAssemblyPacketBom(assembly?.packet_count, pktList);
+  if (!bom.isComplete || !(pktList || []).length) return false;
+  if (assemblyUsesFinishedBoxReceiving(assembly, pktList)) return false;
+  return true;
 }
 
 function readPacketOnHand(inventoryByPacketId, packetId) {

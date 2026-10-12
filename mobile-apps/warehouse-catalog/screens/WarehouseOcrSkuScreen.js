@@ -15,6 +15,7 @@ import {
   photoCropRectForGuideFrame,
 } from '../shared/ocrGuideCrop';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { normalizeWarehouseProductSku } from '../shared/warehouseScanResolver';
 
 const CAMERA_HEIGHT = 280;
 
@@ -73,7 +74,8 @@ export default function WarehouseOcrSkuScreen({ navigation, route }) {
   }, [navigation, warehouseLocationId]);
 
   const lookupSku = useCallback(async (rawText) => {
-    const scan = normalizeOcrSkuText(rawText);
+    const ocr = normalizeOcrSkuText(rawText);
+    const scan = normalizeWarehouseProductSku(ocr || rawText);
     if (!scan) {
       setMessage('No text to look up. Align the unit code in the yellow box or type it below.');
       return;

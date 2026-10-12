@@ -169,7 +169,10 @@ export async function updateMobileAccessGrant({
     mobile_access_updated_by: normalizeEmail(actorEmail) || null,
   };
   if (mobileAccess && typeof mobileAccess === 'object') {
-    patch.mobile_access = normalizeMobileAccessGrant(mobileAccess);
+    patch.mobile_access = normalizeMobileAccessGrant(
+      mobileAccess,
+      existing.data()?.email,
+    );
   }
   if (mobileDisplayName !== undefined) {
     const trimmed = String(mobileDisplayName || '').trim();

@@ -17,6 +17,7 @@ export const DOC_ID_FIELDS = {
   warehouse_assembly_inventory: ['assembly_id', 'location_id'],
   warehouse_assembly_colors: ['assembly_id', 'color_id'],
   warehouse_assembly_packets: ['assembly_id', 'packet_id'],
+  warehouse_set_items: ['location_id', 'set_assembly_id', 'component_assembly_id'],
   stocktake_warehouse_counts: ['event_id', 'packet_id', 'user_email'],
   stocktake_assembly_counts: ['event_id', 'assembly_id', 'user_email'],
   stocktake_counts: ['event_id', 'product_id', 'user_email'],

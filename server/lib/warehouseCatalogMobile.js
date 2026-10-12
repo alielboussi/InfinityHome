@@ -7,6 +7,11 @@ import {
   normalizeWarehouseSkuKey,
   WAREHOUSE_INVENTORY_MODE,
 } from '../../src/utils/warehouseAssemblyMath.js';
+import {
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+} from '../../src/utils/warehouseScanResolver.js';
+import { setWarehousePacketQuantityServer } from './warehouseLocationStockRecompute.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const PACKETS = 'warehouse_packets';
@@ -161,7 +166,7 @@ function normalizePacketLinks(packetLinks) {
   return (packetLinks || [])
     .map((link) => ({
       packet_id: String(link.packet_id || link.id || ''),
-      qty_per_unit: 1,
+      qty_per_unit: Math.max(1, Math.floor(Number(link.qty_per_unit) || 1)),
     }))
     .filter((link) => link.packet_id);
 }
@@ -229,14 +234,14 @@ async function syncAssemblyPackets(sb, assemblyId, packetLinks, warehouseLocatio
     const { error } = await sb.from(ASSEMBLY_PACKETS).upsert({
       assembly_id: id,
       packet_id: link.packet_id,
-      qty_per_unit: 1,
+      qty_per_unit: link.qty_per_unit,
       max_cartons: null,
       updated_at: now,
     }, { onConflict: 'assembly_id,packet_id' });
     if (error) throw new Error(error.message || 'Failed to link packet');
     const { error: pktErr } = await sb.from(PACKETS).update({
       location_id: warehouseLocationId,
-      qty_per_unit: 1,
+      qty_per_unit: link.qty_per_unit,
       updated_at: now,
     }).eq('id', link.packet_id);
     if (pktErr) throw new Error(pktErr.message || 'Failed to update packet');
@@ -272,7 +277,10 @@ async function validateAssemblyPacketNumbers(sb, assemblyId, packetCount) {
     .in('id', packetIds);
   if (error) throw error;
   const qtyByPacket = new Map(
-    (links || []).map((l) => [String(l.packet_id), 1]),
+    (links || []).map((l) => [
+      String(l.packet_id),
+      Math.max(1, Number(l.qty_per_unit) || 1),
+    ]),
   );
   const rows = (packets || []).map((p) => ({
     ...p,
@@ -283,7 +291,7 @@ async function validateAssemblyPacketNumbers(sb, assemblyId, packetCount) {
 
 export async function saveAssemblyForMobile(sb, payload) {
   const name = String(payload?.name || '').trim();
-  const familySku = normalizeWarehouseSku(payload?.family_sku);
+  const familySku = normalizeWarehouseProductSku(payload?.family_sku);
   const categoryId = payload?.category_id || null;
   const locationIds = payload?.location_ids || [];
   const packetLinks = payload?.packet_links;
@@ -339,4 +347,112 @@ export async function saveAssemblyForMobile(sb, payload) {
   }
 
   return row;
+}
+
+export async function savePacketForMobile(sb, body) {
+  const packetId = String(body.packet_id || body.id || '');
+  if (!packetId) throw new Error('packet_id is required.');
+
+  const { data: existing, error: loadErr } = await sb
+    .from(PACKETS)
+    .select('*')
+    .eq('id', packetId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load packet');
+  if (!existing) throw new Error('Packet not found.');
+
+  const sku = normalizeWarehousePacketScan(body.sku);
+  const name = String(body.name || '').trim();
+  const packetNumber = Number(body.packet_number);
+  const qtyPerUnit = Math.max(1, Math.floor(Number(body.qty_per_unit) || 1));
+  const warehouseLocationId = String(
+    body.warehouse_location_id || existing.location_id || '',
+  );
+  if (!sku || !name) throw new Error('SKU and name are required.');
+  if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
+  if (!Number.isFinite(packetNumber) || packetNumber < 1) {
+    throw new Error('packet_number must be at least 1.');
+  }
+
+  const assemblyId = existing.assembly_id || null;
+  await assertUniqueWarehouseSku(sb, sku, {
+    excludeAssemblyId: assemblyId,
+    linkedPacketIds: [packetId],
+  });
+
+  if (assemblyId) {
+    const { data: assembly, error: aErr } = await sb
+      .from(ASSEMBLIES)
+      .select('packet_count')
+      .eq('id', assemblyId)
+      .maybeSingle();
+    if (aErr) throw new Error(aErr.message || 'Failed to load product');
+    const required = Number(assembly?.packet_count);
+    if (Number.isFinite(required) && required >= 1 && packetNumber > required) {
+      throw new Error(`Packet # must be between 1 and ${required} for this product.`);
+    }
+    const { data: linkRows } = await sb
+      .from(ASSEMBLY_PACKETS)
+      .select('packet_id')
+      .eq('assembly_id', assemblyId);
+    const siblingIds = (linkRows || []).map((r) => r.packet_id).filter(Boolean);
+    if (siblingIds.length) {
+      const { data: siblings } = await sb
+        .from(PACKETS)
+        .select('id, packet_number')
+        .in('id', siblingIds);
+      const clash = (siblings || []).find(
+        (p) => String(p.id) !== packetId && Number(p.packet_number) === packetNumber,
+      );
+      if (clash) throw new Error(`Packet #${packetNumber} is already used on this product.`);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const row = {
+    sku,
+    name,
+    location_id: warehouseLocationId,
+    packet_number: packetNumber,
+    qty_per_unit: qtyPerUnit,
+    updated_at: now,
+  };
+  const { error: updErr } = await sb.from(PACKETS).update(row).eq('id', packetId);
+  if (updErr) throw new Error(updErr.message || 'Failed to update packet');
+
+  if (assemblyId) {
+    const { error: linkErr } = await sb.from(ASSEMBLY_PACKETS).upsert({
+      assembly_id: assemblyId,
+      packet_id: packetId,
+      qty_per_unit: qtyPerUnit,
+      max_cartons: null,
+      updated_at: now,
+    }, { onConflict: 'assembly_id,packet_id' });
+    if (linkErr) throw new Error(linkErr.message || 'Failed to update packet link');
+  }
+
+  return { packet: { ...existing, ...row, id: packetId } };
+}
+
+export async function setPacketQuantityForMobile(sb, body) {
+  const packetId = String(body.packet_id || '');
+  const locationId = String(body.warehouse_location_id || body.location_id || '');
+  const quantity = body.quantity;
+  if (!packetId) throw new Error('packet_id is required.');
+  if (!locationId) throw new Error('warehouse_location_id is required.');
+
+  const { data: packet, error: pErr } = await sb.from(PACKETS).select('id, sku, name').eq('id', packetId).maybeSingle();
+  if (pErr) throw new Error(pErr.message || 'Failed to load packet');
+  if (!packet) throw new Error('Packet not found.');
+
+  const nextQty = await setWarehousePacketQuantityServer(sb, packetId, locationId, quantity);
+  const catalog = await fetchCatalogForMobile(sb);
+  return {
+    packet_id: packetId,
+    quantity: nextQty,
+    packet,
+    warehouseLocationId: catalog.warehouseLocationId,
+    assemblyWarehouseQty: catalog.assemblyWarehouseQty || {},
+    packetWarehouseQty: catalog.packetWarehouseQty || {},
+  };
 }

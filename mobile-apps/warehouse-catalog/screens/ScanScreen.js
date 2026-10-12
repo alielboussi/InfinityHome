@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
   enqueueOfflineOp,
   flushOfflineQueue,
@@ -17,6 +15,15 @@ import {
   isLikelyNetworkError,
   warehouseMobileRequest,
 } from '../shared/warehouseMobileApi';
+import {
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+  normalizeWarehouseSku,
+} from '../shared/warehouseScanResolver';
+import {
+  useKeepSoftKeyboardOnScanSubmit,
+  wedgeAwareTextChange,
+} from '../shared/useKeepSoftKeyboardOnScanSubmit';
 
 async function resolveScan(scan) {
   return warehouseMobileRequest('scan-resolve', { scan });
@@ -24,7 +31,11 @@ async function resolveScan(scan) {
 
 export default function ScanScreen({ navigation, route }) {
   const warehouseLocationId = route.params?.warehouseLocationId;
-  const [permission, requestPermission] = useCameraPermissions();
+  const skuInputRef = useRef(null);
+  const {
+    keepFocusAfterSubmit,
+    stripScanTerminator,
+  } = useKeepSoftKeyboardOnScanSubmit(skuInputRef);
   const [manual, setManual] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -52,12 +63,15 @@ export default function ScanScreen({ navigation, route }) {
   }, [refreshQueueCount, syncQueue]);
 
   const handleResolved = (result, scanValue) => {
+    const packetSku = normalizeWarehousePacketScan(result.packet?.sku || scanValue);
+    const productSku = normalizeWarehouseProductSku(result.assembly?.family_sku || scanValue);
     if (result.kind === 'packet') {
       navigation.navigate('PacketForm', {
         prefill: {
-          sku: result.packet?.sku || scanValue,
+          sku: packetSku,
           name: result.packet?.name || '',
           packet_number: String(result.packet?.packet_number ?? ''),
+          qty_per_unit: result.packet?.qty_per_unit,
           id: result.packet?.id,
         },
         existing: true,
@@ -68,7 +82,7 @@ export default function ScanScreen({ navigation, route }) {
     if (result.kind === 'assembly') {
       navigation.navigate('ProductForm', {
         prefill: {
-          family_sku: result.assembly?.family_sku || scanValue,
+          family_sku: productSku,
           name: result.assembly?.name || '',
           packet_count: String(result.assembly?.packet_count ?? ''),
           id: result.assembly?.id,
@@ -78,8 +92,18 @@ export default function ScanScreen({ navigation, route }) {
       });
       return;
     }
+    const raw = normalizeWarehouseSku(scanValue);
+    if (raw.length > 14 && /^\d{14}/.test(raw)) {
+      navigation.navigate('ProductForm', {
+        prefill: { family_sku: productSku, name: '', packet_count: '' },
+        existing: false,
+        fromPackets: false,
+        warehouseLocationId,
+      });
+      return;
+    }
     navigation.navigate('PacketForm', {
-      prefill: { sku: scanValue, name: '', packet_number: '' },
+      prefill: { sku: packetSku, name: '', packet_number: '' },
       existing: false,
       warehouseLocationId,
     });
@@ -99,36 +123,26 @@ export default function ScanScreen({ navigation, route }) {
         await refreshQueueCount();
         setMessage(`Offline — queued scan "${scan}". Will resolve when back online.`);
         navigation.navigate('PacketForm', {
-          prefill: { sku: scan, name: '', packet_number: '' },
+          prefill: {
+            sku: normalizeWarehousePacketScan(scan),
+            name: '',
+            packet_number: '',
+          },
           existing: false,
           warehouseLocationId,
         });
       } else {
-        setMessage(err?.message || 'Scan failed.');
+        setMessage(err?.message || 'Lookup failed.');
+        keepFocusAfterSubmit();
       }
     } finally {
       setBusy(false);
     }
   };
 
-  if (!permission) {
-    return (
-      <View style={styles.wrap}>
-        <ActivityIndicator color="#38bdf8" />
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <View style={styles.wrap}>
-        <Text style={styles.hint}>Camera access is required to scan barcodes.</Text>
-        <Pressable style={styles.btn} onPress={requestPermission}>
-          <Text style={styles.btnText}>Allow camera</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  const onSubmitSku = () => {
+    onScanValue(manual);
+  };
 
   return (
     <View style={styles.wrap}>
@@ -137,24 +151,28 @@ export default function ScanScreen({ navigation, route }) {
           <Text style={styles.queueText}>{queued} scan(s) queued — tap to sync</Text>
         </Pressable>
       )}
-      <View style={styles.cameraBox}>
-        <CameraView
-          style={StyleSheet.absoluteFill}
-          barcodeScannerSettings={{ barcodeTypes: ['qr', 'ean13', 'ean8', 'code128', 'code39'] }}
-          onBarcodeScanned={busy ? undefined : ({ data }) => onScanValue(data)}
-        />
-      </View>
-      <Text style={styles.or}>Or type SKU</Text>
+      <Text style={styles.lead}>
+        Type a SKU or use your external barcode scanner into the field below.
+      </Text>
       <TextInput
+        ref={skuInputRef}
         style={styles.input}
         value={manual}
-        onChangeText={setManual}
+        onChangeText={wedgeAwareTextChange(setManual, {
+          stripScanTerminator,
+          keepFocusAfterSubmit,
+          transform: (v) => v.toUpperCase(),
+        })}
         placeholder="SKU / barcode"
         placeholderTextColor="#64748b"
         autoCapitalize="characters"
-        onSubmitEditing={() => onScanValue(manual)}
+        autoComplete="off"
+        blurOnSubmit={false}
+        showSoftInputOnFocus
+        returnKeyType="done"
+        onSubmitEditing={onSubmitSku}
       />
-      <Pressable style={styles.btn} onPress={() => onScanValue(manual)} disabled={busy}>
+      <Pressable style={styles.btn} onPress={onSubmitSku} disabled={busy}>
         <Text style={styles.btnText}>{busy ? 'Working…' : 'Look up'}</Text>
       </Pressable>
       {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -164,9 +182,7 @@ export default function ScanScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: '#0f172a', padding: 16 },
-  cameraBox: { height: 220, borderRadius: 12, overflow: 'hidden', marginBottom: 16 },
-  hint: { color: '#94a3b8', marginBottom: 16 },
-  or: { color: '#94a3b8', marginBottom: 8 },
+  lead: { color: '#94a3b8', marginBottom: 16, lineHeight: 20 },
   input: {
     borderWidth: 1,
     borderColor: '#334155',
@@ -174,6 +190,7 @@ const styles = StyleSheet.create({
     padding: 12,
     color: '#f8fafc',
     marginBottom: 12,
+    fontFamily: 'monospace',
   },
   btn: {
     backgroundColor: '#1e3a5f',

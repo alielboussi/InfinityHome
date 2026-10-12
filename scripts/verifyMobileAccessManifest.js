@@ -26,6 +26,8 @@ const manifestIds = new Set(
 const routeMap = {
   Dashboard: 'dashboard',
   WarehouseProducts: 'warehouse_products',
+  WarehousePackets: 'warehouse_packets',
+  WarehouseStockCount: 'warehouse_floor_count',
   WarehouseScan: 'warehouse_scan',
   PacketForm: 'warehouse_packet_form',
   ProductForm: 'warehouse_product_form',

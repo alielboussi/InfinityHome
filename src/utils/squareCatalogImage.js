@@ -80,9 +80,10 @@ function shouldUseTrimmedBounds(bounds, width, height) {
   const top = bounds.y0 / height;
   const bottom = (height - 1 - bounds.y1) / height;
 
-  const horizontalLetterbox = left > 0.04 && right > 0.04;
-  const verticalLetterbox = top > 0.04 && bottom > 0.04;
-  return horizontalLetterbox || verticalLetterbox;
+  const horizontalLetterbox = left > 0.03 && right > 0.03;
+  const verticalLetterbox = top > 0.03 && bottom > 0.03;
+  const singleBand = left > 0.06 || right > 0.06 || top > 0.06 || bottom > 0.06;
+  return horizontalLetterbox || verticalLetterbox || (singleBand && areaRatio < 0.88);
 }
 
 /**

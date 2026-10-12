@@ -1,7 +1,6 @@
 import { DOC_ID_FIELDS as DOC_ID_FIELDS_IMPORT } from '../db/docIds.js';
 import {
-  analyzeAssemblyPacketBom,
-  assemblyUsesPacketBom,
+  assemblyDerivesWarehouseStockFromPackets,
   assemblableUnits,
 } from './warehouseAssemblyMath.js';
 import { buildPacketsByAssembly } from './warehouseAssemblyPacketPool.js';
@@ -117,8 +116,7 @@ export function attachWarehouseStockTotals(catalog) {
   assemblies.forEach((assembly) => {
     const id = String(assembly.id);
     const pktList = packetsByAssembly.get(id) || [];
-    const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
-    const usePacketMath = assemblyUsesPacketBom(assembly) && bom.isComplete;
+    const usePacketMath = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
 
     if (usePacketMath) {
       assemblyWarehouseQty[id] = assemblableUnits(pktList, packetQtyMap, assembly.packet_count, {

@@ -44,3 +44,17 @@ export function buildPacketsByAssembly(assemblyPacketRows, packets) {
   }
   return byAssembly;
 }
+
+/** packetId -> products that use this packet (packets list UI). */
+export function buildPacketAssemblyAssignments(assemblyPacketRows, packets, assemblies) {
+  const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
+  const rows = normalizeAssemblyPacketRows(assemblyPacketRows, packets);
+  const byPacket = new Map();
+  rows.forEach((row) => {
+    const pid = String(row.packet_id);
+    if (!byPacket.has(pid)) byPacket.set(pid, []);
+    const assembly = assemblyById.get(String(row.assembly_id));
+    if (assembly) byPacket.get(pid).push(assembly);
+  });
+  return byPacket;
+}

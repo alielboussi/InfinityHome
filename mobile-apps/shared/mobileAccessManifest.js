@@ -32,6 +32,8 @@ export function isMobileScreenAccessAllowed(grant, screenId) {
 /** Screens that can appear as buttons on the mobile dashboard. */
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
+  'warehouse_packets',
+  'warehouse_floor_count',
 ]);
 
 /** Every navigable screen (CI + defaults). */
@@ -47,6 +49,18 @@ export const MOBILE_SCREENS = Object.freeze([
     id: 'warehouse_products',
     label: 'Warehouse Products',
     description: 'Browse products and packets; add via scan or forms',
+    permissionMatrix: true,
+  },
+  {
+    id: 'warehouse_packets',
+    label: 'Warehouse Packets',
+    description: 'Search packets and adjust warehouse carton qty',
+    permissionMatrix: true,
+  },
+  {
+    id: 'warehouse_floor_count',
+    label: 'Stock count',
+    description: 'Floor checklist — scan packets (not linked to web stocktake)',
     permissionMatrix: true,
   },
   {
@@ -85,6 +99,8 @@ export const DEFAULT_MOBILE_LANDING_SCREEN = 'dashboard';
 
 const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_products: 'WarehouseProducts',
+  warehouse_packets: 'WarehousePackets',
+  warehouse_floor_count: 'WarehouseStockCount',
 });
 
 const WAREHOUSE_PRODUCTS_CHILD_SCREENS = Object.freeze([
@@ -133,15 +149,28 @@ export function canMobileScreenView(grant, screenId) {
     return isMobileScreenAccessAllowed(grant, 'warehouse_products');
   }
 
+  if (screenId === 'warehouse_packet_form') {
+    return isMobileScreenAccessAllowed(grant, 'warehouse_products')
+      || isMobileScreenAccessAllowed(grant, 'warehouse_packets');
+  }
+
+  if (screenId === 'warehouse_packets') {
+    return isMobileScreenAccessAllowed(grant, 'warehouse_packets');
+  }
+
+  if (screenId === 'warehouse_floor_count') {
+    return isMobileScreenAccessAllowed(grant, 'warehouse_floor_count');
+  }
+
   return isMobileScreenAccessAllowed(grant, screenId);
 }
 
-/** Dashboard buttons derived from Page — View on each navigable screen. */
+/** Dashboard buttons — each tile requires its own Yes on /user-access (no implied grants). */
 export function getMobileDashboardNavItems(grant, userEmail) {
   return MOBILE_DASHBOARD_NAV_SCREEN_IDS
     .map((id) => MOBILE_SCREENS.find((s) => s.id === id))
     .filter(Boolean)
-    .filter((screen) => canMobileScreenView(grant, screen.id))
+    .filter((screen) => isMobileScreenAccessAllowed(grant, screen.id))
     .map((screen) => ({
       screenId: screen.id,
       label: screen.label,
@@ -187,6 +216,20 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   WAREHOUSE_PRODUCTS_CHILD_SCREENS.forEach((childId) => {
     merged.screens[childId] = buildMobileScreenAccessRow(productsAllowed);
   });
+
+  const legacyPacketsList = isMobileScreenAccessAllowed(merged, 'warehouse_packets_list');
+  const packetsAllowed =
+    isMobileScreenAccessAllowed(merged, 'warehouse_packets') || legacyPacketsList;
+  merged.screens.warehouse_packets = buildMobileScreenAccessRow(packetsAllowed);
+
+  merged.screens.warehouse_floor_count = buildMobileScreenAccessRow(
+    isMobileScreenAccessAllowed(merged, 'warehouse_floor_count'),
+  );
+
+  const packetsAllowedForForms = packetsAllowed;
+  if (packetsAllowedForForms && !productsAllowed) {
+    merged.screens.warehouse_packet_form = buildMobileScreenAccessRow(true);
+  }
 
   return merged;
 }

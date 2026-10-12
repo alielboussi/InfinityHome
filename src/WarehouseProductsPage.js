@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FaPlus } from 'react-icons/fa';
 import BackToDashboard from './BackToDashboard';
+import WarehouseAssemblyInlineName from './components/WarehouseAssemblyInlineName';
+import WarehouseAssemblyInlineSku from './components/WarehouseAssemblyInlineSku';
 import WarehouseAssemblyInlineSpecs from './components/WarehouseAssemblyInlineSpecs';
 import WarehouseAssemblyThumbnail from './components/WarehouseAssemblyThumbnail';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
@@ -18,10 +20,25 @@ import {
 import { completeUnitsAtLocation } from './services/warehouseTransfer';
 import {
   analyzeAssemblyPacketBom,
+  assemblyDerivesWarehouseStockFromPackets,
   assemblyUsesPacketBom,
   packetBomBottleneck,
 } from './utils/warehouseAssemblyMath';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
+import { isWarehouseSetAssembly } from './utils/warehouseSetMath';
+import {
+  assemblyUsesFinishedBoxReceiving,
+  assemblyUnitsPerCarton,
+  boxCountFromFinishedUnits,
+  finishedUnitsFromBoxCount,
+  formatWarehouseBoxAndUnitStock,
+} from './utils/warehouseUnitsPerCarton';
+import { normalizeWarehouseSku } from './utils/warehouseAssemblyMath';
+import {
+  expandWarehouseSkuMatchKeys,
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+} from './utils/warehouseScanResolver';
 
 export default function WarehouseProductsPage() {
   const navigate = useNavigate();
@@ -30,13 +47,11 @@ export default function WarehouseProductsPage() {
     'warehouse_assemblies',
     'warehouse_packets',
     'warehouse_packet_inventory',
-    'warehouse_assembly_locations',
     'warehouse_assembly_colors',
     'warehouse_assembly_inventory',
     'warehouse_assembly_packets',
     'warehouse_colors',
     'categories',
-    'locations',
   ]);
 
   const [loading, setLoading] = useState(true);
@@ -44,13 +59,11 @@ export default function WarehouseProductsPage() {
   const [assemblies, setAssemblies] = useState([]);
   const [packets, setPackets] = useState([]);
   const [inventory, setInventory] = useState([]);
-  const [assemblyLocations, setAssemblyLocations] = useState([]);
   const [assemblyColors, setAssemblyColors] = useState([]);
   const [assemblyInventory, setAssemblyInventory] = useState([]);
   const [assemblyPacketRows, setAssemblyPacketRows] = useState([]);
   const [variantColors, setVariantColors] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [locations, setLocations] = useState([]);
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [search, setSearch] = useState('');
@@ -65,13 +78,11 @@ export default function WarehouseProductsPage() {
       setAssemblies(data.assemblies);
       setPackets(data.packets);
       setInventory(data.inventory);
-      setAssemblyLocations(data.assemblyLocations);
       setAssemblyColors(data.assemblyColors);
       setAssemblyInventory(data.assemblyInventory);
       setAssemblyPacketRows(data.assemblyPackets || []);
       setVariantColors(data.colors);
       setCategories(data.categories);
-      setLocations(data.locations);
       setWarehouseLocationId(data.warehouseLocationId);
       setWarehouseLocationName(data.warehouseLocationName);
       if (!data.warehouseLocationId) {
@@ -93,21 +104,14 @@ export default function WarehouseProductsPage() {
     return (id) => map.get(String(id)) || '—';
   }, [categories]);
 
-  const locationNamesByAssembly = useMemo(() => {
-    const locMap = new Map((locations || []).map((l) => [String(l.id), l.name]));
-    const out = new Map();
-    (assemblyLocations || []).forEach((row) => {
-      const key = String(row.assembly_id);
-      if (!out.has(key)) out.set(key, []);
-      const name = locMap.get(String(row.location_id));
-      if (name) out.get(key).push(name);
-    });
-    return out;
-  }, [assemblyLocations, locations]);
-
   const packetsByAssembly = useMemo(
     () => buildPacketsByAssembly(assemblyPacketRows, packets),
     [assemblyPacketRows, packets],
+  );
+
+  const warehouseCatalogProducts = useMemo(
+    () => (assemblies || []).filter((a) => !isWarehouseSetAssembly(a)),
+    [assemblies],
   );
 
   const inventoryByPacketId = useMemo(() => {
@@ -119,11 +123,6 @@ export default function WarehouseProductsPage() {
     return map;
   }, [inventory, warehouseLocationId]);
 
-  const locationName = useCallback((id) => {
-    const row = (locations || []).find((l) => String(l.id) === String(id));
-    return row?.name || String(id);
-  }, [locations]);
-
   const assemblyInventoryByAssembly = useMemo(() => {
     const out = new Map();
     (assemblyInventory || []).forEach((row) => {
@@ -134,63 +133,75 @@ export default function WarehouseProductsPage() {
     return out;
   }, [assemblyInventory]);
 
-  /** Finished qty per location: direct stock or derived from packets when BOM is complete. */
-  const finishedStockByAssembly = useMemo(() => {
-    const out = new Map();
-    (assemblies || []).forEach((assembly) => {
-      const pktList = packetsByAssembly.get(String(assembly.id)) || [];
-      const locIds = new Set(
-        (assemblyLocations || [])
-          .filter((r) => String(r.assembly_id) === String(assembly.id))
-          .map((r) => r.location_id),
-      );
-      if (warehouseLocationId) locIds.add(warehouseLocationId);
-      const perLoc = new Map();
-      const invMap = assemblyInventoryByAssembly.get(String(assembly.id));
-      const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
-      const usePacketMath = assemblyUsesPacketBom(assembly) && bom.isComplete;
-
-      locIds.forEach((locId) => {
-        if (usePacketMath) {
-          perLoc.set(
-            String(locId),
-            completeUnitsAtLocation(pktList, inventory, locId, assembly.packet_count, {
-              assemblyId: assembly.id,
-              assemblyPacketRows,
-              catalogPackets: packets,
-            }),
-          );
-        } else {
-          perLoc.set(String(locId), invMap?.get(String(locId)) ?? 0);
-        }
+  const stockForAssemblyAtLocation = useCallback((assembly, locId, stockMap) => {
+    const pktList = packetsByAssembly.get(String(assembly.id)) || [];
+    const invMap = assemblyInventoryByAssembly.get(String(assembly.id));
+    const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
+    const usePacketMath = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
+    if (usePacketMath) {
+      return completeUnitsAtLocation(pktList, inventory, locId, assembly.packet_count, {
+        assemblyId: assembly.id,
+        assemblyPacketRows,
+        catalogPackets: packets,
       });
-      out.set(String(assembly.id), perLoc);
-    });
-    return out;
+    }
+    if (assemblyUsesFinishedBoxReceiving(assembly, pktList)) {
+      const packet = pktList[0];
+      const onHand = (inventory || []).find(
+        (row) => String(row.packet_id) === String(packet.id)
+          && String(row.location_id) === String(locId),
+      );
+      const boxes = Number(onHand?.quantity) || 0;
+      return finishedUnitsFromBoxCount(boxes, assemblyUnitsPerCarton(assembly));
+    }
+    return invMap?.get(String(locId)) ?? 0;
   }, [
-    assemblies,
-    assemblyLocations,
     assemblyInventoryByAssembly,
-    inventory,
-    packetsByAssembly,
     assemblyPacketRows,
+    inventory,
     packets,
-    warehouseLocationId,
+    packetsByAssembly,
   ]);
 
+  /** Finished qty at warehouse only (this page does not manage showroom stock). */
+  const finishedStockByAssembly = useMemo(() => {
+    const out = new Map();
+    if (!warehouseLocationId) return out;
+    const whKey = String(warehouseLocationId);
+    warehouseCatalogProducts.forEach((assembly) => {
+      const qty = stockForAssemblyAtLocation(assembly, warehouseLocationId, out);
+      out.set(String(assembly.id), new Map([[whKey, qty]]));
+    });
+    return out;
+  }, [warehouseCatalogProducts, stockForAssemblyAtLocation, warehouseLocationId]);
+
   const filteredAssemblies = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return assemblies;
-    return (assemblies || []).filter((a) => {
+    const raw = search.trim();
+    if (!raw) return warehouseCatalogProducts;
+    const qLower = raw.toLowerCase();
+    const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
+    const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
+
+    const keysOverlap = (storedSku, queryKeys, normalizer) => {
+      const storedKeys = expandWarehouseSkuMatchKeys(normalizer(storedSku));
+      for (const k of queryKeys) {
+        if (k && storedKeys.has(k)) return true;
+      }
+      return false;
+    };
+
+    return warehouseCatalogProducts.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
-      if (String(a.name || '').toLowerCase().includes(q)) return true;
-      if (String(a.family_sku || '').toLowerCase().includes(q)) return true;
+      if (String(a.name || '').toLowerCase().includes(qLower)) return true;
+      if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
+      if (keysOverlap(a.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
       return pktList.some(
-        (p) => String(p.name || '').toLowerCase().includes(q)
-          || String(p.sku || '').toLowerCase().includes(q),
+        (p) => String(p.name || '').toLowerCase().includes(qLower)
+          || String(p.sku || '').toLowerCase().includes(qLower)
+          || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
       );
     });
-  }, [assemblies, packetsByAssembly, search]);
+  }, [warehouseCatalogProducts, packetsByAssembly, search]);
 
   const toggleExpanded = (assemblyId) => {
     setExpanded((prev) => {
@@ -259,19 +270,23 @@ export default function WarehouseProductsPage() {
     }
   };
 
-  const handleAssemblyQtyBlur = async (assemblyId, locationId, rawValue) => {
+  const handleAssemblyQtyBlur = async (
+    assemblyId,
+    locationId,
+    rawValue,
+    { inputIsBoxes, unitsPerBox } = {},
+  ) => {
     if (!canManage || !locationId) return;
-    const qty = Math.max(0, Number(rawValue) || 0);
+    const entered = Math.max(0, Number(rawValue) || 0);
+    const qty = inputIsBoxes && unitsPerBox > 1
+      ? finishedUnitsFromBoxCount(entered, unitsPerBox)
+      : entered;
     try {
       await setWarehouseAssemblyQuantity(assemblyId, locationId, qty);
       await load();
     } catch (err) {
       setError(err?.message || 'Quantity update failed');
     }
-  };
-
-  const openTransfer = (assembly) => {
-    navigate(`/warehouse-products/${assembly.id}/transfer`);
   };
 
   const handleAssemblyImageUpdated = useCallback((assemblyId, imageUrl) => {
@@ -294,8 +309,8 @@ export default function WarehouseProductsPage() {
       </div>
 
       <p className="stc-note" style={{ margin: '8px 0 16px', opacity: 0.85 }}>
-        <strong>Finished products</strong> — expand a row to adjust packet or finished stock at {warehouseLocationName}.
-        Use <strong>Finished units only</strong> when carton BOM is unknown.
+        <strong>{warehouseLocationName} stock only</strong> — enter on-hand on packets (BOM) or finished qty here.
+        Showroom stock (Kitwe / Lusaka) is not managed on this page.
       </p>
 
       {error ? (
@@ -303,25 +318,31 @@ export default function WarehouseProductsPage() {
       ) : null}
 
       <div className="warehouse-catalog-toolbar">
-        <WarehouseCatalogViewToggle />
+        <div className="warehouse-catalog-toolbar__main">
+          <span className="warehouse-catalog-toolbar__label" id="wh-catalog-view-label">View</span>
+          <WarehouseCatalogViewToggle aria-labelledby="wh-catalog-view-label" />
+        </div>
         {canManage && (
-          <div className="warehouse-catalog-toolbar__actions">
-            <button
-              type="button"
-              className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
-              onClick={() => navigate('/warehouse-products/new')}
-            >
-              <FaPlus aria-hidden />
-              <span>Product</span>
-            </button>
-            <button
-              type="button"
-              className="warehouse-catalog-action-btn"
-              onClick={() => navigate('/warehouse-products/packets/new')}
-            >
-              <FaPlus aria-hidden />
-              <span>Packet</span>
-            </button>
+          <div className="warehouse-catalog-toolbar__create">
+            <span className="warehouse-catalog-toolbar__label" id="wh-catalog-create-label">Create</span>
+            <div className="warehouse-catalog-toolbar__actions" aria-labelledby="wh-catalog-create-label">
+              <button
+                type="button"
+                className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
+                onClick={() => navigate('/warehouse-products/new')}
+              >
+                <FaPlus aria-hidden />
+                <span>Product</span>
+              </button>
+              <button
+                type="button"
+                className="warehouse-catalog-action-btn"
+                onClick={() => navigate('/warehouse-products/packets/new')}
+              >
+                <FaPlus aria-hidden />
+                <span>Packet</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -330,6 +351,14 @@ export default function WarehouseProductsPage() {
         placeholder="Search product SKU, packet SKU, name…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
+        onBlur={(e) => {
+          const v = e.target.value.trim();
+          if (!v) return;
+          const compact = normalizeWarehouseSku(v);
+          if (compact.length > 14 && /^\d{14}/.test(compact)) {
+            setSearch(normalizeWarehouseProductSku(v));
+          }
+        }}
       />
 
       {loading ? (
@@ -347,14 +376,14 @@ export default function WarehouseProductsPage() {
               const stockByLoc = finishedStockByAssembly.get(String(assembly.id)) || new Map();
               const complete = stockByLoc.get(String(warehouseLocationId)) ?? 0;
               const isOpen = expanded.has(String(assembly.id));
-              const locNames = locationNamesByAssembly.get(String(assembly.id)) || [];
               const totalPackets = Number(assembly.packet_count) || 0;
-              const showroomLocIds = (assemblyLocations || [])
-                .filter((r) => String(r.assembly_id) === String(assembly.id)
-                  && String(r.location_id) !== String(warehouseLocationId))
-                .map((r) => r.location_id);
               const assemblyColorsList = colorsByAssembly.get(String(assembly.id)) || [];
-              const usePacketStock = assemblyUsesPacketBom(assembly) && bom.isComplete;
+              const usePacketStock = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
+              const useFinishedBoxReceiving = assemblyUsesFinishedBoxReceiving(assembly, pktList);
+              const unitsPerBox = assemblyUnitsPerCarton(assembly);
+              const stockDisplay = unitsPerBox > 1 && !usePacketStock
+                ? formatWarehouseBoxAndUnitStock(complete, unitsPerBox).text
+                : String(complete);
               const warehousePacketOnHand = usePacketStock
                 ? pktList.reduce((sum, p) => sum + (inventoryByPacketId.get(String(p.id)) ?? 0), 0)
                 : 0;
@@ -366,10 +395,11 @@ export default function WarehouseProductsPage() {
               const warehouseBottleneck = usePacketStock
                 ? packetBomBottleneck(pktList, inventoryByPacketId, poolOpts)
                 : null;
-              const stockLocationIds = [
-                ...showroomLocIds,
-                ...(warehouseLocationId ? [warehouseLocationId] : []),
-              ];
+              const warehouseOnHand = stockByLoc.get(String(warehouseLocationId)) ?? 0;
+              const warehouseBoxEntry = unitsPerBox > 1 && warehouseLocationId;
+              const warehouseDisplayQty = warehouseBoxEntry
+                ? boxCountFromFinishedUnits(warehouseOnHand, unitsPerBox)
+                : warehouseOnHand;
               return (
                 <div key={assembly.id} className="warehouse-assembly-card">
                   <div className="warehouse-assembly-card__header">
@@ -390,11 +420,23 @@ export default function WarehouseProductsPage() {
                     />
                     <div className="warehouse-assembly-card__main">
                       <div className="warehouse-assembly-card__title-row">
-                        <span className="warehouse-kind-badge warehouse-kind-badge--product">Product</span>
-                        <strong className="warehouse-assembly-card__title">{assembly.name}</strong>
+                        <span className="warehouse-kind-badge warehouse-kind-badge--product">
+                          Product
+                        </span>
+                        <WarehouseAssemblyInlineName
+                          assembly={assembly}
+                          canEdit={canManage}
+                          onUpdated={handleAssemblyFieldsUpdated}
+                          onError={(msg) => setError(msg)}
+                        />
                       </div>
                       <div className="warehouse-assembly-card__meta">
-                        <span>SKU: <code>{assembly.family_sku}</code></span>
+                        <WarehouseAssemblyInlineSku
+                          assembly={assembly}
+                          canEdit={canManage}
+                          onUpdated={handleAssemblyFieldsUpdated}
+                          onError={(msg) => setError(msg)}
+                        />
                         <span>
                           {assemblyUsesPacketBom(assembly)
                             ? (totalPackets
@@ -402,10 +444,13 @@ export default function WarehouseProductsPage() {
                                 ? `${bom.cartonsPerUnit}/${totalPackets} cartons per unit · BOM complete`
                                 : `${bom.cartonsPerUnit}/${totalPackets} cartons (${bom.linked} packet line(s)) · BOM incomplete`)
                               : 'Set total packets on product')
-                            : 'Finished stock only (no packet BOM)'}
+                            : (useFinishedBoxReceiving
+                              ? `${unitsPerBox} units per box · enter stock on linked box packet`
+                              : (unitsPerBox > 1
+                                ? `${unitsPerBox} finished units per box · enter boxes at Warehouse below`
+                                : 'Finished stock only (no packet BOM)'))}
                         </span>
                         <span>{categoryName(assembly.category_id)}</span>
-                        <span>{locNames.length ? locNames.join(', ') : 'No showroom locations'}</span>
                       </div>
                       <WarehouseAssemblyInlineSpecs
                         assembly={assembly}
@@ -432,7 +477,7 @@ export default function WarehouseProductsPage() {
                           complete > 0 ? ' warehouse-assembly-card__stock-qty--positive' : ''
                         }`}
                       >
-                        {complete}
+                        {stockDisplay}
                       </strong>
                       {usePacketStock && complete === 0 ? (
                         <p className="warehouse-assembly-card__stock-hint">
@@ -443,26 +488,9 @@ export default function WarehouseProductsPage() {
                               : 'Not enough on one or more packets to build 1 unit.'}
                         </p>
                       ) : null}
-                      {showroomLocIds.map((locId) => {
-                        const q = stockByLoc.get(String(locId)) ?? 0;
-                        return (
-                          <div key={locId} className="warehouse-assembly-card__stock-showroom">
-                            {locationName(locId)}: <strong>{q}</strong>
-                          </div>
-                        );
-                      })}
                     </div>
                     {canManage && (
                       <div className="warehouse-assembly-card__actions">
-                        {usePacketStock && showroomLocIds.length > 0 && complete > 0 && (
-                          <button
-                            type="button"
-                            className="warehouse-card-btn"
-                            onClick={() => openTransfer(assembly)}
-                          >
-                            Transfer
-                          </button>
-                        )}
                         <button
                           type="button"
                           className="warehouse-card-btn"
@@ -480,45 +508,109 @@ export default function WarehouseProductsPage() {
                       </div>
                     )}
                   </div>
-                  {isOpen && !usePacketStock && (
+                  {isOpen && useFinishedBoxReceiving && pktList.length === 1 && (
+                    <div className="warehouse-finished-box-stock-panel">
+                      <p className="warehouse-field-hint" style={{ padding: '8px 12px', margin: 0 }}>
+                        Enter <strong>boxes</strong> on the packet line below. Finished units = boxes × {unitsPerBox}.
+                      </p>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                        <thead>
+                          <tr style={{ background: '#0f172a' }}>
+                            <th style={{ padding: 8, textAlign: 'left' }}>Box packet</th>
+                            <th style={{ padding: 8, textAlign: 'right' }}>Boxes on hand</th>
+                            <th style={{ padding: 8, textAlign: 'right' }}>Finished units</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pktList.map((packet) => {
+                            const boxes = inventoryByPacketId.get(String(packet.id)) ?? 0;
+                            const units = finishedUnitsFromBoxCount(boxes, unitsPerBox);
+                            return (
+                              <tr key={packet.id}>
+                                <td style={{ padding: 8 }}>
+                                  <code>{packet.sku}</code> {packet.name}
+                                </td>
+                                <td style={{ padding: 8, textAlign: 'right' }}>
+                                  {canManage ? (
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      className="warehouse-qty-input"
+                                      defaultValue={boxes}
+                                      key={`box-${packet.id}-${boxes}`}
+                                      onBlur={(e) => handlePacketQtyBlur(packet, e.target.value)}
+                                      style={{ width: 72, textAlign: 'right' }}
+                                    />
+                                  ) : (
+                                    boxes
+                                  )}
+                                </td>
+                                <td style={{ padding: 8, textAlign: 'right' }}>{units}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {isOpen && !usePacketStock && !useFinishedBoxReceiving && warehouseLocationId && (
                     <table className="warehouse-finished-stock-table">
                       <thead>
                         <tr>
-                          <th>Location</th>
-                          <th style={{ textAlign: 'right' }}>Finished on hand</th>
+                          <th>{warehouseLocationName}</th>
+                          <th style={{ textAlign: 'right' }}>
+                            {unitsPerBox > 1 ? 'Cartons on hand' : 'Finished on hand'}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {stockLocationIds.length === 0 ? (
-                          <tr>
-                            <td colSpan={2} style={{ padding: 12, textAlign: 'center' }}>
-                              Select showroom locations on the product, then set quantities here.
-                            </td>
-                          </tr>
-                        ) : stockLocationIds.map((locId) => {
-                          const onHand = stockByLoc.get(String(locId)) ?? 0;
-                          return (
-                            <tr key={locId}>
-                              <td>{locationName(locId)}</td>
-                              <td style={{ textAlign: 'right' }}>
-                                {canManage ? (
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    className="warehouse-qty-input"
-                                    defaultValue={onHand}
-                                    key={`asm-${assembly.id}-${locId}-${onHand}`}
-                                    onBlur={(e) => handleAssemblyQtyBlur(assembly.id, locId, e.target.value)}
-                                    style={{ width: 72, textAlign: 'right' }}
-                                  />
-                                ) : (
-                                  onHand
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        <tr>
+                          <td>
+                            {unitsPerBox > 1 ? (
+                              <span className="warehouse-field-hint">
+                                ×{unitsPerBox} units per carton
+                              </span>
+                            ) : (
+                              warehouseLocationName
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {canManage ? (
+                              <div className="warehouse-finished-stock-qty-cell">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  className="warehouse-qty-input"
+                                  defaultValue={warehouseDisplayQty}
+                                  key={`asm-${assembly.id}-wh-${warehouseDisplayQty}`}
+                                  onBlur={(e) => handleAssemblyQtyBlur(
+                                    assembly.id,
+                                    warehouseLocationId,
+                                    e.target.value,
+                                    warehouseBoxEntry
+                                      ? { inputIsBoxes: true, unitsPerBox }
+                                      : {},
+                                  )}
+                                  style={{ width: 72, textAlign: 'right' }}
+                                  aria-label={warehouseBoxEntry
+                                    ? `Boxes on hand at ${warehouseLocationName}`
+                                    : `Finished on hand at ${warehouseLocationName}`}
+                                />
+                                {warehouseBoxEntry ? (
+                                  <span className="warehouse-field-hint">
+                                    = {warehouseOnHand} units
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              warehouseBoxEntry
+                                ? `${warehouseDisplayQty} boxes (${warehouseOnHand} units)`
+                                : warehouseOnHand
+                            )}
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
                   )}

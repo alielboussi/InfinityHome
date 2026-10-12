@@ -184,6 +184,17 @@ const TITLE_MAP = {
   '/incomplete-packages': 'Incomplete Packages',
 };
 
+/** Banner back: nested routes return to their list parent; top-level pages go home. */
+function backTargetForPath(path, homePath) {
+  const p = String(path || '');
+  const keys = Object.keys(TITLE_MAP).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (p === key) return homePath;
+    if (p.startsWith(`${key}/`)) return key;
+  }
+  return homePath;
+}
+
 function titleForPath(path, user, search = '') {
   if (!path) return 'Infinity Home';
   if (isQuotationerOnlyUser(user) && path === '/quotationer') {
@@ -229,6 +240,8 @@ export default function AppChrome() {
 
   const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
   const title = titleForPath(path, user, location.search);
+  const backTarget = backTargetForPath(path, homePath);
+  const backIsHome = backTarget === homePath;
 
   const go = (route, search = '') => {
     if (search) navigate({ pathname: route, search });
@@ -266,9 +279,9 @@ export default function AppChrome() {
           <button
             type="button"
             className="ent-back-btn"
-            onClick={() => navigate(homePath)}
-            aria-label="Back to Dashboard"
-            title="Back to Dashboard"
+            onClick={() => navigate(backTarget)}
+            aria-label={backIsHome ? 'Back to Dashboard' : 'Back'}
+            title={backIsHome ? 'Back to Dashboard' : `Back to ${TITLE_MAP[backTarget] || 'previous page'}`}
           >
             <FaArrowLeft />
           </button>

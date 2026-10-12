@@ -6,7 +6,9 @@
     "postinstall": "node scripts/ensureSharedLink.js",
     "start": "expo start --offline --go",
     "start:online": "expo start --go",
-    "android": "expo start --offline --android"
+    "android": "expo start --offline --android",
+    "icons": "node ../../scripts/warehouseCatalogIconFrame.js",
+    "eas:build:android": "node scripts/materializeSharedForEas.js && eas build --platform android --profile preview --non-interactive"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

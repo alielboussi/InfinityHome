@@ -12,7 +12,7 @@ import {
 } from './services/warehouseTransfer';
 import {
   analyzeAssemblyPacketBom,
-  assemblyUsesPacketBom,
+  assemblyDerivesWarehouseStockFromPackets,
 } from './utils/warehouseAssemblyMath';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
 
@@ -120,7 +120,7 @@ export default function WarehouseProductTransferPage() {
     [assembly, pktList],
   );
 
-  const usePacketStock = assemblyUsesPacketBom(assembly) && bom.isComplete;
+  const usePacketStock = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
 
   const availableAtWarehouse = useMemo(() => {
     if (!warehouseLocationId || !usePacketStock) return 0;

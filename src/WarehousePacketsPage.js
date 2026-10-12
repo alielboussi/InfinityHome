@@ -34,6 +34,7 @@ export default function WarehousePacketsPage() {
   const [packets, setPackets] = useState([]);
   const [assemblyPacketRows, setAssemblyPacketRows] = useState([]);
   const [inventory, setInventory] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [search, setSearch] = useState('');
@@ -49,6 +50,7 @@ export default function WarehousePacketsPage() {
       setPackets(data.packets);
       setAssemblyPacketRows(data.assemblyPackets || []);
       setInventory(data.inventory);
+      setCategories(data.categories || []);
       setWarehouseLocationId(data.warehouseLocationId);
       setWarehouseLocationName(data.warehouseLocationName);
       if (!data.warehouseLocationId) {
@@ -74,6 +76,11 @@ export default function WarehousePacketsPage() {
     (packetId) => (packetAssignmentsByPacketId.get(String(packetId)) || []).length > 0,
     [packetAssignmentsByPacketId],
   );
+
+  const categoryName = useMemo(() => {
+    const map = new Map((categories || []).map((c) => [String(c.id), c.name]));
+    return (id) => (id ? map.get(String(id)) || '—' : '—');
+  }, [categories]);
 
   const inventoryByPacketId = useMemo(() => {
     const map = new Map();
@@ -153,25 +160,31 @@ export default function WarehousePacketsPage() {
       ) : null}
 
       <div className="warehouse-catalog-toolbar">
-        <WarehouseCatalogViewToggle />
+        <div className="warehouse-catalog-toolbar__main">
+          <span className="warehouse-catalog-toolbar__label" id="wh-packets-view-label">View</span>
+          <WarehouseCatalogViewToggle aria-labelledby="wh-packets-view-label" />
+        </div>
         {canManage && (
-          <div className="warehouse-catalog-toolbar__actions">
-            <button
-              type="button"
-              className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
-              onClick={() => navigate('/warehouse-products/new')}
-            >
-              <FaPlus aria-hidden />
-              <span>Product</span>
-            </button>
-            <button
-              type="button"
-              className="warehouse-catalog-action-btn"
-              onClick={() => navigate('/warehouse-products/packets/new')}
-            >
-              <FaPlus aria-hidden />
-              <span>Packet</span>
-            </button>
+          <div className="warehouse-catalog-toolbar__create">
+            <span className="warehouse-catalog-toolbar__label" id="wh-packets-create-label">Create</span>
+            <div className="warehouse-catalog-toolbar__actions" aria-labelledby="wh-packets-create-label">
+              <button
+                type="button"
+                className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
+                onClick={() => navigate('/warehouse-products/new')}
+              >
+                <FaPlus aria-hidden />
+                <span>Product</span>
+              </button>
+              <button
+                type="button"
+                className="warehouse-catalog-action-btn"
+                onClick={() => navigate('/warehouse-products/packets/new')}
+              >
+                <FaPlus aria-hidden />
+                <span>Packet</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -226,6 +239,7 @@ export default function WarehousePacketsPage() {
                 <th>Pkt #</th>
                 <th>SKU</th>
                 <th>Name</th>
+                <th>Category</th>
                 <th>Finished product</th>
                 <th className="warehouse-packets-table__num">On hand ({warehouseLocationName})</th>
                 {canManage && <th>Actions</th>}
@@ -253,6 +267,7 @@ export default function WarehousePacketsPage() {
                     </td>
                     <td><code>{packet.sku}</code></td>
                     <td>{packet.name}</td>
+                    <td>{categoryName(packet.category_id)}</td>
                     <td>
                       {products.length ? (
                         <ul className="warehouse-packets-product-list">

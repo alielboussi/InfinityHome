@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 import { canManageCatalog, getCurrentUser } from './accessControl';
@@ -6,6 +6,7 @@ import {
   fetchWarehouseCatalog,
   saveWarehousePacket,
 } from './services/warehouseCatalog';
+import { normalizeWarehousePacketScan } from './utils/warehouseScanResolver';
 
 const emptyPacketForm = {
   sku: '',
@@ -28,6 +29,16 @@ export default function WarehousePacketEditPage() {
   const [packetForm, setPacketForm] = useState(emptyPacketForm);
   const [saving, setSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState('');
+  const skuInputRef = useRef(null);
+
+  const focusSkuForNextScan = useCallback(() => {
+    window.setTimeout(() => {
+      const el = skuInputRef.current;
+      if (!el || el.disabled) return;
+      el.focus();
+      el.select();
+    }, 0);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,8 +79,14 @@ export default function WarehousePacketEditPage() {
     load();
   }, [canManage, load, navigate]);
 
-  const promptNewPacketQtyOnHand = () => {
-    const label = packetForm.sku.trim() || packetForm.name.trim() || 'this packet';
+  useEffect(() => {
+    if (!loading && isNew && canManage) {
+      focusSkuForNextScan();
+    }
+  }, [canManage, focusSkuForNextScan, isNew, loading]);
+
+  const promptNewPacketQtyOnHand = (skuForLabel) => {
+    const label = skuForLabel || packetForm.sku.trim() || packetForm.name.trim() || 'this packet';
     const raw = window.prompt(
       `Qty on hand at ${warehouseLocationName} for ${label}?`,
       '0',
@@ -93,22 +110,36 @@ export default function WarehousePacketEditPage() {
     setError('');
     setSaveNotice('');
     try {
-      let initial_quantity;
-      if (isNew) {
-        const qty = promptNewPacketQtyOnHand();
-        if (qty === null) {
-          setSaving(false);
-          return;
-        }
-        initial_quantity = qty;
+      const normalizedSku = normalizeWarehousePacketScan(packetForm.sku);
+      if (!normalizedSku) {
+        setError('Packet SKU is required.');
+        setSaving(false);
+        return;
       }
       const existing = !isNew
         ? (packets || []).find((p) => String(p.id) === String(packetId))
         : null;
+      const packetPayload = {
+        ...packetForm,
+        sku: normalizedSku,
+        category_id: isNew ? null : (existing?.category_id ?? null),
+        qty_per_unit: Math.max(1, Math.floor(Number(packetForm.qty_per_unit) || 1)),
+      };
+      setPacketForm(packetPayload);
+
+      let initial_quantity;
+      if (isNew) {
+        const qty = promptNewPacketQtyOnHand(normalizedSku);
+        if (qty === null) {
+          setSaving(false);
+          focusSkuForNextScan();
+          return;
+        }
+        initial_quantity = qty;
+      }
       await saveWarehousePacket(
         {
-          ...packetForm,
-          qty_per_unit: 1,
+          ...packetPayload,
           assembly_id: existing?.assembly_id ?? null,
           warehouse_location_id: warehouseLocationId,
           ...(initial_quantity != null ? { initial_quantity } : {}),
@@ -119,7 +150,8 @@ export default function WarehousePacketEditPage() {
       setPackets(data.packets);
       if (isNew) {
         setPacketForm(emptyPacketForm);
-        setSaveNotice('Packet saved. You can add another below.');
+        setSaveNotice('Packet saved. Scan the next packet SKU.');
+        focusSkuForNextScan();
       } else {
         setSaveNotice('Changes saved.');
         const row = (data.packets || []).find((p) => String(p.id) === String(packetId));
@@ -176,11 +208,26 @@ export default function WarehousePacketEditPage() {
           <div className="warehouse-field">
             <label htmlFor="wh-packet-sku-edit">SKU (Code 128)</label>
             <input
+              ref={skuInputRef}
               id="wh-packet-sku-edit"
               required
               placeholder="e.g. 12VEM3300P01COCZ"
               value={packetForm.sku}
-              onChange={(e) => setPacketForm((f) => ({ ...f, sku: e.target.value }))}
+              autoComplete="off"
+              onChange={(e) => setPacketForm((f) => ({ ...f, sku: e.target.value.toUpperCase() }))}
+              onBlur={(e) => {
+                const normalized = normalizeWarehousePacketScan(e.target.value);
+                if (normalized && normalized !== e.target.value.trim()) {
+                  setPacketForm((f) => ({ ...f, sku: normalized }));
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                const normalized = normalizeWarehousePacketScan(e.currentTarget.value);
+                if (normalized && normalized !== e.currentTarget.value.trim()) {
+                  setPacketForm((f) => ({ ...f, sku: normalized }));
+                }
+              }}
               style={{ fontFamily: 'monospace' }}
             />
           </div>
@@ -211,11 +258,9 @@ export default function WarehousePacketEditPage() {
                 id="wh-packet-qty-edit"
                 type="number"
                 min="1"
-                max="1"
-                value="1"
-                readOnly
-                disabled
-                aria-readonly="true"
+                step="1"
+                value={packetForm.qty_per_unit}
+                onChange={(e) => setPacketForm((f) => ({ ...f, qty_per_unit: e.target.value }))}
               />
             </div>
           </div>

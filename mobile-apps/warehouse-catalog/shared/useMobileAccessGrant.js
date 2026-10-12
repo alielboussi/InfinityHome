@@ -1,16 +1,9 @@
 import { useEffect, useState } from 'react';
 import { verifyMobileLoginAccess } from './loginAccess';
-import { defaultMobileAccessGrant } from './mobileAccessManifest';
-
-function normalizeGrant(raw) {
-  const base = defaultMobileAccessGrant();
-  if (!raw) return base;
-  return {
-    ...base,
-    ...raw,
-    screens: { ...base.screens, ...(raw.screens || {}) },
-  };
-}
+import {
+  defaultMobileAccessGrant,
+  sanitizeMobileAccessGrantForUser,
+} from './mobileAccessManifest';
 
 export function useMobileAccessGrant() {
   const [grant, setGrant] = useState(defaultMobileAccessGrant());
@@ -29,9 +22,11 @@ export function useMobileAccessGrant() {
           || String(access.user?.display_name || '').trim()
           || String(access.user?.full_name || '').trim();
         setUserDisplayName(name);
-        if (access.user?.mobile_access) {
-          setGrant(normalizeGrant(access.user.mobile_access));
-        }
+        const email = access.user?.email || '';
+        setGrant(sanitizeMobileAccessGrantForUser(
+          access.user?.mobile_access || defaultMobileAccessGrant(),
+          email,
+        ));
       }
       setLoading(false);
     })();
