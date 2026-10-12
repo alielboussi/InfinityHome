@@ -24,11 +24,13 @@ import {
 import { isWarehouseProductStockQtyEditAllowed } from '../shared/mobileAccessManifest';
 import { useMobileAccessGrant } from '../shared/useMobileAccessGrant';
 import { wedgeAwareTextChange } from '../shared/useKeepSoftKeyboardOnScanSubmit';
+import {
+  analyzeAssemblyPacketBom,
+  isCompleteCatalogProduct,
+  isIncompletePacketBomProduct,
+  isSetAssembly,
+} from '../shared/warehouseCatalogProductCompleteness';
 import { theme } from '../shared/theme';
-
-function isSetAssembly(assembly) {
-  return String(assembly?.item_kind || '').toLowerCase() === 'set';
-}
 
 function formatDimensionsLine(assembly) {
   const l = assembly?.dim_length;
@@ -80,7 +82,8 @@ function ProductThumbnail({ assembly }) {
   );
 }
 
-export default function WarehouseProductsScreen({ navigation }) {
+export default function WarehouseProductsScreen({ navigation, route }) {
+  const catalogMode = route?.params?.catalogMode === 'incomplete' ? 'incomplete' : 'complete';
   const { grant } = useMobileAccessGrant();
   const canEditProductStock = isWarehouseProductStockQtyEditAllowed(grant);
   const [loading, setLoading] = useState(true);
@@ -144,8 +147,15 @@ export default function WarehouseProductsScreen({ navigation }) {
   const warehouseLabel = catalog?.warehouseLocationName || 'Warehouse';
 
   const productAssemblies = useMemo(
-    () => (catalog?.assemblies || []).filter((a) => !isSetAssembly(a)),
-    [catalog?.assemblies],
+    () => (catalog?.assemblies || []).filter((a) => {
+      if (isSetAssembly(a)) return false;
+      const pktList = packetsByAssembly.get(String(a.id)) || [];
+      if (catalogMode === 'incomplete') {
+        return isIncompletePacketBomProduct(a, pktList);
+      }
+      return isCompleteCatalogProduct(a, pktList);
+    }),
+    [catalog?.assemblies, catalogMode, packetsByAssembly],
   );
 
   const filtered = useMemo(() => {
@@ -296,6 +306,12 @@ export default function WarehouseProductsScreen({ navigation }) {
     const finishedQty = assemblyWarehouseQty[id] ?? 0;
     const dimLine = formatDimensionsLine(assembly);
     const volumeLine = formatVolumeLine(assembly);
+    const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
+    const bomHint = catalogMode === 'incomplete'
+      ? (pktList.length === 0
+        ? 'No packets linked'
+        : `BOM ${bom.cartonsPerUnit}/${bom.required || assembly.packet_count || '?'} cartons`)
+      : '';
 
     return (
       <View style={styles.gridCard}>
@@ -328,6 +344,7 @@ export default function WarehouseProductsScreen({ navigation }) {
             <Text style={styles.cardMeta} numberOfLines={2}>
               {cat || '—'}
               {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
+              {bomHint ? ` · ${bomHint}` : ''}
             </Text>
             {dimLine ? (
               <Text style={styles.cardSpec} numberOfLines={2}>{dimLine}</Text>
@@ -361,7 +378,9 @@ export default function WarehouseProductsScreen({ navigation }) {
   return (
     <View style={styles.wrap}>
       <View style={styles.listHeader}>
-        <Text style={styles.listHeaderTitle}>{warehouseLabel} products</Text>
+        <Text style={styles.listHeaderTitle}>
+          {catalogMode === 'incomplete' ? 'Incomplete products' : `${warehouseLabel} products`}
+        </Text>
         <Text style={styles.listHeaderMeta}>
           {filtered.length} item{filtered.length === 1 ? '' : 's'}
         </Text>
@@ -384,13 +403,15 @@ export default function WarehouseProductsScreen({ navigation }) {
             if (normalized && normalized !== v) setSearch(normalized);
           }}
         />
-        <Pressable
-          style={styles.addBtn}
-          onPress={openNewProductForm}
-          accessibilityLabel="Add new product"
-        >
-          <Text style={styles.addBtnText}>+</Text>
-        </Pressable>
+        {catalogMode === 'complete' ? (
+          <Pressable
+            style={styles.addBtn}
+            onPress={openNewProductForm}
+            accessibilityLabel="Add new product"
+          >
+            <Text style={styles.addBtnText}>+</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

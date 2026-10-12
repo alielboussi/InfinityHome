@@ -37,6 +37,7 @@ export function isWarehouseProductStockQtyEditAllowed(grant) {
 /** Screens that can appear as buttons on the mobile dashboard. */
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
+  'warehouse_incomplete_products',
   'warehouse_packets',
   'warehouse_floor_count',
 ]);
@@ -53,7 +54,13 @@ export const MOBILE_SCREENS = Object.freeze([
   {
     id: 'warehouse_products',
     label: 'Warehouse Products',
-    description: 'Browse products and packets; add via scan or forms',
+    description: 'Finished-only products and packet-BOM products with complete cartons',
+    permissionMatrix: true,
+  },
+  {
+    id: 'warehouse_incomplete_products',
+    label: 'Incomplete Products',
+    description: 'Packet-BOM only — carton totals ≠ packet count (excludes finished-only)',
     permissionMatrix: true,
   },
   {
@@ -104,6 +111,7 @@ export const DEFAULT_MOBILE_LANDING_SCREEN = 'dashboard';
 
 const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_products: 'WarehouseProducts',
+  warehouse_incomplete_products: 'WarehouseIncompleteProducts',
   warehouse_packets: 'WarehousePackets',
   warehouse_floor_count: 'WarehouseStockCount',
 });
@@ -151,7 +159,12 @@ export function canMobileScreenView(grant, screenId) {
   if (screenId === 'dashboard') return true;
 
   if (WAREHOUSE_PRODUCTS_CHILD_SCREENS.includes(screenId)) {
-    return isMobileScreenAccessAllowed(grant, 'warehouse_products');
+    return isMobileScreenAccessAllowed(grant, 'warehouse_products')
+      || isMobileScreenAccessAllowed(grant, 'warehouse_incomplete_products');
+  }
+
+  if (screenId === 'warehouse_incomplete_products') {
+    return isMobileScreenAccessAllowed(grant, 'warehouse_incomplete_products');
   }
 
   if (screenId === 'warehouse_packet_form') {
@@ -218,9 +231,12 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   });
 
   const productsAllowed = isMobileScreenAccessAllowed(merged, 'warehouse_products');
+  const incompleteProductsAllowed = isMobileScreenAccessAllowed(merged, 'warehouse_incomplete_products');
   WAREHOUSE_PRODUCTS_CHILD_SCREENS.forEach((childId) => {
-    merged.screens[childId] = buildMobileScreenAccessRow(productsAllowed);
+    merged.screens[childId] = buildMobileScreenAccessRow(productsAllowed || incompleteProductsAllowed);
   });
+
+  merged.screens.warehouse_incomplete_products = buildMobileScreenAccessRow(incompleteProductsAllowed);
 
   const legacyPacketsList = isMobileScreenAccessAllowed(merged, 'warehouse_packets_list');
   const packetsAllowed =

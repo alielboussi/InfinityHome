@@ -46,7 +46,14 @@ function MainStack() {
       <Stack.Screen name="WarehouseProducts" options={{ title: 'Warehouse catalog' }}>
         {(props) => (
           <MobileScreenGate screenId="warehouse_products" grant={grant} navigation={props.navigation}>
-            <WarehouseProductsScreen {...props} />
+            <WarehouseProductsScreen {...props} route={{ ...props.route, params: { catalogMode: 'complete' } }} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="WarehouseIncompleteProducts" options={{ title: 'Incomplete products' }}>
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_incomplete_products" grant={grant} navigation={props.navigation}>
+            <WarehouseProductsScreen {...props} route={{ ...props.route, params: { catalogMode: 'incomplete' } }} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

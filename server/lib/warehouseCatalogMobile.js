@@ -497,7 +497,7 @@ export async function setAssemblyProductQuantityForMobile(sb, body) {
   const packetUpdates = packetUpdatesForAssemblyTargetUnits(assembly, pktList, target);
   if (packetUpdates?.length) {
     for (const row of packetUpdates) {
-      await setWarehousePacketQuantityServer(sb, row.packetId, locationId, row.quantity);
+      await setWarehousePacketQuantityServer(sb, row.packetId, locationId, row.quantity, { mobileFast: true });
     }
   } else if (assemblyDerivesWarehouseStockFromPackets(assembly, pktList)) {
     throw new Error('Complete the packet BOM before setting product quantity.');
@@ -535,14 +535,20 @@ export async function setPacketQuantityForMobile(sb, body) {
   if (pErr) throw new Error(pErr.message || 'Failed to load packet');
   if (!packet) throw new Error('Packet not found.');
 
-  const nextQty = await setWarehousePacketQuantityServer(sb, packetId, locationId, quantity);
+  const { quantity: nextQty, assemblyWarehouseQty } = await setWarehousePacketQuantityServer(
+    sb,
+    packetId,
+    locationId,
+    quantity,
+    { mobileFast: true },
+  );
   const catalog = await fetchCatalogForMobile(sb);
   return {
     packet_id: packetId,
     quantity: nextQty,
     packet,
     warehouseLocationId: catalog.warehouseLocationId,
-    assemblyWarehouseQty: catalog.assemblyWarehouseQty || {},
-    packetWarehouseQty: catalog.packetWarehouseQty || {},
+    assemblyWarehouseQty: assemblyWarehouseQty || {},
+    packetWarehouseQty: { [String(packetId)]: nextQty },
   };
 }

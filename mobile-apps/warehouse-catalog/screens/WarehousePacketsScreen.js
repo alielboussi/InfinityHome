@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Pressable,
@@ -37,7 +36,6 @@ export default function WarehousePacketsScreen({ navigation }) {
   const [search, setSearch] = useState('');
   const [draftQty, setDraftQty] = useState({});
   const [committedQty, setCommittedQty] = useState({});
-  const [savingId, setSavingId] = useState(null);
   const qtyConfirmOpenRef = useRef(false);
   const searchRef = useRef(null);
   const { keepFocusAfterSubmit, stripScanTerminator } = useKeepSoftKeyboardOnScanSubmit(searchRef);
@@ -136,26 +134,29 @@ export default function WarehousePacketsScreen({ navigation }) {
     }
     const qty = Math.max(0, Math.floor(Number(rawValue) || 0));
     const id = String(packet.id);
-    setSavingId(id);
+    const saved = formatQty(qty);
+    const prevCommitted = formatQty(committedQty[id]);
     setError('');
+    setDraftQty((prev) => ({ ...prev, [id]: saved }));
+    setCommittedQty((prev) => ({ ...prev, [id]: saved }));
+    applyCatalogQtyMaps({
+      packetWarehouseQty: { [id]: qty },
+    });
     try {
       const result = await warehouseMobileRequest('packet-quantity-set', {
         packet_id: packet.id,
         warehouse_location_id: warehouseLocationId,
         quantity: qty,
       });
-      const saved = formatQty(result.quantity);
-      setDraftQty((prev) => ({ ...prev, [id]: saved }));
-      setCommittedQty((prev) => ({ ...prev, [id]: saved }));
+      const serverQty = formatQty(result.quantity);
+      setDraftQty((prev) => ({ ...prev, [id]: serverQty }));
+      setCommittedQty((prev) => ({ ...prev, [id]: serverQty }));
       applyCatalogQtyMaps(result);
     } catch (err) {
       setError(err?.message || 'Quantity update failed');
-      setDraftQty((prev) => ({
-        ...prev,
-        [id]: formatQty(committedQty[id]),
-      }));
-    } finally {
-      setSavingId(null);
+      setDraftQty((prev) => ({ ...prev, [id]: prevCommitted }));
+      setCommittedQty((prev) => ({ ...prev, [id]: prevCommitted }));
+      applyCatalogQtyMaps({ packetWarehouseQty: { [id]: Number(prevCommitted) || 0 } });
     }
   }, [applyCatalogQtyMaps, committedQty, warehouseLocationId]);
 
@@ -168,7 +169,7 @@ export default function WarehousePacketsScreen({ navigation }) {
   }, [committedQty]);
 
   const requestQtyChange = useCallback((packet, rawValue) => {
-    if (qtyConfirmOpenRef.current || savingId) return;
+    if (qtyConfirmOpenRef.current) return;
     const id = String(packet.id);
     const prev = Math.max(0, Math.floor(Number(committedQty[id]) || 0));
     const next = Math.max(0, Math.floor(Number(rawValue) || 0));
@@ -208,7 +209,7 @@ export default function WarehousePacketsScreen({ navigation }) {
         },
       },
     );
-  }, [committedQty, revertDraftQty, savePacketQty, savingId]);
+  }, [committedQty, revertDraftQty, savePacketQty]);
 
   const bumpQty = (packet, delta) => {
     const id = String(packet.id);
@@ -221,7 +222,6 @@ export default function WarehousePacketsScreen({ navigation }) {
   const renderItem = ({ item: packet }) => {
     const id = String(packet.id);
     const products = packetAssignments.get(id) || [];
-    const busy = savingId === id;
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -267,7 +267,6 @@ export default function WarehousePacketsScreen({ navigation }) {
             <Pressable
               style={styles.stepBtn}
               onPress={() => bumpQty(packet, -1)}
-              disabled={busy}
               accessibilityLabel="Decrease quantity"
             >
               <Text style={styles.stepBtnText}>−</Text>
@@ -281,18 +280,15 @@ export default function WarehousePacketsScreen({ navigation }) {
               showSoftInputOnFocus
               onBlur={() => requestQtyChange(packet, draftQty[id])}
               onSubmitEditing={() => requestQtyChange(packet, draftQty[id])}
-              editable={!busy}
             />
             <Pressable
               style={styles.stepBtn}
               onPress={() => bumpQty(packet, 1)}
-              disabled={busy}
               accessibilityLabel="Increase quantity"
             >
               <Text style={styles.stepBtnText}>+</Text>
             </Pressable>
           </View>
-          {busy ? <ActivityIndicator size="small" color="#38bdf8" style={styles.rowSpinner} /> : null}
         </View>
       </View>
     );
