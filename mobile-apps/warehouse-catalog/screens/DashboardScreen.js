@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOutFirebase } from '../shared/firebase';
+import { invalidateWarehouseCatalogCache } from '../shared/warehouseCatalogStore';
 import { getMobileDashboardNavItems } from '../shared/mobileAccessManifest';
 import { theme } from '../shared/theme';
 
@@ -18,6 +19,7 @@ export default function DashboardScreen({ grant, userEmail, userDisplayName, nav
     if (signingOut) return;
     setSigningOut(true);
     try {
+      invalidateWarehouseCatalogCache();
       await signOutFirebase();
     } catch {
       setSigningOut(false);

@@ -198,7 +198,9 @@ export default function WarehouseProductsPage() {
 
     return warehouseCatalogProducts.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
+      const cat = categoryName(a.category_id).toLowerCase();
       if (String(a.name || '').toLowerCase().includes(qLower)) return true;
+      if (cat.includes(qLower)) return true;
       if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
       if (keysOverlap(a.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
       return pktList.some(
@@ -207,7 +209,7 @@ export default function WarehouseProductsPage() {
           || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
       );
     });
-  }, [warehouseCatalogProducts, packetsByAssembly, search]);
+  }, [warehouseCatalogProducts, packetsByAssembly, search, categoryName]);
 
   const toggleExpanded = (assemblyId) => {
     setExpanded((prev) => {

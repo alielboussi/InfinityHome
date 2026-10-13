@@ -11,9 +11,10 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { attachWarehouseStockTotals } from '../shared/warehouseCatalogStock';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
+import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,
@@ -31,6 +32,13 @@ import {
   isSetAssembly,
 } from '../shared/warehouseCatalogProductCompleteness';
 import { theme } from '../shared/theme';
+
+const LIST_PERF = {
+  initialNumToRender: 12,
+  maxToRenderPerBatch: 8,
+  windowSize: 7,
+  removeClippedSubviews: true,
+};
 
 function formatDimensionsLine(assembly) {
   const l = assembly?.dim_length;
@@ -86,30 +94,25 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const catalogMode = route?.params?.catalogMode === 'incomplete' ? 'incomplete' : 'complete';
   const grant = useSharedMobileAccessGrant();
   const canEditProductStock = isWarehouseProductStockQtyEditAllowed(grant);
-  const [loading, setLoading] = useState(true);
+  const {
+    catalog,
+    initialLoading,
+    refreshing,
+    error: catalogError,
+    ensureFresh,
+    refresh,
+    patchCatalog,
+  } = useWarehouseCatalog();
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
-  const [catalog, setCatalog] = useState(null);
   const [savingAssemblyId, setSavingAssemblyId] = useState(null);
   const productQtyConfirmRef = useRef(false);
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await warehouseMobileRequest('catalog-list');
-      setCatalog(data);
-    } catch (err) {
-      setError(err?.message || 'Failed to load products');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      ensureFresh();
+    }, [ensureFresh]),
   );
 
   const packetsByAssembly = useMemo(
@@ -122,28 +125,10 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     return (id) => map.get(String(id)) || '';
   }, [catalog?.categories]);
 
-  const stockMaps = useMemo(() => {
-    if (!catalog?.assemblies) {
-      return { assemblyWarehouseQty: {}, packetWarehouseQty: {} };
-    }
-    const enriched = attachWarehouseStockTotals({
-      assemblies: catalog.assemblies,
-      packets: catalog.packets || [],
-      inventory: catalog.inventory || [],
-      assemblyInventory: catalog.assemblyInventory || [],
-      assemblyPackets: catalog.assemblyPackets || [],
-      locations: catalog.locations || [],
-      warehouseLocationId: catalog.warehouseLocationId ?? null,
-      warehouseLocationName: catalog.warehouseLocationName,
-    });
-    return {
-      assemblyWarehouseQty: enriched.assemblyWarehouseQty || {},
-      packetWarehouseQty: enriched.packetWarehouseQty || {},
-    };
-  }, [catalog]);
-
-  const assemblyWarehouseQty = stockMaps.assemblyWarehouseQty;
-  const packetWarehouseQty = stockMaps.packetWarehouseQty;
+  const { assemblyWarehouseQty, packetWarehouseQty } = useMemo(
+    () => catalogStockMaps(catalog),
+    [catalog],
+  );
   const warehouseLabel = catalog?.warehouseLocationName || 'Warehouse';
 
   const productAssemblies = useMemo(
@@ -175,7 +160,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
 
     return productAssemblies.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
+      const cat = categoryName(a.category_id).toLowerCase();
       if (String(a.name || '').toLowerCase().includes(qLower)) return true;
+      if (cat.includes(qLower)) return true;
       if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
       if (keysOverlap(a.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
       return pktList.some(
@@ -184,7 +171,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
       );
     });
-  }, [productAssemblies, packetsByAssembly, search]);
+  }, [productAssemblies, packetsByAssembly, search, categoryName]);
 
   const toggleExpanded = (id) => {
     setExpanded((prev) => {
@@ -205,28 +192,19 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     });
   };
 
+  const openEditIncompleteBom = useCallback((assembly) => {
+    navigation.navigate('ProductForm', {
+      editAssemblyId: assembly.id,
+      warehouseLocationId: catalog?.warehouseLocationId,
+      catalogSnapshot: catalog,
+    });
+  }, [catalog, navigation]);
+
   const formatQty = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return '0';
     return String(Math.max(0, Math.floor(n)));
   };
-
-  const applyCatalogQtyMaps = useCallback((result) => {
-    setCatalog((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        packetWarehouseQty: {
-          ...(prev.packetWarehouseQty || {}),
-          ...(result.packetWarehouseQty || {}),
-        },
-        assemblyWarehouseQty: {
-          ...(prev.assemblyWarehouseQty || {}),
-          ...(result.assemblyWarehouseQty || {}),
-        },
-      };
-    });
-  }, []);
 
   const saveProductQty = useCallback(async (assemblyId, nextQty) => {
     const locId = catalog?.warehouseLocationId;
@@ -242,13 +220,13 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         warehouse_location_id: locId,
         quantity: nextQty,
       });
-      applyCatalogQtyMaps(result);
+      patchCatalog(result);
     } catch (err) {
       setError(err?.message || 'Product quantity update failed');
     } finally {
       setSavingAssemblyId(null);
     }
-  }, [applyCatalogQtyMaps, catalog?.warehouseLocationId]);
+  }, [patchCatalog, catalog?.warehouseLocationId]);
 
   const requestProductQtyChange = useCallback((assembly, nextQty) => {
     if (productQtyConfirmRef.current || savingAssemblyId) return;
@@ -304,6 +282,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const pktList = packetsByAssembly.get(id) || [];
     const cat = categoryName(assembly.category_id);
     const finishedQty = assemblyWarehouseQty[id] ?? 0;
+    const displayQty = catalogMode === 'incomplete' ? 0 : finishedQty;
+    const canEditQtyOnCard = canEditProductStock && catalogMode !== 'incomplete';
     const dimLine = formatDimensionsLine(assembly);
     const volumeLine = formatVolumeLine(assembly);
     const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
@@ -321,9 +301,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             accessibilityLabel={`Open ${assembly.name}`}
           >
             <ProductThumbnail assembly={assembly} />
-            <View style={styles.qtyRibbon} pointerEvents={canEditProductStock ? 'auto' : 'none'}>
+            <View style={styles.qtyRibbon} pointerEvents={canEditQtyOnCard ? 'auto' : 'none'}>
               <Text style={styles.qtyRibbonLabel}>{warehouseLabel}</Text>
-              {canEditProductStock ? (
+              {canEditQtyOnCard ? (
                 <View style={styles.qtyStepper}>
                   <Pressable
                     style={styles.qtyStepBtn}
@@ -333,10 +313,10 @@ export default function WarehouseProductsScreen({ navigation, route }) {
                   >
                     <Text style={styles.qtyStepBtnText}>+</Text>
                   </Pressable>
-                  <Text style={styles.qtyRibbonValue}>{formatQty(finishedQty)}</Text>
+                  <Text style={styles.qtyRibbonValue}>{formatQty(displayQty)}</Text>
                 </View>
               ) : (
-                <Text style={styles.qtyRibbonValue}>{formatQty(finishedQty)}</Text>
+                <Text style={styles.qtyRibbonValue}>{formatQty(displayQty)}</Text>
               )}
             </View>
             <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
@@ -362,6 +342,15 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
           </Pressable>
         </View>
+        {catalogMode === 'incomplete' ? (
+          <Pressable
+            style={styles.editBomBtn}
+            onPress={() => openEditIncompleteBom(assembly)}
+            accessibilityLabel="Edit packet BOM"
+          >
+            <Text style={styles.editBomBtnText}>Add / edit packets</Text>
+          </Pressable>
+        ) : null}
         {isOpen ? (
           <View style={styles.packetList}>
             {pktList.length === 0 ? (
@@ -379,7 +368,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     <View style={styles.wrap}>
       <View style={styles.listHeader}>
         <Text style={styles.listHeaderTitle}>
-          {catalogMode === 'incomplete' ? 'Incomplete products' : `${warehouseLabel} products`}
+          {catalogMode === 'incomplete' ? 'Warehouse Incomplete Packets' : `${warehouseLabel} products`}
         </Text>
         <Text style={styles.listHeaderMeta}>
           {filtered.length} item{filtered.length === 1 ? '' : 's'}
@@ -414,13 +403,15 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         ) : null}
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {!loading && catalog && !catalog.warehouseLocationId ? (
+      {error || catalogError ? (
+        <Text style={styles.error}>{error || catalogError}</Text>
+      ) : null}
+      {!initialLoading && catalog && !catalog.warehouseLocationId ? (
         <Text style={styles.error}>
           Warehouse location could not be resolved (same rules as web warehouse products). Pull to refresh.
         </Text>
       ) : null}
-      {loading && !catalog ? (
+      {initialLoading && !catalog ? (
         <ActivityIndicator color="#38bdf8" style={{ marginTop: 24 }} />
       ) : (
         <FlatList
@@ -434,8 +425,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           ListEmptyComponent={
             <Text style={styles.empty}>No products yet. Tap + to add a product.</Text>
           }
-          refreshing={loading}
-          onRefresh={load}
+          refreshing={refreshing}
+          onRefresh={() => refresh({ force: true, background: true })}
+          {...LIST_PERF}
         />
       )}
 
@@ -570,6 +562,18 @@ const styles = StyleSheet.create({
   packetName: { color: '#e2e8f0', fontSize: 11, marginTop: 2 },
   packetQty: { color: '#a5f3fc', fontSize: 11, fontWeight: '700', marginTop: 2 },
   packetEmpty: { color: '#64748b', fontStyle: 'italic', paddingVertical: 4, fontSize: 11 },
+  editBomBtn: {
+    marginTop: 6,
+    marginHorizontal: 8,
+    marginBottom: 4,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    backgroundColor: theme.surfaceElevated,
+    alignItems: 'center',
+  },
+  editBomBtnText: { color: theme.primary, fontWeight: '700', fontSize: 13 },
   error: { color: '#f87171', paddingHorizontal: 12, marginBottom: 8 },
   empty: { color: '#64748b', textAlign: 'center', marginTop: 32, paddingHorizontal: 24 },
 });

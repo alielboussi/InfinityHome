@@ -28,6 +28,7 @@ const routeMap = {
   WarehouseProducts: 'warehouse_products',
   WarehouseIncompleteProducts: 'warehouse_incomplete_products',
   WarehousePackets: 'warehouse_packets',
+  WarehouseUnassignedPackets: 'warehouse_unassigned_packets',
   WarehouseStockCount: 'warehouse_floor_count',
   WarehouseScan: 'warehouse_scan',
   PacketForm: 'warehouse_packet_form',

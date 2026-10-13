@@ -12,12 +12,15 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import WarehouseCatalogFormScroll from '../shared/WarehouseCatalogFormScroll';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
+import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
   normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
+import { analyzeAssemblyPacketBom } from '../shared/warehouseCatalogProductCompleteness';
 import { theme } from '../shared/theme';
 import {
   useKeepSoftKeyboardOnScanSubmit,
@@ -29,6 +32,10 @@ const INVENTORY_PACKETS = 'packets';
 
 export default function ProductFormScreen({ route, navigation }) {
   const prefill = route.params?.prefill || {};
+  const editAssemblyId = route.params?.editAssemblyId
+    ? String(route.params.editAssemblyId)
+    : '';
+  const bomEditMode = Boolean(editAssemblyId);
   const existing = Boolean(route.params?.existing && prefill.id);
   const [catalog, setCatalog] = useState(route.params?.catalogSnapshot || null);
   const [name, setName] = useState(prefill.name || '');
@@ -53,6 +60,7 @@ export default function ProductFormScreen({ route, navigation }) {
   const packetSearchInputRef = useRef(null);
   const scrollRef = useRef(null);
   const packetSearchSectionY = useRef(0);
+  const bomHydratedRef = useRef(false);
   const {
     keepFocusAfterSubmit: keepSkuKeyboard,
     wrapOnBlur: wrapSkuBlur,
@@ -82,9 +90,11 @@ export default function ProductFormScreen({ route, navigation }) {
     setTimeout(() => skuInputRef.current?.focus?.(), 50);
   }, []);
 
+  const { refresh: refreshGlobalCatalog } = useWarehouseCatalog();
+
   const refreshCatalog = useCallback(async () => {
     try {
-      const data = await warehouseMobileRequest('catalog-list');
+      const data = await fetchWarehouseCatalogCached({ force: false });
       setCatalog(data);
     } catch {
       /* keep last catalog if refresh fails */
@@ -93,9 +103,37 @@ export default function ProductFormScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      refreshCatalog();
-      if (!existing) focusSku();
-    }, [existing, focusSku, refreshCatalog]),
+      if (!catalog) refreshCatalog();
+      if (!existing && !bomEditMode) focusSku();
+    }, [bomEditMode, catalog, existing, focusSku, refreshCatalog]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!bomEditMode || bomHydratedRef.current || !editAssemblyId || !catalog?.assemblies) return;
+      const assembly = (catalog.assemblies || []).find(
+        (a) => String(a.id) === editAssemblyId,
+      );
+      if (!assembly) return;
+      setName(assembly.name || '');
+      setFamilySku(assembly.family_sku || '');
+      setCategoryId(assembly.category_id || '');
+      setPacketCount(assembly.packet_count != null ? String(assembly.packet_count) : '');
+      setFinishedOnly(false);
+      setHasColorVariants(Boolean(assembly.has_color_variants));
+      const colorRows = (catalog.assemblyColors || []).filter(
+        (row) => String(row.assembly_id) === editAssemblyId,
+      );
+      setColorIds(colorRows.map((row) => row.color_id).filter(Boolean));
+      const links = (catalog.assemblyPackets || [])
+        .filter((row) => String(row.assembly_id) === editAssemblyId)
+        .map((row) => ({
+          packet_id: row.packet_id,
+          qty_per_unit: Math.max(1, Number(row.qty_per_unit) || 1),
+        }));
+      setPacketLinks(links);
+      bomHydratedRef.current = true;
+    }, [bomEditMode, catalog, editAssemblyId]),
   );
 
   const categories = catalog?.categories || [];
@@ -116,9 +154,12 @@ export default function ProductFormScreen({ route, navigation }) {
   const packets = catalog?.packets || [];
 
   const title = useMemo(() => {
+    if (bomEditMode) return 'Complete packet BOM';
     if (existing) return 'Product (known SKU)';
     return 'New product';
-  }, [existing]);
+  }, [bomEditMode, existing]);
+
+  const showPacketBomFields = (!existing || bomEditMode) && !finishedOnly;
 
   const linkedColorNames = useMemo(() => {
     const map = new Map(colors.map((c) => [String(c.id), c.name]));
@@ -237,7 +278,7 @@ export default function ProductFormScreen({ route, navigation }) {
   };
 
   const onSave = async () => {
-    if (existing) {
+    if (existing && !bomEditMode) {
       setNotice('Edit on mobile is Phase 2 — open web warehouse for changes.');
       return;
     }
@@ -260,7 +301,7 @@ export default function ProductFormScreen({ route, navigation }) {
     setError('');
     setNotice('');
     try {
-      await warehouseMobileRequest('assembly-save', {
+      const payload = {
         name: name.trim(),
         family_sku: normalizedSku,
         category_id: categoryId || null,
@@ -271,9 +312,24 @@ export default function ProductFormScreen({ route, navigation }) {
         location_ids: [],
         warehouse_location_id: warehouseLocationId,
         packet_links: finishedOnly ? [] : packetLinks,
-      });
-      setNotice('Product created.');
-      setTimeout(() => navigation.navigate('WarehouseProducts'), 800);
+      };
+      if (bomEditMode) {
+        payload.id = editAssemblyId;
+      }
+      await warehouseMobileRequest('assembly-save', payload);
+      refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+      if (bomEditMode) {
+        const bom = analyzeAssemblyPacketBom(Number(packetCount), packetLinks.map((link) => {
+          const p = packets.find((x) => String(x.id) === String(link.packet_id));
+          return { qty_per_unit: link.qty_per_unit, ...p };
+        }));
+        setNotice(bom.isComplete ? 'BOM complete — product moved to Warehouse Products.' : 'Packet links saved.');
+        const target = bom.isComplete ? 'WarehouseProducts' : 'WarehouseIncompleteProducts';
+        setTimeout(() => navigation.navigate(target), 800);
+      } else {
+        setNotice('Product created.');
+        setTimeout(() => navigation.navigate('WarehouseProducts'), 800);
+      }
     } catch (err) {
       setError(err?.message || 'Save failed.');
     } finally {
@@ -284,7 +340,7 @@ export default function ProductFormScreen({ route, navigation }) {
   return (
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
-      {!existing ? (
+      {!existing && !bomEditMode ? (
         <>
           <View style={styles.rowSwitch}>
             <Text style={styles.label}>Finished units only — no packet BOM</Text>
@@ -318,7 +374,7 @@ export default function ProductFormScreen({ route, navigation }) {
       <Field
         label="SKU (finished product)"
         value={familySku}
-        editable={!existing}
+        editable={!existing && !bomEditMode}
         mono
         onBlur={wrapSkuBlur(normalizeSkuField)}
         inputRef={skuInputRef}
@@ -331,7 +387,7 @@ export default function ProductFormScreen({ route, navigation }) {
         })}
         onSubmitEditing={onProductSkuSubmit}
       />
-      {!existing && !finishedOnly && (
+      {showPacketBomFields && (
         <Field
           label="Total packets"
           value={packetCount}
@@ -426,7 +482,7 @@ export default function ProductFormScreen({ route, navigation }) {
           ) : null}
         </>
       ) : null}
-      {!existing && !finishedOnly && (
+      {showPacketBomFields && (
         <View
           collapsable={false}
           onLayout={(e) => {
@@ -502,9 +558,11 @@ export default function ProductFormScreen({ route, navigation }) {
       )}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-      {!existing && (
+      {(!existing || bomEditMode) && (
         <Pressable style={styles.btn} onPress={onSave} disabled={busy}>
-          <Text style={styles.btnText}>{busy ? 'Saving…' : 'Create product'}</Text>
+          <Text style={styles.btnText}>
+            {busy ? 'Saving…' : (bomEditMode ? 'Save packet BOM' : 'Create product')}
+          </Text>
         </Pressable>
       )}
     </WarehouseCatalogFormScroll>

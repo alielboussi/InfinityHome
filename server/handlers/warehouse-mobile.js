@@ -404,9 +404,9 @@ export default async function handler(req, res) {
           assembly: await saveAssemblyForMobile(getService(), body),
           created_by: user?.email || null,
         };
+        break;
       case 'assembly-product-quantity-set':
         result = await opAssemblyProductQuantitySet(body, user);
-        break;
         break;
       case 'bom-validate':
         result = await opBomValidate(body);

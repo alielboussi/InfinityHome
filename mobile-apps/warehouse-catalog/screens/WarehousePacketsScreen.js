@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,9 +10,10 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { attachWarehouseStockTotals } from '../shared/warehouseCatalogStock';
 import { buildPacketAssemblyAssignments } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
+import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,
@@ -24,16 +25,31 @@ import {
 } from '../shared/useKeepSoftKeyboardOnScanSubmit';
 import { theme } from '../shared/theme';
 
+const LIST_PERF = {
+  initialNumToRender: 14,
+  maxToRenderPerBatch: 10,
+  windowSize: 7,
+  removeClippedSubviews: true,
+};
+
 function formatQty(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '0';
   return String(Math.max(0, Math.floor(n)));
 }
 
-export default function WarehousePacketsScreen({ navigation }) {
-  const [loading, setLoading] = useState(true);
+export default function WarehousePacketsScreen({ navigation, route }) {
+  const unassignedOnly = route?.params?.assignmentFilter === 'unassigned';
+  const {
+    catalog,
+    initialLoading,
+    refreshing,
+    error: catalogError,
+    ensureFresh,
+    refresh,
+    patchCatalog,
+  } = useWarehouseCatalog();
   const [error, setError] = useState('');
-  const [catalog, setCatalog] = useState(null);
   const [search, setSearch] = useState('');
   const [draftQty, setDraftQty] = useState({});
   const [committedQty, setCommittedQty] = useState({});
@@ -41,30 +57,25 @@ export default function WarehousePacketsScreen({ navigation }) {
   const searchRef = useRef(null);
   const { keepFocusAfterSubmit, stripScanTerminator } = useKeepSoftKeyboardOnScanSubmit(searchRef);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await warehouseMobileRequest('catalog-list');
-      setCatalog(data);
-      const qtyMap = {};
-      (data.packets || []).forEach((p) => {
-        const onHand = data.packetWarehouseQty?.[String(p.id)] ?? 0;
-        qtyMap[String(p.id)] = formatQty(onHand);
-      });
-      setDraftQty(qtyMap);
-      setCommittedQty(qtyMap);
-    } catch (err) {
-      setError(err?.message || 'Failed to load packets');
-    } finally {
-      setLoading(false);
-    }
+  const syncQtyFromCatalog = useCallback((data) => {
+    if (!data?.packets) return;
+    const qtyMap = {};
+    (data.packets || []).forEach((p) => {
+      const onHand = data.packetWarehouseQty?.[String(p.id)] ?? 0;
+      qtyMap[String(p.id)] = formatQty(onHand);
+    });
+    setDraftQty(qtyMap);
+    setCommittedQty(qtyMap);
   }, []);
+
+  useEffect(() => {
+    if (catalog) syncQtyFromCatalog(catalog);
+  }, [catalog, syncQtyFromCatalog]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      ensureFresh();
+    }, [ensureFresh]),
   );
 
   const warehouseLocationId = catalog?.warehouseLocationId;
@@ -79,25 +90,30 @@ export default function WarehousePacketsScreen({ navigation }) {
     [catalog],
   );
 
-  const assemblyFinishedQty = useMemo(() => {
-    if (!catalog) return {};
-    const enriched = attachWarehouseStockTotals({
-      assemblies: catalog.assemblies || [],
-      packets: catalog.packets || [],
-      inventory: catalog.inventory || [],
-      assemblyInventory: catalog.assemblyInventory || [],
-      assemblyPackets: catalog.assemblyPackets || [],
-      locations: catalog.locations || [],
-      warehouseLocationId: catalog.warehouseLocationId ?? null,
-      warehouseLocationName: catalog.warehouseLocationName,
-    });
-    return enriched.assemblyWarehouseQty || {};
-  }, [catalog]);
+  const packetIsAssigned = useCallback(
+    (packetId) => (packetAssignments.get(String(packetId)) || []).length > 0,
+    [packetAssignments],
+  );
+
+  const assemblyFinishedQty = useMemo(
+    () => catalogStockMaps(catalog).assemblyWarehouseQty,
+    [catalog],
+  );
 
   const filteredPackets = useMemo(() => {
-    const list = catalog?.packets || [];
+    let list = catalog?.packets || [];
+    if (unassignedOnly) {
+      list = list.filter((p) => !packetIsAssigned(p.id));
+    }
     const raw = search.trim();
-    if (!raw) return list;
+    if (!raw) {
+      return list.sort((a, b) => {
+        const aAssigned = packetIsAssigned(a.id) ? 0 : 1;
+        const bAssigned = packetIsAssigned(b.id) ? 0 : 1;
+        if (aAssigned !== bAssigned) return aAssigned - bAssigned;
+        return String(a.sku || '').localeCompare(String(b.sku || ''));
+      });
+    }
     const qLower = raw.toLowerCase();
     const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
     return list.filter((p) => {
@@ -107,26 +123,17 @@ export default function WarehousePacketsScreen({ navigation }) {
       for (const k of qKeys) {
         if (k && stored.has(k)) return true;
       }
+      const products = packetAssignments.get(String(p.id)) || [];
+      const productHay = products.map((pr) => `${pr.name} ${pr.family_sku}`).join(' ').toLowerCase();
+      if (productHay.includes(qLower)) return true;
       return false;
+    }).sort((a, b) => {
+      const aAssigned = packetIsAssigned(a.id) ? 0 : 1;
+      const bAssigned = packetIsAssigned(b.id) ? 0 : 1;
+      if (aAssigned !== bAssigned) return aAssigned - bAssigned;
+      return String(a.sku || '').localeCompare(String(b.sku || ''));
     });
-  }, [catalog?.packets, search]);
-
-  const applyCatalogQtyMaps = useCallback((result) => {
-    setCatalog((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        packetWarehouseQty: {
-          ...(prev.packetWarehouseQty || {}),
-          ...(result.packetWarehouseQty || {}),
-        },
-        assemblyWarehouseQty: {
-          ...(prev.assemblyWarehouseQty || {}),
-          ...(result.assemblyWarehouseQty || {}),
-        },
-      };
-    });
-  }, []);
+  }, [catalog?.packets, search, unassignedOnly, packetIsAssigned, packetAssignments]);
 
   const savePacketQty = useCallback(async (packet, rawValue) => {
     if (!warehouseLocationId) {
@@ -140,7 +147,7 @@ export default function WarehousePacketsScreen({ navigation }) {
     setError('');
     setDraftQty((prev) => ({ ...prev, [id]: saved }));
     setCommittedQty((prev) => ({ ...prev, [id]: saved }));
-    applyCatalogQtyMaps({
+    patchCatalog({
       packetWarehouseQty: { [id]: qty },
     });
     try {
@@ -152,14 +159,14 @@ export default function WarehousePacketsScreen({ navigation }) {
       const serverQty = formatQty(result.quantity);
       setDraftQty((prev) => ({ ...prev, [id]: serverQty }));
       setCommittedQty((prev) => ({ ...prev, [id]: serverQty }));
-      applyCatalogQtyMaps(result);
+      patchCatalog(result);
     } catch (err) {
       setError(err?.message || 'Quantity update failed');
       setDraftQty((prev) => ({ ...prev, [id]: prevCommitted }));
       setCommittedQty((prev) => ({ ...prev, [id]: prevCommitted }));
-      applyCatalogQtyMaps({ packetWarehouseQty: { [id]: Number(prevCommitted) || 0 } });
+      patchCatalog({ packetWarehouseQty: { [id]: Number(prevCommitted) || 0 } });
     }
-  }, [applyCatalogQtyMaps, committedQty, warehouseLocationId]);
+  }, [patchCatalog, committedQty, warehouseLocationId]);
 
   const revertDraftQty = useCallback((packetId) => {
     const id = String(packetId);
@@ -309,8 +316,18 @@ export default function WarehousePacketsScreen({ navigation }) {
 
   return (
     <View style={styles.wrap}>
+      {unassignedOnly ? (
+        <View style={styles.listHeader}>
+          <Text style={styles.listHeaderTitle}>Warehouse Unassigned Packets</Text>
+          <Text style={styles.listHeaderMeta}>
+            {filteredPackets.length} carton{filteredPackets.length === 1 ? '' : 's'} not linked to a product
+          </Text>
+        </View>
+      ) : null}
       <Text style={styles.lead}>
-        Search by SKU or name. Changing cartons updates linked product stock the same way as the web portal.
+        {unassignedOnly
+          ? 'Cartons with no product link — on-hand qty is per packet only. Search by SKU, name, or linked product.'
+          : 'Search by SKU or name. Changing cartons updates linked product stock the same way as the web portal.'}
       </Text>
       <View style={styles.toolbar}>
         <TextInput
@@ -344,8 +361,10 @@ export default function WarehousePacketsScreen({ navigation }) {
           <Text style={styles.addBtnText}>+</Text>
         </Pressable>
       </View>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {loading && !catalog ? (
+      {error || catalogError ? (
+        <Text style={styles.error}>{error || catalogError}</Text>
+      ) : null}
+      {initialLoading && !catalog ? (
         <ActivityIndicator color="#38bdf8" style={{ marginTop: 24 }} />
       ) : (
         <FlatList
@@ -354,13 +373,16 @@ export default function WarehousePacketsScreen({ navigation }) {
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="always"
-          refreshing={loading}
-          onRefresh={load}
+          refreshing={refreshing}
+          onRefresh={() => refresh({ force: true, background: true })}
+          {...LIST_PERF}
           ListEmptyComponent={
             <Text style={styles.empty}>
               {search.trim()
                 ? 'No packets match this search.'
-                : 'No packets yet. Tap + to add a carton SKU.'}
+                : unassignedOnly
+                  ? 'No unassigned packets — every carton is linked to a product.'
+                  : 'No packets yet. Tap + to add a carton SKU.'}
             </Text>
           }
         />
@@ -371,6 +393,13 @@ export default function WarehousePacketsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: theme.bg },
+  listHeader: {
+    paddingHorizontal: theme.space.md,
+    paddingTop: theme.space.sm,
+    paddingBottom: theme.space.xs,
+  },
+  listHeaderTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
+  listHeaderMeta: { color: theme.textDim, fontSize: 13, marginTop: 4 },
   lead: {
     color: theme.textMuted,
     fontSize: 13,

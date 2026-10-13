@@ -37,8 +37,9 @@ export function isWarehouseProductStockQtyEditAllowed(grant) {
 /** Screens that can appear as buttons on the mobile dashboard. */
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
-  'warehouse_incomplete_products',
   'warehouse_packets',
+  'warehouse_unassigned_packets',
+  'warehouse_incomplete_products',
   'warehouse_floor_count',
 ]);
 
@@ -59,14 +60,20 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_incomplete_products',
-    label: 'Incomplete Products',
-    description: 'Packet-BOM only — carton totals ≠ packet count (excludes finished-only)',
+    label: 'Warehouse Incomplete Packets',
+    description: 'Packet-BOM products missing links or carton totals ≠ packet count',
     permissionMatrix: true,
   },
   {
     id: 'warehouse_packets',
     label: 'Warehouse Packets',
     description: 'Search packets and adjust warehouse carton qty',
+    permissionMatrix: true,
+  },
+  {
+    id: 'warehouse_unassigned_packets',
+    label: 'Warehouse Unassigned Packets',
+    description: 'Carton SKUs not linked to any warehouse product',
     permissionMatrix: true,
   },
   {
@@ -113,6 +120,7 @@ const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_products: 'WarehouseProducts',
   warehouse_incomplete_products: 'WarehouseIncompleteProducts',
   warehouse_packets: 'WarehousePackets',
+  warehouse_unassigned_packets: 'WarehouseUnassignedPackets',
   warehouse_floor_count: 'WarehouseStockCount',
 });
 
@@ -169,11 +177,16 @@ export function canMobileScreenView(grant, screenId) {
 
   if (screenId === 'warehouse_packet_form') {
     return isMobileScreenAccessAllowed(grant, 'warehouse_products')
-      || isMobileScreenAccessAllowed(grant, 'warehouse_packets');
+      || isMobileScreenAccessAllowed(grant, 'warehouse_packets')
+      || isMobileScreenAccessAllowed(grant, 'warehouse_unassigned_packets');
   }
 
   if (screenId === 'warehouse_packets') {
     return isMobileScreenAccessAllowed(grant, 'warehouse_packets');
+  }
+
+  if (screenId === 'warehouse_unassigned_packets') {
+    return isMobileScreenAccessAllowed(grant, 'warehouse_unassigned_packets');
   }
 
   if (screenId === 'warehouse_floor_count') {
@@ -243,11 +256,14 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     isMobileScreenAccessAllowed(merged, 'warehouse_packets') || legacyPacketsList;
   merged.screens.warehouse_packets = buildMobileScreenAccessRow(packetsAllowed);
 
+  const unassignedPacketsAllowed = isMobileScreenAccessAllowed(merged, 'warehouse_unassigned_packets');
+  merged.screens.warehouse_unassigned_packets = buildMobileScreenAccessRow(unassignedPacketsAllowed);
+
   merged.screens.warehouse_floor_count = buildMobileScreenAccessRow(
     isMobileScreenAccessAllowed(merged, 'warehouse_floor_count'),
   );
 
-  const packetsAllowedForForms = packetsAllowed;
+  const packetsAllowedForForms = packetsAllowed || unassignedPacketsAllowed;
   if (packetsAllowedForForms && !productsAllowed) {
     merged.screens.warehouse_packet_form = buildMobileScreenAccessRow(true);
   }

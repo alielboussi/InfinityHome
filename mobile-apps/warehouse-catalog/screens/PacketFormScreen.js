@@ -11,6 +11,8 @@ import WarehouseCatalogFormScroll, {
   useScrollFieldIntoView,
 } from '../shared/WarehouseCatalogFormScroll';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
+import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
 import {
   normalizeWarehousePacketScan,
   normalizeWarehouseWedgeScanInput,
@@ -73,9 +75,11 @@ export default function PacketFormScreen({ route, navigation }) {
     }, 50);
   }, []);
 
+  const { refresh: refreshGlobalCatalog } = useWarehouseCatalog();
+
   const refreshCatalog = useCallback(async () => {
     try {
-      const data = await warehouseMobileRequest('catalog-list');
+      const data = await fetchWarehouseCatalogCached({ force: false });
       setCatalog(data);
     } catch {
       /* keep route params if refresh fails */
@@ -84,10 +88,10 @@ export default function PacketFormScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      refreshCatalog();
+      if (!catalog) refreshCatalog();
       if (isEdit) applyPrefill();
       else focusSku();
-    }, [applyPrefill, focusSku, isEdit, refreshCatalog]),
+    }, [applyPrefill, catalog, focusSku, isEdit, refreshCatalog]),
   );
 
   useEffect(() => {
@@ -138,6 +142,7 @@ export default function PacketFormScreen({ route, navigation }) {
           ...payload,
           packet_id: packetId,
         });
+        refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
         setNotice('Changes saved.');
         navigation.goBack();
         return;
@@ -146,6 +151,7 @@ export default function PacketFormScreen({ route, navigation }) {
         ...payload,
         initial_quantity: Number(initialQty) || 0,
       });
+      refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
       setNotice('Packet saved. Scan the next packet SKU.');
       resetForNextPacket();
     } catch (err) {

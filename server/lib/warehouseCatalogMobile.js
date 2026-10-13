@@ -32,56 +32,94 @@ const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 
 const WAREHOUSE_ITEM_KIND = Object.freeze({ PRODUCT: 'product', PACKET: 'packet' });
 
+const MOBILE_ASSEMBLY_FIELDS = [
+  'id',
+  'name',
+  'family_sku',
+  'packet_count',
+  'image_url',
+  'thumbnail_url',
+  'cover_image_url',
+  'photo_url',
+  'dim_length',
+  'dim_width',
+  'dim_height',
+  'category_id',
+  'inventory_mode',
+  'item_kind',
+].join(', ');
+
+const MOBILE_PACKET_FIELDS = [
+  'id',
+  'sku',
+  'name',
+  'packet_number',
+  'assembly_id',
+  'qty_per_unit',
+].join(', ');
+
+const MOBILE_INVENTORY_FIELDS = 'id, packet_id, location_id, quantity';
+const MOBILE_ASSEMBLY_INVENTORY_FIELDS = 'id, assembly_id, location_id, quantity';
+
 export async function fetchCatalogForMobile(sb) {
   const [
-    { data: assemblies, error: assembliesErr },
+    { data: locations, error: locationsErr },
     { data: packets, error: packetsErr },
-    { data: assemblyLocations, error: assemblyLocErr },
+  ] = await Promise.all([
+    sb.from('locations').select('id, name').order('name', { ascending: true }),
+    sb.from(PACKETS).select(MOBILE_PACKET_FIELDS).order('packet_number', { ascending: true }),
+  ]);
+
+  if (locationsErr) throw new Error(locationsErr.message || 'Failed to load locations');
+  if (packetsErr) throw new Error(packetsErr.message || 'Failed to load packets');
+
+  const warehouseLocation = resolveWarehouseLocation(locations, { packets });
+  const warehouseLocationId = warehouseLocation?.id ?? null;
+
+  let inventoryQuery = sb.from(PACKET_INVENTORY).select(MOBILE_INVENTORY_FIELDS);
+  let assemblyInvQuery = sb.from(ASSEMBLY_INVENTORY).select(MOBILE_ASSEMBLY_INVENTORY_FIELDS);
+  if (warehouseLocationId) {
+    inventoryQuery = inventoryQuery.eq('location_id', warehouseLocationId);
+    assemblyInvQuery = assemblyInvQuery.eq('location_id', warehouseLocationId);
+  }
+
+  const [
+    { data: assemblies, error: assembliesErr },
     { data: assemblyColors, error: assemblyColorsErr },
     { data: assemblyPackets, error: assemblyPacketsErr },
     { data: colors, error: colorsErr },
     { data: categories, error: categoriesErr },
-    { data: locations, error: locationsErr },
     { data: inventory, error: inventoryErr },
     { data: assemblyInventory, error: assemblyInvErr },
   ] = await Promise.all([
-    sb.from(ASSEMBLIES).select('*').order('name', { ascending: true }),
-    sb.from(PACKETS).select('*').order('packet_number', { ascending: true }),
-    sb.from(ASSEMBLY_LOCATIONS).select('*'),
-    sb.from(ASSEMBLY_COLORS).select('*'),
-    sb.from(ASSEMBLY_PACKETS).select('*'),
-    sb.from(COLORS).select('*').order('name', { ascending: true }),
+    sb.from(ASSEMBLIES).select(MOBILE_ASSEMBLY_FIELDS).order('name', { ascending: true }),
+    sb.from(ASSEMBLY_COLORS).select('assembly_id, color_id'),
+    sb.from(ASSEMBLY_PACKETS).select('assembly_id, packet_id, qty_per_unit'),
+    sb.from(COLORS).select('id, name, name_key').order('name', { ascending: true }),
     sb.from('categories').select('id, name').order('name', { ascending: true }),
-    sb.from('locations').select('id, name').order('name', { ascending: true }),
-    sb.from(PACKET_INVENTORY).select('*'),
-    sb.from(ASSEMBLY_INVENTORY).select('*'),
+    inventoryQuery,
+    assemblyInvQuery,
   ]);
 
   if (assembliesErr) throw new Error(assembliesErr.message || 'Failed to load products');
-  if (packetsErr) throw new Error(packetsErr.message || 'Failed to load packets');
-  if (assemblyLocErr) throw new Error(assemblyLocErr.message || 'Failed to load locations');
   if (assemblyColorsErr) throw new Error(assemblyColorsErr.message || 'Failed to load colors');
   if (assemblyPacketsErr) throw new Error(assemblyPacketsErr.message || 'Failed to load packet links');
   if (colorsErr) throw new Error(colorsErr.message || 'Failed to load variant colors');
   if (categoriesErr) throw new Error(categoriesErr.message || 'Failed to load categories');
-  if (locationsErr) throw new Error(locationsErr.message || 'Failed to load locations');
   if (inventoryErr) throw new Error(inventoryErr.message || 'Failed to load packet stock');
   if (assemblyInvErr) throw new Error(assemblyInvErr.message || 'Failed to load finished stock');
-
-  const warehouseLocation = resolveWarehouseLocation(locations, { packets });
 
   return attachWarehouseStockTotals({
     assemblies: assemblies || [],
     packets: packets || [],
     inventory: inventory || [],
     assemblyInventory: assemblyInventory || [],
-    assemblyLocations: assemblyLocations || [],
     assemblyColors: assemblyColors || [],
     assemblyPackets: assemblyPackets || [],
     colors: colors || [],
     categories: categories || [],
     locations: locations || [],
-    warehouseLocationId: warehouseLocation?.id ?? null,
+    warehouseLocationId,
     warehouseLocationName: warehouseLocation?.name ?? 'Warehouse',
   });
 }
@@ -290,7 +328,66 @@ async function validateAssemblyPacketNumbers(sb, assemblyId, packetCount) {
   return analyzeAssemblyPacketBom(required, rows);
 }
 
+async function updateAssemblyPacketBomForMobile(sb, payload) {
+  const assemblyId = String(payload?.id || payload?.assembly_id || '').trim();
+  const warehouseLocationId = String(payload?.warehouse_location_id || '').trim();
+  if (!assemblyId) throw new Error('Product id is required.');
+  if (!warehouseLocationId) throw new Error('Warehouse location is not configured');
+
+  const { data: assembly, error: aErr } = await sb
+    .from(ASSEMBLIES)
+    .select('*')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  if (aErr) throw new Error(aErr.message || 'Failed to load product');
+  if (!assembly) throw new Error('Product not found.');
+  if (String(assembly.inventory_mode || WAREHOUSE_INVENTORY_MODE.PACKETS) !== WAREHOUSE_INVENTORY_MODE.PACKETS) {
+    throw new Error('Only packet-BOM products can be edited here.');
+  }
+
+  const packetCountRaw = payload?.packet_count ?? assembly.packet_count;
+  const packetCount = packetCountRaw === '' || packetCountRaw == null
+    ? null
+    : Number(packetCountRaw);
+  if (!Number.isFinite(packetCount) || packetCount < 1) {
+    throw new Error('Total packets is required when tracking stock by cartons.');
+  }
+
+  const packetLinkRows = normalizePacketLinks(payload?.packet_links);
+  const linkedPacketIds = packetLinkRows.map((link) => link.packet_id);
+  await assertUniqueWarehouseSku(sb, assembly.family_sku, {
+    excludeAssemblyId: assemblyId,
+    linkedPacketIds,
+  });
+
+  const now = new Date().toISOString();
+  const { error: updErr } = await sb.from(ASSEMBLIES).update({
+    packet_count: packetCount,
+    updated_at: now,
+  }).eq('id', assemblyId);
+  if (updErr) throw new Error(updErr.message || 'Failed to update product');
+
+  await syncAssemblyPackets(sb, assemblyId, packetLinkRows, warehouseLocationId);
+  await validateAssemblyPacketNumbers(sb, assemblyId, packetCount);
+
+  const { recomputeWarehouseLocationStockServer } = await import('./warehouseLocationStockRecompute.js');
+  await recomputeWarehouseLocationStockServer(sb, warehouseLocationId);
+
+  const { data: refreshed, error: refErr } = await sb
+    .from(ASSEMBLIES)
+    .select('*')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  if (refErr) throw new Error(refErr.message || 'Failed to reload product');
+  return refreshed || { ...assembly, id: assemblyId, packet_count: packetCount };
+}
+
 export async function saveAssemblyForMobile(sb, payload) {
+  const updateId = String(payload?.id || payload?.assembly_id || '').trim();
+  if (updateId) {
+    return updateAssemblyPacketBomForMobile(sb, { ...payload, id: updateId });
+  }
+
   const name = String(payload?.name || '').trim();
   const familySku = normalizeWarehouseProductSku(payload?.family_sku);
   const categoryId = payload?.category_id || null;
@@ -518,7 +615,7 @@ export async function setAssemblyProductQuantityForMobile(sb, body) {
     assembly_id: assemblyId,
     quantity: target,
     previous: current,
-    warehouseLocationId: catalog.warehouseLocationId,
+    warehouseLocationId: locationId,
     assemblyWarehouseQty: catalog.assemblyWarehouseQty || {},
     packetWarehouseQty: catalog.packetWarehouseQty || {},
   };
@@ -542,12 +639,11 @@ export async function setPacketQuantityForMobile(sb, body) {
     quantity,
     { mobileFast: true },
   );
-  const catalog = await fetchCatalogForMobile(sb);
   return {
     packet_id: packetId,
     quantity: nextQty,
     packet,
-    warehouseLocationId: catalog.warehouseLocationId,
+    warehouseLocationId: locationId,
     assemblyWarehouseQty: assemblyWarehouseQty || {},
     packetWarehouseQty: { [String(packetId)]: nextQty },
   };

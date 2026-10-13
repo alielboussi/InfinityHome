@@ -8,6 +8,7 @@ import AppErrorBoundary from './shared/AppErrorBoundary';
 import BiometricGate from './shared/BiometricGate';
 import FirebaseAuthGate from './shared/AuthGate';
 import { MobileAccessGrantProvider } from './shared/MobileAccessGrantContext';
+import { WarehouseCatalogProvider } from './shared/WarehouseCatalogContext';
 import { useMobileAccessGrant } from './shared/useMobileAccessGrant';
 import DashboardScreen from './screens/DashboardScreen';
 import WarehouseProductsScreen from './screens/WarehouseProductsScreen';
@@ -38,6 +39,7 @@ function MainStack() {
 
   return (
     <MobileAccessGrantProvider grant={grant}>
+    <WarehouseCatalogProvider>
     <Stack.Navigator initialRouteName="Dashboard" screenOptions={stackScreenOptions}>
       <Stack.Screen name="Dashboard" options={{ headerShown: false }}>
         {(props) => (
@@ -62,7 +64,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="WarehouseIncompleteProducts"
-        options={{ title: 'Incomplete products' }}
+        options={{ title: 'Warehouse Incomplete Packets' }}
         initialParams={{ catalogMode: 'incomplete' }}
       >
         {(props) => (
@@ -74,6 +76,17 @@ function MainStack() {
       <Stack.Screen name="WarehousePackets" options={{ title: 'Warehouse packets' }}>
         {(props) => (
           <MobileScreenGate screenId="warehouse_packets" grant={grant} navigation={props.navigation}>
+            <WarehousePacketsScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="WarehouseUnassignedPackets"
+        options={{ title: 'Warehouse Unassigned Packets' }}
+        initialParams={{ assignmentFilter: 'unassigned' }}
+      >
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_unassigned_packets" grant={grant} navigation={props.navigation}>
             <WarehousePacketsScreen {...props} />
           </MobileScreenGate>
         )}
@@ -105,6 +118,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen name="ProductForm" options={{ title: 'Product' }} component={ProductFormScreen} />
     </Stack.Navigator>
+    </WarehouseCatalogProvider>
     </MobileAccessGrantProvider>
   );
 }
