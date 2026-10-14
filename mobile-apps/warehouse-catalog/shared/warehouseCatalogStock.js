@@ -219,6 +219,8 @@ export function attachWarehouseStockTotals(catalog) {
         assemblyPacketRows: assemblyPackets,
         catalogPackets: packets,
       });
+    } else if (assemblyUsesPacketBom(assembly) && !bom.isComplete) {
+      assemblyWarehouseQty[id] = 0;
     } else {
       assemblyWarehouseQty[id] = assemblyInvMap.get(id) ?? 0;
     }

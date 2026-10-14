@@ -21,6 +21,7 @@ import {
   normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
 import { analyzeAssemblyPacketBom } from '../shared/warehouseCatalogProductCompleteness';
+import { returnToCatalogListScreen } from '../shared/warehouseCatalogNavigation';
 import { theme } from '../shared/theme';
 import {
   useKeepSoftKeyboardOnScanSubmit,
@@ -325,10 +326,10 @@ export default function ProductFormScreen({ route, navigation }) {
         }));
         setNotice(bom.isComplete ? 'BOM complete — product moved to Warehouse Products.' : 'Packet links saved.');
         const target = bom.isComplete ? 'WarehouseProducts' : 'WarehouseIncompleteProducts';
-        setTimeout(() => navigation.navigate(target), 800);
+        setTimeout(() => returnToCatalogListScreen(navigation, target), 800);
       } else {
         setNotice('Product created.');
-        setTimeout(() => navigation.navigate('WarehouseProducts'), 800);
+        setTimeout(() => returnToCatalogListScreen(navigation, 'WarehouseProducts'), 800);
       }
     } catch (err) {
       setError(err?.message || 'Save failed.');

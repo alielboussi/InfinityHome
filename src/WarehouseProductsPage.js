@@ -8,14 +8,12 @@ import WarehouseAssemblyInlineSpecs from './components/WarehouseAssemblyInlineSp
 import WarehouseAssemblyThumbnail from './components/WarehouseAssemblyThumbnail';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
 import WarehouseColorChip from './components/WarehouseColorChip';
-import { canEditWarehouseProductStockQty, canManageCatalog, getCurrentUser } from './accessControl';
-import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
+import { canManageCatalog, getCurrentUser } from './accessControl';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import {
   deleteWarehouseAssembly,
   deleteWarehousePacket,
   fetchWarehouseCatalog,
-  setWarehouseAssemblyProductQuantity,
   setWarehousePacketQuantity,
 } from './services/warehouseCatalog';
 import { completeUnitsAtLocation } from './services/warehouseTransfer';
@@ -45,11 +43,6 @@ export default function WarehouseProductsPage() {
   const navigate = useNavigate();
   const sessionUser = useMemo(() => getCurrentUser(), []);
   const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
-  const { grant: mobileAccessGrant } = useAuthProfileMobileGrant();
-  const canEditProductStock = useMemo(
-    () => canEditWarehouseProductStockQty(sessionUser, mobileAccessGrant),
-    [sessionUser, mobileAccessGrant],
-  );
   const rtTick = useRealtimeRefresh([
     'warehouse_assemblies',
     'warehouse_packets',
@@ -278,28 +271,6 @@ export default function WarehouseProductsPage() {
     }
   };
 
-  const handleAssemblyQtyBlur = async (
-    assembly,
-    pktList,
-    locationId,
-    rawValue,
-    { inputIsBoxes, unitsPerBox, currentUnits } = {},
-  ) => {
-    if (!canEditProductStock || !locationId || !assembly) return;
-    const entered = Math.max(0, Number(rawValue) || 0);
-    const qty = inputIsBoxes && unitsPerBox > 1
-      ? finishedUnitsFromBoxCount(entered, unitsPerBox)
-      : entered;
-    const floorCurrent = Math.max(0, Math.floor(Number(currentUnits) || 0));
-    if (Math.floor(qty) === floorCurrent) return;
-    try {
-      await setWarehouseAssemblyProductQuantity(assembly.id, locationId, qty, { incrementOnly: true });
-      await load();
-    } catch (err) {
-      setError(err?.message || 'Quantity update failed');
-    }
-  };
-
   const handleAssemblyImageUpdated = useCallback((assemblyId, imageUrl) => {
     setAssemblies((prev) => prev.map((row) => (
       String(row.id) === String(assemblyId) ? { ...row, image_url: imageUrl } : row
@@ -481,38 +452,13 @@ export default function WarehouseProductsPage() {
                           ? `Complete units @ ${warehouseLocationName}`
                           : `Finished @ ${warehouseLocationName}`}
                       </div>
-                      {canEditProductStock && warehouseLocationId ? (
-                        <input
-                          type="number"
-                          min={complete}
-                          step="1"
-                          className="warehouse-qty-input warehouse-assembly-card__stock-qty-input"
-                          defaultValue={complete}
-                          key={`product-qty-${assembly.id}-${complete}`}
-                          title="Increases only — linked packet cartons scale automatically"
-                          onBlur={(e) => handleAssemblyQtyBlur(
-                            assembly,
-                            pktList,
-                            warehouseLocationId,
-                            e.target.value,
-                            {
-                              currentUnits: complete,
-                              inputIsBoxes: warehouseBoxEntry && !usePacketStock,
-                              unitsPerBox,
-                            },
-                          )}
-                          style={{ width: 72, textAlign: 'right' }}
-                          aria-label={`Complete units at ${warehouseLocationName}`}
-                        />
-                      ) : (
-                        <strong
-                          className={`warehouse-assembly-card__stock-qty${
-                            complete > 0 ? ' warehouse-assembly-card__stock-qty--positive' : ''
-                          }`}
-                        >
-                          {stockDisplay}
-                        </strong>
-                      )}
+                      <strong
+                        className={`warehouse-assembly-card__stock-qty${
+                          complete > 0 ? ' warehouse-assembly-card__stock-qty--positive' : ''
+                        }`}
+                      >
+                        {stockDisplay}
+                      </strong>
                       {usePacketStock && complete === 0 ? (
                         <p className="warehouse-assembly-card__stock-hint">
                           {warehousePacketOnHand === 0
@@ -610,43 +556,15 @@ export default function WarehouseProductsPage() {
                             )}
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            {canEditProductStock ? (
-                              <div className="warehouse-finished-stock-qty-cell">
-                                <input
-                                  type="number"
-                                  min={warehouseDisplayQty}
-                                  step="1"
-                                  className="warehouse-qty-input"
-                                  defaultValue={warehouseDisplayQty}
-                                  key={`asm-${assembly.id}-wh-${warehouseDisplayQty}`}
-                                  onBlur={(e) => handleAssemblyQtyBlur(
-                                    assembly,
-                                    pktList,
-                                    warehouseLocationId,
-                                    e.target.value,
-                                    {
-                                      currentUnits: warehouseOnHand,
-                                      ...(warehouseBoxEntry
-                                        ? { inputIsBoxes: true, unitsPerBox }
-                                        : {}),
-                                    },
-                                  )}
-                                  style={{ width: 72, textAlign: 'right' }}
-                                  aria-label={warehouseBoxEntry
-                                    ? `Boxes on hand at ${warehouseLocationName}`
-                                    : `Finished on hand at ${warehouseLocationName}`}
-                                />
-                                {warehouseBoxEntry ? (
-                                  <span className="warehouse-field-hint">
-                                    = {warehouseOnHand} units
-                                  </span>
-                                ) : null}
-                              </div>
-                            ) : (
-                              warehouseBoxEntry
+                            <strong
+                              className={`warehouse-assembly-card__stock-qty${
+                                warehouseOnHand > 0 ? ' warehouse-assembly-card__stock-qty--positive' : ''
+                              }`}
+                            >
+                              {warehouseBoxEntry
                                 ? `${warehouseDisplayQty} boxes (${warehouseOnHand} units)`
-                                : warehouseOnHand
-                            )}
+                                : warehouseOnHand}
+                            </strong>
                           </td>
                         </tr>
                       </tbody>

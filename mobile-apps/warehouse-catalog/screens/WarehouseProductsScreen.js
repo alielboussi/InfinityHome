@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -12,7 +11,6 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
-import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
 import {
@@ -22,8 +20,6 @@ import {
   normalizeWarehouseProductSku,
   normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
-import { isWarehouseProductStockQtyEditAllowed } from '../shared/mobileAccessManifest';
-import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
 import { wedgeAwareTextChange } from '../shared/useKeepSoftKeyboardOnScanSubmit';
 import {
   analyzeAssemblyPacketBom,
@@ -92,8 +88,6 @@ function ProductThumbnail({ assembly }) {
 
 export default function WarehouseProductsScreen({ navigation, route }) {
   const catalogMode = route?.params?.catalogMode === 'incomplete' ? 'incomplete' : 'complete';
-  const grant = useSharedMobileAccessGrant();
-  const canEditProductStock = isWarehouseProductStockQtyEditAllowed(grant);
   const {
     catalog,
     initialLoading,
@@ -101,13 +95,10 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     error: catalogError,
     ensureFresh,
     refresh,
-    patchCatalog,
   } = useWarehouseCatalog();
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
-  const [savingAssemblyId, setSavingAssemblyId] = useState(null);
-  const productQtyConfirmRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -206,65 +197,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     return String(Math.max(0, Math.floor(n)));
   };
 
-  const saveProductQty = useCallback(async (assemblyId, nextQty) => {
-    const locId = catalog?.warehouseLocationId;
-    if (!locId) {
-      setError('Warehouse location is not configured.');
-      return;
-    }
-    setSavingAssemblyId(String(assemblyId));
-    setError('');
-    try {
-      const result = await warehouseMobileRequest('assembly-product-quantity-set', {
-        assembly_id: assemblyId,
-        warehouse_location_id: locId,
-        quantity: nextQty,
-      });
-      patchCatalog(result);
-    } catch (err) {
-      setError(err?.message || 'Product quantity update failed');
-    } finally {
-      setSavingAssemblyId(null);
-    }
-  }, [patchCatalog, catalog?.warehouseLocationId]);
-
-  const requestProductQtyChange = useCallback((assembly, nextQty) => {
-    if (productQtyConfirmRef.current || savingAssemblyId) return;
-    const id = String(assembly.id);
-    const prev = Math.max(0, Math.floor(Number(assemblyWarehouseQty[id]) || 0));
-    const next = Math.max(0, Math.floor(Number(nextQty) || 0));
-    if (next <= prev) {
-      if (next < prev) {
-        setError('Product quantity can only be increased.');
-      }
-      return;
-    }
-    const label = String(assembly.name || assembly.family_sku || 'Product').trim();
-    productQtyConfirmRef.current = true;
-    Alert.alert(
-      'Confirm product quantity',
-      `${label}\n\nIncrease complete units from ${prev} to ${next}? Linked packet cartons will scale automatically.`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => { productQtyConfirmRef.current = false; },
-        },
-        {
-          text: 'Confirm',
-          onPress: () => {
-            productQtyConfirmRef.current = false;
-            saveProductQty(assembly.id, next);
-          },
-        },
-      ],
-      {
-        cancelable: true,
-        onDismiss: () => { productQtyConfirmRef.current = false; },
-      },
-    );
-  }, [assemblyWarehouseQty, saveProductQty, savingAssemblyId]);
-
   const renderPacket = (packet) => {
     const whQty = packetWarehouseQty[String(packet.id)] ?? 0;
     return (
@@ -283,7 +215,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const cat = categoryName(assembly.category_id);
     const finishedQty = assemblyWarehouseQty[id] ?? 0;
     const displayQty = catalogMode === 'incomplete' ? 0 : finishedQty;
-    const canEditQtyOnCard = canEditProductStock && catalogMode !== 'incomplete';
     const dimLine = formatDimensionsLine(assembly);
     const volumeLine = formatVolumeLine(assembly);
     const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
@@ -301,23 +232,16 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             accessibilityLabel={`Open ${assembly.name}`}
           >
             <ProductThumbnail assembly={assembly} />
-            <View style={styles.qtyRibbon} pointerEvents={canEditQtyOnCard ? 'auto' : 'none'}>
+            <View style={styles.qtyRibbon} pointerEvents="none">
               <Text style={styles.qtyRibbonLabel}>{warehouseLabel}</Text>
-              {canEditQtyOnCard ? (
-                <View style={styles.qtyStepper}>
-                  <Pressable
-                    style={styles.qtyStepBtn}
-                    onPress={() => requestProductQtyChange(assembly, finishedQty + 1)}
-                    disabled={savingAssemblyId === id}
-                    accessibilityLabel="Increase product quantity by one"
-                  >
-                    <Text style={styles.qtyStepBtnText}>+</Text>
-                  </Pressable>
-                  <Text style={styles.qtyRibbonValue}>{formatQty(displayQty)}</Text>
-                </View>
-              ) : (
-                <Text style={styles.qtyRibbonValue}>{formatQty(displayQty)}</Text>
-              )}
+              <Text
+                style={[
+                  styles.qtyRibbonValue,
+                  displayQty > 0 && styles.qtyRibbonValuePositive,
+                ]}
+              >
+                {formatQty(displayQty)}
+              </Text>
             </View>
             <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
             <Text style={styles.cardSku} numberOfLines={1}>{assembly.family_sku}</Text>
@@ -515,17 +439,8 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
   qtyRibbonLabel: { color: '#94a3b8', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
-  qtyStepper: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  qtyStepBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
-    backgroundColor: '#1e40af',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qtyStepBtnText: { color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 20 },
-  qtyRibbonValue: { color: '#38bdf8', fontSize: 16, fontWeight: '800' },
+  qtyRibbonValue: { color: '#334155', fontSize: 16, fontWeight: '800' },
+  qtyRibbonValuePositive: { color: '#15803d' },
   expandFab: {
     position: 'absolute',
     top: 14,
