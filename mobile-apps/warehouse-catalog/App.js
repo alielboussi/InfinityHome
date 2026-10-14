@@ -13,6 +13,7 @@ import { useMobileAccessGrant } from './shared/useMobileAccessGrant';
 import DashboardScreen from './screens/DashboardScreen';
 import WarehouseProductsScreen from './screens/WarehouseProductsScreen';
 import WarehousePacketsScreen from './screens/WarehousePacketsScreen';
+import WarehouseUnusedPacketsScreen from './screens/WarehouseUnusedPacketsScreen';
 import ScanScreen from './screens/ScanScreen';
 import PacketFormScreen from './screens/PacketFormScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
@@ -64,7 +65,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="WarehouseIncompleteProducts"
-        options={{ title: 'Warehouse Incomplete Packets' }}
+        options={{ title: 'Warehouse Incomplete Products' }}
         initialParams={{ catalogMode: 'incomplete' }}
       >
         {(props) => (
@@ -88,6 +89,13 @@ function MainStack() {
         {(props) => (
           <MobileScreenGate screenId="warehouse_unassigned_packets" grant={grant} navigation={props.navigation}>
             <WarehousePacketsScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="WarehouseUnusedPackets" options={{ title: 'Warehouse Unused Packets' }}>
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_unused_packets" grant={grant} navigation={props.navigation}>
+            <WarehouseUnusedPacketsScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

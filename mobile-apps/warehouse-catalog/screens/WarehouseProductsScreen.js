@@ -292,7 +292,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     <View style={styles.wrap}>
       <View style={styles.listHeader}>
         <Text style={styles.listHeaderTitle}>
-          {catalogMode === 'incomplete' ? 'Warehouse Incomplete Packets' : `${warehouseLabel} products`}
+          {catalogMode === 'incomplete' ? 'Warehouse Incomplete Products' : `${warehouseLabel} products`}
         </Text>
         <Text style={styles.listHeaderMeta}>
           {filtered.length} item{filtered.length === 1 ? '' : 's'}
