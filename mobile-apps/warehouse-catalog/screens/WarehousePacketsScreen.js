@@ -38,8 +38,7 @@ function formatQty(value) {
   return String(Math.max(0, Math.floor(n)));
 }
 
-export default function WarehousePacketsScreen({ navigation, route }) {
-  const unassignedOnly = route?.params?.assignmentFilter === 'unassigned';
+export default function WarehousePacketsScreen({ navigation }) {
   const {
     catalog,
     initialLoading,
@@ -101,10 +100,7 @@ export default function WarehousePacketsScreen({ navigation, route }) {
   );
 
   const filteredPackets = useMemo(() => {
-    let list = catalog?.packets || [];
-    if (unassignedOnly) {
-      list = list.filter((p) => !packetIsAssigned(p.id));
-    }
+    const list = catalog?.packets || [];
     const raw = search.trim();
     if (!raw) {
       return list.sort((a, b) => {
@@ -133,7 +129,7 @@ export default function WarehousePacketsScreen({ navigation, route }) {
       if (aAssigned !== bAssigned) return aAssigned - bAssigned;
       return String(a.sku || '').localeCompare(String(b.sku || ''));
     });
-  }, [catalog?.packets, search, unassignedOnly, packetIsAssigned, packetAssignments]);
+  }, [catalog?.packets, search, packetIsAssigned, packetAssignments]);
 
   const savePacketQty = useCallback(async (packet, rawValue) => {
     if (!warehouseLocationId) {
@@ -316,18 +312,8 @@ export default function WarehousePacketsScreen({ navigation, route }) {
 
   return (
     <View style={styles.wrap}>
-      {unassignedOnly ? (
-        <View style={styles.listHeader}>
-          <Text style={styles.listHeaderTitle}>Warehouse Unassigned Packets</Text>
-          <Text style={styles.listHeaderMeta}>
-            {filteredPackets.length} carton{filteredPackets.length === 1 ? '' : 's'} not linked to a product
-          </Text>
-        </View>
-      ) : null}
       <Text style={styles.lead}>
-        {unassignedOnly
-          ? 'Cartons with no product link — on-hand qty is per packet only. Search by SKU, name, or linked product.'
-          : 'Search by SKU or name. Changing cartons updates linked product stock the same way as the web portal.'}
+        Search by SKU or name. Changing cartons updates linked product stock the same way as the web portal.
       </Text>
       <View style={styles.toolbar}>
         <TextInput
@@ -380,9 +366,7 @@ export default function WarehousePacketsScreen({ navigation, route }) {
             <Text style={styles.empty}>
               {search.trim()
                 ? 'No packets match this search.'
-                : unassignedOnly
-                  ? 'No unassigned packets — every carton is linked to a product.'
-                  : 'No packets yet. Tap + to add a carton SKU.'}
+                : 'No packets yet. Tap + to add a carton SKU.'}
             </Text>
           }
         />
@@ -393,13 +377,6 @@ export default function WarehousePacketsScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: theme.bg },
-  listHeader: {
-    paddingHorizontal: theme.space.md,
-    paddingTop: theme.space.sm,
-    paddingBottom: theme.space.xs,
-  },
-  listHeaderTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
-  listHeaderMeta: { color: theme.textDim, fontSize: 13, marginTop: 4 },
   lead: {
     color: theme.textMuted,
     fontSize: 13,

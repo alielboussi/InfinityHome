@@ -38,7 +38,6 @@ export function isWarehouseProductStockQtyEditAllowed(grant) {
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
   'warehouse_packets',
-  'warehouse_unassigned_packets',
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
   'warehouse_floor_count',
@@ -72,15 +71,9 @@ export const MOBILE_SCREENS = Object.freeze([
     permissionMatrix: true,
   },
   {
-    id: 'warehouse_unassigned_packets',
-    label: 'Warehouse Unassigned Packets',
-    description: 'Carton SKUs not linked to any warehouse product',
-    permissionMatrix: true,
-  },
-  {
     id: 'warehouse_unused_packets',
     label: 'Warehouse Unused Packets',
-    description: 'Carton on-hand minus cartons allocated to BOM-complete products',
+    description: 'Spare cartons after BOM-complete products (on hand minus allocated)',
     permissionMatrix: true,
   },
   {
@@ -127,7 +120,6 @@ const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_products: 'WarehouseProducts',
   warehouse_incomplete_products: 'WarehouseIncompleteProducts',
   warehouse_packets: 'WarehousePackets',
-  warehouse_unassigned_packets: 'WarehouseUnassignedPackets',
   warehouse_unused_packets: 'WarehouseUnusedPackets',
   warehouse_floor_count: 'WarehouseStockCount',
 });
@@ -187,16 +179,11 @@ export function canMobileScreenView(grant, screenId) {
   if (screenId === 'warehouse_packet_form') {
     return isMobileScreenAccessAllowed(grant, 'warehouse_products')
       || isMobileScreenAccessAllowed(grant, 'warehouse_packets')
-      || isMobileScreenAccessAllowed(grant, 'warehouse_unassigned_packets')
       || isMobileScreenAccessAllowed(grant, 'warehouse_unused_packets');
   }
 
   if (screenId === 'warehouse_packets') {
     return isMobileScreenAccessAllowed(grant, 'warehouse_packets');
-  }
-
-  if (screenId === 'warehouse_unassigned_packets') {
-    return isMobileScreenAccessAllowed(grant, 'warehouse_unassigned_packets');
   }
 
   if (screenId === 'warehouse_unused_packets') {
@@ -270,17 +257,17 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     isMobileScreenAccessAllowed(merged, 'warehouse_packets') || legacyPacketsList;
   merged.screens.warehouse_packets = buildMobileScreenAccessRow(packetsAllowed);
 
-  const unassignedPacketsAllowed = isMobileScreenAccessAllowed(merged, 'warehouse_unassigned_packets');
-  merged.screens.warehouse_unassigned_packets = buildMobileScreenAccessRow(unassignedPacketsAllowed);
-
-  const unusedPacketsAllowed = isMobileScreenAccessAllowed(merged, 'warehouse_unused_packets');
+  const unusedPacketsAllowed =
+    isMobileScreenAccessAllowed(merged, 'warehouse_unused_packets')
+    || isMobileScreenAccessAllowed(merged, 'warehouse_unassigned_packets');
   merged.screens.warehouse_unused_packets = buildMobileScreenAccessRow(unusedPacketsAllowed);
+  delete merged.screens.warehouse_unassigned_packets;
 
   merged.screens.warehouse_floor_count = buildMobileScreenAccessRow(
     isMobileScreenAccessAllowed(merged, 'warehouse_floor_count'),
   );
 
-  const packetsAllowedForForms = packetsAllowed || unassignedPacketsAllowed || unusedPacketsAllowed;
+  const packetsAllowedForForms = packetsAllowed || unusedPacketsAllowed;
   if (packetsAllowedForForms && !productsAllowed) {
     merged.screens.warehouse_packet_form = buildMobileScreenAccessRow(true);
   }

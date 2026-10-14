@@ -81,17 +81,6 @@ function MainStack() {
           </MobileScreenGate>
         )}
       </Stack.Screen>
-      <Stack.Screen
-        name="WarehouseUnassignedPackets"
-        options={{ title: 'Warehouse Unassigned Packets' }}
-        initialParams={{ assignmentFilter: 'unassigned' }}
-      >
-        {(props) => (
-          <MobileScreenGate screenId="warehouse_unassigned_packets" grant={grant} navigation={props.navigation}>
-            <WarehousePacketsScreen {...props} />
-          </MobileScreenGate>
-        )}
-      </Stack.Screen>
       <Stack.Screen name="WarehouseUnusedPackets" options={{ title: 'Warehouse Unused Packets' }}>
         {(props) => (
           <MobileScreenGate screenId="warehouse_unused_packets" grant={grant} navigation={props.navigation}>
