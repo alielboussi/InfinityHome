@@ -36,6 +36,13 @@ function getService() {
   return client;
 }
 
+function warehouseMobileErrorMessage(err) {
+  if (!err) return 'Warehouse mobile request failed';
+  if (typeof err === 'string') return err;
+  if (typeof err.message === 'string' && err.message.trim()) return err.message;
+  return 'Warehouse mobile request failed';
+}
+
 async function requireUser(req) {
   const { verifyBearerUser } = await import('../lib/verifyBearerUser.js');
   return verifyBearerUser(req);
@@ -426,7 +433,7 @@ export default async function handler(req, res) {
     const status = err?.status || (err?.details ? 400 : 500);
     return res.status(status).json({
       ok: false,
-      error: err?.message || 'Warehouse mobile request failed',
+      error: warehouseMobileErrorMessage(err),
       details: err?.details || null,
     });
   }

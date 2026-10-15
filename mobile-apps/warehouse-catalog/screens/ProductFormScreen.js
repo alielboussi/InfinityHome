@@ -11,7 +11,10 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import WarehouseCatalogFormScroll from '../shared/WarehouseCatalogFormScroll';
-import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import {
+  formatWarehouseMobileApiError,
+  warehouseMobileRequest,
+} from '../shared/warehouseMobileApi';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
 import {
@@ -19,6 +22,7 @@ import {
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
   normalizeWarehouseWedgeScanInput,
+  resolvePacketFromScan,
 } from '../shared/warehouseScanResolver';
 import { analyzeAssemblyPacketBom } from '../shared/warehouseCatalogProductCompleteness';
 import { returnToCatalogListScreen } from '../shared/warehouseCatalogNavigation';
@@ -154,6 +158,17 @@ export default function ProductFormScreen({ route, navigation }) {
   const colors = catalog?.colors || [];
   const packets = catalog?.packets || [];
 
+  const packetAssignedToProduct = useMemo(() => {
+    const assigned = new Set();
+    (catalog?.assemblyPackets || []).forEach((row) => {
+      if (row?.packet_id) assigned.add(String(row.packet_id));
+    });
+    (packets || []).forEach((p) => {
+      if (p?.assembly_id) assigned.add(String(p.id));
+    });
+    return assigned;
+  }, [catalog?.assemblyPackets, packets]);
+
   const title = useMemo(() => {
     if (bomEditMode) return 'Complete packet BOM';
     if (existing) return 'Product (known SKU)';
@@ -183,8 +198,16 @@ export default function ProductFormScreen({ route, navigation }) {
         }
         return String(p.sku || '').toLowerCase().includes(raw.toLowerCase());
       })
+      .sort((a, b) => {
+        const aAssigned = packetAssignedToProduct.has(String(a.id));
+        const bAssigned = packetAssignedToProduct.has(String(b.id));
+        if (aAssigned !== bAssigned) return aAssigned ? 1 : -1;
+        return String(a.sku || '').localeCompare(String(b.sku || ''), undefined, {
+          sensitivity: 'base',
+        });
+      })
       .slice(0, 12);
-  }, [packetSearch, packets, packetLinks]);
+  }, [packetSearch, packets, packetLinks, packetAssignedToProduct]);
 
   const normalizeSkuField = () => {
     const normalized = normalizeWarehouseProductSku(familySku);
@@ -235,11 +258,34 @@ export default function ProductFormScreen({ route, navigation }) {
     }
   };
 
-  const addPacketLink = (packet) => {
-    const defaultQty = Math.max(1, Number(packet?.qty_per_unit) || 1);
-    setPacketLinks((prev) => [...prev, { packet_id: packet.id, qty_per_unit: defaultQty }]);
+  const addPacketLink = useCallback((packet, { clearSearch = false } = {}) => {
+    if (!packet?.id) return false;
+    const packetId = String(packet.id);
+    let added = false;
+    setPacketLinks((prev) => {
+      if (prev.some((l) => String(l.packet_id) === packetId)) return prev;
+      added = true;
+      const defaultQty = Math.max(1, Number(packet?.qty_per_unit) || 1);
+      return [...prev, { packet_id: packet.id, qty_per_unit: defaultQty }];
+    });
+    if (!added) return false;
+    if (clearSearch) setPacketSearch('');
     keepPacketSearchKeyboard();
-  };
+    return true;
+  }, [keepPacketSearchKeyboard]);
+
+  const tryAddPacketFromScan = useCallback((scanValue) => {
+    const normalized = normalizeWarehousePacketScan(scanValue) || String(scanValue || '').trim();
+    if (!normalized) return false;
+    const linked = new Set(packetLinks.map((l) => String(l.packet_id)));
+    const pool = (packets || []).filter((p) => !linked.has(String(p.id)));
+    const match = resolvePacketFromScan(normalized, pool);
+    if (!match) {
+      setPacketSearch(normalized);
+      return false;
+    }
+    return addPacketLink(match, { clearSearch: true });
+  }, [addPacketLink, packetLinks, packets]);
 
   const scrollPacketSearchIntoView = useCallback(() => {
     setTimeout(() => {
@@ -248,34 +294,14 @@ export default function ProductFormScreen({ route, navigation }) {
     }, 120);
   }, []);
 
-  const onPacketBarcodeScan = useCallback((normalized) => {
-    const linked = new Set(packetLinks.map((l) => String(l.packet_id)));
-    const match = (packets || []).find((p) => {
-      if (linked.has(String(p.id))) return false;
-      const keys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(p.sku));
-      const scanKeys = expandWarehouseSkuMatchKeys(normalized);
-      for (const k of scanKeys) {
-        if (k && keys.has(k)) return true;
-      }
-      return false;
-    });
-    if (match) {
-      addPacketLink(match);
-      return;
-    }
-    setPacketSearch(normalized);
-    keepPacketSearchKeyboard();
-  }, [keepPacketSearchKeyboard, packetLinks, packets]);
-
   const onProductSkuSubmit = () => {
     normalizeSkuField();
     keepSkuKeyboard();
   };
 
   const onPacketSearchSubmit = () => {
-    const normalized = normalizeWarehousePacketScan(packetSearch);
-    if (normalized) onPacketBarcodeScan(normalized);
-    else keepPacketSearchKeyboard();
+    if (tryAddPacketFromScan(packetSearch)) return;
+    keepPacketSearchKeyboard();
   };
 
   const onSave = async () => {
@@ -319,20 +345,27 @@ export default function ProductFormScreen({ route, navigation }) {
       }
       await warehouseMobileRequest('assembly-save', payload);
       refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+      const navigateAfterSave = (listScreen) => {
+        try {
+          returnToCatalogListScreen(navigation, listScreen);
+        } catch {
+          navigation.goBack();
+        }
+      };
       if (bomEditMode) {
         const bom = analyzeAssemblyPacketBom(Number(packetCount), packetLinks.map((link) => {
           const p = packets.find((x) => String(x.id) === String(link.packet_id));
           return { qty_per_unit: link.qty_per_unit, ...p };
         }));
-        setNotice(bom.isComplete ? 'BOM complete — product moved to Warehouse Products.' : 'Packet links saved.');
         const target = bom.isComplete ? 'WarehouseProducts' : 'WarehouseIncompleteProducts';
-        setTimeout(() => returnToCatalogListScreen(navigation, target), 800);
+        setNotice(bom.isComplete ? 'BOM complete — product moved to Warehouse Products.' : 'Packet links saved.');
+        setTimeout(() => navigateAfterSave(target), 600);
       } else {
         setNotice('Product created.');
-        setTimeout(() => returnToCatalogListScreen(navigation, 'WarehouseProducts'), 800);
+        setTimeout(() => navigateAfterSave('WarehouseProducts'), 600);
       }
     } catch (err) {
-      setError(err?.message || 'Save failed.');
+      setError(formatWarehouseMobileApiError(err?.message, 'Save failed.'));
     } finally {
       setBusy(false);
     }
@@ -503,6 +536,9 @@ export default function ProductFormScreen({ route, navigation }) {
               keepFocusAfterSubmit: keepPacketSearchKeyboard,
               transform: (v) => v.toUpperCase(),
               normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'packet'),
+              onWedgeComplete: (normalized) => {
+                tryAddPacketFromScan(normalized);
+              },
             })}
             autoCapitalize="characters"
             blurOnSubmit={false}
@@ -512,16 +548,22 @@ export default function ProductFormScreen({ route, navigation }) {
             onBlur={wrapPacketSearchBlur()}
             onFocus={scrollPacketSearchIntoView}
           />
-          {packetSearchResults.map((p) => (
-            <Pressable
-              key={p.id}
-              style={styles.pickRow}
-              onPress={() => addPacketLink(p)}
-            >
-              <Text style={styles.pickSku}>{p.sku}</Text>
-              <Text style={styles.pickName}>{p.name}</Text>
-            </Pressable>
-          ))}
+          {packetSearchResults.map((p) => {
+            const assignedElsewhere = packetAssignedToProduct.has(String(p.id));
+            return (
+              <Pressable
+                key={p.id}
+                style={styles.pickRow}
+                onPress={() => addPacketLink(p)}
+              >
+                <Text style={styles.pickSku}>{p.sku}</Text>
+                <Text style={styles.pickName} numberOfLines={2}>
+                  {p.name}
+                  {assignedElsewhere ? ' · linked to another product' : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
           {packetLinks.map((link) => {
             const p = packets.find((x) => String(x.id) === String(link.packet_id));
             return (

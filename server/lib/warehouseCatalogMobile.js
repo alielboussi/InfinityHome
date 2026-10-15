@@ -307,14 +307,18 @@ async function validateAssemblyPacketNumbers(sb, assemblyId, packetCount) {
     .from(ASSEMBLY_PACKETS)
     .select('packet_id, qty_per_unit')
     .eq('assembly_id', assemblyId);
-  if (linkErr) throw linkErr;
+  if (linkErr) {
+    throw new Error(linkErr.message || 'Failed to load packet links for validation');
+  }
   const packetIds = (links || []).map((l) => l.packet_id).filter(Boolean);
   if (!packetIds.length) return analyzeAssemblyPacketBom(required, []);
   const { data: packets, error } = await sb
     .from(PACKETS)
     .select('id, packet_number, qty_per_unit')
     .in('id', packetIds);
-  if (error) throw error;
+  if (error) {
+    throw new Error(error.message || 'Failed to load packets for validation');
+  }
   const qtyByPacket = new Map(
     (links || []).map((l) => [
       String(l.packet_id),
@@ -370,8 +374,12 @@ async function updateAssemblyPacketBomForMobile(sb, payload) {
   await syncAssemblyPackets(sb, assemblyId, packetLinkRows, warehouseLocationId);
   await validateAssemblyPacketNumbers(sb, assemblyId, packetCount);
 
-  const { recomputeWarehouseLocationStockServer } = await import('./warehouseLocationStockRecompute.js');
-  await recomputeWarehouseLocationStockServer(sb, warehouseLocationId);
+  try {
+    const { recomputeWarehouseLocationStockServer } = await import('./warehouseLocationStockRecompute.js');
+    await recomputeWarehouseLocationStockServer(sb, warehouseLocationId);
+  } catch (recomputeErr) {
+    console.error('[warehouse] stock recompute after BOM save failed:', recomputeErr?.message || recomputeErr);
+  }
 
   const { data: refreshed, error: refErr } = await sb
     .from(ASSEMBLIES)
