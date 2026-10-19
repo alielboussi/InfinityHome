@@ -1,6 +1,10 @@
 /**
  * Warehouse barcode SKU rules (keep in sync with src/utils/warehouseScanResolver.js).
  * Self-contained for Expo Metro — do not import from repo src/.
+ *
+ * Label types: (1) finished product family SKU → normalizeWarehouseProductSku;
+ * (2) packet carton SKU (incl. P03…) → normalizeWarehousePacketScan;
+ * (3) unknown scan / search → normalizeWarehouseCatalogSearchQuery.
  */
 
 export function normalizeWarehouseSku(value) {
@@ -39,10 +43,16 @@ function stripProductLotPrefix(code) {
 function stripIstikbalXDigitScanPrefix(code) {
   const raw = normalizeWarehouseSku(code);
   if (!raw || raw.length < 3 || !/^X\d/i.test(raw)) return raw;
-  const scanDigit = raw[1];
+  const wedgeDigit = raw[1];
   let body = raw.slice(1);
-  if (/^\d{2}[A-Z]/i.test(body)) return body;
-  if (body.length && body[0] === scanDigit) body = body.slice(1);
+  if (body.length && body[0] === wedgeDigit) {
+    const withoutLeadingWedge = body.slice(1);
+    if (/^\d{2}[A-Z]/i.test(withoutLeadingWedge)) {
+      body = withoutLeadingWedge;
+    } else if (body[1] === wedgeDigit) {
+      body = body.slice(1);
+    }
+  }
   return body;
 }
 

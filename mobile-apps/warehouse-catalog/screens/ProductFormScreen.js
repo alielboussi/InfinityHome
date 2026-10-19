@@ -64,6 +64,9 @@ export default function ProductFormScreen({ route, navigation }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [finishedQtyPrompt, setFinishedQtyPrompt] = useState(null);
+  const [finishedQtyValue, setFinishedQtyValue] = useState('0');
+  const [finishedQtySaving, setFinishedQtySaving] = useState(false);
   const skuInputRef = useRef(null);
   const nameInputRef = useRef(null);
   const turkishNameInputRef = useRef(null);
@@ -432,7 +435,7 @@ export default function ProductFormScreen({ route, navigation }) {
       if (bomEditMode) {
         payload.id = editAssemblyId;
       }
-      await warehouseMobileRequest('assembly-save', payload);
+      const saveResult = await warehouseMobileRequest('assembly-save', payload);
       if (turkishName.trim()) {
         await rememberLabelName({
           sku: normalizedSku,
@@ -441,6 +444,18 @@ export default function ProductFormScreen({ route, navigation }) {
         });
       }
       refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+      const createdAssemblyId = saveResult?.assembly?.id
+        ? String(saveResult.assembly.id)
+        : '';
+      if (finishedOnly && !bomEditMode && createdAssemblyId) {
+        setFinishedQtyValue('0');
+        setFinishedQtyPrompt({
+          assemblyId: createdAssemblyId,
+          productName: name.trim() || normalizedSku,
+        });
+        setNotice('Product saved. Enter warehouse on-hand qty.');
+        return;
+      }
       const navigateAfterSave = (listScreen) => {
         try {
           returnToCatalogListScreen(navigation, listScreen);
@@ -467,7 +482,46 @@ export default function ProductFormScreen({ route, navigation }) {
     }
   };
 
+  const dismissFinishedQtyPrompt = useCallback((listScreen = 'WarehouseProducts') => {
+    setFinishedQtyPrompt(null);
+    try {
+      returnToCatalogListScreen(navigation, listScreen);
+    } catch {
+      navigation.goBack();
+    }
+  }, [navigation]);
+
+  const submitFinishedQtyPrompt = useCallback(async () => {
+    if (!finishedQtyPrompt?.assemblyId || !warehouseLocationId) {
+      dismissFinishedQtyPrompt();
+      return;
+    }
+    const qty = Math.max(0, Math.floor(Number(finishedQtyValue) || 0));
+    setFinishedQtySaving(true);
+    setError('');
+    try {
+      await warehouseMobileRequest('assembly-product-quantity-set', {
+        assembly_id: finishedQtyPrompt.assemblyId,
+        warehouse_location_id: warehouseLocationId,
+        quantity: qty,
+      });
+      refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+      dismissFinishedQtyPrompt('WarehouseProducts');
+    } catch (err) {
+      setError(formatWarehouseMobileApiError(err?.message, 'Could not save quantity.'));
+    } finally {
+      setFinishedQtySaving(false);
+    }
+  }, [
+    dismissFinishedQtyPrompt,
+    finishedQtyPrompt,
+    finishedQtyValue,
+    refreshGlobalCatalog,
+    warehouseLocationId,
+  ]);
+
   return (
+    <>
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
       {!existing && !bomEditMode ? (
@@ -734,6 +788,50 @@ export default function ProductFormScreen({ route, navigation }) {
         </Pressable>
       )}
     </WarehouseCatalogFormScroll>
+    <Modal
+      visible={Boolean(finishedQtyPrompt)}
+      transparent
+      animationType="fade"
+      onRequestClose={() => dismissFinishedQtyPrompt()}
+    >
+      <View style={styles.finishedQtyBackdrop}>
+        <View style={styles.finishedQtyCard}>
+          <Text style={styles.finishedQtyTitle}>Warehouse finished qty</Text>
+          <Text style={styles.finishedQtyHint}>
+            {finishedQtyPrompt?.productName
+              ? `${finishedQtyPrompt.productName} — `
+              : ''}
+            How many finished units are on hand at {warehouseLocationName}?
+          </Text>
+          <TextInput
+            style={styles.finishedQtyInput}
+            value={finishedQtyValue}
+            onChangeText={setFinishedQtyValue}
+            keyboardType="number-pad"
+            placeholder="0"
+            placeholderTextColor="#64748b"
+            autoFocus
+          />
+          <Pressable
+            style={styles.btn}
+            onPress={submitFinishedQtyPrompt}
+            disabled={finishedQtySaving}
+          >
+            <Text style={styles.btnText}>
+              {finishedQtySaving ? 'Saving…' : 'Save & go to list'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.finishedQtySkip}
+            onPress={() => dismissFinishedQtyPrompt()}
+            disabled={finishedQtySaving}
+          >
+            <Text style={styles.finishedQtySkipText}>Skip for now</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -912,4 +1010,31 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
   labelScanBtnText: { color: '#7dd3fc', fontWeight: '600', fontSize: 13 },
+  finishedQtyBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  finishedQtyCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  finishedQtyTitle: { color: theme.text, fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  finishedQtyHint: { color: theme.textMuted, fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  finishedQtyInput: {
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 8,
+    padding: 12,
+    color: theme.text,
+    fontSize: 18,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  finishedQtySkip: { marginTop: 10, alignItems: 'center', paddingVertical: 8 },
+  finishedQtySkipText: { color: '#94a3b8', fontSize: 14 },
 });

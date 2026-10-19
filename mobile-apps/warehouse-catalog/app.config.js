@@ -41,7 +41,7 @@ module.exports = {
     slug: 'warehouse-catalog',
     scheme: 'warehouse-catalog',
     platforms: ['ios', 'android'],
-    version: '0.1.10',
+    version: '0.1.11',
     orientation: 'portrait',
     userInterfaceStyle: 'dark',
     icon: './assets/icon.png',

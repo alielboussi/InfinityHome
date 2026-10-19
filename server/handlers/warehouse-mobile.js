@@ -185,6 +185,18 @@ async function opAssemblyCreate(body, user) {
   return { assembly: row, created_by: user?.email || null };
 }
 
+async function opAssemblyProductQuantitySet(body, user) {
+  const sb = getService();
+  const access = await getLoginAccessRecord(user);
+  if (!isWarehouseProductStockQtyEditAllowed(access)) {
+    const err = new Error('You do not have permission to set warehouse product quantity.');
+    err.status = 403;
+    throw err;
+  }
+  const result = await setAssemblyProductQuantityForMobile(sb, body);
+  return { ...result, updated_by: user?.email || null };
+}
+
 async function opBomValidate(body) {
   const assemblyId = String(body.assembly_id || '');
   const units = Math.max(1, Number(body.units) || 1);

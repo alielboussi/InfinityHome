@@ -234,8 +234,9 @@ export default function WarehouseProductEditPage() {
       navigate('/warehouse-products/new', { replace: true });
       return;
     }
+    if (warehouseBoxModal) return;
     load();
-  }, [allowSetCreate, canManage, isNew, load, navigate, rtTick, searchParams]);
+  }, [allowSetCreate, canManage, isNew, load, navigate, rtTick, searchParams, warehouseBoxModal]);
 
   const editingProductId = isNew ? null : productId;
 
@@ -470,8 +471,8 @@ export default function WarehouseProductEditPage() {
       }
       const assemblyId = saved?.id;
       const assemblyLike = {
-        inventory_mode: productPayload.inventory_mode,
-        units_per_carton: productPayload.units_per_carton,
+        inventory_mode: saved?.inventory_mode ?? productPayload.inventory_mode,
+        units_per_carton: saved?.units_per_carton ?? productPayload.units_per_carton,
       };
       const boxPackets = linkedPacketsForForm.map((row) => ({
         ...row.packet,
@@ -776,6 +777,9 @@ export default function WarehouseProductEditPage() {
                       ? WAREHOUSE_INVENTORY_MODE.FINISHED
                       : WAREHOUSE_INVENTORY_MODE.PACKETS,
                     units_per_carton: finished ? f.units_per_carton : '1',
+                    ...(finished
+                      ? { packet_links: [], packet_count: '' }
+                      : {}),
                   }));
                 }}
               />

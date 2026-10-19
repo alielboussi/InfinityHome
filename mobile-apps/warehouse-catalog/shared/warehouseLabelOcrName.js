@@ -1,5 +1,6 @@
 /**
- * Mobile copy of src/utils/warehouseLabelOcrName.js — keep in sync.
+ * Suggest a display name from Istikbal-style label OCR (packets vs product Turkish field).
+ * Keep in sync with src/utils/warehouseLabelOcrName.js
  */
 
 const IGNORE_LINE_RE = [

@@ -1,3 +1,8 @@
+/**
+ * Per-SKU label name corrections (device-local). Applied on the next label scan for the same SKU.
+ * Keep in sync with src/utils/warehouseLabelNameMemory.js (AsyncStorage instead of localStorage).
+ */
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizeWarehouseSkuKey } from './warehouseScanResolver';
 import { LABEL_NAME_MEMORY_KIND } from './warehouseLabelOcrName';
@@ -34,7 +39,7 @@ async function writeStore(store) {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch {
-    /* ignore */
+    /* quota */
   }
 }
 

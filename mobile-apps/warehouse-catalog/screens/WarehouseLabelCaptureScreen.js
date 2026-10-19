@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,6 +11,7 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 import {
+  listWarehouseLabelSkuSuggestions,
   resolveWarehouseLabelFromText,
   WAREHOUSE_LABEL_SCAN_MODE,
 } from '../shared/warehouseLabelScanResolve';
@@ -20,15 +22,15 @@ const CAMERA_HEIGHT = 320;
 
 const MODE_HINTS = {
   [WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON]:
-    'Photograph the whole packet label. We fill packet SKU and name — edit if needed, then save to remember for this SKU.',
+    'Point at the packet label and capture. You do not need the whole label in frame — include the barcode or SKU text if you can.',
   [WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_BOM_FAMILY]:
-    'Photograph the unit label on a BOM product. We match the family SKU (printed text) to the YY… barcode.',
+    'Point at the unit label (family SKU text and/or YY barcode). Partial capture is fine — tap a suggested SKU if we are unsure.',
   [WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_HEADER]:
-    'Photograph the label. We match the SKU printed at the top to the YY… barcode.',
+    'Capture the label. Include the top SKU and/or YY barcode when possible; we read whatever is in the photo.',
   [WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_NUMERIC]:
-    'Photograph the label. We use the numeric barcode (no header SKU on label).',
+    'Capture the numeric barcode on the label. The full sticker does not need to fit in the frame.',
   [WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO]:
-    'Photograph the label. SKU goes to the product; descriptive text goes to Turkish name (English name you type). Save to remember corrections.',
+    'Capture the label. SKU goes to the product; descriptive text goes to Turkish name. Edit and save to remember corrections.',
 };
 
 export default function WarehouseLabelCaptureScreen({ navigation, route }) {
@@ -41,14 +43,16 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
   const [message, setMessage] = useState('');
   const [manualText, setManualText] = useState('');
   const [lastRead, setLastRead] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
 
   const hint = useMemo(() => MODE_HINTS[mode] || MODE_HINTS[WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO], [mode]);
 
   const applyResolved = useCallback(async (result) => {
     if (!result?.sku) {
-      setMessage('Could not resolve a SKU from this label. Try again or paste label text below.');
+      setMessage('No SKU found in this text. Adjust the camera or edit the text below, then try again.');
       return;
     }
+    setSuggestions([]);
     const kind = result.nameIntent === 'packet'
       ? LABEL_NAME_MEMORY_KIND.PACKET
       : LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH;
@@ -71,25 +75,50 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
     });
   }, [labelScanTarget, navigation, returnScreen]);
 
-  const resolveFromText = useCallback(async (text) => {
-    const result = resolveWarehouseLabelFromText(text, mode, { target: labelScanTarget });
-    if (!result.sku) {
-      setMessage('Could not resolve a SKU from this label. Hold steady and capture the full label.');
+  const resolveFromText = useCallback(async (text, { keepMessage } = {}) => {
+    const raw = String(text || '').trim();
+    setManualText(raw);
+    if (!raw) {
+      setSuggestions([]);
+      setMessage('Paste or capture label text first.');
       return;
     }
-    setMessage('');
-    await applyResolved(result);
+    const result = resolveWarehouseLabelFromText(raw, mode, { target: labelScanTarget });
+    if (result.sku) {
+      setMessage('');
+      setSuggestions([]);
+      await applyResolved(result);
+      return;
+    }
+    const guesses = listWarehouseLabelSkuSuggestions(raw, mode, { target: labelScanTarget });
+    setSuggestions(guesses);
+    if (guesses.length) {
+      setMessage(
+        keepMessage
+          ? ''
+          : 'We read the photo but could not pick one SKU automatically. Tap the best match below, or edit the text.',
+      );
+    } else if (!keepMessage) {
+      setMessage(
+        'Could not find a SKU in this capture. Move closer to the barcode or printed code and try again.',
+      );
+    }
   }, [applyResolved, labelScanTarget, mode]);
+
+  const applySuggestion = useCallback(async (sku) => {
+    const base = resolveWarehouseLabelFromText(manualText, mode, { target: labelScanTarget });
+    await applyResolved({ ...base, sku, source: 'user_pick' });
+  }, [applyResolved, labelScanTarget, manualText, mode]);
 
   const runOcrOnPhoto = useCallback(async (uri) => {
     try {
       const result = await TextRecognition.recognize(uri);
       const raw = String(result?.text || '').trim();
       if (!raw) {
-        setMessage('No text detected. Fill the frame with the label and try again.');
+        setMessage('No text detected. Point at the barcode or SKU and capture again.');
         return;
       }
-      resolveFromText(raw);
+      await resolveFromText(raw);
     } catch (err) {
       const msg = String(err?.message || err || '');
       if (msg.includes("doesn't seem to be linked") || msg.includes('Expo managed')) {
@@ -109,6 +138,7 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
     }
     setBusy(true);
     setMessage('');
+    setSuggestions([]);
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.92,
@@ -146,23 +176,26 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
   }
 
   return (
-    <View style={styles.wrap}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.wrap}>
       <Text style={styles.lead}>{hint}</Text>
       <View style={styles.cameraBox}>
-        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} />
+        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} autofocus="on" />
         <View pointerEvents="none" style={styles.frameOverlay}>
-          <Text style={styles.frameHint}>Fit entire label in view</Text>
+          <Text style={styles.frameHint}>Aim at barcode or SKU — partial label OK</Text>
         </View>
       </View>
       <Pressable style={styles.btn} onPress={captureAndScan} disabled={busy}>
         <Text style={styles.btnText}>{busy ? 'Reading label…' : 'Capture label'}</Text>
       </Pressable>
 
-      <Text style={styles.or}>Or paste text from the label</Text>
+      <Text style={styles.or}>Or paste / edit text from the label</Text>
       <TextInput
         style={styles.input}
         value={manualText}
-        onChangeText={setManualText}
+        onChangeText={(t) => {
+          setManualText(t);
+          setSuggestions([]);
+        }}
         placeholder="Barcodes and printed codes"
         placeholderTextColor="#64748b"
         autoCapitalize="characters"
@@ -174,8 +207,23 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
         onPress={() => resolveFromText(manualText)}
         disabled={busy}
       >
-        <Text style={styles.btnText}>Use pasted text</Text>
+        <Text style={styles.btnText}>Use this text</Text>
       </Pressable>
+
+      {suggestions.length ? (
+        <View style={styles.suggestBlock}>
+          <Text style={styles.suggestTitle}>Possible SKUs from this capture</Text>
+          {suggestions.map((item) => (
+            <Pressable
+              key={item.sku}
+              style={styles.suggestChip}
+              onPress={() => applySuggestion(item.sku)}
+            >
+              <Text style={styles.suggestChipText}>{item.sku}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       {lastRead ? (
         <Text style={styles.preview} numberOfLines={2}>
@@ -183,12 +231,13 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
         </Text>
       ) : null}
       {message ? <Text style={styles.message}>{message}</Text> : null}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: '#0f172a', padding: 16 },
+  scroll: { flex: 1, backgroundColor: '#0f172a' },
+  wrap: { padding: 16, paddingBottom: 32 },
   lead: { color: '#94a3b8', fontSize: 13, marginBottom: 12, lineHeight: 18 },
   hint: { color: '#94a3b8', fontSize: 13, marginBottom: 16, lineHeight: 18 },
   cameraBox: {
@@ -200,7 +249,7 @@ const styles = StyleSheet.create({
   frameOverlay: {
     ...StyleSheet.absoluteFillObject,
     borderWidth: 2,
-    borderColor: 'rgba(250, 204, 21, 0.85)',
+    borderColor: 'rgba(250, 204, 21, 0.45)',
     borderRadius: 12,
     justifyContent: 'flex-end',
     padding: 8,
@@ -240,6 +289,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 8,
   },
+  suggestBlock: { marginTop: 4, marginBottom: 8 },
+  suggestTitle: { color: '#94a3b8', fontSize: 12, marginBottom: 8 },
+  suggestChip: {
+    backgroundColor: '#1e3a5f',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+  },
+  suggestChipText: { color: '#e0f2fe', fontFamily: 'monospace', fontSize: 14 },
   preview: { color: '#86efac', marginTop: 8, fontFamily: 'monospace', fontSize: 13 },
   message: { color: '#fbbf24', marginTop: 10, fontSize: 13, lineHeight: 18 },
 });

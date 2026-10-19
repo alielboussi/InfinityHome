@@ -56,21 +56,100 @@ function uniqueTokens(list) {
 }
 
 /** Raw strings that look like label barcodes (before normalizers). */
-export function extractBarcodeLikeTokens(text) {
-  const blob = normalizeBlob(text);
-  const found = [];
-  for (const re of BARCODE_TOKEN_RES) {
-    const r = new RegExp(re.source, re.flags);
-    let m;
-    while ((m = r.exec(blob)) !== null) {
-      found.push(m[0].toUpperCase());
-    }
-  }
-  blob.split(/\s+/).forEach((word) => {
-    const w = word.replace(/[^A-Za-z0-9-]/g, '').toUpperCase();
-    if (w.length >= 12 && (/^X\d/i.test(w) || /^YY\d/i.test(w))) found.push(w);
+const MAX_LABEL_BARCODE_LEN = 72;
+
+/** OCR often inserts spaces in barcodes — search per-line and normalized blobs (not whole-label glue). */
+function ocrBarcodeSearchBlobs(text) {
+  const raw = String(text || '');
+  const blobs = [];
+  const push = (b) => {
+    const s = String(b || '').trim();
+    if (s.length >= 8 && s.length <= MAX_LABEL_BARCODE_LEN) blobs.push(s);
+  };
+  push(normalizeBlob(raw));
+  raw.split(/\r?\n/).forEach((line) => {
+    push(normalizeBlob(line));
+    push(String(line).replace(/\s/g, '').toUpperCase());
   });
+  const tightLines = raw.replace(/\r?\n/g, ' ').split(/\s{2,}/);
+  tightLines.forEach((chunk) => {
+    push(String(chunk).replace(/\s/g, '').toUpperCase());
+  });
+  return blobs;
+}
+
+function pushBoundedMatches(found, re, blob) {
+  const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+  let m;
+  while ((m = r.exec(blob)) !== null) {
+    const token = m[0];
+    if (token.length <= MAX_LABEL_BARCODE_LEN) found.push(token.toUpperCase());
+  }
+}
+
+function collectBarcodeMatches(blob, found) {
+  const spaced = normalizeBlob(blob);
+  for (const re of BARCODE_TOKEN_RES) {
+    pushBoundedMatches(found, re, spaced);
+  }
+  const tight = blob.replace(/\s/g, '');
+  pushBoundedMatches(found, /YY\d{8,}[A-Z0-9]{4,40}/gi, tight);
+  pushBoundedMatches(found, /X\d[A-Z0-9]{8,}-\d{6,}/gi, tight);
+  pushBoundedMatches(found, /X\d[A-Z0-9]{10,48}/gi, tight);
+  pushBoundedMatches(found, /\d{14,20}/g, tight);
+}
+
+export function extractBarcodeLikeTokens(text) {
+  const found = [];
+  for (const blob of ocrBarcodeSearchBlobs(text)) {
+    collectBarcodeMatches(blob, found);
+    normalizeBlob(blob).split(/\s+/).forEach((word) => {
+      const w = word.replace(/[^A-Za-z0-9-]/g, '').toUpperCase();
+      if (w.length >= 12 && (/^X\d/i.test(w) || /^YY\d/i.test(w))) found.push(w);
+    });
+  }
   return uniqueTokens(found);
+}
+
+/**
+ * When strict resolve fails, ranked SKU guesses from the same OCR text (partial labels OK).
+ */
+export function listWarehouseLabelSkuSuggestions(text, mode, options = {}) {
+  const resolvedMode = mode || WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO;
+  const isPacket = resolvedMode === WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON
+    || options?.target === 'packet_search';
+  const seen = new Set();
+  const ranked = [];
+
+  const add = (sku, source, score) => {
+    const normalized = isPacket
+      ? normalizeWarehousePacketScan(sku)
+      : normalizeWarehouseProductSku(sku);
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    ranked.push({ sku: normalized, source, score });
+  };
+
+  const primary = resolveWarehouseLabelFromText(text, resolvedMode, options);
+  if (primary.sku) {
+    return [{ sku: primary.sku, source: primary.source }];
+  }
+
+  extractBarcodeLikeTokens(text).forEach((raw, i) => {
+    add(raw, 'barcode_ocr', 80 - i);
+  });
+
+  extractSkuCandidatesFromLabelText(text).forEach((token, i) => {
+    const score = 50 - i + (isPacket && /P\d{2}/i.test(token) ? 20 : 0);
+    add(token, 'text_ocr', score);
+  });
+
+  return ranked
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map(({ sku, source }) => ({ sku, source }));
 }
 
 function skuKeysMatch(a, b) {
@@ -170,6 +249,12 @@ function resolveProductBomFamily(text) {
   if (fromYy.length) {
     const family = fromYy.filter((s) => !isPacketSkuShape(s));
     return { sku: (family[0] || fromYy[0]), source: 'yy_barcode' };
+  }
+  for (const raw of extractBarcodeLikeTokens(text)) {
+    const sku = normalizeWarehouseProductSku(raw);
+    if (sku && !isPacketSkuShape(sku)) {
+      return { sku, source: 'barcode_normalized' };
+    }
   }
   return { sku: '', source: 'none' };
 }
