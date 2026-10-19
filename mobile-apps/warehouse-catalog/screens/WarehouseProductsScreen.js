@@ -23,6 +23,7 @@ import {
 import { wedgeAwareTextChange } from '../shared/useKeepSoftKeyboardOnScanSubmit';
 import {
   analyzeAssemblyPacketBom,
+  assemblyUsesPacketBom,
   isCompleteCatalogProduct,
   isIncompletePacketBomProduct,
   isSetAssembly,
@@ -183,9 +184,10 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     });
   };
 
-  const openEditIncompleteBom = useCallback((assembly) => {
+  const openEditPacketBom = useCallback((assembly, fromComplete = false) => {
     navigation.navigate('ProductForm', {
       editAssemblyId: assembly.id,
+      editFromComplete: fromComplete,
       warehouseLocationId: catalog?.warehouseLocationId,
       catalogSnapshot: catalog,
     });
@@ -266,13 +268,16 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
           </Pressable>
         </View>
-        {catalogMode === 'incomplete' ? (
+        {(catalogMode === 'incomplete'
+          || (catalogMode === 'complete' && assemblyUsesPacketBom(assembly) && !isSetAssembly(assembly))) ? (
           <Pressable
             style={styles.editBomBtn}
-            onPress={() => openEditIncompleteBom(assembly)}
+            onPress={() => openEditPacketBom(assembly, catalogMode === 'complete')}
             accessibilityLabel="Edit packet BOM"
           >
-            <Text style={styles.editBomBtnText}>Add / edit packets</Text>
+            <Text style={styles.editBomBtnText}>
+              {catalogMode === 'incomplete' ? 'Add / edit packets' : 'Edit packets / total'}
+            </Text>
           </Pressable>
         ) : null}
         {isOpen ? (

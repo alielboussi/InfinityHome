@@ -16,13 +16,15 @@ function stripFactoryLotSuffix(code) {
 }
 
 /**
- * Finished-product label: 14-digit factory lot prefix + family SKU body.
- * Only strips when the first 14 characters are digits (manual short SKUs unchanged).
+ * Finished-product label scan: 14-digit factory lot + family SKU body (e.g. …AYS2300…).
+ * Only strip long label-shaped scans — not manual SKUs (including 15+ digit codes).
  */
+const PRODUCT_LABEL_LOT_SCAN = /^\d{14}[A-Z][A-Z0-9]{5,}$/i;
+
 function stripProductLotPrefix(code) {
   const raw = normalizeWarehouseSku(code);
   if (!raw) return '';
-  if (raw.length > 14 && /^\d{14}/.test(raw)) {
+  if (raw.length >= 20 && PRODUCT_LABEL_LOT_SCAN.test(raw)) {
     return raw.slice(14);
   }
   return raw;

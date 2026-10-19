@@ -4,6 +4,18 @@ function resolveApiBase() {
   return String(process.env.EXPO_PUBLIC_API_BASE || API_BASE || '').replace(/\/+$/, '');
 }
 
+/** API errors may be a string or { message, code } — avoid "[object Object]" in the UI. */
+export function formatWarehouseMobileApiError(value, fallback = 'Request failed') {
+  if (value == null || value === '') return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    const msg = value.message;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+    if (typeof msg === 'number' || typeof msg === 'boolean') return String(msg);
+  }
+  return fallback;
+}
+
 export async function warehouseMobileRequest(op, body = {}) {
   const token = await getFirebaseIdToken();
   if (!token) {
@@ -25,7 +37,9 @@ export async function warehouseMobileRequest(op, body = {}) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {
-    const err = new Error(payload?.error || `Request failed (${response.status})`);
+    const err = new Error(
+      formatWarehouseMobileApiError(payload?.error, `Request failed (${response.status})`),
+    );
     err.details = payload?.details || null;
     err.status = response.status;
     if (response.status >= 500 || !response.ok) err.network = response.status === 0;

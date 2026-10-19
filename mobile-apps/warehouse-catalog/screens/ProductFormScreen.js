@@ -19,6 +19,7 @@ import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
 import {
   expandWarehouseSkuMatchKeys,
+  isExactPacketSkuScan,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
   normalizeWarehouseWedgeScanInput,
@@ -41,6 +42,7 @@ export default function ProductFormScreen({ route, navigation }) {
     ? String(route.params.editAssemblyId)
     : '';
   const bomEditMode = Boolean(editAssemblyId);
+  const editFromComplete = Boolean(route.params?.editFromComplete);
   const existing = Boolean(route.params?.existing && prefill.id);
   const [catalog, setCatalog] = useState(route.params?.catalogSnapshot || null);
   const [name, setName] = useState(prefill.name || '');
@@ -65,7 +67,11 @@ export default function ProductFormScreen({ route, navigation }) {
   const packetSearchInputRef = useRef(null);
   const scrollRef = useRef(null);
   const packetSearchSectionY = useRef(0);
+  const packetSearchRef = useRef('');
+  const packetSearchPrevLenRef = useRef(0);
   const bomHydratedRef = useRef(false);
+  const packetLinksRef = useRef(packetLinks);
+  packetLinksRef.current = packetLinks;
   const {
     keepFocusAfterSubmit: keepSkuKeyboard,
     wrapOnBlur: wrapSkuBlur,
@@ -170,10 +176,10 @@ export default function ProductFormScreen({ route, navigation }) {
   }, [catalog?.assemblyPackets, packets]);
 
   const title = useMemo(() => {
-    if (bomEditMode) return 'Complete packet BOM';
+    if (bomEditMode) return editFromComplete ? 'Edit packet BOM' : 'Complete packet BOM';
     if (existing) return 'Product (known SKU)';
     return 'New product';
-  }, [bomEditMode, existing]);
+  }, [bomEditMode, editFromComplete, existing]);
 
   const showPacketBomFields = (!existing || bomEditMode) && !finishedOnly;
 
@@ -269,23 +275,50 @@ export default function ProductFormScreen({ route, navigation }) {
       return [...prev, { packet_id: packet.id, qty_per_unit: defaultQty }];
     });
     if (!added) return false;
-    if (clearSearch) setPacketSearch('');
+    if (clearSearch) {
+      setPacketSearch('');
+      packetSearchRef.current = '';
+      packetSearchPrevLenRef.current = 0;
+    }
     keepPacketSearchKeyboard();
     return true;
   }, [keepPacketSearchKeyboard]);
 
-  const tryAddPacketFromScan = useCallback((scanValue) => {
+  const tryAddPacketFromScan = useCallback((scanValue, { allowPrefixMatch = false } = {}) => {
     const normalized = normalizeWarehousePacketScan(scanValue) || String(scanValue || '').trim();
     if (!normalized) return false;
-    const linked = new Set(packetLinks.map((l) => String(l.packet_id)));
+    const linked = new Set(packetLinksRef.current.map((l) => String(l.packet_id)));
     const pool = (packets || []).filter((p) => !linked.has(String(p.id)));
     const match = resolvePacketFromScan(normalized, pool);
     if (!match) {
       setPacketSearch(normalized);
+      packetSearchRef.current = normalized;
+      return false;
+    }
+    if (!allowPrefixMatch && !isExactPacketSkuScan(normalized, match)) {
+      setPacketSearch(normalized);
+      packetSearchRef.current = normalized;
       return false;
     }
     return addPacketLink(match, { clearSearch: true });
-  }, [addPacketLink, packetLinks, packets]);
+  }, [addPacketLink, packets]);
+
+  const handlePacketSearchChange = useCallback((text) => {
+    const raw = String(text || '');
+    const hadTerminator = /[\r\n\t]/.test(raw) || /[\u0000-\u001F]$/.test(raw);
+    let next = stripPacketSearchTerminator(raw).toUpperCase();
+    const wedgeNorm = normalizeWarehouseWedgeScanInput(next, 'packet');
+    if (wedgeNorm) next = wedgeNorm;
+    const prevLen = packetSearchPrevLenRef.current;
+    const burst = next.length >= 8 && next.length - prevLen >= 8;
+    packetSearchPrevLenRef.current = next.length;
+    packetSearchRef.current = next;
+    setPacketSearch(next);
+    if (hadTerminator || burst) {
+      tryAddPacketFromScan(next, { allowPrefixMatch: true });
+      keepPacketSearchKeyboard();
+    }
+  }, [keepPacketSearchKeyboard, stripPacketSearchTerminator, tryAddPacketFromScan]);
 
   const scrollPacketSearchIntoView = useCallback(() => {
     setTimeout(() => {
@@ -300,7 +333,8 @@ export default function ProductFormScreen({ route, navigation }) {
   };
 
   const onPacketSearchSubmit = () => {
-    if (tryAddPacketFromScan(packetSearch)) return;
+    const value = packetSearchRef.current || packetSearch;
+    if (tryAddPacketFromScan(value, { allowPrefixMatch: true })) return;
     keepPacketSearchKeyboard();
   };
 
@@ -387,40 +421,55 @@ export default function ProductFormScreen({ route, navigation }) {
           </Text>
         </>
       ) : null}
-      <Field
-        label="Name"
-        value={name}
-        onChangeText={setName}
-        inputRef={nameInputRef}
-        returnKeyType="next"
-        onSubmitEditing={() => turkishNameInputRef.current?.focus?.()}
-      />
-      <Field
-        label="Turkish name"
-        value={turkishName}
-        onChangeText={setTurkishName}
-        inputRef={turkishNameInputRef}
-        placeholder="Optional — not saved to catalog"
-        returnKeyType="next"
-        onSubmitEditing={focusSku}
-      />
-      <Text style={styles.fieldHint}>Turkish name is for your reference only on this screen.</Text>
-      <Field
-        label="SKU (finished product)"
-        value={familySku}
-        editable={!existing && !bomEditMode}
-        mono
-        onBlur={wrapSkuBlur(normalizeSkuField)}
-        inputRef={skuInputRef}
-        returnKeyType="done"
-        onChangeText={wedgeAwareTextChange(setFamilySku, {
-          stripScanTerminator: stripSkuTerminator,
-          keepFocusAfterSubmit: keepSkuKeyboard,
-          transform: (v) => v.toUpperCase(),
-          normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'product'),
-        })}
-        onSubmitEditing={onProductSkuSubmit}
-      />
+      {bomEditMode ? (
+        <View style={styles.bomHeader}>
+          <Text style={styles.bomProductName} numberOfLines={2}>{name}</Text>
+          <Text style={styles.bomProductSku} numberOfLines={1}>{familySku}</Text>
+        </View>
+      ) : (
+        <>
+          <Field
+            label="Name"
+            value={name}
+            onChangeText={setName}
+            inputRef={nameInputRef}
+            returnKeyType="next"
+            onSubmitEditing={() => turkishNameInputRef.current?.focus?.()}
+          />
+          <Field
+            label="Turkish name"
+            value={turkishName}
+            onChangeText={setTurkishName}
+            inputRef={turkishNameInputRef}
+            placeholder="Optional — not saved to catalog"
+            returnKeyType="next"
+            onSubmitEditing={focusSku}
+          />
+          <Text style={styles.fieldHint}>Turkish name is for your reference only on this screen.</Text>
+          <Field
+            label="SKU (finished product)"
+            value={familySku}
+            editable={!existing}
+            mono
+            onBlur={wrapSkuBlur(normalizeSkuField)}
+            inputRef={skuInputRef}
+            returnKeyType="done"
+            onChangeText={wedgeAwareTextChange(setFamilySku, {
+              stripScanTerminator: stripSkuTerminator,
+              keepFocusAfterSubmit: keepSkuKeyboard,
+              transform: (v) => v.toUpperCase(),
+              onWedgeComplete: (v) => {
+                const normalized = normalizeWarehouseProductSku(v);
+                if (normalized) setFamilySku(normalized);
+              },
+            })}
+            onSubmitEditing={() => {
+              normalizeSkuField();
+              onProductSkuSubmit();
+            }}
+          />
+        </>
+      )}
       {showPacketBomFields && (
         <Field
           label="Total packets"
@@ -429,6 +478,8 @@ export default function ProductFormScreen({ route, navigation }) {
           keyboardType="number-pad"
         />
       )}
+      {!bomEditMode ? (
+      <>
       <Text style={styles.label}>Category</Text>
       <Pressable
         style={styles.select}
@@ -516,6 +567,8 @@ export default function ProductFormScreen({ route, navigation }) {
           ) : null}
         </>
       ) : null}
+      </>
+      ) : null}
       {showPacketBomFields && (
         <View
           collapsable={false}
@@ -524,22 +577,16 @@ export default function ProductFormScreen({ route, navigation }) {
           }}
         >
           <Text style={styles.label}>Packets that build this product</Text>
-          <Text style={styles.label}>Search packet SKU or name</Text>
+          <Text style={styles.hint}>
+            Scan a packet barcode to add it instantly. Type a name or SKU to search and tap a row.
+          </Text>
           <TextInput
             ref={packetSearchInputRef}
             style={styles.input}
-            placeholder="Type to filter — stays after you add a packet"
+            placeholder="Scan packet SKU or type to search…"
             placeholderTextColor="#64748b"
             value={packetSearch}
-            onChangeText={wedgeAwareTextChange(setPacketSearch, {
-              stripScanTerminator: stripPacketSearchTerminator,
-              keepFocusAfterSubmit: keepPacketSearchKeyboard,
-              transform: (v) => v.toUpperCase(),
-              normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'packet'),
-              onWedgeComplete: (normalized) => {
-                tryAddPacketFromScan(normalized);
-              },
-            })}
+            onChangeText={handlePacketSearchChange}
             autoCapitalize="characters"
             blurOnSubmit={false}
             showSoftInputOnFocus
@@ -652,6 +699,14 @@ function Field({
 const styles = StyleSheet.create({
   wrap: { padding: 16, backgroundColor: theme.bg, flexGrow: 1 },
   title: { color: theme.text, fontSize: 20, fontWeight: '700', marginBottom: 8 },
+  bomHeader: {
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#334155',
+  },
+  bomProductName: { color: theme.text, fontSize: 17, fontWeight: '600' },
+  bomProductSku: { color: theme.textMuted, fontSize: 14, marginTop: 4, fontFamily: 'monospace' },
   field: { marginBottom: 14 },
   label: { color: theme.textMuted, marginBottom: 6, flex: 1 },
   input: {

@@ -25,10 +25,12 @@ function stripFactoryLotSuffix(code) {
   return raw;
 }
 
+const PRODUCT_LABEL_LOT_SCAN = /^\d{14}[A-Z][A-Z0-9]{5,}$/i;
+
 function stripProductLotPrefix(code) {
   const raw = normalizeWarehouseSku(code);
   if (!raw) return '';
-  if (raw.length > 14 && /^\d{14}/.test(raw)) {
+  if (raw.length >= 20 && PRODUCT_LABEL_LOT_SCAN.test(raw)) {
     return raw.slice(14);
   }
   return raw;
@@ -127,6 +129,21 @@ function collectPacketScanCandidateKeys(scan) {
     expandWarehouseSkuMatchKeys(value).forEach((k) => keys.add(k));
   });
   return keys;
+}
+
+/** True when scan text is a full packet SKU (not a name substring). */
+export function isExactPacketSkuScan(scan, packet) {
+  if (!packet) return false;
+  const scanNorm = normalizeWarehousePacketScan(scan);
+  if (!scanNorm || scanNorm.length < 4) return false;
+  const pktNorm = normalizeWarehousePacketScan(packet.sku);
+  if (pktNorm && scanNorm === pktNorm) return true;
+  const scanKeys = collectPacketScanCandidateKeys(scanNorm);
+  for (const key of scanKeys) {
+    if (key && key.length >= 4 && key === scanNorm) return true;
+    if (pktNorm && key === pktNorm) return true;
+  }
+  return false;
 }
 
 export function resolvePacketFromScan(scan, packets) {

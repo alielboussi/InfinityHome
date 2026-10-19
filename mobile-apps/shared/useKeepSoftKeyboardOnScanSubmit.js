@@ -50,7 +50,8 @@ export function wedgeAwareTextChange(setter, {
   onWedgeComplete,
 } = {}) {
   return (text) => {
-    const hadTerminator = /[\r\n]/.test(String(text || ''));
+    const raw = String(text || '');
+    const hadTerminator = /[\r\n\t]/.test(raw) || /[\u0000-\u001F]$/.test(raw);
     let next = stripScanTerminator ? stripScanTerminator(text) : String(text || '');
     if (transform) next = transform(next);
     if (normalize) {

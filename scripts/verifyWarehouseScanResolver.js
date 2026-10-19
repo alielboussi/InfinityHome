@@ -41,6 +41,9 @@ for (const fn of [
     normalizeWarehouseProductSku(lot),
     normalizeWarehouseProductSku(lot.slice(14)),
   );
+  assert.strictEqual(normalizeWarehouseProductSku('12AYS2300P020000'), '12AYS2300P020000');
+  assert.strictEqual(normalizeWarehouseProductSku('123456789012345'), '123456789012345');
+  assert.strictEqual(normalizeWarehouseProductSku('12345678901234X'), '12345678901234X');
   assert.strictEqual(
     normalizeWarehouseCatalogSearchQuery('X213TAI'),
     normalizeWarehousePacketScan('X213TAI'),
