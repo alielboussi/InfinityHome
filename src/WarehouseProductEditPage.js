@@ -20,7 +20,13 @@ import {
   normalizeAssemblyPacketRows,
 } from './utils/warehouseAssemblyPacketPool';
 import { isWarehouseProductAssembly } from './utils/warehouseCatalogHierarchy';
-import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
+import { normalizeWarehousePacketScan, normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
+import { warehouseLabelScanModeForProductForm } from './utils/warehouseLabelScanResolve';
+import WarehouseLabelImageImport, {
+  WAREHOUSE_LABEL_SCAN_MODE,
+} from './components/WarehouseLabelImageImport';
+import { LABEL_NAME_MEMORY_KIND } from './utils/warehouseLabelOcrName';
+import { rememberLabelNameSync } from './utils/warehouseLabelNameMemory';
 import {
   boxCountFromFinishedUnits,
   assemblyUnitsPerCarton,
@@ -455,6 +461,13 @@ export default function WarehouseProductEditPage() {
         },
         { id: editingProductId },
       );
+      if (productForm.turkish_name?.trim()) {
+        rememberLabelNameSync({
+          sku: normalizedSku,
+          kind: LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH,
+          name: productForm.turkish_name.trim(),
+        });
+      }
       const assemblyId = saved?.id;
       const assemblyLike = {
         inventory_mode: productPayload.inventory_mode,
@@ -690,6 +703,23 @@ export default function WarehouseProductEditPage() {
               />
             </div>
           </div>
+          <WarehouseLabelImageImport
+            mode={warehouseLabelScanModeForProductForm({
+              finishedOnly: productFormFinishedOnly,
+              target: 'family_sku',
+            })}
+            disabled={saving}
+            onResolved={({ sku, name }) => {
+              const normalized = normalizeWarehouseProductSku(sku);
+              if (normalized) {
+                setProductForm((f) => ({
+                  ...f,
+                  family_sku: normalized,
+                  ...(name ? { turkish_name: name } : {}),
+                }));
+              }
+            }}
+          />
           <div className="warehouse-field">
             <label htmlFor="wh-product-sku">SKU (assembled product)</label>
             <input
@@ -969,6 +999,24 @@ export default function WarehouseProductEditPage() {
               <p className="warehouse-field-hint" style={{ marginTop: 0 }}>
                 Optional for now. When cartons arrive, create packets, link them here, set total packets, and turn off finished-only mode.
               </p>
+            ) : null}
+            {!productFormFinishedOnly ? (
+              <WarehouseLabelImageImport
+                mode={WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON}
+                disabled={saving}
+                onResolved={({ sku }) => {
+                  const normalized = normalizeWarehousePacketScan(sku) || sku;
+                  const match = (packets || []).find(
+                    (p) => normalizeWarehousePacketScan(p.sku) === normalized,
+                  );
+                  if (match) {
+                    addPacketToProduct(match.id);
+                    setPacketPickSearch('');
+                  } else {
+                    setPacketPickSearch(normalized);
+                  }
+                }}
+              />
             ) : null}
             <input
               id="wh-packet-pick-search"

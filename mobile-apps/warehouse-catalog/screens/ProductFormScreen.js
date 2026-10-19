@@ -32,6 +32,9 @@ import {
   useKeepSoftKeyboardOnScanSubmit,
   wedgeAwareTextChange,
 } from '../shared/useKeepSoftKeyboardOnScanSubmit';
+import { warehouseLabelScanModeForProductForm } from '../shared/warehouseLabelScanResolve';
+import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
+import { rememberLabelName } from '../shared/warehouseLabelNameMemory';
 
 const INVENTORY_FINISHED = 'finished';
 const INVENTORY_PACKETS = 'packets';
@@ -303,12 +306,64 @@ export default function ProductFormScreen({ route, navigation }) {
     return addPacketLink(match, { clearSearch: true });
   }, [addPacketLink, packets]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const scanned = route.params?.labelScanSku;
+      if (!scanned) return;
+      const target = route.params?.labelScanTarget || 'family_sku';
+      const scannedName = route.params?.labelScanName;
+      const fromMemory = route.params?.labelScanNameSource === 'remembered';
+      if (target === 'packet_search') {
+        tryAddPacketFromScan(scanned, { allowPrefixMatch: true });
+        setPacketSearch('');
+        setNotice(`Added packet from label: ${scanned}`);
+      } else {
+        setFamilySku(String(scanned));
+        if (scannedName) setTurkishName(String(scannedName));
+        setNotice(
+          scannedName
+            ? (fromMemory
+              ? 'SKU and Turkish name from your saved correction — add English name, then save.'
+              : 'SKU and Turkish name from label — correct if needed, then save to remember.')
+            : 'SKU read from label photo.',
+        );
+      }
+      navigation.setParams({
+        labelScanSku: undefined,
+        labelScanName: undefined,
+        labelScanNameSource: undefined,
+        labelScanTarget: undefined,
+      });
+    }, [
+      navigation,
+      route.params?.labelScanSku,
+      route.params?.labelScanName,
+      route.params?.labelScanNameSource,
+      route.params?.labelScanTarget,
+      tryAddPacketFromScan,
+    ]),
+  );
+
+  const openLabelCapture = useCallback((target) => {
+    navigation.navigate('WarehouseLabelCapture', {
+      mode: warehouseLabelScanModeForProductForm({
+        finishedOnly,
+        bomEditMode,
+        target,
+      }),
+      returnScreen: 'ProductForm',
+      ...(target ? { labelScanTarget: target } : {}),
+    });
+  }, [bomEditMode, finishedOnly, navigation]);
+
   const handlePacketSearchChange = useCallback((text) => {
     const raw = String(text || '');
     const hadTerminator = /[\r\n\t]/.test(raw) || /[\u0000-\u001F]$/.test(raw);
     let next = stripPacketSearchTerminator(raw).toUpperCase();
-    const wedgeNorm = normalizeWarehouseWedgeScanInput(next, 'packet');
-    if (wedgeNorm) next = wedgeNorm;
+    if (!/\s/.test(next)) {
+      const wedgeNorm = normalizeWarehouseWedgeScanInput(next, 'packet');
+      if (wedgeNorm) next = wedgeNorm;
+    }
     const prevLen = packetSearchPrevLenRef.current;
     const burst = next.length >= 8 && next.length - prevLen >= 8;
     packetSearchPrevLenRef.current = next.length;
@@ -378,6 +433,13 @@ export default function ProductFormScreen({ route, navigation }) {
         payload.id = editAssemblyId;
       }
       await warehouseMobileRequest('assembly-save', payload);
+      if (turkishName.trim()) {
+        await rememberLabelName({
+          sku: normalizedSku,
+          kind: LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH,
+          name: turkishName.trim(),
+        });
+      }
       refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
       const navigateAfterSave = (listScreen) => {
         try {
@@ -446,6 +508,14 @@ export default function ProductFormScreen({ route, navigation }) {
             onSubmitEditing={focusSku}
           />
           <Text style={styles.fieldHint}>Turkish name is for your reference only on this screen.</Text>
+          <Pressable
+            style={styles.labelScanBtn}
+            onPress={() => openLabelCapture('family_sku')}
+            accessibilityRole="button"
+            accessibilityLabel="Capture product label photo"
+          >
+            <Text style={styles.labelScanBtnText}>📷 Read product label (camera)</Text>
+          </Pressable>
           <Field
             label="SKU (finished product)"
             value={familySku}
@@ -580,6 +650,14 @@ export default function ProductFormScreen({ route, navigation }) {
           <Text style={styles.hint}>
             Scan a packet barcode to add it instantly. Type a name or SKU to search and tap a row.
           </Text>
+          <Pressable
+            style={styles.labelScanBtn}
+            onPress={() => openLabelCapture('packet_search')}
+            accessibilityRole="button"
+            accessibilityLabel="Capture packet label to add to BOM"
+          >
+            <Text style={styles.labelScanBtnText}>📷 Read packet carton label</Text>
+          </Pressable>
           <TextInput
             ref={packetSearchInputRef}
             style={styles.input}
@@ -684,7 +762,7 @@ function Field({
         keyboardType={keyboardType}
         placeholder={placeholder}
         placeholderTextColor="#64748b"
-        autoCapitalize={mono ? 'characters' : 'sentences'}
+        autoCapitalize={mono ? 'none' : 'sentences'}
         autoComplete="off"
         blurOnSubmit={false}
         showSoftInputOnFocus
@@ -824,4 +902,14 @@ const styles = StyleSheet.create({
   btnText: { color: theme.text, fontWeight: '600' },
   error: { color: theme.danger, marginTop: 8 },
   notice: { color: theme.success, marginTop: 8 },
+  labelScanBtn: {
+    backgroundColor: '#1e3a5f',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  labelScanBtnText: { color: '#7dd3fc', fontWeight: '600', fontSize: 13 },
 });

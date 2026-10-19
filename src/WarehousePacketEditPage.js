@@ -7,6 +7,11 @@ import {
   saveWarehousePacket,
 } from './services/warehouseCatalog';
 import { normalizeWarehousePacketScan } from './utils/warehouseScanResolver';
+import WarehouseLabelImageImport, {
+  WAREHOUSE_LABEL_SCAN_MODE,
+} from './components/WarehouseLabelImageImport';
+import { LABEL_NAME_MEMORY_KIND } from './utils/warehouseLabelOcrName';
+import { rememberLabelNameSync } from './utils/warehouseLabelNameMemory';
 
 const emptyPacketForm = {
   sku: '',
@@ -137,7 +142,7 @@ export default function WarehousePacketEditPage() {
         }
         initial_quantity = qty;
       }
-      await saveWarehousePacket(
+      const saved = await saveWarehousePacket(
         {
           ...packetPayload,
           assembly_id: existing?.assembly_id ?? null,
@@ -146,23 +151,38 @@ export default function WarehousePacketEditPage() {
         },
         { id: isNew ? null : packetId },
       );
-      const data = await fetchWarehouseCatalog();
-      setPackets(data.packets);
+      rememberLabelNameSync({
+        sku: normalizedSku,
+        kind: LABEL_NAME_MEMORY_KIND.PACKET,
+        name: packetPayload.name,
+      });
+      const savedId = String(saved?.id || packetId || '');
+      if (savedId) {
+        setPackets((prev) => {
+          const next = [...(prev || [])];
+          const idx = next.findIndex((p) => String(p.id) === savedId);
+          const row = {
+            ...(idx >= 0 ? next[idx] : {}),
+            ...saved,
+            id: saved.id || savedId,
+          };
+          if (idx >= 0) next[idx] = row;
+          else next.push(row);
+          return next;
+        });
+      }
       if (isNew) {
         setPacketForm(emptyPacketForm);
         setSaveNotice('Packet saved. Scan the next packet SKU.');
         focusSkuForNextScan();
       } else {
         setSaveNotice('Changes saved.');
-        const row = (data.packets || []).find((p) => String(p.id) === String(packetId));
-        if (row) {
-          setPacketForm({
-            sku: row.sku || '',
-            name: row.name || '',
-            packet_number: String(row.packet_number ?? ''),
-            qty_per_unit: String(row.qty_per_unit ?? '1'),
-          });
-        }
+        setPacketForm({
+          sku: saved?.sku || normalizedSku,
+          name: saved?.name || packetPayload.name,
+          packet_number: String(saved?.packet_number ?? packetPayload.packet_number ?? ''),
+          qty_per_unit: String(saved?.qty_per_unit ?? packetPayload.qty_per_unit ?? '1'),
+        });
       }
     } catch (err) {
       setError(err?.message || 'Save failed');
@@ -205,6 +225,18 @@ export default function WarehousePacketEditPage() {
             <span className="warehouse-kind-badge warehouse-kind-badge--packet">Packet</span>
             {isNew ? 'New packet' : 'Edit packet'}
           </h3>
+          <WarehouseLabelImageImport
+            mode={WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON}
+            disabled={saving}
+            onResolved={({ sku, name }) => {
+              setPacketForm((f) => ({
+                ...f,
+                sku,
+                ...(name ? { name } : {}),
+              }));
+              focusSkuForNextScan();
+            }}
+          />
           <div className="warehouse-field">
             <label htmlFor="wh-packet-sku-edit">SKU (Code 128)</label>
             <input

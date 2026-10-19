@@ -316,7 +316,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           autoCorrect={false}
           onBlur={() => {
             const v = search.trim();
-            if (!v) return;
+            if (!v || /\s/.test(v)) return;
             const normalized = normalizeWarehouseCatalogSearchQuery(v);
             if (normalized && normalized !== v) setSearch(normalized);
           }}

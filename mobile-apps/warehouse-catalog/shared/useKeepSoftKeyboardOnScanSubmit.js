@@ -38,6 +38,11 @@ export function useKeepSoftKeyboardOnScanSubmit(inputRef) {
   return { keepFocusAfterSubmit, wrapOnBlur, stripScanTerminator };
 }
 
+/** Spaces mean the user is typing a name search, not a wedge barcode — do not trim/normalize live. */
+function shouldSkipLiveBarcodeNormalize(value) {
+  return /\s/.test(String(value || '').replace(/[\r\n\t]/g, ' '));
+}
+
 /**
  * Strip wedge Enter/newlines; optional SKU normalize (portal barcode rules).
  * `onWedgeComplete` runs synchronously with the normalized value (use for scan submit).
@@ -54,7 +59,7 @@ export function wedgeAwareTextChange(setter, {
     const hadTerminator = /[\r\n\t]/.test(raw) || /[\u0000-\u001F]$/.test(raw);
     let next = stripScanTerminator ? stripScanTerminator(text) : String(text || '');
     if (transform) next = transform(next);
-    if (normalize) {
+    if (normalize && !shouldSkipLiveBarcodeNormalize(next)) {
       const normalized = normalize(next);
       if (normalized) next = normalized;
     }

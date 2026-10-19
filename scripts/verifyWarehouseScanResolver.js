@@ -44,6 +44,16 @@ for (const fn of [
   assert.strictEqual(normalizeWarehouseProductSku('12AYS2300P020000'), '12AYS2300P020000');
   assert.strictEqual(normalizeWarehouseProductSku('123456789012345'), '123456789012345');
   assert.strictEqual(normalizeWarehouseProductSku('12345678901234X'), '12345678901234X');
+  assert.strictEqual(normalizeWarehouseProductSku('22VSK2600LCBO'), '22VSK2600LCBO');
+  assert.strictEqual(normalizeWarehousePacketScan('12VSK2600P03LCBO'), '12VSK2600P03LCBO');
+  assert.strictEqual(
+    normalizeWarehousePacketScan('X112VSK2600P03LCBO-252307009503'),
+    '12VSK2600P03LCBO',
+  );
+  assert.strictEqual(
+    normalizeWarehouseCatalogSearchQuery('X112VSK2600P03LCBO-252307009503'),
+    '12VSK2600P03LCBO',
+  );
   assert.strictEqual(
     normalizeWarehouseCatalogSearchQuery('X213TAI'),
     normalizeWarehousePacketScan('X213TAI'),

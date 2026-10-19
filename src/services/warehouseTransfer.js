@@ -29,15 +29,18 @@ const SET_ITEMS = 'warehouse_set_items';
 async function loadPacketInventoryMap(locationId, packetIds) {
   const map = new Map();
   if (!locationId || !packetIds?.length) return map;
-  const { data, error } = await db.from(INVENTORY).select('packet_id, quantity').eq('location_id', locationId);
+  const ids = [...new Set(packetIds.map(String).filter(Boolean))];
+  const { data, error } = await db
+    .from(INVENTORY)
+    .select('packet_id, quantity')
+    .eq('location_id', locationId)
+    .in('packet_id', ids);
   if (error) throw new Error(error.message || 'Failed to load packet stock');
-  const idSet = new Set(packetIds.map(String));
   (data || []).forEach((row) => {
-    if (!idSet.has(String(row.packet_id))) return;
     map.set(String(row.packet_id), Number(row.quantity) || 0);
   });
-  packetIds.forEach((id) => {
-    if (!map.has(String(id))) map.set(String(id), 0);
+  ids.forEach((id) => {
+    if (!map.has(id)) map.set(id, 0);
   });
   return map;
 }
@@ -76,6 +79,67 @@ async function syncAssemblyInventoryFromPackets(
     updated_at: new Date().toISOString(),
   }, { onConflict: 'assembly_id,location_id' });
   return complete;
+}
+
+/**
+ * Recompute finished units for one product at a warehouse location (fast path after save).
+ */
+export async function recomputeWarehouseAssemblyStockAtLocation(assemblyId, locationId) {
+  const locId = String(locationId || '');
+  const aid = String(assemblyId || '');
+  if (!locId || !aid) return;
+
+  const [
+    { data: assembly, error: aErr },
+    { data: assemblyPacketRows, error: apErr },
+  ] = await Promise.all([
+    db.from(ASSEMBLIES)
+      .select('id, packet_count, inventory_mode, item_kind, units_per_carton')
+      .eq('id', aid)
+      .maybeSingle(),
+    db.from(ASSEMBLY_PACKETS).select('*').eq('assembly_id', aid),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load warehouse product');
+  if (apErr) throw new Error(apErr.message || 'Failed to load product packet links');
+  if (!assembly || isWarehouseSetAssembly(assembly)) return;
+
+  const packetIds = (assemblyPacketRows || []).map((row) => row.packet_id).filter(Boolean);
+  let allPackets = [];
+  if (packetIds.length) {
+    const { data: pkts, error: pErr } = await db
+      .from(PACKETS)
+      .select('id, sku, name, packet_number, qty_per_unit, assembly_id')
+      .in('id', packetIds);
+    if (pErr) throw new Error(pErr.message || 'Failed to load warehouse packets');
+    allPackets = pkts || [];
+  }
+
+  const pktList = await packetsForAssembly(aid, allPackets, assemblyPacketRows || []);
+  const usePacketMath = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
+  if (usePacketMath) {
+    await syncAssemblyInventoryFromPackets(
+      assembly.id,
+      locId,
+      pktList,
+      assembly.packet_count,
+      assemblyPacketRows || [],
+      allPackets,
+    );
+    return;
+  }
+  if (assemblyUsesFinishedBoxReceiving(assembly, pktList)) {
+    const packet = pktList[0];
+    if (!packet) return;
+    const invMap = await loadPacketInventoryMap(locId, [packet.id]);
+    const boxes = invMap.get(String(packet.id)) ?? 0;
+    const finished = finishedUnitsFromBoxCount(boxes, assemblyUnitsPerCarton(assembly));
+    await db.from(ASSEMBLY_INVENTORY).upsert({
+      assembly_id: assembly.id,
+      location_id: locId,
+      quantity: finished,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'assembly_id,location_id' });
+  }
 }
 
 /**

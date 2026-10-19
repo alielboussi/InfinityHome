@@ -18,6 +18,7 @@ import ScanScreen from './screens/ScanScreen';
 import PacketFormScreen from './screens/PacketFormScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
 import WarehouseOcrSkuScreen from './screens/WarehouseOcrSkuScreen';
+import WarehouseLabelCaptureScreen from './screens/WarehouseLabelCaptureScreen';
 import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
 import WarehouseStockCountScreen from './screens/WarehouseStockCountScreen';
 import MobileScreenGate from './shared/MobileScreenGate';
@@ -100,6 +101,11 @@ function MainStack() {
         name="WarehouseOcrSku"
         options={{ title: 'Label SKU (text)' }}
         component={WarehouseOcrSkuScreen}
+      />
+      <Stack.Screen
+        name="WarehouseLabelCapture"
+        options={{ title: 'Label photo' }}
+        component={WarehouseLabelCaptureScreen}
       />
       <Stack.Screen
         name="WarehouseProductDetail"

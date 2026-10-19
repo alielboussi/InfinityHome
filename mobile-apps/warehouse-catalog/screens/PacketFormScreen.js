@@ -17,6 +17,9 @@ import {
   normalizeWarehousePacketScan,
   normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
+import { WAREHOUSE_LABEL_SCAN_MODE } from '../shared/warehouseLabelScanResolve';
+import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
+import { rememberLabelName } from '../shared/warehouseLabelNameMemory';
 import {
   useKeepSoftKeyboardOnScanSubmit,
   wedgeAwareTextChange,
@@ -94,6 +97,29 @@ export default function PacketFormScreen({ route, navigation }) {
     }, [applyPrefill, catalog, focusSku, isEdit, refreshCatalog]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      const scanned = route.params?.labelScanSku;
+      if (!scanned) return;
+      setSku(String(scanned));
+      const scannedName = route.params?.labelScanName;
+      if (scannedName) setName(String(scannedName));
+      const fromMemory = route.params?.labelScanNameSource === 'remembered';
+      setNotice(
+        scannedName
+          ? (fromMemory
+            ? 'SKU and name from your saved correction for this packet SKU.'
+            : 'SKU and name from label — edit if needed, then save to remember.')
+          : 'SKU read from label photo.',
+      );
+      navigation.setParams({
+        labelScanSku: undefined,
+        labelScanName: undefined,
+        labelScanNameSource: undefined,
+      });
+    }, [navigation, route.params?.labelScanSku, route.params?.labelScanName, route.params?.labelScanNameSource]),
+  );
+
   useEffect(() => {
     if (!isEdit) focusSku();
   }, [focusSku, isEdit]);
@@ -142,6 +168,11 @@ export default function PacketFormScreen({ route, navigation }) {
           ...payload,
           packet_id: packetId,
         });
+        await rememberLabelName({
+          sku: normalizedSku,
+          kind: LABEL_NAME_MEMORY_KIND.PACKET,
+          name: name.trim(),
+        });
         refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
         setNotice('Changes saved.');
         navigation.goBack();
@@ -150,6 +181,11 @@ export default function PacketFormScreen({ route, navigation }) {
       await warehouseMobileRequest('packet-create', {
         ...payload,
         initial_quantity: Number(initialQty) || 0,
+      });
+      await rememberLabelName({
+        sku: normalizedSku,
+        kind: LABEL_NAME_MEMORY_KIND.PACKET,
+        name: name.trim(),
       });
       refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
       setNotice('Packet saved. Scan the next packet SKU.');
@@ -170,6 +206,17 @@ export default function PacketFormScreen({ route, navigation }) {
   return (
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
+      <Pressable
+        style={styles.labelScanBtn}
+        onPress={() => navigation.navigate('WarehouseLabelCapture', {
+          mode: WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON,
+          returnScreen: 'PacketForm',
+        })}
+        accessibilityRole="button"
+        accessibilityLabel="Capture packet label photo"
+      >
+        <Text style={styles.labelScanBtnText}>📷 Read packet label (camera)</Text>
+      </Pressable>
       <Field
         label="SKU (Code 128)"
         inputRef={skuInputRef}
@@ -178,7 +225,10 @@ export default function PacketFormScreen({ route, navigation }) {
           stripScanTerminator,
           keepFocusAfterSubmit: keepSkuKeyboard,
           transform: (v) => v.toUpperCase(),
-          normalize: (v) => normalizeWarehouseWedgeScanInput(v, 'packet'),
+          onWedgeComplete: (v) => {
+            const normalized = normalizeWarehouseWedgeScanInput(v, 'packet');
+            if (normalized) setSku(normalized);
+          },
         })}
         editable
         mono
@@ -262,7 +312,7 @@ function Field({
         editable={editable}
         keyboardType={keyboardType}
         placeholderTextColor="#64748b"
-        autoCapitalize={mono ? 'characters' : 'sentences'}
+        autoCapitalize={mono ? 'none' : 'sentences'}
         autoComplete="off"
         blurOnSubmit={false}
         showSoftInputOnFocus
@@ -302,4 +352,14 @@ const styles = StyleSheet.create({
   error: { color: theme.danger, marginTop: 8 },
   notice: { color: theme.success, marginTop: 8 },
   hint: { color: theme.textDim, fontSize: 12, lineHeight: 18, marginTop: 4, marginBottom: 4 },
+  labelScanBtn: {
+    backgroundColor: '#1e3a5f',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  labelScanBtnText: { color: '#7dd3fc', fontWeight: '600', fontSize: 13 },
 });

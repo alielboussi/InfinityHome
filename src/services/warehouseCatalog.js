@@ -121,14 +121,22 @@ async function assertUniqueWarehouseSku(sku, {
   const key = normalizeWarehouseSkuKey(sku);
   if (!key) throw new Error('SKU is required');
 
+  const familySku = normalizeWarehouseProductSku(sku);
+  const packetSku = normalizeWarehousePacketScan(sku);
   const [
     { data: assemblies, error: aErr },
     { data: packets, error: pErr },
     { data: legacyProducts, error: lErr },
   ] = await Promise.all([
-    db.from(ASSEMBLIES).select('id, name, family_sku'),
-    db.from(PACKETS).select('id, name, sku'),
-    db.from('products').select('id, name, sku'),
+    familySku
+      ? db.from(ASSEMBLIES).select('id, name, family_sku').eq('family_sku', familySku)
+      : Promise.resolve({ data: [], error: null }),
+    packetSku
+      ? db.from(PACKETS).select('id, name, sku').eq('sku', packetSku)
+      : Promise.resolve({ data: [], error: null }),
+    familySku
+      ? db.from('products').select('id, name, sku').eq('sku', familySku)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to validate SKU');
   if (pErr) throw new Error(pErr.message || 'Failed to validate SKU');
@@ -519,13 +527,12 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     assemblyId = data.id;
   }
 
-  const { data: allAssemblies } = await db.from(ASSEMBLIES).select('id, item_kind');
-  const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
-
   await syncAssemblyLocations(assemblyId, locationIds);
   await syncAssemblyColors(assemblyId, colorIds);
 
   if (isSet) {
+    const { data: allAssemblies } = await db.from(ASSEMBLIES).select('id, item_kind');
+    const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
     await db.from(ASSEMBLY_PACKETS).delete().eq('assembly_id', assemblyId);
     await syncAssemblySetItems(assemblyId, setLocationId, setComponents, assembliesById);
   } else if (warehouseLocationId) {
@@ -540,8 +547,13 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
   }
 
   if (warehouseLocationId && !isSet) {
-    const { recomputeWarehouseLocationStock } = await import('./warehouseTransfer');
-    await recomputeWarehouseLocationStock(warehouseLocationId);
+    const needsStockSync = inventoryMode === WAREHOUSE_INVENTORY_MODE.PACKETS
+      || packetLinkRows.length > 0
+      || absorbedPacketInventory.length > 0;
+    if (needsStockSync) {
+      const { recomputeWarehouseAssemblyStockAtLocation } = await import('./warehouseTransfer');
+      await recomputeWarehouseAssemblyStockAtLocation(assemblyId, warehouseLocationId);
+    }
   }
 
   return { ...row, id: assemblyId };

@@ -1,5 +1,24 @@
 import { normalizeWarehouseSku, normalizeWarehouseSkuKey } from './warehouseAssemblyMath.js';
 
+/**
+ * Warehouse label / scan types (Istikbal-style; keep web + mobile in sync).
+ *
+ * 1. **Finished product (family SKU)** — assembled unit you sell/stock as one product.
+ *    Printed code e.g. `22VSK2600LCBO` (no packet #). Scans may add a 14-digit factory lot
+ *    before the family code. Use `normalizeWarehouseProductSku` on product SKU fields.
+ *
+ * 2. **Packet carton (BOM line)** — one box that builds part of a product; SKU includes packet
+ *    index e.g. `12VSK2600P03LCBO` (PK-3 / P03). Carton barcodes often look like
+ *    `X112VSK2600P03LCBO-252307009503` (X + wedge digit, echoed digit, carton SKU, `-` + lot).
+ *    Use `normalizeWarehousePacketScan` on packet fields and when adding packets to a BOM.
+ *
+ * 3. **Lookup (unknown scan)** — global search / scan screen: `normalizeWarehouseCatalogSearchQuery`
+ *    or wedge mode `auto` (X-prefixed → packet rules; long numeric prefix → product lot strip).
+ *
+ * Packet SKUs and family SKUs are different rows in the catalog; the same product line can use
+ * a `22…` family code on the unit label and `12…P03…` on carton labels.
+ */
+
 function canonicalWarehouseSku(code) {
   return normalizeWarehouseSku(code).toUpperCase();
 }
@@ -39,10 +58,16 @@ function stripProductLotPrefix(code) {
 function stripIstikbalXDigitScanPrefix(code) {
   const raw = normalizeWarehouseSku(code);
   if (!raw || raw.length < 3 || !/^X\d/i.test(raw)) return raw;
-  const scanDigit = raw[1];
+  const wedgeDigit = raw[1];
   let body = raw.slice(1);
-  if (/^\d{2}[A-Z]/i.test(body)) return body;
-  if (body.length && body[0] === scanDigit) body = body.slice(1);
+  if (body.length && body[0] === wedgeDigit) {
+    const withoutLeadingWedge = body.slice(1);
+    if (/^\d{2}[A-Z]/i.test(withoutLeadingWedge)) {
+      body = withoutLeadingWedge;
+    } else if (body[1] === wedgeDigit) {
+      body = body.slice(1);
+    }
+  }
   return body;
 }
 

@@ -330,7 +330,7 @@ export default function WarehousePacketsScreen({ navigation }) {
           })}
           onBlur={() => {
             const v = search.trim();
-            if (!v) return;
+            if (!v || /\s/.test(v)) return;
             const normalized = normalizeWarehousePacketScan(v);
             if (normalized && normalized !== v) setSearch(normalized);
           }}
