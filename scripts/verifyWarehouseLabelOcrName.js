@@ -43,6 +43,19 @@ HOHER NUSSBAUM / NEBELIGES ANTHRAZIT
     'LENOR ORTASEHPA 1B',
   );
 
+  const lenorSplit = `
+    X2201LNOR2301000001-252305023389
+    LENOR ORTASEHPA
+    1B
+    UNITE
+    LENOR ORTASEHPA GVDPKT 1B
+    3002780951000060
+  `;
+  assert.strictEqual(
+    extractSuggestedNameFromLabelText(lenorSplit, { intent: 'product_turkish' }),
+    'LENOR ORTASEHPA 1B',
+  );
+
   const prizma = `
     PRIZMA SANDALYE
     2LI TURKUAZ

@@ -10,6 +10,8 @@ import {
 } from './warehouseLabelOcrName';
 import {
   expandWarehouseSkuMatchKeys,
+  isTuFinishedMultiUnitLabelSku,
+  isWarehousePacketCartonSku,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
 } from './warehouseScanResolver';
@@ -26,6 +28,7 @@ const BARCODE_TOKEN_RES = [
   /\bX\d[A-Z0-9]{8,}-\d{6,}\b/gi,
   /\bX\d[A-Z0-9]{10,}\b/gi,
   /\bYY\d{8,}[A-Z0-9]+\b/gi,
+  /\bTU\d{2}[A-Z0-9]{8,24}\b/gi,
   /\bXX-\d{6,}\b/gi,
   /\b\d{14,20}\b/g,
 ];
@@ -90,6 +93,7 @@ function collectBarcodeMatches(blob, found) {
   pushBoundedMatches(found, /YY\d{8,}[A-Z0-9]{4,40}/gi, tight);
   pushBoundedMatches(found, /X\d[A-Z0-9]{8,}-\d{6,}/gi, tight);
   pushBoundedMatches(found, /X\d[A-Z0-9]{10,48}/gi, tight);
+  pushBoundedMatches(found, /TU\d{2}[A-Z0-9]{8,24}/gi, tight);
   pushBoundedMatches(found, /\d{14,20}/g, tight);
 }
 
@@ -146,7 +150,7 @@ export function listWarehouseLabelSkuSuggestions(text, mode, options = {}) {
   });
 
   extractSkuCandidatesFromLabelText(text).forEach((token, i) => {
-    const score = 50 - i + (isPacket && /P\d{2}/i.test(token) ? 20 : 0);
+    const score = 50 - i + (isPacket && isWarehousePacketCartonSku(token) ? 20 : 0);
     add(token, 'text_ocr', score);
   });
 
@@ -166,7 +170,37 @@ function skuKeysMatch(a, b) {
 }
 
 function isPacketSkuShape(sku) {
-  return /P\d{2}/i.test(String(sku || ''));
+  return isWarehousePacketCartonSku(sku);
+}
+
+function extractTuPacketSkus(text) {
+  const found = [];
+  const blob = String(text || '');
+  const re = /\bTU\d{2}[A-Z0-9]{8,24}\b/gi;
+  let m;
+  while ((m = re.exec(blob)) !== null) {
+    found.push(m[0].toUpperCase());
+  }
+  blob.split(/\r?\n/).forEach((line) => {
+    const tight = String(line).replace(/\s/g, '').toUpperCase();
+    if (/^TU\d{2}[A-Z0-9]{8,24}$/.test(tight)) found.push(tight);
+  });
+  return uniqueTokens(found);
+}
+
+function pickLastOccurrenceToken(text, tokens) {
+  const upper = String(text || '').toUpperCase();
+  let best = '';
+  let bestIdx = -1;
+  for (const token of tokens) {
+    const t = String(token || '').toUpperCase();
+    const idx = upper.lastIndexOf(t);
+    if (idx > bestIdx) {
+      bestIdx = idx;
+      best = t;
+    }
+  }
+  return best;
 }
 
 function headerSkuCandidates(text) {
@@ -296,13 +330,31 @@ function numericsFromOwnOcrLines(text) {
   return found;
 }
 
+function pickFinishedCatalogNumericSku(candidates, text) {
+  const unique = [...new Set(
+    (candidates || []).filter((t) => /^\d{14,20}$/.test(String(t || ''))),
+  )];
+  if (!unique.length) return '';
+  const blob = String(text || '');
+  return unique.sort((a, b) => {
+    const posA = blob.lastIndexOf(a);
+    const posB = blob.lastIndexOf(b);
+    if (posB !== posA) return posB - posA;
+    return a.length - b.length;
+  })[0];
+}
+
 function resolveProductFinishedNumeric(text) {
   const yyEmbedded = numericsEmbeddedInYyBarcodes(text);
 
   const fromLines = numericsFromOwnOcrLines(text);
-  if (fromLines.length) {
+  const fromLineSku = pickFinishedCatalogNumericSku(
+    fromLines.filter((t) => !yyEmbedded.has(t)),
+    text,
+  );
+  if (fromLineSku) {
     return {
-      sku: fromLines.sort((a, b) => b.length - a.length)[0],
+      sku: fromLineSku,
       source: 'numeric_barcode_line',
     };
   }
@@ -311,18 +363,20 @@ function resolveProductFinishedNumeric(text) {
   const numeric = barcodes
     .filter((t) => /^\d{14,20}$/.test(t))
     .filter((t) => !yyEmbedded.has(t));
-  if (numeric.length) {
+  const fromBarcodeSku = pickFinishedCatalogNumericSku(numeric, text);
+  if (fromBarcodeSku) {
     return {
-      sku: numeric.sort((a, b) => b.length - a.length)[0],
+      sku: fromBarcodeSku,
       source: 'numeric_barcode',
     };
   }
   const blob = normalizeBlob(text);
   const embedded = (blob.match(/\b(\d{14,20})\b/g) || [])
     .filter((t) => !yyEmbedded.has(t));
-  if (embedded.length) {
+  const fromOcrSku = pickFinishedCatalogNumericSku(embedded, text);
+  if (fromOcrSku) {
     return {
-      sku: embedded.sort((a, b) => b.length - a.length)[0],
+      sku: fromOcrSku,
       source: 'numeric_ocr',
     };
   }
@@ -333,7 +387,28 @@ function resolveProductFinishedNumeric(text) {
  * Finished-product labels (e.g. Lenor): catalog SKU is the 14–20 digit Code 128
  * (3002780951000060), not factory X… carton barcodes or BESTREST lot text.
  */
+function resolveTuFinishedMultiUnit(text) {
+  const tuRaw = extractTuPacketSkus(text);
+  if (!tuRaw.length) return { sku: '', source: 'none' };
+  const picked = pickLastOccurrenceToken(text, tuRaw);
+  const sku = normalizeWarehouseProductSku(picked) || normalizeWarehousePacketScan(picked) || picked;
+  if (!sku || !isTuFinishedMultiUnitLabelSku(sku)) {
+    return { sku: '', source: 'none' };
+  }
+  return { sku, source: 'tu_finished_barcode' };
+}
+
 function resolveProductFinishedAuto(text) {
+  const tuFinished = resolveTuFinishedMultiUnit(text);
+  if (tuFinished.sku) {
+    return tuFinished;
+  }
+
+  const packetCarton = resolvePacketCarton(text);
+  if (packetCarton.sku && isPacketSkuShape(packetCarton.sku)) {
+    return { sku: '', source: 'packet_carton_not_finished' };
+  }
+
   const numeric = resolveProductFinishedNumeric(text);
   if (numeric.sku) {
     return numeric;

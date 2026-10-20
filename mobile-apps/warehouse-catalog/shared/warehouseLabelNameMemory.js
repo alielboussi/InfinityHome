@@ -6,8 +6,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizeWarehouseSkuKey } from './warehouseScanResolver';
 import { LABEL_NAME_MEMORY_KIND } from './warehouseLabelOcrName';
+import {
+  extractProductTurkishEntriesFromLabelMemory,
+  LABEL_MEMORY_STORAGE_KEY,
+} from './warehouseLabelMemoryEntries';
 
-const STORAGE_KEY = 'warehouseLabelNameMemory_v1';
+const STORAGE_KEY = LABEL_MEMORY_STORAGE_KEY;
 
 function emptyStore() {
   return { bySku: {} };
@@ -68,6 +72,12 @@ export async function rememberLabelName({ sku, kind, name }) {
   row.updatedAt = new Date().toISOString();
   store.bySku[key] = row;
   await writeStore(store);
+}
+
+/** All product Turkish names saved on this device (for bulk catalog sync). */
+export async function exportProductTurkishEntriesFromDevice() {
+  const store = await readStore();
+  return extractProductTurkishEntriesFromLabelMemory(store);
 }
 
 export async function pickLabelNameForSku({ sku, kind, suggestedName }) {

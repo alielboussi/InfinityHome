@@ -33,7 +33,8 @@ import {
   useKeepSoftKeyboardOnScanSubmit,
   wedgeAwareTextChange,
 } from '../shared/useKeepSoftKeyboardOnScanSubmit';
-import { warehouseLabelScanModeForProductForm } from '../shared/warehouseLabelScanResolve';
+import { WAREHOUSE_LABEL_OCR_FIELD } from '../shared/warehouseLabelFieldOcr';
+import LabelFieldWithOcrCamera from '../shared/LabelFieldWithOcrCamera';
 import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
 import { rememberLabelName } from '../shared/warehouseLabelNameMemory';
 
@@ -313,63 +314,30 @@ export default function ProductFormScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      const scanned = route.params?.labelScanSku;
-      if (!scanned) return;
-      const scannedName = route.params?.labelScanName;
-      const fromMemory = route.params?.labelScanNameSource === 'remembered';
-      const tryPacketFirst = bomEditMode || ((!existing || bomEditMode) && !finishedOnly);
-
-      if (tryPacketFirst && tryAddPacketFromScan(scanned, { allowPrefixMatch: true })) {
-        setPacketSearch('');
-        setNotice(`Added packet from label: ${scanned}`);
-      } else if (!bomEditMode) {
-        const packetSku = normalizeWarehousePacketScan(scanned) || String(scanned || '').trim();
-        if (finishedOnly && isWarehousePacketCartonSku(packetSku)) {
-          setNotice(
-            `This is a packet carton label (${packetSku}). Create it under Warehouse Packets, or turn off finished-only and link packets on the product BOM.`,
-          );
-        } else {
-          setFamilySku(String(scanned));
-          if (scannedName) setTurkishName(String(scannedName));
-          setNotice(
-            scannedName
-              ? (fromMemory
-                ? 'SKU and Turkish name from your saved correction — add English name, then save.'
-                : 'SKU and Turkish name from label — correct if needed, then save to remember.')
-              : 'SKU read from label photo.',
-          );
+      const field = route.params?.labelOcrField;
+      const value = route.params?.labelFieldValue;
+      if (field && value != null && value !== '') {
+        if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU) {
+          setFamilySku(String(value));
+          setNotice('Product SKU from label OCR — edit if needed.');
+        } else if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH) {
+          setTurkishName(String(value));
+          setNotice('Turkish name from label OCR — edit if needed.');
         }
-      } else {
-        setNotice('No matching packet in catalog for this label. Search by SKU or name below.');
+        navigation.setParams({
+          labelOcrField: undefined,
+          labelFieldValue: undefined,
+        });
       }
-      navigation.setParams({
-        labelScanSku: undefined,
-        labelScanName: undefined,
-        labelScanNameSource: undefined,
-        labelScanTarget: undefined,
-      });
-    }, [
-      bomEditMode,
-      existing,
-      finishedOnly,
-      navigation,
-      route.params?.labelScanSku,
-      route.params?.labelScanName,
-      route.params?.labelScanNameSource,
-      tryAddPacketFromScan,
-    ]),
+    }, [navigation, route.params?.labelFieldValue, route.params?.labelOcrField]),
   );
 
-  const openLabelCapture = useCallback(() => {
+  const openOcrCamera = useCallback((field) => {
     navigation.navigate('WarehouseLabelCapture', {
-      mode: warehouseLabelScanModeForProductForm({
-        finishedOnly,
-        bomEditMode,
-        target: 'family_sku',
-      }),
+      ocrField: field,
       returnScreen: 'ProductForm',
     });
-  }, [bomEditMode, finishedOnly, navigation]);
+  }, [navigation]);
 
   const handlePacketSearchChange = useCallback((text) => {
     const raw = String(text || '');
@@ -538,18 +506,8 @@ export default function ProductFormScreen({ route, navigation }) {
     <>
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
-      <Pressable
-        style={styles.labelScanBtn}
-        onPress={openLabelCapture}
-        accessibilityRole="button"
-        accessibilityLabel="Capture label photo"
-      >
-        <Text style={styles.labelScanBtnText}>📷 Read label (camera)</Text>
-      </Pressable>
       <Text style={styles.hint}>
-        {bomEditMode || showPacketBomFields
-          ? 'Product or packet label — we fill SKU or add a packet to the BOM when it matches.'
-          : 'Product label — we fill SKU and suggest Turkish name when possible.'}
+        Use 📷 OCR on each field for Lenor, Prizma, or Serra labels — printed text only (not barcodes). Edit before saving.
       </Text>
       {!existing && !bomEditMode ? (
         <>
@@ -579,8 +537,10 @@ export default function ProductFormScreen({ route, navigation }) {
             returnKeyType="next"
             onSubmitEditing={() => turkishNameInputRef.current?.focus?.()}
           />
-          <Field
+          <LabelFieldWithOcrCamera
             label="Turkish name"
+            ocrField={WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH}
+            onOpenOcrCamera={openOcrCamera}
             value={turkishName}
             onChangeText={setTurkishName}
             inputRef={turkishNameInputRef}
@@ -603,8 +563,10 @@ export default function ProductFormScreen({ route, navigation }) {
               Example: 2 chairs in one sellable box → enter 2. Stock can show boxes and units on the web portal.
             </Text>
           ) : null}
-          <Field
+          <LabelFieldWithOcrCamera
             label="SKU (finished product)"
+            ocrField={WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU}
+            onOpenOcrCamera={openOcrCamera}
             value={familySku}
             editable={!existing}
             mono

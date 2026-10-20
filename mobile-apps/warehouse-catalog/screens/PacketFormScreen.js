@@ -17,7 +17,8 @@ import {
   normalizeWarehousePacketScan,
   normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
-import { WAREHOUSE_LABEL_SCAN_MODE } from '../shared/warehouseLabelScanResolve';
+import { WAREHOUSE_LABEL_OCR_FIELD } from '../shared/warehouseLabelFieldOcr';
+import LabelFieldWithOcrCamera from '../shared/LabelFieldWithOcrCamera';
 import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
 import { rememberLabelName } from '../shared/warehouseLabelNameMemory';
 import {
@@ -99,26 +100,29 @@ export default function PacketFormScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      const scanned = route.params?.labelScanSku;
-      if (!scanned) return;
-      setSku(String(scanned));
-      const scannedName = route.params?.labelScanName;
-      if (scannedName) setName(String(scannedName));
-      const fromMemory = route.params?.labelScanNameSource === 'remembered';
-      setNotice(
-        scannedName
-          ? (fromMemory
-            ? 'SKU and name from your saved correction for this packet SKU.'
-            : 'SKU and name from label — edit if needed, then save to remember.')
-          : 'SKU read from label photo.',
-      );
+      const field = route.params?.labelOcrField;
+      const value = route.params?.labelFieldValue;
+      if (!field || value == null || value === '') return;
+      if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU) {
+        setSku(String(value));
+        setNotice('Packet SKU from label OCR — edit if needed.');
+      } else if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME) {
+        setName(String(value));
+        setNotice('Packet name from label OCR — edit if needed.');
+      }
       navigation.setParams({
-        labelScanSku: undefined,
-        labelScanName: undefined,
-        labelScanNameSource: undefined,
+        labelOcrField: undefined,
+        labelFieldValue: undefined,
       });
-    }, [navigation, route.params?.labelScanSku, route.params?.labelScanName, route.params?.labelScanNameSource]),
+    }, [navigation, route.params?.labelFieldValue, route.params?.labelOcrField]),
   );
+
+  const openOcrCamera = useCallback((field) => {
+    navigation.navigate('WarehouseLabelCapture', {
+      ocrField: field,
+      returnScreen: 'PacketForm',
+    });
+  }, [navigation]);
 
   useEffect(() => {
     if (!isEdit) focusSku();
@@ -206,19 +210,13 @@ export default function PacketFormScreen({ route, navigation }) {
   return (
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
-      <Pressable
-        style={styles.labelScanBtn}
-        onPress={() => navigation.navigate('WarehouseLabelCapture', {
-          mode: WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON,
-          returnScreen: 'PacketForm',
-        })}
-        accessibilityRole="button"
-        accessibilityLabel="Capture packet label photo"
-      >
-        <Text style={styles.labelScanBtnText}>📷 Read label (camera)</Text>
-      </Pressable>
-      <Field
-        label="SKU (Code 128)"
+      <Text style={styles.hint}>
+        Use 📷 OCR on each field for Lenor, Prizma, or Serra labels — printed text only (not barcodes). Edit before saving.
+      </Text>
+      <LabelFieldWithOcrCamera
+        label="SKU (printed on label)"
+        ocrField={WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU}
+        onOpenOcrCamera={openOcrCamera}
         inputRef={skuInputRef}
         value={sku}
         onChangeText={wedgeAwareTextChange(setSku, {
@@ -236,8 +234,10 @@ export default function PacketFormScreen({ route, navigation }) {
         returnKeyType="done"
         onSubmitEditing={onSkuSubmit}
       />
-      <Field
-        label="Name"
+      <LabelFieldWithOcrCamera
+        label="Name (English)"
+        ocrField={WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME}
+        onOpenOcrCamera={openOcrCamera}
         inputRef={nameInputRef}
         value={name}
         onChangeText={setName}

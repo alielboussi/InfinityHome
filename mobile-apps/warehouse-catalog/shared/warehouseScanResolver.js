@@ -56,6 +56,18 @@ function stripIstikbalXDigitScanPrefix(code) {
   return body;
 }
 
+export function isWarehousePacketCartonSku(sku) {
+  const s = canonicalWarehouseSku(String(sku || '').trim());
+  if (!s) return false;
+  return /P\d{2}/i.test(s);
+}
+
+export function isTuFinishedMultiUnitLabelSku(sku) {
+  const s = canonicalWarehouseSku(String(sku || '').trim());
+  if (!s) return false;
+  return /^TU\d{2}[A-Z0-9]{8,}$/i.test(s);
+}
+
 export function expandWarehouseSkuMatchKeys(sku) {
   const keys = new Set();
   const key = normalizeWarehouseSkuKey(sku);

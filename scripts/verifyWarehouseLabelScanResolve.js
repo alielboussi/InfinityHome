@@ -90,21 +90,14 @@ const webPath = path.join(__dirname, '../src/utils/warehouseLabelScanResolve.js'
     PRIZMA SANDALYE 2LI 1.PKT TURKUAZ (TEK PARCA)
     TU20APRZMV600000002
   `;
-  const prizmaPkt = resolveWarehouseLabelFromText(
-    prizmaPacket,
-    WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON,
-  );
-  assert.strictEqual(prizmaPkt.sku, 'TU20APRZMV600000002');
-  assert.ok(
-    /prizma sandalye/i.test(prizmaPkt.suggestedName) && /2li turkuaz/i.test(prizmaPkt.suggestedName),
-    `expected title name, got ${prizmaPkt.suggestedName}`,
-  );
-
-  const prizmaAuto = resolveWarehouseLabelFromText(
+  const prizmaFinished = resolveWarehouseLabelFromText(
     prizmaPacket,
     WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO,
   );
-  assert.strictEqual(prizmaAuto.sku, '', 'TU carton is a packet, not a finished product');
+  assert.strictEqual(prizmaFinished.sku, 'TU20APRZMV600000002', 'Type 2 TU label = finished multi-unit product');
+  assert.ok(
+    /prizma sandalye/i.test(prizmaFinished.suggestedName) && /2li turkuaz/i.test(prizmaFinished.suggestedName),
+  );
 
   console.log('verifyWarehouseLabelScanResolve: ok');
 })().catch((err) => {

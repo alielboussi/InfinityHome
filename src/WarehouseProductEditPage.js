@@ -21,8 +21,7 @@ import {
 } from './utils/warehouseAssemblyPacketPool';
 import { isWarehouseProductAssembly } from './utils/warehouseCatalogHierarchy';
 import { normalizeWarehousePacketScan, normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
-import { warehouseLabelScanModeForProductForm } from './utils/warehouseLabelScanResolve';
-import WarehouseLabelImageImport from './components/WarehouseLabelImageImport';
+import WarehouseFieldOcrPaste, { WAREHOUSE_LABEL_OCR_FIELD } from './components/WarehouseFieldOcrPaste';
 import { LABEL_NAME_MEMORY_KIND } from './utils/warehouseLabelOcrName';
 import {
   getRememberedLabelNameSync,
@@ -567,32 +566,6 @@ export default function WarehouseProductEditPage() {
   const productFormFinishedOnly = productForm.inventory_mode === WAREHOUSE_INVENTORY_MODE.FINISHED;
   const isSetForm = productForm.catalog_kind === 'set';
 
-  const handleProductLabelImport = useCallback(({ sku, name }) => {
-    const finishedOnly = productForm.inventory_mode === WAREHOUSE_INVENTORY_MODE.FINISHED;
-    const packetNorm = normalizeWarehousePacketScan(sku) || String(sku || '').trim();
-    if (!isSetForm && !finishedOnly) {
-      const match = (packets || []).find(
-        (p) => normalizeWarehousePacketScan(p.sku) === packetNorm,
-      );
-      if (match) {
-        addPacketToProduct(match.id);
-        setPacketPickSearch('');
-        return;
-      }
-    }
-    const normalized = normalizeWarehouseProductSku(sku);
-    if (normalized) {
-      setProductForm((f) => ({
-        ...f,
-        family_sku: normalized,
-        ...(name ? { turkish_name: name } : {}),
-      }));
-      return;
-    }
-    if (!isSetForm && !finishedOnly && packetNorm) {
-      setPacketPickSearch(packetNorm);
-    }
-  }, [addPacketToProduct, isSetForm, packets, productForm.inventory_mode]);
   const componentProductOptions = useMemo(
     () => (assemblies || []).filter((a) => {
       if (!isWarehouseProductAssembly(a)) return false;
@@ -673,17 +646,9 @@ export default function WarehouseProductEditPage() {
               ? (isSetForm ? 'New set' : 'New product')
               : (isSetForm ? 'Edit set' : 'Edit product')}
           </h3>
-          <div className="warehouse-field warehouse-field--span-full">
-            <WarehouseLabelImageImport
-              buttonLabel="Import label image"
-              mode={warehouseLabelScanModeForProductForm({
-                finishedOnly: productFormFinishedOnly,
-                target: 'family_sku',
-              })}
-              disabled={saving}
-              onResolved={handleProductLabelImport}
-            />
-          </div>
+          <p className="warehouse-field-hint warehouse-field--span-full" style={{ marginTop: 0 }}>
+            All factory label types (Lenor, Prizma, Serra): use <strong>📷 OCR text</strong> on Turkish name and SKU — printed text only, not barcodes.
+          </p>
           <div className="warehouse-form-grid">
           {isNew && allowSetCreate ? (
             <div className="warehouse-field warehouse-field--catalog-type warehouse-field--span-full">
@@ -739,7 +704,14 @@ export default function WarehouseProductEditPage() {
               />
             </div>
             <div>
-              <label htmlFor="wh-product-turkish-name">Turkish Name</label>
+              <label htmlFor="wh-product-turkish-name">
+                Turkish Name
+                <WarehouseFieldOcrPaste
+                  field={WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH}
+                  disabled={saving}
+                  onValue={(value) => setProductForm((f) => ({ ...f, turkish_name: value }))}
+                />
+              </label>
               <input
                 id="wh-product-turkish-name"
                 placeholder="e.g. ürün adı (Türkçe)"
@@ -750,7 +722,17 @@ export default function WarehouseProductEditPage() {
             </div>
           </div>
           <div className="warehouse-field">
-            <label htmlFor="wh-product-sku">SKU (assembled product)</label>
+            <label htmlFor="wh-product-sku">
+              SKU (assembled product)
+              <WarehouseFieldOcrPaste
+                field={WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU}
+                disabled={saving}
+                onValue={(value) => {
+                  const normalized = normalizeWarehouseProductSku(value) || value;
+                  setProductForm((f) => ({ ...f, family_sku: normalized }));
+                }}
+              />
+            </label>
             <input
               id="wh-product-sku"
               required

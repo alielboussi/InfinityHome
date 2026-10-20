@@ -10,6 +10,7 @@ import {
 } from './warehouseLabelOcrName.js';
 import {
   expandWarehouseSkuMatchKeys,
+  isTuFinishedMultiUnitLabelSku,
   isWarehousePacketCartonSku,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
@@ -249,13 +250,6 @@ function matchYyToHeader(yyTokens, headerSku) {
 }
 
 function resolvePacketCarton(text) {
-  const tuRaw = extractTuPacketSkus(text);
-  if (tuRaw.length) {
-    const picked = pickLastOccurrenceToken(text, tuRaw);
-    const sku = normalizeWarehousePacketScan(picked) || picked;
-    if (sku) return { sku, source: 'tu_barcode' };
-  }
-
   const barcodes = extractBarcodeLikeTokens(text);
   const packetFromBarcodes = barcodes
     .map((t) => normalizeWarehousePacketScan(t))
@@ -342,13 +336,35 @@ function numericsFromOwnOcrLines(text) {
   return found;
 }
 
+/**
+ * Supplier type 1 (finished unit): catalog SKU is digits under the smaller bottom Code 128,
+ * not the long factory X… barcodes. Prefer the lowest line on the label, then shorter digit string.
+ */
+function pickFinishedCatalogNumericSku(candidates, text) {
+  const unique = [...new Set(
+    (candidates || []).filter((t) => /^\d{14,20}$/.test(String(t || ''))),
+  )];
+  if (!unique.length) return '';
+  const blob = String(text || '');
+  return unique.sort((a, b) => {
+    const posA = blob.lastIndexOf(a);
+    const posB = blob.lastIndexOf(b);
+    if (posB !== posA) return posB - posA;
+    return a.length - b.length;
+  })[0];
+}
+
 function resolveProductFinishedNumeric(text) {
   const yyEmbedded = numericsEmbeddedInYyBarcodes(text);
 
   const fromLines = numericsFromOwnOcrLines(text);
-  if (fromLines.length) {
+  const fromLineSku = pickFinishedCatalogNumericSku(
+    fromLines.filter((t) => !yyEmbedded.has(t)),
+    text,
+  );
+  if (fromLineSku) {
     return {
-      sku: fromLines.sort((a, b) => b.length - a.length)[0],
+      sku: fromLineSku,
       source: 'numeric_barcode_line',
     };
   }
@@ -357,18 +373,20 @@ function resolveProductFinishedNumeric(text) {
   const numeric = barcodes
     .filter((t) => /^\d{14,20}$/.test(t))
     .filter((t) => !yyEmbedded.has(t));
-  if (numeric.length) {
+  const fromBarcodeSku = pickFinishedCatalogNumericSku(numeric, text);
+  if (fromBarcodeSku) {
     return {
-      sku: numeric.sort((a, b) => b.length - a.length)[0],
+      sku: fromBarcodeSku,
       source: 'numeric_barcode',
     };
   }
   const blob = normalizeBlob(text);
   const embedded = (blob.match(/\b(\d{14,20})\b/g) || [])
     .filter((t) => !yyEmbedded.has(t));
-  if (embedded.length) {
+  const fromOcrSku = pickFinishedCatalogNumericSku(embedded, text);
+  if (fromOcrSku) {
     return {
-      sku: embedded.sort((a, b) => b.length - a.length)[0],
+      sku: fromOcrSku,
       source: 'numeric_ocr',
     };
   }
@@ -379,7 +397,23 @@ function resolveProductFinishedNumeric(text) {
  * Finished-product labels (e.g. Lenor): catalog SKU is the 14–20 digit Code 128
  * (3002780951000060), not factory X… carton barcodes or BESTREST lot text.
  */
+function resolveTuFinishedMultiUnit(text) {
+  const tuRaw = extractTuPacketSkus(text);
+  if (!tuRaw.length) return { sku: '', source: 'none' };
+  const picked = pickLastOccurrenceToken(text, tuRaw);
+  const sku = normalizeWarehouseProductSku(picked) || normalizeWarehousePacketScan(picked) || picked;
+  if (!sku || !isTuFinishedMultiUnitLabelSku(sku)) {
+    return { sku: '', source: 'none' };
+  }
+  return { sku, source: 'tu_finished_barcode' };
+}
+
 function resolveProductFinishedAuto(text) {
+  const tuFinished = resolveTuFinishedMultiUnit(text);
+  if (tuFinished.sku) {
+    return tuFinished;
+  }
+
   const packetCarton = resolvePacketCarton(text);
   if (packetCarton.sku && isPacketSkuShape(packetCarton.sku)) {
     return { sku: '', source: 'packet_carton_not_finished' };

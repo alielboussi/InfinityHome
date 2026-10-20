@@ -7,9 +7,7 @@ import {
   saveWarehousePacket,
 } from './services/warehouseCatalog';
 import { normalizeWarehousePacketScan } from './utils/warehouseScanResolver';
-import WarehouseLabelImageImport, {
-  WAREHOUSE_LABEL_SCAN_MODE,
-} from './components/WarehouseLabelImageImport';
+import WarehouseFieldOcrPaste, { WAREHOUSE_LABEL_OCR_FIELD } from './components/WarehouseFieldOcrPaste';
 import { LABEL_NAME_MEMORY_KIND } from './utils/warehouseLabelOcrName';
 import { rememberLabelNameSync } from './utils/warehouseLabelNameMemory';
 
@@ -225,21 +223,22 @@ export default function WarehousePacketEditPage() {
             <span className="warehouse-kind-badge warehouse-kind-badge--packet">Packet</span>
             {isNew ? 'New packet' : 'Edit packet'}
           </h3>
-          <WarehouseLabelImageImport
-            buttonLabel="Import label image"
-            mode={WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON}
-            disabled={saving}
-            onResolved={({ sku, name }) => {
-              setPacketForm((f) => ({
-                ...f,
-                sku,
-                ...(name ? { name } : {}),
-              }));
-              focusSkuForNextScan();
-            }}
-          />
+          <p className="warehouse-field-hint" style={{ marginTop: 0 }}>
+            All label types: use <strong>📷 OCR text</strong> on SKU and name — printed text only, not barcodes.
+          </p>
           <div className="warehouse-field">
-            <label htmlFor="wh-packet-sku-edit">SKU (Code 128)</label>
+            <label htmlFor="wh-packet-sku-edit">
+              SKU (Code 128)
+              <WarehouseFieldOcrPaste
+                field={WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU}
+                disabled={saving}
+                onValue={(value) => {
+                  const normalized = normalizeWarehousePacketScan(value) || value;
+                  setPacketForm((f) => ({ ...f, sku: normalized }));
+                  focusSkuForNextScan();
+                }}
+              />
+            </label>
             <input
               ref={skuInputRef}
               id="wh-packet-sku-edit"
@@ -265,7 +264,14 @@ export default function WarehousePacketEditPage() {
             />
           </div>
           <div className="warehouse-field">
-            <label htmlFor="wh-packet-name-edit">Name</label>
+            <label htmlFor="wh-packet-name-edit">
+              Name
+              <WarehouseFieldOcrPaste
+                field={WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME}
+                disabled={saving}
+                onValue={(value) => setPacketForm((f) => ({ ...f, name: value }))}
+              />
+            </label>
             <input
               id="wh-packet-name-edit"
               required

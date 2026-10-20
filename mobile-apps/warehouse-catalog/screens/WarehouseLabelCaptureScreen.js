@@ -15,6 +15,10 @@ import {
   resolveWarehouseLabelFromText,
   WAREHOUSE_LABEL_SCAN_MODE,
 } from '../shared/warehouseLabelScanResolve';
+import {
+  extractWarehouseLabelFieldFromOcr,
+  warehouseLabelOcrFieldHint,
+} from '../shared/warehouseLabelFieldOcr';
 import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
 import { pickLabelNameForSku } from '../shared/warehouseLabelNameMemory';
 
@@ -30,10 +34,11 @@ const MODE_HINTS = {
   [WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_NUMERIC]:
     'Capture the numeric barcode on the label. The full sticker does not need to fit in the frame.',
   [WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO]:
-    'Capture the label. SKU goes to the product; descriptive text goes to Turkish name. Edit and save to remember corrections.',
+    'Finished product: title (e.g. Lenor Ortasehpa 1B or Prizma Sandalye 2LI Turkuaz) plus small bottom barcode — numeric SKU (Type 1) or TU… code (Type 2). Partial label OK.',
 };
 
 export default function WarehouseLabelCaptureScreen({ navigation, route }) {
+  const ocrField = route.params?.ocrField || null;
   const mode = route.params?.mode || WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO;
   const returnScreen = route.params?.returnScreen || 'PacketForm';
   const labelScanTarget = route.params?.labelScanTarget;
@@ -45,7 +50,49 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
   const [lastRead, setLastRead] = useState('');
   const [suggestions, setSuggestions] = useState([]);
 
-  const hint = useMemo(() => MODE_HINTS[mode] || MODE_HINTS[WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO], [mode]);
+  const hint = useMemo(() => {
+    if (ocrField) return warehouseLabelOcrFieldHint(ocrField);
+    return MODE_HINTS[mode] || MODE_HINTS[WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO];
+  }, [mode, ocrField]);
+
+  const applyFieldValue = useCallback((value) => {
+    if (!value) {
+      setMessage('No text found for this field. Frame the printed line and try again.');
+      return;
+    }
+    setLastRead(value);
+    navigation.navigate({
+      name: returnScreen,
+      params: {
+        labelOcrField: ocrField,
+        labelFieldValue: value,
+      },
+      merge: true,
+    });
+  }, [navigation, ocrField, returnScreen]);
+
+  const resolveFieldFromText = useCallback(async (text) => {
+    const raw = String(text || '').trim();
+    setManualText(raw);
+    if (!raw) {
+      setSuggestions([]);
+      setMessage('Paste or capture label text first.');
+      return;
+    }
+    const { value, candidates } = extractWarehouseLabelFieldFromOcr(raw, ocrField);
+    const alts = candidates.filter((c) => c && c !== value);
+    setSuggestions(alts.map((c) => ({ sku: c })));
+    if (value) {
+      setMessage('');
+      applyFieldValue(value);
+      return;
+    }
+    if (alts.length) {
+      setMessage('Tap the best match below, or edit the text.');
+    } else {
+      setMessage('Could not read this field from the text. Adjust framing and try again.');
+    }
+  }, [applyFieldValue, ocrField]);
 
   const applyResolved = useCallback(async (result) => {
     if (!result?.sku) {
@@ -76,6 +123,10 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
   }, [labelScanTarget, navigation, returnScreen]);
 
   const resolveFromText = useCallback(async (text, { keepMessage } = {}) => {
+    if (ocrField) {
+      await resolveFieldFromText(text);
+      return;
+    }
     const raw = String(text || '').trim();
     setManualText(raw);
     if (!raw) {
@@ -103,19 +154,27 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
         'Could not find a SKU in this capture. Move closer to the barcode or printed code and try again.',
       );
     }
-  }, [applyResolved, labelScanTarget, mode]);
+  }, [applyResolved, labelScanTarget, mode, ocrField, resolveFieldFromText]);
 
   const applySuggestion = useCallback(async (sku) => {
+    if (ocrField) {
+      applyFieldValue(sku);
+      return;
+    }
     const base = resolveWarehouseLabelFromText(manualText, mode, { target: labelScanTarget });
     await applyResolved({ ...base, sku, source: 'user_pick' });
-  }, [applyResolved, labelScanTarget, manualText, mode]);
+  }, [applyResolved, applyFieldValue, labelScanTarget, manualText, mode, ocrField]);
 
   const runOcrOnPhoto = useCallback(async (uri) => {
     try {
       const result = await TextRecognition.recognize(uri);
       const raw = String(result?.text || '').trim();
       if (!raw) {
-        setMessage('No text detected. Point at the barcode or SKU and capture again.');
+        setMessage(
+          ocrField
+            ? 'No text detected. Frame the printed line for this field and capture again.'
+            : 'No text detected. Point at the barcode or SKU and capture again.',
+        );
         return;
       }
       await resolveFromText(raw);
@@ -181,11 +240,13 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
       <View style={styles.cameraBox}>
         <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} autofocus="on" />
         <View pointerEvents="none" style={styles.frameOverlay}>
-          <Text style={styles.frameHint}>Aim at barcode or SKU — partial label OK</Text>
+          <Text style={styles.frameHint}>
+            {ocrField ? 'Printed text only — partial label OK' : 'Aim at barcode or SKU — partial label OK'}
+          </Text>
         </View>
       </View>
       <Pressable style={styles.btn} onPress={captureAndScan} disabled={busy}>
-        <Text style={styles.btnText}>{busy ? 'Reading label…' : 'Capture label'}</Text>
+        <Text style={styles.btnText}>{busy ? 'Reading…' : (ocrField ? 'Capture text' : 'Capture label')}</Text>
       </Pressable>
 
       <Text style={styles.or}>Or paste / edit text from the label</Text>
@@ -212,7 +273,9 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
 
       {suggestions.length ? (
         <View style={styles.suggestBlock}>
-          <Text style={styles.suggestTitle}>Possible SKUs from this capture</Text>
+          <Text style={styles.suggestTitle}>
+            {ocrField ? 'Other readings from this capture' : 'Possible SKUs from this capture'}
+          </Text>
           {suggestions.map((item) => (
             <Pressable
               key={item.sku}

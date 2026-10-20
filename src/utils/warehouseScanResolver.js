@@ -71,14 +71,18 @@ function stripIstikbalXDigitScanPrefix(code) {
   return body;
 }
 
-/**
- * Carton / packet SKU shape: classic `…P01…` or Istikbal bottom barcode `TU20…`.
- */
+/** BOM packet carton (`…P01…`). Not TU… labels (Type 2 finished multi-unit boxes). */
 export function isWarehousePacketCartonSku(sku) {
   const s = canonicalWarehouseSku(String(sku || '').trim());
   if (!s) return false;
-  if (/^TU\d{2}[A-Z0-9]{8,}$/i.test(s)) return true;
   return /P\d{2}/i.test(s);
+}
+
+/** Type 2 label: small bottom Code 128, human-readable `TU20…` (e.g. 2 chairs in one sellable box). */
+export function isTuFinishedMultiUnitLabelSku(sku) {
+  const s = canonicalWarehouseSku(String(sku || '').trim());
+  if (!s) return false;
+  return /^TU\d{2}[A-Z0-9]{8,}$/i.test(s);
 }
 
 /** Extra keys so TU20… packet matches 20… scan body and vice versa. */

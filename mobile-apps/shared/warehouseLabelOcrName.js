@@ -17,6 +17,7 @@ const IGNORE_LINE_RE = [
   /^UNITE\s+KODU/i,
   /^UNIT\s+CODE/i,
   /^KODE\s+DER\b/i,
+  /^UNITE\b/i,
   /^URUN\s+ADI\s*\/\s*PRODUCT/i,
   /^PRODUCT\s*NAME/i,
   /^PCK\.?\s*NO/i,
@@ -37,7 +38,9 @@ function cleanLine(line) {
 
 function isNoiseLine(line) {
   const t = cleanLine(line);
-  if (!t || t.length < 3) return true;
+  if (!t) return true;
+  if (/^[0-9]{1,3}[A-Z]?$/i.test(t)) return false;
+  if (t.length < 3) return true;
   if (IGNORE_LINE_RE.some((re) => re.test(t))) return true;
   const tight = t.replace(/[\s-]/g, '');
   if (/^TU\d{2}[A-Z0-9]{8,}$/i.test(tight)) return true;
@@ -72,7 +75,6 @@ function titleCasePacketHeadline(name) {
     .join(' ');
 }
 
-/** Large title block on carton labels (e.g. PRIZMA SANDALYE + 2LI TURKUAZ). */
 function fromPacketTitleBlock(text) {
   const lines = linesFromOcr(text).map(cleanLine).filter((line) => line && !isNoiseLine(line));
   for (let i = 0; i < lines.length - 1; i += 1) {
@@ -106,6 +108,7 @@ function scoreProductTurkishLine(line) {
   if (/\s/.test(line) && !/\/\d{8,}/.test(line)) score += 20;
   if (/\//.test(line) && /[A-ZÇĞİÖŞÜ]{3,}/i.test(line)) score += 35;
   if (/\b(CEVIZ|GRI|SIYAH|BEYAZ|KAHVE|ANTRASIT|VENA)\b/i.test(line)) score += 25;
+  if (/\bGVDPKT\b/i.test(line) || /\bB\d+LENOR\b/i.test(line)) score -= 70;
   if (/\b(HOHER|NUSSBAUM|NEBELIG|WALNUT|ANTHRACITE|MISTY)\b/i.test(line)) score -= 45;
   if (/BESTREST-Z-/i.test(line)) score -= 120;
   if (/^[A-Z0-9]+-Z-\d{4}\//i.test(line.replace(/\s/g, ''))) score -= 100;
@@ -127,17 +130,30 @@ function linesFromOcr(text) {
     .filter(Boolean);
 }
 
+function fromFinishedProductTitleBlock(text) {
+  const lines = linesFromOcr(text).map(cleanLine).filter((line) => line && !isNoiseLine(line));
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    const a = lines[i];
+    const b = lines[i + 1];
+    if (/X\d/i.test(a) || /X\d/i.test(b)) continue;
+    if (/GVDPKT|PKT|BESTREST/i.test(a) || /GVDPKT|PKT/i.test(b)) continue;
+    const titleA = /^[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ\s]{4,36}$/i.test(a) && /\b(LENOR|ORTASEHPA|SANDALYE|KOLTUK)\b/i.test(a);
+    const suffixB = /^[0-9]{1,3}[A-Z]?$/i.test(b);
+    if (titleA && suffixB) {
+      return `${a} ${b}`.replace(/\s+/g, ' ').trim();
+    }
+  }
+  const compact = lines.find((l) => /^LENOR\s+ORTASEHPA\b/i.test(l) && !/GVDPKT/i.test(l));
+  if (compact) return compact.replace(/\s+GVDPKT.*$/i, '').trim();
+  return '';
+}
+
 function fromPckName(text) {
   const m = text.match(/PCK\.?\s*NAME\s*:?\s*(.+?)(?:\n|$)/i);
   if (!m) return '';
   return cleanLine(m[1]).replace(/\s*\/\s*$/, '');
 }
 
-/**
- * @param {string} text Raw OCR
- * @param {{ intent?: 'packet' | 'product_turkish' }} [options]
- * @returns {string}
- */
 export function extractSuggestedNameFromLabelText(text, options = {}) {
   const intent = options.intent === 'product_turkish' ? 'product_turkish' : 'packet';
   const blob = String(text || '');
@@ -147,6 +163,11 @@ export function extractSuggestedNameFromLabelText(text, options = {}) {
     if (pck) return pck;
     const titleBlock = fromPacketTitleBlock(blob);
     if (titleBlock) return titleBlock;
+  }
+
+  if (intent === 'product_turkish') {
+    const finishedTitle = fromFinishedProductTitleBlock(blob);
+    if (finishedTitle) return finishedTitle;
   }
 
   const lines = linesFromOcr(blob).filter((line) => !isNoiseLine(line));
