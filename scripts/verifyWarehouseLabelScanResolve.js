@@ -83,6 +83,29 @@ const webPath = path.join(__dirname, '../src/utils/warehouseLabelScanResolve.js'
   );
   assert.strictEqual(serraAuto.sku, '', 'carton labels are not finished numeric products');
 
+  const prizmaPacket = `
+    PRIZMA SANDALYE
+    2LI TURKUAZ
+    X220APRZMV600000002-191112029387
+    PRIZMA SANDALYE 2LI 1.PKT TURKUAZ (TEK PARCA)
+    TU20APRZMV600000002
+  `;
+  const prizmaPkt = resolveWarehouseLabelFromText(
+    prizmaPacket,
+    WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON,
+  );
+  assert.strictEqual(prizmaPkt.sku, 'TU20APRZMV600000002');
+  assert.ok(
+    /prizma sandalye/i.test(prizmaPkt.suggestedName) && /2li turkuaz/i.test(prizmaPkt.suggestedName),
+    `expected title name, got ${prizmaPkt.suggestedName}`,
+  );
+
+  const prizmaAuto = resolveWarehouseLabelFromText(
+    prizmaPacket,
+    WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO,
+  );
+  assert.strictEqual(prizmaAuto.sku, '', 'TU carton is a packet, not a finished product');
+
   console.log('verifyWarehouseLabelScanResolve: ok');
 })().catch((err) => {
   console.error(err);

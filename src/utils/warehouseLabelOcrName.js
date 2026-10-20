@@ -39,7 +39,9 @@ function isNoiseLine(line) {
   const t = cleanLine(line);
   if (!t || t.length < 3) return true;
   if (IGNORE_LINE_RE.some((re) => re.test(t))) return true;
-  if (/^\d{2}[A-Z0-9]{6,}$/i.test(t.replace(/[\s-]/g, ''))) return true;
+  const tight = t.replace(/[\s-]/g, '');
+  if (/^TU\d{2}[A-Z0-9]{8,}$/i.test(tight)) return true;
+  if (/^\d{2}[A-Z0-9]{6,}$/i.test(tight)) return true;
   if (/^[\d\s./:-]+$/.test(t)) return true;
   return false;
 }
@@ -48,10 +50,53 @@ function scorePacketLine(line) {
   let score = Math.min(line.length, 80);
   if (/PCK\.?\s*NAME/i.test(line)) score += 120;
   if (/\bPK-\d/i.test(line)) score += 40;
+  if (/\b(SANDALYE|KOLTUK|SEHPA|KOMODIN|MASA)\b/i.test(line)) score += 35;
+  if (/\b\d+LI\b/i.test(line)) score += 28;
+  if (/\bPKT\b/i.test(line) || /\(TEK\s*PARCA\)/i.test(line)) score -= 85;
+  if (/\d\.?PKT/i.test(line)) score -= 70;
   if (/\/\s*[A-Za-z]/.test(line)) score += 25;
   if (/^[A-Z][a-z]/.test(line)) score += 15;
   if (line.length < 6) score -= 30;
+  if (line.length > 55) score -= 25;
   return score;
+}
+
+function titleCasePacketHeadline(name) {
+  return String(name || '')
+    .split(/\s+/)
+    .map((w) => {
+      if (/^\d+LI$/i.test(w)) return w.toUpperCase();
+      if (w.length <= 2) return w.toUpperCase();
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+/** Large title block on carton labels (e.g. PRIZMA SANDALYE + 2LI TURKUAZ). */
+function fromPacketTitleBlock(text) {
+  const lines = linesFromOcr(text).map(cleanLine).filter((line) => line && !isNoiseLine(line));
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    const a = lines[i];
+    const b = lines[i + 1];
+    if (/X\d/i.test(a) || /X\d/i.test(b)) continue;
+    if (/PKT|TEK\s*PARCA/i.test(a) || /PKT|TEK\s*PARCA/i.test(b)) continue;
+    const titleA = /^[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ0-9\s]{3,40}$/i.test(a) && /[A-Z]{4,}/i.test(a);
+    const titleB = /^\d+LI\b/i.test(b) || /^[A-ZÇĞİÖŞÜ]{2,}(\s+[A-ZÇĞİÖŞÜ]+){0,2}$/i.test(b);
+    if (titleA && titleB && a.length <= 36 && b.length <= 28) {
+      return titleCasePacketHeadline(`${a} ${b}`.replace(/\s+/g, ' ').trim());
+    }
+  }
+  const longDesc = lines.find(
+    (l) => /\b(SANDALYE|KOLTUK|SEHPA)\b/i.test(l) && /\b\d+LI\b/i.test(l),
+  );
+  if (longDesc) {
+    const trimmed = longDesc
+      .replace(/\s*\d\.?PKT.*$/i, '')
+      .replace(/\s*\(TEK\s*PARCA\)\s*/gi, '')
+      .trim();
+    if (trimmed) return titleCasePacketHeadline(trimmed);
+  }
+  return '';
 }
 
 function scoreProductTurkishLine(line) {
@@ -100,6 +145,8 @@ export function extractSuggestedNameFromLabelText(text, options = {}) {
   if (intent === 'packet') {
     const pck = fromPckName(blob);
     if (pck) return pck;
+    const titleBlock = fromPacketTitleBlock(blob);
+    if (titleBlock) return titleBlock;
   }
 
   const lines = linesFromOcr(blob).filter((line) => !isNoiseLine(line));

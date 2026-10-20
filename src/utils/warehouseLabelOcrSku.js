@@ -4,6 +4,7 @@
  */
 
 const SKU_TOKEN_RE = /\b(\d{2}[A-Z]{2,6}\d{3,}[A-Z0-9]{0,16})\b/gi;
+const TU_PACKET_SKU_RE = /\b(TU\d{2}[A-Z0-9]{8,24})\b/gi;
 
 /** Tokens that are not product SKUs on typical Istikbal-style labels. */
 const IGNORE_EXACT = new Set([
@@ -26,12 +27,14 @@ function isPlausibleSku(token) {
   if (!token || token.length < 8 || token.length > 28) return false;
   if (/^\d+$/.test(token)) return false;
   if (IGNORE_EXACT.has(token.toLowerCase())) return false;
+  if (/^TU\d{2}[A-Z0-9]+$/i.test(token)) return true;
   if (!/^\d{2}[A-Z]/.test(token)) return false;
   return true;
 }
 
 function scoreSkuCandidate(token) {
   let score = token.length;
+  if (/^TU\d{2}/i.test(token)) score += 45;
   if (/P\d{2}/.test(token)) score -= 30;
   if (token.startsWith('22')) score += 5;
   if (token.includes('AYS')) score += 10;
@@ -53,6 +56,16 @@ export function extractSkuCandidatesFromLabelText(text) {
   let match;
   const re = new RegExp(SKU_TOKEN_RE.source, 'gi');
   while ((match = re.exec(blob)) !== null) {
+    const token = normalizeToken(match[1]);
+    if (!isPlausibleSku(token)) continue;
+    const key = token.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(token);
+  }
+
+  const tuRe = new RegExp(TU_PACKET_SKU_RE.source, 'gi');
+  while ((match = tuRe.exec(blob)) !== null) {
     const token = normalizeToken(match[1]);
     if (!isPlausibleSku(token)) continue;
     const key = token.toLowerCase();

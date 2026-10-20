@@ -20,6 +20,7 @@ import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
 import {
   expandWarehouseSkuMatchKeys,
   isExactPacketSkuScan,
+  isWarehousePacketCartonSku,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
   normalizeWarehouseWedgeScanInput,
@@ -322,7 +323,7 @@ export default function ProductFormScreen({ route, navigation }) {
         setNotice(`Added packet from label: ${scanned}`);
       } else if (!bomEditMode) {
         const packetSku = normalizeWarehousePacketScan(scanned) || String(scanned || '').trim();
-        if (finishedOnly && /P\d{2}/i.test(packetSku)) {
+        if (finishedOnly && isWarehousePacketCartonSku(packetSku)) {
           setNotice(
             `This is a packet carton label (${packetSku}). Create it under Warehouse Packets, or turn off finished-only and link packets on the product BOM.`,
           );

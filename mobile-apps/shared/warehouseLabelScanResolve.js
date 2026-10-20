@@ -10,6 +10,7 @@ import {
 } from './warehouseLabelOcrName';
 import {
   expandWarehouseSkuMatchKeys,
+  isWarehousePacketCartonSku,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
 } from './warehouseScanResolver';
@@ -26,6 +27,7 @@ const BARCODE_TOKEN_RES = [
   /\bX\d[A-Z0-9]{8,}-\d{6,}\b/gi,
   /\bX\d[A-Z0-9]{10,}\b/gi,
   /\bYY\d{8,}[A-Z0-9]+\b/gi,
+  /\bTU\d{2}[A-Z0-9]{8,24}\b/gi,
   /\bXX-\d{6,}\b/gi,
   /\b\d{14,20}\b/g,
 ];
@@ -90,6 +92,7 @@ function collectBarcodeMatches(blob, found) {
   pushBoundedMatches(found, /YY\d{8,}[A-Z0-9]{4,40}/gi, tight);
   pushBoundedMatches(found, /X\d[A-Z0-9]{8,}-\d{6,}/gi, tight);
   pushBoundedMatches(found, /X\d[A-Z0-9]{10,48}/gi, tight);
+  pushBoundedMatches(found, /TU\d{2}[A-Z0-9]{8,24}/gi, tight);
   pushBoundedMatches(found, /\d{14,20}/g, tight);
 }
 
@@ -146,7 +149,7 @@ export function listWarehouseLabelSkuSuggestions(text, mode, options = {}) {
   });
 
   extractSkuCandidatesFromLabelText(text).forEach((token, i) => {
-    const score = 50 - i + (isPacket && /P\d{2}/i.test(token) ? 20 : 0);
+    const score = 50 - i + (isPacket && isWarehousePacketCartonSku(token) ? 20 : 0);
     add(token, 'text_ocr', score);
   });
 
@@ -166,7 +169,37 @@ function skuKeysMatch(a, b) {
 }
 
 function isPacketSkuShape(sku) {
-  return /P\d{2}/i.test(String(sku || ''));
+  return isWarehousePacketCartonSku(sku);
+}
+
+function extractTuPacketSkus(text) {
+  const found = [];
+  const blob = String(text || '');
+  const re = /\bTU\d{2}[A-Z0-9]{8,24}\b/gi;
+  let m;
+  while ((m = re.exec(blob)) !== null) {
+    found.push(m[0].toUpperCase());
+  }
+  blob.split(/\r?\n/).forEach((line) => {
+    const tight = String(line).replace(/\s/g, '').toUpperCase();
+    if (/^TU\d{2}[A-Z0-9]{8,24}$/.test(tight)) found.push(tight);
+  });
+  return uniqueTokens(found);
+}
+
+function pickLastOccurrenceToken(text, tokens) {
+  const upper = String(text || '').toUpperCase();
+  let best = '';
+  let bestIdx = -1;
+  for (const token of tokens) {
+    const t = String(token || '').toUpperCase();
+    const idx = upper.lastIndexOf(t);
+    if (idx > bestIdx) {
+      bestIdx = idx;
+      best = t;
+    }
+  }
+  return best;
 }
 
 function headerSkuCandidates(text) {
@@ -210,6 +243,13 @@ function matchYyToHeader(yyTokens, headerSku) {
 }
 
 function resolvePacketCarton(text) {
+  const tuRaw = extractTuPacketSkus(text);
+  if (tuRaw.length) {
+    const picked = pickLastOccurrenceToken(text, tuRaw);
+    const sku = normalizeWarehousePacketScan(picked) || picked;
+    if (sku) return { sku, source: 'tu_barcode' };
+  }
+
   const barcodes = extractBarcodeLikeTokens(text);
   const packetFromBarcodes = barcodes
     .map((t) => normalizeWarehousePacketScan(t))
@@ -334,6 +374,11 @@ function resolveProductFinishedNumeric(text) {
  * (3002780951000060), not factory X… carton barcodes or BESTREST lot text.
  */
 function resolveProductFinishedAuto(text) {
+  const packetCarton = resolvePacketCarton(text);
+  if (packetCarton.sku && isPacketSkuShape(packetCarton.sku)) {
+    return { sku: '', source: 'packet_carton_not_finished' };
+  }
+
   const numeric = resolveProductFinishedNumeric(text);
   if (numeric.sku) {
     return numeric;

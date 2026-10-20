@@ -71,6 +71,16 @@ function stripIstikbalXDigitScanPrefix(code) {
   return body;
 }
 
+/**
+ * Carton / packet SKU shape: classic `…P01…` or Istikbal bottom barcode `TU20…`.
+ */
+export function isWarehousePacketCartonSku(sku) {
+  const s = canonicalWarehouseSku(String(sku || '').trim());
+  if (!s) return false;
+  if (/^TU\d{2}[A-Z0-9]{8,}$/i.test(s)) return true;
+  return /P\d{2}/i.test(s);
+}
+
 /** Extra keys so TU20… packet matches 20… scan body and vice versa. */
 export function expandWarehouseSkuMatchKeys(sku) {
   const keys = new Set();

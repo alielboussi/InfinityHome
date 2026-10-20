@@ -304,7 +304,7 @@ export default function WarehouseProductEditPage() {
     return analyzeAssemblyPacketBom(required, selected);
   }, [linkedPacketsForForm, productForm.packet_count]);
 
-  const addPacketToProduct = (id) => {
+  const addPacketToProduct = useCallback((id) => {
     const packetId = String(id);
     if (!packetId || linkedPacketIds.has(packetId)) return;
     const packet = (packets || []).find((p) => String(p.id) === packetId);
@@ -313,7 +313,7 @@ export default function WarehouseProductEditPage() {
       ...f,
       packet_links: [...(f.packet_links || []), { packet_id: packetId, qty_per_unit: defaultQty }],
     }));
-  };
+  }, [linkedPacketIds, packets]);
 
   const removePacketFromProduct = (packetId) => {
     setProductForm((f) => ({
