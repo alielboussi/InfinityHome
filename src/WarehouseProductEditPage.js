@@ -20,7 +20,7 @@ import {
   normalizeAssemblyPacketRows,
 } from './utils/warehouseAssemblyPacketPool';
 import { isWarehouseProductAssembly } from './utils/warehouseCatalogHierarchy';
-import { normalizeWarehousePacketScan, normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
+import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import WarehouseFieldOcrPaste, { WAREHOUSE_LABEL_OCR_FIELD } from './components/WarehouseFieldOcrPaste';
 import { LABEL_NAME_MEMORY_KIND } from './utils/warehouseLabelOcrName';
 import {

@@ -11,6 +11,11 @@ import {
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
 } from './warehouseScanResolver.js';
+import {
+  disambiguateZeroAndLetterOInSku,
+  normalizeSlashedZeroGlyphs,
+  normalizeSupplierZeroAndLetterOcrText,
+} from './warehouseLabelOcrZeroO.js';
 
 export const WAREHOUSE_LABEL_OCR_FIELD = {
   PACKET_SKU: 'packet_sku',
@@ -42,7 +47,14 @@ function linesFromBlob(text) {
 }
 
 function tightToken(line) {
-  return String(line || '').replace(/\s/g, '').toUpperCase();
+  return disambiguateZeroAndLetterOInSku(String(line || '').replace(/\s/g, ''));
+}
+
+function preprocessFieldOcrText(text, field) {
+  const isSku = field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU
+    || field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU;
+  if (isSku) return normalizeSupplierZeroAndLetterOcrText(text, 'sku');
+  return normalizeSlashedZeroGlyphs(text);
 }
 
 function scorePacketSkuCandidate(token, index) {
@@ -94,7 +106,7 @@ function extractPacketSkuCandidates(text) {
 
 function extractAfterUniteKodu(text) {
   const blob = String(text || '');
-  const re = /UNITE\s+KODU[^\n]*\n+([A-Z0-9][A-Z0-9\s]{5,40})/gi;
+  const re = /UNITE\s+KODU[^\n]*\n+([A-Z0-9][A-Z0-9]{5,26})\b/gi;
   const found = [];
   let m;
   while ((m = re.exec(blob)) !== null) {
@@ -181,7 +193,7 @@ function extractPacketNameFromOcr(text) {
   const suggested = extractSuggestedNameFromLabelText(blob, { intent: 'packet' });
   if (suggested) return suggested;
   const lines = linesFromBlob(blob).filter((l) => !/^(X|YY)\d/i.test(tightToken(l)));
-  const hit = lines.find((l) => /\bPK-\d/i.test(l) || /\//.test(l) && /[A-Z]{4,}/i.test(l));
+  const hit = lines.find((l) => /\bPK-\d/i.test(l) || (/\//.test(l) && /[A-Z]{4,}/i.test(l)));
   return hit ? hit.slice(0, 160) : '';
 }
 
@@ -189,7 +201,7 @@ function extractPacketNameFromOcr(text) {
  * @returns {{ value: string, candidates: string[] }}
  */
 export function extractWarehouseLabelFieldFromOcr(text, field) {
-  const blob = String(text || '').trim();
+  const blob = preprocessFieldOcrText(String(text || '').trim(), field);
   if (!blob) return { value: '', candidates: [] };
 
   switch (field) {
