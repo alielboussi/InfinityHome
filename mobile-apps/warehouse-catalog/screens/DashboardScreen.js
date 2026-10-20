@@ -1,49 +1,21 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOutFirebase } from '../shared/firebase';
 import { invalidateWarehouseCatalogCache } from '../shared/warehouseCatalogStore';
 import {
   getMobileDashboardNavItems,
-  isWarehouseProductTurkishSyncAllowed,
   MOBILE_APP_DISPLAY_NAME,
 } from '../shared/mobileAccessManifest';
-import { exportProductTurkishEntriesFromDevice } from '../shared/warehouseLabelNameMemory';
-import { syncProductTurkishNamesToCatalog } from '../shared/warehouseTurkishNameSync';
 import { theme } from '../shared/theme';
 
 export default function DashboardScreen({ grant, userEmail, userDisplayName, navigation }) {
   const insets = useSafeAreaInsets();
   const items = getMobileDashboardNavItems(grant, userEmail);
   const [signingOut, setSigningOut] = useState(false);
-  const [turkishSyncing, setTurkishSyncing] = useState(false);
-  const [turkishSyncNote, setTurkishSyncNote] = useState('');
-  const canSyncTurkish = isWarehouseProductTurkishSyncAllowed(grant);
 
   const openScreen = (item) => {
     navigation.navigate(item.routeName);
-  };
-
-  const handleTurkishSync = async () => {
-    if (turkishSyncing) return;
-    setTurkishSyncNote('');
-    setTurkishSyncing(true);
-    try {
-      const entries = await exportProductTurkishEntriesFromDevice();
-      if (!entries.length) {
-        setTurkishSyncNote('No saved Turkish names on this phone.');
-        return;
-      }
-      setTurkishSyncNote(`Uploading ${entries.length} names…`);
-      const totals = await syncProductTurkishNamesToCatalog(entries, { mode: 'overwrite' });
-      setTurkishSyncNote(
-        `Synced: ${totals.updated} products updated. ${totals.unmatched} SKUs had no catalog match.`,
-      );
-    } catch (err) {
-      setTurkishSyncNote(err?.message || 'Sync failed.');
-    } finally {
-      setTurkishSyncing(false);
-    }
   };
 
   const handleSignOut = async () => {
@@ -95,29 +67,6 @@ export default function DashboardScreen({ grant, userEmail, userDisplayName, nav
               </Pressable>
             ))
           )}
-          {canSyncTurkish ? (
-            <View style={styles.syncCard}>
-              <Text style={styles.syncTitle}>Turkish names on this phone</Text>
-              <Text style={styles.hint}>
-                Upload all label Turkish names saved on this device to the warehouse catalog (web portal).
-              </Text>
-              <Pressable
-                style={({ pressed }) => [styles.syncBtn, pressed && styles.cardPressed]}
-                onPress={handleTurkishSync}
-                disabled={turkishSyncing}
-                accessibilityRole="button"
-              >
-                {turkishSyncing ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.syncBtnText}>Upload to warehouse catalog</Text>
-                )}
-              </Pressable>
-              {turkishSyncNote ? (
-                <Text style={styles.syncNote}>{turkishSyncNote}</Text>
-              ) : null}
-            </View>
-          ) : null}
         </View>
       </ScrollView>
 
@@ -199,26 +148,6 @@ const styles = StyleSheet.create({
   cardText: { flex: 1, minWidth: 0 },
   cardTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
   chevron: { color: theme.primary, fontSize: 28, fontWeight: '300', marginLeft: theme.space.sm },
-  syncCard: {
-    marginTop: theme.space.lg,
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: theme.space.lg,
-  },
-  syncTitle: { color: theme.text, fontWeight: '700', fontSize: 16, marginBottom: theme.space.sm },
-  syncBtn: {
-    marginTop: theme.space.md,
-    backgroundColor: theme.primary,
-    borderRadius: theme.radius,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  syncBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  syncNote: { color: theme.textMuted, marginTop: theme.space.md, lineHeight: 20, fontSize: 13 },
   footer: {
     paddingHorizontal: theme.space.xl,
     paddingTop: theme.space.md,
