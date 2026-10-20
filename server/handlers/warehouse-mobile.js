@@ -19,12 +19,16 @@ import {
   findOrCreateWarehouseColorServer,
   saveAssemblyForMobile,
   savePacketForMobile,
+  bulkSyncProductTurkishNames,
   setAssemblyProductQuantityForMobile,
   setPacketQuantityForMobile,
 } from '../lib/warehouseCatalogMobile.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
-import { isWarehouseProductStockQtyEditAllowed } from '../../src/mobile/mobileAccessManifest.js';
+import {
+  isWarehouseProductStockQtyEditAllowed,
+  isWarehouseProductTurkishSyncAllowed,
+} from '../../src/mobile/mobileAccessManifest.js';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
@@ -188,6 +192,20 @@ async function opAssemblyCreate(body, user) {
   if (error) throw new Error(error.message || 'Failed to create product');
 
   return { assembly: row, created_by: user?.email || null };
+}
+
+async function opProductTurkishNamesSync(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  const allowed = isLoginAccessAdmin(user?.email)
+    || isWarehouseProductTurkishSyncAllowed(grant);
+  if (!allowed) {
+    const err = new Error('You do not have permission to sync Turkish names.');
+    err.status = 403;
+    throw err;
+  }
+  const entries = body.entries || body.items || [];
+  const fillEmptyOnly = body.mode === 'fill_empty' || body.fill_empty_only === true;
+  return bulkSyncProductTurkishNames(getService(), entries, { fillEmptyOnly });
 }
 
 async function opAssemblyProductQuantitySet(body, user) {
@@ -433,6 +451,9 @@ export default async function handler(req, res) {
         break;
       case 'assembly-product-quantity-set':
         result = await opAssemblyProductQuantitySet(body, user);
+        break;
+      case 'product-turkish-names-sync':
+        result = await opProductTurkishNamesSync(body, user);
         break;
       case 'bom-validate':
         result = await opBomValidate(body);

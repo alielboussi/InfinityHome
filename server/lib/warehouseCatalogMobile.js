@@ -9,6 +9,7 @@ import {
 } from '../../src/utils/warehouseAssemblyMath.js';
 import { resolveWarehouseLocation } from '../../src/utils/resolveWarehouseLocation.js';
 import {
+  expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
 } from '../../src/utils/warehouseScanResolver.js';
@@ -666,5 +667,84 @@ export async function setPacketQuantityForMobile(sb, body) {
     warehouseLocationId: locationId,
     assemblyWarehouseQty: assemblyWarehouseQty || {},
     packetWarehouseQty: { [String(packetId)]: nextQty },
+  };
+}
+
+const TURKISH_SYNC_UPDATE_CHUNK = 25;
+const TURKISH_SYNC_MAX_ENTRIES = 200;
+
+/**
+ * Apply device-local Turkish names to warehouse_assemblies.turkish_name by SKU match.
+ */
+export async function bulkSyncProductTurkishNames(sb, entries, options = {}) {
+  const fillEmptyOnly = options.fillEmptyOnly === true;
+  const list = Array.isArray(entries) ? entries : [];
+  if (list.length > TURKISH_SYNC_MAX_ENTRIES) {
+    throw new Error(`At most ${TURKISH_SYNC_MAX_ENTRIES} names per request — send multiple batches.`);
+  }
+
+  const { data: assemblies, error: loadErr } = await sb
+    .from(ASSEMBLIES)
+    .select('id, family_sku, turkish_name');
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load products');
+
+  const assemblyBySkuKey = new Map();
+  (assemblies || []).forEach((row) => {
+    expandWarehouseSkuMatchKeys(row.family_sku).forEach((key) => {
+      if (key && !assemblyBySkuKey.has(key)) {
+        assemblyBySkuKey.set(key, row);
+      }
+    });
+  });
+
+  const now = new Date().toISOString();
+  const pendingById = new Map();
+  let skipped = 0;
+  let unmatched = 0;
+  const unmatchedSample = [];
+
+  list.forEach((entry) => {
+    const turkish = String(entry?.turkish_name || entry?.name || '').trim();
+    const skuRaw = entry?.sku || entry?.sku_key || '';
+    if (!turkish || !skuRaw) return;
+
+    let assembly = null;
+    expandWarehouseSkuMatchKeys(skuRaw).forEach((key) => {
+      if (!assembly && assemblyBySkuKey.has(key)) {
+        assembly = assemblyBySkuKey.get(key);
+      }
+    });
+    if (!assembly) {
+      unmatched += 1;
+      if (unmatchedSample.length < 25) {
+        unmatchedSample.push(String(skuRaw));
+      }
+      return;
+    }
+    if (fillEmptyOnly && String(assembly.turkish_name || '').trim()) {
+      skipped += 1;
+      return;
+    }
+    pendingById.set(String(assembly.id), { id: assembly.id, turkish_name: turkish });
+    assembly.turkish_name = turkish;
+  });
+
+  const pending = [...pendingById.values()];
+  let updated = 0;
+  for (let i = 0; i < pending.length; i += TURKISH_SYNC_UPDATE_CHUNK) {
+    const slice = pending.slice(i, i + TURKISH_SYNC_UPDATE_CHUNK);
+    await Promise.all(slice.map((row) => sb.from(ASSEMBLIES).update({
+      turkish_name: row.turkish_name,
+      updated_at: now,
+    }).eq('id', row.id)));
+    updated += slice.length;
+  }
+
+  return {
+    received: list.length,
+    updated,
+    skipped,
+    unmatched,
+    unmatched_sample: unmatchedSample,
   };
 }

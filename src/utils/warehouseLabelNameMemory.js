@@ -4,8 +4,12 @@
 
 import { normalizeWarehouseSkuKey } from './warehouseAssemblyMath.js';
 import { LABEL_NAME_MEMORY_KIND } from './warehouseLabelOcrName.js';
+import {
+  extractProductTurkishEntriesFromLabelMemory,
+  LABEL_MEMORY_STORAGE_KEY,
+} from './warehouseLabelMemoryEntries.js';
 
-const STORAGE_KEY = 'warehouseLabelNameMemory_v1';
+const STORAGE_KEY = LABEL_MEMORY_STORAGE_KEY;
 
 function emptyStore() {
   return { bySku: {} };
@@ -83,6 +87,11 @@ export function rememberLabelNameSync({ sku, kind, name }) {
 
 export async function rememberLabelName(payload) {
   rememberLabelNameSync(payload);
+}
+
+export function exportProductTurkishEntriesFromBrowser() {
+  const store = readStoreWeb();
+  return extractProductTurkishEntriesFromLabelMemory(store);
 }
 
 export function pickLabelNameForSku({

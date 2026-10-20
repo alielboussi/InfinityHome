@@ -7,6 +7,7 @@ import WarehouseAssemblyInlineSku from './components/WarehouseAssemblyInlineSku'
 import WarehouseAssemblyInlineSpecs from './components/WarehouseAssemblyInlineSpecs';
 import WarehouseAssemblyThumbnail from './components/WarehouseAssemblyThumbnail';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
+import WarehouseTurkishNameSyncPanel from './components/WarehouseTurkishNameSyncPanel';
 import WarehouseColorChip from './components/WarehouseColorChip';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
@@ -297,6 +298,10 @@ export default function WarehouseProductsPage() {
 
       {error ? (
         <div role="alert" style={{ color: '#f87171', marginBottom: 12 }}>{error}</div>
+      ) : null}
+
+      {canManage ? (
+        <WarehouseTurkishNameSyncPanel onSynced={load} />
       ) : null}
 
       <div className="warehouse-catalog-toolbar">

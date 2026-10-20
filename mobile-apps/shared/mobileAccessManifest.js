@@ -33,6 +33,16 @@ export function isMobileScreenAccessAllowed(grant, screenId) {
 }
 
 /** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
+export function isWarehouseProductTurkishSyncAllowed(grant) {
+  if (!grant) return false;
+  if (grant.warehouse_product_stock_qty === 'allow') return true;
+  if (isMobileScreenAccessAllowed(grant, 'warehouse_products')) return true;
+  if (isMobileScreenAccessAllowed(grant, 'warehouse_incomplete_products')) return true;
+  const form = grant.screens?.warehouse_product_form;
+  if (form?.insert === 'allow' || form?.edit === 'allow') return true;
+  return false;
+}
+
 export function isWarehouseProductStockQtyEditAllowed(grant) {
   if (!grant) return false;
   if (grant.warehouse_product_stock_qty === 'allow') return true;
