@@ -584,7 +584,7 @@ export default function WarehouseProductEditPage() {
     if (!isSetForm && !finishedOnly && packetNorm) {
       setPacketPickSearch(packetNorm);
     }
-  }, [isSetForm, packets, productForm.inventory_mode]);
+  }, [addPacketToProduct, isSetForm, packets, productForm.inventory_mode]);
   const componentProductOptions = useMemo(
     () => (assemblies || []).filter((a) => {
       if (!isWarehouseProductAssembly(a)) return false;
