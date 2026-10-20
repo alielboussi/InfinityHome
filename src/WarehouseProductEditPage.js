@@ -24,7 +24,10 @@ import { normalizeWarehousePacketScan, normalizeWarehouseProductSku } from './ut
 import { warehouseLabelScanModeForProductForm } from './utils/warehouseLabelScanResolve';
 import WarehouseLabelImageImport from './components/WarehouseLabelImageImport';
 import { LABEL_NAME_MEMORY_KIND } from './utils/warehouseLabelOcrName';
-import { rememberLabelNameSync } from './utils/warehouseLabelNameMemory';
+import {
+  getRememberedLabelNameSync,
+  rememberLabelNameSync,
+} from './utils/warehouseLabelNameMemory';
 import {
   boxCountFromFinishedUnits,
   assemblyUnitsPerCarton,
@@ -160,7 +163,11 @@ export default function WarehouseProductEditPage() {
           setSetComponentsByLocation(byLoc);
           setProductForm({
             name: row.name || '',
-            turkish_name: '',
+            turkish_name: String(row.turkish_name || '').trim()
+              || getRememberedLabelNameSync(
+                row.family_sku,
+                LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH,
+              ),
             family_sku: row.family_sku || '',
             category_id: row.category_id || '',
             packet_count: row.packet_count == null || row.packet_count === ''
@@ -440,11 +447,12 @@ export default function WarehouseProductEditPage() {
         setSaving(false);
         return;
       }
-      const { turkish_name: _omitTurkishName, ...formToSave } = productForm;
-      const finishedOnly = formToSave.inventory_mode === WAREHOUSE_INVENTORY_MODE.FINISHED;
+      const finishedOnly = productForm.inventory_mode === WAREHOUSE_INVENTORY_MODE.FINISHED;
+      const turkishName = String(productForm.turkish_name || '').trim();
       const productPayload = {
-        ...formToSave,
-        units_per_carton: finishedOnly ? formToSave.units_per_carton : '1',
+        ...productForm,
+        turkish_name: turkishName || null,
+        units_per_carton: finishedOnly ? productForm.units_per_carton : '1',
         family_sku: normalizedSku,
         set_location_id: savingSet ? productForm.set_location_id : undefined,
         set_components: savingSet
@@ -738,6 +746,7 @@ export default function WarehouseProductEditPage() {
                 value={productForm.turkish_name}
                 onChange={(e) => setProductForm((f) => ({ ...f, turkish_name: e.target.value }))}
               />
+              <p className="warehouse-field-hint">Saved on the product record — syncs with Factory app.</p>
             </div>
           </div>
           <div className="warehouse-field">

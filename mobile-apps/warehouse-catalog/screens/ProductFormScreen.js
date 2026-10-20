@@ -51,6 +51,7 @@ export default function ProductFormScreen({ route, navigation }) {
   const [catalog, setCatalog] = useState(route.params?.catalogSnapshot || null);
   const [name, setName] = useState(prefill.name || '');
   const [turkishName, setTurkishName] = useState('');
+  const [unitsPerCarton, setUnitsPerCarton] = useState('1');
   const [familySku, setFamilySku] = useState(prefill.family_sku || '');
   const [finishedOnly, setFinishedOnly] = useState(false);
   const [packetCount, setPacketCount] = useState(prefill.packet_count || '');
@@ -442,6 +443,8 @@ export default function ProductFormScreen({ route, navigation }) {
         location_ids: [],
         warehouse_location_id: warehouseLocationId,
         packet_links: finishedOnly ? [] : packetLinks,
+        turkish_name: turkishName.trim() || null,
+        units_per_carton: finishedOnly ? unitsPerCarton : '1',
       };
       if (bomEditMode) {
         payload.id = editAssemblyId;
@@ -581,11 +584,25 @@ export default function ProductFormScreen({ route, navigation }) {
             value={turkishName}
             onChangeText={setTurkishName}
             inputRef={turkishNameInputRef}
-            placeholder="Optional — not saved to catalog"
+            placeholder="Optional — saved with the product"
             returnKeyType="next"
             onSubmitEditing={focusSku}
           />
-          <Text style={styles.fieldHint}>Turkish name is for your reference only on this screen.</Text>
+          <Text style={styles.fieldHint}>Shown on the web warehouse product form and label scan suggestions.</Text>
+          {finishedOnly ? (
+            <Field
+              label="Qty per box (units in one carton)"
+              value={unitsPerCarton}
+              onChangeText={setUnitsPerCarton}
+              keyboardType="number-pad"
+              placeholder="e.g. 2"
+            />
+          ) : null}
+          {finishedOnly ? (
+            <Text style={styles.fieldHint}>
+              Example: 2 chairs in one sellable box → enter 2. Stock can show boxes and units on the web portal.
+            </Text>
+          ) : null}
           <Field
             label="SKU (finished product)"
             value={familySku}

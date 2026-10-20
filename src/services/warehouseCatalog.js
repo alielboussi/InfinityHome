@@ -501,6 +501,8 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     }
   }
 
+  const turkishName = String(payload?.turkish_name || '').trim();
+
   const row = {
     name,
     family_sku: familySku,
@@ -511,6 +513,7 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     has_color_variants: hasColorVariants,
     item_kind: isSet ? WAREHOUSE_ITEM_KIND.SET : WAREHOUSE_ITEM_KIND.PRODUCT,
     units_per_carton: isSet ? null : unitsPerCarton,
+    turkish_name: turkishName || null,
     updated_at: new Date().toISOString(),
   };
 

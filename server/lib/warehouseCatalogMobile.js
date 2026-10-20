@@ -47,6 +47,8 @@ const MOBILE_ASSEMBLY_FIELDS = [
   'category_id',
   'inventory_mode',
   'item_kind',
+  'units_per_carton',
+  'turkish_name',
 ].join(', ');
 
 const MOBILE_PACKET_FIELDS = [
@@ -411,6 +413,14 @@ export async function saveAssemblyForMobile(sb, payload) {
     : Number(packetCountRaw);
   const hasColorVariants = Boolean(payload?.has_color_variants);
   const colorIds = hasColorVariants ? (payload?.color_ids || []) : [];
+  const turkishName = String(payload?.turkish_name || '').trim();
+  const unitsPerCartonRaw = payload?.units_per_carton;
+  let unitsPerCarton = unitsPerCartonRaw === '' || unitsPerCartonRaw == null
+    ? 1
+    : Math.max(1, Math.floor(Number(unitsPerCartonRaw) || 1));
+  if (inventoryMode === WAREHOUSE_INVENTORY_MODE.PACKETS) {
+    unitsPerCarton = 1;
+  }
 
   if (!name) throw new Error('Name is required');
   if (!familySku) throw new Error('Product SKU is required');
@@ -439,6 +449,8 @@ export async function saveAssemblyForMobile(sb, payload) {
     inventory_mode: inventoryMode,
     has_color_variants: hasColorVariants,
     item_kind: WAREHOUSE_ITEM_KIND.PRODUCT,
+    units_per_carton: unitsPerCarton,
+    turkish_name: turkishName || null,
     created_at: now,
     updated_at: now,
   };
