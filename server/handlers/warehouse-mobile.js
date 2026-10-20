@@ -48,6 +48,11 @@ async function requireUser(req) {
   return verifyBearerUser(req);
 }
 
+async function mobileAccessGrantForUser(user) {
+  const record = await getLoginAccessRecord(user?.id);
+  return normalizeMobileAccessGrant(record?.mobile_access, user?.email);
+}
+
 async function assertUniqueSku(sb, sku, { excludeAssemblyId, excludePacketId } = {}) {
   const key = normalizeWarehouseSkuKey(sku);
   if (!key) throw new Error('SKU is required');
@@ -187,8 +192,10 @@ async function opAssemblyCreate(body, user) {
 
 async function opAssemblyProductQuantitySet(body, user) {
   const sb = getService();
-  const access = await getLoginAccessRecord(user);
-  if (!isWarehouseProductStockQtyEditAllowed(access)) {
+  const grant = await mobileAccessGrantForUser(user);
+  const allowed = isLoginAccessAdmin(user?.email)
+    || isWarehouseProductStockQtyEditAllowed(grant);
+  if (!allowed) {
     const err = new Error('You do not have permission to set warehouse product quantity.');
     err.status = 403;
     throw err;
