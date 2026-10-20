@@ -51,6 +51,38 @@ const webPath = path.join(__dirname, '../src/utils/warehouseLabelScanResolve.js'
   );
   assert.strictEqual(numeric.sku, '3002780951000000');
 
+  const lenorFull = `
+    X2201LNOR2301000001-252305023389
+    LENOR ORTASEHPA 1B
+    X23A9LNOR2301000001-252305023389
+    3002780951000060
+    BESTREST-Z-202507/3002780951
+  `;
+  const lenorResolved = resolveWarehouseLabelFromText(
+    lenorFull,
+    WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO,
+  );
+  assert.strictEqual(lenorResolved.sku, '3002780951000060');
+
+  const serraPacket = `
+    12SRR2300P01DDFF
+    X212SRR2300P01DDFF-252218013409
+    Serra Kmdn Pk-1 Serra Gri/Serra Merme
+    YY99999999999912SRR2300P01DDFF
+    LOT NO 252218013409
+  `;
+  const serraPkt = resolveWarehouseLabelFromText(
+    serraPacket,
+    WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON,
+  );
+  assert.strictEqual(serraPkt.sku, '12SRR2300P01DDFF');
+
+  const serraAuto = resolveWarehouseLabelFromText(
+    serraPacket,
+    WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO,
+  );
+  assert.strictEqual(serraAuto.sku, '', 'carton labels are not finished numeric products');
+
   console.log('verifyWarehouseLabelScanResolve: ok');
 })().catch((err) => {
   console.error(err);

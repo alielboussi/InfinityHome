@@ -15,7 +15,7 @@ async function performUnlock() {
     return { success: true };
   }
   return LocalAuthentication.authenticateAsync({
-    promptMessage: 'Unlock Warehouse Catalog',
+    promptMessage: 'Unlock Factory',
     cancelLabel: 'Cancel',
     disableDeviceFallback: false,
   });

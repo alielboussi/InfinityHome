@@ -20,7 +20,7 @@ import path from 'path';
 
 const PROJECT_ID = 'bestrest-portal-system-43108';
 const PACKAGE_NAME = 'com.bestrest.warehousecatalog';
-const DISPLAY_NAME = 'Warehouse Catalog';
+const DISPLAY_NAME = 'Factory';
 const OUTPUT_PATH = path.join(process.cwd(), 'mobile-apps', 'warehouse-catalog', 'google-services.json');
 const APK_URL = process.env.WAREHOUSE_CATALOG_APK_URL || '';
 

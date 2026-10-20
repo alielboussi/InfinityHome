@@ -5,6 +5,9 @@
  * Permission values: 'allow' | 'deny' (default deny until admin enables).
  */
 
+/** Launcher / login title (keep in sync with app.config.js `expo.name`). */
+export const MOBILE_APP_DISPLAY_NAME = 'Factory';
+
 /** Stored per screen; admin UI only exposes Yes/No (maps to full allow vs full deny). */
 export function buildMobileScreenAccessRow(allowed) {
   if (allowed) {
@@ -31,7 +34,13 @@ export function isMobileScreenAccessAllowed(grant, screenId) {
 
 /** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
 export function isWarehouseProductStockQtyEditAllowed(grant) {
-  return grant?.warehouse_product_stock_qty === 'allow';
+  if (!grant) return false;
+  if (grant.warehouse_product_stock_qty === 'allow') return true;
+  if (isMobileScreenAccessAllowed(grant, 'warehouse_products')) return true;
+  if (isMobileScreenAccessAllowed(grant, 'warehouse_incomplete_products')) return true;
+  const form = grant.screens?.warehouse_product_form;
+  if (form?.insert === 'allow' || form?.edit === 'allow') return true;
+  return false;
 }
 
 /** Screens that can appear as buttons on the mobile dashboard. */

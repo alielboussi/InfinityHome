@@ -37,11 +37,11 @@ const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r
 /** @type {import('@expo/config').ExpoConfig} */
 module.exports = {
   expo: {
-    name: 'Warehouse Catalog',
+    name: 'Factory',
     slug: 'warehouse-catalog',
     scheme: 'warehouse-catalog',
     platforms: ['ios', 'android'],
-    version: '0.1.11',
+    version: '0.1.13',
     orientation: 'portrait',
     userInterfaceStyle: 'dark',
     icon: './assets/icon.png',
@@ -73,7 +73,7 @@ module.exports = {
       'expo-camera',
       [
         'expo-local-authentication',
-        { faceIDPermission: 'Unlock Warehouse Catalog with Face ID.' },
+        { faceIDPermission: 'Unlock Factory with Face ID.' },
       ],
       [
         '@react-native-google-signin/google-signin',

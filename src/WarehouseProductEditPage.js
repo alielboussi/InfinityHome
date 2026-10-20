@@ -22,9 +22,7 @@ import {
 import { isWarehouseProductAssembly } from './utils/warehouseCatalogHierarchy';
 import { normalizeWarehousePacketScan, normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { warehouseLabelScanModeForProductForm } from './utils/warehouseLabelScanResolve';
-import WarehouseLabelImageImport, {
-  WAREHOUSE_LABEL_SCAN_MODE,
-} from './components/WarehouseLabelImageImport';
+import WarehouseLabelImageImport from './components/WarehouseLabelImageImport';
 import { LABEL_NAME_MEMORY_KIND } from './utils/warehouseLabelOcrName';
 import { rememberLabelNameSync } from './utils/warehouseLabelNameMemory';
 import {
@@ -560,6 +558,33 @@ export default function WarehouseProductEditPage() {
 
   const productFormFinishedOnly = productForm.inventory_mode === WAREHOUSE_INVENTORY_MODE.FINISHED;
   const isSetForm = productForm.catalog_kind === 'set';
+
+  const handleProductLabelImport = useCallback(({ sku, name }) => {
+    const finishedOnly = productForm.inventory_mode === WAREHOUSE_INVENTORY_MODE.FINISHED;
+    const packetNorm = normalizeWarehousePacketScan(sku) || String(sku || '').trim();
+    if (!isSetForm && !finishedOnly) {
+      const match = (packets || []).find(
+        (p) => normalizeWarehousePacketScan(p.sku) === packetNorm,
+      );
+      if (match) {
+        addPacketToProduct(match.id);
+        setPacketPickSearch('');
+        return;
+      }
+    }
+    const normalized = normalizeWarehouseProductSku(sku);
+    if (normalized) {
+      setProductForm((f) => ({
+        ...f,
+        family_sku: normalized,
+        ...(name ? { turkish_name: name } : {}),
+      }));
+      return;
+    }
+    if (!isSetForm && !finishedOnly && packetNorm) {
+      setPacketPickSearch(packetNorm);
+    }
+  }, [isSetForm, packets, productForm.inventory_mode]);
   const componentProductOptions = useMemo(
     () => (assemblies || []).filter((a) => {
       if (!isWarehouseProductAssembly(a)) return false;
@@ -640,6 +665,17 @@ export default function WarehouseProductEditPage() {
               ? (isSetForm ? 'New set' : 'New product')
               : (isSetForm ? 'Edit set' : 'Edit product')}
           </h3>
+          <div className="warehouse-field warehouse-field--span-full">
+            <WarehouseLabelImageImport
+              buttonLabel="Import label image"
+              mode={warehouseLabelScanModeForProductForm({
+                finishedOnly: productFormFinishedOnly,
+                target: 'family_sku',
+              })}
+              disabled={saving}
+              onResolved={handleProductLabelImport}
+            />
+          </div>
           <div className="warehouse-form-grid">
           {isNew && allowSetCreate ? (
             <div className="warehouse-field warehouse-field--catalog-type warehouse-field--span-full">
@@ -704,23 +740,6 @@ export default function WarehouseProductEditPage() {
               />
             </div>
           </div>
-          <WarehouseLabelImageImport
-            mode={warehouseLabelScanModeForProductForm({
-              finishedOnly: productFormFinishedOnly,
-              target: 'family_sku',
-            })}
-            disabled={saving}
-            onResolved={({ sku, name }) => {
-              const normalized = normalizeWarehouseProductSku(sku);
-              if (normalized) {
-                setProductForm((f) => ({
-                  ...f,
-                  family_sku: normalized,
-                  ...(name ? { turkish_name: name } : {}),
-                }));
-              }
-            }}
-          />
           <div className="warehouse-field">
             <label htmlFor="wh-product-sku">SKU (assembled product)</label>
             <input
@@ -1003,24 +1022,6 @@ export default function WarehouseProductEditPage() {
               <p className="warehouse-field-hint" style={{ marginTop: 0 }}>
                 Optional for now. When cartons arrive, create packets, link them here, set total packets, and turn off finished-only mode.
               </p>
-            ) : null}
-            {!productFormFinishedOnly ? (
-              <WarehouseLabelImageImport
-                mode={WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON}
-                disabled={saving}
-                onResolved={({ sku }) => {
-                  const normalized = normalizeWarehousePacketScan(sku) || sku;
-                  const match = (packets || []).find(
-                    (p) => normalizeWarehousePacketScan(p.sku) === normalized,
-                  );
-                  if (match) {
-                    addPacketToProduct(match.id);
-                    setPacketPickSearch('');
-                  } else {
-                    setPacketPickSearch(normalized);
-                  }
-                }}
-              />
             ) : null}
             <input
               id="wh-packet-pick-search"

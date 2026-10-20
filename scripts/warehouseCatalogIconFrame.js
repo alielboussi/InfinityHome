@@ -9,10 +9,31 @@ const SIZE = 1024;
 const CORNER_RADIUS = 200;
 const BORDER_WIDTH = 26;
 const BORDER_COLOR = '#dc2626';
+/** Scale artwork within the square (lower = more padding). */
+const ICON_CONTENT_SCALE = 0.84;
 
 async function sampleBackgroundHex(imagePath) {
-  const px = await sharp(imagePath).resize(1, 1).raw().toBuffer();
+  const px = await sharp(imagePath).extract({ left: 0, top: 0, width: 1, height: 1 }).raw().toBuffer();
   return `#${[px[0], px[1], px[2]].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Zoom out launcher art on brand background before red frame (keeps icon-source-raw unchanged). */
+async function scaleIconContentOnBackground(sourcePath, backgroundHex) {
+  const inner = Math.round(SIZE * ICON_CONTENT_SCALE);
+  const inset = Math.floor((SIZE - inner) / 2);
+  const { r, g, b } = parseHex(backgroundHex);
+  const resized = await sharp(sourcePath).resize(inner, inner).png().toBuffer();
+  return sharp({
+    create: {
+      width: SIZE,
+      height: SIZE,
+      channels: 4,
+      background: { r, g, b, alpha: 1 },
+    },
+  })
+    .composite([{ input: resized, left: inset, top: inset }])
+    .png()
+    .toBuffer();
 }
 
 function parseHex(hex) {
@@ -84,7 +105,8 @@ async function frameLauncherIcon(input) {
 }
 
 async function writeFramedAssets(assetsDir, sourceIconPath, backgroundHex) {
-  const framed = await frameLauncherIcon(sourceIconPath);
+  const scaled = await scaleIconContentOnBackground(sourceIconPath, backgroundHex);
+  const framed = await frameLauncherIcon(scaled);
   const iconPath = path.join(assetsDir, 'icon.png');
   const adaptivePath = path.join(assetsDir, 'adaptive-icon.png');
 
@@ -132,9 +154,11 @@ async function postprocessWarehouseCatalogIcons({ sourcePath, assetsDir, backgro
 module.exports = {
   frameLauncherIcon,
   postprocessWarehouseCatalogIcons,
+  scaleIconContentOnBackground,
   BORDER_COLOR,
   CORNER_RADIUS,
   BORDER_WIDTH,
+  ICON_CONTENT_SCALE,
 };
 
 if (require.main === module) {
@@ -142,6 +166,7 @@ if (require.main === module) {
     .then(({ iconPath, backgroundHex }) => {
       console.log('Framed:', iconPath);
       console.log('Background:', backgroundHex);
+      console.log('Content scale:', ICON_CONTENT_SCALE);
     })
     .catch((err) => {
       console.error(err);

@@ -22,6 +22,7 @@ import WarehouseLabelCaptureScreen from './screens/WarehouseLabelCaptureScreen';
 import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
 import WarehouseStockCountScreen from './screens/WarehouseStockCountScreen';
 import MobileScreenGate from './shared/MobileScreenGate';
+import { MOBILE_APP_DISPLAY_NAME } from './shared/mobileAccessManifest';
 import { stackScreenOptions, theme } from './shared/theme';
 
 enableScreens(true);
@@ -55,7 +56,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="WarehouseProducts"
-        options={{ title: 'Warehouse catalog' }}
+        options={{ title: 'Products' }}
         initialParams={{ catalogMode: 'complete' }}
       >
         {(props) => (
@@ -129,7 +130,7 @@ function MainStack() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <FirebaseAuthGate title="Warehouse Catalog" showUserBar={false}>
+      <FirebaseAuthGate title={MOBILE_APP_DISPLAY_NAME} showUserBar={false}>
         <BiometricGate>
           <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
             <StatusBar style="light" />

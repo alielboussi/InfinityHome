@@ -215,7 +215,7 @@ export default function PacketFormScreen({ route, navigation }) {
         accessibilityRole="button"
         accessibilityLabel="Capture packet label photo"
       >
-        <Text style={styles.labelScanBtnText}>📷 Read packet label (camera)</Text>
+        <Text style={styles.labelScanBtnText}>📷 Read label (camera)</Text>
       </Pressable>
       <Field
         label="SKU (Code 128)"

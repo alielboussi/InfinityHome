@@ -226,6 +226,7 @@ export default function WarehousePacketEditPage() {
             {isNew ? 'New packet' : 'Edit packet'}
           </h3>
           <WarehouseLabelImageImport
+            buttonLabel="Import label image"
             mode={WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON}
             disabled={saving}
             onResolved={({ sku, name }) => {

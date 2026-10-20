@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOutFirebase } from '../shared/firebase';
 import { invalidateWarehouseCatalogCache } from '../shared/warehouseCatalogStore';
-import { getMobileDashboardNavItems } from '../shared/mobileAccessManifest';
+import { getMobileDashboardNavItems, MOBILE_APP_DISPLAY_NAME } from '../shared/mobileAccessManifest';
 import { theme } from '../shared/theme';
 
 export default function DashboardScreen({ grant, userEmail, userDisplayName, navigation }) {
@@ -38,7 +38,7 @@ export default function DashboardScreen({ grant, userEmail, userDisplayName, nav
       >
         <View style={styles.inner}>
           <Text style={styles.brand}>Infinity Home</Text>
-          <Text style={styles.title}>Warehouse catalog</Text>
+          <Text style={styles.title}>{MOBILE_APP_DISPLAY_NAME}</Text>
           <Text style={styles.sub}>
             Add products and manage warehouse packet stock from the floor.
           </Text>

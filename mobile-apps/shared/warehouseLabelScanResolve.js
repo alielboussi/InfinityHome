@@ -131,8 +131,18 @@ export function listWarehouseLabelSkuSuggestions(text, mode, options = {}) {
     return [{ sku: primary.sku, source: primary.source }];
   }
 
+  const packetCarton = resolvePacketCarton(text);
+  if (packetCarton.sku && isPacketSkuShape(packetCarton.sku)) {
+    add(packetCarton.sku, 'packet_carton', 92);
+  }
+
   extractBarcodeLikeTokens(text).forEach((raw, i) => {
-    add(raw, 'barcode_ocr', 80 - i);
+    if (/^\d{10,13}$/.test(raw)) return;
+    let score = 80 - i;
+    if (/^\d{14,20}$/.test(raw)) score += 45;
+    if (/^X\d/i.test(raw)) score -= 35;
+    if (isPacketSkuShape(raw)) score += 30;
+    add(raw, 'barcode_ocr', score);
   });
 
   extractSkuCandidatesFromLabelText(text).forEach((token, i) => {
@@ -262,9 +272,45 @@ function resolveProductFinishedHeader(text) {
   return { sku: '', source: 'none' };
 }
 
+function numericsEmbeddedInYyBarcodes(text) {
+  const embedded = new Set();
+  extractBarcodeLikeTokens(text)
+    .filter((t) => /^YY/i.test(t))
+    .forEach((yy) => {
+      const body = String(yy).replace(/^YY/i, '');
+      const re = /\d{14,20}/g;
+      let m;
+      while ((m = re.exec(body)) !== null) {
+        embedded.add(m[0]);
+      }
+    });
+  return embedded;
+}
+
+function numericsFromOwnOcrLines(text) {
+  const found = [];
+  String(text || '').split(/\r?\n/).forEach((line) => {
+    const tight = String(line).replace(/\s/g, '').trim();
+    if (/^\d{14,20}$/.test(tight)) found.push(tight);
+  });
+  return found;
+}
+
 function resolveProductFinishedNumeric(text) {
+  const yyEmbedded = numericsEmbeddedInYyBarcodes(text);
+
+  const fromLines = numericsFromOwnOcrLines(text);
+  if (fromLines.length) {
+    return {
+      sku: fromLines.sort((a, b) => b.length - a.length)[0],
+      source: 'numeric_barcode_line',
+    };
+  }
+
   const barcodes = extractBarcodeLikeTokens(text);
-  const numeric = barcodes.filter((t) => /^\d{14,20}$/.test(t));
+  const numeric = barcodes
+    .filter((t) => /^\d{14,20}$/.test(t))
+    .filter((t) => !yyEmbedded.has(t));
   if (numeric.length) {
     return {
       sku: numeric.sort((a, b) => b.length - a.length)[0],
@@ -272,8 +318,9 @@ function resolveProductFinishedNumeric(text) {
     };
   }
   const blob = normalizeBlob(text);
-  const embedded = blob.match(/\b(\d{14,20})\b/g);
-  if (embedded?.length) {
+  const embedded = (blob.match(/\b(\d{14,20})\b/g) || [])
+    .filter((t) => !yyEmbedded.has(t));
+  if (embedded.length) {
     return {
       sku: embedded.sort((a, b) => b.length - a.length)[0],
       source: 'numeric_ocr',
@@ -282,13 +329,15 @@ function resolveProductFinishedNumeric(text) {
   return { sku: '', source: 'none' };
 }
 
+/**
+ * Finished-product labels (e.g. Lenor): catalog SKU is the 14–20 digit Code 128
+ * (3002780951000060), not factory X… carton barcodes or BESTREST lot text.
+ */
 function resolveProductFinishedAuto(text) {
-  const header = pickBestHeader(text);
-  if (header && header.length >= 8) {
-    return resolveProductFinishedHeader(text);
-  }
   const numeric = resolveProductFinishedNumeric(text);
-  if (numeric.sku) return numeric;
+  if (numeric.sku) {
+    return numeric;
+  }
   return resolveProductFinishedHeader(text);
 }
 

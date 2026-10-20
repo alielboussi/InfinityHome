@@ -33,6 +33,16 @@ HOHER NUSSBAUM / NEBELIGES ANTHRAZIT
   const tr = extractSuggestedNameFromLabelText(unitLabel, { intent: 'product_turkish' });
   assert.ok(tr.includes('CEVIZ') || tr.includes('VISTAPORTMANTO'));
 
+  const lenor = `
+    LENOR ORTASEHPA 1B
+    BESTREST-Z-202507/3002780951
+    3002780951000060
+  `;
+  assert.strictEqual(
+    extractSuggestedNameFromLabelText(lenor, { intent: 'product_turkish' }),
+    'LENOR ORTASEHPA 1B',
+  );
+
   console.log('verifyWarehouseLabelOcrName: ok');
 })().catch((err) => {
   console.error(err);

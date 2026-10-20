@@ -7,6 +7,7 @@ import {
   getMobilePermissionMatrixScreens,
   isMobileScreenAccessAllowed,
   sanitizeMobileAccessGrantForUser,
+  MOBILE_APP_DISPLAY_NAME,
 } from '../mobile/mobileAccessManifest';
 
 async function saveMobileAccess(uid, mobile_access, mobile_display_name, login_enabled) {
@@ -87,7 +88,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
         userRow.login_enabled,
       );
       onSaved?.(updated);
-      setToast('Warehouse Catalog access saved.');
+      setToast(`${MOBILE_APP_DISPLAY_NAME} access saved.`);
     } catch (err) {
       setError(err?.message || 'Failed to save mobile access');
     } finally {
@@ -105,7 +106,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
       <div className="mobile-access-panel__head">
         <div>
           <h3 id="mobile-access-title" className="mobile-access-panel__title">
-            Warehouse Catalog — {displayName}
+            {MOBILE_APP_DISPLAY_NAME} — {displayName}
           </h3>
           <p className="mobile-access-panel__hint">
             Users always open the <strong>dashboard</strong> first. <strong>Yes</strong> adds a button for that screen;

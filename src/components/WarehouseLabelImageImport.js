@@ -32,6 +32,7 @@ async function detectBarcodesFromImageFile(file) {
  *   onResolved: (payload: { sku: string, name?: string, nameSource?: string }) => void,
  *   disabled?: boolean,
  *   resolveOptions?: { target?: string },
+ *   buttonLabel?: string,
  * }} props
  */
 export default function WarehouseLabelImageImport({
@@ -39,6 +40,7 @@ export default function WarehouseLabelImageImport({
   onResolved,
   disabled = false,
   resolveOptions = {},
+  buttonLabel,
 }) {
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -95,7 +97,9 @@ export default function WarehouseLabelImageImport({
     }
   }, [disabled, resolveText]);
 
-  const label = MODE_LABELS[mode] || MODE_LABELS[WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO];
+  const label = buttonLabel
+    || MODE_LABELS[mode]
+    || MODE_LABELS[WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO];
 
   return (
     <div className="warehouse-label-import" style={{ marginBottom: 12 }}>

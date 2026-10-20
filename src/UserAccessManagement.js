@@ -118,7 +118,7 @@ export default function UserAccessManagement() {
         <h2 style={{ margin: 0 }}>User Login Access</h2>
       </div>
       <p className="user-access-intro">
-        Enable or disable sign-in for the portal and mobile apps. Pick a user, then configure Warehouse Catalog permissions in the panel below.
+        Enable or disable sign-in for the portal and mobile apps. Pick a user, then configure Factory app permissions in the panel below.
       </p>
 
       {error ? <div className="report-error user-access-error">{error}</div> : null}
