@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
-  extractProductTurkishEntriesFromLabelMemory,
+  buildTurkishSyncPayloadFromLabelMemory,
   parseLabelMemoryStore,
   readLabelMemoryStoreWeb,
 } from '../utils/warehouseLabelMemoryEntries';
@@ -35,7 +35,7 @@ export default function WarehouseTurkishNameSyncPanel({ onSynced }) {
 
   const syncFromBrowser = () => {
     const store = readLabelMemoryStoreWeb();
-    const entries = extractProductTurkishEntriesFromLabelMemory(store);
+    const { entries } = buildTurkishSyncPayloadFromLabelMemory(store);
     runSync(entries);
   };
 
@@ -47,7 +47,7 @@ export default function WarehouseTurkishNameSyncPanel({ onSynced }) {
     try {
       const text = await file.text();
       const store = parseLabelMemoryStore(text);
-      const entries = extractProductTurkishEntriesFromLabelMemory(store);
+      const { entries } = buildTurkishSyncPayloadFromLabelMemory(store);
       await runSync(entries);
     } catch (err) {
       setError(err?.message || 'Could not read file');

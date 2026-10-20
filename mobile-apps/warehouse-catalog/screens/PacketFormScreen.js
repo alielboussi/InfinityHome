@@ -104,17 +104,35 @@ export default function PacketFormScreen({ route, navigation }) {
       const value = route.params?.labelFieldValue;
       if (!field || value == null || value === '') return;
       if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU) {
-        setSku(String(value));
+        const nextSku = String(value);
+        setSku(nextSku);
         setNotice('Packet SKU from label OCR — edit if needed.');
+        const key = normalizeWarehouseWedgeScanInput(nextSku, 'packet') || nextSku.trim();
+        if (key && name?.trim()) {
+          rememberLabelName({
+            sku: key,
+            kind: LABEL_NAME_MEMORY_KIND.PACKET,
+            name: name.trim(),
+          }).catch(() => {});
+        }
       } else if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME) {
-        setName(String(value));
+        const nextName = String(value);
+        setName(nextName);
         setNotice('Packet name from label OCR — edit if needed.');
+        const key = normalizeWarehouseWedgeScanInput(sku, 'packet') || String(sku || '').trim();
+        if (key && nextName.trim()) {
+          rememberLabelName({
+            sku: key,
+            kind: LABEL_NAME_MEMORY_KIND.PACKET,
+            name: nextName.trim(),
+          }).catch(() => {});
+        }
       }
       navigation.setParams({
         labelOcrField: undefined,
         labelFieldValue: undefined,
       });
-    }, [navigation, route.params?.labelFieldValue, route.params?.labelOcrField]),
+    }, [name, navigation, route.params?.labelFieldValue, route.params?.labelOcrField, sku]),
   );
 
   const openOcrCamera = useCallback((field) => {

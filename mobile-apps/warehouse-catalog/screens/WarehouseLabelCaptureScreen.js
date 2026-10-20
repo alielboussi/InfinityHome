@@ -18,7 +18,12 @@ import {
 import {
   extractWarehouseLabelFieldFromOcr,
   warehouseLabelOcrFieldHint,
+  WAREHOUSE_LABEL_OCR_FIELD,
 } from '../shared/warehouseLabelFieldOcr';
+import {
+  normalizeSlashedZeroGlyphs,
+  normalizeSupplierZeroAndLetterOcrText,
+} from '../shared/warehouseLabelOcrZeroO';
 import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
 import { pickLabelNameForSku } from '../shared/warehouseLabelNameMemory';
 
@@ -168,7 +173,11 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
   const runOcrOnPhoto = useCallback(async (uri) => {
     try {
       const result = await TextRecognition.recognize(uri);
-      const raw = String(result?.text || '').trim();
+      const rawText = String(result?.text || '').trim();
+      const raw = ocrField === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH
+        || ocrField === WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME
+        ? normalizeSlashedZeroGlyphs(rawText)
+        : normalizeSupplierZeroAndLetterOcrText(rawText, 'sku');
       if (!raw) {
         setMessage(
           ocrField
@@ -188,7 +197,7 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
         setMessage(msg || 'Could not read the label.');
       }
     }
-  }, [resolveFromText]);
+  }, [ocrField, resolveFromText]);
 
   const captureAndScan = useCallback(async () => {
     if (busy || !cameraRef.current) {

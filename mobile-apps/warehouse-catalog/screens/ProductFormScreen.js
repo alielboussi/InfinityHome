@@ -321,15 +321,24 @@ export default function ProductFormScreen({ route, navigation }) {
           setFamilySku(String(value));
           setNotice('Product SKU from label OCR — edit if needed.');
         } else if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH) {
-          setTurkishName(String(value));
+          const name = String(value);
+          setTurkishName(name);
           setNotice('Turkish name from label OCR — edit if needed.');
+          const skuKey = normalizeWarehouseProductSku(familySku) || String(familySku || '').trim();
+          if (skuKey && name) {
+            rememberLabelName({
+              sku: skuKey,
+              kind: LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH,
+              name,
+            }).catch(() => {});
+          }
         }
         navigation.setParams({
           labelOcrField: undefined,
           labelFieldValue: undefined,
         });
       }
-    }, [navigation, route.params?.labelFieldValue, route.params?.labelOcrField]),
+    }, [familySku, navigation, route.params?.labelFieldValue, route.params?.labelOcrField]),
   );
 
   const openOcrCamera = useCallback((field) => {

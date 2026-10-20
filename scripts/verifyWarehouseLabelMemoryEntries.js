@@ -6,6 +6,7 @@ const modPath = path.join(__dirname, '../src/utils/warehouseLabelMemoryEntries.j
 
 (async () => {
   const {
+    buildTurkishSyncPayloadFromLabelMemory,
     extractProductTurkishEntriesFromLabelMemory,
     parseLabelMemoryStore,
   } = await import(pathToFileURL(modPath).href);
@@ -20,6 +21,12 @@ const modPath = path.join(__dirname, '../src/utils/warehouseLabelMemoryEntries.j
   const entries = extractProductTurkishEntriesFromLabelMemory(store);
   assert.strictEqual(entries.length, 2);
   assert.ok(entries.some((e) => e.turkish_name === 'Test Ürün'));
+
+  const payload = buildTurkishSyncPayloadFromLabelMemory(store);
+  assert.strictEqual(payload.entries.length, 3);
+  assert.strictEqual(payload.productCount, 2);
+  assert.strictEqual(payload.packetCount, 1);
+  assert.ok(payload.entries.some((e) => e.turkish_name === 'Pkt only'));
 
   console.log('verifyWarehouseLabelMemoryEntries: ok');
 })().catch((err) => {

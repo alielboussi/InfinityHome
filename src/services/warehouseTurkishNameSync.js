@@ -47,6 +47,9 @@ export async function syncProductTurkishNamesToCatalog(entries, options = {}) {
     totals.skipped += Number(result.skipped) || 0;
     totals.unmatched += Number(result.unmatched) || 0;
     totals.batches += 1;
+    if (Array.isArray(result.unmatched_sample) && result.unmatched_sample.length) {
+      totals.unmatched_sample = (totals.unmatched_sample || []).concat(result.unmatched_sample);
+    }
   }
 
   return totals;

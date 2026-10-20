@@ -1,3 +1,5 @@
+import { disambiguateZeroAndLetterOInSku, normalizeSupplierZeroAndLetterOcrText } from './warehouseLabelOcrZeroO';
+
 /**
  * Pull likely warehouse / Istikbal SKUs from OCR text on factory labels.
  * Finished unit codes are often printed as text (e.g. 22AYS3150ZIZI); cartons may include P01.
@@ -17,10 +19,11 @@ const IGNORE_EXACT = new Set([
 ]);
 
 function normalizeToken(raw) {
-  return String(raw || '')
+  const tight = String(raw || '')
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
+  return disambiguateZeroAndLetterOInSku(tight);
 }
 
 function isPlausibleSku(token) {
@@ -46,7 +49,7 @@ function scoreSkuCandidate(token) {
  * @returns {string[]} Unique SKU candidates, best guess first
  */
 export function extractSkuCandidatesFromLabelText(text) {
-  const blob = String(text || '')
+  const blob = normalizeSupplierZeroAndLetterOcrText(String(text || ''), 'sku')
     .replace(/[|\\]/g, ' ')
     .replace(/\s+/g, ' ');
 

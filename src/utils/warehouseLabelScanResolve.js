@@ -15,6 +15,10 @@ import {
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
 } from './warehouseScanResolver.js';
+import {
+  normalizeSlashedZeroGlyphs,
+  normalizeSupplierZeroAndLetterOcrText,
+} from './warehouseLabelOcrZeroO.js';
 
 export const WAREHOUSE_LABEL_SCAN_MODE = {
   /** Carton / packet label — middle barcode (red box), e.g. 12VSK2600P03LCBO */
@@ -119,6 +123,7 @@ export function extractBarcodeLikeTokens(text) {
  * When strict resolve fails, ranked SKU guesses from the same OCR text (partial labels OK).
  */
 export function listWarehouseLabelSkuSuggestions(text, mode, options = {}) {
+  const repairedText = normalizeSupplierZeroAndLetterOcrText(text, 'sku');
   const resolvedMode = mode || WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO;
   const isPacket = resolvedMode === WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON
     || options?.target === 'packet_search';
@@ -141,12 +146,12 @@ export function listWarehouseLabelSkuSuggestions(text, mode, options = {}) {
     return [{ sku: primary.sku, source: primary.source }];
   }
 
-  const packetCarton = resolvePacketCarton(text);
+  const packetCarton = resolvePacketCarton(repairedText);
   if (packetCarton.sku && isPacketSkuShape(packetCarton.sku)) {
     add(packetCarton.sku, 'packet_carton', 92);
   }
 
-  extractBarcodeLikeTokens(text).forEach((raw, i) => {
+  extractBarcodeLikeTokens(repairedText).forEach((raw, i) => {
     if (/^\d{10,13}$/.test(raw)) return;
     let score = 80 - i;
     if (/^\d{14,20}$/.test(raw)) score += 45;
@@ -155,7 +160,7 @@ export function listWarehouseLabelSkuSuggestions(text, mode, options = {}) {
     add(raw, 'barcode_ocr', score);
   });
 
-  extractSkuCandidatesFromLabelText(text).forEach((token, i) => {
+  extractSkuCandidatesFromLabelText(repairedText).forEach((token, i) => {
     const score = 50 - i + (isPacket && isWarehousePacketCartonSku(token) ? 20 : 0);
     add(token, 'text_ocr', score);
   });
@@ -433,30 +438,33 @@ function resolveProductFinishedAuto(text) {
  * @returns {{ sku: string, source: string, mode: string, suggestedName: string, nameIntent: string }}
  */
 export function resolveWarehouseLabelFromText(text, mode, options = {}) {
+  const repairedText = normalizeSupplierZeroAndLetterOcrText(text, 'sku');
   const resolvedMode = mode || WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO;
   let result = { sku: '', source: 'none' };
 
   switch (resolvedMode) {
     case WAREHOUSE_LABEL_SCAN_MODE.PACKET_CARTON:
-      result = resolvePacketCarton(text);
+      result = resolvePacketCarton(repairedText);
       break;
     case WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_BOM_FAMILY:
-      result = resolveProductBomFamily(text);
+      result = resolveProductBomFamily(repairedText);
       break;
     case WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_HEADER:
-      result = resolveProductFinishedHeader(text);
+      result = resolveProductFinishedHeader(repairedText);
       break;
     case WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_NUMERIC:
-      result = resolveProductFinishedNumeric(text);
+      result = resolveProductFinishedNumeric(repairedText);
       break;
     case WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO:
     default:
-      result = resolveProductFinishedAuto(text);
+      result = resolveProductFinishedAuto(repairedText);
       break;
   }
 
   const nameIntent = labelNameIntentForScanMode(resolvedMode, options);
-  const suggestedName = extractSuggestedNameFromLabelText(text, { intent: nameIntent });
+  const suggestedName = extractSuggestedNameFromLabelText(normalizeSlashedZeroGlyphs(text), {
+    intent: nameIntent,
+  });
 
   return {
     sku: result.sku || '',

@@ -683,19 +683,60 @@ export async function bulkSyncProductTurkishNames(sb, entries, options = {}) {
     throw new Error(`At most ${TURKISH_SYNC_MAX_ENTRIES} names per request — send multiple batches.`);
   }
 
-  const { data: assemblies, error: loadErr } = await sb
-    .from(ASSEMBLIES)
-    .select('id, family_sku, turkish_name');
+  const [{ data: assemblies, error: loadErr }, { data: packets, error: pktErr }, { data: links, error: linkErr }] = await Promise.all([
+    sb.from(ASSEMBLIES).select('id, family_sku, turkish_name'),
+    sb.from(PACKETS).select('id, sku, assembly_id'),
+    sb.from(ASSEMBLY_PACKETS).select('assembly_id, packet_id'),
+  ]);
   if (loadErr) throw new Error(loadErr.message || 'Failed to load products');
+  if (pktErr) throw new Error(pktErr.message || 'Failed to load packets');
+  if (linkErr) throw new Error(linkErr.message || 'Failed to load packet links');
 
+  const assemblyById = new Map();
   const assemblyBySkuKey = new Map();
   (assemblies || []).forEach((row) => {
+    assemblyById.set(String(row.id), row);
     expandWarehouseSkuMatchKeys(row.family_sku).forEach((key) => {
       if (key && !assemblyBySkuKey.has(key)) {
         assemblyBySkuKey.set(key, row);
       }
     });
   });
+
+  const packetBySkuKey = new Map();
+  const packetAssemblyId = new Map();
+  (packets || []).forEach((row) => {
+    const pid = String(row.id);
+    if (row.assembly_id) packetAssemblyId.set(pid, String(row.assembly_id));
+    expandWarehouseSkuMatchKeys(row.sku).forEach((key) => {
+      if (key && !packetBySkuKey.has(key)) packetBySkuKey.set(key, row);
+    });
+  });
+  (links || []).forEach((row) => {
+    if (row?.packet_id && row?.assembly_id) {
+      packetAssemblyId.set(String(row.packet_id), String(row.assembly_id));
+    }
+  });
+
+  const resolveAssemblyForSku = (skuRaw) => {
+    let assembly = null;
+    expandWarehouseSkuMatchKeys(skuRaw).forEach((key) => {
+      if (!assembly && assemblyBySkuKey.has(key)) {
+        assembly = assemblyBySkuKey.get(key);
+      }
+    });
+    if (assembly) return assembly;
+    let packet = null;
+    expandWarehouseSkuMatchKeys(skuRaw).forEach((key) => {
+      if (!packet && packetBySkuKey.has(key)) {
+        packet = packetBySkuKey.get(key);
+      }
+    });
+    if (!packet) return null;
+    const assemblyId = packetAssemblyId.get(String(packet.id));
+    if (!assemblyId) return null;
+    return assemblyById.get(assemblyId) || null;
+  };
 
   const now = new Date().toISOString();
   const pendingById = new Map();
@@ -708,12 +749,7 @@ export async function bulkSyncProductTurkishNames(sb, entries, options = {}) {
     const skuRaw = entry?.sku || entry?.sku_key || '';
     if (!turkish || !skuRaw) return;
 
-    let assembly = null;
-    expandWarehouseSkuMatchKeys(skuRaw).forEach((key) => {
-      if (!assembly && assemblyBySkuKey.has(key)) {
-        assembly = assemblyBySkuKey.get(key);
-      }
-    });
+    const assembly = resolveAssemblyForSku(skuRaw);
     if (!assembly) {
       unmatched += 1;
       if (unmatchedSample.length < 25) {

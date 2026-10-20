@@ -43,6 +43,33 @@ export function extractProductTurkishEntriesFromLabelMemory(store) {
   return out;
 }
 
+/**
+ * Bulk catalog sync: product Turkish names plus packet label titles (often Turkish on the floor).
+ * @returns {{ entries: { sku: string, turkish_name: string }[], productCount: number, packetCount: number }}
+ */
+export function buildTurkishSyncPayloadFromLabelMemory(store) {
+  const parsed = normalizeStore(store);
+  const entries = [];
+  const seen = new Set();
+  let productCount = 0;
+  let packetCount = 0;
+
+  Object.entries(parsed.bySku || {}).forEach(([key, row]) => {
+    const sku = normalizeWarehouseSkuKey(key) || String(key || '').trim().toLowerCase();
+    if (!sku || seen.has(sku)) return;
+    const productTurkish = String(row?.productTurkishName || '').trim();
+    const packetTitle = String(row?.packetName || '').trim();
+    const turkish = productTurkish || packetTitle;
+    if (!turkish) return;
+    seen.add(sku);
+    if (productTurkish) productCount += 1;
+    else packetCount += 1;
+    entries.push({ sku, turkish_name: turkish });
+  });
+
+  return { entries, productCount, packetCount };
+}
+
 export function readLabelMemoryStoreWeb() {
   if (typeof window === 'undefined') return { bySku: {} };
   try {
