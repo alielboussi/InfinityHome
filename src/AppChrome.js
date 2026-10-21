@@ -157,6 +157,7 @@ const TITLE_MAP = {
   '/products-list': 'Products',
   '/warehouse-products': 'Products (Warehouse)',
   '/warehouse-products/packets': 'Packets (Warehouse)',
+  '/warehouse-products/incomplete': 'Incomplete products (Warehouse)',
   '/stock-history': 'Stock History',
   '/categories': 'Categories',
   '/sets': 'Sets',

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaPlus } from 'react-icons/fa';
 import BackToDashboard from './BackToDashboard';
 import WarehouseAssemblyInlineName from './components/WarehouseAssemblyInlineName';
@@ -7,7 +7,6 @@ import WarehouseAssemblyInlineSku from './components/WarehouseAssemblyInlineSku'
 import WarehouseAssemblyInlineSpecs from './components/WarehouseAssemblyInlineSpecs';
 import WarehouseAssemblyThumbnail from './components/WarehouseAssemblyThumbnail';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
-import WarehouseTurkishNameSyncPanel from './components/WarehouseTurkishNameSyncPanel';
 import WarehouseColorChip from './components/WarehouseColorChip';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
@@ -39,9 +38,15 @@ import {
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
 } from './utils/warehouseScanResolver';
+import {
+  isCompleteCatalogProduct,
+  isIncompletePacketBomProduct,
+} from './utils/warehouseCatalogProductCompleteness';
 
 export default function WarehouseProductsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isIncompleteView = location.pathname.startsWith('/warehouse-products/incomplete');
   const sessionUser = useMemo(() => getCurrentUser(), []);
   const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
   const rtTick = useRealtimeRefresh([
@@ -110,10 +115,14 @@ export default function WarehouseProductsPage() {
     [assemblyPacketRows, packets],
   );
 
-  const warehouseCatalogProducts = useMemo(
-    () => (assemblies || []).filter((a) => !isWarehouseSetAssembly(a)),
-    [assemblies],
-  );
+  const warehouseCatalogProducts = useMemo(() => {
+    const base = (assemblies || []).filter((a) => !isWarehouseSetAssembly(a));
+    return base.filter((a) => {
+      const pktList = packetsByAssembly.get(String(a.id)) || [];
+      if (isIncompleteView) return isIncompletePacketBomProduct(a, pktList);
+      return isCompleteCatalogProduct(a, pktList);
+    });
+  }, [assemblies, isIncompleteView, packetsByAssembly]);
 
   const inventoryByPacketId = useMemo(() => {
     const map = new Map();
@@ -288,7 +297,9 @@ export default function WarehouseProductsPage() {
     <div className="products-container warehouse-products-page" style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
       <div className="page-header-row">
         <BackToDashboard />
-        <h1 className="products-title" style={{ margin: 0 }}>Products (Warehouse)</h1>
+        <h1 className="products-title" style={{ margin: 0 }}>
+          {isIncompleteView ? 'Incomplete products (Warehouse)' : 'Products (Warehouse)'}
+        </h1>
       </div>
 
       <p className="stc-note" style={{ margin: '8px 0 16px', opacity: 0.85 }}>
@@ -298,10 +309,6 @@ export default function WarehouseProductsPage() {
 
       {error ? (
         <div role="alert" style={{ color: '#f87171', marginBottom: 12 }}>{error}</div>
-      ) : null}
-
-      {canManage ? (
-        <WarehouseTurkishNameSyncPanel onSynced={load} />
       ) : null}
 
       <div className="warehouse-catalog-toolbar">
