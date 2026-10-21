@@ -32,6 +32,11 @@ export function isMobileScreenAccessAllowed(grant, screenId) {
   return grant?.screens?.[screenId]?.view === 'allow';
 }
 
+/** /user-access — Add product (+) on warehouse products list. */
+export function isWarehouseProductFormInsertAllowed(grant) {
+  return grant?.screens?.warehouse_product_form?.insert === 'allow';
+}
+
 /** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
 /** Upload device-local Turkish names to warehouse_assemblies (bulk sync). */
 export function isWarehouseProductTurkishSyncAllowed(grant) {
@@ -60,7 +65,6 @@ export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_packets',
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
-  'warehouse_floor_count',
 ]);
 
 /** Every navigable screen (CI + defaults). */
@@ -94,12 +98,6 @@ export const MOBILE_SCREENS = Object.freeze([
     id: 'warehouse_unused_packets',
     label: 'Warehouse Unused Packets',
     description: 'Spare cartons after BOM-complete products (on hand minus allocated)',
-    permissionMatrix: true,
-  },
-  {
-    id: 'warehouse_floor_count',
-    label: 'Stock count',
-    description: 'Floor checklist — scan packets (not linked to web stocktake)',
     permissionMatrix: true,
   },
   {
@@ -141,7 +139,6 @@ const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_incomplete_products: 'WarehouseIncompleteProducts',
   warehouse_packets: 'WarehousePackets',
   warehouse_unused_packets: 'WarehouseUnusedPackets',
-  warehouse_floor_count: 'WarehouseStockCount',
 });
 
 const WAREHOUSE_PRODUCTS_CHILD_SCREENS = Object.freeze([
@@ -208,10 +205,6 @@ export function canMobileScreenView(grant, screenId) {
 
   if (screenId === 'warehouse_unused_packets') {
     return isMobileScreenAccessAllowed(grant, 'warehouse_unused_packets');
-  }
-
-  if (screenId === 'warehouse_floor_count') {
-    return isMobileScreenAccessAllowed(grant, 'warehouse_floor_count');
   }
 
   return isMobileScreenAccessAllowed(grant, screenId);
@@ -282,10 +275,6 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     || isMobileScreenAccessAllowed(merged, 'warehouse_unassigned_packets');
   merged.screens.warehouse_unused_packets = buildMobileScreenAccessRow(unusedPacketsAllowed);
   delete merged.screens.warehouse_unassigned_packets;
-
-  merged.screens.warehouse_floor_count = buildMobileScreenAccessRow(
-    isMobileScreenAccessAllowed(merged, 'warehouse_floor_count'),
-  );
 
   const packetsAllowedForForms = packetsAllowed || unusedPacketsAllowed;
   if (packetsAllowedForForms && !productsAllowed) {

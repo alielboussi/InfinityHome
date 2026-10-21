@@ -1,13 +1,19 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
+  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import WarehouseCatalogFormScroll, { useScrollFieldIntoView } from '../shared/WarehouseCatalogFormScroll';
+import {
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+} from '../shared/warehouseScanResolver';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 import {
@@ -46,9 +52,14 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
   const ocrField = route.params?.ocrField || null;
   const mode = route.params?.mode || WAREHOUSE_LABEL_SCAN_MODE.PRODUCT_FINISHED_AUTO;
   const returnScreen = route.params?.returnScreen || 'PacketForm';
+  const passthroughFormDraft = route.params?.formDraft;
   const labelScanTarget = route.params?.labelScanTarget;
   const cameraRef = useRef(null);
+  const scrollRef = useRef(null);
+  const inputLayoutY = useRef(0);
+  const scrollFieldIntoView = useScrollFieldIntoView(scrollRef);
   const [permission, requestPermission] = useCameraPermissions();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [manualText, setManualText] = useState('');
@@ -71,18 +82,44 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
       params: {
         labelOcrField: ocrField,
         labelFieldValue: value,
+        ...(passthroughFormDraft ? { formDraft: passthroughFormDraft } : {}),
       },
       merge: true,
     });
-  }, [navigation, ocrField, returnScreen]);
+  }, [navigation, ocrField, passthroughFormDraft, returnScreen]);
 
-  const resolveFieldFromText = useCallback(async (text) => {
+  const fieldValueFromManualText = useCallback((raw) => {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed || !ocrField) return '';
+    const { value, candidates } = extractWarehouseLabelFieldFromOcr(trimmed, ocrField);
+    if (value) return value;
+    if (
+      ocrField === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH
+      || ocrField === WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME
+    ) {
+      const line = trimmed.split(/\r?\n/).map((l) => l.trim()).find(Boolean) || trimmed;
+      return line.slice(0, 200);
+    }
+    if (ocrField === WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU) {
+      const fromList = candidates.find(Boolean);
+      if (fromList) return fromList;
+      return normalizeWarehousePacketScan(trimmed) || '';
+    }
+    if (ocrField === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU) {
+      const fromList = candidates.find(Boolean);
+      if (fromList) return fromList;
+      return normalizeWarehouseProductSku(trimmed) || '';
+    }
+    return '';
+  }, [ocrField]);
+
+  const resolveFieldFromText = useCallback(async (text, { allowManualFallback = false } = {}) => {
     const raw = String(text || '').trim();
     setManualText(raw);
     if (!raw) {
       setSuggestions([]);
       setMessage('Paste or capture label text first.');
-      return;
+      return false;
     }
     const { value, candidates } = extractWarehouseLabelFieldFromOcr(raw, ocrField);
     const alts = candidates.filter((c) => c && c !== value);
@@ -90,14 +127,24 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
     if (value) {
       setMessage('');
       applyFieldValue(value);
-      return;
+      return true;
+    }
+    if (allowManualFallback) {
+      const manual = fieldValueFromManualText(raw);
+      if (manual) {
+        setMessage('');
+        setSuggestions([]);
+        applyFieldValue(manual);
+        return true;
+      }
     }
     if (alts.length) {
       setMessage('Tap the best match below, or edit the text.');
     } else {
       setMessage('Could not read this field from the text. Adjust framing and try again.');
     }
-  }, [applyFieldValue, ocrField]);
+    return false;
+  }, [applyFieldValue, fieldValueFromManualText, ocrField]);
 
   const applyResolved = useCallback(async (result) => {
     if (!result?.sku) {
@@ -122,14 +169,15 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
         ...(name ? { labelScanName: name } : {}),
         ...(nameSource ? { labelScanNameSource: nameSource } : {}),
         ...(labelScanTarget ? { labelScanTarget } : {}),
+        ...(passthroughFormDraft ? { formDraft: passthroughFormDraft } : {}),
       },
       merge: true,
     });
-  }, [labelScanTarget, navigation, returnScreen]);
+  }, [labelScanTarget, navigation, passthroughFormDraft, returnScreen]);
 
-  const resolveFromText = useCallback(async (text, { keepMessage } = {}) => {
+  const resolveFromText = useCallback(async (text, { keepMessage, allowManualFallback = false } = {}) => {
     if (ocrField) {
-      await resolveFieldFromText(text);
+      await resolveFieldFromText(text, { allowManualFallback });
       return;
     }
     const raw = String(text || '').trim();
@@ -160,6 +208,18 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
       );
     }
   }, [applyResolved, labelScanTarget, mode, ocrField, resolveFieldFromText]);
+
+  const useManualText = useCallback(async () => {
+    if (busy) return;
+    Keyboard.dismiss();
+    setBusy(true);
+    setMessage('');
+    try {
+      await resolveFromText(manualText, { allowManualFallback: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, manualText, resolveFromText]);
 
   const applySuggestion = useCallback(async (sku) => {
     if (ocrField) {
@@ -243,10 +303,19 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
     );
   }
 
+  const trimmedManual = manualText.trim();
+  const canUseText = trimmedManual.length > 0 && !busy;
+  const cameraHeight = keyboardVisible ? 140 : CAMERA_HEIGHT;
+
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.wrap}>
+    <WarehouseCatalogFormScroll
+      scrollRef={scrollRef}
+      style={styles.scroll}
+      contentContainerStyle={styles.wrap}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 96 : 72}
+    >
       <Text style={styles.lead}>{hint}</Text>
-      <View style={styles.cameraBox}>
+      <View style={[styles.cameraBox, { height: cameraHeight }]}>
         <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} autofocus="on" />
         <View pointerEvents="none" style={styles.frameOverlay}>
           <Text style={styles.frameHint}>
@@ -265,19 +334,30 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
         onChangeText={(t) => {
           setManualText(t);
           setSuggestions([]);
+          if (message) setMessage('');
         }}
         placeholder="Barcodes and printed codes"
         placeholderTextColor="#64748b"
         autoCapitalize="characters"
         autoCorrect={false}
         multiline
+        textAlignVertical="top"
+        onLayout={(e) => {
+          inputLayoutY.current = e.nativeEvent.layout.y;
+        }}
+        onFocus={() => {
+          setKeyboardVisible(true);
+          scrollFieldIntoView(inputLayoutY.current);
+        }}
+        onBlur={() => setKeyboardVisible(false)}
       />
       <Pressable
-        style={styles.btnSecondary}
-        onPress={() => resolveFromText(manualText)}
-        disabled={busy}
+        style={[styles.btnSecondary, !canUseText && styles.btnDisabled]}
+        onPress={useManualText}
+        disabled={!canUseText}
+        accessibilityState={{ disabled: !canUseText }}
       >
-        <Text style={styles.btnText}>Use this text</Text>
+        <Text style={[styles.btnText, !canUseText && styles.btnTextDisabled]}>Use this text</Text>
       </Pressable>
 
       {suggestions.length ? (
@@ -303,7 +383,7 @@ export default function WarehouseLabelCaptureScreen({ navigation, route }) {
         </Text>
       ) : null}
       {message ? <Text style={styles.message}>{message}</Text> : null}
-    </ScrollView>
+    </WarehouseCatalogFormScroll>
   );
 }
 
@@ -342,13 +422,21 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   btnSecondary: {
-    backgroundColor: '#334155',
+    backgroundColor: '#1e3a5f',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
     marginBottom: 8,
   },
+  btnDisabled: {
+    backgroundColor: '#334155',
+    borderColor: '#475569',
+    opacity: 0.55,
+  },
   btnText: { color: '#f8fafc', fontWeight: '700', fontSize: 15 },
+  btnTextDisabled: { color: '#94a3b8' },
   or: { color: '#64748b', fontSize: 12, marginVertical: 10, textAlign: 'center' },
   input: {
     borderWidth: 1,
@@ -356,7 +444,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     color: '#f1f5f9',
-    minHeight: 72,
+    minHeight: 120,
+    maxHeight: 220,
     fontFamily: 'monospace',
     fontSize: 13,
     marginBottom: 8,

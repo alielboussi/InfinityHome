@@ -35,7 +35,23 @@ export async function warehouseMobileRequest(op, body = {}) {
     body: JSON.stringify({ op, ...body }),
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const rawBody = await response.text();
+  let payload = {};
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      const gateway = /deployment|DOCTYPE|<html/i.test(rawBody);
+      const err = new Error(
+        gateway
+          ? 'Server busy or temporarily unavailable. Check the catalog — your change may already be saved.'
+          : `Request failed (${response.status})`,
+      );
+      err.gateway = gateway;
+      err.status = response.status;
+      throw err;
+    }
+  }
   if (!response.ok || payload?.ok === false) {
     const err = new Error(
       formatWarehouseMobileApiError(payload?.error, `Request failed (${response.status})`),

@@ -59,6 +59,10 @@ module.exports = {
       supportsTablet: true,
       bundleIdentifier: 'com.bestrest.warehousecatalog',
     },
+    autolinking: {
+      // JS-only icons; avoid broken Expo module publication on local Gradle.
+      exclude: ['@expo/vector-icons'],
+    },
     android: {
       package: 'com.bestrest.warehousecatalog',
       googleServicesFile: './google-services.json',

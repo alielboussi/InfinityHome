@@ -1,12 +1,15 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import WarehouseCatalogFormScroll, { useScrollFieldIntoView } from '../shared/WarehouseCatalogFormScroll';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
@@ -53,7 +56,11 @@ function guideFrameForView(width, height) {
 export default function WarehouseOcrSkuScreen({ navigation, route }) {
   const warehouseLocationId = route.params?.warehouseLocationId;
   const cameraRef = useRef(null);
+  const scrollRef = useRef(null);
+  const inputLayoutY = useRef(0);
+  const scrollFieldIntoView = useScrollFieldIntoView(scrollRef);
   const [permission, requestPermission] = useCameraPermissions();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [manualText, setManualText] = useState('');
@@ -168,6 +175,13 @@ export default function WarehouseOcrSkuScreen({ navigation, route }) {
     setViewSize({ width, height });
   }, []);
 
+  const submitManual = useCallback(() => {
+    const raw = manualText.trim();
+    if (!raw || busy) return;
+    Keyboard.dismiss();
+    lookupSku(manualText);
+  }, [busy, lookupSku, manualText]);
+
   if (!permission) {
     return (
       <View style={styles.wrap}>
@@ -189,13 +203,22 @@ export default function WarehouseOcrSkuScreen({ navigation, route }) {
     );
   }
 
+  const trimmedManual = manualText.trim();
+  const canLookup = trimmedManual.length > 0 && !busy;
+  const cameraHeight = keyboardVisible ? 140 : CAMERA_HEIGHT;
+
   return (
-    <View style={styles.wrap}>
+    <WarehouseCatalogFormScroll
+      scrollRef={scrollRef}
+      style={styles.scroll}
+      contentContainerStyle={styles.wrap}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 96 : 72}
+    >
       <Text style={styles.lead}>
         Align the finished-product unit code (e.g. 22AYS3150ZIZI) inside the yellow box, then capture.
         Only that region is read — not the whole label.
       </Text>
-      <View style={styles.cameraBox} onLayout={onCameraLayout}>
+      <View style={[styles.cameraBox, { height: cameraHeight }]} onLayout={onCameraLayout}>
         <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} />
         {guideFrame ? (
           <>
@@ -269,14 +292,22 @@ export default function WarehouseOcrSkuScreen({ navigation, route }) {
         placeholderTextColor="#64748b"
         autoCapitalize="characters"
         autoCorrect={false}
-        onSubmitEditing={() => lookupSku(manualText)}
+        onSubmitEditing={submitManual}
+        onLayout={(e) => {
+          inputLayoutY.current = e.nativeEvent.layout.y;
+        }}
+        onFocus={() => {
+          setKeyboardVisible(true);
+          scrollFieldIntoView(inputLayoutY.current);
+        }}
+        onBlur={() => setKeyboardVisible(false)}
       />
       <Pressable
-        style={styles.btnSecondary}
-        onPress={() => lookupSku(manualText)}
-        disabled={busy}
+        style={[styles.btnSecondary, !canLookup && styles.btnDisabled]}
+        onPress={submitManual}
+        disabled={!canLookup}
       >
-        <Text style={styles.btnText}>Look up product</Text>
+        <Text style={[styles.btnText, !canLookup && styles.btnTextDisabled]}>Look up product</Text>
       </Pressable>
 
       {lastRead ? (
@@ -285,15 +316,15 @@ export default function WarehouseOcrSkuScreen({ navigation, route }) {
         </Text>
       ) : null}
       {message ? <Text style={styles.message}>{message}</Text> : null}
-    </View>
+    </WarehouseCatalogFormScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: '#0f172a', padding: 16 },
+  scroll: { flex: 1, backgroundColor: '#0f172a' },
+  wrap: { padding: 16, paddingBottom: 32 },
   lead: { color: '#94a3b8', fontSize: 13, marginBottom: 12, lineHeight: 18 },
   cameraBox: {
-    height: CAMERA_HEIGHT,
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 12,
@@ -339,11 +370,19 @@ const styles = StyleSheet.create({
   },
   btnSecondary: {
     backgroundColor: '#1e3a5f',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
     borderRadius: 8,
     padding: 14,
     alignItems: 'center',
   },
+  btnDisabled: {
+    backgroundColor: '#334155',
+    borderColor: '#475569',
+    opacity: 0.55,
+  },
   btnText: { color: '#f8fafc', fontWeight: '600' },
+  btnTextDisabled: { color: '#94a3b8' },
   message: { color: '#fbbf24', marginTop: 12, lineHeight: 18 },
   preview: { color: '#64748b', fontSize: 12, marginTop: 10, fontFamily: 'monospace' },
 });

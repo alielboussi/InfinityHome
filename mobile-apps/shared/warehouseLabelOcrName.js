@@ -130,6 +130,33 @@ function linesFromOcr(text) {
     .filter(Boolean);
 }
 
+function isLikelyProductTitleFragment(line) {
+  const t = cleanLine(line);
+  if (!t || isNoiseLine(t)) return false;
+  if (/^X\d/i.test(t.replace(/\s/g, ''))) return false;
+  if (/\b(GVDPKT|PKT|BESTREST)\b/i.test(t)) return false;
+  if (/^\d{10,}$/.test(t.replace(/\s/g, ''))) return false;
+  if (!/[A-ZÇĞİÖŞÜ]{3,}/i.test(t)) return false;
+  const tight = t.replace(/[\s-]/g, '');
+  if (/^\d{2}[A-Z0-9]{10,}$/i.test(tight)) return false;
+  return /^[A-Z0-9ÇĞİÖŞÜ][A-Z0-9ÇĞİÖŞÜ\s]{2,}$/i.test(t) && t.length <= 48;
+}
+
+function mergeAdjacentProductTitleLines(text) {
+  const lines = linesFromOcr(text).map(cleanLine).filter((line) => line && !isNoiseLine(line));
+  let best = '';
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!isLikelyProductTitleFragment(lines[i])) continue;
+    let merged = lines[i];
+    for (let j = i + 1; j < lines.length && j <= i + 2; j += 1) {
+      if (!isLikelyProductTitleFragment(lines[j])) break;
+      merged = `${merged} ${lines[j]}`.replace(/\s+/g, ' ').trim();
+    }
+    if (merged.length > best.length) best = merged;
+  }
+  return best.slice(0, 160);
+}
+
 function fromFinishedProductTitleBlock(text) {
   const lines = linesFromOcr(text).map(cleanLine).filter((line) => line && !isNoiseLine(line));
   for (let i = 0; i < lines.length - 1; i += 1) {
@@ -168,6 +195,10 @@ export function extractSuggestedNameFromLabelText(text, options = {}) {
   if (intent === 'product_turkish') {
     const finishedTitle = fromFinishedProductTitleBlock(blob);
     if (finishedTitle) return finishedTitle;
+    const mergedTitle = mergeAdjacentProductTitleLines(blob);
+    if (mergedTitle) return mergedTitle;
+    const multiUnitTitle = fromPacketTitleBlock(blob);
+    if (multiUnitTitle) return multiUnitTitle;
   }
 
   const lines = linesFromOcr(blob).filter((line) => !isNoiseLine(line));

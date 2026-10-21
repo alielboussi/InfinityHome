@@ -21,6 +21,27 @@ function check(label, ok, hint) {
 
 console.log('Warehouse Catalog — APK readiness\n');
 
+function warnIfJavaNot17() {
+  const javaHome = process.env.JAVA_HOME;
+  if (!javaHome) return;
+  try {
+    const { execSync } = require('child_process');
+    const javaBin = require('path').join(javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
+    const out = execSync(`"${javaBin}" -version`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const combined = out + (execSync(`"${javaBin}" -version`, { encoding: 'utf8' }) || '');
+    if (!/version "17\./.test(combined)) {
+      console.warn(
+        '  WARN JAVA_HOME is not JDK 17. Local Gradle may fail on react-native-worklets CMake with',
+      );
+      console.warn('       "WARNING: A restricted method in java.lang.System has been called".');
+      console.warn('       Use mobile-apps/warehouse-catalog/build-apk-local.ps1 or set JAVA_HOME to Temurin 17.\n');
+    }
+  } catch {
+    // ignore
+  }
+}
+warnIfJavaNot17();
+
 check('google-services.json', fs.existsSync(GOOGLE_SERVICES), [
   'From repo root, register EAS release SHA-1:',
   '  WAREHOUSE_CATALOG_ANDROID_SHA1=AA:BB:... node scripts/setupWarehouseCatalogGoogleSignIn.mjs',

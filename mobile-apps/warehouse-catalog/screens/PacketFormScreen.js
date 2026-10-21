@@ -26,6 +26,7 @@ import {
   wedgeAwareTextChange,
 } from '../shared/useKeepSoftKeyboardOnScanSubmit';
 import { theme } from '../shared/theme';
+import { useWarehouseFormOcrReturn } from '../shared/useWarehouseFormOcrReturn';
 
 export default function PacketFormScreen({ route, navigation }) {
   const prefill = route.params?.prefill || {};
@@ -45,7 +46,12 @@ export default function PacketFormScreen({ route, navigation }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const prefillHydratedRef = useRef(false);
   const skuInputRef = useRef(null);
+  const skuRef = useRef(sku);
+  const nameRef = useRef(name);
+  skuRef.current = sku;
+  nameRef.current = name;
   const nameInputRef = useRef(null);
   const scrollRef = useRef(null);
   const qtySectionY = useRef(0);
@@ -93,54 +99,78 @@ export default function PacketFormScreen({ route, navigation }) {
   useFocusEffect(
     useCallback(() => {
       if (!catalog) refreshCatalog();
-      if (isEdit) applyPrefill();
-      else focusSku();
+      if (isEdit && !prefillHydratedRef.current) {
+        applyPrefill();
+        prefillHydratedRef.current = true;
+      } else if (!isEdit) {
+        focusSku();
+      }
     }, [applyPrefill, catalog, focusSku, isEdit, refreshCatalog]),
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      const field = route.params?.labelOcrField;
-      const value = route.params?.labelFieldValue;
-      if (!field || value == null || value === '') return;
-      if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU) {
-        const nextSku = String(value);
-        setSku(nextSku);
-        setNotice('Packet SKU from label OCR — edit if needed.');
-        const key = normalizeWarehouseWedgeScanInput(nextSku, 'packet') || nextSku.trim();
-        if (key && name?.trim()) {
-          rememberLabelName({
-            sku: key,
-            kind: LABEL_NAME_MEMORY_KIND.PACKET,
-            name: name.trim(),
-          }).catch(() => {});
-        }
-      } else if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME) {
-        const nextName = String(value);
-        setName(nextName);
-        setNotice('Packet name from label OCR — edit if needed.');
-        const key = normalizeWarehouseWedgeScanInput(sku, 'packet') || String(sku || '').trim();
-        if (key && nextName.trim()) {
-          rememberLabelName({
-            sku: key,
-            kind: LABEL_NAME_MEMORY_KIND.PACKET,
-            name: nextName.trim(),
-          }).catch(() => {});
-        }
+  const snapshotFormDraft = useCallback(() => ({
+    sku,
+    name,
+    packetNumber,
+    qtyPerProduct,
+    initialQty,
+  }), [initialQty, name, packetNumber, qtyPerProduct, sku]);
+
+  const restoreFormDraft = useCallback((draft) => {
+    if (!draft || typeof draft !== 'object') return;
+    if (draft.sku != null) setSku(String(draft.sku));
+    if (draft.name != null) setName(String(draft.name));
+    if (draft.packetNumber != null) setPacketNumber(String(draft.packetNumber));
+    if (draft.qtyPerProduct != null) setQtyPerProduct(String(draft.qtyPerProduct));
+    if (draft.initialQty != null) setInitialQty(String(draft.initialQty));
+  }, []);
+
+  const applyOcrField = useCallback((field, value) => {
+    if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU) {
+      const nextSku = String(value);
+      setSku(nextSku);
+      setNotice('Packet SKU from label OCR — edit if needed.');
+      const key = normalizeWarehouseWedgeScanInput(nextSku, 'packet') || nextSku.trim();
+      const packetName = nameRef.current?.trim();
+      if (key && packetName) {
+        rememberLabelName({
+          sku: key,
+          kind: LABEL_NAME_MEMORY_KIND.PACKET,
+          name: packetName,
+        }).catch(() => {});
       }
-      navigation.setParams({
-        labelOcrField: undefined,
-        labelFieldValue: undefined,
-      });
-    }, [name, navigation, route.params?.labelFieldValue, route.params?.labelOcrField, sku]),
-  );
+      return;
+    }
+    if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME) {
+      const nextName = String(value);
+      setName(nextName);
+      setNotice('Packet name from label OCR — edit if needed.');
+      const key = normalizeWarehouseWedgeScanInput(skuRef.current, 'packet')
+        || String(skuRef.current || '').trim();
+      if (key && nextName.trim()) {
+        rememberLabelName({
+          sku: key,
+          kind: LABEL_NAME_MEMORY_KIND.PACKET,
+          name: nextName.trim(),
+        }).catch(() => {});
+      }
+    }
+  }, []);
+
+  useWarehouseFormOcrReturn({
+    navigation,
+    route,
+    restoreDraft: restoreFormDraft,
+    applyOcrField,
+  });
 
   const openOcrCamera = useCallback((field) => {
     navigation.navigate('WarehouseLabelCapture', {
       ocrField: field,
       returnScreen: 'PacketForm',
+      formDraft: snapshotFormDraft(),
     });
-  }, [navigation]);
+  }, [navigation, snapshotFormDraft]);
 
   useEffect(() => {
     if (!isEdit) focusSku();

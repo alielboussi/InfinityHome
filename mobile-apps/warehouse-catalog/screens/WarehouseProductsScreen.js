@@ -3,13 +3,17 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
+import { isWarehouseProductFormInsertAllowed } from '../shared/mobileAccessManifest';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
@@ -23,11 +27,15 @@ import {
 import { wedgeAwareTextChange } from '../shared/useKeepSoftKeyboardOnScanSubmit';
 import {
   analyzeAssemblyPacketBom,
-  assemblyUsesPacketBom,
+  assemblyDerivesWarehouseStockFromPackets,
   isCompleteCatalogProduct,
   isIncompletePacketBomProduct,
   isSetAssembly,
 } from '../shared/warehouseCatalogProductCompleteness';
+import {
+  assemblyUnitsPerCarton,
+  formatWarehouseBoxAndUnitStock,
+} from '../shared/warehouseUnitsPerCarton';
 import { theme } from '../shared/theme';
 
 const LIST_PERF = {
@@ -226,60 +234,68 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         : `BOM ${bom.cartonsPerUnit}/${bom.required || assembly.packet_count || '?'} cartons`)
       : '';
 
+    const qtyNum = Math.max(0, Math.floor(Number(displayQty) || 0));
+    const unitsPerBox = assemblyUnitsPerCarton(assembly);
+    const usePacketStock = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
+    const showBoxAndUnits = catalogMode === 'complete'
+      && unitsPerBox > 1
+      && !usePacketStock;
+    const qtyDisplayText = showBoxAndUnits
+      ? formatWarehouseBoxAndUnitStock(qtyNum, unitsPerBox).text
+      : formatQty(displayQty);
+
+    let qtyStyle = styles.qtyValueDefault;
+    if (zeroQtyFilter && catalogMode === 'complete') {
+      qtyStyle = styles.qtyValueFilter;
+    } else if (qtyNum > 0) {
+      qtyStyle = styles.qtyValueInStock;
+    }
+    const imageUri = resolveAssemblyImageUri(assembly);
+
     return (
       <View style={styles.gridCard}>
         <View style={styles.cardPress}>
-          <Pressable
-            onPress={() => navigation.navigate('WarehouseProductDetail', { assemblyId: id })}
-            accessibilityLabel={`Open ${assembly.name}`}
-          >
-            <ProductThumbnail assembly={assembly} />
-            <View style={styles.qtyRibbon} pointerEvents="none">
-              <Text style={styles.qtyRibbonLabel}>{warehouseLabel}</Text>
-              <Text
-                style={[
-                  styles.qtyRibbonValue,
-                  displayQty > 0 && styles.qtyRibbonValuePositive,
-                ]}
-              >
-                {formatQty(displayQty)}
-              </Text>
-            </View>
-            <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
-            <Text style={styles.cardSku} numberOfLines={1}>{assembly.family_sku}</Text>
-            <Text style={styles.cardMeta} numberOfLines={2}>
-              {cat || '—'}
-              {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
-              {bomHint ? ` · ${bomHint}` : ''}
+          <View style={styles.thumbWrap}>
+            <Pressable
+              onPress={() => {
+                if (imageUri) setPhotoPreview({ uri: imageUri, title: assembly.name });
+              }}
+              accessibilityLabel={imageUri ? `View photo for ${assembly.name}` : 'No product photo'}
+              disabled={!imageUri}
+            >
+              <ProductThumbnail assembly={assembly} />
+            </Pressable>
+            <Pressable
+              style={styles.expandFab}
+              onPress={() => toggleExpanded(id)}
+              hitSlop={8}
+              accessibilityLabel={isOpen ? 'Hide packets' : 'Show packets'}
+            >
+              <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
+          <Text style={styles.cardSku} numberOfLines={1}>{assembly.family_sku}</Text>
+          <Text style={styles.cardMeta} numberOfLines={2}>
+            {cat || '—'}
+            {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
+            {bomHint ? ` · ${bomHint}` : ''}
+          </Text>
+          {dimLine ? (
+            <Text style={styles.cardSpec} numberOfLines={2}>{dimLine}</Text>
+          ) : null}
+          {volumeLine ? (
+            <Text style={styles.cardSpec} numberOfLines={1}>{volumeLine}</Text>
+          ) : null}
+          <View style={styles.qtyRow}>
+            <Text
+              style={[styles.qtyValue, showBoxAndUnits && styles.qtyValueBoxUnit, qtyStyle]}
+              numberOfLines={showBoxAndUnits ? 3 : 1}
+            >
+              {qtyDisplayText}
             </Text>
-            {dimLine ? (
-              <Text style={styles.cardSpec} numberOfLines={2}>{dimLine}</Text>
-            ) : null}
-            {volumeLine ? (
-              <Text style={styles.cardSpec} numberOfLines={1}>{volumeLine}</Text>
-            ) : null}
-          </Pressable>
-          <Pressable
-            style={styles.expandFab}
-            onPress={() => toggleExpanded(id)}
-            hitSlop={8}
-            accessibilityLabel={isOpen ? 'Hide packets' : 'Show packets'}
-          >
-            <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
-          </Pressable>
+          </View>
         </View>
-        {(catalogMode === 'incomplete'
-          || (catalogMode === 'complete' && assemblyUsesPacketBom(assembly) && !isSetAssembly(assembly))) ? (
-          <Pressable
-            style={styles.editBomBtn}
-            onPress={() => openEditPacketBom(assembly, catalogMode === 'complete')}
-            accessibilityLabel="Edit packet BOM"
-          >
-            <Text style={styles.editBomBtnText}>
-              {catalogMode === 'incomplete' ? 'Add / edit packets' : 'Edit packets / total'}
-            </Text>
-          </Pressable>
-        ) : null}
         {isOpen ? (
           <View style={styles.packetList}>
             {pktList.length === 0 ? (
@@ -322,13 +338,28 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           }}
         />
         {catalogMode === 'complete' ? (
-          <Pressable
-            style={styles.addBtn}
-            onPress={openNewProductForm}
-            accessibilityLabel="Add new product"
-          >
-            <Text style={styles.addBtnText}>+</Text>
-          </Pressable>
+          <>
+            <Pressable
+              style={[styles.filterBtn, zeroQtyFilter && styles.filterBtnActive]}
+              onPress={() => setZeroQtyFilter((v) => !v)}
+              accessibilityLabel={zeroQtyFilter ? 'Show all products' : 'Show only zero quantity'}
+            >
+              <MaterialCommunityIcons
+                name="filter-variant"
+                size={22}
+                color={zeroQtyFilter ? '#fca5a5' : '#94a3b8'}
+              />
+            </Pressable>
+            {canAddProduct ? (
+              <Pressable
+                style={styles.addBtn}
+                onPress={openNewProductForm}
+                accessibilityLabel="Add new product"
+              >
+                <Text style={styles.addBtnText}>+</Text>
+              </Pressable>
+            ) : null}
+          </>
         ) : null}
       </View>
 
@@ -360,6 +391,21 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         />
       )}
 
+      <Modal
+        visible={Boolean(photoPreview?.uri)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhotoPreview(null)}
+      >
+        <Pressable style={styles.photoModalBackdrop} onPress={() => setPhotoPreview(null)}>
+          <Image
+            source={{ uri: photoPreview?.uri }}
+            style={styles.photoModalImage}
+            resizeMode="contain"
+            accessibilityLabel={photoPreview?.title || 'Product photo'}
+          />
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -390,6 +436,20 @@ const styles = StyleSheet.create({
     color: theme.text,
     fontSize: 15,
   },
+  filterBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: theme.radiusSm,
+    backgroundColor: theme.surfaceElevated,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBtnActive: {
+    borderColor: '#f87171',
+    backgroundColor: 'rgba(127, 29, 29, 0.35)',
+  },
   addBtn: {
     width: 44,
     height: 44,
@@ -412,7 +472,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     minWidth: 0,
   },
-  cardPress: { padding: 8, paddingBottom: 10, position: 'relative' },
+  cardPress: { padding: 8, paddingBottom: 10 },
+  thumbWrap: { position: 'relative' },
   thumb: {
     width: '100%',
     aspectRatio: 1,
@@ -432,20 +493,17 @@ const styles = StyleSheet.create({
   },
   thumbPlaceholderIcon: { color: '#475569', fontSize: 28, marginBottom: 4 },
   thumbPlaceholderText: { color: '#64748b', fontSize: 12, fontWeight: '600' },
-  qtyRibbon: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#334155',
+  qtyRow: {
+    marginTop: 8,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  qtyRibbonLabel: { color: '#94a3b8', fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
-  qtyRibbonValue: { color: '#334155', fontSize: 16, fontWeight: '800' },
-  qtyRibbonValuePositive: { color: '#15803d' },
+  qtyValue: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  qtyValueBoxUnit: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  qtyValueDefault: { color: '#86efac' },
+  qtyValueInStock: { color: '#fca5a5' },
+  qtyValueFilter: { color: '#fca5a5' },
   expandFab: {
     position: 'absolute',
     top: 14,
@@ -482,18 +540,12 @@ const styles = StyleSheet.create({
   packetName: { color: '#e2e8f0', fontSize: 11, marginTop: 2 },
   packetQty: { color: '#a5f3fc', fontSize: 11, fontWeight: '700', marginTop: 2 },
   packetEmpty: { color: '#64748b', fontStyle: 'italic', paddingVertical: 4, fontSize: 11 },
-  editBomBtn: {
-    marginTop: 6,
-    marginHorizontal: 8,
-    marginBottom: 4,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.primary,
-    backgroundColor: theme.surfaceElevated,
+  photoModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
   },
-  editBomBtnText: { color: theme.primary, fontWeight: '700', fontSize: 13 },
-  error: { color: '#f87171', paddingHorizontal: 12, marginBottom: 8 },
-  empty: { color: '#64748b', textAlign: 'center', marginTop: 32, paddingHorizontal: 24 },
+  photoModalImage: { width: '100%', height: '80%' },
 });

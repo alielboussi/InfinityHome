@@ -37,6 +37,12 @@ import { WAREHOUSE_LABEL_OCR_FIELD } from '../shared/warehouseLabelFieldOcr';
 import LabelFieldWithOcrCamera from '../shared/LabelFieldWithOcrCamera';
 import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
 import { rememberLabelName } from '../shared/warehouseLabelNameMemory';
+import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
+import { useWarehouseFormOcrReturn } from '../shared/useWarehouseFormOcrReturn';
+import {
+  finishedUnitsFromBoxCount,
+  formatWarehouseBoxAndUnitStock,
+} from '../shared/warehouseUnitsPerCarton';
 
 const INVENTORY_FINISHED = 'finished';
 const INVENTORY_PACKETS = 'packets';
@@ -79,6 +85,9 @@ export default function ProductFormScreen({ route, navigation }) {
   const packetSearchRef = useRef('');
   const packetSearchPrevLenRef = useRef(0);
   const bomHydratedRef = useRef(false);
+  const initialSkuFocusRef = useRef(false);
+  const familySkuRef = useRef(familySku);
+  familySkuRef.current = familySku;
   const packetLinksRef = useRef(packetLinks);
   packetLinksRef.current = packetLinks;
   const {
@@ -124,7 +133,10 @@ export default function ProductFormScreen({ route, navigation }) {
   useFocusEffect(
     useCallback(() => {
       if (!catalog) refreshCatalog();
-      if (!existing && !bomEditMode) focusSku();
+      if (!existing && !bomEditMode && !initialSkuFocusRef.current) {
+        initialSkuFocusRef.current = true;
+        focusSku();
+      }
     }, [bomEditMode, catalog, existing, focusSku, refreshCatalog]),
   );
 
@@ -134,7 +146,10 @@ export default function ProductFormScreen({ route, navigation }) {
       const assembly = (catalog.assemblies || []).find(
         (a) => String(a.id) === editAssemblyId,
       );
-      if (!assembly) return;
+      if (!assembly) {
+        bomHydratedRef.current = true;
+        return;
+      }
       setName(assembly.name || '');
       setFamilySku(assembly.family_sku || '');
       setCategoryId(assembly.category_id || '');
@@ -312,41 +327,92 @@ export default function ProductFormScreen({ route, navigation }) {
     return addPacketLink(match, { clearSearch: true });
   }, [addPacketLink, packets]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const field = route.params?.labelOcrField;
-      const value = route.params?.labelFieldValue;
-      if (field && value != null && value !== '') {
-        if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU) {
-          setFamilySku(String(value));
-          setNotice('Product SKU from label OCR — edit if needed.');
-        } else if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH) {
-          const name = String(value);
-          setTurkishName(name);
-          setNotice('Turkish name from label OCR — edit if needed.');
-          const skuKey = normalizeWarehouseProductSku(familySku) || String(familySku || '').trim();
-          if (skuKey && name) {
-            rememberLabelName({
-              sku: skuKey,
-              kind: LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH,
-              name,
-            }).catch(() => {});
-          }
-        }
-        navigation.setParams({
-          labelOcrField: undefined,
-          labelFieldValue: undefined,
-        });
+  const snapshotFormDraft = useCallback(() => ({
+    name,
+    turkishName,
+    familySku,
+    unitsPerCarton,
+    packetCount,
+    categoryId,
+    newCategoryName,
+    finishedOnly,
+    hasColorVariants,
+    colorIds,
+    colorDraft,
+    packetLinks,
+    packetSearch,
+  }), [
+    categoryId,
+    colorDraft,
+    colorIds,
+    familySku,
+    finishedOnly,
+    hasColorVariants,
+    name,
+    newCategoryName,
+    packetCount,
+    packetLinks,
+    packetSearch,
+    turkishName,
+    unitsPerCarton,
+  ]);
+
+  const restoreFormDraft = useCallback((draft) => {
+    if (!draft || typeof draft !== 'object') return;
+    if (draft.name != null) setName(String(draft.name));
+    if (draft.turkishName != null) setTurkishName(String(draft.turkishName));
+    if (draft.familySku != null) setFamilySku(String(draft.familySku));
+    if (draft.unitsPerCarton != null) setUnitsPerCarton(String(draft.unitsPerCarton));
+    if (draft.packetCount != null) setPacketCount(String(draft.packetCount));
+    if (draft.categoryId != null) setCategoryId(String(draft.categoryId));
+    if (draft.newCategoryName != null) setNewCategoryName(String(draft.newCategoryName));
+    if (typeof draft.finishedOnly === 'boolean') setFinishedOnly(draft.finishedOnly);
+    if (typeof draft.hasColorVariants === 'boolean') setHasColorVariants(draft.hasColorVariants);
+    if (Array.isArray(draft.colorIds)) setColorIds(draft.colorIds);
+    if (draft.colorDraft != null) setColorDraft(String(draft.colorDraft));
+    if (Array.isArray(draft.packetLinks)) setPacketLinks(draft.packetLinks);
+    if (draft.packetSearch != null) {
+      setPacketSearch(String(draft.packetSearch));
+      packetSearchRef.current = String(draft.packetSearch);
+    }
+  }, []);
+
+  const applyOcrField = useCallback((field, value) => {
+    if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU) {
+      setFamilySku(String(value));
+      setNotice('Product SKU from label OCR — edit if needed.');
+      return;
+    }
+    if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH) {
+      const turkish = String(value);
+      setTurkishName(turkish);
+      setNotice('Turkish name from label OCR — edit if needed.');
+      const skuKey = normalizeWarehouseProductSku(familySkuRef.current)
+        || String(familySkuRef.current || '').trim();
+      if (skuKey && turkish) {
+        rememberLabelName({
+          sku: skuKey,
+          kind: LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH,
+          name: turkish,
+        }).catch(() => {});
       }
-    }, [familySku, navigation, route.params?.labelFieldValue, route.params?.labelOcrField]),
-  );
+    }
+  }, []);
+
+  useWarehouseFormOcrReturn({
+    navigation,
+    route,
+    restoreDraft: restoreFormDraft,
+    applyOcrField,
+  });
 
   const openOcrCamera = useCallback((field) => {
     navigation.navigate('WarehouseLabelCapture', {
       ocrField: field,
       returnScreen: 'ProductForm',
+      formDraft: snapshotFormDraft(),
     });
-  }, [navigation]);
+  }, [navigation, snapshotFormDraft]);
 
   const handlePacketSearchChange = useCallback((text) => {
     const raw = String(text || '');
@@ -428,23 +494,29 @@ export default function ProductFormScreen({ route, navigation }) {
       }
       const saveResult = await warehouseMobileRequest('assembly-save', payload);
       if (turkishName.trim()) {
-        await rememberLabelName({
+        rememberLabelName({
           sku: normalizedSku,
           kind: LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH,
           name: turkishName.trim(),
-        });
+        }).catch(() => {});
       }
       refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
       const createdAssemblyId = saveResult?.assembly?.id
         ? String(saveResult.assembly.id)
         : '';
       if (finishedOnly && !bomEditMode && createdAssemblyId) {
+        const unitsPerBox = Math.max(1, Math.floor(Number(unitsPerCarton) || 1));
         setFinishedQtyValue('0');
         setFinishedQtyPrompt({
           assemblyId: createdAssemblyId,
           productName: name.trim() || normalizedSku,
+          unitsPerBox,
         });
-        setNotice('Product saved. Enter warehouse on-hand qty.');
+        setNotice(
+          unitsPerBox > 1
+            ? 'Product saved. Enter how many boxes are on hand.'
+            : 'Product saved. Enter warehouse on-hand qty.',
+        );
         return;
       }
       const navigateAfterSave = (listScreen) => {
@@ -487,7 +559,11 @@ export default function ProductFormScreen({ route, navigation }) {
       dismissFinishedQtyPrompt();
       return;
     }
-    const qty = Math.max(0, Math.floor(Number(finishedQtyValue) || 0));
+    const unitsPerBox = Math.max(1, Math.floor(Number(finishedQtyPrompt.unitsPerBox) || 1));
+    const entered = Math.max(0, Math.floor(Number(finishedQtyValue) || 0));
+    const qty = unitsPerBox > 1
+      ? finishedUnitsFromBoxCount(entered, unitsPerBox)
+      : entered;
     setFinishedQtySaving(true);
     setError('');
     try {
@@ -499,7 +575,32 @@ export default function ProductFormScreen({ route, navigation }) {
       refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
       dismissFinishedQtyPrompt('WarehouseProducts');
     } catch (err) {
-      setError(formatWarehouseMobileApiError(err?.message, 'Could not save quantity.'));
+      const msg = formatWarehouseMobileApiError(err?.message, 'Could not save quantity.');
+      const maybeGateway = err?.gateway
+        || /deployment|temporarily unavailable|gateway|timeout/i.test(msg);
+      if (maybeGateway) {
+        try {
+          const data = await fetchWarehouseCatalogCached({ force: true });
+          const qtyMap = catalogStockMaps(data).assemblyWarehouseQty;
+          const got = Math.max(0, Math.floor(Number(
+            qtyMap[String(finishedQtyPrompt.assemblyId)] ?? 0,
+          )));
+          if (got === qty) {
+            refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+            setFinishedQtyPrompt(null);
+            setNotice('Quantity saved (confirmed in catalog).');
+            try {
+              returnToCatalogListScreen(navigation, 'WarehouseProducts');
+            } catch {
+              navigation.goBack();
+            }
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      setError(msg);
     } finally {
       setFinishedQtySaving(false);
     }
@@ -507,6 +608,7 @@ export default function ProductFormScreen({ route, navigation }) {
     dismissFinishedQtyPrompt,
     finishedQtyPrompt,
     finishedQtyValue,
+    navigation,
     refreshGlobalCatalog,
     warehouseLocationId,
   ]);
@@ -569,7 +671,7 @@ export default function ProductFormScreen({ route, navigation }) {
           ) : null}
           {finishedOnly ? (
             <Text style={styles.fieldHint}>
-              Example: 2 chairs in one sellable box → enter 2. Stock can show boxes and units on the web portal.
+              Example: 2 chairs in one sellable box → enter 2 here. After save you enter how many boxes are on hand (e.g. 3 boxes → 6 units on web and app).
             </Text>
           ) : null}
           <LabelFieldWithOcrCamera
@@ -792,12 +894,18 @@ export default function ProductFormScreen({ route, navigation }) {
     >
       <View style={styles.finishedQtyBackdrop}>
         <View style={styles.finishedQtyCard}>
-          <Text style={styles.finishedQtyTitle}>Warehouse finished qty</Text>
+          <Text style={styles.finishedQtyTitle}>
+            {(finishedQtyPrompt?.unitsPerBox ?? 1) > 1
+              ? 'Boxes on hand'
+              : 'Warehouse finished qty'}
+          </Text>
           <Text style={styles.finishedQtyHint}>
             {finishedQtyPrompt?.productName
               ? `${finishedQtyPrompt.productName} — `
               : ''}
-            How many finished units are on hand at {warehouseLocationName}?
+            {(finishedQtyPrompt?.unitsPerBox ?? 1) > 1
+              ? `How many full boxes are on hand at ${warehouseLocationName}? (${finishedQtyPrompt.unitsPerBox} units per box.)`
+              : `How many finished units are on hand at ${warehouseLocationName}?`}
           </Text>
           <TextInput
             style={styles.finishedQtyInput}
@@ -808,6 +916,14 @@ export default function ProductFormScreen({ route, navigation }) {
             placeholderTextColor="#64748b"
             autoFocus
           />
+          {(finishedQtyPrompt?.unitsPerBox ?? 1) > 1 ? (
+            <Text style={styles.finishedQtyPreview}>
+              {formatWarehouseBoxAndUnitStock(
+                finishedUnitsFromBoxCount(finishedQtyValue, finishedQtyPrompt.unitsPerBox),
+                finishedQtyPrompt.unitsPerBox,
+              ).text}
+            </Text>
+          ) : null}
           <Pressable
             style={styles.btn}
             onPress={submitFinishedQtyPrompt}
@@ -1021,6 +1137,13 @@ const styles = StyleSheet.create({
   },
   finishedQtyTitle: { color: theme.text, fontSize: 18, fontWeight: '700', marginBottom: 8 },
   finishedQtyHint: { color: theme.textMuted, fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  finishedQtyPreview: {
+    color: '#22c55e',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 14,
+    textAlign: 'center',
+  },
   finishedQtyInput: {
     borderWidth: 1,
     borderColor: '#334155',

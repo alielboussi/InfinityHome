@@ -8,9 +8,11 @@
     "start:online": "expo start --go",
     "android": "expo start --offline --android",
     "icons": "node ../../scripts/warehouseCatalogIconFrame.js",
-    "eas:build:android": "node scripts/materializeSharedForEas.js && eas build --platform android --profile preview --non-interactive"
+    "eas:build:android": "node scripts/materializeSharedForEas.js && eas build --platform android --profile preview --non-interactive",
+    "android:apk:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./build-apk-local.ps1"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^13.3.1",
     "@react-native-ml-kit/text-recognition": "^2.0.0",

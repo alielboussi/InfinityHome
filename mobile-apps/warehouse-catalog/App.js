@@ -20,7 +20,6 @@ import ProductFormScreen from './screens/ProductFormScreen';
 import WarehouseOcrSkuScreen from './screens/WarehouseOcrSkuScreen';
 import WarehouseLabelCaptureScreen from './screens/WarehouseLabelCaptureScreen';
 import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
-import WarehouseStockCountScreen from './screens/WarehouseStockCountScreen';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { MOBILE_APP_DISPLAY_NAME } from './shared/mobileAccessManifest';
 import { stackScreenOptions, theme } from './shared/theme';
@@ -87,13 +86,6 @@ function MainStack() {
         {(props) => (
           <MobileScreenGate screenId="warehouse_unused_packets" grant={grant} navigation={props.navigation}>
             <WarehouseUnusedPacketsScreen {...props} />
-          </MobileScreenGate>
-        )}
-      </Stack.Screen>
-      <Stack.Screen name="WarehouseStockCount" options={{ title: 'Stock count' }}>
-        {(props) => (
-          <MobileScreenGate screenId="warehouse_floor_count" grant={grant} navigation={props.navigation}>
-            <WarehouseStockCountScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>
