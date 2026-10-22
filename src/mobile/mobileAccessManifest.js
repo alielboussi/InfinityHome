@@ -6,7 +6,7 @@
  */
 
 /** Launcher / login title (keep in sync with warehouse-catalog app.config.js `expo.name`). */
-export const MOBILE_APP_DISPLAY_NAME = 'Factory';
+export const MOBILE_APP_DISPLAY_NAME = 'Warehouse';
 
 /** Stored per screen; admin UI only exposes Yes/No (maps to full allow vs full deny). */
 export function buildMobileScreenAccessRow(allowed) {
@@ -78,19 +78,19 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_products',
-    label: 'Warehouse Products',
+    label: 'Products',
     description: 'Finished-only products and packet-BOM products with complete cartons',
     permissionMatrix: true,
   },
   {
     id: 'warehouse_incomplete_products',
-    label: 'Warehouse Incomplete Products',
+    label: 'Incomplete Products',
     description: 'Packet-BOM products missing links or carton totals ≠ packet count',
     permissionMatrix: true,
   },
   {
     id: 'warehouse_packets',
-    label: 'Warehouse Packets',
+    label: 'Packets',
     description: 'Search packets and adjust warehouse carton qty',
     permissionMatrix: true,
   },

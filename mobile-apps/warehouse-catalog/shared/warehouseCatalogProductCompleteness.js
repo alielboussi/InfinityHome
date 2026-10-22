@@ -28,6 +28,8 @@ export function assemblyUsesFinishedInventory(assembly) {
   return assemblyInventoryMode(assembly) === WAREHOUSE_INVENTORY_MODE.FINISHED;
 }
 
+import { assemblyUsesFinishedBoxReceiving } from './warehouseUnitsPerCarton';
+
 export function analyzeAssemblyPacketBom(packetCount, packets) {
   const required = Math.max(0, Number(packetCount) || 0);
   const list = packets || [];
@@ -42,6 +44,14 @@ export function analyzeAssemblyPacketBom(packetCount, packets) {
     cartonsPerUnit,
     isComplete,
   };
+}
+
+/** Finished qty from packet on-hand when BOM complete (not single-box finished receiving). */
+export function assemblyDerivesWarehouseStockFromPackets(assembly, pktList) {
+  const bom = analyzeAssemblyPacketBom(assembly?.packet_count, pktList);
+  if (!bom.isComplete || !(pktList || []).length) return false;
+  if (assemblyUsesFinishedBoxReceiving(assembly, pktList)) return false;
+  return true;
 }
 
 /** Packet-BOM product whose linked carton totals do not match packet_count. */

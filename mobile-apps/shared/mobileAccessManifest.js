@@ -6,7 +6,7 @@
  */
 
 /** Launcher / login title (keep in sync with app.config.js `expo.name`). */
-export const MOBILE_APP_DISPLAY_NAME = 'Factory';
+export const MOBILE_APP_DISPLAY_NAME = 'Warehouse';
 
 /** Stored per screen; admin UI only exposes Yes/No (maps to full allow vs full deny). */
 export function buildMobileScreenAccessRow(allowed) {
@@ -89,7 +89,7 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_packets',
-    label: 'Warehouse Packets',
+    label: 'Packets',
     description: 'Search packets and adjust warehouse carton qty',
     permissionMatrix: true,
   },

@@ -178,6 +178,8 @@ export default function WarehouseUnusedPacketsScreen({ navigation }) {
           contentContainerStyle={styles.listContent}
           refreshing={refreshing}
           onRefresh={() => refresh({ force: true, background: true })}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <Text style={styles.empty}>
               {search.trim()

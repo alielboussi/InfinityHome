@@ -1,0 +1,6 @@
+# Local prebuild / experiments — EAS should generate android on the build worker.
+android/
+android.local-prebuild-backup/
+.expo-export-*/
+dist/
+build-apk-local.ps1

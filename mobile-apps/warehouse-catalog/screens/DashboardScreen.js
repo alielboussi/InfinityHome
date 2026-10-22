@@ -49,7 +49,7 @@ export default function DashboardScreen({ grant, userEmail, userDisplayName, nav
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>No access yet</Text>
               <Text style={styles.hint}>
-                Ask an administrator to enable Warehouse Products for your account.
+                Ask an administrator to enable Products for your account.
               </Text>
             </View>
           ) : (

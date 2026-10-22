@@ -66,7 +66,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="WarehouseIncompleteProducts"
-        options={{ title: 'Warehouse Incomplete Products' }}
+        options={{ title: 'Incomplete Products' }}
         initialParams={{ catalogMode: 'incomplete' }}
       >
         {(props) => (

@@ -96,7 +96,10 @@ function ProductThumbnail({ assembly }) {
 }
 
 export default function WarehouseProductsScreen({ navigation, route }) {
-  const catalogMode = route?.params?.catalogMode === 'incomplete' ? 'incomplete' : 'complete';
+  const catalogMode = route?.name === 'WarehouseIncompleteProducts'
+    || route?.params?.catalogMode === 'incomplete'
+    ? 'incomplete'
+    : 'complete';
   const {
     catalog,
     initialLoading,
@@ -105,8 +108,11 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     ensureFresh,
     refresh,
   } = useWarehouseCatalog();
-  const [error, setError] = useState('');
+  const grant = useSharedMobileAccessGrant();
+  const canAddProduct = isWarehouseProductFormInsertAllowed(grant);
   const [search, setSearch] = useState('');
+  const [zeroQtyFilter, setZeroQtyFilter] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [expanded, setExpanded] = useState(() => new Set());
 
   useFocusEffect(
@@ -129,8 +135,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     () => catalogStockMaps(catalog),
     [catalog],
   );
-  const warehouseLabel = catalog?.warehouseLocationName || 'Warehouse';
-
   const productAssemblies = useMemo(
     () => (catalog?.assemblies || []).filter((a) => {
       if (isSetAssembly(a)) return false;
@@ -144,8 +148,15 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   );
 
   const filtered = useMemo(() => {
+    let base = productAssemblies;
+    if (zeroQtyFilter && catalogMode === 'complete') {
+      base = base.filter((a) => {
+        const qty = assemblyWarehouseQty[String(a.id)] ?? 0;
+        return Math.max(0, Math.floor(Number(qty) || 0)) === 0;
+      });
+    }
     const raw = search.trim();
-    if (!raw) return productAssemblies;
+    if (!raw) return base;
     const qLower = raw.toLowerCase();
     const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
     const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
@@ -158,7 +169,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       return false;
     };
 
-    return productAssemblies.filter((a) => {
+    return base.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
       const cat = categoryName(a.category_id).toLowerCase();
       if (String(a.name || '').toLowerCase().includes(qLower)) return true;
@@ -171,7 +182,15 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
       );
     });
-  }, [productAssemblies, packetsByAssembly, search, categoryName]);
+  }, [
+    productAssemblies,
+    packetsByAssembly,
+    search,
+    categoryName,
+    zeroQtyFilter,
+    catalogMode,
+    assemblyWarehouseQty,
+  ]);
 
   const toggleExpanded = (id) => {
     setExpanded((prev) => {
@@ -191,15 +210,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       catalogSnapshot: catalog,
     });
   };
-
-  const openEditPacketBom = useCallback((assembly, fromComplete = false) => {
-    navigation.navigate('ProductForm', {
-      editAssemblyId: assembly.id,
-      editFromComplete: fromComplete,
-      warehouseLocationId: catalog?.warehouseLocationId,
-      catalogSnapshot: catalog,
-    });
-  }, [catalog, navigation]);
 
   const formatQty = (value) => {
     const n = Number(value);
@@ -244,17 +254,15 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       ? formatWarehouseBoxAndUnitStock(qtyNum, unitsPerBox).text
       : formatQty(displayQty);
 
-    let qtyStyle = styles.qtyValueDefault;
-    if (zeroQtyFilter && catalogMode === 'complete') {
-      qtyStyle = styles.qtyValueFilter;
-    } else if (qtyNum > 0) {
-      qtyStyle = styles.qtyValueInStock;
-    }
+    const qtyStyle = catalogMode === 'incomplete'
+      ? styles.qtyIncomplete
+      : (qtyNum > 0 ? styles.qtyValuePositive : styles.qtyValueZero);
     const imageUri = resolveAssemblyImageUri(assembly);
 
     return (
       <View style={styles.gridCard}>
         <View style={styles.cardPress}>
+          <View style={styles.cardMain}>
           <View style={styles.thumbWrap}>
             <Pressable
               onPress={() => {
@@ -287,10 +295,11 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           {volumeLine ? (
             <Text style={styles.cardSpec} numberOfLines={1}>{volumeLine}</Text>
           ) : null}
-          <View style={styles.qtyRow}>
+          </View>
+          <View style={styles.qtyFooter}>
             <Text
               style={[styles.qtyValue, showBoxAndUnits && styles.qtyValueBoxUnit, qtyStyle]}
-              numberOfLines={showBoxAndUnits ? 3 : 1}
+              numberOfLines={showBoxAndUnits ? 2 : 1}
             >
               {qtyDisplayText}
             </Text>
@@ -313,7 +322,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     <View style={styles.wrap}>
       <View style={styles.listHeader}>
         <Text style={styles.listHeaderTitle}>
-          {catalogMode === 'incomplete' ? 'Warehouse Incomplete Products' : `${warehouseLabel} products`}
+          {catalogMode === 'incomplete' ? 'Incomplete Products' : 'Products'}
         </Text>
         <Text style={styles.listHeaderMeta}>
           {filtered.length} item{filtered.length === 1 ? '' : 's'}
@@ -363,8 +372,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         ) : null}
       </View>
 
-      {error || catalogError ? (
-        <Text style={styles.error}>{error || catalogError}</Text>
+      {catalogError ? (
+        <Text style={styles.error}>{catalogError}</Text>
       ) : null}
       {!initialLoading && catalog && !catalog.warehouseLocationId ? (
         <Text style={styles.error}>
@@ -387,6 +396,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           }
           refreshing={refreshing}
           onRefresh={() => refresh({ force: true, background: true })}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
           {...LIST_PERF}
         />
       )}
@@ -472,7 +483,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     minWidth: 0,
   },
-  cardPress: { padding: 8, paddingBottom: 10 },
+  cardPress: {
+    flex: 1,
+    padding: 8,
+    paddingBottom: 8,
+    justifyContent: 'space-between',
+  },
+  cardMain: { flexGrow: 1 },
   thumbWrap: { position: 'relative' },
   thumb: {
     width: '100%',
@@ -493,17 +510,21 @@ const styles = StyleSheet.create({
   },
   thumbPlaceholderIcon: { color: '#475569', fontSize: 28, marginBottom: 4 },
   thumbPlaceholderText: { color: '#64748b', fontSize: 12, fontWeight: '600' },
-  qtyRow: {
-    marginTop: 8,
-    paddingVertical: 6,
+  qtyFooter: {
+    minHeight: 52,
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
   },
-  qtyValue: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
-  qtyValueBoxUnit: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
-  qtyValueDefault: { color: '#86efac' },
-  qtyValueInStock: { color: '#fca5a5' },
-  qtyValueFilter: { color: '#fca5a5' },
+  qtyValue: { fontSize: 18, fontWeight: '800', textAlign: 'center', width: '100%' },
+  qtyValueBoxUnit: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  qtyValuePositive: { color: '#069506' },
+  qtyValueZero: { color: '#B30707' },
+  qtyIncomplete: { color: '#B30707' },
   expandFab: {
     position: 'absolute',
     top: 14,

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView as ModalScrollView,
   StyleSheet,
@@ -458,7 +460,7 @@ export default function ProductFormScreen({ route, navigation }) {
     }
     if (!warehouseLocationId) {
       setError(
-        'Warehouse location could not be resolved. Open Warehouse Products on the web once to confirm catalog loads, then retry.',
+        'Warehouse location could not be resolved. Open Products on the web once to confirm catalog loads, then retry.',
       );
       return;
     }
@@ -532,7 +534,7 @@ export default function ProductFormScreen({ route, navigation }) {
           return { qty_per_unit: link.qty_per_unit, ...p };
         }));
         const target = bom.isComplete ? 'WarehouseProducts' : 'WarehouseIncompleteProducts';
-        setNotice(bom.isComplete ? 'BOM complete — product moved to Warehouse Products.' : 'Packet links saved.');
+        setNotice(bom.isComplete ? 'BOM complete — product moved to Products.' : 'Packet links saved.');
         setTimeout(() => navigateAfterSave(target), 600);
       } else {
         setNotice('Product created.');
@@ -892,7 +894,10 @@ export default function ProductFormScreen({ route, navigation }) {
       animationType="fade"
       onRequestClose={() => dismissFinishedQtyPrompt()}
     >
-      <View style={styles.finishedQtyBackdrop}>
+      <KeyboardAvoidingView
+        style={styles.finishedQtyBackdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.finishedQtyCard}>
           <Text style={styles.finishedQtyTitle}>
             {(finishedQtyPrompt?.unitsPerBox ?? 1) > 1
@@ -941,7 +946,7 @@ export default function ProductFormScreen({ route, navigation }) {
             <Text style={styles.finishedQtySkipText}>Skip for now</Text>
           </Pressable>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
     </>
   );

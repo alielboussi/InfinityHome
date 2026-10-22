@@ -41,7 +41,7 @@ module.exports = {
     slug: 'warehouse-catalog',
     scheme: 'warehouse-catalog',
     platforms: ['ios', 'android'],
-    version: '0.1.14',
+    version: '0.1.16',
     orientation: 'portrait',
     userInterfaceStyle: 'dark',
     icon: './assets/icon.png',
@@ -59,10 +59,6 @@ module.exports = {
       supportsTablet: true,
       bundleIdentifier: 'com.bestrest.warehousecatalog',
     },
-    autolinking: {
-      // JS-only icons; avoid broken Expo module publication on local Gradle.
-      exclude: ['@expo/vector-icons'],
-    },
     android: {
       package: 'com.bestrest.warehousecatalog',
       googleServicesFile: './google-services.json',
@@ -73,6 +69,7 @@ module.exports = {
       },
     },
     plugins: [
+      'expo-font',
       'expo-asset',
       'expo-camera',
       [

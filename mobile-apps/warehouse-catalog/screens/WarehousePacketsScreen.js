@@ -359,6 +359,7 @@ export default function WarehousePacketsScreen({ navigation }) {
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="always"
+          automaticallyAdjustKeyboardInsets
           refreshing={refreshing}
           onRefresh={() => refresh({ force: true, background: true })}
           {...LIST_PERF}
