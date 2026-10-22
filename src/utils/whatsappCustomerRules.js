@@ -39,3 +39,8 @@ export function usesCompactDownpaymentWhatsApp(customerId, customerName) {
 export function isExcludedFromMonthlyBalanceDue(customerId, customerName) {
   return isFahme(customerId) || isBasyouniCustomer(customerId, customerName);
 }
+
+/** Layby Management resend / statement PDF — pooled customer breakdown (all sales + payments). */
+export function usesConsolidatedLaybyStatementWhatsApp(customerId, customerName) {
+  return isFahme(customerId) || isBasyouniCustomer(customerId, customerName);
+}

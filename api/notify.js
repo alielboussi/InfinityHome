@@ -3422,20 +3422,22 @@ async function handleWhatsAppLayby(body) {
     throw err;
   }
 
-  if (fahme && eventType !== 'payment' && !pdfLink && !isPreview) {
+  const wantsStatementPdf = (fahme && eventType !== 'payment')
+    || (basyouni && eventType === 'statement');
+
+  if (wantsStatementPdf && !pdfLink && !isPreview) {
     pdfLink = await tryResolveStoredLaybyPdfUrl(layby.id, layby.customer_id, pdfFilename);
   }
 
-  if (fahme && eventType !== 'payment' && !pdfLink && !isPreview) {
-
-    const err = new Error('Fahme WhatsApp notifications require the layby PDF');
-
+  if (wantsStatementPdf && !pdfLink && !isPreview) {
+    const err = new Error(
+      fahme
+        ? 'Fahme WhatsApp notifications require the layby PDF'
+        : 'Basyouni layby statement WhatsApp requires the layby PDF',
+    );
     err.status = 400;
-
     err.stage = 'pdf';
-
     throw err;
-
   }
 
 

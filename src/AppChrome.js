@@ -2,12 +2,13 @@ import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FaArrowLeft,
-  FaCashRegister, FaReceipt, FaQuoteRight, FaChartLine,
+  FaCashRegister, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags, FaLayerGroup,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaLock, FaStore, FaShoppingBag
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag
 } from 'react-icons/fa';
 import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute } from './accessControl';
+import { preloadAppRoute } from './lazyPages';
 import { isShopPublicPath } from './utils/shopConstants';
 
 // Functional groupings for the slide-out navigation drawer.
@@ -22,31 +23,32 @@ const NAV_GROUPS = [
   {
     title: 'Sales',
     items: [
-      { label: 'POS', route: '/pos', icon: FaCashRegister },
-      { label: 'All Sales', route: '/all-sales', icon: FaReceipt },
-      { label: 'Quotes', route: '/quotes-board', icon: FaQuoteRight },
+      { label: 'Customers', route: '/customers', icon: FaUsers },
+      { label: 'POS', route: '/all-sales', icon: FaCashRegister },
+      { label: 'Laybys', route: '/layby-management', icon: FaClipboardList },
+      { label: 'Factory Orders', route: '/quotes-board', icon: FaQuoteRight },
       { label: 'Reversal', route: '/reversal', icon: FaUndo },
     ],
   },
   {
-    title: 'Customers & Laybys',
+    title: 'Ledger',
     items: [
-      { label: 'Customers', route: '/customers', icon: FaUsers },
-      { label: 'Laybys', route: '/layby-management', icon: FaClipboardList },
       { label: 'Ledger', route: '/ledger-mobile', icon: FaWallet },
-      { label: 'Customer Private Balances', route: '/customer-private-balances', icon: FaLock },
     ],
   },
   {
     title: 'Inventory',
     items: [
-      { label: 'Products', route: '/products-list', icon: FaTags },
-      { label: 'Products (Warehouse)', route: '/warehouse-products', icon: FaBoxOpen },
-      { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
       { label: 'Categories', route: '/categories', icon: FaThLarge },
-      { label: 'Sets', route: '/sets', icon: FaLayerGroup },
-      { label: 'Incomplete Packages', route: '/incomplete-packages', icon: FaBoxOpen },
-      { label: 'Price Labels', route: '/price-labels', icon: FaPrint },
+      { label: 'Products', route: '/products-list', icon: FaTags },
+      { label: 'Warehouse', route: '/warehouse-products', icon: FaBoxOpen },
+      { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
+      { label: 'Print Labels', route: '/price-labels', icon: FaPrint },
+    ],
+  },
+  {
+    title: 'Ecommerce',
+    items: [
       { label: 'E-commerce Setup', route: '/ecommerce-setup', icon: FaStore },
       { label: 'E-commerce Sales', route: '/ecommerce-sales', icon: FaShoppingBag },
     ],
@@ -96,7 +98,7 @@ const QUOTATIONER_ONLY_NAV_GROUPS = [
       { label: 'Manage Customers', route: '/quotationer', search: '?view=customers', icon: FaUsers },
       { label: 'Manage Products', route: '/quotationer', search: '?view=products', icon: FaTags },
       { label: 'New Quote', route: '/quotationer', search: '?view=create', icon: FaPlus },
-      { label: 'View Quotes', route: '/quotes-board', icon: FaClipboardList },
+      { label: 'Factory Orders', route: '/quotes-board', icon: FaClipboardList },
     ],
   },
   {
@@ -140,11 +142,11 @@ function dedupeNavGroups(groups) {
 // Map a pathname to a human-friendly page title for the banner.
 const TITLE_MAP = {
   '/dashboard': 'Dashboard',
-  '/pos': 'Point of Sale',
+  '/pos': 'All Sales',
   '/pos-mobile': 'Point of Sale',
-  '/all-sales': 'All Sales',
+  '/all-sales': 'Point of Sale',
   '/reversal': 'Reversal',
-  '/quotes-board': 'Quotes',
+  '/quotes-board': 'Factory Orders',
   '/quotationer': 'Create Quote',
   '/sales-report': 'Sales Report',
   '/sales-report-mobile': 'Sales Report',
@@ -152,17 +154,17 @@ const TITLE_MAP = {
   '/layby-management': 'Layby Management',
   '/layby-management-mobile': 'Layby Management',
   '/ledger-mobile': 'Ledger',
-  '/customer-private-balances': 'Customer Private Balances',
   '/products': 'Products',
   '/products-list': 'Products',
-  '/warehouse-products': 'Products (Warehouse)',
+  '/products-list/locations': 'Product locations',
+  '/warehouse-products': 'Warehouse',
   '/warehouse-products/packets': 'Packets (Warehouse)',
   '/warehouse-products/incomplete': 'Incomplete products (Warehouse)',
   '/stock-history': 'Stock History',
   '/categories': 'Categories',
   '/sets': 'Sets',
-  '/price-labels': 'Price Labels',
-  '/price-label-mobile': 'Price Labels',
+  '/price-labels': 'Print Labels',
+  '/price-label-mobile': 'Print Labels',
   '/ecommerce-setup': 'E-commerce Setup',
   '/ecommerce-sales': 'E-commerce Sales',
   '/stocktake': 'Stocktake',
@@ -182,7 +184,6 @@ const TITLE_MAP = {
   '/user-activity': 'User Activity',
   '/user-access': 'User Login Access',
   '/database-backup': 'Database Backup',
-  '/incomplete-packages': 'Incomplete Packages',
 };
 
 /** Banner back: nested routes return to their list parent; top-level pages go home. */
@@ -204,7 +205,7 @@ function titleForPath(path, user, search = '') {
     if (view === 'customers') return 'Quote Customers';
     if (view === 'products') return 'Quote Products';
     if (view === 'create') return 'Create Quote';
-    if (view === 'list') return 'View Quotes';
+    if (view === 'list') return 'Factory Orders';
     return 'Dashboard';
   }
   if (TITLE_MAP[path]) return TITLE_MAP[path];
@@ -237,6 +238,22 @@ export default function AppChrome() {
     };
   }, [isLogin, isPublicCount, isKioskStock, isShopRoute, hasUser, user]);
 
+  const visibleGroups = React.useMemo(() => dedupeNavGroups((quotationerOnly ? QUOTATIONER_ONLY_NAV_GROUPS : NAV_GROUPS)
+    .map(group => {
+      if (group.title === 'Stocktake Flow' && !canViewStocktakeFlow(user)) {
+        return { ...group, items: [] };
+      }
+      return group;
+    })
+    .map(group => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (item.adminOnly && !canViewStocktakeAggregation(user)) return false;
+        return isPathAllowed(user, item.route);
+      }),
+    }))
+    .filter(group => group.items.length > 0)), [quotationerOnly, user]);
+
   if (isLogin || isPublicCount || isKioskStock || isShopRoute || !user) return null;
 
   const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
@@ -256,22 +273,6 @@ export default function AppChrome() {
     if (item.exact) return !location.search;
     return true;
   };
-
-  const visibleGroups = dedupeNavGroups((quotationerOnly ? QUOTATIONER_ONLY_NAV_GROUPS : NAV_GROUPS)
-    .map(group => {
-      if (group.title === 'Stocktake Flow' && !canViewStocktakeFlow(user)) {
-        return { ...group, items: [] };
-      }
-      return group;
-    })
-    .map(group => ({
-      ...group,
-      items: group.items.filter((item) => {
-        if (item.adminOnly && !canViewStocktakeAggregation(user)) return false;
-        return isPathAllowed(user, item.route);
-      }),
-    }))
-    .filter(group => group.items.length > 0));
 
   return (
     <>
@@ -310,6 +311,8 @@ export default function AppChrome() {
                   type="button"
                   key={`${item.route}${item.search || ''}`}
                   className={`ent-drawer-link${active ? ' active' : ''}`}
+                  onMouseEnter={() => preloadAppRoute(item.route)}
+                  onFocus={() => preloadAppRoute(item.route)}
                   onClick={() => go(item.route, item.search || '')}
                 >
                   <span className="ent-drawer-ico"><Icon /></span>

@@ -1,6 +1,6 @@
 import db from '../dataClient';
 import { isFahme } from '../laybyRules';
-import { usesCashBookWhatsAppRouting } from '../utils/whatsappCustomerRules';
+import { usesCashBookWhatsAppRouting, usesConsolidatedLaybyStatementWhatsApp } from '../utils/whatsappCustomerRules';
 import { previewLaybyWhatsApp, previewSaleWhatsApp, sendLaybyWhatsApp, sendSaleWhatsApp } from './whatsapp';
 import { buildClientWhatsAppPreviewForRow } from './whatsappMessagePreview';
 import { buildLaybyPdfUrlForWhatsApp, buildPosSalePdfUrlForWhatsApp } from './whatsappPdfs';
@@ -425,7 +425,8 @@ export async function resendLaybyWhatsAppForCustomerRow(row) {
   if (!laybyId || !customerId) return { ok: false, error: 'Missing layby customer' };
   if (!resendRow?.id) return { ok: false, error: 'No layby sale found to resend' };
 
-  if (isFahme(customerId)) {
+  const customerName = row?.customer?.name || '';
+  if (usesConsolidatedLaybyStatementWhatsApp(customerId, customerName)) {
     return notifyLaybyWhatsApp({
       laybyId,
       customerId,
@@ -447,6 +448,18 @@ export async function resendLaybyWhatsAppForCustomerRow(row) {
 }
 
 export async function previewLaybyWhatsAppForCustomerRow(row) {
+  const customerId = row?.customerId || row?.customer_id;
+  const customerName = row?.customer?.name || '';
+  const laybyId = row?.primaryLayby?.id || (row?.laybys || []).find((entry) => entry?.id)?.id || null;
+  if (usesConsolidatedLaybyStatementWhatsApp(customerId, customerName)) {
+    if (!laybyId) return { ok: false, error: 'No layby account found for customer' };
+    const resendRow = await resolveLaybyCustomerResendRow(row);
+    return previewLaybyWhatsApp({
+      laybyId,
+      eventType: 'statement',
+      saleId: resendRow?.id,
+    });
+  }
   const resendRow = await resolveLaybyCustomerResendRow(row);
   if (!resendRow?.id) return { ok: false, error: 'No layby sale found to preview' };
   return previewSaleWhatsAppForRow(resendRow);

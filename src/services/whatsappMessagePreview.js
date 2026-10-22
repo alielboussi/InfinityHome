@@ -1,6 +1,7 @@
 import db from '../dataClient';
 import { fromPublic } from '../dbSchema';
 import { isFahme } from '../laybyRules';
+import { usesConsolidatedLaybyStatementWhatsApp } from '../utils/whatsappCustomerRules';
 import { fetchProductLocationPricesForLocation } from './locationPricing';
 import {
   buildLocationPriceMap,
@@ -355,10 +356,12 @@ export async function buildClientWhatsAppPreviewForRow(row) {
   const customerId = row.customer_id;
   const laybyId = row.layby_id || row.layby?.id || null;
 
-  if (isFahme(customerId)) {
+  const customerName = row?.customer?.name || row?.customer_name || '';
+  if (usesConsolidatedLaybyStatementWhatsApp(customerId, customerName)) {
+    const label = isFahme(customerId) ? 'Fahme account' : 'Basyouni cash book';
     return {
       ok: true,
-      message: 'Fahme account: WhatsApp sends the consolidated layby statement PDF (no individual sale text message).',
+      message: `${label}: WhatsApp sends the consolidated layby statement PDF (all sales, items, and deposits).`,
       attachmentNote: 'Layby statement PDF will be attached when sent.',
     };
   }

@@ -25,6 +25,7 @@ import { buildMonthlyBalanceDueMessages, laybyRowsToBalanceDueRows } from './uti
 import { notifyLaybyWhatsApp, previewLaybyWhatsAppForCustomerRow, resendLaybyWhatsAppForCustomerRow, laybyCustomerRowHasLusakaSaleAsync, filterKitweLaybyRowsForMonthlyBalance, resolveLaybyWhatsAppGroupLabel } from './services/whatsappNotify';
 import { sendMonthlyBalanceDueWhatsApp } from './services/whatsapp';
 import { isFahme } from './laybyRules';
+import { usesConsolidatedLaybyStatementWhatsApp } from './utils/whatsappCustomerRules';
 import { assertLaybyPaymentReceiptAvailable } from './utils/receiptNumber';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 import {
@@ -1633,8 +1634,10 @@ export default function LaybyManagement() {
                         <button
                           type="button"
                           className="layby-export-btn layby-export-btn--whatsapp"
-                          title={isFahme(row.customerId)
-                            ? 'Resend layby PDF to Fahme WhatsApp (right-click to preview)'
+                          title={usesConsolidatedLaybyStatementWhatsApp(row.customerId, row.customer?.name)
+                            ? (isFahme(row.customerId)
+                              ? 'Resend full layby statement PDF to Fahme WhatsApp (right-click to preview)'
+                              : 'Resend full layby statement PDF to Cash Book WhatsApp (right-click to preview)')
                             : 'Resend layby WhatsApp to Layby or Lusaka group based on sale location (right-click to preview)'}
                           aria-label="Resend layby WhatsApp message"
                           onClick={() => handleSendCustomerLaybyWhatsApp(row)}
