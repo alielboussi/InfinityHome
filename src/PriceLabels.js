@@ -675,7 +675,7 @@ const PriceLabels = () => {
     <div className="price-labels-page">
       <div className="page-header-row">
         <BackToDashboard />
-        <h2 style={{ margin: 0 }}>Price Labels</h2>
+        <h2 style={{ margin: 0 }}>Print Labels</h2>
       </div>
       <div className="label-toolbar">
         <input

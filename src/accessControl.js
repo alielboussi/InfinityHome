@@ -125,6 +125,7 @@ const ROUTE_ALLOWLIST = new Map([
     '/products',
     '/sets',
     '/products-list',
+    '/products-list/locations',
     '/stock-history',
     '/pos',
     '/reversal',
@@ -143,6 +144,7 @@ const ROUTE_ALLOWLIST = new Map([
     '/products',
     '/sets',
     '/products-list',
+    '/products-list/locations',
     '/stock-history',
     '/pos',
     '/reversal',
@@ -174,6 +176,8 @@ const USER_DISPLAY_NAMES = new Map([
 // Route aliases: treat certain routes as equivalent for allowlist checks.
 // Example: if '/stock-report-mobile' is allowed, '/stock-report-mobile-locked' is implicitly allowed.
 const ROUTE_ALIASES = new Map([
+  // POS register and sales history share the same access list (/pos).
+  ['/all-sales', '/pos'],
   ['/stock-report-mobile-locked', '/stock-report-mobile'],
   ['/stocktake-entry', '/stocktake'],
   ['/stocktake-count', '/stocktake'],
@@ -405,7 +409,7 @@ export function isPathAllowed(user, path) {
     return canManageLoginAccess(user);
   }
   if (p === CUSTOMER_PRIVATE_BALANCES_ROUTE || p.startsWith(`${CUSTOMER_PRIVATE_BALANCES_ROUTE}/`)) {
-    return canViewCustomerPrivateBalances(user);
+    return false;
   }
   if (p === STOCKTAKE_AGGREGATION_ROUTE || p.startsWith(`${STOCKTAKE_AGGREGATION_ROUTE}/`)) {
     return canViewStocktakeAggregation(user);

@@ -11,7 +11,7 @@ export default function WarehouseCatalogViewToggle({ 'aria-labelledby': ariaLabe
 
   return (
     <div
-      className="warehouse-catalog-view-toggle warehouse-catalog-view-toggle--stacked"
+      className="warehouse-catalog-view-toggle"
       role="group"
       aria-label={ariaLabelledBy ? undefined : 'Warehouse catalog view'}
       aria-labelledby={ariaLabelledBy || undefined}

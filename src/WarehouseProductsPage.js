@@ -298,7 +298,7 @@ export default function WarehouseProductsPage() {
       <div className="page-header-row">
         <BackToDashboard />
         <h1 className="products-title" style={{ margin: 0 }}>
-          {isIncompleteView ? 'Incomplete products (Warehouse)' : 'Products (Warehouse)'}
+          {isIncompleteView ? 'Incomplete products (Warehouse)' : 'Warehouse'}
         </h1>
       </div>
 

@@ -1,59 +1,61 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate, Outlet } from 'react-router-dom';
-import WarehouseTransfer from './WarehouseTransfer';
-import WarehouseTransferSummary from './WarehouseTransferSummary';
-import WarehouseDeliveries from './WarehouseDeliveries';
-import WarehouseDeliveriesAdmin from './WarehouseDeliveriesAdmin';
-import LusakaTransfers from './LusakaTransfers';
-import LoginPage from './LoginPage';
-import Dashboard from './Dashboard';
-import Products from './Products';
-import Customers from './Customers';
-import SalesReportMobile from './SalesReportMobile';
-import SalesReport from './SalesReport';
-import TransfersReport from './TransfersReport';
-import Quotationer from './Quotationer';
-import LaybyManagement from './LaybyManagement';
-import LaybyManagementMobile from './LaybyManagementMobile';
-import CompanySettings from './CompanySettings';
-import POS from './POS';
-import POSMobile from './POSMobile';
-import LedgerMobile from './LedgerMobile';
-import StockReportMobile from './StockReportMobile';
-import StockReportMobileLocked from './StockReportMobileLocked';
-import LusakaStockDisplay from './LusakaStockDisplay';
-import StockApp from './StockApp';
-import PriceLabels from './PriceLabels';
-import PriceLabelMobile from './PriceLabelMobile';
-import Sets from './Sets';
-import EditSet from './EditSet';
-import Categories from './Categories';
-import StocktakeControlPage from './StocktakeControlPage';
-import StocktakeAggregationPage from './StocktakeAggregationPage';
-import StocktakeCountRoute from './StocktakeCountRoute';
-import ProductsListPage from './ProductsListPage';
-import WarehouseProductsPage from './WarehouseProductsPage';
-import WarehousePacketsPage from './WarehousePacketsPage';
-import WarehouseProductEditPage from './WarehouseProductEditPage';
-import WarehouseProductTransferPage from './WarehouseProductTransferPage';
-import WarehousePacketEditPage from './WarehousePacketEditPage';
-import StockHistoryPage from './StockHistoryPage';
-import ZeroStockLocationReset from './ZeroStockLocationReset';
-import AllSales from './AllSales';
-import Reversal from './Reversal';
-import IncompletePackages from './IncompletePackages';
-import IncompleteMobileLocked from './IncompleteMobileLocked';
-import QuotesBoard from './QuotesBoard.js';
-import UserActivityLog from './UserActivityLog';
-import UserAccessManagement from './UserAccessManagement';
-import DatabaseBackupPage from './DatabaseBackup.js';
-import CustomerPrivateBalances from './CustomerPrivateBalances';
-import EcommerceSetup from './EcommerceSetup';
-import EcommerceSales from './EcommerceSales';
-import ShopRoutes from './shop/ShopRoutes';
 import AppChrome from './AppChrome';
+import RouteLoadingFallback from './components/RouteLoadingFallback';
+import {
+  AllSales,
+  Categories,
+  CompanySettings,
+  Customers,
+  Dashboard,
+  DatabaseBackupPage,
+  EcommerceSales,
+  EcommerceSetup,
+  EditSet,
+  IncompleteMobileLocked,
+  LaybyManagement,
+  LaybyManagementMobile,
+  LedgerMobile,
+  LoginPage,
+  LusakaStockDisplay,
+  LusakaTransfers,
+  POS,
+  POSMobile,
+  PriceLabelMobile,
+  PriceLabels,
+  ProductLocationBulkPage,
+  Products,
+  ProductsListPage,
+  Quotationer,
+  QuotesBoard,
+  Reversal,
+  SalesReport,
+  SalesReportMobile,
+  Sets,
+  ShopRoutes,
+  StockApp,
+  StockHistoryPage,
+  StockReportMobile,
+  StockReportMobileLocked,
+  StocktakeAggregationPage,
+  StocktakeControlPage,
+  StocktakeCountRoute,
+  TransfersReport,
+  UserAccessManagement,
+  UserActivityLog,
+  WarehouseDeliveries,
+  WarehouseDeliveriesAdmin,
+  WarehousePacketEditPage,
+  WarehousePacketsPage,
+  WarehouseProductEditPage,
+  WarehouseProductsPage,
+  WarehouseProductTransferPage,
+  WarehouseTransfer,
+  WarehouseTransferSummary,
+  ZeroStockLocationReset,
+} from './lazyPages';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
-import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewCustomerPrivateBalances, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated } from './accessControl';
+import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated } from './accessControl';
 import { isShopPublicPath } from './utils/shopConstants';
 import { bootstrapAppAuth } from './utils/authSession';
 
@@ -65,12 +67,12 @@ function RouteActivityLogger() {
 const DASHBOARD_THEME_PATHS = new Set([
       '/customers',
       '/products-list',
+      '/products-list/locations',
       '/stock-history',
       '/pos',
       '/layby-management',
       '/quotes-board',
       '/ledger-mobile',
-      '/customer-private-balances',
       '/all-transfers',
       '/warehouse-deliveries-admin',
       '/stock-periods',
@@ -163,7 +165,14 @@ function SessionBootstrap({ children }) {
             };
       }, [navigate]);
 
-      if (!ready) return null;
+      if (!ready) {
+            return (
+                  <div className="app-session-loading" role="status" aria-live="polite">
+                        <span className="app-route-fallback__spinner" aria-hidden="true" />
+                        <span>Starting session…</span>
+                  </div>
+            );
+      }
       return children;
 }
 
@@ -254,6 +263,7 @@ function App() {
                                                                                                                                                                   {/* Global chrome: page banner, back-to-dashboard, slide-out drawer */}
                                                                                                                                                                   <AppChrome />
                                                                                                                                                                   <RouteActivityLogger />
+      <Suspense fallback={<RouteLoadingFallback />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/stocktake/count/:locationSlug" element={<StocktakeCountRoute />} />
@@ -270,7 +280,6 @@ function App() {
           <Route path="/sales-report" element={<SalesReport />} />
           <Route path="/transfers-report" element={<TransfersReport />} />
           <Route path="/ledger-mobile" element={<LedgerMobile />} />
-          <Route path="/customer-private-balances" element={<RequireAdminPage check={canViewCustomerPrivateBalances}><CustomerPrivateBalances /></RequireAdminPage>} />
           <Route path="/quotationer" element={<Quotationer />} />
           <Route path="/QuotesDashboard" element={<Navigate to="/quotationer" replace />} />
           <Route path="/QuotesCustomers" element={<Navigate to="/quotationer" replace />} />
@@ -284,7 +293,7 @@ function App() {
           <Route path="/layby-management" element={<LaybyManagement />} />
           <Route path="/layby-management-mobile" element={<LaybyManagementMobile />} />
           <Route path="/company-settings" element={<CompanySettings />} />
-          <Route path="/pos" element={<POS />} />
+          <Route path="/pos" element={<AllSales />} />
           <Route path="/pos-mobile" element={<POSMobile />} />
           <Route path="/LusakaStocktake" element={<Navigate to="/stocktake" replace />} />
           <Route path="/stock-report-mobile" element={<StockReportMobile />} />
@@ -309,6 +318,7 @@ function App() {
           <Route path="/stocktake-count" element={<Navigate to="/stocktake" replace />} />
           <Route path="/KitweStocktake" element={<Navigate to="/stocktake" replace />} />
           <Route path="/stocktake-entry" element={<Navigate to="/stocktake" replace />} />
+          <Route path="/products-list/locations" element={<ProductLocationBulkPage />} />
           <Route path="/products-list" element={<ProductsListPage />} />
           <Route path="/warehouse-products/packets/new" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets/:packetId/edit" element={<WarehousePacketEditPage />} />
@@ -323,12 +333,11 @@ function App() {
           <Route path="/stock-history" element={<StockHistoryPage />} />
           <Route path="/zero-stock-location" element={<ZeroStockLocationReset />} />
           <Route path="/stock-count" element={<Navigate to="/stocktake" replace />} />
-          <Route path="/all-sales" element={<AllSales />} />
+          <Route path="/all-sales" element={<POS />} />
           <Route path="/reversal" element={<Reversal />} />
           <Route path="/user-activity" element={<RequireAdminPage check={canViewUserActivity}><UserActivityLog /></RequireAdminPage>} />
           <Route path="/user-access" element={<RequireAdminPage check={canManageLoginAccess}><UserAccessManagement /></RequireAdminPage>} />
           <Route path="/database-backup" element={<RequireAdminPage check={canViewDatabaseBackup}><DatabaseBackupPage /></RequireAdminPage>} />
-          <Route path="/incomplete-packages" element={<IncompletePackages />} />
           <Route path="/quotes" element={<Navigate to="/quotes-board" replace />} />
           <Route path="/quotes/create" element={<Navigate to="/quotationer" replace />} />
           <Route path="/quotes/customers" element={<Navigate to="/quotationer" replace />} />
@@ -351,6 +360,7 @@ function App() {
           <Route path="*" element={<FallbackRedirect />} />
         </Route>
       </Routes>
+      </Suspense>
                                                                                                                                                                   </SessionBootstrap>
     </div>
   );

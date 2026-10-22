@@ -228,9 +228,9 @@ export default function StockHistoryPage() {
           <div className="stock-periods-note">Loading…</div>
         ) : (
           <>
-            <div className="stock-periods-filters">
+            <div className="stock-periods-filters stock-history-filters">
               <label className="stock-periods-label">
-                Location
+                <span className="stock-periods-label-text">Location</span>
                 <select
                   className="pos-control"
                   value={locationId}
@@ -244,7 +244,7 @@ export default function StockHistoryPage() {
               </label>
 
               <label className="stock-periods-label">
-                Search product or set
+                <span className="stock-periods-label-text">Search product or set</span>
                 <input
                   className="pos-control"
                   type="text"
@@ -255,7 +255,7 @@ export default function StockHistoryPage() {
               </label>
 
               <label className="stock-periods-label">
-                Product / Set
+                <span className="stock-periods-label-text">Product / Set</span>
                 <select
                   className="pos-control"
                   value={catalogKey}

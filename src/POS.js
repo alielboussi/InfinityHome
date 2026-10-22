@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from "react";
 import { getMaxSetQty, selectPrice, formatAmount } from './utils/setInventoryUtils';
-import { FaCalendarAlt, FaCashRegister, FaFilePdf } from "react-icons/fa";
+import { FaCalendarAlt, FaCashRegister, FaFilePdf, FaReceipt } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import db from './dataClient';
 import { isFahme, computeFahmeOverrides, computePosBadgeDue, FAHME_ID, computeLaybyRollups } from './laybyRules';
@@ -845,7 +845,7 @@ export default function POS({ isMobile = false }) {
 
   const handleEditProductFromPos = (product) => {
     if (!product?.id) return;
-    navigate(`/products?edit=${encodeURIComponent(product.id)}&return=${encodeURIComponent('/pos')}`);
+    navigate(`/products?edit=${encodeURIComponent(product.id)}&return=${encodeURIComponent('/all-sales')}`);
   };
 
   const handleSaveProductPrice = async () => {
@@ -1724,7 +1724,7 @@ export default function POS({ isMobile = false }) {
             setSearch('');
             setDiscountAll(0);
             setRemainingDue(0);
-            if (typeof navigate === 'function') navigate('/pos', { replace: true });
+            if (typeof navigate === 'function') navigate('/all-sales', { replace: true });
           } catch {}
         }, 400);
       }
@@ -2165,6 +2165,15 @@ export default function POS({ isMobile = false }) {
         <BackToDashboard />
         <h2 style={{ margin: 0, fontSize: '1.2rem' }}><FaCashRegister style={{ marginRight: 6, fontSize: '1.1rem' }} /> Point of Sale</h2>
         <div className="layby-mgmt-header-actions">
+          <button
+            type="button"
+            className="layby-mgmt-download-btn"
+            title="All sales and laybys"
+            aria-label="Open all sales and laybys"
+            onClick={() => navigate('/pos')}
+          >
+            <FaReceipt aria-hidden="true" />
+          </button>
           <button
             type="button"
             className="layby-mgmt-download-btn"

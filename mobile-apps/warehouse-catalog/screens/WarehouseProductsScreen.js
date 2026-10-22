@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -44,6 +45,14 @@ const LIST_PERF = {
   windowSize: 7,
   removeClippedSubviews: true,
 };
+
+const UNCATEGORIZED_CATEGORY_KEY = '__none__';
+
+function assemblyCategoryKey(assembly) {
+  return assembly?.category_id != null && assembly.category_id !== ''
+    ? String(assembly.category_id)
+    : UNCATEGORIZED_CATEGORY_KEY;
+}
 
 function formatDimensionsLine(assembly) {
   const l = assembly?.dim_length;
@@ -111,7 +120,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const grant = useSharedMobileAccessGrant();
   const canAddProduct = isWarehouseProductFormInsertAllowed(grant);
   const [search, setSearch] = useState('');
-  const [zeroQtyFilter, setZeroQtyFilter] = useState(false);
+  const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => new Set());
   const [photoPreview, setPhotoPreview] = useState(null);
   const [expanded, setExpanded] = useState(() => new Set());
 
@@ -147,13 +157,55 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     [catalog?.assemblies, catalogMode, packetsByAssembly],
   );
 
+  const warehouseCategoryOptions = useMemo(() => {
+    const counts = new Map();
+    productAssemblies.forEach((a) => {
+      const key = a.category_id != null && a.category_id !== ''
+        ? String(a.category_id)
+        : UNCATEGORIZED_CATEGORY_KEY;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    const options = [...counts.entries()].map(([id, count]) => {
+      const name = id === UNCATEGORIZED_CATEGORY_KEY
+        ? 'Uncategorized'
+        : (categoryName(id) || 'Unknown category');
+      return { id, name, count };
+    });
+    options.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    return options;
+  }, [productAssemblies, categoryName]);
+
+  const categoryFilterActive = selectedCategoryIds.size > 0;
+
+  useEffect(() => {
+    setSelectedCategoryIds(new Set());
+  }, [catalogMode]);
+
+  useEffect(() => {
+    const valid = new Set(warehouseCategoryOptions.map((o) => o.id));
+    setSelectedCategoryIds((prev) => {
+      if (!prev.size) return prev;
+      const next = new Set([...prev].filter((id) => valid.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [warehouseCategoryOptions]);
+
+  const toggleCategoryFilterId = (id) => {
+    setSelectedCategoryIds((prev) => {
+      const next = new Set(prev);
+      const key = String(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const clearCategoryFilter = () => setSelectedCategoryIds(new Set());
+
   const filtered = useMemo(() => {
     let base = productAssemblies;
-    if (zeroQtyFilter && catalogMode === 'complete') {
-      base = base.filter((a) => {
-        const qty = assemblyWarehouseQty[String(a.id)] ?? 0;
-        return Math.max(0, Math.floor(Number(qty) || 0)) === 0;
-      });
+    if (selectedCategoryIds.size > 0) {
+      base = base.filter((a) => selectedCategoryIds.has(assemblyCategoryKey(a)));
     }
     const raw = search.trim();
     if (!raw) return base;
@@ -187,9 +239,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     packetsByAssembly,
     search,
     categoryName,
-    zeroQtyFilter,
-    catalogMode,
-    assemblyWarehouseQty,
+    selectedCategoryIds,
   ]);
 
   const toggleExpanded = (id) => {
@@ -346,29 +396,27 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             if (normalized && normalized !== v) setSearch(normalized);
           }}
         />
-        {catalogMode === 'complete' ? (
-          <>
-            <Pressable
-              style={[styles.filterBtn, zeroQtyFilter && styles.filterBtnActive]}
-              onPress={() => setZeroQtyFilter((v) => !v)}
-              accessibilityLabel={zeroQtyFilter ? 'Show all products' : 'Show only zero quantity'}
-            >
-              <MaterialCommunityIcons
-                name="filter-variant"
-                size={22}
-                color={zeroQtyFilter ? '#fca5a5' : '#94a3b8'}
-              />
-            </Pressable>
-            {canAddProduct ? (
-              <Pressable
-                style={styles.addBtn}
-                onPress={openNewProductForm}
-                accessibilityLabel="Add new product"
-              >
-                <Text style={styles.addBtnText}>+</Text>
-              </Pressable>
-            ) : null}
-          </>
+        <Pressable
+          style={[styles.filterBtn, categoryFilterActive && styles.filterBtnActive]}
+          onPress={() => setCategoryFilterOpen(true)}
+          accessibilityLabel={categoryFilterActive
+            ? `Category filter active (${selectedCategoryIds.size} selected)`
+            : 'Filter by category'}
+        >
+          <MaterialCommunityIcons
+            name="shape-outline"
+            size={22}
+            color={categoryFilterActive ? '#38bdf8' : '#94a3b8'}
+          />
+        </Pressable>
+        {catalogMode === 'complete' && canAddProduct ? (
+          <Pressable
+            style={styles.addBtn}
+            onPress={openNewProductForm}
+            accessibilityLabel="Add new product"
+          >
+            <Text style={styles.addBtnText}>+</Text>
+          </Pressable>
         ) : null}
       </View>
 
@@ -401,6 +449,70 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           {...LIST_PERF}
         />
       )}
+
+      <Modal
+        visible={categoryFilterOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCategoryFilterOpen(false)}
+      >
+        <Pressable style={styles.categoryModalBackdrop} onPress={() => setCategoryFilterOpen(false)}>
+          <View style={styles.categoryPickerSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.categoryPickerHeader}>
+              <Text style={styles.categoryPickerTitle}>Categories on this list</Text>
+              {categoryFilterActive ? (
+                <Pressable
+                  onPress={clearCategoryFilter}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear category filter"
+                >
+                  <Text style={styles.categoryPickerClear}>Clear</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={styles.categoryPickerHint}>
+              Only categories used by products in this view. Leave none selected to show all.
+            </Text>
+            {warehouseCategoryOptions.length === 0 ? (
+              <Text style={styles.categoryPickerEmpty}>No products to filter yet.</Text>
+            ) : (
+              <ScrollView style={styles.categoryPickerList} keyboardShouldPersistTaps="handled">
+                {warehouseCategoryOptions.map((opt) => {
+                  const checked = selectedCategoryIds.has(opt.id);
+                  return (
+                    <Pressable
+                      key={opt.id}
+                      style={[styles.categoryPickerRow, checked && styles.categoryPickerRowActive]}
+                      onPress={() => toggleCategoryFilterId(opt.id)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked }}
+                      accessibilityLabel={`${opt.name}, ${opt.count} product${opt.count === 1 ? '' : 's'}`}
+                    >
+                      <MaterialCommunityIcons
+                        name={checked ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                        size={22}
+                        color={checked ? '#38bdf8' : '#64748b'}
+                      />
+                      <Text style={styles.categoryPickerRowText} numberOfLines={2}>
+                        {opt.name}
+                      </Text>
+                      <Text style={styles.categoryPickerCount}>{opt.count}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <Pressable
+              style={styles.categoryPickerDone}
+              onPress={() => setCategoryFilterOpen(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Done filtering categories"
+            >
+              <Text style={styles.categoryPickerDoneText}>Done</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={Boolean(photoPreview?.uri)}
@@ -458,9 +570,68 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   filterBtnActive: {
-    borderColor: '#f87171',
-    backgroundColor: 'rgba(127, 29, 29, 0.35)',
+    borderColor: '#38bdf8',
+    backgroundColor: 'rgba(12, 74, 110, 0.45)',
   },
+  categoryModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  categoryPickerSheet: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+    maxHeight: '75%',
+    paddingVertical: 12,
+  },
+  categoryPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  categoryPickerTitle: { color: theme.text, fontSize: 16, fontWeight: '700', flex: 1 },
+  categoryPickerClear: { color: '#38bdf8', fontSize: 14, fontWeight: '600', paddingVertical: 4, paddingLeft: 12 },
+  categoryPickerHint: {
+    color: theme.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  categoryPickerEmpty: {
+    color: theme.textMuted,
+    fontSize: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontStyle: 'italic',
+  },
+  categoryPickerList: { maxHeight: 360 },
+  categoryPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#334155',
+  },
+  categoryPickerRowActive: { backgroundColor: 'rgba(12, 74, 110, 0.35)' },
+  categoryPickerRowText: { color: theme.text, fontSize: 15, flex: 1 },
+  categoryPickerCount: { color: theme.textMuted, fontSize: 13, fontWeight: '600', minWidth: 28, textAlign: 'right' },
+  categoryPickerDone: {
+    marginTop: 8,
+    marginHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#334155',
+    alignItems: 'center',
+  },
+  categoryPickerDoneText: { color: '#f8fafc', fontWeight: '700', fontSize: 15 },
   addBtn: {
     width: 44,
     height: 44,

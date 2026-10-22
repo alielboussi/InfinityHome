@@ -1,6 +1,5 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { FaFileExcel, FaFilePdf } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
@@ -8,36 +7,27 @@ import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { deleteComboLocations, removeComboLocations, replaceComboLocations, upsertComboLocations } from './services/comboLocations';
 import { getFactoryStorageSummary, getFactoryStorageItems, createFactoryStorageItem, releaseFactoryStorageItem, updateFactoryStorageItem } from './services/factoryStorage';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
-import { removeProductLocations, syncProductLocations } from './services/productLocations';
+import { syncProductLocations } from './services/productLocations';
 import { applyInventoryBulk, dedupeInventoryRows, upsertInventoryQuantity } from './utils/inventoryApi';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import { docIdFromOnConflict } from './db/docIds';
 import { classifyInventoryAdjustmentDelta } from './utils/inventoryAdjustmentTypes';
 import { canDeleteProducts, canManageCatalog, canManageProductInventory, getCurrentUser } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
-import { exportProductsListExcel } from './utils/productsListExport';
-import { buildProductsListVarianceRows } from './utils/productsListVarianceReport';
-import { downloadProductsListVariancePdf } from './utils/stocktakeVariancePdf';
 import { productsListStockMoveDisabledMessage } from './utils/productsListStockPolicy';
 import { getDuplicateProductNameInfo, normalizeProductNameKey } from './utils/productDuplicateNames';
 import { resolveProductImageUrl } from './utils/productImageUrl';
-import { importProductsFromCsv, parseCsvLine } from './utils/productCsvImport';
 import {
   applyComboLocationPricing,
   applyProductLocationPricing,
   buildComboLocationPriceMap,
-  buildComboLocationPriceUpsert,
   buildProductLocationPriceMap,
-  buildProductLocationPriceUpsert,
 } from './utils/locationPricing';
 import {
   fetchComboLocationPrices,
   fetchProductLocationPrices,
   saveComboLocationPrice,
   saveProductLocationPrice,
-  seedProductLocationPricesForLocations,
-  upsertComboLocationPrices,
-  upsertProductLocationPrices,
 } from './services/locationPricing';
 import { logUserActivity } from './utils/userActivityLog';
 import { firebaseEnsureSession } from './utils/firebaseAuthApi';
@@ -1222,32 +1212,13 @@ function ProductsListPage() {
   const [loading, setLoading] = useState(true);
   const [negativeOnly, setNegativeOnly] = useState(false);
   const [resettingNegatives, setResettingNegatives] = useState(false);
-  const [bulkAction, setBulkAction] = useState('add_location');
-  const [bulkField, setBulkField] = useState('currency');
-  const [bulkValue, setBulkValue] = useState('');
-  const [bulkLocationIds, setBulkLocationIds] = useState([]);
-  const [bulkLocationMenuOpen, setBulkLocationMenuOpen] = useState(false);
-  const bulkLocationMenuRef = useRef(null);
-  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
-  const toolsMenuRef = useRef(null);
-  const [bulkApplyLoading, setBulkApplyLoading] = useState(false);
-  const [bulkApplyMessage, setBulkApplyMessage] = useState('');
+  const [priceLocationMenuOpen, setPriceLocationMenuOpen] = useState(false);
+  const priceLocationMenuRef = useRef(null);
   const [bulkSelectionMap, setBulkSelectionMap] = useState({});
-  const [bulkImportFile, setBulkImportFile] = useState(null);
-  const [bulkImportBusy, setBulkImportBusy] = useState(false);
-  const [bulkImportMessage, setBulkImportMessage] = useState('');
-  const [productImportBusy, setProductImportBusy] = useState(false);
-  const [varianceReportBusy, setVarianceReportBusy] = useState(false);
-  const [productImportMessage, setProductImportMessage] = useState('');
-  const productImportInputRef = useRef(null);
+  const [toolbarNotice, setToolbarNotice] = useState('');
   /** 'name_asc' | 'no_locations_first' */
   const [listSortMode, setListSortMode] = useState('name_asc');
   const [showDuplicateNamesOnly, setShowDuplicateNamesOnly] = useState(false);
-
-  const currencyOptions = useMemo(() => ([
-    { code: 'K', name: 'K' },
-    { code: 'USD', name: '$' },
-  ]), []);
 
   // (Planner removed per request) Keep only simple per-combo max display.
 
@@ -1562,9 +1533,9 @@ function ProductsListPage() {
       const searchTerm = String(search || '').trim();
       if (searchTerm && !trimmed.toLowerCase().includes(searchTerm.toLowerCase())) {
         setSearch('');
-        setBulkApplyMessage(`Renamed to "${trimmed}". Search filter cleared so the item stays visible.`);
+        setToolbarNotice(`Renamed to "${trimmed}". Search filter cleared so the item stays visible.`);
       } else {
-        setBulkApplyMessage(`Renamed to "${trimmed}".`);
+        setToolbarNotice(`Renamed to "${trimmed}".`);
       }
       inlineNameSaveLockRef.current = false;
       return true;
@@ -1900,28 +1871,6 @@ function ProductsListPage() {
       })
   ), [bulkSelectionMap]);
 
-  const selectedProductIds = useMemo(() => (
-    Array.from(new Set(selectedBulkItems.filter(item => !item.isCombo).map(item => item.id)))
-  ), [selectedBulkItems]);
-
-  const selectedComboIds = useMemo(() => (
-    Array.from(new Set(selectedBulkItems.filter(item => item.isCombo).map(item => item.id)))
-  ), [selectedBulkItems]);
-
-  const selectedBulkProductRows = useMemo(() => (
-    selectedBulkItems
-      .filter((item) => !item.isCombo)
-      .map((item) => {
-        const product = (products || []).find((row) => String(row.id) === String(item.id));
-        return {
-          id: String(item.id),
-          name: product?.name || product?.sku || item.id,
-          sku: product?.sku || '',
-          image_url: product?.image_url || '',
-        };
-      })
-  ), [selectedBulkItems, products]);
-
   const allBulkKeys = useMemo(() => (
     bulkSelectableItems.map(item => item.key)
   ), [bulkSelectableItems]);
@@ -1930,18 +1879,14 @@ function ProductsListPage() {
     allBulkKeys.length > 0 && allBulkKeys.every(key => bulkSelectionMap[key])
   ), [allBulkKeys, bulkSelectionMap]);
 
-  const needsBulkLocation = bulkAction === 'add_location' || bulkAction === 'remove_location';
-
   useEffect(() => {
-    if (!bulkLocationMenuOpen) return undefined;
+    if (!priceLocationMenuOpen) return undefined;
     const onPointerDown = (event) => {
-      const root = bulkLocationMenuRef.current;
-      if (root && !root.contains(event.target)) {
-        setBulkLocationMenuOpen(false);
-      }
+      const root = priceLocationMenuRef.current;
+      if (root && !root.contains(event.target)) setPriceLocationMenuOpen(false);
     };
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') setBulkLocationMenuOpen(false);
+      if (event.key === 'Escape') setPriceLocationMenuOpen(false);
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -1949,45 +1894,27 @@ function ProductsListPage() {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [bulkLocationMenuOpen]);
+  }, [priceLocationMenuOpen]);
 
-  useEffect(() => {
-    if (!needsBulkLocation) setBulkLocationMenuOpen(false);
-  }, [needsBulkLocation]);
+  const selectPriceLocationFilter = useCallback((locId) => {
+    const value = String(locId || '').trim();
+    setSelectedLocationIds(value ? [normalizeLocationId(value)] : []);
+    setPriceLocationMenuOpen(false);
+  }, [normalizeLocationId]);
 
-  useEffect(() => {
-    if (!toolsMenuOpen) return undefined;
-    const onPointerDown = (event) => {
-      const root = toolsMenuRef.current;
-      if (root && !root.contains(event.target)) setToolsMenuOpen(false);
-    };
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setToolsMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [toolsMenuOpen]);
-
-  const toggleBulkLocationId = useCallback((locId) => {
-    const id = String(locId || '');
-    if (!id) return;
-    setBulkLocationIds((prev) => (
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    ));
-  }, []);
-
-  const bulkLocationTriggerLabel = useMemo(() => {
-    if (!bulkLocationIds.length) return 'Select locations…';
-    if (bulkLocationIds.length === 1) {
-      const match = (locations || []).find((loc) => String(loc.id) === String(bulkLocationIds[0]));
-      return match?.name || '1 location';
+  const openBulkDeleteConfirm = useCallback(() => {
+    const targets = selectedBulkItems.map((item) => ({
+      id: String(item.id),
+      isCombo: !!item.isCombo,
+    }));
+    if (targets.length === 0) {
+      alert('Select at least one row using the Bulk checkboxes.');
+      return;
     }
-    return `${bulkLocationIds.length} locations`;
-  }, [bulkLocationIds, locations]);
+    setDeleteTargets(targets);
+    setDeleteConfirmText('');
+    setDeleteConfirmOpen(true);
+  }, [selectedBulkItems]);
 
   const negativeResetTargets = useMemo(() => {
     if (!negativeOnly) return [];
@@ -2004,236 +1931,6 @@ function ProductsListPage() {
     });
     return targets;
   }, [filteredProducts, inventory, isLocationSelected, negativeOnly, selectedLocationIds]);
-
-  useEffect(() => {
-    if (bulkField === 'currency') {
-      setBulkValue('K');
-    } else {
-      setBulkValue('');
-    }
-  }, [bulkField]);
-
-
-  const bulkFieldOptions = useMemo(() => ([
-    { value: 'currency', label: 'Currency', type: 'select', options: currencyOptions.map(opt => ({ value: opt.code, label: opt.name })) },
-    { value: 'category_id', label: 'Category', type: 'select', options: [{ value: '', label: 'None' }, ...categories.map(cat => ({ value: String(cat.id), label: cat.name }))] },
-    { value: 'unit_of_measure_id', label: 'Unit', type: 'select', options: [{ value: '', label: 'None' }, ...units.map(unit => ({ value: String(unit.id), label: unit.abbreviation ? `${unit.name} (${unit.abbreviation})` : unit.name }))] },
-    { value: 'price', label: 'Standard Price', type: 'number' },
-    { value: 'cost_price', label: 'Cost Price', type: 'number' },
-    { value: 'promotional_price', label: 'Promotional Price', type: 'number' },
-  ]), [categories, currencyOptions, units]);
-
-  const bulkFieldMeta = useMemo(() => (
-    bulkFieldOptions.find(opt => opt.value === bulkField) || bulkFieldOptions[0]
-  ), [bulkField, bulkFieldOptions]);
-
-  const chunkArray = (list, size) => {
-    const chunks = [];
-    for (let i = 0; i < list.length; i += size) {
-      chunks.push(list.slice(i, i + size));
-    }
-    return chunks;
-  };
-
-  const handleApplyBulkUpdate = async () => {
-    const productIds = selectedProductIds;
-    const comboIds = selectedComboIds;
-    if (productIds.length === 0 && comboIds.length === 0) {
-      alert('No products available to update.');
-      return;
-    }
-    setBulkApplyLoading(true);
-    setBulkApplyMessage('');
-    try {
-      if (bulkAction === 'add_location') {
-        if (bulkLocationIds.length === 0) {
-          alert('Select at least one location.');
-          setBulkApplyLoading(false);
-          return;
-        }
-        const productRows = productIds.flatMap((productId) => (
-          bulkLocationIds.map((locId) => ({ product_id: productId, location_id: locId }))
-        ));
-        for (const chunk of chunkArray(productRows, 500)) {
-          await syncProductLocations({ rows: chunk }, db);
-        }
-        const comboRows = comboIds.flatMap((comboId) => (
-          bulkLocationIds.map((locId) => ({ combo_id: comboId, location_id: locId }))
-        ));
-        for (const chunk of chunkArray(comboRows, 500)) {
-          await upsertComboLocations(chunk);
-        }
-        await fetchAll();
-        const total = productIds.length + comboIds.length;
-        setBulkApplyMessage(`Locations applied to ${total} item${total === 1 ? '' : 's'}.`);
-        return;
-      }
-
-      if (bulkAction === 'remove_location') {
-        if (bulkLocationIds.length === 0) {
-          alert('Select at least one location.');
-          setBulkApplyLoading(false);
-          return;
-        }
-        const productRows = productIds.flatMap((productId) => (
-          bulkLocationIds.map((locId) => ({ product_id: productId, location_id: locId }))
-        ));
-        for (const chunk of chunkArray(productRows, 500)) {
-          await removeProductLocations(chunk, db);
-        }
-        const comboRows = comboIds.flatMap((comboId) => (
-          bulkLocationIds.map((locId) => ({ combo_id: comboId, location_id: locId }))
-        ));
-        for (const chunk of chunkArray(comboRows, 500)) {
-          await removeComboLocations(chunk);
-        }
-        await fetchAll();
-        const total = productIds.length + comboIds.length;
-        setBulkApplyMessage(`Locations removed from ${total} item${total === 1 ? '' : 's'}.`);
-        return;
-      }
-
-      if (bulkAction === 'set_field') {
-        if (!bulkFieldMeta) {
-          alert('Select a field to update.');
-          setBulkApplyLoading(false);
-          return;
-        }
-        let value = bulkValue;
-        if (bulkFieldMeta.value === 'currency' && !bulkValue) {
-          alert('Select a currency value.');
-          setBulkApplyLoading(false);
-          return;
-        }
-        if (bulkFieldMeta.type === 'number') {
-          const parsed = Number(bulkValue);
-          if (!Number.isFinite(parsed)) {
-            alert('Enter a valid number.');
-            setBulkApplyLoading(false);
-            return;
-          }
-          value = parsed;
-        }
-        if (bulkFieldMeta.value === 'category_id' || bulkFieldMeta.value === 'unit_of_measure_id') {
-          value = bulkValue ? parseInt(bulkValue, 10) : null;
-        }
-        if (bulkFieldMeta.value === 'promotional_price' && bulkValue === '') {
-          value = null;
-        }
-
-        const locationPriceFields = new Set(['price', 'promotional_price']);
-        const targetLocationIds = (selectedLocationIds.length > 0
-          ? selectedLocationIds
-          : (locations || []).map((row) => row.id))
-          .map((locId) => normalizeLocationId(locId))
-          .filter(Boolean);
-
-        if (locationPriceFields.has(bulkFieldMeta.value)) {
-          if (!targetLocationIds.length) {
-            alert('No locations available for price update.');
-            setBulkApplyLoading(false);
-            return;
-          }
-          const productRows = productIds.flatMap((productId) => {
-            const product = (products || []).find((row) => String(row.id) === String(productId));
-            return targetLocationIds.map((locationId) => {
-              const existing = productLocationPriceMap.get(`${productId}:${locationId}`);
-              return buildProductLocationPriceUpsert({
-                productId,
-                locationId,
-                price: bulkFieldMeta.value === 'price'
-                  ? value
-                  : (existing?.price ?? product?.price ?? null),
-                promotionalPrice: bulkFieldMeta.value === 'promotional_price'
-                  ? value
-                  : (existing?.promotional_price ?? product?.promotional_price ?? null),
-                promoStartDate: existing?.promo_start_date ?? product?.promo_start_date ?? null,
-                promoEndDate: existing?.promo_end_date ?? product?.promo_end_date ?? null,
-              });
-            });
-          });
-          if (productRows.length) {
-            await upsertProductLocationPrices(db, productRows);
-          }
-
-          const comboRows = comboIds.flatMap((comboId) => {
-            const combo = (combos || []).find((row) => String(row.id) === String(comboId));
-            const standard = combo?.combo_price ?? combo?.standard_price ?? null;
-            return targetLocationIds.map((locationId) => {
-              const existing = comboLocationPriceMap.get(`${comboId}:${locationId}`);
-              return buildComboLocationPriceUpsert({
-                comboId,
-                locationId,
-                comboPrice: bulkFieldMeta.value === 'price'
-                  ? value
-                  : (existing?.combo_price ?? standard),
-                promotionalPrice: bulkFieldMeta.value === 'promotional_price'
-                  ? value
-                  : (existing?.promotional_price ?? combo?.promotional_price ?? null),
-                promoStartDate: existing?.promo_start_date ?? combo?.promo_start_date ?? null,
-                promoEndDate: existing?.promo_end_date ?? combo?.promo_end_date ?? null,
-              });
-            });
-          });
-          if (comboRows.length) {
-            await upsertComboLocationPrices(db, comboRows);
-          }
-        } else if (productIds.length > 0) {
-          const chunks = chunkArray(productIds, 500);
-          for (const chunk of chunks) {
-            const { error } = await db
-              .from('products')
-              .update({ [bulkFieldMeta.value]: value })
-              .in('id', chunk);
-            if (error) throw error;
-          }
-        }
-
-        const comboFieldMap = {
-          category_id: 'category_id',
-          unit_of_measure_id: 'unit_of_measure_id',
-          currency: 'currency',
-          promotional_price: 'promotional_price',
-          promo_start_date: 'promo_start_date',
-          promo_end_date: 'promo_end_date',
-          price: 'standard_price',
-        };
-        const comboField = comboFieldMap[bulkFieldMeta.value];
-        let updatedCombos = 0;
-        if (!locationPriceFields.has(bulkFieldMeta.value) && comboIds.length > 0 && comboField) {
-          const chunks = chunkArray(comboIds, 500);
-          for (const chunk of chunks) {
-            const { error } = await db
-              .from('combos')
-              .update({ [comboField]: value })
-              .in('id', chunk);
-            if (error) throw error;
-          }
-          updatedCombos = comboIds.length;
-        }
-        await fetchAll();
-        const skippedCombos = comboIds.length > 0 && !comboField && !locationPriceFields.has(bulkFieldMeta.value) ? ' (sets skipped)' : '';
-        const comboSuffix = updatedCombos > 0 ? `, ${updatedCombos} set${updatedCombos === 1 ? '' : 's'}` : '';
-        const locationSuffix = locationPriceFields.has(bulkFieldMeta.value)
-          ? ` across ${targetLocationIds.length} location${targetLocationIds.length === 1 ? '' : 's'}`
-          : '';
-        setBulkApplyMessage(`Updated ${bulkFieldMeta.label} for ${productIds.length} product${productIds.length === 1 ? '' : 's'}${comboSuffix}${locationSuffix}${skippedCombos}.`);
-        const priceFields = new Set(['price', 'promotional_price', 'cost_price']);
-        logUserActivity({
-          actionType: priceFields.has(bulkFieldMeta.value) ? 'product_price_change' : 'product_edit',
-          actionLabel: priceFields.has(bulkFieldMeta.value) ? 'Bulk Price Change' : 'Bulk Product Update',
-          details: `${bulkFieldMeta.label} set to ${value} for ${productIds.length} product${productIds.length === 1 ? '' : 's'}${comboSuffix}${locationSuffix}`,
-          reference: bulkFieldMeta.value,
-          entityType: 'product_bulk',
-          entityId: String(productIds.length),
-        });
-      }
-    } catch (err) {
-      alert('Bulk update failed: ' + (err.message || err));
-    } finally {
-      setBulkApplyLoading(false);
-    }
-  };
 
   const handleResetNegativeStock = async () => {
     if (!canAdjustInventory) return;
@@ -2292,81 +1989,6 @@ function ProductsListPage() {
   };
 
   // Format price with currency symbol: K -> 'K xxx,xxx', USD/$ -> '$ xxx,xxx'
-  const handleExportProductsExcel = () => {
-    if (!displayedProducts.length) {
-      alert('No products to export.');
-      return;
-    }
-    const stamp = new Date().toISOString().slice(0, 10);
-    exportProductsListExcel({
-      items: displayedProducts,
-      locations,
-      getStockForProduct,
-      computeComboMaxQty,
-      filename: `products-list_${stamp}.xlsx`,
-    });
-  };
-
-  const handleDownloadVarianceReport = async () => {
-    if (selectedLocationIds.length !== 1) {
-      alert('Select exactly one location in the Location filter to generate a stock report.');
-      return;
-    }
-    const productsOnly = displayedProducts.filter((item) => !item.__isCombo);
-    if (!productsOnly.length) {
-      alert('No products match the current filters (combos are not included).');
-      return;
-    }
-    const locationId = normalizeLocationId(selectedLocationIds[0]);
-    setVarianceReportBusy(true);
-    try {
-      const activePeriod = await getActiveStockPeriod(locationId);
-      if (!activePeriod?.id) {
-        alert('No open or locked stock period found for this location.');
-        return;
-      }
-      const { data: period, error: periodErr } = await db
-        .from('stock_periods')
-        .select('*')
-        .eq('id', activePeriod.id)
-        .maybeSingle();
-      if (periodErr) throw periodErr;
-      if (!period) {
-        alert('Could not load the stock period for this location.');
-        return;
-      }
-      const rows = await buildProductsListVarianceRows(db, {
-        period,
-        locationId,
-        productIds: productsOnly.map((p) => p.id),
-        getCurrentQty: (productId) => getStockForProduct(productId, locationId),
-      });
-      const { data: company } = await db.from('company_settings').select('*').limit(1).maybeSingle();
-      const locName = (locations || []).find((loc) => isSameLocation(loc.id, locationId))?.name || '';
-      let filterLabel = `${productsOnly.length} product${productsOnly.length === 1 ? '' : 's'}`;
-      if (categoryFilter) {
-        const catName = categories.find((c) => String(c.id) === String(categoryFilter))?.name;
-        if (catName) filterLabel = `Category: ${catName}`;
-      }
-      if (productsOnly.length === 1) {
-        filterLabel = productsOnly[0].name || filterLabel;
-      } else if (search && String(search).trim()) {
-        filterLabel = `Search: ${String(search).trim()} (${productsOnly.length})`;
-      }
-      await downloadProductsListVariancePdf({
-        period,
-        rows,
-        company,
-        locationName: locName,
-        filterLabel,
-      });
-    } catch (err) {
-      alert('Failed to generate stock report: ' + (err.message || err));
-    } finally {
-      setVarianceReportBusy(false);
-    }
-  };
-
   function formatWithCurrency(value, currency) {
     const num = Number(value);
     if (!Number.isFinite(num) || num <= 0) return '-';
@@ -2408,7 +2030,7 @@ function ProductsListPage() {
     inlinePriceSaveLockRef.current = true;
 
     if (!pricingEditLocationId) {
-      alert('Choose a location in the Location filter (next to Categories), not the bulk “Add to location” picker.');
+      alert('Choose a price location (▾ on the Price column). Use Product locations for bulk assign/unassign.');
       inlinePriceSaveLockRef.current = false;
       return false;
     }
@@ -2570,7 +2192,7 @@ function ProductsListPage() {
         title={pricingEditLocationId ? 'Double-click to edit location price' : 'Select one location to edit prices'}
         onDoubleClick={() => {
           if (!pricingEditLocationId) {
-            alert('Choose a location in the Location filter (next to Categories), not the bulk “Add to location” picker.');
+            alert('Choose a price location (▾ on the Price column). Use Product locations for bulk assign/unassign.');
             return;
           }
           const draft = String(getEditablePriceRaw(item, field, isCombo) ?? '');
@@ -2596,120 +2218,6 @@ function ProductsListPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inlinePriceEdit?.rowKey, inlinePriceEdit?.field]);
 
-  const escapeCsv = (value) => {
-    const raw = value == null ? '' : String(value);
-    if (/[",\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
-    return raw;
-  };
-
-  const handleExportProductsCsv = () => {
-    const header = ['id', 'name', 'sku', 'price', 'promotional_price', 'currency', 'category_id', 'unit_of_measure_id'];
-    const lines = (displayedProducts || []).map(p => [
-      p.id,
-      p.name,
-      p.sku,
-      p.price,
-      p.promotional_price,
-      p.currency,
-      p.category_id,
-      p.unit_of_measure_id,
-    ].map(escapeCsv).join(','));
-    const csv = [header.map(escapeCsv).join(','), ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Products_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
-
-  const handleImportInventoryCsv = async () => {
-    if (!bulkImportFile || bulkImportBusy) return;
-    setBulkImportBusy(true);
-    setBulkImportMessage('');
-    try {
-      const text = await bulkImportFile.text();
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      if (lines.length < 2) throw new Error('CSV has no data rows.');
-      const header = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
-      const idx = {
-        product_id: header.indexOf('product_id'),
-        location: header.indexOf('location'),
-        quantity: header.indexOf('quantity'),
-      };
-      if (idx.product_id < 0 || idx.location < 0 || idx.quantity < 0) {
-        throw new Error('CSV must include product_id, location, quantity headers.');
-      }
-      const inserts = [];
-      for (let i = 1; i < lines.length; i += 1) {
-        const cols = parseCsvLine(lines[i]);
-        const product_id = (cols[idx.product_id] || '').trim();
-        const location = (cols[idx.location] || '').trim();
-        const quantity = Number(cols[idx.quantity] || 0);
-        if (!product_id || !location) continue;
-        if (!Number.isFinite(quantity)) continue;
-        inserts.push({ product_id, location, quantity });
-      }
-      if (!inserts.length) throw new Error('No valid rows found in CSV.');
-      await applyInventoryBulk({ inserts }, db);
-      setBulkImportMessage(`Imported ${inserts.length} inventory rows.`);
-      setBulkImportFile(null);
-      await fetchInventory();
-    } catch (err) {
-      setBulkImportMessage(err?.message || 'Import failed.');
-    } finally {
-      setBulkImportBusy(false);
-    }
-  };
-
-  const handleProductImportFileChange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || productImportBusy || !canManageCatalogPage) return;
-
-    setProductImportBusy(true);
-    setProductImportMessage('');
-    try {
-      const csvText = await file.text();
-      const result = await importProductsFromCsv({
-        csvText,
-        db,
-        categories,
-        units,
-        locationIds: (locations || []).map((loc) => loc.id),
-        syncProductLocations,
-        seedProductLocationPricesForLocations,
-      });
-
-      clearProductsListCaches();
-      await fetchAll();
-
-      const errorNote = result.errors.length
-        ? ` ${result.errors.length} row(s) failed.`
-        : '';
-      setProductImportMessage(
-        `Imported ${result.imported} product(s) across all ${locations.length} location(s).${errorNote}`,
-      );
-
-      if (result.errors.length) {
-        console.warn('[products-import]', result.errors);
-      }
-
-      logUserActivity({
-        actionType: 'product_create',
-        actionLabel: 'Products Imported',
-        details: `${result.imported} product(s) imported from CSV across all locations`,
-        reference: file.name,
-        entityType: 'product',
-      });
-    } catch (err) {
-      setProductImportMessage(err?.message || 'Product import failed.');
-    } finally {
-      setProductImportBusy(false);
-    }
-  };
-
   return (
     <div className="products-list-page">
       <div className="page-header-row">
@@ -2731,281 +2239,44 @@ function ProductsListPage() {
               ))}
             </select>
           </div>
-          <div className="products-toolbar-control-wrap">
-            <select
-              value={selectedLocationIds.length === 1 ? normalizeLocationId(selectedLocationIds[0]) : ''}
-              onChange={(e) => {
-                const value = String(e.target.value || '').trim();
-                setSelectedLocationIds(value ? [normalizeLocationId(value)] : []);
-              }}
-              className="products-toolbar-select pos-control"
-              aria-label="Filter by location and set price location"
-            >
-              <option value="">All locations</option>
-              {(locations || []).map((loc) => (
-                <option key={loc.id} value={normalizeLocationId(loc.id)}>{loc.name}</option>
-              ))}
-            </select>
-          </div>
           <button
             type="button"
             onClick={() => navigate('/products')}
             className="products-toolbar-btn"
             title="Create a new product"
           >
-            Add product
+            Create Products
           </button>
-          <div className="products-toolbar-control-wrap products-toolbar-bulk-wrap">
-            <select
-              value={bulkAction === 'set_field' ? 'set_field' : (bulkAction === 'remove_location' ? 'remove_location' : 'add_location')}
-              onChange={(e) => {
-                const value = String(e.target.value || 'add_location');
-                if (value === 'set_field') {
-                  setBulkAction('set_field');
-                  setBulkLocationIds([]);
-                  return;
-                }
-                setBulkAction(value === 'remove_location' ? 'remove_location' : 'add_location');
-              }}
-              className="products-toolbar-select products-toolbar-bulk-select pos-control"
-              aria-label="Bulk action"
-            >
-              <option value="add_location">Add to location…</option>
-              <option value="remove_location">Remove from location…</option>
-              <option value="set_field">Set field…</option>
-            </select>
-          </div>
-          {needsBulkLocation ? (
-            <div
-              className="products-toolbar-control-wrap products-toolbar-bulk-locations-wrap"
-              ref={bulkLocationMenuRef}
-            >
-              <button
-                type="button"
-                className="products-toolbar-bulk-locations-trigger"
-                onClick={() => setBulkLocationMenuOpen((open) => !open)}
-                aria-haspopup="listbox"
-                aria-expanded={bulkLocationMenuOpen}
-                aria-label={bulkAction === 'remove_location' ? 'Locations to remove' : 'Locations to add'}
-              >
-                <span>{bulkLocationTriggerLabel}</span>
-                <span className="products-toolbar-bulk-locations-caret" aria-hidden="true" />
-              </button>
-              {bulkLocationMenuOpen && (
-                <div className="products-toolbar-bulk-locations-menu" role="listbox" aria-multiselectable="true">
-                  {(locations || []).map((loc) => {
-                    const id = String(loc.id);
-                    const checked = bulkLocationIds.includes(id);
-                    return (
-                      <label key={id} className="products-toolbar-bulk-locations-option">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleBulkLocationId(id)}
-                        />
-                        <span>{loc.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={handleApplyBulkUpdate}
-              disabled={bulkApplyLoading || selectedBulkItems.length === 0}
-              className="products-toolbar-btn products-toolbar-btn--apply"
-              title={`Apply bulk action (${selectedBulkItems.length} selected)`}
-            >
-              {bulkApplyLoading ? 'Applying…' : `Apply (${selectedBulkItems.length})`}
-            </button>
-          )}
-          {needsBulkLocation ? (
-            <button
-              type="button"
-              onClick={handleApplyBulkUpdate}
-              disabled={bulkApplyLoading || selectedBulkItems.length === 0 || bulkLocationIds.length === 0}
-              className="products-toolbar-btn products-toolbar-btn--apply"
-              title={`Apply bulk action (${selectedBulkItems.length} selected)`}
-            >
-              {bulkApplyLoading ? 'Applying…' : `Apply (${selectedBulkItems.length})`}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowDuplicateNamesOnly((active) => !active)}
-              className={`products-toolbar-btn products-toolbar-btn--duplicates${showDuplicateNamesOnly ? ' is-active' : ''}`}
-              title={showDuplicateNamesOnly
-                ? 'Showing duplicate names — click to show all products'
-                : 'Show products with duplicate names'}
-              aria-pressed={showDuplicateNamesOnly}
-            >
-              {showDuplicateNamesOnly
-                ? `Duplicates (${duplicateNameInfo.productCount})`
-                : `Duplicates${duplicateNameInfo.groupCount > 0 ? ` (${duplicateNameInfo.groupCount})` : ''}`}
-            </button>
-          )}
-          {needsBulkLocation ? (
-            <button
-              type="button"
-              onClick={() => setShowDuplicateNamesOnly((active) => !active)}
-              className={`products-toolbar-btn products-toolbar-btn--duplicates${showDuplicateNamesOnly ? ' is-active' : ''}`}
-              title={showDuplicateNamesOnly
-                ? 'Showing duplicate names — click to show all products'
-                : 'Show products with duplicate names'}
-              aria-pressed={showDuplicateNamesOnly}
-            >
-              {showDuplicateNamesOnly
-                ? `Duplicates (${duplicateNameInfo.productCount})`
-                : `Duplicates${duplicateNameInfo.groupCount > 0 ? ` (${duplicateNameInfo.groupCount})` : ''}`}
-            </button>
-          ) : (canDelete ? (
-            <button
-              type="button"
-              onClick={() => {
-                const targets = selectedBulkItems.map(item => ({ id: String(item.id), isCombo: !!item.isCombo }));
-                if (targets.length === 0) {
-                  alert('Select at least one row using the Bulk checkboxes.');
-                  return;
-                }
-                setDeleteTargets(targets);
-                setDeleteConfirmText('');
-                setDeleteConfirmOpen(true);
-              }}
-              disabled={selectedBulkItems.length === 0}
-              className="products-toolbar-btn products-toolbar-btn--delete"
-              title="Delete selected products or sets"
-            >
-              {`Delete (${selectedBulkItems.length})`}
-            </button>
-          ) : (
-            <span className="products-toolbar-btn" style={{ visibility: 'hidden', pointerEvents: 'none' }} aria-hidden="true">—</span>
-          ))}
-          {needsBulkLocation ? (
-            canDelete ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const targets = selectedBulkItems.map(item => ({ id: String(item.id), isCombo: !!item.isCombo }));
-                  if (targets.length === 0) {
-                    alert('Select at least one row using the Bulk checkboxes.');
-                    return;
-                  }
-                  setDeleteTargets(targets);
-                  setDeleteConfirmText('');
-                  setDeleteConfirmOpen(true);
-                }}
-                disabled={selectedBulkItems.length === 0}
-                className="products-toolbar-btn products-toolbar-btn--delete"
-                title="Delete selected products or sets"
-              >
-                {`Delete (${selectedBulkItems.length})`}
-              </button>
-            ) : (
-              <span className="products-toolbar-btn" style={{ visibility: 'hidden', pointerEvents: 'none' }} aria-hidden="true">—</span>
-            )
-          ) : (
-            <span className="products-toolbar-btn" style={{ visibility: 'hidden', pointerEvents: 'none' }} aria-hidden="true">—</span>
-          )}
-          <div className="products-toolbar-icon-group">
-            <button
-              type="button"
-              onClick={handleExportProductsExcel}
-              className="products-toolbar-icon-btn"
-              title="Download product list (Excel)"
-              aria-label="Download product list Excel"
-            >
-              <FaFileExcel aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={handleDownloadVarianceReport}
-              disabled={varianceReportBusy || selectedLocationIds.length !== 1}
-              className="products-toolbar-icon-btn"
-              title={selectedLocationIds.length !== 1
-                ? 'Select one location for stock PDF'
-                : 'Stock report PDF for filtered products'}
-              aria-label="Download stock report PDF"
-            >
-              {varianceReportBusy ? '…' : <FaFilePdf aria-hidden="true" />}
-            </button>
-          </div>
-          <div className="products-toolbar-more-wrap" ref={toolsMenuRef}>
-            <button
-              type="button"
-              className="products-toolbar-more-trigger"
-              onClick={() => setToolsMenuOpen((open) => !open)}
-              aria-expanded={toolsMenuOpen}
-              aria-haspopup="menu"
-            >
-              More ▾
-            </button>
-            {toolsMenuOpen && (
-              <div className="products-toolbar-more-menu" role="menu">
-                {selectedBulkProductRows.length >= 2 && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={imageEditLoading}
-                    onClick={() => {
-                      setToolsMenuOpen(false);
-                      setImageEditProduct(null);
-                      setImageEditBulkProducts(selectedBulkProductRows);
-                      setImageEditFile(null);
-                      setImageEditModalOpen(true);
-                    }}
-                  >
-                    Same image ({selectedBulkProductRows.length})
-                  </button>
-                )}
-                {canManageCatalogPage && (
-                  <>
-                    <input
-                      ref={productImportInputRef}
-                      type="file"
-                      accept=".csv,text/csv"
-                      onChange={handleProductImportFileChange}
-                      style={{ display: 'none' }}
-                      aria-hidden="true"
-                    />
-                    <button
-                      type="button"
-                      role="menuitem"
-                      disabled={productImportBusy || locations.length === 0}
-                      onClick={() => {
-                        setToolsMenuOpen(false);
-                        productImportInputRef.current?.click();
-                      }}
-                    >
-                      {productImportBusy ? 'Importing…' : 'Import CSV'}
-                    </button>
-                    <a
-                      role="menuitem"
-                      href="/import_template.csv"
-                      download="import_template.csv"
-                      onClick={() => setToolsMenuOpen(false)}
-                    >
-                      CSV template
-                    </a>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/sets')}
+            className="products-toolbar-btn"
+            title="Create a new product set"
+          >
+            Create Sets
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/products-list/locations')}
+            className="products-toolbar-btn"
+            title="Assign or remove locations for products and sets in bulk"
+          >
+            Product locations
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDuplicateNamesOnly((active) => !active)}
+            className={`products-toolbar-btn products-toolbar-btn--duplicates${showDuplicateNamesOnly ? ' is-active' : ''}`}
+            title={showDuplicateNamesOnly
+              ? 'Showing duplicate names — click to show all products'
+              : 'Show products with duplicate names'}
+            aria-pressed={showDuplicateNamesOnly}
+          >
+            {showDuplicateNamesOnly
+              ? `Duplicates (${duplicateNameInfo.productCount})`
+              : `Duplicates${duplicateNameInfo.groupCount > 0 ? ` (${duplicateNameInfo.groupCount})` : ''}`}
+          </button>
         </div>
-        {(productImportMessage || bulkImportMessage) && (
-          <div className="products-list-toolbar-row">
-            <div className="products-toolbar-control-wrap" style={{ flex: '1 1 100%' }}>
-              {productImportMessage && (
-                <div style={{ color: '#9ad7ff', fontSize: '0.92rem' }}>{productImportMessage}</div>
-              )}
-              {bulkImportMessage && (
-                <div style={{ color: '#9ad7ff', fontSize: '0.92rem' }}>{bulkImportMessage}</div>
-              )}
-            </div>
-          </div>
-        )}
         <div className="products-list-toolbar-row products-list-toolbar-row--search">
           <div className="products-toolbar-control-wrap products-toolbar-control-wrap--search">
             <input
@@ -3017,47 +2288,6 @@ function ProductsListPage() {
               aria-label="Search products"
             />
           </div>
-          {bulkAction === 'set_field' && bulkFieldMeta && (
-            <div className="products-toolbar-control-wrap">
-              <select
-                value={bulkField}
-                onChange={(e) => setBulkField(e.target.value)}
-                className="products-toolbar-select pos-control"
-                aria-label="Bulk field"
-              >
-                {bulkFieldOptions.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {bulkAction === 'set_field' && bulkFieldMeta && (
-            bulkFieldMeta.type === 'select' ? (
-              <div className="products-toolbar-control-wrap">
-                <select
-                  value={bulkValue}
-                  onChange={(e) => setBulkValue(e.target.value)}
-                  className="products-toolbar-select pos-control"
-                  aria-label="Bulk value"
-                >
-                  {bulkFieldMeta.options.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div className="products-toolbar-control-wrap">
-                <input
-                  type="number"
-                  value={bulkValue}
-                  onChange={(e) => setBulkValue(e.target.value)}
-                  placeholder="Value"
-                  className="products-toolbar-input pos-control"
-                  aria-label="Bulk value"
-                />
-              </div>
-            )
-          )}
         </div>
         {showDuplicateNamesOnly && (
           <div className="products-toolbar-message products-toolbar-message--duplicates">
@@ -3065,12 +2295,12 @@ function ProductsListPage() {
             Names match when extra spaces, letter case, or word order differ.
           </div>
         )}
-        {bulkApplyMessage && (
-          <div className="products-toolbar-message">{bulkApplyMessage}</div>
+        {toolbarNotice && (
+          <div className="products-toolbar-message">{toolbarNotice}</div>
         )}
         {selectedLocationIds.length !== 1 && (
           <div className="products-toolbar-message">
-            Select a location in the Location filter (next to Categories) to view and edit location-specific prices. The bulk “Add to location” picker is only for assigning products to locations.
+            Use the ▾ control on the Price column to pick a location for prices and promos. Use Product locations to assign or unassign outlets in bulk.
           </div>
         )}
         {pricingDisplayLocationId && (
@@ -3092,6 +2322,18 @@ function ProductsListPage() {
                 <tr style={{background: '#23272f'}}>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '4%'}}>
                     <div className="products-list-bulk-header">
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          className="products-list-bulk-delete-btn"
+                          onClick={openBulkDeleteConfirm}
+                          disabled={selectedBulkItems.length === 0}
+                          title={`Delete selected (${selectedBulkItems.length})`}
+                          aria-label={`Delete ${selectedBulkItems.length} selected item${selectedBulkItems.length === 1 ? '' : 's'}`}
+                        >
+                          ×
+                        </button>
+                      ) : null}
                       <span>Bulk</span>
                       <input
                         type="checkbox"
@@ -3137,7 +2379,65 @@ function ProductsListPage() {
                       </button>
                     </div>
                   </th>
-                  <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Price</th>
+                  <th
+                    className="products-list-price-header-cell"
+                    style={{ padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%' }}
+                  >
+                    <div className="products-list-price-header">
+                      <span>Price</span>
+                      <div className="products-list-price-loc-wrap" ref={priceLocationMenuRef}>
+                        <button
+                          type="button"
+                          className={`products-list-price-loc-trigger${selectedLocationIds.length === 1 ? ' is-active' : ''}`}
+                          onClick={() => setPriceLocationMenuOpen((open) => !open)}
+                          aria-haspopup="listbox"
+                          aria-expanded={priceLocationMenuOpen}
+                          aria-label={
+                            pricingLocationLabel
+                              ? `Price location: ${pricingLocationLabel}`
+                              : 'Price location: all locations'
+                          }
+                          title={
+                            pricingLocationLabel
+                              ? `Prices for ${pricingLocationLabel} — click to change`
+                              : 'All locations — click to choose price location'
+                          }
+                        >
+                          <span className="products-list-price-loc-caret" aria-hidden="true" />
+                        </button>
+                        {priceLocationMenuOpen && (
+                          <div className="products-list-price-loc-menu" role="listbox" aria-label="Price location">
+                            <button
+                              type="button"
+                              role="option"
+                              className={`products-list-price-loc-option${selectedLocationIds.length === 0 ? ' is-selected' : ''}`}
+                              aria-selected={selectedLocationIds.length === 0}
+                              onClick={() => selectPriceLocationFilter('')}
+                            >
+                              All locations
+                            </button>
+                            {(locations || []).map((loc) => {
+                              const id = normalizeLocationId(loc.id);
+                              const selected = selectedLocationIds.length === 1
+                                && isSameLocation(selectedLocationIds[0], id);
+                              return (
+                                <button
+                                  key={id}
+                                  type="button"
+                                  role="option"
+                                  className={`products-list-price-loc-option${selected ? ' is-selected' : ''}`}
+                                  aria-selected={selected}
+                                  onClick={() => selectPriceLocationFilter(id)}
+                                >
+                                  {loc.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '9%'}}>Promo</th>
                   <th style={{padding: '0.15rem', borderBottom: '1px solid #00b4d8', textAlign: 'center', width: '5%'}}>Edit</th>
                 </tr>
@@ -3494,7 +2794,7 @@ function ProductsListPage() {
                         await fetchInventory();
                       }
 
-                      setBulkApplyMessage(`Deleted ${targets.length} selected item${targets.length === 1 ? '' : 's'}.`);
+                      setToolbarNotice(`Deleted ${targets.length} selected item${targets.length === 1 ? '' : 's'}.`);
                     }
                   } catch (err) {
                     alert('Failed to delete item: ' + (err.message || err));
@@ -4142,7 +3442,7 @@ function ProductsListPage() {
                         });
                         return next;
                       });
-                      setBulkApplyMessage(`Image applied to ${imageEditBulkProducts.length} products.`);
+                      setToolbarNotice(`Image applied to ${imageEditBulkProducts.length} products.`);
                     } else {
                       const target = imageEditProduct || {
                         id: imageEditBulkProducts[0].id,

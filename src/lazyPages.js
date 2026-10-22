@@ -39,6 +39,7 @@ export const StocktakeControlPage = lazyRoute(() => import('./StocktakeControlPa
 export const StocktakeAggregationPage = lazyRoute(() => import('./StocktakeAggregationPage'));
 export const StocktakeCountRoute = lazyRoute(() => import('./StocktakeCountRoute'));
 export const ProductsListPage = lazyRoute(() => import('./ProductsListPage'));
+export const ProductLocationBulkPage = lazyRoute(() => import('./ProductLocationBulkPage'));
 export const WarehouseProductsPage = lazyRoute(() => import('./WarehouseProductsPage'));
 export const WarehousePacketsPage = lazyRoute(() => import('./WarehousePacketsPage'));
 export const WarehouseProductEditPage = lazyRoute(() => import('./WarehouseProductEditPage'));
@@ -85,6 +86,7 @@ export const routePreloadByPath = {
   '/user-activity': () => import('./UserActivityLog'),
   '/user-access': () => import('./UserAccessManagement'),
   '/database-backup': () => import('./DatabaseBackup.js'),
+  '/products-list/locations': () => import('./ProductLocationBulkPage'),
   '/sets': () => import('./Sets'),
   '/products': () => import('./Products'),
 };
