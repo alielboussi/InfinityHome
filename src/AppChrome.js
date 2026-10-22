@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FaArrowLeft,
   FaCashRegister, FaQuoteRight, FaChartLine,
-  FaUsers, FaWallet, FaClipboardList, FaTags, FaLayerGroup,
+  FaUsers, FaWallet, FaClipboardList, FaTags,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
   FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag
 } from 'react-icons/fa';
