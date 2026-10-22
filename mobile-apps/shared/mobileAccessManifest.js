@@ -77,13 +77,13 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_products',
-    label: 'Warehouse Products',
+    label: 'Products',
     description: 'Finished-only products and packet-BOM products with complete cartons',
     permissionMatrix: true,
   },
   {
     id: 'warehouse_incomplete_products',
-    label: 'Warehouse Incomplete Products',
+    label: 'Incomplete Products',
     description: 'Packet-BOM products missing links or carton totals ≠ packet count',
     permissionMatrix: true,
   },
