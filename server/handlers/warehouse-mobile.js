@@ -26,13 +26,24 @@ import {
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
+  isWarehouseProductionKioskAllowed,
   isWarehouseProductStockQtyEditAllowed,
   isWarehouseProductTurkishSyncAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
+import { canManageCatalog } from '../../src/accessControl.js';
+import { normalizeWarehousePacketNameKey } from '../../src/utils/productionItemName.js';
+import { titleCaseWords } from '../../src/utils/titleCaseWords.js';
+import { setWarehousePacketQuantityServer } from '../lib/warehouseLocationStockRecompute.js';
+import {
+  listWarehouseProductionLog,
+  logWarehouseProductionCreate,
+  logWarehouseProductionStockIncrease,
+} from '../lib/warehouseProductionLog.js';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
+import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku.js';
 
 function getService() {
   const client = createFirestoreServerClient();
@@ -89,6 +100,27 @@ async function assertUniqueSku(sb, sku, { excludeAssemblyId, excludePacketId } =
   }
 }
 
+async function opGenerateUniqueSku(body) {
+  const sb = getService();
+  const exclude = {
+    excludeAssemblyId: body.exclude_assembly_id || body.excludeAssemblyId,
+    excludePacketId: body.exclude_packet_id || body.excludePacketId,
+  };
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const sku = generateRandomWarehouseSku16();
+    try {
+      await assertUniqueSku(sb, sku, exclude);
+      return { sku };
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (!msg.toLowerCase().includes('already used') && !msg.includes('SKU')) {
+        throw err;
+      }
+    }
+  }
+  throw new Error('Could not generate a unique SKU. Try again.');
+}
+
 async function opScanResolve(body) {
   const scan = String(body.scan || '').trim();
   if (!scan) throw new Error('Scan value is required.');
@@ -117,6 +149,154 @@ async function opScanResolve(body) {
     return { kind: 'assembly', assembly };
   }
   return { kind: 'unknown', scan };
+}
+
+async function assertProductionKioskUser(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  if (isLoginAccessAdmin(user?.email) || isWarehouseProductionKioskAllowed(grant)) {
+    return grant;
+  }
+  const err = new Error('You do not have access to warehouse production.');
+  err.status = 403;
+  throw err;
+}
+
+async function assertUniquePacketName(sb, name, { excludePacketId } = {}) {
+  const key = normalizeWarehousePacketNameKey(name);
+  if (!key) throw new Error('Name is required');
+  const { data, error } = await sb.from('warehouse_packets').select('id, name');
+  if (error) throw new Error(error.message || 'Failed to validate packet name');
+  const clash = (data || []).find(
+    (row) => normalizeWarehousePacketNameKey(row.name) === key
+      && String(row.id) !== String(excludePacketId || ''),
+  );
+  if (clash) {
+    throw new Error(`A packet named "${clash.name}" already exists.`);
+  }
+}
+
+async function opProductionAccessSelf(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  const record = await getLoginAccessRecord(user?.id);
+  return {
+    allowed: isLoginAccessAdmin(user?.email) || isWarehouseProductionKioskAllowed(grant),
+    display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
+    grant,
+  };
+}
+
+async function opProductionPacketCreate(body, user) {
+  await assertProductionKioskUser(user);
+  const sb = getService();
+  let sku = normalizeWarehousePacketScan(body.sku);
+  if (!sku) {
+    const generated = await opGenerateUniqueSku(body);
+    sku = normalizeWarehousePacketScan(generated.sku);
+  }
+  const name = titleCaseWords(String(body.name || '').trim());
+  const packetNumber = Number(body.packet_number) || 1;
+  const qtyPerUnit = Math.max(1, Math.floor(Number(body.qty_per_unit) || 1));
+  const warehouseLocationId = body.warehouse_location_id;
+  const initialQty = Math.max(0, Number(body.initial_quantity) || 0);
+  if (!sku || !name) throw new Error('SKU and name are required.');
+  if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
+  await assertUniquePacketName(sb, name);
+  await assertUniqueSku(sb, sku);
+
+  const now = new Date().toISOString();
+  const id = newUuid();
+  const row = {
+    id,
+    assembly_id: null,
+    sku,
+    name,
+    category_id: null,
+    location_id: warehouseLocationId,
+    packet_number: packetNumber,
+    qty_per_unit: qtyPerUnit,
+    item_kind: 'packet',
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await sb.from('warehouse_packets').insert(row);
+  if (error) throw new Error(error.message || 'Failed to create packet');
+
+  await sb.from('warehouse_packet_inventory').upsert({
+    packet_id: id,
+    location_id: warehouseLocationId,
+    quantity: initialQty,
+    updated_at: now,
+  }, { onConflict: 'packet_id,location_id' });
+
+  await logWarehouseProductionCreate({
+    user,
+    packet: row,
+    initialQuantity: initialQty,
+    warehouseLocationId,
+  });
+
+  return { packet: row, created_by: user?.email || null };
+}
+
+async function opProductionStockIncrease(body, user) {
+  await assertProductionKioskUser(user);
+  const sb = getService();
+  const packetId = String(body.packet_id || '').trim();
+  const warehouseLocationId = String(body.warehouse_location_id || body.location_id || '').trim();
+  const delta = Math.max(0, Math.floor(Number(body.delta) || 0));
+  if (!packetId) throw new Error('packet_id is required.');
+  if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
+  if (delta < 1) throw new Error('Increase quantity must be at least 1.');
+
+  const { data: packet, error: pErr } = await sb
+    .from('warehouse_packets')
+    .select('id, sku, name')
+    .eq('id', packetId)
+    .maybeSingle();
+  if (pErr) throw new Error(pErr.message || 'Failed to load packet');
+  if (!packet) throw new Error('Packet not found.');
+
+  const { data: invRow } = await sb
+    .from('warehouse_packet_inventory')
+    .select('quantity')
+    .eq('packet_id', packetId)
+    .eq('location_id', warehouseLocationId)
+    .maybeSingle();
+  const qtyBefore = Math.max(0, Number(invRow?.quantity) || 0);
+  const qtyAfter = qtyBefore + delta;
+
+  await setWarehousePacketQuantityServer(sb, packetId, warehouseLocationId, qtyAfter, { mobileFast: true });
+
+  await logWarehouseProductionStockIncrease({
+    user,
+    packet,
+    delta,
+    qtyBefore,
+    qtyAfter,
+    warehouseLocationId,
+  });
+
+  return {
+    packet,
+    delta,
+    qty_before: qtyBefore,
+    qty_after: qtyAfter,
+    warehouse_location_id: warehouseLocationId,
+  };
+}
+
+async function opProductionEventsList(user, body) {
+  if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
+    const err = new Error('You do not have permission to view production history.');
+    err.status = 403;
+    throw err;
+  }
+  const limit = Math.min(1000, Math.max(1, Number(body?.limit) || 500));
+  const rows = await listWarehouseProductionLog({ limit });
+  return {
+    creates: rows.filter((r) => r.event_type === 'create'),
+    stock_increases: rows.filter((r) => r.event_type === 'stock_increase'),
+  };
 }
 
 async function opPacketCreate(body, user) {
@@ -437,6 +617,9 @@ export default async function handler(req, res) {
       case 'catalog-list':
         result = await fetchCatalogForMobile(getService());
         break;
+      case 'generate-unique-sku':
+        result = await opGenerateUniqueSku(body);
+        break;
       case 'category-create':
         result = { category: await createCategoryForMobile(getService(), body.name) };
         break;
@@ -463,6 +646,18 @@ export default async function handler(req, res) {
         break;
       case 'delivery-submit':
         result = await opDeliverySubmit(body, user);
+        break;
+      case 'production-access-self':
+        result = await opProductionAccessSelf(user);
+        break;
+      case 'production-packet-create':
+        result = await opProductionPacketCreate(body, user);
+        break;
+      case 'production-stock-increase':
+        result = await opProductionStockIncrease(body, user);
+        break;
+      case 'production-events-list':
+        result = await opProductionEventsList(user, body);
         break;
       default:
         return res.status(400).json({ ok: false, error: 'Unknown op' });

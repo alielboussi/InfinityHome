@@ -42,6 +42,7 @@ function normalizeGrant(raw) {
     ...raw,
     landing_screen: base.landing_screen,
     warehouse_product_stock_qty: raw.warehouse_product_stock_qty === 'allow' ? 'allow' : 'deny',
+    warehouse_production_kiosk: raw.warehouse_production_kiosk === 'allow' ? 'allow' : 'deny',
     screens: { ...base.screens, ...(raw.screens || {}) },
   };
 }
@@ -130,21 +131,49 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
 
       {error ? <div className="report-error mobile-access-panel__error">{error}</div> : null}
 
-      <div className="mobile-access-panel__section">
-        <label className="mobile-access-check-row">
-          <input
-            type="checkbox"
-            checked={grant.warehouse_product_stock_qty === 'allow'}
-            onChange={(e) => setGrant((prev) => ({
-              ...prev,
-              warehouse_product_stock_qty: e.target.checked ? 'allow' : 'deny',
-            }))}
-          />
-          <span>
-            Edit <strong>product</strong> stock quantity (web + app) — <em>increments only</em>;
-            linked packet cartons scale automatically (e.g. 1→3 units: 4+5 cartons → 12+15).
-          </span>
-        </label>
+      <div className="mobile-access-panel__section mobile-access-panel__section--permissions">
+        <h4 className="mobile-access-panel__section-label">Warehouse &amp; web permissions</h4>
+        <div className="mobile-access-permission-list">
+          <div className="mobile-access-permission-item">
+            <input
+              id="mobile-access-production-kiosk"
+              type="checkbox"
+              className="mobile-access-permission-item__check"
+              checked={grant.warehouse_production_kiosk === 'allow'}
+              onChange={(e) => setGrant((prev) => ({
+                ...prev,
+                warehouse_production_kiosk: e.target.checked ? 'allow' : 'deny',
+              }))}
+            />
+            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-production-kiosk">
+              <span className="mobile-access-permission-item__title">Production kiosk (10″ web)</span>
+              <span className="mobile-access-permission-item__desc">
+                Create seating items and add warehouse stock. Sign-in is email and password only at
+                <code className="mobile-access-permission-item__code">/warehouse-production/login</code>.
+              </span>
+            </label>
+          </div>
+
+          <div className="mobile-access-permission-item">
+            <input
+              id="mobile-access-product-stock-qty"
+              type="checkbox"
+              className="mobile-access-permission-item__check"
+              checked={grant.warehouse_product_stock_qty === 'allow'}
+              onChange={(e) => setGrant((prev) => ({
+                ...prev,
+                warehouse_product_stock_qty: e.target.checked ? 'allow' : 'deny',
+              }))}
+            />
+            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-product-stock-qty">
+              <span className="mobile-access-permission-item__title">Edit product stock quantity</span>
+              <span className="mobile-access-permission-item__desc">
+                Web and warehouse app. Increments only; linked packet cartons scale automatically
+                (e.g. 1→3 finished units: 4+5 cartons → 12+15).
+              </span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div className="mobile-access-panel__section">

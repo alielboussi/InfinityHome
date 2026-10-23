@@ -45,6 +45,8 @@ export const WarehousePacketsPage = lazyRoute(() => import('./WarehousePacketsPa
 export const WarehouseProductEditPage = lazyRoute(() => import('./WarehouseProductEditPage'));
 export const WarehouseProductTransferPage = lazyRoute(() => import('./WarehouseProductTransferPage'));
 export const WarehousePacketEditPage = lazyRoute(() => import('./WarehousePacketEditPage'));
+export const WarehouseProductionRoutes = lazyRoute(() => import('./warehouseProduction/WarehouseProductionRoutes'));
+export const ProductionAdminPage = lazyRoute(() => import('./ProductionAdminPage'));
 export const StockHistoryPage = lazyRoute(() => import('./StockHistoryPage'));
 export const ZeroStockLocationReset = lazyRoute(() => import('./ZeroStockLocationReset'));
 export const AllSales = lazyRoute(() => import('./AllSales'));

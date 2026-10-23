@@ -49,6 +49,11 @@ export function isWarehouseProductTurkishSyncAllowed(grant) {
   return false;
 }
 
+/** /user-access — 10″ warehouse production kiosk (create + stock-in). */
+export function isWarehouseProductionKioskAllowed(grant) {
+  return grant?.warehouse_production_kiosk === 'allow';
+}
+
 export function isWarehouseProductStockQtyEditAllowed(grant) {
   if (!grant) return false;
   if (grant.warehouse_product_stock_qty === 'allow') return true;
@@ -173,6 +178,7 @@ export function defaultMobileAccessGrant() {
     app: 'warehouse-catalog',
     landing_screen: DEFAULT_MOBILE_LANDING_SCREEN,
     warehouse_product_stock_qty: 'deny',
+    warehouse_production_kiosk: 'deny',
     screens,
   };
 }
@@ -282,6 +288,10 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   }
 
   merged.warehouse_product_stock_qty = merged.warehouse_product_stock_qty === 'allow'
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_production_kiosk = merged.warehouse_production_kiosk === 'allow'
     ? 'allow'
     : 'deny';
 

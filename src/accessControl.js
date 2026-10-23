@@ -2,7 +2,10 @@
 // Do NOT load roles or route access from public.users or Firebase Auth metadata.role.
 
 import { isStocktakeCountLocationPath } from './utils/stocktakeLocationSlug.js';
-import { isWarehouseProductStockQtyEditAllowed } from './mobile/mobileAccessManifest';
+import {
+  isWarehouseProductionKioskAllowed,
+  isWarehouseProductStockQtyEditAllowed,
+} from './mobile/mobileAccessManifest';
 
 const USER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -261,6 +264,12 @@ export function canDeleteProducts(user) {
   return !isProductInventoryRestrictedUser(user);
 }
 
+export function canUseWarehouseProductionKiosk(user, mobileAccessGrant) {
+  if (!user) return false;
+  if (canManageCatalog(user)) return true;
+  return isWarehouseProductionKioskAllowed(mobileAccessGrant);
+}
+
 export function canManageCatalog(user) {
   const uid = getUserUuid(user);
   if (PRODUCT_CATALOG_OVERRIDE_USERS.has(uid)) return true;
@@ -277,6 +286,13 @@ const USER_ACTIVITY_EMAIL = 'alielboussi00@gmail.com';
 const STOCK_CONTROL_EMAIL = 'alielboussi00@gmail.com';
 const STOCKTAKE_AGGREGATION_ROUTE = '/stocktake/aggregation';
 const LUSAKA_STOCK_ROUTE = '/lusaka-stock';
+const WAREHOUSE_PRODUCTION_ROUTE = '/warehouse-production';
+const PRODUCTION_ADMIN_ROUTE = '/production';
+
+export function isWarehouseProductionKioskPath(path) {
+  const p = normalizePath(path || '/');
+  return p === WAREHOUSE_PRODUCTION_ROUTE || p.startsWith(`${WAREHOUSE_PRODUCTION_ROUTE}/`);
+}
 const STOCKTAKE_FLOW_ROUTES = new Set([
   '/stocktake',
   '/stocktake-periods',
@@ -416,6 +432,12 @@ export function isPathAllowed(user, path) {
   }
   // Hidden kiosk page — direct URL only, any logged-in user.
   if (p === LUSAKA_STOCK_ROUTE) return Boolean(user && (user.id || user.email));
+  if (p === PRODUCTION_ADMIN_ROUTE || p.startsWith(`${PRODUCTION_ADMIN_ROUTE}/`)) {
+    return canManageCatalog(user);
+  }
+  if (isWarehouseProductionKioskPath(p)) {
+    return Boolean(user && (user.id || user.email));
+  }
   if (STOCK_CONTROL_ROUTES.has(p) && !canViewStockControl(user)) {
     return false;
   }

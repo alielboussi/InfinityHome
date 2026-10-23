@@ -4,6 +4,7 @@ import BackToDashboard from './BackToDashboard';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import {
   fetchWarehouseCatalog,
+  generateUniqueWarehouseSku,
   saveWarehousePacket,
 } from './services/warehouseCatalog';
 import { normalizeWarehousePacketScan } from './utils/warehouseScanResolver';
@@ -30,6 +31,7 @@ export default function WarehousePacketEditPage() {
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [packetForm, setPacketForm] = useState(emptyPacketForm);
   const [saving, setSaving] = useState(false);
+  const [skuGenBusy, setSkuGenBusy] = useState(false);
   const [saveNotice, setSaveNotice] = useState('');
   const skuInputRef = useRef(null);
 
@@ -100,6 +102,24 @@ export default function WarehousePacketEditPage() {
       return null;
     }
     return Math.max(0, parseInt(trimmed, 10));
+  };
+
+  const handleGenerateSku = async () => {
+    setSkuGenBusy(true);
+    setError('');
+    setSaveNotice('');
+    try {
+      const generated = await generateUniqueWarehouseSku({
+        excludePacketId: isNew ? null : packetId,
+      });
+      setPacketForm((f) => ({ ...f, sku: generated }));
+      setSaveNotice('Random SKU generated — edit before save if needed.');
+      focusSkuForNextScan();
+    } catch (err) {
+      setError(err?.message || 'Could not generate SKU.');
+    } finally {
+      setSkuGenBusy(false);
+    }
   };
 
   const handleSavePacket = async (e) => {
@@ -224,6 +244,16 @@ export default function WarehousePacketEditPage() {
           </h3>
           <div className="warehouse-field">
             <label htmlFor="wh-packet-sku-edit">SKU (Code 128)</label>
+            <div className="warehouse-generate-sku-row">
+              <button
+                type="button"
+                className="warehouse-generate-sku-btn"
+                onClick={handleGenerateSku}
+                disabled={skuGenBusy || saving}
+              >
+                {skuGenBusy ? 'Generating…' : 'Generate random SKU (16 characters)'}
+              </button>
+            </div>
             <input
               ref={skuInputRef}
               id="wh-packet-sku-edit"

@@ -7,7 +7,7 @@ import {
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
   FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag
 } from 'react-icons/fa';
-import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute } from './accessControl';
+import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute, isWarehouseProductionKioskPath, canManageCatalog } from './accessControl';
 import { preloadAppRoute } from './lazyPages';
 import { isShopPublicPath } from './utils/shopConstants';
 
@@ -42,6 +42,7 @@ const NAV_GROUPS = [
       { label: 'Categories', route: '/categories', icon: FaThLarge },
       { label: 'Products', route: '/products-list', icon: FaTags },
       { label: 'Warehouse', route: '/warehouse-products', icon: FaBoxOpen },
+      { label: 'Production', route: '/production', icon: FaPlus, catalogOnly: true },
       { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
       { label: 'Print Labels', route: '/price-labels', icon: FaPrint },
     ],
@@ -159,6 +160,7 @@ const TITLE_MAP = {
   '/products-list/locations': 'Product locations',
   '/warehouse-products': 'Warehouse',
   '/warehouse-products/packets': 'Packets (Warehouse)',
+  '/production': 'Production',
   '/warehouse-products/incomplete': 'Incomplete products (Warehouse)',
   '/stock-history': 'Stock History',
   '/categories': 'Categories',
@@ -224,6 +226,7 @@ export default function AppChrome() {
   const isPublicCount = isPublicAppRoute(path);
   const isShopRoute = isShopPublicPath(path);
   const isKioskStock = path.toLowerCase() === '/lusaka-stock';
+  const isProductionKiosk = isWarehouseProductionKioskPath(path);
   const hasUser = Boolean(user);
   const quotationerOnly = isQuotationerOnlyUser(user);
   const homePath = getHomeDashboardPath(user);
@@ -231,12 +234,12 @@ export default function AppChrome() {
   React.useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     // Count page is a standalone mobile surface — no pinned sidebar.
-    const pinned = hasUser && !isLogin && !isPublicCount && !isKioskStock && !isShopRoute;
+    const pinned = hasUser && !isLogin && !isPublicCount && !isKioskStock && !isShopRoute && !isProductionKiosk;
     document.body.classList.toggle('ent-sidebar-pinned', pinned);
     return () => {
       try { document.body.classList.remove('ent-sidebar-pinned'); } catch {}
     };
-  }, [isLogin, isPublicCount, isKioskStock, isShopRoute, hasUser, user]);
+  }, [isLogin, isPublicCount, isKioskStock, isShopRoute, isProductionKiosk, hasUser, user]);
 
   const visibleGroups = React.useMemo(() => dedupeNavGroups((quotationerOnly ? QUOTATIONER_ONLY_NAV_GROUPS : NAV_GROUPS)
     .map(group => {
@@ -249,12 +252,13 @@ export default function AppChrome() {
       ...group,
       items: group.items.filter((item) => {
         if (item.adminOnly && !canViewStocktakeAggregation(user)) return false;
+        if (item.catalogOnly && !canManageCatalog(user)) return false;
         return isPathAllowed(user, item.route);
       }),
     }))
     .filter(group => group.items.length > 0)), [quotationerOnly, user]);
 
-  if (isLogin || isPublicCount || isKioskStock || isShopRoute || !user) return null;
+  if (isLogin || isPublicCount || isKioskStock || isShopRoute || isProductionKiosk || !user) return null;
 
   const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
   const title = titleForPath(path, user, location.search);

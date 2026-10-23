@@ -27,6 +27,7 @@ import {
 } from '../shared/useKeepSoftKeyboardOnScanSubmit';
 import { theme } from '../shared/theme';
 import { useWarehouseFormOcrReturn } from '../shared/useWarehouseFormOcrReturn';
+import GenerateRandomSkuButton from '../shared/GenerateRandomSkuButton';
 
 export default function PacketFormScreen({ route, navigation }) {
   const prefill = route.params?.prefill || {};
@@ -44,6 +45,7 @@ export default function PacketFormScreen({ route, navigation }) {
   );
   const [initialQty, setInitialQty] = useState('0');
   const [busy, setBusy] = useState(false);
+  const [skuGenBusy, setSkuGenBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const prefillHydratedRef = useRef(false);
@@ -255,12 +257,32 @@ export default function PacketFormScreen({ route, navigation }) {
     keepSkuKeyboard();
   };
 
+  const onGenerateSku = async () => {
+    setSkuGenBusy(true);
+    setError('');
+    try {
+      const { sku: generated } = await warehouseMobileRequest('generate-unique-sku', {
+        exclude_packet_id: isEdit ? packetId : undefined,
+      });
+      if (generated) {
+        setSku(String(generated).toUpperCase());
+        setNotice('Random SKU generated — still editable before save.');
+      }
+    } catch (err) {
+      setError(err?.message || 'Could not generate SKU.');
+    } finally {
+      setSkuGenBusy(false);
+      keepSkuKeyboard();
+    }
+  };
+
   return (
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.hint}>
         Use 📷 OCR on each field for Lenor, Prizma, or Serra labels — printed text only (not barcodes). Edit before saving.
       </Text>
+      <GenerateRandomSkuButton onPress={onGenerateSku} busy={skuGenBusy} disabled={busy} />
       <LabelFieldWithOcrCamera
         label="SKU (printed on label)"
         ocrField={WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU}

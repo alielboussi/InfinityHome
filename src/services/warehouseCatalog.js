@@ -24,6 +24,8 @@ import {
   packetUpdatesForAssemblyTargetUnits,
 } from '../utils/warehouseAssemblyProductQuantity.js';
 import { assemblyDerivesWarehouseStockFromPackets } from '../utils/warehouseAssemblyMath';
+import { generateRandomWarehouseSku16 } from '../utils/warehouseRandomSku';
+import { normalizeWarehousePacketNameKey } from '../utils/productionItemName';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const PACKETS = 'warehouse_packets';
@@ -174,6 +176,51 @@ async function assertUniqueWarehouseSku(sku, {
   if (legacyClash) {
     throw new Error(`SKU already used by catalog product "${legacyClash.name || legacyClash.sku}".`);
   }
+}
+
+/** 16-char random SKU unique across warehouse products, packets, and legacy products. */
+export async function generateUniqueWarehouseSku(options = {}) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const sku = generateRandomWarehouseSku16();
+    try {
+      await assertUniqueWarehouseSku(sku, options);
+      return sku;
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (!msg.toLowerCase().includes('already used')) {
+        throw err;
+      }
+    }
+  }
+  throw new Error('Could not generate a unique SKU. Try again.');
+}
+
+async function assertUniqueWarehousePacketName(name, { excludePacketId } = {}) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw new Error('Name is required');
+  const key = normalizeWarehousePacketNameKey(trimmed);
+  const { data, error } = await db.from(PACKETS).select('id, name');
+  if (error) throw new Error(error.message || 'Failed to validate packet name');
+  const clash = (data || []).find(
+    (row) => normalizeWarehousePacketNameKey(row.name) === key
+      && String(row.id) !== String(excludePacketId || ''),
+  );
+  if (clash) {
+    throw new Error(`A packet named "${clash.name}" already exists.`);
+  }
+}
+
+/** Case-insensitive packet name check (warehouse_packets). */
+export async function isWarehousePacketNameTaken(name, { excludePacketId } = {}) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return false;
+  const key = normalizeWarehousePacketNameKey(trimmed);
+  const { data, error } = await db.from(PACKETS).select('id, name');
+  if (error) throw new Error(error.message || 'Failed to validate packet name');
+  return (data || []).some(
+    (row) => normalizeWarehousePacketNameKey(row.name) === key
+      && String(row.id) !== String(excludePacketId || ''),
+  );
 }
 
 export async function findOrCreateWarehouseColor(displayName) {
@@ -686,6 +733,7 @@ export async function saveWarehousePacket(payload, { id } = {}) {
 
   if (!sku) throw new Error('Packet SKU is required');
   if (!name) throw new Error('Name is required');
+  await assertUniqueWarehousePacketName(name, { excludePacketId: id });
   if (!warehouseLocationId) throw new Error('Warehouse location is not configured');
   if (!Number.isFinite(packetNumber) || packetNumber < 1) throw new Error('Packet number must be at least 1');
   await assertUniqueWarehouseSku(sku, {

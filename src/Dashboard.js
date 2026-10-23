@@ -6,6 +6,14 @@ import { useNavigate } from 'react-router-dom';
 import { cacheClear } from './utils/staleCache';
 import { getHomeDashboardPath, isPathAllowed, getUserDisplayName } from './accessControl';
 import LaybyDashboardStats from './LaybyDashboardStats';
+import {
+  createdAtQueryLowerBound,
+  rangeBoundsForDashboard,
+  saleMatchesRange,
+} from './utils/dashboardSaleRange';
+import { isRealtimeEnabled } from './utils/realtimeConfig';
+
+const DASHBOARD_REFRESH_MS = 90 * 1000;
 
 const normalizeCurrencyCode = (raw) => {
   if (!raw) return 'K';
@@ -24,30 +32,6 @@ const SALES_RANGE_OPTIONS = [
   { value: 'custom', label: 'Custom Range' },
 ];
 
-const startIsoForRange = (range) => {
-  const now = new Date();
-  switch (range) {
-    case 'today': {
-      const d = new Date(now); d.setHours(0, 0, 0, 0); return d.toISOString();
-    }
-    case '7d': {
-      const d = new Date(now); d.setDate(d.getDate() - 7); return d.toISOString();
-    }
-    case '30d': {
-      const d = new Date(now); d.setDate(d.getDate() - 30); return d.toISOString();
-    }
-    case 'month': {
-      const d = new Date(now.getFullYear(), now.getMonth(), 1); return d.toISOString();
-    }
-    case 'year': {
-      const d = new Date(now.getFullYear(), 0, 1); return d.toISOString();
-    }
-    case 'all':
-    default:
-      return null;
-  }
-};
-
 function Dashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -63,8 +47,14 @@ function Dashboard() {
   const [salesTotals, setSalesTotals] = useState({ K: 0, USD: 0 });
   const [discountTotals, setDiscountTotals] = useState({ K: 0, USD: 0 });
   const [salesLoading, setSalesLoading] = useState(false);
+  const [statsTick, setStatsTick] = useState(0);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
 
   const resolvedName = displayName || 'User';
+
+  const bumpDashboardRefresh = useCallback(() => {
+    setStatsTick((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -199,7 +189,7 @@ function Dashboard() {
     })();
 
     return () => { active = false; };
-  }, [user]);
+  }, [user, statsTick]);
 
   // Date-filtered total sales (separate effect so the range dropdown re-queries).
   const loadSalesTotals = useCallback(async (range, startDate, endDate) => {
@@ -207,26 +197,20 @@ function Dashboard() {
     const totals = { K: 0, USD: 0 };
     const discounts = { K: 0, USD: 0 };
     try {
+      const { startMs, endMs } = rangeBoundsForDashboard(range, startDate, endDate);
       let q = db
         .from('sales')
         .select('id, total_amount, discount, currency, sale_date, created_at, status')
         .eq('status', 'completed');
-      if (range === 'custom') {
-        if (startDate) {
-          const s = new Date(`${startDate}T00:00:00`);
-          if (!Number.isNaN(s.getTime())) q = q.gte('sale_date', s.toISOString());
-        }
-        if (endDate) {
-          const e = new Date(`${endDate}T23:59:59.999`);
-          if (!Number.isNaN(e.getTime())) q = q.lte('sale_date', e.toISOString());
-        }
-      } else {
-        const startIso = startIsoForRange(range);
-        if (startIso) q = q.gte('sale_date', startIso);
+      const createdLower = createdAtQueryLowerBound(startMs);
+      if (createdLower) q = q.gte('created_at', createdLower);
+      if (range === 'custom' && endDate) {
+        const e = new Date(`${endDate}T23:59:59.999`);
+        if (!Number.isNaN(e.getTime())) q = q.lte('created_at', e.toISOString());
       }
       const { data, error } = await q;
       if (error) throw error;
-      const completedSales = data || [];
+      const completedSales = (data || []).filter((sale) => saleMatchesRange(sale, startMs, endMs));
       const usdSaleIds = completedSales
         .filter((sale) => normalizeCurrencyCode(sale?.currency) === 'USD')
         .map((sale) => sale?.id)
@@ -266,13 +250,48 @@ function Dashboard() {
     setSalesTotals(totals);
     setDiscountTotals(discounts);
     setSalesLoading(false);
+    setLastRefreshedAt(new Date());
   }, []);
 
   useEffect(() => {
     if (!user) return;
     if (salesRange === 'custom' && !customStart && !customEnd) return;
     loadSalesTotals(salesRange, customStart, customEnd);
-  }, [user, salesRange, customStart, customEnd, loadSalesTotals]);
+  }, [user, salesRange, customStart, customEnd, loadSalesTotals, statsTick]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') bumpDashboardRefresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = setInterval(bumpDashboardRefresh, DASHBOARD_REFRESH_MS);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(timer);
+    };
+  }, [user, bumpDashboardRefresh]);
+
+  useEffect(() => {
+    if (!user || !isRealtimeEnabled()) return undefined;
+    let timer = null;
+    const bump = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(bumpDashboardRefresh, 400);
+    };
+    const channel = db
+      .channel('dashboard-stats-rt')
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'sales' }, bump)
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'sales_payments' }, bump)
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'sales_items' }, bump)
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'inventory' }, bump)
+      .on('firestore_changes', { event: '*', schema: 'public', table: 'products' }, bump)
+      .subscribe();
+    return () => {
+      if (timer) clearTimeout(timer);
+      try { db.removeChannel(channel); } catch {}
+    };
+  }, [user, bumpDashboardRefresh]);
 
   useEffect(() => {
     if (!user) {
@@ -421,8 +440,13 @@ function Dashboard() {
           </div>
         </div>
 
-        <p style={{ marginTop: 18, color: 'var(--ent-muted)' }}>
+        <p style={{ marginTop: 18, color: 'var(--dash-muted, var(--ent-muted))' }}>
           Use the menu (top-left) to navigate between modules.
+          {lastRefreshedAt ? (
+            <span style={{ display: 'block', marginTop: 6, fontSize: '0.85rem' }}>
+              Statistics updated {lastRefreshedAt.toLocaleTimeString()}.
+            </span>
+          ) : null}
         </p>
       </section>
     </div>

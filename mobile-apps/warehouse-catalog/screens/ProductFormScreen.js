@@ -41,6 +41,7 @@ import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
 import { rememberLabelName } from '../shared/warehouseLabelNameMemory';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
 import { useWarehouseFormOcrReturn } from '../shared/useWarehouseFormOcrReturn';
+import GenerateRandomSkuButton from '../shared/GenerateRandomSkuButton';
 import {
   finishedUnitsFromBoxCount,
   formatWarehouseBoxAndUnitStock,
@@ -72,6 +73,7 @@ export default function ProductFormScreen({ route, navigation }) {
   const [packetLinks, setPacketLinks] = useState([]);
   const [packetSearch, setPacketSearch] = useState('');
   const [busy, setBusy] = useState(false);
+  const [skuGenBusy, setSkuGenBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
@@ -447,6 +449,24 @@ export default function ProductFormScreen({ route, navigation }) {
     keepSkuKeyboard();
   };
 
+  const onGenerateSku = async () => {
+    if (existing) return;
+    setSkuGenBusy(true);
+    setError('');
+    try {
+      const { sku: generated } = await warehouseMobileRequest('generate-unique-sku', {});
+      if (generated) {
+        setFamilySku(String(generated).toUpperCase());
+        setNotice('Random SKU generated — still editable before save.');
+      }
+    } catch (err) {
+      setError(err?.message || 'Could not generate SKU.');
+    } finally {
+      setSkuGenBusy(false);
+      keepSkuKeyboard();
+    }
+  };
+
   const onPacketSearchSubmit = () => {
     const value = packetSearchRef.current || packetSearch;
     if (tryAddPacketFromScan(value, { allowPrefixMatch: true })) return;
@@ -675,6 +695,9 @@ export default function ProductFormScreen({ route, navigation }) {
             <Text style={styles.fieldHint}>
               Example: 2 chairs in one sellable box → enter 2 here. After save you enter how many boxes are on hand (e.g. 3 boxes → 6 units on web and app).
             </Text>
+          ) : null}
+          {!existing ? (
+            <GenerateRandomSkuButton onPress={onGenerateSku} busy={skuGenBusy} disabled={busy} />
           ) : null}
           <LabelFieldWithOcrCamera
             label="SKU (finished product)"

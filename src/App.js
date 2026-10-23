@@ -47,6 +47,8 @@ import {
   WarehouseDeliveriesAdmin,
   WarehousePacketEditPage,
   WarehousePacketsPage,
+  ProductionAdminPage,
+  WarehouseProductionRoutes,
   WarehouseProductEditPage,
   WarehouseProductsPage,
   WarehouseProductTransferPage,
@@ -55,7 +57,7 @@ import {
   ZeroStockLocationReset,
 } from './lazyPages';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
-import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated } from './accessControl';
+import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated, isWarehouseProductionKioskPath } from './accessControl';
 import { isShopPublicPath } from './utils/shopConstants';
 import { bootstrapAppAuth } from './utils/authSession';
 
@@ -126,6 +128,14 @@ function GlobalAuthGate() {
             if (checking) return;
             const path = location.pathname || '/';
             if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) return;
+            if (isWarehouseProductionKioskPath(path)) {
+                  if (path.startsWith('/warehouse-production/login')) return;
+                  if (!isAppAuthenticated()) {
+                        const next = encodeURIComponent(path);
+                        navigate(`/warehouse-production/login?next=${next}`, { replace: true });
+                  }
+                  return;
+            }
             if (!isAppAuthenticated()) {
                   const next = encodeURIComponent(path);
                   navigate(`/login?next=${next}`, { replace: true });
@@ -145,6 +155,10 @@ function SessionBootstrap({ children }) {
             (async () => {
                   const path = window.location.pathname || '/';
                   if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) {
+                        if (active) setReady(true);
+                        return;
+                  }
+                  if (path.startsWith('/warehouse-production/login')) {
                         if (active) setReady(true);
                         return;
                   }
@@ -201,6 +215,7 @@ function AccessGuard() {
             // Always allow login and the public count page
             const path = location.pathname || '';
             if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) return;
+            if (isWarehouseProductionKioskPath(path)) return;
 
             if (!authUser) return; // no session: global gate will handle redirect to login
             if (!isPathAllowed(authUser, path)) {
@@ -270,6 +285,7 @@ function App() {
         <Route path="/stocktake/count" element={<Navigate to="/login" replace />} />
         <Route path="/count" element={<Navigate to="/login" replace />} />
         <Route path="/shop/*" element={<ShopRoutes />} />
+        <Route path="/warehouse-production/*" element={<WarehouseProductionRoutes />} />
 
         <Route element={<RequireAuthLayout />}>
           <Route path="/" element={<HomeRedirect />} />
@@ -320,6 +336,7 @@ function App() {
           <Route path="/stocktake-entry" element={<Navigate to="/stocktake" replace />} />
           <Route path="/products-list/locations" element={<ProductLocationBulkPage />} />
           <Route path="/products-list" element={<ProductsListPage />} />
+          <Route path="/production" element={<ProductionAdminPage />} />
           <Route path="/warehouse-products/packets/new" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets/:packetId/edit" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets" element={<WarehousePacketsPage />} />

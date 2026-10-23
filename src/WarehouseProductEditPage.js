@@ -6,6 +6,7 @@ import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import {
   fetchWarehouseCatalog,
   findOrCreateWarehouseColor,
+  generateUniqueWarehouseSku,
   saveWarehouseAssembly,
   setWarehouseAssemblyQuantity,
   setWarehousePacketQuantity,
@@ -95,6 +96,7 @@ export default function WarehouseProductEditPage() {
   const [warehouseBoxModalSaving, setWarehouseBoxModalSaving] = useState(false);
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [saving, setSaving] = useState(false);
+  const [skuGenBusy, setSkuGenBusy] = useState(false);
   const [packetPickSearch, setPacketPickSearch] = useState('');
   const [colorDraft, setColorDraft] = useState('');
   const [colorPickBusy, setColorPickBusy] = useState(false);
@@ -414,6 +416,21 @@ export default function WarehouseProductEditPage() {
     }
   };
 
+  const handleGenerateProductSku = async () => {
+    setSkuGenBusy(true);
+    setError('');
+    try {
+      const generated = await generateUniqueWarehouseSku({
+        excludeAssemblyId: isNew ? null : productId,
+      });
+      setProductForm((f) => ({ ...f, family_sku: generated }));
+    } catch (err) {
+      setError(err?.message || 'Could not generate SKU.');
+    } finally {
+      setSkuGenBusy(false);
+    }
+  };
+
   const handleSaveProduct = async (e) => {
     e.preventDefault();
     if (!warehouseLocationId) {
@@ -712,6 +729,18 @@ export default function WarehouseProductEditPage() {
           </div>
           <div className="warehouse-field">
             <label htmlFor="wh-product-sku">SKU (assembled product)</label>
+            {isNew ? (
+              <div className="warehouse-generate-sku-row">
+                <button
+                  type="button"
+                  className="warehouse-generate-sku-btn"
+                  onClick={handleGenerateProductSku}
+                  disabled={skuGenBusy || saving}
+                >
+                  {skuGenBusy ? 'Generating…' : 'Generate random SKU (16 characters)'}
+                </button>
+              </div>
+            ) : null}
             <input
               id="wh-product-sku"
               required

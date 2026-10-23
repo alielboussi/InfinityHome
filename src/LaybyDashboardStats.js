@@ -5,7 +5,8 @@ import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { formatLaybyTotalsLine, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
 
-const LAYBY_ROWS_CACHE_TTL_MS = 5 * 60 * 1000;
+const LAYBY_ROWS_CACHE_TTL_MS = 60 * 1000;
+const LAYBY_POLL_MS = 90 * 1000;
 
 export default function LaybyDashboardStats({ active = true }) {
   const [laybyTotals, setLaybyTotals] = useState({});
@@ -29,6 +30,19 @@ export default function LaybyDashboardStats({ active = true }) {
 
     return () => { alive = false; };
   }, [active, laybyStatsTick]);
+
+  useEffect(() => {
+    if (!active) return undefined;
+    const timer = setInterval(() => setLaybyStatsTick((v) => v + 1), LAYBY_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') setLaybyStatsTick((v) => v + 1);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [active]);
 
   useEffect(() => {
     if (!active) return undefined;
@@ -56,8 +70,7 @@ export default function LaybyDashboardStats({ active = true }) {
   const fmtLaybyLine = (field) => formatLaybyTotalsLine(laybyTotals, field);
 
   return (
-    <section className="dashboard-section">
-      <div className="dashboard-stats-group">
+    <div className="dashboard-stats-group dashboard-stats-group--layby">
         <div className="dashboard-section-header">
           <h2>Layby</h2>
         </div>
@@ -77,7 +90,6 @@ export default function LaybyDashboardStats({ active = true }) {
             <div className="ent-stat-value" style={{ fontSize: '1.15rem', lineHeight: 1.35 }}>{fmtLaybyLine('due')}</div>
           </div>
         </div>
-      </div>
-    </section>
+    </div>
   );
 }
