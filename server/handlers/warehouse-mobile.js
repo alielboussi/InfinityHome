@@ -33,11 +33,17 @@ import {
 import { canManageCatalog } from '../../src/accessControl.js';
 import { normalizeWarehousePacketNameKey } from '../../src/utils/productionItemName.js';
 import { titleCaseWords } from '../../src/utils/titleCaseWords.js';
-import { setWarehousePacketQuantityServer } from '../lib/warehouseLocationStockRecompute.js';
 import {
+  recomputeWarehouseLocationStockServer,
+  setWarehousePacketQuantityServer,
+} from '../lib/warehouseLocationStockRecompute.js';
+import {
+  getWarehouseProductionLogEntry,
   listWarehouseProductionLog,
   logWarehouseProductionCreate,
   logWarehouseProductionStockIncrease,
+  syncWarehouseProductionLogPacketName,
+  updateWarehouseProductionLogEntry,
 } from '../lib/warehouseProductionLog.js';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
@@ -285,24 +291,189 @@ async function opProductionStockIncrease(body, user) {
   };
 }
 
-async function opProductionEventsList(user, body) {
+async function assertProductionHistoryAdmin(user) {
   if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
-    const err = new Error('You do not have permission to view production history.');
+    const err = new Error('You do not have permission to manage production history.');
     err.status = 403;
     throw err;
   }
-  const limit = Math.min(1000, Math.max(1, Number(body?.limit) || 500));
-  const rows = await listWarehouseProductionLog({ limit });
+}
+
+async function loadPacketInventoryQty(sb, packetId, locationId) {
+  const { data, error } = await sb
+    .from('warehouse_packet_inventory')
+    .select('quantity')
+    .eq('packet_id', packetId)
+    .eq('location_id', locationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message || 'Failed to load packet stock');
+  return Math.max(0, Number(data?.quantity) || 0);
+}
+
+async function applyWarehouseQtyOverride(sb, packetId, locationId, oldAmount, newAmount) {
+  const oldQty = Math.max(0, Number(oldAmount) || 0);
+  const newQty = Math.max(0, Number(newAmount) || 0);
+  const current = await loadPacketInventoryQty(sb, packetId, locationId);
+  const next = Math.max(0, current - oldQty + newQty);
+  await setWarehousePacketQuantityServer(sb, packetId, locationId, next, { mobileFast: true });
+  await recomputeWarehouseLocationStockServer(sb, locationId);
+  return { previous: current, quantity: next };
+}
+
+function parseProductionReportDateRange(body) {
+  const startDate = String(body?.start_date || body?.startDate || '').trim();
+  const endDate = String(body?.end_date || body?.endDate || '').trim();
+  if (!startDate && !endDate) {
+    return { startISO: null, endISO: null, startDate: '', endDate: '' };
+  }
+  if (!startDate || !endDate) {
+    throw new Error('start_date and end_date are required together.');
+  }
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59.999`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+    throw new Error('Choose a valid date range.');
+  }
+  return {
+    startISO: start.toISOString(),
+    endISO: end.toISOString(),
+    startDate,
+    endDate,
+  };
+}
+
+async function opProductionEventsList(user, body) {
+  await assertProductionHistoryAdmin(user);
+  const limit = Math.min(5000, Math.max(1, Number(body?.limit) || 500));
+  const { startISO, endISO } = parseProductionReportDateRange(body);
+  const rows = await listWarehouseProductionLog({
+    limit,
+    startAt: startISO,
+    endAt: endISO,
+  });
   return {
     creates: rows.filter((r) => r.event_type === 'create'),
     stock_increases: rows.filter((r) => r.event_type === 'stock_increase'),
+    start_date: startISO ? body?.start_date || body?.startDate : null,
+    end_date: startISO ? body?.end_date || body?.endDate : null,
   };
+}
+
+async function opProductionEditCreate(body, user) {
+  await assertProductionHistoryAdmin(user);
+  const logId = String(body.log_id || body.logId || '').trim();
+  const log = await getWarehouseProductionLogEntry(logId);
+  if (!log || log.event_type !== 'create') {
+    throw new Error('Create log entry not found.');
+  }
+
+  const packetId = String(log.packet_id || '').trim();
+  const locationId = String(log.warehouse_location_id || '').trim();
+  if (!packetId || !locationId) throw new Error('Log entry is missing packet or warehouse location.');
+
+  const sb = getService();
+  const { data: packet, error: pErr } = await sb
+    .from('warehouse_packets')
+    .select('*')
+    .eq('id', packetId)
+    .maybeSingle();
+  if (pErr) throw new Error(pErr.message || 'Failed to load packet');
+  if (!packet) throw new Error('Packet not found.');
+
+  const now = new Date().toISOString();
+  const logPatch = {
+    edited_at: now,
+    edited_by_email: String(user?.email || '').trim().toLowerCase() || null,
+    edited_by_display_name: String(user?.full_name || user?.display_name || user?.email || '').trim() || null,
+    warehouse_location_id: locationId,
+  };
+
+  let warehouseQty = null;
+
+  if (body.name !== undefined) {
+    const name = titleCaseWords(String(body.name || '').trim());
+    if (!name) throw new Error('Name is required.');
+    await assertUniquePacketName(sb, name, { excludePacketId: packetId });
+    await savePacketForMobile(sb, {
+      packet_id: packetId,
+      sku: packet.sku,
+      name,
+      packet_number: packet.packet_number || 1,
+      qty_per_unit: packet.qty_per_unit || 1,
+      warehouse_location_id: locationId,
+    });
+    await syncWarehouseProductionLogPacketName(packetId, name);
+    logPatch.name = name;
+  }
+
+  const qtyRaw = body.qty_added ?? body.initial_quantity ?? body.quantity;
+  if (qtyRaw !== undefined) {
+    const newQty = Math.max(0, Math.floor(Number(qtyRaw) || 0));
+    const oldQty = Math.max(0, Number(log.qty_added ?? log.qty_after) || 0);
+    warehouseQty = await applyWarehouseQtyOverride(sb, packetId, locationId, oldQty, newQty);
+    logPatch.qty_added = newQty;
+    logPatch.qty_after = newQty;
+    logPatch.qty_before = 0;
+    logPatch.warehouse_qty_applied = warehouseQty.quantity;
+  }
+
+  const updated = await updateWarehouseProductionLogEntry(logId, logPatch);
+  return { log: updated, packet_id: packetId, warehouse_qty: warehouseQty };
+}
+
+async function opProductionEditStockIncrease(body, user) {
+  await assertProductionHistoryAdmin(user);
+  const logId = String(body.log_id || body.logId || '').trim();
+  const log = await getWarehouseProductionLogEntry(logId);
+  if (!log || log.event_type !== 'stock_increase') {
+    throw new Error('Stock increase log entry not found.');
+  }
+
+  const packetId = String(log.packet_id || '').trim();
+  const locationId = String(log.warehouse_location_id || '').trim();
+  if (!packetId || !locationId) throw new Error('Log entry is missing packet or warehouse location.');
+
+  const newDelta = Math.max(0, Math.floor(Number(body.qty_added ?? body.delta) || 0));
+  if (newDelta < 1) throw new Error('Quantity added must be at least 1.');
+
+  const oldDelta = Math.max(0, Number(log.qty_added) || 0);
+  const qtyBefore = Math.max(0, Number(log.qty_before) || 0);
+
+  const sb = getService();
+  const warehouseQty = await applyWarehouseQtyOverride(sb, packetId, locationId, oldDelta, newDelta);
+
+  const now = new Date().toISOString();
+  const updated = await updateWarehouseProductionLogEntry(logId, {
+    qty_added: newDelta,
+    qty_after: qtyBefore + newDelta,
+    warehouse_qty_applied: warehouseQty.quantity,
+    edited_at: now,
+    edited_by_email: String(user?.email || '').trim().toLowerCase() || null,
+    edited_by_display_name: String(user?.full_name || user?.display_name || user?.email || '').trim() || null,
+    admin_qty_override: true,
+  });
+
+  return { log: updated, packet_id: packetId, warehouse_location_id: locationId };
+}
+
+async function opPacketNameCheck(body) {
+  const name = titleCaseWords(String(body.name || '').trim());
+  if (!name) return { taken: false, name: '' };
+  const sb = getService();
+  const key = normalizeWarehousePacketNameKey(name);
+  const { data, error } = await sb.from('warehouse_packets').select('id, name');
+  if (error) throw new Error(error.message || 'Failed to validate packet name');
+  const clash = (data || []).find(
+    (row) => normalizeWarehousePacketNameKey(row.name) === key
+      && String(row.id) !== String(body.exclude_packet_id || body.excludePacketId || ''),
+  );
+  return { taken: Boolean(clash), name, existing: clash?.name || null };
 }
 
 async function opPacketCreate(body, user) {
   const sb = getService();
   const sku = normalizeWarehousePacketScan(body.sku);
-  const name = String(body.name || '').trim();
+  const name = titleCaseWords(String(body.name || '').trim());
   const packetNumber = Number(body.packet_number);
   const qtyPerUnit = Math.max(1, Math.floor(Number(body.qty_per_unit) || 1));
   const warehouseLocationId = body.warehouse_location_id;
@@ -313,6 +484,7 @@ async function opPacketCreate(body, user) {
     throw new Error('packet_number must be at least 1.');
   }
   await assertUniqueSku(sb, sku, { excludePacketId: body.id });
+  await assertUniquePacketName(sb, name);
 
   const now = new Date().toISOString();
   const id = newUuid();
@@ -650,6 +822,9 @@ export default async function handler(req, res) {
       case 'production-access-self':
         result = await opProductionAccessSelf(user);
         break;
+      case 'packet-name-check':
+        result = await opPacketNameCheck(body);
+        break;
       case 'production-packet-create':
         result = await opProductionPacketCreate(body, user);
         break;
@@ -658,6 +833,12 @@ export default async function handler(req, res) {
         break;
       case 'production-events-list':
         result = await opProductionEventsList(user, body);
+        break;
+      case 'production-edit-create':
+        result = await opProductionEditCreate(body, user);
+        break;
+      case 'production-edit-stock-increase':
+        result = await opProductionEditStockIncrease(body, user);
         break;
       default:
         return res.status(400).json({ ok: false, error: 'Unknown op' });

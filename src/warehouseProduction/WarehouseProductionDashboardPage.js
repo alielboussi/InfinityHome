@@ -8,7 +8,7 @@ export default function WarehouseProductionDashboardPage() {
   const { locale, toggleLocale, dir } = useProductionKioskLocale();
 
   return (
-    <div className="warehouse-production-kiosk" dir={dir}>
+    <div className="warehouse-production-kiosk warehouse-production-kiosk--dash" dir={dir}>
       <ProductionKioskTopBar title={tUi('dashTitle', locale)} locale={locale} onToggleLocale={toggleLocale} />
       <div className="warehouse-production-kiosk__dash-grid">
         <button

@@ -75,15 +75,62 @@ export async function logWarehouseProductionStockIncrease({
   return row;
 }
 
-export async function listWarehouseProductionLog({ limit = 500, eventType } = {}) {
+export async function listWarehouseProductionLog({
+  limit = 500,
+  eventType,
+  startAt,
+  endAt,
+} = {}) {
   const db = getDb();
-  const snap = await db.collection(COLLECTION)
-    .orderBy('created_at', 'desc')
-    .limit(Math.min(1000, limit))
-    .get();
+  const cap = Math.min(5000, Math.max(1, Number(limit) || 500));
+  let query = db.collection(COLLECTION);
+  const start = String(startAt || '').trim();
+  const end = String(endAt || '').trim();
+  if (start && end) {
+    query = query.where('created_at', '>=', start).where('created_at', '<=', end);
+  }
+  const snap = await query.orderBy('created_at', 'desc').limit(cap).get();
   let rows = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   if (eventType) {
     rows = rows.filter((row) => row.event_type === eventType);
   }
   return rows;
+}
+
+export async function getWarehouseProductionLogEntry(logId) {
+  const id = String(logId || '').trim();
+  if (!id) return null;
+  const db = getDb();
+  const snap = await db.collection(COLLECTION).doc(id).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
+export async function updateWarehouseProductionLogEntry(logId, patch) {
+  const id = String(logId || '').trim();
+  if (!id) throw new Error('log_id is required.');
+  const db = getDb();
+  const ref = db.collection(COLLECTION).doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error('Production log entry not found.');
+  const next = { ...patch, updated_at: new Date().toISOString() };
+  await ref.set(next, { merge: true });
+  const after = await ref.get();
+  return { id: after.id, ...after.data() };
+}
+
+/** Keep kiosk/admin history in sync when a production packet is renamed. */
+export async function syncWarehouseProductionLogPacketName(packetId, name) {
+  const pid = String(packetId || '').trim();
+  if (!pid) return 0;
+  const db = getDb();
+  const snap = await db.collection(COLLECTION).where('packet_id', '==', pid).get();
+  if (!snap.size) return 0;
+  const now = new Date().toISOString();
+  const batch = db.batch();
+  snap.docs.forEach((doc) => {
+    batch.set(doc.ref, { name, updated_at: now }, { merge: true });
+  });
+  await batch.commit();
+  return snap.size;
 }

@@ -47,6 +47,22 @@ async function fetchAuthProfileUser() {
 }
 
 /** Kiosk access from login grant (works before production-* ops are deployed). */
+export async function isProductionPacketNameTaken(name, options = {}) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return false;
+  try {
+    const payload = await productionOp('packet-name-check', {
+      name: trimmed,
+      exclude_packet_id: options.excludePacketId,
+    });
+    return Boolean(payload.taken);
+  } catch (err) {
+    if (!isUnknownWarehouseOpError(err?.message)) throw err;
+    const { isWarehousePacketNameTaken } = await import('./warehouseCatalog');
+    return isWarehousePacketNameTaken(trimmed, options);
+  }
+}
+
 export async function fetchProductionKioskAccess() {
   try {
     const payload = await productionOp('production-access-self');
@@ -140,15 +156,34 @@ export async function fetchProductionCatalog() {
   return payload;
 }
 
-export async function fetchProductionEventsLog() {
+export async function fetchProductionEventsLog(options = {}) {
+  const body = { limit: options.limit ?? 800 };
+  if (options.startDate) body.start_date = options.startDate;
+  if (options.endDate) body.end_date = options.endDate;
   try {
-    return await productionOp('production-events-list', { limit: 800 });
+    return await productionOp('production-events-list', body);
   } catch (err) {
     if (isUnknownWarehouseOpError(err?.message)) {
       return { creates: [], stock_increases: [] };
     }
     throw err;
   }
+}
+
+export async function amendProductionCreateLog({ logId, name, qtyAdded }) {
+  const body = { log_id: logId };
+  if (name !== undefined) body.name = name;
+  if (qtyAdded !== undefined) body.qty_added = qtyAdded;
+  const payload = await productionOp('production-edit-create', body);
+  return payload.log;
+}
+
+export async function amendProductionStockIncreaseLog({ logId, qtyAdded }) {
+  const payload = await productionOp('production-edit-stock-increase', {
+    log_id: logId,
+    qty_added: qtyAdded,
+  });
+  return payload.log;
 }
 
 export async function generateProductionSku(options = {}) {

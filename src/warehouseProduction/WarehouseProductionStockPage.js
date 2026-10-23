@@ -5,6 +5,7 @@ import {
   increaseProductionPacketStock,
   resolveProductionScan,
 } from '../services/warehouseProductionApi';
+import { filterPacketsForProductionSearch } from '../utils/productionPacketSearch';
 import { normalizeWarehouseCatalogSearchQuery } from '../utils/warehouseScanResolver';
 import { tUi } from '../utils/productionKioskI18n';
 import { ProductionKioskTopBar, useProductionKioskLocale } from './WarehouseProductionShell';
@@ -17,10 +18,35 @@ function packetWarehouseQty(packetId, inventory, locationId) {
   return Math.max(0, Number(row?.quantity) || 0);
 }
 
+function productionKeyboardOverlapPx() {
+  const vk = document.querySelector('.production-vk');
+  if (!vk) return 0;
+  return Math.ceil(vk.getBoundingClientRect().height);
+}
+
+/** Scroll the page so the top of the results list sits in view (above the on-screen keyboard). */
+function scrollProductionStockResultsIntoView(resultsEl, { firstShow } = {}) {
+  if (!resultsEl) return;
+  const keyboardOverlap = productionKeyboardOverlapPx();
+  const topGap = 72;
+  const rect = resultsEl.getBoundingClientRect();
+  const visibleBottom = window.innerHeight - keyboardOverlap - 12;
+  const obscured = rect.bottom > visibleBottom || rect.top > visibleBottom - 56;
+  if (!firstShow && !obscured) return;
+
+  const targetY = window.scrollY + rect.top - topGap;
+  window.scrollTo({
+    top: Math.max(0, targetY),
+    behavior: 'smooth',
+  });
+}
+
 export default function WarehouseProductionStockPage() {
   const navigate = useNavigate();
   const { locale, toggleLocale, dir, isArabic } = useProductionKioskLocale();
   const searchRef = useRef(null);
+  const resultsRef = useRef(null);
+  const hadSearchResultsRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [packets, setPackets] = useState([]);
@@ -54,15 +80,10 @@ export default function WarehouseProductionStockPage() {
     load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = normalizeWarehouseCatalogSearchQuery(search).toLowerCase();
-    if (!q) return (packets || []).slice(0, 40);
-    return (packets || []).filter((p) => {
-      const name = String(p.name || '').toLowerCase();
-      const sku = String(p.sku || '').toLowerCase();
-      return name.includes(q) || sku.includes(q);
-    }).slice(0, 40);
-  }, [packets, search]);
+  const filtered = useMemo(
+    () => filterPacketsForProductionSearch(packets, search, { limit: 25 }),
+    [packets, search],
+  );
 
   const openPacketModal = (packet) => {
     setModalPacket(packet);
@@ -87,20 +108,31 @@ export default function WarehouseProductionStockPage() {
         openPacketModal(local);
         return;
       }
+      const fromSearch = filterPacketsForProductionSearch(packets, scan, { limit: 1 });
+      if (fromSearch.length === 1) {
+        openPacketModal(fromSearch[0]);
+        return;
+      }
       setError(tUi('stockNoMatch', locale));
     } catch (err) {
       setError(err?.message || tUi('stockNoMatch', locale));
     }
   };
 
+  const runSearch = () => {
+    setError('');
+    if (filtered.length === 1) {
+      openPacketModal(filtered[0]);
+      return;
+    }
+    if (filtered.length > 1) return;
+    tryResolveScan(search);
+  };
+
   const onSearchKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (filtered.length === 1) {
-        openPacketModal(filtered[0]);
-      } else {
-        tryResolveScan(search);
-      }
+      runSearch();
     }
   };
 
@@ -122,6 +154,7 @@ export default function WarehouseProductionStockPage() {
       setSuccess(tUi('stockSaved', locale));
       await load();
       setModalPacket(null);
+      setSearch('');
     } catch (err) {
       setError(err?.message || 'Save failed');
     } finally {
@@ -132,8 +165,28 @@ export default function WarehouseProductionStockPage() {
   const appendSearch = (ch) => setSearch((s) => s + ch);
   const backspaceSearch = () => setSearch((s) => s.slice(0, -1));
 
+  const hasQuery = Boolean(String(search || '').trim());
+
+  useEffect(() => {
+    if (!hasQuery || !filtered.length) {
+      hadSearchResultsRef.current = false;
+      return;
+    }
+    const firstShow = !hadSearchResultsRef.current;
+    hadSearchResultsRef.current = true;
+
+    const run = () => {
+      scrollProductionStockResultsIntoView(resultsRef.current, { firstShow });
+    };
+    const id = requestAnimationFrame(() => requestAnimationFrame(run));
+    return () => cancelAnimationFrame(id);
+  }, [hasQuery, filtered.length, search, keyboardOpen]);
+
   return (
-    <div className="warehouse-production-kiosk" dir={dir}>
+    <div
+      className={`warehouse-production-kiosk warehouse-production-kiosk--stock${keyboardOpen ? ' warehouse-production-kiosk--keyboard-open' : ''}`}
+      dir={dir}
+    >
       <ProductionKioskTopBar title={tUi('stockTitle', locale)} locale={locale} onToggleLocale={toggleLocale} />
       <button type="button" className="warehouse-production-kiosk__back" onClick={() => navigate('/warehouse-production')}>
         {tUi('back', locale)}
@@ -155,6 +208,7 @@ export default function WarehouseProductionStockPage() {
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={onSearchKeyDown}
             autoComplete="off"
+            dir="auto"
           />
           <button
             type="button"
@@ -165,8 +219,18 @@ export default function WarehouseProductionStockPage() {
           </button>
         </div>
 
-        {loading ? <p>{tUi('loading', locale)}</p> : (
-          <ul className="warehouse-production-kiosk__results">
+        {loading ? <p>{tUi('loading', locale)}</p> : null}
+
+        {!loading && !hasQuery ? (
+          <p className="warehouse-production-kiosk__search-hint">{tUi('stockSearchHint', locale)}</p>
+        ) : null}
+
+        {!loading && hasQuery && filtered.length === 0 ? (
+          <p className="warehouse-production-kiosk__search-hint">{tUi('stockNoMatch', locale)}</p>
+        ) : null}
+
+        {!loading && filtered.length > 0 ? (
+          <ul ref={resultsRef} className="warehouse-production-kiosk__results" aria-live="polite">
             {filtered.map((p) => (
               <li key={p.id}>
                 <button type="button" className="warehouse-production-kiosk__result-btn" onClick={() => openPacketModal(p)}>
@@ -179,7 +243,7 @@ export default function WarehouseProductionStockPage() {
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
 
       <ProductionVirtualKeyboard
@@ -191,7 +255,7 @@ export default function WarehouseProductionStockPage() {
         onSpace={() => appendSearch(' ')}
         onEnter={() => {
           setKeyboardOpen(false);
-          tryResolveScan(search);
+          runSearch();
         }}
       />
 
@@ -204,9 +268,15 @@ export default function WarehouseProductionStockPage() {
             <p>{tUi('stockAfter', locale)}: <strong>{currentQty + Math.max(1, addQty)}</strong></p>
             <div className="production-modal__qty">
               <span>{tUi('stockIncreaseLabel', locale)}</span>
-              <button type="button" className="warehouse-production-kiosk__btn" onClick={() => setAddQty((n) => Math.max(1, n - 1))}>−</button>
               <span className="production-modal__qty-val">{addQty}</span>
-              <button type="button" className="warehouse-production-kiosk__btn" onClick={() => setAddQty((n) => n + 1)}>+</button>
+              <button
+                type="button"
+                className="warehouse-production-kiosk__btn production-modal__qty-plus"
+                onClick={() => setAddQty((n) => n + 1)}
+                aria-label="Increase quantity"
+              >
+                +
+              </button>
             </div>
             <button
               type="button"

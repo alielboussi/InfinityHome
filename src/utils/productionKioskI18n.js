@@ -8,17 +8,17 @@ const UI_STRINGS = {
   warehouseOnly: { en: 'Warehouse only', ar: 'المستودع فقط' },
   baseNameLabel: { en: 'Name (first)', ar: 'الاسم (أولاً)' },
   baseNameHint: {
-    en: 'Enter or generate a name, then choose a seater preset.',
-    ar: 'أدخل أو ولّد اسمًا، ثم اختر نوع المقعد.',
+    en: 'Enter or tap Suggest a name (stylish names or beautiful places), then pick a seater preset.',
+    ar: 'أدخل اسمًا أو اضغط اقتراح اسم، ثم اختر نوع المقعد.',
   },
   productNameLabel: { en: 'Product name', ar: 'اسم المنتج' },
-  generateName: { en: 'Random girl’s name', ar: 'اسم عشوائي (أنثى)' },
+  generateName: { en: 'Suggest a name', ar: 'اقتراح اسم' },
   presetLabel: { en: 'Seater preset', ar: 'نوع المقعد' },
   skuLabel: { en: 'SKU (auto)', ar: 'رمز SKU (تلقائي)' },
   qtyLabel: { en: 'Stock qty (warehouse)', ar: 'كمية المخزون (المستودع)' },
   save: { en: 'Save production item', ar: 'حفظ عنصر الإنتاج' },
   saving: { en: 'Saving…', ar: 'جاري الحفظ…' },
-  translateToggle: { en: 'العربية', ar: 'English' },
+  translateToggle: { en: 'العربية', ar: 'EN' },
   saved: { en: 'Saved — item is on Packets and catalog.', ar: 'تم الحفظ — العنصر في الحزم والكتالوج.' },
   needBaseName: { en: 'Enter or generate a name first.', ar: 'أدخل أو ولّد اسمًا أولاً.' },
   needPreset: { en: 'Choose a seater preset to build the product name.', ar: 'اختر نوع المقعد لبناء اسم المنتج.' },
@@ -48,6 +48,10 @@ const UI_STRINGS = {
   stockAfter: { en: 'After save', ar: 'بعد الحفظ' },
   stockSaved: { en: 'Stock updated everywhere.', ar: 'تم تحديث المخزون في كل الأنظمة.' },
   stockNoMatch: { en: 'No matching product.', ar: 'لا يوجد منتج مطابق.' },
+  stockSearchHint: {
+    en: 'Type or scan to search — products appear here when there is a match.',
+    ar: 'اكتب أو امسح للبحث — تظهر المنتجات هنا عند وجود تطابق.',
+  },
   back: { en: 'Back', ar: 'رجوع' },
 };
 

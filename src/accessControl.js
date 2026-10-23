@@ -288,6 +288,7 @@ const STOCKTAKE_AGGREGATION_ROUTE = '/stocktake/aggregation';
 const LUSAKA_STOCK_ROUTE = '/lusaka-stock';
 const WAREHOUSE_PRODUCTION_ROUTE = '/warehouse-production';
 const PRODUCTION_ADMIN_ROUTE = '/production';
+const PRODUCTION_REPORT_ROUTE = '/production-report';
 
 export function isWarehouseProductionKioskPath(path) {
   const p = normalizePath(path || '/');
@@ -433,6 +434,9 @@ export function isPathAllowed(user, path) {
   // Hidden kiosk page — direct URL only, any logged-in user.
   if (p === LUSAKA_STOCK_ROUTE) return Boolean(user && (user.id || user.email));
   if (p === PRODUCTION_ADMIN_ROUTE || p.startsWith(`${PRODUCTION_ADMIN_ROUTE}/`)) {
+    return canManageCatalog(user);
+  }
+  if (p === PRODUCTION_REPORT_ROUTE || p.startsWith(`${PRODUCTION_REPORT_ROUTE}/`)) {
     return canManageCatalog(user);
   }
   if (isWarehouseProductionKioskPath(p)) {

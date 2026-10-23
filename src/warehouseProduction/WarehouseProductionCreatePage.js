@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   createProductionPacket,
   fetchProductionCatalog,
+  isProductionPacketNameTaken,
 } from '../services/warehouseProductionApi';
 import {
   buildProductionItemName,
-  fetchRandomFemaleFirstName,
+  fetchUniqueRandomProductionBaseName,
   normalizeProductionNameInput,
+  pickRandomProductionBaseName,
   PRODUCTION_SEAT_PRESETS,
 } from '../utils/productionItemName';
 import { tUi, translateEnToAr } from '../utils/productionKioskI18n';
@@ -96,14 +98,26 @@ export default function WarehouseProductionCreatePage() {
     }
   };
 
-  const onSelectPreset = (value) => {
+  const ensureProductNameAvailable = async (fullName) => {
+    const taken = await isProductionPacketNameTaken(fullName);
+    if (taken) {
+      setError(tUi('duplicateName', locale));
+      return false;
+    }
+    return true;
+  };
+
+  const onSelectPreset = async (value) => {
     if (!baseNameEn.trim()) {
       setError(tUi('needBaseName', locale));
       return;
     }
     setError('');
+    const built = buildProductionItemName(baseNameEn, value);
+    const ok = await ensureProductNameAvailable(built);
+    if (!ok) return;
     setPreset(value);
-    setProductNameEn(buildProductionItemName(baseNameEn, value));
+    setProductNameEn(built);
   };
 
   const onGenerateName = async () => {
@@ -111,10 +125,24 @@ export default function WarehouseProductionCreatePage() {
     setError('');
     setSuccess('');
     try {
-      const name = await fetchRandomFemaleFirstName();
+      const name = preset
+        ? await fetchUniqueRandomProductionBaseName((candidate) => isProductionPacketNameTaken(
+          buildProductionItemName(candidate, preset),
+        ))
+        : pickRandomProductionBaseName();
       setBaseNameEn(name);
-      setPreset('');
-      setProductNameEn('');
+      if (preset) {
+        const built = buildProductionItemName(name, preset);
+        const ok = await ensureProductNameAvailable(built);
+        if (!ok) {
+          setPreset('');
+          setProductNameEn('');
+          return;
+        }
+        setProductNameEn(built);
+      } else {
+        setProductNameEn('');
+      }
     } catch (err) {
       setError(err?.message || 'Could not generate a name.');
     } finally {
@@ -154,6 +182,9 @@ export default function WarehouseProductionCreatePage() {
 
     setSaving(true);
     try {
+      const available = await ensureProductNameAvailable(name);
+      if (!available) return;
+
       await createProductionPacket({
         name,
         warehouseLocationId,

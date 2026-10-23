@@ -72,6 +72,7 @@ const NAV_GROUPS = [
     items: [
       { label: 'Sales Report', route: '/sales-report', icon: FaChartLine },
       { label: 'Transfers Report', route: '/transfers-report', icon: FaExchangeAlt },
+      { label: 'Production Report', route: '/production-report', icon: FaPlus, catalogOnly: true },
     ],
   },
   {
@@ -161,6 +162,7 @@ const TITLE_MAP = {
   '/warehouse-products': 'Warehouse',
   '/warehouse-products/packets': 'Packets (Warehouse)',
   '/production': 'Production',
+  '/production-report': 'Production Report',
   '/warehouse-products/incomplete': 'Incomplete products (Warehouse)',
   '/stock-history': 'Stock History',
   '/categories': 'Categories',

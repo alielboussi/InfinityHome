@@ -41,6 +41,7 @@ import {
   StocktakeControlPage,
   StocktakeCountRoute,
   TransfersReport,
+  ProductionReport,
   UserAccessManagement,
   UserActivityLog,
   WarehouseDeliveries,
@@ -83,6 +84,7 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/stocktake-periods',
       '/all-sales',
       '/transfers-report',
+      '/production-report',
       '/sales-report',
       '/price-labels',
       '/ecommerce-setup',
@@ -337,6 +339,7 @@ function App() {
           <Route path="/products-list/locations" element={<ProductLocationBulkPage />} />
           <Route path="/products-list" element={<ProductsListPage />} />
           <Route path="/production" element={<ProductionAdminPage />} />
+          <Route path="/production-report" element={<ProductionReport />} />
           <Route path="/warehouse-products/packets/new" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets/:packetId/edit" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets" element={<WarehousePacketsPage />} />
