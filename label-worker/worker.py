@@ -40,12 +40,13 @@ PRINTER_NAME = os.getenv("PRINTER_NAME", "")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 PRINT_RETRY_COUNT = int(os.getenv("PRINT_RETRY_COUNT", "3"))
 PRINT_RETRY_DELAY_SECONDS = float(os.getenv("PRINT_RETRY_DELAY_SECONDS", "1"))
-LABEL_WIDTH_MM = float(os.getenv("LABEL_WIDTH_MM", "40"))
-LABEL_HEIGHT_MM = float(os.getenv("LABEL_HEIGHT_MM", "46"))
-LABEL_GAP_MM = float(os.getenv("LABEL_GAP_MM", "2"))
+LABEL_WIDTH_MM = float(os.getenv("LABEL_WIDTH_MM", "80"))
+LABEL_HEIGHT_MM = float(os.getenv("LABEL_HEIGHT_MM", "68"))
+LABEL_GAP_MM = float(os.getenv("LABEL_GAP_MM", "3"))
+LABEL_SIDE_MARGIN_MM = float(os.getenv("LABEL_SIDE_MARGIN_MM", "2"))
 PRINT_SPEED_IPS = float(os.getenv("PRINT_SPEED_IPS", "4"))
 PRINT_DENSITY = int(os.getenv("PRINT_DENSITY", "8"))
-PRINTER_LANGUAGE = os.getenv("PRINTER_LANGUAGE", "EZPL").strip().upper()
+PRINTER_LANGUAGE = os.getenv("PRINTER_LANGUAGE", "ZPL").strip().upper()
 
 WHATSAPP_ENABLED = os.getenv("WHATSAPP_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "")
@@ -104,7 +105,13 @@ def _whatsapp_to_number(value):
 
 
 def _mm_to_dots(mm):
-    return int(round(mm * 8))
+    dpi = float(os.getenv("PRINTER_DPI", "203"))
+    return int(round(mm * (dpi / 25.4)))
+
+
+def _zpl_escape(value):
+    raw = _safe_text(value)
+    return raw.replace("\\", " ").replace("^", " ").replace("~", " ")
 
 
 def _print_date(payload):
@@ -241,9 +248,190 @@ def build_tspl_label(name, sku, print_date, printed_by=None):
     return ("\r\n".join(lines) + "\r\n").encode("ascii", "replace")
 
 
+def build_zebra_zpl_label(name, sku, print_date, printed_by=None):
+    """Zebra ZD621 — product name + Code 128 SKU (warehouse production)."""
+    width_dots = _mm_to_dots(LABEL_WIDTH_MM)
+    height_dots = _mm_to_dots(LABEL_HEIGHT_MM)
+    pitch_dots = _mm_to_dots(LABEL_HEIGHT_MM + LABEL_GAP_MM)
+    margin_dots = _mm_to_dots(LABEL_SIDE_MARGIN_MM)
+    inner_width = max(40, width_dots - (margin_dots * 2))
+
+    name_text = _zpl_escape(name)
+    sku_text = _zpl_escape(sku)
+    date_text = _zpl_escape(print_date)
+    printed_by_text = _zpl_escape(printed_by)
+
+    def wrap_text(value, max_chars=28, max_lines=2):
+        words = _safe_text(value).split()
+        lines = []
+        current = ""
+        for word in words:
+            if not current:
+                current = word
+            elif len(current) + 1 + len(word) <= max_chars:
+                current += " " + word
+            else:
+                lines.append(current)
+                current = word
+                if len(lines) >= max_lines:
+                    break
+        if len(lines) < max_lines and current:
+            lines.append(current)
+        return lines[:max_lines]
+
+    name_lines = wrap_text(name_text)
+    first_line = name_lines[0] if name_lines else ""
+    second_line = name_lines[1] if len(name_lines) > 1 else ""
+
+    barcode_height = min(120, max(70, int(height_dots * 0.28)))
+    barcode_y = min(height_dots - barcode_height - 80, 150)
+
+    lines = [
+        "^XA",
+        "^CI28",
+        f"^PW{width_dots}",
+        f"^LL{pitch_dots}",
+        "^LH0,0",
+        f"^FO{margin_dots},{margin_dots}^GB{width_dots - (margin_dots * 2)},{height_dots - (margin_dots * 2)},3^FS",
+        f"^FO{margin_dots},16^A0N,22,22^FB{inner_width},1,0,C,0^FDBestrest Furniture^FS",
+        f"^FO{margin_dots},44^A0N,16,16^FB{inner_width},1,0,C,0^FDProduct Name:^FS",
+        f"^FO{margin_dots},64^A0N,20,20^FB{inner_width},1,0,C,0^FD{first_line}^FS",
+        f"^FO{margin_dots},86^A0N,20,20^FB{inner_width},1,0,C,0^FD{second_line}^FS",
+        f"^FO{margin_dots},{barcode_y}^BY2,3,{barcode_height // 8}^BCN,{barcode_height},Y,N,N^FD{sku_text}^FS",
+        f"^FO{margin_dots},{height_dots - 52}^A0N,16,16^FB{inner_width},1,0,C,0^FDDate: {date_text}^FS",
+    ]
+    if printed_by_text:
+        lines.append(
+            f"^FO{margin_dots},{height_dots - 32}^A0N,14,14^FB{inner_width},1,0,C,0^FD{printed_by_text}^FS"
+        )
+    lines.append("^PQ1")
+    lines.append("^XZ")
+    return ("\r\n".join(lines) + "\r\n").encode("ascii", "replace")
+
+
+def _format_price_amount(value, currency=None):
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if not num or num <= 0:
+        return ""
+    cur = _safe_text(currency).upper()
+    sym = "$" if cur in ("USD", "$") else "K"
+    rounded = int(round(num))
+    return f"{sym} {rounded:,}"
+
+
+def _price_label_has_promo(standard, promo, print_standard_only):
+    if print_standard_only:
+        return False
+    try:
+        promo_num = float(promo)
+        standard_num = float(standard)
+    except (TypeError, ValueError):
+        return False
+    if promo_num <= 0:
+        return False
+    if standard_num > 0 and promo_num >= standard_num:
+        return False
+    return True
+
+
+def build_zebra_zpl_price_label(name, sku, print_date, printed_by=None, item=None):
+    """Shelf price label — name, Code 128 SKU, standard and/or promo price."""
+    item = item if isinstance(item, dict) else {}
+    width_dots = _mm_to_dots(LABEL_WIDTH_MM)
+    height_dots = _mm_to_dots(LABEL_HEIGHT_MM)
+    pitch_dots = _mm_to_dots(LABEL_HEIGHT_MM + LABEL_GAP_MM)
+    margin_dots = _mm_to_dots(LABEL_SIDE_MARGIN_MM)
+    inner_width = max(40, width_dots - (margin_dots * 2))
+
+    name_text = _zpl_escape(name)
+    sku_text = _zpl_escape(sku)
+    date_text = _zpl_escape(print_date)
+    printed_by_text = _zpl_escape(printed_by)
+
+    standard_text = _format_price_amount(item.get("standard"), item.get("currency"))
+    promo_text = _format_price_amount(item.get("promo"), item.get("currency"))
+    print_standard_only = bool(item.get("print_standard_only"))
+    has_promo = _price_label_has_promo(
+        item.get("standard"),
+        item.get("promo"),
+        print_standard_only,
+    )
+
+    def wrap_text(value, max_chars=24, max_lines=2):
+        words = _safe_text(value).split()
+        lines = []
+        current = ""
+        for word in words:
+            if not current:
+                current = word
+            elif len(current) + 1 + len(word) <= max_chars:
+                current += " " + word
+            else:
+                lines.append(current)
+                current = word
+                if len(lines) >= max_lines:
+                    break
+        if len(lines) < max_lines and current:
+            lines.append(current)
+        return lines[:max_lines]
+
+    name_lines = wrap_text(name_text)
+    first_line = name_lines[0] if name_lines else ""
+    second_line = name_lines[1] if len(name_lines) > 1 else ""
+
+    barcode_height = min(90, max(55, int(height_dots * 0.22)))
+    barcode_y = 98
+
+    lines = [
+        "^XA",
+        "^CI28",
+        f"^PW{width_dots}",
+        f"^LL{pitch_dots}",
+        "^LH0,0",
+        f"^FO{margin_dots},{margin_dots}^GB{width_dots - (margin_dots * 2)},{height_dots - (margin_dots * 2)},2^FS",
+        f"^FO{margin_dots},10^A0N,18,18^FB{inner_width},1,0,C,0^FDBestrest Furniture^FS",
+        f"^FO{margin_dots},30^A0N,18,18^FB{inner_width},1,0,C,0^FD{first_line}^FS",
+        f"^FO{margin_dots},50^A0N,18,18^FB{inner_width},1,0,C,0^FD{second_line}^FS",
+        f"^FO{margin_dots},{barcode_y}^BY2,2,{max(6, barcode_height // 10)}^BCN,{barcode_height},N,N,N^FD{sku_text}^FS",
+        f"^FO{margin_dots},{barcode_y + barcode_height + 4}^A0N,14,14^FB{inner_width},1,0,C,0^FD{sku_text}^FS",
+    ]
+
+    price_y = height_dots - 56
+    if has_promo and standard_text and promo_text:
+        lines.append(
+            f"^FO{margin_dots},{price_y}^A0N,14,14^FB{inner_width},1,0,C,0^FDWas: {_zpl_escape(standard_text)}^FS"
+        )
+        lines.append(
+            f"^FO{margin_dots},{price_y + 18}^A0N,22,22^FB{inner_width},1,0,C,0^FDPROMO {_zpl_escape(promo_text)}^FS"
+        )
+    elif has_promo and promo_text:
+        lines.append(
+            f"^FO{margin_dots},{price_y + 8}^A0N,22,22^FB{inner_width},1,0,C,0^FDPROMO {_zpl_escape(promo_text)}^FS"
+        )
+    elif standard_text:
+        lines.append(
+            f"^FO{margin_dots},{price_y + 8}^A0N,22,22^FB{inner_width},1,0,C,0^FD{_zpl_escape(standard_text)}^FS"
+        )
+
+    lines.append(
+        f"^FO{margin_dots},{height_dots - 22}^A0N,12,12^FB{inner_width},1,0,C,0^FD{date_text}^FS"
+    )
+    if printed_by_text:
+        lines.append(
+            f"^FO{margin_dots},{height_dots - 10}^A0N,10,10^FB{inner_width},1,0,C,0^FD{printed_by_text}^FS"
+        )
+    lines.append("^PQ1")
+    lines.append("^XZ")
+    return ("\r\n".join(lines) + "\r\n").encode("ascii", "replace")
+
+
 def build_ezpl_label(name, sku, print_date, printed_by=None):
     width_dots = _mm_to_dots(LABEL_WIDTH_MM)
     height_dots = _mm_to_dots(LABEL_HEIGHT_MM)
+    pitch_dots = _mm_to_dots(LABEL_HEIGHT_MM + LABEL_GAP_MM)
     border_offset = 4
     inner_width = max(0, width_dots - 32)
 
@@ -277,7 +465,7 @@ def build_ezpl_label(name, sku, print_date, printed_by=None):
     lines = [
         "^XA",
         f"^PW{width_dots}",
-        f"^LL{height_dots}",
+        f"^LL{pitch_dots}",
         "^LS0",
         f"^FO{border_offset},{border_offset}^GB{width_dots - (border_offset * 2)},{height_dots - (border_offset * 2)},4^FS",
         f"^FO16,20^A0N,24,24^FB{inner_width},1,0,C,0^FDBestrest Furniture^FS",
@@ -323,6 +511,7 @@ def process_job(job):
         or payload.get("full_name")
         or payload.get("user_name")
     )
+    job_type = _safe_text(payload.get("job_type")).lower()
 
     for item in items:
         name = _safe_text(item.get("name"))
@@ -330,8 +519,17 @@ def process_job(job):
         qty = int(item.get("qty") or 1)
         qty = max(qty, 1)
         for _ in range(qty):
-            if PRINTER_LANGUAGE == "TSPL":
+            zpl_raw = _safe_text(item.get("zpl"))
+            if zpl_raw and PRINTER_LANGUAGE == "ZPL":
+                label_payload = zpl_raw.encode("utf-8")
+            elif job_type == "price_label" and PRINTER_LANGUAGE == "ZPL":
+                label_payload = build_zebra_zpl_price_label(
+                    name, sku, print_date, printed_by, item=item
+                )
+            elif PRINTER_LANGUAGE == "TSPL":
                 label_payload = build_tspl_label(name, sku, print_date, printed_by)
+            elif PRINTER_LANGUAGE == "ZPL":
+                label_payload = build_zebra_zpl_label(name, sku, print_date, printed_by)
             else:
                 label_payload = build_ezpl_label(name, sku, print_date, printed_by)
             last_err = None

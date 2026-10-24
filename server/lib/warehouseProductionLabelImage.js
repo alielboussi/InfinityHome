@@ -1,0 +1,164 @@
+/**
+ * Raster preview — same row layout as zebraProductionLabelZpl.js.
+ */
+import bwipjs from 'bwip-js';
+import sharp from 'sharp';
+import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
+import {
+  BARCODE_HEIGHT_MM,
+  BARCODE_WIDTH_MM,
+  COMPANY_NAME,
+  computeProductionLabelLayout,
+  FIELD_LABELS,
+  FONT_PT,
+  HEADER_START_MM,
+  LABEL_HEIGHT_MM,
+  LABEL_MARGIN_MM,
+  LABEL_WIDTH_MM,
+} from './warehouseProductionLabelLayout.js';
+import { formatBlockDate, formatBlockTime } from './zebraProductionLabelZpl.js';
+
+const PX_PER_MM = 10;
+const W = Math.round(LABEL_WIDTH_MM * PX_PER_MM);
+const H = Math.round(LABEL_HEIGHT_MM * PX_PER_MM);
+const BORDER = '#1e3a5f';
+
+const COMPANY_FONT_PX = 14;
+const ROW_FONT_PX = FONT_PT;
+
+export function buildProductionLabelMeta({ name, sku, printedAt } = {}) {
+  const at = printedAt ? new Date(printedAt) : new Date();
+  if (Number.isNaN(at.getTime())) {
+    throw new Error('Invalid printedAt');
+  }
+  const cleanSku = String(sku || '').trim().toUpperCase();
+  const cleanName = String(name || '').trim();
+  return {
+    sku: cleanSku,
+    name: cleanName,
+    image_qr_url: buildProductPhotoQrUrl(cleanSku),
+    printed_at: at.toISOString(),
+    print_date: formatBlockDate(at),
+    print_time: formatBlockTime(at),
+  };
+}
+
+function mmToPx(mm) {
+  return Math.round(mm * PX_PER_MM);
+}
+
+async function makeCode128Png(sku) {
+  const targetW = Math.round(BARCODE_WIDTH_MM * PX_PER_MM);
+  const targetH = Math.round(BARCODE_HEIGHT_MM * PX_PER_MM);
+  const raw = await bwipjs.toBuffer({
+    bcid: 'code128',
+    text: String(sku || '').toUpperCase(),
+    scale: 3,
+    height: 12,
+    includetext: false,
+    paddingwidth: 0,
+    paddingheight: 0,
+  });
+  return sharp(raw)
+    .resize(targetW, targetH, { fit: 'fill' })
+    .png()
+    .toBuffer();
+}
+
+async function makeProductPhotoQrPng(url, sizePx) {
+  const qr = await bwipjs.toBuffer({
+    bcid: 'qrcode',
+    text: String(url || '').trim(),
+    scale: 2,
+    paddingwidth: 0,
+    paddingheight: 0,
+  });
+  return sharp(qr)
+    .resize(sizePx, sizePx, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+    .png()
+    .toBuffer();
+}
+
+function escapeXml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function hrSvg(marginPx, mainWidthPx, lineYpx) {
+  return `<line x1="${marginPx}" y1="${lineYpx}" x2="${marginPx + mainWidthPx}" y2="${lineYpx}" stroke="#333" stroke-width="1"/>`;
+}
+
+function rowSvg({
+  headerXpx,
+  centerXpx,
+  rowYpx,
+  label,
+  value,
+}) {
+  return `
+  <text x="${headerXpx}" y="${rowYpx}" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="${ROW_FONT_PX}" font-weight="700" fill="#111">${escapeXml(label)}</text>
+  <text x="${centerXpx}" y="${rowYpx}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${ROW_FONT_PX}" font-weight="600" fill="#000">${escapeXml(value)}</text>
+  `;
+}
+
+export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printedAt } = {}) {
+  const meta = buildProductionLabelMeta({ name, sku, printedAt });
+  const layout = computeProductionLabelLayout({
+    heightMm: LABEL_HEIGHT_MM,
+    marginMm: LABEL_MARGIN_MM,
+  });
+
+  const marginPx = mmToPx(layout.marginMm);
+  const mainWidthPx = mmToPx(layout.mainWidthMm);
+  const centerXPx = mmToPx(layout.centerXMm);
+  const headerXpx = mmToPx(HEADER_START_MM);
+
+  const textBaseline = (rowMm) => mmToPx(rowMm) + Math.round(ROW_FONT_PX * 0.85);
+
+  const companyY = mmToPx(layout.companyMm) + 4;
+  const underlineY = mmToPx(layout.companyUnderlineMm);
+  const barcodeTop = mmToPx(layout.barcodeTopMm);
+  const barcodeLeft = mmToPx(layout.barcodeLeftMm);
+
+  const barcodeResized = await makeCode128Png(meta.sku);
+  const qrSizePx = mmToPx(layout.qrSizeMm);
+  const qrPng = await makeProductPhotoQrPng(meta.image_qr_url, qrSizePx);
+  const qrLeft = centerXPx - Math.floor(qrSizePx / 2);
+  const qrTop = mmToPx(layout.photoRowMm);
+
+  const textSvg = `
+<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <rect x="${marginPx}" y="${marginPx}" width="${mainWidthPx}" height="${H - marginPx * 2}" fill="none" stroke="${BORDER}" stroke-width="3"/>
+  <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f" text-decoration="underline">${escapeXml(COMPANY_NAME)}</text>
+  ${hrSvg(marginPx, mainWidthPx, underlineY)}
+  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.afterBarcodeLineMm))}
+  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm), label: FIELD_LABELS.sku, value: meta.sku })}
+  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.skuLineMm))}
+  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm), label: FIELD_LABELS.name, value: meta.name })}
+  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.nameLineMm))}
+  <text x="${headerXpx}" y="${qrTop + Math.round(qrSizePx * 0.75)}" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="${ROW_FONT_PX}" font-weight="700" fill="#111">${escapeXml(FIELD_LABELS.photo)}</text>
+  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.photoLineMm))}
+  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm), label: FIELD_LABELS.date, value: meta.print_date })}
+  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.dateLineMm))}
+  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm), label: FIELD_LABELS.time, value: meta.print_time })}
+</svg>`;
+
+  const base = await sharp(Buffer.from(textSvg)).png().toBuffer();
+
+  return sharp(base)
+    .composite([
+      { input: barcodeResized, left: barcodeLeft, top: barcodeTop },
+      { input: qrPng, left: qrLeft, top: qrTop },
+    ])
+    .png()
+    .toBuffer();
+}
+
+export async function buildWarehouseProductionLabelPngBase64(opts) {
+  const buf = await buildWarehouseProductionLabelPngBuffer(opts);
+  return buf.toString('base64');
+}

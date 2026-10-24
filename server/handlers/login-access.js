@@ -1,5 +1,6 @@
 import {
   assertLoginAllowed,
+  createLoginAccessUser,
   isLoginAccessAdmin,
   listLoginAccessRecords,
   setLoginAccessEnabled,
@@ -29,6 +30,19 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const actor = await requireAdmin(req);
       const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const action = String(body.action || '').trim().toLowerCase();
+
+      if (action === 'create-user') {
+        const user = await createLoginAccessUser({
+          email: body.email,
+          password: body.password,
+          displayName: body.display_name ?? body.displayName,
+          actorEmail: actor.email,
+        });
+        res.status(200).json({ ok: true, user });
+        return;
+      }
+
       const uid = String(body.uid || body.id || '').trim();
       if (!uid) {
         res.status(400).json({ ok: false, error: 'uid is required' });

@@ -26,12 +26,13 @@ import {
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
-  isWarehouseProductionKioskAllowed,
+  isWarehouseProductionOperatorAllowed,
   isWarehouseProductStockQtyEditAllowed,
   isWarehouseProductTurkishSyncAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
 import { canManageCatalog } from '../../src/accessControl.js';
-import { normalizeWarehousePacketNameKey } from '../../src/utils/productionItemName.js';
+import { buildProductionItemName, normalizeWarehousePacketNameKey } from '../../src/utils/productionItemName.js';
+import { suggestUniqueProductionBaseName } from '../lib/productionSuggestBaseName.js';
 import { titleCaseWords } from '../../src/utils/titleCaseWords.js';
 import {
   recomputeWarehouseLocationStockServer,
@@ -50,6 +51,11 @@ import {
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
 import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku.js';
+import { enqueueWarehouseProductionLabelJob } from '../lib/productionLabelPrint.js';
+import {
+  buildProductionLabelMeta,
+  buildWarehouseProductionLabelPngBase64,
+} from '../lib/warehouseProductionLabelImage.js';
 
 function getService() {
   const client = createFirestoreServerClient();
@@ -159,7 +165,7 @@ async function opScanResolve(body) {
 
 async function assertProductionKioskUser(user) {
   const grant = await mobileAccessGrantForUser(user);
-  if (isLoginAccessAdmin(user?.email) || isWarehouseProductionKioskAllowed(grant)) {
+  if (isLoginAccessAdmin(user?.email) || isWarehouseProductionOperatorAllowed(grant)) {
     return grant;
   }
   const err = new Error('You do not have access to warehouse production.');
@@ -185,7 +191,7 @@ async function opProductionAccessSelf(user) {
   const grant = await mobileAccessGrantForUser(user);
   const record = await getLoginAccessRecord(user?.id);
   return {
-    allowed: isLoginAccessAdmin(user?.email) || isWarehouseProductionKioskAllowed(grant),
+    allowed: isLoginAccessAdmin(user?.email) || isWarehouseProductionOperatorAllowed(grant),
     display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
     grant,
   };
@@ -241,7 +247,30 @@ async function opProductionPacketCreate(body, user) {
     warehouseLocationId,
   });
 
-  return { packet: row, created_by: user?.email || null };
+  const printedAt = new Date();
+  const printSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+    name: row.name,
+    sku: row.sku,
+    qty: Math.max(1, initialQty),
+    printedBy: user?.full_name || user?.display_name || user?.email,
+    source: printSource,
+    printedAt,
+  });
+
+  const preview = await buildProductionLabelPreviewPayload({
+    name: row.name,
+    sku: row.sku,
+    printedAt,
+  });
+
+  return {
+    packet: row,
+    created_by: user?.email || null,
+    label_job_id: labelJobId,
+    label: preview.label,
+    label_preview_png_base64: preview.label_preview_png_base64,
+  };
 }
 
 async function opProductionStockIncrease(body, user) {
@@ -282,12 +311,32 @@ async function opProductionStockIncrease(body, user) {
     warehouseLocationId,
   });
 
+  const printedAt = new Date();
+  const printSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+    name: packet.name,
+    sku: packet.sku,
+    qty: delta,
+    printedBy: user?.full_name || user?.display_name || user?.email,
+    source: printSource,
+    printedAt,
+  });
+
+  const preview = await buildProductionLabelPreviewPayload({
+    name: packet.name,
+    sku: packet.sku,
+    printedAt,
+  });
+
   return {
     packet,
     delta,
     qty_before: qtyBefore,
     qty_after: qtyAfter,
     warehouse_location_id: warehouseLocationId,
+    label_job_id: labelJobId,
+    label: preview.label,
+    label_preview_png_base64: preview.label_preview_png_base64,
   };
 }
 
@@ -468,6 +517,42 @@ async function opPacketNameCheck(body) {
       && String(row.id) !== String(body.exclude_packet_id || body.excludePacketId || ''),
   );
   return { taken: Boolean(clash), name, existing: clash?.name || null };
+}
+
+async function buildProductionLabelPreviewPayload({ name, sku, printedAt }) {
+  const at = printedAt ? new Date(printedAt) : new Date();
+  const label = buildProductionLabelMeta({ name, sku, printedAt: at });
+  let label_preview_png_base64 = null;
+  try {
+    label_preview_png_base64 = await buildWarehouseProductionLabelPngBase64({
+      name: label.name,
+      sku: label.sku,
+      printedAt: at,
+    });
+  } catch (err) {
+    console.warn('[warehouse-mobile] label preview png failed:', err?.message || err);
+  }
+  return { label, label_preview_png_base64, printed_at: label.printed_at };
+}
+
+async function opProductionLabelPreview(body, user) {
+  await assertProductionKioskUser(user);
+  const name = titleCaseWords(String(body.name || '').trim());
+  const sku = normalizeWarehousePacketScan(body.sku);
+  if (!name || !sku) throw new Error('name and sku are required.');
+  const printedAt = body.printed_at || body.printedAt || new Date().toISOString();
+  return buildProductionLabelPreviewPayload({ name, sku, printedAt });
+}
+
+async function opProductionSuggestBaseName(body, user) {
+  await assertProductionKioskUser(user);
+  const preset = String(body.preset || body.seater_preset || '').trim();
+  const baseName = await suggestUniqueProductionBaseName(async (fullName) => {
+    const check = await opPacketNameCheck({ name: fullName });
+    return Boolean(check.taken);
+  }, preset);
+  const productName = preset ? buildProductionItemName(baseName, preset) : baseName;
+  return { base_name: baseName, product_name: productName, preset: preset || null };
 }
 
 async function opPacketCreate(body, user) {
@@ -824,6 +909,12 @@ export default async function handler(req, res) {
         break;
       case 'packet-name-check':
         result = await opPacketNameCheck(body);
+        break;
+      case 'production-suggest-base-name':
+        result = await opProductionSuggestBaseName(body, user);
+        break;
+      case 'production-label-preview':
+        result = await opProductionLabelPreview(body, user);
         break;
       case 'production-packet-create':
         result = await opProductionPacketCreate(body, user);

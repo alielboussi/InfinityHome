@@ -1,7 +1,7 @@
 import { canManageCatalog, getCurrentUser } from '../accessControl';
 import {
   defaultMobileAccessGrant,
-  isWarehouseProductionKioskAllowed,
+  isWarehouseProductionOperatorAllowed,
   sanitizeMobileAccessGrantForUser,
 } from '../mobile/mobileAccessManifest';
 import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
@@ -47,6 +47,34 @@ async function fetchAuthProfileUser() {
 }
 
 /** Kiosk access from login grant (works before production-* ops are deployed). */
+export async function fetchProductionSuggestedBaseName({ preset } = {}) {
+  try {
+    const payload = await productionOp('production-suggest-base-name', {
+      preset: preset || undefined,
+    });
+    return {
+      baseName: payload.base_name || '',
+      productName: payload.product_name || payload.base_name || '',
+    };
+  } catch (err) {
+    if (!isUnknownWarehouseOpError(err?.message)) throw err;
+    const {
+      buildProductionItemName,
+      fetchUniqueRandomProductionBaseName,
+      pickRandomProductionBaseName,
+    } = await import('../utils/productionItemName');
+    const baseName = preset
+      ? await fetchUniqueRandomProductionBaseName((candidate) => isProductionPacketNameTaken(
+        buildProductionItemName(candidate, preset),
+      ))
+      : pickRandomProductionBaseName();
+    return {
+      baseName,
+      productName: preset ? buildProductionItemName(baseName, preset) : baseName,
+    };
+  }
+}
+
 export async function isProductionPacketNameTaken(name, options = {}) {
   const trimmed = String(name || '').trim();
   if (!trimmed) return false;
@@ -84,7 +112,7 @@ export async function fetchProductionKioskAccess() {
   );
   const sessionUser = getCurrentUser();
   return {
-    allowed: canManageCatalog(sessionUser) || isWarehouseProductionKioskAllowed(grant),
+    allowed: canManageCatalog(sessionUser) || isWarehouseProductionOperatorAllowed(grant),
     displayName: profileUser?.mobile_display_name
       || profileUser?.display_name
       || sessionUser?.full_name

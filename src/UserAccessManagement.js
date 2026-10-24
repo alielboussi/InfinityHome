@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { canManageLoginAccess, getCurrentUser } from './accessControl';
 import MobileUserAccessEditor from './components/MobileUserAccessEditor';
+import ProductionUserAccessEditor from './components/ProductionUserAccessEditor';
 import { firebaseGetAccessToken } from './utils/firebaseAuthApi';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
 
@@ -33,6 +34,30 @@ async function fetchLoginAccessUsers() {
   return payload.users || [];
 }
 
+async function createLoginAccessUser({ email, password, displayName }) {
+  const token = await firebaseGetAccessToken();
+  if (!token) throw new Error('Authentication required');
+  const response = await fetch(apiUrl('/api/login-access'), {
+    method: 'POST',
+    headers: withApiHeaders({
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({
+      action: 'create-user',
+      email,
+      password,
+      display_name: displayName,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `Create failed (${response.status})`);
+  }
+  return payload.user;
+}
+
 async function setUserLoginEnabled(uid, loginEnabled) {
   const token = await firebaseGetAccessToken();
   if (!token) throw new Error('Authentication required');
@@ -60,6 +85,11 @@ export default function UserAccessManagement() {
   const [error, setError] = useState('');
   const [busyUid, setBusyUid] = useState('');
   const [mobileUserId, setMobileUserId] = useState('');
+  const [productionUserId, setProductionUserId] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newDisplayName, setNewDisplayName] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
 
   useEffect(() => {
     setSessionUser(getCurrentUser());
@@ -111,6 +141,30 @@ export default function UserAccessManagement() {
   };
 
   const mobileUser = rows.find((r) => r.id === mobileUserId) || null;
+  const productionUser = rows.find((r) => r.id === productionUserId) || null;
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    setCreatingUser(true);
+    setError('');
+    try {
+      const user = await createLoginAccessUser({
+        email: newEmail,
+        password: newPassword,
+        displayName: newDisplayName,
+      });
+      setRows((prev) => [...prev, user].sort((a, b) => String(a.email || '').localeCompare(String(b.email || ''))));
+      setNewEmail('');
+      setNewPassword('');
+      setNewDisplayName('');
+      setProductionUserId(user.id);
+      setMobileUserId('');
+    } catch (err) {
+      setError(err?.message || 'Failed to create user.');
+    } finally {
+      setCreatingUser(false);
+    }
+  };
 
   return (
     <div className="report-page user-access-page">
@@ -118,10 +172,46 @@ export default function UserAccessManagement() {
         <h2 style={{ margin: 0 }}>User Login Access</h2>
       </div>
       <p className="user-access-intro">
-        Enable or disable sign-in for the portal and mobile apps. Pick a user, then configure Warehouse app permissions in the panel below.
+        Enable or disable sign-in for the portal and mobile apps. Create accounts with email and password, then open
+        <strong> Warehouse app</strong> or <strong> Production app</strong> to set permissions.
       </p>
 
       {error ? <div className="report-error user-access-error">{error}</div> : null}
+
+      <form className="report-section user-access-card user-access-create-form" onSubmit={handleCreateUser}>
+        <span className="report-section-title">Add user (email &amp; password)</span>
+        <p className="user-access-intro" style={{ marginTop: 8 }}>
+          Creates a Firebase sign-in for the warehouse catalog and production apps. Then enable Production or Warehouse access below.
+        </p>
+        <div className="user-access-create-grid">
+          <input
+            type="email"
+            required
+            placeholder="Email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            autoComplete="off"
+          />
+          <input
+            type="password"
+            required
+            minLength={8}
+            placeholder="Password (min 8 characters)"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+          <input
+            type="text"
+            placeholder="Display name (optional)"
+            value={newDisplayName}
+            onChange={(e) => setNewDisplayName(e.target.value)}
+          />
+          <button type="submit" className="user-access-btn" disabled={creatingUser}>
+            {creatingUser ? 'Creating…' : 'Create user'}
+          </button>
+        </div>
+      </form>
 
       <div className="report-section user-access-card">
         <div className="user-access-card__head">
@@ -152,9 +242,10 @@ export default function UserAccessManagement() {
                 {rows.map((row) => {
                   const enabled = row.login_enabled !== false;
                   const isBusy = busyUid === row.id;
-                  const isSelected = mobileUserId === row.id;
+                  const isWarehouseSelected = mobileUserId === row.id;
+                  const isProductionSelected = productionUserId === row.id;
                   return (
-                    <tr key={row.id} className={isSelected ? 'user-access-table__row--active' : ''}>
+                    <tr key={row.id} className={(isWarehouseSelected || isProductionSelected) ? 'user-access-table__row--active' : ''}>
                       <td>{row.display_name || '—'}</td>
                       <td>{row.mobile_display_name || '—'}</td>
                       <td>{row.email || '—'}</td>
@@ -176,10 +267,23 @@ export default function UserAccessManagement() {
                           </button>
                           <button
                             type="button"
-                            className={`user-access-btn ${isSelected ? 'user-access-btn--active' : ''}`}
-                            onClick={() => setMobileUserId(isSelected ? '' : row.id)}
+                            className={`user-access-btn ${isWarehouseSelected ? 'user-access-btn--active' : ''}`}
+                            onClick={() => {
+                              setMobileUserId(isWarehouseSelected ? '' : row.id);
+                              setProductionUserId('');
+                            }}
                           >
-                            {isSelected ? 'Editing app' : 'Warehouse app'}
+                            {isWarehouseSelected ? 'Editing' : 'Warehouse app'}
+                          </button>
+                          <button
+                            type="button"
+                            className={`user-access-btn ${isProductionSelected ? 'user-access-btn--active' : ''}`}
+                            onClick={() => {
+                              setProductionUserId(isProductionSelected ? '' : row.id);
+                              setMobileUserId('');
+                            }}
+                          >
+                            {isProductionSelected ? 'Editing' : 'Production app'}
                           </button>
                         </div>
                       </td>
@@ -199,6 +303,18 @@ export default function UserAccessManagement() {
           onSaved={(updated) => {
             setRows((prev) => prev.map((item) => (
               item.id === mobileUser.id ? { ...item, ...updated } : item
+            )));
+          }}
+        />
+      ) : null}
+
+      {productionUser ? (
+        <ProductionUserAccessEditor
+          userRow={productionUser}
+          onClose={() => setProductionUserId('')}
+          onSaved={(updated) => {
+            setRows((prev) => prev.map((item) => (
+              item.id === productionUser.id ? { ...item, ...updated } : item
             )));
           }}
         />

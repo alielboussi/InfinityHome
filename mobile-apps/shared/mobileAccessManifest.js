@@ -53,6 +53,15 @@ export function isWarehouseProductionKioskAllowed(grant) {
   return grant?.warehouse_production_kiosk === 'allow';
 }
 
+/** /user-access — Production Android app (create + stock-in). */
+export function isWarehouseProductionAppAllowed(grant) {
+  return grant?.warehouse_production_app === 'allow';
+}
+
+export function isWarehouseProductionOperatorAllowed(grant) {
+  return isWarehouseProductionKioskAllowed(grant) || isWarehouseProductionAppAllowed(grant);
+}
+
 export function isWarehouseProductStockQtyEditAllowed(grant) {
   if (!grant) return false;
   if (grant.warehouse_product_stock_qty === 'allow') return true;
@@ -178,6 +187,7 @@ export function defaultMobileAccessGrant() {
     landing_screen: DEFAULT_MOBILE_LANDING_SCREEN,
     warehouse_product_stock_qty: 'deny',
     warehouse_production_kiosk: 'deny',
+    warehouse_production_app: 'deny',
     screens,
   };
 }
@@ -291,6 +301,10 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     : 'deny';
 
   merged.warehouse_production_kiosk = merged.warehouse_production_kiosk === 'allow'
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_production_app = merged.warehouse_production_app === 'allow'
     ? 'allow'
     : 'deny';
 

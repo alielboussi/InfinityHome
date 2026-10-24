@@ -1,3 +1,5 @@
+import admin from 'firebase-admin';
+import { getFirebaseAdminApp } from './firebaseAdmin.js';
 import { getFirestore } from './firestoreDb.js';
 import { defaultMobileAccessGrant, normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
 
@@ -148,6 +150,60 @@ export async function isLoginAllowedForUid(uid) {
   const record = await getLoginAccessRecord(uid);
   if (!record) return true;
   return record.login_enabled !== false;
+}
+
+export async function createLoginAccessUser({
+  email,
+  password,
+  displayName,
+  actorEmail,
+}) {
+  const normalizedEmail = normalizeEmail(email);
+  const cleanPassword = String(password || '');
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    throw new Error('A valid email is required.');
+  }
+  if (cleanPassword.length < 8) {
+    throw new Error('Password must be at least 8 characters.');
+  }
+
+  if (!getFirebaseAdminApp()) {
+    throw new Error('Firebase Admin is not configured.');
+  }
+
+  const userRecord = await admin.auth().createUser({
+    email: normalizedEmail,
+    password: cleanPassword,
+    displayName: String(displayName || '').trim() || undefined,
+    emailVerified: false,
+  });
+
+  const db = getFirestore();
+  const now = new Date().toISOString();
+  const uid = userRecord.uid;
+  if (db) {
+    await db.collection(COLLECTION).doc(uid).set({
+      uid,
+      email: normalizedEmail,
+      display_name: String(displayName || '').trim() || null,
+      login_enabled: true,
+      created_at: now,
+      updated_at: now,
+      last_seen_at: null,
+      created_by: normalizeEmail(actorEmail) || null,
+      mobile_access: defaultMobileAccessGrant(),
+    });
+    const snap = await db.collection(COLLECTION).doc(uid).get();
+    return { id: snap.id, ...snap.data() };
+  }
+
+  return {
+    id: uid,
+    uid,
+    email: normalizedEmail,
+    display_name: String(displayName || '').trim() || null,
+    login_enabled: true,
+  };
 }
 
 export async function updateMobileAccessGrant({

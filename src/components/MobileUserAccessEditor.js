@@ -43,6 +43,7 @@ function normalizeGrant(raw) {
     landing_screen: base.landing_screen,
     warehouse_product_stock_qty: raw.warehouse_product_stock_qty === 'allow' ? 'allow' : 'deny',
     warehouse_production_kiosk: raw.warehouse_production_kiosk === 'allow' ? 'allow' : 'deny',
+    warehouse_production_app: raw.warehouse_production_app === 'allow' ? 'allow' : 'deny',
     screens: { ...base.screens, ...(raw.screens || {}) },
   };
 }

@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   createProductionPacket,
   fetchProductionCatalog,
+  fetchProductionSuggestedBaseName,
   isProductionPacketNameTaken,
 } from '../services/warehouseProductionApi';
 import {
   buildProductionItemName,
-  fetchUniqueRandomProductionBaseName,
   normalizeProductionNameInput,
-  pickRandomProductionBaseName,
   PRODUCTION_SEAT_PRESETS,
 } from '../utils/productionItemName';
 import { tUi, translateEnToAr } from '../utils/productionKioskI18n';
@@ -125,21 +124,20 @@ export default function WarehouseProductionCreatePage() {
     setError('');
     setSuccess('');
     try {
-      const name = preset
-        ? await fetchUniqueRandomProductionBaseName((candidate) => isProductionPacketNameTaken(
-          buildProductionItemName(candidate, preset),
-        ))
-        : pickRandomProductionBaseName();
-      setBaseNameEn(name);
-      if (preset) {
-        const built = buildProductionItemName(name, preset);
-        const ok = await ensureProductNameAvailable(built);
+      const { baseName, productName } = await fetchProductionSuggestedBaseName({ preset });
+      if (!baseName) {
+        setError('Could not generate a name.');
+        return;
+      }
+      setBaseNameEn(baseName);
+      if (preset && productName) {
+        const ok = await ensureProductNameAvailable(productName);
         if (!ok) {
           setPreset('');
           setProductNameEn('');
           return;
         }
-        setProductNameEn(built);
+        setProductNameEn(productName);
       } else {
         setProductNameEn('');
       }
