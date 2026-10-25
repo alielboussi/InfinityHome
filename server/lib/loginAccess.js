@@ -152,6 +152,69 @@ export async function isLoginAllowedForUid(uid) {
   return record.login_enabled !== false;
 }
 
+/**
+ * Pre-register a Google sign-in user (no password). They must use the same email in the app.
+ */
+export async function provisionGoogleLoginUser({
+  email,
+  displayName,
+  actorEmail,
+}) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    throw new Error('A valid Google email is required.');
+  }
+
+  if (!getFirebaseAdminApp()) {
+    throw new Error('Firebase Admin is not configured.');
+  }
+
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByEmail(normalizedEmail);
+  } catch (err) {
+    if (err?.code !== 'auth/user-not-found') {
+      throw err;
+    }
+    userRecord = await admin.auth().createUser({
+      email: normalizedEmail,
+      displayName: String(displayName || '').trim() || undefined,
+      emailVerified: true,
+    });
+  }
+
+  const db = getFirestore();
+  const now = new Date().toISOString();
+  const uid = userRecord.uid;
+  if (db) {
+    const ref = db.collection(COLLECTION).doc(uid);
+    const existing = await ref.get();
+    const base = existing.exists ? (existing.data() || {}) : {};
+    await ref.set({
+      uid,
+      email: normalizedEmail,
+      display_name: String(displayName || '').trim() || base.display_name || userRecord.displayName || null,
+      login_enabled: base.login_enabled !== false,
+      mobile_access: base.mobile_access || defaultMobileAccessGrant(),
+      created_at: base.created_at || now,
+      updated_at: now,
+      last_seen_at: base.last_seen_at || null,
+      created_by: base.created_by || normalizeEmail(actorEmail) || null,
+      auth_provider: 'google',
+    }, { merge: true });
+    const snap = await ref.get();
+    return { id: snap.id, ...snap.data() };
+  }
+
+  return {
+    id: uid,
+    uid,
+    email: normalizedEmail,
+    display_name: String(displayName || '').trim() || null,
+    login_enabled: true,
+  };
+}
+
 export async function createLoginAccessUser({
   email,
   password,

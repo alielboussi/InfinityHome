@@ -6,7 +6,7 @@ import {
   sanitizeMobileAccessGrantForUser,
 } from '../mobile/mobileAccessManifest';
 
-const PRODUCTION_APP_NAME = 'Production';
+const PRODUCTION_APP_NAME = 'Upholstery Production';
 
 async function saveMobileAccess(uid, mobile_access, mobile_display_name, login_enabled) {
   const token = await firebaseGetAccessToken();
@@ -95,8 +95,8 @@ export default function ProductionUserAccessEditor({ userRow, onClose, onSaved }
             {PRODUCTION_APP_NAME} app — {displayName}
           </h3>
           <p className="mobile-access-panel__hint">
-            Allows the <strong>Production</strong> Android app: create seating packets, add stock, and print labels via Zebra Weblink.
-            User signs in with <strong>email and password</strong> (enable login above).
+            Allows the <strong>Upholstery Production</strong> Android app: create packets, add stock, and print labels via Zebra Weblink.
+            User must sign in with <strong>Google on the app</strong> first (then enable login and app access here).
           </p>
         </div>
         <div className="mobile-access-panel__head-actions">

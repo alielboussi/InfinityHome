@@ -31,7 +31,7 @@ const UI_STRINGS = {
   },
   accessDenied: { en: 'You do not have access to production.', ar: 'لا تملك صلاحية الإنتاج.' },
   loading: { en: 'Loading…', ar: 'جاري التحميل…' },
-  dashTitle: { en: 'Production', ar: 'الإنتاج' },
+  dashTitle: { en: 'Upholstery Production', ar: 'إنتاج التنجيد' },
   dashCreate: { en: 'Create new', ar: 'إنشاء جديد' },
   dashStock: { en: 'Production stock', ar: 'إضافة مخزون' },
   stockTitle: { en: 'Add production stock', ar: 'إضافة مخزون إنتاج' },

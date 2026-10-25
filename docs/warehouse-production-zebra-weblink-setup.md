@@ -108,15 +108,46 @@ No label worker PC is required when Weblink + env vars are set.
 
 ---
 
+## EMEA / “secure by default” ZD621 (2025+)
+
+If **ping works** but **TCP 9100, HTTP, and HTTPS are refused**, and Weblink commands **hang** or the **download LED stays solid**, the printer likely has **EU RED** defaults: raw TCP, web UI, and file-based config are **off** until you run Zebra’s **Security Setup Wizard**:
+
+1. USB to a PC (Ethernet can stay unplugged for this step).
+2. Open [Zebra Security Setup Wizard](https://asr.zpc.zebra.com/index.html) → **ZD621** → generate the setup script (set **Protected Mode** password, enable **TCP/IP raw port 9100**, enable **HTTPS/web** if needed, allow **config file download**).
+3. Send the generated file with **Printer Setup Utilities → Send file**, or `copy /b generated-script.txt USB00x`.
+4. Power-cycle, plug Ethernet back, then send enrollment JSON from **My Devices** (not hand-typed `setvar` URLs).
+
+**Do not** use `! U1 getvar "weblink.ip.conn1.location"` on a wedged printer — it can lock USB. Confirm enrollment in **[My Devices](https://developer.zebra.com/my-devices)** only.
+
+To clear a bad Weblink URL before re-enrolling, send `weblink-unregister.json` (repo root) the same way as `weblink-config.json`.
+
+---
+
+## Print without cloud (warehouse PC worker)
+
+If Weblink enrollment is blocked, use the **Windows label worker** on the warehouse LAN PC (`label-worker/README.md`):
+
+| Vercel env | Value |
+|------------|--------|
+| `WAREHOUSE_LABEL_CLOUD_ONLY` | `false` |
+| `ZEBRA_PRINT_*` | unset **or** keep with `ZEBRA_PRINT_FALLBACK_QUEUE=true` |
+
+Worker `.env`: `PRINTER_DPI=300` for **300 dpi** ZD621, `PRINTER_NAME` = exact Windows queue (USB or LAN after 9100 is enabled).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Check |
 |---------|--------|
 | API 401/403 | API key, tenant, SendFileToPrinter subscription |
-| API OK, no print | Printer offline from Savanna — `! U1 getvar "weblink"` |
+| API 404 / not registered | Weblink not enrolled — My Devices, fresh **Add device** `r=` code |
+| API OK, no print | Printer offline in My Devices; avoid `getvar` weblink on USB |
+| Ping OK, 9100 refused | EMEA security wizard — enable raw TCP |
+| Weblink hang / solid download LED | Send `weblink-unregister.json`, unplug Ethernet, wizard + re-enroll |
 | Wrong layout | `ZEBRA_LABEL_*_MM`, dpi, recalibrate media |
 | Free tier limit | 100 sends/day — upgrade or batch with `^PQ` (already used) |
-| Still uses worker | Remove/fallback only if `ZEBRA_PRINT_*` unset; worker runs if `ZEBRA_PRINT_FALLBACK_QUEUE=true` |
+| Still uses worker | `WAREHOUSE_LABEL_CLOUD_ONLY=false`; worker runs if cloud unset or `ZEBRA_PRINT_FALLBACK_QUEUE=true` |
 
 ---
 

@@ -3,14 +3,15 @@
 Production Expo app package: **`com.bestrest.warehouseproduction`**  
 Firebase project (same as portal / warehouse catalog): **`bestrest-portal-system-43108`**
 
-## 1. Add the Android app in Firebase Console
+## 1. Firebase Android app (registered)
 
-1. Open [Firebase Console](https://console.firebase.google.com/) → project **bestrest-portal-system-43108**.
-2. **Project settings** (gear) → **Your apps** → **Add app** → **Android**.
-3. **Android package name:** `com.bestrest.warehouseproduction` (must match `app.config.js`).
-4. **App nickname (optional):** `Production` or `Warehouse Production`.
-5. **Debug signing certificate SHA-1** (optional for now): add later if you use Google Sign-In on this app. Email/password login does **not** require SHA-1.
-6. Click **Register app**.
+| Field | Value |
+|-------|--------|
+| **App display name** | Warehouse Production |
+| **Package** | `com.bestrest.warehouseproduction` |
+| **Firebase App ID** | `1:876299148810:android:9cb085a252a1f4939049f3` |
+
+`google-services.json` lives in `mobile-apps/warehouse-production/` (download again from Firebase if you recreate the app).
 
 ## 2. Download `google-services.json`
 
@@ -21,11 +22,25 @@ Firebase project (same as portal / warehouse catalog): **`bestrest-portal-system
 
 3. Do **not** commit secrets you do not want in git; this file is standard for Android builds (same as warehouse-catalog).
 
-## 3. Confirm Firebase Auth
+## 3. Firebase Auth + Google Sign-In
 
-1. **Build** → **Authentication** → **Sign-in method**.
-2. **Email/Password** must be **Enabled** (same users as `/user-access` create-user).
-3. Each production user needs **Login enabled** + **Production app access** on the web.
+1. [Firebase Console](https://console.firebase.google.com/) → **bestrest-portal-system-43108** → **Build** → **Authentication** → **Sign-in method**.
+2. **Google** → **Enable** → set support email → **Save** (required for `signInWithCredential` from the app).
+3. **Project settings** → **Your apps** → **Warehouse Production** (`com.bestrest.warehouseproduction`):
+   - **SHA-1** should be listed (same hash as Factory APK if you use one keystore). Registered via CLI: `81e9f6007dc21168055e451f176fbff8943bdbd4`.
+   - After Google is enabled, re-download `google-services.json` if an **Android OAuth client** (type 1) is still missing.
+4. [Google Cloud Console](https://console.cloud.google.com/apis/credentials?project=bestrest-portal-system-43108) → **OAuth 2.0 Client IDs** → **Web client** (`876299148810-s0rcl…`):
+   - **Authorized redirect URIs** (Expo Go): add both if Google returns `redirect_uri_mismatch`:
+     - `https://auth.expo.io/@alielboussi/warehouse-production`
+     - `warehouse-production://oauth`
+5. Staff sign in on **Upholstery Production** with Google; on **User Login Access**, refresh, enable login, then **Upholstery Production** access.
+
+**App OAuth IDs (in `app.config.js` / Expo extra):**
+
+| Key | Value |
+|-----|--------|
+| Web client (Expo Go + Firebase) | `876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com` |
+| Android client | From `google-services.json` when present; otherwise same web client for Expo Go |
 
 ## 4. Expo / `app.config.js`
 
