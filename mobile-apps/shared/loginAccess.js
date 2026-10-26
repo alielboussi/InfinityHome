@@ -1,4 +1,5 @@
 import { API_BASE, getFirebaseIdToken } from './firebase';
+import { formatWarehouseMobileApiError } from './warehouseMobileApi';
 
 export async function verifyMobileLoginAccess() {
   const token = await getFirebaseIdToken();
@@ -23,14 +24,20 @@ export async function verifyMobileLoginAccess() {
       return {
         ok: false,
         reason: 'disabled',
-        error: payload?.error || 'Your account has been disabled. Contact an administrator.',
+        error: formatWarehouseMobileApiError(
+          payload?.error,
+          'Your account has been disabled. Contact an administrator.',
+        ),
       };
     }
     if (!response.ok || payload?.ok === false) {
       return {
         ok: false,
         reason: 'server',
-        error: payload?.error || `Login check failed (${response.status})`,
+        error: formatWarehouseMobileApiError(
+          payload?.error,
+          `Login check failed (${response.status})`,
+        ),
       };
     }
     return { ok: true, user: payload?.user || null };

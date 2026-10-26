@@ -9,6 +9,13 @@ import {
   sanitizeMobileAccessGrantForUser,
 } from '../shared/mobileAccessManifest';
 import { fetchProductionAccess } from '../services/productionApi';
+import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
+
+function formatAccessHint(value, fallback = '') {
+  if (value == null || value === '') return fallback;
+  if (typeof value === 'string') return value;
+  return formatWarehouseMobileApiError(value, fallback || 'Request failed');
+}
 
 function productionAllowedFromGrant(rawGrant, sanitizedGrant) {
   return isWarehouseProductionOperatorAllowed(sanitizedGrant)
@@ -49,7 +56,7 @@ export function useProductionAccessGrant() {
         if (name) setUserDisplayName(name);
         clientAllowed = productionAllowedFromGrant(rawGrant, nextGrant);
       } else if (access.error) {
-        setAccessHint(access.error);
+        setAccessHint(formatAccessHint(access.error, 'Login check failed.'));
       }
 
       let serverAllowed = false;
@@ -64,7 +71,7 @@ export function useProductionAccessGrant() {
           setAccessHint((hint) => hint || 'Production app access is off in User Access. Save Upholstery Production access on the web, then tap Check access again.');
         }
       } catch (err) {
-        setAccessHint((hint) => hint || err?.message || 'Could not reach production access API.');
+        setAccessHint((hint) => hint || formatAccessHint(err?.message, 'Could not reach production access API.'));
       }
 
       setAllowed(serverAllowed || clientAllowed);
