@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -9,8 +10,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { theme } from '../shared/theme';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
-import ProductionVirtualKeyboard from '../components/ProductionVirtualKeyboard';
+import ProductionQrScanModal from '../components/ProductionQrScanModal';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { filterPacketsForProductionSearch } from '../lib/productionPacketSearch';
@@ -32,7 +34,7 @@ function packetWarehouseQty(packetId, inventory, locationId) {
 
 export default function StockScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { locale, toggleLocale, textAlign, isArabic } = useProductionKioskLocale();
+  const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
 
   const [loading, setLoading] = useState(true);
   const [packets, setPackets] = useState([]);
@@ -41,7 +43,7 @@ export default function StockScreen({ navigation }) {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [qrScanOpen, setQrScanOpen] = useState(false);
 
   const [modalPacket, setModalPacket] = useState(null);
   const [addQty, setAddQty] = useState(1);
@@ -108,14 +110,28 @@ export default function StockScreen({ navigation }) {
     }
   };
 
-  const runSearch = () => {
+  const runSearch = (queryOverride) => {
+    const q = String(queryOverride ?? search ?? '').trim();
     setError('');
-    if (filtered.length === 1) {
-      openPacketModal(filtered[0]);
+    const hits = filterPacketsForProductionSearch(packets, q, { limit: 25 });
+    if (hits.length === 1) {
+      openPacketModal(hits[0]);
       return;
     }
-    if (filtered.length > 1) return;
-    tryResolveScan(search);
+    if (hits.length > 1) {
+      if (queryOverride !== undefined) setSearch(q);
+      return;
+    }
+    tryResolveScan(q);
+  };
+
+  const onQrScan = (data) => {
+    const value = String(data || '').trim();
+    if (!value) return;
+    setQrScanOpen(false);
+    Keyboard.dismiss();
+    setSearch(value);
+    runSearch(value);
   };
 
   const currentQty = modalPacket
@@ -178,11 +194,17 @@ export default function StockScreen({ navigation }) {
               placeholderTextColor="#94a3b8"
               value={search}
               onChangeText={setSearch}
-              onSubmitEditing={runSearch}
+              onSubmitEditing={() => runSearch()}
               autoCorrect={false}
             />
-            <Pressable style={kiosk.btn} onPress={() => setKeyboardOpen(true)}>
-              <Text style={kiosk.btnText}>{tUi('keyboardBtn', locale)}</Text>
+            <Pressable
+              style={[kiosk.btn, styles.toolBtn, styles.qrBtn]}
+              onPress={() => {
+                Keyboard.dismiss();
+                setQrScanOpen(true);
+              }}
+            >
+              <Text style={[kiosk.btnText, styles.qrBtnText]}>{tUi('stockQrBtn', locale)}</Text>
             </Pressable>
           </View>
 
@@ -212,17 +234,11 @@ export default function StockScreen({ navigation }) {
         </View>
       </ScrollView>
 
-      <ProductionVirtualKeyboard
-        visible={keyboardOpen}
-        onClose={() => setKeyboardOpen(false)}
-        initialLayout={isArabic ? 'ar' : 'en'}
-        onKey={(ch) => setSearch((s) => s + ch)}
-        onBackspace={() => setSearch((s) => s.slice(0, -1))}
-        onSpace={() => setSearch((s) => `${s} `)}
-        onEnter={() => {
-          setKeyboardOpen(false);
-          runSearch();
-        }}
+      <ProductionQrScanModal
+        visible={qrScanOpen}
+        locale={locale}
+        onClose={() => setQrScanOpen(false)}
+        onScan={onQrScan}
       />
 
       <Modal visible={Boolean(modalPacket)} transparent animationType="fade">
@@ -277,6 +293,21 @@ export default function StockScreen({ navigation }) {
     </>
   );
 }
+
+const styles = {
+  toolBtn: {
+    flexShrink: 0,
+    minWidth: 72,
+    paddingHorizontal: 10,
+  },
+  qrBtn: {
+    borderColor: theme.primary,
+    backgroundColor: theme.primaryBg,
+  },
+  qrBtnText: {
+    color: theme.primary,
+  },
+};
 
 const modalStyles = {
   backdrop: {

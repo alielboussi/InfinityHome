@@ -18,6 +18,7 @@ import {
 import { GoogleSignInButton, isGoogleSignInConfigured } from './GoogleSignInButton';
 import { resetBiometricUnlock } from './biometricSession';
 import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
+import { formatWarehouseMobileApiError } from './warehouseMobileApi';
 
 export { getFirebaseIdToken };
 
@@ -70,7 +71,7 @@ export default function FirebaseAuthGate({
       if (shouldForceSignOutForAccessCheck(access)) {
         verifiedUidRef.current = '';
         await signOutFirebase();
-        setError(access.error || 'Login not allowed.');
+        setError(formatWarehouseMobileApiError(access.error, 'Login not allowed.'));
       } else {
         verifiedUidRef.current = user.uid;
       }
@@ -91,7 +92,7 @@ export default function FirebaseAuthGate({
       if (shouldForceSignOutForAccessCheck(access)) {
         verifiedUidRef.current = '';
         await signOutFirebase();
-        setError(access.error || 'Login not allowed.');
+        setError(formatWarehouseMobileApiError(access.error, 'Login not allowed.'));
       } else if (getFirebaseAuth().currentUser?.uid) {
         verifiedUidRef.current = getFirebaseAuth().currentUser.uid;
       }

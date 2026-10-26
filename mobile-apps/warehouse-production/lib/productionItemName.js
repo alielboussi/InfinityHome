@@ -1,6 +1,6 @@
 import { titleCaseWords } from './titleCaseWords';
 
-export const PRODUCTION_SEAT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater'];
+export const PRODUCTION_SEAT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater', 'Lounge Chair'];
 
 /** Keep in sync with src/utils/productionItemName.js — girl names only. */
 const PRODUCTION_GIRL_NAME_POOL = Object.freeze([
@@ -47,6 +47,10 @@ export async function fetchUniqueRandomProductionBaseName(checkNameTaken) {
 
 export function normalizeProductionNameInput(text) {
   return titleCaseWords(String(text || '').trim());
+}
+
+export function normalizeWarehousePacketNameKey(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 export function buildProductionItemName(baseName, preset) {

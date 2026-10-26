@@ -106,17 +106,14 @@ export default function WarehouseProductionCreatePage() {
     return true;
   };
 
-  const onSelectPreset = async (value) => {
+  const onSelectPreset = (value) => {
     if (!baseNameEn.trim()) {
       setError(tUi('needBaseName', locale));
       return;
     }
     setError('');
-    const built = buildProductionItemName(baseNameEn, value);
-    const ok = await ensureProductNameAvailable(built);
-    if (!ok) return;
     setPreset(value);
-    setProductNameEn(built);
+    setProductNameEn(buildProductionItemName(baseNameEn, value));
   };
 
   const onGenerateName = async () => {

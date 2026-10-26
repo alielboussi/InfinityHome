@@ -25,10 +25,25 @@ const UI_STRINGS = {
   saving: { en: 'Saving…', ar: 'جاري الحفظ…' },
   translateToggle: { en: 'عربي', ar: 'English' },
   saved: { en: 'Saved — photo catalogued and labels sent to printer.', ar: 'تم الحفظ — صُوّرت المنتج وأُرسلت الملصقات إلى الطابعة.' },
+  photoCaptureTitle: { en: 'Product photo', ar: 'صورة المنتج' },
   photoCaptureHint: {
-    en: 'Take a clear photo of the seating arrangement (camera will open).',
-    ar: 'التقط صورة واضحة لقطعة الجلوس (ستُفتح الكاميرا).',
+    en: 'Take a clear photo of the seating arrangement, then tap Take photo.',
+    ar: 'التقط صورة واضحة لقطعة الجلوس، ثم اضغط التقاط الصورة.',
   },
+  photoCaptureShutter: { en: 'Take photo', ar: 'التقاط الصورة' },
+  photoAllowCamera: {
+    en: 'Allow camera access',
+    ar: 'السماح بالوصول إلى الكاميرا',
+  },
+  photoCameraDenied: {
+    en: 'Camera permission is required. Tap Allow camera access and accept the system prompt.',
+    ar: 'إذن الكاميرا مطلوب. اضغط السماح بالوصول إلى الكاميرا واقبل رسالة النظام.',
+  },
+  photoCameraOpenSettings: {
+    en: 'Camera is blocked for this app. Open Settings → Permissions → Camera and allow it.',
+    ar: 'الكاميرا محظورة لهذا التطبيق. افتح الإعدادات → الأذونات → الكاميرا وفعّلها.',
+  },
+  photoOpenSettings: { en: 'Open Settings', ar: 'فتح الإعدادات' },
   photoProcessing: {
     en: 'AI is retouching your photo (white catalog background) and printing labels…',
     ar: 'الذكاء الاصطناعي يعالج الصورة (خلفية بيضاء) ويطبع الملصقات…',
@@ -39,7 +54,12 @@ const UI_STRINGS = {
   },
   needBaseName: { en: 'Enter or generate a name first.', ar: 'أدخل أو ولّد اسمًا أولاً.' },
   needPreset: { en: 'Choose a seater preset to build the product name.', ar: 'اختر نوع المقعد لبناء اسم المنتج.' },
-  needQty: { en: 'Enter stock quantity (0 or more).', ar: 'أدخل كمية المخزون (0 أو أكثر).' },
+  needQty: { en: 'Enter stock quantity (1 or more — one label per unit).', ar: 'أدخل كمية المخزون (1 أو أكثر — ملصق لكل وحدة).' },
+  saveFailedTitle: { en: 'Could not save item', ar: 'تعذر حفظ العنصر' },
+  savedNoLabelsQty: {
+    en: 'Saved, but no labels were queued because stock qty was 0. Set qty to at least 1 before saving.',
+    ar: 'تم الحفظ، لكن لم تُرسل ملصقات لأن الكمية كانت 0. اضبط الكمية على 1 أو أكثر قبل الحفظ.',
+  },
   duplicateName: { en: 'This product name already exists.', ar: 'اسم المنتج موجود مسبقًا.' },
   noWarehouse: {
     en: 'No Warehouse location found. Add a location named "Warehouse".',

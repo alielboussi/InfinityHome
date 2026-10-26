@@ -68,6 +68,19 @@ export async function isProductionPacketNameTaken(name, options = {}) {
   return Boolean(payload.taken);
 }
 
+function parseCreateProductionPacketResponse(payload) {
+  const packet = payload?.packet || null;
+  const labelCopies = Number(payload?.label_copies);
+  return {
+    packet,
+    labelCopies: Number.isFinite(labelCopies) ? labelCopies : 0,
+    labelJobId: payload?.label_job_id || null,
+    labelPrintWarning: payload?.label_print_warning || null,
+    label: payload?.label || null,
+    labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
+  };
+}
+
 export async function createProductionPacket({
   name,
   warehouseLocationId,
@@ -84,7 +97,7 @@ export async function createProductionPacket({
     require_product_photo: true,
     image_base64: imageBase64,
   });
-  return payload;
+  return parseCreateProductionPacketResponse(payload);
 }
 
 export async function increaseProductionStock({ packetId, warehouseLocationId, delta }) {

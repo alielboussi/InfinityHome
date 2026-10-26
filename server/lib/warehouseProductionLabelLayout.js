@@ -19,7 +19,13 @@ export const BARCODE_HEIGHT_MM = 10;
 /** Field headers start 2 cm from the left edge of the label. */
 export const HEADER_START_MM = 20;
 
+/** Legacy single-QR size (unused on dual-QR row). */
 export const QR_SIZE_MM = 9;
+
+export const QR_PAIR_SIZE_MM = 7;
+export const QR_PAIR_GAP_MM = 5;
+export const QR_CAPTION_HEIGHT_MM = 3.2;
+export const QR_CAPTION_FONT_PT = 10;
 
 export const FONT_PT = 16;
 export const ROW_TEXT_MM = 5;
@@ -29,7 +35,8 @@ export const ROW_AFTER_LINE_MM = 1.5;
 export const FIELD_LABELS = {
   sku: 'SKU:',
   name: 'Name:',
-  photo: 'Photo:',
+  imageQr: 'Image Qr',
+  nameQr: 'Product Name Qr',
   date: 'Date:',
   time: 'Time:',
 };
@@ -73,9 +80,18 @@ export function computeProductionLabelLayout({
   const nameLineMm = block.lineMm;
   y = block.nextY;
 
-  block = advanceRow(y, Math.max(ROW_TEXT_MM, QR_SIZE_MM));
+  const photoContentMm = QR_CAPTION_HEIGHT_MM + QR_PAIR_SIZE_MM + 0.5;
+  block = advanceRow(y, photoContentMm);
   const photoRowMm = block.rowY;
   const photoLineMm = block.lineMm;
+  const qrCaptionYMm = photoRowMm;
+  const qrBlockYMm = photoRowMm + QR_CAPTION_HEIGHT_MM;
+  const qrPairWidthMm = QR_PAIR_SIZE_MM * 2 + QR_PAIR_GAP_MM;
+  const imageQrLeftMm = centerXMm - qrPairWidthMm / 2;
+  const nameQrLeftMm = imageQrLeftMm + QR_PAIR_SIZE_MM + QR_PAIR_GAP_MM;
+  const qrColumnWidthMm = QR_PAIR_SIZE_MM + 6;
+  const imageQrLabelLeftMm = imageQrLeftMm + QR_PAIR_SIZE_MM / 2 - qrColumnWidthMm / 2;
+  const nameQrLabelLeftMm = nameQrLeftMm + QR_PAIR_SIZE_MM / 2 - qrColumnWidthMm / 2;
   y = block.nextY;
 
   block = advanceRow(y, ROW_TEXT_MM);
@@ -106,7 +122,15 @@ export function computeProductionLabelLayout({
     nameLineMm,
     photoRowMm,
     photoLineMm,
-    qrSizeMm: QR_SIZE_MM,
+    qrCaptionYMm,
+    qrBlockYMm,
+    imageQrLeftMm,
+    nameQrLeftMm,
+    qrPairSizeMm: QR_PAIR_SIZE_MM,
+    qrColumnWidthMm,
+    imageQrLabelLeftMm,
+    nameQrLabelLeftMm,
+    qrSizeMm: QR_PAIR_SIZE_MM,
     dateRowMm,
     dateLineMm,
     timeRowMm,
@@ -130,7 +154,16 @@ export function computeProductionLabelLayout({
       nameLineY: toDots(nameLineMm),
       photoRowY: toDots(photoRowMm),
       photoLineY: toDots(photoLineMm),
-      qrSize: toDots(QR_SIZE_MM),
+      qrCaptionY: toDots(qrCaptionYMm),
+      qrCaptionUnderlineY: toDots(qrCaptionYMm + 2.4),
+      qrBlockY: toDots(qrBlockYMm),
+      imageQrX: toDots(imageQrLeftMm),
+      nameQrX: toDots(nameQrLeftMm),
+      imageQrLabelX: toDots(imageQrLabelLeftMm),
+      nameQrLabelX: toDots(nameQrLabelLeftMm),
+      qrColumnWidth: toDots(qrColumnWidthMm),
+      qrSize: toDots(QR_PAIR_SIZE_MM),
+      qrCaptionFont: Math.round(QR_CAPTION_FONT_PT * (dpi / 72)),
       dateRowY: toDots(dateRowMm),
       dateLineY: toDots(dateLineMm),
       timeRowY: toDots(timeRowMm),

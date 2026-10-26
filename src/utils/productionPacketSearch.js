@@ -1,3 +1,5 @@
+import { normalizeWarehousePacketNameKey } from './productionItemName.js';
+import { parseProductPhotoQrSku } from './productionLabelQrScan.js';
 import { normalizeWarehouseCatalogSearchQuery } from './warehouseScanResolver';
 
 const ARABIC_CHAR_TO_LATIN = {
@@ -60,7 +62,13 @@ export function packetMatchesProductionSearch(packet, rawQuery) {
 
   const name = String(packet?.name || '');
   const sku = String(packet?.sku || '');
-  const qSku = normalizeWarehouseCatalogSearchQuery(q).toUpperCase();
+  const photoSku = parseProductPhotoQrSku(q);
+  if (photoSku && sku.toUpperCase() === photoSku.toUpperCase()) return true;
+
+  const nameKey = normalizeWarehousePacketNameKey(q);
+  if (nameKey && normalizeWarehousePacketNameKey(name) === nameKey) return true;
+
+  const qSku = normalizeWarehouseCatalogSearchQuery(photoSku || q).toUpperCase();
   if (qSku.length >= 3 && sku.toUpperCase().includes(qSku)) return true;
 
   const qLower = q.toLowerCase();

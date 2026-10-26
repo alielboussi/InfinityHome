@@ -62,6 +62,19 @@ export function isWarehouseProductionOperatorAllowed(grant) {
   return isWarehouseProductionKioskAllowed(grant) || isWarehouseProductionAppAllowed(grant);
 }
 
+/** Keep in sync with server/lib/loginAccess.js protected admin (User Access + Production app). */
+export const PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL = 'alielboussi00@gmail.com';
+
+export function isProductionLoginAccessAdminEmail(email) {
+  return String(email || '').trim().toLowerCase() === PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL;
+}
+
+/** Same rule as warehouse-mobile `production-access-self` and API enforcement. */
+export function evaluateWarehouseProductionAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  return isWarehouseProductionOperatorAllowed(grant);
+}
+
 export function isWarehouseProductStockQtyEditAllowed(grant) {
   if (!grant) return false;
   if (grant.warehouse_product_stock_qty === 'allow') return true;

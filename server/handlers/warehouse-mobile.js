@@ -28,6 +28,7 @@ import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeli
 import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhatsApp.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
+  evaluateWarehouseProductionAppAccess,
   isWarehouseProductionOperatorAllowed,
   isWarehouseProductStockQtyEditAllowed,
   isWarehouseProductTurkishSyncAllowed,
@@ -39,10 +40,6 @@ import {
   matchProductionGirlNameFromPool,
   normalizeWarehousePacketNameKey,
 } from '../../src/utils/productionItemName.js';
-import {
-  parseProductPhotoQrSku,
-  productionScanResolveCandidates,
-} from '../../src/utils/productionLabelQrScan.js';
 import { attachProductionPacketCatalogPhoto } from '../lib/productionPacketCatalogPhoto.js';
 import { suggestUniqueProductionBaseName } from '../lib/productionSuggestBaseName.js';
 import { titleCaseWords } from '../../src/utils/titleCaseWords.js';
@@ -158,6 +155,9 @@ async function opGenerateUniqueSku(body) {
 async function opScanResolve(body) {
   const scan = String(body.scan || '').trim();
   if (!scan) throw new Error('Scan value is required.');
+  const { parseProductPhotoQrSku, productionScanResolveCandidates } = await import(
+    '../../src/utils/productionLabelQrScan.js'
+  );
   const sb = getService();
   const assemblyFields = 'id, name, family_sku, packet_count, image_url, dim_length, dim_width, dim_height, category_id, inventory_mode';
   const [{ data: packets }, { data: assemblies }] = await Promise.all([
@@ -207,7 +207,7 @@ async function opScanResolve(body) {
 
 async function assertProductionKioskUser(user) {
   const grant = await mobileAccessGrantForUser(user);
-  if (isLoginAccessAdmin(user?.email) || isWarehouseProductionOperatorAllowed(grant)) {
+  if (evaluateWarehouseProductionAppAccess(grant, user?.email)) {
     return grant;
   }
   const err = new Error('You do not have access to warehouse production.');
@@ -233,10 +233,21 @@ async function opProductionAccessSelf(user) {
   const grant = await mobileAccessGrantForUser(user);
   const record = await getLoginAccessRecord(user?.id);
   return {
-    allowed: isLoginAccessAdmin(user?.email) || isWarehouseProductionOperatorAllowed(grant),
+    allowed: evaluateWarehouseProductionAppAccess(grant, user?.email),
     display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
     grant,
   };
+}
+
+async function removeProductionPacketDraft(sb, packetId) {
+  const id = String(packetId || '').trim();
+  if (!id) return;
+  try {
+    await sb.from('warehouse_packet_inventory').delete().eq('packet_id', id);
+    await sb.from('warehouse_packets').delete().eq('id', id);
+  } catch (err) {
+    console.warn('[warehouse-mobile] rollback packet draft failed:', err?.message || err);
+  }
 }
 
 async function opProductionPacketCreate(body, user) {
@@ -276,72 +287,92 @@ async function opProductionPacketCreate(body, user) {
     created_at: now,
     updated_at: now,
   };
-  const { error } = await sb.from('warehouse_packets').insert(row);
-  if (error) throw new Error(error.message || 'Failed to create packet');
+  let packetInserted = false;
+  try {
+    const { error } = await sb.from('warehouse_packets').insert(row);
+    if (error) throw new Error(error.message || 'Failed to create packet');
+    packetInserted = true;
 
-  await sb.from('warehouse_packet_inventory').upsert({
-    packet_id: id,
-    location_id: warehouseLocationId,
-    quantity: initialQty,
-    updated_at: now,
-  }, { onConflict: 'packet_id,location_id' });
+    await sb.from('warehouse_packet_inventory').upsert({
+      packet_id: id,
+      location_id: warehouseLocationId,
+      quantity: initialQty,
+      updated_at: now,
+    }, { onConflict: 'packet_id,location_id' });
 
-  await logWarehouseProductionCreate({
-    user,
-    packet: row,
-    initialQuantity: initialQty,
-    warehouseLocationId,
-  });
-
-  const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
-  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
-  const requiresPhoto = clientSource === 'warehouse_production_app'
-    || body.require_product_photo === true
-    || body.requireProductPhoto === true;
-
-  let catalogImageUrl = null;
-  if (imageBase64) {
-    catalogImageUrl = await attachProductionPacketCatalogPhoto(sb, {
+    await logWarehouseProductionCreate({
+      user,
       packet: row,
-      imageBase64,
-      productName: name,
+      initialQuantity: initialQty,
+      warehouseLocationId,
     });
-  } else if (requiresPhoto) {
-    throw new Error('Take a product photo before saving (camera required).');
+
+    const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+    const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+    const requiresPhoto = clientSource === 'warehouse_production_app'
+      || body.require_product_photo === true
+      || body.requireProductPhoto === true;
+
+    let catalogImageUrl = null;
+    if (imageBase64) {
+      catalogImageUrl = await attachProductionPacketCatalogPhoto(sb, {
+        packet: row,
+        imageBase64,
+        productName: name,
+      });
+    } else if (requiresPhoto) {
+      throw new Error('Take a product photo before saving (camera required).');
+    }
+
+    const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
+    const printedAt = new Date();
+    const printSource = clientSource;
+    let labelJobId = null;
+    let labelPrintWarning = null;
+    if (labelCopies > 0) {
+      try {
+        labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+          name: row.name,
+          sku: row.sku,
+          qty: labelCopies,
+          printedBy: user?.full_name || user?.display_name || user?.email,
+          source: printSource,
+          printedAt,
+        });
+        if (!labelJobId) {
+          labelPrintWarning = 'Item saved but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
+        }
+      } catch (printErr) {
+        labelPrintWarning = printErr?.message
+          || 'Item saved but label printing failed. Check the printer / Zebra Weblink settings.';
+        console.warn('[warehouse-mobile] production label print failed:', printErr?.message || printErr);
+      }
+    }
+
+    const preview = labelCopies > 0
+      ? await buildProductionLabelPreviewPayload({
+        name: row.name,
+        sku: row.sku,
+        printedAt,
+      })
+      : { label: null, label_preview_png_base64: null };
+
+    return {
+      packet: row,
+      created_by: user?.email || null,
+      catalog_image_url: catalogImageUrl,
+      label_copies: labelCopies,
+      label_job_id: labelJobId,
+      label_print_warning: labelPrintWarning,
+      label: preview.label,
+      label_preview_png_base64: preview.label_preview_png_base64,
+    };
+  } catch (err) {
+    if (packetInserted) {
+      await removeProductionPacketDraft(sb, id);
+    }
+    throw err;
   }
-
-  const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
-  const printedAt = new Date();
-  const printSource = clientSource;
-  let labelJobId = null;
-  if (labelCopies > 0) {
-    labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
-      name: row.name,
-      sku: row.sku,
-      qty: labelCopies,
-      printedBy: user?.full_name || user?.display_name || user?.email,
-      source: printSource,
-      printedAt,
-    });
-  }
-
-  const preview = labelCopies > 0
-    ? await buildProductionLabelPreviewPayload({
-      name: row.name,
-      sku: row.sku,
-      printedAt,
-    })
-    : { label: null, label_preview_png_base64: null };
-
-  return {
-    packet: row,
-    created_by: user?.email || null,
-    catalog_image_url: catalogImageUrl,
-    label_copies: labelCopies,
-    label_job_id: labelJobId,
-    label: preview.label,
-    label_preview_png_base64: preview.label_preview_png_base64,
-  };
 }
 
 async function opProductionStockIncrease(body, user) {

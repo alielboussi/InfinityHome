@@ -1,6 +1,6 @@
 import { titleCaseWords } from './titleCaseWords.js';
 
-export const PRODUCTION_SEAT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater'];
+export const PRODUCTION_SEAT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater', 'Lounge Chair'];
 
 /** Curated feminine given names (worldwide) — AI and random suggest must pick from this pool only. */
 export const PRODUCTION_GIRL_NAME_POOL = Object.freeze([
@@ -92,7 +92,8 @@ export function buildProductionItemName(baseName, preset) {
 export function extractProductionBaseName(productName) {
   const n = normalizeProductionNameInput(productName);
   if (!n) return '';
-  for (const preset of PRODUCTION_SEAT_PRESETS) {
+  const presetsByLength = [...PRODUCTION_SEAT_PRESETS].sort((a, b) => b.length - a.length);
+  for (const preset of presetsByLength) {
     const suffix = ` ${preset}`;
     if (n.endsWith(suffix)) {
       return n.slice(0, -suffix.length).trim();

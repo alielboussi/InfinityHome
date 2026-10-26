@@ -102,6 +102,16 @@ try {
   process.exit(1);
 }
 
+try {
+  require('child_process').execSync('node scripts/verifyProductionAppAccess.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-app-access:fail] verifyProductionAppAccess.js failed.');
+  process.exit(1);
+}
+
 for (const script of [
   'scripts/verifyStocktakeVarianceLedger.js',
   'scripts/verifyStocktakeTransferVariance.js',

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -24,9 +25,10 @@ import {
   PRODUCTION_SEAT_PRESETS,
 } from '../lib/productionItemName';
 import { kioskFooterBottomPad, kioskScreenEdges } from '../lib/kioskLayout';
-import { captureRequiredProductionPhoto } from '../lib/productionPhotoCapture';
 import { presetLabel, tUi } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
+import ProductionPhotoCaptureModal from '../components/ProductionPhotoCaptureModal';
+import { prepareProductionPhotoForUpload } from '../lib/prepareProductionPhotoUpload';
 import {
   createProductionPacket,
   fetchProductionCatalog,
@@ -46,7 +48,7 @@ export default function CreateScreen({ navigation }) {
   const [baseNameEn, setBaseNameEn] = useState('');
   const [preset, setPreset] = useState('');
   const [productNameEn, setProductNameEn] = useState('');
-  const [qty, setQty] = useState('0');
+  const [qty, setQty] = useState('1');
 
   const [nameGenBusy, setNameGenBusy] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -55,7 +57,10 @@ export default function CreateScreen({ navigation }) {
   const [labelPng, setLabelPng] = useState('');
   const [labelCopies, setLabelCopies] = useState(1);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
   const scrollRef = useRef(null);
+  const pendingSaveRef = useRef(null);
+  const deferFormResetRef = useRef(false);
 
   const englishProductName = useMemo(() => {
     if (productNameEn.trim()) return normalizeProductionNameInput(productNameEn);
@@ -126,17 +131,14 @@ export default function CreateScreen({ navigation }) {
     return true;
   };
 
-  const onSelectPreset = async (value) => {
+  const onSelectPreset = (value) => {
     if (!baseNameEn.trim()) {
       setError(tUi('needBaseName', locale));
       return;
     }
     setError('');
-    const built = buildProductionItemName(baseNameEn, value);
-    const ok = await ensureProductNameAvailable(built);
-    if (!ok) return;
     setPreset(value);
-    setProductNameEn(built);
+    setProductNameEn(buildProductionItemName(baseNameEn, value));
   };
 
   const onGenerateName = async () => {
@@ -172,10 +174,78 @@ export default function CreateScreen({ navigation }) {
     setBaseNameEn('');
     setPreset('');
     setProductNameEn('');
-    setQty('0');
+    setQty('1');
   };
 
-  const onSave = async () => {
+  const showSaveFailure = (message) => {
+    const msg = String(message || '').trim() || 'Save failed.';
+    setError(msg);
+    Alert.alert(tUi('saveFailedTitle', locale), msg);
+  };
+
+  const finishSaveWithPhoto = async (imageBase64) => {
+    const pending = pendingSaveRef.current;
+    if (!pending?.name || !pending.warehouseLocationId) {
+      showSaveFailure('Save data was lost. Tap Save production item again.');
+      return;
+    }
+
+    setPhotoCaptureOpen(false);
+    setSavePhase('processing');
+    setSaving(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const available = await ensureProductNameAvailable(pending.name);
+      if (!available) return;
+
+      const uploadPhoto = await prepareProductionPhotoForUpload(imageBase64);
+      const result = await createProductionPacket({
+        name: pending.name,
+        warehouseLocationId: pending.warehouseLocationId,
+        initialQuantity: pending.qtyNum,
+        imageBase64: uploadPhoto,
+      });
+
+      pendingSaveRef.current = null;
+      const labelCount = result.labelCopies > 0 ? result.labelCopies : pending.qtyNum;
+      let successMsg = tUi('saved', locale);
+      if (result.labelPrintWarning) {
+        successMsg = `${successMsg} ${result.labelPrintWarning}`;
+      } else if (labelCount < 1) {
+        successMsg = tUi('savedNoLabelsQty', locale);
+      }
+      setSuccess(successMsg);
+
+      if (labelCount > 0) {
+        const labelMeta = result.label || {
+          sku: result.packet?.sku || '',
+          name: result.packet?.name || pending.name,
+          print_date: new Date().toLocaleDateString('en-GB'),
+          print_time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        };
+        deferFormResetRef.current = true;
+        setLabelPreview(labelMeta);
+        setLabelPng(result.labelPreviewPngBase64 || '');
+        setLabelCopies(labelCount);
+      } else {
+        resetForm();
+      }
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (msg.toLowerCase().includes('already exists')) {
+        showSaveFailure(tUi('duplicateName', locale));
+      } else {
+        showSaveFailure(msg);
+      }
+    } finally {
+      setSaving(false);
+      setSavePhase('');
+    }
+  };
+
+  const onSave = () => {
     setError('');
     setSuccess('');
     if (!warehouseLocationId) {
@@ -192,52 +262,21 @@ export default function CreateScreen({ navigation }) {
     }
     const name = englishProductName;
     const qtyNum = Number(String(qty).trim());
-    if (!Number.isFinite(qtyNum) || qtyNum < 0 || !/^\d+$/.test(String(qty).trim())) {
+    if (!Number.isFinite(qtyNum) || qtyNum < 1 || !/^\d+$/.test(String(qty).trim())) {
       setError(tUi('needQty', locale));
       return;
     }
 
-    try {
-      const available = await ensureProductNameAvailable(name);
-      if (!available) return;
-
-      const imageBase64 = await captureRequiredProductionPhoto();
-      if (!imageBase64) {
-        setError(tUi('photoCancelled', locale));
-        return;
-      }
-
-      setSavePhase('processing');
-      setSaving(true);
-      const result = await createProductionPacket({
-        name,
-        warehouseLocationId,
-        initialQuantity: qtyNum,
-        imageBase64,
-      });
-      setSuccess(tUi('saved', locale));
-      const copies = Number(result?.label_copies);
-      const labelCount = Number.isFinite(copies) && copies >= 0 ? copies : qtyNum;
-      if (result?.label && labelCount > 0) {
-        setLabelPreview(result.label);
-        setLabelPng(result.label_preview_png_base64 || '');
-        setLabelCopies(labelCount);
-      }
-      resetForm();
-    } catch (err) {
-      const msg = String(err?.message || '');
-      if (msg.toLowerCase().includes('already exists')) {
-        setError(tUi('duplicateName', locale));
-      } else {
-        setError(msg || 'Save failed.');
-      }
-    } finally {
-      setSaving(false);
-      setSavePhase('');
-    }
+    Keyboard.dismiss();
+    pendingSaveRef.current = {
+      name,
+      qtyNum,
+      warehouseLocationId,
+    };
+    setPhotoCaptureOpen(true);
   };
 
-  const saveDisabled = saving || loading || !warehouseLocationId;
+  const saveDisabled = saving || loading || !warehouseLocationId || photoCaptureOpen;
   const footerPad = kioskFooterBottomPad(insets) + 72;
   const keyboardOpen = keyboardHeight > 0;
   const scrollBottomPad = keyboardOpen
@@ -385,6 +424,23 @@ export default function CreateScreen({ navigation }) {
       onClose={() => {
         setLabelPreview(null);
         setLabelPng('');
+        if (deferFormResetRef.current) {
+          deferFormResetRef.current = false;
+          resetForm();
+        }
+      }}
+    />
+    <ProductionPhotoCaptureModal
+      visible={photoCaptureOpen}
+      locale={locale}
+      onCancel={() => {
+        if (saving || savePhase === 'processing') return;
+        setPhotoCaptureOpen(false);
+        pendingSaveRef.current = null;
+        setError(tUi('photoCancelled', locale));
+      }}
+      onCaptured={(dataUri) => {
+        finishSaveWithPhoto(dataUri);
       }}
     />
     </>

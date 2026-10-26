@@ -73,6 +73,12 @@ module.exports = {
           photosPermission: 'Allow access to save production product photos.',
         },
       ],
+      [
+        'expo-camera',
+        {
+          cameraPermission: 'Upholstery Production needs the camera to scan label QR codes and barcodes.',
+        },
+      ],
     ],
     extra: {
       firebase,

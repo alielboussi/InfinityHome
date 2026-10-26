@@ -4,19 +4,10 @@ import { ensureFirebaseAuthToken, getFirebaseAuth, subscribeFirebaseAuth } from 
 import { verifyMobileLoginAccess } from '../shared/loginAccess';
 import {
   defaultMobileAccessGrant,
-  isWarehouseProductionAppAllowed,
-  isWarehouseProductionOperatorAllowed,
+  evaluateWarehouseProductionAppAccess,
   sanitizeMobileAccessGrantForUser,
 } from '../shared/mobileAccessManifest';
-import { fetchProductionAccess } from '../services/productionApi';
 import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
-
-/** Keep in sync with server/lib/loginAccess.js ADMIN_EMAIL */
-const LOGIN_ACCESS_ADMIN_EMAIL = 'alielboussi00@gmail.com';
-
-function isLoginAccessAdminEmail(email) {
-  return String(email || '').trim().toLowerCase() === LOGIN_ACCESS_ADMIN_EMAIL;
-}
 
 function formatAccessHint(value, fallback = '') {
   if (value == null || value === '') return fallback;
@@ -24,12 +15,13 @@ function formatAccessHint(value, fallback = '') {
   return formatWarehouseMobileApiError(value, fallback || 'Request failed');
 }
 
-function productionAllowedFromGrant(rawGrant, sanitizedGrant) {
-  return isWarehouseProductionOperatorAllowed(sanitizedGrant)
-    || isWarehouseProductionAppAllowed(rawGrant)
-    || isWarehouseProductionAppAllowed(sanitizedGrant)
-    || rawGrant?.warehouse_production_app === 'allow'
-    || rawGrant?.warehouse_production_app === true;
+function productionAllowedFromAuthProfile(user) {
+  if (!user || typeof user !== 'object') return false;
+  if (user.production_app_allowed === true) return true;
+  const email = user.email || '';
+  const grant = user.mobile_access || defaultMobileAccessGrant();
+  const sanitized = sanitizeMobileAccessGrantForUser(grant, email);
+  return evaluateWarehouseProductionAppAccess(sanitized, email);
 }
 
 export function useProductionAccessGrant() {
@@ -48,49 +40,37 @@ export function useProductionAccessGrant() {
       const fbEmail = String(getFirebaseAuth().currentUser?.email || '').trim();
       if (fbEmail) setUserEmail(fbEmail);
 
-      if (isLoginAccessAdminEmail(fbEmail)) {
-        setAllowed(true);
+      const access = await verifyMobileLoginAccess();
+      if (!access.ok || !access.user) {
+        setAllowed(false);
+        if (access.reason === 'disabled') {
+          setAccessHint(formatAccessHint(access.error, 'Your account has been disabled.'));
+        } else {
+          setAccessHint(formatAccessHint(access.error, 'Could not verify login. Check connection and try again.'));
+        }
         return;
       }
 
-      let clientAllowed = false;
-      let nextGrant = defaultMobileAccessGrant();
+      const user = access.user;
+      const email = String(user.email || fbEmail || '').trim();
+      if (email) setUserEmail(email);
 
-      const access = await verifyMobileLoginAccess();
-      if (access.ok && access.user) {
-        const email = access.user?.email || fbEmail;
-        if (email) setUserEmail(email);
-        if (isLoginAccessAdminEmail(email)) {
-          setAllowed(true);
-          return;
-        }
-        const rawGrant = access.user?.mobile_access || defaultMobileAccessGrant();
-        nextGrant = sanitizeMobileAccessGrantForUser(rawGrant, email);
-        setGrant(nextGrant);
-        const name = String(access.user?.mobile_display_name || '').trim()
-          || String(access.user?.display_name || '').trim();
-        if (name) setUserDisplayName(name);
-        clientAllowed = productionAllowedFromGrant(rawGrant, nextGrant);
-      } else if (access.error) {
-        setAccessHint(formatAccessHint(access.error, 'Login check failed.'));
+      const rawGrant = user.mobile_access || defaultMobileAccessGrant();
+      const nextGrant = sanitizeMobileAccessGrantForUser(rawGrant, email);
+      setGrant(nextGrant);
+
+      const name = String(user.mobile_display_name || '').trim()
+        || String(user.display_name || '').trim();
+      if (name) setUserDisplayName(name);
+
+      const nextAllowed = productionAllowedFromAuthProfile(user);
+      setAllowed(nextAllowed);
+
+      if (!nextAllowed) {
+        setAccessHint(
+          'Production app access is off in User Access. On the web, open User Access → Upholstery Production, enable access, Save, then tap Check access again.',
+        );
       }
-
-      let serverAllowed = false;
-      try {
-        const prod = await fetchProductionAccess();
-        serverAllowed = Boolean(prod.allowed)
-          || prod.productionApp === 'allow';
-        if (prod.displayName) {
-          setUserDisplayName(String(prod.displayName).trim());
-        }
-        if (!serverAllowed && prod.productionApp === 'deny') {
-          setAccessHint((hint) => hint || 'Production app access is off in User Access. Save Upholstery Production access on the web, then tap Check access again.');
-        }
-      } catch (err) {
-        setAccessHint((hint) => hint || formatAccessHint(err?.message, 'Could not reach production access API.'));
-      }
-
-      setAllowed(serverAllowed || clientAllowed);
     } finally {
       setLoading(false);
     }

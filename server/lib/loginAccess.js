@@ -2,10 +2,10 @@ import admin from 'firebase-admin';
 import { getFirebaseAdminApp } from './firebaseAdmin.js';
 import { getFirestore } from './firestoreDb.js';
 import { defaultMobileAccessGrant, normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
+import { PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL } from '../../src/mobile/mobileAccessManifest.js';
 
 const COLLECTION = 'app_login_access';
-const ADMIN_EMAIL = 'alielboussi00@gmail.com';
-const PROTECTED_EMAILS = new Set([ADMIN_EMAIL]);
+const PROTECTED_EMAILS = new Set([PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL]);
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -19,7 +19,7 @@ function disabledError() {
 }
 
 export function isLoginAccessAdmin(email) {
-  return normalizeEmail(email) === ADMIN_EMAIL;
+  return normalizeEmail(email) === PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL;
 }
 
 export async function getLoginAccessRecord(uid) {

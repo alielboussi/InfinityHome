@@ -15,6 +15,7 @@ import {
   LABEL_HEIGHT_MM,
   LABEL_MARGIN_MM,
   LABEL_WIDTH_MM,
+  QR_CAPTION_FONT_PT,
 } from './warehouseProductionLabelLayout.js';
 import { formatBlockDate, formatBlockTime } from './zebraProductionLabelZpl.js';
 
@@ -65,10 +66,10 @@ async function makeCode128Png(sku) {
     .toBuffer();
 }
 
-async function makeProductPhotoQrPng(url, sizePx) {
+async function makeQrPng(text, sizePx) {
   const qr = await bwipjs.toBuffer({
     bcid: 'qrcode',
-    text: String(url || '').trim(),
+    text: String(text || '').trim(),
     scale: 2,
     paddingwidth: 0,
     paddingheight: 0,
@@ -124,10 +125,19 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   const barcodeLeft = mmToPx(layout.barcodeLeftMm);
 
   const barcodeResized = await makeCode128Png(meta.sku);
-  const qrSizePx = mmToPx(layout.qrSizeMm);
-  const qrPng = await makeProductPhotoQrPng(meta.image_qr_url, qrSizePx);
-  const qrLeft = centerXPx - Math.floor(qrSizePx / 2);
-  const qrTop = mmToPx(layout.photoRowMm);
+  const qrSizePx = mmToPx(layout.qrPairSizeMm);
+  const [imageQrPng, nameQrPng] = await Promise.all([
+    makeQrPng(meta.image_qr_url, qrSizePx),
+    makeQrPng(meta.name, qrSizePx),
+  ]);
+  const imageQrLeft = mmToPx(layout.imageQrLeftMm);
+  const nameQrLeft = mmToPx(layout.nameQrLeftMm);
+  const qrTop = mmToPx(layout.qrBlockYMm);
+  const captionY = mmToPx(layout.qrCaptionYMm) + Math.round(QR_CAPTION_FONT_PT * 0.85);
+  const captionUlY = mmToPx(layout.qrCaptionYMm) + mmToPx(2.4);
+  const imageLabelX = mmToPx(layout.imageQrLabelLeftMm) + Math.floor(mmToPx(layout.qrColumnWidthMm) / 2);
+  const nameLabelX = mmToPx(layout.nameQrLabelLeftMm) + Math.floor(mmToPx(layout.qrColumnWidthMm) / 2);
+  const captionW = mmToPx(layout.qrColumnWidthMm);
 
   const textSvg = `
 <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
@@ -140,7 +150,10 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.skuLineMm))}
   ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm), label: FIELD_LABELS.name, value: meta.name })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.nameLineMm))}
-  <text x="${headerXpx}" y="${qrTop + Math.round(qrSizePx * 0.75)}" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="${ROW_FONT_PX}" font-weight="700" fill="#111">${escapeXml(FIELD_LABELS.photo)}</text>
+  <text x="${imageLabelX}" y="${captionY}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.imageQr)}</text>
+  <line x1="${imageLabelX - captionW / 2}" y1="${captionUlY}" x2="${imageLabelX + captionW / 2}" y2="${captionUlY}" stroke="#111" stroke-width="1"/>
+  <text x="${nameLabelX}" y="${captionY}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.nameQr)}</text>
+  <line x1="${nameLabelX - captionW / 2}" y1="${captionUlY}" x2="${nameLabelX + captionW / 2}" y2="${captionUlY}" stroke="#111" stroke-width="1"/>
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.photoLineMm))}
   ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm), label: FIELD_LABELS.date, value: meta.print_date })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.dateLineMm))}
@@ -152,7 +165,8 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   return sharp(base)
     .composite([
       { input: barcodeResized, left: barcodeLeft, top: barcodeTop },
-      { input: qrPng, left: qrLeft, top: qrTop },
+      { input: imageQrPng, left: imageQrLeft, top: qrTop },
+      { input: nameQrPng, left: nameQrLeft, top: qrTop },
     ])
     .png()
     .toBuffer();

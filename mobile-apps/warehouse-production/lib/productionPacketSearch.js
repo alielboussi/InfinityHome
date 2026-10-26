@@ -1,5 +1,8 @@
 /** Keep search behaviour aligned with src/utils/productionPacketSearch.js */
 
+import { normalizeWarehousePacketNameKey } from './productionItemName';
+import { parseProductPhotoQrSku } from './productionLabelQrScan';
+
 const ARABIC_CHAR_TO_LATIN = {
   ا: 'a', أ: 'a', إ: 'i', آ: 'a', ى: 'a', ة: 'a', ء: '',
   ب: 'b', ت: 't', ث: 'th', ج: 'j', ح: 'h', خ: 'kh',
@@ -62,7 +65,13 @@ export function packetMatchesProductionSearch(packet, rawQuery) {
 
   const name = String(packet?.name || '');
   const sku = String(packet?.sku || '');
-  const qSku = normalizeWarehouseCatalogSearchQuery(q).toUpperCase();
+  const photoSku = parseProductPhotoQrSku(q);
+  if (photoSku && sku.toUpperCase() === photoSku.toUpperCase()) return true;
+
+  const nameKey = normalizeWarehousePacketNameKey(q);
+  if (nameKey && normalizeWarehousePacketNameKey(name) === nameKey) return true;
+
+  const qSku = normalizeWarehouseCatalogSearchQuery(photoSku || q).toUpperCase();
   if (qSku.length >= 3 && sku.toUpperCase().includes(qSku)) return true;
 
   const qLower = q.toLowerCase();
