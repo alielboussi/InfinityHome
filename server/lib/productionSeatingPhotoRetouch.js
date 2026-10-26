@@ -79,9 +79,16 @@ async function requestGeminiSeatingRetouch(jpegBuffer) {
 
   const models = getProductionPhotoModelCandidates();
   const errors = [];
+  const maxMs = Math.max(5000, Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || 18000);
+  const deadline = Date.now() + maxMs;
 
   for (const model of models) {
+    if (Date.now() >= deadline) {
+      errors.push('time budget exceeded');
+      break;
+    }
     try {
+      const remaining = Math.max(1000, deadline - Date.now());
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
@@ -91,6 +98,7 @@ async function requestGeminiSeatingRetouch(jpegBuffer) {
             'x-goog-api-key': apiKey,
           },
           body: JSON.stringify(body),
+          signal: AbortSignal.timeout(remaining),
         },
       );
       const payload = await response.json().catch(() => ({}));

@@ -333,14 +333,6 @@ async function opProductionPacketCreate(body, user) {
     if (invErr) throw new Error(invErr.message || 'Failed to set opening stock');
     await recomputeWarehouseLocationStockServer(sb, warehouseLocationId);
 
-    await logWarehouseProductionCreate({
-      user,
-      assembly,
-      initialQuantity: initialQty,
-      warehouseLocationId,
-      source: clientSource,
-    });
-
     const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
     const requiresPhoto = clientSource === 'warehouse_production_app'
       || body.require_product_photo === true
@@ -355,6 +347,18 @@ async function opProductionPacketCreate(body, user) {
       });
     } else if (requiresPhoto) {
       throw new Error('Take a product photo before saving (camera required).');
+    }
+
+    try {
+      await logWarehouseProductionCreate({
+        user,
+        assembly,
+        initialQuantity: initialQty,
+        warehouseLocationId,
+        source: clientSource,
+      });
+    } catch (logErr) {
+      console.warn('[warehouse-mobile] production create log failed:', logErr?.message || logErr);
     }
 
     const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
@@ -387,6 +391,7 @@ async function opProductionPacketCreate(body, user) {
         name: assembly.name,
         sku: labelSku,
         printedAt,
+        skipPng: true,
       })
       : { label: null, label_preview_png_base64: null };
 
@@ -524,6 +529,7 @@ async function opProductionStockIncrease(body, user) {
     name: labelName,
     sku: labelSku,
     printedAt,
+    skipPng: true,
   });
 
   const packetCompat = assembly
@@ -772,18 +778,20 @@ async function opPacketNameCheck(body) {
   };
 }
 
-async function buildProductionLabelPreviewPayload({ name, sku, printedAt }) {
+async function buildProductionLabelPreviewPayload({ name, sku, printedAt, skipPng = false }) {
   const at = printedAt ? new Date(printedAt) : new Date();
   const label = buildProductionLabelMeta({ name, sku, printedAt: at });
   let label_preview_png_base64 = null;
-  try {
-    label_preview_png_base64 = await buildWarehouseProductionLabelPngBase64({
-      name: label.name,
-      sku: label.sku,
-      printedAt: at,
-    });
-  } catch (err) {
-    console.warn('[warehouse-mobile] label preview png failed:', err?.message || err);
+  if (!skipPng) {
+    try {
+      label_preview_png_base64 = await buildWarehouseProductionLabelPngBase64({
+        name: label.name,
+        sku: label.sku,
+        printedAt: at,
+      });
+    } catch (err) {
+      console.warn('[warehouse-mobile] label preview png failed:', err?.message || err);
+    }
   }
   return { label, label_preview_png_base64, printed_at: label.printed_at };
 }
