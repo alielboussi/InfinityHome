@@ -12,14 +12,23 @@ export default function DashboardScreen({
   userDisplayName,
   userEmail,
   allowed,
+  onRefreshAccess,
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign, ready } = useProductionKioskLocale();
 
   if (!allowed) {
     return (
-      <View style={[kiosk.screen, styles.center, { paddingTop: insets.top + 16 }]}>
+      <View style={[kiosk.screen, styles.center, { paddingTop: insets.top + 16, paddingHorizontal: 20 }]}>
         <Text style={kiosk.noticeErr}>{tUi('accessDenied', ready ? locale : 'ar')}</Text>
+        {userEmail ? (
+          <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>{userEmail}</Text>
+        ) : null}
+        {typeof onRefreshAccess === 'function' ? (
+          <Pressable style={[kiosk.btn, { marginTop: 16 }]} onPress={() => onRefreshAccess()}>
+            <Text style={kiosk.btnText}>{tUi('retryAccess', ready ? locale : 'en')}</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }

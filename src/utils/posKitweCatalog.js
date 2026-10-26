@@ -9,6 +9,7 @@ import { expandWarehouseSetItemsRows } from './warehouseSetItems';
 import {
   applyKitweAssemblyPosPricing,
   loadRetailProductsForAssemblies,
+  resolveRetailProductForAssembly,
 } from './kitweAssemblyRetailPricing';
 import { buildProductLocationPriceMap } from './locationPricing';
 
@@ -44,10 +45,28 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
   const products = [];
   const sets = [];
 
+  const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
+
   (assemblies || []).forEach((a) => {
     if (isWarehouseSetAssembly(a)) {
       const stock = computeKitweSetBuildableQty(a.id, setItems, qtyByAssembly);
       if (stock <= 0) return;
+      const kitweComponents = expandWarehouseSetItemsRows(setItems || [])
+        .filter(
+          (row) => String(row.set_assembly_id) === String(a.id)
+            && String(row.location_id) === KITWE_LOCATION_ID,
+        )
+        .map((row) => {
+          const comp = assemblyById.get(String(row.component_assembly_id));
+          const retail = comp ? resolveRetailProductForAssembly(comp, retailIndex) : null;
+          return {
+            component_assembly_id: row.component_assembly_id,
+            per_set: Math.max(1, Number(row.quantity) || 1),
+            name: comp?.name || '',
+            sku: comp?.family_sku || '',
+            retail_product_id: retail?.id || comp?.retail_product_id || null,
+          };
+        });
       sets.push(applyKitweAssemblyPosPricing({
         assembly: a,
         stock,
@@ -56,6 +75,7 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
         retailIndex,
         categoriesById,
         isSet: true,
+        kitweComponents,
       }));
       return;
     }

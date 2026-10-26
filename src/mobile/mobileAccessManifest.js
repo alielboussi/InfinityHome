@@ -309,11 +309,15 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     ? 'allow'
     : 'deny';
 
-  merged.warehouse_production_kiosk = merged.warehouse_production_kiosk === 'allow'
+  merged.warehouse_production_kiosk = (
+    merged.warehouse_production_kiosk === 'allow' || merged.warehouse_production_kiosk === true
+  )
     ? 'allow'
     : 'deny';
 
-  merged.warehouse_production_app = merged.warehouse_production_app === 'allow'
+  merged.warehouse_production_app = (
+    merged.warehouse_production_app === 'allow' || merged.warehouse_production_app === true
+  )
     ? 'allow'
     : 'deny';
 

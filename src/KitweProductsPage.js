@@ -250,11 +250,11 @@ export default function KitweProductsPage() {
           quantity: Math.max(1, Number(line.quantity) || 1),
         }))
         .filter((line) => line.component_assembly_id);
-      if (!setComponents.length) throw new Error('Add at least one Kitwe product with stock.');
+      if (!setComponents.length) throw new Error('Add at least one Kitwe product.');
 
       for (const line of setComponents) {
         const opt = componentOptions.find((o) => String(o.id) === line.component_assembly_id);
-        if (!opt) throw new Error('Each component must be a Kitwe product with stock.');
+        if (!opt) throw new Error('Each component must be a valid Kitwe warehouse product.');
         const stock = (assemblyInventory || []).find(
           (r) => String(r.assembly_id) === line.component_assembly_id
             && String(r.location_id) === KITWE_LOCATION_ID,
@@ -408,18 +408,18 @@ export default function KitweProductsPage() {
             <button type="button" className="kitwe-btn-secondary" onClick={closeCreateSet}>Close</button>
           </div>
           <form onSubmit={handleCreateSet}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-              <label style={{ flex: '1 1 200px' }}>
-                <span style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>Set name</span>
-                <input className="kitwe-search-input" style={{ maxWidth: 'none', width: '100%' }} value={setName} onChange={(e) => setSetName(e.target.value)} />
+            <div className="kitwe-create-form-row">
+              <label className="kitwe-form-field kitwe-form-field--name">
+                <span>Set name</span>
+                <input className="kitwe-form-control" value={setName} onChange={(e) => setSetName(e.target.value)} />
               </label>
-              <label style={{ flex: '0 1 160px' }}>
-                <span style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>SKU</span>
-                <input className="kitwe-search-input" style={{ maxWidth: 'none', width: '100%' }} value={setSku} onChange={(e) => setSetSku(e.target.value)} />
+              <label className="kitwe-form-field kitwe-form-field--sku">
+                <span>SKU</span>
+                <input className="kitwe-form-control" value={setSku} onChange={(e) => setSetSku(e.target.value)} />
               </label>
-              <label style={{ flex: '0 1 180px' }}>
-                <span style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>Category</span>
-                <select className="kitwe-category-select" style={{ width: '100%' }} value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)}>
+              <label className="kitwe-form-field kitwe-form-field--category">
+                <span>Category</span>
+                <select className="kitwe-form-control" value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)}>
                   <option value="">—</option>
                   {(categories || []).map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -429,10 +429,9 @@ export default function KitweProductsPage() {
             </div>
             <h3 style={{ fontSize: '1rem', marginBottom: 8 }}>Components</h3>
             {setLines.map((line, index) => (
-              <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              <div key={index} className="kitwe-component-row">
                 <select
-                  className="kitwe-category-select"
-                  style={{ flex: 1, minWidth: 220 }}
+                  className="kitwe-form-control kitwe-form-control--product"
                   value={line.component_assembly_id}
                   onChange={(e) => setSetLines((prev) => prev.map((r, i) => (i === index ? { ...r, component_assembly_id: e.target.value } : r)))}
                 >
@@ -446,15 +445,14 @@ export default function KitweProductsPage() {
                 <input
                   type="number"
                   min={1}
-                  className="kitwe-cell-input"
-                  style={{ width: 72 }}
+                  className="kitwe-form-control kitwe-form-control--qty"
                   value={line.quantity}
                   onChange={(e) => setSetLines((prev) => prev.map((r, i) => (i === index ? { ...r, quantity: e.target.value } : r)))}
                 />
                 <button type="button" className="kitwe-btn-secondary" onClick={() => setSetLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)))}>Remove</button>
               </div>
             ))}
-            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <div className="kitwe-create-form-actions">
               <button type="button" className="kitwe-btn-secondary" onClick={() => setSetLines((prev) => [...prev, emptyLine()])}>Add component</button>
               <button type="submit" className="kitwe-btn-create-set" disabled={setSaving}>{setSaving ? 'Saving…' : 'Save set'}</button>
             </div>

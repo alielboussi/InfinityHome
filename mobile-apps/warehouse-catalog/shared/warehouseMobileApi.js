@@ -7,11 +7,27 @@ function resolveApiBase() {
 /** API errors may be a string or { message, code } — avoid "[object Object]" in the UI. */
 export function formatWarehouseMobileApiError(value, fallback = 'Request failed') {
   if (value == null || value === '') return fallback;
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '[object Object]') return fallback;
+    return trimmed || fallback;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (typeof value === 'object') {
     const msg = value.message;
-    if (typeof msg === 'string' && msg.trim()) return msg;
+    if (typeof msg === 'string' && msg.trim() && msg !== '[object Object]') return msg.trim();
     if (typeof msg === 'number' || typeof msg === 'boolean') return String(msg);
+    if (msg && typeof msg === 'object' && typeof msg.message === 'string' && msg.message.trim()) {
+      return msg.message.trim();
+    }
+    const code = value.code;
+    if (typeof code === 'string' && code.trim()) return code.trim();
+    try {
+      const json = JSON.stringify(value);
+      if (json && json !== '{}') return json;
+    } catch {
+      // ignore
+    }
   }
   return fallback;
 }

@@ -37,6 +37,12 @@ import {
 import { applySaleInventoryDeductionViaApi } from './utils/inventoryApi';
 import { fetchKitweWarehousePosCatalog, isKitwePosCatalogRow, mergePosCatalogProducts } from './utils/posKitweCatalog';
 import {
+  buildKitweSetSaleMoves,
+  initKitweSetCartComponents,
+  setKitweSetComponentIncluded,
+  validateKitweSetCartLine,
+} from './utils/posKitweSetCart';
+import {
   findExistingReceiptSale,
   formatPosReceiptNumber,
   RECEIPT_DUPLICATE_ERROR,
@@ -759,17 +765,19 @@ export default function POS({ isMobile = false }) {
   const addToCart = (item) => {
     setCart((prev) => {
       const basePrice = getBestPrice(item);
-      return [
-        ...prev,
-        {
-          ...item,
-          qty: 1,
-          price: basePrice,
-          isSet: item.isSet || false,
-          isCustom: false,
-          color: '',
-        }
-      ];
+      const line = {
+        ...item,
+        qty: 1,
+        price: basePrice,
+        isSet: item.isSet || false,
+        isCustom: false,
+        color: '',
+      };
+      if (item.kitweWarehouseSet) {
+        line.kitweSetComponents = initKitweSetCartComponents(item);
+        line.showComponents = true;
+      }
+      return [...prev, line];
     });
   };
 
@@ -815,6 +823,20 @@ export default function POS({ isMobile = false }) {
   // Update cart item
   const updateCartItem = (idx, changes) => {
     setCart(prev => prev.map((item, i) => (i === idx ? { ...item, ...changes } : item)));
+  };
+
+  const toggleKitweCartComponent = (cartIdx, componentAssemblyId, included) => {
+    setCart((prev) => prev.map((item, i) => {
+      if (i !== cartIdx) return item;
+      return {
+        ...item,
+        kitweSetComponents: setKitweSetComponentIncluded(
+          item.kitweSetComponents,
+          componentAssemblyId,
+          included,
+        ),
+      };
+    }));
   };
 
   const openCustomPriceModal = (idx, price) => {
@@ -1276,17 +1298,20 @@ export default function POS({ isMobile = false }) {
     // Prevent selling more than available stock
     for (const item of cart) {
       if (item.isCustom) continue;
+      if (item.kitweWarehouseSet) {
+        const kitweErr = validateKitweSetCartLine(item, products);
+        if (kitweErr) {
+          setCheckoutError(kitweErr);
+          return;
+        }
+        continue;
+      }
       // Find product in products or sets
       let availableStock = null;
       if (item.isSet) {
-        if (item.kitweWarehouseSet) {
-          const setObj = sets.find((s) => String(s.id) === String(item.id));
-          availableStock = setObj ? Number(setObj.stock) : null;
-        } else {
-          const comboIdInt = typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : Number(item.id);
-          const setObj = sets.find(s => Number(s.id) === Number(comboIdInt));
-          availableStock = setObj ? Number(setObj.stock) : null;
-        }
+        const comboIdInt = typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : Number(item.id);
+        const setObj = sets.find(s => Number(s.id) === Number(comboIdInt));
+        availableStock = setObj ? Number(setObj.stock) : null;
       } else {
         const prodObj = products.find(p => p.id === item.id);
         availableStock = prodObj ? prodObj.stock : null;
@@ -1518,11 +1543,21 @@ export default function POS({ isMobile = false }) {
           currency: item.overrideCurrency || item.currency || ctx.currency,
           color: item.color || null,
         });
-        kitweDeductions.push({
-          assembly_id: item.warehouseAssemblyId,
-          quantity: Number(item.qty),
-          kind: 'set',
-        });
+        const setQty = Math.max(1, Number(item.qty) || 1);
+        for (const c of item.kitweSetComponents || []) {
+          if (!c.included) continue;
+          const compQty = Math.max(1, Number(c.per_set) || 1) * setQty;
+          saleItems.push({
+            sale_id: saleId,
+            product_id: isUuid(c.retail_product_id) ? c.retail_product_id : null,
+            display_name: c.name || c.sku || 'Set component',
+            quantity: compQty,
+            unit_price: 0,
+            currency: item.overrideCurrency || item.currency || ctx.currency,
+            color: item.color || null,
+          });
+        }
+        kitweDeductions.push(...buildKitweSetSaleMoves(item));
       } else if (item.isSet) {
         const comboIdInt = typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : item.id;
         saleItems.push({
@@ -2550,20 +2585,60 @@ export default function POS({ isMobile = false }) {
             {item.isSet && item.showComponents && (
               <tr>
                 <td colSpan={6} style={{ background: '#0a0a0a', color: '#cfe8ff', padding: '6px 8px', borderTop: '1px solid #0d2230' }}>
-                  <div style={{ fontSize: '0.9em', marginBottom: 4 }}>Component breakdown (deducted from inventory):</div>
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                    {(comboItemsByCombo?.[item.id] || []).map((ci, i) => {
-                      const perSet = Number(ci.quantity || 0);
-                      const total = perSet * Number(item.qty || 0);
-                      const label = ci.name ? `${ci.name}${ci.sku ? ` (${ci.sku})` : ''}` : `Product ${ci.product_id}`;
-                      return (
-                        <li key={i} style={{ lineHeight: 1.4 }}>
-                          {label}: {perSet} per set × {Number(item.qty)} = <b>{total}</b>
-                        </li>
-                      );
-                    })}
-                    {(!comboItemsByCombo?.[item.id] || comboItemsByCombo[item.id].length === 0) && (
+                  <div style={{ fontSize: '0.9em', marginBottom: 4 }}>
+                    {item.kitweWarehouseSet
+                      ? 'Kitwe set components — remove lines you are not selling (stock returns to that product SKU):'
+                      : 'Component breakdown (deducted from inventory):'}
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, listStyle: 'none' }}>
+                    {item.kitweWarehouseSet ? (
+                      (item.kitweSetComponents || []).map((ci) => {
+                        const perSet = Number(ci.per_set || 0);
+                        const total = perSet * Number(item.qty || 0);
+                        const label = ci.name ? `${ci.name}${ci.sku ? ` (${ci.sku})` : ''}` : ci.component_assembly_id;
+                        return (
+                          <li key={ci.component_assembly_id} style={{ lineHeight: 1.6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ textDecoration: ci.included ? 'none' : 'line-through', opacity: ci.included ? 1 : 0.65 }}>
+                              {label}: {perSet} per set × {Number(item.qty)} = <b>{total}</b>
+                              {!ci.included ? ' (returned to stock)' : ''}
+                            </span>
+                            {ci.included ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleKitweCartComponent(idx, ci.component_assembly_id, false)}
+                                style={{ fontSize: '0.85rem', padding: '2px 8px', borderRadius: 4 }}
+                              >
+                                Remove from sale
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleKitweCartComponent(idx, ci.component_assembly_id, true)}
+                                style={{ fontSize: '0.85rem', padding: '2px 8px', borderRadius: 4 }}
+                              >
+                                Include again
+                              </button>
+                            )}
+                          </li>
+                        );
+                      })
+                    ) : (
+                      (comboItemsByCombo?.[item.id] || []).map((ci, i) => {
+                        const perSet = Number(ci.quantity || 0);
+                        const total = perSet * Number(item.qty || 0);
+                        const label = ci.name ? `${ci.name}${ci.sku ? ` (${ci.sku})` : ''}` : `Product ${ci.product_id}`;
+                        return (
+                          <li key={i} style={{ lineHeight: 1.4 }}>
+                            {label}: {perSet} per set × {Number(item.qty)} = <b>{total}</b>
+                          </li>
+                        );
+                      })
+                    )}
+                    {!item.kitweWarehouseSet && (!comboItemsByCombo?.[item.id] || comboItemsByCombo[item.id].length === 0) && (
                       <li style={{ color: '#aaa' }}>No component items found for this set.</li>
+                    )}
+                    {item.kitweWarehouseSet && (!item.kitweSetComponents || item.kitweSetComponents.length === 0) && (
+                      <li style={{ color: '#aaa' }}>No Kitwe components loaded — remove this line and add the set again.</li>
                     )}
                   </ul>
                 </td>

@@ -12,7 +12,7 @@ import { stackScreenOptions, theme } from './shared/theme';
 const Stack = createNativeStackNavigator();
 
 function MainStack() {
-  const { loading, userEmail, userDisplayName, allowed } = useProductionAccessGrant();
+  const { loading, userEmail, userDisplayName, allowed, refresh } = useProductionAccessGrant();
 
   if (loading) {
     return (
@@ -31,6 +31,7 @@ function MainStack() {
             userEmail={userEmail}
             userDisplayName={userDisplayName}
             allowed={allowed}
+            onRefreshAccess={refresh}
           />
         )}
       </Stack.Screen>

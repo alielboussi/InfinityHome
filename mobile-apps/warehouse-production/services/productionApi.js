@@ -1,29 +1,9 @@
-import Constants from 'expo-constants';
-import { getFirebaseIdToken } from '../shared/firebase';
-
-function apiBase() {
-  return String(Constants.expoConfig?.extra?.apiBase || 'https://www.infinity-home.online').replace(/\/+$/, '');
-}
+import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
 const CLIENT_SOURCE = 'warehouse_production_app';
 
 async function productionOp(op, body = {}) {
-  const token = await getFirebaseIdToken();
-  if (!token) throw new Error('Authentication required');
-  const response = await fetch(`${apiBase()}/api/warehouse-mobile`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ op, ...body }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || `Request failed (${response.status})`);
-  }
-  return payload;
+  return warehouseMobileRequest(op, body);
 }
 
 export async function fetchProductionAccess() {

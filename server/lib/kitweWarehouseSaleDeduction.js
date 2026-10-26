@@ -61,6 +61,11 @@ export async function applyKitweWarehouseSaleDeduction(sb, { locationId, lines =
   for (const line of normalized) {
     const assembly = assemblyById.get(line.assembly_id);
     const isSet = line.kind === 'set' || isWarehouseSetAssembly(assembly);
+    if (line.kind === 'restock') {
+      await adjustAssemblyInventory(sb, line.assembly_id, locId, line.quantity);
+      adjusted += 1;
+      continue;
+    }
     if (isSet) {
       const components = expandedSetItems.filter(
         (row) => String(row.set_assembly_id) === line.assembly_id

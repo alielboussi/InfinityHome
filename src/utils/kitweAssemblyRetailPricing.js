@@ -80,6 +80,7 @@ export function applyKitweAssemblyPosPricing({
   retailIndex,
   categoriesById,
   isSet = false,
+  kitweComponents = [],
 }) {
   const retail = resolveRetailProductForAssembly(assembly, retailIndex);
   const categoryId = assembly?.category_id || retail?.category_id || null;
@@ -124,6 +125,7 @@ export function applyKitweAssemblyPosPricing({
       kitweWarehouseSet: true,
       isSet: true,
       combo_name: common.name,
+      kitweComponents: kitweComponents || [],
     };
   }
 

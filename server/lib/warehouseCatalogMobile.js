@@ -33,6 +33,17 @@ const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 
 const WAREHOUSE_ITEM_KIND = Object.freeze({ PRODUCT: 'product', PACKET: 'packet' });
 
+function throwIfDatastoreError(err, fallback) {
+  if (!err) return;
+  let msg = '';
+  if (typeof err === 'string') msg = err;
+  else if (typeof err?.message === 'string') msg = err.message;
+  else if (err?.message != null && typeof err.message !== 'object') msg = String(err.message);
+  else if (typeof err?.code === 'string') msg = err.code;
+  msg = String(msg || '').trim();
+  throw new Error(msg || fallback);
+}
+
 const MOBILE_ASSEMBLY_FIELDS = [
   'id',
   'name',
@@ -73,8 +84,8 @@ export async function fetchCatalogForMobile(sb) {
     sb.from(PACKETS).select(MOBILE_PACKET_FIELDS).order('packet_number', { ascending: true }),
   ]);
 
-  if (locationsErr) throw new Error(locationsErr.message || 'Failed to load locations');
-  if (packetsErr) throw new Error(packetsErr.message || 'Failed to load packets');
+  throwIfDatastoreError(locationsErr, 'Failed to load locations');
+  throwIfDatastoreError(packetsErr, 'Failed to load packets');
 
   const warehouseLocation = resolveWarehouseLocation(locations, { packets });
   const warehouseLocationId = warehouseLocation?.id ?? null;
@@ -104,13 +115,13 @@ export async function fetchCatalogForMobile(sb) {
     assemblyInvQuery,
   ]);
 
-  if (assembliesErr) throw new Error(assembliesErr.message || 'Failed to load products');
-  if (assemblyColorsErr) throw new Error(assemblyColorsErr.message || 'Failed to load colors');
-  if (assemblyPacketsErr) throw new Error(assemblyPacketsErr.message || 'Failed to load packet links');
-  if (colorsErr) throw new Error(colorsErr.message || 'Failed to load variant colors');
-  if (categoriesErr) throw new Error(categoriesErr.message || 'Failed to load categories');
-  if (inventoryErr) throw new Error(inventoryErr.message || 'Failed to load packet stock');
-  if (assemblyInvErr) throw new Error(assemblyInvErr.message || 'Failed to load finished stock');
+  throwIfDatastoreError(assembliesErr, 'Failed to load products');
+  throwIfDatastoreError(assemblyColorsErr, 'Failed to load colors');
+  throwIfDatastoreError(assemblyPacketsErr, 'Failed to load packet links');
+  throwIfDatastoreError(colorsErr, 'Failed to load variant colors');
+  throwIfDatastoreError(categoriesErr, 'Failed to load categories');
+  throwIfDatastoreError(inventoryErr, 'Failed to load packet stock');
+  throwIfDatastoreError(assemblyInvErr, 'Failed to load finished stock');
 
   return attachWarehouseStockTotals({
     assemblies: assemblies || [],

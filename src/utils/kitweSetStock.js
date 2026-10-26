@@ -1,4 +1,5 @@
 import { KITWE_LOCATION_ID } from '../constants/warehouseShowroomLocations';
+import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
 import { assemblableSetUnits } from './warehouseSetMath';
 import { expandWarehouseSetItemsRows } from './warehouseSetItems';
@@ -52,10 +53,11 @@ export function listKitweWarehouseSets(assemblies, setItems, assemblyInventory) 
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
+/** Kitwe products with stock > 0 — for set create dropdown (stock re-checked on save). */
 export function kitweProductAssemblyOptions(assemblies, assemblyInventory) {
   const qtyByAssembly = kitweQtyByAssembly(assemblyInventory);
   return (assemblies || [])
-    .filter((a) => !isWarehouseSetAssembly(a))
+    .filter((a) => isWarehouseProductAssembly(a))
     .filter((a) => (qtyByAssembly.get(String(a.id)) ?? 0) > 0)
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }

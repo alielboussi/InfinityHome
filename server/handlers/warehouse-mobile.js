@@ -86,7 +86,9 @@ function getService() {
 function warehouseMobileErrorMessage(err) {
   if (!err) return 'Warehouse mobile request failed';
   if (typeof err === 'string') return err;
-  if (typeof err.message === 'string' && err.message.trim()) return err.message;
+  const msg = err.message;
+  if (typeof msg === 'string' && msg.trim() && msg !== '[object Object]') return msg.trim();
+  if (typeof err.details === 'string' && err.details.trim()) return err.details.trim();
   return 'Warehouse mobile request failed';
 }
 
@@ -1119,6 +1121,9 @@ export default async function handler(req, res) {
         result = await opDeliveryAccept(body, user);
         break;
       case 'production-access-self':
+        if (!user?.id || !user?.email) {
+          return res.status(401).json({ ok: false, error: 'Authentication required' });
+        }
         result = await opProductionAccessSelf(user);
         break;
       case 'packet-name-check':

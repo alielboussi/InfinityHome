@@ -5,6 +5,7 @@ const UI_STRINGS = {
   preset3Seater: { en: '3 seater', ar: 'ثلاث مقاعد' },
   preset2Seater: { en: '2 seater', ar: 'مقعدان' },
   presetSingleSeater: { en: 'Single seater', ar: 'مقعد واحد' },
+  presetLounge: { en: 'Lounge', ar: 'كرسي استرخاء' },
   subtitle: {
     en: 'Create in-house seating items (saved as warehouse packets).',
     ar: 'إنشاء قطع جلوس داخلية (تُحفظ كحزم في المستودع).',
@@ -45,6 +46,7 @@ const UI_STRINGS = {
     ar: 'لم يُعثر على موقع المستودع. أضف موقعًا باسم Warehouse.',
   },
   accessDenied: { en: 'You do not have access to production.', ar: 'لا تملك صلاحية الإنتاج.' },
+  retryAccess: { en: 'Check access again', ar: 'تحقق من الصلاحية مرة أخرى' },
   loading: { en: 'Loading…', ar: 'جاري التحميل…' },
   dashTitle: { en: 'Upholstery Production', ar: 'إنتاج التنجيد' },
   dashCreate: { en: 'Create new item', ar: 'إنشاء قطعة جديدة' },
@@ -60,6 +62,16 @@ const UI_STRINGS = {
   stockTitle: { en: 'Add production stock', ar: 'إضافة مخزون إنتاج' },
   stockSearch: { en: 'Search name or scan barcode', ar: 'ابحث بالاسم أو امسح الباركود' },
   keyboardBtn: { en: 'Keyboard', ar: 'لوحة المفاتيح' },
+  stockQrBtn: { en: 'QR', ar: 'QR' },
+  stockQrTitle: { en: 'Scan QR or barcode', ar: 'مسح QR أو الباركود' },
+  stockQrHint: {
+    en: 'Point at Image Qr, Product Name Qr, or the SKU barcode on the label.',
+    ar: 'وجّه الكاميرا نحو QR الصورة، QR اسم المنتج، أو باركود SKU على الملصق.',
+  },
+  stockQrAllowCamera: {
+    en: 'Allow camera to scan',
+    ar: 'السماح للكاميرا للمسح',
+  },
   stockSave: { en: 'Save stock increase', ar: 'حفظ زيادة المخزون' },
   stockIncreaseLabel: { en: 'Units to add', ar: 'الوحدات المضافة' },
   stockCurrent: { en: 'Warehouse qty now', ar: 'كمية المستودع الحالية' },
@@ -81,6 +93,7 @@ const PRESET_I18N = {
   '3 Seater': 'preset3Seater',
   '2 Seater': 'preset2Seater',
   'Single Seater': 'presetSingleSeater',
+  'Lounge Chair': 'presetLounge',
 };
 
 export function presetLabel(preset, locale) {

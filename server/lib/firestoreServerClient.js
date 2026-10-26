@@ -45,8 +45,29 @@ function ok(data) {
   return { data, error: null };
 }
 
+function normalizeFailMessage(message, fallback = 'Firestore request failed') {
+  if (message == null || message === '') return fallback;
+  if (typeof message === 'string') {
+    const trimmed = message.trim();
+    return trimmed || fallback;
+  }
+  if (typeof message === 'number' || typeof message === 'boolean') return String(message);
+  if (typeof message === 'object') {
+    const nested = message.message;
+    if (typeof nested === 'string' && nested.trim()) return nested.trim();
+    if (typeof nested === 'number' || typeof nested === 'boolean') return String(nested);
+    try {
+      const json = JSON.stringify(message);
+      if (json && json !== '{}') return json;
+    } catch {
+      // ignore
+    }
+  }
+  return fallback;
+}
+
 function fail(message, code) {
-  return { data: null, error: { message, code: code || 'firestore' } };
+  return { data: null, error: { message: normalizeFailMessage(message), code: code || 'firestore' } };
 }
 
 function withoutUndefined(obj) {

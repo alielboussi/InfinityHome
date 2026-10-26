@@ -67,7 +67,14 @@ export default function ProductionUserAccessEditor({ userRow, onClose, onSaved }
     setBusy(true);
     setError('');
     try {
-      const payload = sanitizeMobileAccessGrantForUser(grant, userRow.email);
+      const mergedForSave = {
+        ...(userRow?.mobile_access && typeof userRow.mobile_access === 'object'
+          ? userRow.mobile_access
+          : {}),
+        ...grant,
+        warehouse_production_app: grant.warehouse_production_app,
+      };
+      const payload = sanitizeMobileAccessGrantForUser(mergedForSave, userRow.email);
       const updated = await saveMobileAccess(
         userRow.id,
         payload,
