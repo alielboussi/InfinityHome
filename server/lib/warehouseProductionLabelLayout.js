@@ -24,7 +24,8 @@ export const QR_SIZE_MM = 9;
 
 /** Each QR in the dual-QR row (must fit two across 80 mm label). */
 export const QR_PAIR_SIZE_MM = 12;
-export const QR_PAIR_GAP_MM = 6;
+/** Clear space between the two QR symbols (4 cm) so cameras do not read both at once. */
+export const QR_PAIR_GAP_MM = 40;
 export const QR_CAPTION_HEIGHT_MM = 3;
 export const QR_CAPTION_FONT_PT = 9;
 
@@ -95,7 +96,7 @@ export function computeProductionLabelLayout({
   const qrPairWidthMm = QR_PAIR_SIZE_MM * 2 + QR_PAIR_GAP_MM;
   const imageQrLeftMm = centerXMm - qrPairWidthMm / 2;
   const nameQrLeftMm = imageQrLeftMm + QR_PAIR_SIZE_MM + QR_PAIR_GAP_MM;
-  const qrColumnWidthMm = QR_PAIR_SIZE_MM + 6;
+  const qrColumnWidthMm = Math.max(QR_PAIR_SIZE_MM + 6, QR_PAIR_GAP_MM * 0.45);
   const imageQrLabelLeftMm = imageQrLeftMm + QR_PAIR_SIZE_MM / 2 - qrColumnWidthMm / 2;
   const nameQrLabelLeftMm = nameQrLeftMm + QR_PAIR_SIZE_MM / 2 - qrColumnWidthMm / 2;
   y = block.nextY;
