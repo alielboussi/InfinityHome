@@ -13,6 +13,10 @@ import {
   mmToDots,
   zebraQrMagnification,
 } from './warehouseProductionLabelLayout.js';
+import {
+  formatProductionLabelBlockDate,
+  formatProductionLabelBlockTime,
+} from './warehouseProductionLabelCatTime.js';
 
 function zplEscape(value) {
   return String(value || '')
@@ -20,21 +24,6 @@ function zplEscape(value) {
     .replace(/\\/g, ' ')
     .replace(/\^/g, ' ')
     .replace(/~/g, ' ');
-}
-
-function formatBlockDate(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = String(d.getFullYear());
-  return `${dd}     /     ${mm}     /     ${yyyy}`;
-}
-
-function formatBlockTime(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}     :     ${min}`;
 }
 
 function qrEscape(data) {
@@ -70,8 +59,8 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
   const skuText = zplEscape(opts.sku).toUpperCase();
   const nameRaw = String(opts.name || '').trim();
   const nameText = zplEscape(nameRaw);
-  const dateText = zplEscape(formatBlockDate(printedAt));
-  const timeText = zplEscape(formatBlockTime(printedAt));
+  const dateText = zplEscape(formatProductionLabelBlockDate(printedAt));
+  const timeText = zplEscape(formatProductionLabelBlockTime(printedAt));
   const photoQrUrl = String(opts.imageQrUrl || '').trim()
     || buildProductPhotoQrUrl(String(opts.sku || '').trim());
   const imageQr = qrEscape(photoQrUrl);
@@ -136,4 +125,8 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
   return `${lines.join('\n')}\n`;
 }
 
-export { COMPANY_NAME, formatBlockDate, formatBlockTime };
+export {
+  COMPANY_NAME,
+  formatProductionLabelBlockDate as formatBlockDate,
+  formatProductionLabelBlockTime as formatBlockTime,
+};

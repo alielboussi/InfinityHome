@@ -8,6 +8,7 @@ import {
 } from './zebraSendFileToPrinter.js';
 import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import { buildWarehouseProductionLabelZpl } from './zebraProductionLabelZpl.js';
+import { formatProductionLabelBlockDate } from './warehouseProductionLabelCatTime.js';
 
 export async function enqueueWarehouseProductionLabelJob(db, {
   name,
@@ -66,7 +67,7 @@ export async function enqueueWarehouseProductionLabelJob(db, {
   const payload = {
     job_type: 'warehouse_production',
     source,
-    print_date: printedAt.toLocaleDateString('en-GB'),
+    print_date: formatProductionLabelBlockDate(printedAt),
     printed_at: printedAt.toISOString(),
     printed_by: operator,
     items: [{ name: labelName, sku: labelSku, qty: copies, zpl, image_qr_url: imageQrUrl }],
