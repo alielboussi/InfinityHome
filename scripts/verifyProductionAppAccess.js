@@ -12,10 +12,6 @@ const sharedManifestSrc = fs.readFileSync(
   path.join(root, 'mobile-apps/shared/mobileAccessManifest.js'),
   'utf8',
 );
-const productionSharedSrc = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/shared/mobileAccessManifest.js'),
-  'utf8',
-);
 const loginAccessSrc = fs.readFileSync(
   path.join(root, 'server/lib/loginAccess.js'),
   'utf8',
@@ -38,10 +34,9 @@ function extractAdminEmail(src) {
 const emails = [
   extractAdminEmail(manifestSrc),
   extractAdminEmail(sharedManifestSrc),
-  extractAdminEmail(productionSharedSrc),
 ].filter(Boolean);
 
-assert(emails.length === 3, 'PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL missing from manifests');
+assert(emails.length === 2, 'PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL missing from manifests');
 assert(
   new Set(emails).size === 1,
   `Admin email mismatch across manifests: ${emails.join(', ')}`,
@@ -60,8 +55,8 @@ assert(
   'mobile-apps/shared manifest must export evaluateWarehouseProductionAppAccess',
 );
 assert(
-  productionSharedSrc.includes('evaluateWarehouseProductionAppAccess'),
-  'warehouse-production shared manifest must export evaluateWarehouseProductionAppAccess',
+  hookSrc.includes("from '../shared/mobileAccessManifest'"),
+  'Production app hook must import mobile access helpers from mobile-apps/shared (via postinstall link)',
 );
 
 assert(
