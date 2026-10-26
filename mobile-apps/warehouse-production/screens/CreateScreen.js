@@ -183,7 +183,7 @@ export default function CreateScreen({ navigation }) {
     Alert.alert(tUi('saveFailedTitle', locale), msg);
   };
 
-  const finishSaveWithPhoto = async (imageBase64) => {
+  const finishSaveWithPhoto = async (photoSource) => {
     const pending = pendingSaveRef.current;
     if (!pending?.name || !pending.warehouseLocationId) {
       showSaveFailure('Save data was lost. Tap Save production item again.');
@@ -200,7 +200,7 @@ export default function CreateScreen({ navigation }) {
       const available = await ensureProductNameAvailable(pending.name);
       if (!available) return;
 
-      const uploadPhoto = await prepareProductionPhotoForUpload(imageBase64);
+      const uploadPhoto = await prepareProductionPhotoForUpload(photoSource);
       const result = await createProductionPacket({
         name: pending.name,
         warehouseLocationId: pending.warehouseLocationId,

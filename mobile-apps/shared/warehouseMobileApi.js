@@ -69,8 +69,14 @@ export async function warehouseMobileRequest(op, body = {}) {
     }
   }
   if (!response.ok || payload?.ok === false) {
+    const rawError = formatWarehouseMobileApiError(payload?.error, `Request failed (${response.status})`);
+    const tooLarge = response.status === 413
+      || /entity too large/i.test(rawError)
+      || /entity too large/i.test(rawBody);
     const err = new Error(
-      formatWarehouseMobileApiError(payload?.error, `Request failed (${response.status})`),
+      tooLarge
+        ? 'Photo upload is too large. Retake the photo (move closer) or reload the app after updating.'
+        : rawError,
     );
     err.details = payload?.details || null;
     err.status = response.status;

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Linking,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -12,7 +11,6 @@ import {
 import { CameraView } from 'expo-camera';
 import { theme } from '../shared/theme';
 import { tUi } from '../lib/productionKioskI18n';
-import { toProductionPhotoDataUri } from '../lib/productionPhotoCapture';
 import {
   askProductionCameraPermission,
   readProductionCameraPermission,
@@ -86,17 +84,16 @@ export default function ProductionPhotoCaptureModal({
     setCapturing(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        base64: true,
-        quality: 0.85,
+        base64: false,
+        quality: 0.5,
         exif: false,
-        skipProcessing: Platform.OS === 'android',
+        skipProcessing: false,
       });
-      const dataUri = toProductionPhotoDataUri(photo);
-      if (!dataUri) {
+      if (!photo?.uri) {
         setCaptureError('Could not read the photo. Try again.');
         return;
       }
-      onCaptured(dataUri);
+      onCaptured(photo);
     } catch (err) {
       setCaptureError(err?.message || 'Could not take photo.');
     } finally {
