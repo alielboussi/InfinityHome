@@ -23,7 +23,6 @@ import { brandLogoOnError, preloadBrandAssets, STATIC_BRAND_LOGO, STATIC_BRAND_S
 import { buildPriceLabelFilename, renderLabelNodeToCanvas, waitForLayout } from './utils/labelPdfCapture';
 import { buildLabelImageQrValue } from './utils/labelImageQr';
 import { matchesComboId } from './utils/comboId';
-
 const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v3';
 
 // PriceLabels: search, select, and print/export two-up A4 labels
@@ -31,7 +30,6 @@ const PriceLabels = () => {
   const [catalogProducts, setCatalogProducts] = useState([]);
   const [catalogCombos, setCatalogCombos] = useState([]);
   const [comboItems, setComboItems] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [locations, setLocations] = useState([]);
   const [labelLocationId, setLabelLocationId] = useState('');
   const [productLocationPrices, setProductLocationPrices] = useState([]);
@@ -45,9 +43,6 @@ const PriceLabels = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [selected, setSelected] = useState([]); // { type, id, data, qty }
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [categoryId, setCategoryId] = useState('');
-  const [categoryQty, setCategoryQty] = useState('1');
-  const [categoryBulkMessage, setCategoryBulkMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const sendRenderRef = useRef(null);
   const addedOrderRef = useRef(1);
@@ -150,7 +145,6 @@ const PriceLabels = () => {
             if (sharedCatalog.comboLocationPrices?.length) {
               setComboLocationPrices(sharedCatalog.comboLocationPrices);
             }
-            if (sharedCatalog.categories?.length) setCategories(sharedCatalog.categories);
             if (sharedCatalog.locations?.length) setLocations(sharedCatalog.locations);
           }
           const cachedPrices = cacheGet(locationPriceCacheKey);
@@ -163,7 +157,6 @@ const PriceLabels = () => {
             setComboLocationPrices(cachedPrices.comboLocationPrices || []);
           }
           const ci = cacheGet('labels:comboItems:v6'); if (ci) setComboItems(ci);
-          const cat = cacheGet('labels:categories:v6'); if (cat) setCategories(cat);
           const loc = cacheGet('labels:locations:v1'); if (loc) setLocations(loc);
           const co = cacheGet('labels:company:v6'); if (co) setCompany(co);
         } catch {}
@@ -228,12 +221,6 @@ const PriceLabels = () => {
           comboLocationPrices: comboLocationPriceRows,
         }, 10 * 60 * 1000);
       } catch {}
-
-      const { data: categoriesData } = await db.from('categories').select('id, name').order('name', { ascending: true });
-      if (fetchSeq !== fetchSeqRef.current) return;
-      const nextCategories = categoriesData || [];
-      setCategories(nextCategories);
-      try { cacheSet('labels:categories:v6', nextCategories, 10 * 60 * 1000); } catch {}
 
       const { data: ci } = await db.from('combo_items').select('*');
       if (fetchSeq !== fetchSeqRef.current) return;
@@ -346,39 +333,6 @@ const PriceLabels = () => {
     });
   };
 
-  const addCategoryProducts = () => {
-    const catKey = String(categoryId || '').trim();
-    if (!catKey) {
-      alert('Select a category first.');
-      return;
-    }
-    const qty = normalizeQty(categoryQty);
-    const matches = catalogProducts.filter((product) => String(product.category_id) === catKey);
-    if (!matches.length) {
-      alert('No products found in this category.');
-      return;
-    }
-
-    setSelected((prev) => {
-      const next = [...prev];
-      matches.forEach((product) => {
-        const item = { type: 'product', id: product.id };
-        const idx = next.findIndex((s) => s.type === item.type && s.id === item.id);
-        if (idx === -1) {
-          next.push({ ...item, qty, addedOrder: getNextAddedOrder(), printStandardOnly: false });
-        } else {
-          next[idx] = {
-            ...next[idx],
-            qty: normalizeQty(next[idx].qty) + qty,
-          };
-        }
-      });
-      return next;
-    });
-
-    const categoryName = categories.find((cat) => String(cat.id) === catKey)?.name || 'category';
-    setCategoryBulkMessage(`Added ${matches.length} product${matches.length === 1 ? '' : 's'} from ${categoryName} (qty ${qty} each).`);
-  };
   // Add and clear search box/results
   const handleAdd = (item) => {
     const priced = getPricedCatalogItem(item.type, item.id);
@@ -489,7 +443,6 @@ const PriceLabels = () => {
 
   const waitForLayoutOnly = () => waitForLayout();
 
-  // Build PDF from the offscreen render, upload it, then post to the WhatsApp group.
   const sendToWhatsApp = async () => {
     if (selected.length === 0 || isSending) return;
     if (!assetsReady) {
@@ -677,78 +630,50 @@ const PriceLabels = () => {
         <BackToDashboard />
         <h2 style={{ margin: 0 }}>Print Labels</h2>
       </div>
-      <div className="label-toolbar">
-        <input
-          className="label-toolbar-search"
-          placeholder="Search products or sets..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button
-          type="button"
-          className="label-refresh-btn"
-          onClick={() => fetchLabelData({ showLoading: true, bustCache: true })}
-          disabled={isRefreshing}
-        >
-          {isRefreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
+      <p className="price-labels-mode-hint">
+        Large shelf labels: Save as PDF or send via WhatsApp (A4, two per page). Warehouse Zebra labels
+        print automatically from Production when you create packets or add stock.
+      </p>
+      <div className="label-toolbar label-toolbar--headed" role="group" aria-label="Label filters">
+        <label className="label-toolbar-heading" htmlFor="price-labels-location">Location</label>
+        <label className="label-toolbar-heading" htmlFor="price-labels-product">Product name</label>
+        <span className="label-toolbar-heading label-toolbar-heading--empty" aria-hidden="true">&#8203;</span>
+
         <select
-          className="label-category-bulk-control label-toolbar-category"
+          id="price-labels-location"
+          className="label-toolbar-control label-toolbar-control--select"
           value={labelLocationId}
           onChange={(e) => setLabelLocationId(e.target.value)}
-          aria-label="Label pricing location"
         >
           <option value="">Select location</option>
           {locations.map((loc) => (
             <option key={loc.id} value={loc.id}>{loc.name}</option>
           ))}
         </select>
-        <select
-          className="label-category-bulk-control label-toolbar-category"
-          value={categoryId}
-          onChange={(e) => {
-            setCategoryId(e.target.value);
-            setCategoryBulkMessage('');
-          }}
-          aria-label="Category for bulk add"
-        >
-          <option value="">Select category</option>
-          {categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>{cat.name}</option>
-          ))}
-        </select>
         <input
-          className="label-category-bulk-control label-toolbar-qty"
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          placeholder="Qty"
-          value={categoryQty}
-          onChange={(e) => {
-            setCategoryQty(e.target.value.replace(/[^\d]/g, ''));
-            setCategoryBulkMessage('');
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              addCategoryProducts();
-            }
-          }}
-          aria-label="Quantity for each product in category"
+          id="price-labels-product"
+          type="search"
+          className="label-toolbar-control label-toolbar-control--search"
+          placeholder="Search products or sets..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          autoComplete="off"
         />
-        <button type="button" className="label-category-bulk-btn" onClick={addCategoryProducts}>
-          Add category
+        <button
+          type="button"
+          className="label-toolbar-control label-toolbar-control--btn label-refresh-btn"
+          onClick={() => fetchLabelData({ showLoading: true, bustCache: true })}
+          disabled={isRefreshing}
+        >
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
-      {categoryBulkMessage ? (
-        <div className="label-category-bulk-message" role="status">{categoryBulkMessage}</div>
-      ) : null}
 
       {search && searchResults.length > 0 && (
         <div className="label-search-results">
           {labelLocationId && selectedLocationName ? (
             <div className="label-search-results-note">
-              Prices shown for {selectedLocationName}
+              Standard and promo prices for {selectedLocationName}
             </div>
           ) : null}
           <ul className="search-list">
@@ -838,6 +763,7 @@ const PriceLabels = () => {
                       >
                         <input
                           type="checkbox"
+                          className="labels-table-std-checkbox"
                           checked={Boolean(s.printStandardOnly)}
                           onChange={() => togglePrintStandardOnly(s)}
                           aria-label={`Print ${s.type === 'product' ? pricedItem.name : pricedItem.combo_name} at standard price only`}

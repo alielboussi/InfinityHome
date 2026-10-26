@@ -7,7 +7,7 @@ import {
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
   FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag
 } from 'react-icons/fa';
-import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute, isWarehouseProductionKioskPath, canManageCatalog } from './accessControl';
+import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute, canManageCatalog } from './accessControl';
 import { preloadAppRoute } from './lazyPages';
 import { isShopPublicPath } from './utils/shopConstants';
 
@@ -228,7 +228,6 @@ export default function AppChrome() {
   const isPublicCount = isPublicAppRoute(path);
   const isShopRoute = isShopPublicPath(path);
   const isKioskStock = path.toLowerCase() === '/lusaka-stock';
-  const isProductionKiosk = isWarehouseProductionKioskPath(path);
   const hasUser = Boolean(user);
   const quotationerOnly = isQuotationerOnlyUser(user);
   const homePath = getHomeDashboardPath(user);
@@ -236,12 +235,12 @@ export default function AppChrome() {
   React.useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     // Count page is a standalone mobile surface — no pinned sidebar.
-    const pinned = hasUser && !isLogin && !isPublicCount && !isKioskStock && !isShopRoute && !isProductionKiosk;
+    const pinned = hasUser && !isLogin && !isPublicCount && !isKioskStock && !isShopRoute;
     document.body.classList.toggle('ent-sidebar-pinned', pinned);
     return () => {
       try { document.body.classList.remove('ent-sidebar-pinned'); } catch {}
     };
-  }, [isLogin, isPublicCount, isKioskStock, isShopRoute, isProductionKiosk, hasUser, user]);
+  }, [isLogin, isPublicCount, isKioskStock, isShopRoute, hasUser, user]);
 
   const visibleGroups = React.useMemo(() => dedupeNavGroups((quotationerOnly ? QUOTATIONER_ONLY_NAV_GROUPS : NAV_GROUPS)
     .map(group => {
@@ -260,7 +259,7 @@ export default function AppChrome() {
     }))
     .filter(group => group.items.length > 0)), [quotationerOnly, user]);
 
-  if (isLogin || isPublicCount || isKioskStock || isShopRoute || isProductionKiosk || !user) return null;
+  if (isLogin || isPublicCount || isKioskStock || isShopRoute || !user) return null;
 
   const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
   const title = titleForPath(path, user, location.search);

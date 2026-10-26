@@ -12,6 +12,9 @@ export const theme = {
   primary: '#38bdf8',
   primaryDark: '#0ea5e9',
   primaryBg: '#0c4a6e',
+  /** Aliases used by kiosk UI */
+  muted: '#94a3b8',
+  card: '#1e293b',
   success: '#4ade80',
   danger: '#f87171',
   radius: 12,

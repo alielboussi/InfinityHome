@@ -43,7 +43,11 @@ function MainStack() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <FirebaseAuthGate title="Upholstery Production" showUserBar={false} signInMethods="google">
+      <FirebaseAuthGate
+        title="Upholstery Production"
+        showUserBar={false}
+        signInMethods={__DEV__ ? 'both' : 'google'}
+      >
         <NavigationContainer>
           <MainStack />
         </NavigationContainer>

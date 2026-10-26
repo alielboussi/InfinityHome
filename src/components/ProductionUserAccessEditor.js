@@ -132,9 +132,10 @@ export default function ProductionUserAccessEditor({ userRow, onClose, onSaved }
               }))}
             />
             <label className="mobile-access-permission-item__body" htmlFor="mobile-access-production-app">
-              <span className="mobile-access-permission-item__title">Production app access</span>
+              <span className="mobile-access-permission-item__title">Upholstery Production (Android)</span>
               <span className="mobile-access-permission-item__desc">
-                Dashboard: create new items and increase warehouse stock. Labels print through Zebra cloud (no print PC).
+                Create seating items and stock-in at the warehouse. Activity appears on Production Report.
+                Labels print via Zebra cloud Weblink.
               </span>
             </label>
           </div>

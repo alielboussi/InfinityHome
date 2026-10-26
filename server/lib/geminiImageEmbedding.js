@@ -10,8 +10,17 @@ export function getGeminiApiKey() {
   return String(process.env.GEMINI_API_KEY || '').trim();
 }
 
+/** Upholstery Production app — seating photo retouch (separate key from catalog / other apps). */
+export function getGeminiProductionApiKey() {
+  return String(process.env.GEMINI_API_KEY_PRODUCTION || '').trim();
+}
+
 export function isGeminiEmbeddingEnabled() {
   return Boolean(getGeminiApiKey());
+}
+
+export function isGeminiProductionPhotoEnabled() {
+  return Boolean(getGeminiProductionApiKey());
 }
 
 function buildEmbeddingParts(jpegBuffer, text) {

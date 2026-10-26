@@ -1,3 +1,4 @@
+import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import { buildWarehouseProductionLabelZpl } from './zebraProductionLabelZpl.js';
 
 const ZEBRA_SEND_URL = 'https://api.zebra.com/v2/devices/printers/send';
@@ -54,12 +55,13 @@ export async function sendWarehouseProductionLabelToZebra({
   imageQrUrl,
 }) {
   const at = printedAt ? new Date(printedAt) : new Date();
+  const cleanSku = String(sku || '').trim();
   const zpl = buildWarehouseProductionLabelZpl({
     name,
-    sku,
+    sku: cleanSku,
     copies: qty,
     printedAt: at,
-    imageQrUrl,
+    imageQrUrl: String(imageQrUrl || '').trim() || buildProductPhotoQrUrl(cleanSku),
   });
   return sendZplToZebraPrinter({ zpl });
 }

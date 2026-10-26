@@ -26,12 +26,18 @@ import {
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
-  isWarehouseProductionOperatorAllowed,
+  isWarehouseProductionAppAllowed,
   isWarehouseProductStockQtyEditAllowed,
   isWarehouseProductTurkishSyncAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
 import { canManageCatalog } from '../../src/accessControl.js';
-import { buildProductionItemName, normalizeWarehousePacketNameKey } from '../../src/utils/productionItemName.js';
+import {
+  buildProductionItemName,
+  extractProductionBaseName,
+  matchProductionGirlNameFromPool,
+  normalizeWarehousePacketNameKey,
+} from '../../src/utils/productionItemName.js';
+import { attachProductionPacketCatalogPhoto } from '../lib/productionPacketCatalogPhoto.js';
 import { suggestUniqueProductionBaseName } from '../lib/productionSuggestBaseName.js';
 import { titleCaseWords } from '../../src/utils/titleCaseWords.js';
 import {
@@ -213,6 +219,10 @@ async function opProductionPacketCreate(body, user) {
   if (!sku || !name) throw new Error('SKU and name are required.');
   if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
   await assertUniquePacketName(sb, name);
+  const lineBase = extractProductionBaseName(name);
+  if (lineBase && await isProductionBaseNameTaken(sb, lineBase)) {
+    throw new Error(`A product named "${lineBase}" already exists. Choose a different name.`);
+  }
   await assertUniqueSku(sb, sku);
 
   const now = new Date().toISOString();
@@ -247,26 +257,51 @@ async function opProductionPacketCreate(body, user) {
     warehouseLocationId,
   });
 
-  const printedAt = new Date();
-  const printSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
-  const labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
-    name: row.name,
-    sku: row.sku,
-    qty: Math.max(1, initialQty),
-    printedBy: user?.full_name || user?.display_name || user?.email,
-    source: printSource,
-    printedAt,
-  });
+  const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+  const requiresPhoto = clientSource === 'warehouse_production_app'
+    || body.require_product_photo === true
+    || body.requireProductPhoto === true;
 
-  const preview = await buildProductionLabelPreviewPayload({
-    name: row.name,
-    sku: row.sku,
-    printedAt,
-  });
+  let catalogImageUrl = null;
+  if (imageBase64) {
+    catalogImageUrl = await attachProductionPacketCatalogPhoto(sb, {
+      packet: row,
+      imageBase64,
+      productName: name,
+    });
+  } else if (requiresPhoto) {
+    throw new Error('Take a product photo before saving (camera required).');
+  }
+
+  const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
+  const printedAt = new Date();
+  const printSource = clientSource;
+  let labelJobId = null;
+  if (labelCopies > 0) {
+    labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+      name: row.name,
+      sku: row.sku,
+      qty: labelCopies,
+      printedBy: user?.full_name || user?.display_name || user?.email,
+      source: printSource,
+      printedAt,
+    });
+  }
+
+  const preview = labelCopies > 0
+    ? await buildProductionLabelPreviewPayload({
+      name: row.name,
+      sku: row.sku,
+      printedAt,
+    })
+    : { label: null, label_preview_png_base64: null };
 
   return {
     packet: row,
     created_by: user?.email || null,
+    catalog_image_url: catalogImageUrl,
+    label_copies: labelCopies,
     label_job_id: labelJobId,
     label: preview.label,
     label_preview_png_base64: preview.label_preview_png_base64,
@@ -334,6 +369,7 @@ async function opProductionStockIncrease(body, user) {
     qty_before: qtyBefore,
     qty_after: qtyAfter,
     warehouse_location_id: warehouseLocationId,
+    label_copies: delta,
     label_job_id: labelJobId,
     label: preview.label,
     label_preview_png_base64: preview.label_preview_png_base64,
@@ -505,6 +541,18 @@ async function opProductionEditStockIncrease(body, user) {
   return { log: updated, packet_id: packetId, warehouse_location_id: locationId };
 }
 
+async function isProductionBaseNameTaken(sb, baseName, { excludePacketId } = {}) {
+  const key = normalizeWarehousePacketNameKey(baseName);
+  if (!key) return false;
+  const { data, error } = await sb.from('warehouse_packets').select('id, name');
+  if (error) throw new Error(error.message || 'Failed to validate packet name');
+  return (data || []).some((row) => {
+    if (excludePacketId && String(row.id) === String(excludePacketId)) return false;
+    const rowBase = normalizeWarehousePacketNameKey(extractProductionBaseName(row.name));
+    return rowBase === key;
+  });
+}
+
 async function opPacketNameCheck(body) {
   const name = titleCaseWords(String(body.name || '').trim());
   if (!name) return { taken: false, name: '' };
@@ -512,11 +560,26 @@ async function opPacketNameCheck(body) {
   const key = normalizeWarehousePacketNameKey(name);
   const { data, error } = await sb.from('warehouse_packets').select('id, name');
   if (error) throw new Error(error.message || 'Failed to validate packet name');
+  const excludeId = body.exclude_packet_id || body.excludePacketId || '';
   const clash = (data || []).find(
     (row) => normalizeWarehousePacketNameKey(row.name) === key
-      && String(row.id) !== String(body.exclude_packet_id || body.excludePacketId || ''),
+      && String(row.id) !== String(excludeId),
   );
-  return { taken: Boolean(clash), name, existing: clash?.name || null };
+  if (clash) {
+    return { taken: true, name, existing: clash.name };
+  }
+  const baseKey = normalizeWarehousePacketNameKey(extractProductionBaseName(name));
+  const baseClash = (data || []).find((row) => {
+    if (String(row.id) === String(excludeId)) return false;
+    const rowBase = normalizeWarehousePacketNameKey(extractProductionBaseName(row.name));
+    return rowBase === baseKey && normalizeWarehousePacketNameKey(row.name) !== key;
+  });
+  return {
+    taken: Boolean(baseClash),
+    name,
+    existing: baseClash?.name || null,
+    reason: baseClash ? 'base_name_in_use' : null,
+  };
 }
 
 async function buildProductionLabelPreviewPayload({ name, sku, printedAt }) {
@@ -546,13 +609,18 @@ async function opProductionLabelPreview(body, user) {
 
 async function opProductionSuggestBaseName(body, user) {
   await assertProductionKioskUser(user);
+  const sb = getService();
   const preset = String(body.preset || body.seater_preset || '').trim();
   const baseName = await suggestUniqueProductionBaseName(async (fullName) => {
     const check = await opPacketNameCheck({ name: fullName });
     return Boolean(check.taken);
-  }, preset);
-  const productName = preset ? buildProductionItemName(baseName, preset) : baseName;
-  return { base_name: baseName, product_name: productName, preset: preset || null };
+  }, preset, async (base) => isProductionBaseNameTaken(sb, base));
+  const safeBase = matchProductionGirlNameFromPool(baseName);
+  if (!safeBase) {
+    throw new Error('Could not find an unused name. Enter one manually.');
+  }
+  const productName = preset ? buildProductionItemName(safeBase, preset) : safeBase;
+  return { base_name: safeBase, product_name: productName, preset: preset || null };
 }
 
 async function opPacketCreate(body, user) {

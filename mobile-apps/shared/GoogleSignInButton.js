@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
+import { isRunningInExpoGo, requireOptionalNativeModule } from 'expo';
 import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { getFirebaseAuth, signOutFirebase, ensureFirebaseAuthToken } from './firebase';
 import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
@@ -16,7 +17,54 @@ import { readExpoExtra } from './expoExtra';
 WebBrowser.maybeCompleteAuthSession();
 
 function isExpoGo() {
+  try {
+    if (isRunningInExpoGo()) return true;
+  } catch {
+    // ignore
+  }
   return Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+}
+
+function isNativeGoogleSignInLinked() {
+  if (Platform.OS !== 'android' && Platform.OS !== 'ios') return false;
+  try {
+    return requireOptionalNativeModule('RNGoogleSignin') != null;
+  } catch {
+    return false;
+  }
+}
+
+function shouldUseBrowserGoogleOAuth() {
+  if (Platform.OS === 'web') return true;
+  if (isExpoGo()) return true;
+  if (!isNativeGoogleSignInLinked()) return true;
+  return false;
+}
+
+function getExpoProjectFullName() {
+  const extra = readExpoExtra();
+  return String(
+    Constants.expoConfig?.originalFullName
+    || extra.expoProjectFullName
+    || process.env.EXPO_PUBLIC_EXPO_PROJECT_FULL_NAME
+    || '',
+  ).trim();
+}
+
+function authExpoIoRedirectUri(projectFullName) {
+  const fullName = String(projectFullName || '').trim();
+  if (!fullName) return '';
+  const slugPath = fullName.startsWith('@') ? fullName : `@${fullName}`;
+  return `https://auth.expo.io/${slugPath}`;
+}
+
+function getExpoGoRedirectUri() {
+  const fromProject = authExpoIoRedirectUri(getExpoProjectFullName());
+  if (fromProject) return fromProject;
+  return makeRedirectUri({
+    scheme: getAppScheme(),
+    path: 'oauth',
+  });
 }
 
 function getAppScheme() {
@@ -32,14 +80,19 @@ function getAppScheme() {
 function resolveGoogleOAuthConfig() {
   const { webClientId, androidClientId, iosClientId } = getGoogleClientIds();
   const scheme = getAppScheme();
-  const redirectUri = makeRedirectUri({
+  const installedRedirectUri = makeRedirectUri({
     scheme,
     path: 'oauth',
   });
+  const useBrowserOAuth = shouldUseBrowserGoogleOAuth();
+  const projectFullName = getExpoProjectFullName();
+  const redirectUri = useBrowserOAuth && (isExpoGo() || projectFullName)
+    ? getExpoGoRedirectUri()
+    : installedRedirectUri;
 
-  // Expo Go has no native Google module — browser OAuth with the app scheme.
-  // Installed APK/IPA use native Google Sign-In (same as Ledger).
-  if (isExpoGo()) {
+  // Expo Go / dev without native module: browser OAuth + Web client ID.
+  // Release APK with @react-native-google-signin: native sign-in.
+  if (useBrowserOAuth) {
     return {
       webClientId,
       androidClientId: webClientId,
@@ -53,7 +106,7 @@ function resolveGoogleOAuthConfig() {
     webClientId,
     androidClientId,
     iosClientId,
-    redirectUri,
+    redirectUri: installedRedirectUri,
     useBrowserOAuth: false,
   };
 }
@@ -162,6 +215,15 @@ function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled })
       const idToken = await resolveGoogleIdToken(response, GoogleSignin);
       await completeGoogleFirebaseSignIn(idToken, onError, onSuccess);
     } catch (err) {
+      const missingNative = /RNGoogleSignin|TurboModuleRegistry\.getEnforcing/i.test(
+        String(err?.message || err || ''),
+      );
+      if (missingNative) {
+        onError?.(
+          'Google Sign-In native module is not in this build. Use Expo Go for testing, or install the Upholstery Production APK from EAS.',
+        );
+        return;
+      }
       let nativeHelpers = null;
       try {
         nativeHelpers = await loadNativeGoogleSignIn();
@@ -227,7 +289,11 @@ function BrowserGoogleSignInButton({
   return (
     <Pressable
       style={[styles.button, (disabled || busy || !request) && styles.buttonDisabled]}
-      onPress={() => promptAsync()}
+      onPress={() => promptAsync(
+        Platform.OS === 'android'
+          ? { showInRecents: true, createTask: true }
+          : undefined,
+      )}
       disabled={disabled || busy || !request}
     >
       <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Continue with Google'}</Text>
@@ -252,9 +318,9 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
           onSuccess={onSuccess}
           disabled={disabled}
         />
-        {isExpoGo() ? (
+        {isExpoGo() || !isNativeGoogleSignInLinked() ? (
           <Text style={styles.expoGoHint}>
-            Expo Go: if Google fails, add this redirect URI in Google Cloud Console (Web client): {oauth.redirectUri}
+            Browser Google sign-in. If Google returns redirect_uri_mismatch, add this URI on the Web OAuth client: {oauth.redirectUri}
           </Text>
         ) : null}
       </>

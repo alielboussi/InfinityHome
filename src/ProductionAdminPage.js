@@ -7,6 +7,7 @@ import {
   fetchProductionEventsLog,
   isProductionPacketNameTaken,
 } from './services/warehouseProductionApi';
+import { formatProductionLogSource } from './utils/productionReportPdf';
 
 function formatWhen(value) {
   if (!value) return '—';
@@ -209,8 +210,9 @@ export default function ProductionAdminPage() {
         </div>
       </header>
       <p className="user-access-intro">
-        Kiosk activity: new seating items created and warehouse stock increases (label printing will hook in here later).
-        Admins can edit names and quantities; warehouse stock is corrected to match.
+        Upholstery Production app activity: new seating items and warehouse stock increases (Zebra labels on create/stock-in).
+        Admins can edit names and quantities; warehouse stock is corrected to match. See also{' '}
+        <Link to="/production-report">Production Report</Link>.
       </p>
 
       {error ? <div className="report-error production-admin-error">{error}</div> : null}
@@ -249,12 +251,13 @@ export default function ProductionAdminPage() {
                   <th>SKU</th>
                   <th>Qty entered</th>
                   <th>User</th>
+                  <th>Source</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {creates.length === 0 ? (
-                  <tr><td colSpan={6}>No production creates logged yet.</td></tr>
+                  <tr><td colSpan={7}>No production creates logged yet.</td></tr>
                 ) : creates.map((row) => (
                   <tr key={row.id}>
                     <td className="user-access-table__date">{formatWhen(row.created_at)}</td>
@@ -265,6 +268,7 @@ export default function ProductionAdminPage() {
                     <td><code>{row.sku || '—'}</code></td>
                     <td>{row.qty_added ?? row.qty_after ?? '—'}</td>
                     <td>{row.user_display_name || row.user_email || '—'}</td>
+                    <td>{formatProductionLogSource(row)}</td>
                     <td className="production-admin-actions">
                       <button
                         type="button"
@@ -291,12 +295,13 @@ export default function ProductionAdminPage() {
                   <th>User</th>
                   <th>Added</th>
                   <th>Warehouse qty</th>
+                  <th>Source</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {increases.length === 0 ? (
-                  <tr><td colSpan={6}>No stock increases logged yet.</td></tr>
+                  <tr><td colSpan={7}>No stock increases logged yet.</td></tr>
                 ) : increases.map((row) => (
                   <tr key={row.id}>
                     <td className="user-access-table__date">{formatWhen(row.created_at)}</td>
@@ -309,6 +314,7 @@ export default function ProductionAdminPage() {
                     <td>
                       {row.qty_before ?? '—'} → {row.qty_after ?? '—'}
                     </td>
+                    <td>{formatProductionLogSource(row)}</td>
                     <td className="production-admin-actions">
                       <button
                         type="button"

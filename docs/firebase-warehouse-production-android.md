@@ -29,10 +29,15 @@ Firebase project (same as portal / warehouse catalog): **`bestrest-portal-system
 3. **Project settings** → **Your apps** → **Warehouse Production** (`com.bestrest.warehouseproduction`):
    - **SHA-1** should be listed (same hash as Factory APK if you use one keystore). Registered via CLI: `81e9f6007dc21168055e451f176fbff8943bdbd4`.
    - After Google is enabled, re-download `google-services.json` if an **Android OAuth client** (type 1) is still missing.
-4. [Google Cloud Console](https://console.cloud.google.com/apis/credentials?project=bestrest-portal-system-43108) → **OAuth 2.0 Client IDs** → **Web client** (`876299148810-s0rcl…`):
-   - **Authorized redirect URIs** (Expo Go): add both if Google returns `redirect_uri_mismatch`:
+4. [Google Cloud Console](https://console.cloud.google.com/apis/credentials?project=bestrest-portal-system-43108) → **OAuth 2.0 Client IDs** → open the **Web client** (same ID as `googleWebClientId` / `876299148810-s0rcl…` — **not** the Android client):
+   - **Authorized redirect URIs** → **+ ADD URI** → paste exactly (no trailing slash):
      - `https://auth.expo.io/@alielboussi/warehouse-production`
-     - `warehouse-production://oauth`
+   - Under **Authorized JavaScript origins**, add: `https://auth.expo.io` (if that section exists on the Web client).
+   - Save. Wait 1–2 minutes, then retry Google sign-in in **Expo Go**.
+   - In the **Expo Go** app on your phone, sign in with the same Expo account as the project owner (`alielboussi`).
+   - If you see **“Something went wrong trying to finish signing in”** on `auth.expo.io`, Google accepted the login but Expo’s proxy could not return to the app (common on Android). Use a **preview APK** (native Google Sign-In, no proxy) — see **§5 Build APK**.
+   - **Expo Go does not require an APK** for Google sign-in; `redirect_uri_mismatch` means this Web client is missing the URI above (or you edited the wrong OAuth client).
+   - For the **installed APK** (EAS build), native Google Sign-In uses SHA-1 + package name; you can also add `warehouse-production://oauth` on the Web client if you ever use browser OAuth in that build.
 5. Staff sign in on **Upholstery Production** with Google; on **User Login Access**, refresh, enable login, then **Upholstery Production** access.
 
 **App OAuth IDs (in `app.config.js` / Expo extra):**
@@ -86,3 +91,4 @@ Or mirror `mobile-apps/warehouse-catalog/build-apk-local.ps1` with package `com.
 | `CONFIGURATION_NOT_FOUND` on sign-in | Wrong Firebase project or Auth not enabled; check `app.config.js` and Console. |
 | Access denied after login | Enable **Production app access** for that user on `/user-access`. |
 | Build: missing `google-services.json` | Complete step 2; file must sit next to `app.config.js`. |
+| `auth.expo.io` “Something went wrong…” after Google | Redirect URI is OK; Expo Go proxy failed. In **dev** (Expo Go), use **email + password** on the login screen (same Firebase account as the portal). Release APK uses Google only. Or install a **preview APK** for native Google. |

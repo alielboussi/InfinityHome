@@ -8,6 +8,7 @@ import {
   formatProductionReportDateTime,
   groupStockIncreasesByDateUser,
   productionLogUserLabel,
+  formatProductionLogSource,
 } from './utils/productionReportPdf';
 
 const toYMD = (value) => {
@@ -139,8 +140,8 @@ export default function ProductionReport() {
   return (
     <div className="report-page production-report-page">
       <p className="user-access-intro production-report-page__intro">
-        New seating items created at the production kiosk and stock increases on existing warehouse packets,
-        filtered by date. PDF layout matches the Transfers Report.
+        Activity from the Upholstery Production Android app: new seating items and stock increases on
+        existing warehouse packets, filtered by date. PDF layout matches the Transfers Report.
       </p>
 
       <div className="report-filters">
@@ -216,6 +217,7 @@ export default function ProductionReport() {
                 <th>SKU</th>
                 <th>Qty</th>
                 <th>User</th>
+                <th>Source</th>
               </tr>
             </thead>
             <tbody>
@@ -226,6 +228,7 @@ export default function ProductionReport() {
                   <td><code>{row.sku || '—'}</code></td>
                   <td>{row.qty_added ?? row.qty_after ?? '—'}</td>
                   <td>{productionLogUserLabel(row)}</td>
+                  <td>{formatProductionLogSource(row)}</td>
                 </tr>
               ))}
             </tbody>
@@ -244,6 +247,7 @@ export default function ProductionReport() {
                 <th>Product</th>
                 <th>SKU</th>
                 <th>Qty added</th>
+                <th>Source</th>
               </tr>
             </thead>
             <tbody>
@@ -254,6 +258,7 @@ export default function ProductionReport() {
                   <td>{row.name || '—'}</td>
                   <td><code>{row.sku || '—'}</code></td>
                   <td>+{row.qty_added ?? '—'}</td>
+                  <td>{formatProductionLogSource(row)}</td>
                 </tr>
               )))}
             </tbody>

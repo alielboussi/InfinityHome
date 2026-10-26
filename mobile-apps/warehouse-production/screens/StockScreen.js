@@ -14,6 +14,7 @@ import ProductionVirtualKeyboard from '../components/ProductionVirtualKeyboard';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { filterPacketsForProductionSearch } from '../lib/productionPacketSearch';
+import { kioskScreenEdges } from '../lib/kioskLayout';
 import { tUi } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
 import {
@@ -31,7 +32,7 @@ function packetWarehouseQty(packetId, inventory, locationId) {
 
 export default function StockScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { locale, toggleLocale, dir, isArabic } = useProductionKioskLocale();
+  const { locale, toggleLocale, textAlign, isArabic } = useProductionKioskLocale();
 
   const [loading, setLoading] = useState(true);
   const [packets, setPackets] = useState([]);
@@ -134,9 +135,10 @@ export default function StockScreen({ navigation }) {
       });
       setSuccess(tUi('stockSaved', locale));
       if (result?.label) {
+        const copies = Number(result?.label_copies);
         setLabelPreview(result.label);
         setLabelPng(result.label_preview_png_base64 || '');
-        setLabelCopies(delta);
+        setLabelCopies(Number.isFinite(copies) && copies > 0 ? copies : delta);
       }
       await load();
       setModalPacket(null);
@@ -154,11 +156,7 @@ export default function StockScreen({ navigation }) {
     <>
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[
-          kiosk.screen,
-          dir === 'rtl' && kiosk.screenRtl,
-          { paddingTop: insets.top + 8, paddingBottom: 40 },
-        ]}
+        contentContainerStyle={[kiosk.screen, kioskScreenEdges(insets, 32)]}
       >
         <ProductionKioskTopBar
           title={tUi('stockTitle', locale)}
@@ -173,10 +171,11 @@ export default function StockScreen({ navigation }) {
         {success ? <Text style={kiosk.noticeOk}>{success}</Text> : null}
 
         <View style={kiosk.card}>
-          <Text style={kiosk.label}>{tUi('stockSearch', locale)}</Text>
+          <Text style={[kiosk.label, { textAlign }]}>{tUi('stockSearch', locale)}</Text>
           <View style={kiosk.row}>
             <TextInput
-              style={[kiosk.input, { flex: 1, minWidth: 200 }]}
+              style={[kiosk.input, { flex: 1, minWidth: 200, textAlign: 'left' }]}
+              placeholderTextColor="#94a3b8"
               value={search}
               onChangeText={setSearch}
               onSubmitEditing={runSearch}

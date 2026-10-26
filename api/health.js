@@ -98,8 +98,15 @@ async function handleProductPhoto(req, res) {
   const imageUrl = await resolveProductImageUrlForSku(db, sku);
   if (!imageUrl) {
     res.statusCode = 404;
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.end('No product photo for this SKU yet.');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Photo not ready</title></head>`
+      + `<body style="font-family:sans-serif;padding:1.5rem">`
+      + `<p>No product photo for SKU <strong>${sku.replace(/</g, '&lt;')}</strong> yet.</p>`
+      + `<p>This link is printed on the label; when a catalog image is added for the same SKU, scanning again will open the photo.</p>`
+      + `</body></html>`,
+    );
     return;
   }
   res.statusCode = 302;

@@ -1,86 +1,35 @@
-import { getGeminiApiKey } from './geminiImageEmbedding.js';
 import {
   buildProductionItemName,
-  normalizeProductionNameInput,
+  matchProductionGirlNameFromPool,
   pickRandomProductionBaseName,
 } from '../../src/utils/productionItemName.js';
 
-const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
-
-const SUGGEST_PROMPT = `You name luxury upholstered seating products for a furniture warehouse.
-Reply with exactly ONE short product title (1 or 2 words only): either an elegant feminine first name OR a famous beautiful place in the world.
-No punctuation, no explanation, no "3 seater", no brand names.
-Good examples: Capri, Valentina, Santorini, Riviera, Aurora, Monaco, Layla, Como.`;
-
-function sanitizeModelName(raw) {
-  const line = String(raw || '')
-    .trim()
-    .split(/\n/)[0]
-    .replace(/^["'`]+|["'`]+$/g, '')
-    .replace(/[.!,;:].*$/, '')
-    .trim();
-  if (!line || line.length > 32) return '';
-  const words = line.split(/\s+/).filter(Boolean);
-  if (words.length > 2) return '';
-  return normalizeProductionNameInput(words.join(' '));
-}
-
-async function generateProductionBaseNameWithGemini() {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) return null;
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TEXT_MODEL}:generateContent`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: SUGGEST_PROMPT }] }],
-        generationConfig: {
-          temperature: 1.05,
-          maxOutputTokens: 16,
-          candidateCount: 1,
-        },
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`Gemini suggest failed (${response.status}): ${detail.slice(0, 200)}`);
-  }
-
-  const json = await response.json();
-  const text = json?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
-  const name = sanitizeModelName(text);
-  return name || null;
-}
-
-/** One base name (AI when GEMINI_API_KEY is set, else curated random). */
-export async function suggestProductionBaseName() {
-  try {
-    const ai = await generateProductionBaseNameWithGemini();
-    if (ai) return ai;
-  } catch (err) {
-    console.warn('[productionSuggestBaseName]', err?.message || err);
-  }
+/** Pick one unused base name from the curated girl-name pool only (no AI / no places). */
+export function suggestProductionBaseName() {
   return pickRandomProductionBaseName();
 }
 
 /**
  * @param {(fullProductName: string) => Promise<boolean>} isNameTaken — true if unavailable
  * @param {string} [preset] — seater preset to build full name for uniqueness
+ * @param {(baseName: string) => Promise<boolean>} [isBaseTaken] — true if base line already exists
  */
-export async function suggestUniqueProductionBaseName(isNameTaken, preset = '') {
+export async function suggestUniqueProductionBaseName(isNameTaken, preset = '', isBaseTaken = null) {
   const p = String(preset || '').trim();
-  for (let attempt = 0; attempt < 35; attempt += 1) {
-    const base = await suggestProductionBaseName();
-    const full = p ? buildProductionItemName(base, p) : base;
+  const tryBases = [];
+  for (let i = 0; i < 40; i += 1) {
+    tryBases.push(pickRandomProductionBaseName());
+  }
+  for (const base of tryBases) {
+    const canonical = matchProductionGirlNameFromPool(base);
+    if (!canonical) continue;
+    const full = p ? buildProductionItemName(canonical, p) : canonical;
+    if (typeof isBaseTaken === 'function') {
+      const baseUsed = await isBaseTaken(canonical);
+      if (baseUsed) continue;
+    }
     const taken = await isNameTaken(full);
-    if (!taken) return base;
+    if (!taken) return canonical;
   }
   throw new Error('Could not find an unused name. Enter one manually.');
 }

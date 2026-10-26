@@ -19,11 +19,19 @@ function actorFields(user) {
   };
 }
 
+function normalizeProductionLogSource(source) {
+  const raw = String(source || '').trim();
+  if (raw === 'warehouse_production_app') return 'warehouse_production_app';
+  if (raw === 'warehouse_production_kiosk') return 'warehouse_production_kiosk';
+  return 'warehouse_production_app';
+}
+
 export async function logWarehouseProductionCreate({
   user,
   packet,
   initialQuantity,
   warehouseLocationId,
+  source,
 }) {
   const db = getDb();
   const now = new Date().toISOString();
@@ -68,7 +76,7 @@ export async function logWarehouseProductionStockIncrease({
     qty_after: Math.max(0, Number(qtyAfter) || 0),
     warehouse_location_id: warehouseLocationId || null,
     source: 'warehouse_production_kiosk',
-    created_at: now,
+    source: normalizeProductionLogSource(source),
     ...actorFields(user),
   };
   await db.collection(COLLECTION).doc(id).set(row);

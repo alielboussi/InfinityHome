@@ -440,7 +440,7 @@ export function isPathAllowed(user, path) {
     return canManageCatalog(user);
   }
   if (isWarehouseProductionKioskPath(p)) {
-    return Boolean(user && (user.id || user.email));
+    return false;
   }
   if (STOCK_CONTROL_ROUTES.has(p) && !canViewStockControl(user)) {
     return false;

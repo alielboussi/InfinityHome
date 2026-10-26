@@ -1,7 +1,7 @@
 import { canManageCatalog, getCurrentUser } from '../accessControl';
 import {
   defaultMobileAccessGrant,
-  isWarehouseProductionOperatorAllowed,
+  isWarehouseProductionAppAllowed,
   sanitizeMobileAccessGrantForUser,
 } from '../mobile/mobileAccessManifest';
 import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
@@ -47,32 +47,42 @@ async function fetchAuthProfileUser() {
 }
 
 /** Kiosk access from login grant (works before production-* ops are deployed). */
+async function suggestProductionBaseNameLocally(preset) {
+  const {
+    buildProductionItemName,
+    fetchUniqueRandomProductionBaseName,
+    pickRandomProductionBaseName,
+  } = await import('../utils/productionItemName');
+  const p = String(preset || '').trim();
+  const baseName = p
+    ? await fetchUniqueRandomProductionBaseName((candidate) => isProductionPacketNameTaken(
+      buildProductionItemName(candidate, p),
+    ))
+    : pickRandomProductionBaseName();
+  return {
+    baseName,
+    productName: p ? buildProductionItemName(baseName, p) : baseName,
+  };
+}
+
 export async function fetchProductionSuggestedBaseName({ preset } = {}) {
+  const p = String(preset || '').trim();
+  const { buildProductionItemName, matchProductionGirlNameFromPool } = await import('../utils/productionItemName');
   try {
     const payload = await productionOp('production-suggest-base-name', {
-      preset: preset || undefined,
+      preset: p || undefined,
     });
-    return {
-      baseName: payload.base_name || '',
-      productName: payload.product_name || payload.base_name || '',
-    };
+    const baseName = matchProductionGirlNameFromPool(payload.base_name || '');
+    if (baseName) {
+      return {
+        baseName,
+        productName: p ? buildProductionItemName(baseName, p) : baseName,
+      };
+    }
   } catch (err) {
     if (!isUnknownWarehouseOpError(err?.message)) throw err;
-    const {
-      buildProductionItemName,
-      fetchUniqueRandomProductionBaseName,
-      pickRandomProductionBaseName,
-    } = await import('../utils/productionItemName');
-    const baseName = preset
-      ? await fetchUniqueRandomProductionBaseName((candidate) => isProductionPacketNameTaken(
-        buildProductionItemName(candidate, preset),
-      ))
-      : pickRandomProductionBaseName();
-    return {
-      baseName,
-      productName: preset ? buildProductionItemName(baseName, preset) : baseName,
-    };
   }
+  return suggestProductionBaseNameLocally(p);
 }
 
 export async function isProductionPacketNameTaken(name, options = {}) {
@@ -112,7 +122,7 @@ export async function fetchProductionKioskAccess() {
   );
   const sessionUser = getCurrentUser();
   return {
-    allowed: canManageCatalog(sessionUser) || isWarehouseProductionOperatorAllowed(grant),
+    allowed: canManageCatalog(sessionUser) || isWarehouseProductionAppAllowed(grant),
     displayName: profileUser?.mobile_display_name
       || profileUser?.display_name
       || sessionUser?.full_name

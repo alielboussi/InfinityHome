@@ -2,19 +2,27 @@ import { titleCaseWords } from './titleCaseWords';
 
 export const PRODUCTION_SEAT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater'];
 
-const PRODUCTION_RANDOM_GIRL_NAMES = Object.freeze([
-  'Lara', 'Bella', 'Sienna', 'Aurora', 'Luna', 'Maya', 'Stella', 'Gia', 'Nina', 'Carmen',
-  'Lucia', 'Valentina', 'Aria', 'Nova', 'Cleo', 'Elise', 'Giselle', 'Helena', 'Jade', 'Kiara',
-  'Lena', 'Mila', 'Noa', 'Olivia', 'Rosa', 'Sabrina', 'Talia', 'Vera', 'Zara', 'Amara',
-  'Bianca', 'Celeste', 'Dahlia', 'Elena', 'Freya', 'Isla', 'Jasmine', 'Kira', 'Layla', 'Monroe',
+/** Keep in sync with src/utils/productionItemName.js — girl names only. */
+const PRODUCTION_GIRL_NAME_POOL = Object.freeze([
+  'Aisha', 'Amara', 'Anika', 'Aria', 'Aurora', 'Ayla', 'Bella', 'Bianca', 'Carmen', 'Celeste',
+  'Chiara', 'Cleo', 'Dahlia', 'Elena', 'Elise', 'Esme', 'Fatima', 'Freya', 'Gia', 'Giselle',
+  'Hana', 'Helena', 'Ines', 'Isla', 'Jade', 'Jasmine', 'Kiara', 'Kira', 'Lara', 'Layla',
+  'Leila', 'Lena', 'Lucia', 'Luna', 'Maya', 'Meera', 'Mila', 'Nadia', 'Nina', 'Noa',
+  'Nova', 'Olivia', 'Priya', 'Rosa', 'Sabrina', 'Saoirse', 'Sienna', 'Stella', 'Talia', 'Valentina',
+  'Vera', 'Yuki', 'Zara', 'Zuri', 'Amira', 'Anya', 'Dina', 'Elin', 'Farah', 'Hira',
+  'Imani', 'Jana', 'Keira', 'Laila', 'Mariam', 'Nia', 'Rania', 'Sana', 'Tara', 'Yasmin',
 ]);
 
-const PRODUCTION_RANDOM_PLACE_NAMES = Object.freeze([
-  'Capri', 'Como', 'Positano', 'Santorini', 'Riviera', 'Monaco', 'Maldives', 'Bali', 'Maui', 'Tahiti',
-  'Aspen', 'Florence', 'Vienna', 'Lucerne', 'Mykonos', 'Amalfi', 'Portofino', 'Venice', 'Seychelles', 'Bora',
-  'Kyoto', 'Savannah', 'Ibiza', 'Cannes', 'Dubai', 'Geneva', 'Nice', 'Sorrento', 'Zurich', 'St Tropez',
-  'Havana', 'Lisbon', 'Marrakech', 'Paros', 'Phuket', 'Sicily', 'Tuscany', 'Verona', 'Zanzibar', 'Corfu',
-]);
+const GIRL_NAME_BY_KEY = Object.freeze(
+  Object.fromEntries(PRODUCTION_GIRL_NAME_POOL.map((n) => [n.toLowerCase(), n])),
+);
+
+export function matchProductionGirlNameFromPool(raw) {
+  const normalized = normalizeProductionNameInput(String(raw || '').trim());
+  if (!normalized) return null;
+  const hit = GIRL_NAME_BY_KEY[normalized.toLowerCase()];
+  return hit ? normalizeProductionNameInput(hit) : null;
+}
 
 function pickFromPool(pool) {
   if (!pool.length) return '';
@@ -22,18 +30,14 @@ function pickFromPool(pool) {
 }
 
 export function pickRandomProductionBaseName() {
-  const usePlace = Math.random() < 0.4;
-  const raw = usePlace
-    ? pickFromPool(PRODUCTION_RANDOM_PLACE_NAMES)
-    : pickFromPool(PRODUCTION_RANDOM_GIRL_NAMES);
-  return normalizeProductionNameInput(raw);
+  return normalizeProductionNameInput(pickFromPool(PRODUCTION_GIRL_NAME_POOL));
 }
 
 export async function fetchUniqueRandomProductionBaseName(checkNameTaken) {
   if (typeof checkNameTaken !== 'function') {
     return pickRandomProductionBaseName();
   }
-  for (let attempt = 0; attempt < 35; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const candidate = pickRandomProductionBaseName();
     const taken = await checkNameTaken(candidate);
     if (!taken) return candidate;

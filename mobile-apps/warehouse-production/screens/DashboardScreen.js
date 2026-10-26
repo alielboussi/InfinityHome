@@ -2,6 +2,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
+import { kioskScreenEdges } from '../lib/kioskLayout';
+import { theme } from '../shared/theme';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 
@@ -12,7 +14,7 @@ export default function DashboardScreen({
   allowed,
 }) {
   const insets = useSafeAreaInsets();
-  const { locale, toggleLocale, dir, ready } = useProductionKioskLocale();
+  const { locale, toggleLocale, textAlign, ready } = useProductionKioskLocale();
 
   if (!allowed) {
     return (
@@ -24,11 +26,7 @@ export default function DashboardScreen({
 
   return (
     <ScrollView
-      contentContainerStyle={[
-        kiosk.screen,
-        dir === 'rtl' && kiosk.screenRtl,
-        { paddingTop: insets.top + 12 },
-      ]}
+      contentContainerStyle={[kiosk.screen, kioskScreenEdges(insets, 28)]}
     >
       <ProductionKioskTopBar
         title={tUi('dashTitle', locale)}
@@ -36,20 +34,30 @@ export default function DashboardScreen({
         onToggleLocale={toggleLocale}
       />
       {(userDisplayName || userEmail) ? (
-        <Text style={styles.user}>{userDisplayName || userEmail}</Text>
+        <Text style={[styles.user, { textAlign }]}>{userDisplayName || userEmail}</Text>
       ) : null}
       <View style={kiosk.dashGrid}>
         <Pressable
-          style={kiosk.dashBtn}
+          style={({ pressed }) => [kiosk.dashBtn, pressed && kiosk.dashBtnPressed]}
           onPress={() => navigation.navigate('Create')}
         >
-          <Text style={kiosk.dashBtnText}>{tUi('dashCreate', locale)}</Text>
+          <Text style={[kiosk.dashBtnText, { textAlign }]}>
+            {tUi('dashCreate', locale)}
+          </Text>
+          <Text style={[kiosk.dashBtnSub, { textAlign }]}>
+            {tUi('dashCreateSub', locale)}
+          </Text>
         </Pressable>
         <Pressable
-          style={kiosk.dashBtn}
+          style={({ pressed }) => [kiosk.dashBtn, pressed && kiosk.dashBtnPressed]}
           onPress={() => navigation.navigate('Stock')}
         >
-          <Text style={kiosk.dashBtnText}>{tUi('dashStock', locale)}</Text>
+          <Text style={[kiosk.dashBtnText, { textAlign }]}>
+            {tUi('dashStock', locale)}
+          </Text>
+          <Text style={[kiosk.dashBtnSub, { textAlign }]}>
+            {tUi('dashStockSub', locale)}
+          </Text>
         </Pressable>
       </View>
     </ScrollView>
@@ -58,5 +66,5 @@ export default function DashboardScreen({
 
 const styles = StyleSheet.create({
   center: { justifyContent: 'center', flexGrow: 1 },
-  user: { color: '#6b7280', marginBottom: 8, fontSize: 14 },
+  user: { color: theme.textMuted, marginBottom: 4, fontSize: 15, fontWeight: '500' },
 });

@@ -1,13 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { theme } from '../shared/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import KioskStickyFooter from '../components/KioskStickyFooter';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
@@ -16,7 +23,9 @@ import {
   normalizeProductionNameInput,
   PRODUCTION_SEAT_PRESETS,
 } from '../lib/productionItemName';
-import { tUi, translateEnToAr } from '../lib/productionKioskI18n';
+import { kioskFooterBottomPad, kioskScreenEdges } from '../lib/kioskLayout';
+import { captureRequiredProductionPhoto } from '../lib/productionPhotoCapture';
+import { presetLabel, tUi } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
 import {
   createProductionPacket,
@@ -26,7 +35,7 @@ import {
 } from '../services/productionApi';
 export default function CreateScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { locale, toggleLocale, dir, isArabic } = useProductionKioskLocale();
+  const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
 
   const [loading, setLoading] = useState(true);
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
@@ -41,10 +50,12 @@ export default function CreateScreen({ navigation }) {
 
   const [nameGenBusy, setNameGenBusy] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [displayOverrides, setDisplayOverrides] = useState({});
+  const [savePhase, setSavePhase] = useState('');
   const [labelPreview, setLabelPreview] = useState(null);
   const [labelPng, setLabelPng] = useState('');
   const [labelCopies, setLabelCopies] = useState(1);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const scrollRef = useRef(null);
 
   const englishProductName = useMemo(() => {
     if (productNameEn.trim()) return normalizeProductionNameInput(productNameEn);
@@ -72,32 +83,28 @@ export default function CreateScreen({ navigation }) {
     load();
   }, [load]);
 
-  const refreshArabicDisplay = useCallback(async () => {
-    if (!isArabic) {
-      setDisplayOverrides({});
-      return;
-    }
-    const next = {};
-    const tasks = [];
-    if (baseNameEn.trim()) {
-      tasks.push(translateEnToAr(baseNameEn).then((v) => { next.baseName = v; }));
-    }
-    if (englishProductName.trim()) {
-      tasks.push(translateEnToAr(englishProductName).then((v) => { next.productName = v; }));
-    }
-    if (qty.trim()) {
-      tasks.push(translateEnToAr(qty).then((v) => { next.qty = v; }));
-    }
-    for (const p of PRODUCTION_SEAT_PRESETS) {
-      tasks.push(translateEnToAr(p).then((v) => { next[`preset:${p}`] = v; }));
-    }
-    await Promise.all(tasks);
-    setDisplayOverrides(next);
-  }, [baseNameEn, englishProductName, isArabic, qty]);
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const onShow = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates?.height || 0);
+    });
+    const onHide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      onShow.remove();
+      onHide.remove();
+    };
+  }, []);
+
+  const scrollQtyIntoView = () => {
+    const scroll = () => scrollRef.current?.scrollToEnd({ animated: true });
+    requestAnimationFrame(scroll);
+    setTimeout(scroll, 120);
+  };
 
   useEffect(() => {
-    refreshArabicDisplay();
-  }, [refreshArabicDisplay]);
+    if (keyboardHeight > 0) scrollQtyIntoView();
+  }, [keyboardHeight]);
 
   const applyBaseName = (value, { normalize = false } = {}) => {
     setSuccess('');
@@ -166,7 +173,6 @@ export default function CreateScreen({ navigation }) {
     setPreset('');
     setProductNameEn('');
     setQty('0');
-    setDisplayOverrides({});
   };
 
   const onSave = async () => {
@@ -191,21 +197,31 @@ export default function CreateScreen({ navigation }) {
       return;
     }
 
-    setSaving(true);
     try {
       const available = await ensureProductNameAvailable(name);
       if (!available) return;
 
+      const imageBase64 = await captureRequiredProductionPhoto();
+      if (!imageBase64) {
+        setError(tUi('photoCancelled', locale));
+        return;
+      }
+
+      setSavePhase('processing');
+      setSaving(true);
       const result = await createProductionPacket({
         name,
         warehouseLocationId,
         initialQuantity: qtyNum,
+        imageBase64,
       });
       setSuccess(tUi('saved', locale));
-      if (result?.label) {
+      const copies = Number(result?.label_copies);
+      const labelCount = Number.isFinite(copies) && copies >= 0 ? copies : qtyNum;
+      if (result?.label && labelCount > 0) {
         setLabelPreview(result.label);
         setLabelPng(result.label_preview_png_base64 || '');
-        setLabelCopies(Math.max(1, qtyNum));
+        setLabelCopies(labelCount);
       }
       resetForm();
     } catch (err) {
@@ -217,17 +233,31 @@ export default function CreateScreen({ navigation }) {
       }
     } finally {
       setSaving(false);
+      setSavePhase('');
     }
   };
 
+  const saveDisabled = saving || loading || !warehouseLocationId;
+  const footerPad = kioskFooterBottomPad(insets) + 72;
+  const keyboardOpen = keyboardHeight > 0;
+  const scrollBottomPad = keyboardOpen
+    ? keyboardHeight + 24
+    : footerPad;
+
   return (
     <>
+    <KeyboardAvoidingView
+      style={styles.page}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
+    >
     <ScrollView
+      ref={scrollRef}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={[
         kiosk.screen,
-        dir === 'rtl' && kiosk.screenRtl,
-        { paddingTop: insets.top + 8, paddingBottom: 40 },
+        kioskScreenEdges(insets, scrollBottomPad),
+        styles.scrollContent,
       ]}
     >
       <ProductionKioskTopBar
@@ -238,7 +268,7 @@ export default function CreateScreen({ navigation }) {
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
-      <Text style={kiosk.subtitle}>{tUi('subtitle', locale)}</Text>
+      <Text style={[kiosk.subtitle, { textAlign }]}>{tUi('subtitle', locale)}</Text>
 
       {loading ? <Text>{tUi('loading', locale)}</Text> : null}
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
@@ -246,27 +276,22 @@ export default function CreateScreen({ navigation }) {
 
       <View style={kiosk.card}>
         <View style={kiosk.field}>
-          <Text style={kiosk.label}>{tUi('locationLabel', locale)}</Text>
+          <Text style={[kiosk.label, { textAlign }]}>{tUi('locationLabel', locale)}</Text>
           <Text style={kiosk.locationPill}>
             {warehouseLocationName} — {tUi('warehouseOnly', locale)}
           </Text>
         </View>
 
         <View style={kiosk.field}>
-          <Text style={kiosk.label}>{tUi('baseNameLabel', locale)}</Text>
-          <Text style={kiosk.hint}>{tUi('baseNameHint', locale)}</Text>
+          <Text style={[kiosk.label, { textAlign }]}>{tUi('baseNameLabel', locale)}</Text>
+          <Text style={[kiosk.hint, { textAlign }]}>{tUi('baseNameHint', locale)}</Text>
           <TextInput
-            style={[kiosk.input, isArabic && kiosk.inputDisabled]}
-            value={isArabic ? (displayOverrides.baseName ?? baseNameEn) : baseNameEn}
-            onChangeText={(v) => {
-              if (isArabic) return;
-              applyBaseName(v);
-            }}
-            onBlur={() => {
-              if (isArabic) return;
-              applyBaseName(baseNameEn, { normalize: true });
-            }}
-            editable={!isArabic && !saving}
+            style={[kiosk.input, { textAlign: 'left' }]}
+            value={baseNameEn}
+            onChangeText={(v) => applyBaseName(v)}
+            onBlur={() => applyBaseName(baseNameEn, { normalize: true })}
+            editable={!saving}
+            placeholderTextColor="#94a3b8"
           />
           <View style={kiosk.row}>
             <Pressable
@@ -282,17 +307,22 @@ export default function CreateScreen({ navigation }) {
         </View>
 
         <View style={kiosk.field}>
-          <Text style={kiosk.label}>{tUi('presetLabel', locale)}</Text>
+          <Text style={[kiosk.label, { textAlign }]}>{tUi('presetLabel', locale)}</Text>
           <View style={kiosk.row}>
             {PRODUCTION_SEAT_PRESETS.map((p) => (
               <Pressable
                 key={p}
-                style={[kiosk.btn, preset === p && kiosk.btnActive]}
+                style={[
+                  kiosk.btn,
+                  kiosk.presetChip,
+                  preset === p && kiosk.btnActive,
+                  (!baseNameEn.trim() || saving) && { opacity: 0.45 },
+                ]}
                 onPress={() => onSelectPreset(p)}
                 disabled={!baseNameEn.trim() || saving}
               >
-                <Text style={kiosk.btnText}>
-                  {isArabic ? (displayOverrides[`preset:${p}`] ?? p) : p}
+                <Text style={[kiosk.btnText, preset === p && kiosk.btnActiveText]}>
+                  {presetLabel(p, locale)}
                 </Text>
               </Pressable>
             ))}
@@ -300,32 +330,34 @@ export default function CreateScreen({ navigation }) {
         </View>
 
         <View style={kiosk.field}>
-          <Text style={kiosk.label}>{tUi('productNameLabel', locale)}</Text>
+          <Text style={[kiosk.label, { textAlign }]}>{tUi('productNameLabel', locale)}</Text>
           <TextInput
-            style={[kiosk.input, kiosk.inputDisabled]}
-            value={isArabic ? (displayOverrides.productName ?? englishProductName) : englishProductName}
+            style={[kiosk.input, kiosk.inputReadOnly, { textAlign: 'left' }]}
+            value={englishProductName}
             editable={false}
           />
         </View>
 
         <View style={kiosk.field}>
-          <Text style={kiosk.label}>{tUi('qtyLabel', locale)}</Text>
+          <Text style={[kiosk.label, { textAlign }]}>{tUi('qtyLabel', locale)}</Text>
           <TextInput
-            style={kiosk.input}
+            style={[kiosk.input, { textAlign: 'left' }]}
             keyboardType="number-pad"
-            value={isArabic ? (displayOverrides.qty ?? qty) : qty}
-            onChangeText={(v) => {
-              if (isArabic) return;
-              setQty(v);
-            }}
+            value={qty}
+            onChangeText={setQty}
+            onFocus={scrollQtyIntoView}
             editable={!saving}
+            placeholderTextColor="#94a3b8"
           />
         </View>
-
+      </View>
+    </ScrollView>
+    {!keyboardOpen ? (
+      <KioskStickyFooter>
         <Pressable
-          style={[kiosk.btn, kiosk.btnPrimary, (saving || loading || !warehouseLocationId) && { opacity: 0.6 }]}
+          style={[kiosk.btn, kiosk.btnPrimary, styles.saveBtn, saveDisabled && { opacity: 0.6 }]}
           onPress={onSave}
-          disabled={saving || loading || !warehouseLocationId}
+          disabled={saveDisabled}
         >
           {saving ? (
             <ActivityIndicator color="#fff" />
@@ -333,8 +365,17 @@ export default function CreateScreen({ navigation }) {
             <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('save', locale)}</Text>
           )}
         </Pressable>
+      </KioskStickyFooter>
+    ) : null}
+    </KeyboardAvoidingView>
+    <Modal visible={savePhase === 'processing'} transparent animationType="fade">
+      <View style={styles.busyBackdrop}>
+        <View style={styles.busyCard}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={styles.busyText}>{tUi('photoProcessing', locale)}</Text>
+        </View>
       </View>
-    </ScrollView>
+    </Modal>
     <ProductionLabelPreviewModal
       visible={Boolean(labelPreview)}
       label={labelPreview}
@@ -349,3 +390,38 @@ export default function CreateScreen({ navigation }) {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  page: {
+    flex: 1,
+    backgroundColor: theme.bg,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  saveBtn: {
+    marginTop: 0,
+    marginBottom: 0,
+    minHeight: 54,
+    width: '100%',
+  },
+  busyBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  busyCard: {
+    backgroundColor: theme.card,
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+  },
+  busyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: theme.text,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+});

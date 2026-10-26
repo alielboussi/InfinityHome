@@ -49,7 +49,6 @@ import {
   WarehousePacketEditPage,
   WarehousePacketsPage,
   ProductionAdminPage,
-  WarehouseProductionRoutes,
   WarehouseProductEditPage,
   WarehouseProductsPage,
   WarehouseProductTransferPage,
@@ -58,7 +57,7 @@ import {
   ZeroStockLocationReset,
 } from './lazyPages';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
-import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated, isWarehouseProductionKioskPath } from './accessControl';
+import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated, isWarehouseProductionKioskPath, canManageCatalog } from './accessControl';
 import { isShopPublicPath } from './utils/shopConstants';
 import { bootstrapAppAuth } from './utils/authSession';
 
@@ -130,14 +129,6 @@ function GlobalAuthGate() {
             if (checking) return;
             const path = location.pathname || '/';
             if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) return;
-            if (isWarehouseProductionKioskPath(path)) {
-                  if (path.startsWith('/warehouse-production/login')) return;
-                  if (!isAppAuthenticated()) {
-                        const next = encodeURIComponent(path);
-                        navigate(`/warehouse-production/login?next=${next}`, { replace: true });
-                  }
-                  return;
-            }
             if (!isAppAuthenticated()) {
                   const next = encodeURIComponent(path);
                   navigate(`/login?next=${next}`, { replace: true });
@@ -160,11 +151,6 @@ function SessionBootstrap({ children }) {
                         if (active) setReady(true);
                         return;
                   }
-                  if (path.startsWith('/warehouse-production/login')) {
-                        if (active) setReady(true);
-                        return;
-                  }
-
                   const result = await bootstrapAppAuth();
                   if (!active) return;
 
@@ -203,6 +189,13 @@ function FallbackRedirect() {
       return <Navigate to={user ? getHomeDashboardPath(user) : '/login'} replace />;
 }
 
+function WarehouseProductionRetiredRedirect() {
+      const user = getCurrentUser();
+      if (!user) return <Navigate to="/login" replace />;
+      const target = canManageCatalog(user) ? '/production-report' : getHomeDashboardPath(user);
+      return <Navigate to={target} replace />;
+}
+
 // Enforce per-user route access (e.g., Hassan only sees quotes, layby-management-mobile, stock-report-mobile)
 function AccessGuard() {
       const location = useLocation();
@@ -217,7 +210,14 @@ function AccessGuard() {
             // Always allow login and the public count page
             const path = location.pathname || '';
             if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) return;
-            if (isWarehouseProductionKioskPath(path)) return;
+            if (isWarehouseProductionKioskPath(path)) {
+                  if (!authUser) return;
+                  const target = canManageCatalog(authUser)
+                        ? '/production-report'
+                        : getHomeDashboardPath(authUser);
+                  navigate(target, { replace: true });
+                  return;
+            }
 
             if (!authUser) return; // no session: global gate will handle redirect to login
             if (!isPathAllowed(authUser, path)) {
@@ -287,7 +287,7 @@ function App() {
         <Route path="/stocktake/count" element={<Navigate to="/login" replace />} />
         <Route path="/count" element={<Navigate to="/login" replace />} />
         <Route path="/shop/*" element={<ShopRoutes />} />
-        <Route path="/warehouse-production/*" element={<WarehouseProductionRoutes />} />
+        <Route path="/warehouse-production/*" element={<WarehouseProductionRetiredRedirect />} />
 
         <Route element={<RequireAuthLayout />}>
           <Route path="/" element={<HomeRedirect />} />

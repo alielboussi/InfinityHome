@@ -42,7 +42,6 @@ function normalizeGrant(raw) {
     ...raw,
     landing_screen: base.landing_screen,
     warehouse_product_stock_qty: raw.warehouse_product_stock_qty === 'allow' ? 'allow' : 'deny',
-    warehouse_production_kiosk: raw.warehouse_production_kiosk === 'allow' ? 'allow' : 'deny',
     warehouse_production_app: raw.warehouse_production_app === 'allow' ? 'allow' : 'deny',
     screens: { ...base.screens, ...(raw.screens || {}) },
   };
@@ -135,26 +134,6 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
       <div className="mobile-access-panel__section mobile-access-panel__section--permissions">
         <h4 className="mobile-access-panel__section-label">Warehouse &amp; web permissions</h4>
         <div className="mobile-access-permission-list">
-          <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-production-kiosk"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={grant.warehouse_production_kiosk === 'allow'}
-              onChange={(e) => setGrant((prev) => ({
-                ...prev,
-                warehouse_production_kiosk: e.target.checked ? 'allow' : 'deny',
-              }))}
-            />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-production-kiosk">
-              <span className="mobile-access-permission-item__title">Production kiosk (10″ web)</span>
-              <span className="mobile-access-permission-item__desc">
-                Create seating items and add warehouse stock. Sign-in is email and password only at
-                <code className="mobile-access-permission-item__code">/warehouse-production/login</code>.
-              </span>
-            </label>
-          </div>
-
           <div className="mobile-access-permission-item">
             <input
               id="mobile-access-product-stock-qty"

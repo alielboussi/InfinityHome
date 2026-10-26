@@ -15,6 +15,14 @@ export function productionLogUserLabel(row) {
   return row?.user_display_name || row?.user_email || '—';
 }
 
+export function formatProductionLogSource(row) {
+  const raw = String(row?.source || '').trim();
+  if (raw === 'warehouse_production_kiosk') return 'Web kiosk (retired)';
+  if (raw === 'warehouse_production_app') return 'Upholstery Production app';
+  if (!raw) return 'Upholstery Production app';
+  return raw;
+}
+
 function writeTransfersStyleHeader(doc, { title, lines, startY = 40 }) {
   let y = startY;
   doc.setFont('helvetica', 'bold');
@@ -60,6 +68,7 @@ export function downloadProductionCreationsPdf({ rows, startDate, endDate }) {
         `Entry ID: ${row.id || '—'}`,
         `Date: ${dateLabel}`,
         `User: ${userLabel}`,
+        `Source: ${formatProductionLogSource(row)}`,
       ],
     });
     autoTableTransfersStyle(doc, {
@@ -114,6 +123,7 @@ export function downloadProductionStockIncreasesPdf({ rows, startDate, endDate }
         `Date: ${group.date}`,
         `User: ${group.user}`,
         `Total qty added: ${totalQty}`,
+        `Sources: ${[...new Set(group.items.map(formatProductionLogSource))].join(', ')}`,
       ],
     });
     const body = group.items.map((row) => [

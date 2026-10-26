@@ -1,5 +1,6 @@
 /** Zebra ZPL — warehouse production labels (80×68 mm, labelled rows). */
 
+import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import {
   COMPANY_NAME,
   computeProductionLabelLayout,
@@ -69,7 +70,9 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
   const nameText = zplEscape(opts.name);
   const dateText = zplEscape(formatBlockDate(printedAt));
   const timeText = zplEscape(formatBlockTime(printedAt));
-  const imageQr = qrEscape(opts.imageQrUrl || '');
+  const photoQrUrl = String(opts.imageQrUrl || '').trim()
+    || buildProductPhotoQrUrl(String(opts.sku || '').trim());
+  const imageQr = qrEscape(photoQrUrl);
   const companyLine = zplEscape(COMPANY_NAME);
 
   const labelField = (y, text) => (
@@ -102,7 +105,9 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     valueField(d.nameRowY, nameText),
     hr(d.nameLineY),
     labelField(d.photoRowY, FIELD_LABELS.photo),
-    `^FO${qrX},${d.photoRowY}^BQN,2,3^FDLA,${imageQr}^FS`,
+    ...(imageQr
+      ? [`^FO${qrX},${d.photoRowY}^BQN,2,3^FDLA,${imageQr}^FS`]
+      : []),
     hr(d.photoLineY),
     labelField(d.dateRowY, FIELD_LABELS.date),
     valueField(d.dateRowY, dateText),

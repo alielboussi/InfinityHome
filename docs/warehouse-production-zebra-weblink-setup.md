@@ -1,8 +1,8 @@
 # Warehouse production — Zebra ZD621 via **Weblink** (cloud)
 
-Production kiosk (`/warehouse-production`) prints **product name + Code 128 SKU** when staff create a packet or add stock.
+The **Upholstery Production** Android app prints **product name + Code 128 SKU** when staff create a packet or add stock.
 
-With **Weblink**, the printer connects **outbound** to Zebra Data Services (no Windows print worker on the kiosk). Infinity Home calls **SendFileToPrinter** after each save.
+With **Weblink**, the printer connects **outbound** to Zebra Data Services (no Windows print worker on the tablet). Infinity Home calls **SendFileToPrinter** after each save.
 
 Label size defaults: **80 mm × 68 mm** face, **3 mm** gap between labels (0.3 cm), **2 mm** side margin. Override with Vercel env: `ZEBRA_LABEL_WIDTH_MM`, `ZEBRA_LABEL_HEIGHT_MM`, `ZEBRA_LABEL_GAP_MM`, `ZEBRA_LABEL_SIDE_MARGIN_MM`, `ZEBRA_PRINTER_DPI`. ZPL `^LL` uses **pitch** = height + gap.
 
@@ -98,13 +98,33 @@ If this prints, Weblink + API are correct.
 
 ---
 
-## Part 5 — Production kiosk
+## Part 5 — Upholstery Production app
 
 1. Deploy latest API (`production-packet-create` / `production-stock-increase` enqueue labels).
-2. On `/warehouse-production`, **create** an item (qty N → **N** labels via `^PQ` in one API call).
+2. In the Android app, **create** an item (qty N → **N** labels via `^PQ` in one API call).
 3. **Add stock** on an existing packet (same: one label per unit added).
 
 No label worker PC is required when Weblink + env vars are set.
+
+### Product photo QR (always printed)
+
+Each label includes a **QR code** in the Photo row. It always encodes a stable link:
+
+`https://www.infinity-home.online/api/health?action=product-photo&sku=<packet SKU>`
+
+- The QR is printed **even when no catalog image exists yet** (scanning may show “photo not ready”).
+- **Same QR after you add a photo:** the link is tied to the **SKU**, not the image file. When you add a product (or assembly) image for that SKU in the catalog, scans of **old labels** redirect to the new photo automatically.
+
+### Create flow — required product photo (app)
+
+When staff tap **Save production item** in the Android app:
+
+1. The **camera opens** (required — cannot skip).
+2. The photo is sent to the API; **Gemini** retouches it for **upholstered seating** on a **white catalog background** (see `PRODUCTION_SEATING_PHOTO_PROMPT` in `server/lib/productionSeatingPhotoRetouch.js`).
+3. The retouched JPEG is stored on the warehouse packet (`image_url`) for the packet **SKU**.
+4. **Labels print** after the photo is saved (QR on the label opens that SKU’s catalog image).
+
+Requires **`GEMINI_API_KEY_PRODUCTION`** on Vercel (separate from `GEMINI_API_KEY` used elsewhere) — see **`docs/gemini-production-photo-vercel.md`**. For local testing only, `PRODUCTION_PHOTO_SKIP_AI=true` uploads a normalized JPEG without AI.
 
 ---
 

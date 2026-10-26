@@ -12,7 +12,7 @@ Warehouse production on phones: **create packets**, **add stock**, labels via **
 ## Parity with web kiosk
 
 - **Arabic / EN** toggle (default Arabic), RTL layout, and **MyMemory** translation for on-screen labels (same as `/warehouse-production` web).
-- **Suggest a name** — same API as web (`production-suggest-base-name`): **Gemini** when `GEMINI_API_KEY` is on Vercel, else curated names/places; uniqueness checked server-side. Offline fallback uses local lists in the app.
+- **Suggest a name** — `production-suggest-base-name` picks from a fixed **girl-name pool** only (no places); duplicates blocked server-side. The app rejects any non-pool API response and uses the same local pool.
 
 ## User access
 

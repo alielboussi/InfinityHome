@@ -1,7 +1,10 @@
 /** Keep in sync with src/utils/productionKioskI18n.js */
 
 const UI_STRINGS = {
-  pageTitle: { en: 'Warehouse production', ar: 'إنتاج المستودع' },
+  pageTitle: { en: 'Upholstery Production', ar: 'إنتاج التنجيد' },
+  preset3Seater: { en: '3 seater', ar: 'ثلاث مقاعد' },
+  preset2Seater: { en: '2 seater', ar: 'مقعدان' },
+  presetSingleSeater: { en: 'Single seater', ar: 'مقعد واحد' },
   subtitle: {
     en: 'Create in-house seating items (saved as warehouse packets).',
     ar: 'إنشاء قطع جلوس داخلية (تُحفظ كحزم في المستودع).',
@@ -10,8 +13,8 @@ const UI_STRINGS = {
   warehouseOnly: { en: 'Warehouse only', ar: 'المستودع فقط' },
   baseNameLabel: { en: 'Name (first)', ar: 'الاسم (أولاً)' },
   baseNameHint: {
-    en: 'Enter or tap Suggest a name (stylish names or beautiful places), then pick a seater preset.',
-    ar: 'أدخل اسمًا أو اضغط اقتراح اسم، ثم اختر نوع المقعد.',
+    en: 'Enter or tap Suggest a name, then pick a seater preset. Saving requires a product photo.',
+    ar: 'أدخل اسمًا أو اقترح اسمًا، ثم اختر نوع المقعد. الحفظ يتطلب صورة للمنتج.',
   },
   productNameLabel: { en: 'Product name', ar: 'اسم المنتج' },
   generateName: { en: 'Suggest a name', ar: 'اقتراح اسم' },
@@ -19,8 +22,20 @@ const UI_STRINGS = {
   qtyLabel: { en: 'Stock qty (warehouse)', ar: 'كمية المخزون (المستودع)' },
   save: { en: 'Save production item', ar: 'حفظ عنصر الإنتاج' },
   saving: { en: 'Saving…', ar: 'جاري الحفظ…' },
-  translateToggle: { en: 'العربية', ar: 'EN' },
-  saved: { en: 'Saved — labels sent to printer.', ar: 'تم الحفظ — أُرسلت الملصقات إلى الطابعة.' },
+  translateToggle: { en: 'عربي', ar: 'English' },
+  saved: { en: 'Saved — photo catalogued and labels sent to printer.', ar: 'تم الحفظ — صُوّرت المنتج وأُرسلت الملصقات إلى الطابعة.' },
+  photoCaptureHint: {
+    en: 'Take a clear photo of the seating arrangement (camera will open).',
+    ar: 'التقط صورة واضحة لقطعة الجلوس (ستُفتح الكاميرا).',
+  },
+  photoProcessing: {
+    en: 'AI is retouching your photo (white catalog background) and printing labels…',
+    ar: 'الذكاء الاصطناعي يعالج الصورة (خلفية بيضاء) ويطبع الملصقات…',
+  },
+  photoCancelled: {
+    en: 'A product photo is required. Tap Save again and take the picture.',
+    ar: 'صورة المنتج مطلوبة. اضغط حفظ مرة أخرى والتقط الصورة.',
+  },
   needBaseName: { en: 'Enter or generate a name first.', ar: 'أدخل أو ولّد اسمًا أولاً.' },
   needPreset: { en: 'Choose a seater preset to build the product name.', ar: 'اختر نوع المقعد لبناء اسم المنتج.' },
   needQty: { en: 'Enter stock quantity (0 or more).', ar: 'أدخل كمية المخزون (0 أو أكثر).' },
@@ -32,8 +47,16 @@ const UI_STRINGS = {
   accessDenied: { en: 'You do not have access to production.', ar: 'لا تملك صلاحية الإنتاج.' },
   loading: { en: 'Loading…', ar: 'جاري التحميل…' },
   dashTitle: { en: 'Upholstery Production', ar: 'إنتاج التنجيد' },
-  dashCreate: { en: 'Create new', ar: 'إنشاء جديد' },
-  dashStock: { en: 'Production stock', ar: 'إضافة مخزون' },
+  dashCreate: { en: 'Create new item', ar: 'إنشاء قطعة جديدة' },
+  dashCreateSub: {
+    en: 'New seating → warehouse packet + labels',
+    ar: 'مقعد جديد → حزمة مستودع + ملصقات',
+  },
+  dashStock: { en: 'Add warehouse stock', ar: 'إضافة مخزون' },
+  dashStockSub: {
+    en: 'Search product → increase qty + labels',
+    ar: 'بحث عن منتج → زيادة الكمية + ملصقات',
+  },
   stockTitle: { en: 'Add production stock', ar: 'إضافة مخزون إنتاج' },
   stockSearch: { en: 'Search name or scan barcode', ar: 'ابحث بالاسم أو امسح الباركود' },
   keyboardBtn: { en: 'Keyboard', ar: 'لوحة المفاتيح' },
@@ -53,6 +76,18 @@ const UI_STRINGS = {
   labelPreviewCopies: { en: '{n} copies sent to printer.', ar: 'أُرسل {n} نسخ إلى الطابعة.' },
   labelPreviewDone: { en: 'Done', ar: 'تم' },
 };
+
+const PRESET_I18N = {
+  '3 Seater': 'preset3Seater',
+  '2 Seater': 'preset2Seater',
+  'Single Seater': 'presetSingleSeater',
+};
+
+export function presetLabel(preset, locale) {
+  const key = PRESET_I18N[preset];
+  if (!key) return preset;
+  return tUi(key, locale);
+}
 
 export function tUi(key, locale) {
   const row = UI_STRINGS[key];
