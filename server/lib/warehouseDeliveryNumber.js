@@ -1,7 +1,7 @@
 import { getFirestore } from './firestoreDb.js';
 
 const SEQ_DOC = 'warehouse_delivery_number';
-const PREFIX = 'WH';
+const PREFIX = 'WHD';
 
 function formatWarehouseDeliveryNumber(seq) {
   const n = Math.max(1, Number(seq) || 1);
@@ -9,7 +9,8 @@ function formatWarehouseDeliveryNumber(seq) {
 }
 
 function parseWarehouseDeliverySequence(deliveryNumber) {
-  const m = String(deliveryNumber || '').trim().match(/^WH(\d{10})$/i);
+  const m = String(deliveryNumber || '').trim().match(/^WHD(\d{10})$/i)
+    || String(deliveryNumber || '').trim().match(/^WH(\d{10})$/i);
   if (!m) return 0;
   return Number(m[1]) || 0;
 }
@@ -27,7 +28,7 @@ async function bootstrapSequenceFromExisting(db) {
   return max;
 }
 
-/** Next delivery note: WH0000000001, WH0000000002, … */
+/** Next delivery note: WHD0000000001, WHD0000000002, … */
 export async function allocateWarehouseDeliveryNumber() {
   const db = getFirestore();
   if (!db) throw new Error('Firebase admin not configured');

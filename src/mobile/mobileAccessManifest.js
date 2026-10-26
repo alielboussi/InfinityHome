@@ -79,6 +79,7 @@ export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_packets',
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
+  'kitwe_send_delivery',
 ]);
 
 /** Every navigable screen (CI + defaults). */
@@ -112,6 +113,12 @@ export const MOBILE_SCREENS = Object.freeze([
     id: 'warehouse_unused_packets',
     label: 'Warehouse Unused Packets',
     description: 'Spare cartons after BOM-complete products (on hand minus allocated)',
+    permissionMatrix: true,
+  },
+  {
+    id: 'kitwe_send_delivery',
+    label: 'Send to Kitwe',
+    description: 'Truck delivery checklist → Hassan acceptance',
     permissionMatrix: true,
   },
   {
@@ -153,6 +160,7 @@ const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_incomplete_products: 'WarehouseIncompleteProducts',
   warehouse_packets: 'WarehousePackets',
   warehouse_unused_packets: 'WarehouseUnusedPackets',
+  kitwe_send_delivery: 'KitweSendHome',
 });
 
 const WAREHOUSE_PRODUCTS_CHILD_SCREENS = Object.freeze([

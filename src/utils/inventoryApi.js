@@ -113,6 +113,7 @@ export const postInventoryBulk = async (payload) => {
 
 export const applySaleInventoryDeductionViaApi = async ({
   items = [],
+  kitweDeductions = [],
   locationId,
   saleId,
   receiptNumber,
@@ -122,13 +123,14 @@ export const applySaleInventoryDeductionViaApi = async ({
   const data = await postInventoryBulk({
     action: 'sale-deduction',
     items,
+    kitweDeductions,
     locationId,
     saleId,
     receiptNumber,
     userUid,
     userId,
   });
-  return Number(data?.adjustedProducts || 0);
+  return Number(data?.adjustedProducts || 0) + Number(data?.adjustedKitwe || 0);
 };
 
 export const applyInventoryBulk = async ({ inserts = [], updates = [] }, db) => {

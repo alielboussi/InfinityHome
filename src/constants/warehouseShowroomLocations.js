@@ -17,7 +17,13 @@ export function defaultWarehouseKitShowroomLocationId() {
   return KITWE_LOCATION_ID;
 }
 
-/** Sets are kitted at showrooms only — not created from the central Warehouse catalog UI. */
-export function warehouseCatalogAllowsSetCreate() {
-  return false;
+/**
+ * Sets are kitted at showrooms only — not from central Warehouse catalog UI.
+ * Kitwe Products portal may create sets from Kitwe assembly stock.
+ */
+export function warehouseCatalogAllowsSetCreate(portalOrOptions) {
+  const portal = typeof portalOrOptions === 'string'
+    ? portalOrOptions
+    : portalOrOptions?.create_portal || portalOrOptions?.portal;
+  return portal === 'kitwe-products';
 }

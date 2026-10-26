@@ -46,6 +46,9 @@ import {
   UserActivityLog,
   WarehouseDeliveries,
   WarehouseDeliveriesAdmin,
+  WarehouseDeliveryDriversPage,
+  KitweProductsPage,
+  KitweSetsPage,
   WarehousePacketEditPage,
   WarehousePacketsPage,
   ProductionAdminPage,
@@ -369,6 +372,10 @@ function App() {
           <Route path="/Factory-Kitwe-summary" element={<Navigate to="/All-Transfers-summary" replace />} />
           <Route path="/warehouse-deliveries" element={<WarehouseDeliveries />} />
           <Route path="/warehouse-deliveries-admin" element={<WarehouseDeliveriesAdmin />} />
+          <Route path="/warehouse-delivery-drivers" element={<WarehouseDeliveryDriversPage />} />
+          <Route path="/kitwe-products/sets/create" element={<KitweSetsPage mode="create" />} />
+          <Route path="/kitwe-products/sets" element={<KitweSetsPage />} />
+          <Route path="/kitwe-products" element={<KitweProductsPage />} />
           <Route path="/transfers" element={<LusakaTransfers />} />
           <Route path="/lusaka-transfers" element={<Navigate to="/transfers" replace />} />
           <Route path="/Kitwe-Lusaka" element={<Navigate to="/All-Transfers" replace />} />

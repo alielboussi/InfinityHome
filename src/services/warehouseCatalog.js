@@ -497,7 +497,7 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
   if (isSet && !isWarehouseKitShowroomLocation(setLocationId)) {
     throw new Error('Choose Kitwe or Lusaka for this set recipe.');
   }
-  if (isSet && !id && !warehouseCatalogAllowsSetCreate()) {
+  if (isSet && !id && !warehouseCatalogAllowsSetCreate(payload?.create_portal)) {
     throw new Error('Sets are built at showroom locations from products — not created in Warehouse.');
   }
   if (isSet) {

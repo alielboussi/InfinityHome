@@ -41,7 +41,9 @@ const NAV_GROUPS = [
     items: [
       { label: 'Categories', route: '/categories', icon: FaThLarge },
       { label: 'Products', route: '/products-list', icon: FaTags },
+      { label: 'Kitwe', route: '/kitwe-products', icon: FaTags },
       { label: 'Warehouse', route: '/warehouse-products', icon: FaBoxOpen },
+      { label: 'Delivery drivers', route: '/warehouse-delivery-drivers', icon: FaTruckLoading },
       { label: 'Production', route: '/production', icon: FaPlus, catalogOnly: true },
       { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
       { label: 'Print Labels', route: '/price-labels', icon: FaPrint },
@@ -181,6 +183,8 @@ const TITLE_MAP = {
   '/All-Transfers-summary': 'Transfers Summary',
   '/transfers-report': 'Transfers Report',
   '/warehouse-deliveries': 'Warehouse Deliveries',
+  '/kitwe-products': 'Kitwe',
+  '/warehouse-delivery-drivers': 'Delivery drivers',
   '/warehouse-deliveries-admin': 'Warehouse Deliveries',
   '/transfers': 'Transfers',
   '/lusaka-transfers': 'Transfers',

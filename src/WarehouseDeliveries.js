@@ -12,6 +12,15 @@ import {
   isWarehousePending,
 } from './utils/warehouseDelivery';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
+import {
+  acceptWarehouseDeliverySession,
+  setDeliveryEntryReceiverCheck,
+} from './services/warehouseDeliveryMobileApi';
+import {
+  anyDeliveryPacketsReceiverConfirmed,
+  deliveryEntryReceiverProgress,
+  deliveryEntryReceived,
+} from './utils/warehouseDelivery';
 
 const formatDateTime = (value) => {
   if (!value) return '-';
@@ -105,6 +114,7 @@ export default function WarehouseDeliveries() {
   const [usersById, setUsersById] = useState(new Map());
   const [isIpadSafari, setIsIpadSafari] = useState(() => detectIpadSafari());
   const [hassanAlert, setHassanAlert] = useState(null);
+  const [openSessionId, setOpenSessionId] = useState('');
   const canAccept = currentUserId === WAREHOUSE_ACCEPT_USER_ID;
 
   useEffect(() => {
@@ -122,7 +132,7 @@ export default function WarehouseDeliveries() {
         .select('id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, accepted_at, applied_at, completed_at, pdf_url, metadata')
         .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
         .eq('to_location', WAREHOUSE_TO_LOCATION_ID)
-        .in('status', ['pending', 'submitted'])
+        .in('status', ['pending', 'submitted', 'partially_received'])
         .order('delivery_number', { ascending: false });
       if (sessErr) throw sessErr;
 
@@ -305,13 +315,11 @@ export default function WarehouseDeliveries() {
 
       const session = sessions.find((s) => String(s.id) === String(sessionId));
       const entries = entriesBySession[String(sessionId)] || [];
+      if (!anyDeliveryPacketsReceiverConfirmed(entries)) {
+        throw new Error('Tick at least one received packet, then accept.');
+      }
 
-      const { data, error: rpcErr } = await db.rpc('accept_warehouse_delivery', {
-        p_session_id: sessionId,
-        p_accepted_by: currentUserId || WAREHOUSE_ACCEPT_USER_ID,
-        p_accepted_by_email: userEmail || null,
-      });
-      if (rpcErr) throw rpcErr;
+      const data = await acceptWarehouseDeliverySession(sessionId);
       if (data && data.ok === false) throw new Error(data.error || 'Accept failed');
 
       // Notify WhatsApp group after inventory accept succeeds (non-blocking for reload).
@@ -336,6 +344,17 @@ export default function WarehouseDeliveries() {
       setError(err?.message || 'Failed to accept delivery.');
     } finally {
       setBusyId('');
+    }
+  };
+
+  const toggleReceiverCheck = async (entryId, checked) => {
+    if (!canAccept) return;
+    setError('');
+    try {
+      await setDeliveryEntryReceiverCheck(entryId, checked);
+      await loadDeliveries();
+    } catch (err) {
+      setError(err?.message || 'Failed to update packet confirmation.');
     }
   };
 
@@ -421,119 +440,130 @@ export default function WarehouseDeliveries() {
           <div style={{ color: '#9fb3c8' }}>No pending deliveries.</div>
         )}
 
-        {sessions.map((session) => {
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: 14,
+          marginBottom: 20,
+        }}
+        >
+          {sessions.map((session) => {
+            const entries = entriesBySession[String(session.id)] || [];
+            const { total, confirmed } = deliveryEntryReceiverProgress(entries);
+            const driver = session?.metadata?.driver_name;
+            return (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => setOpenSessionId(String(session.id))}
+                style={{
+                  textAlign: 'left',
+                  border: openSessionId === String(session.id) ? '2px solid #38bdf8' : '1px solid #1f3b4d',
+                  borderRadius: 12,
+                  padding: 16,
+                  background: '#121826',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontWeight: 800, fontSize: 18 }}>
+                  {session.delivery_number || session.id}
+                </div>
+                <div style={{ color: '#9fb3c8', marginTop: 6 }}>{fromName} → {toName}</div>
+                <div style={{ color: '#9fb3c8', marginTop: 4 }}>
+                  Sent: {formatDateTime(session.submitted_at || session.created_at)}
+                </div>
+                <div style={{ color: '#9fb3c8' }}>By: {deliverySenderName(session, usersById)}</div>
+                {driver ? <div style={{ color: '#cbd5e1' }}>Driver: {driver}</div> : null}
+                <div style={{ marginTop: 10, fontWeight: 700, color: confirmed === total && total > 0 ? '#4ade80' : '#fbbf24' }}>
+                  Packets confirmed: {confirmed}/{total}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {openSessionId && sessions.filter((s) => String(s.id) === openSessionId).map((session) => {
           const entries = entriesBySession[String(session.id)] || [];
           const displayLines = groupWarehouseDisplayLines(entries);
           const pending = isWarehousePending(session.status);
+          const canAcceptSession = anyDeliveryPacketsReceiverConfirmed(entries);
+          const toAcceptCount = entries.filter(
+            (e) => e?.metadata?.packet_id
+              && e?.metadata?.receiver_checked_at
+              && !deliveryEntryReceived(e),
+          ).length;
           return (
             <div
-              key={session.id}
+              key={`detail-${session.id}`}
               style={{
-                border: '1px solid #1f3b4d',
-                borderRadius: 10,
+                border: '1px solid #38bdf8',
+                borderRadius: 12,
                 padding: isIpadSafari ? 18 : 16,
-                marginBottom: 16,
-                background: '#121826',
+                marginBottom: 24,
+                background: '#0f172a',
               }}
             >
-              <div style={{ display: 'grid', gridTemplateColumns: isIpadSafari ? 'repeat(auto-fit, minmax(260px, 1fr))' : 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-                <div>
-                  <div style={{ fontWeight: 700 }}>
-                    {session.delivery_number || session.id}
-                  </div>
-                  <div style={{ color: '#9fb3c8' }}>Status: {session.status}</div>
-                  <div style={{ color: '#9fb3c8' }}>
-                    Submitted: {formatDateTime(session.submitted_at || session.transfer_datetime || session.created_at)}
-                  </div>
-                  <div style={{ color: '#9fb3c8' }}>By: {deliverySenderName(session, usersById)}</div>
-                </div>
-                <div>
-                  <div>From: <b>{fromName}</b></div>
-                  <div>To: <b>{toName}</b></div>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <h2 style={{ margin: 0 }}>{session.delivery_number}</h2>
+                <button type="button" onClick={() => setOpenSessionId('')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>Close</button>
               </div>
-
-              <div style={{ marginTop: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', gap: 8, color: '#9fb3c8', fontSize: 13, marginBottom: 6 }}>
-                  <span>Product</span>
-                  <span style={{ textAlign: 'right' }}>Qty</span>
-                  <span style={{ textAlign: 'right' }}>Expected @ dest</span>
-                </div>
-                {displayLines.map((line) => {
-                  if (line.kind === 'set-parent') {
-                    return (
-                      <div key={line.id} style={{ fontWeight: 700, textDecoration: 'underline', marginTop: 8 }}>
-                        {line.name} (Set)
-                      </div>
-                    );
-                  }
-                  if (line.kind === 'assembly-header') {
-                    return (
-                      <div key={line.id} style={{ fontWeight: 700, marginTop: 10, color: '#e2e8f0' }}>
-                        {line.name}
-                      </div>
-                    );
-                  }
-                  const expected = expectedForLine(line);
+              {displayLines.map((line) => {
+                if (line.kind === 'assembly-header') {
                   return (
-                    <div
-                      key={line.id}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 90px 110px',
-                        gap: 8,
-                        paddingLeft: line.kind === 'set-component' || line.kind === 'packet-line' ? 16 : 0,
-                        marginTop: 6,
-                        color: line.kind === 'set-component' || line.kind === 'packet-line' ? '#cbd5e1' : undefined,
-                      }}
-                    >
-                      <span>
-                        {line.kind === 'set-component' || line.kind === 'packet-line'
-                          ? `- ${line.name}`
-                          : line.name}
-                      </span>
-                      <span style={{ textAlign: 'right' }}>{deliveryLineQty(line)}</span>
-                      <span style={{ textAlign: 'right' }}>{expected == null ? '—' : expected}</span>
+                    <div key={line.id} style={{ fontWeight: 700, marginTop: 14, color: '#e2e8f0' }}>
+                      {line.name}
                     </div>
                   );
-                })}
-              </div>
-
-              <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => handlePdf(session)}
-                  disabled={pdfBusyId === session.id}
-                  style={{
-                    background: '#1f3b4d',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: isIpadSafari ? '10px 20px' : '8px 16px',
-                    minHeight: isIpadSafari ? 44 : undefined,
-                    fontWeight: 700,
-                    cursor: pdfBusyId === session.id ? 'not-allowed' : 'pointer',
-                  }}
-                >
+                }
+                if (line.kind !== 'packet-line') return null;
+                const checked = Boolean(line?.metadata?.receiver_checked_at);
+                const received = deliveryEntryReceived(line);
+                return (
+                  <label
+                    key={line.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      marginTop: 8,
+                      paddingLeft: 8,
+                      color: received ? '#64748b' : '#cbd5e1',
+                      cursor: canAccept && !received ? 'pointer' : 'default',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked || received}
+                      disabled={!canAccept || !pending || received}
+                      onChange={(e) => toggleReceiverCheck(line.id, e.target.checked)}
+                    />
+                    <span>
+                      {line.name} × {deliveryLineQty(line)}
+                      {received ? ' (received)' : ''}
+                    </span>
+                  </label>
+                );
+              })}
+              <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => handlePdf(session)} disabled={pdfBusyId === session.id} style={{ background: '#1f3b4d', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700 }}>
                   {pdfBusyId === session.id ? 'Building PDF…' : 'View PDF'}
                 </button>
                 <button
                   type="button"
                   onClick={() => handleAccept(session.id)}
-                  disabled={busyId === session.id || !canAccept || !pending}
+                  disabled={busyId === session.id || !canAccept || !pending || !canAcceptSession || toAcceptCount < 1}
                   style={{
                     background: '#2a9d8f',
                     color: '#fff',
                     border: 'none',
                     borderRadius: 8,
-                    padding: isIpadSafari ? '10px 20px' : '8px 16px',
-                    minHeight: isIpadSafari ? 44 : undefined,
+                    padding: '10px 16px',
                     fontWeight: 700,
-                    cursor: busyId === session.id || !canAccept ? 'not-allowed' : 'pointer',
-                    opacity: busyId === session.id || !canAccept ? 0.6 : 1,
+                    opacity: !canAcceptSession ? 0.5 : 1,
                   }}
                 >
-                  {busyId === session.id ? 'Accepting…' : 'Accept Delivery'}
+                  {busyId === session.id ? 'Accepting…' : `Accept received packets (${toAcceptCount})`}
                 </button>
               </div>
             </div>

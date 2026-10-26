@@ -24,6 +24,8 @@ import {
   setPacketQuantityForMobile,
 } from '../lib/warehouseCatalogMobile.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
+import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeliveryWhatsAppMessage.js';
+import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhatsApp.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
   isWarehouseProductionAppAllowed,
@@ -37,6 +39,10 @@ import {
   matchProductionGirlNameFromPool,
   normalizeWarehousePacketNameKey,
 } from '../../src/utils/productionItemName.js';
+import {
+  parseProductPhotoQrSku,
+  productionScanResolveCandidates,
+} from '../../src/utils/productionLabelQrScan.js';
 import { attachProductionPacketCatalogPhoto } from '../lib/productionPacketCatalogPhoto.js';
 import { suggestUniqueProductionBaseName } from '../lib/productionSuggestBaseName.js';
 import { titleCaseWords } from '../../src/utils/titleCaseWords.js';
@@ -53,9 +59,17 @@ import {
   updateWarehouseProductionLogEntry,
 } from '../lib/warehouseProductionLog.js';
 import {
+  WAREHOUSE_ACCEPT_USER_ID,
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
+import { acceptWarehouseDeliveryServer } from '../lib/warehouseDeliveryAccept.js';
+import { assertPacketStockAvailable } from '../lib/warehouseDeliveryStock.js';
+import {
+  listWarehouseDeliveryDrivers,
+  saveWarehouseDeliveryDrivers,
+} from '../lib/warehouseDeliveryDrivers.js';
+import { HASSAN_AWAD } from '../../src/accessControl.js';
 import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku.js';
 import { enqueueWarehouseProductionLabelJob } from '../lib/productionLabelPrint.js';
 import {
@@ -148,7 +162,27 @@ async function opScanResolve(body) {
     sb.from('warehouse_packets').select('id, sku, name, packet_number, assembly_id, qty_per_unit'),
     sb.from('warehouse_assemblies').select(assemblyFields),
   ]);
-  const packet = resolvePacketFromScan(scan, packets || []);
+  let packet = null;
+  for (const candidate of productionScanResolveCandidates(scan)) {
+    packet = resolvePacketFromScan(candidate, packets || []);
+    if (packet) break;
+  }
+  if (!packet) {
+    const photoSku = parseProductPhotoQrSku(scan);
+    if (photoSku) {
+      packet = (packets || []).find(
+        (p) => String(p.sku || '').toUpperCase() === photoSku.toUpperCase(),
+      ) || null;
+    }
+  }
+  if (!packet) {
+    const nameKey = normalizeWarehousePacketNameKey(scan);
+    if (nameKey) {
+      packet = (packets || []).find(
+        (p) => normalizeWarehousePacketNameKey(p.name) === nameKey,
+      ) || null;
+    }
+  }
   if (packet) {
     const assembly = packet.assembly_id
       ? (assemblies || []).find((a) => String(a.id) === String(packet.assembly_id))
@@ -780,31 +814,25 @@ async function opDeliverySessionOpen(user) {
   return { session_id: sessionId, delivery_number: deliveryNumber };
 }
 
-async function deductPacketStock(sb, packetId, locationId, delta) {
-  const { data: rows } = await sb
-    .from('warehouse_packet_inventory')
-    .select('quantity')
-    .eq('packet_id', packetId)
-    .eq('location_id', locationId);
-  const current = Number(rows?.[0]?.quantity) || 0;
-  const next = current - delta;
-  if (next < 0) {
-    throw new Error('Not enough packet stock at warehouse.');
-  }
-  const now = new Date().toISOString();
-  await sb.from('warehouse_packet_inventory').upsert({
-    packet_id: packetId,
-    location_id: locationId,
-    quantity: next,
-    updated_at: now,
-  }, { onConflict: 'packet_id,location_id' });
+function isHassanDeliveryUser(user) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (HASSAN_AWAD.emails.some((e) => e.toLowerCase() === email)) return true;
+  const uid = String(user?.id || user?.uid || '').toLowerCase();
+  return uid === String(HASSAN_AWAD.id).toLowerCase() || uid === String(WAREHOUSE_ACCEPT_USER_ID).toLowerCase();
+}
+
+function scanLineDriverChecked(line) {
+  return line?.driver_checked === true || Boolean(line?.driver_checked_at);
 }
 
 async function opDeliverySubmit(body, user) {
   const sessionId = String(body.session_id || '');
   const groups = Array.isArray(body.groups) ? body.groups : [];
+  const driverName = String(body.driver_name || body.driverName || '').trim();
+  const driverId = String(body.driver_id || body.driverId || '').trim();
   if (!sessionId) throw new Error('session_id is required.');
   if (!groups.length) throw new Error('Add at least one product group.');
+  if (!driverName) throw new Error('Select a driver before submitting.');
 
   const sb = getService();
   const { data: session } = await sb
@@ -827,6 +855,7 @@ async function opDeliverySubmit(body, user) {
 
   const entries = [];
   let totalCartons = 0;
+  const now = new Date().toISOString();
 
   for (const group of groups) {
     const assemblyId = String(group.assembly_id || '');
@@ -852,10 +881,17 @@ async function opDeliverySubmit(body, user) {
 
     for (const packet of packetRows) {
       const moveQty = units * Math.max(1, Number(packet.qty_per_unit) || 1);
+      const scanLine = (group.scans || []).find((s) => String(s.packet_id) === String(packet.id));
       const have = scanned.get(String(packet.id)) || 0;
-      if (have < moveQty) continue;
-      await deductPacketStock(sb, packet.id, WAREHOUSE_FROM_LOCATION_ID, moveQty);
+      if (have < moveQty) {
+        throw new Error(`Check all cartons for ${assembly.name} (packet #${packet.packet_number || '?'}) before submit.`);
+      }
+      if (!scanLineDriverChecked(scanLine || {})) {
+        throw new Error(`Driver must confirm every packet carton for ${assembly.name}.`);
+      }
+      await assertPacketStockAvailable(sb, packet.id, WAREHOUSE_FROM_LOCATION_ID, moveQty);
       totalCartons += moveQty;
+      const driverCheckedAt = scanLine?.driver_checked_at || now;
       entries.push({
         id: newUuid(),
         session_id: sessionId,
@@ -869,12 +905,13 @@ async function opDeliverySubmit(body, user) {
           assembly_name: assembly.name,
           packet_number: packet.packet_number,
           units,
+          driver_checked_at: driverCheckedAt,
+          receiver_checked_at: null,
         },
       });
     }
   }
 
-  const now = new Date().toISOString();
   for (const entry of entries) {
     const { error } = await sb.from('warehouse_delivery_entries').insert({
       ...entry,
@@ -893,9 +930,51 @@ async function opDeliverySubmit(body, user) {
       hassan_alert_pending: true,
       hassan_alert_at: now,
       submitted_by_email: user?.email || null,
+      driver_id: driverId || null,
+      driver_name: driverName,
     },
   }).eq('id', sessionId);
   if (updErr) throw new Error(updErr.message || 'Failed to submit delivery');
+
+  const totalProducts = groups.reduce(
+    (sum, group) => sum + Math.max(1, Number(group.units) || 1),
+    0,
+  );
+  const productGroups = groups.map((group) => {
+    const assemblyId = String(group.assembly_id || '');
+    const assembly = assemblyById.get(assemblyId);
+    const units = Math.max(1, Number(group.units) || 1);
+    const packetRows = byAssembly.get(assemblyId) || [];
+    return {
+      assemblyName: assembly?.name || 'Product',
+      packetLines: packetRows.map((packet) => ({
+        name: packet.name,
+        quantity: units * Math.max(1, Number(packet.qty_per_unit) || 1),
+      })),
+    };
+  });
+
+  const accessRecord = await getLoginAccessRecord(user?.id);
+  const userAlias = accessRecord?.mobile_display_name
+    || accessRecord?.display_name
+    || user?.user_metadata?.full_name
+    || user?.full_name
+    || user?.email
+    || '—';
+
+  const whatsappMessage = buildWarehouseDeliveryWhatsAppMessage({
+    userAlias,
+    submittedAt: now,
+    driverName,
+    routeLabel: 'Warehouse To Showroom',
+    productGroups,
+    totalPackets: totalCartons,
+    totalProducts,
+  });
+
+  sendWarehouseDeliveryWhatsApp(whatsappMessage).catch((err) => {
+    console.warn('[delivery-submit] WhatsApp notify failed:', err?.message || err);
+  });
 
   return {
     session_id: sessionId,
@@ -903,6 +982,61 @@ async function opDeliverySubmit(body, user) {
     total_cartons: totalCartons,
     entry_count: entries.length,
   };
+}
+
+async function opDeliveryDriversList() {
+  const sb = getService();
+  const drivers = await listWarehouseDeliveryDrivers(sb, { activeOnly: true });
+  return { drivers };
+}
+
+async function opDeliveryDriversSave(body, user) {
+  const { isLoginAccessAdmin } = await import('../lib/loginAccess.js');
+  if (!isLoginAccessAdmin(user?.email) && !canManageCatalog(user)) {
+    const err = new Error('Admin access required.');
+    err.status = 403;
+    throw err;
+  }
+  const names = Array.isArray(body.names) ? body.names : [];
+  const sb = getService();
+  const drivers = await saveWarehouseDeliveryDrivers(sb, names);
+  return { drivers };
+}
+
+async function opDeliveryReceiverCheck(body, user) {
+  if (!isHassanDeliveryUser(user)) {
+    const err = new Error('Only the Kitwe receiver can confirm packets.');
+    err.status = 403;
+    throw err;
+  }
+  const entryId = String(body.entry_id || '');
+  const checked = body.checked !== false;
+  if (!entryId) throw new Error('entry_id is required.');
+  const sb = getService();
+  const { data: entry } = await sb.from('warehouse_delivery_entries').select('*').eq('id', entryId).maybeSingle();
+  if (!entry) throw new Error('Delivery line not found.');
+  const now = new Date().toISOString();
+  const metadata = {
+    ...(entry.metadata || {}),
+    receiver_checked_at: checked ? now : null,
+  };
+  const { error } = await sb.from('warehouse_delivery_entries').update({ metadata }).eq('id', entryId);
+  if (error) throw new Error(error.message || 'Failed to update line');
+  return { entry_id: entryId, receiver_checked: checked, metadata };
+}
+
+async function opDeliveryAccept(body, user) {
+  if (!isHassanDeliveryUser(user)) {
+    const err = new Error('Only the Kitwe receiver can accept deliveries.');
+    err.status = 403;
+    throw err;
+  }
+  const sessionId = String(body.session_id || '');
+  const result = await acceptWarehouseDeliveryServer(getService(), sessionId, {
+    acceptedBy: user?.id || WAREHOUSE_ACCEPT_USER_ID,
+    acceptedByEmail: user?.email || null,
+  });
+  return result;
 }
 
 export default async function handler(req, res) {
@@ -971,6 +1105,18 @@ export default async function handler(req, res) {
         break;
       case 'delivery-submit':
         result = await opDeliverySubmit(body, user);
+        break;
+      case 'delivery-drivers-list':
+        result = await opDeliveryDriversList();
+        break;
+      case 'delivery-drivers-save':
+        result = await opDeliveryDriversSave(body, user);
+        break;
+      case 'delivery-receiver-check':
+        result = await opDeliveryReceiverCheck(body, user);
+        break;
+      case 'delivery-accept':
+        result = await opDeliveryAccept(body, user);
         break;
       case 'production-access-self':
         result = await opProductionAccessSelf(user);

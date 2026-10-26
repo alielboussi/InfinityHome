@@ -81,6 +81,8 @@ const RECIPIENT_KEYS = {
 
   transfer: ['WHATSAPP_TRANSFER_RECIPIENTS', 'WHATSAPP_RECIPIENTS'],
 
+  warehouseDelivery: ['WHATSAPP_WAREHOUSE_DELIVERY_RECIPIENTS', 'WHATSAPP_RECIPIENTS'],
+
   labels: ['WHATSAPP_LABELS_RECIPIENTS', 'WHATSAPP_RECIPIENTS'],
 
   ledger: ['WHATSAPP_LEDGER_RECIPIENTS', 'WHATSAPP_RECIPIENTS'],
@@ -100,6 +102,8 @@ const GROUP_KEYS = {
   fahme: 'WHATSAPP_FAHME_GROUP_ID',
 
   transfer: 'WHATSAPP_TRANSFER_GROUP_ID',
+
+  warehouseDelivery: 'WHATSAPP_WAREHOUSE_DELIVERY_GROUP_ID',
 
   labels: 'WHATSAPP_LABELS_GROUP_ID',
 
@@ -121,6 +125,7 @@ const DOCUMENTED_WHATSAPP_GROUP_IDS = {
   layby: '120363429021437712@g.us',
   fahme: '120363372527723284@g.us',
   ledger: '120363246815974105@g.us',
+  warehouseDelivery: '120363410583418058@g.us',
 };
 
 
@@ -268,7 +273,7 @@ function normalizeWasenderKind(kind) {
 
 function parseWasenderKinds() {
   const raw = String(process.env.WHATSAPP_WASENDER_KINDS || '').trim().toLowerCase();
-  if (raw === 'all') return ['sale', 'layby', 'transfer', 'labels', 'ledger'];
+  if (raw === 'all') return ['sale', 'layby', 'transfer', 'warehouseDelivery', 'labels', 'ledger'];
   if (raw) {
     const kinds = raw.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
     if (kinds.length && !kinds.includes('labels') && kinds.some((kind) => ['sale', 'layby', 'transfer'].includes(kind))) {
@@ -3672,6 +3677,58 @@ async function handleWhatsAppTransfer(body) {
 
 
 
+async function handleWhatsAppWarehouseDelivery(body) {
+
+  const rawMessage = String(body.message || '').trim();
+
+  if (!rawMessage) {
+
+    const err = new Error('Missing message');
+
+    err.status = 400;
+
+    err.stage = 'validate';
+
+    throw err;
+
+  }
+
+
+
+  const routing = resolveDeliveryTargets('warehouseDelivery', null);
+
+  if (!routing.targets.length) {
+
+    const err = new Error('WhatsApp env not configured (WHATSAPP_WAREHOUSE_DELIVERY_GROUP_ID or WHATSAPP_WAREHOUSE_DELIVERY_RECIPIENTS)');
+
+    err.status = 500;
+
+    err.stage = 'env';
+
+    throw err;
+
+  }
+
+
+
+  const message = rawMessage.slice(0, WHATSAPP_TEXT_LIMIT);
+
+  const deliveries = await deliverText(routing.targets, message, routing.mode, routing.provider);
+
+  return {
+
+    ok: true,
+
+    deliveries,
+
+    truncated: rawMessage.length > WHATSAPP_TEXT_LIMIT,
+
+  };
+
+}
+
+
+
 function formatLedgerUsd(amount) {
 
   const n = Number(amount || 0);
@@ -4223,6 +4280,18 @@ export default async function handler(req, res) {
     if (action === 'whatsapp-transfer' || action === 'transfer') {
 
       const payload = await handleWhatsAppTransfer(body);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+
+
+    if (action === 'whatsapp-warehouse-delivery' || action === 'warehouse-delivery') {
+
+      const payload = await handleWhatsAppWarehouseDelivery(body);
 
       res.status(200).json(payload);
 

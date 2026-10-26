@@ -2,7 +2,7 @@ export const WAREHOUSE_FROM_LOCATION_ID = '39ffaa82-8aee-4a33-8de8-06584cbaffcf'
 export const WAREHOUSE_TO_LOCATION_ID = '454a092c-5b12-441e-b99d-216f6fa72198';
 export const WAREHOUSE_ACCEPT_USER_ID = '6b992ac8-8e39-4f31-a323-2271a974da8c';
 
-export const WAREHOUSE_PENDING_STATUSES = ['pending', 'submitted'];
+export const WAREHOUSE_PENDING_STATUSES = ['pending', 'submitted', 'partially_received'];
 export const WAREHOUSE_COMPLETED_STATUSES = ['completed', 'accepted'];
 
 export function isWarehousePending(status) {
@@ -28,6 +28,31 @@ export function deliverySenderName(session, usersById = null) {
     if (fromMap) return fromMap;
   }
   return String(session?.created_by_email || session?.metadata?.created_by_email || '').trim() || 'Unknown';
+}
+
+export function deliveryEntryReceiverProgress(entries) {
+  const lines = (entries || []).filter((e) => e?.metadata?.packet_id);
+  const total = lines.length;
+  const confirmed = lines.filter((e) => Boolean(e?.metadata?.receiver_checked_at)).length;
+  return { total, confirmed };
+}
+
+export function allDeliveryPacketsReceiverConfirmed(entries) {
+  const { total, confirmed } = deliveryEntryReceiverProgress(entries);
+  return total > 0 && confirmed === total;
+}
+
+export function anyDeliveryPacketsReceiverConfirmed(entries) {
+  const { confirmed } = deliveryEntryReceiverProgress(entries);
+  return confirmed > 0;
+}
+
+export function deliveryEntryReceived(entry) {
+  return Boolean(entry?.metadata?.received_at);
+}
+
+export function deliveryEntryPendingReceive(entry) {
+  return entry?.metadata?.packet_id && !deliveryEntryReceived(entry);
 }
 
 export function groupWarehouseDisplayLines(entries) {

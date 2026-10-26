@@ -1,5 +1,6 @@
 import { applyInventoryDeduction } from '../lib/inventoryDeduction.js';
 import { applyFirestoreInventoryDeduction } from '../lib/firestoreInventoryDeduction.js';
+import { applyKitweWarehouseSaleDeduction } from '../lib/kitweWarehouseSaleDeduction.js';
 import { getDataClient } from '../lib/getDataClient.js';
 import { getFirestore } from '../lib/firestoreDb.js';
 
@@ -135,9 +136,18 @@ export default async function handler(req, res) {
       || String(req.query?.live || '').trim() === '1';
 
     if (action === 'sale-deduction') {
-      const { items, locationId, saleId, receiptNumber, userUid, userId } = body;
-      if (!locationId || !Array.isArray(items) || !items.length) {
-        res.status(400).json({ ok: false, error: 'items and locationId are required' });
+      const {
+        items,
+        kitweDeductions,
+        locationId,
+        saleId,
+        receiptNumber,
+        userUid,
+        userId,
+      } = body;
+      const kitweLinesEarly = Array.isArray(kitweDeductions) ? kitweDeductions : [];
+      if (!locationId || ((!Array.isArray(items) || !items.length) && !kitweLinesEarly.length)) {
+        res.status(400).json({ ok: false, error: 'items or kitweDeductions and locationId are required' });
         return;
       }
       const adjustedProducts = await applyFirestoreInventoryDeduction(getFirestore(), {
@@ -148,7 +158,16 @@ export default async function handler(req, res) {
         userUid: userUid || null,
         userId: userId ?? null,
       });
-      res.status(200).json({ ok: true, adjustedProducts });
+      let adjustedKitwe = 0;
+      const kitweLines = Array.isArray(kitweDeductions) ? kitweDeductions : [];
+      if (kitweLines.length) {
+        const sb = getDataClient();
+        adjustedKitwe = await applyKitweWarehouseSaleDeduction(sb, {
+          locationId: String(locationId),
+          lines: kitweLines,
+        });
+      }
+      res.status(200).json({ ok: true, adjustedProducts, adjustedKitwe });
       return;
     }
 

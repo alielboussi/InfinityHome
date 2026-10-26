@@ -21,6 +21,7 @@ import {
 } from './services/locationPricing';
 import { brandLogoOnError, preloadBrandAssets, STATIC_BRAND_LOGO, STATIC_BRAND_STAMP } from './utils/brandAssets';
 import { buildPriceLabelFilename, renderLabelNodeToCanvas, waitForLayout } from './utils/labelPdfCapture';
+import { consumeKitwePriceLabelsQueue } from './utils/kitwePriceLabels';
 import { buildLabelImageQrValue } from './utils/labelImageQr';
 import { matchesComboId } from './utils/comboId';
 const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v3';
@@ -47,6 +48,7 @@ const PriceLabels = () => {
   const sendRenderRef = useRef(null);
   const addedOrderRef = useRef(1);
   const fetchSeqRef = useRef(0);
+  const kitweQueueAppliedRef = useRef(false);
 
   const productLocationPriceMap = useMemo(
     () => buildProductLocationPriceMap(productLocationPrices),
@@ -263,6 +265,29 @@ const PriceLabels = () => {
   useEffect(() => {
     fetchLabelData({ useCache: true, bustCache: true });
   }, [fetchLabelData]);
+
+  useEffect(() => {
+    if (kitweQueueAppliedRef.current) return;
+    const queue = consumeKitwePriceLabelsQueue();
+    if (!queue?.productIds?.length) return;
+    kitweQueueAppliedRef.current = true;
+    if (queue.locationId) setLabelLocationId(String(queue.locationId));
+    setSelected((prev) => {
+      const next = [...prev];
+      queue.productIds.forEach((id) => {
+        const sid = String(id);
+        if (next.some((s) => s.type === 'product' && String(s.id) === sid)) return;
+        next.push({
+          type: 'product',
+          id: sid,
+          qty: 1,
+          addedOrder: addedOrderRef.current++,
+          printStandardOnly: false,
+        });
+      });
+      return next;
+    });
+  }, [catalogProducts]);
 
   const normalizeCatalogName = useCallback((value) => (
     String(value || '')

@@ -35,6 +35,7 @@ import {
   upsertProductLocationPrices,
 } from './services/locationPricing';
 import { applySaleInventoryDeductionViaApi } from './utils/inventoryApi';
+import { fetchKitweWarehousePosCatalog, isKitwePosCatalogRow, mergePosCatalogProducts } from './utils/posKitweCatalog';
 import {
   findExistingReceiptSale,
   formatPosReceiptNumber,
@@ -525,7 +526,7 @@ export default function POS({ isMobile = false }) {
         const key = `pos:catalog:${selectedLocation}`;
         const snap = cacheGet(key);
         if (snap && snap.products && snap.sets) {
-          setProducts((snap.products || []).filter((p) => isUuid(p?.id)));
+          setProducts((snap.products || []).filter((p) => isUuid(p?.id) || isKitwePosCatalogRow(p)));
           setSets(snap.sets || []);
         }
       } catch {}
@@ -647,7 +648,6 @@ export default function POS({ isMobile = false }) {
           });
         })
         .filter(set => set.stock > 0);
-      setSets(filteredSets);
 
       // Calculate used stock per product for sets
       const usedStock = {};
@@ -671,7 +671,29 @@ export default function POS({ isMobile = false }) {
           };
         });
 
-      setProducts(filteredProducts);
+      let mergedProducts = filteredProducts;
+      let extraKitweSets = [];
+      try {
+        if (String(selectedLocation) === String(KITWE_LOCATION_ID)) {
+          const kitweCatalog = await fetchKitweWarehousePosCatalog(selectedLocation, {
+            productLocationPriceMap,
+            retailProducts: prodRows,
+          });
+          mergedProducts = mergePosCatalogProducts(filteredProducts, kitweCatalog.products);
+          extraKitweSets = kitweCatalog.sets || [];
+        } else {
+          mergedProducts = filteredProducts.map((p) => ({ ...p, posCatalogSource: 'products_list' }));
+        }
+      } catch {
+        mergedProducts = filteredProducts.map((p) => ({ ...p, posCatalogSource: 'products_list' }));
+      }
+      const allSets = [...filteredSets, ...extraKitweSets].map((set) => (
+        set.kitweWarehouseSet ? set : mapComboWithImage(set)
+      ));
+      setSets(allSets);
+      setProducts(mergedProducts.map((p) => (
+        isKitwePosCatalogRow(p) ? p : mapProductWithImage(p)
+      )));
       // Build quick lookup of combo items enriched with names/SKUs for UI transparency
       try {
         const map = {};
@@ -688,7 +710,13 @@ export default function POS({ isMobile = false }) {
         setComboItemsByCombo(map);
       } catch {}
       // Cache snapshot for this location to make next entry instant
-      try { cacheSet(`pos:catalog:${selectedLocation}`, { products: filteredProducts, sets: filteredSets }, 2 * 60 * 1000); } catch {}
+      try {
+        cacheSet(
+          `pos:catalog:${selectedLocation}`,
+          { products: mergedProducts, sets: [...filteredSets, ...extraKitweSets] },
+          2 * 60 * 1000,
+        );
+      } catch {}
     }
 
     fetchProductsAndSets();
@@ -1251,10 +1279,14 @@ export default function POS({ isMobile = false }) {
       // Find product in products or sets
       let availableStock = null;
       if (item.isSet) {
-        // Robustly get numeric combo id from either a number or a string like 'set-123'
-        const comboIdInt = typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : Number(item.id);
-        const setObj = sets.find(s => Number(s.id) === Number(comboIdInt));
-        availableStock = setObj ? Number(setObj.stock) : null;
+        if (item.kitweWarehouseSet) {
+          const setObj = sets.find((s) => String(s.id) === String(item.id));
+          availableStock = setObj ? Number(setObj.stock) : null;
+        } else {
+          const comboIdInt = typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : Number(item.id);
+          const setObj = sets.find(s => Number(s.id) === Number(comboIdInt));
+          availableStock = setObj ? Number(setObj.stock) : null;
+        }
       } else {
         const prodObj = products.find(p => p.id === item.id);
         availableStock = prodObj ? prodObj.stock : null;
@@ -1418,7 +1450,8 @@ export default function POS({ isMobile = false }) {
     let storedReceiptNumber = ctx.receiptNumber;
 
     const saleItems = [];
-    const setCartItems = (ctx.cart || []).filter((item) => item.isSet);
+    const kitweDeductions = [];
+    const setCartItems = (ctx.cart || []).filter((item) => item.isSet && !item.kitweWarehouseSet);
     const comboIds = setCartItems.map((item) => (
       typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : Number(item.id)
     )).filter((id) => Number.isFinite(id));
@@ -1475,6 +1508,21 @@ export default function POS({ isMobile = false }) {
           color: item.color || null,
           qty_unit: item.qtyUnit === 'm2' ? 'm2' : null,
         });
+      } else if (item.isSet && item.kitweWarehouseSet && item.warehouseAssemblyId) {
+        saleItems.push({
+          sale_id: saleId,
+          product_id: null,
+          display_name: item.name || 'Kitwe set',
+          quantity: Number(item.qty),
+          unit_price: Number(item.price),
+          currency: item.overrideCurrency || item.currency || ctx.currency,
+          color: item.color || null,
+        });
+        kitweDeductions.push({
+          assembly_id: item.warehouseAssemblyId,
+          quantity: Number(item.qty),
+          kind: 'set',
+        });
       } else if (item.isSet) {
         const comboIdInt = typeof item.id === 'string' ? parseInt(String(item.id).replace('set-', ''), 10) : item.id;
         saleItems.push({
@@ -1497,6 +1545,21 @@ export default function POS({ isMobile = false }) {
             color: item.color || null
           });
         }
+      } else if (item.posCatalogSource === 'kitwe_warehouse' && item.warehouseAssemblyId) {
+        saleItems.push({
+          sale_id: saleId,
+          product_id: null,
+          display_name: item.name || item.sku || 'Kitwe product',
+          quantity: Number(item.qty),
+          unit_price: Number(item.price),
+          currency: item.overrideCurrency || item.currency || ctx.currency,
+          color: item.color || null,
+        });
+        kitweDeductions.push({
+          assembly_id: item.warehouseAssemblyId,
+          quantity: Number(item.qty),
+          kind: 'product',
+        });
       } else {
         if (!isUuid(item.id)) {
           throw new Error(`Product "${item.name || item.id}" has an invalid ID. Refresh the page and add it again.`);
@@ -1695,6 +1758,7 @@ export default function POS({ isMobile = false }) {
         try {
           const adjustedProducts = await applySaleInventoryDeductionViaApi({
             items: saleItems,
+            kitweDeductions,
             locationId: ctx.selectedLocation,
             saleId,
             receiptNumber: storedReceiptNumber,
@@ -2139,8 +2203,16 @@ export default function POS({ isMobile = false }) {
       .map(entry => entry.item);
   };
 
-  const filteredProducts = matchAndRank(products, (product) => [product.name, product.sku]);
-  const filteredSets = matchAndRank(sets, (set) => [set.combo_name || set.name, set.sku]);
+  const filteredProducts = matchAndRank(products, (product) => [
+    product.name,
+    product.sku,
+    product.category_name,
+  ]);
+  const filteredSets = matchAndRank(sets, (set) => [
+    set.combo_name || set.name,
+    set.sku,
+    set.category_name,
+  ]);
   const customerSelectPlaceholder = 'Select customer';
 
   const handlePreviewPdf = async () => {
@@ -2374,7 +2446,9 @@ export default function POS({ isMobile = false }) {
             >
               <PosCardImage imageUrl={product.imageUrl} alt={product.name} />
               <div className="pos-product-body">
-                {product.name} ({product.sku})<br />Stock: {Math.max(0, displayStock)} {product.stockState === 'reserved' && '(reserved)'}<br />
+                {product.name} ({product.sku})
+                {product.category_name ? <><br /><span style={{ fontSize: '0.85em', color: '#94a3b8' }}>{product.category_name}</span></> : null}
+                <br />Stock: {Math.max(0, displayStock)} {product.stockState === 'reserved' && '(reserved)'}<br />
                 <b className="pos-product-price">Price: {formatPosPrice(getBestPrice(product), product.currency || currency)}</b>
                 {isUnavailable && (
                   <div style={{ marginTop: 6, fontSize: '0.8em', color: '#fff', background: badgeColor, display: 'inline-block', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
@@ -2393,7 +2467,9 @@ export default function POS({ isMobile = false }) {
             >
               <PosCardImage imageUrl={set.imageUrl} alt={set.combo_name || set.name} />
               <div className="pos-product-body">
-                {set.combo_name} (Set) ({set.sku})<br />
+                {set.combo_name || set.name} (Set) ({set.sku})
+                {set.category_name ? <><br /><span style={{ fontSize: '0.85em', color: '#94a3b8' }}>{set.category_name}</span></> : null}
+                <br />
                 <span className="pos-product-stock">Stock: {set.stock}</span><br />
                 <b className="pos-product-price">Price: {formatPosPrice(getBestPrice(set), set.currency || currency)}</b>
               </div>
