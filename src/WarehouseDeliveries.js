@@ -270,13 +270,6 @@ export default function WarehouseDeliveries() {
     return () => clearInterval(id);
   }, [loadDeliveries, canAccept]);
 
-  const expectedForLine = (line) => {
-    if (line.expected_dest_stock != null) return Number(line.expected_dest_stock);
-    if (!line.product_id || line.kind === 'set-parent') return null;
-    const before = Number(destStockByProduct.get(String(line.product_id)) || 0);
-    return before + deliveryLineQty(line);
-  };
-
   const handlePdf = async (session) => {
     if (!session?.id || pdfBusyId) return;
     setPdfBusyId(session.id);
@@ -307,12 +300,6 @@ export default function WarehouseDeliveries() {
     setBusyId(sessionId);
     setError('');
     try {
-      let userEmail = '';
-      try {
-        const raw = localStorage.getItem('user');
-        userEmail = raw ? (JSON.parse(raw)?.email || '') : '';
-      } catch {}
-
       const session = sessions.find((s) => String(s.id) === String(sessionId));
       const entries = entriesBySession[String(sessionId)] || [];
       if (!anyDeliveryPacketsReceiverConfirmed(entries)) {
