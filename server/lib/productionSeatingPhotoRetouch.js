@@ -131,12 +131,29 @@ async function finalizeCatalogJpeg(buffer, mime) {
  * AI retouch for warehouse production seating photos (white catalog background).
  * @returns {Promise<Buffer>} JPEG
  */
+function catalogFallbackWithoutAiEnabled() {
+  return String(process.env.PRODUCTION_PHOTO_FALLBACK_NO_AI ?? 'true')
+    .trim()
+    .toLowerCase() !== 'false';
+}
+
 export async function retouchProductionSeatingPhotoFromBase64(imageBase64) {
   const skipAi = String(process.env.PRODUCTION_PHOTO_SKIP_AI || '').trim().toLowerCase() === 'true';
   const input = await prepareInputJpeg(parseImageBase64Payload(imageBase64));
   if (skipAi) {
     return finalizeCatalogJpeg(input, 'image/jpeg');
   }
-  const generated = await requestGeminiSeatingRetouch(input);
-  return finalizeCatalogJpeg(generated.buffer, generated.mime);
+  try {
+    const generated = await requestGeminiSeatingRetouch(input);
+    return finalizeCatalogJpeg(generated.buffer, generated.mime);
+  } catch (err) {
+    if (!catalogFallbackWithoutAiEnabled()) {
+      throw err;
+    }
+    console.warn(
+      '[productionSeatingPhotoRetouch] Gemini retouch unavailable; saving with basic catalog prep:',
+      err?.message || err,
+    );
+    return finalizeCatalogJpeg(input, 'image/jpeg');
+  }
 }
