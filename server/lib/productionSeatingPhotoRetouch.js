@@ -79,7 +79,7 @@ async function requestGeminiSeatingRetouch(jpegBuffer) {
 
   const models = getProductionPhotoModelCandidates();
   const errors = [];
-  const maxMs = Math.max(5000, Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || 18000);
+  const maxMs = Math.max(4000, Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || 10000);
   const deadline = Date.now() + maxMs;
 
   for (const model of models) {
@@ -145,8 +145,9 @@ function catalogFallbackWithoutAiEnabled() {
     .toLowerCase() !== 'false';
 }
 
-export async function retouchProductionSeatingPhotoFromBase64(imageBase64) {
-  const skipAi = String(process.env.PRODUCTION_PHOTO_SKIP_AI || '').trim().toLowerCase() === 'true';
+export async function retouchProductionSeatingPhotoFromBase64(imageBase64, { skipAi: skipAiOption = false } = {}) {
+  const skipAi = skipAiOption
+    || String(process.env.PRODUCTION_PHOTO_SKIP_AI || '').trim().toLowerCase() === 'true';
   const input = await prepareInputJpeg(parseImageBase64Payload(imageBase64));
   if (skipAi) {
     return finalizeCatalogJpeg(input, 'image/jpeg');

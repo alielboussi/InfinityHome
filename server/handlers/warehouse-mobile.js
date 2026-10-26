@@ -272,6 +272,19 @@ async function removeProductionPacketDraft(sb, packetId) {
   }
 }
 
+async function promiseWithTimeout(promise, ms, timeoutMessage) {
+  const cap = Math.max(1000, Number(ms) || 10000);
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(timeoutMessage || 'Timed out')), cap);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function removeProductionAssemblyDraft(sb, assemblyId) {
   const id = String(assemblyId || '').trim();
   if (!id) return;
@@ -339,11 +352,13 @@ async function opProductionPacketCreate(body, user) {
       || body.requireProductPhoto === true;
 
     let catalogImageUrl = null;
+    const fastMobilePhoto = clientSource === 'warehouse_production_app';
     if (imageBase64) {
       catalogImageUrl = await attachProductionAssemblyCatalogPhoto(sb, {
         assembly,
         imageBase64,
         productName: name,
+        skipAiRetouch: fastMobilePhoto,
       });
     } else if (requiresPhoto) {
       throw new Error('Take a product photo before saving (camera required).');
@@ -368,20 +383,27 @@ async function opProductionPacketCreate(body, user) {
     let labelPrintWarning = null;
     if (labelCopies > 0) {
       try {
-        labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
-          name: assembly.name,
-          sku: labelSku,
-          qty: labelCopies,
-          printedBy: user?.full_name || user?.display_name || user?.email,
-          source: clientSource,
-          printedAt,
-        });
+        labelJobId = await promiseWithTimeout(
+          enqueueWarehouseProductionLabelJob(sb, {
+            name: assembly.name,
+            sku: labelSku,
+            qty: labelCopies,
+            printedBy: user?.full_name || user?.display_name || user?.email,
+            source: clientSource,
+            printedAt,
+          }),
+          fastMobilePhoto ? 12000 : 25000,
+          'Label print timed out',
+        );
         if (!labelJobId) {
           labelPrintWarning = 'Item saved but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
         }
       } catch (printErr) {
         const { formatZebraPrintError } = await import('../lib/formatZebraPrintError.js');
-        labelPrintWarning = formatZebraPrintError(printErr);
+        const timedOut = String(printErr?.message || '').toLowerCase().includes('timed out');
+        labelPrintWarning = timedOut
+          ? 'Item saved. Labels may still print — if not, add stock again to reprint.'
+          : formatZebraPrintError(printErr);
         console.warn('[warehouse-mobile] production label print failed:', printErr?.message || printErr);
       }
     }
@@ -516,14 +538,24 @@ async function opProductionStockIncrease(body, user) {
   }
 
   const printedAt = new Date();
-  const labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
-    name: labelName,
-    sku: labelSku,
-    qty: delta,
-    printedBy: user?.full_name || user?.display_name || user?.email,
-    source: printSource,
-    printedAt,
-  });
+  const fastMobile = printSource === 'warehouse_production_app';
+  let labelJobId = null;
+  try {
+    labelJobId = await promiseWithTimeout(
+      enqueueWarehouseProductionLabelJob(sb, {
+        name: labelName,
+        sku: labelSku,
+        qty: delta,
+        printedBy: user?.full_name || user?.display_name || user?.email,
+        source: printSource,
+        printedAt,
+      }),
+      fastMobile ? 12000 : 25000,
+      'Label print timed out',
+    );
+  } catch (printErr) {
+    console.warn('[warehouse-mobile] production stock label print failed:', printErr?.message || printErr);
+  }
 
   const preview = await buildProductionLabelPreviewPayload({
     name: labelName,
