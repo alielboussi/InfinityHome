@@ -1,6 +1,6 @@
 # Infinity Home Mobile Apps (Expo SDK 52)
 
-Six Expo apps that replace the legacy `Android Apps` folder. Each runs in **Expo Go** on a phone or emulator (SDK 54 for customer-credit, lusaka-stock, and product-pricing; SDK 52 for others).
+Expo apps for Infinity Home. Each runs in **Expo Go** (SDK varies by app).
 
 ## Prerequisites
 
@@ -29,45 +29,7 @@ Scan the QR code with Expo Go. The app loads `https://www.infinity-home.online/l
 
 ---
 
-## 2. Warehouse Transfers (`warehouse-transfers/`)
-
-Firestore app for warehouse delivery submissions (Factory Warehouse → Kitwe Branch).
-
-```bash
-cd mobile-apps/warehouse-transfers
-cp .env.example .env
-# Edit .env with EXPO_PUBLIC_FIREBASE_* values
-npm install
-npx expo start
-```
-
-**Screens:** product list (Firestore `product_locations` + `products`), cart, submit to `warehouse_delivery_sessions` / `warehouse_delivery_entries`.
-
-**Note:** Warehouse and factory apps require Firebase email/password sign-in on launch (session persists between opens). Layby shell uses the web login inside the WebView.
-
----
-
-## 3. Factory Production (`factory-production/`)
-
-Carpentry product picker with API submit and label history.
-
-```bash
-cd mobile-apps/factory-production
-cp .env.example .env
-# Edit .env with EXPO_PUBLIC_FIREBASE_* and optional EXPO_PUBLIC_API_BASE
-npm install
-npx expo start
-```
-
-**API endpoints:**
-- `GET /api/label-print-history` — recent label jobs
-- `POST /api/admin?adminAction=factory-production-approve` — approve transfer & queue labels
-
-**Firestore:** product catalog at Carpentry location `20abb7a3-9df9-45bd-885e-6440503ea728`. Sign in with Firebase on launch (same as warehouse app).
-
----
-
-## 4. Ledger (`customer-credit/`)
+## 2. Ledger (`customer-credit/`)
 
 Standalone layby-style ledger tracker in Firebase. **Not linked to portal customers, products, or sales** — uses its own Firestore collections (`credit_app_*`).
 
@@ -118,7 +80,7 @@ For trusted installs without sideload warnings, use **Google Play internal testi
 
 ---
 
-## 5. Lusaka Stock (`lusaka-stock/`)
+## 3. Lusaka Stock (`lusaka-stock/`)
 
 Read-only Lusaka branch stock viewer — same data as the web kiosk at `https://www.infinity-home.online/lusaka-stock`. Shows product/set photos, standard and promo prices, and available qty in a **2-column grid**. Search by name, SKU, or price.
 
@@ -153,7 +115,7 @@ Then `npm run build:apk:prod` in `lusaka-stock/`. See `lusaka-stock/PRE_BUILD_CH
 
 ---
 
-## 7. Warehouse Catalog (`warehouse-catalog/`) — **draft**
+## 4. Warehouse Catalog (`warehouse-catalog/`) — **draft**
 
 Expo Go app for warehouse floor: dashboard, permissions from **User Login Access**, Google + biometric unlock. Scan/forms and Kitwe delivery flows are phased in — see `warehouse-catalog/README.md`.
 
