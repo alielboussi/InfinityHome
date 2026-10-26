@@ -1,14 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
 import { apiUrl, withApiHeaders } from '../utils/apiUrl';
-import {
-  defaultMobileAccessGrant,
-  sanitizeMobileAccessGrantForUser,
-} from '../mobile/mobileAccessManifest';
+import { defaultMobileAccessGrant } from '../mobile/mobileAccessManifest';
 
 const PRODUCTION_APP_NAME = 'Upholstery Production';
 
-async function saveMobileAccess(uid, mobile_access, mobile_display_name, login_enabled) {
+async function saveProductionAppAccess(uid, warehouse_production_app, mobile_display_name) {
   const token = await firebaseGetAccessToken();
   if (!token) throw new Error('Authentication required');
   const response = await fetch(apiUrl('/api/login-access'), {
@@ -19,9 +16,9 @@ async function saveMobileAccess(uid, mobile_access, mobile_display_name, login_e
       'Content-Type': 'application/json',
     }),
     body: JSON.stringify({
+      action: 'set-production-app-access',
       uid,
-      login_enabled: login_enabled !== false,
-      mobile_access,
+      warehouse_production_app,
       mobile_display_name,
     }),
   });
@@ -67,19 +64,10 @@ export default function ProductionUserAccessEditor({ userRow, onClose, onSaved }
     setBusy(true);
     setError('');
     try {
-      const mergedForSave = {
-        ...(userRow?.mobile_access && typeof userRow.mobile_access === 'object'
-          ? userRow.mobile_access
-          : {}),
-        ...grant,
-        warehouse_production_app: grant.warehouse_production_app,
-      };
-      const payload = sanitizeMobileAccessGrantForUser(mergedForSave, userRow.email);
-      const updated = await saveMobileAccess(
+      const updated = await saveProductionAppAccess(
         userRow.id,
-        payload,
+        grant.warehouse_production_app,
         appDisplayName,
-        userRow.login_enabled,
       );
       onSaved?.(updated);
       setToast(`${PRODUCTION_APP_NAME} access saved.`);

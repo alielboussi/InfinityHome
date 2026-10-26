@@ -28,7 +28,7 @@ import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeli
 import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhatsApp.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
-  isWarehouseProductionAppAllowed,
+  isWarehouseProductionOperatorAllowed,
   isWarehouseProductStockQtyEditAllowed,
   isWarehouseProductTurkishSyncAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';

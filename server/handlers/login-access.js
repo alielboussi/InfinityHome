@@ -3,6 +3,7 @@ import {
   createLoginAccessUser,
   isLoginAccessAdmin,
   listLoginAccessRecords,
+  patchProductionAppAccess,
   setLoginAccessEnabled,
   updateMobileAccessGrant,
 } from '../lib/loginAccess.js';
@@ -48,6 +49,19 @@ export default async function handler(req, res) {
         res.status(400).json({ ok: false, error: 'uid is required' });
         return;
       }
+
+      if (action === 'set-production-app-access') {
+        const flag = body.warehouse_production_app ?? body.warehouseProductionApp;
+        const user = await patchProductionAppAccess({
+          uid,
+          warehouseProductionApp: flag,
+          mobileDisplayName: body.mobile_display_name ?? body.mobileDisplayName,
+          actorEmail: actor.email,
+        });
+        res.status(200).json({ ok: true, user });
+        return;
+      }
+
       const loginEnabled = body.login_enabled ?? body.loginEnabled;
       const mobileAccess = body.mobile_access ?? body.mobileAccess;
       const mobileDisplayName = body.mobile_display_name ?? body.mobileDisplayName;

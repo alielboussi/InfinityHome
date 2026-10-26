@@ -4,6 +4,7 @@ import { ensureFirebaseAuthToken, subscribeFirebaseAuth } from '../shared/fireba
 import { verifyMobileLoginAccess } from '../shared/loginAccess';
 import {
   defaultMobileAccessGrant,
+  isWarehouseProductionAppAllowed,
   isWarehouseProductionOperatorAllowed,
   sanitizeMobileAccessGrantForUser,
 } from '../shared/mobileAccessManifest';
@@ -30,11 +31,14 @@ export function useProductionAccessGrant() {
       const name = String(access.user?.mobile_display_name || '').trim()
         || String(access.user?.display_name || '').trim();
       setUserDisplayName(name);
-      const nextGrant = sanitizeMobileAccessGrantForUser(
-        access.user?.mobile_access || defaultMobileAccessGrant(),
-        email,
-      );
+      const rawGrant = access.user?.mobile_access || defaultMobileAccessGrant();
+      const nextGrant = sanitizeMobileAccessGrantForUser(rawGrant, email);
       setGrant(nextGrant);
+
+      const clientAllowed = isWarehouseProductionOperatorAllowed(nextGrant)
+        || isWarehouseProductionAppAllowed(rawGrant)
+        || rawGrant?.warehouse_production_app === 'allow'
+        || rawGrant?.warehouse_production_app === true;
 
       let serverAllowed = false;
       try {
@@ -44,9 +48,9 @@ export function useProductionAccessGrant() {
           setUserDisplayName(String(prod.displayName).trim());
         }
       } catch {
-        serverAllowed = isWarehouseProductionOperatorAllowed(nextGrant);
+        serverAllowed = clientAllowed;
       }
-      setAllowed(serverAllowed);
+      setAllowed(serverAllowed || clientAllowed);
     } finally {
       setLoading(false);
     }

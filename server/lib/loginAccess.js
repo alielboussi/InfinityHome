@@ -269,6 +269,34 @@ export async function createLoginAccessUser({
   };
 }
 
+/** Toggle only Upholstery Production app access without replacing the whole grant. */
+export async function patchProductionAppAccess({
+  uid,
+  warehouseProductionApp,
+  mobileDisplayName,
+  actorEmail,
+}) {
+  const db = getFirestore();
+  if (!db || !uid) throw new Error('User id is required.');
+  const ref = db.collection(COLLECTION).doc(String(uid));
+  const existing = await ref.get();
+  if (!existing.exists) {
+    throw new Error('User has not signed in yet.');
+  }
+  const prior = existing.data()?.mobile_access || defaultMobileAccessGrant();
+  const allow = warehouseProductionApp === 'allow' || warehouseProductionApp === true;
+  const merged = {
+    ...prior,
+    warehouse_production_app: allow ? 'allow' : 'deny',
+  };
+  return updateMobileAccessGrant({
+    uid,
+    mobileAccess: merged,
+    mobileDisplayName,
+    actorEmail,
+  });
+}
+
 export async function updateMobileAccessGrant({
   uid,
   mobileAccess,
@@ -288,8 +316,19 @@ export async function updateMobileAccessGrant({
     mobile_access_updated_by: normalizeEmail(actorEmail) || null,
   };
   if (mobileAccess && typeof mobileAccess === 'object') {
+    const prior = existing.data()?.mobile_access;
+    const mergedAccess = prior && typeof prior === 'object'
+      ? {
+        ...prior,
+        ...mobileAccess,
+        screens: {
+          ...(prior.screens || {}),
+          ...(mobileAccess.screens || {}),
+        },
+      }
+      : mobileAccess;
     patch.mobile_access = normalizeMobileAccessGrant(
-      mobileAccess,
+      mergedAccess,
       existing.data()?.email,
     );
   }
