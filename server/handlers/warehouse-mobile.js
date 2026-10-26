@@ -346,19 +346,25 @@ async function opProductionPacketCreate(body, user) {
     if (invErr) throw new Error(invErr.message || 'Failed to set opening stock');
     await recomputeWarehouseLocationStockServer(sb, warehouseLocationId);
 
-    const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
-    const requiresPhoto = clientSource === 'warehouse_production_app'
+    const deferProductPhoto = body.defer_product_photo === true
+      || body.deferProductPhoto === true;
+    const imageBase64 = deferProductPhoto
+      ? ''
+      : String(body.image_base64 || body.imageBase64 || '').trim();
+    const requiresPhoto = !deferProductPhoto && (
+      clientSource === 'warehouse_production_app'
       || body.require_product_photo === true
-      || body.requireProductPhoto === true;
+      || body.requireProductPhoto === true
+    );
 
     let catalogImageUrl = null;
-    const fastMobilePhoto = clientSource === 'warehouse_production_app';
+    const fastMobileCreate = clientSource === 'warehouse_production_app';
     if (imageBase64) {
       catalogImageUrl = await attachProductionAssemblyCatalogPhoto(sb, {
         assembly,
         imageBase64,
         productName: name,
-        skipAiRetouch: fastMobilePhoto,
+        skipAiRetouch: false,
       });
     } else if (requiresPhoto) {
       throw new Error('Take a product photo before saving (camera required).');
@@ -392,7 +398,7 @@ async function opProductionPacketCreate(body, user) {
             source: clientSource,
             printedAt,
           }),
-          fastMobilePhoto ? 12000 : 25000,
+          fastMobileCreate ? 12000 : 25000,
           'Label print timed out',
         );
         if (!labelJobId) {
@@ -427,6 +433,7 @@ async function opProductionPacketCreate(body, user) {
     return {
       assembly,
       packet: packetCompat,
+      defer_product_photo: deferProductPhoto,
       created_by: user?.email || null,
       catalog_image_url: catalogImageUrl,
       label_copies: labelCopies,
@@ -441,6 +448,39 @@ async function opProductionPacketCreate(body, user) {
     }
     throw err;
   }
+}
+
+async function opProductionAssemblyPhoto(body, user) {
+  await assertProductionKioskUser(user);
+  const sb = getService();
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
+  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+  if (!assemblyId) throw new Error('assembly_id is required.');
+  if (!imageBase64) throw new Error('Product photo is required.');
+
+  const { data: assembly, error: loadErr } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name, family_sku, inventory_mode')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
+  if (!assembly) throw new Error('Product not found.');
+  if (String(assembly.inventory_mode || '').toLowerCase() !== 'finished') {
+    throw new Error('Photos can only be attached to finished warehouse products.');
+  }
+
+  const catalogImageUrl = await attachProductionAssemblyCatalogPhoto(sb, {
+    assembly,
+    imageBase64,
+    productName: assembly.name,
+    skipAiRetouch: false,
+  });
+
+  return {
+    assembly_id: assemblyId,
+    catalog_image_url: catalogImageUrl,
+    assembly,
+  };
 }
 
 async function opProductionStockIncrease(body, user) {
@@ -1331,6 +1371,9 @@ export default async function handler(req, res) {
         break;
       case 'production-packet-create':
         result = await opProductionPacketCreate(body, user);
+        break;
+      case 'production-assembly-photo':
+        result = await opProductionAssemblyPhoto(body, user);
         break;
       case 'production-stock-increase':
         result = await opProductionStockIncrease(body, user);

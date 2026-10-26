@@ -31,4 +31,10 @@ if (!fn.includes('warehouse_assembly_inventory')) {
   process.exit(1);
 }
 
+const photoOp = src.includes("case 'production-assembly-photo'");
+if (!photoOp || !src.includes('opProductionAssemblyPhoto')) {
+  console.error('[verifyProductionFinishedCreate] production-assembly-photo op required for AI photo step');
+  process.exit(1);
+}
+
 console.log('[verifyProductionFinishedCreate] ok');

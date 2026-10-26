@@ -79,7 +79,7 @@ async function requestGeminiSeatingRetouch(jpegBuffer) {
 
   const models = getProductionPhotoModelCandidates();
   const errors = [];
-  const maxMs = Math.max(4000, Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || 10000);
+  const maxMs = Math.max(5000, Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || 22000);
   const deadline = Date.now() + maxMs;
 
   for (const model of models) {

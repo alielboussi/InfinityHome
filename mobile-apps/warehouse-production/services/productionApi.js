@@ -81,23 +81,61 @@ function parseCreateProductionPacketResponse(payload) {
   };
 }
 
+export async function attachProductionProductPhoto({ assemblyId, imageBase64 }) {
+  return productionOp('production-assembly-photo', {
+    assembly_id: assemblyId,
+    image_base64: imageBase64,
+    client_source: CLIENT_SOURCE,
+  });
+}
+
 export async function createProductionPacket({
   name,
   warehouseLocationId,
   initialQuantity,
   imageBase64,
 }) {
-  const payload = await productionOp('production-packet-create', {
+  const hasPhoto = Boolean(String(imageBase64 || '').trim());
+  const createPayload = await productionOp('production-packet-create', {
     name,
     warehouse_location_id: warehouseLocationId,
     initial_quantity: initialQuantity,
     packet_number: 1,
     qty_per_unit: 1,
     client_source: CLIENT_SOURCE,
-    require_product_photo: true,
-    image_base64: imageBase64,
+    defer_product_photo: hasPhoto,
+    require_product_photo: false,
   });
-  return parseCreateProductionPacketResponse(payload);
+  const parsed = parseCreateProductionPacketResponse(createPayload);
+  if (!hasPhoto) {
+    return parsed;
+  }
+
+  const assemblyId = String(
+    createPayload?.assembly?.id
+    || parsed.packet?.assembly_id
+    || parsed.packet?.id
+    || '',
+  ).trim();
+  if (!assemblyId) {
+    const err = new Error('Product was created but the server did not return a product id for the photo.');
+    err.code = 'product_saved_photo_failed';
+    err.createResult = parsed;
+    throw err;
+  }
+
+  try {
+    await attachProductionProductPhoto({ assemblyId, imageBase64 });
+  } catch (photoErr) {
+    const err = new Error(
+      photoErr?.message || 'AI photo processing failed.',
+    );
+    err.code = 'product_saved_photo_failed';
+    err.createResult = parsed;
+    throw err;
+  }
+
+  return parsed;
 }
 
 export async function increaseProductionStock({ packetId, assemblyId, warehouseLocationId, delta }) {

@@ -238,6 +238,22 @@ export default function CreateScreen({ navigation }) {
       }
     } catch (err) {
       const msg = String(err?.message || '');
+      if (err?.code === 'product_saved_photo_failed' && err?.createResult) {
+        const partial = err.createResult;
+        pendingSaveRef.current = null;
+        setSuccess(tUi('savedItemOnly', locale));
+        const labelCount = partial.labelCopies > 0 ? partial.labelCopies : pending?.qtyNum || 0;
+        if (partial.label && labelCount > 0) {
+          deferFormResetRef.current = true;
+          setLabelPreview(partial.label);
+          setLabelPng(partial.labelPreviewPngBase64 || '');
+          setLabelCopies(labelCount);
+        }
+        showSaveFailure(
+          `${msg} The product is in Warehouse — add the photo again from the portal or retry save with a new name.`,
+        );
+        return;
+      }
       if (msg.toLowerCase().includes('already exists')) {
         showSaveFailure(tUi('duplicateName', locale));
       } else {
