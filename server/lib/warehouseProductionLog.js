@@ -29,6 +29,7 @@ function normalizeProductionLogSource(source) {
 export async function logWarehouseProductionCreate({
   user,
   packet,
+  assembly,
   initialQuantity,
   warehouseLocationId,
   source,
@@ -36,17 +37,20 @@ export async function logWarehouseProductionCreate({
   const db = getDb();
   const now = new Date().toISOString();
   const id = newUuid();
+  const sku = packet?.sku || assembly?.family_sku || assembly?.sku || null;
+  const name = packet?.name || assembly?.name || null;
   const row = {
     id,
     event_type: 'create',
     packet_id: packet?.id || null,
-    sku: packet?.sku || null,
-    name: packet?.name || null,
+    assembly_id: assembly?.id || null,
+    sku,
+    name,
     qty_added: Math.max(0, Number(initialQuantity) || 0),
     qty_before: 0,
     qty_after: Math.max(0, Number(initialQuantity) || 0),
     warehouse_location_id: warehouseLocationId || null,
-    source: 'warehouse_production_kiosk',
+    source: normalizeProductionLogSource(source),
     created_at: now,
     ...actorFields(user),
   };
@@ -57,26 +61,31 @@ export async function logWarehouseProductionCreate({
 export async function logWarehouseProductionStockIncrease({
   user,
   packet,
+  assembly,
   delta,
   qtyBefore,
   qtyAfter,
   warehouseLocationId,
+  source,
 }) {
   const db = getDb();
   const now = new Date().toISOString();
   const id = newUuid();
+  const sku = packet?.sku || assembly?.family_sku || assembly?.sku || null;
+  const name = packet?.name || assembly?.name || null;
   const row = {
     id,
     event_type: 'stock_increase',
     packet_id: packet?.id || null,
-    sku: packet?.sku || null,
-    name: packet?.name || null,
+    assembly_id: assembly?.id || null,
+    sku,
+    name,
     qty_added: Math.max(0, Number(delta) || 0),
     qty_before: Math.max(0, Number(qtyBefore) || 0),
     qty_after: Math.max(0, Number(qtyAfter) || 0),
     warehouse_location_id: warehouseLocationId || null,
-    source: 'warehouse_production_kiosk',
     source: normalizeProductionLogSource(source),
+    created_at: now,
     ...actorFields(user),
   };
   await db.collection(COLLECTION).doc(id).set(row);

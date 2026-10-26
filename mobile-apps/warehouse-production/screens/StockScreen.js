@@ -16,6 +16,10 @@ import ProductionQrScanModal from '../components/ProductionQrScanModal';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { filterPacketsForProductionSearch } from '../lib/productionPacketSearch';
+import {
+  assemblyWarehouseQty,
+  listProductionFinishedStockProducts,
+} from '../lib/productionStockCatalog';
 import { kioskScreenEdges } from '../lib/kioskLayout';
 import { tUi } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
@@ -25,20 +29,13 @@ import {
   resolveProductionScan,
 } from '../services/productionApi';
 
-function packetWarehouseQty(packetId, inventory, locationId) {
-  const row = (inventory || []).find(
-    (r) => String(r.packet_id) === String(packetId) && String(r.location_id) === String(locationId),
-  );
-  return Math.max(0, Number(row?.quantity) || 0);
-}
-
 export default function StockScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
 
   const [loading, setLoading] = useState(true);
-  const [packets, setPackets] = useState([]);
-  const [inventory, setInventory] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [assemblyInventory, setAssemblyInventory] = useState([]);
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -57,8 +54,8 @@ export default function StockScreen({ navigation }) {
     setError('');
     try {
       const data = await fetchProductionCatalog();
-      setPackets(data.packets || []);
-      setInventory(data.inventory || []);
+      setProducts(listProductionFinishedStockProducts(data));
+      setAssemblyInventory(data.assemblyInventory || []);
       setWarehouseLocationId(data.warehouseLocationId);
     } catch (err) {
       setError(err?.message || 'Failed to load catalog');
@@ -72,8 +69,8 @@ export default function StockScreen({ navigation }) {
   }, [load]);
 
   const filtered = useMemo(
-    () => filterPacketsForProductionSearch(packets, search, { limit: 25 }),
-    [packets, search],
+    () => filterPacketsForProductionSearch(products, search, { limit: 25 }),
+    [products, search],
   );
 
   const openPacketModal = (packet) => {
@@ -88,18 +85,29 @@ export default function StockScreen({ navigation }) {
     if (!scan) return;
     try {
       const result = await resolveProductionScan(scan);
+      if (result?.kind === 'assembly' && result.assembly) {
+        const asm = result.assembly;
+        openPacketModal({
+          id: asm.id,
+          assembly_id: asm.id,
+          sku: asm.family_sku,
+          name: asm.name,
+        });
+        setSearch(asm.name || scan);
+        return;
+      }
       if (result?.kind === 'packet' && result.packet) {
         openPacketModal(result.packet);
         setSearch(result.packet.name || scan);
         return;
       }
       const q = scan.replace(/\s+/g, '');
-      const local = (packets || []).find((p) => String(p.sku).toUpperCase() === q.toUpperCase());
+      const local = (products || []).find((p) => String(p.sku).toUpperCase() === q.toUpperCase());
       if (local) {
         openPacketModal(local);
         return;
       }
-      const fromSearch = filterPacketsForProductionSearch(packets, scan, { limit: 1 });
+      const fromSearch = filterPacketsForProductionSearch(products, scan, { limit: 1 });
       if (fromSearch.length === 1) {
         openPacketModal(fromSearch[0]);
         return;
@@ -113,7 +121,7 @@ export default function StockScreen({ navigation }) {
   const runSearch = (queryOverride) => {
     const q = String(queryOverride ?? search ?? '').trim();
     setError('');
-    const hits = filterPacketsForProductionSearch(packets, q, { limit: 25 });
+    const hits = filterPacketsForProductionSearch(products, q, { limit: 25 });
     if (hits.length === 1) {
       openPacketModal(hits[0]);
       return;
@@ -135,7 +143,11 @@ export default function StockScreen({ navigation }) {
   };
 
   const currentQty = modalPacket
-    ? packetWarehouseQty(modalPacket.id, inventory, warehouseLocationId)
+    ? assemblyWarehouseQty(
+      modalPacket.assembly_id || modalPacket.id,
+      assemblyInventory,
+      warehouseLocationId,
+    )
     : 0;
 
   const onSaveIncrease = async () => {
@@ -145,7 +157,7 @@ export default function StockScreen({ navigation }) {
     setError('');
     try {
       const result = await increaseProductionStock({
-        packetId: modalPacket.id,
+        assemblyId: modalPacket.assembly_id || modalPacket.id,
         warehouseLocationId,
         delta,
       });
@@ -225,7 +237,11 @@ export default function StockScreen({ navigation }) {
                   <Text style={kiosk.resultTitle}>{p.name}</Text>
                   <Text style={kiosk.resultSku}>{p.sku}</Text>
                   <Text style={kiosk.resultQty}>
-                    {tUi('stockCurrent', locale)}: {packetWarehouseQty(p.id, inventory, warehouseLocationId)}
+                    {tUi('stockCurrent', locale)}: {assemblyWarehouseQty(
+                      p.assembly_id || p.id,
+                      assemblyInventory,
+                      warehouseLocationId,
+                    )}
                   </Text>
                 </Pressable>
               ))}

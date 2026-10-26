@@ -11,6 +11,7 @@ import {
   LABEL_WIDTH_MM,
   labelPitchMm,
   mmToDots,
+  zebraQrMagnification,
 } from './warehouseProductionLabelLayout.js';
 
 function zplEscape(value) {
@@ -87,8 +88,7 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
   const barcodeH = d.barcodeHeight;
   const barcodeModule = Math.max(2, Math.min(3, Math.floor(d.barcodeWidth / (skuText.length * 11 + 35))));
   const nameQr = qrEscape(nameRaw);
-  const qrMag = 2;
-  const qrCell = 2;
+  const qrMag = zebraQrMagnification(d.qrSize, Math.max(imageQr.length, nameQr.length));
   const capF = d.qrCaptionFont;
   const capW = d.qrColumnWidth;
   const capUl = d.qrCaptionUnderlineY;
@@ -118,10 +118,10 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     ...qrCaption(d.imageQrLabelX, FIELD_LABELS.imageQr),
     ...qrCaption(d.nameQrLabelX, FIELD_LABELS.nameQr),
     ...(imageQr
-      ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,${qrMag},${qrCell}^FDLA,${imageQr}^FS`]
+      ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${qrMag}^FDLA,${imageQr}^FS`]
       : []),
     ...(nameQr
-      ? [`^FO${d.nameQrX},${d.qrBlockY}^BQN,${qrMag},${qrCell}^FDLA,${nameQr}^FS`]
+      ? [`^FO${d.nameQrX},${d.qrBlockY}^BQN,2,${qrMag}^FDLA,${nameQr}^FS`]
       : []),
     hr(d.photoLineY),
     labelField(d.dateRowY, FIELD_LABELS.date),

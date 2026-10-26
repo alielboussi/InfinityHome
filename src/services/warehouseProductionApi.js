@@ -144,26 +144,25 @@ export async function createProductionPacket({
     qty_per_unit: 1,
     sku: sku || undefined,
   };
-  try {
-    const payload = await productionOp('production-packet-create', body);
-    return payload.packet;
-  } catch (err) {
-    if (!isUnknownWarehouseOpError(err?.message)) throw err;
-    const payload = await productionOp('packet-create', body);
-    return payload.packet;
-  }
+  const payload = await productionOp('production-packet-create', body);
+  return payload.assembly || payload.packet;
 }
 
 export async function increaseProductionPacketStock({
   packetId,
+  assemblyId,
   warehouseLocationId,
   delta,
 }) {
   const body = {
-    packet_id: packetId,
     warehouse_location_id: warehouseLocationId,
     delta,
   };
+  if (assemblyId) {
+    body.assembly_id = assemblyId;
+  } else {
+    body.packet_id = packetId;
+  }
   try {
     return await productionOp('production-stock-increase', body);
   } catch (err) {

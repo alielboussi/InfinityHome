@@ -100,13 +100,18 @@ export async function createProductionPacket({
   return parseCreateProductionPacketResponse(payload);
 }
 
-export async function increaseProductionStock({ packetId, warehouseLocationId, delta }) {
-  return productionOp('production-stock-increase', {
-    packet_id: packetId,
+export async function increaseProductionStock({ packetId, assemblyId, warehouseLocationId, delta }) {
+  const body = {
     warehouse_location_id: warehouseLocationId,
     delta,
     client_source: CLIENT_SOURCE,
-  });
+  };
+  if (assemblyId) {
+    body.assembly_id = assemblyId;
+  } else {
+    body.packet_id = packetId;
+  }
+  return productionOp('production-stock-increase', body);
 }
 
 export async function fetchProductionLabelPreview({ name, sku, printedAt }) {

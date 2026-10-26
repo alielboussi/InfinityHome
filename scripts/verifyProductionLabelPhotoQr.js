@@ -21,7 +21,7 @@ if (bqnCount < 2 || !zpl.includes('product-photo')) {
   console.error('[verifyProductionLabelPhotoQr] ZPL missing image/name QR blocks');
   process.exit(1);
 }
-if (!zpl.includes('Image Qr') || !zpl.includes('Product Name Qr') || !zpl.includes('Layla 3 Seater')) {
+if (!zpl.includes('Image QR') || !zpl.includes('Name QR') || !zpl.includes('Layla 3 Seater')) {
   console.error('[verifyProductionLabelPhotoQr] ZPL missing QR captions or name payload');
   process.exit(1);
 }

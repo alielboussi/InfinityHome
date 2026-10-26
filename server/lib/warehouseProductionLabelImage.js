@@ -18,6 +18,9 @@ import {
   LABEL_MARGIN_MM,
   LABEL_WIDTH_MM,
   QR_CAPTION_FONT_PT,
+  QR_CAPTION_HEIGHT_MM,
+  ROW_TEXT_MM,
+  rowTextBaselineMm,
 } from './warehouseProductionLabelLayout.js';
 import { formatBlockDate, formatBlockTime } from './zebraProductionLabelZpl.js';
 
@@ -26,7 +29,7 @@ const W = Math.round(LABEL_WIDTH_MM * PX_PER_MM);
 const H = Math.round(LABEL_HEIGHT_MM * PX_PER_MM);
 const BORDER = '#1e3a5f';
 
-const COMPANY_FONT_PX = 14;
+const COMPANY_FONT_PX = 13;
 const ROW_FONT_PX = FONT_PT;
 
 export function buildProductionLabelMeta({ name, sku, printedAt } = {}) {
@@ -72,7 +75,7 @@ async function makeQrPng(text, sizePx) {
   const qr = await bwipjs.toBuffer({
     bcid: 'qrcode',
     text: String(text || '').trim(),
-    scale: 2,
+    scale: 4,
     paddingwidth: 0,
     paddingheight: 0,
   });
@@ -135,7 +138,7 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   const centerXPx = mmToPx(layout.centerXMm);
   const headerXpx = mmToPx(HEADER_START_MM);
 
-  const textBaseline = (rowMm) => mmToPx(rowMm) + Math.round(ROW_FONT_PX * 0.85);
+  const textBaseline = (rowMm, rowHeightMm) => mmToPx(rowTextBaselineMm(rowMm, rowHeightMm));
 
   const companyY = mmToPx(layout.companyMm) + 4;
   const underlineY = mmToPx(layout.companyUnderlineMm);
@@ -151,8 +154,8 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   const imageQrLeft = mmToPx(layout.imageQrLeftMm);
   const nameQrLeft = mmToPx(layout.nameQrLeftMm);
   const qrTop = mmToPx(layout.qrBlockYMm);
-  const captionY = mmToPx(layout.qrCaptionYMm) + Math.round(QR_CAPTION_FONT_PT * 0.85);
-  const captionUlY = mmToPx(layout.qrCaptionYMm) + mmToPx(2.4);
+  const captionY = textBaseline(layout.qrCaptionYMm, QR_CAPTION_HEIGHT_MM);
+  const captionUlY = mmToPx(layout.qrCaptionYMm + QR_CAPTION_HEIGHT_MM - 0.4);
   const imageLabelX = mmToPx(layout.imageQrLabelLeftMm) + Math.floor(mmToPx(layout.qrColumnWidthMm) / 2);
   const nameLabelX = mmToPx(layout.nameQrLabelLeftMm) + Math.floor(mmToPx(layout.qrColumnWidthMm) / 2);
   const captionW = mmToPx(layout.qrColumnWidthMm);
@@ -164,18 +167,18 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f" text-decoration="underline">${escapeXml(COMPANY_NAME)}</text>
   ${hrSvg(marginPx, mainWidthPx, underlineY)}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.afterBarcodeLineMm))}
-  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm), label: FIELD_LABELS.sku, value: meta.sku })}
+  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm, ROW_TEXT_MM), label: FIELD_LABELS.sku, value: meta.sku })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.skuLineMm))}
-  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm), label: FIELD_LABELS.name, value: meta.name })}
+  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm, ROW_TEXT_MM), label: FIELD_LABELS.name, value: meta.name })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.nameLineMm))}
   <text x="${imageLabelX}" y="${captionY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.imageQr)}</text>
   <line x1="${imageLabelX - captionW / 2}" y1="${captionUlY}" x2="${imageLabelX + captionW / 2}" y2="${captionUlY}" stroke="#111" stroke-width="1"/>
   <text x="${nameLabelX}" y="${captionY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.nameQr)}</text>
   <line x1="${nameLabelX - captionW / 2}" y1="${captionUlY}" x2="${nameLabelX + captionW / 2}" y2="${captionUlY}" stroke="#111" stroke-width="1"/>
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.photoLineMm))}
-  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm), label: FIELD_LABELS.date, value: meta.print_date })}
+  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm, ROW_TEXT_MM), label: FIELD_LABELS.date, value: meta.print_date })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.dateLineMm))}
-  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm), label: FIELD_LABELS.time, value: meta.print_time })}
+  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm, ROW_TEXT_MM), label: FIELD_LABELS.time, value: meta.print_time })}
 </svg>`;
 
   const base = rasterizeLabelSvg(textSvg);

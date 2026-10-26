@@ -4,8 +4,12 @@ import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js
 
 const IMAGE_BUCKET = 'productimages';
 
-function storageFolder(packetId) {
-  return `warehouse-production-packets/${String(packetId || '').trim()}`;
+function storageFolder(entityId, kind = 'packet') {
+  const id = String(entityId || '').trim();
+  if (kind === 'assembly') {
+    return `warehouse-production-products/${id}`;
+  }
+  return `warehouse-production-packets/${id}`;
 }
 
 async function syncPosProductImage(sb, { sku, name, imageUrl }) {
@@ -47,7 +51,7 @@ export async function attachProductionPacketCatalogPhoto(sb, {
   if (!imageBase64) throw new Error('Product photo is required.');
 
   const jpeg = await retouchProductionSeatingPhotoFromBase64(imageBase64);
-  const objectPath = `${storageFolder(packetId)}/catalog-${Date.now()}.jpg`;
+  const objectPath = `${storageFolder(packetId, 'packet')}/catalog-${Date.now()}.jpg`;
   await uploadBufferToFirebaseStorage({
     bucketFolder: IMAGE_BUCKET,
     objectPath,
@@ -68,6 +72,47 @@ export async function attachProductionPacketCatalogPhoto(sb, {
   await syncPosProductImage(sb, {
     sku,
     name: productName || packet?.name,
+    imageUrl: publicUrl,
+  });
+
+  return rewriteLegacyProductImageUrl(publicUrl) || publicUrl;
+}
+
+/**
+ * Retouch seating photo, upload to storage, link to finished warehouse product (assembly SKU).
+ */
+export async function attachProductionAssemblyCatalogPhoto(sb, {
+  assembly,
+  imageBase64,
+  productName,
+}) {
+  const assemblyId = String(assembly?.id || '').trim();
+  const sku = String(assembly?.family_sku || assembly?.sku || '').trim();
+  if (!assemblyId || !sku) throw new Error('assembly id and sku are required.');
+  if (!imageBase64) throw new Error('Product photo is required.');
+
+  const jpeg = await retouchProductionSeatingPhotoFromBase64(imageBase64);
+  const objectPath = `${storageFolder(assemblyId, 'assembly')}/catalog-${Date.now()}.jpg`;
+  await uploadBufferToFirebaseStorage({
+    bucketFolder: IMAGE_BUCKET,
+    objectPath,
+    buffer: jpeg,
+    contentType: 'image/jpeg',
+    cacheControl: '86400',
+  });
+  const publicUrl = firebaseStoragePublicUrl(IMAGE_BUCKET, objectPath);
+  if (!publicUrl) throw new Error('Failed to resolve public image URL.');
+
+  const now = new Date().toISOString();
+  const { error: asmErr } = await sb.from('warehouse_assemblies').update({
+    image_url: publicUrl,
+    updated_at: now,
+  }).eq('id', assemblyId);
+  if (asmErr) throw new Error(asmErr.message || 'Failed to save product photo.');
+
+  await syncPosProductImage(sb, {
+    sku,
+    name: productName || assembly?.name,
     imageUrl: publicUrl,
   });
 

@@ -40,7 +40,10 @@ import {
   matchProductionGirlNameFromPool,
   normalizeWarehousePacketNameKey,
 } from '../../src/utils/productionItemName.js';
-import { attachProductionPacketCatalogPhoto } from '../lib/productionPacketCatalogPhoto.js';
+import {
+  attachProductionAssemblyCatalogPhoto,
+  attachProductionPacketCatalogPhoto,
+} from '../lib/productionPacketCatalogPhoto.js';
 import { suggestUniqueProductionBaseName } from '../lib/productionSuggestBaseName.js';
 import { titleCaseWords } from '../../src/utils/titleCaseWords.js';
 import {
@@ -229,6 +232,25 @@ async function assertUniquePacketName(sb, name, { excludePacketId } = {}) {
   }
 }
 
+async function assertUniqueAssemblyName(sb, name, { excludeAssemblyId } = {}) {
+  const key = normalizeWarehousePacketNameKey(name);
+  if (!key) throw new Error('Name is required');
+  const { data, error } = await sb.from('warehouse_assemblies').select('id, name');
+  if (error) throw new Error(error.message || 'Failed to validate product name');
+  const clash = (data || []).find(
+    (row) => normalizeWarehousePacketNameKey(row.name) === key
+      && String(row.id) !== String(excludeAssemblyId || ''),
+  );
+  if (clash) {
+    throw new Error(`A product named "${clash.name}" already exists.`);
+  }
+}
+
+async function assertUniqueProductionProductName(sb, name, { excludePacketId, excludeAssemblyId } = {}) {
+  await assertUniquePacketName(sb, name, { excludePacketId });
+  await assertUniqueAssemblyName(sb, name, { excludeAssemblyId });
+}
+
 async function opProductionAccessSelf(user) {
   const grant = await mobileAccessGrantForUser(user);
   const record = await getLoginAccessRecord(user?.id);
@@ -250,64 +272,75 @@ async function removeProductionPacketDraft(sb, packetId) {
   }
 }
 
+async function removeProductionAssemblyDraft(sb, assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) return;
+  try {
+    await sb.from('warehouse_assembly_inventory').delete().eq('assembly_id', id);
+    await sb.from('warehouse_assembly_locations').delete().eq('assembly_id', id);
+    await sb.from('warehouse_assembly_packets').delete().eq('assembly_id', id);
+    await sb.from('warehouse_assembly_colors').delete().eq('assembly_id', id);
+    await sb.from('warehouse_assemblies').delete().eq('id', id);
+  } catch (err) {
+    console.warn('[warehouse-mobile] rollback assembly draft failed:', err?.message || err);
+  }
+}
+
 async function opProductionPacketCreate(body, user) {
   await assertProductionKioskUser(user);
   const sb = getService();
-  let sku = normalizeWarehousePacketScan(body.sku);
-  if (!sku) {
+  let familySku = normalizeWarehouseProductSku(body.sku || body.family_sku);
+  if (!familySku) {
     const generated = await opGenerateUniqueSku(body);
-    sku = normalizeWarehousePacketScan(generated.sku);
+    familySku = normalizeWarehouseProductSku(generated.sku);
   }
   const name = titleCaseWords(String(body.name || '').trim());
-  const packetNumber = Number(body.packet_number) || 1;
-  const qtyPerUnit = Math.max(1, Math.floor(Number(body.qty_per_unit) || 1));
   const warehouseLocationId = body.warehouse_location_id;
   const initialQty = Math.max(0, Number(body.initial_quantity) || 0);
-  if (!sku || !name) throw new Error('SKU and name are required.');
+  if (!familySku || !name) throw new Error('SKU and name are required.');
   if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
-  await assertUniquePacketName(sb, name);
+  await assertUniqueProductionProductName(sb, name);
   const lineBase = extractProductionBaseName(name);
   if (lineBase && await isProductionBaseNameTaken(sb, lineBase)) {
     throw new Error(`A product named "${lineBase}" already exists. Choose a different name.`);
   }
-  await assertUniqueSku(sb, sku);
+  await assertUniqueSku(sb, familySku);
 
-  const now = new Date().toISOString();
-  const id = newUuid();
-  const row = {
-    id,
-    assembly_id: null,
-    sku,
-    name,
-    category_id: null,
-    location_id: warehouseLocationId,
-    packet_number: packetNumber,
-    qty_per_unit: qtyPerUnit,
-    item_kind: 'packet',
-    created_at: now,
-    updated_at: now,
-  };
-  let packetInserted = false;
+  const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  let assemblyInserted = false;
+  let assemblyId = '';
   try {
-    const { error } = await sb.from('warehouse_packets').insert(row);
-    if (error) throw new Error(error.message || 'Failed to create packet');
-    packetInserted = true;
+    const assembly = await saveAssemblyForMobile(sb, {
+      name,
+      family_sku: familySku,
+      warehouse_location_id: warehouseLocationId,
+      inventory_mode: 'finished',
+      packet_count: null,
+      packet_links: [],
+      location_ids: [],
+      units_per_carton: 1,
+    });
+    assemblyId = String(assembly.id || '');
+    assemblyInserted = Boolean(assemblyId);
 
-    await sb.from('warehouse_packet_inventory').upsert({
-      packet_id: id,
+    const now = new Date().toISOString();
+    const { error: invErr } = await sb.from('warehouse_assembly_inventory').upsert({
+      assembly_id: assemblyId,
       location_id: warehouseLocationId,
       quantity: initialQty,
       updated_at: now,
-    }, { onConflict: 'packet_id,location_id' });
+    }, { onConflict: 'assembly_id,location_id' });
+    if (invErr) throw new Error(invErr.message || 'Failed to set opening stock');
+    await recomputeWarehouseLocationStockServer(sb, warehouseLocationId);
 
     await logWarehouseProductionCreate({
       user,
-      packet: row,
+      assembly,
       initialQuantity: initialQty,
       warehouseLocationId,
+      source: clientSource,
     });
 
-    const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
     const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
     const requiresPhoto = clientSource === 'warehouse_production_app'
       || body.require_product_photo === true
@@ -315,8 +348,8 @@ async function opProductionPacketCreate(body, user) {
 
     let catalogImageUrl = null;
     if (imageBase64) {
-      catalogImageUrl = await attachProductionPacketCatalogPhoto(sb, {
-        packet: row,
+      catalogImageUrl = await attachProductionAssemblyCatalogPhoto(sb, {
+        assembly,
         imageBase64,
         productName: name,
       });
@@ -324,19 +357,19 @@ async function opProductionPacketCreate(body, user) {
       throw new Error('Take a product photo before saving (camera required).');
     }
 
+    const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
     const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
     const printedAt = new Date();
-    const printSource = clientSource;
     let labelJobId = null;
     let labelPrintWarning = null;
     if (labelCopies > 0) {
       try {
         labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
-          name: row.name,
-          sku: row.sku,
+          name: assembly.name,
+          sku: labelSku,
           qty: labelCopies,
           printedBy: user?.full_name || user?.display_name || user?.email,
-          source: printSource,
+          source: clientSource,
           printedAt,
         });
         if (!labelJobId) {
@@ -351,14 +384,22 @@ async function opProductionPacketCreate(body, user) {
 
     const preview = labelCopies > 0
       ? await buildProductionLabelPreviewPayload({
-        name: row.name,
-        sku: row.sku,
+        name: assembly.name,
+        sku: labelSku,
         printedAt,
       })
       : { label: null, label_preview_png_base64: null };
 
+    const packetCompat = {
+      id: assemblyId,
+      sku: labelSku,
+      name: assembly.name,
+      assembly_id: assemblyId,
+    };
+
     return {
-      packet: row,
+      assembly,
+      packet: packetCompat,
       created_by: user?.email || null,
       catalog_image_url: catalogImageUrl,
       label_copies: labelCopies,
@@ -368,8 +409,8 @@ async function opProductionPacketCreate(body, user) {
       label_preview_png_base64: preview.label_preview_png_base64,
     };
   } catch (err) {
-    if (packetInserted) {
-      await removeProductionPacketDraft(sb, id);
+    if (assemblyInserted) {
+      await removeProductionAssemblyDraft(sb, assemblyId);
     }
     throw err;
   }
@@ -378,46 +419,101 @@ async function opProductionPacketCreate(body, user) {
 async function opProductionStockIncrease(body, user) {
   await assertProductionKioskUser(user);
   const sb = getService();
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
   const packetId = String(body.packet_id || '').trim();
   const warehouseLocationId = String(body.warehouse_location_id || body.location_id || '').trim();
   const delta = Math.max(0, Math.floor(Number(body.delta) || 0));
-  if (!packetId) throw new Error('packet_id is required.');
+  if (!assemblyId && !packetId) throw new Error('assembly_id or packet_id is required.');
   if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
   if (delta < 1) throw new Error('Increase quantity must be at least 1.');
 
-  const { data: packet, error: pErr } = await sb
-    .from('warehouse_packets')
-    .select('id, sku, name')
-    .eq('id', packetId)
-    .maybeSingle();
-  if (pErr) throw new Error(pErr.message || 'Failed to load packet');
-  if (!packet) throw new Error('Packet not found.');
+  const printSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  let labelName = '';
+  let labelSku = '';
+  let qtyBefore = 0;
+  let qtyAfter = 0;
+  let packet = null;
+  let assembly = null;
 
-  const { data: invRow } = await sb
-    .from('warehouse_packet_inventory')
-    .select('quantity')
-    .eq('packet_id', packetId)
-    .eq('location_id', warehouseLocationId)
-    .maybeSingle();
-  const qtyBefore = Math.max(0, Number(invRow?.quantity) || 0);
-  const qtyAfter = qtyBefore + delta;
+  if (assemblyId) {
+    const { data: asmRow, error: aErr } = await sb
+      .from('warehouse_assemblies')
+      .select('id, name, family_sku, inventory_mode')
+      .eq('id', assemblyId)
+      .maybeSingle();
+    if (aErr) throw new Error(aErr.message || 'Failed to load product');
+    if (!asmRow) throw new Error('Product not found.');
+    if (String(asmRow.inventory_mode || '').toLowerCase() !== 'finished') {
+      throw new Error('Stock can only be added to finished products (no packet BOM).');
+    }
+    assembly = asmRow;
 
-  await setWarehousePacketQuantityServer(sb, packetId, warehouseLocationId, qtyAfter, { mobileFast: true });
+    const { data: invRow } = await sb
+      .from('warehouse_assembly_inventory')
+      .select('quantity')
+      .eq('assembly_id', assemblyId)
+      .eq('location_id', warehouseLocationId)
+      .maybeSingle();
+    qtyBefore = Math.max(0, Number(invRow?.quantity) || 0);
+    qtyAfter = qtyBefore + delta;
 
-  await logWarehouseProductionStockIncrease({
-    user,
-    packet,
-    delta,
-    qtyBefore,
-    qtyAfter,
-    warehouseLocationId,
-  });
+    await setAssemblyProductQuantityForMobile(sb, {
+      assembly_id: assemblyId,
+      warehouse_location_id: warehouseLocationId,
+      quantity: qtyAfter,
+    });
+
+    labelName = assembly.name;
+    labelSku = normalizeWarehousePacketScan(assembly.family_sku) || assembly.family_sku;
+
+    await logWarehouseProductionStockIncrease({
+      user,
+      assembly,
+      delta,
+      qtyBefore,
+      qtyAfter,
+      warehouseLocationId,
+      source: printSource,
+    });
+  } else {
+    const { data: pktRow, error: pErr } = await sb
+      .from('warehouse_packets')
+      .select('id, sku, name')
+      .eq('id', packetId)
+      .maybeSingle();
+    if (pErr) throw new Error(pErr.message || 'Failed to load packet');
+    if (!pktRow) throw new Error('Packet not found.');
+    packet = pktRow;
+
+    const { data: invRow } = await sb
+      .from('warehouse_packet_inventory')
+      .select('quantity')
+      .eq('packet_id', packetId)
+      .eq('location_id', warehouseLocationId)
+      .maybeSingle();
+    qtyBefore = Math.max(0, Number(invRow?.quantity) || 0);
+    qtyAfter = qtyBefore + delta;
+
+    await setWarehousePacketQuantityServer(sb, packetId, warehouseLocationId, qtyAfter, { mobileFast: true });
+
+    await logWarehouseProductionStockIncrease({
+      user,
+      packet,
+      delta,
+      qtyBefore,
+      qtyAfter,
+      warehouseLocationId,
+      source: printSource,
+    });
+
+    labelName = packet.name;
+    labelSku = packet.sku;
+  }
 
   const printedAt = new Date();
-  const printSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
   const labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
-    name: packet.name,
-    sku: packet.sku,
+    name: labelName,
+    sku: labelSku,
     qty: delta,
     printedBy: user?.full_name || user?.display_name || user?.email,
     source: printSource,
@@ -425,13 +521,18 @@ async function opProductionStockIncrease(body, user) {
   });
 
   const preview = await buildProductionLabelPreviewPayload({
-    name: packet.name,
-    sku: packet.sku,
+    name: labelName,
+    sku: labelSku,
     printedAt,
   });
 
+  const packetCompat = assembly
+    ? { id: assembly.id, sku: labelSku, name: assembly.name, assembly_id: assembly.id }
+    : packet;
+
   return {
-    packet,
+    assembly,
+    packet: packetCompat,
     delta,
     qty_before: qtyBefore,
     qty_after: qtyAfter,
@@ -608,13 +709,23 @@ async function opProductionEditStockIncrease(body, user) {
   return { log: updated, packet_id: packetId, warehouse_location_id: locationId };
 }
 
-async function isProductionBaseNameTaken(sb, baseName, { excludePacketId } = {}) {
+async function isProductionBaseNameTaken(sb, baseName, { excludePacketId, excludeAssemblyId } = {}) {
   const key = normalizeWarehousePacketNameKey(baseName);
   if (!key) return false;
-  const { data, error } = await sb.from('warehouse_packets').select('id, name');
-  if (error) throw new Error(error.message || 'Failed to validate packet name');
-  return (data || []).some((row) => {
+  const [{ data: packets, error: pErr }, { data: assemblies, error: aErr }] = await Promise.all([
+    sb.from('warehouse_packets').select('id, name'),
+    sb.from('warehouse_assemblies').select('id, name'),
+  ]);
+  if (pErr) throw new Error(pErr.message || 'Failed to validate packet name');
+  if (aErr) throw new Error(aErr.message || 'Failed to validate product name');
+  const packetTaken = (packets || []).some((row) => {
     if (excludePacketId && String(row.id) === String(excludePacketId)) return false;
+    const rowBase = normalizeWarehousePacketNameKey(extractProductionBaseName(row.name));
+    return rowBase === key;
+  });
+  if (packetTaken) return true;
+  return (assemblies || []).some((row) => {
+    if (excludeAssemblyId && String(row.id) === String(excludeAssemblyId)) return false;
     const rowBase = normalizeWarehousePacketNameKey(extractProductionBaseName(row.name));
     return rowBase === key;
   });
@@ -625,19 +736,31 @@ async function opPacketNameCheck(body) {
   if (!name) return { taken: false, name: '' };
   const sb = getService();
   const key = normalizeWarehousePacketNameKey(name);
-  const { data, error } = await sb.from('warehouse_packets').select('id, name');
-  if (error) throw new Error(error.message || 'Failed to validate packet name');
-  const excludeId = body.exclude_packet_id || body.excludePacketId || '';
-  const clash = (data || []).find(
-    (row) => normalizeWarehousePacketNameKey(row.name) === key
-      && String(row.id) !== String(excludeId),
-  );
+  const excludePacketId = body.exclude_packet_id || body.excludePacketId || '';
+  const excludeAssemblyId = body.exclude_assembly_id || body.excludeAssemblyId || '';
+  const [{ data: packets, error: pErr }, { data: assemblies, error: aErr }] = await Promise.all([
+    sb.from('warehouse_packets').select('id, name'),
+    sb.from('warehouse_assemblies').select('id, name'),
+  ]);
+  if (pErr) throw new Error(pErr.message || 'Failed to validate packet name');
+  if (aErr) throw new Error(aErr.message || 'Failed to validate product name');
+
+  const allNames = [
+    ...(packets || []).map((row) => ({ ...row, kind: 'packet' })),
+    ...(assemblies || []).map((row) => ({ ...row, kind: 'assembly' })),
+  ];
+  const clash = allNames.find((row) => {
+    if (row.kind === 'packet' && String(row.id) === String(excludePacketId)) return false;
+    if (row.kind === 'assembly' && String(row.id) === String(excludeAssemblyId)) return false;
+    return normalizeWarehousePacketNameKey(row.name) === key;
+  });
   if (clash) {
     return { taken: true, name, existing: clash.name };
   }
   const baseKey = normalizeWarehousePacketNameKey(extractProductionBaseName(name));
-  const baseClash = (data || []).find((row) => {
-    if (String(row.id) === String(excludeId)) return false;
+  const baseClash = allNames.find((row) => {
+    if (row.kind === 'packet' && String(row.id) === String(excludePacketId)) return false;
+    if (row.kind === 'assembly' && String(row.id) === String(excludeAssemblyId)) return false;
     const rowBase = normalizeWarehousePacketNameKey(extractProductionBaseName(row.name));
     return rowBase === baseKey && normalizeWarehousePacketNameKey(row.name) !== key;
   });
