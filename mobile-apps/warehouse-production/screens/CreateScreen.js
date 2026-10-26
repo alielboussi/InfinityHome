@@ -56,6 +56,7 @@ export default function CreateScreen({ navigation }) {
   const [labelPreview, setLabelPreview] = useState(null);
   const [labelPng, setLabelPng] = useState('');
   const [labelCopies, setLabelCopies] = useState(1);
+  const [labelPrintNote, setLabelPrintNote] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
   const scrollRef = useRef(null);
@@ -210,13 +211,16 @@ export default function CreateScreen({ navigation }) {
 
       pendingSaveRef.current = null;
       const labelCount = result.labelCopies > 0 ? result.labelCopies : pending.qtyNum;
-      let successMsg = tUi('saved', locale);
-      if (result.labelPrintWarning) {
-        successMsg = `${successMsg} ${result.labelPrintWarning}`;
+      const printWarning = String(result.labelPrintWarning || '').trim();
+      setLabelPrintNote(printWarning);
+      if (printWarning) {
+        setSuccess(tUi('savedItemOnly', locale));
+        setError(printWarning);
       } else if (labelCount < 1) {
-        successMsg = tUi('savedNoLabelsQty', locale);
+        setSuccess(tUi('savedNoLabelsQty', locale));
+      } else {
+        setSuccess(tUi('savedWithLabels', locale));
       }
-      setSuccess(successMsg);
 
       if (labelCount > 0) {
         const labelMeta = result.label || {
@@ -248,6 +252,7 @@ export default function CreateScreen({ navigation }) {
   const onSave = () => {
     setError('');
     setSuccess('');
+    setLabelPrintNote('');
     if (!warehouseLocationId) {
       setError(tUi('noWarehouse', locale));
       return;
@@ -421,9 +426,12 @@ export default function CreateScreen({ navigation }) {
       pngBase64={labelPng}
       copies={labelCopies}
       locale={locale}
+      labelsPrinted={!labelPrintNote}
+      printWarning={labelPrintNote}
       onClose={() => {
         setLabelPreview(null);
         setLabelPng('');
+        setLabelPrintNote('');
         if (deferFormResetRef.current) {
           deferFormResetRef.current = false;
           resetForm();

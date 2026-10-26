@@ -1,7 +1,9 @@
 /**
  * Raster preview — same row layout as zebraProductionLabelZpl.js.
  */
+import { Resvg } from '@resvg/resvg-js';
 import bwipjs from 'bwip-js';
+import path from 'path';
 import sharp from 'sharp';
 import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import {
@@ -80,6 +82,22 @@ async function makeQrPng(text, sizePx) {
     .toBuffer();
 }
 
+function dejavuSansFontPath() {
+  return path.join(process.cwd(), 'node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf');
+}
+
+function rasterizeLabelSvg(textSvg) {
+  const resvg = new Resvg(textSvg, {
+    fitTo: { mode: 'width', value: W },
+    font: {
+      fontFiles: [dejavuSansFontPath()],
+      loadSystemFonts: false,
+      defaultFontFamily: 'DejaVu Sans',
+    },
+  });
+  return Buffer.from(resvg.render().asPng());
+}
+
 function escapeXml(text) {
   return String(text || '')
     .replace(/&/g, '&amp;')
@@ -100,8 +118,8 @@ function rowSvg({
   value,
 }) {
   return `
-  <text x="${headerXpx}" y="${rowYpx}" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="${ROW_FONT_PX}" font-weight="700" fill="#111">${escapeXml(label)}</text>
-  <text x="${centerXpx}" y="${rowYpx}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${ROW_FONT_PX}" font-weight="600" fill="#000">${escapeXml(value)}</text>
+  <text x="${headerXpx}" y="${rowYpx}" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="${ROW_FONT_PX}" font-weight="700" fill="#111">${escapeXml(label)}</text>
+  <text x="${centerXpx}" y="${rowYpx}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${ROW_FONT_PX}" font-weight="600" fill="#000">${escapeXml(value)}</text>
   `;
 }
 
@@ -143,16 +161,16 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
 <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <rect x="${marginPx}" y="${marginPx}" width="${mainWidthPx}" height="${H - marginPx * 2}" fill="none" stroke="${BORDER}" stroke-width="3"/>
-  <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f" text-decoration="underline">${escapeXml(COMPANY_NAME)}</text>
+  <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f" text-decoration="underline">${escapeXml(COMPANY_NAME)}</text>
   ${hrSvg(marginPx, mainWidthPx, underlineY)}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.afterBarcodeLineMm))}
   ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm), label: FIELD_LABELS.sku, value: meta.sku })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.skuLineMm))}
   ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm), label: FIELD_LABELS.name, value: meta.name })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.nameLineMm))}
-  <text x="${imageLabelX}" y="${captionY}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.imageQr)}</text>
+  <text x="${imageLabelX}" y="${captionY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.imageQr)}</text>
   <line x1="${imageLabelX - captionW / 2}" y1="${captionUlY}" x2="${imageLabelX + captionW / 2}" y2="${captionUlY}" stroke="#111" stroke-width="1"/>
-  <text x="${nameLabelX}" y="${captionY}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.nameQr)}</text>
+  <text x="${nameLabelX}" y="${captionY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.nameQr)}</text>
   <line x1="${nameLabelX - captionW / 2}" y1="${captionUlY}" x2="${nameLabelX + captionW / 2}" y2="${captionUlY}" stroke="#111" stroke-width="1"/>
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.photoLineMm))}
   ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm), label: FIELD_LABELS.date, value: meta.print_date })}
@@ -160,7 +178,7 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm), label: FIELD_LABELS.time, value: meta.print_time })}
 </svg>`;
 
-  const base = await sharp(Buffer.from(textSvg)).png().toBuffer();
+  const base = rasterizeLabelSvg(textSvg);
 
   return sharp(base)
     .composite([

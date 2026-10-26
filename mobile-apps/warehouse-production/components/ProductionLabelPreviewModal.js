@@ -10,21 +10,27 @@ export default function ProductionLabelPreviewModal({
   label,
   pngBase64,
   copies = 1,
+  labelsPrinted = true,
+  printWarning = '',
 }) {
   if (!label) return null;
 
   const uri = pngBase64 ? `data:image/png;base64,${pngBase64}` : null;
+  const subText = !labelsPrinted || printWarning
+    ? tUi('labelPreviewNotPrinted', locale)
+    : (copies > 1
+      ? tUi('labelPreviewCopies', locale).replace('{n}', String(copies))
+      : tUi('labelPreviewSent', locale));
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <Text style={styles.title}>{tUi('labelPreviewTitle', locale)}</Text>
-          <Text style={styles.sub}>
-            {copies > 1
-              ? tUi('labelPreviewCopies', locale).replace('{n}', String(copies))
-              : tUi('labelPreviewSent', locale)}
-          </Text>
+          <Text style={styles.sub}>{subText}</Text>
+          {printWarning ? (
+            <Text style={styles.warn}>{printWarning}</Text>
+          ) : null}
 
           {uri ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imageWrap}>
@@ -63,6 +69,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4 },
   sub: { fontSize: 14, color: theme.muted, marginBottom: 12 },
+  warn: { fontSize: 13, color: theme.danger, marginBottom: 12, lineHeight: 18 },
   imageWrap: { alignItems: 'center', paddingVertical: 8 },
   labelImage: {
     width: 320,

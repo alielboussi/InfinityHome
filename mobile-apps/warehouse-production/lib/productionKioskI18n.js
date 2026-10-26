@@ -24,7 +24,14 @@ const UI_STRINGS = {
   save: { en: 'Save production item', ar: 'حفظ عنصر الإنتاج' },
   saving: { en: 'Saving…', ar: 'جاري الحفظ…' },
   translateToggle: { en: 'عربي', ar: 'English' },
-  saved: { en: 'Saved — photo catalogued and labels sent to printer.', ar: 'تم الحفظ — صُوّرت المنتج وأُرسلت الملصقات إلى الطابعة.' },
+  savedWithLabels: {
+    en: 'Saved — photo catalogued and labels sent to the printer.',
+    ar: 'تم الحفظ — صُوّرت المنتج وأُرسلت الملصقات إلى الطابعة.',
+  },
+  savedItemOnly: {
+    en: 'Saved — item and photo are in the catalog.',
+    ar: 'تم الحفظ — العنصر والصورة في الكتالوج.',
+  },
   photoCaptureTitle: { en: 'Product photo', ar: 'صورة المنتج' },
   photoCaptureHint: {
     en: 'Take a clear photo of the seating arrangement, then tap Take photo.',
@@ -104,7 +111,11 @@ const UI_STRINGS = {
   },
   back: { en: 'Back', ar: 'رجوع' },
   labelPreviewTitle: { en: 'Label preview', ar: 'معاينة الملصق' },
-  labelPreviewSent: { en: 'Sent to printer (layout below).', ar: 'أُرسل إلى الطابعة (التخطيط أدناه).' },
+  labelPreviewSent: { en: 'Sent to printer (preview below).', ar: 'أُرسل إلى الطابعة (معاينة أدناه).' },
+  labelPreviewNotPrinted: {
+    en: 'Preview only — labels were not printed. Fix Zebra settings on the server, then save again or reprint from the web.',
+    ar: 'معاينة فقط — لم تُطبع الملصقات. صحّح إعدادات Zebra على الخادم ثم أعد المحاولة.',
+  },
   labelPreviewCopies: { en: '{n} copies sent to printer.', ar: 'أُرسل {n} نسخ إلى الطابعة.' },
   labelPreviewDone: { en: 'Done', ar: 'تم' },
 };

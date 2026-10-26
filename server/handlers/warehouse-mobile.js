@@ -343,8 +343,8 @@ async function opProductionPacketCreate(body, user) {
           labelPrintWarning = 'Item saved but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
         }
       } catch (printErr) {
-        labelPrintWarning = printErr?.message
-          || 'Item saved but label printing failed. Check the printer / Zebra Weblink settings.';
+        const { formatZebraPrintError } = await import('../lib/formatZebraPrintError.js');
+        labelPrintWarning = formatZebraPrintError(printErr);
         console.warn('[warehouse-mobile] production label print failed:', printErr?.message || printErr);
       }
     }
