@@ -11,6 +11,13 @@ import {
 import { fetchProductionAccess } from '../services/productionApi';
 import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
 
+/** Keep in sync with server/lib/loginAccess.js ADMIN_EMAIL */
+const LOGIN_ACCESS_ADMIN_EMAIL = 'alielboussi00@gmail.com';
+
+function isLoginAccessAdminEmail(email) {
+  return String(email || '').trim().toLowerCase() === LOGIN_ACCESS_ADMIN_EMAIL;
+}
+
 function formatAccessHint(value, fallback = '') {
   if (value == null || value === '') return fallback;
   if (typeof value === 'string') return value;
@@ -41,6 +48,11 @@ export function useProductionAccessGrant() {
       const fbEmail = String(getFirebaseAuth().currentUser?.email || '').trim();
       if (fbEmail) setUserEmail(fbEmail);
 
+      if (isLoginAccessAdminEmail(fbEmail)) {
+        setAllowed(true);
+        return;
+      }
+
       let clientAllowed = false;
       let nextGrant = defaultMobileAccessGrant();
 
@@ -48,6 +60,10 @@ export function useProductionAccessGrant() {
       if (access.ok && access.user) {
         const email = access.user?.email || fbEmail;
         if (email) setUserEmail(email);
+        if (isLoginAccessAdminEmail(email)) {
+          setAllowed(true);
+          return;
+        }
         const rawGrant = access.user?.mobile_access || defaultMobileAccessGrant();
         nextGrant = sanitizeMobileAccessGrantForUser(rawGrant, email);
         setGrant(nextGrant);
