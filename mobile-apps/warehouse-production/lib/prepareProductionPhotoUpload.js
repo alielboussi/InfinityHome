@@ -1,5 +1,3 @@
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-
 /** Keep JSON body under Vercel's ~4.5MB limit (room for other fields). */
 const MAX_UPLOAD_BASE64_CHARS = 2_400_000;
 
@@ -14,6 +12,16 @@ function resolvePhotoUri(source) {
   return `data:${mime};base64,${base64}`;
 }
 
+async function loadImageManipulator() {
+  try {
+    return await import('expo-image-manipulator');
+  } catch {
+    throw new Error(
+      'Photo compression module is missing. In mobile-apps/warehouse-production run: npm install && npx expo start --clear',
+    );
+  }
+}
+
 /**
  * Shrink camera photos before upload (faster AI retouch, avoids 413 Request Entity Too Large).
  * @param {string|{ uri?: string, base64?: string, dataUri?: string, mimeType?: string }} source
@@ -24,6 +32,8 @@ export async function prepareProductionPhotoForUpload(source) {
   if (!input) {
     throw new Error('Photo is required.');
   }
+
+  const { manipulateAsync, SaveFormat } = await loadImageManipulator();
 
   const widths = [960, 800, 640, 512];
   const qualities = [0.62, 0.52, 0.42, 0.35];

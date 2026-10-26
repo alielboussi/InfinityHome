@@ -24,9 +24,11 @@ Warehouse production on phones: **create packets**, **add stock**, labels via **
 
 ```bash
 cd mobile-apps/warehouse-production
-npm install
+npm install   # required — includes expo-image-manipulator for photo compression
 npx expo start --clear
 ```
+
+If Metro says **Unable to resolve "expo-image-manipulator"**, you skipped `npm install` in this folder (not the repo root).
 
 Open the app on your phone (**Expo Go** or a **local debug APK** with Metro connected). After pulling JS changes, press **`r`** in the terminal or shake the device → **Reload**.
 
