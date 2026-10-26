@@ -13,6 +13,7 @@ export default function DashboardScreen({
   userEmail,
   allowed,
   onRefreshAccess,
+  accessHint,
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign, ready } = useProductionKioskLocale();
@@ -22,7 +23,12 @@ export default function DashboardScreen({
       <View style={[kiosk.screen, styles.center, { paddingTop: insets.top + 16, paddingHorizontal: 20 }]}>
         <Text style={kiosk.noticeErr}>{tUi('accessDenied', ready ? locale : 'ar')}</Text>
         {userEmail ? (
-          <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>{userEmail}</Text>
+          <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>Signed in as {userEmail}</Text>
+        ) : (
+          <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>Not signed in</Text>
+        )}
+        {accessHint ? (
+          <Text style={[styles.hint, { textAlign: 'center' }]}>{accessHint}</Text>
         ) : null}
         {typeof onRefreshAccess === 'function' ? (
           <Pressable style={[kiosk.btn, { marginTop: 16 }]} onPress={() => onRefreshAccess()}>
@@ -76,4 +82,5 @@ export default function DashboardScreen({
 const styles = StyleSheet.create({
   center: { justifyContent: 'center', flexGrow: 1 },
   user: { color: theme.textMuted, marginBottom: 4, fontSize: 15, fontWeight: '500' },
+  hint: { color: theme.textMuted, marginTop: 10, fontSize: 13, lineHeight: 18 },
 });

@@ -8,9 +8,11 @@ async function productionOp(op, body = {}) {
 
 export async function fetchProductionAccess() {
   const payload = await productionOp('production-access-self');
+  const grant = payload?.grant || null;
   return {
     allowed: Boolean(payload.allowed),
     displayName: payload.display_name || null,
+    productionApp: grant?.warehouse_production_app || null,
   };
 }
 

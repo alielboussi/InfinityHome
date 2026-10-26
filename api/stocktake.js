@@ -406,9 +406,13 @@ async function handleAuthProfile(req, res) {
     const { getLoginAccessRecord } = await import('../server/lib/loginAccess.js');
     const { normalizeMobileAccessGrant } = await import('../server/lib/mobileAccessDefaults.js');
     loginRecord = await getLoginAccessRecord(authUser.id);
-    mobileAccess = normalizeMobileAccessGrant(loginRecord?.mobile_access, authUser.email);
+    mobileAccess = normalizeMobileAccessGrant(
+      loginRecord?.mobile_access || {},
+      authUser.email,
+    );
   } catch (_) {
-    // non-fatal for profile
+    const { normalizeMobileAccessGrant } = await import('../server/lib/mobileAccessDefaults.js');
+    mobileAccess = normalizeMobileAccessGrant({}, authUser.email);
   }
 
   const profileUser = buildAuthUserPayload(authUser);

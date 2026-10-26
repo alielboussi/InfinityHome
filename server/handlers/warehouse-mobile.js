@@ -99,7 +99,7 @@ async function requireUser(req) {
 
 async function mobileAccessGrantForUser(user) {
   const record = await getLoginAccessRecord(user?.id);
-  return normalizeMobileAccessGrant(record?.mobile_access, user?.email);
+  return normalizeMobileAccessGrant(record?.mobile_access || {}, user?.email);
 }
 
 async function assertUniqueSku(sb, sku, { excludeAssemblyId, excludePacketId } = {}) {
@@ -1120,12 +1120,12 @@ export default async function handler(req, res) {
       case 'delivery-accept':
         result = await opDeliveryAccept(body, user);
         break;
-      case 'production-access-self':
-        if (!user?.id || !user?.email) {
-          return res.status(401).json({ ok: false, error: 'Authentication required' });
-        }
-        result = await opProductionAccessSelf(user);
+      case 'production-access-self': {
+        const { requireBearerUser } = await import('../lib/verifyBearerUser.js');
+        const authedUser = await requireBearerUser(req);
+        result = await opProductionAccessSelf(authedUser);
         break;
+      }
       case 'packet-name-check':
         result = await opPacketNameCheck(body);
         break;
