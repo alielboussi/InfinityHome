@@ -529,6 +529,7 @@ export default function LusakaTransfers() {
   }
 
   return (
+    <div className="report-page lusaka-transfers-page">
     <div className="lusaka-transfers-container" style={{ maxWidth: 1100, margin: '24px auto', padding: '0 16px 32px' }}>
       <div className="page-header-row">
         <BackToDashboard />
@@ -810,6 +811,7 @@ export default function LusakaTransfers() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

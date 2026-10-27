@@ -13092,6 +13092,9 @@ body.enterprise-theme .quotes-products-page .quotes-currency-switch button:last-
    Palette: Blue (primary/info), Green (additions), Red (deductions).
    ================================================================= */
 body.enterprise-theme {
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100%;
   --ent-blue: #1565c0;
   --ent-blue-dark: #0d47a1;
   --ent-blue-soft: #e8f0fb;
@@ -15129,6 +15132,11 @@ body.enterprise-theme .checkout-btn {
 }
 
 @media (max-width: 919px) {
+  body.enterprise-theme.ent-sidebar-pinned .App {
+    padding-left: min(240px, 70vw);
+    box-sizing: border-box;
+  }
+
   body.enterprise-theme .ent-drawer {
     transform: translateX(0);
     width: 240px;
@@ -15186,6 +15194,31 @@ body.enterprise-theme .checkout-btn {
 }
 
 /* Lusaka Transfers — enterprise light theme (matches report / layby pages) */
+body.enterprise-theme .lusaka-transfers-page.report-page {
+  background: transparent !important;
+  color: var(--ent-text, #1f2733);
+  min-height: 0;
+  padding-top: 8px;
+}
+
+body.enterprise-theme .lusaka-transfers-page .lusaka-transfers-container {
+  background: transparent !important;
+  color: var(--ent-text, #1f2733);
+}
+
+body.enterprise-theme .lusaka-transfers-page .page-header-row h2,
+body.enterprise-theme .lusaka-transfers-page .report-section-title {
+  color: var(--ent-text, #1f2733) !important;
+}
+
+.lusaka-transfers-page .report-filters,
+.lusaka-transfers-page .report-section,
+.lusaka-transfers-page .report-actions {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 .lusaka-transfers-container .report-filters,
 .lusaka-transfers-container .report-section {
   width: 100%;

@@ -87,6 +87,8 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/stocktake/aggregation',
       '/stocktake-periods',
       '/all-sales',
+      '/transfers',
+      '/lusaka-transfers',
       '/transfers-report',
       '/production-report',
       '/sales-report',

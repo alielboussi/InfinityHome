@@ -1,4 +1,5 @@
 import { lazy } from 'react';
+import LusakaTransfersPage from './LusakaTransfers';
 
 /** Attach .preload for drawer hover prefetch (same chunk as lazy()). */
 function lazyRoute(factory) {
@@ -15,7 +16,8 @@ export const WarehouseDeliveriesHassanTest = lazyRoute(() => import('./Warehouse
 export const WarehouseDeliveryDriversPage = lazyRoute(() => import('./WarehouseDeliveryDriversPage'));
 export const KitweProductsPage = lazyRoute(() => import('./KitweProductsPage'));
 export const KitweSetsPage = lazyRoute(() => import('./KitweSetsPage'));
-export const LusakaTransfers = lazyRoute(() => import('./LusakaTransfers'));
+/** Eager-loaded: factory tablets must not depend on a lazy chunk for stock moves. */
+export const LusakaTransfers = LusakaTransfersPage;
 export const LoginPage = lazyRoute(() => import('./LoginPage'));
 export const Dashboard = lazyRoute(() => import('./Dashboard'));
 export const Products = lazyRoute(() => import('./Products'));
@@ -85,7 +87,7 @@ export const routePreloadByPath = {
   '/ecommerce-sales': () => import('./EcommerceSales'),
   '/stocktake': () => import('./StocktakeControlPage'),
   '/stocktake/aggregation': () => import('./StocktakeAggregationPage'),
-  '/transfers': () => import('./LusakaTransfers'),
+  '/transfers': () => Promise.resolve({ default: LusakaTransfersPage }),
   '/All-Transfers': () => import('./WarehouseTransfer'),
   '/All-Transfers-summary': () => import('./WarehouseTransferSummary'),
   '/sales-report': () => import('./SalesReport'),
