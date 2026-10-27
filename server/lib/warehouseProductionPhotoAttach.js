@@ -7,6 +7,40 @@ import { enqueueWarehouseProductionLabelJob } from './productionLabelPrint.js';
 import { normalizeWarehousePacketScan } from '../../src/utils/warehouseScanResolver.js';
 import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js';
 import { buildWarehouseProductionLabelPngBase64 } from './warehouseProductionLabelImage.js';
+import { sendWarehouseProductionWhatsApp } from './sendWarehouseProductionWhatsApp.js';
+
+function productionWhatsappAlias(user) {
+  return String(user?.full_name || user?.display_name || user?.email || '').trim();
+}
+
+function pendingLabelQty(body) {
+  const pending = body.pending_label_print || body.pendingLabelPrint;
+  const qty = Math.floor(Number(pending?.qty) || 0);
+  return qty > 0 ? qty : 0;
+}
+
+async function notifyNewProductionProductWhatsApp({
+  user,
+  assembly,
+  qtyAdded,
+  imageUrl,
+}) {
+  const qty = Math.max(0, Math.floor(Number(qtyAdded) || 0));
+  const image = String(imageUrl || assembly?.image_url || '').trim();
+  try {
+    await sendWarehouseProductionWhatsApp({
+      variant: 'new',
+      accountAlias: productionWhatsappAlias(user),
+      sku: assembly?.family_sku || '',
+      name: assembly?.name || '',
+      qtyAdded: qty,
+      qtyBefore: 0,
+      imageUrl: image,
+    });
+  } catch (err) {
+    console.warn('[warehouse-production-photo] WhatsApp notify failed:', err?.message || err);
+  }
+}
 
 const MAX_IMAGE_BASE64_CHARS = 3_200_000;
 
@@ -149,6 +183,13 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
 
   const labelResult = await runPendingLabelPrint(sb, body, user, assembly);
   const label_preview_png_base64 = await buildLabelPreviewForAssembly(assembly);
+
+  await notifyNewProductionProductWhatsApp({
+    user,
+    assembly,
+    qtyAdded: pendingLabelQty(body),
+    imageUrl: catalogImageUrl,
+  });
 
   return {
     assembly_id: assemblyId,

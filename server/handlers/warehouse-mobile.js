@@ -74,6 +74,18 @@ import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku
 import { enqueueWarehouseProductionLabelJob } from '../lib/productionLabelPrint.js';
 import { findProductionNameClash } from '../lib/productionCatalogNameCheck.js';
 import { runProductionAssemblyPhotoAttach } from '../lib/warehouseProductionPhotoAttach.js';
+
+function productionWhatsappAlias(user) {
+  return String(user?.full_name || user?.display_name || user?.email || '').trim();
+}
+
+function queueProductionWhatsAppNotify(payload) {
+  import('../lib/sendWarehouseProductionWhatsApp.js')
+    .then(({ sendWarehouseProductionWhatsApp }) => sendWarehouseProductionWhatsApp(payload))
+    .catch((err) => {
+      console.warn('[warehouse-mobile] production WhatsApp failed:', err?.message || err);
+    });
+}
 import {
   buildProductionLabelMeta,
   buildWarehouseProductionLabelPngBase64,
@@ -435,6 +447,18 @@ async function opProductionPacketCreate(body, user) {
       assembly_id: assemblyId,
     };
 
+    if (!deferProductPhoto && catalogImageUrl) {
+      queueProductionWhatsAppNotify({
+        variant: 'new',
+        accountAlias: productionWhatsappAlias(user),
+        sku: labelSku,
+        name: assembly.name,
+        qtyAdded: initialQty,
+        qtyBefore: 0,
+        imageUrl: catalogImageUrl,
+      });
+    }
+
     return {
       assembly,
       packet: packetCompat,
@@ -489,7 +513,7 @@ async function opProductionStockIncrease(body, user) {
   if (assemblyId) {
     const { data: asmRow, error: aErr } = await sb
       .from('warehouse_assemblies')
-      .select('id, name, family_sku, inventory_mode')
+      .select('id, name, family_sku, inventory_mode, image_url')
       .eq('id', assemblyId)
       .maybeSingle();
     if (aErr) throw new Error(aErr.message || 'Failed to load product');
@@ -600,6 +624,19 @@ async function opProductionStockIncrease(body, user) {
   const packetCompat = assembly
     ? { id: assembly.id, sku: labelSku, name: assembly.name, assembly_id: assembly.id }
     : packet;
+
+  if (assembly) {
+    queueProductionWhatsAppNotify({
+      variant: 'existing',
+      accountAlias: productionWhatsappAlias(user),
+      sku: labelSku,
+      name: labelName,
+      qtyAdded: delta,
+      qtyBefore,
+      qtyOnHand: qtyAfter,
+      imageUrl: assembly.image_url || '',
+    });
+  }
 
   return {
     assembly,

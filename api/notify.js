@@ -113,6 +113,8 @@ const GROUP_KEYS = {
 
   ledger: 'WHATSAPP_LEDGER_GROUP_ID',
 
+  production: 'WHATSAPP_PRODUCTION_GROUP_ID',
+
 };
 
 // Documented in docs/whatsapp-groups.txt — safe fallback when env group id is unset.
@@ -126,6 +128,7 @@ const DOCUMENTED_WHATSAPP_GROUP_IDS = {
   fahme: '120363372527723284@g.us',
   ledger: '120363246815974105@g.us',
   warehouseDelivery: '120363410583418058@g.us',
+  production: '120363430993260511@g.us',
 };
 
 
@@ -273,7 +276,7 @@ function normalizeWasenderKind(kind) {
 
 function parseWasenderKinds() {
   const raw = String(process.env.WHATSAPP_WASENDER_KINDS || '').trim().toLowerCase();
-  if (raw === 'all') return ['sale', 'layby', 'transfer', 'warehouseDelivery', 'labels', 'ledger'];
+  if (raw === 'all') return ['sale', 'layby', 'transfer', 'warehouseDelivery', 'labels', 'ledger', 'production'];
   if (raw) {
     const kinds = raw.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
     if (kinds.length && !kinds.includes('labels') && kinds.some((kind) => ['sale', 'layby', 'transfer'].includes(kind))) {
@@ -1941,7 +1944,7 @@ async function sendWhapiText(to, body) {
 
 
 
-async function sendWasenderMessage({ to, text, documentUrl, fileName }) {
+async function sendWasenderMessage({ to, text, documentUrl, fileName, imageUrl }) {
 
   const { token } = getWasenderConfig();
 
@@ -1959,7 +1962,15 @@ async function sendWasenderMessage({ to, text, documentUrl, fileName }) {
 
   }
 
-  if (documentUrl) {
+  const imageLink = String(imageUrl || '').trim();
+
+  if (imageLink) {
+
+    payload.imageUrl = imageLink;
+
+    if (text) payload.text = String(text).slice(0, WHATSAPP_CAPTION_LIMIT);
+
+  } else if (documentUrl) {
 
     payload.documentUrl = String(documentUrl).trim();
 
@@ -3677,6 +3688,68 @@ async function handleWhatsAppTransfer(body) {
 
 
 
+async function deliverProductionAlert(targets, message, imageUrl, mode, provider) {
+  const caption = String(message || '').trim().slice(0, WHATSAPP_CAPTION_LIMIT);
+  const link = String(imageUrl || '').trim();
+  const unique = Array.from(new Set(targets || []));
+  if (!unique.length || !caption) return [];
+
+  const sendImageWithCaption = (to) => sendWasenderMessage({
+    to,
+    text: caption,
+    imageUrl: link,
+  });
+
+  if (link && provider === 'wasender') {
+    return sendWasenderWithPacing(unique, sendImageWithCaption);
+  }
+
+  if (link && provider === 'whapi' && canFallbackToWasender()) {
+    return sendWasenderWithPacing(unique, sendImageWithCaption);
+  }
+
+  return deliverText(unique, caption, mode, provider);
+}
+
+async function handleWhatsAppProduction(body) {
+  const {
+    buildWarehouseProductionWhatsAppText,
+  } = await import('../server/lib/warehouseProductionWhatsAppMessage.js');
+
+  const variant = String(body.variant || body.event || 'new').toLowerCase() === 'existing'
+    ? 'existing'
+    : 'new';
+  const message = buildWarehouseProductionWhatsAppText({
+    variant,
+    accountAlias: body.accountAlias || body.account_alias,
+    sku: body.sku,
+    name: body.name,
+    qtyAdded: body.qtyAdded ?? body.qty_added ?? body.qty,
+    qtyBefore: body.qtyBefore ?? body.qty_before ?? 0,
+    qtyOnHand: body.qtyOnHand ?? body.qty_on_hand ?? body.qty_after,
+    printedAt: body.printedAt || body.printed_at || new Date(),
+  });
+
+  const routing = resolveDeliveryTargets('production', null);
+  if (!routing.targets.length) {
+    const err = new Error('WhatsApp env not configured (WHATSAPP_PRODUCTION_GROUP_ID + WASENDER_API_TOKEN).');
+    err.status = 500;
+    err.stage = 'env';
+    throw err;
+  }
+
+  const imageUrl = String(body.imageUrl || body.image_url || '').trim();
+  const deliveries = await deliverProductionAlert(
+    routing.targets,
+    message,
+    imageUrl,
+    routing.mode,
+    routing.provider,
+  );
+
+  return { ok: true, deliveries, combinedImageCaption: Boolean(imageUrl) };
+}
+
 async function handleWhatsAppWarehouseDelivery(body) {
 
   const rawMessage = String(body.message || '').trim();
@@ -4280,6 +4353,18 @@ export default async function handler(req, res) {
     if (action === 'whatsapp-transfer' || action === 'transfer') {
 
       const payload = await handleWhatsAppTransfer(body);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+
+
+    if (action === 'whatsapp-production' || action === 'production') {
+
+      const payload = await handleWhatsAppProduction(body);
 
       res.status(200).json(payload);
 

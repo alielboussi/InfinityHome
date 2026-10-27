@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -18,6 +18,7 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { filterPacketsForProductionSearch } from '../lib/productionPacketSearch';
 import {
   assemblyWarehouseQty,
+  isProductionStockProductId,
   listProductionFinishedStockProducts,
 } from '../lib/productionStockCatalog';
 import { kioskScreenEdges } from '../lib/kioskLayout';
@@ -49,12 +50,14 @@ export default function StockScreen({ navigation }) {
   const [labelPng, setLabelPng] = useState('');
   const [labelCopies, setLabelCopies] = useState(1);
   const [labelPrintNote, setLabelPrintNote] = useState('');
+  const catalogRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const data = await fetchProductionCatalog();
+      catalogRef.current = data;
       setProducts(listProductionFinishedStockProducts(data));
       setAssemblyInventory(data.assemblyInventory || []);
       setWarehouseLocationId(data.warehouseLocationId);
@@ -81,6 +84,15 @@ export default function StockScreen({ navigation }) {
     setSuccess('');
   };
 
+  const rejectIneligibleAssembly = (assemblyId) => {
+    const catalog = catalogRef.current;
+    if (!catalog || !isProductionStockProductId(catalog, assemblyId)) {
+      setError(tUi('stockNotEligible', locale));
+      return true;
+    }
+    return false;
+  };
+
   const tryResolveScan = async (raw) => {
     const scan = String(raw || '').trim();
     if (!scan) return;
@@ -88,6 +100,7 @@ export default function StockScreen({ navigation }) {
       const result = await resolveProductionScan(scan);
       if (result?.kind === 'assembly' && result.assembly) {
         const asm = result.assembly;
+        if (rejectIneligibleAssembly(asm.id)) return;
         openPacketModal({
           id: asm.id,
           assembly_id: asm.id,
@@ -98,7 +111,16 @@ export default function StockScreen({ navigation }) {
         return;
       }
       if (result?.kind === 'packet' && result.packet) {
-        openPacketModal(result.packet);
+        const parentId = result.packet.assembly_id || result.assembly?.id;
+        if (parentId && rejectIneligibleAssembly(parentId)) return;
+        if (!parentId) {
+          setError(tUi('stockNotEligible', locale));
+          return;
+        }
+        openPacketModal({
+          ...result.packet,
+          assembly_id: parentId,
+        });
         setSearch(result.packet.name || scan);
         return;
       }

@@ -1,11 +1,10 @@
 /**
- * Production stock screen lists finished warehouse products (no packet BOM), not orphan packets.
- * Keep aligned with warehouse catalog "Finished units only" products.
+ * Production stock screen: finished warehouse products with no packet/carton BOM
+ * (same as Create new item — inventory_mode finished, no assembly_packets links).
  */
 
 import {
-  assemblyUsesFinishedInventory,
-  isCompleteCatalogProduct,
+  isFinishedProductWithoutPacketBom,
   isSetAssembly,
 } from '../shared/warehouseCatalogProductCompleteness';
 
@@ -34,8 +33,7 @@ export function listProductionFinishedStockProducts(catalog) {
   const pktByAsm = buildPacketListsByAssembly(catalog);
   return assemblies
     .filter((a) => !isSetAssembly(a))
-    .filter((a) => assemblyUsesFinishedInventory(a))
-    .filter((a) => isCompleteCatalogProduct(a, pktByAsm[String(a.id)] || []))
+    .filter((a) => isFinishedProductWithoutPacketBom(a, pktByAsm[String(a.id)] || []))
     .map((a) => ({
       id: String(a.id),
       assembly_id: String(a.id),
@@ -51,4 +49,10 @@ export function assemblyWarehouseQty(assemblyId, assemblyInventory, locationId) 
       && String(r.location_id) === String(locationId),
   );
   return Math.max(0, Number(row?.quantity) || 0);
+}
+
+export function isProductionStockProductId(catalog, assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) return false;
+  return listProductionFinishedStockProducts(catalog).some((row) => row.id === id);
 }

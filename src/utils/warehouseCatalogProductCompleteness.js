@@ -58,3 +58,13 @@ export function isCompleteCatalogProduct(assembly, pktList) {
   if (hasIncompletePacketCartonBom(assembly, pktList)) return false;
   return true;
 }
+
+/** Production “Add stock” — finished units only, no carton/packet BOM. */
+export function isFinishedProductWithoutPacketBom(assembly, pktList) {
+  if (!assembly || isSetAssembly(assembly)) return false;
+  if (!assemblyUsesFinishedInventory(assembly)) return false;
+  if ((pktList || []).length > 0) return false;
+  const packetCount = Number(assembly.packet_count);
+  if (Number.isFinite(packetCount) && packetCount > 0) return false;
+  return true;
+}

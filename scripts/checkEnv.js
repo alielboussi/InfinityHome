@@ -142,6 +142,26 @@ try {
   process.exit(1);
 }
 
+try {
+  require('child_process').execSync('node scripts/verifyProductionStockCatalog.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-stock-catalog:fail] verifyProductionStockCatalog.js failed.');
+  process.exit(1);
+}
+
+try {
+  require('child_process').execSync('node scripts/verifyProductionWhatsAppMessage.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-whatsapp:fail] verifyProductionWhatsAppMessage.js failed.');
+  process.exit(1);
+}
+
 for (const script of [
   'scripts/verifyStocktakeVarianceLedger.js',
   'scripts/verifyStocktakeTransferVariance.js',

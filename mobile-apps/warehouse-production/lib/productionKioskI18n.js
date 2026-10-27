@@ -109,6 +109,10 @@ const UI_STRINGS = {
   stockAfter: { en: 'After save', ar: 'بعد الحفظ' },
   stockSaved: { en: 'Stock updated — labels sent to printer.', ar: 'تم التحديث — أُرسلت الملصقات إلى الطابعة.' },
   stockNoMatch: { en: 'No matching product.', ar: 'لا يوجد منتج مطابق.' },
+  stockNotEligible: {
+    en: 'This item uses packet BOM stock. Only finished products (no cartons) can be added here.',
+    ar: 'هذا المنتج يعتمد على مخزون الطرود. يمكن إضافة المخزون هنا للمنتجات الجاهزة فقط (بدون طرود).',
+  },
   stockSearchHint: {
     en: 'Type or scan to search — products appear here when there is a match.',
     ar: 'اكتب أو امسح للبحث — تظهر المنتجات هنا عند وجود تطابق.',
