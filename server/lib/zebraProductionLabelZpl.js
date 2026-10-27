@@ -72,10 +72,6 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
   const valueField = (y, text, maxLines = 1) => (
     `^FO0,${y}^A0N,${vf},${vf}^FB${d.labelWidth},${maxLines},0,C,0^FD${text}^FS`
   );
-  const hr = (y) => `^FO${mainX},${y}^GB${mainW},1,1^FS`;
-  const qrCaption = (
-    `^FO${d.imageQrLabelX},${d.qrCaptionY}^A0N,${d.qrCaptionFont},${d.qrCaptionFont}^FB${d.qrCaptionWidth},1,0,C,0^FD${zplEscape(FIELD_LABELS.imageQr)}^FS`
-  );
 
   const barcodeH = d.barcodeHeight;
   const barcodeModule = Math.max(2, Math.min(3, Math.floor(d.barcodeWidth / (skuText.length * 11 + 35))));
@@ -89,23 +85,16 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     '^LH0,0',
     `^FO${mainX},${d.margin}^GB${d.boxW},${d.boxH},2^FS`,
     `^FO${mainX},${d.companyY}^A0N,${cf},${cf}^FB${mainW},1,0,C,0^FD${companyLine}^FS`,
-    hr(d.companyLineY),
     `^FO${d.barcodeLeft},${d.barcodeTop}^BY${barcodeModule},3,${Math.max(5, Math.floor(barcodeH / 10))}^BCN,${barcodeH},N,N,N^FD${skuText}^FS`,
-    hr(d.afterBarcodeLineY),
     labelField(d.skuRowY, FIELD_LABELS.sku),
     valueField(d.skuRowY, skuText),
-    hr(d.skuLineY),
     labelField(d.nameRowY, FIELD_LABELS.name),
     valueField(d.nameRowY, nameText, 2),
-    hr(d.nameLineY),
-    qrCaption,
     ...(imageQr
       ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${imageMag}^FDLA,${imageQr}^FS`]
       : []),
-    hr(d.photoLineY),
     labelField(d.dateRowY, FIELD_LABELS.date),
     valueField(d.dateRowY, dateText),
-    hr(d.dateLineY),
     labelField(d.timeRowY, FIELD_LABELS.time),
     valueField(d.timeRowY, timeText),
     `^PQ${copies}`,

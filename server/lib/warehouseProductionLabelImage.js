@@ -19,7 +19,6 @@ import {
   LABEL_MARGIN_MM,
   LABEL_WIDTH_MM,
   NAME_ROW_MM,
-  QR_CAPTION_HEIGHT_MM,
   ROW_TEXT_MM,
   rowTextBaselineMm,
 } from './warehouseProductionLabelLayout.js';
@@ -32,8 +31,6 @@ const BORDER = '#1e3a5f';
 
 const COMPANY_FONT_PX = 12;
 const ROW_FONT_PX = FONT_PT;
-const QR_CAPTION_FONT_PX = 9;
-
 export function buildProductionLabelMeta({ name, sku, printedAt } = {}) {
   const at = printedAt ? new Date(printedAt) : new Date();
   if (Number.isNaN(at.getTime())) {
@@ -111,10 +108,6 @@ function escapeXml(text) {
     .replace(/"/g, '&quot;');
 }
 
-function hrSvg(marginPx, mainWidthPx, lineYpx) {
-  return `<line x1="${marginPx}" y1="${lineYpx}" x2="${marginPx + mainWidthPx}" y2="${lineYpx}" stroke="#333" stroke-width="1"/>`;
-}
-
 function rowSvg({
   labelXpx,
   centerXpx,
@@ -151,24 +144,15 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   const imageQrPng = await makeQrPng(meta.image_qr_url, qrSizePx);
   const imageQrLeft = mmToPx(layout.imageQrLeftMm);
   const qrTop = mmToPx(layout.qrBlockYMm);
-  const captionY = textBaseline(layout.qrCaptionYMm, QR_CAPTION_HEIGHT_MM);
-  const imageLabelX = mmToPx(layout.imageQrCenterMm);
 
   const textSvg = `
 <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <rect x="${marginPx}" y="${marginPx}" width="${mainWidthPx}" height="${H - marginPx * 2}" fill="none" stroke="${BORDER}" stroke-width="3"/>
   <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f">${escapeXml(COMPANY_NAME)}</text>
-  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.companyLineMm))}
-  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.afterBarcodeLineMm))}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm, ROW_TEXT_MM), label: FIELD_LABELS.sku, value: meta.sku })}
-  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.skuLineMm))}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm, NAME_ROW_MM), label: FIELD_LABELS.name, value: meta.name })}
-  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.nameLineMm))}
-  <text x="${imageLabelX}" y="${captionY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${QR_CAPTION_FONT_PX}" font-weight="700" fill="#111">${escapeXml(FIELD_LABELS.imageQr)}</text>
-  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.photoLineMm))}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm, ROW_TEXT_MM), label: FIELD_LABELS.date, value: meta.print_date })}
-  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.dateLineMm))}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm, ROW_TEXT_MM), label: FIELD_LABELS.time, value: meta.print_time })}
 </svg>`;
 

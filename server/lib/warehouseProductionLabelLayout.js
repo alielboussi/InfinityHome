@@ -1,4 +1,4 @@
-/** Shared mm layout — 80×68 mm production labels (row lines + label/value columns). */
+/** Shared mm layout — 80×68 mm production labels (label/value columns, outer border only). */
 
 export const COMPANY_NAME = 'Bestrest Furniture';
 
@@ -25,18 +25,15 @@ export const LABEL_COL_MM = 3;
 export const VALUE_CENTER_MM = LABEL_WIDTH_MM / 2;
 
 export const QR_SIZE_MM = 10;
-export const QR_CAPTION_HEIGHT_MM = 2.4;
 
 export const FONT_PT = 12;
 export const ROW_TEXT_MM = 4.2;
 export const NAME_ROW_MM = 5.2;
-export const ROW_LINE_GAP_MM = 0.8;
-export const ROW_AFTER_LINE_MM = 0.6;
+export const BLOCK_GAP_MM = 0.65;
 
 export const FIELD_LABELS = {
   sku: 'SKU:',
   name: 'Name:',
-  imageQr: 'Image QR',
   date: 'Date:',
   time: 'Time:',
 };
@@ -45,10 +42,10 @@ function mmToDots(mm, dpi = 203) {
   return Math.round(Number(mm) * (Number(dpi) / 25.4));
 }
 
-function advanceRow(y, contentHeightMm) {
-  const lineMm = y + contentHeightMm + ROW_LINE_GAP_MM;
-  const nextY = lineMm + ROW_AFTER_LINE_MM;
-  return { rowY: y, lineMm, nextY };
+function advanceBlock(y, contentHeightMm, gapAfterMm = BLOCK_GAP_MM) {
+  const rowY = y;
+  const nextY = y + contentHeightMm + gapAfterMm;
+  return { rowY, nextY };
 }
 
 /** ZPL/SVG text baseline within a row (FO y is top of glyph box). */
@@ -67,50 +64,34 @@ export function computeProductionLabelLayout({
 
   let y = marginMm + BORDER_TOP_INSET_MM;
   const companyRowMm = y;
-  let block = advanceRow(companyRowMm, COMPANY_ROW_MM);
-  const companyLineMm = block.lineMm;
-  y = block.nextY;
+  y = companyRowMm + COMPANY_ROW_MM + BLOCK_GAP_MM;
 
   const barcodeTopMm = y;
-  y += BARCODE_HEIGHT_MM + 1.2;
-  const afterBarcodeLineMm = y + ROW_LINE_GAP_MM;
-  y = afterBarcodeLineMm + ROW_AFTER_LINE_MM;
+  y += BARCODE_HEIGHT_MM + BLOCK_GAP_MM + 0.35;
 
-  block = advanceRow(y, ROW_TEXT_MM);
+  let block = advanceBlock(y, ROW_TEXT_MM);
   const skuRowMm = block.rowY;
-  const skuLineMm = block.lineMm;
   y = block.nextY;
 
-  block = advanceRow(y, NAME_ROW_MM);
+  block = advanceBlock(y, NAME_ROW_MM);
   const nameRowMm = block.rowY;
-  const nameLineMm = block.lineMm;
-  y = block.nextY;
+  y = block.nextY + 0.25;
 
-  const qrCaptionYMm = y;
-  y += QR_CAPTION_HEIGHT_MM + 0.2;
   const qrBlockYMm = y;
   const imageQrLeftMm = centerXMm - QR_SIZE_MM / 2;
   const imageQrCenterMm = centerXMm;
-  const qrCaptionWidthMm = QR_SIZE_MM + 4;
-  const imageQrLabelLeftMm = imageQrCenterMm - qrCaptionWidthMm / 2;
-  const photoContentMm = QR_CAPTION_HEIGHT_MM + 0.2 + QR_SIZE_MM;
-  block = advanceRow(qrCaptionYMm, photoContentMm + 0.8);
-  const photoLineMm = block.lineMm;
-  y = block.nextY;
+  y += QR_SIZE_MM + BLOCK_GAP_MM + 0.35;
 
-  block = advanceRow(y, ROW_TEXT_MM);
+  block = advanceBlock(y, ROW_TEXT_MM);
   const dateRowMm = block.rowY;
-  const dateLineMm = block.lineMm;
   y = block.nextY;
 
-  block = advanceRow(y, ROW_TEXT_MM);
+  block = advanceBlock(y, ROW_TEXT_MM);
   const timeRowMm = block.rowY;
-  const timeLineMm = block.lineMm;
 
   const zplFont = Math.round(FONT_PT * (dpi / 72));
   const toDots = (mm) => mmToDots(mm, dpi);
   const baselineDots = (rowStartMm, rowContentMm) => toDots(rowTextBaselineMm(rowStartMm, rowContentMm));
-  const lineDots = (mm) => toDots(mm);
 
   return {
     marginMm,
@@ -123,24 +104,14 @@ export function computeProductionLabelLayout({
     barcodeWidthMm: BARCODE_WIDTH_MM,
     barcodeHeightMm: BARCODE_HEIGHT_MM,
     companyRowMm,
-    companyLineMm,
-    afterBarcodeLineMm,
     skuRowMm,
-    skuLineMm,
     nameRowMm,
-    nameLineMm,
-    qrCaptionYMm,
     qrBlockYMm,
     imageQrLeftMm,
     imageQrCenterMm,
     qrSizeMm: QR_SIZE_MM,
-    qrCaptionWidthMm,
-    imageQrLabelLeftMm,
-    photoLineMm,
     dateRowMm,
-    dateLineMm,
     timeRowMm,
-    timeLineMm,
     fontPt: FONT_PT,
     dots: {
       margin: toDots(marginMm),
@@ -153,24 +124,13 @@ export function computeProductionLabelLayout({
       barcodeWidth: toDots(BARCODE_WIDTH_MM),
       barcodeHeight: toDots(BARCODE_HEIGHT_MM),
       companyY: toDots(rowTextBaselineMm(companyRowMm, COMPANY_ROW_MM)),
-      companyLineY: lineDots(companyLineMm),
-      afterBarcodeLineY: lineDots(afterBarcodeLineMm),
       skuRowY: baselineDots(skuRowMm, ROW_TEXT_MM),
-      skuLineY: lineDots(skuLineMm),
       nameRowY: baselineDots(nameRowMm, NAME_ROW_MM),
-      nameLineY: lineDots(nameLineMm),
-      qrCaptionY: baselineDots(qrCaptionYMm, QR_CAPTION_HEIGHT_MM),
       qrBlockY: toDots(qrBlockYMm),
       imageQrX: toDots(imageQrLeftMm),
-      imageQrLabelX: toDots(imageQrLabelLeftMm),
-      qrCaptionWidth: toDots(qrCaptionWidthMm),
       qrSize: toDots(QR_SIZE_MM),
-      qrCaptionFont: Math.round(9 * (dpi / 72)),
-      photoLineY: lineDots(photoLineMm),
       dateRowY: baselineDots(dateRowMm, ROW_TEXT_MM),
-      dateLineY: lineDots(dateLineMm),
       timeRowY: baselineDots(timeRowMm, ROW_TEXT_MM),
-      timeLineY: lineDots(timeLineMm),
       boxW: toDots(mainWidthMm),
       boxH: toDots(heightMm - marginMm * 2),
       headerFont: zplFont,
