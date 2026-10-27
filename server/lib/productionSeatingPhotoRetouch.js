@@ -57,7 +57,7 @@ function buildGenerationConfig() {
   return config;
 }
 
-async function requestGeminiSeatingRetouch(jpegBuffer) {
+async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false } = {}) {
   const apiKey = getGeminiProductionApiKey();
   if (!apiKey) throw new Error('GEMINI_API_KEY_PRODUCTION is not configured for photo retouching.');
 
@@ -77,9 +77,16 @@ async function requestGeminiSeatingRetouch(jpegBuffer) {
     generationConfig: buildGenerationConfig(),
   };
 
-  const models = getProductionPhotoModelCandidates();
+  let models = getProductionPhotoModelCandidates();
+  if (requireAi) {
+    const paidFirst = ['gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview'];
+    models = [...paidFirst, ...models.filter((m) => !paidFirst.includes(m))];
+  }
   const errors = [];
-  const maxMs = Math.max(5000, Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || 22000);
+  const maxMs = Math.max(
+    8000,
+    Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || (requireAi ? 120000 : 22000),
+  );
   const deadline = Date.now() + maxMs;
 
   for (const model of models) {
@@ -145,18 +152,24 @@ function catalogFallbackWithoutAiEnabled() {
     .toLowerCase() !== 'false';
 }
 
-export async function retouchProductionSeatingPhotoFromBase64(imageBase64, { skipAi: skipAiOption = false } = {}) {
+export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
+  skipAi: skipAiOption = false,
+  requireAi = false,
+} = {}) {
   const skipAi = skipAiOption
     || String(process.env.PRODUCTION_PHOTO_SKIP_AI || '').trim().toLowerCase() === 'true';
   const input = await prepareInputJpeg(parseImageBase64Payload(imageBase64));
-  if (skipAi) {
+  if (skipAi && !requireAi) {
     return finalizeCatalogJpeg(input, 'image/jpeg');
   }
+  if (skipAi && requireAi) {
+    throw new Error('AI photo retouch is required but PRODUCTION_PHOTO_SKIP_AI is enabled on the server.');
+  }
   try {
-    const generated = await requestGeminiSeatingRetouch(input);
+    const generated = await requestGeminiSeatingRetouch(input, { requireAi });
     return finalizeCatalogJpeg(generated.buffer, generated.mime);
   } catch (err) {
-    if (!catalogFallbackWithoutAiEnabled()) {
+    if (requireAi || !catalogFallbackWithoutAiEnabled()) {
       throw err;
     }
     console.warn(

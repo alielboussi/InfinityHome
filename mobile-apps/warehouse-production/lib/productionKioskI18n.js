@@ -51,9 +51,13 @@ const UI_STRINGS = {
     ar: 'الكاميرا محظورة لهذا التطبيق. افتح الإعدادات → الأذونات → الكاميرا وفعّلها.',
   },
   photoOpenSettings: { en: 'Open Settings', ar: 'فتح الإعدادات' },
+  aiPhotoRetry: {
+    en: 'AI retouching photo… attempt {n} of {max}. Please wait.',
+    ar: 'AI retouching photo… attempt {n} of {max}. Please wait.',
+  },
   photoProcessing: {
-    en: 'AI is retouching your photo (white catalog background) and printing labels…',
-    ar: 'الذكاء الاصطناعي يعالج الصورة (خلفية بيضاء) ويطبع الملصقات…',
+    en: 'Saving product… then AI will retouch the photo (white catalog background). Do not close the app.',
+    ar: 'جاري حفظ المنتج… ثم الذكاء الاصطناعي يعالج الصورة (خلفية بيضاء). لا تغلق التطبيق.',
   },
   photoCancelled: {
     en: 'A product photo is required. Tap Save again and take the picture.',

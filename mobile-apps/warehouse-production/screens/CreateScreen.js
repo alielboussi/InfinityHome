@@ -52,6 +52,7 @@ export default function CreateScreen({ navigation }) {
   const [nameGenBusy, setNameGenBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savePhase, setSavePhase] = useState('');
+  const [aiPhotoStatus, setAiPhotoStatus] = useState('');
   const [labelPreview, setLabelPreview] = useState(null);
   const [labelPng, setLabelPng] = useState('');
   const [labelCopies, setLabelCopies] = useState(1);
@@ -198,6 +199,7 @@ export default function CreateScreen({ navigation }) {
 
     setPhotoCaptureOpen(false);
     setSavePhase('processing');
+    setAiPhotoStatus('');
     setSaving(true);
     setError('');
     setSuccess('');
@@ -212,6 +214,9 @@ export default function CreateScreen({ navigation }) {
         warehouseLocationId: pending.warehouseLocationId,
         initialQuantity: pending.qtyNum,
         imageBase64: uploadPhoto,
+        onPhotoAttempt: (attempt, max) => {
+          setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
+        },
       });
 
       pendingSaveRef.current = null;
@@ -435,7 +440,9 @@ export default function CreateScreen({ navigation }) {
       <View style={styles.busyBackdrop}>
         <View style={styles.busyCard}>
           <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={styles.busyText}>{tUi('photoProcessing', locale)}</Text>
+          <Text style={styles.busyText}>
+            {aiPhotoStatus || tUi('photoProcessing', locale)}
+          </Text>
         </View>
       </View>
     </Modal>

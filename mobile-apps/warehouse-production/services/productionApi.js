@@ -92,12 +92,9 @@ function parseCreateProductionPacketResponse(payload) {
   };
 }
 
-export async function attachProductionProductPhoto({ assemblyId, imageBase64 }) {
-  return productionOp('production-assembly-photo', {
-    assembly_id: assemblyId,
-    image_base64: imageBase64,
-    client_source: CLIENT_SOURCE,
-  });
+export async function attachProductionProductPhoto({ assemblyId, imageBase64, onAttempt }) {
+  const { attachProductionProductPhotoWithAi } = await import('./productionPhotoApi.js');
+  return attachProductionProductPhotoWithAi({ assemblyId, imageBase64, onAttempt });
 }
 
 export async function createProductionPacket({
@@ -105,7 +102,8 @@ export async function createProductionPacket({
   warehouseLocationId,
   initialQuantity,
   imageBase64,
-}) {
+  onPhotoAttempt,
+} = {}) {
   const hasPhoto = Boolean(String(imageBase64 || '').trim());
   const createPayload = await productionOp('production-packet-create', {
     name,
@@ -136,21 +134,22 @@ export async function createProductionPacket({
   }
 
   try {
-    await attachProductionProductPhoto({ assemblyId, imageBase64 });
+    await attachProductionProductPhoto({
+      assemblyId,
+      imageBase64,
+      onAttempt: onPhotoAttempt,
+    });
   } catch (photoErr) {
-    const timedOut = photoErr?.gateway === true
-      || /timed out|deployment|function_invocation_timeout/i.test(String(photoErr?.message || ''));
     const err = new Error(
-      timedOut
-        ? 'Product saved. AI photo timed out — open Warehouse and add the image, or save again with a new name after deleting the duplicate.'
-        : (photoErr?.message || 'AI photo processing failed.'),
+      photoErr?.message
+        || 'AI photo could not be saved. Check Warehouse — the product may exist without an image.',
     );
     err.code = 'product_saved_photo_failed';
     err.createResult = parsed;
     throw err;
   }
 
-  return parsed;
+  return { ...parsed, photoSaved: true };
 }
 
 export async function increaseProductionStock({ packetId, assemblyId, warehouseLocationId, delta }) {

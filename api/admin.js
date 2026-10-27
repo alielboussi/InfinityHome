@@ -19,6 +19,7 @@ const HANDLER_LOADERS = {
   'shop-catalog': () => import('../server/handlers/shop-catalog.js'),
   'web-orders': () => import('../server/handlers/web-orders.js'),
   'product-image-search': () => import('../server/handlers/product-image-search.js'),
+  'warehouse-production-photo': () => import('../server/handlers/warehouse-production-photo.js'),
 };
 
 function resolveHandler(mod) {

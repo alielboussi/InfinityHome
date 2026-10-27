@@ -73,6 +73,7 @@ import { HASSAN_AWAD } from '../../src/accessControl.js';
 import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku.js';
 import { enqueueWarehouseProductionLabelJob } from '../lib/productionLabelPrint.js';
 import { findProductionNameClash } from '../lib/productionCatalogNameCheck.js';
+import { runProductionAssemblyPhotoAttach } from '../lib/warehouseProductionPhotoAttach.js';
 import {
   buildProductionLabelMeta,
   buildWarehouseProductionLabelPngBase64,
@@ -454,36 +455,7 @@ async function opProductionPacketCreate(body, user) {
 }
 
 async function opProductionAssemblyPhoto(body, user) {
-  await assertProductionKioskUser(user);
-  const sb = getService();
-  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
-  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
-  if (!assemblyId) throw new Error('assembly_id is required.');
-  if (!imageBase64) throw new Error('Product photo is required.');
-
-  const { data: assembly, error: loadErr } = await sb
-    .from('warehouse_assemblies')
-    .select('id, name, family_sku, inventory_mode')
-    .eq('id', assemblyId)
-    .maybeSingle();
-  if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
-  if (!assembly) throw new Error('Product not found.');
-  if (String(assembly.inventory_mode || '').toLowerCase() !== 'finished') {
-    throw new Error('Photos can only be attached to finished warehouse products.');
-  }
-
-  const catalogImageUrl = await attachProductionAssemblyCatalogPhoto(sb, {
-    assembly,
-    imageBase64,
-    productName: assembly.name,
-    skipAiRetouch: false,
-  });
-
-  return {
-    assembly_id: assemblyId,
-    catalog_image_url: catalogImageUrl,
-    assembly,
-  };
+  return runProductionAssemblyPhotoAttach(body, user);
 }
 
 async function opProductionStockIncrease(body, user) {
