@@ -1,5 +1,5 @@
 /**
- * Raster preview — same row layout as zebraProductionLabelZpl.js.
+ * Raster preview — same layout as zebraProductionLabelZpl.js.
  */
 import { Resvg } from '@resvg/resvg-js';
 import bwipjs from 'bwip-js';
@@ -10,14 +10,15 @@ import {
   BARCODE_HEIGHT_MM,
   BARCODE_WIDTH_MM,
   COMPANY_NAME,
+  COMPANY_ROW_MM,
   computeProductionLabelLayout,
   FIELD_LABELS,
   FONT_PT,
-  HEADER_START_MM,
+  LABEL_COL_MM,
   LABEL_HEIGHT_MM,
   LABEL_MARGIN_MM,
   LABEL_WIDTH_MM,
-  QR_CAPTION_FONT_PT,
+  NAME_ROW_MM,
   QR_CAPTION_HEIGHT_MM,
   ROW_TEXT_MM,
   rowTextBaselineMm,
@@ -29,8 +30,9 @@ const W = Math.round(LABEL_WIDTH_MM * PX_PER_MM);
 const H = Math.round(LABEL_HEIGHT_MM * PX_PER_MM);
 const BORDER = '#1e3a5f';
 
-const COMPANY_FONT_PX = 13;
+const COMPANY_FONT_PX = 12;
 const ROW_FONT_PX = FONT_PT;
+const QR_CAPTION_FONT_PX = 9;
 
 export function buildProductionLabelMeta({ name, sku, printedAt } = {}) {
   const at = printedAt ? new Date(printedAt) : new Date();
@@ -114,14 +116,14 @@ function hrSvg(marginPx, mainWidthPx, lineYpx) {
 }
 
 function rowSvg({
-  headerXpx,
+  labelXpx,
   centerXpx,
   rowYpx,
   label,
   value,
 }) {
   return `
-  <text x="${headerXpx}" y="${rowYpx}" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="${ROW_FONT_PX}" font-weight="700" fill="#111">${escapeXml(label)}</text>
+  <text x="${labelXpx}" y="${rowYpx}" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="${ROW_FONT_PX}" font-weight="700" fill="#111">${escapeXml(label)}</text>
   <text x="${centerXpx}" y="${rowYpx}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${ROW_FONT_PX}" font-weight="600" fill="#000">${escapeXml(value)}</text>
   `;
 }
@@ -136,49 +138,38 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   const marginPx = mmToPx(layout.marginMm);
   const mainWidthPx = mmToPx(layout.mainWidthMm);
   const centerXPx = mmToPx(layout.centerXMm);
-  const headerXpx = mmToPx(HEADER_START_MM);
+  const labelXpx = mmToPx(LABEL_COL_MM);
 
   const textBaseline = (rowMm, rowHeightMm) => mmToPx(rowTextBaselineMm(rowMm, rowHeightMm));
 
-  const companyY = mmToPx(layout.companyMm) + 4;
-  const underlineY = mmToPx(layout.companyUnderlineMm);
+  const companyY = textBaseline(layout.companyRowMm, COMPANY_ROW_MM);
   const barcodeTop = mmToPx(layout.barcodeTopMm);
   const barcodeLeft = mmToPx(layout.barcodeLeftMm);
 
   const barcodeResized = await makeCode128Png(meta.sku);
-  const qrSizePx = mmToPx(layout.qrPairSizeMm);
-  const [imageQrPng, nameQrPng] = await Promise.all([
-    makeQrPng(meta.image_qr_url, qrSizePx),
-    makeQrPng(meta.name, qrSizePx),
-  ]);
+  const qrSizePx = mmToPx(layout.qrSizeMm);
+  const imageQrPng = await makeQrPng(meta.image_qr_url, qrSizePx);
   const imageQrLeft = mmToPx(layout.imageQrLeftMm);
-  const nameQrLeft = mmToPx(layout.nameQrLeftMm);
   const qrTop = mmToPx(layout.qrBlockYMm);
   const captionY = textBaseline(layout.qrCaptionYMm, QR_CAPTION_HEIGHT_MM);
-  const captionUlY = mmToPx(layout.qrCaptionYMm + QR_CAPTION_HEIGHT_MM - 0.4);
-  const imageLabelX = mmToPx(layout.imageQrLabelLeftMm) + Math.floor(mmToPx(layout.qrColumnWidthMm) / 2);
-  const nameLabelX = mmToPx(layout.nameQrLabelLeftMm) + Math.floor(mmToPx(layout.qrColumnWidthMm) / 2);
-  const captionW = mmToPx(layout.qrColumnWidthMm);
+  const imageLabelX = mmToPx(layout.imageQrCenterMm);
 
   const textSvg = `
 <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <rect x="${marginPx}" y="${marginPx}" width="${mainWidthPx}" height="${H - marginPx * 2}" fill="none" stroke="${BORDER}" stroke-width="3"/>
-  <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f" text-decoration="underline">${escapeXml(COMPANY_NAME)}</text>
-  ${hrSvg(marginPx, mainWidthPx, underlineY)}
+  <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f">${escapeXml(COMPANY_NAME)}</text>
+  ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.companyLineMm))}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.afterBarcodeLineMm))}
-  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm, ROW_TEXT_MM), label: FIELD_LABELS.sku, value: meta.sku })}
+  ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm, ROW_TEXT_MM), label: FIELD_LABELS.sku, value: meta.sku })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.skuLineMm))}
-  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm, ROW_TEXT_MM), label: FIELD_LABELS.name, value: meta.name })}
+  ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm, NAME_ROW_MM), label: FIELD_LABELS.name, value: meta.name })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.nameLineMm))}
-  <text x="${imageLabelX}" y="${captionY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.imageQr)}</text>
-  <line x1="${imageLabelX - captionW / 2}" y1="${captionUlY}" x2="${imageLabelX + captionW / 2}" y2="${captionUlY}" stroke="#111" stroke-width="1"/>
-  <text x="${nameLabelX}" y="${captionY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${QR_CAPTION_FONT_PT}" font-weight="700" fill="#111" text-decoration="underline">${escapeXml(FIELD_LABELS.nameQr)}</text>
-  <line x1="${nameLabelX - captionW / 2}" y1="${captionUlY}" x2="${nameLabelX + captionW / 2}" y2="${captionUlY}" stroke="#111" stroke-width="1"/>
+  <text x="${imageLabelX}" y="${captionY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${QR_CAPTION_FONT_PX}" font-weight="700" fill="#111">${escapeXml(FIELD_LABELS.imageQr)}</text>
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.photoLineMm))}
-  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm, ROW_TEXT_MM), label: FIELD_LABELS.date, value: meta.print_date })}
+  ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm, ROW_TEXT_MM), label: FIELD_LABELS.date, value: meta.print_date })}
   ${hrSvg(marginPx, mainWidthPx, mmToPx(layout.dateLineMm))}
-  ${rowSvg({ headerXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm, ROW_TEXT_MM), label: FIELD_LABELS.time, value: meta.print_time })}
+  ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm, ROW_TEXT_MM), label: FIELD_LABELS.time, value: meta.print_time })}
 </svg>`;
 
   const base = rasterizeLabelSvg(textSvg);
@@ -187,7 +178,6 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
     .composite([
       { input: barcodeResized, left: barcodeLeft, top: barcodeTop },
       { input: imageQrPng, left: imageQrLeft, top: qrTop },
-      { input: nameQrPng, left: nameQrLeft, top: qrTop },
     ])
     .png()
     .toBuffer();

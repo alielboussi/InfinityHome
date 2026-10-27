@@ -17,12 +17,12 @@ if (!qrUrl.includes('action=product-photo') || !qrUrl.includes(encodeURIComponen
   process.exit(1);
 }
 const bqnCount = (zpl.match(/\^BQN/g) || []).length;
-if (bqnCount < 2 || !zpl.includes('product-photo')) {
-  console.error('[verifyProductionLabelPhotoQr] ZPL missing image/name QR blocks');
+if (bqnCount !== 1 || !zpl.includes('product-photo')) {
+  console.error('[verifyProductionLabelPhotoQr] ZPL must include exactly one image QR block');
   process.exit(1);
 }
-if (!zpl.includes('Image QR') || !zpl.includes('Name QR') || !zpl.includes('Layla 3 Seater')) {
-  console.error('[verifyProductionLabelPhotoQr] ZPL missing QR captions or name payload');
+if (!zpl.includes('Image QR') || zpl.includes('Name QR') || !zpl.includes('Layla 3 Seater')) {
+  console.error('[verifyProductionLabelPhotoQr] ZPL missing image QR caption or product name row');
   process.exit(1);
 }
 

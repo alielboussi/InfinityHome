@@ -1,4 +1,4 @@
-/** Zebra ZPL — warehouse production labels (80×68 mm, labelled rows). */
+/** Zebra ZPL — warehouse production labels (80×68 mm). */
 
 import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import {
@@ -67,25 +67,19 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
   const companyLine = zplEscape(COMPANY_NAME);
 
   const labelField = (y, text) => (
-    `^FO${d.headerX},${y}^A0N,${hf},${hf}^FD${text}^FS`
+    `^FO${d.labelX},${y}^A0N,${hf},${hf}^FD${text}^FS`
   );
-  const valueField = (y, text) => (
-    `^FO0,${y}^A0N,${vf},${vf}^FB${d.labelWidth},1,0,C,0^FD${text}^FS`
+  const valueField = (y, text, maxLines = 1) => (
+    `^FO0,${y}^A0N,${vf},${vf}^FB${d.labelWidth},${maxLines},0,C,0^FD${text}^FS`
   );
   const hr = (y) => `^FO${mainX},${y}^GB${mainW},1,1^FS`;
+  const qrCaption = (
+    `^FO${d.imageQrLabelX},${d.qrCaptionY}^A0N,${d.qrCaptionFont},${d.qrCaptionFont}^FB${d.qrCaptionWidth},1,0,C,0^FD${zplEscape(FIELD_LABELS.imageQr)}^FS`
+  );
 
   const barcodeH = d.barcodeHeight;
   const barcodeModule = Math.max(2, Math.min(3, Math.floor(d.barcodeWidth / (skuText.length * 11 + 35))));
-  const nameQr = qrEscape(nameRaw);
-  const qrMag = zebraQrMagnification(d.qrSize, Math.max(imageQr.length, nameQr.length));
-  const capF = d.qrCaptionFont;
-  const capW = d.qrColumnWidth;
-  const capUl = d.qrCaptionUnderlineY;
-
-  const qrCaption = (labelX, labelText) => [
-    `^FO${labelX},${d.qrCaptionY}^A0N,${capF},${capF}^FB${capW},1,0,C,0^FD${zplEscape(labelText)}^FS`,
-    `^FO${labelX},${capUl}^GB${capW},1,1^FS`,
-  ];
+  const imageMag = zebraQrMagnification(d.qrSize, imageQr.length);
 
   const lines = [
     '^XA',
@@ -95,22 +89,18 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     '^LH0,0',
     `^FO${mainX},${d.margin}^GB${d.boxW},${d.boxH},2^FS`,
     `^FO${mainX},${d.companyY}^A0N,${cf},${cf}^FB${mainW},1,0,C,0^FD${companyLine}^FS`,
-    hr(d.companyUnderlineY),
+    hr(d.companyLineY),
     `^FO${d.barcodeLeft},${d.barcodeTop}^BY${barcodeModule},3,${Math.max(5, Math.floor(barcodeH / 10))}^BCN,${barcodeH},N,N,N^FD${skuText}^FS`,
     hr(d.afterBarcodeLineY),
     labelField(d.skuRowY, FIELD_LABELS.sku),
     valueField(d.skuRowY, skuText),
     hr(d.skuLineY),
     labelField(d.nameRowY, FIELD_LABELS.name),
-    valueField(d.nameRowY, nameText),
+    valueField(d.nameRowY, nameText, 2),
     hr(d.nameLineY),
-    ...qrCaption(d.imageQrLabelX, FIELD_LABELS.imageQr),
-    ...qrCaption(d.nameQrLabelX, FIELD_LABELS.nameQr),
+    qrCaption,
     ...(imageQr
-      ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${qrMag}^FDLA,${imageQr}^FS`]
-      : []),
-    ...(nameQr
-      ? [`^FO${d.nameQrX},${d.qrBlockY}^BQN,2,${qrMag}^FDLA,${nameQr}^FS`]
+      ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${imageMag}^FDLA,${imageQr}^FS`]
       : []),
     hr(d.photoLineY),
     labelField(d.dateRowY, FIELD_LABELS.date),

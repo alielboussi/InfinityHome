@@ -6,6 +6,7 @@ import { normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
 import { enqueueWarehouseProductionLabelJob } from './productionLabelPrint.js';
 import { normalizeWarehousePacketScan } from '../../src/utils/warehouseScanResolver.js';
 import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js';
+import { buildWarehouseProductionLabelPngBase64 } from './warehouseProductionLabelImage.js';
 
 const MAX_IMAGE_BASE64_CHARS = 3_200_000;
 
@@ -81,6 +82,18 @@ async function runPendingLabelPrint(sb, body, user, assembly) {
   return { label_job_id: labelJobId, label_print_warning: labelPrintWarning };
 }
 
+async function buildLabelPreviewForAssembly(assembly, printedAt = new Date()) {
+  const sku = String(assembly?.family_sku || '').trim();
+  const name = String(assembly?.name || '').trim();
+  if (!sku || !name) return null;
+  try {
+    return await buildWarehouseProductionLabelPngBase64({ name, sku, printedAt });
+  } catch (err) {
+    console.warn('[warehouse-production-photo] label preview png failed:', err?.message || err);
+    return null;
+  }
+}
+
 /**
  * AI catalog photo for a finished warehouse product (Gemini retouch + storage + assembly image_url).
  */
@@ -110,11 +123,13 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
   if (!forceReupload && existingUrl) {
     const catalogImageUrl = rewriteLegacyProductImageUrl(existingUrl) || existingUrl;
     const labelResult = await runPendingLabelPrint(sb, body, user, assembly);
+    const label_preview_png_base64 = await buildLabelPreviewForAssembly(assembly);
     return {
       assembly_id: assemblyId,
       catalog_image_url: catalogImageUrl,
       assembly: { ...assembly, image_url: catalogImageUrl },
       idempotent: true,
+      label_preview_png_base64,
       ...labelResult,
     };
   }
@@ -133,11 +148,13 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
   });
 
   const labelResult = await runPendingLabelPrint(sb, body, user, assembly);
+  const label_preview_png_base64 = await buildLabelPreviewForAssembly(assembly);
 
   return {
     assembly_id: assemblyId,
     catalog_image_url: catalogImageUrl,
     assembly: { ...assembly, image_url: catalogImageUrl },
+    label_preview_png_base64,
     ...labelResult,
   };
 }

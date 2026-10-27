@@ -48,6 +48,7 @@ export default function StockScreen({ navigation }) {
   const [labelPreview, setLabelPreview] = useState(null);
   const [labelPng, setLabelPng] = useState('');
   const [labelCopies, setLabelCopies] = useState(1);
+  const [labelPrintNote, setLabelPrintNote] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -161,12 +162,16 @@ export default function StockScreen({ navigation }) {
         warehouseLocationId,
         delta,
       });
+      const printWarning = String(result?.labelPrintWarning || result?.label_print_warning || '').trim();
+      setLabelPrintNote(printWarning);
       setSuccess(tUi('stockSaved', locale));
       if (result?.label) {
-        const copies = Number(result?.label_copies);
+        const copies = Number(result?.labelCopies ?? result?.label_copies);
         setLabelPreview(result.label);
-        setLabelPng(result.label_preview_png_base64 || '');
+        setLabelPng(result.labelPreviewPngBase64 || result.label_preview_png_base64 || '');
         setLabelCopies(Number.isFinite(copies) && copies > 0 ? copies : delta);
+      } else if (delta > 0) {
+        setLabelCopies(delta);
       }
       await load();
       setModalPacket(null);
@@ -301,9 +306,12 @@ export default function StockScreen({ navigation }) {
         pngBase64={labelPng}
         copies={labelCopies}
         locale={locale}
+        labelsPrinted={!labelPrintNote}
+        printWarning={labelPrintNote}
         onClose={() => {
           setLabelPreview(null);
           setLabelPng('');
+          setLabelPrintNote('');
         }}
       />
     </>

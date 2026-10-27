@@ -155,6 +155,9 @@ export async function createProductionPacket({
     if (photoPayload?.label_job_id) {
       parsed.labelJobId = photoPayload.label_job_id;
     }
+    if (photoPayload?.label_preview_png_base64) {
+      parsed.labelPreviewPngBase64 = photoPayload.label_preview_png_base64;
+    }
   } catch (photoErr) {
     const err = new Error(
       photoErr?.message
@@ -183,7 +186,13 @@ export async function increaseProductionStock({ packetId, assemblyId, warehouseL
   } else {
     body.packet_id = packetId;
   }
-  return productionOp('production-stock-increase', body);
+  const payload = await productionOp('production-stock-increase', body);
+  return {
+    ...payload,
+    labelPrintWarning: payload?.label_print_warning || null,
+    labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
+    labelCopies: Number(payload?.label_copies) || delta,
+  };
 }
 
 export async function fetchProductionLabelPreview({ name, sku, printedAt }) {

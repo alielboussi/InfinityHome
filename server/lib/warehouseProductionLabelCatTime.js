@@ -31,10 +31,10 @@ function productionLabelCatParts(date) {
 
 export function formatProductionLabelBlockDate(date) {
   const { day, month, year } = productionLabelCatParts(date);
-  return `${day}     /     ${month}     /     ${year}`;
+  return `${day} / ${month} / ${year}`;
 }
 
 export function formatProductionLabelBlockTime(date) {
   const { hour, minute } = productionLabelCatParts(date);
-  return `${hour}     :     ${minute}`;
+  return `${hour}:${minute}`;
 }

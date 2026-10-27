@@ -424,7 +424,7 @@ async function opProductionPacketCreate(body, user) {
         name: assembly.name,
         sku: labelSku,
         printedAt,
-        skipPng: true,
+        skipPng: deferLabels,
       })
       : { label: null, label_preview_png_base64: null };
 
@@ -564,6 +564,7 @@ async function opProductionStockIncrease(body, user) {
   const printedAt = new Date();
   const fastMobile = printSource === 'warehouse_production_app';
   let labelJobId = null;
+  let labelPrintWarning = null;
   try {
     labelJobId = await promiseWithTimeout(
       enqueueWarehouseProductionLabelJob(sb, {
@@ -577,7 +578,15 @@ async function opProductionStockIncrease(body, user) {
       fastMobile ? 12000 : 25000,
       'Label print timed out',
     );
+    if (!labelJobId) {
+      labelPrintWarning = 'Stock updated but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
+    }
   } catch (printErr) {
+    const { formatZebraPrintError } = await import('../lib/formatZebraPrintError.js');
+    const timedOut = String(printErr?.message || '').toLowerCase().includes('timed out');
+    labelPrintWarning = timedOut
+      ? 'Stock saved. Labels may still print — if not, try adding stock again to reprint.'
+      : formatZebraPrintError(printErr);
     console.warn('[warehouse-mobile] production stock label print failed:', printErr?.message || printErr);
   }
 
@@ -585,7 +594,7 @@ async function opProductionStockIncrease(body, user) {
     name: labelName,
     sku: labelSku,
     printedAt,
-    skipPng: true,
+    skipPng: false,
   });
 
   const packetCompat = assembly
@@ -601,6 +610,7 @@ async function opProductionStockIncrease(body, user) {
     warehouse_location_id: warehouseLocationId,
     label_copies: delta,
     label_job_id: labelJobId,
+    label_print_warning: labelPrintWarning,
     label: preview.label,
     label_preview_png_base64: preview.label_preview_png_base64,
   };

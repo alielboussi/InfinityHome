@@ -17,9 +17,9 @@ async function main() {
   const { buildWarehouseProductionLabelPngBuffer } = await import('../server/lib/warehouseProductionLabelImage.js');
 
   const pngBuffer = await buildWarehouseProductionLabelPngBuffer({
-    name: 'Capri 3 Seater',
-    sku: 'XBR1234567',
-    printedAt: new Date(),
+    name: 'Stella Single Seater',
+    sku: 'Y98NOTMUCONOUWPH',
+    printedAt: new Date('2026-10-27T10:15:00+02:00'),
   });
 
   const doc = new jsPDF({
