@@ -115,10 +115,12 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
   }).eq('id', assemblyId);
   if (asmErr) throw new Error(asmErr.message || 'Failed to save product photo.');
 
-  await syncPosProductImage(sb, {
+  syncPosProductImage(sb, {
     sku,
     name: productName || assembly?.name,
     imageUrl: publicUrl,
+  }).catch((syncErr) => {
+    console.warn('[productionPacketCatalogPhoto] POS image sync deferred:', syncErr?.message || syncErr);
   });
 
   return rewriteLegacyProductImageUrl(publicUrl) || publicUrl;

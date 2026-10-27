@@ -388,10 +388,11 @@ async function opProductionPacketCreate(body, user) {
 
     const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
     const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
+    const deferLabels = deferProductPhoto && labelCopies > 0;
     const printedAt = new Date();
     let labelJobId = null;
     let labelPrintWarning = null;
-    if (labelCopies > 0) {
+    if (labelCopies > 0 && !deferLabels) {
       try {
         labelJobId = await promiseWithTimeout(
           enqueueWarehouseProductionLabelJob(sb, {
@@ -443,6 +444,14 @@ async function opProductionPacketCreate(body, user) {
       label_copies: labelCopies,
       label_job_id: labelJobId,
       label_print_warning: labelPrintWarning,
+      pending_label_print: deferLabels
+        ? {
+          name: assembly.name,
+          sku: labelSku,
+          qty: labelCopies,
+          client_source: clientSource,
+        }
+        : null,
       label: preview.label,
       label_preview_png_base64: preview.label_preview_png_base64,
     };

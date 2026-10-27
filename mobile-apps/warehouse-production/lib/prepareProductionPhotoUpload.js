@@ -35,31 +35,32 @@ export async function prepareProductionPhotoForUpload(source) {
 
   const { manipulateAsync, SaveFormat } = await loadImageManipulator();
 
-  const widths = [960, 800, 640, 512];
-  const qualities = [0.62, 0.52, 0.42, 0.35];
+  const attempts = [
+    { width: 880, compress: 0.58 },
+    { width: 720, compress: 0.48 },
+    { width: 560, compress: 0.38 },
+  ];
 
   let lastBase64 = '';
-  for (const width of widths) {
-    for (const compress of qualities) {
-      const result = await manipulateAsync(
-        input,
-        [{ resize: { width } }],
-        {
-          compress,
-          format: SaveFormat.JPEG,
-          base64: true,
-        },
-      );
-      const base64 = String(result?.base64 || '').trim();
-      if (!base64) continue;
-      lastBase64 = base64;
-      if (base64.length <= MAX_UPLOAD_BASE64_CHARS) {
-        return `data:image/jpeg;base64,${base64}`;
-      }
+  for (const { width, compress } of attempts) {
+    const result = await manipulateAsync(
+      input,
+      [{ resize: { width } }],
+      {
+        compress,
+        format: SaveFormat.JPEG,
+        base64: true,
+      },
+    );
+    const base64 = String(result?.base64 || '').trim();
+    if (!base64) continue;
+    lastBase64 = base64;
+    if (base64.length <= MAX_UPLOAD_BASE64_CHARS) {
+      return `data:image/jpeg;base64,${base64}`;
     }
   }
 
-  if (lastBase64 && lastBase64.length <= MAX_UPLOAD_BASE64_CHARS) {
+  if (lastBase64) {
     return `data:image/jpeg;base64,${lastBase64}`;
   }
 

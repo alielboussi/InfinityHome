@@ -1,6 +1,9 @@
 import sharp from 'sharp';
 import { getGeminiProductionApiKey } from './geminiImageEmbedding.js';
-import { getProductionPhotoModelCandidates } from './productionPhotoGeminiModels.js';
+import {
+  getProductionPhotoModelCandidates,
+  getProductionPhotoModelCandidatesForRequireAi,
+} from './productionPhotoGeminiModels.js';
 
 export const PRODUCTION_SEATING_PHOTO_PROMPT = `TASK: Edit this warehouse photo into a single catalog product image of upholstered seating (sofa, sectional, loveseat, or armchair).
 
@@ -26,7 +29,7 @@ function parseImageBase64Payload(raw) {
 async function prepareInputJpeg(buffer) {
   return sharp(buffer)
     .rotate()
-    .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: 86 })
     .toBuffer();
 }
@@ -77,11 +80,9 @@ async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false } = {
     generationConfig: buildGenerationConfig(),
   };
 
-  let models = getProductionPhotoModelCandidates();
-  if (requireAi) {
-    const paidFirst = ['gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview'];
-    models = [...paidFirst, ...models.filter((m) => !paidFirst.includes(m))];
-  }
+  const models = requireAi
+    ? getProductionPhotoModelCandidatesForRequireAi()
+    : getProductionPhotoModelCandidates();
   const errors = [];
   const maxMs = Math.max(
     8000,

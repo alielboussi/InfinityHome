@@ -44,3 +44,14 @@ export function getProductionPhotoModelCandidates() {
 
   return preferFree ? [...FREE_FIRST_MODELS] : [...PAID_FALLBACK_MODELS, ...FREE_FIRST_MODELS];
 }
+
+/** Mandatory AI retouch: paid image-output models only (avoids slow free-preview loops). */
+export function getProductionPhotoModelCandidatesForRequireAi() {
+  const forced = String(process.env.GEMINI_PRODUCTION_PHOTO_MODEL || '').trim();
+  if (forced) return [forced];
+
+  const csv = parseCsvModels(process.env.GEMINI_PRODUCTION_PHOTO_MODELS);
+  if (csv.length) return csv.slice(0, 3);
+
+  return [...PAID_FALLBACK_MODELS];
+}

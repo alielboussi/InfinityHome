@@ -24,7 +24,7 @@ function photoErrorRetryable(err) {
     || msg.includes('network');
 }
 
-async function postProductionAiPhotoOnce({ assemblyId, imageBase64 }) {
+async function postProductionAiPhotoOnce({ assemblyId, imageBase64, pendingLabelPrint }) {
   const token = await getFirebaseIdToken();
   if (!token) {
     const err = new Error('You must be signed in.');
@@ -46,6 +46,7 @@ async function postProductionAiPhotoOnce({ assemblyId, imageBase64 }) {
       image_base64: imageBase64,
       client_source: CLIENT_SOURCE,
       require_ai_retouch: true,
+      ...(pendingLabelPrint ? { pending_label_print: pendingLabelPrint } : {}),
     }),
   });
 
@@ -86,7 +87,12 @@ async function postProductionAiPhotoOnce({ assemblyId, imageBase64 }) {
 /**
  * AI retouch + save (long-running admin route, up to 300s). Retries on gateway timeouts.
  */
-export async function attachProductionProductPhotoWithAi({ assemblyId, imageBase64, onAttempt } = {}) {
+export async function attachProductionProductPhotoWithAi({
+  assemblyId,
+  imageBase64,
+  pendingLabelPrint,
+  onAttempt,
+} = {}) {
   const id = String(assemblyId || '').trim();
   const image = String(imageBase64 || '').trim();
   if (!id) throw new Error('assembly_id is required.');
@@ -99,7 +105,11 @@ export async function attachProductionProductPhotoWithAi({ assemblyId, imageBase
       onAttempt(attempt, maxAttempts);
     }
     try {
-      return await postProductionAiPhotoOnce({ assemblyId: id, imageBase64: image });
+      return await postProductionAiPhotoOnce({
+        assemblyId: id,
+        imageBase64: image,
+        pendingLabelPrint,
+      });
     } catch (err) {
       lastErr = err;
       if (!photoErrorRetryable(err) || attempt === maxAttempts) {

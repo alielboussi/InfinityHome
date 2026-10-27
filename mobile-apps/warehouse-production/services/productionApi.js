@@ -92,9 +92,14 @@ function parseCreateProductionPacketResponse(payload) {
   };
 }
 
-export async function attachProductionProductPhoto({ assemblyId, imageBase64, onAttempt }) {
+export async function attachProductionProductPhoto({ assemblyId, imageBase64, pendingLabelPrint, onAttempt }) {
   const { attachProductionProductPhotoWithAi } = await import('./productionPhotoApi.js');
-  return attachProductionProductPhotoWithAi({ assemblyId, imageBase64, onAttempt });
+  return attachProductionProductPhotoWithAi({
+    assemblyId,
+    imageBase64,
+    pendingLabelPrint,
+    onAttempt,
+  });
 }
 
 export async function createProductionPacket({
@@ -133,12 +138,23 @@ export async function createProductionPacket({
     throw err;
   }
 
+  const pendingLabelPrint = createPayload?.pending_label_print || null;
+  let photoPayload = null;
+
   try {
-    await attachProductionProductPhoto({
+    photoPayload = await attachProductionProductPhoto({
       assemblyId,
       imageBase64,
+      pendingLabelPrint,
       onAttempt: onPhotoAttempt,
     });
+    const photoLabelWarning = String(photoPayload?.label_print_warning || '').trim();
+    if (photoLabelWarning) {
+      parsed.labelPrintWarning = photoLabelWarning;
+    }
+    if (photoPayload?.label_job_id) {
+      parsed.labelJobId = photoPayload.label_job_id;
+    }
   } catch (photoErr) {
     const err = new Error(
       photoErr?.message
@@ -149,7 +165,11 @@ export async function createProductionPacket({
     throw err;
   }
 
-  return { ...parsed, photoSaved: true };
+  return {
+    ...parsed,
+    photoSaved: true,
+    catalogImageUrl: photoPayload?.catalog_image_url || null,
+  };
 }
 
 export async function increaseProductionStock({ packetId, assemblyId, warehouseLocationId, delta }) {
