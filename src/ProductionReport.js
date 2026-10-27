@@ -140,7 +140,7 @@ export default function ProductionReport() {
   return (
     <div className="report-page production-report-page">
       <p className="user-access-intro production-report-page__intro">
-        Activity from the Upholstery Production Android app: new seating items and stock increases on
+        Activity from the Production Android app: new seating items and stock increases on
         existing warehouse packets, filtered by date. PDF layout matches the Transfers Report.
       </p>
 

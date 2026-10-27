@@ -21,7 +21,7 @@ import {
   isProductionStockProductId,
   listProductionFinishedStockProducts,
 } from '../lib/productionStockCatalog';
-import { kioskScreenEdges } from '../lib/kioskLayout';
+import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { tUi } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
 import {
@@ -224,7 +224,7 @@ export default function StockScreen({ navigation }) {
     <>
       <ScrollView
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[kiosk.screen, kioskScreenEdges(insets, 32)]}
+        contentContainerStyle={[kiosk.screen, kioskScreenEdgesSafe(insets, 32)]}
       >
         <ProductionKioskTopBar
           title={tUi('stockTitle', locale)}

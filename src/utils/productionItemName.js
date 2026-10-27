@@ -1,6 +1,43 @@
 import { titleCaseWords } from './titleCaseWords.js';
 
-export const PRODUCTION_SEAT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater', 'Lounge Chair'];
+export const PRODUCTION_SEATER_PRESETS = Object.freeze([
+  '3 Seater',
+  '2 Seater',
+  'Single Seater',
+  'Lounge Chair',
+]);
+
+export const PRODUCTION_CARPENTRY_PRESETS = Object.freeze([
+  'Coffee Table',
+  'Side Table',
+  'Dining Table',
+  'Dining Chair',
+  'Buffet',
+  'Buffet Mirror',
+  'Dresser Table',
+  'Dresser Mirror',
+]);
+
+/** Older labels still in the catalog — strip base name only. */
+export const PRODUCTION_LEGACY_PRESET_SUFFIXES = Object.freeze([
+  'Dresser Table Mirror',
+]);
+
+export const PRODUCTION_ITEM_PRESETS = Object.freeze([
+  ...PRODUCTION_SEATER_PRESETS,
+  ...PRODUCTION_CARPENTRY_PRESETS,
+]);
+
+/** @deprecated use PRODUCTION_ITEM_PRESETS */
+export const PRODUCTION_SEAT_PRESETS = PRODUCTION_ITEM_PRESETS;
+
+export function isProductionSeaterPreset(preset) {
+  return PRODUCTION_SEATER_PRESETS.includes(String(preset || '').trim());
+}
+
+export function isProductionCarpentryPreset(preset) {
+  return PRODUCTION_CARPENTRY_PRESETS.includes(String(preset || '').trim());
+}
 
 /** Curated feminine given names (worldwide) — AI and random suggest must pick from this pool only. */
 export const PRODUCTION_GIRL_NAME_POOL = Object.freeze([
@@ -88,12 +125,16 @@ export function buildProductionItemName(baseName, preset) {
   return `${base} ${p}`;
 }
 
-/** Strip seater preset suffix to get the product line base name. */
+function allPresetSuffixes() {
+  return [...PRODUCTION_ITEM_PRESETS, ...PRODUCTION_LEGACY_PRESET_SUFFIXES]
+    .sort((a, b) => b.length - a.length);
+}
+
+/** Strip product-type suffix to get the line base name. */
 export function extractProductionBaseName(productName) {
   const n = normalizeProductionNameInput(productName);
   if (!n) return '';
-  const presetsByLength = [...PRODUCTION_SEAT_PRESETS].sort((a, b) => b.length - a.length);
-  for (const preset of presetsByLength) {
+  for (const preset of allPresetSuffixes()) {
     const suffix = ` ${preset}`;
     if (n.endsWith(suffix)) {
       return n.slice(0, -suffix.length).trim();

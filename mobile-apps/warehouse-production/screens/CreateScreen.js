@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -21,9 +22,20 @@ import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import {
   buildProductionItemName,
+  extractProductionBaseName,
+  isProductionCarpentryPreset,
+  isProductionSeaterPreset,
   normalizeProductionNameInput,
-  PRODUCTION_SEAT_PRESETS,
+  PRODUCTION_CARPENTRY_PRESETS,
+  PRODUCTION_SEATER_PRESETS,
 } from '../lib/productionItemName';
+import { mergeBaseNameSuggestions } from '../lib/productionBaseNameSuggestions';
+import ProductionDimensionsInput from '../components/ProductionDimensionsInput';
+import {
+  recordRecentProductionBaseName,
+  refreshRecentProductionBaseNames,
+} from '../lib/productionRecentBaseNames';
+import ProductionPresetPicker from '../components/ProductionPresetPicker';
 import { kioskFooterBottomPad, kioskScreenEdges } from '../lib/kioskLayout';
 import { presetLabel, tUi } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
@@ -59,6 +71,13 @@ export default function CreateScreen({ navigation }) {
   const [labelPrintNote, setLabelPrintNote] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
+  const [recentBaseNames, setRecentBaseNames] = useState([]);
+  const [catalogAssemblies, setCatalogAssemblies] = useState([]);
+  const [seaterPickerOpen, setSeaterPickerOpen] = useState(false);
+  const [carpentryPickerOpen, setCarpentryPickerOpen] = useState(false);
+  const [dimL, setDimL] = useState('');
+  const [dimW, setDimW] = useState('');
+  const [dimH, setDimH] = useState('');
   const scrollRef = useRef(null);
   const pendingSaveRef = useRef(null);
   const deferFormResetRef = useRef(false);
@@ -68,6 +87,19 @@ export default function CreateScreen({ navigation }) {
     return buildProductionItemName(baseNameEn, preset);
   }, [baseNameEn, preset, productNameEn]);
 
+  const nameLineSuggestions = useMemo(
+    () => mergeBaseNameSuggestions({
+      catalogAssemblies,
+      query: baseNameEn,
+      recentNames: recentBaseNames,
+      limit: 8,
+    }),
+    [baseNameEn, catalogAssemblies, recentBaseNames],
+  );
+
+  const seaterPresetValue = isProductionSeaterPreset(preset) ? preset : '';
+  const carpentryPresetValue = isProductionCarpentryPreset(preset) ? preset : '';
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -75,6 +107,7 @@ export default function CreateScreen({ navigation }) {
       const data = await fetchProductionCatalog();
       setWarehouseLocationId(data.warehouseLocationId);
       setWarehouseLocationName(data.warehouseLocationName || 'Warehouse');
+      setCatalogAssemblies(data.assemblies || []);
       if (!data.warehouseLocationId) {
         setError(tUi('noWarehouse', locale));
       }
@@ -88,6 +121,16 @@ export default function CreateScreen({ navigation }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  const reloadRecentNames = useCallback(() => {
+    refreshRecentProductionBaseNames().then(setRecentBaseNames).catch(() => {});
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      reloadRecentNames();
+    }, [reloadRecentNames]),
+  );
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -148,6 +191,21 @@ export default function CreateScreen({ navigation }) {
     setProductNameEn(buildProductionItemName(baseNameEn, value));
   };
 
+  const onSelectRecentBaseName = (name) => {
+    setSuccess('');
+    setError('');
+    setPreset('');
+    const next = normalizeProductionNameInput(name);
+    setBaseNameEn(next);
+    setProductNameEn('');
+  };
+
+  const rememberBaseNameFromSave = async (fullProductName) => {
+    const base = extractProductionBaseName(fullProductName) || baseNameEn;
+    const next = await recordRecentProductionBaseName(base);
+    setRecentBaseNames(next);
+  };
+
   const onGenerateName = async () => {
     setNameGenBusy(true);
     setError('');
@@ -182,6 +240,9 @@ export default function CreateScreen({ navigation }) {
     setPreset('');
     setProductNameEn('');
     setQty('1');
+    setDimL('');
+    setDimW('');
+    setDimH('');
   };
 
   const showSaveFailure = (message) => {
@@ -213,6 +274,9 @@ export default function CreateScreen({ navigation }) {
         name: pending.name,
         warehouseLocationId: pending.warehouseLocationId,
         initialQuantity: pending.qtyNum,
+        dimLength: pending.dimLength,
+        dimWidth: pending.dimWidth,
+        dimHeight: pending.dimHeight,
         imageBase64: uploadPhoto,
         onPhotoAttempt: (attempt, max) => {
           setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
@@ -220,6 +284,8 @@ export default function CreateScreen({ navigation }) {
       });
 
       pendingSaveRef.current = null;
+      await rememberBaseNameFromSave(pending.name);
+      await load();
       const labelCount = result.labelCopies > 0 ? result.labelCopies : pending.qtyNum;
       const printWarning = String(result.labelPrintWarning || '').trim();
       setLabelPrintNote(printWarning);
@@ -251,6 +317,9 @@ export default function CreateScreen({ navigation }) {
       if (err?.code === 'product_saved_photo_failed' && err?.createResult) {
         const partial = err.createResult;
         pendingSaveRef.current = null;
+        if (pending?.name) {
+          await rememberBaseNameFromSave(pending.name);
+        }
         setSuccess(tUi('savedItemOnly', locale));
         const labelCount = partial.labelCopies > 0 ? partial.labelCopies : pending?.qtyNum || 0;
         if (partial.label && labelCount > 0) {
@@ -301,6 +370,9 @@ export default function CreateScreen({ navigation }) {
       name,
       qtyNum,
       warehouseLocationId,
+      dimLength: dimL.trim() || undefined,
+      dimWidth: dimW.trim() || undefined,
+      dimHeight: dimH.trim() || undefined,
     };
     setPhotoCaptureOpen(true);
   };
@@ -353,47 +425,109 @@ export default function CreateScreen({ navigation }) {
         <View style={kiosk.field}>
           <Text style={[kiosk.label, { textAlign }]}>{tUi('baseNameLabel', locale)}</Text>
           <Text style={[kiosk.hint, { textAlign }]}>{tUi('baseNameHint', locale)}</Text>
+          <Pressable
+            style={[kiosk.btn, styles.suggestFullWidth, nameGenBusy && { opacity: 0.6 }]}
+            onPress={onGenerateName}
+            disabled={nameGenBusy || saving}
+          >
+            <Text style={kiosk.btnText}>
+              {nameGenBusy ? '…' : tUi('generateName', locale)}
+            </Text>
+          </Pressable>
           <TextInput
-            style={[kiosk.input, { textAlign: 'left' }]}
+            style={[kiosk.input, styles.nameInput, { textAlign: 'left' }]}
             value={baseNameEn}
             onChangeText={(v) => applyBaseName(v)}
             onBlur={() => applyBaseName(baseNameEn, { normalize: true })}
             editable={!saving}
             placeholderTextColor="#94a3b8"
+            autoCorrect={false}
+            autoCapitalize="words"
           />
-          <View style={kiosk.row}>
+          <Text style={[kiosk.hint, styles.nameActionsHint, { textAlign }]}>
+            {tUi('nameSearchHint', locale)}
+          </Text>
+          {nameLineSuggestions.length > 0 ? (
+            <View style={kiosk.row}>
+              {nameLineSuggestions.map((name) => (
+                <Pressable
+                  key={name}
+                  style={[
+                    kiosk.btn,
+                    styles.presetInlineChip,
+                    baseNameEn.trim().toLowerCase() === name.trim().toLowerCase() && kiosk.btnActive,
+                    saving && { opacity: 0.45 },
+                  ]}
+                  onPress={() => onSelectRecentBaseName(name)}
+                  disabled={saving}
+                >
+                  <Text
+                    style={[
+                      kiosk.btnText,
+                      baseNameEn.trim().toLowerCase() === name.trim().toLowerCase() && kiosk.btnActiveText,
+                    ]}
+                  >
+                    {name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          <View style={styles.dropdownColumn}>
+            <Text style={[kiosk.label, styles.groupLabel, { textAlign }]}>{tUi('seaterGroupLabel', locale)}</Text>
             <Pressable
-              style={kiosk.btn}
-              onPress={onGenerateName}
-              disabled={nameGenBusy || saving}
+              style={[
+                kiosk.btn,
+                styles.presetDropdownBtn,
+                seaterPresetValue && kiosk.btnActive,
+                (!baseNameEn.trim() || saving) && { opacity: 0.45 },
+              ]}
+              onPress={() => {
+                if (!baseNameEn.trim()) {
+                  setError(tUi('needBaseName', locale));
+                  return;
+                }
+                setCarpentryPickerOpen(false);
+                setSeaterPickerOpen(true);
+              }}
+              disabled={!baseNameEn.trim() || saving}
             >
-              <Text style={kiosk.btnText}>
-                {nameGenBusy ? '…' : tUi('generateName', locale)}
+              <Text
+                style={[kiosk.btnText, seaterPresetValue && kiosk.btnActiveText, styles.presetDropdownText]}
+                numberOfLines={2}
+              >
+                {seaterPresetValue
+                  ? presetLabel(seaterPresetValue, locale)
+                  : tUi('seaterPickerPlaceholder', locale)}
               </Text>
             </Pressable>
-          </View>
-        </View>
-
-        <View style={kiosk.field}>
-          <Text style={[kiosk.label, { textAlign }]}>{tUi('presetLabel', locale)}</Text>
-          <View style={kiosk.row}>
-            {PRODUCTION_SEAT_PRESETS.map((p) => (
-              <Pressable
-                key={p}
-                style={[
-                  kiosk.btn,
-                  kiosk.presetChip,
-                  preset === p && kiosk.btnActive,
-                  (!baseNameEn.trim() || saving) && { opacity: 0.45 },
-                ]}
-                onPress={() => onSelectPreset(p)}
-                disabled={!baseNameEn.trim() || saving}
+            <Text style={[kiosk.label, styles.groupLabel, { textAlign }]}>{tUi('carpentryGroupLabel', locale)}</Text>
+            <Pressable
+              style={[
+                kiosk.btn,
+                styles.presetDropdownBtn,
+                carpentryPresetValue && kiosk.btnActive,
+                (!baseNameEn.trim() || saving) && { opacity: 0.45 },
+              ]}
+              onPress={() => {
+                if (!baseNameEn.trim()) {
+                  setError(tUi('needBaseName', locale));
+                  return;
+                }
+                setSeaterPickerOpen(false);
+                setCarpentryPickerOpen(true);
+              }}
+              disabled={!baseNameEn.trim() || saving}
+            >
+              <Text
+                style={[kiosk.btnText, carpentryPresetValue && kiosk.btnActiveText, styles.presetDropdownText]}
+                numberOfLines={2}
               >
-                <Text style={[kiosk.btnText, preset === p && kiosk.btnActiveText]}>
-                  {presetLabel(p, locale)}
-                </Text>
-              </Pressable>
-            ))}
+                {carpentryPresetValue
+                  ? presetLabel(carpentryPresetValue, locale)
+                  : tUi('carpentryPickerPlaceholder', locale)}
+              </Text>
+            </Pressable>
           </View>
         </View>
 
@@ -405,6 +539,18 @@ export default function CreateScreen({ navigation }) {
             editable={false}
           />
         </View>
+
+        <ProductionDimensionsInput
+          locale={locale}
+          textAlign={textAlign}
+          dimL={dimL}
+          dimW={dimW}
+          dimH={dimH}
+          onChangeL={setDimL}
+          onChangeW={setDimW}
+          onChangeH={setDimH}
+          disabled={saving}
+        />
 
         <View style={kiosk.field}>
           <Text style={[kiosk.label, { textAlign }]}>{tUi('qtyLabel', locale)}</Text>
@@ -464,6 +610,28 @@ export default function CreateScreen({ navigation }) {
         }
       }}
     />
+    <ProductionPresetPicker
+      visible={seaterPickerOpen}
+      title={tUi('seaterGroupLabel', locale)}
+      presets={PRODUCTION_SEATER_PRESETS}
+      locale={locale}
+      textAlign={textAlign}
+      selectedPreset={seaterPresetValue}
+      disabled={!baseNameEn.trim() || saving}
+      onClose={() => setSeaterPickerOpen(false)}
+      onSelect={(value) => onSelectPreset(value)}
+    />
+    <ProductionPresetPicker
+      visible={carpentryPickerOpen}
+      title={tUi('carpentryGroupLabel', locale)}
+      presets={PRODUCTION_CARPENTRY_PRESETS}
+      locale={locale}
+      textAlign={textAlign}
+      selectedPreset={carpentryPresetValue}
+      disabled={!baseNameEn.trim() || saving}
+      onClose={() => setCarpentryPickerOpen(false)}
+      onSelect={(value) => onSelectPreset(value)}
+    />
     <ProductionPhotoCaptureModal
       visible={photoCaptureOpen}
       locale={locale}
@@ -513,5 +681,37 @@ const styles = StyleSheet.create({
     color: theme.text,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  nameActionsHint: {
+    marginTop: 10,
+    marginBottom: 0,
+  },
+  suggestFullWidth: {
+    width: '100%',
+    marginBottom: 8,
+  },
+  nameInput: {
+    marginTop: 0,
+  },
+  dropdownColumn: {
+    marginTop: 12,
+    gap: 6,
+  },
+  groupLabel: {
+    marginBottom: 4,
+    marginTop: 4,
+  },
+  presetDropdownBtn: {
+    width: '100%',
+    minHeight: 50,
+    paddingHorizontal: 10,
+  },
+  presetDropdownText: {
+    textAlign: 'center',
+  },
+  presetInlineChip: {
+    flexGrow: 1,
+    flexBasis: '28%',
+    minWidth: 88,
   },
 });

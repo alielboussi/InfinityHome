@@ -220,7 +220,7 @@ function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled })
       );
       if (missingNative) {
         onError?.(
-          'Google Sign-In native module is not in this build. Use Expo Go for testing, or install the Upholstery Production APK from EAS.',
+          'Google Sign-In native module is not in this build. Use Expo Go for testing, or install the Production APK from EAS.',
         );
         return;
       }

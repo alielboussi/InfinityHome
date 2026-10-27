@@ -1,5 +1,8 @@
 import { createFirestoreServerClient } from '../lib/firestoreServerClient.js';
-import { allocateWarehouseDeliveryNumber } from '../lib/warehouseDeliveryNumber.js';
+import {
+  allocateWarehouseDeliveryNumber,
+  resetWarehouseDeliveryNumberSequence,
+} from '../lib/warehouseDeliveryNumber.js';
 import { validateAssemblyShipmentBom } from '../lib/warehouseMobileBom.js';
 import { newUuid } from '../lib/uuid.js';
 import {
@@ -30,6 +33,9 @@ import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhats
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
   evaluateWarehouseProductionAppAccess,
+  isMobileScreenAccessAllowed,
+  isWarehouseProductionAppAllowed,
+  isWarehouseProductionKitweDeliveryAllowed,
   isWarehouseProductionOperatorAllowed,
   isWarehouseProductStockQtyEditAllowed,
   isWarehouseProductTurkishSyncAllowed,
@@ -53,6 +59,7 @@ import {
 } from '../lib/warehouseLocationStockRecompute.js';
 import {
   getWarehouseProductionLogEntry,
+  listRecentProductionBaseNames,
   listWarehouseProductionLog,
   logWarehouseProductionCreate,
   logWarehouseProductionStockIncrease,
@@ -347,6 +354,9 @@ async function opProductionPacketCreate(body, user) {
       packet_links: [],
       location_ids: [],
       units_per_carton: 1,
+      dim_length: body.dim_length ?? body.dimLength,
+      dim_width: body.dim_width ?? body.dimWidth,
+      dim_height: body.dim_height ?? body.dimHeight,
     });
     assemblyId = String(assembly.id || '');
     assemblyInserted = Boolean(assemblyId);
@@ -895,6 +905,12 @@ async function opProductionSuggestBaseName(body, user) {
   return { base_name: safeBase, product_name: productName, preset: preset || null };
 }
 
+async function opProductionRecentBaseNames(user) {
+  await assertProductionKioskUser(user);
+  const base_names = await listRecentProductionBaseNames(2);
+  return { base_names };
+}
+
 async function opPacketCreate(body, user) {
   const sb = getService();
   const sku = normalizeWarehousePacketScan(body.sku);
@@ -1026,11 +1042,52 @@ async function opBomValidate(body) {
   return validateAssemblyShipmentBom(assembly, packetRows, scanned, units);
 }
 
+async function assertMobileDeliverySubmitAccess(user) {
+  if (canManageCatalog(user)) return;
+  const grant = await mobileAccessGrantForUser(user);
+  if (isWarehouseProductionKitweDeliveryAllowed(grant)) return;
+  if (isMobileScreenAccessAllowed(grant, 'warehouse_products')) return;
+  const err = new Error('Warehouse delivery is not enabled for your account.');
+  err.status = 403;
+  throw err;
+}
+
+async function deliveryMobileSourceForUser(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  if (isWarehouseProductionAppAllowed(grant) || isWarehouseProductionKitweDeliveryAllowed(grant)) {
+    return 'warehouse_production_mobile';
+  }
+  return 'warehouse_catalog_mobile';
+}
+
 async function opDeliverySessionOpen(user) {
-  const deliveryNumber = await allocateWarehouseDeliveryNumber();
+  await assertMobileDeliverySubmitAccess(user);
   const sb = getService();
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (email) {
+    const { data: existing } = await sb
+      .from('warehouse_delivery_sessions')
+      .select('id, delivery_number')
+      .eq('status', 'draft')
+      .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
+      .eq('to_location', WAREHOUSE_TO_LOCATION_ID)
+      .eq('created_by_email', email)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) {
+      return {
+        session_id: existing.id,
+        delivery_number: existing.delivery_number,
+        reused: true,
+      };
+    }
+  }
+
+  const deliveryNumber = await allocateWarehouseDeliveryNumber();
   const now = new Date().toISOString();
   const sessionId = newUuid();
+  const mobileSource = await deliveryMobileSourceForUser(user);
   const row = {
     id: sessionId,
     delivery_number: deliveryNumber,
@@ -1040,16 +1097,16 @@ async function opDeliverySessionOpen(user) {
     created_at: now,
     transfer_datetime: now,
     total_qty: 0,
-    created_by_email: user?.email || null,
+    created_by_email: email || user?.email || null,
     created_by_name: user?.user_metadata?.full_name || user?.full_name || null,
     metadata: {
-      source: 'warehouse_catalog_mobile',
+      source: mobileSource,
       hassan_alert_pending: false,
     },
   };
   const { error } = await sb.from('warehouse_delivery_sessions').insert(row);
   if (error) throw new Error(error.message || 'Failed to open delivery session');
-  return { session_id: sessionId, delivery_number: deliveryNumber };
+  return { session_id: sessionId, delivery_number: deliveryNumber, reused: false };
 }
 
 function isHassanDeliveryUser(user) {
@@ -1059,11 +1116,19 @@ function isHassanDeliveryUser(user) {
   return uid === String(HASSAN_AWAD.id).toLowerCase() || uid === String(WAREHOUSE_ACCEPT_USER_ID).toLowerCase();
 }
 
+/** Kitwe receiver UI + accept API (Hassan, or catalog admin on mirror test page). */
+function canWarehouseDeliveryReceiverActions(user) {
+  if (isHassanDeliveryUser(user)) return true;
+  if (isLoginAccessAdmin(user?.email)) return true;
+  return false;
+}
+
 function scanLineDriverChecked(line) {
   return line?.driver_checked === true || Boolean(line?.driver_checked_at);
 }
 
 async function opDeliverySubmit(body, user) {
+  await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
   const groups = Array.isArray(body.groups) ? body.groups : [];
   const driverName = String(body.driver_name || body.driverName || '').trim();
@@ -1158,13 +1223,14 @@ async function opDeliverySubmit(body, user) {
     if (error) throw new Error(error.message || 'Failed to save delivery lines');
   }
 
+  const mobileSource = await deliveryMobileSourceForUser(user);
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
     submitted_at: now,
     total_qty: totalCartons,
     metadata: {
       ...(session.metadata || {}),
-      source: 'warehouse_catalog_mobile',
+      source: mobileSource,
       hassan_alert_pending: true,
       hassan_alert_at: now,
       submitted_by_email: user?.email || null,
@@ -1210,16 +1276,30 @@ async function opDeliverySubmit(body, user) {
     totalProducts,
   });
 
-  sendWarehouseDeliveryWhatsApp(whatsappMessage).catch((err) => {
-    console.warn('[delivery-submit] WhatsApp notify failed:', err?.message || err);
-  });
+  const whatsappResult = await sendWarehouseDeliveryWhatsApp(whatsappMessage);
+  if (!whatsappResult?.ok) {
+    console.warn('[delivery-submit] WhatsApp notify failed:', whatsappResult);
+  }
 
   return {
     session_id: sessionId,
     delivery_number: session.delivery_number,
     total_cartons: totalCartons,
     entry_count: entries.length,
+    whatsapp_sent: Boolean(whatsappResult?.ok),
   };
+}
+
+async function opDeliveryNumberReset(user) {
+  if (!isLoginAccessAdmin(user?.email) && !canManageCatalog(user)) {
+    const err = new Error('Admin catalog access required.');
+    err.status = 403;
+    throw err;
+  }
+  const confirm = String(user?.email || '').trim().toLowerCase();
+  const result = await resetWarehouseDeliveryNumberSequence();
+  console.info('[delivery-number-reset]', confirm || 'unknown', result?.next_delivery_number);
+  return result;
 }
 
 async function opDeliveryDriversList() {
@@ -1242,7 +1322,7 @@ async function opDeliveryDriversSave(body, user) {
 }
 
 async function opDeliveryReceiverCheck(body, user) {
-  if (!isHassanDeliveryUser(user)) {
+  if (!canWarehouseDeliveryReceiverActions(user)) {
     const err = new Error('Only the Kitwe receiver can confirm packets.');
     err.status = 403;
     throw err;
@@ -1264,7 +1344,7 @@ async function opDeliveryReceiverCheck(body, user) {
 }
 
 async function opDeliveryAccept(body, user) {
-  if (!isHassanDeliveryUser(user)) {
+  if (!canWarehouseDeliveryReceiverActions(user)) {
     const err = new Error('Only the Kitwe receiver can accept deliveries.');
     err.status = 403;
     throw err;
@@ -1341,6 +1421,9 @@ export default async function handler(req, res) {
       case 'delivery-session-open':
         result = await opDeliverySessionOpen(user);
         break;
+      case 'delivery-number-reset':
+        result = await opDeliveryNumberReset(user);
+        break;
       case 'delivery-submit':
         result = await opDeliverySubmit(body, user);
         break;
@@ -1367,6 +1450,9 @@ export default async function handler(req, res) {
         break;
       case 'production-suggest-base-name':
         result = await opProductionSuggestBaseName(body, user);
+        break;
+      case 'production-recent-base-names':
+        result = await opProductionRecentBaseNames(user);
         break;
       case 'production-label-preview':
         result = await opProductionLabelPreview(body, user);

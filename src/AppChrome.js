@@ -18,6 +18,7 @@ const NAV_GROUPS = [
     items: [
       { label: 'Dashboard', route: '/dashboard', icon: FaTachometerAlt },
       { label: 'Warehouse Deliveries', route: '/warehouse-deliveries-admin', icon: FaTruckLoading },
+      { label: 'Deliveries (Hassan mirror)', route: '/warehouse-deliveries-hassan-test', icon: FaTruckLoading, catalogOnly: true },
     ],
   },
   {
@@ -186,6 +187,7 @@ const TITLE_MAP = {
   '/kitwe-products': 'Kitwe',
   '/warehouse-delivery-drivers': 'Delivery drivers',
   '/warehouse-deliveries-admin': 'Warehouse Deliveries',
+  '/warehouse-deliveries-hassan-test': 'Deliveries (Hassan mirror)',
   '/transfers': 'Transfers',
   '/lusaka-transfers': 'Transfers',
   '/company-settings': 'Company Settings',

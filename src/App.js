@@ -46,6 +46,7 @@ import {
   UserActivityLog,
   WarehouseDeliveries,
   WarehouseDeliveriesAdmin,
+  WarehouseDeliveriesHassanTest,
   WarehouseDeliveryDriversPage,
   KitweProductsPage,
   KitweSetsPage,
@@ -80,6 +81,7 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/ledger-mobile',
       '/all-transfers',
       '/warehouse-deliveries-admin',
+      '/warehouse-deliveries-hassan-test',
       '/stock-periods',
       '/stocktake',
       '/stocktake/aggregation',
@@ -372,6 +374,14 @@ function App() {
           <Route path="/Factory-Kitwe-summary" element={<Navigate to="/All-Transfers-summary" replace />} />
           <Route path="/warehouse-deliveries" element={<WarehouseDeliveries />} />
           <Route path="/warehouse-deliveries-admin" element={<WarehouseDeliveriesAdmin />} />
+          <Route
+            path="/warehouse-deliveries-hassan-test"
+            element={(
+              <RequireAdminPage check={canManageCatalog}>
+                <WarehouseDeliveriesHassanTest />
+              </RequireAdminPage>
+            )}
+          />
           <Route path="/warehouse-delivery-drivers" element={<WarehouseDeliveryDriversPage />} />
           <Route path="/kitwe-products/sets/create" element={<KitweSetsPage mode="create" />} />
           <Route path="/kitwe-products/sets" element={<KitweSetsPage />} />

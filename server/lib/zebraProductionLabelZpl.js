@@ -9,6 +9,7 @@ import {
   LABEL_HEIGHT_MM,
   LABEL_MARGIN_MM,
   LABEL_WIDTH_MM,
+  NAME_VALUE_MAX_LINES,
   labelPitchMm,
   mmToDots,
   zebraQrMagnification,
@@ -84,12 +85,12 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     `^LL${mmToDots(pitchMm, dpi)}`,
     '^LH0,0',
     `^FO${mainX},${d.margin}^GB${d.boxW},${d.boxH},2^FS`,
-    `^FO${mainX},${d.companyY}^A0N,${cf},${cf}^FB${mainW},1,0,C,0^FD${companyLine}^FS`,
+    `^FO${mainX},${d.companyTextTop}^A0N,${cf},${cf}^FB${mainW},1,0,C,0^FD${companyLine}^FS`,
     `^FO${d.barcodeLeft},${d.barcodeTop}^BY${barcodeModule},3,${Math.max(5, Math.floor(barcodeH / 10))}^BCN,${barcodeH},N,N,N^FD${skuText}^FS`,
     labelField(d.skuRowY, FIELD_LABELS.sku),
     valueField(d.skuRowY, skuText),
-    labelField(d.nameRowY, FIELD_LABELS.name),
-    valueField(d.nameRowY, nameText, 2),
+    labelField(d.nameBlockTop, FIELD_LABELS.name),
+    `^FO0,${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.labelWidth},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
     ...(imageQr
       ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${imageMag}^FDLA,${imageQr}^FS`]
       : []),

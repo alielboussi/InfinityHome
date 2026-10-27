@@ -18,8 +18,8 @@ export function productionLogUserLabel(row) {
 export function formatProductionLogSource(row) {
   const raw = String(row?.source || '').trim();
   if (raw === 'warehouse_production_kiosk') return 'Web kiosk (retired)';
-  if (raw === 'warehouse_production_app') return 'Upholstery Production app';
-  if (!raw) return 'Upholstery Production app';
+  if (raw === 'warehouse_production_app') return 'Production app';
+  if (!raw) return 'Production app';
   return raw;
 }
 

@@ -10,7 +10,7 @@ import {
   BARCODE_HEIGHT_MM,
   BARCODE_WIDTH_MM,
   COMPANY_NAME,
-  COMPANY_ROW_MM,
+  COMPANY_TEXT_HEIGHT_MM,
   computeProductionLabelLayout,
   FIELD_LABELS,
   FONT_PT,
@@ -18,7 +18,8 @@ import {
   LABEL_HEIGHT_MM,
   LABEL_MARGIN_MM,
   LABEL_WIDTH_MM,
-  NAME_ROW_MM,
+  NAME_LINE_HEIGHT_MM,
+  NAME_VALUE_MAX_LINES,
   ROW_TEXT_MM,
   rowTextBaselineMm,
 } from './warehouseProductionLabelLayout.js';
@@ -29,7 +30,7 @@ const W = Math.round(LABEL_WIDTH_MM * PX_PER_MM);
 const H = Math.round(LABEL_HEIGHT_MM * PX_PER_MM);
 const BORDER = '#1e3a5f';
 
-const COMPANY_FONT_PX = 12;
+const COMPANY_FONT_PX = 11;
 const ROW_FONT_PX = FONT_PT;
 export function buildProductionLabelMeta({ name, sku, printedAt } = {}) {
   const at = printedAt ? new Date(printedAt) : new Date();
@@ -135,7 +136,7 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
 
   const textBaseline = (rowMm, rowHeightMm) => mmToPx(rowTextBaselineMm(rowMm, rowHeightMm));
 
-  const companyY = textBaseline(layout.companyRowMm, COMPANY_ROW_MM);
+  const companyY = textBaseline(layout.companyTextTopMm, COMPANY_TEXT_HEIGHT_MM);
   const barcodeTop = mmToPx(layout.barcodeTopMm);
   const barcodeLeft = mmToPx(layout.barcodeLeftMm);
 
@@ -151,7 +152,7 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   <rect x="${marginPx}" y="${marginPx}" width="${mainWidthPx}" height="${H - marginPx * 2}" fill="none" stroke="${BORDER}" stroke-width="3"/>
   <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f">${escapeXml(COMPANY_NAME)}</text>
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm, ROW_TEXT_MM), label: FIELD_LABELS.sku, value: meta.sku })}
-  ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameRowMm, NAME_ROW_MM), label: FIELD_LABELS.name, value: meta.name })}
+  ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameBlockTopMm, NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES), label: FIELD_LABELS.name, value: meta.name })}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm, ROW_TEXT_MM), label: FIELD_LABELS.date, value: meta.print_date })}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm, ROW_TEXT_MM), label: FIELD_LABELS.time, value: meta.print_time })}
 </svg>`;

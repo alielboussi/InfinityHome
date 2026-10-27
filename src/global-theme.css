@@ -16019,3 +16019,22 @@ body.enterprise-theme .mobile-access-name-input {
   color: var(--ent-text, #1f2733) !important;
 }
 
+/* Warehouse deliveries (Hassan + admin mirror) — light page inside AppChrome */
+body.enterprise-theme .warehouse-deliveries-page {
+  background: var(--dash-bg, #ffffff) !important;
+  color: var(--dash-text, #1f2733) !important;
+}
+
+body.enterprise-theme .warehouse-deliveries-page .page-header-row h1,
+body.enterprise-theme .warehouse-deliveries-page .page-header-row h2,
+body.enterprise-theme .warehouse-deliveries-page h2 {
+  color: var(--dash-text, #1f2733) !important;
+}
+
+body.enterprise-theme .warehouse-deliveries-mirror-banner {
+  background: #e8f4fc;
+  border: 1px solid var(--dash-border-soft, #d5dbe2);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+

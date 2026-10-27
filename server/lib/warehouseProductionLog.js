@@ -92,6 +92,21 @@ export async function logWarehouseProductionStockIncrease({
   return row;
 }
 
+export async function listRecentProductionBaseNames(limit = 2) {
+  const { extractProductionBaseName } = await import('../../src/utils/productionItemName.js');
+  const rows = await listWarehouseProductionLog({ limit: 120, eventType: 'create' });
+  const out = [];
+  for (const row of rows) {
+    const base = String(extractProductionBaseName(row.name || '') || '').trim();
+    if (!base) continue;
+    const key = base.toLowerCase();
+    if (out.some((n) => n.toLowerCase() === key)) continue;
+    out.push(base);
+    if (out.length >= Math.max(1, Math.min(5, Number(limit) || 2))) break;
+  }
+  return out;
+}
+
 export async function listWarehouseProductionLog({
   limit = 500,
   eventType,

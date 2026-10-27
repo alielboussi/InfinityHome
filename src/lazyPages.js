@@ -11,6 +11,7 @@ export const WarehouseTransfer = lazyRoute(() => import('./WarehouseTransfer'));
 export const WarehouseTransferSummary = lazyRoute(() => import('./WarehouseTransferSummary'));
 export const WarehouseDeliveries = lazyRoute(() => import('./WarehouseDeliveries'));
 export const WarehouseDeliveriesAdmin = lazyRoute(() => import('./WarehouseDeliveriesAdmin'));
+export const WarehouseDeliveriesHassanTest = lazyRoute(() => import('./WarehouseDeliveriesHassanTest'));
 export const WarehouseDeliveryDriversPage = lazyRoute(() => import('./WarehouseDeliveryDriversPage'));
 export const KitweProductsPage = lazyRoute(() => import('./KitweProductsPage'));
 export const KitweSetsPage = lazyRoute(() => import('./KitweSetsPage'));
@@ -67,6 +68,7 @@ export const ShopRoutes = lazyRoute(() => import('./shop/ShopRoutes'));
 export const routePreloadByPath = {
   '/dashboard': () => import('./Dashboard'),
   '/warehouse-deliveries-admin': () => import('./WarehouseDeliveriesAdmin'),
+  '/warehouse-deliveries-hassan-test': () => import('./WarehouseDeliveriesHassanTest'),
   '/customers': () => import('./Customers'),
   '/all-sales': () => import('./AllSales'),
   '/pos': () => import('./POS'),

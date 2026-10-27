@@ -2,7 +2,10 @@ import admin from 'firebase-admin';
 import { getFirebaseAdminApp } from './firebaseAdmin.js';
 import { getFirestore } from './firestoreDb.js';
 import { defaultMobileAccessGrant, normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
-import { PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL } from '../../src/mobile/mobileAccessManifest.js';
+import {
+  buildMobileScreenAccessRow,
+  PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL,
+} from '../../src/mobile/mobileAccessManifest.js';
 
 const COLLECTION = 'app_login_access';
 const PROTECTED_EMAILS = new Set([PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL]);
@@ -269,10 +272,11 @@ export async function createLoginAccessUser({
   };
 }
 
-/** Toggle only Upholstery Production app access without replacing the whole grant. */
+/** Toggle Production app access (and optional Kitwe delivery) without replacing the whole grant. */
 export async function patchProductionAppAccess({
   uid,
   warehouseProductionApp,
+  kitweSendDelivery,
   mobileDisplayName,
   actorEmail,
 }) {
@@ -288,7 +292,13 @@ export async function patchProductionAppAccess({
   const merged = {
     ...prior,
     warehouse_production_app: allow ? 'allow' : 'deny',
+    screens: { ...(prior.screens || {}) },
   };
+  if (kitweSendDelivery !== undefined) {
+    const kitweAllow = kitweSendDelivery === 'allow' || kitweSendDelivery === true;
+    merged.warehouse_production_kitwe = kitweAllow ? 'allow' : 'deny';
+    merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweAllow);
+  }
   return updateMobileAccessGrant({
     uid,
     mobileAccess: merged,

@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
 import { apiUrl, withApiHeaders } from '../utils/apiUrl';
-import { defaultMobileAccessGrant } from '../mobile/mobileAccessManifest';
+import {
+  buildMobileScreenAccessRow,
+  defaultMobileAccessGrant,
+  isWarehouseProductionKitweDeliveryAllowed,
+  sanitizeMobileAccessGrantForUser,
+} from '../mobile/mobileAccessManifest';
 
-const PRODUCTION_APP_NAME = 'Upholstery Production';
+const PRODUCTION_APP_NAME = 'Production';
 
-async function saveProductionAppAccess(uid, warehouse_production_app, mobile_display_name) {
+async function saveProductionAppAccess(uid, mobile_access, mobile_display_name, userEmail) {
   const token = await firebaseGetAccessToken();
   if (!token) throw new Error('Authentication required');
   const response = await fetch(apiUrl('/api/login-access'), {
@@ -16,9 +21,8 @@ async function saveProductionAppAccess(uid, warehouse_production_app, mobile_dis
       'Content-Type': 'application/json',
     }),
     body: JSON.stringify({
-      action: 'set-production-app-access',
       uid,
-      warehouse_production_app,
+      mobile_access,
       mobile_display_name,
     }),
   });
@@ -32,11 +36,17 @@ async function saveProductionAppAccess(uid, warehouse_production_app, mobile_dis
 function normalizeGrant(raw) {
   const base = defaultMobileAccessGrant();
   if (!raw) return base;
+  const kitwe = isWarehouseProductionKitweDeliveryAllowed(raw);
   return {
     ...base,
     ...raw,
     warehouse_production_app: raw.warehouse_production_app === 'allow' ? 'allow' : 'deny',
-    screens: { ...base.screens, ...(raw.screens || {}) },
+    warehouse_production_kitwe: raw.warehouse_production_kitwe === 'allow' || kitwe ? 'allow' : 'deny',
+    screens: {
+      ...base.screens,
+      ...(raw.screens || {}),
+      kitwe_send_delivery: buildMobileScreenAccessRow(kitwe),
+    },
   };
 }
 
@@ -64,12 +74,15 @@ export default function ProductionUserAccessEditor({ userRow, onClose, onSaved }
     setBusy(true);
     setError('');
     try {
+      const payload = sanitizeMobileAccessGrantForUser(grant, userRow.email);
       const updated = await saveProductionAppAccess(
         userRow.id,
-        grant.warehouse_production_app,
+        payload,
         appDisplayName,
+        userRow.email,
       );
       onSaved?.(updated);
+      setGrant(normalizeGrant(updated?.mobile_access));
       setToast(`${PRODUCTION_APP_NAME} access saved.`);
     } catch (err) {
       setError(err?.message || 'Failed to save production access');
@@ -81,6 +94,7 @@ export default function ProductionUserAccessEditor({ userRow, onClose, onSaved }
   if (!userRow) return null;
 
   const displayName = userRow.display_name || userRow.email || 'User';
+  const kitweChecked = isWarehouseProductionKitweDeliveryAllowed(grant);
 
   return (
     <div className="mobile-access-panel" role="dialog" aria-labelledby="production-access-title">
@@ -90,7 +104,7 @@ export default function ProductionUserAccessEditor({ userRow, onClose, onSaved }
             {PRODUCTION_APP_NAME} app — {displayName}
           </h3>
           <p className="mobile-access-panel__hint">
-            Allows the <strong>Upholstery Production</strong> Android app: create packets, add stock, and print labels via Zebra Weblink.
+            Allows the <strong>Production</strong> Android app: create items, add stock, Kitwe truck delivery, and print labels via Zebra Weblink.
             User must sign in with <strong>Google on the app</strong> first (then enable login and app access here).
           </p>
         </div>
@@ -127,10 +141,35 @@ export default function ProductionUserAccessEditor({ userRow, onClose, onSaved }
               }))}
             />
             <label className="mobile-access-permission-item__body" htmlFor="mobile-access-production-app">
-              <span className="mobile-access-permission-item__title">Upholstery Production (Android)</span>
+              <span className="mobile-access-permission-item__title">Production (Android)</span>
               <span className="mobile-access-permission-item__desc">
                 Create seating items and stock-in at the warehouse. Activity appears on Production Report.
                 Labels print via Zebra cloud Weblink.
+              </span>
+            </label>
+          </div>
+          <div className="mobile-access-permission-item">
+            <input
+              id="mobile-access-kitwe-delivery"
+              type="checkbox"
+              className="mobile-access-permission-item__check"
+              checked={kitweChecked}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setGrant((prev) => ({
+                  ...prev,
+                  warehouse_production_kitwe: on ? 'allow' : 'deny',
+                  screens: {
+                    ...prev.screens,
+                    kitwe_send_delivery: buildMobileScreenAccessRow(on),
+                  },
+                }));
+              }}
+            />
+            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-kitwe-delivery">
+              <span className="mobile-access-permission-item__title">Send to Kitwe (truck delivery)</span>
+              <span className="mobile-access-permission-item__desc">
+                Factory truck checklist with driver selection; Hassan receives it on Warehouse Deliveries.
               </span>
             </label>
           </div>

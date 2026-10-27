@@ -1,4 +1,8 @@
 function notifyBaseUrl() {
+  const vercelHost = String(process.env.VERCEL_URL || '').trim().replace(/\/+$/, '');
+  if (vercelHost) {
+    return vercelHost.startsWith('http') ? vercelHost : `https://${vercelHost}`;
+  }
   const raw = String(
     process.env.INFINITY_PUBLIC_URL
     || process.env.REACT_APP_API_BASE

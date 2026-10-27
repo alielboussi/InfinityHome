@@ -210,7 +210,7 @@ export default function ProductionAdminPage() {
         </div>
       </header>
       <p className="user-access-intro">
-        Upholstery Production app activity: new seating items and warehouse stock increases (Zebra labels on create/stock-in).
+        Production app activity: new seating items and warehouse stock increases (Zebra labels on create/stock-in).
         Admins can edit names and quantities; warehouse stock is corrected to match. See also{' '}
         <Link to="/production-report">Production Report</Link>.
       </p>

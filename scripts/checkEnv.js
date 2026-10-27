@@ -113,6 +113,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWarehouseDeliveryFlow.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[warehouse-delivery-flow:fail] verifyWarehouseDeliveryFlow.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyProductionFinishedCreate.js', {
     cwd: process.cwd(),
     stdio: 'inherit',
@@ -129,6 +139,16 @@ try {
   });
 } catch (e) {
   console.error('[production-label-cat-time:fail] verifyProductionLabelCatTime.js failed.');
+  process.exit(1);
+}
+
+try {
+  require('child_process').execSync('node scripts/verifyProductionItemPresets.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-item-presets:fail] verifyProductionItemPresets.js failed.');
   process.exit(1);
 }
 

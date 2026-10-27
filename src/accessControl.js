@@ -439,6 +439,9 @@ export function isPathAllowed(user, path) {
   if (p === PRODUCTION_REPORT_ROUTE || p.startsWith(`${PRODUCTION_REPORT_ROUTE}/`)) {
     return canManageCatalog(user);
   }
+  if (p === '/warehouse-deliveries-hassan-test' || p.startsWith('/warehouse-deliveries-hassan-test/')) {
+    return canManageCatalog(user);
+  }
   if (isWarehouseProductionKioskPath(p)) {
     return false;
   }

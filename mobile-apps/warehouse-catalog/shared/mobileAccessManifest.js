@@ -69,7 +69,6 @@ export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_packets',
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
-  'kitwe_send_delivery',
 ]);
 
 /** Every navigable screen (CI + defaults). */
@@ -108,8 +107,8 @@ export const MOBILE_SCREENS = Object.freeze([
   {
     id: 'kitwe_send_delivery',
     label: 'Send to Kitwe',
-    description: 'Truck delivery checklist → Hassan acceptance',
-    permissionMatrix: true,
+    description: 'Production app: factory truck delivery → Hassan acceptance',
+    permissionMatrix: false,
   },
   {
     id: 'warehouse_scan',

@@ -59,6 +59,12 @@ export function isWarehouseProductionAppAllowed(grant) {
   return grant?.warehouse_production_app === 'allow';
 }
 
+/** Production app — factory truck delivery to Kitwe (User Access → Production). */
+export function isWarehouseProductionKitweDeliveryAllowed(grant) {
+  if (grant?.warehouse_production_kitwe === 'allow') return true;
+  return isMobileScreenAccessAllowed(grant, 'kitwe_send_delivery');
+}
+
 export function isWarehouseProductionOperatorAllowed(grant) {
   return isWarehouseProductionKioskAllowed(grant) || isWarehouseProductionAppAllowed(grant);
 }
@@ -92,7 +98,6 @@ export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_packets',
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
-  'kitwe_send_delivery',
 ]);
 
 /** Every navigable screen (CI + defaults). */
@@ -131,8 +136,8 @@ export const MOBILE_SCREENS = Object.freeze([
   {
     id: 'kitwe_send_delivery',
     label: 'Send to Kitwe',
-    description: 'Truck delivery checklist → Hassan acceptance',
-    permissionMatrix: true,
+    description: 'Production app: factory truck delivery → Hassan acceptance',
+    permissionMatrix: false,
   },
   {
     id: 'warehouse_scan',
@@ -210,6 +215,7 @@ export function defaultMobileAccessGrant() {
     warehouse_product_stock_qty: 'deny',
     warehouse_production_kiosk: 'deny',
     warehouse_production_app: 'deny',
+    warehouse_production_kitwe: 'deny',
     screens,
   };
 }
@@ -271,6 +277,9 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   };
   delete merged.dashboard_actions;
 
+  const kitweDeliveryAllowed = isMobileScreenAccessAllowed(merged, 'kitwe_send_delivery')
+    || merged.warehouse_production_kitwe === 'allow';
+
   const legacyCatalogScreenIds = [
     'scan',
     'packet_form',
@@ -288,6 +297,9 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   MOBILE_SCREENS.forEach((screen) => {
     if (screen.id === 'dashboard') {
       merged.screens.dashboard = buildMobileScreenAccessRow(true);
+      return;
+    }
+    if (screen.id === 'kitwe_send_delivery') {
       return;
     }
     const allowed = isMobileScreenAccessAllowed(merged, screen.id);
@@ -333,6 +345,9 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   )
     ? 'allow'
     : 'deny';
+
+  merged.warehouse_production_kitwe = kitweDeliveryAllowed ? 'allow' : 'deny';
+  merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweDeliveryAllowed);
 
   return merged;
 }

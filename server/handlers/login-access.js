@@ -52,9 +52,11 @@ export default async function handler(req, res) {
 
       if (action === 'set-production-app-access') {
         const flag = body.warehouse_production_app ?? body.warehouseProductionApp;
+        const kitweFlag = body.kitwe_send_delivery ?? body.kitweSendDelivery;
         const user = await patchProductionAppAccess({
           uid,
           warehouseProductionApp: flag,
+          kitweSendDelivery: kitweFlag,
           mobileDisplayName: body.mobile_display_name ?? body.mobileDisplayName,
           actorEmail: actor.email,
         });

@@ -36,7 +36,7 @@ const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r
 
 module.exports = {
   expo: {
-    name: 'Upholstery Production',
+    name: 'Production',
     owner: 'alielboussi',
     slug: 'warehouse-production',
     scheme: 'warehouse-production',
@@ -69,14 +69,14 @@ module.exports = {
       [
         'expo-image-picker',
         {
-          cameraPermission: 'Upholstery Production needs the camera to photograph seating for catalog labels.',
+          cameraPermission: 'Production needs the camera to photograph seating for catalog labels.',
           photosPermission: 'Allow access to save production product photos.',
         },
       ],
       [
         'expo-camera',
         {
-          cameraPermission: 'Upholstery Production needs the camera to scan label QR codes and barcodes.',
+          cameraPermission: 'Production needs the camera to scan label QR codes and barcodes.',
         },
       ],
     ],

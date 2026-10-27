@@ -17,9 +17,6 @@ import WarehouseUnusedPacketsScreen from './screens/WarehouseUnusedPacketsScreen
 import ScanScreen from './screens/ScanScreen';
 import PacketFormScreen from './screens/PacketFormScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
-import KitweSendHomeScreen from './screens/KitweSendHomeScreen';
-import KitweSendProductScreen from './screens/KitweSendProductScreen';
-import KitweSendDoneScreen from './screens/KitweSendDoneScreen';
 import WarehouseOcrSkuScreen from './screens/WarehouseOcrSkuScreen';
 import WarehouseLabelCaptureScreen from './screens/WarehouseLabelCaptureScreen';
 import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
@@ -116,15 +113,6 @@ function MainStack() {
         )}
       </Stack.Screen>
       <Stack.Screen name="ProductForm" options={{ title: 'Product' }} component={ProductFormScreen} />
-      <Stack.Screen name="KitweSendHome" options={{ title: 'Send to Kitwe' }}>
-        {(props) => (
-          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
-            <KitweSendHomeScreen {...props} />
-          </MobileScreenGate>
-        )}
-      </Stack.Screen>
-      <Stack.Screen name="KitweSendProduct" options={{ title: 'Add product' }} component={KitweSendProductScreen} />
-      <Stack.Screen name="KitweSendDone" options={{ title: 'Sent', headerBackVisible: false }} component={KitweSendDoneScreen} />
     </Stack.Navigator>
     </WarehouseCatalogProvider>
     </MobileAccessGrantProvider>

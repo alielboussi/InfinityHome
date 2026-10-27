@@ -14,8 +14,10 @@ import {
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
 import {
   acceptWarehouseDeliverySession,
+  resetWarehouseDeliveryNumberSequence,
   setDeliveryEntryReceiverCheck,
 } from './services/warehouseDeliveryMobileApi';
+import { canManageCatalog, getCurrentUser } from './accessControl';
 import {
   anyDeliveryPacketsReceiverConfirmed,
   deliveryEntryReceiverProgress,
@@ -100,7 +102,23 @@ const detectIpadSafari = () => {
   return isIpad && isSafari;
 };
 
-export default function WarehouseDeliveries() {
+/** Match enterprise dashboard tokens (readable inside AppChrome). */
+const PAGE_THEME = {
+  bg: 'var(--dash-bg, #ffffff)',
+  surface: 'var(--dash-surface, #ffffff)',
+  surfaceAlt: 'var(--dash-surface-2, #f4f6f9)',
+  border: 'var(--dash-border, #1565c0)',
+  borderSoft: 'var(--dash-border-soft, #d5dbe2)',
+  text: 'var(--dash-text, #1f2733)',
+  muted: 'var(--dash-muted, #5b6675)',
+  accent: 'var(--dash-accent, #1565c0)',
+};
+
+/**
+ * @param {{ receiverTestMirror?: boolean }} props
+ * receiverTestMirror — same UI as Hassan’s Kitwe receiver page; catalog admins can tick/accept for end-to-end tests.
+ */
+export default function WarehouseDeliveries({ receiverTestMirror = false }) {
   const [sessions, setSessions] = useState([]);
   const [entriesBySession, setEntriesBySession] = useState({});
   const [destStockByProduct, setDestStockByProduct] = useState(new Map());
@@ -115,7 +133,11 @@ export default function WarehouseDeliveries() {
   const [isIpadSafari, setIsIpadSafari] = useState(() => detectIpadSafari());
   const [hassanAlert, setHassanAlert] = useState(null);
   const [openSessionId, setOpenSessionId] = useState('');
-  const canAccept = currentUserId === WAREHOUSE_ACCEPT_USER_ID;
+  const [receiverTestAdmin, setReceiverTestAdmin] = useState(false);
+  const [resetSeqBusy, setResetSeqBusy] = useState(false);
+  const [resetSeqNote, setResetSeqNote] = useState('');
+  const canAccept = currentUserId === WAREHOUSE_ACCEPT_USER_ID
+    || (receiverTestMirror && receiverTestAdmin);
 
   useEffect(() => {
     const onResize = () => setIsIpadSafari(detectIpadSafari());
@@ -240,13 +262,14 @@ export default function WarehouseDeliveries() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('user');
-      const parsed = raw ? JSON.parse(raw) : null;
+      const parsed = getCurrentUser();
       setCurrentUserId(parsed?.id || '');
+      setReceiverTestAdmin(receiverTestMirror && canManageCatalog(parsed));
     } catch {
       setCurrentUserId('');
+      setReceiverTestAdmin(false);
     }
-  }, []);
+  }, [receiverTestMirror]);
 
   useEffect(() => {
     (async () => {
@@ -293,7 +316,7 @@ export default function WarehouseDeliveries() {
 
   const handleAccept = async (sessionId) => {
     if (!sessionId || busyId) return;
-    if (currentUserId && currentUserId !== WAREHOUSE_ACCEPT_USER_ID) {
+    if (currentUserId && currentUserId !== WAREHOUSE_ACCEPT_USER_ID && !(receiverTestMirror && receiverTestAdmin)) {
       setError('Only the receiver account can accept deliveries.');
       return;
     }
@@ -345,10 +368,30 @@ export default function WarehouseDeliveries() {
     }
   };
 
+  const handleResetDeliveryNumberSequence = async () => {
+    if (!receiverTestMirror || !receiverTestAdmin || resetSeqBusy) return;
+    const ok = window.confirm(
+      'Reset the warehouse delivery number sequence?\n\n'
+      + 'The next new delivery opened in the Production app will be WHD0000000001.\n'
+      + 'Existing delivery records in the database are not deleted.',
+    );
+    if (!ok) return;
+    setResetSeqBusy(true);
+    setResetSeqNote('');
+    setError('');
+    try {
+      const data = await resetWarehouseDeliveryNumberSequence();
+      const next = data?.next_delivery_number || data?.result?.next_delivery_number || 'WHD0000000001';
+      setResetSeqNote(`Sequence reset. Next new delivery: ${next}`);
+    } catch (err) {
+      setError(err?.message || 'Failed to reset delivery number sequence.');
+    } finally {
+      setResetSeqBusy(false);
+    }
+  };
+
   const containerStyle = {
     minHeight: isIpadSafari ? '100dvh' : '100vh',
-    background: '#0b0f14',
-    color: '#e0e6ed',
     padding: 'max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left))',
     boxSizing: 'border-box',
     width: '100%',
@@ -356,24 +399,62 @@ export default function WarehouseDeliveries() {
   };
 
   return (
-    <div style={containerStyle}>
+    <div className="dashboard-container warehouse-deliveries-page" style={containerStyle}>
       <div style={{ width: 'min(1200px, 100%)', margin: '0 auto' }}>
         <div className="page-header-row" style={{ gap: isIpadSafari ? 14 : 10 }}>
           <BackToDashboard />
-          <h1 style={{ margin: 0, fontSize: isIpadSafari ? 'clamp(1.35rem, 2.2vw, 2rem)' : undefined }}>
-            Warehouse Deliveries
+          <h1
+            style={{
+              margin: 0,
+              color: PAGE_THEME.text,
+              fontSize: isIpadSafari ? 'clamp(1.35rem, 2.2vw, 2rem)' : undefined,
+            }}
+          >
+            {receiverTestMirror ? 'Warehouse Deliveries (Hassan mirror)' : 'Warehouse Deliveries'}
           </h1>
         </div>
-        <div style={{ color: '#9fb3c8', marginBottom: 16 }}>
-          Pending Factory → Kitwe deliveries from the Android app. Auto-refresh every 60 seconds.
-        </div>
-        {!canAccept && currentUserId && (
-          <div style={{ color: '#ffb020', marginBottom: 12 }}>
+        <p style={{ color: PAGE_THEME.muted, marginBottom: 16, lineHeight: 1.5, marginTop: 0 }}>
+          {receiverTestMirror
+            ? 'Test the same receiver flow Hassan uses on iPad: tick packets, accept stock, alerts. Refreshes every 15s.'
+            : 'Pending Factory → Kitwe deliveries from the Android app. Auto-refresh every 60 seconds.'}
+        </p>
+        {receiverTestMirror && receiverTestAdmin && (
+          <div
+            className="warehouse-deliveries-mirror-banner"
+            style={{
+              color: PAGE_THEME.accent,
+              marginBottom: 12,
+              fontWeight: 600,
+              lineHeight: 1.45,
+            }}
+          >
+            Admin test mode — actions here use the same APIs as Hassan’s Warehouse Deliveries page.
+          </div>
+        )}
+        {receiverTestMirror && receiverTestAdmin && (
+          <div style={{ marginBottom: 16 }}>
+            <button
+              type="button"
+              className="product-form-btn"
+              disabled={resetSeqBusy}
+              onClick={handleResetDeliveryNumberSequence}
+            >
+              {resetSeqBusy ? 'Resetting…' : 'Reset delivery ID to WHD0000000001'}
+            </button>
+            {resetSeqNote ? (
+              <p style={{ color: PAGE_THEME.muted, marginTop: 10, marginBottom: 0, lineHeight: 1.45 }}>
+                {resetSeqNote}
+              </p>
+            ) : null}
+          </div>
+        )}
+        {!canAccept && currentUserId && !receiverTestMirror && (
+          <div style={{ color: '#b45309', marginBottom: 12, fontWeight: 600 }}>
             Only the receiver account can accept deliveries.
           </div>
         )}
-        {loading && <div>Loading deliveries...</div>}
-        {error && <div style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</div>}
+        {loading && <div style={{ color: PAGE_THEME.muted }}>Loading deliveries...</div>}
+        {error && <div className="report-error" style={{ marginBottom: 12 }}>{error}</div>}
         {canAccept && hassanAlert && (
           <div
             role="alert"
@@ -390,33 +471,26 @@ export default function WarehouseDeliveries() {
           >
             <div
               style={{
-                background: '#1e293b',
-                border: '2px solid #38bdf8',
+                background: PAGE_THEME.surface,
+                border: `2px solid ${PAGE_THEME.accent}`,
                 borderRadius: 12,
                 padding: 24,
                 maxWidth: 420,
                 width: '100%',
-                boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+                boxShadow: '0 12px 40px rgba(15, 23, 42, 0.18)',
+                color: PAGE_THEME.text,
               }}
             >
-              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>New delivery sent</div>
-              <div style={{ color: '#cbd5e1', marginBottom: 16 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8, color: PAGE_THEME.text }}>New delivery sent</div>
+              <div style={{ color: PAGE_THEME.muted, marginBottom: 16 }}>
                 Delivery note <b>{hassanAlert.delivery_number || hassanAlert.id}</b> was submitted from the warehouse app.
                 Review lines below and accept when stock arrives.
               </div>
               <button
                 type="button"
                 onClick={dismissHassanAlert}
-                style={{
-                  background: '#38bdf8',
-                  color: '#0f172a',
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: '12px 20px',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  width: '100%',
-                }}
+                className="product-form-btn product-form-btn--primary"
+                style={{ width: '100%' }}
               >
                 Got it
               </button>
@@ -424,7 +498,7 @@ export default function WarehouseDeliveries() {
           </div>
         )}
         {!loading && sessions.length === 0 && (
-          <div style={{ color: '#9fb3c8' }}>No pending deliveries.</div>
+          <div style={{ color: PAGE_THEME.muted, fontWeight: 500 }}>No pending deliveries.</div>
         )}
 
         <div style={{
@@ -445,23 +519,26 @@ export default function WarehouseDeliveries() {
                 onClick={() => setOpenSessionId(String(session.id))}
                 style={{
                   textAlign: 'left',
-                  border: openSessionId === String(session.id) ? '2px solid #38bdf8' : '1px solid #1f3b4d',
+                  border: openSessionId === String(session.id)
+                    ? `2px solid ${PAGE_THEME.accent}`
+                    : `1px solid ${PAGE_THEME.borderSoft}`,
                   borderRadius: 12,
                   padding: 16,
-                  background: '#121826',
-                  color: '#e2e8f0',
+                  background: PAGE_THEME.surfaceAlt,
+                  color: PAGE_THEME.text,
                   cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
                 }}
               >
-                <div style={{ fontWeight: 800, fontSize: 18 }}>
+                <div style={{ fontWeight: 800, fontSize: 18, color: PAGE_THEME.text }}>
                   {session.delivery_number || session.id}
                 </div>
-                <div style={{ color: '#9fb3c8', marginTop: 6 }}>{fromName} → {toName}</div>
-                <div style={{ color: '#9fb3c8', marginTop: 4 }}>
+                <div style={{ color: PAGE_THEME.muted, marginTop: 6 }}>{fromName} → {toName}</div>
+                <div style={{ color: PAGE_THEME.muted, marginTop: 4 }}>
                   Sent: {formatDateTime(session.submitted_at || session.created_at)}
                 </div>
-                <div style={{ color: '#9fb3c8' }}>By: {deliverySenderName(session, usersById)}</div>
-                {driver ? <div style={{ color: '#cbd5e1' }}>Driver: {driver}</div> : null}
+                <div style={{ color: PAGE_THEME.muted }}>By: {deliverySenderName(session, usersById)}</div>
+                {driver ? <div style={{ color: PAGE_THEME.text, marginTop: 4 }}>Driver: {driver}</div> : null}
                 <div style={{ marginTop: 10, fontWeight: 700, color: confirmed === total && total > 0 ? '#4ade80' : '#fbbf24' }}>
                   Packets confirmed: {confirmed}/{total}
                 </div>
@@ -484,21 +561,34 @@ export default function WarehouseDeliveries() {
             <div
               key={`detail-${session.id}`}
               style={{
-                border: '1px solid #38bdf8',
+                border: `1px solid ${PAGE_THEME.accent}`,
                 borderRadius: 12,
                 padding: isIpadSafari ? 18 : 16,
                 marginBottom: 24,
-                background: '#0f172a',
+                background: PAGE_THEME.surface,
+                color: PAGE_THEME.text,
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0 }}>{session.delivery_number}</h2>
-                <button type="button" onClick={() => setOpenSessionId('')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>Close</button>
+                <h2 style={{ margin: 0, color: PAGE_THEME.text }}>{session.delivery_number}</h2>
+                <button
+                  type="button"
+                  onClick={() => setOpenSessionId('')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: PAGE_THEME.muted,
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  Close
+                </button>
               </div>
               {displayLines.map((line) => {
                 if (line.kind === 'assembly-header') {
                   return (
-                    <div key={line.id} style={{ fontWeight: 700, marginTop: 14, color: '#e2e8f0' }}>
+                    <div key={line.id} style={{ fontWeight: 700, marginTop: 14, color: PAGE_THEME.text }}>
                       {line.name}
                     </div>
                   );
@@ -515,7 +605,7 @@ export default function WarehouseDeliveries() {
                       gap: 10,
                       marginTop: 8,
                       paddingLeft: 8,
-                      color: received ? '#64748b' : '#cbd5e1',
+                      color: received ? PAGE_THEME.muted : PAGE_THEME.text,
                       cursor: canAccept && !received ? 'pointer' : 'default',
                     }}
                   >
@@ -533,22 +623,20 @@ export default function WarehouseDeliveries() {
                 );
               })}
               <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => handlePdf(session)} disabled={pdfBusyId === session.id} style={{ background: '#1f3b4d', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontWeight: 700 }}>
+                <button
+                  type="button"
+                  className="product-form-btn"
+                  onClick={() => handlePdf(session)}
+                  disabled={pdfBusyId === session.id}
+                >
                   {pdfBusyId === session.id ? 'Building PDF…' : 'View PDF'}
                 </button>
                 <button
                   type="button"
+                  className="product-form-btn product-form-btn--primary"
                   onClick={() => handleAccept(session.id)}
                   disabled={busyId === session.id || !canAccept || !pending || !canAcceptSession || toAcceptCount < 1}
-                  style={{
-                    background: '#2a9d8f',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: '10px 16px',
-                    fontWeight: 700,
-                    opacity: !canAcceptSession ? 0.5 : 1,
-                  }}
+                  style={{ opacity: !canAcceptSession ? 0.5 : 1 }}
                 >
                   {busyId === session.id ? 'Accepting…' : `Accept received packets (${toAcceptCount})`}
                 </button>

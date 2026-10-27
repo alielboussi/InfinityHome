@@ -121,9 +121,9 @@ export default function UserAccessManagement() {
         <h2 style={{ margin: 0 }}>User Login Access</h2>
       </div>
       <p className="user-access-intro">
-        New mobile users are added when they sign in with <strong>Google on Upholstery Production</strong> (or Warehouse
+        New mobile users are added when they sign in with <strong>Google on Production</strong> (or Warehouse
         app). They appear in the list below after first sign-in — use <strong>Refresh</strong>, then set{' '}
-        <strong>Warehouse app</strong> or <strong>Upholstery Production</strong> permissions. Login can be disabled here;
+        <strong>Warehouse app</strong> or <strong>Production</strong> permissions. Login can be disabled here;
         you cannot create accounts from this page.
       </p>
 
@@ -141,7 +141,7 @@ export default function UserAccessManagement() {
           <div className="report-blank">Loading users…</div>
         ) : rows.length === 0 ? (
           <div className="report-blank">
-            No mobile users yet. Ask staff to open <strong>Upholstery Production</strong> and tap <strong>Continue with Google</strong>,
+            No mobile users yet. Ask staff to open <strong>Production</strong> and tap <strong>Continue with Google</strong>,
             then refresh this page.
           </div>
         ) : (
@@ -202,7 +202,7 @@ export default function UserAccessManagement() {
                               setMobileUserId('');
                             }}
                           >
-                            {isProductionSelected ? 'Editing' : 'Upholstery Production'}
+                            {isProductionSelected ? 'Editing' : 'Production'}
                           </button>
                         </div>
                       </td>

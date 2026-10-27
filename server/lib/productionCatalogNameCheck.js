@@ -3,8 +3,17 @@
  */
 import {
   extractProductionBaseName,
+  normalizeProductionNameInput,
   normalizeWarehousePacketNameKey,
 } from '../../src/utils/productionItemName.js';
+
+function productionNameHasSeatPreset(name) {
+  const normalized = normalizeProductionNameInput(name);
+  if (!normalized) return false;
+  const fullKey = normalizeWarehousePacketNameKey(normalized);
+  const baseKey = normalizeWarehousePacketNameKey(extractProductionBaseName(normalized));
+  return Boolean(fullKey && baseKey && fullKey !== baseKey);
+}
 
 export function productionNamesConflict(proposedName, existingName) {
   const proposed = String(proposedName || '').trim();
@@ -17,6 +26,14 @@ export function productionNamesConflict(proposedName, existingName) {
 
   const baseA = normalizeWarehousePacketNameKey(extractProductionBaseName(proposed));
   const baseB = normalizeWarehousePacketNameKey(extractProductionBaseName(existing));
+  const presetA = productionNameHasSeatPreset(proposed);
+  const presetB = productionNameHasSeatPreset(existing);
+
+  // Same line, different seater presets (e.g. Stella 3 Seater vs Stella 2 Seater).
+  if (baseA && baseB && baseA === baseB && presetA && presetB && fullA !== fullB) {
+    return false;
+  }
+
   if (baseA && baseB && baseA === baseB) return true;
 
   // e.g. catalog product "Olivia" blocks "Olivia Single Seater"

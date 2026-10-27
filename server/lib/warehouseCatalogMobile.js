@@ -426,6 +426,15 @@ export async function saveAssemblyForMobile(sb, payload) {
   const hasColorVariants = Boolean(payload?.has_color_variants);
   const colorIds = hasColorVariants ? (payload?.color_ids || []) : [];
   const turkishName = String(payload?.turkish_name || '').trim();
+  const parseDim = (value) => {
+    const s = String(value ?? '').trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const dimLength = parseDim(payload?.dim_length ?? payload?.dimLength);
+  const dimWidth = parseDim(payload?.dim_width ?? payload?.dimWidth);
+  const dimHeight = parseDim(payload?.dim_height ?? payload?.dimHeight);
   const unitsPerCartonRaw = payload?.units_per_carton;
   let unitsPerCarton = unitsPerCartonRaw === '' || unitsPerCartonRaw == null
     ? 1
@@ -463,6 +472,9 @@ export async function saveAssemblyForMobile(sb, payload) {
     item_kind: WAREHOUSE_ITEM_KIND.PRODUCT,
     units_per_carton: unitsPerCarton,
     turkish_name: turkishName || null,
+    dim_length: dimLength,
+    dim_width: dimWidth,
+    dim_height: dimHeight,
     created_at: now,
     updated_at: now,
   };

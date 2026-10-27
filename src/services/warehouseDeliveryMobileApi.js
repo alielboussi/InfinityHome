@@ -40,3 +40,8 @@ export function setDeliveryEntryReceiverCheck(entryId, checked) {
 export function acceptWarehouseDeliverySession(sessionId) {
   return warehouseDeliveryMobileOp('delivery-accept', { session_id: sessionId });
 }
+
+/** Hassan mirror / catalog admin — next mobile session gets WHD0000000001. */
+export function resetWarehouseDeliveryNumberSequence() {
+  return warehouseDeliveryMobileOp('delivery-number-reset');
+}

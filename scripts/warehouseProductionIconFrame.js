@@ -1,5 +1,5 @@
 /**
- * Rounded launcher icons for Upholstery Production (safe padding, no crop).
+ * Rounded launcher icons for Production app (safe padding, no crop).
  */
 const fs = require('fs');
 const path = require('path');
@@ -7,8 +7,10 @@ const sharp = require('sharp');
 
 const SIZE = 1024;
 const CORNER_RADIUS = 200;
-/** Inset artwork so Android/iOS masks never clip edges. */
-const ICON_CONTENT_SCALE = 0.78;
+/** Matches warehouse-production app.config.js splash + adaptiveIcon backgroundColor. */
+const PRODUCTION_ICON_BACKGROUND = '#000928';
+/** Inset artwork so circle/squircle launcher masks never clip the saw handle or wood. */
+const ICON_CONTENT_SCALE = 0.72;
 
 async function sampleBackgroundHex(imagePath) {
   const px = await sharp(imagePath).extract({ left: 0, top: 0, width: 1, height: 1 }).raw().toBuffer();
@@ -72,7 +74,7 @@ async function buildIconPng(sourcePath, backgroundHex) {
 async function postprocessWarehouseProductionIcons({ sourcePath, assetsDir } = {}) {
   const root = path.resolve(__dirname, '..');
   const assets = assetsDir || path.join(root, 'mobile-apps/warehouse-production/assets');
-  const defaultSource = path.join(root, 'Upholstery Production.png');
+  const defaultSource = path.join(root, 'ICON_PRODUCTION.png');
   const source = sourcePath || defaultSource;
   if (!fs.existsSync(source)) {
     throw new Error(`Icon source not found: ${source}`);
@@ -84,7 +86,8 @@ async function postprocessWarehouseProductionIcons({ sourcePath, assetsDir } = {
     await sharp(source).png().toFile(rawCopy);
   }
 
-  const backgroundHex = await sampleBackgroundHex(source);
+  const sampled = await sampleBackgroundHex(source);
+  const backgroundHex = PRODUCTION_ICON_BACKGROUND || sampled;
   const framed = await buildIconPng(source, backgroundHex);
 
   const iconPath = path.join(assets, 'icon.png');

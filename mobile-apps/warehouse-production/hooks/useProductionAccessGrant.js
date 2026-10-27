@@ -68,7 +68,7 @@ export function useProductionAccessGrant() {
 
       if (!nextAllowed) {
         setAccessHint(
-          'Production app access is off in User Access. On the web, open User Access → Upholstery Production, enable access, Save, then tap Check access again.',
+          'Production app access is off in User Access. On the web, open User Access → Production, enable access, Save, then tap Check access again.',
         );
       }
     } finally {

@@ -1,6 +1,16 @@
-# Upholstery Production (Expo Android)
+# Production (Expo Android)
 
 Warehouse production on phones: **create packets**, **add stock**, labels via **Zebra Weblink** (no print PC).
+
+## App icon
+
+Launcher icons are generated from repo-root **`ICON_PRODUCTION.png`** (rounded corners, safe inset for Android adaptive icon):
+
+```bash
+npm run icons
+```
+
+Writes `assets/icon.png` and `assets/adaptive-icon.png`.
 
 ## Setup
 

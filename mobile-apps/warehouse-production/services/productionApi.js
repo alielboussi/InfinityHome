@@ -20,6 +20,12 @@ export async function fetchProductionCatalog() {
   return productionOp('catalog-list');
 }
 
+export async function fetchProductionRecentBaseNames() {
+  const payload = await productionOp('production-recent-base-names', {});
+  const list = payload?.base_names || payload?.baseNames || [];
+  return Array.isArray(list) ? list : [];
+}
+
 async function suggestProductionBaseNameLocally(preset) {
   const {
     buildProductionItemName,
@@ -107,6 +113,9 @@ export async function createProductionPacket({
   warehouseLocationId,
   initialQuantity,
   imageBase64,
+  dimLength,
+  dimWidth,
+  dimHeight,
   onPhotoAttempt,
 } = {}) {
   const hasPhoto = Boolean(String(imageBase64 || '').trim());
@@ -119,6 +128,9 @@ export async function createProductionPacket({
     client_source: CLIENT_SOURCE,
     defer_product_photo: hasPhoto,
     require_product_photo: false,
+    dim_length: dimLength,
+    dim_width: dimWidth,
+    dim_height: dimHeight,
   });
   const parsed = parseCreateProductionPacketResponse(createPayload);
   if (!hasPhoto) {

@@ -1,8 +1,43 @@
 import { titleCaseWords } from './titleCaseWords';
 
-export const PRODUCTION_SEAT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater', 'Lounge Chair'];
+/** Keep in sync with src/utils/productionItemName.js */
+export const PRODUCTION_SEATER_PRESETS = Object.freeze([
+  '3 Seater',
+  '2 Seater',
+  'Single Seater',
+  'Lounge Chair',
+]);
 
-/** Keep in sync with src/utils/productionItemName.js — girl names only. */
+export const PRODUCTION_CARPENTRY_PRESETS = Object.freeze([
+  'Coffee Table',
+  'Side Table',
+  'Dining Table',
+  'Dining Chair',
+  'Buffet',
+  'Buffet Mirror',
+  'Dresser Table',
+  'Dresser Mirror',
+]);
+
+export const PRODUCTION_LEGACY_PRESET_SUFFIXES = Object.freeze([
+  'Dresser Table Mirror',
+]);
+
+export const PRODUCTION_ITEM_PRESETS = Object.freeze([
+  ...PRODUCTION_SEATER_PRESETS,
+  ...PRODUCTION_CARPENTRY_PRESETS,
+]);
+
+export const PRODUCTION_SEAT_PRESETS = PRODUCTION_ITEM_PRESETS;
+
+export function isProductionSeaterPreset(preset) {
+  return PRODUCTION_SEATER_PRESETS.includes(String(preset || '').trim());
+}
+
+export function isProductionCarpentryPreset(preset) {
+  return PRODUCTION_CARPENTRY_PRESETS.includes(String(preset || '').trim());
+}
+
 const PRODUCTION_GIRL_NAME_POOL = Object.freeze([
   'Aisha', 'Amara', 'Anika', 'Aria', 'Aurora', 'Ayla', 'Bella', 'Bianca', 'Carmen', 'Celeste',
   'Chiara', 'Cleo', 'Dahlia', 'Elena', 'Elise', 'Esme', 'Fatima', 'Freya', 'Gia', 'Giselle',
@@ -59,4 +94,21 @@ export function buildProductionItemName(baseName, preset) {
   if (!base) return '';
   if (!p) return base;
   return `${base} ${p}`;
+}
+
+function allPresetSuffixes() {
+  return [...PRODUCTION_ITEM_PRESETS, ...PRODUCTION_LEGACY_PRESET_SUFFIXES]
+    .sort((a, b) => b.length - a.length);
+}
+
+export function extractProductionBaseName(productName) {
+  const n = normalizeProductionNameInput(productName);
+  if (!n) return '';
+  for (const preset of allPresetSuffixes()) {
+    const suffix = ` ${preset}`;
+    if (n.endsWith(suffix)) {
+      return n.slice(0, -suffix.length).trim();
+    }
+  }
+  return n;
 }

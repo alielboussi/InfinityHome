@@ -36,14 +36,38 @@ export async function allocateWarehouseDeliveryNumber() {
   return db.runTransaction(async (tx) => {
     const seqRef = db.collection('_sequences').doc(SEQ_DOC);
     const seqSnap = await tx.get(seqRef);
-    let value = Number(seqSnap.data()?.value);
-    if (!Number.isFinite(value) || value < 1) {
+    let value = 0;
+    if (seqSnap.exists) {
+      const data = seqSnap.data() || {};
+      value = Number(data.value);
+      if (!Number.isFinite(value)) value = 0;
+      const skipBootstrap = data.skip_bootstrap === true;
+      if (value < 1 && !skipBootstrap) {
+        value = await bootstrapSequenceFromExisting(db);
+      }
+    } else {
       value = await bootstrapSequenceFromExisting(db);
     }
     const next = value + 1;
-    tx.set(seqRef, { value: next, updated_at: new Date().toISOString() }, { merge: true });
+    tx.set(
+      seqRef,
+      { value: next, skip_bootstrap: false, updated_at: new Date().toISOString() },
+      { merge: true },
+    );
     return formatWarehouseDeliveryNumber(next);
   });
+}
+
+/** Testing only — next allocateWarehouseDeliveryNumber() returns WHD0000000001. */
+export async function resetWarehouseDeliveryNumberSequence() {
+  const db = getFirestore();
+  if (!db) throw new Error('Firebase admin not configured');
+  await db.collection('_sequences').doc(SEQ_DOC).set({
+    value: 0,
+    skip_bootstrap: true,
+    reset_at: new Date().toISOString(),
+  }, { merge: true });
+  return { next_delivery_number: formatWarehouseDeliveryNumber(1) };
 }
 
 export { formatWarehouseDeliveryNumber, parseWarehouseDeliverySequence };

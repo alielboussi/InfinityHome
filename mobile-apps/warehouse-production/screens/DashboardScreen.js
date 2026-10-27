@@ -1,14 +1,49 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
-import { kioskScreenEdges } from '../lib/kioskLayout';
+import { kioskFooterBottomPad } from '../lib/kioskLayout';
+import { useProductionDashboardTileLayout } from '../lib/productionDashLayout';
 import { theme } from '../shared/theme';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
+import { isWarehouseProductionKitweDeliveryAllowed } from '../shared/mobileAccessManifest';
 import { tUi } from '../lib/productionKioskI18n';
+
+function DashboardTile({ icon, title, width, height, onPress }) {
+  const iconSize = Math.round(Math.min(40, height * 0.28));
+  const compact = height < 100;
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        kiosk.dashTile,
+        compact && kiosk.dashTileCompact,
+        { width, height },
+        pressed && kiosk.dashTilePressed,
+      ]}
+      onPress={onPress}
+    >
+      <MaterialCommunityIcons
+        name={icon}
+        size={iconSize}
+        color={theme.primaryDark || '#0369a1'}
+        style={[kiosk.dashTileIcon, compact && { marginBottom: 4 }]}
+      />
+      <Text
+        style={[kiosk.dashBtnText, compact && kiosk.dashBtnTextCompact]}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
 
 export default function DashboardScreen({
   navigation,
+  grant,
   userDisplayName,
   userEmail,
   allowed,
@@ -16,11 +51,44 @@ export default function DashboardScreen({
   accessHint,
 }) {
   const insets = useSafeAreaInsets();
-  const { locale, toggleLocale, textAlign, ready } = useProductionKioskLocale();
+  const { locale, toggleLocale, ready } = useProductionKioskLocale();
+  const canSendDelivery = grant && isWarehouseProductionKitweDeliveryAllowed(grant);
+  const tileCount = canSendDelivery ? 3 : 2;
+  const { tileWidth, tileHeight, gap } = useProductionDashboardTileLayout(tileCount);
+
+  const tiles = [
+    {
+      key: 'create',
+      icon: 'sofa-outline',
+      title: tUi('dashCreate', locale),
+      onPress: () => navigation.navigate('Create'),
+    },
+    {
+      key: 'stock',
+      icon: 'package-variant-closed-plus',
+      title: tUi('dashStock', locale),
+      onPress: () => navigation.navigate('Stock'),
+    },
+    ...(canSendDelivery ? [{
+      key: 'delivery',
+      icon: 'truck-delivery-outline',
+      title: tUi('dashDelivery', locale),
+      onPress: () => navigation.navigate('KitweSendHome'),
+    }] : []),
+  ];
 
   if (!allowed) {
     return (
-      <View style={[kiosk.screen, styles.center, { paddingTop: insets.top + 16, paddingHorizontal: 20 }]}>
+      <View style={[
+        kiosk.screen,
+        styles.root,
+        {
+          paddingTop: insets.top + 16,
+          paddingBottom: kioskFooterBottomPad(insets) + 16,
+          paddingHorizontal: 20,
+        },
+      ]}
+      >
         <Text style={kiosk.noticeErr}>{tUi('accessDenied', ready ? locale : 'ar')}</Text>
         {userEmail ? (
           <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>Signed in as {userEmail}</Text>
@@ -40,8 +108,15 @@ export default function DashboardScreen({
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={[kiosk.screen, kioskScreenEdges(insets, 28)]}
+    <View
+      style={[
+        kiosk.screen,
+        styles.root,
+        {
+          paddingTop: insets.top + 8,
+          paddingBottom: kioskFooterBottomPad(insets) + 8,
+        },
+      ]}
     >
       <ProductionKioskTopBar
         title={tUi('dashTitle', locale)}
@@ -49,38 +124,34 @@ export default function DashboardScreen({
         onToggleLocale={toggleLocale}
       />
       {(userDisplayName || userEmail) ? (
-        <Text style={[styles.user, { textAlign }]}>{userDisplayName || userEmail}</Text>
+        <Text style={[styles.user, { textAlign: 'center' }]} numberOfLines={1}>
+          {userDisplayName || userEmail}
+        </Text>
       ) : null}
-      <View style={kiosk.dashGrid}>
-        <Pressable
-          style={({ pressed }) => [kiosk.dashBtn, pressed && kiosk.dashBtnPressed]}
-          onPress={() => navigation.navigate('Create')}
-        >
-          <Text style={[kiosk.dashBtnText, { textAlign }]}>
-            {tUi('dashCreate', locale)}
-          </Text>
-          <Text style={[kiosk.dashBtnSub, { textAlign }]}>
-            {tUi('dashCreateSub', locale)}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [kiosk.dashBtn, pressed && kiosk.dashBtnPressed]}
-          onPress={() => navigation.navigate('Stock')}
-        >
-          <Text style={[kiosk.dashBtnText, { textAlign }]}>
-            {tUi('dashStock', locale)}
-          </Text>
-          <Text style={[kiosk.dashBtnSub, { textAlign }]}>
-            {tUi('dashStockSub', locale)}
-          </Text>
-        </Pressable>
+
+      <View style={[styles.gridArea, { gap }]}>
+        {tiles.map((tile) => (
+          <DashboardTile
+            key={tile.key}
+            icon={tile.icon}
+            title={tile.title}
+            width={tileWidth}
+            height={tileHeight}
+            onPress={tile.onPress}
+          />
+        ))}
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { justifyContent: 'center', flexGrow: 1 },
+  root: { flex: 1 },
+  gridArea: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   user: { color: theme.textMuted, marginBottom: 4, fontSize: 15, fontWeight: '500' },
   hint: { color: theme.textMuted, marginTop: 10, fontSize: 13, lineHeight: 18 },
 });
