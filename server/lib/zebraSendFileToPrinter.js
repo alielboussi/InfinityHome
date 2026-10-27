@@ -2,6 +2,7 @@ import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import { buildWarehouseProductionLabelZpl } from './zebraProductionLabelZpl.js';
 
 const ZEBRA_SEND_URL = 'https://api.zebra.com/v2/devices/printers/send';
+const ZEBRA_SEND_TIMEOUT_MS = Math.max(3000, Number(process.env.ZEBRA_SEND_TIMEOUT_MS || 10000));
 
 function zebraPrintConfig() {
   const apiKey = String(process.env.ZEBRA_PRINT_API_KEY || process.env.ZEBRA_PRINT_APIKEY || '').trim();
@@ -30,14 +31,25 @@ export async function sendZplToZebraPrinter({ zpl, serialNumbers } = {}) {
   sns.forEach((sn) => form.append('sn', sn));
   form.append('zpl_file', new Blob([zplText], { type: 'text/plain' }), 'production-label.zpl');
 
-  const response = await fetch(ZEBRA_SEND_URL, {
-    method: 'POST',
-    headers: {
-      apikey: cfg.apiKey,
-      tenant: cfg.tenant,
-    },
-    body: form,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(new Error(`Zebra print timed out after ${ZEBRA_SEND_TIMEOUT_MS}ms`)),
+    ZEBRA_SEND_TIMEOUT_MS,
+  );
+  let response;
+  try {
+    response = await fetch(ZEBRA_SEND_URL, {
+      method: 'POST',
+      headers: {
+        apikey: cfg.apiKey,
+        tenant: cfg.tenant,
+      },
+      body: form,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const bodyText = await response.text().catch(() => '');
   if (!response.ok) {

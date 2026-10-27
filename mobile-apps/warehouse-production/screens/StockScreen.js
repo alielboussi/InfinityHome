@@ -190,7 +190,20 @@ export default function StockScreen({ navigation }) {
       if (result?.label) {
         const copies = Number(result?.labelCopies ?? result?.label_copies);
         setLabelPreview(result.label);
-        setLabelPng(result.labelPreviewPngBase64 || result.label_preview_png_base64 || '');
+        let png = result.labelPreviewPngBase64 || result.label_preview_png_base64 || '';
+        if (!png && result.label.sku && result.label.name) {
+          try {
+            const prev = await fetchProductionLabelPreview({
+              name: result.label.name,
+              sku: result.label.sku,
+              printedAt: result.label.printed_at,
+            });
+            png = prev?.label_preview_png_base64 || '';
+          } catch {
+            // preview is optional
+          }
+        }
+        setLabelPng(png);
         setLabelCopies(Number.isFinite(copies) && copies > 0 ? copies : delta);
       } else if (delta > 0) {
         setLabelCopies(delta);

@@ -22,6 +22,7 @@ import {
   bulkSyncProductTurkishNames,
   setAssemblyProductQuantityForMobile,
   setPacketQuantityForMobile,
+  upsertFinishedAssemblyInventoryQuantity,
 } from '../lib/warehouseCatalogMobile.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
 import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeliveryWhatsAppMessage.js';
@@ -532,10 +533,13 @@ async function opProductionStockIncrease(body, user) {
     qtyBefore = Math.max(0, Number(invRow?.quantity) || 0);
     qtyAfter = qtyBefore + delta;
 
-    await setAssemblyProductQuantityForMobile(sb, {
-      assembly_id: assemblyId,
-      warehouse_location_id: warehouseLocationId,
+    await upsertFinishedAssemblyInventoryQuantity(sb, {
+      assemblyId,
+      locationId: warehouseLocationId,
       quantity: qtyAfter,
+    });
+    void recomputeWarehouseLocationStockServer(sb, warehouseLocationId).catch((reErr) => {
+      console.warn('[warehouse-mobile] warehouse stock recompute deferred:', reErr?.message || reErr);
     });
 
     labelName = assembly.name;
@@ -618,7 +622,7 @@ async function opProductionStockIncrease(body, user) {
     name: labelName,
     sku: labelSku,
     printedAt,
-    skipPng: false,
+    skipPng: fastMobile,
   });
 
   const packetCompat = assembly

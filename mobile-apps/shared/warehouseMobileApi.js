@@ -60,7 +60,7 @@ export async function warehouseMobileRequest(op, body = {}) {
       const gateway = /deployment|function_invocation_timeout|DOCTYPE|<html/i.test(rawBody);
       const err = new Error(
         gateway
-          ? 'Server timed out (photo or labels). Check Warehouse products — the item may have saved. Wait a minute and try again.'
+          ? 'Server timed out. Your change may have saved — refresh and check qty before trying again.'
           : `Request failed (${response.status})`,
       );
       err.gateway = gateway;
@@ -80,7 +80,7 @@ export async function warehouseMobileRequest(op, body = {}) {
       tooLarge
         ? 'Photo upload is too large. Retake the photo (move closer) or reload the app after updating.'
         : timedOut
-          ? 'Server timed out (photo or labels). Check Warehouse products — the item may have saved. Wait a minute and try again.'
+          ? 'Server timed out. Your change may have saved — refresh and check qty before trying again.'
           : rawError,
     );
     err.details = payload?.details || null;

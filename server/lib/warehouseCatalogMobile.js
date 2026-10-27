@@ -653,6 +653,25 @@ export async function setAssemblyProductQuantityForMobile(sb, body) {
   };
 }
 
+/**
+ * Finished-product inventory only (no full-catalog load). Used by production stock increase.
+ */
+export async function upsertFinishedAssemblyInventoryQuantity(sb, { assemblyId, locationId, quantity }) {
+  const assembly_id = String(assemblyId || '').trim();
+  const location_id = String(locationId || '').trim();
+  const qty = Math.max(0, Math.floor(Number(quantity) || 0));
+  if (!assembly_id) throw new Error('assembly_id is required.');
+  if (!location_id) throw new Error('warehouse_location_id is required.');
+  const { error } = await sb.from(ASSEMBLY_INVENTORY).upsert({
+    assembly_id,
+    location_id,
+    quantity: qty,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'assembly_id,location_id' });
+  if (error) throw new Error(error.message || 'Failed to update finished quantity');
+  return { assembly_id, location_id, quantity: qty };
+}
+
 export async function setPacketQuantityForMobile(sb, body) {
   const packetId = String(body.packet_id || '');
   const locationId = String(body.warehouse_location_id || body.location_id || '');
