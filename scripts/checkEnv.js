@@ -132,6 +132,16 @@ try {
   process.exit(1);
 }
 
+try {
+  require('child_process').execSync('node scripts/verifyProductionCatalogNameCheck.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-catalog-name:fail] verifyProductionCatalogNameCheck.js failed.');
+  process.exit(1);
+}
+
 for (const script of [
   'scripts/verifyStocktakeVarianceLedger.js',
   'scripts/verifyStocktakeTransferVariance.js',

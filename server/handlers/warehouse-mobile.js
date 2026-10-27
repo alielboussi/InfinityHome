@@ -72,6 +72,7 @@ import {
 import { HASSAN_AWAD } from '../../src/accessControl.js';
 import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku.js';
 import { enqueueWarehouseProductionLabelJob } from '../lib/productionLabelPrint.js';
+import { findProductionNameClash } from '../lib/productionCatalogNameCheck.js';
 import {
   buildProductionLabelMeta,
   buildWarehouseProductionLabelPngBase64,
@@ -312,10 +313,10 @@ async function opProductionPacketCreate(body, user) {
   const initialQty = Math.max(0, Number(body.initial_quantity) || 0);
   if (!familySku || !name) throw new Error('SKU and name are required.');
   if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
-  await assertUniqueProductionProductName(sb, name);
-  const lineBase = extractProductionBaseName(name);
-  if (lineBase && await isProductionBaseNameTaken(sb, lineBase)) {
-    throw new Error(`A product named "${lineBase}" already exists. Choose a different name.`);
+  const nameClash = await findProductionNameClash(sb, name);
+  if (nameClash) {
+    const scope = nameClash.kind === 'catalog' ? 'product catalog' : 'warehouse';
+    throw new Error(`"${nameClash.name}" is already in your ${scope}. Choose a different name.`);
   }
   await assertUniqueSku(sb, familySku);
 
@@ -344,7 +345,9 @@ async function opProductionPacketCreate(body, user) {
       updated_at: now,
     }, { onConflict: 'assembly_id,location_id' });
     if (invErr) throw new Error(invErr.message || 'Failed to set opening stock');
-    await recomputeWarehouseLocationStockServer(sb, warehouseLocationId);
+    recomputeWarehouseLocationStockServer(sb, warehouseLocationId).catch((reErr) => {
+      console.warn('[warehouse-mobile] warehouse stock recompute deferred:', reErr?.message || reErr);
+    });
 
     const deferProductPhoto = body.defer_product_photo === true
       || body.deferProductPhoto === true;
@@ -787,66 +790,33 @@ async function opProductionEditStockIncrease(body, user) {
   return { log: updated, packet_id: packetId, warehouse_location_id: locationId };
 }
 
-async function isProductionBaseNameTaken(sb, baseName, { excludePacketId, excludeAssemblyId } = {}) {
-  const key = normalizeWarehousePacketNameKey(baseName);
-  if (!key) return false;
-  const [{ data: packets, error: pErr }, { data: assemblies, error: aErr }] = await Promise.all([
-    sb.from('warehouse_packets').select('id, name'),
-    sb.from('warehouse_assemblies').select('id, name'),
-  ]);
-  if (pErr) throw new Error(pErr.message || 'Failed to validate packet name');
-  if (aErr) throw new Error(aErr.message || 'Failed to validate product name');
-  const packetTaken = (packets || []).some((row) => {
-    if (excludePacketId && String(row.id) === String(excludePacketId)) return false;
-    const rowBase = normalizeWarehousePacketNameKey(extractProductionBaseName(row.name));
-    return rowBase === key;
-  });
-  if (packetTaken) return true;
-  return (assemblies || []).some((row) => {
-    if (excludeAssemblyId && String(row.id) === String(excludeAssemblyId)) return false;
-    const rowBase = normalizeWarehousePacketNameKey(extractProductionBaseName(row.name));
-    return rowBase === key;
-  });
+async function isProductionBaseNameTaken(sb, baseName, options = {}) {
+  const probe = String(baseName || '').trim();
+  if (!probe) return false;
+  const clash = await findProductionNameClash(sb, probe, options);
+  return Boolean(clash);
 }
 
 async function opPacketNameCheck(body) {
   const name = titleCaseWords(String(body.name || '').trim());
   if (!name) return { taken: false, name: '' };
   const sb = getService();
-  const key = normalizeWarehousePacketNameKey(name);
   const excludePacketId = body.exclude_packet_id || body.excludePacketId || '';
   const excludeAssemblyId = body.exclude_assembly_id || body.excludeAssemblyId || '';
-  const [{ data: packets, error: pErr }, { data: assemblies, error: aErr }] = await Promise.all([
-    sb.from('warehouse_packets').select('id, name'),
-    sb.from('warehouse_assemblies').select('id, name'),
-  ]);
-  if (pErr) throw new Error(pErr.message || 'Failed to validate packet name');
-  if (aErr) throw new Error(aErr.message || 'Failed to validate product name');
-
-  const allNames = [
-    ...(packets || []).map((row) => ({ ...row, kind: 'packet' })),
-    ...(assemblies || []).map((row) => ({ ...row, kind: 'assembly' })),
-  ];
-  const clash = allNames.find((row) => {
-    if (row.kind === 'packet' && String(row.id) === String(excludePacketId)) return false;
-    if (row.kind === 'assembly' && String(row.id) === String(excludeAssemblyId)) return false;
-    return normalizeWarehousePacketNameKey(row.name) === key;
+  const clash = await findProductionNameClash(sb, name, {
+    excludePacketId,
+    excludeAssemblyId,
   });
-  if (clash) {
-    return { taken: true, name, existing: clash.name };
+  if (!clash) {
+    return { taken: false, name };
   }
-  const baseKey = normalizeWarehousePacketNameKey(extractProductionBaseName(name));
-  const baseClash = allNames.find((row) => {
-    if (row.kind === 'packet' && String(row.id) === String(excludePacketId)) return false;
-    if (row.kind === 'assembly' && String(row.id) === String(excludeAssemblyId)) return false;
-    const rowBase = normalizeWarehousePacketNameKey(extractProductionBaseName(row.name));
-    return rowBase === baseKey && normalizeWarehousePacketNameKey(row.name) !== key;
-  });
+  const sameFullName = normalizeWarehousePacketNameKey(clash.name) === normalizeWarehousePacketNameKey(name);
   return {
-    taken: Boolean(baseClash),
+    taken: true,
     name,
-    existing: baseClash?.name || null,
-    reason: baseClash ? 'base_name_in_use' : null,
+    existing: clash.name,
+    existing_kind: clash.kind,
+    reason: sameFullName ? 'exact_name' : 'base_name_in_use',
   };
 }
 

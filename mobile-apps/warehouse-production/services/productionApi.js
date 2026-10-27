@@ -64,8 +64,19 @@ export async function isProductionPacketNameTaken(name, options = {}) {
   const payload = await productionOp('packet-name-check', {
     name: trimmed,
     exclude_packet_id: options.excludePacketId,
+    exclude_assembly_id: options.excludeAssemblyId,
   });
   return Boolean(payload.taken);
+}
+
+export async function checkProductionProductName(name, options = {}) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return { taken: false, name: '' };
+  return productionOp('packet-name-check', {
+    name: trimmed,
+    exclude_packet_id: options.excludePacketId,
+    exclude_assembly_id: options.excludeAssemblyId,
+  });
 }
 
 function parseCreateProductionPacketResponse(payload) {
@@ -127,8 +138,12 @@ export async function createProductionPacket({
   try {
     await attachProductionProductPhoto({ assemblyId, imageBase64 });
   } catch (photoErr) {
+    const timedOut = photoErr?.gateway === true
+      || /timed out|deployment|function_invocation_timeout/i.test(String(photoErr?.message || ''));
     const err = new Error(
-      photoErr?.message || 'AI photo processing failed.',
+      timedOut
+        ? 'Product saved. AI photo timed out — open Warehouse and add the image, or save again with a new name after deleting the duplicate.'
+        : (photoErr?.message || 'AI photo processing failed.'),
     );
     err.code = 'product_saved_photo_failed';
     err.createResult = parsed;

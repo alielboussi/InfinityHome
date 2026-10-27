@@ -33,7 +33,6 @@ import {
   createProductionPacket,
   fetchProductionCatalog,
   fetchProductionSuggestedBaseName,
-  isProductionPacketNameTaken,
 } from '../services/productionApi';
 export default function CreateScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -124,9 +123,15 @@ export default function CreateScreen({ navigation }) {
   };
 
   const ensureProductNameAvailable = async (fullName) => {
-    const taken = await isProductionPacketNameTaken(fullName);
-    if (taken) {
-      setError(tUi('duplicateName', locale));
+    const { checkProductionProductName } = await import('../services/productionApi');
+    const check = await checkProductionProductName(fullName);
+    if (check?.taken) {
+      const existing = String(check.existing || '').trim();
+      setError(
+        existing
+          ? `${tUi('duplicateName', locale)} (${existing})`
+          : tUi('duplicateName', locale),
+      );
       return false;
     }
     return true;
@@ -249,9 +254,7 @@ export default function CreateScreen({ navigation }) {
           setLabelPng(partial.labelPreviewPngBase64 || '');
           setLabelCopies(labelCount);
         }
-        showSaveFailure(
-          `${msg} The product is in Warehouse — add the photo again from the portal or retry save with a new name.`,
-        );
+        showSaveFailure(msg);
         return;
       }
       if (msg.toLowerCase().includes('already exists')) {
