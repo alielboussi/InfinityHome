@@ -134,7 +134,22 @@ const UI_STRINGS = {
   deliveryAddSection: { en: 'Add products', ar: 'إضافة منتجات' },
   deliveryCartTitle: { en: 'Delivery cart', ar: 'سلة التسليم' },
   deliveryCartEmpty: { en: 'No products yet — search or scan a packet above.', ar: 'لا منتجات بعد — ابحث أو امسح طردًا أعلاه.' },
-  deliveryRemoveProduct: { en: 'Remove', ar: 'إزالة' },
+  deliveryRemoveProduct: { en: 'Delete', ar: 'حذف' },
+  deliveryAlertCancel: { en: 'Cancel', ar: 'إلغاء' },
+  deliveryDeleteConfirmTitle: { en: 'Remove product?', ar: 'إزالة المنتج؟' },
+  deliveryDeleteConfirmMessage: {
+    en: 'Remove {name} from the delivery cart?',
+    ar: 'إزالة {name} من سلة التسليم؟',
+  },
+  deliveryDiscardDraftTitle: { en: 'Discard product?', ar: 'إلغاء المنتج؟' },
+  deliveryDiscardDraftMessage: {
+    en: 'Clear {name} without adding it to the cart?',
+    ar: 'مسح {name} دون إضافته إلى السلة؟',
+  },
+  deliveryAddToCartHint: {
+    en: 'Tick every packet carton, then tap Add to delivery — the product appears in the cart below.',
+    ar: 'حدد كل كرتون طرد، ثم اضغط إضافة إلى التسليم — يظهر المنتج في السلة أدناه.',
+  },
   deliverySetsOnTruck: { en: 'Sets on truck: {n}', ar: 'الأطقم على الشاحنة: {n}' },
   deliveryPacketsChecked: { en: 'Packets checked: {n}', ar: 'الطرود المؤكدة: {n}' },
   deliverySendBtn: { en: 'Send delivery', ar: 'إرسال التسليم' },
@@ -161,6 +176,24 @@ const UI_STRINGS = {
     ar: 'سيرى حسن هذا في تسليمات المستودع قبل وصول الشاحنة.',
   },
   deliveryBackDashboard: { en: 'Back to dashboard', ar: 'العودة إلى لوحة التحكم' },
+  deliveryPrintTitle: { en: 'Print delivery note (A4)', ar: 'طباعة مذكرة التسليم (A4)' },
+  deliveryPrintHint: {
+    en: 'Printers on your Wi‑Fi appear below. Tap one, then confirm print on the next screen (Android).',
+    ar: 'تظهر الطابعات على شبكة الواي فاي أدناه. اضغط على واحدة ثم أكد الطباعة في الشاشة التالية.',
+  },
+  deliveryPrintRescan: { en: 'Search again', ar: 'بحث مرة أخرى' },
+  deliveryPrintSystemPicker: { en: 'Choose printer (system list)', ar: 'اختر الطابعة (قائمة النظام)' },
+  deliveryPrintSkip: { en: 'Skip printing', ar: 'تخطي الطباعة' },
+  deliveryPrintNoPrinters: {
+    en: 'No printers found. Use “Choose printer” or install HP Smart / Mopria on this phone.',
+    ar: 'لم يُعثر على طابعات. استخدم «اختر الطابعة» أو ثبّت HP Smart / Mopria.',
+  },
+  deliveryPrintDiscoveryUnavailable: {
+    en: 'Network printer search needs the Production APK (not Expo Go). You can still use the system printer list.',
+    ar: 'بحث الطابعات يتطلب تطبيق Production (ليس Expo Go). يمكنك استخدام قائمة النظام.',
+  },
+  deliveryPrintScanFailed: { en: 'Printer search failed.', ar: 'فشل البحث عن الطابعات.' },
+  deliveryPrintFailed: { en: 'Print failed.', ar: 'فشلت الطباعة.' },
   deliveryScanBtn: { en: 'Scan packet', ar: 'مسح الطرد' },
   deliveryScanPickTitle: { en: 'Which product?', ar: 'أي منتج؟' },
   deliveryScanPickHint: {

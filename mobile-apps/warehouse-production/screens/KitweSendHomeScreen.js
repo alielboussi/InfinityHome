@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -19,12 +20,29 @@ import {
 } from '../lib/deliveryAssemblyChecks';
 import { assembliesUsingPacket, findWarehousePacketByScan } from '../lib/deliveryPacketAssemblies';
 import { sortDeliveryDriversByName } from '../lib/sortDeliveryDrivers';
+import { useProductionAccessGrant } from '../hooks/useProductionAccessGrant';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { theme } from '../shared/theme';
+
+function buildPrintGroupsFromCart(groups, byAssembly) {
+  return (groups || []).map((g) => {
+    const packetRows = byAssembly.get(String(g.assembly_id)) || [];
+    const u = Math.max(1, Number(g.units) || 1);
+    return {
+      assembly_name: g.assembly_name,
+      units: u,
+      lines: packetRows.map((p) => ({
+        name: p.name,
+        packet_number: p.packet_number,
+        qty: u * Math.max(1, Number(p.qty_per_unit) || 1),
+      })),
+    };
+  });
+}
 
 function buildScansFromChecks(packetRows, unitsNum, checks) {
   const scans = [];
@@ -39,6 +57,7 @@ function buildScansFromChecks(packetRows, unitsNum, checks) {
 
 export default function KitweSendHomeScreen({ navigation }) {
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
+  const { userDisplayName: supervisorName } = useProductionAccessGrant();
   const [sessionId, setSessionId] = useState('');
   const [deliveryNumber, setDeliveryNumber] = useState('');
   const [drivers, setDrivers] = useState([]);
@@ -198,8 +217,39 @@ export default function KitweSendHomeScreen({ navigation }) {
     clearDraft();
   };
 
-  const removeFromCart = (assemblyId) => {
-    setGroups((prev) => prev.filter((g) => String(g.assembly_id) !== String(assemblyId)));
+  const confirmRemoveFromCart = (assemblyId, assemblyName) => {
+    const name = String(assemblyName || '').trim() || '—';
+    Alert.alert(
+      tUi('deliveryDeleteConfirmTitle', locale),
+      tUi('deliveryDeleteConfirmMessage', locale).replace('{name}', name),
+      [
+        { text: tUi('deliveryAlertCancel', locale), style: 'cancel' },
+        {
+          text: tUi('deliveryRemoveProduct', locale),
+          style: 'destructive',
+          onPress: () => {
+            setGroups((prev) => prev.filter((g) => String(g.assembly_id) !== String(assemblyId)));
+          },
+        },
+      ],
+    );
+  };
+
+  const confirmDiscardDraft = () => {
+    if (!draftAssembly) return;
+    const name = String(draftAssembly.name || '').trim() || '—';
+    Alert.alert(
+      tUi('deliveryDiscardDraftTitle', locale),
+      tUi('deliveryDiscardDraftMessage', locale).replace('{name}', name),
+      [
+        { text: tUi('deliveryAlertCancel', locale), style: 'cancel' },
+        {
+          text: tUi('deliveryRemoveProduct', locale),
+          style: 'destructive',
+          onPress: () => clearDraft(),
+        },
+      ],
+    );
   };
 
   const toggleCartPacket = (assemblyId, packetId, requiredQty) => {
@@ -266,7 +316,12 @@ export default function KitweSendHomeScreen({ navigation }) {
           scans: g.scans,
         })),
       });
-      navigation.replace('KitweSendDone', { deliveryNumber });
+      navigation.replace('KitweSendDone', {
+        deliveryNumber,
+        driverName,
+        supervisorName,
+        printGroups: buildPrintGroupsFromCart(groups, byAssembly),
+      });
     } catch (err) {
       setError(err?.message || tUi('deliverySubmitFailed', locale));
     } finally {
@@ -369,8 +424,14 @@ export default function KitweSendHomeScreen({ navigation }) {
                 </Pressable>
               );
             })}
+            <Text style={[kiosk.metaLine, { textAlign, marginTop: 4 }]}>
+              {tUi('deliveryAddToCartHint', locale)}
+            </Text>
             <Pressable style={[kiosk.btnOutlinePrimary, styles.addToCartBtn]} onPress={addDraftToCart}>
               <Text style={kiosk.btnOutlinePrimaryText}>{tUi('deliveryAddToDelivery', locale)}</Text>
+            </Pressable>
+            <Pressable style={kiosk.draftDeleteBtn} onPress={confirmDiscardDraft}>
+              <Text style={kiosk.draftDeleteBtnText}>{tUi('deliveryRemoveProduct', locale)}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -396,7 +457,10 @@ export default function KitweSendHomeScreen({ navigation }) {
                     {tUi('deliveryPacketsChecked', locale).replace('{n}', String(checkedCount))}
                   </Text>
                 </View>
-                <Pressable onPress={() => removeFromCart(g.assembly_id)} hitSlop={8}>
+                <Pressable
+                  onPress={() => confirmRemoveFromCart(g.assembly_id, g.assembly_name)}
+                  hitSlop={8}
+                >
                   <Text style={kiosk.cartRemoveText}>{tUi('deliveryRemoveProduct', locale)}</Text>
                 </Pressable>
               </View>

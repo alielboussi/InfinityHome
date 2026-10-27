@@ -54,6 +54,12 @@ module.exports = {
       package: 'com.bestrest.warehouseproduction',
       googleServicesFile: './google-services.json',
       softwareKeyboardLayoutMode: 'resize',
+      permissions: [
+        'INTERNET',
+        'ACCESS_NETWORK_STATE',
+        'ACCESS_WIFI_STATE',
+        'CHANGE_WIFI_MULTICAST_STATE',
+      ],
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#000928',

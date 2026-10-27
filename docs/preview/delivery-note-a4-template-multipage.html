@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    @page { size: A4 portrait; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Helvetica, Arial, sans-serif;
+      color: #111;
+      font-size: 11pt;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 14mm 16mm 18mm;
+      border: 3px solid #1565c0;
+      page-break-after: always;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .page:last-child { page-break-after: auto; }
+    .doc-header { text-align: center; margin-bottom: 10mm; }
+    .title {
+      margin: 0 0 4mm;
+      font-size: 22pt;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .subtitle {
+      margin: 0;
+      font-size: 13pt;
+      font-weight: 700;
+      color: #333;
+    }
+    .delivery-num {
+      margin: 2mm 0 4mm;
+      font-size: 14pt;
+      font-weight: 800;
+      color: #1565c0;
+    }
+    .datetime {
+      margin: 0;
+      font-size: 11pt;
+      color: #333;
+    }
+    .cart-table {
+      width: 100%;
+      border-collapse: collapse;
+      flex: 1 0 auto;
+    }
+    .cart-table th,
+    .cart-table td {
+      border: 1px solid #333;
+      padding: 5px 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+    .cart-table th {
+      background: #e8f0fe;
+      font-weight: 700;
+    }
+    .cart-table .qty {
+      width: 22mm;
+      text-align: center;
+    }
+    .product-row td { background: #fafafa; }
+    .packet-row .packet-label { padding-left: 14px; }
+    .empty { text-align: center; color: #666; }
+    .signatures {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-top: 12mm;
+      gap: 10mm;
+    }
+    .sig-col { width: 48%; }
+    .sig-left { text-align: left; }
+    .sig-right { text-align: right; }
+    .sig-label {
+      font-size: 10.5pt;
+      margin-bottom: 2mm;
+      line-height: 1.35;
+    }
+    .sig-box {
+      width: 2cm;
+      height: 2cm;
+      border: 1px solid #333;
+      display: inline-block;
+      margin-top: 1mm;
+    }
+    .sig-right .sig-box { margin-left: auto; }
+    .page-num {
+      margin: 8mm 0 0;
+      text-align: center;
+      font-size: 10pt;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+  
+    <section class="page">
+      
+    <header class="doc-header">
+      <h1 class="title">Delivery</h1>
+      <h2 class="subtitle">Delivery #</h2>
+      <p class="delivery-num">WHD0000000999</p>
+      <p class="datetime"><span class="date">27/10/2026</span> &nbsp;·&nbsp; <span class="time">17:30 CAT</span></p>
+    </header>
+      
+    <table class="cart-table">
+      <thead>
+        <tr>
+          <th>Delivery cart</th>
+          <th class="qty">Qty</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+    <tr class="product-row">
+      <td><strong>Lounge Suite Milano</strong></td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#1 Carton 1</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#2 Carton 2</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#3 Carton 3</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#4 Carton 4</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#5 Carton 5</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#6 Carton 6</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#7 Carton 7</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#8 Carton 8</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#9 Carton 9</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#10 Carton 10</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#11 Carton 11</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#12 Carton 12</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#13 Carton 13</td>
+      <td class="qty">2</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#14 Carton 14</td>
+      <td class="qty">2</td>
+    </tr>
+      </tbody>
+    </table>
+      
+      <p class="page-num">1 of 2</p>
+    </section>
+    <section class="page">
+      
+    <header class="doc-header">
+      <h1 class="title">Delivery</h1>
+      <h2 class="subtitle">Delivery #</h2>
+      <p class="delivery-num">WHD0000000999</p>
+      <p class="datetime"><span class="date">27/10/2026</span> &nbsp;·&nbsp; <span class="time">17:30 CAT</span></p>
+    </header>
+      
+    <table class="cart-table">
+      <thead>
+        <tr>
+          <th>Delivery cart</th>
+          <th class="qty">Qty</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+    <tr class="product-row">
+      <td><strong>Coffee Table Oak</strong></td>
+      <td class="qty">1</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">#1 Table Top</td>
+      <td class="qty">1</td>
+    </tr>
+      </tbody>
+    </table>
+      
+    <footer class="signatures">
+      <div class="sig-col sig-left">
+        <div class="sig-label">Driver Name: John Banda</div>
+        <div class="sig-label">Driver Signature Box:</div>
+        <div class="sig-box" aria-label="Driver signature"></div>
+      </div>
+      <div class="sig-col sig-right">
+        <div class="sig-label">Supervisor Name: Ali Supervisor</div>
+        <div class="sig-label">Supervisor Signature Box:</div>
+        <div class="sig-box" aria-label="Supervisor signature"></div>
+      </div>
+    </footer>
+      <p class="page-num">2 of 2</p>
+    </section>
+</body>
+</html>
