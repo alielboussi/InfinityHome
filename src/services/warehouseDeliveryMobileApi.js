@@ -45,3 +45,11 @@ export function acceptWarehouseDeliverySession(sessionId) {
 export function resetWarehouseDeliveryNumberSequence() {
   return warehouseDeliveryMobileOp('delivery-number-reset');
 }
+
+export function cancelWarehouseDeliverySession({ sessionId, deliveryNumber, reason } = {}) {
+  return warehouseDeliveryMobileOp('delivery-cancel', {
+    session_id: sessionId,
+    delivery_number: deliveryNumber,
+    reason,
+  });
+}

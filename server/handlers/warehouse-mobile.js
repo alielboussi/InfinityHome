@@ -72,6 +72,7 @@ import {
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
 import { acceptWarehouseDeliveryServer } from '../lib/warehouseDeliveryAccept.js';
+import { cancelWarehouseDeliveryServer } from '../lib/cancelWarehouseDelivery.js';
 import { assertPacketStockAvailable } from '../lib/warehouseDeliveryStock.js';
 import {
   listWarehouseDeliveryDrivers,
@@ -1290,6 +1291,7 @@ async function opDeliverySubmit(body, user) {
     total_cartons: totalCartons,
     entry_count: entries.length,
     whatsapp_sent: Boolean(whatsappResult?.ok),
+    submitted_at: now,
   };
 }
 
@@ -1303,6 +1305,47 @@ async function opDeliveryNumberReset(user) {
   const result = await resetWarehouseDeliveryNumberSequence();
   console.info('[delivery-number-reset]', confirm || 'unknown', result?.next_delivery_number);
   return result;
+}
+
+async function opDeliveryCancel(body, user) {
+  const sessionId = String(body.session_id || body.sessionId || '').trim();
+  const deliveryNumber = String(body.delivery_number || body.deliveryNumber || '').trim();
+  if (!sessionId && !deliveryNumber) throw new Error('session_id or delivery_number is required.');
+
+  const sb = getService();
+  let sid = sessionId;
+  if (!sid && deliveryNumber) {
+    const { data: row } = await sb
+      .from('warehouse_delivery_sessions')
+      .select('id, created_by_email, status')
+      .eq('delivery_number', deliveryNumber)
+      .maybeSingle();
+    if (!row?.id) throw new Error('Delivery not found.');
+    sid = row.id;
+  }
+
+  const { data: session } = await sb
+    .from('warehouse_delivery_sessions')
+    .select('id, created_by_email, status')
+    .eq('id', sid)
+    .maybeSingle();
+  if (!session) throw new Error('Delivery not found.');
+
+  const email = String(user?.email || '').trim().toLowerCase();
+  const creator = String(session.created_by_email || '').trim().toLowerCase();
+  const isAdmin = isLoginAccessAdmin(user?.email) || canManageCatalog(user);
+  const isCreator = creator && creator === email;
+  if (!isAdmin && !isCreator) {
+    const err = new Error('Only catalog admin or the person who sent this delivery can cancel it.');
+    err.status = 403;
+    throw err;
+  }
+
+  const reason = String(body.reason || '').trim();
+  return cancelWarehouseDeliveryServer(sb, sid, {
+    cancelledByEmail: user?.email || null,
+    reason,
+  });
 }
 
 async function opDeliveryDriversList() {
@@ -1426,6 +1469,9 @@ export default async function handler(req, res) {
         break;
       case 'delivery-number-reset':
         result = await opDeliveryNumberReset(user);
+        break;
+      case 'delivery-cancel':
+        result = await opDeliveryCancel(body, user);
         break;
       case 'delivery-submit':
         result = await opDeliverySubmit(body, user);

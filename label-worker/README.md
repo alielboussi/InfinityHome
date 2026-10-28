@@ -9,6 +9,8 @@ Polls `label_print_jobs` from Infinity Home and prints on a **local Windows prin
 | **Warehouse production kiosk** | Create / stock increase → name + Code 128 SKU |
 | **Factory / transfers** | Carpentry transfer labels (same queue) |
 
+See **`docs/warehouse-delivery-note-printer-setup.md`** for **Canon MF237w** delivery notes (phone / web — no print PC).
+
 **Optional:** Zebra Weblink (cloud) instead of a PC — see **`docs/warehouse-production-zebra-weblink-setup.md`**. Leave `ZEBRA_PRINT_*` unset on Vercel when using this worker.
 
 ---

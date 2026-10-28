@@ -153,6 +153,10 @@ const UI_STRINGS = {
   deliverySetsOnTruck: { en: 'Sets on truck: {n}', ar: 'الأطقم على الشاحنة: {n}' },
   deliveryPacketsChecked: { en: 'Packets checked: {n}', ar: 'الطرود المؤكدة: {n}' },
   deliverySendBtn: { en: 'Sign Delivery', ar: 'توقيع التسليم' },
+  deliverySignFlowHint: {
+    en: 'After you choose the driver, tap Sign Delivery below — do not send from this screen. On the next page the driver signs, then you send and print.',
+    ar: 'بعد اختيار السائق، اضغط «توقيع التسليم» أدناه — لا ترسل من هذه الشاشة. في الصفحة التالية يوقع السائق، ثم الإرسال والطباعة.',
+  },
   deliverySignatureTitle: { en: 'Driver signature', ar: 'توقيع السائق' },
   deliverySignatureHint: {
     en: 'Driver signs with finger in the box. Dots and taps are not accepted.',
@@ -163,7 +167,7 @@ const UI_STRINGS = {
     en: 'Draw a full signature (not just a dot).',
     ar: 'ارسم توقيعًا كاملًا (وليس نقطة فقط).',
   },
-  deliverySendConfirmBtn: { en: 'Send delivery', ar: 'إرسال التسليم' },
+  deliverySendConfirmBtn: { en: 'Send delivery & print', ar: 'إرسال التسليم والطباعة' },
   deliverySessionFailed: { en: 'Could not start delivery session.', ar: 'تعذر بدء جلسة التسليم.' },
   deliveryNeedProduct: { en: 'Add at least one product.', ar: 'أضف منتجًا واحدًا على الأقل.' },
   deliveryNeedDriver: { en: 'Select a driver.', ar: 'اختر السائق.' },
@@ -188,16 +192,25 @@ const UI_STRINGS = {
   },
   deliveryBackDashboard: { en: 'Back to dashboard', ar: 'العودة إلى لوحة التحكم' },
   deliveryPrintTitle: { en: 'Print delivery note (A4)', ar: 'طباعة مذكرة التسليم (A4)' },
-  deliveryPrintHint: {
-    en: 'Printers on your Wi‑Fi appear below. Tap one, then confirm print on the next screen (Android).',
-    ar: 'تظهر الطابعات على شبكة الواي فاي أدناه. اضغط على واحدة ثم أكد الطباعة في الشاشة التالية.',
+  deliveryPrintTitleCopies: {
+    en: 'Print delivery note — {n} copies',
+    ar: 'طباعة مذكرة التسليم — {n} نسخ',
   },
+  deliveryPrintHint: {
+    en: 'Choose your Canon MF237w (or any printer). The PDF already contains two full copies — set Copies to 1 in the print dialog unless you need more.',
+    ar: 'اختر طابعة Canon MF237w (أو أي طابعة). الملف يحتوي نسختين — اترك «النسخ» = 1 في حوار الطباعة.',
+  },
+  deliveryPrintAutoHint: {
+    en: 'Android print opens automatically. Pick the warehouse printer (Ethernet Canon on the same Wi‑Fi). The file includes 2 copies; leave Copies at 1.',
+    ar: 'تفتح طباعة Android تلقائياً. اختر طابعة المستودع (Canon على Ethernet مع نفس Wi‑Fi). الملف فيه نسختان — اترك النسخ = 1.',
+  },
+  deliveryPrintBusy: { en: 'Preparing print…', ar: 'جاري التحضير للطباعة…' },
   deliveryPrintRescan: { en: 'Search again', ar: 'بحث مرة أخرى' },
   deliveryPrintSystemPicker: { en: 'Choose printer (system list)', ar: 'اختر الطابعة (قائمة النظام)' },
   deliveryPrintSkip: { en: 'Skip printing', ar: 'تخطي الطباعة' },
   deliveryPrintNoPrinters: {
-    en: 'No printers found. Use “Choose printer” or install HP Smart / Mopria on this phone.',
-    ar: 'لم يُعثر على طابعات. استخدم «اختر الطابعة» أو ثبّت HP Smart / Mopria.',
+    en: 'No network printers found. Tap “Choose printer” and select Canon MF237w (add it once in Android Settings → Printing).',
+    ar: 'لم تُعثر على طابعات. اضغط «اختر الطابعة» واختر Canon MF237w (أضفها مرة في إعدادات Android → الطباعة).',
   },
   deliveryPrintDiscoveryUnavailable: {
     en: 'Network printer search needs the Production APK (not Expo Go). You can still use the system printer list.',

@@ -32,13 +32,14 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
     try {
       const dataUri = await padRef.current?.exportPngBase64();
       const signatureUrl = await uploadDeliveryDriverSignature(sessionId, dataUri);
-      await warehouseMobileRequest('delivery-submit', {
+      const submitResult = await warehouseMobileRequest('delivery-submit', {
         session_id: sessionId,
         driver_id: driverId,
         driver_name: driverName,
         driver_signature_url: signatureUrl,
         groups,
       });
+      const submittedAt = submitResult?.submitted_at || new Date().toISOString();
       navigation.replace('KitweSendDone', {
         deliveryNumber,
         driverName,
@@ -46,7 +47,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         driverSignatureDataUri: dataUri,
         driverSignatureUrl: signatureUrl,
         printGroups,
-        submittedAt: new Date().toISOString(),
+        submittedAt,
       });
     } catch (err) {
       const code = err?.code || err?.message;

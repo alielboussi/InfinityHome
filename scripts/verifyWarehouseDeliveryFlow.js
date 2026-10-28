@@ -27,6 +27,11 @@ assert(mobile.includes('canWarehouseDeliveryReceiverActions'), 'receiver API mus
 assert(mobile.includes('reused: true'), 'delivery-session-open must reuse draft sessions');
 assert(deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must support Hassan mirror mode');
 assert(mobile.includes('driver_signature_url'), 'delivery submit must store driver signature url');
+assert(mobile.includes('delivery-cancel'), 'warehouse-mobile must support delivery-cancel');
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/cancelWarehouseDelivery.js'), 'utf8').includes('stock_unchanged'),
+  'cancel delivery must not move stock',
+);
 assert(
   fs.readFileSync(path.join(root, 'storage.rules'), 'utf8').includes('warehouse-delivery-signatures'),
   'storage rules must allow warehouse-delivery-signatures',
@@ -36,5 +41,11 @@ assert(
   fs.existsSync(path.join(root, 'src/WarehouseDeliveriesHassanTest.js')),
   'Hassan mirror page must exist',
 );
+
+const noteHtml = fs.readFileSync(path.join(root, 'src/utils/buildDeliveryNotePrintHtml.js'), 'utf8');
+assert(noteHtml.includes('company-logo'), 'delivery note HTML must include company logo');
+assert(noteHtml.includes('Dispatched by:'), 'delivery note must show dispatched by');
+assert(noteHtml.includes('Page ${pageIndex} of ${pageTotal}'), 'delivery note must show page numbers');
+assert(noteHtml.includes('DELIVERY_NOTE_DISCLAIMER'), 'delivery note must include disclaimer');
 
 console.log('verifyWarehouseDeliveryFlow: ok');

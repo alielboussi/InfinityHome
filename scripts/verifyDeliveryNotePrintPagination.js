@@ -7,7 +7,7 @@ const {
   paginateDeliveryNoteBlocks,
 } = require(path.join(
   __dirname,
-  '../mobile-apps/warehouse-production/lib/buildDeliveryNotePrintHtml.js',
+  '../src/utils/buildDeliveryNotePrintHtml.js',
 ));
 
 function assert(cond, msg) {

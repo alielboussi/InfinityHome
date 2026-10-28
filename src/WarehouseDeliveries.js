@@ -13,7 +13,13 @@ import {
 } from './utils/warehouseDelivery';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
 import {
+  buildWarehouseDeliveryNoteHtml,
+  DEFAULT_DELIVERY_NOTE_PRINT_COPIES,
+  printWarehouseDeliveryNoteInBrowser,
+} from './utils/warehouseDeliveryNotePrint';
+import {
   acceptWarehouseDeliverySession,
+  cancelWarehouseDeliverySession,
   resetWarehouseDeliveryNumberSequence,
   setDeliveryEntryReceiverCheck,
 } from './services/warehouseDeliveryMobileApi';
@@ -126,6 +132,7 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [pdfBusyId, setPdfBusyId] = useState('');
+  const [printBusyId, setPrintBusyId] = useState('');
   const [fromName, setFromName] = useState('Factory Warehouse');
   const [toName, setToName] = useState('Kitwe Branch');
   const [currentUserId, setCurrentUserId] = useState('');
@@ -136,6 +143,7 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
   const [receiverTestAdmin, setReceiverTestAdmin] = useState(false);
   const [resetSeqBusy, setResetSeqBusy] = useState(false);
   const [resetSeqNote, setResetSeqNote] = useState('');
+  const [cancelBusyId, setCancelBusyId] = useState('');
   const canAccept = currentUserId === WAREHOUSE_ACCEPT_USER_ID
     || (receiverTestMirror && receiverTestAdmin);
 
@@ -311,6 +319,47 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
       setError(err?.message || 'Failed to build PDF.');
     } finally {
       setPdfBusyId('');
+    }
+  };
+
+  const handlePrintDeliveryNote = async (session) => {
+    if (!session?.id || printBusyId) return;
+    setPrintBusyId(session.id);
+    setError('');
+    try {
+      const entries = entriesBySession[String(session.id)] || [];
+      const html = buildWarehouseDeliveryNoteHtml({
+        session,
+        entries,
+        copies: DEFAULT_DELIVERY_NOTE_PRINT_COPIES,
+      });
+      const htmlResolved = await html;
+      printWarehouseDeliveryNoteInBrowser(htmlResolved);
+    } catch (err) {
+      setError(err?.message || 'Failed to open print dialog.');
+    } finally {
+      setPrintBusyId('');
+    }
+  };
+
+  const handleCancelDelivery = async (session) => {
+    if (!session?.id || cancelBusyId) return;
+    const dn = session.delivery_number || session.id;
+    const ok = window.confirm(
+      `Cancel delivery ${dn}?\n\nWarehouse stock is not reduced until Hassan accepts packets. `
+      + 'Cancelling removes this delivery from the pending list.',
+    );
+    if (!ok) return;
+    setCancelBusyId(session.id);
+    setError('');
+    try {
+      await cancelWarehouseDeliverySession({ sessionId: session.id, reason: 'Cancelled from web' });
+      await loadDeliveries();
+      if (hassanAlert?.id === session.id) setHassanAlert(null);
+    } catch (err) {
+      setError(err?.message || 'Failed to cancel delivery.');
+    } finally {
+      setCancelBusyId('');
     }
   };
 
@@ -623,6 +672,27 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
                 );
               })}
               <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="product-form-btn"
+                  onClick={() => handlePrintDeliveryNote(session)}
+                  disabled={printBusyId === session.id}
+                >
+                  {printBusyId === session.id
+                    ? 'Opening print…'
+                    : `Print delivery note (×${DEFAULT_DELIVERY_NOTE_PRINT_COPIES})`}
+                </button>
+                {receiverTestMirror && receiverTestAdmin && pending ? (
+                  <button
+                    type="button"
+                    className="product-form-btn"
+                    onClick={() => handleCancelDelivery(session)}
+                    disabled={cancelBusyId === session.id}
+                    style={{ borderColor: '#c62828', color: '#c62828' }}
+                  >
+                    {cancelBusyId === session.id ? 'Cancelling…' : 'Cancel test delivery'}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="product-form-btn"

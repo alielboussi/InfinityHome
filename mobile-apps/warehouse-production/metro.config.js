@@ -42,6 +42,7 @@ const config = getDefaultConfig(projectRoot);
 
 const watchFolders = new Set(config.watchFolders || []);
 watchFolders.add(sharedDir);
+watchFolders.add(path.resolve(projectRoot, '..', '..', 'src'));
 if (fs.existsSync(sharedLink)) watchFolders.add(sharedLink);
 config.watchFolders = [...watchFolders];
 

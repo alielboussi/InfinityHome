@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -12,8 +12,11 @@ import * as Print from 'expo-print';
 import { kiosk } from './kioskStyles';
 import { buildDeliveryNotePrintHtml } from '../lib/buildDeliveryNotePrintHtml';
 import { discoverNetworkPrinters, isPrinterDiscoveryAvailable } from '../lib/discoverNetworkPrinters';
+import { getDeliveryNoteCompanyLogoDataUri } from '../lib/deliveryNoteCompanyLogo';
 import { tUi } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
+
+export const DEFAULT_DELIVERY_PRINT_COPIES = 2;
 
 export default function DeliveryPrintModal({
   visible,
@@ -26,6 +29,8 @@ export default function DeliveryPrintModal({
   driverSignatureUrl,
   printGroups,
   submittedAt,
+  copyCount = DEFAULT_DELIVERY_PRINT_COPIES,
+  autoPrintOnOpen = false,
   onDone,
 }) {
   const [printers, setPrinters] = useState([]);
@@ -33,6 +38,7 @@ export default function DeliveryPrintModal({
   const [printing, setPrinting] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [error, setError] = useState('');
+  const autoStarted = useRef(false);
 
   const runScan = useCallback(async () => {
     setScanning(true);
@@ -52,24 +58,21 @@ export default function DeliveryPrintModal({
     }
   }, [locale]);
 
-  useEffect(() => {
-    if (!visible) return;
-    setSelectedId('');
-    setError('');
-    runScan();
-  }, [visible, runScan]);
-
-  const printNote = async (printerHint) => {
+  const printNote = useCallback(async () => {
     setPrinting(true);
     setError('');
     try {
+      const copies = Math.max(1, Math.min(10, Number(copyCount) || DEFAULT_DELIVERY_PRINT_COPIES));
+      const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUri().catch(() => '');
       const html = buildDeliveryNotePrintHtml({
         deliveryNumber,
         driverName,
         dispatchedBy: dispatchedBy || '',
         driverSignatureSrc: driverSignatureDataUri || driverSignatureUrl || '',
+        companyLogoSrc,
         submittedAt: submittedAt || new Date().toISOString(),
         printGroups,
+        copies,
       });
       const file = await Print.printToFileAsync({
         html,
@@ -77,32 +80,63 @@ export default function DeliveryPrintModal({
         height: 842,
       });
       await Print.printAsync({ uri: file.uri });
-      if (printerHint?.name) {
-        // Android opens system print UI; user picks the same printer as selected in our list.
-      }
       onDone?.();
     } catch (err) {
       setError(err?.message || tUi('deliveryPrintFailed', locale));
     } finally {
       setPrinting(false);
     }
-  };
+  }, [
+    copyCount,
+    deliveryNumber,
+    dispatchedBy,
+    driverName,
+    driverSignatureDataUri,
+    driverSignatureUrl,
+    onDone,
+    printGroups,
+    submittedAt,
+    locale,
+  ]);
+
+  useEffect(() => {
+    if (!visible) {
+      autoStarted.current = false;
+      return;
+    }
+    setSelectedId('');
+    setError('');
+    runScan();
+  }, [visible, runScan]);
+
+  useEffect(() => {
+    if (!visible || !autoPrintOnOpen || autoStarted.current || printing) return;
+    autoStarted.current = true;
+    printNote();
+  }, [visible, autoPrintOnOpen, printing, printNote]);
 
   const onSelectPrinter = (printer) => {
     setSelectedId(printer.id);
-    printNote(printer);
-  };
-
-  const onSystemPrint = () => {
-    printNote(null);
+    printNote();
   };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDone}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={[styles.title, { textAlign }]}>{tUi('deliveryPrintTitle', locale)}</Text>
-          <Text style={[styles.hint, { textAlign }]}>{tUi('deliveryPrintHint', locale)}</Text>
+          <Text style={[styles.title, { textAlign }]}>
+            {tUi('deliveryPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES))}
+          </Text>
+          <Text style={[styles.hint, { textAlign }]}>
+            {autoPrintOnOpen ? tUi('deliveryPrintAutoHint', locale) : tUi('deliveryPrintHint', locale)}
+          </Text>
+
+          {printing ? (
+            <View style={styles.busyRow}>
+              <ActivityIndicator color={theme.primary} />
+              <Text style={styles.busyText}>{tUi('deliveryPrintBusy', locale)}</Text>
+            </View>
+          ) : null}
 
           <Pressable
             style={[kiosk.btnOutlinePrimary, styles.scanBtn]}
@@ -132,7 +166,7 @@ export default function DeliveryPrintModal({
 
           <Pressable
             style={[kiosk.btnPrimaryBlock, styles.printBtn]}
-            onPress={onSystemPrint}
+            onPress={printNote}
             disabled={printing}
           >
             {printing ? (
@@ -170,6 +204,8 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 8 },
   hint: { fontSize: 14, color: theme.muted, lineHeight: 20, marginBottom: 12 },
+  busyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  busyText: { color: theme.text, fontSize: 14, flex: 1 },
   scanBtn: { marginBottom: 10 },
   list: { maxHeight: 220, marginBottom: 10 },
   row: {

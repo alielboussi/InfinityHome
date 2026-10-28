@@ -11,6 +11,7 @@ import {
   isWarehousePending,
 } from './utils/warehouseDelivery';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
+import { cancelWarehouseDeliverySession } from './services/warehouseDeliveryMobileApi';
 
 const formatDateTime = (value) => {
   if (!value) return '-';
@@ -56,6 +57,7 @@ export default function WarehouseDeliveriesAdmin() {
   const [usersById, setUsersById] = useState(new Map());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [cancelBusyId, setCancelBusyId] = useState('');
 
   const loadDeliveries = useCallback(async () => {
     setLoading(true);
@@ -249,6 +251,25 @@ export default function WarehouseDeliveriesAdmin() {
     }
   };
 
+  const handleCancelDelivery = async (session) => {
+    if (!session?.id || cancelBusyId) return;
+    const dn = session.delivery_number || session.id;
+    const ok = window.confirm(
+      `Cancel ${dn}? Stock is unchanged unless packets were already accepted at Kitwe.`,
+    );
+    if (!ok) return;
+    setCancelBusyId(session.id);
+    setError('');
+    try {
+      await cancelWarehouseDeliverySession({ sessionId: session.id, reason: 'Cancelled from admin' });
+      await loadDeliveries();
+    } catch (err) {
+      setError(err?.message || 'Failed to cancel delivery.');
+    } finally {
+      setCancelBusyId('');
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', background: theme.bg, color: theme.text, padding: 24 }}>
       <div className="page-header-row">
@@ -423,6 +444,24 @@ export default function WarehouseDeliveriesAdmin() {
                   }}
                 >
                   {busyId === session.id ? 'Saving…' : 'Save edits'}
+                </button>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => handleCancelDelivery(session)}
+                  disabled={cancelBusyId === session.id}
+                  style={{
+                    background: theme.surfaceAlt,
+                    color: '#c62828',
+                    border: '1px solid #c62828',
+                    borderRadius: 8,
+                    padding: '8px 16px',
+                    fontWeight: 700,
+                    cursor: cancelBusyId === session.id ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {cancelBusyId === session.id ? 'Cancelling…' : 'Cancel delivery'}
                 </button>
               )}
               {completed && (

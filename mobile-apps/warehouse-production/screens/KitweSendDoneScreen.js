@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import DeliveryPrintModal from '../components/DeliveryPrintModal';
+import DeliveryPrintModal, { DEFAULT_DELIVERY_PRINT_COPIES } from '../components/DeliveryPrintModal';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import KioskSafeScroll from '../components/KioskSafeScroll';
 import { kiosk } from '../components/kioskStyles';
@@ -58,6 +58,8 @@ export default function KitweSendDoneScreen({ route, navigation }) {
         driverSignatureUrl={driverSignatureUrl}
         printGroups={printGroups}
         submittedAt={submittedAt}
+        copyCount={DEFAULT_DELIVERY_PRINT_COPIES}
+        autoPrintOnOpen
         onDone={() => setPrintOpen(false)}
       />
     </>

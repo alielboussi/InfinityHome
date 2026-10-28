@@ -130,6 +130,14 @@ const UI_STRINGS = {
   },
   deliveryPrintScanFailed: { en: 'Printer search failed.', ar: 'فشل البحث عن الطباعات.' },
   deliveryPrintFailed: { en: 'Print failed.', ar: 'فشلت الطباعة.' },
+  deliveryPrintQueued: {
+    en: 'Printing {n} A4 copies on the warehouse delivery printer…',
+    ar: 'جاري طباع {n} نسخ A4 على طابعة التسليم في المستودع…',
+  },
+  deliveryPrintPhoneFallback: {
+    en: 'Print on this phone (backup)',
+    ar: 'طباعة من هذا الجهاز (احتياطي)',
+  },
   deliveryScanBtn: { en: 'Scan packet', ar: 'مسح الطرد' },
   deliveryScanPickTitle: { en: 'Which product?', ar: 'أي منتج؟' },
   deliveryScanPickHint: {

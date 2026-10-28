@@ -288,16 +288,21 @@ export default function KitweSendHomeScreen({ navigation }) {
 
   const goToSignature = () => {
     if (!sessionId || !groups.length) {
-      setError(tUi('deliveryNeedProduct', locale));
+      const msg = tUi('deliveryNeedProduct', locale);
+      setError(msg);
+      Alert.alert(tUi('deliveryTitle', locale), msg);
       return;
     }
     const cartErr = validateCartForSubmit();
     if (cartErr) {
       setError(cartErr);
+      Alert.alert(tUi('deliveryTitle', locale), cartErr);
       return;
     }
     if (!driverName.trim()) {
-      setError(tUi('deliveryNeedDriver', locale));
+      const msg = tUi('deliveryNeedDriver', locale);
+      setError(msg);
+      Alert.alert(tUi('deliveryTitle', locale), msg);
       return;
     }
     setError('');
@@ -496,9 +501,18 @@ export default function KitweSendHomeScreen({ navigation }) {
           </Pressable>
         </View>
 
+        <Text style={[kiosk.metaLine, styles.flowHint, { textAlign }]}>
+          {tUi('deliverySignFlowHint', locale)}
+        </Text>
+
         <Pressable
-          style={[kiosk.btnPrimaryBlock, styles.sendBtn]}
+          style={[
+            kiosk.btnPrimaryBlock,
+            styles.sendBtn,
+            (!driverName.trim() || !groups.length) && styles.sendBtnDisabled,
+          ]}
           onPress={goToSignature}
+          disabled={!driverName.trim() || !groups.length}
         >
           <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySendBtn', locale)}</Text>
         </Pressable>
@@ -552,4 +566,6 @@ const styles = StyleSheet.create({
   footerDriver: { marginTop: 8 },
   sendBtn: { marginTop: 12 },
   sendBtnBusy: { opacity: 0.65 },
+  sendBtnDisabled: { opacity: 0.5 },
+  flowHint: { marginTop: 10, marginBottom: 4, lineHeight: 20, color: theme.muted },
 });
