@@ -10,6 +10,7 @@ import CreateScreen from './screens/CreateScreen';
 import StockScreen from './screens/StockScreen';
 import KitweSendHomeScreen from './screens/KitweSendHomeScreen';
 import KitweSendProductScreen from './screens/KitweSendProductScreen';
+import KitweSendSignatureScreen from './screens/KitweSendSignatureScreen';
 import KitweSendDoneScreen from './screens/KitweSendDoneScreen';
 import { stackScreenOptions, theme } from './shared/theme';
 
@@ -55,6 +56,13 @@ function MainStack() {
         {(props) => (
           <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
             <KitweSendHomeScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="KitweSendSignature" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <KitweSendSignatureScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

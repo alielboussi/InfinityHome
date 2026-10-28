@@ -14,6 +14,9 @@ export default function KitweSendDoneScreen({ route, navigation }) {
   const driverName = route.params?.driverName || '';
   const supervisorName = route.params?.supervisorName || '';
   const printGroups = route.params?.printGroups || [];
+  const driverSignatureDataUri = route.params?.driverSignatureDataUri || '';
+  const driverSignatureUrl = route.params?.driverSignatureUrl || '';
+  const submittedAt = route.params?.submittedAt || '';
   const [printOpen, setPrintOpen] = useState(true);
 
   return (
@@ -50,8 +53,11 @@ export default function KitweSendDoneScreen({ route, navigation }) {
         textAlign={textAlign}
         deliveryNumber={dn}
         driverName={driverName}
-        supervisorName={supervisorName}
+        dispatchedBy={supervisorName}
+        driverSignatureDataUri={driverSignatureDataUri}
+        driverSignatureUrl={driverSignatureUrl}
         printGroups={printGroups}
+        submittedAt={submittedAt}
         onDone={() => setPrintOpen(false)}
       />
     </>

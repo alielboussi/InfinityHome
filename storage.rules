@@ -45,6 +45,12 @@ service firebase.storage {
       allow write: if isSignedIn();
     }
 
+    // Production app — driver signatures on warehouse deliveries (PNG per session)
+    match /warehouse-delivery-signatures/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
     // Deny everything else by default
     match /{allPaths=**} {
       allow read, write: if false;

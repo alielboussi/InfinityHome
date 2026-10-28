@@ -21,8 +21,11 @@ export default function DeliveryPrintModal({
   textAlign,
   deliveryNumber,
   driverName,
-  supervisorName,
+  dispatchedBy,
+  driverSignatureDataUri,
+  driverSignatureUrl,
   printGroups,
+  submittedAt,
   onDone,
 }) {
   const [printers, setPrinters] = useState([]);
@@ -63,8 +66,9 @@ export default function DeliveryPrintModal({
       const html = buildDeliveryNotePrintHtml({
         deliveryNumber,
         driverName,
-        supervisorName,
-        submittedAt: new Date().toISOString(),
+        dispatchedBy: dispatchedBy || '',
+        driverSignatureSrc: driverSignatureDataUri || driverSignatureUrl || '',
+        submittedAt: submittedAt || new Date().toISOString(),
         printGroups,
       });
       const file = await Print.printToFileAsync({

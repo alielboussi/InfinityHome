@@ -146,13 +146,14 @@ function renderBlockRows(block) {
   return productRow + packetRows.join('');
 }
 
-function renderPageHeader(deliveryNumber, dateStr, timeStr) {
+function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy) {
   return `
     <header class="doc-header">
       <h1 class="title">Delivery</h1>
       <h2 class="subtitle">Delivery #</h2>
       <p class="delivery-num">${escapeHtml(deliveryNumber)}</p>
       <p class="datetime"><span class="date">${escapeHtml(dateStr)}</span> &nbsp;·&nbsp; <span class="time">${escapeHtml(timeStr)} CAT</span></p>
+      <p class="dispatched-by">Dispatched By: ${escapeHtml(dispatchedBy || '—')}</p>
     </header>`;
 }
 
@@ -168,21 +169,18 @@ function renderCartTableHead() {
       <tbody>`;
 }
 
-function renderSignatures(driverName, supervisorName) {
+function renderDriverSignatureFooter(driverName, signatureSrc) {
+  const safeSrc = String(signatureSrc || '').trim();
+  const img = safeSrc
+    ? `<img class="sig-image" src="${safeSrc.replace(/"/g, '&quot;')}" alt="Driver signature" />`
+    : '';
   return `
     <footer class="signatures">
-      <div class="sig-col sig-left">
+      <div class="sig-driver-block">
         <div class="sig-label">Driver Name: ${escapeHtml(driverName || '—')}</div>
         <div class="sig-line sig-left-line">
           <span class="sig-inline-label">Driver Signature :</span>
-          <span class="sig-box" aria-label="Driver signature"></span>
-        </div>
-      </div>
-      <div class="sig-col sig-right">
-        <div class="sig-label">Supervisor Name: ${escapeHtml(supervisorName || '—')}</div>
-        <div class="sig-line sig-right-line">
-          <span class="sig-inline-label">Supervisor Signature :</span>
-          <span class="sig-box" aria-label="Supervisor signature"></span>
+          ${img}
         </div>
       </div>
     </footer>`;
@@ -197,7 +195,8 @@ function renderPage({
   pageTotal,
   isLast,
   driverName,
-  supervisorName,
+  dispatchedBy,
+  driverSignatureSrc,
 }) {
   const bodyRows = blocks.map(renderBlockRows).join('');
   const emptyRow = bodyRows
@@ -206,12 +205,12 @@ function renderPage({
 
   return `
     <section class="page">
-      ${renderPageHeader(deliveryNumber, dateStr, timeStr)}
+      ${renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy)}
       ${renderCartTableHead()}
         ${bodyRows || emptyRow}
       </tbody>
     </table>
-      ${isLast ? renderSignatures(driverName, supervisorName) : ''}
+      ${isLast ? renderDriverSignatureFooter(driverName, driverSignatureSrc) : ''}
       <p class="page-num">${pageIndex} of ${pageTotal}</p>
     </section>`;
 }
@@ -222,7 +221,8 @@ function renderPage({
 export function buildDeliveryNotePrintHtml({
   deliveryNumber,
   driverName,
-  supervisorName = '',
+  dispatchedBy = '',
+  driverSignatureSrc = '',
   submittedAt,
   printGroups = [],
 }) {
@@ -243,7 +243,8 @@ export function buildDeliveryNotePrintHtml({
         pageTotal,
         isLast: i === pageTotal - 1,
         driverName,
-        supervisorName,
+        dispatchedBy,
+        driverSignatureSrc,
       }))
     .join('');
 
@@ -301,6 +302,11 @@ export function buildDeliveryNotePrintHtml({
       font-size: 11pt;
       color: #333;
     }
+    .dispatched-by {
+      margin: 3mm 0 0;
+      font-size: 11pt;
+      color: #333;
+    }
     .cart-table {
       width: 100%;
       border-collapse: collapse;
@@ -329,15 +335,9 @@ export function buildDeliveryNotePrintHtml({
     .product-row td { background: #fafafa; }
     .empty { text-align: center; color: #666; }
     .signatures {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
       margin-top: 12mm;
-      gap: 10mm;
     }
-    .sig-col { width: 48%; }
-    .sig-left { text-align: left; }
-    .sig-right { text-align: right; }
+    .sig-driver-block { text-align: left; }
     .sig-label {
       font-size: 10.5pt;
       margin-bottom: 2mm;
@@ -352,14 +352,13 @@ export function buildDeliveryNotePrintHtml({
       font-size: 10.5pt;
       line-height: 1.35;
     }
-    .sig-right-line { justify-content: flex-end; }
     .sig-inline-label { white-space: nowrap; }
-    .sig-box {
-      width: 2cm;
+    .sig-image {
       height: 2cm;
-      border: 1px solid #333;
+      width: auto;
+      max-width: 8cm;
       display: inline-block;
-      flex-shrink: 0;
+      vertical-align: middle;
     }
     .page-num {
       margin: 8mm 0 0;

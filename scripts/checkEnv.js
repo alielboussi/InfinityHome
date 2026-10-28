@@ -123,6 +123,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyDeliverySignatureStrokes.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[delivery-signature:fail] verifyDeliverySignatureStrokes.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyProductionFinishedCreate.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

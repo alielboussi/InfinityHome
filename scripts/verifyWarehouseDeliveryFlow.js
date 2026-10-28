@@ -26,6 +26,12 @@ assert(
 assert(mobile.includes('canWarehouseDeliveryReceiverActions'), 'receiver API must allow Hassan + admin test');
 assert(mobile.includes('reused: true'), 'delivery-session-open must reuse draft sessions');
 assert(deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must support Hassan mirror mode');
+assert(mobile.includes('driver_signature_url'), 'delivery submit must store driver signature url');
+assert(
+  fs.readFileSync(path.join(root, 'storage.rules'), 'utf8').includes('warehouse-delivery-signatures'),
+  'storage rules must allow warehouse-delivery-signatures',
+);
+
 assert(
   fs.existsSync(path.join(root, 'src/WarehouseDeliveriesHassanTest.js')),
   'Hassan mirror page must exist',

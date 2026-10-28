@@ -20,7 +20,6 @@ import {
 } from '../lib/deliveryAssemblyChecks';
 import { assembliesUsingPacket, findWarehousePacketByScan } from '../lib/deliveryPacketAssemblies';
 import { sortDeliveryDriversByName } from '../lib/sortDeliveryDrivers';
-import { useProductionAccessGrant } from '../hooks/useProductionAccessGrant';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
@@ -57,14 +56,12 @@ function buildScansFromChecks(packetRows, unitsNum, checks) {
 
 export default function KitweSendHomeScreen({ navigation }) {
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
-  const { userDisplayName: supervisorName } = useProductionAccessGrant();
   const [sessionId, setSessionId] = useState('');
   const [deliveryNumber, setDeliveryNumber] = useState('');
   const [drivers, setDrivers] = useState([]);
   const [driverId, setDriverId] = useState('');
   const [driverName, setDriverName] = useState('');
   const [groups, setGroups] = useState([]);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [driverPickerOpen, setDriverPickerOpen] = useState(false);
 
@@ -289,7 +286,7 @@ export default function KitweSendHomeScreen({ navigation }) {
     ? tUi('deliverySessionFailed', locale)
     : error;
 
-  const submit = async () => {
+  const goToSignature = () => {
     if (!sessionId || !groups.length) {
       setError(tUi('deliveryNeedProduct', locale));
       return;
@@ -303,30 +300,19 @@ export default function KitweSendHomeScreen({ navigation }) {
       setError(tUi('deliveryNeedDriver', locale));
       return;
     }
-    setBusy(true);
     setError('');
-    try {
-      await warehouseMobileRequest('delivery-submit', {
-        session_id: sessionId,
-        driver_id: driverId,
-        driver_name: driverName,
-        groups: groups.map((g) => ({
-          assembly_id: g.assembly_id,
-          units: g.units,
-          scans: g.scans,
-        })),
-      });
-      navigation.replace('KitweSendDone', {
-        deliveryNumber,
-        driverName,
-        supervisorName,
-        printGroups: buildPrintGroupsFromCart(groups, byAssembly),
-      });
-    } catch (err) {
-      setError(err?.message || tUi('deliverySubmitFailed', locale));
-    } finally {
-      setBusy(false);
-    }
+    navigation.navigate('KitweSendSignature', {
+      sessionId,
+      deliveryNumber,
+      driverId,
+      driverName,
+      groups: groups.map((g) => ({
+        assembly_id: g.assembly_id,
+        units: g.units,
+        scans: g.scans,
+      })),
+      printGroups: buildPrintGroupsFromCart(groups, byAssembly),
+    });
   };
 
   const selectAssemblyForDraft = (a) => {
@@ -511,15 +497,10 @@ export default function KitweSendHomeScreen({ navigation }) {
         </View>
 
         <Pressable
-          style={[kiosk.btnPrimaryBlock, styles.sendBtn, busy && styles.sendBtnBusy]}
-          disabled={busy}
-          onPress={submit}
+          style={[kiosk.btnPrimaryBlock, styles.sendBtn]}
+          onPress={goToSignature}
         >
-          {busy ? (
-            <ActivityIndicator color="#0f172a" />
-          ) : (
-            <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySendBtn', locale)}</Text>
-          )}
+          <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySendBtn', locale)}</Text>
         </Pressable>
       </KioskSafeScroll>
 

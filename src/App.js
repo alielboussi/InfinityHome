@@ -262,11 +262,14 @@ function App() {
             if (typeof document === 'undefined') return undefined;
             const isCountRoute = isPublicAppRoute(location.pathname || '');
             const isLusakaStockRoute = (location.pathname || '').toLowerCase() === '/lusaka-stock';
+            const isQuotationerRoute = (location.pathname || '').toLowerCase() === '/quotationer';
             const isShopRoute = isShopPublicPath(location.pathname || '');
             document.documentElement.classList.toggle('stocktake-count-route', isCountRoute);
             document.body.classList.toggle('stocktake-count-route', isCountRoute);
             document.documentElement.classList.toggle('lusaka-stock-route', isLusakaStockRoute);
             document.body.classList.toggle('lusaka-stock-route', isLusakaStockRoute);
+            document.documentElement.classList.toggle('quotationer-route', isQuotationerRoute);
+            document.body.classList.toggle('quotationer-route', isQuotationerRoute);
             document.documentElement.classList.toggle('shop-route', isShopRoute);
             document.body.classList.toggle('shop-route', isShopRoute);
             return () => {
@@ -274,6 +277,8 @@ function App() {
                   document.body.classList.remove('stocktake-count-route');
                   document.documentElement.classList.remove('lusaka-stock-route');
                   document.body.classList.remove('lusaka-stock-route');
+                  document.documentElement.classList.remove('quotationer-route');
+                  document.body.classList.remove('quotationer-route');
             };
       }, [location.pathname]);
 

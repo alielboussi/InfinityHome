@@ -11910,6 +11910,44 @@ body.enterprise-theme .quotes-page {
   background: #ffffff !important;
   color: #1f2937 !important;
 }
+
+/* Quotationer — long create form must scroll to totals / Create Quote (iPad + laptop) */
+html.quotationer-route,
+body.quotationer-route {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100%;
+  min-height: 100dvh;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+body.quotationer-route #root,
+body.quotationer-route .App {
+  height: auto !important;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow: visible !important;
+}
+
+body.quotationer-route .quotes-page,
+body.quotationer-route .quotes-create-page {
+  overflow: visible !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  padding-bottom: max(40px, env(safe-area-inset-bottom, 0px)) !important;
+}
+
+body.quotationer-route .dashboard-container {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100dvh;
+  -webkit-overflow-scrolling: touch;
+}
+
 body.enterprise-theme .quotationer-home-card,
 body.enterprise-theme .quotes-create-panel,
 body.enterprise-theme .quotes-create-subpanel,
@@ -13092,9 +13130,13 @@ body.enterprise-theme .quotes-products-page .quotes-currency-switch button:last-
    Palette: Blue (primary/info), Green (additions), Red (deductions).
    ================================================================= */
 body.enterprise-theme {
+  overflow-x: hidden !important;
   overflow-y: auto !important;
   height: auto !important;
   min-height: 100%;
+  min-height: 100dvh;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
   --ent-blue: #1565c0;
   --ent-blue-dark: #0d47a1;
   --ent-blue-soft: #e8f0fb;
@@ -13140,11 +13182,27 @@ body.enterprise-theme {
   color: var(--ent-text);
 }
 
+html:has(body.enterprise-theme) {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
 body.enterprise-theme,
 body.enterprise-theme #root,
 body.enterprise-theme .App {
   background: #ffffff !important;
   color: var(--ent-text);
+}
+
+body.enterprise-theme #root,
+body.enterprise-theme .App {
+  height: auto !important;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow: visible !important;
 }
 
 /* Re-define vars on containers that set their own dark palette */

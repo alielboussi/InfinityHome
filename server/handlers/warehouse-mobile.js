@@ -1133,6 +1133,7 @@ async function opDeliverySubmit(body, user) {
   const groups = Array.isArray(body.groups) ? body.groups : [];
   const driverName = String(body.driver_name || body.driverName || '').trim();
   const driverId = String(body.driver_id || body.driverId || '').trim();
+  const driverSignatureUrl = String(body.driver_signature_url || body.driverSignatureUrl || '').trim();
   if (!sessionId) throw new Error('session_id is required.');
   if (!groups.length) throw new Error('Add at least one product group.');
   if (!driverName) throw new Error('Select a driver before submitting.');
@@ -1224,6 +1225,14 @@ async function opDeliverySubmit(body, user) {
   }
 
   const mobileSource = await deliveryMobileSourceForUser(user);
+  const accessRecord = await getLoginAccessRecord(user?.id);
+  const userAlias = accessRecord?.mobile_display_name
+    || accessRecord?.display_name
+    || user?.user_metadata?.full_name
+    || user?.full_name
+    || user?.email
+    || '—';
+
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
     submitted_at: now,
@@ -1234,8 +1243,10 @@ async function opDeliverySubmit(body, user) {
       hassan_alert_pending: true,
       hassan_alert_at: now,
       submitted_by_email: user?.email || null,
+      dispatched_by_name: userAlias,
       driver_id: driverId || null,
       driver_name: driverName,
+      driver_signature_url: driverSignatureUrl || null,
     },
   }).eq('id', sessionId);
   if (updErr) throw new Error(updErr.message || 'Failed to submit delivery');
@@ -1257,14 +1268,6 @@ async function opDeliverySubmit(body, user) {
       })),
     };
   });
-
-  const accessRecord = await getLoginAccessRecord(user?.id);
-  const userAlias = accessRecord?.mobile_display_name
-    || accessRecord?.display_name
-    || user?.user_metadata?.full_name
-    || user?.full_name
-    || user?.email
-    || '—';
 
   const whatsappMessage = buildWarehouseDeliveryWhatsAppMessage({
     userAlias,

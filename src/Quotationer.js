@@ -25,6 +25,14 @@ import {
   sumPaymentRows,
 } from './utils/quotationDisplay';
 
+function htmlToPlainPreview(html) {
+  if (!html) return '';
+  if (typeof document === 'undefined') return String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  return (el.textContent || el.innerText || '').replace(/\s+/g, ' ').trim();
+}
+
 const NAV_BUTTON_STYLE = { padding: '8px 12px', fontSize: 13, background: '#0f7fff', color: '#fff', border: '1px solid #0c6ed8', borderRadius: 6, minHeight: 32 };
 const QUOTATION_LIST_CACHE_KEY = 'quotationer:list:v6';
 const QUOTATION_LIST_CUSTOMER_MAP_CACHE_KEY = 'quotationer:list:customer-map:v2';
@@ -783,7 +791,8 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const isIpadProLayout = useIpadProLayout();
 
   const normalizeDescription = (text) => {
-    const parts = String(text || '')
+    const plain = htmlToPlainPreview(text);
+    const parts = String(plain || '')
       .split(/\s+/)
       .filter(Boolean)
       .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
@@ -1121,7 +1130,6 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const isEditing = Boolean(currentQuoteId);
   const pageStyle = React.useMemo(() => ({
     padding: isIpadProLayout ? '12px 18px 24px' : 12,
-    minHeight: isIpadProLayout ? '100dvh' : undefined
   }), [isIpadProLayout]);
   const tableLayoutMode = React.useMemo(() => isIpadProLayout ? 'auto' : 'fixed', [isIpadProLayout]);
   const tableWrapperStyle = React.useMemo(() => ({
@@ -1443,14 +1451,6 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           </div>
     </div>
   );
-}
-
-function htmlToPlainPreview(html) {
-  if (!html) return '';
-  if (typeof document === 'undefined') return String(html).replace(/<[^>]+>/g, ' ').trim();
-  const el = document.createElement('div');
-  el.innerHTML = html;
-  return (el.textContent || el.innerText || '').trim();
 }
 
 function QuoteDescriptionDialog({ open, value, onClose, onSave }) {
