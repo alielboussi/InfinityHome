@@ -41,7 +41,6 @@ export default function KitweProductsPage() {
   const [error, setError] = useState('');
   const [assemblies, setAssemblies] = useState([]);
   const [assemblyInventory, setAssemblyInventory] = useState([]);
-  const [assemblyLocations, setAssemblyLocations] = useState([]);
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [setItems, setSetItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -80,7 +79,6 @@ export default function KitweProductsPage() {
       const allAssemblies = data.assemblies || [];
       setAssemblies(allAssemblies);
       setAssemblyInventory(data.assemblyInventory || []);
-      setAssemblyLocations(data.assemblyLocations || []);
       setWarehouseLocationId(data.warehouseLocationId || null);
       setSetItems(data.setItems || []);
       setCategories(catRes?.data || []);
