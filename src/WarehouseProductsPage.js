@@ -42,6 +42,9 @@ import {
   isCompleteCatalogProduct,
   isIncompletePacketBomProduct,
 } from './utils/warehouseCatalogProductCompleteness';
+import WarehouseProductionLabelPrintDialog, {
+  WarehouseLabelPrintIconButton,
+} from './components/WarehouseProductionLabelPrintDialog';
 
 export default function WarehouseProductsPage() {
   const navigate = useNavigate();
@@ -75,6 +78,7 @@ export default function WarehouseProductsPage() {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
   const [, setSaving] = useState(false);
+  const [labelPrintItem, setLabelPrintItem] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -224,6 +228,16 @@ export default function WarehouseProductsPage() {
     });
   };
 
+  const openLabelPrint = (name, sku, defaultCopies = 1) => {
+    const labelName = String(name || '').trim();
+    const labelSku = String(sku || '').trim();
+    if (!labelName || !labelSku) {
+      setError('Name and SKU are required to print a label.');
+      return;
+    }
+    setLabelPrintItem({ name: labelName, sku: labelSku, defaultCopies });
+  };
+
   const colorCatalogById = useMemo(
     () => new Map((variantColors || []).map((c) => [String(c.id), c])),
     [variantColors],
@@ -294,6 +308,7 @@ export default function WarehouseProductsPage() {
   }, []);
 
   return (
+    <>
     <div className="products-container warehouse-products-page" style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
       <div className="page-header-row">
         <BackToDashboard />
@@ -483,13 +498,19 @@ export default function WarehouseProductsPage() {
                     </div>
                     {canManage && (
                       <div className="warehouse-assembly-card__actions">
-                        <button
-                          type="button"
-                          className="warehouse-card-btn"
-                          onClick={() => navigate(`/warehouse-products/${assembly.id}/edit`)}
-                        >
-                          Edit
-                        </button>
+                        <div className="warehouse-assembly-card__actions-row">
+                          <WarehouseLabelPrintIconButton
+                            onClick={() => openLabelPrint(assembly.name, assembly.family_sku)}
+                          />
+                          <button
+                            type="button"
+                            className="warehouse-card-btn"
+                            style={{ flex: 1 }}
+                            onClick={() => navigate(`/warehouse-products/${assembly.id}/edit`)}
+                          >
+                            Edit
+                          </button>
+                        </div>
                         <button
                           type="button"
                           className="warehouse-card-btn warehouse-card-btn--danger"
@@ -639,7 +660,12 @@ export default function WarehouseProductsPage() {
                               </td>
                               {canManage && (
                                 <td style={{ padding: 8 }}>
+                                  <WarehouseLabelPrintIconButton
+                                    onClick={() => openLabelPrint(packet.name, packet.sku)}
+                                  />
+                                  {' '}
                                   <button type="button" onClick={() => navigate(`/warehouse-products/packets/${packet.id}/edit`)}>Edit</button>
+                                  {' '}
                                   <button type="button" onClick={() => handleDeletePacket(packet)}>Delete</button>
                                 </td>
                               )}
@@ -658,5 +684,11 @@ export default function WarehouseProductsPage() {
       )}
 
     </div>
+    <WarehouseProductionLabelPrintDialog
+      open={Boolean(labelPrintItem)}
+      item={labelPrintItem}
+      onClose={() => setLabelPrintItem(null)}
+    />
+    </>
   );
 }

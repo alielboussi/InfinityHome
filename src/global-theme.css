@@ -5686,6 +5686,107 @@ body.enterprise-theme .warehouse-products-page .warehouse-inline-spec__sku-link:
   background: #b91c1c;
   border-color: #b91c1c;
 }
+.warehouse-label-print-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.warehouse-label-print-btn:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #1d4ed8;
+}
+.warehouse-label-print-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.warehouse-label-print-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.warehouse-assembly-card__actions-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+.warehouse-label-print-overlay .warehouse-label-print-modal {
+  max-width: 420px;
+}
+.warehouse-label-print-modal__name {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.warehouse-label-print-modal__sku {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+}
+.warehouse-label-print-modal__qty {
+  margin-bottom: 16px;
+}
+.warehouse-label-print-modal__qty-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.warehouse-label-print-modal__qty-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.warehouse-label-print-modal__qty-val {
+  font-size: 1.35rem;
+  font-weight: 800;
+  min-width: 2rem;
+  text-align: center;
+}
+.warehouse-label-print-modal__preview {
+  margin: 12px 0;
+  text-align: center;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 8px;
+}
+.warehouse-label-print-modal__preview img {
+  max-width: 100%;
+  height: auto;
+}
+.warehouse-label-print-modal__error {
+  color: #f87171;
+  margin: 8px 0;
+}
+.warehouse-label-print-modal__warn {
+  color: #fbbf24;
+  margin: 8px 0;
+  line-height: 1.4;
+}
+.warehouse-label-print-modal__ok {
+  color: #4ade80;
+  margin: 8px 0;
+}
+.warehouse-label-print-modal__actions {
+  margin-top: 16px;
+  flex-direction: column;
+  gap: 8px;
+}
+.warehouse-packets-table__actions .warehouse-label-print-btn {
+  vertical-align: middle;
+}
 
 .warehouse-products-page .warehouse-view-packets-link {
   text-decoration: none;

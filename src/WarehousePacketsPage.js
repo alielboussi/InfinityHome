@@ -11,6 +11,9 @@ import {
   setWarehousePacketQuantity,
 } from './services/warehouseCatalog';
 import { buildPacketAssemblyAssignments } from './utils/warehouseAssemblyPacketPool';
+import WarehouseProductionLabelPrintDialog, {
+  WarehouseLabelPrintIconButton,
+} from './components/WarehouseProductionLabelPrintDialog';
 
 const PACKET_FILTER = {
   ALL: 'all',
@@ -40,6 +43,7 @@ export default function WarehousePacketsPage() {
   const [search, setSearch] = useState('');
   const [assignmentFilter, setAssignmentFilter] = useState(PACKET_FILTER.ALL);
   const [, setSaving] = useState(false);
+  const [labelPrintItem, setLabelPrintItem] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,7 +148,18 @@ export default function WarehousePacketsPage() {
     }
   };
 
+  const openLabelPrint = (packet) => {
+    const name = String(packet?.name || '').trim();
+    const sku = String(packet?.sku || '').trim();
+    if (!name || !sku) {
+      setError('Name and SKU are required to print a label.');
+      return;
+    }
+    setLabelPrintItem({ name, sku, defaultCopies: 1 });
+  };
+
   return (
+    <>
     <div className="products-container warehouse-products-page warehouse-packets-page" style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
       <div className="page-header-row">
         <BackToDashboard />
@@ -301,6 +316,9 @@ export default function WarehousePacketsPage() {
                     </td>
                     {canManage && (
                       <td className="warehouse-packets-table__actions">
+                        <WarehouseLabelPrintIconButton
+                          onClick={() => openLabelPrint(packet)}
+                        />
                         <button type="button" className="warehouse-card-btn" onClick={() => navigate(`/warehouse-products/packets/${packet.id}/edit`)}>Edit</button>
                         <button
                           type="button"
@@ -319,5 +337,11 @@ export default function WarehousePacketsPage() {
         </div>
       )}
     </div>
+    <WarehouseProductionLabelPrintDialog
+      open={Boolean(labelPrintItem)}
+      item={labelPrintItem}
+      onClose={() => setLabelPrintItem(null)}
+    />
+    </>
   );
 }

@@ -241,6 +241,14 @@ async function assertProductionKioskUser(user) {
   throw err;
 }
 
+/** Catalog portal + production app — same Zebra / worker label template. */
+async function assertWarehouseLabelPrintUser(user) {
+  if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) {
+    return;
+  }
+  await assertProductionKioskUser(user);
+}
+
 async function assertUniquePacketName(sb, name, { excludePacketId } = {}) {
   const key = normalizeWarehousePacketNameKey(name);
   if (!key) throw new Error('Name is required');
@@ -882,12 +890,50 @@ async function buildProductionLabelPreviewPayload({ name, sku, printedAt, skipPn
 }
 
 async function opProductionLabelPreview(body, user) {
-  await assertProductionKioskUser(user);
+  await assertWarehouseLabelPrintUser(user);
   const name = titleCaseWords(String(body.name || '').trim());
-  const sku = normalizeWarehousePacketScan(body.sku);
+  const sku = normalizeWarehousePacketScan(body.sku) || normalizeWarehouseProductSku(body.sku);
   if (!name || !sku) throw new Error('name and sku are required.');
   const printedAt = body.printed_at || body.printedAt || new Date().toISOString();
   return buildProductionLabelPreviewPayload({ name, sku, printedAt });
+}
+
+async function opProductionLabelPrint(body, user) {
+  await assertWarehouseLabelPrintUser(user);
+  const sb = getService();
+  const name = titleCaseWords(String(body.name || '').trim());
+  const sku = normalizeWarehousePacketScan(body.sku) || normalizeWarehouseProductSku(body.sku);
+  const qty = Math.max(1, Math.floor(Number(body.qty ?? body.copies) || 1));
+  if (!name || !sku) throw new Error('name and sku are required.');
+  const printSource = String(body.client_source || '').trim() || 'warehouse_catalog_portal';
+  const printedAt = new Date();
+  let labelJobId = null;
+  let labelPrintWarning = null;
+  try {
+    labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+      name,
+      sku,
+      qty,
+      printedBy: user?.full_name || user?.display_name || user?.email,
+      source: printSource,
+      printedAt,
+    });
+    if (!labelJobId) {
+      labelPrintWarning = 'Labels were not sent to the printer (Zebra Weblink is not configured on the server).';
+    }
+  } catch (printErr) {
+    const { formatZebraPrintError } = await import('../lib/formatZebraPrintError.js');
+    labelPrintWarning = formatZebraPrintError(printErr);
+    console.warn('[warehouse-mobile] production label print failed:', printErr?.message || printErr);
+  }
+  const preview = await buildProductionLabelPreviewPayload({ name, sku, printedAt, skipPng: false });
+  return {
+    label_copies: qty,
+    label_job_id: labelJobId,
+    label_print_warning: labelPrintWarning,
+    label: preview.label,
+    label_preview_png_base64: preview.label_preview_png_base64,
+  };
 }
 
 async function opProductionSuggestBaseName(body, user) {
@@ -1505,6 +1551,9 @@ export default async function handler(req, res) {
         break;
       case 'production-label-preview':
         result = await opProductionLabelPreview(body, user);
+        break;
+      case 'production-label-print':
+        result = await opProductionLabelPrint(body, user);
         break;
       case 'production-packet-create':
         result = await opProductionPacketCreate(body, user);

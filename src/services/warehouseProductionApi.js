@@ -235,3 +235,36 @@ export async function resolveProductionScan(scan) {
   const payload = await productionOp('scan-resolve', { scan });
   return payload;
 }
+
+export async function fetchProductionLabelPreview({ name, sku, printedAt }) {
+  return productionOp('production-label-preview', {
+    name,
+    sku,
+    printed_at: printedAt,
+  });
+}
+
+export async function printWarehouseProductionLabel({ name, sku, copies = 1 }) {
+  try {
+    const payload = await productionOp('production-label-print', {
+      name,
+      sku,
+      qty: copies,
+      client_source: 'warehouse_catalog_portal',
+    });
+    return {
+      labelPrintWarning: payload?.label_print_warning || null,
+      labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
+      labelCopies: Number(payload?.label_copies) || copies,
+      label: payload?.label || null,
+      labelJobId: payload?.label_job_id || null,
+    };
+  } catch (err) {
+    if (isUnknownWarehouseOpError(err?.message)) {
+      throw new Error(
+        'Label print is not available on the live API yet. Deploy the latest Infinity Home backend (includes production-label-print), then try again.',
+      );
+    }
+    throw err;
+  }
+}
