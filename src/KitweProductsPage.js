@@ -9,7 +9,6 @@ import { fetchProductLocationPricesForLocation } from './services/locationPricin
 import { buildProductLocationPriceMap, resolveProductLocationPricing } from './utils/locationPricing';
 import {
   ensureRetailProductForKitweAssembly,
-  filterKitweSellableAssemblies,
   indexRetailProducts,
   loadRetailProductsForAssemblies,
   resolveRetailProductForAssembly,
@@ -18,9 +17,14 @@ import {
 import { queueKitwePriceLabels } from './utils/kitwePriceLabels';
 import { isWarehouseSetAssembly } from './utils/warehouseSetMath';
 import {
+  filterKitweCatalogProducts,
   kitweProductAssemblyOptions,
   listKitweWarehouseSets,
 } from './utils/kitweSetStock';
+import {
+  createKitwePortalProduct,
+  setKitwePortalProductStock,
+} from './utils/kitweProductPortal';
 import { generateRandomWarehouseSku16 } from './utils/warehouseRandomSku';
 import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { recomputeWarehouseLocationStock } from './services/warehouseTransfer';
@@ -37,6 +41,8 @@ export default function KitweProductsPage() {
   const [error, setError] = useState('');
   const [assemblies, setAssemblies] = useState([]);
   const [assemblyInventory, setAssemblyInventory] = useState([]);
+  const [assemblyLocations, setAssemblyLocations] = useState([]);
+  const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [setItems, setSetItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [priceMap, setPriceMap] = useState(new Map());
@@ -53,6 +59,15 @@ export default function KitweProductsPage() {
   const [setLines, setSetLines] = useState([emptyLine()]);
   const [setSaving, setSetSaving] = useState(false);
 
+  const [showCreateProduct, setShowCreateProduct] = useState(false);
+  const [productName, setProductName] = useState('');
+  const [productSku, setProductSku] = useState('');
+  const [productCategoryId, setProductCategoryId] = useState('');
+  const [productKitweQty, setProductKitweQty] = useState('0');
+  const [productSaving, setProductSaving] = useState(false);
+  const [stockDraft, setStockDraft] = useState({});
+  const [stockSavingId, setStockSavingId] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -65,12 +80,17 @@ export default function KitweProductsPage() {
       const allAssemblies = data.assemblies || [];
       setAssemblies(allAssemblies);
       setAssemblyInventory(data.assemblyInventory || []);
+      setAssemblyLocations(data.assemblyLocations || []);
+      setWarehouseLocationId(data.warehouseLocationId || null);
       setSetItems(data.setItems || []);
       setCategories(catRes?.data || []);
       setPriceMap(buildProductLocationPriceMap(locPrices || []));
-      const sellable = filterKitweSellableAssemblies(allAssemblies);
+      const deliveredProducts = filterKitweCatalogProducts(
+        allAssemblies,
+        data.assemblyInventory || [],
+      );
       const setAsm = allAssemblies.filter((a) => isWarehouseSetAssembly(a));
-      setRetailIndex(await loadRetailProductsForAssemblies([...sellable, ...setAsm], []));
+      setRetailIndex(await loadRetailProductsForAssemblies([...deliveredProducts, ...setAsm], []));
     } catch (err) {
       setError(err?.message || 'Failed to load Kitwe catalog');
     } finally {
@@ -86,6 +106,11 @@ export default function KitweProductsPage() {
     if (!showCreateSet || setSku) return;
     setSetSku(generateRandomWarehouseSku16());
   }, [showCreateSet, setSku]);
+
+  useEffect(() => {
+    if (!showCreateProduct || productSku) return;
+    setProductSku(generateRandomWarehouseSku16());
+  }, [showCreateProduct, productSku]);
 
   const setView = (next) => {
     const params = new URLSearchParams(searchParams);
@@ -131,7 +156,7 @@ export default function KitweProductsPage() {
 
   const productRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return filterKitweSellableAssemblies(assemblies)
+    return filterKitweCatalogProducts(assemblies, assemblyInventory)
       .filter((a) => {
         if (categoryFilter && String(a.category_id || '') !== String(categoryFilter)) return false;
         if (!q) return true;
@@ -154,7 +179,7 @@ export default function KitweProductsPage() {
         };
       })
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  }, [assemblies, qtyByAssembly, search, categoryFilter, categoriesById, retailIndex, priceMap]);
+  }, [assemblies, assemblyInventory, qtyByAssembly, search, categoryFilter, categoriesById, retailIndex, priceMap]);
 
   const setRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -189,6 +214,56 @@ export default function KitweProductsPage() {
     if (field === 'price') return row.standardPrice ?? '';
     if (field === 'promotional_price') return row.promoPrice ?? '';
     return '';
+  };
+
+  const getStockDraft = (row) => {
+    const key = draftKey(row.id, 'stock');
+    if (stockDraft[key] !== undefined) return stockDraft[key];
+    return row.kitweQty ?? 0;
+  };
+
+  const saveStockQty = async (row) => {
+    setStockSavingId(row.id);
+    setError('');
+    try {
+      const qty = Math.max(0, Math.floor(Number(getStockDraft(row)) || 0));
+      await setKitwePortalProductStock(row, qty);
+      setStockDraft((d) => {
+        const next = { ...d };
+        delete next[draftKey(row.id, 'stock')];
+        return next;
+      });
+      await load();
+    } catch (err) {
+      setError(err?.message || 'Failed to save stock quantity');
+    } finally {
+      setStockSavingId('');
+    }
+  };
+
+  const handleCreateProduct = async (e) => {
+    e.preventDefault();
+    setProductSaving(true);
+    setError('');
+    try {
+      await createKitwePortalProduct({
+        name: productName,
+        familySku: productSku,
+        categoryId: productCategoryId,
+        kitweQty: productKitweQty,
+        warehouseLocationId,
+      });
+      setProductName('');
+      setProductSku(generateRandomWarehouseSku16());
+      setProductCategoryId('');
+      setProductKitweQty('0');
+      setShowCreateProduct(false);
+      await load();
+    } catch (err) {
+      setError(err?.message || 'Failed to create product');
+    } finally {
+      setProductSaving(false);
+    }
   };
 
   const savePrices = async (row) => {
@@ -289,7 +364,7 @@ export default function KitweProductsPage() {
     }
   };
 
-  const renderPriceRow = (row, { qtyValue, productExtra = null }) => (
+  const renderPriceRow = (row, { qtyValue, productExtra = null, editableStock = false }) => (
     <tr key={row.id}>
       <td className="col-sku">{row.family_sku || '—'}</td>
       <td className="col-product">
@@ -308,7 +383,33 @@ export default function KitweProductsPage() {
           ))}
         </select>
       </td>
-      <td className="col-qty" style={{ fontWeight: 700 }}>{qtyValue ?? row.kitweQty}</td>
+      <td className="col-qty" style={{ fontWeight: editableStock ? 400 : 700 }}>
+        {editableStock ? (
+          <div className="kitwe-qty-edit">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              className="kitwe-cell-input kitwe-cell-input--qty"
+              value={getStockDraft(row)}
+              onChange={(e) => setStockDraft((d) => ({
+                ...d,
+                [draftKey(row.id, 'stock')]: e.target.value,
+              }))}
+            />
+            <button
+              type="button"
+              className="kitwe-btn-secondary"
+              disabled={stockSavingId === row.id}
+              onClick={() => saveStockQty(row)}
+            >
+              {stockSavingId === row.id ? '…' : 'Stock'}
+            </button>
+          </div>
+        ) : (
+          qtyValue ?? row.kitweQty
+        )}
+      </td>
       <td className="col-price">
         <input
           type="number"
@@ -357,7 +458,9 @@ export default function KitweProductsPage() {
       <BackToDashboard />
       <h1 style={{ marginTop: 16 }}>Kitwe catalog</h1>
       <p style={{ color: 'var(--kitwe-muted, #94a3b8)', marginBottom: 16 }}>
-        Warehouse products and sets at Kitwe. Standard and promotional prices apply at POS (promo when set, otherwise standard).
+        Products from Factory→Kitwe deliveries (production app send + Hassan accept) and products you create here appear in this list.
+        New SKUs are mirrored in central Warehouse at 0; only Kitwe qty is set from this page until stock arrives by delivery.
+        Stock edits on listed rows remain available until stocktake-only migration.
       </p>
 
       <div className="kitwe-catalog-toolbar">
@@ -377,6 +480,13 @@ export default function KitweProductsPage() {
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
+        <button
+          type="button"
+          className="kitwe-btn-create-set"
+          onClick={() => setShowCreateProduct((v) => !v)}
+        >
+          {showCreateProduct ? 'Close' : 'Create product'}
+        </button>
         <button type="button" className="kitwe-btn-create-set" onClick={openCreateSet}>
           Create set
         </button>
@@ -400,6 +510,55 @@ export default function KitweProductsPage() {
 
       {loading ? <p>Loading…</p> : null}
       {error ? <p style={{ color: '#f87171' }}>{error}</p> : null}
+
+      {showCreateProduct && view === 'products' ? (
+        <div className="kitwe-create-panel">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Create product</h2>
+            <button type="button" className="kitwe-btn-secondary" onClick={() => setShowCreateProduct(false)}>Close</button>
+          </div>
+          <form onSubmit={handleCreateProduct}>
+            <div className="kitwe-create-form-row">
+              <label className="kitwe-form-field kitwe-form-field--name">
+                <span>Product name</span>
+                <input className="kitwe-form-control" value={productName} onChange={(e) => setProductName(e.target.value)} />
+              </label>
+              <label className="kitwe-form-field kitwe-form-field--sku">
+                <span>SKU</span>
+                <input className="kitwe-form-control" value={productSku} onChange={(e) => setProductSku(e.target.value)} />
+              </label>
+              <label className="kitwe-form-field kitwe-form-field--category">
+                <span>Category</span>
+                <select className="kitwe-form-control" value={productCategoryId} onChange={(e) => setProductCategoryId(e.target.value)}>
+                  <option value="">—</option>
+                  {(categories || []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="kitwe-form-field kitwe-form-field--qty">
+                <span>Kitwe qty</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="kitwe-form-control"
+                  value={productKitweQty}
+                  onChange={(e) => setProductKitweQty(e.target.value)}
+                />
+              </label>
+            </div>
+            <p style={{ fontSize: '0.9rem', color: 'var(--kitwe-muted, #94a3b8)', margin: '8px 0 12px' }}>
+              If this SKU already exists in Warehouse, it will not be duplicated — only Kitwe stock is set here.
+            </p>
+            <div className="kitwe-create-form-actions">
+              <button type="submit" className="kitwe-btn-create-set" disabled={productSaving}>
+                {productSaving ? 'Saving…' : 'Save product'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
 
       {showCreateSet ? (
         <div className="kitwe-create-panel">
@@ -466,7 +625,7 @@ export default function KitweProductsPage() {
             <th className="col-sku">SKU</th>
             <th className="col-product">Product</th>
             <th className="col-category">Category</th>
-            <th className="col-qty">Qty</th>
+            <th className="col-qty">Qty (edit)</th>
             <th className="col-price">Standard price</th>
             <th className="col-price">Promotional price</th>
             <th className="col-actions">Save</th>
@@ -474,7 +633,15 @@ export default function KitweProductsPage() {
         </thead>
         <tbody>
           {view === 'products' ? (
-            productRows.map((row) => renderPriceRow(row, {}))
+            productRows.length ? (
+              productRows.map((row) => renderPriceRow(row, { editableStock: view === 'products' }))
+            ) : (
+              <tr>
+                <td colSpan={7} className="kitwe-empty-hint">
+                  No Kitwe products yet. Create one above, or accept a factory delivery into Kitwe.
+                </td>
+              </tr>
+            )
           ) : (
             setRows.map((row) => renderPriceRow(row, {
               qtyValue: row.kitweBuildableQty,

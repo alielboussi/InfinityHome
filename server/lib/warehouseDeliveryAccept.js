@@ -3,8 +3,10 @@ import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
-import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
-import { adjustPacketStock } from './warehouseDeliveryStock.js';
+import {
+  movePacketsForDeliveryReceive,
+  syncWarehouseStockAfterDeliveryReceive,
+} from './warehouseDeliveryAcceptStock.js';
 import { newUuid } from './uuid.js';
 
 function entryReceiverChecked(entry) {
@@ -123,18 +125,35 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
   }
 
   const now = new Date().toISOString();
+  const moved = await movePacketsForDeliveryReceive(sb, toReceive);
   for (const line of toReceive) {
-    const pid = entryPacketId(line);
-    const qty = Math.max(0, Number(line.quantity) || 0);
-    if (!pid || qty < 1) continue;
-    await adjustPacketStock(sb, pid, WAREHOUSE_FROM_LOCATION_ID, -qty);
-    await adjustPacketStock(sb, pid, WAREHOUSE_TO_LOCATION_ID, qty);
     const metadata = {
       ...(line.metadata || {}),
       received_at: now,
       received_by_email: acceptedByEmail || null,
     };
     await sb.from('warehouse_delivery_entries').update({ metadata }).eq('id', line.id);
+  }
+  await syncWarehouseStockAfterDeliveryReceive(sb, moved);
+
+  const touchedAssemblyIds = [...new Set(
+    (moved || []).map((m) => String(m.assemblyId || '')).filter(Boolean),
+  )];
+  for (const aid of touchedAssemblyIds) {
+    const { data: asmRow } = await sb
+      .from('warehouse_assemblies')
+      .select('metadata')
+      .eq('id', aid)
+      .maybeSingle();
+    const prevMeta = asmRow?.metadata || {};
+    await sb.from('warehouse_assemblies').update({
+      metadata: {
+        ...prevMeta,
+        kitwe_from_factory_delivery: true,
+        kitwe_factory_delivery_at: now,
+      },
+      updated_at: now,
+    }).eq('id', aid);
   }
 
   const { data: refreshedLines } = await sb.from('warehouse_delivery_entries').select('*').eq('session_id', sid);
@@ -155,11 +174,23 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
       const product = await findOrCreateKitweProduct(sb, assembly);
       if (product?.id) await addProductInventoryAtKitwe(sb, product.id, delta);
       mirroredAfter[aid] = units;
+      const { data: asmRow } = await sb
+        .from('warehouse_assemblies')
+        .select('metadata')
+        .eq('id', aid)
+        .maybeSingle();
+      const prevMeta = asmRow?.metadata || {};
+      await sb.from('warehouse_assemblies').update({
+        metadata: {
+          ...prevMeta,
+          kitwe_from_factory_delivery: true,
+          kitwe_factory_delivery_units: units,
+          kitwe_factory_delivery_at: now,
+        },
+        updated_at: now,
+      }).eq('id', aid);
     }
   }
-
-  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FROM_LOCATION_ID);
-  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_TO_LOCATION_ID);
 
   const openAfter = (refreshedLines || []).some((e) => entryPacketId(e) && !entryReceived(e));
 

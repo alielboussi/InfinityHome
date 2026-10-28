@@ -53,6 +53,36 @@ export function listKitweWarehouseSets(assemblies, setItems, assemblyInventory) 
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
+/** True when product was added on /kitwe-products (listed even at Kitwe qty 0). */
+export function isKitwePortalListedProduct(assembly) {
+  const meta = assembly?.metadata || {};
+  return meta.kitwe_portal_listed === true;
+}
+
+/** /kitwe-products table: Hassan-accepted deliveries (Kitwe qty > 0) + portal-created rows. */
+export function filterKitweCatalogProducts(assemblies, assemblyInventory) {
+  const qtyByAssembly = kitweQtyByAssembly(assemblyInventory);
+  return (assemblies || [])
+    .filter((a) => isWarehouseProductAssembly(a) && !isWarehouseSetAssembly(a))
+    .filter((a) => {
+      if (isKitwePortalListedProduct(a)) return true;
+      const meta = a?.metadata || {};
+      if (!meta.kitwe_from_factory_delivery) return false;
+      return (qtyByAssembly.get(String(a.id)) ?? 0) > 0;
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+/** @deprecated use filterKitweCatalogProducts */
+export function filterKitweFactoryDeliveredProducts(assemblies, assemblyInventory) {
+  return filterKitweCatalogProducts(assemblies, assemblyInventory);
+}
+
+/** @deprecated use filterKitweFactoryDeliveredProducts — qty>0 only, any source */
+export function filterKitweTransferredProducts(assemblies, assemblyInventory) {
+  return kitweProductAssemblyOptions(assemblies, assemblyInventory);
+}
+
 /** Kitwe products with stock > 0 — for set create dropdown (stock re-checked on save). */
 export function kitweProductAssemblyOptions(assemblies, assemblyInventory) {
   const qtyByAssembly = kitweQtyByAssembly(assemblyInventory);

@@ -114,12 +114,37 @@
   border-top: 1px solid var(--kitwe-row-border, #e2e8f0);
 }
 
-.kitwe-catalog-table .col-sku { width: 12%; }
-.kitwe-catalog-table .col-product { width: 24%; }
-.kitwe-catalog-table .col-category { width: 14%; }
-.kitwe-catalog-table .col-qty { width: 8%; }
-.kitwe-catalog-table .col-price { width: 11%; }
-.kitwe-catalog-table .col-actions { width: 14%; }
+.kitwe-catalog-table .col-sku { width: 11%; }
+.kitwe-catalog-table .col-product { width: 22%; }
+.kitwe-catalog-table .col-category { width: 13%; }
+.kitwe-catalog-table .col-qty { width: 15%; min-width: 168px; }
+.kitwe-catalog-table .col-price { width: 10%; }
+.kitwe-catalog-table .col-actions { width: 13%; }
+
+.kitwe-catalog-table th.col-qty,
+.kitwe-catalog-table td.col-qty {
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.kitwe-qty-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.kitwe-qty-edit .kitwe-cell-input--qty {
+  width: 4.25rem;
+  max-width: none;
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.kitwe-qty-edit .kitwe-btn-secondary {
+  flex: 0 0 auto;
+}
 
 .kitwe-catalog-table .kitwe-cell-input,
 .kitwe-catalog-table .kitwe-cell-select {
