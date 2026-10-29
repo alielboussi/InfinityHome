@@ -67,6 +67,7 @@ module.exports = {
       },
     },
     plugins: [
+      'expo-font',
       [
         '@react-native-google-signin/google-signin',
         {
