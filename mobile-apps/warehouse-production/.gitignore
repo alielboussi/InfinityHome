@@ -1,3 +1,4 @@
 .expo/
 .expo-export-verify/
 node_modules/
+android/
