@@ -56,3 +56,13 @@ If save spins then stops with no label dialog, the **server** likely returned an
 **Local debug APK without Metro:** embeds an old JS bundle; run `npx expo run:android` again or use Expo Go + Metro for day-to-day dev.
 
 Build APK: follow `warehouse-catalog/build-apk-local.ps1` pattern with package `com.bestrest.warehouseproduction`.
+
+**Google Sign-In on EAS APK:** register release SHA-1 before staff install:
+
+```bash
+# From repo root (service account JSON in repo root, or FIREBASE_SERVICE_ACCOUNT_PATH)
+node scripts/setupWarehouseProductionGoogleSignIn.mjs https://expo.dev/artifacts/eas/....apk
+# or: WAREHOUSE_PRODUCTION_ANDROID_SHA1=AA:BB:... node scripts/setupWarehouseProductionGoogleSignIn.mjs
+```
+
+Expo keystore SHA-1: [warehouse-production credentials](https://expo.dev/accounts/alielboussi/projects/warehouse-production/credentials) → Android → Keystore.

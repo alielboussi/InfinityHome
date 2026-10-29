@@ -27,7 +27,13 @@ Firebase project (same as portal / warehouse catalog): **`bestrest-portal-system
 1. [Firebase Console](https://console.firebase.google.com/) → **bestrest-portal-system-43108** → **Build** → **Authentication** → **Sign-in method**.
 2. **Google** → **Enable** → set support email → **Save** (required for `signInWithCredential` from the app).
 3. **Project settings** → **Your apps** → **Warehouse Production** (`com.bestrest.warehouseproduction`):
-   - **SHA-1** should be listed (same hash as Factory APK if you use one keystore). Registered via CLI: `81e9f6007dc21168055e451f176fbff8943bdbd4`.
+   - **SHA-1** must include the **EAS preview/production keystore** fingerprint (native Google Sign-In on installed APK). Error code **10 / DEVELOPER_ERROR** means this SHA-1 is missing.
+   - **EAS (Oct 2026 preview APK):** `96:89:20:EC:D4:0E:43:D3:FB:AD:F1:45:B1:D2:BD:82:42:BC:49:B1` — register via:
+     ```bash
+     WAREHOUSE_PRODUCTION_ANDROID_SHA1=96:89:20:EC:... node scripts/setupWarehouseProductionGoogleSignIn.mjs
+     ```
+     Or Expo → [warehouse-production credentials](https://expo.dev/accounts/alielboussi/projects/warehouse-production/credentials) → Android → Keystore → SHA-1, then Firebase Console → add fingerprint manually.
+   - Older doc hash `81e9f600…` was a previous/local keystore; keep both SHA-1 entries if you still ship builds signed with that key.
    - After Google is enabled, re-download `google-services.json` if an **Android OAuth client** (type 1) is still missing.
 4. [Google Cloud Console](https://console.cloud.google.com/apis/credentials?project=bestrest-portal-system-43108) → **OAuth 2.0 Client IDs** → open the **Web client** (same ID as `googleWebClientId` / `876299148810-s0rcl…` — **not** the Android client):
    - **Authorized redirect URIs** → **+ ADD URI** → paste exactly (no trailing slash):
@@ -92,3 +98,4 @@ Or mirror `mobile-apps/warehouse-catalog/build-apk-local.ps1` with package `com.
 | Access denied after login | Enable **Production app access** for that user on `/user-access`. |
 | Build: missing `google-services.json` | Complete step 2; file must sit next to `app.config.js`. |
 | `auth.expo.io` “Something went wrong…” after Google | Redirect URI is OK; Expo Go proxy failed. In **dev** (Expo Go), use **email + password** on the login screen (same Firebase account as the portal). Release APK uses Google only. Or install a **preview APK** for native Google. |
+| **Continue with Google** → “not configured for this APK” / error **10** | Register **EAS release SHA-1** for `com.bestrest.warehouseproduction` (see §3). Wait 2–5 minutes; **same installed APK** usually works without reinstall. |
