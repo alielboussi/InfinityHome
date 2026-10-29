@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Pressable,
@@ -167,6 +168,7 @@ export default function ReturnOrdersScreen({ navigation }) {
   }, [locale]);
 
   useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 30000);
     return () => clearInterval(t);
@@ -263,7 +265,7 @@ export default function ReturnOrdersScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { padding: 16, paddingBottom: 32 },
+  wrap: { padding: 16, paddingBottom: 8 },
   list: { gap: 12, marginTop: 12 },
   card: {
     borderWidth: 1,

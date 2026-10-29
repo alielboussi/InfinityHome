@@ -4,7 +4,7 @@ import db from './dataClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { applyInventoryBulk } from './utils/inventoryApi';
-import { apiUrl, withApiHeaders } from './utils/apiUrl';
+import { apiUrl } from './utils/apiUrl';
 import { syncProductLocations } from './services/productLocations';
 
 const FROM_LOCATION_ID = '454a092c-5b12-441e-b99d-216f6fa72198';

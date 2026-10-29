@@ -77,7 +77,7 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
         printGroups: out.print_groups || printGroups,
         driverSignatureUrl: out.driver_signature_url || '',
         submittedAt: out.submitted_at,
-        documentKind: 'delivery',
+        documentKind: 'sold_delivery',
         customerName: out.customer_name || customerName,
         customerPhone: out.customer_phone || customerPhone,
       });
@@ -137,5 +137,5 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { padding: 16, paddingBottom: 32 },
+  wrap: { padding: 16, paddingBottom: 8 },
 });

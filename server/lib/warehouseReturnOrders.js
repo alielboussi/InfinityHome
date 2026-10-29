@@ -160,7 +160,18 @@ export async function createWarehouseReturnOrder(sb, body, user) {
     throw new Error(error.message || 'Failed to save return order.');
   }
 
-  return { return_order: mapReturnRow(row) };
+  const mapped = mapReturnRow(row);
+  queueProductionReturnPush(mapped);
+  return { return_order: mapped };
+}
+
+async function queueProductionReturnPush(order) {
+  try {
+    const { notifyProductionNewReturnOrder } = await import('./productionExpoPush.js');
+    await notifyProductionNewReturnOrder(order);
+  } catch (err) {
+    console.warn('[warehouseReturnOrders] push notify failed:', err?.message || err);
+  }
 }
 
 export async function listWarehouseReturnOrders(sb, { forProduction = false, trackageOnly = false } = {}) {

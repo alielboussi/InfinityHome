@@ -65,8 +65,8 @@ assert(
 );
 assert(noteHtml.includes('DELIVERY_NOTE_DISCLAIMER'), 'delivery note must include disclaimer');
 assert(
-  noteHtml.includes("return isReturn ? 'Return Note' : 'Delivery Note'"),
-  'A4 title must branch: Return Note for returns, Delivery Note for send delivery',
+  noteHtml.includes("'sold_delivery'") && noteHtml.includes("'Delivery Note'"),
+  'A4 must keep separate titles for sold_delivery vs kitwe delivery',
 );
 
 const { execSync } = require('child_process');
@@ -76,7 +76,11 @@ import { buildDeliveryNotePrintHtml } from './src/utils/buildDeliveryNotePrintHt
 const groups = [{ assembly_name: 'Test', units: 1, lines: [] }];
 const d = buildDeliveryNotePrintHtml({ deliveryNumber: 'WHD1', driverName: 'D', printGroups: groups, documentKind: 'delivery' });
 if (!d.includes('<h1 class=\\"title\\">Delivery Note</h1>')) throw new Error('delivery header missing');
-if (d.includes('<h1 class=\\"title\\">Return Note</h1>')) throw new Error('delivery must not use Return Note');
+if (d.includes('Sold Delivery Note')) throw new Error('kitwe delivery must not use Sold Delivery Note');
+if (d.includes('Customer Name:')) throw new Error('kitwe delivery must not show customer block');
+const s = buildDeliveryNotePrintHtml({ deliveryNumber: 'WST0000000001', driverName: 'D', printGroups: groups, documentKind: 'sold_delivery', customerName: 'Test', customerPhone: '123' });
+if (!s.includes('<h1 class=\\"title\\">Sold Delivery Note</h1>')) throw new Error('sold header missing');
+if (!s.includes('Customer Name:')) throw new Error('sold delivery must show customer block');
 const r = buildDeliveryNotePrintHtml({ deliveryNumber: 'RO1', driverName: 'D', printGroups: groups, documentKind: 'return_shipment' });
 if (!r.includes('<h1 class=\\"title\\">Return Note</h1>')) throw new Error('return header missing');
 "`,

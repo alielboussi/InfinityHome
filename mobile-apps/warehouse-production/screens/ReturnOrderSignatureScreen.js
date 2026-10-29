@@ -160,5 +160,5 @@ export default function ReturnOrderSignatureScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { padding: 16, paddingBottom: 32 },
+  wrap: { padding: 16, paddingBottom: 8 },
 });

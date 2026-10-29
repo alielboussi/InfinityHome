@@ -29,4 +29,7 @@ export const stackScreenOptions = {
   headerShadowVisible: false,
   contentStyle: { backgroundColor: theme.bg },
   freezeOnBlur: false,
+  animation: 'fade',
+  animationDuration: 180,
+  gestureEnabled: true,
 };

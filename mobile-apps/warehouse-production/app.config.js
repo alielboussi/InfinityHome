@@ -59,6 +59,7 @@ module.exports = {
         'ACCESS_NETWORK_STATE',
         'ACCESS_WIFI_STATE',
         'CHANGE_WIFI_MULTICAST_STATE',
+        'POST_NOTIFICATIONS',
       ],
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
@@ -83,6 +84,14 @@ module.exports = {
         'expo-camera',
         {
           cameraPermission: 'Production needs the camera to scan label QR codes and barcodes.',
+        },
+      ],
+      [
+        'expo-notifications',
+        {
+          icon: './assets/icon.png',
+          color: '#38bdf8',
+          defaultChannel: 'production-alerts',
         },
       ],
     ],

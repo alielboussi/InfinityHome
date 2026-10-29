@@ -97,6 +97,7 @@ import {
   submitReturnShipment,
   printReturnCustomerPickupLabel,
 } from '../lib/warehouseReturnOrders.js';
+import { registerProductionPushToken } from '../lib/productionExpoPush.js';
 import {
   assertWarehouseStorageCreator,
   assertWarehouseStorageProductionAccess,
@@ -309,6 +310,16 @@ async function assertUniqueAssemblyName(sb, name, { excludeAssemblyId } = {}) {
 async function assertUniqueProductionProductName(sb, name, { excludePacketId, excludeAssemblyId } = {}) {
   await assertUniquePacketName(sb, name, { excludePacketId });
   await assertUniqueAssemblyName(sb, name, { excludeAssemblyId });
+}
+
+async function opProductionPushRegister(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return registerProductionPushToken({
+    userId: user?.id || user?.uid,
+    email: user?.email,
+    expoPushToken: body.expo_push_token,
+  });
 }
 
 async function opProductionAccessSelf(user) {
@@ -1882,6 +1893,9 @@ export default async function handler(req, res) {
         break;
       case 'storage-deliver-submit':
         result = await opStorageDeliverSubmit(body, user);
+        break;
+      case 'production-push-register':
+        result = await opProductionPushRegister(body, user);
         break;
       case 'production-access-self': {
         const { requireBearerUser } = await import('../lib/verifyBearerUser.js');

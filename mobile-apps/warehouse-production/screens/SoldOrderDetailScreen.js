@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
@@ -29,7 +29,7 @@ export default function SoldOrderDetailScreen({ route, navigation }) {
         storageSendId: id,
         storageNumber: row?.storage_number,
         sessionId: prep.session_id,
-        deliveryNumber: prep.delivery_number,
+        deliveryNumber: row?.storage_number || prep.delivery_number,
         printGroups: [{
           assembly_name: row?.assembly_name,
           units: row?.quantity,
@@ -47,7 +47,8 @@ export default function SoldOrderDetailScreen({ route, navigation }) {
   if (!row && !error) {
     return (
       <KioskSafeScroll contentContainerStyle={styles.wrap}>
-        <Text style={{ textAlign: 'center', marginTop: 24 }}>{tUi('loading', locale)}</Text>
+        <ProductionKioskTopBar title={tUi('soldDetailTitle', locale)} locale={locale} onToggleLocale={toggleLocale} />
+        <ActivityIndicator style={{ marginTop: 24 }} color={theme.primary} />
       </KioskSafeScroll>
     );
   }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import KioskSafeScroll from '../components/KioskSafeScroll';
@@ -39,6 +40,12 @@ export default function SoldOrdersScreen({ navigation }) {
   }, [locale]);
 
   useEffect(() => { load(); }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   const groups = groupByCustomer(rows);
 
@@ -81,7 +88,7 @@ export default function SoldOrdersScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { padding: 16, paddingBottom: 32 },
+  wrap: { padding: 16, paddingBottom: 8 },
   group: { marginTop: 16 },
   groupTitle: { fontSize: 18, fontWeight: '800', color: theme.primaryDark, marginBottom: 8 },
   card: {

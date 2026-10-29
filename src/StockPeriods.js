@@ -290,7 +290,7 @@ export default function StockPeriods() {
       throw new Error(data?.error || 'Failed to save product locations.');
     }
     return data || {};
-  }, [getApiBase]);
+  }, []);
 
   const getLocationProductIds = useCallback(async (locId) => {
     if (!locId) return [];

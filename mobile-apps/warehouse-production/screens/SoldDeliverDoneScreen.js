@@ -48,7 +48,7 @@ export default function SoldDeliverDoneScreen({ route, navigation }) {
         printGroups={printGroups}
         submittedAt={submittedAt}
         copyCount={DEFAULT_DELIVERY_PRINT_COPIES}
-        documentKind="delivery"
+        documentKind="sold_delivery"
         customerName={customerName}
         customerPhone={customerPhone}
         autoPrintOnOpen

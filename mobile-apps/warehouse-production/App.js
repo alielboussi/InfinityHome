@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
@@ -5,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import FirebaseAuthGate from './shared/AuthGate';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { useProductionAccessGrant } from './hooks/useProductionAccessGrant';
+import { useProductionPushNotifications } from './hooks/useProductionPushNotifications';
 import DashboardScreen from './screens/DashboardScreen';
 import CreateScreen from './screens/CreateScreen';
 import StockScreen from './screens/StockScreen';
@@ -26,7 +28,7 @@ import { stackScreenOptions, theme } from './shared/theme';
 
 const Stack = createNativeStackNavigator();
 
-function MainStack() {
+function MainStack({ navigationRef }) {
   const {
     grant,
     loading,
@@ -36,6 +38,8 @@ function MainStack() {
     refresh,
     accessHint,
   } = useProductionAccessGrant();
+
+  useProductionPushNotifications(navigationRef, { grant, allowed });
 
   if (loading) {
     return (
@@ -123,6 +127,7 @@ function MainStack() {
 }
 
 export default function App() {
+  const navigationRef = useRef(null);
   return (
     <SafeAreaProvider>
       <FirebaseAuthGate
@@ -130,8 +135,8 @@ export default function App() {
         showUserBar={false}
         signInMethods={__DEV__ ? 'both' : 'google'}
       >
-        <NavigationContainer>
-          <MainStack />
+        <NavigationContainer ref={navigationRef}>
+          <MainStack navigationRef={navigationRef} />
         </NavigationContainer>
       </FirebaseAuthGate>
     </SafeAreaProvider>

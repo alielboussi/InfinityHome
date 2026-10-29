@@ -10,7 +10,6 @@ import {
   isWarehouseProductionKitweDeliveryAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
 import { WAREHOUSE_STORAGE_SEND_STATUSES } from '../../src/utils/warehouseStorageSend.js';
-import { allocateWarehouseDeliveryNumber } from './warehouseDeliveryNumber.js';
 import { normalizeWarehouseSku } from '../../src/utils/warehouseAssemblyMath.js';
 import { isWarehouseProductAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
 
@@ -296,7 +295,18 @@ export async function submitWarehouseStorageSend(sb, body, user) {
     updated_at: now,
   }).eq('id', id);
 
-  return { storage_send: mapRow({ ...row, labels_printed_at: now }) };
+  const mapped = mapRow({ ...row, labels_printed_at: now });
+  queueProductionStoragePush(mapped);
+  return { storage_send: mapped };
+}
+
+async function queueProductionStoragePush(row) {
+  try {
+    const { notifyProductionNewStorageSend } = await import('./productionExpoPush.js');
+    await notifyProductionNewStorageSend(row);
+  } catch (err) {
+    console.warn('[warehouseStorageSends] push notify failed:', err?.message || err);
+  }
 }
 
 export async function listWarehouseStorageSends(sb, { forProduction = false } = {}) {
@@ -347,7 +357,8 @@ export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
     throw new Error('This item is no longer in storage.');
   }
 
-  const deliveryNumber = row.delivery_number || await allocateWarehouseDeliveryNumber();
+  const deliveryNumber = String(row.storage_number || '').trim();
+  if (!deliveryNumber) throw new Error('Storage number missing.');
   const now = new Date().toISOString();
   const qty = Number(row.quantity) || 0;
   await adjustAssemblyStock(sb, row.assembly_id, FACTORY_ID, -qty);

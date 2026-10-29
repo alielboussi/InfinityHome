@@ -24,10 +24,13 @@ const mobile = read('server/handlers/warehouse-mobile.js');
   'storage-send-submit',
   'storage-send-list',
   'storage-deliver-submit',
+  'production-push-register',
 ].forEach((op) => assert(mobile.includes(`'${op}'`), `warehouse-mobile must handle ${op}`));
 
 assert(fs.existsSync(path.join(root, 'src/WarehouseStorage.js')), 'Hassan Warehouse Storage page must exist');
 assert(read('src/AppChrome.js').includes('/warehouse-storage'), 'nav must include Warehouse Storage');
 assert(read('mobile-apps/warehouse-production/screens/SoldOrdersScreen.js').includes('storage-send-list'), 'Sold screen must list storage sends');
+
+assert(read('src/utils/buildDeliveryNotePrintHtml.js').includes("'sold_delivery'"), 'sold A4 must use sold_delivery document kind');
 
 console.log('verifyWarehouseStorageFlow: OK');

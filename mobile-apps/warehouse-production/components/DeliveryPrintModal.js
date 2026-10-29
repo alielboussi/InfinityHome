@@ -47,6 +47,7 @@ export default function DeliveryPrintModal({
   const [printAttemptDone, setPrintAttemptDone] = useState(false);
   const autoStarted = useRef(false);
   const isReturnDoc = documentKind === 'return' || documentKind === 'return_shipment';
+  const isSoldDoc = documentKind === 'sold_delivery';
 
   const runScan = useCallback(async () => {
     setScanning(true);
@@ -151,9 +152,11 @@ export default function DeliveryPrintModal({
           <Text style={[styles.title, { textAlign }]}>
             {reprintMode
               ? tUi('deliveryPrintReprintTitle', locale)
-              : (isReturnDoc
-                ? tUi('returnPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES))
-                : tUi('deliveryPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES)))}
+              : (isSoldDoc
+                ? tUi('soldPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES))
+                : isReturnDoc
+                  ? tUi('returnPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES))
+                  : tUi('deliveryPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES)))}
           </Text>
           <Text style={[styles.hint, { textAlign }]}>
             {reprintMode

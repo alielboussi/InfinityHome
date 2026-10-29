@@ -340,6 +340,10 @@ const UI_STRINGS = {
   soldDeliverFailed: { en: 'Delivery failed.', ar: 'فشل التسليم.' },
   soldDeliverTitle: { en: 'Sold delivery — sign', ar: 'تسليم مباع — التوقيع' },
   soldDeliverDoneTitle: { en: 'Sold delivery sent', ar: 'تم إرسال تسليم المباع' },
+  soldPrintTitleCopies: {
+    en: 'Print sold delivery note — {n} copies',
+    ar: 'طباعة مذكرة تسليم المباع — {n} نسخ',
+  },
   returnCustomerNote: { en: 'Customer note', ar: 'مذكرة العميل' },
   returnCustomerNoteTitle: { en: 'Customer delivery note', ar: 'مذكرة تسليم العميل' },
   loading: { en: 'Loading…', ar: 'جاري التحميل…' },

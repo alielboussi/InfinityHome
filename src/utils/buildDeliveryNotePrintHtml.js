@@ -148,9 +148,22 @@ function safeImgSrc(value) {
 }
 
 function deliveryNoteTitle(documentKind = 'delivery') {
-  const isReturn = documentKind === 'return' || documentKind === 'return_shipment';
-  /** Send Delivery (Kitwe) and sent-delivery reprints use documentKind `delivery`. Returns use `return` / `return_shipment`. */
-  return isReturn ? 'Return Note' : 'Delivery Note';
+  const kind = String(documentKind || 'delivery').trim();
+  if (kind === 'return' || kind === 'return_shipment') return 'Return Note';
+  if (kind === 'sold_delivery') return 'Sold Delivery Note';
+  /** Kitwe truck send + sent-delivery reprints only — never mix with sold_delivery. */
+  return 'Delivery Note';
+}
+
+function deliveryNoteNumberLabel(documentKind = 'delivery') {
+  const kind = String(documentKind || 'delivery').trim();
+  if (kind === 'return' || kind === 'return_shipment') return 'Return No.';
+  if (kind === 'sold_delivery') return 'Sold Delivery No.';
+  return 'Delivery No.';
+}
+
+function deliveryNoteShowsCustomerBlock(documentKind = 'delivery') {
+  return String(documentKind || '').trim() === 'sold_delivery';
 }
 
 function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {
@@ -159,12 +172,12 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
     ? `<img class="company-logo" src="${safeImgSrc(logoSrc)}" alt="${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}" />`
     : `<div class="company-logo company-logo--text">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</div>`;
   const dispatched = String(dispatchedBy || '').trim() || '—';
-  const isReturn = documentKind === 'return' || documentKind === 'return_shipment';
   const title = deliveryNoteTitle(documentKind);
-  const numLabel = isReturn ? 'Return No.' : 'Delivery No.';
+  const numLabel = deliveryNoteNumberLabel(documentKind);
   const custName = String(customerName || '').trim();
   const custPhone = String(customerPhone || '').trim();
-  const customerBlock = (custName || custPhone)
+  const showCustomer = deliveryNoteShowsCustomerBlock(documentKind);
+  const customerBlock = showCustomer && (custName || custPhone)
     ? `<p class="customer-line"><strong>Customer Name:</strong> ${escapeHtml(custName || '—')}</p>
       <p class="customer-line"><strong>Customer Phone Number:</strong> ${escapeHtml(custPhone || '—')}</p>`
     : '';

@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-const ANDROID_NAV_MIN = 52;
+const ANDROID_NAV_MIN = 56;
 
 /** Scroll content padding (use with KioskStickyFooter for primary actions). */
 export function kioskScreenEdges(insets, extraBottom = 16) {
