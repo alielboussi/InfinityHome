@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import db from './dataClient';
-import { getHomeDashboardPath, getPreferredLandingPath, isHassanAwadUser, isPathAllowed, resolveSessionUserFromAuth } from './accessControl';
+import { getHomeDashboardPath, getPreferredLandingPath, isHassanAwadUser, isPathAllowed, resolveSessionUserFromAuth, canUseLocalhostQuotationerDirectLink } from './accessControl';
 import { USE_FIREBASE } from './config/backend';
 import { clearStaleAppLogin, ensureAuthSession } from './utils/authSession';
 import { hasOAuthReturnParams, resolveAppUserFromSession, startGoogleSignIn } from './utils/googleAuth';
@@ -43,6 +43,9 @@ function computeDestination(minimalUser, nextTarget) {
   if (raw && nextPath && isPathAllowed(minimalUser, nextPath)) {
     const isQuotationerHome = QUOTATIONER_HOME_PATHS.has(nextPath);
     if (!isHassanAwadUser(minimalUser) && isQuotationerHome && !hasQuery) {
+      if (canUseLocalhostQuotationerDirectLink(minimalUser)) {
+        return raw;
+      }
       return home;
     }
     return raw;

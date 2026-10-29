@@ -17,7 +17,8 @@ export default function KitweSendDoneScreen({ route, navigation }) {
   const driverSignatureDataUri = route.params?.driverSignatureDataUri || '';
   const driverSignatureUrl = route.params?.driverSignatureUrl || '';
   const submittedAt = route.params?.submittedAt || '';
-  const [printOpen, setPrintOpen] = useState(true);
+  const hasPrintPayload = Boolean(dn) && Array.isArray(printGroups) && printGroups.length > 0;
+  const [printOpen, setPrintOpen] = useState(hasPrintPayload);
 
   return (
     <>
@@ -35,12 +36,14 @@ export default function KitweSendDoneScreen({ route, navigation }) {
               {tUi('deliveryDoneSub', locale)}
             </Text>
           </View>
-          <Pressable
-            style={[kiosk.btnOutlinePrimary, styles.printAgain]}
-            onPress={() => setPrintOpen(true)}
-          >
-            <Text style={kiosk.btnOutlinePrimaryText}>{tUi('deliveryPrintTitle', locale)}</Text>
-          </Pressable>
+          {hasPrintPayload ? (
+            <Pressable
+              style={[kiosk.btnOutlinePrimary, styles.printAgain]}
+              onPress={() => setPrintOpen(true)}
+            >
+              <Text style={kiosk.btnOutlinePrimaryText}>{tUi('deliveryPrintTitle', locale)}</Text>
+            </Pressable>
+          ) : null}
           <Pressable style={[kiosk.btnPrimaryBlock, styles.btn]} onPress={() => navigation.popToTop()}>
             <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryBackDashboard', locale)}</Text>
           </Pressable>
@@ -48,7 +51,7 @@ export default function KitweSendDoneScreen({ route, navigation }) {
       </KioskSafeScroll>
 
       <DeliveryPrintModal
-        visible={printOpen}
+        visible={printOpen && hasPrintPayload}
         locale={locale}
         textAlign={textAlign}
         deliveryNumber={dn}
@@ -59,6 +62,7 @@ export default function KitweSendDoneScreen({ route, navigation }) {
         printGroups={printGroups}
         submittedAt={submittedAt}
         copyCount={DEFAULT_DELIVERY_PRINT_COPIES}
+        documentKind="delivery"
         autoPrintOnOpen
         onDone={() => setPrintOpen(false)}
       />

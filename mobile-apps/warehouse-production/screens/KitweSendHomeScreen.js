@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   StyleSheet,
@@ -8,8 +7,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
-import DeliveryDriverPicker from '../components/DeliveryDriverPicker';
 import DeliveryProductPickModal from '../components/DeliveryProductPickModal';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
 import KioskSafeScroll from '../components/KioskSafeScroll';
@@ -19,8 +18,8 @@ import {
   refreshDeliveryPacketCheckQty,
 } from '../lib/deliveryAssemblyChecks';
 import { assembliesUsingPacket, findWarehousePacketByScan } from '../lib/deliveryPacketAssemblies';
-import { sortDeliveryDriversByName } from '../lib/sortDeliveryDrivers';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
+import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { tUi } from '../lib/productionKioskI18n';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
@@ -58,12 +57,8 @@ export default function KitweSendHomeScreen({ navigation }) {
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const [sessionId, setSessionId] = useState('');
   const [deliveryNumber, setDeliveryNumber] = useState('');
-  const [drivers, setDrivers] = useState([]);
-  const [driverId, setDriverId] = useState('');
-  const [driverName, setDriverName] = useState('');
   const [groups, setGroups] = useState([]);
   const [error, setError] = useState('');
-  const [driverPickerOpen, setDriverPickerOpen] = useState(false);
 
   const [catalog, setCatalog] = useState(null);
   const [search, setSearch] = useState('');
@@ -72,8 +67,6 @@ export default function KitweSendHomeScreen({ navigation }) {
   const [draftChecks, setDraftChecks] = useState({});
   const [scanOpen, setScanOpen] = useState(false);
   const [pickModal, setPickModal] = useState(null);
-
-  const sortedDrivers = useMemo(() => sortDeliveryDriversByName(drivers), [drivers]);
 
   const assemblies = catalog?.assemblies || [];
   const packets = catalog?.packets || [];
@@ -102,13 +95,9 @@ export default function KitweSendHomeScreen({ navigation }) {
   const boot = useCallback(async () => {
     setError('');
     try {
-      const [sess, drv] = await Promise.all([
-        warehouseMobileRequest('delivery-session-open'),
-        warehouseMobileRequest('delivery-drivers-list'),
-      ]);
+      const sess = await warehouseMobileRequest('delivery-session-open');
       setSessionId(sess.session_id);
       setDeliveryNumber(sess.delivery_number);
-      setDrivers(drv.drivers || []);
     } catch (err) {
       setError(err?.message || 'deliverySessionFailed');
     }
@@ -299,18 +288,11 @@ export default function KitweSendHomeScreen({ navigation }) {
       Alert.alert(tUi('deliveryTitle', locale), cartErr);
       return;
     }
-    if (!driverName.trim()) {
-      const msg = tUi('deliveryNeedDriver', locale);
-      setError(msg);
-      Alert.alert(tUi('deliveryTitle', locale), msg);
-      return;
-    }
     setError('');
     navigation.navigate('KitweSendSignature', {
       sessionId,
       deliveryNumber,
-      driverId,
-      driverName,
+      dispatchedByName: getProductionDispatcherLabelSync(),
       groups: groups.map((g) => ({
         assembly_id: g.assembly_id,
         units: g.units,
@@ -359,8 +341,13 @@ export default function KitweSendHomeScreen({ navigation }) {
             value={search}
             onChangeText={setSearch}
           />
-          <Pressable style={kiosk.scanChipBtn} onPress={() => setScanOpen(true)}>
-            <Text style={kiosk.scanChipBtnText}>{tUi('deliveryScanBtn', locale)}</Text>
+          <Pressable
+            style={kiosk.scanChipBtn}
+            onPress={() => setScanOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={tUi('deliveryScanBtn', locale)}
+          >
+            <MaterialCommunityIcons name="qrcode-scan" size={28} color="#0f172a" />
           </Pressable>
         </View>
 
@@ -480,27 +467,6 @@ export default function KitweSendHomeScreen({ navigation }) {
           );
         })}
 
-        <View style={[kiosk.field, styles.footerDriver]}>
-          <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryDriver', locale)}</Text>
-          <Pressable
-            style={[
-              kiosk.driverPickerBtn,
-              driverName ? kiosk.driverPickerBtnSelected : null,
-            ]}
-            onPress={() => setDriverPickerOpen(true)}
-          >
-            <Text
-              style={[
-                driverName ? kiosk.driverPickerValueText : kiosk.driverPickerPlaceholderText,
-                { textAlign: 'center' },
-              ]}
-              numberOfLines={2}
-            >
-              {driverName || tUi('deliveryDriverPlaceholder', locale)}
-            </Text>
-          </Pressable>
-        </View>
-
         <Text style={[kiosk.metaLine, styles.flowHint, { textAlign }]}>
           {tUi('deliverySignFlowHint', locale)}
         </Text>
@@ -509,28 +475,14 @@ export default function KitweSendHomeScreen({ navigation }) {
           style={[
             kiosk.btnPrimaryBlock,
             styles.sendBtn,
-            (!driverName.trim() || !groups.length) && styles.sendBtnDisabled,
+            !groups.length && styles.sendBtnDisabled,
           ]}
           onPress={goToSignature}
-          disabled={!driverName.trim() || !groups.length}
+          disabled={!groups.length}
         >
           <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySendBtn', locale)}</Text>
         </Pressable>
       </KioskSafeScroll>
-
-      <DeliveryDriverPicker
-        visible={driverPickerOpen}
-        title={tUi('deliveryDriver', locale)}
-        drivers={sortedDrivers}
-        locale={locale}
-        textAlign={textAlign}
-        selectedDriverId={driverId}
-        onClose={() => setDriverPickerOpen(false)}
-        onSelect={(d) => {
-          setDriverId(d.id);
-          setDriverName(d.name);
-        }}
-      />
 
       <ProductionQrScanModal
         visible={scanOpen}
@@ -559,11 +511,10 @@ export default function KitweSendHomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexGrow: 1, paddingBottom: 8 },
+  wrap: { flexGrow: 1 },
   changeProduct: { marginBottom: 12 },
   addToCartBtn: { marginTop: 12 },
   cartTitleCol: { flex: 1 },
-  footerDriver: { marginTop: 8 },
   sendBtn: { marginTop: 12 },
   sendBtnBusy: { opacity: 0.65 },
   sendBtnDisabled: { opacity: 0.5 },

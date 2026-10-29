@@ -5,6 +5,8 @@ export const PRODUCTION_SEATER_PRESETS = Object.freeze([
   '2 Seater',
   'Single Seater',
   'Lounge Chair',
+  'Curtains',
+  'Pillows',
 ]);
 
 export const PRODUCTION_CARPENTRY_PRESETS = Object.freeze([

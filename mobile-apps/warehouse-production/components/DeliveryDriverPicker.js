@@ -3,7 +3,7 @@ import { theme } from '../shared/theme';
 import { kiosk } from './kioskStyles';
 import { tUi } from '../lib/productionKioskI18n';
 
-export default function DeliveryDriverPicker({
+function DeliveryDriverPicker({
   visible,
   title,
   drivers,
@@ -100,3 +100,5 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+
+export default DeliveryDriverPicker;

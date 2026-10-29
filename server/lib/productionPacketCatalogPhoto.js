@@ -50,7 +50,9 @@ export async function attachProductionPacketCatalogPhoto(sb, {
   if (!packetId || !sku) throw new Error('packet id and sku are required.');
   if (!imageBase64) throw new Error('Product photo is required.');
 
-  const jpeg = await retouchProductionSeatingPhotoFromBase64(imageBase64);
+  const jpeg = await retouchProductionSeatingPhotoFromBase64(imageBase64, {
+    productName: productName || packet?.name,
+  });
   const objectPath = `${storageFolder(packetId, 'packet')}/catalog-${Date.now()}.jpg`;
   await uploadBufferToFirebaseStorage({
     bucketFolder: IMAGE_BUCKET,
@@ -96,6 +98,7 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
   const jpeg = await retouchProductionSeatingPhotoFromBase64(imageBase64, {
     skipAi: skipAiRetouch,
     requireAi: requireAiRetouch,
+    productName: productName || assembly?.name,
   });
   const objectPath = `${storageFolder(assemblyId, 'assembly')}/catalog-${Date.now()}.jpg`;
   await uploadBufferToFirebaseStorage({

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { kioskTextAlign } from '../lib/kioskLayout';
 import { readProductionKioskLocale, writeProductionKioskLocale } from '../lib/productionKioskLocale';
 
-export function useProductionKioskLocale() {
+export function useProductionKioskLocale(options = {}) {
+  const forceArabic = options?.forceArabic === true;
   const [locale, setLocaleState] = useState('ar');
   const [ready, setReady] = useState(false);
 
@@ -28,12 +29,20 @@ export function useProductionKioskLocale() {
     setLocale(locale === 'ar' ? 'en' : 'ar');
   }, [locale, setLocale]);
 
+  useEffect(() => {
+    if (!forceArabic) return;
+    setLocale('ar');
+  }, [forceArabic, setLocale]);
+
+  const effectiveLocale = forceArabic ? 'ar' : locale;
+
   return {
-    locale,
+    locale: effectiveLocale,
     setLocale,
-    toggleLocale,
-    isArabic: locale === 'ar',
-    textAlign: kioskTextAlign(locale),
+    toggleLocale: forceArabic ? () => {} : toggleLocale,
+    isArabic: effectiveLocale === 'ar',
+    textAlign: kioskTextAlign(effectiveLocale),
     ready,
+    forceArabic,
   };
 }

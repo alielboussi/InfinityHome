@@ -28,6 +28,11 @@ assert(mobile.includes('reused: true'), 'delivery-session-open must reuse draft 
 assert(deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must support Hassan mirror mode');
 assert(mobile.includes('driver_signature_url'), 'delivery submit must store driver signature url');
 assert(mobile.includes('delivery-cancel'), 'warehouse-mobile must support delivery-cancel');
+assert(mobile.includes('delivery-signature-upload'), 'warehouse-mobile must support delivery-signature-upload');
+assert(
+  /signature_png_base64|uploadWarehouseDeliverySignaturePng/.test(mobile),
+  'delivery-submit must accept inline signature PNG upload',
+);
 assert(
   fs.readFileSync(path.join(root, 'server/lib/cancelWarehouseDelivery.js'), 'utf8').includes('stock_unchanged'),
   'cancel delivery must not move stock',
@@ -44,8 +49,38 @@ assert(
 
 const noteHtml = fs.readFileSync(path.join(root, 'src/utils/buildDeliveryNotePrintHtml.js'), 'utf8');
 assert(noteHtml.includes('company-logo'), 'delivery note HTML must include company logo');
+assert(noteHtml.includes('company-name'), 'delivery note must show company name under Delivery Note');
+assert(noteHtml.includes('Bestrest Furniture'), 'delivery note must show Bestrest Furniture');
+assert(
+  fs.existsSync(path.join(root, 'src/utils/deliveryNoteCompanyLogoEmbedded.js')),
+  'embedded delivery note logo must exist (run node scripts/embedDeliveryNoteLogo.js)',
+);
 assert(noteHtml.includes('Dispatched by:'), 'delivery note must show dispatched by');
 assert(noteHtml.includes('Page ${pageIndex} of ${pageTotal}'), 'delivery note must show page numbers');
+assert(mobile.includes('delivery-sent-list'), 'warehouse-mobile must support delivery-sent-list');
+assert(mobile.includes('delivery-sent-detail'), 'warehouse-mobile must support delivery-sent-detail');
+assert(
+  fs.existsSync(path.join(root, 'mobile-apps/warehouse-production/screens/KitweSentDeliveriesScreen.js')),
+  'Production app must include sent deliveries list screen',
+);
 assert(noteHtml.includes('DELIVERY_NOTE_DISCLAIMER'), 'delivery note must include disclaimer');
+assert(
+  noteHtml.includes("return isReturn ? 'Return Note' : 'Delivery Note'"),
+  'A4 title must branch: Return Note for returns, Delivery Note for send delivery',
+);
+
+const { execSync } = require('child_process');
+execSync(
+  `node --input-type=module -e "
+import { buildDeliveryNotePrintHtml } from './src/utils/buildDeliveryNotePrintHtml.js';
+const groups = [{ assembly_name: 'Test', units: 1, lines: [] }];
+const d = buildDeliveryNotePrintHtml({ deliveryNumber: 'WHD1', driverName: 'D', printGroups: groups, documentKind: 'delivery' });
+if (!d.includes('<h1 class=\\"title\\">Delivery Note</h1>')) throw new Error('delivery header missing');
+if (d.includes('<h1 class=\\"title\\">Return Note</h1>')) throw new Error('delivery must not use Return Note');
+const r = buildDeliveryNotePrintHtml({ deliveryNumber: 'RO1', driverName: 'D', printGroups: groups, documentKind: 'return_shipment' });
+if (!r.includes('<h1 class=\\"title\\">Return Note</h1>')) throw new Error('return header missing');
+"`,
+  { cwd: root, stdio: 'pipe' },
+);
 
 console.log('verifyWarehouseDeliveryFlow: ok');

@@ -48,7 +48,14 @@ async function verifyLoginAccessFromToken(token) {
     }
     return { ok: true, user: payload?.user || null };
   } catch (err) {
-    return { ok: false, error: err?.message || 'Unable to verify login access.' };
+    const msg = String(err?.message || 'Unable to verify login access.');
+    if (/failed to fetch|networkerror|network error/i.test(msg)) {
+      return {
+        ok: false,
+        error: 'Cannot reach the login API (auth-profile). If you are on localhost, check REACT_APP_API_BASE and that the deployed API is healthy.',
+      };
+    }
+    return { ok: false, error: msg };
   }
 }
 

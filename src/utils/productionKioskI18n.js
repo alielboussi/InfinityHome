@@ -44,12 +44,12 @@ const UI_STRINGS = {
   dashTitle: { en: 'Production', ar: 'الإنتاج' },
   dashCreate: { en: 'Create new', ar: 'إنشاء جديد' },
   dashStock: { en: 'Production stock', ar: 'إضافة مخزون' },
-  dashDelivery: { en: 'Sign Delivery', ar: 'توقيع التسليم' },
+  dashDelivery: { en: 'Send Delivery', ar: 'إرسال التسليم' },
   dashDeliverySub: {
     en: 'Truck delivery — driver checklist → Hassan',
     ar: 'تسليم بالشاحنة — قائمة السائق → حسن',
   },
-  deliveryTitle: { en: 'Sign Delivery', ar: 'توقيع التسليم' },
+  deliveryTitle: { en: 'Send Delivery', ar: 'إرسال التسليم' },
   deliveryAddProductTitle: { en: 'Add product', ar: 'إضافة منتج' },
   deliverySentTitle: { en: 'Sent', ar: 'تم الإرسال' },
   deliverySubtitle: { en: 'Factory → Kitwe delivery', ar: 'تسليم من المصنع إلى كيتوي' },
@@ -77,7 +77,7 @@ const UI_STRINGS = {
   },
   deliverySetsOnTruck: { en: 'Sets on truck: {n}', ar: 'الأطقم على الشاحنة: {n}' },
   deliveryPacketsChecked: { en: 'Packets checked: {n}', ar: 'الطرود المؤكدة: {n}' },
-  deliverySendBtn: { en: 'Sign Delivery', ar: 'توقيع التسليم' },
+  deliverySendBtn: { en: 'Send Delivery', ar: 'إرسال التسليم' },
   deliverySignatureTitle: { en: 'Driver signature', ar: 'توقيع السائق' },
   deliverySignatureHint: {
     en: 'Driver signs with finger in the box. Dots and taps are not accepted.',

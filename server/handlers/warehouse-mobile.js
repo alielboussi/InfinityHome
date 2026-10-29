@@ -71,6 +71,7 @@ import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
+import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryNotePrint.js';
 import { acceptWarehouseDeliveryServer } from '../lib/warehouseDeliveryAccept.js';
 import { cancelWarehouseDeliveryServer } from '../lib/cancelWarehouseDelivery.js';
 import { assertPacketStockAvailable } from '../lib/warehouseDeliveryStock.js';
@@ -83,6 +84,34 @@ import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku
 import { enqueueWarehouseProductionLabelJob } from '../lib/productionLabelPrint.js';
 import { findProductionNameClash } from '../lib/productionCatalogNameCheck.js';
 import { runProductionAssemblyPhotoAttach } from '../lib/warehouseProductionPhotoAttach.js';
+import {
+  acceptWarehouseReturnOrder,
+  assertWarehouseReturnCreator,
+  assertWarehouseReturnProductionAccess,
+  completeWarehouseReturnOrder,
+  createWarehouseReturnOrder,
+  listKitweReturnProductOptions,
+  listReturnQuoteCustomers,
+  listWarehouseReturnOrders,
+  prepareReturnShipmentSession,
+  submitReturnShipment,
+  printReturnCustomerPickupLabel,
+} from '../lib/warehouseReturnOrders.js';
+import {
+  assertWarehouseStorageCreator,
+  assertWarehouseStorageProductionAccess,
+  getPosSaleDetailForStorage,
+  getWarehouseStorageSend,
+  listPosSalesForStorage,
+  listWarehouseStorageSends,
+  prepareWarehouseStorageDelivery,
+  submitWarehouseStorageDelivery,
+  submitWarehouseStorageSend,
+} from '../lib/warehouseStorageSends.js';
+import {
+  firebaseStoragePublicUrl,
+  uploadBufferToFirebaseStorage,
+} from '../lib/firebaseStorage.js';
 
 function productionWhatsappAlias(user) {
   return String(user?.full_name || user?.display_name || user?.email || '').trim();
@@ -1174,13 +1203,60 @@ function scanLineDriverChecked(line) {
   return line?.driver_checked === true || Boolean(line?.driver_checked_at);
 }
 
+async function uploadWarehouseDeliverySignaturePng(sessionId, b64Input) {
+  const sid = String(sessionId || '').trim();
+  if (!sid) throw new Error('session_id is required.');
+  let b64 = String(b64Input || '').trim();
+  b64 = b64.replace(/^data:image\/png;base64,/, '');
+  if (!b64) throw new Error('Missing signature image.');
+
+  const buffer = Buffer.from(b64, 'base64');
+  if (!buffer.length) throw new Error('Invalid signature image.');
+
+  const objectPath = `${sid}.png`;
+  await uploadBufferToFirebaseStorage({
+    bucketFolder: 'warehouse-delivery-signatures',
+    objectPath,
+    buffer,
+    contentType: 'image/png',
+    cacheControl: '31536000',
+  });
+
+  const signatureUrl = firebaseStoragePublicUrl('warehouse-delivery-signatures', objectPath);
+  if (!signatureUrl) throw new Error('Could not resolve signature URL.');
+  return signatureUrl;
+}
+
+async function opDeliverySignatureUpload(body, user) {
+  await assertMobileDeliverySubmitAccess(user);
+  const sessionId = String(body.session_id || '').trim();
+  if (!sessionId) throw new Error('session_id is required.');
+
+  const sb = getService();
+  const { data: session } = await sb
+    .from('warehouse_delivery_sessions')
+    .select('id, status')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (!session) throw new Error('Delivery session not found.');
+  if (String(session.status) !== 'draft') {
+    throw new Error('Delivery session is not open for editing.');
+  }
+
+  const signatureUrl = await uploadWarehouseDeliverySignaturePng(
+    sessionId,
+    body.signature_png_base64 || body.image_base64 || body.png_base64,
+  );
+  return { session_id: sessionId, signature_url: signatureUrl };
+}
+
 async function opDeliverySubmit(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
   const groups = Array.isArray(body.groups) ? body.groups : [];
   const driverName = String(body.driver_name || body.driverName || '').trim();
   const driverId = String(body.driver_id || body.driverId || '').trim();
-  const driverSignatureUrl = String(body.driver_signature_url || body.driverSignatureUrl || '').trim();
+  let driverSignatureUrl = String(body.driver_signature_url || body.driverSignatureUrl || '').trim();
   if (!sessionId) throw new Error('session_id is required.');
   if (!groups.length) throw new Error('Add at least one product group.');
   if (!driverName) throw new Error('Select a driver before submitting.');
@@ -1194,6 +1270,13 @@ async function opDeliverySubmit(body, user) {
   if (!session) throw new Error('Delivery session not found.');
   if (String(session.status) !== 'draft') {
     throw new Error('Delivery session is not open for editing.');
+  }
+
+  if (!driverSignatureUrl) {
+    const inlineSig = body.signature_png_base64 || body.image_base64 || body.png_base64;
+    if (inlineSig) {
+      driverSignatureUrl = await uploadWarehouseDeliverySignaturePng(sessionId, inlineSig);
+    }
   }
 
   const [{ data: packets }, { data: links }, { data: assemblies }] = await Promise.all([
@@ -1338,6 +1421,104 @@ async function opDeliverySubmit(body, user) {
     entry_count: entries.length,
     whatsapp_sent: Boolean(whatsappResult?.ok),
     submitted_at: now,
+    driver_signature_url: driverSignatureUrl || null,
+  };
+}
+
+const WAREHOUSE_PRODUCTION_MOBILE_SOURCE = 'warehouse_production_mobile';
+
+function canViewWarehouseSentDeliverySession(session, user) {
+  if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) return true;
+  const email = String(user?.email || '').trim().toLowerCase();
+  const creator = String(session?.created_by_email || '').trim().toLowerCase();
+  return Boolean(email && creator && creator === email);
+}
+
+function mapSentDeliveryListRow(row) {
+  const meta = row?.metadata || {};
+  return {
+    session_id: row.id,
+    delivery_number: row.delivery_number,
+    status: row.status,
+    submitted_at: row.submitted_at || row.created_at,
+    driver_name: meta.driver_name || '',
+    dispatched_by_name: meta.dispatched_by_name || row.created_by_name || '',
+    total_qty: row.total_qty,
+  };
+}
+
+async function opDeliverySentList(body, user) {
+  await assertMobileDeliverySubmitAccess(user);
+  const sb = getService();
+  const limit = Math.min(80, Math.max(1, Number(body.limit) || 40));
+  const email = String(user?.email || '').trim().toLowerCase();
+  const admin = canManageCatalog(user) || isLoginAccessAdmin(user?.email);
+
+  let query = sb
+    .from('warehouse_delivery_sessions')
+    .select('id, delivery_number, status, submitted_at, created_at, total_qty, metadata, created_by_email, created_by_name')
+    .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
+    .eq('to_location', WAREHOUSE_TO_LOCATION_ID)
+    .neq('status', 'draft')
+    .order('submitted_at', { ascending: false, nullsFirst: false })
+    .limit(limit * 2);
+
+  if (!admin && email) {
+    query = query.eq('created_by_email', email);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message || 'Failed to load deliveries');
+
+  const sessions = (data || [])
+    .filter((row) => String(row?.metadata?.source || '') === WAREHOUSE_PRODUCTION_MOBILE_SOURCE)
+    .slice(0, limit)
+    .map(mapSentDeliveryListRow);
+
+  return { sessions };
+}
+
+async function opDeliverySentDetail(body, user) {
+  await assertMobileDeliverySubmitAccess(user);
+  const sessionId = String(body.session_id || body.sessionId || '').trim();
+  if (!sessionId) throw new Error('session_id is required.');
+
+  const sb = getService();
+  const { data: session, error: sessErr } = await sb
+    .from('warehouse_delivery_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (sessErr) throw new Error(sessErr.message || 'Failed to load delivery');
+  if (!session) throw new Error('Delivery not found.');
+  if (String(session.metadata?.source || '') !== WAREHOUSE_PRODUCTION_MOBILE_SOURCE) {
+    throw new Error('Delivery was not sent from Production.');
+  }
+  if (!canViewWarehouseSentDeliverySession(session, user)) {
+    const err = new Error('You can only view your own sent deliveries.');
+    err.status = 403;
+    throw err;
+  }
+
+  const { data: entries, error: entErr } = await sb
+    .from('warehouse_delivery_entries')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+  if (entErr) throw new Error(entErr.message || 'Failed to load delivery lines');
+
+  const meta = session.metadata || {};
+  return {
+    session: {
+      id: session.id,
+      delivery_number: session.delivery_number,
+      status: session.status,
+      submitted_at: session.submitted_at || session.created_at,
+      driver_name: meta.driver_name || '',
+      dispatched_by_name: meta.dispatched_by_name || session.created_by_name || '',
+      driver_signature_url: meta.driver_signature_url || '',
+    },
+    print_groups: buildDeliveryPrintGroupsFromEntries(entries || []),
   };
 }
 
@@ -1449,6 +1630,117 @@ async function opDeliveryAccept(body, user) {
   return result;
 }
 
+async function opReturnKitweProductsList(user) {
+  await assertWarehouseReturnCreator(user);
+  return listKitweReturnProductOptions(getService());
+}
+
+async function opReturnQuoteCustomersList(user) {
+  return listReturnQuoteCustomers(getService(), user);
+}
+
+async function opReturnOrderCreate(body, user) {
+  return createWarehouseReturnOrder(getService(), body, user);
+}
+
+async function opReturnOrderList(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  const trackageOnly = body.trackage_only === true;
+  const forProduction = body.for_production === true;
+  if (trackageOnly) {
+    await assertWarehouseReturnCreator(user);
+  } else if (forProduction) {
+    await assertWarehouseReturnProductionAccess(user, grant);
+  } else {
+    await assertWarehouseReturnCreator(user);
+  }
+  return listWarehouseReturnOrders(getService(), { forProduction, trackageOnly });
+}
+
+async function opReturnOrderAccept(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return acceptWarehouseReturnOrder(getService(), body, user);
+}
+
+async function opReturnOrderComplete(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return completeWarehouseReturnOrder(getService(), body, user);
+}
+
+async function opReturnOrderShipPrepare(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return prepareReturnShipmentSession(getService(), body, user);
+}
+
+async function opReturnOrderShipSubmit(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return submitReturnShipment(
+    getService(),
+    body,
+    user,
+    (id, b64) => uploadWarehouseDeliverySignaturePng(id, b64),
+  );
+}
+
+async function opReturnOrderCustomerLabelPrint(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return printReturnCustomerPickupLabel(getService(), body, user);
+}
+
+async function opStoragePosSalesList(user) {
+  return listPosSalesForStorage(getService(), user);
+}
+
+async function opStoragePosSaleDetail(body, user) {
+  return getPosSaleDetailForStorage(getService(), user, body);
+}
+
+async function opStorageSendSubmit(body, user) {
+  return submitWarehouseStorageSend(getService(), body, user);
+}
+
+async function opStorageSendList(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  const forProduction = body.for_production === true;
+  if (forProduction) {
+    await assertWarehouseStorageProductionAccess(user, grant);
+  } else {
+    await assertWarehouseStorageCreator(user);
+  }
+  return listWarehouseStorageSends(getService(), { forProduction });
+}
+
+async function opStorageSendDetail(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseStorageProductionAccess(user, grant);
+  return getWarehouseStorageSend(getService(), body.storage_send_id || body.id);
+}
+
+async function opStorageDeliverPrepare(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseStorageProductionAccess(user, grant);
+  return prepareWarehouseStorageDelivery(getService(), body, user, grant);
+}
+
+async function opStorageDeliverSubmit(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseStorageProductionAccess(user, grant);
+  let signatureUrl = '';
+  if (body.signature_png_base64) {
+    const sid = String(body.session_id || body.storage_send_id || newUuid()).trim();
+    signatureUrl = await uploadWarehouseDeliverySignaturePng(sid, body.signature_png_base64);
+  }
+  return submitWarehouseStorageDelivery(getService(), {
+    ...body,
+    driver_signature_url: signatureUrl,
+  }, user, grant);
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -1519,6 +1811,15 @@ export default async function handler(req, res) {
       case 'delivery-cancel':
         result = await opDeliveryCancel(body, user);
         break;
+      case 'delivery-sent-list':
+        result = await opDeliverySentList(body, user);
+        break;
+      case 'delivery-sent-detail':
+        result = await opDeliverySentDetail(body, user);
+        break;
+      case 'delivery-signature-upload':
+        result = await opDeliverySignatureUpload(body, user);
+        break;
       case 'delivery-submit':
         result = await opDeliverySubmit(body, user);
         break;
@@ -1533,6 +1834,54 @@ export default async function handler(req, res) {
         break;
       case 'delivery-accept':
         result = await opDeliveryAccept(body, user);
+        break;
+      case 'return-kitwe-products-list':
+        result = await opReturnKitweProductsList(user);
+        break;
+      case 'return-quote-customers-list':
+        result = await opReturnQuoteCustomersList(user);
+        break;
+      case 'return-order-create':
+        result = await opReturnOrderCreate(body, user);
+        break;
+      case 'return-order-list':
+        result = await opReturnOrderList(body, user);
+        break;
+      case 'return-order-accept':
+        result = await opReturnOrderAccept(body, user);
+        break;
+      case 'return-order-complete':
+        result = await opReturnOrderComplete(body, user);
+        break;
+      case 'return-order-ship-prepare':
+        result = await opReturnOrderShipPrepare(body, user);
+        break;
+      case 'return-order-ship-submit':
+        result = await opReturnOrderShipSubmit(body, user);
+        break;
+      case 'return-order-customer-label-print':
+        result = await opReturnOrderCustomerLabelPrint(body, user);
+        break;
+      case 'storage-pos-sales-list':
+        result = await opStoragePosSalesList(user);
+        break;
+      case 'storage-pos-sale-detail':
+        result = await opStoragePosSaleDetail(body, user);
+        break;
+      case 'storage-send-submit':
+        result = await opStorageSendSubmit(body, user);
+        break;
+      case 'storage-send-list':
+        result = await opStorageSendList(body, user);
+        break;
+      case 'storage-send-detail':
+        result = await opStorageSendDetail(body, user);
+        break;
+      case 'storage-deliver-prepare':
+        result = await opStorageDeliverPrepare(body, user);
+        break;
+      case 'storage-deliver-submit':
+        result = await opStorageDeliverSubmit(body, user);
         break;
       case 'production-access-self': {
         const { requireBearerUser } = await import('../lib/verifyBearerUser.js');

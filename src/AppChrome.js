@@ -7,7 +7,7 @@ import {
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
   FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag
 } from 'react-icons/fa';
-import { getCurrentUser, getHomeDashboardPath, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyUser, isPublicAppRoute, canManageCatalog } from './accessControl';
+import { getCurrentUser, getHomeDashboardPath, HASSAN_AWAD, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyExperience, isPublicAppRoute, canManageCatalog } from './accessControl';
 import { preloadAppRoute } from './lazyPages';
 import { isShopPublicPath } from './utils/shopConstants';
 
@@ -111,13 +111,9 @@ const QUOTATIONER_ONLY_NAV_GROUPS = [
     title: 'Warehouse',
     items: [
       { label: 'Warehouse Deliveries', route: '/warehouse-deliveries', icon: FaTruckLoading },
-    ],
-  },
-  {
-    id: 'transfers',
-    title: 'Transfers',
-    items: [
-      { label: 'Transfers', route: '/transfers', icon: FaExchangeAlt },
+      { label: 'Returns', route: '/warehouse-returns', icon: FaUndo },
+      { label: 'Returns Trackage', route: '/warehouse-returns-trackage', icon: FaHistory },
+      { label: 'Warehouse Storage', route: '/warehouse-storage', icon: FaBoxOpen },
     ],
   },
   {
@@ -184,6 +180,9 @@ const TITLE_MAP = {
   '/All-Transfers-summary': 'Transfers Summary',
   '/transfers-report': 'Transfers Report',
   '/warehouse-deliveries': 'Warehouse Deliveries',
+  '/warehouse-returns': 'Returns',
+  '/warehouse-returns-trackage': 'Returns Trackage',
+  '/warehouse-storage': 'Warehouse Storage',
   '/kitwe-products': 'Kitwe',
   '/warehouse-delivery-drivers': 'Delivery drivers',
   '/warehouse-deliveries-admin': 'Warehouse Deliveries',
@@ -209,7 +208,7 @@ function backTargetForPath(path, homePath) {
 
 function titleForPath(path, user, search = '') {
   if (!path) return 'Infinity Home';
-  if (isQuotationerOnlyUser(user) && path === '/quotationer') {
+  if (isQuotationerOnlyExperience(user, path) && path === '/quotationer') {
     const params = new URLSearchParams(search || '');
     const view = params.get('view');
     if (view === 'customers') return 'Quote Customers';
@@ -235,8 +234,8 @@ export default function AppChrome() {
   const isShopRoute = isShopPublicPath(path);
   const isKioskStock = path.toLowerCase() === '/lusaka-stock';
   const hasUser = Boolean(user);
-  const quotationerOnly = isQuotationerOnlyUser(user);
-  const homePath = getHomeDashboardPath(user);
+  const quotationerOnly = isQuotationerOnlyExperience(user, path);
+  const homePath = quotationerOnly ? HASSAN_AWAD.landingPath : getHomeDashboardPath(user);
 
   React.useEffect(() => {
     if (typeof document === 'undefined') return undefined;

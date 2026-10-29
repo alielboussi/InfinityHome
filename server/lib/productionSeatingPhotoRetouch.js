@@ -4,18 +4,9 @@ import {
   getProductionPhotoModelCandidates,
   getProductionPhotoModelCandidatesForRequireAi,
 } from './productionPhotoGeminiModels.js';
+import { buildProductionPhotoRetouchPrompt } from './productionPhotoRetouchPrompt.js';
 
-export const PRODUCTION_SEATING_PHOTO_PROMPT = `TASK: Edit this warehouse photo into a single catalog product image of upholstered seating (sofa, sectional, loveseat, or armchair).
-
-REQUIREMENTS (follow exactly):
-1. Background: solid pure white #FFFFFF only — no floor, walls, warehouse, or gradient.
-2. Subject: keep the same seating piece — same shape, upholstery color, cushion layout, and proportions. Do not swap or redesign the furniture.
-3. Cleanup: remove people, hands, tags, clutter, and background objects.
-4. Lighting: bright, even catalog lighting; sharp focus; optional very soft contact shadow under the base only.
-5. Framing: center the seating with balanced padding; full piece visible.
-6. Forbidden: text, logos, watermarks, extra furniture, props, or scenery.
-
-OUTPUT: Return ONLY the finished catalog image (no text).`;
+export { buildProductionPhotoRetouchPrompt, PRODUCTION_SEATING_PHOTO_PROMPT } from './productionPhotoRetouchPrompt.js';
 
 function parseImageBase64Payload(raw) {
   const trimmed = String(raw || '').trim();
@@ -60,15 +51,17 @@ function buildGenerationConfig() {
   return config;
 }
 
-async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false } = {}) {
+async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, promptText } = {}) {
   const apiKey = getGeminiProductionApiKey();
   if (!apiKey) throw new Error('GEMINI_API_KEY_PRODUCTION is not configured for photo retouching.');
+
+  const prompt = String(promptText || '').trim() || buildProductionPhotoRetouchPrompt({});
 
   const body = {
     contents: [{
       role: 'user',
       parts: [
-        { text: PRODUCTION_SEATING_PHOTO_PROMPT },
+        { text: prompt },
         {
           inline_data: {
             mime_type: 'image/jpeg',
@@ -156,10 +149,16 @@ function catalogFallbackWithoutAiEnabled() {
 export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
   skipAi: skipAiOption = false,
   requireAi = false,
+  productName = '',
+  preset = '',
 } = {}) {
   const skipAi = skipAiOption
     || String(process.env.PRODUCTION_PHOTO_SKIP_AI || '').trim().toLowerCase() === 'true';
   const input = await prepareInputJpeg(parseImageBase64Payload(imageBase64));
+  const promptText = buildProductionPhotoRetouchPrompt({
+    productName,
+    preset,
+  });
   if (skipAi && !requireAi) {
     return finalizeCatalogJpeg(input, 'image/jpeg');
   }
@@ -167,7 +166,7 @@ export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
     throw new Error('AI photo retouch is required but PRODUCTION_PHOTO_SKIP_AI is enabled on the server.');
   }
   try {
-    const generated = await requestGeminiSeatingRetouch(input, { requireAi });
+    const generated = await requestGeminiSeatingRetouch(input, { requireAi, promptText });
     return finalizeCatalogJpeg(generated.buffer, generated.mime);
   } catch (err) {
     if (requireAi || !catalogFallbackWithoutAiEnabled()) {

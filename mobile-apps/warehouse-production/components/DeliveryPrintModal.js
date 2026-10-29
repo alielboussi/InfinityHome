@@ -17,6 +17,8 @@ import { tUi } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
 
 export const DEFAULT_DELIVERY_PRINT_COPIES = 2;
+/** Sent-deliveries history reprint — always one copy in the PDF. */
+export const DELIVERY_SENT_REPRINT_COPIES = 1;
 
 export default function DeliveryPrintModal({
   visible,
@@ -31,6 +33,10 @@ export default function DeliveryPrintModal({
   submittedAt,
   copyCount = DEFAULT_DELIVERY_PRINT_COPIES,
   autoPrintOnOpen = false,
+  reprintMode = false,
+  documentKind = 'delivery',
+  customerName = '',
+  customerPhone = '',
   onDone,
 }) {
   const [printers, setPrinters] = useState([]);
@@ -38,7 +44,9 @@ export default function DeliveryPrintModal({
   const [printing, setPrinting] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [error, setError] = useState('');
+  const [printAttemptDone, setPrintAttemptDone] = useState(false);
   const autoStarted = useRef(false);
+  const isReturnDoc = documentKind === 'return' || documentKind === 'return_shipment';
 
   const runScan = useCallback(async () => {
     setScanning(true);
@@ -59,6 +67,16 @@ export default function DeliveryPrintModal({
   }, [locale]);
 
   const printNote = useCallback(async () => {
+    if (!String(deliveryNumber || '').trim()) {
+      setError(tUi('deliverySubmitFailed', locale));
+      setPrintAttemptDone(true);
+      return;
+    }
+    if (!Array.isArray(printGroups) || !printGroups.length) {
+      setError(tUi('deliveryPrintNoLines', locale));
+      setPrintAttemptDone(true);
+      return;
+    }
     setPrinting(true);
     setError('');
     try {
@@ -73,6 +91,9 @@ export default function DeliveryPrintModal({
         submittedAt: submittedAt || new Date().toISOString(),
         printGroups,
         copies,
+        documentKind,
+        customerName,
+        customerPhone,
       });
       const file = await Print.printToFileAsync({
         html,
@@ -80,11 +101,11 @@ export default function DeliveryPrintModal({
         height: 842,
       });
       await Print.printAsync({ uri: file.uri });
-      onDone?.();
     } catch (err) {
       setError(err?.message || tUi('deliveryPrintFailed', locale));
     } finally {
       setPrinting(false);
+      setPrintAttemptDone(true);
     }
   }, [
     copyCount,
@@ -93,10 +114,12 @@ export default function DeliveryPrintModal({
     driverName,
     driverSignatureDataUri,
     driverSignatureUrl,
-    onDone,
     printGroups,
     submittedAt,
     locale,
+    documentKind,
+    customerName,
+    customerPhone,
   ]);
 
   useEffect(() => {
@@ -106,6 +129,7 @@ export default function DeliveryPrintModal({
     }
     setSelectedId('');
     setError('');
+    setPrintAttemptDone(false);
     runScan();
   }, [visible, runScan]);
 
@@ -125,10 +149,16 @@ export default function DeliveryPrintModal({
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <Text style={[styles.title, { textAlign }]}>
-            {tUi('deliveryPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES))}
+            {reprintMode
+              ? tUi('deliveryPrintReprintTitle', locale)
+              : (isReturnDoc
+                ? tUi('returnPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES))
+                : tUi('deliveryPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES)))}
           </Text>
           <Text style={[styles.hint, { textAlign }]}>
-            {autoPrintOnOpen ? tUi('deliveryPrintAutoHint', locale) : tUi('deliveryPrintHint', locale)}
+            {reprintMode
+              ? tUi('deliveryPrintReprintHint', locale)
+              : (autoPrintOnOpen ? tUi('deliveryPrintAutoHint', locale) : tUi('deliveryPrintHint', locale))}
           </Text>
 
           {printing ? (
@@ -176,6 +206,19 @@ export default function DeliveryPrintModal({
             )}
           </Pressable>
 
+          {printAttemptDone && !printing ? (
+            <View style={styles.retryBlock}>
+              <Text style={[styles.retryHint, { textAlign }]}>
+                {isReturnDoc
+                  ? tUi('returnPrintRetryHint', locale)
+                  : tUi('deliveryPrintRetryHint', locale)}
+              </Text>
+              <Pressable style={[kiosk.btnPrimaryBlock, styles.retryBtn]} onPress={printNote}>
+                <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryPrintRetry', locale)}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <Pressable style={styles.skipBtn} onPress={onDone} disabled={printing}>
             <Text style={styles.skipText}>{tUi('deliveryPrintSkip', locale)}</Text>
           </Pressable>
@@ -220,6 +263,9 @@ const styles = StyleSheet.create({
   rowTitle: { color: theme.text, fontWeight: '700', fontSize: 15 },
   rowSub: { color: theme.muted, fontSize: 12, marginTop: 4 },
   printBtn: { marginTop: 4 },
+  retryBlock: { marginTop: 14 },
+  retryHint: { fontSize: 13, color: theme.muted, lineHeight: 19, marginBottom: 10 },
+  retryBtn: { marginTop: 0 },
   skipBtn: { marginTop: 12, padding: 10, alignItems: 'center' },
   skipText: { color: theme.primary, fontWeight: '700' },
 });

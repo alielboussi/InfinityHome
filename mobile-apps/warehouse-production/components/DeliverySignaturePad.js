@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
@@ -22,16 +22,20 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
 ) {
   const captureRefView = useRef(null);
   const activeStrokeRef = useRef(null);
+  const onValidationChangeRef = useRef(onValidationChange);
+  const strokesRef = useRef([]);
   const [strokes, setStrokes] = useState([]);
 
-  const notifyValidation = useCallback(
-    (nextStrokes) => {
-      const result = validateDeliverySignatureStrokes(nextStrokes);
-      onValidationChange?.(result);
-      return result;
-    },
-    [onValidationChange],
-  );
+  onValidationChangeRef.current = onValidationChange;
+
+  useEffect(() => {
+    strokesRef.current = strokes;
+  }, [strokes]);
+
+  useEffect(() => {
+    const result = validateDeliverySignatureStrokes(strokes);
+    onValidationChangeRef.current?.(result);
+  }, [strokes]);
 
   const panResponder = useMemo(
     () =>
@@ -42,11 +46,7 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
           const { locationX, locationY } = evt.nativeEvent;
           const newStroke = { points: [{ x: locationX, y: locationY }] };
           activeStrokeRef.current = newStroke;
-          setStrokes((prev) => {
-            const next = [...prev, newStroke];
-            notifyValidation(next);
-            return next;
-          });
+          setStrokes((prev) => [...prev, newStroke]);
         },
         onPanResponderMove: (evt) => {
           const stroke = activeStrokeRef.current;
@@ -63,40 +63,49 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
         },
         onPanResponderRelease: () => {
           activeStrokeRef.current = null;
-          setStrokes((prev) => {
-            notifyValidation(prev);
-            return prev;
-          });
         },
         onPanResponderTerminate: () => {
           activeStrokeRef.current = null;
         },
       }),
-    [notifyValidation],
+    [],
   );
 
   const clear = useCallback(() => {
     activeStrokeRef.current = null;
     setStrokes([]);
-    notifyValidation([]);
-  }, [notifyValidation]);
+  }, []);
 
   const exportPngBase64 = useCallback(async () => {
-    const validation = validateDeliverySignatureStrokes(strokes);
+    const current = strokesRef.current;
+    const validation = validateDeliverySignatureStrokes(current);
     if (!validation.ok) {
       const err = new Error(validation.code || 'invalid');
       err.code = validation.code;
       throw err;
     }
+    if (!captureRefView.current) {
+      const err = new Error('capture_failed');
+      err.code = 'capture_failed';
+      throw err;
+    }
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
     const uri = await captureRef(captureRefView, {
       format: 'png',
       quality: 1,
       result: 'base64',
     });
     const base64 = String(uri || '').trim();
-    if (!base64) throw new Error('capture_failed');
+    if (!base64) {
+      const err = new Error('capture_failed');
+      err.code = 'capture_failed';
+      throw err;
+    }
+    if (base64.startsWith('data:')) return base64;
     return `data:image/png;base64,${base64}`;
-  }, [strokes]);
+  }, []);
 
   useImperativeHandle(ref, () => ({ exportPngBase64, clear }), [clear, exportPngBase64]);
 

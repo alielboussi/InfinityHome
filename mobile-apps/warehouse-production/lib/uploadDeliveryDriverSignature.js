@@ -1,17 +1,20 @@
-import { getDownloadURL, getStorage, ref, uploadString } from 'firebase/storage';
-import { getFirebaseApp } from '../shared/firebase';
+import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
 /**
- * Persist driver signature PNG under warehouse-delivery-signatures/{sessionId}.png
+ * @deprecated Prefer passing signature_png_base64 on delivery-submit.
+ * Standalone upload op for tools/tests once API is deployed.
  */
 export async function uploadDeliveryDriverSignature(sessionId, pngBase64) {
   const sid = String(sessionId || '').trim();
   if (!sid) throw new Error('Missing delivery session id.');
-  const raw = String(pngBase64 || '').replace(/^data:image\/png;base64,/, '').trim();
+  const raw = String(pngBase64 || '').trim();
   if (!raw) throw new Error('Missing signature image.');
 
-  const storage = getStorage(getFirebaseApp());
-  const objectRef = ref(storage, `warehouse-delivery-signatures/${sid}.png`);
-  await uploadString(objectRef, raw, 'base64', { contentType: 'image/png' });
-  return getDownloadURL(objectRef);
+  const result = await warehouseMobileRequest('delivery-signature-upload', {
+    session_id: sid,
+    signature_png_base64: raw,
+  });
+  const url = String(result?.signature_url || '').trim();
+  if (!url) throw new Error('Signature upload failed.');
+  return url;
 }

@@ -5,7 +5,7 @@ import { isStocktakeCountLocationPath } from './utils/stocktakeLocationSlug.js';
 import {
   isWarehouseProductionKioskAllowed,
   isWarehouseProductStockQtyEditAllowed,
-} from './mobile/mobileAccessManifest';
+} from './mobile/mobileAccessManifest.js';
 
 const USER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -19,9 +19,10 @@ export const HASSAN_AWAD = Object.freeze({
     '/quotationer',
     '/quotes-board',
     '/warehouse-deliveries',
+    '/warehouse-returns',
+    '/warehouse-returns-trackage',
+    '/warehouse-storage',
     '/layby-management',
-    '/transfers',
-    '/lusaka-transfers',
   ]),
   quotationerOnly: true,
   canManageLaybys: false,
@@ -284,6 +285,39 @@ const USER_ACCESS_ROUTE = '/user-access';
 const CUSTOMER_PRIVATE_BALANCES_ROUTE = '/customer-private-balances';
 const USER_ACTIVITY_EMAIL = 'alielboussi00@gmail.com';
 const STOCK_CONTROL_EMAIL = 'alielboussi00@gmail.com';
+
+/** Local dev only: this account may open /quotationer directly (not redirected to /dashboard after login). */
+export const LOCALHOST_QUOTATIONER_DEV_EMAIL = USER_ACTIVITY_EMAIL;
+
+export function isLocalhostDevHost(hostname) {
+  const h = String(
+    hostname ?? (typeof window !== 'undefined' ? window.location.hostname : ''),
+  ).trim().toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+}
+
+export function canUseLocalhostQuotationerDirectLink(user) {
+  if (!isLocalhostDevHost()) return false;
+  return getUserEmail(user) === LOCALHOST_QUOTATIONER_DEV_EMAIL;
+}
+
+/** Paths Hassan Awad may use — also used for localhost dev UI mimic. */
+export function isHassanAllowedAppPath(path) {
+  const p = normalizePath(path || '/');
+  return HASSAN_AWAD.allowedRoutes.some(
+    (base) => p === base || p.startsWith(`${base}/`),
+  );
+}
+
+/**
+ * Hassan’s sidebar + quotationer dashboard UX (localhost dev account on Hassan routes only).
+ */
+export function isQuotationerOnlyExperience(user, pathname) {
+  if (isHassanAwadUser(user)) return true;
+  if (!canUseLocalhostQuotationerDirectLink(user)) return false;
+  if (pathname == null || pathname === '') return false;
+  return isHassanAllowedAppPath(pathname);
+}
 const STOCKTAKE_AGGREGATION_ROUTE = '/stocktake/aggregation';
 const LUSAKA_STOCK_ROUTE = '/lusaka-stock';
 const WAREHOUSE_PRODUCTION_ROUTE = '/warehouse-production';

@@ -70,4 +70,4 @@ vercel --prod
 
 ## 4. Prompt (seating + white background)
 
-The retouch prompt is in `server/lib/productionSeatingPhotoRetouch.js` (`PRODUCTION_SEATING_PHOTO_PROMPT`). After AI output, **sharp** flattens to `#FFFFFF` for clean catalog edges.
+The retouch prompt is in `server/lib/productionPhotoRetouchPrompt.js` (per preset: upholstery including Curtains/Pillows, and carpentry). After AI output, **sharp** flattens to `#FFFFFF` for clean catalog edges.

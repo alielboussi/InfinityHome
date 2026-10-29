@@ -113,6 +113,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/embedDeliveryNoteLogo.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[delivery-note-logo:fail] embedDeliveryNoteLogo.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseDeliveryFlow.js', {
     cwd: process.cwd(),
     stdio: 'inherit',
@@ -123,12 +133,42 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWarehouseDeliveryStock.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[warehouse-delivery-stock:fail] verifyWarehouseDeliveryStock.js failed.');
+  process.exit(1);
+}
+
+try {
+  require('child_process').execSync('node scripts/verifyWarehouseReturnFlow.js', {
+    stdio: 'inherit',
+    cwd: path.join(__dirname, '..'),
+  });
+} catch {
+  console.error('[warehouse-return-flow:fail] verifyWarehouseReturnFlow.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyDeliverySignatureStrokes.js', {
     cwd: process.cwd(),
     stdio: 'inherit',
   });
 } catch (e) {
   console.error('[delivery-signature:fail] verifyDeliverySignatureStrokes.js failed.');
+  process.exit(1);
+}
+
+try {
+  require('child_process').execSync('node scripts/verifyProductionDeliverySignatureFlow.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-delivery-signature-flow:fail] verifyProductionDeliverySignatureFlow.js failed.');
   process.exit(1);
 }
 
@@ -159,6 +199,16 @@ try {
   });
 } catch (e) {
   console.error('[production-item-presets:fail] verifyProductionItemPresets.js failed.');
+  process.exit(1);
+}
+
+try {
+  require('child_process').execSync('node scripts/verifyProductionPhotoRetouchPrompts.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-photo-retouch:fail] verifyProductionPhotoRetouchPrompts.js failed.');
   process.exit(1);
 }
 

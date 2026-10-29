@@ -45,6 +45,9 @@ import {
   UserAccessManagement,
   UserActivityLog,
   WarehouseDeliveries,
+  WarehouseReturns,
+  WarehouseReturnsTrackage,
+  WarehouseStorage,
   WarehouseDeliveriesAdmin,
   WarehouseDeliveriesHassanTest,
   WarehouseDeliveryDriversPage,
@@ -380,6 +383,9 @@ function App() {
           <Route path="/Factory-Kitwe" element={<Navigate to="/All-Transfers" replace />} />
           <Route path="/Factory-Kitwe-summary" element={<Navigate to="/All-Transfers-summary" replace />} />
           <Route path="/warehouse-deliveries" element={<WarehouseDeliveries />} />
+          <Route path="/warehouse-returns" element={<WarehouseReturns />} />
+          <Route path="/warehouse-returns-trackage" element={<WarehouseReturnsTrackage />} />
+          <Route path="/warehouse-storage" element={<WarehouseStorage />} />
           <Route path="/warehouse-deliveries-admin" element={<WarehouseDeliveriesAdmin />} />
           <Route
             path="/warehouse-deliveries-hassan-test"

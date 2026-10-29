@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
@@ -11,29 +11,29 @@ import { isWarehouseProductionKitweDeliveryAllowed } from '../shared/mobileAcces
 import { tUi } from '../lib/productionKioskI18n';
 
 function DashboardTile({ icon, title, width, height, onPress }) {
-  const iconSize = Math.round(Math.min(40, height * 0.28));
-  const compact = height < 100;
+  const iconSize = Math.round(Math.min(44, height * 0.32));
   return (
     <Pressable
       style={({ pressed }) => [
         kiosk.dashTile,
-        compact && kiosk.dashTileCompact,
+        kiosk.dashTileCard,
         { width, height },
         pressed && kiosk.dashTilePressed,
       ]}
       onPress={onPress}
+      accessibilityRole="button"
     >
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
         color={theme.primaryDark || '#0369a1'}
-        style={[kiosk.dashTileIcon, compact && { marginBottom: 4 }]}
+        style={kiosk.dashTileIcon}
       />
       <Text
-        style={[kiosk.dashBtnText, compact && kiosk.dashBtnTextCompact]}
-        numberOfLines={2}
+        style={kiosk.dashBtnText}
+        numberOfLines={3}
         adjustsFontSizeToFit
-        minimumFontScale={0.75}
+        minimumFontScale={0.72}
       >
         {title}
       </Text>
@@ -53,8 +53,10 @@ export default function DashboardScreen({
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
   const canSendDelivery = grant && isWarehouseProductionKitweDeliveryAllowed(grant);
-  const tileCount = canSendDelivery ? 3 : 2;
-  const { tileWidth, tileHeight, gap } = useProductionDashboardTileLayout(tileCount);
+  const tileCount = canSendDelivery ? 6 : 2;
+  const {
+    tileWidth, tileHeight, gap, contentWidth,
+  } = useProductionDashboardTileLayout(tileCount);
 
   const tiles = [
     {
@@ -74,6 +76,21 @@ export default function DashboardScreen({
       icon: 'truck-delivery-outline',
       title: tUi('dashDelivery', locale),
       onPress: () => navigation.navigate('KitweSendHome'),
+    }, {
+      key: 'sent',
+      icon: 'clipboard-text-clock-outline',
+      title: tUi('dashSentDeliveries', locale),
+      onPress: () => navigation.navigate('KitweSentDeliveries'),
+    }, {
+      key: 'returns',
+      icon: 'keyboard-return',
+      title: tUi('dashReturns', locale),
+      onPress: () => navigation.navigate('ReturnOrders'),
+    }, {
+      key: 'sold',
+      icon: 'cart-outline',
+      title: tUi('dashSold', locale),
+      onPress: () => navigation.navigate('SoldOrders'),
     }] : []),
   ];
 
@@ -129,28 +146,50 @@ export default function DashboardScreen({
         </Text>
       ) : null}
 
-      <View style={[styles.gridArea, { gap }]}>
-        {tiles.map((tile) => (
-          <DashboardTile
-            key={tile.key}
-            icon={tile.icon}
-            title={tile.title}
-            width={tileWidth}
-            height={tileHeight}
-            onPress={tile.onPress}
-          />
-        ))}
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.gridScroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View
+          style={[
+            kiosk.dashGrid,
+            styles.gridArea,
+            {
+              gap,
+              width: contentWidth,
+              paddingHorizontal: 0,
+              marginTop: 12,
+            },
+          ]}
+        >
+          {tiles.map((tile) => (
+            <DashboardTile
+              key={tile.key}
+              icon={tile.icon}
+              title={tile.title}
+              width={tileWidth}
+              height={tileHeight}
+              onPress={tile.onPress}
+            />
+          ))}
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  gridArea: {
-    flex: 1,
-    justifyContent: 'center',
+  gridScroll: {
+    flexGrow: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  gridArea: {
+    justifyContent: 'flex-start',
+    alignContent: 'flex-start',
   },
   user: { color: theme.textMuted, marginBottom: 4, fontSize: 15, fontWeight: '500' },
   hint: { color: theme.textMuted, marginTop: 10, fontSize: 13, lineHeight: 18 },

@@ -1,19 +1,7 @@
-import { Asset } from 'expo-asset';
-import * as FileSystem from 'expo-file-system';
+import { DELIVERY_NOTE_LOGO_DATA_URI } from './deliveryNoteCompanyLogoEmbedded';
 
-let cachedLogoDataUri = null;
-
-/** Best Rest logo as data URI for A4 delivery note HTML (expo-print). */
+/** Bestrest logo as data URI for A4 delivery note HTML (expo-print). */
 export async function getDeliveryNoteCompanyLogoDataUri() {
-  if (cachedLogoDataUri) return cachedLogoDataUri;
-  const moduleId = require('../assets/bestrest-logo.jpg');
-  const asset = Asset.fromModule(moduleId);
-  await asset.downloadAsync();
-  const uri = asset.localUri || asset.uri;
-  if (!uri) return '';
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: 'base64',
-  });
-  cachedLogoDataUri = `data:image/jpeg;base64,${base64}`;
-  return cachedLogoDataUri;
+  if (DELIVERY_NOTE_LOGO_DATA_URI) return DELIVERY_NOTE_LOGO_DATA_URI;
+  return '';
 }

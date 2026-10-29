@@ -1,7 +1,10 @@
 /** Web: load logo from /public/bestrest-logo.jpg for delivery note print HTML. */
+import { DELIVERY_NOTE_LOGO_DATA_URI } from './deliveryNoteCompanyLogoEmbedded.js';
+
 let cachedWebLogo = null;
 
 export async function getDeliveryNoteCompanyLogoDataUriWeb() {
+  if (DELIVERY_NOTE_LOGO_DATA_URI) return DELIVERY_NOTE_LOGO_DATA_URI;
   if (cachedWebLogo) return cachedWebLogo;
   try {
     const response = await fetch(`${process.env.PUBLIC_URL || ''}/bestrest-logo.jpg`, { cache: 'force-cache' });

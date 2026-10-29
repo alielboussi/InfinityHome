@@ -8,8 +8,10 @@ import { fileURLToPath } from 'url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { buildDeliveryNotePrintHtml } = await import('../src/utils/buildDeliveryNotePrintHtml.js');
+const { DELIVERY_NOTE_LOGO_DATA_URI } = await import('../src/utils/deliveryNoteCompanyLogoEmbedded.js');
 
 function loadLogoDataUri() {
+  if (DELIVERY_NOTE_LOGO_DATA_URI) return DELIVERY_NOTE_LOGO_DATA_URI;
   const logoPath = path.join(root, 'public', 'bestrest-logo.jpg');
   if (!fs.existsSync(logoPath)) {
     console.warn('Missing public/bestrest-logo.jpg — preview without logo');

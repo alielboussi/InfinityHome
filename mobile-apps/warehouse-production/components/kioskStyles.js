@@ -214,7 +214,8 @@ export const kiosk = StyleSheet.create({
   },
   scanChipBtn: {
     minHeight: 52,
-    paddingHorizontal: 14,
+    minWidth: 52,
+    paddingHorizontal: 12,
     borderRadius: 10,
     backgroundColor: theme.primary,
     borderWidth: 1,
@@ -406,12 +407,9 @@ export const kiosk = StyleSheet.create({
   dashGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignContent: 'center',
-    gap: 16,
-    marginTop: 24,
-    paddingHorizontal: 8,
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+    alignContent: 'flex-start',
   },
   dashTile: {
     borderRadius: theme.radius,
@@ -427,6 +425,15 @@ export const kiosk = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 3,
+  },
+  dashTileCard: {
+    borderRadius: 14,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    elevation: 4,
   },
   dashTileCompact: {
     paddingHorizontal: 4,

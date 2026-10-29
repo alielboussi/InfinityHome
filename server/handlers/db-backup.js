@@ -63,6 +63,8 @@ const BACKUP_TABLES = [
   'warehouse_delivery_sessions',
   'warehouse_delivery_entries',
   'warehouse_delivery_events',
+  'warehouse_return_orders',
+  'warehouse_storage_sends',
   'label_print_jobs',
   'inventory_adjustments',
   'user_activity_log',

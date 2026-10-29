@@ -12,6 +12,16 @@ import KitweSendHomeScreen from './screens/KitweSendHomeScreen';
 import KitweSendProductScreen from './screens/KitweSendProductScreen';
 import KitweSendSignatureScreen from './screens/KitweSendSignatureScreen';
 import KitweSendDoneScreen from './screens/KitweSendDoneScreen';
+import KitweSentDeliveriesScreen from './screens/KitweSentDeliveriesScreen';
+import KitweSentDeliveryDetailScreen from './screens/KitweSentDeliveryDetailScreen';
+import ReturnOrdersScreen from './screens/ReturnOrdersScreen';
+import ReturnOrderSignatureScreen from './screens/ReturnOrderSignatureScreen';
+import ReturnOrderDoneScreen from './screens/ReturnOrderDoneScreen';
+import ReturnCustomerNoteScreen from './screens/ReturnCustomerNoteScreen';
+import SoldOrdersScreen from './screens/SoldOrdersScreen';
+import SoldOrderDetailScreen from './screens/SoldOrderDetailScreen';
+import SoldDeliverSignatureScreen from './screens/SoldDeliverSignatureScreen';
+import SoldDeliverDoneScreen from './screens/SoldDeliverDoneScreen';
 import { stackScreenOptions, theme } from './shared/theme';
 
 const Stack = createNativeStackNavigator();
@@ -68,6 +78,46 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen name="KitweSendProduct" options={{ headerShown: false }} component={KitweSendProductScreen} />
       <Stack.Screen name="KitweSendDone" options={{ headerShown: false }} component={KitweSendDoneScreen} />
+      <Stack.Screen name="KitweSentDeliveries" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <KitweSentDeliveriesScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="KitweSentDeliveryDetail" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <KitweSentDeliveryDetailScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="ReturnOrders" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <ReturnOrdersScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="ReturnOrderSignature" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <ReturnOrderSignatureScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="ReturnOrderDone" options={{ headerShown: false }} component={ReturnOrderDoneScreen} />
+      <Stack.Screen name="ReturnCustomerNote" options={{ headerShown: false }} component={ReturnCustomerNoteScreen} />
+      <Stack.Screen name="SoldOrders" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <SoldOrdersScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="SoldOrderDetail" options={{ headerShown: false }} component={SoldOrderDetailScreen} />
+      <Stack.Screen name="SoldDeliverSignature" options={{ headerShown: false }} component={SoldDeliverSignatureScreen} />
+      <Stack.Screen name="SoldDeliverDone" options={{ headerShown: false }} component={SoldDeliverDoneScreen} />
     </Stack.Navigator>
   );
 }
