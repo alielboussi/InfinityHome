@@ -3,7 +3,7 @@
   "version": "0.1.16",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "postinstall": "node scripts/ensureSharedLink.js",
+    "postinstall": "node scripts/ensureSharedLink.js && node scripts/mergeCatalogSharedOverlay.js",
     "start": "expo start --offline --go",
     "start:online": "expo start --go",
     "android": "expo start --offline --android",
@@ -12,41 +12,33 @@
     "android:apk:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./build-apk-local.ps1"
   },
   "dependencies": {
-    "@expo/vector-icons": "15.0.2",
+    "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^13.3.1",
-    "@react-native-ml-kit/text-recognition": "^2.0.0",
     "@react-navigation/native": "^7.1.28",
     "@react-navigation/native-stack": "^7.12.0",
-    "expo": "~57.0.31",
-    "expo-asset": "~57.0.20",
-    "expo-auth-session": "~57.0.16",
-    "expo-camera": "~57.0.6",
-    "expo-constants": "~57.0.22",
-    "expo-font": "~57.0.4",
-    "expo-image-manipulator": "~57.0.21",
-    "expo-local-authentication": "~57.0.3",
-    "expo-status-bar": "~57.0.1",
-    "expo-web-browser": "~57.0.3",
+    "expo": "~58.0.21",
+    "expo-asset": "~58.0.19",
+    "expo-auth-session": "~58.0.16",
+    "expo-camera": "~58.0.14",
+    "expo-constants": "~58.0.13",
+    "expo-font": "~58.0.11",
+    "expo-image-manipulator": "~58.0.16",
+    "expo-local-authentication": "~58.0.2",
+    "expo-status-bar": "~58.0.4",
+    "expo-web-browser": "~58.0.7",
     "firebase": "^11.10.0",
-    "react": "19.2.3",
-    "react-native": "0.86.3",
-    "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0"
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "babel-preset-expo": "~57.0.0"
+    "babel-preset-expo": "~58.0.0"
   },
   "overrides": {
-    "expo-font": "~57.0.4"
-  },
-  "expo": {
-    "doctor": {
-      "reactNativeDirectoryCheck": {
-        "exclude": ["@react-native-ml-kit/text-recognition"]
-      }
-    }
+    "expo-font": "~58.0.11"
   },
   "private": true
 }

@@ -17,8 +17,6 @@ import {
   normalizeWarehousePacketScan,
   normalizeWarehouseWedgeScanInput,
 } from '../shared/warehouseScanResolver';
-import { WAREHOUSE_LABEL_OCR_FIELD } from '../shared/warehouseLabelFieldOcr';
-import LabelFieldWithOcrCamera from '../shared/LabelFieldWithOcrCamera';
 import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
 import { rememberLabelName } from '../shared/warehouseLabelNameMemory';
 import {
@@ -26,8 +24,8 @@ import {
   wedgeAwareTextChange,
 } from '../shared/useKeepSoftKeyboardOnScanSubmit';
 import { theme } from '../shared/theme';
-import { useWarehouseFormOcrReturn } from '../shared/useWarehouseFormOcrReturn';
 import GenerateRandomSkuButton from '../shared/GenerateRandomSkuButton';
+import { formButtonStyles } from '../shared/formButtonStyles';
 
 export default function PacketFormScreen({ route, navigation }) {
   const prefill = route.params?.prefill || {};
@@ -109,70 +107,6 @@ export default function PacketFormScreen({ route, navigation }) {
       }
     }, [applyPrefill, catalog, focusSku, isEdit, refreshCatalog]),
   );
-
-  const snapshotFormDraft = useCallback(() => ({
-    sku,
-    name,
-    packetNumber,
-    qtyPerProduct,
-    initialQty,
-  }), [initialQty, name, packetNumber, qtyPerProduct, sku]);
-
-  const restoreFormDraft = useCallback((draft) => {
-    if (!draft || typeof draft !== 'object') return;
-    if (draft.sku != null) setSku(String(draft.sku));
-    if (draft.name != null) setName(String(draft.name));
-    if (draft.packetNumber != null) setPacketNumber(String(draft.packetNumber));
-    if (draft.qtyPerProduct != null) setQtyPerProduct(String(draft.qtyPerProduct));
-    if (draft.initialQty != null) setInitialQty(String(draft.initialQty));
-  }, []);
-
-  const applyOcrField = useCallback((field, value) => {
-    if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU) {
-      const nextSku = String(value);
-      setSku(nextSku);
-      setNotice('Packet SKU from label OCR — edit if needed.');
-      const key = normalizeWarehouseWedgeScanInput(nextSku, 'packet') || nextSku.trim();
-      const packetName = nameRef.current?.trim();
-      if (key && packetName) {
-        rememberLabelName({
-          sku: key,
-          kind: LABEL_NAME_MEMORY_KIND.PACKET,
-          name: packetName,
-        }).catch(() => {});
-      }
-      return;
-    }
-    if (field === WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME) {
-      const nextName = String(value);
-      setName(nextName);
-      setNotice('Packet name from label OCR — edit if needed.');
-      const key = normalizeWarehouseWedgeScanInput(skuRef.current, 'packet')
-        || String(skuRef.current || '').trim();
-      if (key && nextName.trim()) {
-        rememberLabelName({
-          sku: key,
-          kind: LABEL_NAME_MEMORY_KIND.PACKET,
-          name: nextName.trim(),
-        }).catch(() => {});
-      }
-    }
-  }, []);
-
-  useWarehouseFormOcrReturn({
-    navigation,
-    route,
-    restoreDraft: restoreFormDraft,
-    applyOcrField,
-  });
-
-  const openOcrCamera = useCallback((field) => {
-    navigation.navigate('WarehouseLabelCapture', {
-      ocrField: field,
-      returnScreen: 'PacketForm',
-      formDraft: snapshotFormDraft(),
-    });
-  }, [navigation, snapshotFormDraft]);
 
   useEffect(() => {
     if (!isEdit) focusSku();
@@ -280,13 +214,11 @@ export default function PacketFormScreen({ route, navigation }) {
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.hint}>
-        Use 📷 OCR on each field for Lenor, Prizma, or Serra labels — printed text only (not barcodes). Edit before saving.
+        Enter SKU and name from the carton label, or scan with a wedge scanner in the SKU field.
       </Text>
       <GenerateRandomSkuButton onPress={onGenerateSku} busy={skuGenBusy} disabled={busy} />
-      <LabelFieldWithOcrCamera
+      <Field
         label="SKU (printed on label)"
-        ocrField={WAREHOUSE_LABEL_OCR_FIELD.PACKET_SKU}
-        onOpenOcrCamera={openOcrCamera}
         inputRef={skuInputRef}
         value={sku}
         onChangeText={wedgeAwareTextChange(setSku, {
@@ -304,10 +236,8 @@ export default function PacketFormScreen({ route, navigation }) {
         returnKeyType="done"
         onSubmitEditing={onSkuSubmit}
       />
-      <LabelFieldWithOcrCamera
+      <Field
         label="Name (English)"
-        ocrField={WAREHOUSE_LABEL_OCR_FIELD.PACKET_NAME}
-        onOpenOcrCamera={openOcrCamera}
         inputRef={nameInputRef}
         value={name}
         onChangeText={setName}
@@ -349,8 +279,12 @@ export default function PacketFormScreen({ route, navigation }) {
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-      <Pressable style={styles.btn} onPress={onSave} disabled={busy}>
-        <Text style={styles.btnText}>
+      <Pressable
+        style={[formButtonStyles.primary, styles.saveBtn, busy && formButtonStyles.disabled]}
+        onPress={onSave}
+        disabled={busy}
+      >
+        <Text style={formButtonStyles.primaryText}>
           {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Create packet'}
         </Text>
       </Pressable>
@@ -409,18 +343,9 @@ const styles = StyleSheet.create({
   },
   mono: { fontFamily: 'monospace' },
   inputDisabled: { opacity: 0.7 },
-  btn: {
-    backgroundColor: theme.primaryBg,
-    borderRadius: theme.radiusSm,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: theme.primaryDark,
-  },
-  btnText: { color: theme.text, fontWeight: '700' },
-  error: { color: theme.danger, marginTop: 8 },
-  notice: { color: theme.success, marginTop: 8 },
+  saveBtn: { marginTop: 8 },
+  error: { color: theme.danger, marginTop: 8, fontSize: 13 },
+  notice: { color: theme.success, marginTop: 8, fontSize: 13 },
   hint: { color: theme.textDim, fontSize: 12, lineHeight: 18, marginTop: 4, marginBottom: 4 },
   labelScanBtn: {
     backgroundColor: '#1e3a5f',

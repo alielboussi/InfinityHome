@@ -21,6 +21,7 @@ npm start
 - **Google sign-in (Expo Go):** browser OAuth — set `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` (Firebase Web client). Email/password always works.
 - **Google sign-in (installed APK):** **native** Google Sign-In (not `auth.expo.io`). You must register the **EAS release keystore SHA-1** in Firebase and commit/build with `google-services.json` (see below). Error code **10 / DEVELOPER_ERROR** means SHA-1 or `google-services.json` is missing for this APK.
 - **Biometrics:** `expo-local-authentication` after Firebase login (skipped if not enrolled).
+- **Product photos:** Set **`GEMINI_API_KEY_CATALOG`** or **`GEMINI_API_KEY`** on Vercel (Google AI / Gemini). The app calls `/api/warehouse-catalog-photo` after save to retouch and store `image_url`. Never commit API keys to git.
 
 ### Google Sign-In before an EAS APK
 
@@ -48,14 +49,14 @@ npm run eas:build:android
 |-------|--------|
 | **0 (now)** | Auth, biometrics, dashboard shell, `/user-access` mobile matrix, `auth-profile` returns `mobile_access` |
 | **1** | Barcode scan → resolve SKU → create packet/product forms (parity with web) + duplicate SKU checks via existing catalog services |
-| **1b** | **Label SKU (OCR):** align printed unit code in the **yellow box**, capture (crop + OCR that region only) → product info. Requires a **native rebuild** (`@react-native-ml-kit/text-recognition`); manual type works without OCR. |
+| **1b** | **Product photo:** camera on add-product form → Gemini retouch (white catalog background) → `image_url` on warehouse assembly |
 | **2** | Kitwe scan session: packets only, group by `warehouse_assemblies`, submit `warehouse_delivery_sessions` |
 | **3** | Hassan portal: line-level tick → partial Kitwe inventory (reuse `update_warehouse_delivery_items` RPC) |
 | **4** | Retire bridge when `/products-list` is gone; transfers credit warehouse showrooms only |
 
 Register every new screen in `src/mobile/mobileAccessManifest.js` (and `App.js` routes) — CI verifies via `scripts/verifyMobileAccessManifest.js`.
 
-**Expo SDK:** 57 (matches current Expo Go from Play Store).
+**Expo SDK:** 58 (matches current Expo Go from Play Store).
 
 ## App icon
 

@@ -26,3 +26,4 @@ if (process.platform === 'win32') {
 }
 
 console.log('[ensureSharedLink] linked shared ->', sharedTarget);
+execSync('node scripts/mergeCatalogSharedOverlay.js', { cwd: catalogRoot, stdio: 'inherit' });

@@ -12,6 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { attachWarehouseStockTotals } from '../shared/warehouseCatalogStock';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { resolveWarehouseCategoryNameFromList } from '../shared/warehouseCategoryLookup';
 
 function formatDimensionsLine(assembly) {
   const l = assembly?.dim_length;
@@ -107,9 +108,10 @@ export default function WarehouseProductDetailScreen({ route }) {
   const packetList = packetsByAssembly.get(assemblyId) || [];
 
   const categoryName = useMemo(() => {
-    const map = new Map((catalog?.categories || []).map((c) => [String(c.id), c.name]));
-    return map.get(String(assembly?.category_id)) || '';
-  }, [assembly?.category_id, catalog?.categories]);
+    const fromAssembly = String(assembly?.category_name || '').trim();
+    if (fromAssembly) return fromAssembly;
+    return resolveWarehouseCategoryNameFromList(assembly?.category_id, catalog?.categories);
+  }, [assembly?.category_id, assembly?.category_name, catalog?.categories]);
 
   const imageUri = assembly ? resolveAssemblyImageUri(assembly) : null;
   const dimLine = assembly ? formatDimensionsLine(assembly) : '';

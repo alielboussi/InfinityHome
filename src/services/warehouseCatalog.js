@@ -223,6 +223,26 @@ export async function isWarehousePacketNameTaken(name, { excludePacketId } = {})
   );
 }
 
+export async function findOrCreateWarehouseCategory(rawName) {
+  const name = String(rawName || '').trim();
+  if (!name) throw new Error('Category name is required.');
+  const { data, error } = await db.from('categories').select('id, name');
+  if (error) throw new Error(error.message || 'Failed to load categories');
+  const match = (data || []).find(
+    (c) => String(c.name || '').trim().toLowerCase() === name.toLowerCase(),
+  );
+  if (match) return match;
+
+  const now = new Date().toISOString();
+  const { data: created, error: insErr } = await db.from('categories').insert({
+    name,
+    created_at: now,
+    updated_at: now,
+  }).select('id, name').single();
+  if (insErr) throw new Error(insErr.message || 'Failed to create category');
+  return created;
+}
+
 export async function findOrCreateWarehouseColor(displayName) {
   const name = String(displayName || '').trim();
   if (!name) throw new Error('Color name is required');

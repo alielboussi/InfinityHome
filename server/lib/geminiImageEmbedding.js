@@ -15,6 +15,15 @@ export function getGeminiProductionApiKey() {
   return String(process.env.GEMINI_API_KEY_PRODUCTION || '').trim();
 }
 
+/** Factory catalog mobile app — product photo retouch (GEMINI_API_KEY_CATALOG or shared GEMINI_API_KEY). */
+export function getGeminiCatalogPhotoApiKey() {
+  return String(process.env.GEMINI_API_KEY_CATALOG || process.env.GEMINI_API_KEY || '').trim();
+}
+
+export function isGeminiCatalogPhotoEnabled() {
+  return Boolean(getGeminiCatalogPhotoApiKey());
+}
+
 export function isGeminiEmbeddingEnabled() {
   return Boolean(getGeminiApiKey());
 }

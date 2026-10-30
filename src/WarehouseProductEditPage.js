@@ -3,8 +3,11 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import WarehouseColorChip from './components/WarehouseColorChip';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
+import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
+import { isWarehouseCatalogAddProductAllowed } from './mobile/mobileAccessManifest';
 import {
   fetchWarehouseCatalog,
+  findOrCreateWarehouseCategory,
   findOrCreateWarehouseColor,
   generateUniqueWarehouseSku,
   saveWarehouseAssembly,
@@ -69,6 +72,8 @@ export default function WarehouseProductEditPage() {
   const allowSetCreate = warehouseCatalogAllowsSetCreate();
   const newKind = allowSetCreate && searchParams.get('kind') === 'set' ? 'set' : 'product';
   const canManage = useMemo(() => canManageCatalog(getCurrentUser()), []);
+  const { grant, loading: grantLoading } = useAuthProfileMobileGrant();
+  const canAddProduct = canManage || isWarehouseCatalogAddProductAllowed(grant);
   const rtTick = useRealtimeRefresh([
     'warehouse_assemblies',
     'warehouse_packets',
@@ -100,6 +105,8 @@ export default function WarehouseProductEditPage() {
   const [packetPickSearch, setPacketPickSearch] = useState('');
   const [colorDraft, setColorDraft] = useState('');
   const [colorPickBusy, setColorPickBusy] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryAddBusy, setCategoryAddBusy] = useState(false);
   const [formReady, setFormReady] = useState(false);
   const [setComponentsByLocation, setSetComponentsByLocation] = useState({});
   const newProductFormInitializedRef = useRef(false);
@@ -231,7 +238,13 @@ export default function WarehouseProductEditPage() {
   }, [refreshCatalogLists]);
 
   useEffect(() => {
-    if (!canManage) {
+    if (grantLoading) return;
+    if (isNew) {
+      if (!canAddProduct) {
+        navigate('/warehouse-products', { replace: true });
+        return;
+      }
+    } else if (!canManage) {
       navigate('/warehouse-products', { replace: true });
       return;
     }
@@ -241,7 +254,18 @@ export default function WarehouseProductEditPage() {
     }
     if (warehouseBoxModal) return;
     load();
-  }, [allowSetCreate, canManage, isNew, load, navigate, rtTick, searchParams, warehouseBoxModal]);
+  }, [
+    allowSetCreate,
+    canAddProduct,
+    canManage,
+    grantLoading,
+    isNew,
+    load,
+    navigate,
+    rtTick,
+    searchParams,
+    warehouseBoxModal,
+  ]);
 
   const editingProductId = isNew ? null : productId;
 
@@ -413,6 +437,27 @@ export default function WarehouseProductEditPage() {
       setError(err?.message || 'Could not add color');
     } finally {
       setColorPickBusy(false);
+    }
+  };
+
+  const handleAddCategory = async () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed || categoryAddBusy) return;
+    setCategoryAddBusy(true);
+    setError('');
+    try {
+      const category = await findOrCreateWarehouseCategory(trimmed);
+      setCategories((prev) => {
+        const next = [...(prev || []).filter((c) => String(c.id) !== String(category.id)), category];
+        next.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        return next;
+      });
+      setProductForm((f) => ({ ...f, category_id: category.id }));
+      setNewCategoryName('');
+    } catch (err) {
+      setError(err?.message || 'Could not add category');
+    } finally {
+      setCategoryAddBusy(false);
     }
   };
 
@@ -640,7 +685,7 @@ export default function WarehouseProductEditPage() {
     }));
   };
 
-  if (!canManage) return null;
+  if (!canManage && !(isNew && canAddProduct)) return null;
 
   return (
     <div className="products-container warehouse-products-page" style={{ maxWidth: 960, margin: '0 auto', padding: 16 }}>
@@ -729,18 +774,6 @@ export default function WarehouseProductEditPage() {
           </div>
           <div className="warehouse-field">
             <label htmlFor="wh-product-sku">SKU (assembled product)</label>
-            {isNew ? (
-              <div className="warehouse-generate-sku-row">
-                <button
-                  type="button"
-                  className="warehouse-generate-sku-btn"
-                  onClick={handleGenerateProductSku}
-                  disabled={skuGenBusy || saving}
-                >
-                  {skuGenBusy ? 'Generating…' : 'Generate random SKU (16 characters)'}
-                </button>
-              </div>
-            ) : null}
             <input
               id="wh-product-sku"
               required
@@ -762,6 +795,19 @@ export default function WarehouseProductEditPage() {
               }}
               style={{ fontFamily: 'monospace' }}
             />
+            {isNew ? (
+              <div className="warehouse-generate-sku-row">
+                <button
+                  type="button"
+                  className="warehouse-generate-sku-btn"
+                  onClick={handleGenerateProductSku}
+                  disabled={skuGenBusy || saving}
+                  title="Generate random 16-character SKU"
+                >
+                  {skuGenBusy ? 'Generating…' : 'Random SKU'}
+                </button>
+              </div>
+            ) : null}
           </div>
           <div className="warehouse-field">
             <label htmlFor="wh-product-category">Category</label>
@@ -775,6 +821,32 @@ export default function WarehouseProductEditPage() {
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
+            <p className="warehouse-field-hint" style={{ marginTop: 8 }}>
+              Need a new one? Type the name below and add it — it will be selected for this product.
+            </p>
+            <div className="warehouse-color-pick-row">
+              <input
+                type="text"
+                className="warehouse-color-pick-input"
+                placeholder="New category name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  handleAddCategory();
+                }}
+                disabled={categoryAddBusy || saving}
+              />
+              <button
+                type="button"
+                className="product-form-btn product-form-btn--secondary warehouse-color-pick-add"
+                onClick={handleAddCategory}
+                disabled={categoryAddBusy || saving || !newCategoryName.trim()}
+              >
+                {categoryAddBusy ? '…' : 'Add category'}
+              </button>
+            </div>
           </div>
           {isSetForm ? (
             <p className="warehouse-field-hint warehouse-field--span-full" style={{ marginTop: 0 }}>

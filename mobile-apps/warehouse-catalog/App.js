@@ -17,8 +17,6 @@ import WarehouseUnusedPacketsScreen from './screens/WarehouseUnusedPacketsScreen
 import ScanScreen from './screens/ScanScreen';
 import PacketFormScreen from './screens/PacketFormScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
-import WarehouseOcrSkuScreen from './screens/WarehouseOcrSkuScreen';
-import WarehouseLabelCaptureScreen from './screens/WarehouseLabelCaptureScreen';
 import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { MOBILE_APP_DISPLAY_NAME } from './shared/mobileAccessManifest';
@@ -90,16 +88,6 @@ function MainStack() {
         )}
       </Stack.Screen>
       <Stack.Screen name="WarehouseScan" options={{ title: 'Look up SKU' }} component={ScanScreen} />
-      <Stack.Screen
-        name="WarehouseOcrSku"
-        options={{ title: 'Label SKU (text)' }}
-        component={WarehouseOcrSkuScreen}
-      />
-      <Stack.Screen
-        name="WarehouseLabelCapture"
-        options={{ title: 'Label photo' }}
-        component={WarehouseLabelCaptureScreen}
-      />
       <Stack.Screen
         name="WarehouseProductDetail"
         options={{ title: 'Product info' }}

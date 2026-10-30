@@ -71,7 +71,12 @@ module.exports = {
     plugins: [
       'expo-font',
       'expo-asset',
-      'expo-camera',
+      [
+        'expo-camera',
+        {
+          cameraPermission: 'Factory needs the camera for product catalog photos.',
+        },
+      ],
       [
         'expo-local-authentication',
         { faceIDPermission: 'Unlock Factory with Face ID.' },

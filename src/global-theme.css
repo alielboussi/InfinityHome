@@ -742,6 +742,12 @@ select {
   min-height: 44px;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  height: auto;
+  min-height: 0;
+}
+
 textarea {
   min-height: 90px;
   height: auto;
@@ -2332,17 +2338,61 @@ body {
 }
 
 .categories-table__check-col {
-  width: 44px;
-  max-width: 44px;
-  padding-left: 4px !important;
-  padding-right: 4px !important;
+  width: 40px;
+  max-width: 40px;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  text-align: center;
 }
 
-.categories-table__check-col input[type='checkbox'] {
-  width: 16px;
-  height: 16px;
+.categories-table__check-col input.categories-table-checkbox,
+.categories-table-checkbox {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  margin: 0 auto;
+  padding: 0 !important;
+  border-radius: 4px;
   cursor: pointer;
   vertical-align: middle;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--br-surface);
+  border: 1px solid var(--br-border);
+  box-shadow: none;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.categories-table-checkbox:checked {
+  background-color: rgba(0, 180, 216, 0.2);
+  border-color: #00b4d8;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10' fill='none' stroke='%2300b4d8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='1 5 4 8 11 1'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px 10px;
+}
+
+.categories-table-checkbox:checked::after {
+  content: none;
+}
+
+.categories-table-checkbox:indeterminate {
+  background-color: rgba(0, 180, 216, 0.15);
+  border-color: #00b4d8;
+}
+
+.categories-table-checkbox:indeterminate::after {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 2px;
+  margin: 6px auto 0;
+  background: #00b4d8;
+  border-radius: 1px;
 }
 
 .actions-container {
@@ -4578,6 +4628,41 @@ body {
   margin-bottom: 0.35rem;
   opacity: 0.9;
 }
+.warehouse-products-page .warehouse-generate-sku-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.45rem;
+}
+.warehouse-generate-sku-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.45rem;
+}
+.warehouse-generate-sku-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 39, 68, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #bae6fd;
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  min-height: 32px;
+}
+.warehouse-generate-sku-btn:hover:not(:disabled) {
+  border-color: #38bdf8;
+  color: #e0f2fe;
+  background: #0f2744;
+}
+.warehouse-generate-sku-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 @media (max-width: 768px) {
   .warehouse-products-page .warehouse-form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4620,25 +4705,6 @@ body {
   font-size: 0.8rem;
   opacity: 0.75;
   margin-top: 0.25rem;
-}
-.warehouse-generate-sku-row {
-  display: flex;
-  justify-content: center;
-  margin: 0.35rem 0 0.65rem;
-}
-.warehouse-generate-sku-btn {
-  background: #0f2744;
-  border: 1px solid #38bdf8;
-  color: #7dd3fc;
-  border-radius: 8px;
-  padding: 0.5rem 1rem;
-  font-weight: 700;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-.warehouse-generate-sku-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 .warehouse-products-page .warehouse-form-actions {
   display: flex;
@@ -16228,5 +16294,57 @@ body.enterprise-theme .warehouse-deliveries-mirror-banner {
   border: 1px solid var(--dash-border-soft, #d5dbe2);
   border-radius: 8px;
   padding: 10px 12px;
+}
+
+body.enterprise-theme .warehouse-deliveries-page .warehouse-packet-check-input {
+  width: 15px !important;
+  height: 15px !important;
+  min-width: 15px !important;
+  min-height: 15px !important;
+  max-width: 15px !important;
+  max-height: 15px !important;
+  margin: 0;
+  flex: 0 0 15px;
+  border: 1px solid #94a3b8 !important;
+  border-radius: 3px !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  appearance: none;
+  cursor: inherit;
+}
+
+body.enterprise-theme .warehouse-deliveries-page .warehouse-packet-check-input:checked {
+  border-color: #1f6fd1 !important;
+  background-color: #ffffff !important;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10' fill='none' stroke='%231f6fd1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='1 5 4 8 11 1'/></svg>") !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 10px 8px !important;
+}
+
+body.enterprise-theme .warehouse-deliveries-page .warehouse-packet-check-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+body.enterprise-theme .warehouse-deliveries-page .warehouse-packet-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+body.enterprise-theme .warehouse-deliveries-page .warehouse-packet-check-row:has(input:disabled) {
+  opacity: 0.85;
+}
+
+body.enterprise-theme .warehouse-deliveries-page .warehouse-packet-check-label {
+  flex: 1;
+  min-width: 0;
 }
 

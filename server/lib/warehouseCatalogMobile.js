@@ -21,6 +21,10 @@ import {
 } from '../../src/utils/warehouseAssemblyProductQuantity.js';
 import { assemblyDerivesWarehouseStockFromPackets } from '../../src/utils/warehouseAssemblyMath.js';
 import { setWarehousePacketQuantityServer } from './warehouseLocationStockRecompute.js';
+import {
+  buildWarehouseCategoryIndex,
+  resolveWarehouseCategoryName,
+} from '../../src/utils/warehouseCategoryLookup.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const PACKETS = 'warehouse_packets';
@@ -75,6 +79,55 @@ const MOBILE_PACKET_FIELDS = [
 const MOBILE_INVENTORY_FIELDS = 'id, packet_id, location_id, quantity';
 const MOBILE_ASSEMBLY_INVENTORY_FIELDS = 'id, assembly_id, location_id, quantity';
 
+function normalizeCategoryRows(rows) {
+  return (rows || [])
+    .map((row) => ({
+      id: String(row?.id ?? '').trim(),
+      name: String(row?.name ?? '').trim(),
+    }))
+    .filter((row) => row.id && row.name);
+}
+
+async function loadCategoriesForMobileCatalog(sb, assemblies) {
+  const { data: allRows, error } = await sb.from('categories').select('id, name').order('name', { ascending: true });
+  throwIfDatastoreError(error, 'Failed to load categories');
+  const categories = normalizeCategoryRows(allRows);
+  const byId = new Map(categories.map((c) => [c.id, c]));
+
+  const missingIds = new Set();
+  (assemblies || []).forEach((a) => {
+    const cid = a?.category_id;
+    if (cid == null || cid === '') return;
+    const key = String(cid).trim();
+    if (!key) return;
+    const index = buildWarehouseCategoryIndex(categories);
+    if (resolveWarehouseCategoryName(key, index)) return;
+    if (!byId.has(key)) missingIds.add(key);
+  });
+
+  await Promise.all([...missingIds].map(async (id) => {
+    const { data: row, error: rowErr } = await sb.from('categories').select('id, name').eq('id', id).maybeSingle();
+    if (rowErr || !row?.id) return;
+    const normalized = { id: String(row.id).trim(), name: String(row.name || '').trim() };
+    if (!normalized.name) return;
+    if (!byId.has(normalized.id)) {
+      categories.push(normalized);
+      byId.set(normalized.id, normalized);
+    }
+  }));
+
+  categories.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  return categories;
+}
+
+function enrichAssembliesWithCategoryNames(assemblies, categories) {
+  const index = buildWarehouseCategoryIndex(categories);
+  return (assemblies || []).map((assembly) => {
+    const category_name = resolveWarehouseCategoryName(assembly?.category_id, index);
+    return category_name ? { ...assembly, category_name } : assembly;
+  });
+}
+
 export async function fetchCatalogForMobile(sb) {
   const [
     { data: locations, error: locationsErr },
@@ -102,7 +155,6 @@ export async function fetchCatalogForMobile(sb) {
     { data: assemblyColors, error: assemblyColorsErr },
     { data: assemblyPackets, error: assemblyPacketsErr },
     { data: colors, error: colorsErr },
-    { data: categories, error: categoriesErr },
     { data: inventory, error: inventoryErr },
     { data: assemblyInventory, error: assemblyInvErr },
   ] = await Promise.all([
@@ -110,7 +162,6 @@ export async function fetchCatalogForMobile(sb) {
     sb.from(ASSEMBLY_COLORS).select('assembly_id, color_id'),
     sb.from(ASSEMBLY_PACKETS).select('assembly_id, packet_id, qty_per_unit'),
     sb.from(COLORS).select('id, name, name_key').order('name', { ascending: true }),
-    sb.from('categories').select('id, name').order('name', { ascending: true }),
     inventoryQuery,
     assemblyInvQuery,
   ]);
@@ -119,12 +170,14 @@ export async function fetchCatalogForMobile(sb) {
   throwIfDatastoreError(assemblyColorsErr, 'Failed to load colors');
   throwIfDatastoreError(assemblyPacketsErr, 'Failed to load packet links');
   throwIfDatastoreError(colorsErr, 'Failed to load variant colors');
-  throwIfDatastoreError(categoriesErr, 'Failed to load categories');
   throwIfDatastoreError(inventoryErr, 'Failed to load packet stock');
   throwIfDatastoreError(assemblyInvErr, 'Failed to load finished stock');
 
+  const categories = await loadCategoriesForMobileCatalog(sb, assemblies);
+  const assembliesWithCategories = enrichAssembliesWithCategoryNames(assemblies, categories);
+
   return attachWarehouseStockTotals({
-    assemblies: assemblies || [],
+    assemblies: assembliesWithCategories || [],
     packets: packets || [],
     inventory: inventory || [],
     assemblyInventory: assemblyInventory || [],

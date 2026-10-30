@@ -42,6 +42,8 @@ function normalizeGrant(raw) {
     ...raw,
     landing_screen: base.landing_screen,
     warehouse_product_stock_qty: raw.warehouse_product_stock_qty === 'allow' ? 'allow' : 'deny',
+    warehouse_catalog_add_product: raw.warehouse_catalog_add_product === 'allow' ? 'allow' : 'deny',
+    warehouse_catalog_label_print: raw.warehouse_catalog_label_print === 'allow' ? 'allow' : 'deny',
     warehouse_production_app: raw.warehouse_production_app === 'allow' ? 'allow' : 'deny',
     screens: { ...base.screens, ...(raw.screens || {}) },
   };
@@ -136,20 +138,37 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
         <div className="mobile-access-permission-list">
           <div className="mobile-access-permission-item">
             <input
-              id="mobile-access-product-stock-qty"
+              id="mobile-access-catalog-add-product"
               type="checkbox"
               className="mobile-access-permission-item__check"
-              checked={grant.warehouse_product_stock_qty === 'allow'}
+              checked={grant.warehouse_catalog_add_product === 'allow'}
               onChange={(e) => setGrant((prev) => ({
                 ...prev,
-                warehouse_product_stock_qty: e.target.checked ? 'allow' : 'deny',
+                warehouse_catalog_add_product: e.target.checked ? 'allow' : 'deny',
               }))}
             />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-product-stock-qty">
-              <span className="mobile-access-permission-item__title">Edit product stock quantity</span>
+            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-add-product">
+              <span className="mobile-access-permission-item__title">Add new product</span>
               <span className="mobile-access-permission-item__desc">
-                Web and warehouse app. Increments only; linked packet cartons scale automatically
-                (e.g. 1→3 finished units: 4+5 cartons → 12+15).
+                Web warehouse catalog and warehouse app — shows the + button and allows creating a new product.
+              </span>
+            </label>
+          </div>
+          <div className="mobile-access-permission-item">
+            <input
+              id="mobile-access-catalog-label-print"
+              type="checkbox"
+              className="mobile-access-permission-item__check"
+              checked={grant.warehouse_catalog_label_print === 'allow'}
+              onChange={(e) => setGrant((prev) => ({
+                ...prev,
+                warehouse_catalog_label_print: e.target.checked ? 'allow' : 'deny',
+              }))}
+            />
+            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-label-print">
+              <span className="mobile-access-permission-item__title">Print Zebra labels (warehouse catalog app)</span>
+              <span className="mobile-access-permission-item__desc">
+                Label icon on product and packet cards; sends ZPL to the warehouse Zebra printer via the server.
               </span>
             </label>
           </div>

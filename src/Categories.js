@@ -68,51 +68,50 @@ const Categories = () => {
 
   const fetchCategories = async () => {
     setLoading(true);
+    setError('');
     try {
-      // Perf: fetch only needed columns
-      const [
-        { data: categoriesData, error: categoriesError },
-        { data: productsData, error: productsError },
-        { data: combosData, error: combosError },
-        { data: assembliesData, error: assembliesError },
-      ] = await Promise.all([
-        db
-          .from('categories')
-          .select('id, name')
-          .order('name', { ascending: true }),
-        db
-          .from('products')
-          .select('category_id')
-          .not('category_id', 'is', null),
-        db
-          .from('combos')
-          .select('category_id')
-          .not('category_id', 'is', null),
-        db
-          .from('warehouse_assemblies')
-          .select('category_id')
-          .not('category_id', 'is', null),
-      ]);
+      const { data: categoriesData, error: categoriesError } = await db
+        .from('categories')
+        .select('id, name');
       if (categoriesError) throw categoriesError;
-      if (productsError) throw productsError;
-      if (combosError) throw combosError;
-      if (assembliesError) throw assembliesError;
-      const sorted = (categoriesData || []).slice().sort((a, b) =>
-        String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
-      );
+
+      const sorted = (categoriesData || [])
+        .map((row) => ({
+          id: String(row?.id ?? '').trim(),
+          name: String(row?.name ?? '').trim(),
+        }))
+        .filter((row) => row.id && row.name)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+      setCategories(sorted);
+
       const counts = {};
       const bump = (row) => {
-        const key = String(row.category_id || '');
+        const key = String(row?.category_id ?? '').trim();
         if (!key) return;
         counts[key] = (counts[key] || 0) + 1;
       };
-      (productsData || []).forEach(bump);
-      (combosData || []).forEach(bump);
-      (assembliesData || []).forEach(bump);
-      setCategories(sorted);
-      setCategoryProductCounts(counts);
+      try {
+        const [
+          { data: productsData },
+          { data: combosData },
+          { data: assembliesData },
+        ] = await Promise.all([
+          db.from('products').select('category_id'),
+          db.from('combos').select('category_id'),
+          db.from('warehouse_assemblies').select('category_id'),
+        ]);
+        (productsData || []).forEach(bump);
+        (combosData || []).forEach(bump);
+        (assembliesData || []).forEach(bump);
+        setCategoryProductCounts(counts);
+      } catch {
+        setCategoryProductCounts({});
+      }
     } catch (err) {
-      setError('Failed to fetch categories.');
+      setCategories([]);
+      setCategoryProductCounts({});
+      setError(`Failed to fetch categories.${err?.message ? ` ${err.message}` : ''}`);
     } finally {
       setLoading(false);
     }
@@ -273,16 +272,17 @@ const Categories = () => {
   const canEdit = canManageCatalogPage;
   const canDelete = canManageCatalogPage;
 
-  const filteredCategoryIds = filteredCategories.map((c) => c.id);
+  const filteredCategoryIds = filteredCategories.map((c) => String(c.id));
   const allFilteredSelected = filteredCategoryIds.length > 0
     && filteredCategoryIds.every((id) => selectedIds.has(id));
   const someFilteredSelected = filteredCategoryIds.some((id) => selectedIds.has(id));
 
   const toggleCategorySelected = (id) => {
+    const key = String(id);
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -291,9 +291,9 @@ const Categories = () => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allFilteredSelected) {
-        filteredCategoryIds.forEach((id) => next.delete(id));
+        filteredCategoryIds.forEach((id) => next.delete(String(id)));
       } else {
-        filteredCategoryIds.forEach((id) => next.add(id));
+        filteredCategoryIds.forEach((id) => next.add(String(id)));
       }
       return next;
     });
@@ -372,6 +372,7 @@ const Categories = () => {
                 <th className="categories-table__check-col">
                   <input
                     type="checkbox"
+                    className="categories-table-checkbox"
                     aria-label="Select all categories in this list"
                     checked={allFilteredSelected}
                     ref={(el) => {
@@ -390,7 +391,7 @@ const Categories = () => {
             {loading ? (
               <tr><td colSpan={tableColSpan}>Loading...</td></tr>
             ) : filteredCategories.length === 0 ? (
-              <tr><td colSpan={tableColSpan}>No categories found.</td></tr>
+              <tr><td colSpan={tableColSpan}>{search.trim() ? 'No matching categories.' : 'No categories found.'}</td></tr>
             ) : (
               filteredCategories.map((category) => (
                 <tr key={category.id} className={editingId === category.id ? 'editing-row' : ''}>
@@ -398,8 +399,9 @@ const Categories = () => {
                     <td className="categories-table__check-col">
                       <input
                         type="checkbox"
+                        className="categories-table-checkbox"
                         aria-label={`Select ${category.name}`}
-                        checked={selectedIds.has(category.id)}
+                        checked={selectedIds.has(String(category.id))}
                         onChange={() => toggleCategorySelected(category.id)}
                         disabled={saving}
                       />

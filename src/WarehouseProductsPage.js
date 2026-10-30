@@ -45,6 +45,8 @@ import {
 import WarehouseProductionLabelPrintDialog, {
   WarehouseLabelPrintIconButton,
 } from './components/WarehouseProductionLabelPrintDialog';
+import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
+import { isWarehouseCatalogAddProductAllowed } from './mobile/mobileAccessManifest';
 
 export default function WarehouseProductsPage() {
   const navigate = useNavigate();
@@ -52,6 +54,8 @@ export default function WarehouseProductsPage() {
   const isIncompleteView = location.pathname.startsWith('/warehouse-products/incomplete');
   const sessionUser = useMemo(() => getCurrentUser(), []);
   const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
+  const { grant } = useAuthProfileMobileGrant();
+  const canAddProduct = canManage || isWarehouseCatalogAddProductAllowed(grant);
   const rtTick = useRealtimeRefresh([
     'warehouse_assemblies',
     'warehouse_packets',
@@ -331,26 +335,30 @@ export default function WarehouseProductsPage() {
           <span className="warehouse-catalog-toolbar__label" id="wh-catalog-view-label">View</span>
           <WarehouseCatalogViewToggle aria-labelledby="wh-catalog-view-label" />
         </div>
-        {canManage && (
+        {(canManage || canAddProduct) && (
           <div className="warehouse-catalog-toolbar__create">
             <span className="warehouse-catalog-toolbar__label" id="wh-catalog-create-label">Create</span>
             <div className="warehouse-catalog-toolbar__actions" aria-labelledby="wh-catalog-create-label">
-              <button
-                type="button"
-                className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
-                onClick={() => navigate('/warehouse-products/new')}
-              >
-                <FaPlus aria-hidden />
-                <span>Product</span>
-              </button>
-              <button
-                type="button"
-                className="warehouse-catalog-action-btn"
-                onClick={() => navigate('/warehouse-products/packets/new')}
-              >
-                <FaPlus aria-hidden />
-                <span>Packet</span>
-              </button>
+              {canAddProduct ? (
+                <button
+                  type="button"
+                  className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
+                  onClick={() => navigate('/warehouse-products/new')}
+                >
+                  <FaPlus aria-hidden />
+                  <span>Product</span>
+                </button>
+              ) : null}
+              {canManage ? (
+                <button
+                  type="button"
+                  className="warehouse-catalog-action-btn"
+                  onClick={() => navigate('/warehouse-products/packets/new')}
+                >
+                  <FaPlus aria-hidden />
+                  <span>Packet</span>
+                </button>
+              ) : null}
             </div>
           </div>
         )}

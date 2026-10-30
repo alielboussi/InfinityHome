@@ -35,17 +35,21 @@ import {
   useKeepSoftKeyboardOnScanSubmit,
   wedgeAwareTextChange,
 } from '../shared/useKeepSoftKeyboardOnScanSubmit';
-import { WAREHOUSE_LABEL_OCR_FIELD } from '../shared/warehouseLabelFieldOcr';
-import LabelFieldWithOcrCamera from '../shared/LabelFieldWithOcrCamera';
 import { LABEL_NAME_MEMORY_KIND } from '../shared/warehouseLabelOcrName';
 import { rememberLabelName } from '../shared/warehouseLabelNameMemory';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
-import { useWarehouseFormOcrReturn } from '../shared/useWarehouseFormOcrReturn';
 import GenerateRandomSkuButton from '../shared/GenerateRandomSkuButton';
+import { formButtonStyles } from '../shared/formButtonStyles';
 import {
   finishedUnitsFromBoxCount,
   formatWarehouseBoxAndUnitStock,
 } from '../shared/warehouseUnitsPerCarton';
+import CatalogProductPhotoCaptureModal, {
+  CatalogProductPhotoField,
+} from '../shared/CatalogProductPhotoCapture';
+import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
+import { attachCatalogProductPhotoWithAi } from '../shared/catalogPhotoApi';
+import { resolveWarehouseCategoryNameFromList } from '../shared/warehouseCategoryLookup';
 
 const INVENTORY_FINISHED = 'finished';
 const INVENTORY_PACKETS = 'packets';
@@ -77,9 +81,14 @@ export default function ProductFormScreen({ route, navigation }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [categoryAddBusy, setCategoryAddBusy] = useState(false);
   const [finishedQtyPrompt, setFinishedQtyPrompt] = useState(null);
   const [finishedQtyValue, setFinishedQtyValue] = useState('0');
   const [finishedQtySaving, setFinishedQtySaving] = useState(false);
+  const [productPhoto, setProductPhoto] = useState(null);
+  const [photoCameraOpen, setPhotoCameraOpen] = useState(false);
+  const productPhotoRef = useRef(null);
+  productPhotoRef.current = productPhoto;
   const skuInputRef = useRef(null);
   const nameInputRef = useRef(null);
   const turkishNameInputRef = useRef(null);
@@ -187,8 +196,10 @@ export default function ProductFormScreen({ route, navigation }) {
   const selectedCategoryLabel = useMemo(() => {
     if (!categoryId) return 'Select category';
     const row = sortedCategories.find((c) => String(c.id) === String(categoryId));
-    return row?.name || 'Select category';
-  }, [categoryId, sortedCategories]);
+    if (row?.name) return row.name;
+    const resolved = resolveWarehouseCategoryNameFromList(categoryId, categories);
+    return resolved || 'Select category';
+  }, [categories, categoryId, sortedCategories]);
   const colors = catalog?.colors || [];
   const packets = catalog?.packets || [];
 
@@ -250,8 +261,8 @@ export default function ProductFormScreen({ route, navigation }) {
 
   const addCategory = async () => {
     const trimmed = newCategoryName.trim();
-    if (!trimmed) return;
-    setBusy(true);
+    if (!trimmed || categoryAddBusy) return;
+    setCategoryAddBusy(true);
     setError('');
     try {
       const { category } = await warehouseMobileRequest('category-create', { name: trimmed });
@@ -262,11 +273,12 @@ export default function ProductFormScreen({ route, navigation }) {
       }));
       setCategoryId(category.id);
       setNewCategoryName('');
+      setCategoryPickerOpen(false);
       setNotice(`Category "${category.name}" added.`);
     } catch (err) {
       setError(err?.message || 'Failed to add category');
     } finally {
-      setBusy(false);
+      setCategoryAddBusy(false);
     }
   };
 
@@ -331,92 +343,22 @@ export default function ProductFormScreen({ route, navigation }) {
     return addPacketLink(match, { clearSearch: true });
   }, [addPacketLink, packets]);
 
-  const snapshotFormDraft = useCallback(() => ({
-    name,
-    turkishName,
-    familySku,
-    unitsPerCarton,
-    packetCount,
-    categoryId,
-    newCategoryName,
-    finishedOnly,
-    hasColorVariants,
-    colorIds,
-    colorDraft,
-    packetLinks,
-    packetSearch,
-  }), [
-    categoryId,
-    colorDraft,
-    colorIds,
-    familySku,
-    finishedOnly,
-    hasColorVariants,
-    name,
-    newCategoryName,
-    packetCount,
-    packetLinks,
-    packetSearch,
-    turkishName,
-    unitsPerCarton,
-  ]);
-
-  const restoreFormDraft = useCallback((draft) => {
-    if (!draft || typeof draft !== 'object') return;
-    if (draft.name != null) setName(String(draft.name));
-    if (draft.turkishName != null) setTurkishName(String(draft.turkishName));
-    if (draft.familySku != null) setFamilySku(String(draft.familySku));
-    if (draft.unitsPerCarton != null) setUnitsPerCarton(String(draft.unitsPerCarton));
-    if (draft.packetCount != null) setPacketCount(String(draft.packetCount));
-    if (draft.categoryId != null) setCategoryId(String(draft.categoryId));
-    if (draft.newCategoryName != null) setNewCategoryName(String(draft.newCategoryName));
-    if (typeof draft.finishedOnly === 'boolean') setFinishedOnly(draft.finishedOnly);
-    if (typeof draft.hasColorVariants === 'boolean') setHasColorVariants(draft.hasColorVariants);
-    if (Array.isArray(draft.colorIds)) setColorIds(draft.colorIds);
-    if (draft.colorDraft != null) setColorDraft(String(draft.colorDraft));
-    if (Array.isArray(draft.packetLinks)) setPacketLinks(draft.packetLinks);
-    if (draft.packetSearch != null) {
-      setPacketSearch(String(draft.packetSearch));
-      packetSearchRef.current = String(draft.packetSearch);
-    }
-  }, []);
-
-  const applyOcrField = useCallback((field, value) => {
-    if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU) {
-      setFamilySku(String(value));
-      setNotice('Product SKU from label OCR — edit if needed.');
-      return;
-    }
-    if (field === WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH) {
-      const turkish = String(value);
-      setTurkishName(turkish);
-      setNotice('Turkish name from label OCR — edit if needed.');
-      const skuKey = normalizeWarehouseProductSku(familySkuRef.current)
-        || String(familySkuRef.current || '').trim();
-      if (skuKey && turkish) {
-        rememberLabelName({
-          sku: skuKey,
-          kind: LABEL_NAME_MEMORY_KIND.PRODUCT_TURKISH,
-          name: turkish,
-        }).catch(() => {});
-      }
-    }
-  }, []);
-
-  useWarehouseFormOcrReturn({
-    navigation,
-    route,
-    restoreDraft: restoreFormDraft,
-    applyOcrField,
-  });
-
-  const openOcrCamera = useCallback((field) => {
-    navigation.navigate('WarehouseLabelCapture', {
-      ocrField: field,
-      returnScreen: 'ProductForm',
-      formDraft: snapshotFormDraft(),
+  const uploadPendingProductPhoto = useCallback(async (assemblyId) => {
+    const photo = productPhotoRef.current;
+    if (!photo?.uri || !assemblyId) return;
+    setNotice('AI retouching product photo (white background)…');
+    const imageBase64 = await prepareCatalogPhotoForUpload(photo);
+    await attachCatalogProductPhotoWithAi({
+      assemblyId,
+      imageBase64,
+      onAttempt: (attempt, max) => {
+        setNotice(`AI retouching photo… ${attempt}/${max}`);
+      },
     });
-  }, [navigation, snapshotFormDraft]);
+    setProductPhoto(null);
+    refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+    setNotice('Product photo saved with white catalog background.');
+  }, [refreshGlobalCatalog]);
 
   const handlePacketSearchChange = useCallback((text) => {
     const raw = String(text || '');
@@ -526,6 +468,14 @@ export default function ProductFormScreen({ route, navigation }) {
       const createdAssemblyId = saveResult?.assembly?.id
         ? String(saveResult.assembly.id)
         : '';
+      const photoAssemblyId = bomEditMode ? editAssemblyId : createdAssemblyId;
+      if (photoAssemblyId && productPhotoRef.current?.uri) {
+        try {
+          await uploadPendingProductPhoto(photoAssemblyId);
+        } catch (photoErr) {
+          throw photoErr;
+        }
+      }
       if (finishedOnly && !bomEditMode && createdAssemblyId) {
         const unitsPerBox = Math.max(1, Math.floor(Number(unitsPerCarton) || 1));
         setFinishedQtyValue('0');
@@ -640,8 +590,16 @@ export default function ProductFormScreen({ route, navigation }) {
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.hint}>
-        Use 📷 OCR on each field for Lenor, Prizma, or Serra labels — printed text only (not barcodes). Edit before saving.
+        Tap the camera icon to add a product photo — on save, AI clears it up and adds a white catalog background.
       </Text>
+      {!existing && !bomEditMode ? (
+        <CatalogProductPhotoField
+          photoUri={productPhoto?.uri}
+          onOpenCamera={() => setPhotoCameraOpen(true)}
+          onClear={() => setProductPhoto(null)}
+          disabled={busy}
+        />
+      ) : null}
       {!existing && !bomEditMode ? (
         <>
           <View style={styles.rowSwitch}>
@@ -670,10 +628,8 @@ export default function ProductFormScreen({ route, navigation }) {
             returnKeyType="next"
             onSubmitEditing={() => turkishNameInputRef.current?.focus?.()}
           />
-          <LabelFieldWithOcrCamera
+          <Field
             label="Turkish name"
-            ocrField={WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_TURKISH}
-            onOpenOcrCamera={openOcrCamera}
             value={turkishName}
             onChangeText={setTurkishName}
             inputRef={turkishNameInputRef}
@@ -699,10 +655,8 @@ export default function ProductFormScreen({ route, navigation }) {
           {!existing ? (
             <GenerateRandomSkuButton onPress={onGenerateSku} busy={skuGenBusy} disabled={busy} />
           ) : null}
-          <LabelFieldWithOcrCamera
+          <Field
             label="SKU (finished product)"
-            ocrField={WAREHOUSE_LABEL_OCR_FIELD.PRODUCT_SKU}
-            onOpenOcrCamera={openOcrCamera}
             value={familySku}
             editable={!existing}
             mono
@@ -780,23 +734,39 @@ export default function ProductFormScreen({ route, navigation }) {
                 </Pressable>
               ))}
             </ModalScrollView>
+            <Text style={styles.pickerSectionLabel}>Add new category</Text>
+            <View style={styles.inlineAdd}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="Category name"
+                placeholderTextColor="#64748b"
+                value={newCategoryName}
+                onChangeText={setNewCategoryName}
+                blurOnSubmit={false}
+                showSoftInputOnFocus
+                onSubmitEditing={addCategory}
+                editable={!categoryAddBusy}
+              />
+              <Pressable
+                style={[
+                  formButtonStyles.outline,
+                  formButtonStyles.outlineAccent,
+                  categoryAddBusy && formButtonStyles.disabled,
+                ]}
+                onPress={addCategory}
+                disabled={categoryAddBusy || !newCategoryName.trim()}
+              >
+                <Text style={[formButtonStyles.outlineText, formButtonStyles.outlineTextAccent]}>
+                  {categoryAddBusy ? '…' : 'Add'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </Pressable>
       </Modal>
-      <View style={styles.inlineAdd}>
-        <TextInput
-          style={[styles.input, { flex: 1 }]}
-          placeholder="New category name"
-          placeholderTextColor="#64748b"
-          value={newCategoryName}
-          onChangeText={setNewCategoryName}
-          blurOnSubmit={false}
-          showSoftInputOnFocus
-        />
-        <Pressable style={styles.smallBtn} onPress={addCategory} disabled={busy}>
-          <Text style={styles.smallBtnText}>Add</Text>
-        </Pressable>
-      </View>
+      <Text style={styles.fieldHint}>
+        Tap Category to pick one, or add a new name in the picker.
+      </Text>
       <View style={styles.rowSwitch}>
         <Text style={styles.label}>Variant colors</Text>
         <Switch value={hasColorVariants} onValueChange={setHasColorVariants} />
@@ -904,8 +874,12 @@ export default function ProductFormScreen({ route, navigation }) {
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
       {(!existing || bomEditMode) && (
-        <Pressable style={styles.btn} onPress={onSave} disabled={busy}>
-          <Text style={styles.btnText}>
+        <Pressable
+          style={[formButtonStyles.primary, styles.saveBtn, busy && formButtonStyles.disabled]}
+          onPress={onSave}
+          disabled={busy}
+        >
+          <Text style={formButtonStyles.primaryText}>
             {busy ? 'Saving…' : (bomEditMode ? 'Save packet BOM' : 'Create product')}
           </Text>
         </Pressable>
@@ -953,11 +927,11 @@ export default function ProductFormScreen({ route, navigation }) {
             </Text>
           ) : null}
           <Pressable
-            style={styles.btn}
+            style={[formButtonStyles.primary, finishedQtySaving && formButtonStyles.disabled]}
             onPress={submitFinishedQtyPrompt}
             disabled={finishedQtySaving}
           >
-            <Text style={styles.btnText}>
+            <Text style={formButtonStyles.primaryText}>
               {finishedQtySaving ? 'Saving…' : 'Save & go to list'}
             </Text>
           </Pressable>
@@ -971,6 +945,15 @@ export default function ProductFormScreen({ route, navigation }) {
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    <CatalogProductPhotoCaptureModal
+      visible={photoCameraOpen}
+      onCancel={() => setPhotoCameraOpen(false)}
+      onCaptured={(photo) => {
+        setPhotoCameraOpen(false);
+        setProductPhoto(photo);
+        setNotice('Photo ready — save the product to run AI retouch.');
+      }}
+    />
     </>
   );
 }
@@ -1082,7 +1065,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
-  pickerList: { maxHeight: 360 },
+  pickerList: { maxHeight: 280 },
+  pickerSectionLabel: {
+    color: theme.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 6,
+  },
   pickerRow: {
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -1091,7 +1082,13 @@ const styles = StyleSheet.create({
   },
   pickerRowActive: { backgroundColor: '#0c4a6e' },
   pickerRowText: { color: theme.text, fontSize: 16 },
-  inlineAdd: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 12 },
+  inlineAdd: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 16,
+  },
   smallBtn: {
     backgroundColor: '#334155',
     paddingHorizontal: 14,
@@ -1127,19 +1124,10 @@ const styles = StyleSheet.create({
     width: 48,
     textAlign: 'center',
   },
-  remove: { color: '#f87171' },
-  btn: {
-    backgroundColor: theme.primaryBg,
-    borderRadius: 8,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: theme.primaryDark,
-  },
-  btnText: { color: theme.text, fontWeight: '600' },
-  error: { color: theme.danger, marginTop: 8 },
-  notice: { color: theme.success, marginTop: 8 },
+  remove: { color: theme.danger, fontSize: 13, fontWeight: '600' },
+  saveBtn: { marginTop: 8 },
+  error: { color: theme.danger, marginTop: 8, fontSize: 13 },
+  notice: { color: theme.success, marginTop: 8, fontSize: 13 },
   labelScanBtn: {
     backgroundColor: '#1e3a5f',
     borderRadius: 8,

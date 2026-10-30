@@ -10,6 +10,9 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
+import { isWarehouseCatalogLabelPrintAllowed } from '../shared/mobileAccessManifest';
+import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
 import { buildPacketAssemblyAssignments } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
@@ -48,8 +51,11 @@ export default function WarehousePacketsScreen({ navigation }) {
     refresh,
     patchCatalog,
   } = useWarehouseCatalog();
+  const grant = useSharedMobileAccessGrant();
+  const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [labelPrintItem, setLabelPrintItem] = useState(null);
   const [draftQty, setDraftQty] = useState({});
   const [committedQty, setCommittedQty] = useState({});
   const qtyConfirmOpenRef = useRef(false);
@@ -233,9 +239,19 @@ export default function WarehousePacketsScreen({ navigation }) {
             <Text style={styles.sku} numberOfLines={1}>{packet.sku}</Text>
             <Text style={styles.name} numberOfLines={2}>{packet.name}</Text>
           </View>
-          <Pressable
-            style={styles.editBtn}
-            onPress={() => navigation.navigate('PacketForm', {
+          <View style={styles.cardHeaderActions}>
+            {canPrintLabel ? (
+              <CatalogLabelPrintIconButton
+                onPress={() => setLabelPrintItem({
+                  name: packet.name,
+                  sku: packet.sku,
+                  defaultCopies: 1,
+                })}
+              />
+            ) : null}
+            <Pressable
+              style={styles.editBtn}
+              onPress={() => navigation.navigate('PacketForm', {
               prefill: {
                 id: packet.id,
                 sku: packet.sku,
@@ -249,6 +265,7 @@ export default function WarehousePacketsScreen({ navigation }) {
           >
             <Text style={styles.editBtnText}>Edit</Text>
           </Pressable>
+          </View>
         </View>
         {products.length ? (
           <View style={styles.productBlock}>
@@ -372,6 +389,11 @@ export default function WarehousePacketsScreen({ navigation }) {
           }
         />
       )}
+      <CatalogLabelPrintModal
+        visible={Boolean(labelPrintItem)}
+        item={labelPrintItem}
+        onClose={() => setLabelPrintItem(null)}
+      />
     </View>
   );
 }
@@ -425,6 +447,7 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   cardHeaderText: { flex: 1, minWidth: 0 },
+  cardHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   editBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,

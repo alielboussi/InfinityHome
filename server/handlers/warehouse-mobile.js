@@ -34,6 +34,8 @@ import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
   evaluateWarehouseProductionAppAccess,
   isMobileScreenAccessAllowed,
+  isWarehouseCatalogAddProductAllowed,
+  isWarehouseCatalogLabelPrintAllowed,
   isWarehouseProductionAppAllowed,
   isWarehouseProductionKitweDeliveryAllowed,
   isWarehouseProductionOperatorAllowed,
@@ -274,6 +276,10 @@ async function assertProductionKioskUser(user) {
 /** Catalog portal + production app — same Zebra / worker label template. */
 async function assertWarehouseLabelPrintUser(user) {
   if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) {
+    return;
+  }
+  const grant = await mobileAccessGrantForUser(user);
+  if (isWarehouseCatalogLabelPrintAllowed(grant)) {
     return;
   }
   await assertProductionKioskUser(user);
@@ -1074,6 +1080,23 @@ async function opAssemblyCreate(body, user) {
   return { assembly: row, created_by: user?.email || null };
 }
 
+async function opAssemblySave(body, user) {
+  const updateId = String(body?.id || body?.assembly_id || '').trim();
+  if (!updateId) {
+    const grant = await mobileAccessGrantForUser(user);
+    const allowed = canManageCatalog(user)
+      || isLoginAccessAdmin(user?.email)
+      || isWarehouseCatalogAddProductAllowed(grant);
+    if (!allowed) {
+      const err = new Error('You do not have permission to add products.');
+      err.status = 403;
+      throw err;
+    }
+  }
+  const assembly = await saveAssemblyForMobile(getService(), body);
+  return { assembly, created_by: user?.email || null };
+}
+
 async function opProductTurkishNamesSync(body, user) {
   const grant = await mobileAccessGrantForUser(user);
   const allowed = isLoginAccessAdmin(user?.email)
@@ -1207,6 +1230,7 @@ function isHassanDeliveryUser(user) {
 function canWarehouseDeliveryReceiverActions(user) {
   if (isHassanDeliveryUser(user)) return true;
   if (isLoginAccessAdmin(user?.email)) return true;
+  if (canManageCatalog(user)) return true;
   return false;
 }
 
@@ -1658,6 +1682,15 @@ async function opReturnOrderList(body, user) {
   const grant = await mobileAccessGrantForUser(user);
   const trackageOnly = body.trackage_only === true;
   const forProduction = body.for_production === true;
+  const adminRegistry = body.admin_registry === true;
+  if (adminRegistry) {
+    if (!canManageCatalog(user)) {
+      const err = new Error('Catalog admin access required.');
+      err.status = 403;
+      throw err;
+    }
+    return listWarehouseReturnOrders(getService(), {});
+  }
   if (trackageOnly) {
     await assertWarehouseReturnCreator(user);
   } else if (forProduction) {
@@ -1718,6 +1751,15 @@ async function opStorageSendSubmit(body, user) {
 async function opStorageSendList(body, user) {
   const grant = await mobileAccessGrantForUser(user);
   const forProduction = body.for_production === true;
+  const adminRegistry = body.admin_registry === true;
+  if (adminRegistry) {
+    if (!canManageCatalog(user)) {
+      const err = new Error('Catalog admin access required.');
+      err.status = 403;
+      throw err;
+    }
+    return listWarehouseStorageSends(getService(), { forProduction: false });
+  }
   if (forProduction) {
     await assertWarehouseStorageProductionAccess(user, grant);
   } else {
@@ -1799,10 +1841,7 @@ export default async function handler(req, res) {
         result = { color: await findOrCreateWarehouseColorServer(getService(), body.name) };
         break;
       case 'assembly-save':
-        result = {
-          assembly: await saveAssemblyForMobile(getService(), body),
-          created_by: user?.email || null,
-        };
+        result = await opAssemblySave(body, user);
         break;
       case 'assembly-product-quantity-set':
         result = await opAssemblyProductQuantitySet(body, user);

@@ -14,7 +14,8 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
-import { isWarehouseProductFormInsertAllowed } from '../shared/mobileAccessManifest';
+import { isWarehouseCatalogAddProductAllowed, isWarehouseCatalogLabelPrintAllowed, isWarehouseProductFormInsertAllowed } from '../shared/mobileAccessManifest';
+import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
@@ -38,6 +39,10 @@ import {
   formatWarehouseBoxAndUnitStock,
 } from '../shared/warehouseUnitsPerCarton';
 import { theme } from '../shared/theme';
+import {
+  buildWarehouseCategoryIndex,
+  resolveWarehouseCategoryName,
+} from '../shared/warehouseCategoryLookup';
 
 const LIST_PERF = {
   initialNumToRender: 12,
@@ -48,10 +53,14 @@ const LIST_PERF = {
 
 const UNCATEGORIZED_CATEGORY_KEY = '__none__';
 
-function assemblyCategoryKey(assembly) {
-  return assembly?.category_id != null && assembly.category_id !== ''
-    ? String(assembly.category_id)
-    : UNCATEGORIZED_CATEGORY_KEY;
+function assemblyCategoryKey(assembly, categoryIndex) {
+  const raw = assembly?.category_id;
+  if (raw == null || raw === '') return UNCATEGORIZED_CATEGORY_KEY;
+  const key = String(raw).trim();
+  if (!key) return UNCATEGORIZED_CATEGORY_KEY;
+  const resolved = resolveWarehouseCategoryName(key, categoryIndex);
+  if (!resolved) return UNCATEGORIZED_CATEGORY_KEY;
+  return key;
 }
 
 function formatDimensionsLine(assembly) {
@@ -118,11 +127,13 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     refresh,
   } = useWarehouseCatalog();
   const grant = useSharedMobileAccessGrant();
-  const canAddProduct = isWarehouseProductFormInsertAllowed(grant);
+  const canAddProduct = isWarehouseCatalogAddProductAllowed(grant);
+  const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant);
   const [search, setSearch] = useState('');
   const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => new Set());
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [labelPrintItem, setLabelPrintItem] = useState(null);
   const [expanded, setExpanded] = useState(() => new Set());
 
   useFocusEffect(
@@ -136,10 +147,18 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     [catalog],
   );
 
+  const categoryIndex = useMemo(
+    () => buildWarehouseCategoryIndex(catalog?.categories),
+    [catalog?.categories],
+  );
+
   const categoryName = useMemo(() => {
-    const map = new Map((catalog?.categories || []).map((c) => [String(c.id), c.name]));
-    return (id) => map.get(String(id)) || '';
-  }, [catalog?.categories]);
+    return (id, assembly) => {
+      const fromAssembly = String(assembly?.category_name || '').trim();
+      if (fromAssembly) return fromAssembly;
+      return resolveWarehouseCategoryName(id, categoryIndex);
+    };
+  }, [categoryIndex]);
 
   const { assemblyWarehouseQty, packetWarehouseQty } = useMemo(
     () => catalogStockMaps(catalog),
@@ -160,20 +179,22 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const warehouseCategoryOptions = useMemo(() => {
     const counts = new Map();
     productAssemblies.forEach((a) => {
-      const key = a.category_id != null && a.category_id !== ''
-        ? String(a.category_id)
-        : UNCATEGORIZED_CATEGORY_KEY;
+      const key = assemblyCategoryKey(a, categoryIndex);
       counts.set(key, (counts.get(key) || 0) + 1);
     });
     const options = [...counts.entries()].map(([id, count]) => {
       const name = id === UNCATEGORIZED_CATEGORY_KEY
         ? 'Uncategorized'
-        : (categoryName(id) || 'Unknown category');
+        : (categoryName(id) || 'Uncategorized');
       return { id, name, count };
     });
-    options.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    options.sort((a, b) => {
+      if (a.id === UNCATEGORIZED_CATEGORY_KEY) return 1;
+      if (b.id === UNCATEGORIZED_CATEGORY_KEY) return -1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
     return options;
-  }, [productAssemblies, categoryName]);
+  }, [productAssemblies, categoryName, categoryIndex]);
 
   const categoryFilterActive = selectedCategoryIds.size > 0;
 
@@ -205,7 +226,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const filtered = useMemo(() => {
     let base = productAssemblies;
     if (selectedCategoryIds.size > 0) {
-      base = base.filter((a) => selectedCategoryIds.has(assemblyCategoryKey(a)));
+      base = base.filter((a) => selectedCategoryIds.has(assemblyCategoryKey(a, categoryIndex)));
     }
     const raw = search.trim();
     if (!raw) return base;
@@ -223,9 +244,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
 
     return base.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
-      const cat = categoryName(a.category_id).toLowerCase();
+      const cat = categoryName(a.category_id, a);
       if (String(a.name || '').toLowerCase().includes(qLower)) return true;
-      if (cat.includes(qLower)) return true;
+      if (cat.toLowerCase().includes(qLower)) return true;
       if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
       if (keysOverlap(a.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
       return pktList.some(
@@ -239,6 +260,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     packetsByAssembly,
     search,
     categoryName,
+    categoryIndex,
     selectedCategoryIds,
   ]);
 
@@ -267,13 +289,27 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     return String(Math.max(0, Math.floor(n)));
   };
 
+  const openLabelPrint = (name, sku) => {
+    const labelName = String(name || '').trim();
+    const labelSku = String(sku || '').trim();
+    if (!labelName || !labelSku) return;
+    setLabelPrintItem({ name: labelName, sku: labelSku, defaultCopies: 1 });
+  };
+
   const renderPacket = (packet) => {
     const whQty = packetWarehouseQty[String(packet.id)] ?? 0;
     return (
       <View key={packet.id} style={styles.packetRow}>
-        <Text style={styles.packetSku} numberOfLines={1}>{packet.sku}</Text>
-        <Text style={styles.packetName} numberOfLines={2}>{packet.name}</Text>
-        <Text style={styles.packetQty}>WH {formatQty(whQty)}</Text>
+        <View style={styles.packetRowMain}>
+          <Text style={styles.packetSku} numberOfLines={1}>{packet.sku}</Text>
+          <Text style={styles.packetName} numberOfLines={2}>{packet.name}</Text>
+          <Text style={styles.packetQty}>WH {formatQty(whQty)}</Text>
+        </View>
+        {canPrintLabel ? (
+          <CatalogLabelPrintIconButton
+            onPress={() => openLabelPrint(packet.name, packet.sku)}
+          />
+        ) : null}
       </View>
     );
   };
@@ -282,7 +318,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const id = String(assembly.id);
     const isOpen = expanded.has(id);
     const pktList = packetsByAssembly.get(id) || [];
-    const cat = categoryName(assembly.category_id);
+    const cat = categoryName(assembly.category_id, assembly);
     const finishedQty = assemblyWarehouseQty[id] ?? 0;
     const displayQty = catalogMode === 'incomplete' ? 0 : finishedQty;
     const dimLine = formatDimensionsLine(assembly);
@@ -331,6 +367,13 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             >
               <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
             </Pressable>
+            {canPrintLabel ? (
+              <View style={styles.printFab}>
+                <CatalogLabelPrintIconButton
+                  onPress={() => openLabelPrint(assembly.name, assembly.family_sku)}
+                />
+              </View>
+            ) : null}
           </View>
           <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
           <Text style={styles.cardSku} numberOfLines={1}>{assembly.family_sku}</Text>
@@ -529,6 +572,12 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           />
         </Pressable>
       </Modal>
+
+      <CatalogLabelPrintModal
+        visible={Boolean(labelPrintItem)}
+        item={labelPrintItem}
+        onClose={() => setLabelPrintItem(null)}
+      />
     </View>
   );
 }
@@ -712,6 +761,12 @@ const styles = StyleSheet.create({
   },
   expandIcon: { color: '#94a3b8', fontSize: 10 },
   expandIconOpen: { transform: [{ rotate: '90deg' }] },
+  printFab: {
+    position: 'absolute',
+    top: 14,
+    left: 14,
+    zIndex: 2,
+  },
   cardTitle: { color: '#f8fafc', fontSize: 14, fontWeight: '700', marginTop: 8 },
   cardSku: { color: '#cbd5e1', fontFamily: 'monospace', fontSize: 11, marginTop: 4 },
   cardMeta: { color: '#94a3b8', marginTop: 4, fontSize: 11, lineHeight: 15 },
@@ -724,10 +779,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
   },
   packetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingVertical: 5,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#334155',
   },
+  packetRowMain: { flex: 1, minWidth: 0 },
   packetSku: { color: '#38bdf8', fontFamily: 'monospace', fontSize: 10 },
   packetName: { color: '#e2e8f0', fontSize: 11, marginTop: 2 },
   packetQty: { color: '#a5f3fc', fontSize: 11, fontWeight: '700', marginTop: 2 },

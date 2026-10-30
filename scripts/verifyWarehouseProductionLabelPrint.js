@@ -16,5 +16,6 @@ function assert(cond, msg) {
 assert(mobile.includes("case 'production-label-print':"), 'warehouse-mobile must handle production-label-print');
 assert(mobile.includes('opProductionLabelPrint'), 'warehouse-mobile must define opProductionLabelPrint');
 assert(mobile.includes('assertWarehouseLabelPrintUser'), 'catalog admins must be allowed to print labels');
+assert(mobile.includes('isWarehouseCatalogLabelPrintAllowed'), 'catalog mobile label print must use user-access grant');
 
 console.log('verifyWarehouseProductionLabelPrint: ok');

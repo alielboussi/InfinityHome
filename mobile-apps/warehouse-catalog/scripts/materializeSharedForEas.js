@@ -19,4 +19,8 @@ if (fs.existsSync(sharedPath)) {
 }
 
 fs.cpSync(sharedSource, sharedPath, { recursive: true });
+const overlayPath = path.join(catalogRoot, 'catalog-shared-overlay');
+if (fs.existsSync(overlayPath)) {
+  fs.cpSync(overlayPath, sharedPath, { recursive: true, force: true });
+}
 console.log('[materializeSharedForEas] copied', sharedSource, '->', sharedPath);
