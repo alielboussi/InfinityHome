@@ -25,6 +25,7 @@ assert(
 );
 assert(mobile.includes('canWarehouseDeliveryReceiverActions'), 'receiver API must allow Hassan');
 assert(mobile.includes('reused: true'), 'delivery-session-open must reuse draft sessions');
+assert(mobile.includes('already_submitted'), 'delivery-submit must treat submitted sessions as idempotent');
 assert(!deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must not include Hassan test mirror');
 assert(deliveries.includes('WAREHOUSE_RECEIVER_LIST_STATUSES'), 'Hassan page must load completed deliveries for history');
 assert(!deliveries.includes('prev.filter((s) => String(s.id)'), 'Hassan page must not remove cards when accept completes');

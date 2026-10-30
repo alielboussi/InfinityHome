@@ -109,22 +109,29 @@ export default function KitweSendHomeScreen({ navigation }) {
   const unitsNum = Math.max(1, Number(units) || 1);
   const inputAlign = { textAlign: locale === 'ar' ? 'right' : 'left' };
 
-  const boot = useCallback(async () => {
-    if (sessionId) return;
-    setError('');
-    try {
-      const sess = await warehouseMobileRequest('delivery-session-open');
-      setSessionId(sess.session_id);
-      setDeliveryNumber(sess.delivery_number);
-    } catch (err) {
-      setError(err?.message || 'deliverySessionFailed');
-    }
-  }, [sessionId]);
-
   useEffect(() => {
-    boot();
+    let cancelled = false;
+    (async () => {
+      setError('');
+      try {
+        const priorId = readDeliveryWorkspace()?.sessionId || '';
+        const sess = await warehouseMobileRequest('delivery-session-open', {
+          session_id: priorId || undefined,
+        });
+        if (cancelled) return;
+        const nextId = String(sess.session_id || '');
+        setSessionId(nextId);
+        setDeliveryNumber(sess.delivery_number || '');
+        if ((priorId && priorId !== nextId) || sess.replaced_stale_session) {
+          setGroups([]);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err?.message || 'deliverySessionFailed');
+      }
+    })();
     fetchWarehouseCatalogCached({ force: false }).then(setCatalog).catch(() => {});
-  }, [boot]);
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (sessionId) {

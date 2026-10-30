@@ -1170,10 +1170,36 @@ async function deliveryMobileSourceForUser(user) {
   return 'warehouse_catalog_mobile';
 }
 
-async function opDeliverySessionOpen(user) {
+async function opDeliverySessionOpen(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sb = getService();
   const email = String(user?.email || '').trim().toLowerCase();
+  const clientSessionId = String(body?.session_id || body?.sessionId || '').trim();
+  let replacedStaleSession = false;
+
+  if (clientSessionId && email) {
+    const { data: clientRow } = await sb
+      .from('warehouse_delivery_sessions')
+      .select('id, delivery_number, status, created_by_email')
+      .eq('id', clientSessionId)
+      .maybeSingle();
+    const rowEmail = String(clientRow?.created_by_email || '').trim().toLowerCase();
+    if (
+      clientRow?.id
+      && rowEmail === email
+      && String(clientRow.status) === 'draft'
+    ) {
+      return {
+        session_id: clientRow.id,
+        delivery_number: clientRow.delivery_number,
+        reused: true,
+      };
+    }
+    if (clientRow?.id && rowEmail === email && String(clientRow.status) !== 'draft') {
+      replacedStaleSession = true;
+    }
+  }
+
   if (email) {
     const { data: existing } = await sb
       .from('warehouse_delivery_sessions')
@@ -1190,6 +1216,7 @@ async function opDeliverySessionOpen(user) {
         session_id: existing.id,
         delivery_number: existing.delivery_number,
         reused: true,
+        ...(replacedStaleSession ? { replaced_stale_session: true } : {}),
       };
     }
   }
@@ -1216,7 +1243,12 @@ async function opDeliverySessionOpen(user) {
   };
   const { error } = await sb.from('warehouse_delivery_sessions').insert(row);
   if (error) throw new Error(error.message || 'Failed to open delivery session');
-  return { session_id: sessionId, delivery_number: deliveryNumber, reused: false };
+  return {
+    session_id: sessionId,
+    delivery_number: deliveryNumber,
+    reused: false,
+    ...(replacedStaleSession ? { replaced_stale_session: true } : {}),
+  };
 }
 
 function isHassanDeliveryUser(user) {
@@ -1285,6 +1317,20 @@ async function opDeliverySignatureUpload(body, user) {
   return { session_id: sessionId, signature_url: signatureUrl };
 }
 
+function buildDeliverySubmitResponse(session, extras = {}) {
+  const meta = session.metadata || {};
+  return {
+    session_id: session.id,
+    delivery_number: session.delivery_number,
+    total_cartons: Number(session.total_qty) || 0,
+    entry_count: extras.entry_count ?? null,
+    whatsapp_sent: extras.whatsapp_sent ?? null,
+    submitted_at: session.submitted_at || extras.submitted_at || null,
+    driver_signature_url: meta.driver_signature_url || extras.driver_signature_url || null,
+    already_submitted: Boolean(extras.already_submitted),
+  };
+}
+
 async function opDeliverySubmit(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
@@ -1303,6 +1349,9 @@ async function opDeliverySubmit(body, user) {
     .eq('id', sessionId)
     .maybeSingle();
   if (!session) throw new Error('Delivery session not found.');
+  if (String(session.status) === 'submitted') {
+    return buildDeliverySubmitResponse(session, { already_submitted: true });
+  }
   if (String(session.status) !== 'draft') {
     throw new Error('Delivery session is not open for editing.');
   }
@@ -1487,15 +1536,12 @@ async function opDeliverySubmit(body, user) {
     console.warn('[delivery-submit] WhatsApp notify failed:', whatsappResult);
   }
 
-  return {
-    session_id: sessionId,
-    delivery_number: session.delivery_number,
-    total_cartons: totalCartons,
+  return buildDeliverySubmitResponse(session, {
     entry_count: entries.length,
     whatsapp_sent: Boolean(whatsappResult?.ok),
     submitted_at: now,
     driver_signature_url: driverSignatureUrl || null,
-  };
+  });
 }
 
 const WAREHOUSE_PRODUCTION_MOBILE_SOURCE = 'warehouse_production_mobile';
@@ -1896,7 +1942,7 @@ export default async function handler(req, res) {
         result = await opBomValidate(body);
         break;
       case 'delivery-session-open':
-        result = await opDeliverySessionOpen(user);
+        result = await opDeliverySessionOpen(body, user);
         break;
       case 'delivery-number-reset':
         result = await opDeliveryNumberReset(user);

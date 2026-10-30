@@ -9,6 +9,7 @@ import { sortDeliveryDriversByName } from '../lib/sortDeliveryDrivers';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { saveLocalSentDelivery } from '../lib/deliverySentLocalStore';
+import { clearDeliveryWorkspace } from '../lib/productionDeliveryWorkspaceCache';
 import { tUi } from '../lib/productionKioskI18n';
 import { formatWarehouseMobileApiError, warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
@@ -106,6 +107,8 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         signature_png_base64: dataUri,
         groups,
       });
+
+      clearDeliveryWorkspace();
 
       const signatureUrl = String(submitResult?.driver_signature_url || '').trim();
       const submittedAt = submitResult?.submitted_at || new Date().toISOString();
