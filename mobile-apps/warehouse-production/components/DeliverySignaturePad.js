@@ -1,8 +1,13 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
-import { validateDeliverySignatureStrokes } from '../lib/validateDeliverySignatureStrokes';
+import {
+  SIGNATURE_PAD_EDGE_MARGIN,
+  sanitizeDeliverySignatureStrokes,
+  signaturePointInDrawingArea,
+  validateDeliverySignatureStrokes,
+} from '../lib/validateDeliverySignatureStrokes';
 import { tUi } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
 
@@ -23,7 +28,9 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
   const captureRefView = useRef(null);
   const activeStrokeRef = useRef(null);
   const onValidationChangeRef = useRef(onValidationChange);
+  const padLayoutRef = useRef({ width: 0, height: 0 });
   const strokesRef = useRef([]);
+  const [padLayout, setPadLayout] = useState({ width: 0, height: 0 });
   const [strokes, setStrokes] = useState([]);
 
   onValidationChangeRef.current = onValidationChange;
@@ -33,9 +40,9 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
   }, [strokes]);
 
   useEffect(() => {
-    const result = validateDeliverySignatureStrokes(strokes);
+    const result = validateDeliverySignatureStrokes(strokes, padLayout);
     onValidationChangeRef.current?.(result);
-  }, [strokes]);
+  }, [strokes, padLayout]);
 
   const panResponder = useMemo(
     () =>
@@ -44,6 +51,11 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
           const { locationX, locationY } = evt.nativeEvent;
+          const { width, height } = padLayoutRef.current;
+          if (!signaturePointInDrawingArea(locationX, locationY, width, height)) {
+            activeStrokeRef.current = null;
+            return;
+          }
           const newStroke = { points: [{ x: locationX, y: locationY }] };
           activeStrokeRef.current = newStroke;
           setStrokes((prev) => [...prev, newStroke]);
@@ -52,6 +64,10 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
           const stroke = activeStrokeRef.current;
           if (!stroke) return;
           const { locationX, locationY } = evt.nativeEvent;
+          const { width, height } = padLayoutRef.current;
+          if (!signaturePointInDrawingArea(locationX, locationY, width, height)) {
+            return;
+          }
           const last = stroke.points[stroke.points.length - 1];
           if (Math.hypot(locationX - last.x, locationY - last.y) < 1.5) return;
           stroke.points.push({ x: locationX, y: locationY });
@@ -63,9 +79,11 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
         },
         onPanResponderRelease: () => {
           activeStrokeRef.current = null;
+          setStrokes((prev) => sanitizeDeliverySignatureStrokes(prev, padLayoutRef.current));
         },
         onPanResponderTerminate: () => {
           activeStrokeRef.current = null;
+          setStrokes((prev) => sanitizeDeliverySignatureStrokes(prev, padLayoutRef.current));
         },
       }),
     [],
@@ -73,12 +91,15 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
 
   const clear = useCallback(() => {
     activeStrokeRef.current = null;
+    strokesRef.current = [];
     setStrokes([]);
   }, []);
 
   const exportPngBase64 = useCallback(async () => {
-    const current = strokesRef.current;
-    const validation = validateDeliverySignatureStrokes(current);
+    const current = sanitizeDeliverySignatureStrokes(strokesRef.current, padLayoutRef.current);
+    strokesRef.current = current;
+    setStrokes(current);
+    const validation = validateDeliverySignatureStrokes(current, padLayoutRef.current);
     if (!validation.ok) {
       const err = new Error(validation.code || 'invalid');
       err.code = validation.code;
@@ -109,6 +130,10 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
 
   useImperativeHandle(ref, () => ({ exportPngBase64, clear }), [clear, exportPngBase64]);
 
+  const clipInset = SIGNATURE_PAD_EDGE_MARGIN;
+  const clipW = Math.max(0, padLayout.width - clipInset * 2);
+  const clipH = Math.max(0, padLayout.height - clipInset * 2);
+
   return (
     <View style={styles.wrap}>
       <Text style={[styles.hint, { textAlign }]}>{tUi('deliverySignatureHint', locale)}</Text>
@@ -116,20 +141,35 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
         ref={captureRefView}
         style={styles.padOuter}
         collapsable={false}
+        onLayout={(evt) => {
+          const { width, height } = evt.nativeEvent.layout;
+          padLayoutRef.current = { width, height };
+          setPadLayout({ width, height });
+          setStrokes((prev) => sanitizeDeliverySignatureStrokes(prev, { width, height }));
+        }}
         {...panResponder.panHandlers}
       >
         <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
-          {strokes.map((stroke, index) => (
-            <Path
-              key={`stroke-${index}`}
-              d={pointsToPath(stroke.points)}
-              stroke="#111"
-              strokeWidth={2.5}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
+          {clipW > 0 && clipH > 0 ? (
+            <Defs>
+              <ClipPath id="signatureInkClip">
+                <Rect x={clipInset} y={clipInset} width={clipW} height={clipH} />
+              </ClipPath>
+            </Defs>
+          ) : null}
+          <G clipPath={clipW > 0 && clipH > 0 ? 'url(#signatureInkClip)' : undefined}>
+            {strokes.map((stroke, index) => (
+              <Path
+                key={`stroke-${index}`}
+                d={pointsToPath(stroke.points)}
+                stroke="#111"
+                strokeWidth={2.5}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
+          </G>
         </Svg>
       </View>
       <Pressable style={styles.clearBtn} onPress={clear}>

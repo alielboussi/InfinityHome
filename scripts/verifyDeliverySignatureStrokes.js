@@ -1,5 +1,9 @@
 const path = require('path');
-const { validateDeliverySignatureStrokes } = require(path.join(
+const {
+  validateDeliverySignatureStrokes,
+  sanitizeDeliverySignatureStrokes,
+  isSignatureEdgeArtifactStroke,
+} = require(path.join(
   __dirname,
   '../mobile-apps/warehouse-production/lib/validateDeliverySignatureStrokes.js',
 ));
@@ -21,5 +25,18 @@ const line = [{
   ],
 }];
 assert(validateDeliverySignatureStrokes(line).ok, 'real stroke accepted');
+
+const layout = { width: 300, height: 220 };
+const edgeSliver = [{
+  points: [
+    { x: 296, y: 20 },
+    { x: 298, y: 80 },
+    { x: 297, y: 180 },
+  ],
+}];
+assert(isSignatureEdgeArtifactStroke(edgeSliver[0], layout.width, layout.height), 'right-edge sliver detected');
+assert(!sanitizeDeliverySignatureStrokes([...line, ...edgeSliver], layout).some(
+  (s) => isSignatureEdgeArtifactStroke(s, layout.width, layout.height),
+), 'sanitize removes edge slivers');
 
 console.log('verifyDeliverySignatureStrokes: ok');
