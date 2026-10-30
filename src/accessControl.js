@@ -318,6 +318,20 @@ export function isQuotationerOnlyExperience(user, pathname) {
   if (pathname == null || pathname === '') return false;
   return isHassanAllowedAppPath(pathname);
 }
+
+/**
+ * Kitwe receiver page: tick packets, accept delivery, save delivery note PDF.
+ * Matches warehouse-mobile receiver APIs (Hassan, login-access admin, localhost Hassan mimic).
+ */
+export function canPerformWarehouseKitweReceiver(user, pathname) {
+  if (!user) return false;
+  if (isHassanAwadUser(user)) return true;
+  if (canManageCatalog(user)) return true;
+  if (canManageLoginAccess(user)) return true;
+  const p = normalizePath(pathname || '/');
+  if (p !== '/warehouse-deliveries' && !p.startsWith('/warehouse-deliveries/')) return false;
+  return isQuotationerOnlyExperience(user, pathname);
+}
 const STOCKTAKE_AGGREGATION_ROUTE = '/stocktake/aggregation';
 const LUSAKA_STOCK_ROUTE = '/lusaka-stock';
 const WAREHOUSE_PRODUCTION_ROUTE = '/warehouse-production';
@@ -473,8 +487,24 @@ export function isPathAllowed(user, path) {
   if (p === PRODUCTION_REPORT_ROUTE || p.startsWith(`${PRODUCTION_REPORT_ROUTE}/`)) {
     return canManageCatalog(user);
   }
-  if (p === '/warehouse-deliveries-hassan-test' || p.startsWith('/warehouse-deliveries-hassan-test/')) {
+  if (p === '/warehouse-repairs-admin' || p.startsWith('/warehouse-repairs-admin/')) {
     return canManageCatalog(user);
+  }
+  if (p === '/warehouse-sales-storage-admin' || p.startsWith('/warehouse-sales-storage-admin/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/warehouse-deliveries-admin' || p.startsWith('/warehouse-deliveries-admin/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/warehouse-delivery-drivers' || p.startsWith('/warehouse-delivery-drivers/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/warehouse-deliveries' || p.startsWith('/warehouse-deliveries/')) {
+    if (isHassanAwadUser(user)) return true;
+    if (canManageCatalog(user)) return true;
+    if (canManageLoginAccess(user)) return true;
+    if (canUseLocalhostQuotationerDirectLink(user) && isHassanAllowedAppPath(p)) return true;
+    return false;
   }
   if (isWarehouseProductionKioskPath(p)) {
     return false;

@@ -1,12 +1,14 @@
-import { normalizeWarehouseProductSku } from '../../src/utils/warehouseScanResolver.js';
-import {
-  WAREHOUSE_FROM_LOCATION_ID,
-  WAREHOUSE_TO_LOCATION_ID,
-} from '../../src/utils/warehouseDelivery.js';
 import {
   movePacketsForDeliveryReceive,
+  moveAssembliesForDeliveryReceive,
   syncWarehouseStockAfterDeliveryReceive,
+  deliveryEntryFinishedUnit,
 } from './warehouseDeliveryAcceptStock.js';
+import {
+  assemblyUnitsReadyForKitweCatalog,
+  readKitweAssemblyInventoryQtyMap,
+  syncKitweCatalogForDeliveryAssemblies,
+} from './kitweDeliveryCatalogSync.js';
 import { newUuid } from './uuid.js';
 
 function entryReceiverChecked(entry) {
@@ -19,80 +21,6 @@ function entryReceived(entry) {
 
 function entryPacketId(entry) {
   return String(entry?.metadata?.packet_id || '').trim();
-}
-
-async function findOrCreateKitweProduct(sb, assembly) {
-  const sku = normalizeWarehouseProductSku(assembly.family_sku || assembly.name);
-  if (!sku) return null;
-
-  const variants = [sku, sku.toUpperCase(), sku.toLowerCase()];
-  for (const candidate of variants) {
-    const { data: rows } = await sb.from('products').select('id, name, sku').eq('sku', candidate).limit(1);
-    if (rows?.[0]) return rows[0];
-  }
-
-  const now = new Date().toISOString();
-  const id = newUuid();
-  const row = {
-    id,
-    name: String(assembly.name || sku).trim(),
-    sku,
-    created_at: now,
-    updated_at: now,
-    metadata: { source: 'kitwe_delivery_accept', assembly_id: assembly.id },
-  };
-  const { error } = await sb.from('products').insert(row);
-  if (error) throw new Error(error.message || 'Failed to create Kitwe product');
-  return row;
-}
-
-async function addProductInventoryAtKitwe(sb, productId, delta) {
-  const d = Math.max(0, Number(delta) || 0);
-  if (!productId || d < 1) return;
-  const loc = WAREHOUSE_TO_LOCATION_ID;
-  const { data: rows } = await sb
-    .from('inventory')
-    .select('id, quantity')
-    .eq('product_id', productId)
-    .eq('location', loc);
-  const current = Number(rows?.[0]?.quantity) || 0;
-  const now = new Date().toISOString();
-  if (rows?.[0]?.id) {
-    await sb.from('inventory').update({
-      quantity: current + d,
-      updated_at: now,
-    }).eq('id', rows[0].id);
-  } else {
-    await sb.from('inventory').insert({
-      id: newUuid(),
-      product_id: productId,
-      location: loc,
-      quantity: d,
-      updated_at: now,
-    });
-  }
-  await sb.from('product_locations').upsert({
-    product_id: productId,
-    location_id: loc,
-    updated_at: now,
-  }, { onConflict: 'product_id,location_id' });
-}
-
-/** Mirror legacy products inventory only when every packet line for the assembly is received. */
-function assemblyUnitsFullyReceived(sessionLines) {
-  const units = new Map();
-  const byAssembly = new Map();
-  for (const line of sessionLines || []) {
-    const aid = String(line.metadata?.assembly_id || '');
-    if (!aid || !entryPacketId(line)) continue;
-    if (!byAssembly.has(aid)) byAssembly.set(aid, []);
-    byAssembly.get(aid).push(line);
-  }
-  for (const [aid, asmLines] of byAssembly.entries()) {
-    if (!asmLines.every(entryReceived)) continue;
-    units.set(aid, Math.max(1, Number(asmLines[0]?.metadata?.units) || 1));
-  }
-  return units;
 }
 
 /**
@@ -118,14 +46,24 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
   if (!lines.length) throw new Error('Delivery has no lines.');
 
   const toReceive = lines.filter(
-    (e) => entryPacketId(e) && entryReceiverChecked(e) && !entryReceived(e),
+    (e) => (entryPacketId(e) || deliveryEntryFinishedUnit(e))
+      && entryReceiverChecked(e)
+      && !entryReceived(e),
   );
   if (!toReceive.length) {
     throw new Error('Tick at least one packet to receive, then accept.');
   }
 
   const now = new Date().toISOString();
+  const touchedAssemblyIds = [...new Set(
+    (toReceive || [])
+      .map((line) => String(line.metadata?.assembly_id || '').trim())
+      .filter(Boolean),
+  )];
+  const kitweQtyBefore = await readKitweAssemblyInventoryQtyMap(sb, touchedAssemblyIds);
+
   const moved = await movePacketsForDeliveryReceive(sb, toReceive);
+  const movedAssemblies = await moveAssembliesForDeliveryReceive(sb, toReceive);
   for (const line of toReceive) {
     const metadata = {
       ...(line.metadata || {}),
@@ -136,10 +74,16 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
   }
   await syncWarehouseStockAfterDeliveryReceive(sb, moved);
 
-  const touchedAssemblyIds = [...new Set(
-    (moved || []).map((m) => String(m.assemblyId || '')).filter(Boolean),
-  )];
-  for (const aid of touchedAssemblyIds) {
+  const movedAssemblyIds = [...new Set([
+    ...(moved || []).map((m) => String(m.assemblyId || '')).filter(Boolean),
+    ...(movedAssemblies || []).map((m) => String(m.assemblyId || '')).filter(Boolean),
+  ])];
+  const kitweQtyAfter = await readKitweAssemblyInventoryQtyMap(
+    sb,
+    [...new Set([...touchedAssemblyIds, ...movedAssemblyIds])],
+  );
+
+  for (const aid of movedAssemblyIds) {
     const { data: asmRow } = await sb
       .from('warehouse_assemblies')
       .select('metadata')
@@ -157,47 +101,22 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
   }
 
   const { data: refreshedLines } = await sb.from('warehouse_delivery_entries').select('*').eq('session_id', sid);
-  const assemblyUnits = assemblyUnitsFullyReceived(refreshedLines || []);
+  const assemblyUnits = assemblyUnitsReadyForKitweCatalog(refreshedLines || [], movedAssemblyIds);
   const mirroredBefore = { ...(session.metadata?.mirrored_assembly_units || {}) };
-  const mirroredAfter = { ...mirroredBefore };
-  if (assemblyUnits.size) {
-    const { data: assemblies } = await sb
-      .from('warehouse_assemblies')
-      .select('id, name, family_sku')
-      .in('id', [...assemblyUnits.keys()]);
-    for (const assembly of assemblies || []) {
-      const aid = String(assembly.id);
-      const units = assemblyUnits.get(aid) || 0;
-      const already = Number(mirroredBefore[aid]) || 0;
-      const delta = units - already;
-      if (delta < 1) continue;
-      const product = await findOrCreateKitweProduct(sb, assembly);
-      if (product?.id) await addProductInventoryAtKitwe(sb, product.id, delta);
-      mirroredAfter[aid] = units;
-      const { data: asmRow } = await sb
-        .from('warehouse_assemblies')
-        .select('metadata')
-        .eq('id', aid)
-        .maybeSingle();
-      const prevMeta = asmRow?.metadata || {};
-      await sb.from('warehouse_assemblies').update({
-        metadata: {
-          ...prevMeta,
-          kitwe_from_factory_delivery: true,
-          kitwe_factory_delivery_units: units,
-          kitwe_factory_delivery_at: now,
-        },
-        updated_at: now,
-      }).eq('id', aid);
-    }
-  }
+  const mirroredAfter = await syncKitweCatalogForDeliveryAssemblies(sb, {
+    assemblyUnits,
+    mirroredBefore,
+    kitweQtyBefore,
+    kitweQtyAfter,
+    now,
+  });
 
   const openAfter = (refreshedLines || []).some((e) => entryPacketId(e) && !entryReceived(e));
 
   const allDone = !openAfter;
   const meta = {
     ...(session.metadata || {}),
-    hassan_alert_pending: !allDone,
+    hassan_alert_pending: false,
     accepted_by_email: acceptedByEmail || null,
     last_partial_receive_at: now,
     mirrored_assembly_units: mirroredAfter,
@@ -236,3 +155,5 @@ export function deliveryEntryProgress(entries) {
   const confirmed = list.filter((e) => entryReceiverChecked(e)).length;
   return { total, confirmed };
 }
+
+export { assemblyUnitsFullyReceived } from './kitweDeliveryCatalogSync.js';

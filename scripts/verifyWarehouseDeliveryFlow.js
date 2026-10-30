@@ -23,9 +23,12 @@ assert(
   fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryNumber.js'), 'utf8').includes('resetWarehouseDeliveryNumberSequence'),
   'delivery number reset helper must exist',
 );
-assert(mobile.includes('canWarehouseDeliveryReceiverActions'), 'receiver API must allow Hassan + admin test');
+assert(mobile.includes('canWarehouseDeliveryReceiverActions'), 'receiver API must allow Hassan');
 assert(mobile.includes('reused: true'), 'delivery-session-open must reuse draft sessions');
-assert(deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must support Hassan mirror mode');
+assert(!deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must not include Hassan test mirror');
+assert(deliveries.includes('WAREHOUSE_RECEIVER_LIST_STATUSES'), 'Hassan page must load completed deliveries for history');
+assert(!deliveries.includes('prev.filter((s) => String(s.id)'), 'Hassan page must not remove cards when accept completes');
+assert(mobile.includes('admin_registry'), 'return/storage list must support admin registry');
 assert(mobile.includes('driver_signature_url'), 'delivery submit must store driver signature url');
 assert(mobile.includes('delivery-cancel'), 'warehouse-mobile must support delivery-cancel');
 assert(mobile.includes('delivery-signature-upload'), 'warehouse-mobile must support delivery-signature-upload');
@@ -42,10 +45,12 @@ assert(
   'storage rules must allow warehouse-delivery-signatures',
 );
 
-assert(
-  fs.existsSync(path.join(root, 'src/WarehouseDeliveriesHassanTest.js')),
-  'Hassan mirror page must exist',
-);
+
+const chrome = fs.readFileSync(path.join(root, 'src/AppChrome.js'), 'utf8');
+assert(chrome.includes('/warehouse-deliveries-admin'), 'inventory nav must include Deliveries');
+assert(chrome.includes('/warehouse-repairs-admin'), 'inventory nav must include Repairs');
+assert(chrome.includes('/warehouse-sales-storage-admin'), 'inventory nav must include Sales Storage');
+assert(!chrome.includes('warehouse-deliveries-hassan-test'), 'Hassan mirror test route must be removed');
 
 const noteHtml = fs.readFileSync(path.join(root, 'src/utils/buildDeliveryNotePrintHtml.js'), 'utf8');
 assert(noteHtml.includes('company-logo'), 'delivery note HTML must include company logo');

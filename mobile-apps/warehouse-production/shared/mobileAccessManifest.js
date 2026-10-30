@@ -32,15 +32,28 @@ export function isMobileScreenAccessAllowed(grant, screenId) {
   return grant?.screens?.[screenId]?.view === 'allow';
 }
 
-/** /user-access — Add product (+) on warehouse products list. */
+/** /user-access — Add product (+) on warehouse catalog (web + app). */
+export function isWarehouseCatalogAddProductAllowed(grant) {
+  if (!grant) return false;
+  return grant.warehouse_catalog_add_product === 'allow';
+}
+
+/** @deprecated use isWarehouseCatalogAddProductAllowed */
 export function isWarehouseProductFormInsertAllowed(grant) {
-  return grant?.screens?.warehouse_product_form?.insert === 'allow';
+  return isWarehouseCatalogAddProductAllowed(grant);
+}
+
+/** /user-access — Zebra label print on warehouse catalog product/packet cards. */
+export function isWarehouseCatalogLabelPrintAllowed(grant) {
+  if (!grant) return false;
+  if (grant.warehouse_catalog_label_print === 'allow') return true;
+  if (grant.warehouse_catalog_label_print === 'deny') return false;
+  return isWarehouseCatalogAddProductAllowed(grant);
 }
 
 /** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
 export function isWarehouseProductTurkishSyncAllowed(grant) {
   if (!grant) return false;
-  if (grant.warehouse_product_stock_qty === 'allow') return true;
   if (isMobileScreenAccessAllowed(grant, 'warehouse_products')) return true;
   if (isMobileScreenAccessAllowed(grant, 'warehouse_incomplete_products')) return true;
   const form = grant.screens?.warehouse_product_form;
@@ -83,7 +96,6 @@ export function evaluateWarehouseProductionAppAccess(grant, email) {
 
 export function isWarehouseProductStockQtyEditAllowed(grant) {
   if (!grant) return false;
-  if (grant.warehouse_product_stock_qty === 'allow') return true;
   if (isMobileScreenAccessAllowed(grant, 'warehouse_products')) return true;
   if (isMobileScreenAccessAllowed(grant, 'warehouse_incomplete_products')) return true;
   const form = grant.screens?.warehouse_product_form;
@@ -145,12 +157,6 @@ export const MOBILE_SCREENS = Object.freeze([
     permissionMatrix: false,
   },
   {
-    id: 'warehouse_ocr_sku',
-    label: 'Label SKU (OCR)',
-    description: 'Read printed finished-product unit code from label',
-    permissionMatrix: false,
-  },
-  {
     id: 'warehouse_product_detail',
     label: 'Product info',
     description: 'Photo, dimensions, warehouse stock (from SKU lookup)',
@@ -182,7 +188,6 @@ const SCREEN_NAV_ROUTE = Object.freeze({
 
 const WAREHOUSE_PRODUCTS_CHILD_SCREENS = Object.freeze([
   'warehouse_scan',
-  'warehouse_ocr_sku',
   'warehouse_product_detail',
   'warehouse_packet_form',
   'warehouse_product_form',
@@ -212,6 +217,8 @@ export function defaultMobileAccessGrant() {
     app: 'warehouse-catalog',
     landing_screen: DEFAULT_MOBILE_LANDING_SCREEN,
     warehouse_product_stock_qty: 'deny',
+    warehouse_catalog_add_product: 'deny',
+    warehouse_catalog_label_print: 'deny',
     warehouse_production_kiosk: 'deny',
     warehouse_production_app: 'deny',
     warehouse_production_kitwe: 'deny',
@@ -276,6 +283,15 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   };
   delete merged.dashboard_actions;
 
+  if (
+    merged.warehouse_catalog_add_product !== 'allow'
+    && merged.warehouse_catalog_add_product !== 'deny'
+  ) {
+    const legacyAdd = isMobileScreenAccessAllowed(merged, 'warehouse_products')
+      || isMobileScreenAccessAllowed(merged, 'warehouse_incomplete_products');
+    merged.warehouse_catalog_add_product = legacyAdd ? 'allow' : 'deny';
+  }
+
   const kitweDeliveryAllowed = isMobileScreenAccessAllowed(merged, 'kitwe_send_delivery')
     || merged.warehouse_production_kitwe === 'allow';
 
@@ -332,6 +348,21 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   merged.warehouse_product_stock_qty = merged.warehouse_product_stock_qty === 'allow'
     ? 'allow'
     : 'deny';
+
+  merged.warehouse_catalog_add_product = merged.warehouse_catalog_add_product === 'allow'
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_catalog_label_print = merged.warehouse_catalog_label_print === 'allow'
+    ? 'allow'
+    : 'deny';
+
+  const addProductAllowed = merged.warehouse_catalog_add_product === 'allow';
+  const productFormRow = merged.screens.warehouse_product_form || buildMobileScreenAccessRow(false);
+  merged.screens.warehouse_product_form = {
+    ...productFormRow,
+    insert: addProductAllowed ? 'allow' : 'deny',
+  };
 
   merged.warehouse_production_kiosk = (
     merged.warehouse_production_kiosk === 'allow' || merged.warehouse_production_kiosk === true

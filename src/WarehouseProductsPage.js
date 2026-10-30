@@ -41,6 +41,7 @@ import {
 import {
   isCompleteCatalogProduct,
   isIncompletePacketBomProduct,
+  isUncategorizedWarehouseProduct,
 } from './utils/warehouseCatalogProductCompleteness';
 import WarehouseProductionLabelPrintDialog, {
   WarehouseLabelPrintIconButton,
@@ -391,11 +392,11 @@ export default function WarehouseProductsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filteredAssemblies.map((assembly) => {
               const pktList = packetsByAssembly.get(String(assembly.id)) || [];
-              const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);
               const stockByLoc = finishedStockByAssembly.get(String(assembly.id)) || new Map();
               const complete = stockByLoc.get(String(warehouseLocationId)) ?? 0;
               const isOpen = expanded.has(String(assembly.id));
               const totalPackets = Number(assembly.packet_count) || 0;
+              const bom = analyzeAssemblyPacketBom(totalPackets, pktList);
               const assemblyColorsList = colorsByAssembly.get(String(assembly.id)) || [];
               const usePacketStock = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
               const useFinishedBoxReceiving = assemblyUsesFinishedBoxReceiving(assembly, pktList);

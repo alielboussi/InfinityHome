@@ -1,5 +1,7 @@
 /** Packet stock at a warehouse location (Factory / Kitwe). */
 
+import { getAssemblyStockQty } from './warehouseReturnStock.js';
+
 export async function getPacketStockQty(sb, packetId, locationId) {
   const { data: rows } = await sb
     .from('warehouse_packet_inventory')
@@ -36,5 +38,14 @@ export async function assertPacketStockAvailable(sb, packetId, locationId, requi
   const have = await getPacketStockQty(sb, packetId, locationId);
   if (have < need) {
     throw new Error(`Insufficient factory stock for packet (need ${need}, have ${have}).`);
+  }
+}
+
+export async function assertAssemblyStockAvailable(sb, assemblyId, locationId, requiredQty) {
+  const need = Math.max(0, Number(requiredQty) || 0);
+  if (need < 1) return;
+  const have = await getAssemblyStockQty(sb, assemblyId, locationId);
+  if (have < need) {
+    throw new Error(`Insufficient factory stock for product (need ${need}, have ${have}).`);
   }
 }

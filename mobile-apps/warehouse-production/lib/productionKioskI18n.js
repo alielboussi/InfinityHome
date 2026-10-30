@@ -227,7 +227,7 @@ const UI_STRINGS = {
     en: 'Nothing to print on this delivery note.',
     ar: 'لا يوجد محتوى للطباعة في هذه المذكرة.',
   },
-  deliverySearchPlaceholder: { en: 'Search warehouse product…', ar: 'ابحث عن منتج في المستودع…' },
+  deliverySearchPlaceholder: { en: 'Search name or product SKU…', ar: 'ابحث بالاسم أو SKU المنتج…' },
   deliverySelectProduct: { en: 'Select a product.', ar: 'اختر منتجًا.' },
   deliveryCheckAllPackets: {
     en: 'Check every packet carton for {name}.',
@@ -291,6 +291,22 @@ const UI_STRINGS = {
   deliveryScanNoProduct: {
     en: 'This packet is not linked to any warehouse product.',
     ar: 'هذا الطرد غير مرتبط بأي منتج في المستودع.',
+  },
+  deliveryScanProductSkuUseCarton: {
+    en: 'That is the product SKU — scan a carton (packet) barcode on the label, not the main product code.',
+    ar: 'هذا SKU المنتج — امسح باركود الطرد على الملصق وليس رمز المنتج الرئيسي.',
+  },
+  deliveryFinishedUnitsTick: {
+    en: 'Confirm finished units on the truck',
+    ar: 'تأكيد الوحدات الجاهزة على الشاحنة',
+  },
+  deliveryFinishedUnitLine: {
+    en: '{name} — {req} unit(s) on truck',
+    ar: '{name} — {req} وحدة على الشاحنة',
+  },
+  deliveryFinishedConfirmRequired: {
+    en: 'Tick the confirmation box for {name} before adding or sending.',
+    ar: 'ضع علامة على تأكيد {name} قبل الإضافة أو الإرسال.',
   },
   stockTitle: { en: 'Add production stock', ar: 'إضافة مخزون إنتاج' },
   stockSearch: { en: 'Search name or scan barcode', ar: 'ابحث بالاسم أو امسح الباركود' },

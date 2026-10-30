@@ -1,6 +1,9 @@
 import { buildDeliveryNotePrintHtml } from './buildDeliveryNotePrintHtml';
 import { getDeliveryNoteCompanyLogoDataUriWeb } from './deliveryNoteCompanyLogo';
 import { groupWarehouseDisplayLines } from './warehouseDelivery';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+import { waitForImages } from './labelPdfCapture';
 
 export const DEFAULT_DELIVERY_NOTE_PRINT_COPIES = 2;
 
@@ -54,7 +57,62 @@ export async function buildWarehouseDeliveryNoteHtml({
 }
 
 /**
- * Opens the browser print dialog (choose Canon MF237w / any printer; PDF includes duplicate copies).
+ * Save the A4 delivery note HTML as a PDF download (no browser print dialog).
+ */
+export async function downloadWarehouseDeliveryNotePdf(html, filename = 'delivery-note.pdf') {
+  const frame = document.createElement('iframe');
+  frame.setAttribute('title', 'Delivery note PDF');
+  frame.style.position = 'fixed';
+  frame.style.left = '-12000px';
+  frame.style.top = '0';
+  frame.style.width = '210mm';
+  frame.style.height = '297mm';
+  frame.style.border = 'none';
+  document.body.appendChild(frame);
+
+  const win = frame.contentWindow;
+  const doc = win?.document;
+  if (!doc) {
+    document.body.removeChild(frame);
+    throw new Error('PDF frame unavailable.');
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  await new Promise((resolve) => {
+    frame.onload = () => resolve();
+    setTimeout(resolve, 800);
+  });
+  await waitForImages(doc.body);
+
+  const pageNodes = doc.querySelectorAll('section.page');
+  const targets = pageNodes.length ? [...pageNodes] : [doc.body];
+  const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+  for (let i = 0; i < targets.length; i += 1) {
+    if (i > 0) pdf.addPage();
+    const canvas = await html2canvas(targets[i], {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+    });
+    const img = canvas.toDataURL('image/jpeg', 0.92);
+    pdf.addImage(img, 'JPEG', 0, 0, 210, 297);
+  }
+
+  pdf.save(filename);
+  try {
+    document.body.removeChild(frame);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * @deprecated Prefer downloadWarehouseDeliveryNotePdf for Hassan deliveries.
  */
 export function printWarehouseDeliveryNoteInBrowser(html) {
   const frame = document.createElement('iframe');

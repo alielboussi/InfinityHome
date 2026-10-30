@@ -32,6 +32,7 @@ function MainStack({ navigationRef }) {
   const {
     grant,
     loading,
+    bootstrapped,
     userEmail,
     userDisplayName,
     allowed,
@@ -41,7 +42,7 @@ function MainStack({ navigationRef }) {
 
   useProductionPushNotifications(navigationRef, { grant, allowed });
 
-  if (loading) {
+  if (!bootstrapped && loading) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={theme.primary} />
@@ -59,7 +60,7 @@ function MainStack({ navigationRef }) {
             userEmail={userEmail}
             userDisplayName={userDisplayName}
             allowed={allowed}
-            onRefreshAccess={refresh}
+            onRefreshAccess={() => refresh({ background: false })}
             accessHint={accessHint}
           />
         )}

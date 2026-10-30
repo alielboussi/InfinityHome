@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import {
@@ -274,10 +275,16 @@ export default function WarehouseDeliveriesAdmin() {
     <div style={{ minHeight: '100vh', background: theme.bg, color: theme.text, padding: 24 }}>
       <div className="page-header-row">
         <BackToDashboard />
-        <h1 style={{ margin: 0 }}>Warehouse Deliveries (Admin)</h1>
+        <h1 style={{ margin: 0 }}>Deliveries</h1>
       </div>
-      <div style={{ color: theme.muted, marginBottom: 16 }}>
-        Android submissions Factory → Kitwe. Edit pending deliveries before Hassan accepts.
+      <div style={{ color: theme.muted, marginBottom: 16, lineHeight: 1.5 }}>
+        Deliveries Hassan Awad receives from factory (Factory → Kitwe). Sender, products, packets, date/time, and delivery number.
+        {' '}
+        To tick packets, accept stock, or save the delivery note PDF, use{' '}
+        <Link to="/warehouse-deliveries" style={{ color: theme.accent, fontWeight: 600 }}>
+          Receive deliveries (Kitwe)
+        </Link>
+        .
       </div>
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>

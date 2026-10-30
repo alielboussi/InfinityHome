@@ -5,6 +5,12 @@ export const WAREHOUSE_ACCEPT_USER_ID = '6b992ac8-8e39-4f31-a323-2271a974da8c';
 export const WAREHOUSE_PENDING_STATUSES = ['pending', 'submitted', 'partially_received'];
 export const WAREHOUSE_COMPLETED_STATUSES = ['completed', 'accepted'];
 
+/** Hassan receiver page: pending + history for review/PDF. */
+export const WAREHOUSE_RECEIVER_LIST_STATUSES = [
+  ...WAREHOUSE_PENDING_STATUSES,
+  ...WAREHOUSE_COMPLETED_STATUSES,
+];
+
 export function isWarehousePending(status) {
   return WAREHOUSE_PENDING_STATUSES.includes(String(status || '').toLowerCase());
 }
@@ -53,6 +59,23 @@ export function deliveryEntryReceived(entry) {
 
 export function deliveryEntryPendingReceive(entry) {
   return entry?.metadata?.packet_id && !deliveryEntryReceived(entry);
+}
+
+/** Finished product name stored on packet lines at submit. */
+export function warehousePacketProductName(line) {
+  return String(line?.metadata?.assembly_name || '').trim();
+}
+
+/** Hassan UI: always show product + packet name. */
+export function warehousePacketDisplayLabel(line) {
+  const product = warehousePacketProductName(line);
+  const packet = String(line?.name || 'Packet').trim();
+  const qty = deliveryLineQty(line);
+  if (product && product.toLowerCase() !== packet.toLowerCase()) {
+    return `${product} — ${packet} × ${qty}`;
+  }
+  if (product) return `${product} × ${qty}`;
+  return `${packet} × ${qty}`;
 }
 
 export function groupWarehouseDisplayLines(entries) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { ensureFirebaseAuthToken, getFirebaseAuth, subscribeFirebaseAuth } from '../shared/firebase';
 import { verifyMobileLoginAccess } from '../shared/loginAccess';
@@ -30,11 +30,13 @@ export function useProductionAccessGrant() {
   const [userDisplayName, setUserDisplayName] = useState('');
   const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [accessHint, setAccessHint] = useState('');
+  const lastForegroundRefreshRef = useRef(0);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setAccessHint('');
+  const refresh = useCallback(async ({ background = false } = {}) => {
+    if (!background) setLoading(true);
+    if (!background) setAccessHint('');
     try {
       await ensureFirebaseAuthToken(true);
       const fbEmail = String(getFirebaseAuth().currentUser?.email || '').trim();
@@ -72,17 +74,20 @@ export function useProductionAccessGrant() {
         );
       }
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
+      setBootstrapped(true);
     }
   }, []);
 
   useEffect(() => {
     let alive = true;
-    const run = async () => {
+    const run = async (background) => {
       if (!alive) return;
-      await refresh();
+      await refresh({ background });
     };
-    run();
+
+    run(false);
+
     const unsubAuth = subscribeFirebaseAuth((user) => {
       if (!user) {
         setAllowed(false);
@@ -91,13 +96,20 @@ export function useProductionAccessGrant() {
         setGrant(defaultMobileAccessGrant());
         setAccessHint('');
         setLoading(false);
+        setBootstrapped(true);
         return;
       }
-      run();
+      run(true);
     });
+
     const appSub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') run();
+      if (state !== 'active') return;
+      const now = Date.now();
+      if (now - lastForegroundRefreshRef.current < 12000) return;
+      lastForegroundRefreshRef.current = now;
+      run(true);
     });
+
     return () => {
       alive = false;
       unsubAuth();
@@ -106,6 +118,13 @@ export function useProductionAccessGrant() {
   }, [refresh]);
 
   return {
-    grant, loading, userEmail, userDisplayName, allowed, refresh, accessHint,
+    grant,
+    loading,
+    bootstrapped,
+    userEmail,
+    userDisplayName,
+    allowed,
+    refresh,
+    accessHint,
   };
 }

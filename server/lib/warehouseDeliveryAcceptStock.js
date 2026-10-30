@@ -3,6 +3,7 @@ import {
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
 import { adjustPacketStock } from './warehouseDeliveryStock.js';
+import { adjustAssemblyStock } from './warehouseReturnStock.js';
 import {
   recomputeWarehouseLocationStockServer,
   recomputeWarehouseStockForPacketTouch,
@@ -10,6 +11,11 @@ import {
 
 export function deliveryEntryPacketId(entry) {
   return String(entry?.metadata?.packet_id || '').trim();
+}
+
+export function deliveryEntryFinishedUnit(entry) {
+  return entry?.metadata?.finished_unit === true
+    && !deliveryEntryPacketId(entry);
 }
 
 /**
@@ -32,6 +38,31 @@ export async function movePacketsForDeliveryReceive(sb, lines, {
       packetId: pid,
       qty,
       assemblyId: String(line.metadata?.assembly_id || '').trim(),
+    });
+  }
+  return moved;
+}
+
+/**
+ * Finished-unit lines (no carton BOM): Factory assembly −, Kitwe assembly +.
+ * @returns {Promise<Array<{ lineId: string, assemblyId: string, qty: number }>>}
+ */
+export async function moveAssembliesForDeliveryReceive(sb, lines, {
+  fromLocationId = WAREHOUSE_FROM_LOCATION_ID,
+  toLocationId = WAREHOUSE_TO_LOCATION_ID,
+} = {}) {
+  const moved = [];
+  for (const line of lines || []) {
+    if (!deliveryEntryFinishedUnit(line)) continue;
+    const aid = String(line.metadata?.assembly_id || '').trim();
+    const qty = Math.max(0, Number(line.quantity) || 0);
+    if (!aid || qty < 1) continue;
+    await adjustAssemblyStock(sb, aid, fromLocationId, -qty);
+    await adjustAssemblyStock(sb, aid, toLocationId, qty);
+    moved.push({
+      lineId: String(line.id),
+      assemblyId: aid,
+      qty,
     });
   }
   return moved;

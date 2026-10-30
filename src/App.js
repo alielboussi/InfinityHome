@@ -49,7 +49,8 @@ import {
   WarehouseReturnsTrackage,
   WarehouseStorage,
   WarehouseDeliveriesAdmin,
-  WarehouseDeliveriesHassanTest,
+  WarehouseRepairsAdmin,
+  WarehouseSalesStorageAdmin,
   WarehouseDeliveryDriversPage,
   KitweProductsPage,
   KitweSetsPage,
@@ -84,7 +85,8 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/ledger-mobile',
       '/all-transfers',
       '/warehouse-deliveries-admin',
-      '/warehouse-deliveries-hassan-test',
+      '/warehouse-repairs-admin',
+      '/warehouse-sales-storage-admin',
       '/stock-periods',
       '/stocktake',
       '/stocktake/aggregation',
@@ -359,6 +361,7 @@ function App() {
           <Route path="/warehouse-products/packets/:packetId/edit" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets" element={<WarehousePacketsPage />} />
           <Route path="/warehouse-products/incomplete" element={<WarehouseProductsPage />} />
+          <Route path="/warehouse-products/uncategorized" element={<WarehouseProductsPage />} />
           <Route path="/warehouse-products/new" element={<WarehouseProductEditPage />} />
           <Route path="/warehouse-products/:productId/transfer" element={<WarehouseProductTransferPage />} />
           <Route path="/warehouse-products/:productId/edit" element={<WarehouseProductEditPage />} />
@@ -388,10 +391,18 @@ function App() {
           <Route path="/warehouse-storage" element={<WarehouseStorage />} />
           <Route path="/warehouse-deliveries-admin" element={<WarehouseDeliveriesAdmin />} />
           <Route
-            path="/warehouse-deliveries-hassan-test"
+            path="/warehouse-repairs-admin"
             element={(
               <RequireAdminPage check={canManageCatalog}>
-                <WarehouseDeliveriesHassanTest />
+                <WarehouseRepairsAdmin />
+              </RequireAdminPage>
+            )}
+          />
+          <Route
+            path="/warehouse-sales-storage-admin"
+            element={(
+              <RequireAdminPage check={canManageCatalog}>
+                <WarehouseSalesStorageAdmin />
               </RequireAdminPage>
             )}
           />

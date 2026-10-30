@@ -3,7 +3,7 @@ import {
   allocateWarehouseDeliveryNumber,
   resetWarehouseDeliveryNumberSequence,
 } from '../lib/warehouseDeliveryNumber.js';
-import { validateAssemblyShipmentBom } from '../lib/warehouseMobileBom.js';
+import { validateAssemblyShipmentBom, isAssemblyDeliveryFinishedUnits } from '../lib/warehouseMobileBom.js';
 import { newUuid } from '../lib/uuid.js';
 import {
   normalizeWarehouseSku,
@@ -76,7 +76,7 @@ import {
 import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryNotePrint.js';
 import { acceptWarehouseDeliveryServer } from '../lib/warehouseDeliveryAccept.js';
 import { cancelWarehouseDeliveryServer } from '../lib/cancelWarehouseDelivery.js';
-import { assertPacketStockAvailable } from '../lib/warehouseDeliveryStock.js';
+import { assertPacketStockAvailable, assertAssemblyStockAvailable } from '../lib/warehouseDeliveryStock.js';
 import {
   listWarehouseDeliveryDrivers,
   saveWarehouseDeliveryDrivers,
@@ -1317,7 +1317,7 @@ async function opDeliverySubmit(body, user) {
   const [{ data: packets }, { data: links }, { data: assemblies }] = await Promise.all([
     sb.from('warehouse_packets').select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
     sb.from('warehouse_assembly_packets').select('*'),
-    sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count'),
+    sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode'),
   ]);
   const byAssembly = buildPacketsByAssembly(links || [], packets || []);
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
@@ -1340,6 +1340,42 @@ async function opDeliverySubmit(body, user) {
       if (!pid || qty < 1) return;
       scanned.set(pid, (scanned.get(pid) || 0) + qty);
     });
+
+    if (isAssemblyDeliveryFinishedUnits(assembly, packetRows)) {
+      const finishedChecked = group.finished_driver_checked === true
+        || scanLineDriverChecked({
+          driver_checked: group.finished_driver_checked,
+          driver_checked_at: group.finished_driver_checked_at,
+        });
+      const validation = validateAssemblyShipmentBom(assembly, packetRows, scanned, units, {
+        finishedDriverChecked: finishedChecked,
+      });
+      if (!validation.ok) {
+        const err = new Error(validation.message || 'Finished product not confirmed');
+        err.details = validation;
+        throw err;
+      }
+      await assertAssemblyStockAvailable(sb, assemblyId, WAREHOUSE_FROM_LOCATION_ID, units);
+      totalCartons += units;
+      const driverCheckedAt = group.finished_driver_checked_at || now;
+      entries.push({
+        id: newUuid(),
+        session_id: sessionId,
+        kind: 'assembly',
+        name: assembly.name,
+        sku: assembly.family_sku,
+        quantity: units,
+        metadata: {
+          assembly_id: assemblyId,
+          assembly_name: assembly.name,
+          finished_unit: true,
+          units,
+          driver_checked_at: driverCheckedAt,
+          receiver_checked_at: null,
+        },
+      });
+      continue;
+    }
 
     const validation = validateAssemblyShipmentBom(assembly, packetRows, scanned, units);
     if (!validation.ok) {
@@ -1427,10 +1463,12 @@ async function opDeliverySubmit(body, user) {
     const packetRows = byAssembly.get(assemblyId) || [];
     return {
       assemblyName: assembly?.name || 'Product',
-      packetLines: packetRows.map((packet) => ({
-        name: packet.name,
-        quantity: units * Math.max(1, Number(packet.qty_per_unit) || 1),
-      })),
+      packetLines: isAssemblyDeliveryFinishedUnits(assembly, packetRows)
+        ? [{ name: assembly?.name || 'Product', quantity: units }]
+        : packetRows.map((packet) => ({
+          name: packet.name,
+          quantity: units * Math.max(1, Number(packet.qty_per_unit) || 1),
+        })),
     };
   });
 

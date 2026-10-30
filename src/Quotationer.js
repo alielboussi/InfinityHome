@@ -7,7 +7,7 @@ import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import generateQuotePdf from './quotespdf';
 import { FaTrashAlt } from 'react-icons/fa';
 import { cacheGet, cacheSet, cacheClear } from './utils/staleCache';
-import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationConverted, isQuotationerOnlyUser, getUserDisplayName } from './accessControl';
+import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationConverted, isQuotationerOnlyExperience, getUserDisplayName } from './accessControl';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
@@ -416,7 +416,7 @@ export default function Quotationer() {
   }, [setViewAndUrl]);
 
   const localUser = readLocalUser();
-  const isQuotationerOnly = isQuotationerOnlyUser(localUser);
+  const isQuotationerOnly = isQuotationerOnlyExperience(localUser, location.pathname);
   const homeLabel = isQuotationerOnly ? 'Dashboard' : 'Quotationer';
 
   if (checking) return <div style={{ padding: 20, color: '#8ab' }}>Checking access…</div>;
@@ -1108,7 +1108,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
         navigate('/layby-management');
         return;
       }
-      if (isQuotationerOnlyUser(quoteUser)) {
+      if (isQuotationerOnlyExperience(quoteUser, location.pathname || '/quotationer')) {
         navigate('/quotes-board');
         return;
       }
@@ -1539,11 +1539,19 @@ function QuotesCustomersView({ onBackHome }) {
     let rows = null;
     let err = null;
     try {
-      rows = await fetchQuotationRead('list-customers');
-    } catch (readErr) {
-      const { data, error } = await db.from('quote_customers').select('*').order('created_at', { ascending: false });
-      rows = data || null;
-      err = error || readErr;
+      const { data, error } = await db
+        .from('quote_customers')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      rows = data || [];
+    } catch (dbErr) {
+      err = dbErr;
+      try {
+        rows = await fetchQuotationRead('list-customers');
+      } catch (readErr) {
+        err = readErr;
+      }
     }
 
     if (Array.isArray(rows)) {

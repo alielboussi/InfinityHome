@@ -1,34 +1,32 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import { sendTransferWhatsApp } from './services/whatsapp';
 import {
-  WAREHOUSE_ACCEPT_USER_ID,
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
   deliveryLineQty,
   deliverySenderName,
   groupWarehouseDisplayLines,
   isWarehousePending,
+  isWarehouseCompleted,
+  WAREHOUSE_RECEIVER_LIST_STATUSES,
+  anyDeliveryPacketsReceiverConfirmed,
+  deliveryEntryReceiverProgress,
+  deliveryEntryReceived,
+  warehousePacketDisplayLabel,
 } from './utils/warehouseDelivery';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
 import {
   buildWarehouseDeliveryNoteHtml,
-  DEFAULT_DELIVERY_NOTE_PRINT_COPIES,
-  printWarehouseDeliveryNoteInBrowser,
+  downloadWarehouseDeliveryNotePdf,
 } from './utils/warehouseDeliveryNotePrint';
 import {
   acceptWarehouseDeliverySession,
-  cancelWarehouseDeliverySession,
-  resetWarehouseDeliveryNumberSequence,
   setDeliveryEntryReceiverCheck,
 } from './services/warehouseDeliveryMobileApi';
-import { canManageCatalog, getCurrentUser } from './accessControl';
-import {
-  anyDeliveryPacketsReceiverConfirmed,
-  deliveryEntryReceiverProgress,
-  deliveryEntryReceived,
-} from './utils/warehouseDelivery';
+import { getCurrentUser, canPerformWarehouseKitweReceiver } from './accessControl';
 
 const formatDateTime = (value) => {
   if (!value) return '-';
@@ -121,10 +119,10 @@ const PAGE_THEME = {
 };
 
 /**
- * @param {{ receiverTestMirror?: boolean }} props
- * receiverTestMirror — same UI as Hassan’s Kitwe receiver page; catalog admins can tick/accept for end-to-end tests.
+ * Hassan Awad — Factory → Kitwe deliveries (receive + history on iPad).
  */
-export default function WarehouseDeliveries({ receiverTestMirror = false }) {
+export default function WarehouseDeliveries() {
+  const location = useLocation();
   const [sessions, setSessions] = useState([]);
   const [entriesBySession, setEntriesBySession] = useState({});
   const [destStockByProduct, setDestStockByProduct] = useState(new Map());
@@ -135,17 +133,18 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
   const [printBusyId, setPrintBusyId] = useState('');
   const [fromName, setFromName] = useState('Factory Warehouse');
   const [toName, setToName] = useState('Kitwe Branch');
-  const [currentUserId, setCurrentUserId] = useState('');
   const [usersById, setUsersById] = useState(new Map());
   const [isIpadSafari, setIsIpadSafari] = useState(() => detectIpadSafari());
-  const [hassanAlert, setHassanAlert] = useState(null);
   const [openSessionId, setOpenSessionId] = useState('');
-  const [receiverTestAdmin, setReceiverTestAdmin] = useState(false);
-  const [resetSeqBusy, setResetSeqBusy] = useState(false);
-  const [resetSeqNote, setResetSeqNote] = useState('');
-  const [cancelBusyId, setCancelBusyId] = useState('');
-  const canAccept = currentUserId === WAREHOUSE_ACCEPT_USER_ID
-    || (receiverTestMirror && receiverTestAdmin);
+  const sessionUser = useMemo(() => {
+    try {
+      return getCurrentUser();
+    } catch {
+      return null;
+    }
+  }, []);
+  const canAccept = canPerformWarehouseKitweReceiver(sessionUser, location.pathname);
+  const refreshSeconds = canAccept ? 15 : 60;
 
   useEffect(() => {
     const onResize = () => setIsIpadSafari(detectIpadSafari());
@@ -153,33 +152,21 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const loadDeliveries = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadDeliveries = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    if (!silent) setError('');
     try {
       const { data: sessionData, error: sessErr } = await db
         .from('warehouse_delivery_sessions')
         .select('id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, accepted_at, applied_at, completed_at, pdf_url, metadata')
         .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
         .eq('to_location', WAREHOUSE_TO_LOCATION_ID)
-        .in('status', ['pending', 'submitted', 'partially_received'])
+        .in('status', WAREHOUSE_RECEIVER_LIST_STATUSES)
         .order('delivery_number', { ascending: false });
       if (sessErr) throw sessErr;
 
       const sessionsList = sessionData || [];
       setSessions(sessionsList);
-
-      if (canAccept) {
-        const pendingAlert = sessionsList.find(
-          (s) => s?.metadata?.hassan_alert_pending === true,
-        );
-        if (pendingAlert) {
-          setHassanAlert((prev) => {
-            if (prev?.id === pendingAlert.id) return prev;
-            return pendingAlert;
-          });
-        }
-      }
 
       const ids = sessionsList.map((s) => s.id).filter(Boolean);
       if (!ids.length) {
@@ -246,38 +233,9 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
       setSessions([]);
       setEntriesBySession({});
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [canAccept]);
-
-  const dismissHassanAlert = async () => {
-    if (!hassanAlert?.id) {
-      setHassanAlert(null);
-      return;
-    }
-    const sessionId = hassanAlert.id;
-    const meta = { ...(hassanAlert.metadata || {}), hassan_alert_pending: false };
-    try {
-      await db
-        .from('warehouse_delivery_sessions')
-        .update({ metadata: meta })
-        .eq('id', sessionId);
-    } catch (err) {
-      console.warn('Failed to clear Hassan alert flag:', err);
-    }
-    setHassanAlert(null);
-  };
-
-  useEffect(() => {
-    try {
-      const parsed = getCurrentUser();
-      setCurrentUserId(parsed?.id || '');
-      setReceiverTestAdmin(receiverTestMirror && canManageCatalog(parsed));
-    } catch {
-      setCurrentUserId('');
-      setReceiverTestAdmin(false);
-    }
-  }, [receiverTestMirror]);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -297,9 +255,12 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
   useEffect(() => {
     loadDeliveries();
     const ms = canAccept ? 15000 : 60000;
-    const id = setInterval(() => loadDeliveries(), ms);
+    const id = setInterval(() => {
+      if (busyId || printBusyId || pdfBusyId) return;
+      loadDeliveries({ silent: true });
+    }, ms);
     return () => clearInterval(id);
-  }, [loadDeliveries, canAccept]);
+  }, [loadDeliveries, canAccept, busyId, printBusyId, pdfBusyId]);
 
   const handlePdf = async (session) => {
     if (!session?.id || pdfBusyId) return;
@@ -322,51 +283,30 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
     }
   };
 
-  const handlePrintDeliveryNote = async (session) => {
+  const handleSaveDeliveryNotePdf = async (session) => {
     if (!session?.id || printBusyId) return;
     setPrintBusyId(session.id);
     setError('');
     try {
       const entries = entriesBySession[String(session.id)] || [];
-      const html = buildWarehouseDeliveryNoteHtml({
+      const html = await buildWarehouseDeliveryNoteHtml({
         session,
         entries,
-        copies: DEFAULT_DELIVERY_NOTE_PRINT_COPIES,
+        copies: 1,
       });
-      const htmlResolved = await html;
-      printWarehouseDeliveryNoteInBrowser(htmlResolved);
+      const base = session.delivery_number || session.id || 'delivery-note';
+      await downloadWarehouseDeliveryNotePdf(html, `${base}-delivery-note.pdf`);
     } catch (err) {
-      setError(err?.message || 'Failed to open print dialog.');
+      setError(err?.message || 'Failed to save delivery note PDF.');
     } finally {
       setPrintBusyId('');
     }
   };
 
-  const handleCancelDelivery = async (session) => {
-    if (!session?.id || cancelBusyId) return;
-    const dn = session.delivery_number || session.id;
-    const ok = window.confirm(
-      `Cancel delivery ${dn}?\n\nWarehouse stock is not reduced until Hassan accepts packets. `
-      + 'Cancelling removes this delivery from the pending list.',
-    );
-    if (!ok) return;
-    setCancelBusyId(session.id);
-    setError('');
-    try {
-      await cancelWarehouseDeliverySession({ sessionId: session.id, reason: 'Cancelled from web' });
-      await loadDeliveries();
-      if (hassanAlert?.id === session.id) setHassanAlert(null);
-    } catch (err) {
-      setError(err?.message || 'Failed to cancel delivery.');
-    } finally {
-      setCancelBusyId('');
-    }
-  };
-
   const handleAccept = async (sessionId) => {
     if (!sessionId || busyId) return;
-    if (currentUserId && currentUserId !== WAREHOUSE_ACCEPT_USER_ID && !(receiverTestMirror && receiverTestAdmin)) {
-      setError('Only the receiver account can accept deliveries.');
+    if (!canAccept) {
+      setError('Only Hassan Awad can accept deliveries.');
       return;
     }
     setBusyId(sessionId);
@@ -381,24 +321,30 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
       const data = await acceptWarehouseDeliverySession(sessionId);
       if (data && data.ok === false) throw new Error(data.error || 'Accept failed');
 
-      // Notify WhatsApp group after inventory accept succeeds (non-blocking for reload).
-      try {
-        const message = buildWarehouseDeliveryWhatsAppMessage({
-          session: data?.session || session,
-          entries,
-          fromName,
-          toName,
-          usersById,
-        });
-        const wa = await sendTransferWhatsApp({ message });
-        if (!wa.ok) {
-          console.warn('Warehouse delivery WhatsApp failed:', wa.error);
-        }
-      } catch (waErr) {
-        console.warn('Warehouse delivery WhatsApp error:', waErr);
+      const updatedSession = data?.session || session;
+      if (updatedSession?.id) {
+        setSessions((prev) => prev.map((s) => (
+          String(s.id) === String(sessionId) ? { ...s, ...updatedSession } : s
+        )));
       }
 
-      await loadDeliveries();
+      void (async () => {
+        try {
+          const message = buildWarehouseDeliveryWhatsAppMessage({
+            session: updatedSession,
+            entries,
+            fromName,
+            toName,
+            usersById,
+          });
+          const wa = await sendTransferWhatsApp({ message });
+          if (!wa.ok) console.warn('Warehouse delivery WhatsApp failed:', wa.error);
+        } catch (waErr) {
+          console.warn('Warehouse delivery WhatsApp error:', waErr);
+        }
+      })();
+
+      await loadDeliveries({ silent: true });
     } catch (err) {
       setError(err?.message || 'Failed to accept delivery.');
     } finally {
@@ -409,33 +355,25 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
   const toggleReceiverCheck = async (entryId, checked) => {
     if (!canAccept) return;
     setError('');
+    const checkedAt = checked ? new Date().toISOString() : null;
+    setEntriesBySession((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((sid) => {
+        next[sid] = next[sid].map((row) => {
+          if (String(row.id) !== String(entryId)) return row;
+          return {
+            ...row,
+            metadata: { ...(row.metadata || {}), receiver_checked_at: checkedAt },
+          };
+        });
+      });
+      return next;
+    });
     try {
       await setDeliveryEntryReceiverCheck(entryId, checked);
-      await loadDeliveries();
     } catch (err) {
+      await loadDeliveries({ silent: true });
       setError(err?.message || 'Failed to update packet confirmation.');
-    }
-  };
-
-  const handleResetDeliveryNumberSequence = async () => {
-    if (!receiverTestMirror || !receiverTestAdmin || resetSeqBusy) return;
-    const ok = window.confirm(
-      'Reset the warehouse delivery number sequence?\n\n'
-      + 'The next new delivery opened in the Production app will be WHD0000000001.\n'
-      + 'Existing delivery records in the database are not deleted.',
-    );
-    if (!ok) return;
-    setResetSeqBusy(true);
-    setResetSeqNote('');
-    setError('');
-    try {
-      const data = await resetWarehouseDeliveryNumberSequence();
-      const next = data?.next_delivery_number || data?.result?.next_delivery_number || 'WHD0000000001';
-      setResetSeqNote(`Sequence reset. Next new delivery: ${next}`);
-    } catch (err) {
-      setError(err?.message || 'Failed to reset delivery number sequence.');
-    } finally {
-      setResetSeqBusy(false);
     }
   };
 
@@ -459,95 +397,23 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
               fontSize: isIpadSafari ? 'clamp(1.35rem, 2.2vw, 2rem)' : undefined,
             }}
           >
-            {receiverTestMirror ? 'Warehouse Deliveries (Hassan mirror)' : 'Warehouse Deliveries'}
+            Warehouse Deliveries
           </h1>
         </div>
         <p style={{ color: PAGE_THEME.muted, marginBottom: 16, lineHeight: 1.5, marginTop: 0 }}>
-          {receiverTestMirror
-            ? 'Test the same receiver flow Hassan uses on iPad: tick packets, accept stock, alerts. Refreshes every 15s.'
-            : 'Pending Factory → Kitwe deliveries from the Android app. Auto-refresh every 60 seconds.'}
+          Factory → Kitwe deliveries from the Production app. Accepted deliveries stay on this list for PDFs and review. Auto-refresh every {refreshSeconds} seconds.
         </p>
-        {receiverTestMirror && receiverTestAdmin && (
-          <div
-            className="warehouse-deliveries-mirror-banner"
-            style={{
-              color: PAGE_THEME.accent,
-              marginBottom: 12,
-              fontWeight: 600,
-              lineHeight: 1.45,
-            }}
-          >
-            Admin test mode — actions here use the same APIs as Hassan’s Warehouse Deliveries page.
-          </div>
-        )}
-        {receiverTestMirror && receiverTestAdmin && (
-          <div style={{ marginBottom: 16 }}>
-            <button
-              type="button"
-              className="product-form-btn"
-              disabled={resetSeqBusy}
-              onClick={handleResetDeliveryNumberSequence}
-            >
-              {resetSeqBusy ? 'Resetting…' : 'Reset delivery ID to WHD0000000001'}
-            </button>
-            {resetSeqNote ? (
-              <p style={{ color: PAGE_THEME.muted, marginTop: 10, marginBottom: 0, lineHeight: 1.45 }}>
-                {resetSeqNote}
-              </p>
-            ) : null}
-          </div>
-        )}
-        {!canAccept && currentUserId && !receiverTestMirror && (
+        {!canAccept && sessionUser && (
           <div style={{ color: '#b45309', marginBottom: 12, fontWeight: 600 }}>
-            Only the receiver account can accept deliveries.
+            Packet confirmation is limited to Hassan Awad (Kitwe), login-access admin, or localhost testing on this page (
+            <code>/warehouse-deliveries</code>
+            ). Inventory → Deliveries is the admin list only.
           </div>
         )}
         {loading && <div style={{ color: PAGE_THEME.muted }}>Loading deliveries...</div>}
         {error && <div className="report-error" style={{ marginBottom: 12 }}>{error}</div>}
-        {canAccept && hassanAlert && (
-          <div
-            role="alert"
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.55)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 9999,
-              padding: 20,
-            }}
-          >
-            <div
-              style={{
-                background: PAGE_THEME.surface,
-                border: `2px solid ${PAGE_THEME.accent}`,
-                borderRadius: 12,
-                padding: 24,
-                maxWidth: 420,
-                width: '100%',
-                boxShadow: '0 12px 40px rgba(15, 23, 42, 0.18)',
-                color: PAGE_THEME.text,
-              }}
-            >
-              <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8, color: PAGE_THEME.text }}>New delivery sent</div>
-              <div style={{ color: PAGE_THEME.muted, marginBottom: 16 }}>
-                Delivery note <b>{hassanAlert.delivery_number || hassanAlert.id}</b> was submitted from the warehouse app.
-                Review lines below and accept when stock arrives.
-              </div>
-              <button
-                type="button"
-                onClick={dismissHassanAlert}
-                className="product-form-btn product-form-btn--primary"
-                style={{ width: '100%' }}
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        )}
         {!loading && sessions.length === 0 && (
-          <div style={{ color: PAGE_THEME.muted, fontWeight: 500 }}>No pending deliveries.</div>
+          <div style={{ color: PAGE_THEME.muted, fontWeight: 500 }}>No deliveries yet.</div>
         )}
 
         <div style={{
@@ -560,7 +426,14 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
           {sessions.map((session) => {
             const entries = entriesBySession[String(session.id)] || [];
             const { total, confirmed } = deliveryEntryReceiverProgress(entries);
+            const packetLines = (entries || []).filter((e) => e?.metadata?.packet_id);
+            const receivedCount = packetLines.filter((e) => deliveryEntryReceived(e)).length;
+            const completed = isWarehouseCompleted(session.status);
             const driver = session?.metadata?.driver_name;
+            const progressLabel = completed || (total > 0 && receivedCount === total)
+              ? `Packets received: ${receivedCount}/${total}`
+              : `Packets confirmed: ${confirmed}/${total}`;
+            const progressColor = completed || (total > 0 && receivedCount === total) ? '#4ade80' : '#fbbf24';
             return (
               <button
                 key={session.id}
@@ -570,7 +443,7 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
                   textAlign: 'left',
                   border: openSessionId === String(session.id)
                     ? `2px solid ${PAGE_THEME.accent}`
-                    : `1px solid ${PAGE_THEME.borderSoft}`,
+                    : `1px solid ${completed ? '#4ade8055' : PAGE_THEME.borderSoft}`,
                   borderRadius: 12,
                   padding: 16,
                   background: PAGE_THEME.surfaceAlt,
@@ -579,17 +452,29 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
                   boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
                 }}
               >
-                <div style={{ fontWeight: 800, fontSize: 18, color: PAGE_THEME.text }}>
-                  {session.delivery_number || session.id}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ fontWeight: 800, fontSize: 18, color: PAGE_THEME.text }}>
+                    {session.delivery_number || session.id}
+                  </div>
+                  {completed ? (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: 999 }}>
+                      Completed
+                    </span>
+                  ) : null}
                 </div>
                 <div style={{ color: PAGE_THEME.muted, marginTop: 6 }}>{fromName} → {toName}</div>
                 <div style={{ color: PAGE_THEME.muted, marginTop: 4 }}>
                   Sent: {formatDateTime(session.submitted_at || session.created_at)}
                 </div>
+                {completed ? (
+                  <div style={{ color: PAGE_THEME.muted }}>
+                    Accepted: {formatDateTime(session.completed_at || session.accepted_at)}
+                  </div>
+                ) : null}
                 <div style={{ color: PAGE_THEME.muted }}>By: {deliverySenderName(session, usersById)}</div>
                 {driver ? <div style={{ color: PAGE_THEME.text, marginTop: 4 }}>Driver: {driver}</div> : null}
-                <div style={{ marginTop: 10, fontWeight: 700, color: confirmed === total && total > 0 ? '#4ade80' : '#fbbf24' }}>
-                  Packets confirmed: {confirmed}/{total}
+                <div style={{ marginTop: 10, fontWeight: 700, color: progressColor }}>
+                  {progressLabel}
                 </div>
               </button>
             );
@@ -600,6 +485,7 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
           const entries = entriesBySession[String(session.id)] || [];
           const displayLines = groupWarehouseDisplayLines(entries);
           const pending = isWarehousePending(session.status);
+          const completed = isWarehouseCompleted(session.status);
           const canAcceptSession = anyDeliveryPacketsReceiverConfirmed(entries);
           const toAcceptCount = entries.filter(
             (e) => e?.metadata?.packet_id
@@ -619,7 +505,14 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0, color: PAGE_THEME.text }}>{session.delivery_number}</h2>
+                <div>
+                  <h2 style={{ margin: 0, color: PAGE_THEME.text }}>{session.delivery_number}</h2>
+                  {completed ? (
+                    <div style={{ color: PAGE_THEME.muted, marginTop: 4, fontSize: 14 }}>
+                      Completed — accepted {formatDateTime(session.completed_at || session.accepted_at)}
+                    </div>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   onClick={() => setOpenSessionId('')}
@@ -648,24 +541,23 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
                 return (
                   <label
                     key={line.id}
+                    className="warehouse-packet-check-row"
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      marginTop: 8,
-                      paddingLeft: 8,
+                      border: `1px solid ${checked || received ? PAGE_THEME.borderSoft : PAGE_THEME.border}`,
+                      background: checked || received ? PAGE_THEME.surfaceAlt : PAGE_THEME.surface,
                       color: received ? PAGE_THEME.muted : PAGE_THEME.text,
-                      cursor: canAccept && !received ? 'pointer' : 'default',
+                      cursor: canAccept && !received && pending ? 'pointer' : 'default',
                     }}
                   >
                     <input
                       type="checkbox"
+                      className="warehouse-packet-check-input"
                       checked={checked || received}
                       disabled={!canAccept || !pending || received}
                       onChange={(e) => toggleReceiverCheck(line.id, e.target.checked)}
                     />
-                    <span>
-                      {line.name} × {deliveryLineQty(line)}
+                    <span className="warehouse-packet-check-label">
+                      {warehousePacketDisplayLabel(line)}
                       {received ? ' (received)' : ''}
                     </span>
                   </label>
@@ -675,24 +567,13 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
                 <button
                   type="button"
                   className="product-form-btn"
-                  onClick={() => handlePrintDeliveryNote(session)}
+                  onClick={() => handleSaveDeliveryNotePdf(session)}
                   disabled={printBusyId === session.id}
                 >
                   {printBusyId === session.id
-                    ? 'Opening print…'
-                    : `Print delivery note (×${DEFAULT_DELIVERY_NOTE_PRINT_COPIES})`}
+                    ? 'Saving PDF…'
+                    : 'Save delivery note as PDF'}
                 </button>
-                {receiverTestMirror && receiverTestAdmin && pending ? (
-                  <button
-                    type="button"
-                    className="product-form-btn"
-                    onClick={() => handleCancelDelivery(session)}
-                    disabled={cancelBusyId === session.id}
-                    style={{ borderColor: '#c62828', color: '#c62828' }}
-                  >
-                    {cancelBusyId === session.id ? 'Cancelling…' : 'Cancel test delivery'}
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   className="product-form-btn"
@@ -701,15 +582,21 @@ export default function WarehouseDeliveries({ receiverTestMirror = false }) {
                 >
                   {pdfBusyId === session.id ? 'Building PDF…' : 'View PDF'}
                 </button>
-                <button
-                  type="button"
-                  className="product-form-btn product-form-btn--primary"
-                  onClick={() => handleAccept(session.id)}
-                  disabled={busyId === session.id || !canAccept || !pending || !canAcceptSession || toAcceptCount < 1}
-                  style={{ opacity: !canAcceptSession ? 0.5 : 1 }}
-                >
-                  {busyId === session.id ? 'Accepting…' : `Accept received packets (${toAcceptCount})`}
-                </button>
+                {pending ? (
+                  <button
+                    type="button"
+                    className="product-form-btn product-form-btn--primary"
+                    onClick={() => handleAccept(session.id)}
+                    disabled={busyId === session.id || !canAccept || !canAcceptSession || toAcceptCount < 1}
+                    style={{ opacity: !canAcceptSession ? 0.5 : 1 }}
+                  >
+                    {busyId === session.id ? 'Accepting…' : `Accept received packets (${toAcceptCount})`}
+                  </button>
+                ) : (
+                  <span style={{ color: PAGE_THEME.muted, fontWeight: 600, alignSelf: 'center' }}>
+                    All packets accepted — use PDF buttons above to review or save.
+                  </span>
+                )}
               </div>
             </div>
           );

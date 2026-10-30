@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import DeliveryPrintModal, { DEFAULT_DELIVERY_PRINT_COPIES } from '../components/DeliveryPrintModal';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
@@ -6,6 +6,7 @@ import KioskSafeScroll from '../components/KioskSafeScroll';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
+import { clearDeliveryWorkspace } from '../lib/productionDeliveryWorkspaceCache';
 import { theme } from '../shared/theme';
 
 export default function KitweSendDoneScreen({ route, navigation }) {
@@ -19,6 +20,10 @@ export default function KitweSendDoneScreen({ route, navigation }) {
   const submittedAt = route.params?.submittedAt || '';
   const hasPrintPayload = Boolean(dn) && Array.isArray(printGroups) && printGroups.length > 0;
   const [printOpen, setPrintOpen] = useState(hasPrintPayload);
+
+  useEffect(() => {
+    clearDeliveryWorkspace();
+  }, []);
 
   return (
     <>
