@@ -1005,6 +1005,11 @@ export async function patchWarehouseAssemblyFields(assemblyId, fields) {
     patch.name = name;
   }
 
+  if (Object.prototype.hasOwnProperty.call(fields || {}, 'category_id')) {
+    const cid = fields.category_id;
+    patch.category_id = cid == null || cid === '' ? null : String(cid);
+  }
+
   Object.entries(fields || {}).forEach(([key, raw]) => {
     if (!INLINE_ASSEMBLY_NUMERIC_FIELDS.has(key)) return;
     if (raw === '' || raw == null) {

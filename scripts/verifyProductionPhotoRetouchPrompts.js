@@ -32,4 +32,16 @@ if (inferProductionPresetFromProductName('Layla Pillows') !== 'Pillows') {
   process.exit(1);
 }
 
+const mattressPrompt = buildProductionPhotoRetouchPrompt({
+  productName: 'Grand Luxury Mattress 200*200',
+});
+if (!mattressPrompt.includes('shrink wrap') || !mattressPrompt.includes('nylon')) {
+  console.error('[verifyProductionPhotoRetouchPrompts] mattress wrap removal prompt missing');
+  process.exit(1);
+}
+if (!mattressPrompt.includes('facing forward') || !mattressPrompt.includes('top sleeping surface')) {
+  console.error('[verifyProductionPhotoRetouchPrompts] mattress forward-facing prompt missing');
+  process.exit(1);
+}
+
 console.log('verifyProductionPhotoRetouchPrompts: ok');

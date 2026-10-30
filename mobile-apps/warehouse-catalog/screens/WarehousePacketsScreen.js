@@ -79,7 +79,7 @@ export default function WarehousePacketsScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      ensureFresh();
+      ensureFresh({ fullPackets: true });
     }, [ensureFresh]),
   );
 

@@ -5678,6 +5678,19 @@ body.enterprise-theme .warehouse-products-page .warehouse-inline-spec__sku-link:
   color: #0369a1;
   font-size: 0.8rem;
 }
+.warehouse-products-page .warehouse-assembly-card__category-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #0369a1;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.warehouse-products-page .warehouse-assembly-card__category-link:hover {
+  color: #0c4a6e;
+}
 .warehouse-products-page .warehouse-assembly-card__colors {
   display: flex;
   flex-wrap: wrap;
@@ -7690,6 +7703,22 @@ body.enterprise-theme .products-list-thumb-empty--clickable {
 .products-category-modal__option.is-selected {
   background: #e0f2fe;
   font-weight: 600;
+}
+
+.products-category-modal__create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.products-category-modal__create .warehouse-color-pick-row {
+  margin: 0;
+}
+
+.warehouse-category-btn {
+  flex-shrink: 0;
 }
 
 .products-image-modal--compact {

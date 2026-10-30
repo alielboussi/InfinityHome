@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { signOutFirebase } from '../shared/firebase';
 import { invalidateWarehouseCatalogCache } from '../shared/warehouseCatalogStore';
+import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import {
   getMobileDashboardNavItems,
   MOBILE_APP_DISPLAY_NAME,
@@ -13,6 +14,11 @@ export default function DashboardScreen({ grant, userEmail, userDisplayName, nav
   const insets = useSafeAreaInsets();
   const items = getMobileDashboardNavItems(grant, userEmail);
   const [signingOut, setSigningOut] = useState(false);
+  const { refresh: refreshCatalog } = useWarehouseCatalog();
+
+  useEffect(() => {
+    refreshCatalog({ background: true, fullPackets: false }).catch(() => {});
+  }, [refreshCatalog]);
 
   const openScreen = (item) => {
     navigation.navigate(item.routeName);

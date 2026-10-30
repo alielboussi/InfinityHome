@@ -138,7 +138,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
 
   useFocusEffect(
     useCallback(() => {
-      ensureFresh();
+      ensureFresh({ fullPackets: false });
     }, [ensureFresh]),
   );
 

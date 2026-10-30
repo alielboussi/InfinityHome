@@ -132,11 +132,11 @@ export default function ProductFormScreen({ route, navigation }) {
     setTimeout(() => skuInputRef.current?.focus?.(), 50);
   }, []);
 
-  const { refresh: refreshGlobalCatalog } = useWarehouseCatalog();
+  const { refresh: refreshGlobalCatalog, patchCatalog } = useWarehouseCatalog();
 
   const refreshCatalog = useCallback(async () => {
     try {
-      const data = await fetchWarehouseCatalogCached({ force: false });
+      const data = await fetchWarehouseCatalogCached({ force: false, fullPackets: true });
       setCatalog(data);
     } catch {
       /* keep last catalog if refresh fails */
@@ -145,12 +145,13 @@ export default function ProductFormScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      refreshGlobalCatalog({ background: true, fullPackets: true }).catch(() => {});
       if (!catalog) refreshCatalog();
       if (!existing && !bomEditMode && !initialSkuFocusRef.current) {
         initialSkuFocusRef.current = true;
         focusSku();
       }
-    }, [bomEditMode, catalog, existing, focusSku, refreshCatalog]),
+    }, [bomEditMode, catalog, existing, focusSku, refreshCatalog, refreshGlobalCatalog]),
   );
 
   useFocusEffect(
@@ -469,13 +470,6 @@ export default function ProductFormScreen({ route, navigation }) {
         ? String(saveResult.assembly.id)
         : '';
       const photoAssemblyId = bomEditMode ? editAssemblyId : createdAssemblyId;
-      if (photoAssemblyId && productPhotoRef.current?.uri) {
-        try {
-          await uploadPendingProductPhoto(photoAssemblyId);
-        } catch (photoErr) {
-          throw photoErr;
-        }
-      }
       if (finishedOnly && !bomEditMode && createdAssemblyId) {
         const unitsPerBox = Math.max(1, Math.floor(Number(unitsPerCarton) || 1));
         setFinishedQtyValue('0');
@@ -489,7 +483,19 @@ export default function ProductFormScreen({ route, navigation }) {
             ? 'Product saved. Enter how many boxes are on hand.'
             : 'Product saved. Enter warehouse on-hand qty.',
         );
+        if (photoAssemblyId && productPhotoRef.current?.uri) {
+          uploadPendingProductPhoto(photoAssemblyId).catch((photoErr) => {
+            setError(formatWarehouseMobileApiError(photoErr?.message, 'Product saved but photo upload failed.'));
+          });
+        }
         return;
+      }
+      if (photoAssemblyId && productPhotoRef.current?.uri) {
+        try {
+          await uploadPendingProductPhoto(photoAssemblyId);
+        } catch (photoErr) {
+          throw photoErr;
+        }
       }
       const navigateAfterSave = (listScreen) => {
         try {
@@ -538,14 +544,19 @@ export default function ProductFormScreen({ route, navigation }) {
       : entered;
     setFinishedQtySaving(true);
     setError('');
+    const assemblyKey = String(finishedQtyPrompt.assemblyId);
+    patchCatalog({
+      assemblyWarehouseQty: { [assemblyKey]: qty },
+    });
     try {
-      await warehouseMobileRequest('assembly-product-quantity-set', {
+      const result = await warehouseMobileRequest('assembly-product-quantity-set', {
         assembly_id: finishedQtyPrompt.assemblyId,
         warehouse_location_id: warehouseLocationId,
         quantity: qty,
       });
-      refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+      patchCatalog(result);
       dismissFinishedQtyPrompt('WarehouseProducts');
+      refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
     } catch (err) {
       const msg = formatWarehouseMobileApiError(err?.message, 'Could not save quantity.');
       const maybeGateway = err?.gateway
@@ -558,6 +569,9 @@ export default function ProductFormScreen({ route, navigation }) {
             qtyMap[String(finishedQtyPrompt.assemblyId)] ?? 0,
           )));
           if (got === qty) {
+            patchCatalog({
+              assemblyWarehouseQty: { [assemblyKey]: qty },
+            });
             refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
             setFinishedQtyPrompt(null);
             setNotice('Quantity saved (confirmed in catalog).');
@@ -581,6 +595,7 @@ export default function ProductFormScreen({ route, navigation }) {
     finishedQtyPrompt,
     finishedQtyValue,
     navigation,
+    patchCatalog,
     refreshGlobalCatalog,
     warehouseLocationId,
   ]);

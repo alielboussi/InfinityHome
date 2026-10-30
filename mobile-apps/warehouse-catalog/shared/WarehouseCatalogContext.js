@@ -11,6 +11,7 @@ import {
   getWarehouseCatalogCache,
   invalidateWarehouseCatalogCache,
   isWarehouseCatalogStale,
+  loadPersistedWarehouseCatalog,
   mergeWarehouseCatalogPatch,
   setWarehouseCatalogCache,
 } from './warehouseCatalogStore';
@@ -36,7 +37,7 @@ export function WarehouseCatalogProvider({ children }) {
     });
   }, []);
 
-  const refresh = useCallback(async ({ force = false, background = false } = {}) => {
+  const refresh = useCallback(async ({ force = false, background = false, fullPackets = false } = {}) => {
     const hasData = Boolean(catalog || getWarehouseCatalogCache());
     if (!background || !hasData) {
       if (!hasData) setInitialLoading(true);
@@ -44,7 +45,7 @@ export function WarehouseCatalogProvider({ children }) {
     }
     setError('');
     try {
-      const data = await fetchWarehouseCatalogCached({ force });
+      const data = await fetchWarehouseCatalogCached({ force, fullPackets });
       applyCatalog(data);
       return data;
     } catch (err) {
@@ -58,15 +59,32 @@ export function WarehouseCatalogProvider({ children }) {
     }
   }, [applyCatalog, catalog]);
 
-  const ensureFresh = useCallback(() => {
-    if (!isWarehouseCatalogStale()) return Promise.resolve(catalog || getWarehouseCatalogCache());
-    return refresh({ background: true }).catch(() => null);
+  const ensureFresh = useCallback(({ fullPackets = false } = {}) => {
+    if (!isWarehouseCatalogStale()) {
+      if (fullPackets && catalog?.catalog_meta?.packet_load !== 'all') {
+        return refresh({ background: true, fullPackets: true }).catch(() => null);
+      }
+      return Promise.resolve(catalog || getWarehouseCatalogCache());
+    }
+    return refresh({ background: true, fullPackets }).catch(() => null);
   }, [catalog, refresh]);
 
   useEffect(() => {
-    if (getWarehouseCatalogCache()) return;
-    refresh({ background: false }).catch(() => {});
-    // Warm catalog once after login; refresh identity is stable enough for bootstrap only.
+    let cancelled = false;
+    (async () => {
+      const saved = await loadPersistedWarehouseCatalog();
+      if (cancelled) return;
+      const hadCache = Boolean(getWarehouseCatalogCache());
+      if (saved && !hadCache) {
+        applyCatalog(saved);
+        setInitialLoading(false);
+      }
+      const warmBackground = Boolean(saved || hadCache);
+      await refresh({ background: warmBackground, fullPackets: false, force: false }).catch(() => {});
+    })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

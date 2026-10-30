@@ -1828,9 +1828,14 @@ export default async function handler(req, res) {
       case 'assembly-create':
         result = await opAssemblyCreate(body, user);
         break;
-      case 'catalog-list':
-        result = await fetchCatalogForMobile(getService());
+      case 'catalog-list': {
+        const packetLoad = String(body.packet_load || body.packetLoad || '').trim().toLowerCase() === 'all'
+          ? 'all'
+          : 'linked';
+        const includeColors = body.include_colors === true || packetLoad === 'all';
+        result = await fetchCatalogForMobile(getService(), { packetLoad, includeColors });
         break;
+      }
       case 'generate-unique-sku':
         result = await opGenerateUniqueSku(body);
         break;

@@ -45,6 +45,9 @@ import {
 import WarehouseProductionLabelPrintDialog, {
   WarehouseLabelPrintIconButton,
 } from './components/WarehouseProductionLabelPrintDialog';
+import WarehouseAssemblyCategoryDialog, {
+  WarehouseCategoryIconButton,
+} from './components/WarehouseAssemblyCategoryDialog';
 import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
 import { isWarehouseCatalogAddProductAllowed } from './mobile/mobileAccessManifest';
 
@@ -83,6 +86,7 @@ export default function WarehouseProductsPage() {
   const [expanded, setExpanded] = useState(() => new Set());
   const [, setSaving] = useState(false);
   const [labelPrintItem, setLabelPrintItem] = useState(null);
+  const [categoryDialogAssembly, setCategoryDialogAssembly] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -465,7 +469,20 @@ export default function WarehouseProductsPage() {
                                 ? `${unitsPerBox} finished units per box · enter boxes at Warehouse below`
                                 : 'Finished stock only (no packet BOM)'))}
                         </span>
-                        <span>{categoryName(assembly.category_id)}</span>
+                        <span>
+                          Category:{' '}
+                          {canManage ? (
+                            <button
+                              type="button"
+                              className="warehouse-assembly-card__category-link"
+                              onClick={() => setCategoryDialogAssembly(assembly)}
+                            >
+                              {categoryName(assembly.category_id)}
+                            </button>
+                          ) : (
+                            categoryName(assembly.category_id)
+                          )}
+                        </span>
                       </div>
                       <WarehouseAssemblyInlineSpecs
                         assembly={assembly}
@@ -509,6 +526,9 @@ export default function WarehouseProductsPage() {
                         <div className="warehouse-assembly-card__actions-row">
                           <WarehouseLabelPrintIconButton
                             onClick={() => openLabelPrint(assembly.name, assembly.family_sku)}
+                          />
+                          <WarehouseCategoryIconButton
+                            onClick={() => setCategoryDialogAssembly(assembly)}
                           />
                           <button
                             type="button"
@@ -696,6 +716,15 @@ export default function WarehouseProductsPage() {
       open={Boolean(labelPrintItem)}
       item={labelPrintItem}
       onClose={() => setLabelPrintItem(null)}
+    />
+    <WarehouseAssemblyCategoryDialog
+      open={Boolean(categoryDialogAssembly)}
+      assembly={categoryDialogAssembly}
+      categories={categories}
+      onClose={() => setCategoryDialogAssembly(null)}
+      onCategoriesChange={setCategories}
+      onUpdated={handleAssemblyFieldsUpdated}
+      onError={(msg) => setError(msg)}
     />
     </>
   );

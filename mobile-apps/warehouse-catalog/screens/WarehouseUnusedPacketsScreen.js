@@ -45,7 +45,7 @@ export default function WarehouseUnusedPacketsScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      ensureFresh();
+      ensureFresh({ fullPackets: true });
     }, [ensureFresh]),
   );
 

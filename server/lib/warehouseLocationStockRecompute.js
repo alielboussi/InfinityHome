@@ -22,18 +22,28 @@ const INVENTORY = 'warehouse_packet_inventory';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 const ASSEMBLY_PACKETS = 'warehouse_assembly_packets';
 const SET_ITEMS = 'warehouse_set_items';
+const INVENTORY_IN_CHUNK = 30;
 
 async function loadPacketInventoryMap(sb, locationId, packetIds) {
   const map = new Map();
-  if (!locationId || !packetIds?.length) return map;
-  const { data, error } = await sb.from(INVENTORY).select('packet_id, quantity').eq('location_id', locationId);
-  if (error) throw new Error(error.message || 'Failed to load packet stock');
-  const idSet = new Set(packetIds.map(String));
-  (data || []).forEach((row) => {
+  const ids = [...new Set((packetIds || []).map(String).filter(Boolean))];
+  if (!locationId || !ids.length) return map;
+  let rows = [];
+  for (let i = 0; i < ids.length; i += INVENTORY_IN_CHUNK) {
+    const chunk = ids.slice(i, i + INVENTORY_IN_CHUNK);
+    const { data, error } = await sb.from(INVENTORY)
+      .select('packet_id, quantity')
+      .eq('location_id', locationId)
+      .in('packet_id', chunk);
+    if (error) throw new Error(error.message || 'Failed to load packet stock');
+    rows = rows.concat(data || []);
+  }
+  const idSet = new Set(ids);
+  rows.forEach((row) => {
     if (!idSet.has(String(row.packet_id))) return;
     map.set(String(row.packet_id), Number(row.quantity) || 0);
   });
-  packetIds.forEach((id) => {
+  ids.forEach((id) => {
     if (!map.has(String(id))) map.set(String(id), 0);
   });
   return map;
@@ -43,6 +53,24 @@ async function loadAssemblyPacketRows(sb) {
   const { data, error } = await sb.from(ASSEMBLY_PACKETS).select('*');
   if (error) throw new Error(error.message || 'Failed to load product packet links');
   return data || [];
+}
+
+async function loadAssemblyPacketRowsForAssemblies(sb, assemblyIds) {
+  const ids = [...new Set((assemblyIds || []).map(String).filter(Boolean))];
+  if (!ids.length) return [];
+  if (ids.length === 1) {
+    const { data, error } = await sb.from(ASSEMBLY_PACKETS).select('*').eq('assembly_id', ids[0]);
+    if (error) throw new Error(error.message || 'Failed to load product packet links');
+    return data || [];
+  }
+  const merged = [];
+  for (let i = 0; i < ids.length; i += INVENTORY_IN_CHUNK) {
+    const chunk = ids.slice(i, i + INVENTORY_IN_CHUNK);
+    const { data, error } = await sb.from(ASSEMBLY_PACKETS).select('*').in('assembly_id', chunk);
+    if (error) throw new Error(error.message || 'Failed to load product packet links');
+    merged.push(...(data || []));
+  }
+  return merged;
 }
 
 async function syncAssemblyInventoryFromPackets(
@@ -169,11 +197,16 @@ export async function recomputeWarehouseStockForPacketTouch(sb, packetId, locati
   const assemblyWarehouseQty = {};
   if (!pid || !locId) return assemblyWarehouseQty;
 
-  const assemblyPacketRows = await loadAssemblyPacketRows(sb);
+  const { data: linksForPacket, error: linkErr } = await sb
+    .from(ASSEMBLY_PACKETS)
+    .select('*')
+    .eq('packet_id', pid);
+  if (linkErr) throw new Error(linkErr.message || 'Failed to load product packet links');
+
   const affectedIds = new Set();
-  for (const row of assemblyPacketRows || []) {
-    if (String(row.packet_id) === pid) affectedIds.add(String(row.assembly_id));
-  }
+  (linksForPacket || []).forEach((row) => {
+    if (row?.assembly_id) affectedIds.add(String(row.assembly_id));
+  });
   const { data: packetRow } = await sb
     .from(PACKETS)
     .select('assembly_id')
@@ -182,6 +215,13 @@ export async function recomputeWarehouseStockForPacketTouch(sb, packetId, locati
   if (packetRow?.assembly_id) affectedIds.add(String(packetRow.assembly_id));
   if (!affectedIds.size) return assemblyWarehouseQty;
 
+  const assemblyPacketRows = await loadAssemblyPacketRowsForAssemblies(sb, [...affectedIds]);
+  const packetIdSet = new Set([pid]);
+  assemblyPacketRows.forEach((row) => {
+    if (row?.packet_id) packetIdSet.add(String(row.packet_id));
+  });
+  const packetIdList = [...packetIdSet];
+
   const [
     { data: assemblies, error: aErr },
     { data: allPackets, error: pErr },
@@ -189,7 +229,9 @@ export async function recomputeWarehouseStockForPacketTouch(sb, packetId, locati
     sb.from(ASSEMBLIES)
       .select('id, packet_count, inventory_mode, item_kind, units_per_carton')
       .in('id', [...affectedIds]),
-    sb.from(PACKETS).select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
+    packetIdList.length === 1
+      ? sb.from(PACKETS).select('id, sku, name, packet_number, qty_per_unit, assembly_id').eq('id', packetIdList[0])
+      : sb.from(PACKETS).select('id, sku, name, packet_number, qty_per_unit, assembly_id').in('id', packetIdList),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to load warehouse products');
   if (pErr) throw new Error(pErr.message || 'Failed to load warehouse packets');

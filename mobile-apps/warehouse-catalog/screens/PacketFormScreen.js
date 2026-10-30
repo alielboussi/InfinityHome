@@ -89,7 +89,7 @@ export default function PacketFormScreen({ route, navigation }) {
 
   const refreshCatalog = useCallback(async () => {
     try {
-      const data = await fetchWarehouseCatalogCached({ force: false });
+      const data = await fetchWarehouseCatalogCached({ force: false, fullPackets: true });
       setCatalog(data);
     } catch {
       /* keep route params if refresh fails */

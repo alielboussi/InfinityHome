@@ -15,6 +15,17 @@ const SHARED_REQUIREMENTS = `REQUIREMENTS (follow exactly):
 
 OUTPUT: Return ONLY the finished catalog image (no text).`;
 
+const MATTRESS_WRAP_REMOVAL = `MATTRESS / BEDDING (critical when plastic or nylon is visible):
+- Remove ALL shrink wrap, cellophane, nylon, polyethylene film, and shipping plastic around the mattress or topper. Never leave crinkled wrap, taped corners, or loose nylon flaps.
+- Show only the fabric/quilted surface and sides of the mattress — crisp, sharp, color-accurate textile detail.
+- Remove warehouse clutter, floor tape, and label stickers on the wrap; do not invent a different pattern or size.`;
+
+const MATTRESS_CATALOG_ORIENTATION = `ORIENTATION & FRAMING (critical — customer must see the top design):
+- Present the mattress facing forward toward the camera. The top sleeping surface (quilted, tufted, or patterned fabric) must be the main visible face — not a narrow side edge, end cap, or thickness-only profile.
+- If the source photo is side-on or mostly shows the edge, re-angle to a standard catalog hero view: slightly elevated three-quarter angle OR straight-on from the foot/head so the full top pattern is readable across the frame.
+- Do not crop away the decorative top; keep the entire mattress in frame with the surface design clearly visible (handles on the side are OK if they do not hide the pattern).
+- Preserve the real quilt/stitch pattern and colors from the photo — only improve angle, lighting, and background; do not replace the design.`;
+
 /** Subject line per Create-screen preset (upholstery + carpentry). */
 export const PRODUCTION_PHOTO_PRESET_SUBJECT = Object.freeze({
   '3 Seater':
@@ -76,10 +87,36 @@ function defaultSubjectForPreset(preset) {
   return 'a warehouse furniture product (same item as photographed)';
 }
 
+/** Mattress / bed / topper names in warehouse catalog (English). */
+export function isMattressCatalogProductName(productName) {
+  const n = String(productName || '').trim().toLowerCase();
+  if (!n) return false;
+  return /\bmattress\b/.test(n)
+    || /\b(topper|bed base|bedbase)\b/.test(n)
+    || (/\bbed\b/.test(n) && !/\bbedside\b|\bbedroom set\b/.test(n));
+}
+
+function buildMattressCatalogPhotoRetouchPrompt(productName) {
+  const label = String(productName || '').trim() || 'mattress';
+  return `TASK: Edit this warehouse photo into a single crisp e-commerce catalog image of a mattress or bedding product (same dimensions, fabric pattern, and colors as photographed).
+
+Product: ${label}.
+
+${MATTRESS_CATALOG_ORIENTATION}
+
+${MATTRESS_WRAP_REMOVAL}
+
+${SHARED_REQUIREMENTS}`;
+}
+
 /**
  * Gemini retouch prompt for Production create flow (white catalog background).
  */
 export function buildProductionPhotoRetouchPrompt({ productName, preset } = {}) {
+  const name = String(productName || '').trim();
+  if (isMattressCatalogProductName(name)) {
+    return buildMattressCatalogPhotoRetouchPrompt(name);
+  }
   const resolved = String(preset || '').trim() || inferProductionPresetFromProductName(productName);
   const subject = PRODUCTION_PHOTO_PRESET_SUBJECT[resolved]
     || defaultSubjectForPreset(resolved);
