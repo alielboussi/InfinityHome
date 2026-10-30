@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FaWhatsapp } from 'react-icons/fa';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
+import { canManageCatalog } from './accessControl';
+import { sendWarehouseDeliveryWhatsApp } from './services/whatsapp';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
@@ -12,6 +15,11 @@ import {
   isWarehousePending,
 } from './utils/warehouseDelivery';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
+import { buildKitweDeliveryWhatsAppText } from './utils/kitweDeliveryWhatsAppAdmin';
+import {
+  buildWarehouseDeliveryNoteHtml,
+  renderWarehouseDeliveryNotePdfBlob,
+} from './utils/warehouseDeliveryNotePrint';
 import { cancelWarehouseDeliverySession } from './services/warehouseDeliveryMobileApi';
 
 const formatDateTime = (value) => {
@@ -59,6 +67,18 @@ export default function WarehouseDeliveriesAdmin() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [cancelBusyId, setCancelBusyId] = useState('');
+  const [whatsappBusyId, setWhatsappBusyId] = useState('');
+  const [catalogAdmin, setCatalogAdmin] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('user');
+      const user = raw ? JSON.parse(raw) : null;
+      setCatalogAdmin(canManageCatalog(user));
+    } catch {
+      setCatalogAdmin(false);
+    }
+  }, []);
 
   const loadDeliveries = useCallback(async () => {
     setLoading(true);
@@ -85,7 +105,7 @@ export default function WarehouseDeliveriesAdmin() {
 
       const { data: entryRows, error: entryErr } = await db
         .from('warehouse_delivery_entries')
-        .select('id, session_id, product_id, combo_id, kind, name, sku, quantity, original_quantity, edited_quantity, expected_dest_stock, per_set_qty, max_qty')
+        .select('id, session_id, product_id, combo_id, kind, name, sku, quantity, original_quantity, edited_quantity, expected_dest_stock, per_set_qty, max_qty, metadata')
         .in('session_id', ids)
         .order('created_at', { ascending: true });
       if (entryErr) throw entryErr;
@@ -252,6 +272,47 @@ export default function WarehouseDeliveriesAdmin() {
     }
   };
 
+  const handleResendWhatsApp = async (session) => {
+    if (!session?.id || whatsappBusyId || !catalogAdmin) return;
+    const status = String(session.status || '').toLowerCase();
+    if (status === 'draft' || status === 'cancelled') {
+      setError('Only submitted deliveries can be sent to WhatsApp.');
+      return;
+    }
+    const entries = entriesBySession[String(session.id)] || [];
+    if (!entries.length) {
+      setError('Add delivery lines before sending WhatsApp.');
+      return;
+    }
+    setWhatsappBusyId(session.id);
+    setError('');
+    try {
+      const html = await buildWarehouseDeliveryNoteHtml({ session, entries, copies: 1 });
+      const pdfBlob = await renderWarehouseDeliveryNotePdfBlob(html);
+      const pdfBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = String(reader.result || '');
+          resolve(dataUrl.replace(/^data:application\/pdf[^,]*,/, '').replace(/\s+/g, ''));
+        };
+        reader.onerror = () => reject(reader.error || new Error('PDF read failed'));
+        reader.readAsDataURL(pdfBlob);
+      });
+      const message = buildKitweDeliveryWhatsAppText(session, entries, usersById);
+      const dn = session.delivery_number || session.id;
+      const wa = await sendWarehouseDeliveryWhatsApp({
+        message,
+        pdfBase64,
+        pdfFilename: `${dn}-delivery-note.pdf`,
+      });
+      if (!wa.ok) throw new Error(wa.error || 'WhatsApp send failed.');
+    } catch (err) {
+      setError(err?.message || 'Failed to send WhatsApp.');
+    } finally {
+      setWhatsappBusyId('');
+    }
+  };
+
   const handleCancelDelivery = async (session) => {
     if (!session?.id || cancelBusyId) return;
     const dn = session.delivery_number || session.id;
@@ -332,6 +393,11 @@ export default function WarehouseDeliveriesAdmin() {
         const displayLines = groupWarehouseDisplayLines(entries);
         const canEdit = isWarehousePending(session.status);
         const completed = isWarehouseCompleted(session.status);
+        const statusLower = String(session.status || '').toLowerCase();
+        const canWhatsApp = catalogAdmin
+          && statusLower !== 'draft'
+          && statusLower !== 'cancelled'
+          && entries.length > 0;
         return (
           <div
             key={session.id}
@@ -435,6 +501,30 @@ export default function WarehouseDeliveriesAdmin() {
               >
                 {pdfBusyId === session.id ? 'Building PDF…' : 'View PDF'}
               </button>
+              {canWhatsApp && (
+                <button
+                  type="button"
+                  title="Resend to Automated Delivery Receipts WhatsApp group with A4 delivery note PDF"
+                  aria-label="Resend delivery WhatsApp"
+                  onClick={() => handleResendWhatsApp(session)}
+                  disabled={whatsappBusyId === session.id}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    background: '#128C7E',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '8px 14px',
+                    fontWeight: 700,
+                    cursor: whatsappBusyId === session.id ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <FaWhatsapp size={18} aria-hidden />
+                  {whatsappBusyId === session.id ? 'Sending…' : 'WhatsApp'}
+                </button>
+              )}
               {canEdit && (
                 <button
                   type="button"

@@ -24,6 +24,7 @@ const NOTIFY_ROUTE_BY_ACTION = {
   'whatsapp-layby': '/api/whatsapp-layby',
   'whatsapp-transfer': '/api/whatsapp-transfer',
   'whatsapp-lusaka-transfer': '/api/whatsapp-lusaka-transfer',
+  'whatsapp-warehouse-delivery': '/api/whatsapp-warehouse-delivery',
   'whatsapp-ledger': '/api/whatsapp-ledger',
   'monthly-balance-dues': '/api/monthly-balance-dues',
   'monthly-balance-send': '/api/monthly-balance-send',
@@ -146,6 +147,34 @@ export async function sendTransferWhatsApp(payload) {
       return formatWhatsAppError(res, json, 'transfer');
     }
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+export async function sendWarehouseDeliveryWhatsApp({
+  message,
+  pdfUrl,
+  pdfBase64,
+  pdfFilename,
+} = {}) {
+  try {
+    const res = await fetch(notifyApiUrl('whatsapp-warehouse-delivery'), {
+      method: 'POST',
+      headers: notifyApiHeaders(),
+      body: JSON.stringify({
+        message,
+        pdfUrl,
+        pdfBase64,
+        pdfFilename,
+        action: 'whatsapp-warehouse-delivery',
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false) {
+      return formatWhatsAppError(res, json, 'warehouse-delivery');
+    }
+    return { ok: true, ...json };
   } catch (e) {
     return { ok: false, error: e?.message || String(e) };
   }

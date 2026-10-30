@@ -1,39 +1,13 @@
 import { buildDeliveryNotePrintHtml } from './buildDeliveryNotePrintHtml';
 import { getDeliveryNoteCompanyLogoDataUriWeb } from './deliveryNoteCompanyLogo';
-import { groupWarehouseDisplayLines } from './warehouseDelivery';
+import { buildDeliveryPrintGroupsFromEntries } from './warehouseDeliveryPrintGroups';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { waitForImages } from './labelPdfCapture';
 
 export const DEFAULT_DELIVERY_NOTE_PRINT_COPIES = 2;
 
-/**
- * Build printGroups for the A4 delivery note from persisted warehouse_delivery_entries.
- */
-export function buildDeliveryPrintGroupsFromEntries(entries) {
-  const lines = groupWarehouseDisplayLines(entries || []);
-  const byAssembly = new Map();
-
-  for (const row of lines) {
-    const meta = row.metadata || {};
-    const assemblyName = meta.assembly_name || row.name || 'Product';
-    const assemblyId = String(meta.assembly_id || assemblyName);
-    const units = Math.max(1, Number(meta.units) || 1);
-    const key = assemblyId;
-    if (!byAssembly.has(key)) {
-      byAssembly.set(key, { assembly_name: assemblyName, units, lines: [] });
-    }
-    const group = byAssembly.get(key);
-    group.units = Math.max(group.units, units);
-    group.lines.push({
-      name: row.name,
-      packet_number: meta.packet_number,
-      qty: Number(row.quantity) || 0,
-    });
-  }
-
-  return [...byAssembly.values()];
-}
+export { buildDeliveryPrintGroupsFromEntries } from './warehouseDeliveryPrintGroups';
 
 export async function buildWarehouseDeliveryNoteHtml({
   session,
@@ -59,7 +33,7 @@ export async function buildWarehouseDeliveryNoteHtml({
 /**
  * Save the A4 delivery note HTML as a PDF download (no browser print dialog).
  */
-export async function downloadWarehouseDeliveryNotePdf(html, filename = 'delivery-note.pdf') {
+export async function renderWarehouseDeliveryNotePdfBlob(html) {
   const frame = document.createElement('iframe');
   frame.setAttribute('title', 'Delivery note PDF');
   frame.style.position = 'fixed';
@@ -103,12 +77,23 @@ export async function downloadWarehouseDeliveryNotePdf(html, filename = 'deliver
     pdf.addImage(img, 'JPEG', 0, 0, 210, 297);
   }
 
-  pdf.save(filename);
+  const blob = pdf.output('blob');
   try {
     document.body.removeChild(frame);
   } catch {
     // ignore
   }
+  return blob;
+}
+
+export async function downloadWarehouseDeliveryNotePdf(html, filename = 'delivery-note.pdf') {
+  const blob = await renderWarehouseDeliveryNotePdfBlob(html);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /**

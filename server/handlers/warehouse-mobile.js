@@ -1324,11 +1324,80 @@ function buildDeliverySubmitResponse(session, extras = {}) {
     delivery_number: session.delivery_number,
     total_cartons: Number(session.total_qty) || 0,
     entry_count: extras.entry_count ?? null,
-    whatsapp_sent: extras.whatsapp_sent ?? null,
+    whatsapp_sent: extras.whatsapp_sent ?? Boolean(meta.whatsapp_sent_at),
     submitted_at: session.submitted_at || extras.submitted_at || null,
     driver_signature_url: meta.driver_signature_url || extras.driver_signature_url || null,
     already_submitted: Boolean(extras.already_submitted),
   };
+}
+
+async function sendWarehouseDeliverySubmitWhatsApp({
+  sb,
+  sessionId,
+  session,
+  user,
+  groups,
+  driverName,
+  totalCartons,
+  byAssembly,
+  assemblyById,
+  submittedAt,
+}) {
+  if (session?.metadata?.whatsapp_sent_at) {
+    return { ok: true, skipped: 'already_sent' };
+  }
+
+  const accessRecord = await getLoginAccessRecord(user?.id);
+  const userAlias = accessRecord?.mobile_display_name
+    || accessRecord?.display_name
+    || user?.user_metadata?.full_name
+    || user?.full_name
+    || user?.email
+    || '—';
+
+  const totalProducts = groups.reduce(
+    (sum, group) => sum + Math.max(1, Number(group.units) || 1),
+    0,
+  );
+  const productGroups = groups.map((group) => {
+    const assemblyId = String(group.assembly_id || '');
+    const assembly = assemblyById.get(assemblyId);
+    const units = Math.max(1, Number(group.units) || 1);
+    const packetRows = byAssembly.get(assemblyId) || [];
+    return {
+      assemblyName: assembly?.name || 'Product',
+      packetLines: isAssemblyDeliveryFinishedUnits(assembly, packetRows)
+        ? [{ name: assembly?.name || 'Product', quantity: units }]
+        : packetRows.map((packet) => ({
+          name: packet.name,
+          quantity: units * Math.max(1, Number(packet.qty_per_unit) || 1),
+        })),
+    };
+  });
+
+  const whatsappMessage = buildWarehouseDeliveryWhatsAppMessage({
+    userAlias,
+    submittedAt: submittedAt || session?.submitted_at || new Date().toISOString(),
+    driverName: String(driverName || session?.metadata?.driver_name || '').trim() || '—',
+    routeLabel: 'Warehouse To Showroom',
+    productGroups,
+    totalPackets: Number(totalCartons) || Number(session?.total_qty) || 0,
+    totalProducts,
+  });
+
+  const whatsappResult = await sendWarehouseDeliveryWhatsApp(whatsappMessage);
+  if (whatsappResult?.ok) {
+    const sentAt = new Date().toISOString();
+    await sb.from('warehouse_delivery_sessions').update({
+      metadata: {
+        ...(session?.metadata || {}),
+        whatsapp_sent_at: sentAt,
+      },
+    }).eq('id', sessionId);
+  } else {
+    console.warn('[delivery-submit] WhatsApp notify failed:', whatsappResult);
+  }
+  return whatsappResult;
 }
 
 async function opDeliverySubmit(body, user) {
@@ -1350,6 +1419,36 @@ async function opDeliverySubmit(body, user) {
     .maybeSingle();
   if (!session) throw new Error('Delivery session not found.');
   if (String(session.status) === 'submitted') {
+    if (!session.metadata?.whatsapp_sent_at && groups.length) {
+      const [{ data: packets }, { data: links }, { data: assemblies }] = await Promise.all([
+        sb.from('warehouse_packets').select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
+        sb.from('warehouse_assembly_packets').select('*'),
+        sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode'),
+      ]);
+      const byAssembly = buildPacketsByAssembly(links || [], packets || []);
+      const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
+      const whatsappResult = await sendWarehouseDeliverySubmitWhatsApp({
+        sb,
+        sessionId,
+        session,
+        user,
+        groups,
+        driverName,
+        totalCartons: session.total_qty,
+        byAssembly,
+        assemblyById,
+        submittedAt: session.submitted_at,
+      });
+      const { data: refreshed } = await sb
+        .from('warehouse_delivery_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .maybeSingle();
+      return buildDeliverySubmitResponse(refreshed || session, {
+        already_submitted: true,
+        whatsapp_sent: Boolean(whatsappResult?.ok),
+      });
+    }
     return buildDeliverySubmitResponse(session, { already_submitted: true });
   }
   if (String(session.status) !== 'draft') {
@@ -1501,42 +1600,41 @@ async function opDeliverySubmit(body, user) {
   }).eq('id', sessionId);
   if (updErr) throw new Error(updErr.message || 'Failed to submit delivery');
 
-  const totalProducts = groups.reduce(
-    (sum, group) => sum + Math.max(1, Number(group.units) || 1),
-    0,
-  );
-  const productGroups = groups.map((group) => {
-    const assemblyId = String(group.assembly_id || '');
-    const assembly = assemblyById.get(assemblyId);
-    const units = Math.max(1, Number(group.units) || 1);
-    const packetRows = byAssembly.get(assemblyId) || [];
-    return {
-      assemblyName: assembly?.name || 'Product',
-      packetLines: isAssemblyDeliveryFinishedUnits(assembly, packetRows)
-        ? [{ name: assembly?.name || 'Product', quantity: units }]
-        : packetRows.map((packet) => ({
-          name: packet.name,
-          quantity: units * Math.max(1, Number(packet.qty_per_unit) || 1),
-        })),
-    };
-  });
-
-  const whatsappMessage = buildWarehouseDeliveryWhatsAppMessage({
-    userAlias,
-    submittedAt: now,
+  const whatsappResult = await sendWarehouseDeliverySubmitWhatsApp({
+    sb,
+    sessionId,
+    session: {
+      ...session,
+      submitted_at: now,
+      total_qty: totalCartons,
+      metadata: {
+        ...(session.metadata || {}),
+        source: mobileSource,
+        hassan_alert_pending: true,
+        hassan_alert_at: now,
+        submitted_by_email: user?.email || null,
+        dispatched_by_name: userAlias,
+        driver_id: driverId || null,
+        driver_name: driverName,
+        driver_signature_url: driverSignatureUrl || null,
+      },
+    },
+    user,
+    groups,
     driverName,
-    routeLabel: 'Warehouse To Showroom',
-    productGroups,
-    totalPackets: totalCartons,
-    totalProducts,
+    totalCartons,
+    byAssembly,
+    assemblyById,
+    submittedAt: now,
   });
 
-  const whatsappResult = await sendWarehouseDeliveryWhatsApp(whatsappMessage);
-  if (!whatsappResult?.ok) {
-    console.warn('[delivery-submit] WhatsApp notify failed:', whatsappResult);
-  }
+  const { data: refreshedSession } = await sb
+    .from('warehouse_delivery_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .maybeSingle();
 
-  return buildDeliverySubmitResponse(session, {
+  return buildDeliverySubmitResponse(refreshedSession || session, {
     entry_count: entries.length,
     whatsapp_sent: Boolean(whatsappResult?.ok),
     submitted_at: now,

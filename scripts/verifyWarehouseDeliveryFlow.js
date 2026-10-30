@@ -25,7 +25,16 @@ assert(
 );
 assert(mobile.includes('canWarehouseDeliveryReceiverActions'), 'receiver API must allow Hassan');
 assert(mobile.includes('reused: true'), 'delivery-session-open must reuse draft sessions');
-assert(mobile.includes('already_submitted'), 'delivery-submit must treat submitted sessions as idempotent');
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/sendWarehouseDeliveryWhatsApp.js'), 'utf8')
+    .includes('deliverWarehouseDeliveryGroupMessage'),
+  'warehouse delivery WhatsApp must call notify inline (not VERCEL_URL self-fetch only)',
+);
+assert(
+  fs.readFileSync(path.join(root, 'api/notify.js'), 'utf8').includes('deliverWarehouseDeliveryGroupMessage'),
+  'notify must export deliverWarehouseDeliveryGroupMessage for delivery submit',
+);
+assert(mobile.includes('whatsapp_sent_at'), 'delivery submit must record whatsapp_sent_at on success');
 assert(!deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must not include Hassan test mirror');
 assert(deliveries.includes('WAREHOUSE_RECEIVER_LIST_STATUSES'), 'Hassan page must load completed deliveries for history');
 assert(!deliveries.includes('prev.filter((s) => String(s.id)'), 'Hassan page must not remove cards when accept completes');
@@ -49,6 +58,10 @@ assert(
 
 const chrome = fs.readFileSync(path.join(root, 'src/AppChrome.js'), 'utf8');
 assert(chrome.includes('/warehouse-deliveries-admin'), 'inventory nav must include Deliveries');
+assert(
+  fs.readFileSync(path.join(root, 'src/WarehouseDeliveriesAdmin.js'), 'utf8').includes('sendWarehouseDeliveryWhatsApp'),
+  'Deliveries admin must support resend WhatsApp with delivery note PDF',
+);
 assert(chrome.includes('/warehouse-repairs-admin'), 'inventory nav must include Repairs');
 assert(chrome.includes('/warehouse-sales-storage-admin'), 'inventory nav must include Sales Storage');
 assert(!chrome.includes('warehouse-deliveries-hassan-test'), 'Hassan mirror test route must be removed');

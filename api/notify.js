@@ -282,6 +282,9 @@ function parseWasenderKinds() {
     if (kinds.length && !kinds.includes('labels') && kinds.some((kind) => ['sale', 'layby', 'transfer'].includes(kind))) {
       kinds.push('labels');
     }
+    if (kinds.length && !kinds.includes('warehouseDelivery') && kinds.includes('transfer')) {
+      kinds.push('warehouseDelivery');
+    }
     return kinds;
   }
   if (isWasenderOnlyProvider()) return ['sale', 'layby', 'transfer', 'labels'];
@@ -3753,8 +3756,13 @@ async function handleWhatsAppProduction(body) {
 async function handleWhatsAppWarehouseDelivery(body) {
 
   const rawMessage = String(body.message || '').trim();
+  const pdfUrl = String(body.pdfUrl || '').trim();
+  const pdfBase64 = String(body.pdfBase64 || '')
+    .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
+    .replace(/\s+/g, '');
+  const documentLink = pdfUrl || pdfBase64;
 
-  if (!rawMessage) {
+  if (!rawMessage && !documentLink) {
 
     const err = new Error('Missing message');
 
@@ -3785,6 +3793,25 @@ async function handleWhatsAppWarehouseDelivery(body) {
 
 
   const message = rawMessage.slice(0, WHATSAPP_TEXT_LIMIT);
+  const filename = String(body.pdfFilename || body.pdf_filename || 'Delivery_Note.pdf').trim() || 'Delivery_Note.pdf';
+
+  if (documentLink) {
+    const caption = message || 'Delivery note';
+    const deliveries = await deliverDocument(
+      routing.targets,
+      documentLink,
+      filename,
+      routing.mode,
+      routing.provider,
+      caption.slice(0, WHATSAPP_CAPTION_LIMIT),
+    );
+    return {
+      ok: true,
+      deliveries,
+      truncated: rawMessage.length > WHATSAPP_TEXT_LIMIT,
+      document: true,
+    };
+  }
 
   const deliveries = await deliverText(routing.targets, message, routing.mode, routing.provider);
 
@@ -3798,6 +3825,11 @@ async function handleWhatsAppWarehouseDelivery(body) {
 
   };
 
+}
+
+/** Server-side delivery submit — same routing as POST /api/whatsapp-warehouse-delivery. */
+export async function deliverWarehouseDeliveryGroupMessage(body) {
+  return handleWhatsAppWarehouseDelivery(body);
 }
 
 
