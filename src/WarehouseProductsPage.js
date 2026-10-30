@@ -41,7 +41,6 @@ import {
 import {
   isCompleteCatalogProduct,
   isIncompletePacketBomProduct,
-  isUncategorizedWarehouseProduct,
 } from './utils/warehouseCatalogProductCompleteness';
 import WarehouseProductionLabelPrintDialog, {
   WarehouseLabelPrintIconButton,
