@@ -115,6 +115,8 @@ const GROUP_KEYS = {
 
   production: 'WHATSAPP_PRODUCTION_GROUP_ID',
 
+  productionCarpentry: 'WHATSAPP_PRODUCTION_CARPENTRY_GROUP_ID',
+
 };
 
 // Documented in docs/whatsapp-groups.txt — safe fallback when env group id is unset.
@@ -129,6 +131,7 @@ const DOCUMENTED_WHATSAPP_GROUP_IDS = {
   ledger: '120363246815974105@g.us',
   warehouseDelivery: '120363410583418058@g.us',
   production: '120363430993260511@g.us',
+  productionCarpentry: '120363432968895012@g.us',
 };
 
 
@@ -276,7 +279,7 @@ function normalizeWasenderKind(kind) {
 
 function parseWasenderKinds() {
   const raw = String(process.env.WHATSAPP_WASENDER_KINDS || '').trim().toLowerCase();
-  if (raw === 'all') return ['sale', 'layby', 'transfer', 'warehouseDelivery', 'labels', 'ledger', 'production'];
+  if (raw === 'all') return ['sale', 'layby', 'transfer', 'warehouseDelivery', 'labels', 'ledger', 'production', 'productionCarpentry'];
   if (raw) {
     const kinds = raw.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
     if (kinds.length && !kinds.includes('labels') && kinds.some((kind) => ['sale', 'layby', 'transfer'].includes(kind))) {
@@ -3733,9 +3736,22 @@ async function handleWhatsAppProduction(body) {
     printedAt: body.printedAt || body.printed_at || new Date(),
   });
 
-  const routing = resolveDeliveryTargets('production', null);
+  const presetGroup = String(body.presetGroup || body.preset_group || '').trim().toLowerCase();
+  const whatsappKindRaw = String(body.whatsappKind || body.whatsapp_kind || '').trim();
+  let routingKind = 'production';
+  if (whatsappKindRaw === 'productionCarpentry' || presetGroup === 'carpentry') {
+    routingKind = 'productionCarpentry';
+  }
+  let routing = resolveDeliveryTargets(routingKind, null);
+  if (!routing.targets.length && routingKind === 'productionCarpentry') {
+    routing = resolveDeliveryTargets('production', null);
+  }
   if (!routing.targets.length) {
-    const err = new Error('WhatsApp env not configured (WHATSAPP_PRODUCTION_GROUP_ID + WASENDER_API_TOKEN).');
+    const err = new Error(
+      routingKind === 'productionCarpentry'
+        ? 'WhatsApp env not configured (WHATSAPP_PRODUCTION_CARPENTRY_GROUP_ID or WHATSAPP_PRODUCTION_GROUP_ID + WASENDER_API_TOKEN).'
+        : 'WhatsApp env not configured (WHATSAPP_PRODUCTION_GROUP_ID + WASENDER_API_TOKEN).',
+    );
     err.status = 500;
     err.stage = 'env';
     throw err;

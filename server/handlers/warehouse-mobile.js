@@ -33,7 +33,6 @@ import {
   upsertFinishedAssemblyInventoryQuantity,
 } from '../lib/warehouseCatalogMobile.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
-import { resolveWarehouseProductionWhatsAppProducerName } from '../lib/warehouseProductionWhatsAppProducer.js';
 import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeliveryWhatsAppMessage.js';
 import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhatsApp.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
@@ -121,10 +120,20 @@ import {
   firebaseStoragePublicUrl,
   uploadBufferToFirebaseStorage,
 } from '../lib/firebaseStorage.js';
+import {
+  buildProductionLabelMeta,
+  buildWarehouseProductionLabelPngBase64,
+} from '../lib/warehouseProductionLabelImage.js';
+import {
+  listProductionPresetsGrouped,
+  saveProductionPresetsGrouped,
+  buildProductionWhatsAppNotifyPayload,
+} from '../lib/warehouseProductionPresets.js';
+import { resolveWarehouseMobileDisplayName } from '../../src/utils/warehouseMobileDisplayName.js';
 
 async function productionWhatsappProducerName(user) {
   const record = await getLoginAccessRecord(user?.id);
-  return resolveWarehouseProductionWhatsAppProducerName(user, record);
+  return resolveWarehouseMobileDisplayName(user, record);
 }
 
 function queueProductionWhatsAppNotify(payload) {
@@ -134,10 +143,26 @@ function queueProductionWhatsAppNotify(payload) {
       console.warn('[warehouse-mobile] production WhatsApp failed:', err?.message || err);
     });
 }
-import {
-  buildProductionLabelMeta,
-  buildWarehouseProductionLabelPngBase64,
-} from '../lib/warehouseProductionLabelImage.js';
+
+async function queueProductionWhatsAppNotifyForProduct(sb, base) {
+  try {
+    const payload = await buildProductionWhatsAppPayload(sb, base);
+    queueProductionWhatsAppNotify(payload);
+  } catch (err) {
+    console.warn('[warehouse-mobile] production WhatsApp routing failed:', err?.message || err);
+    queueProductionWhatsAppNotify(base);
+  }
+}
+
+async function buildProductionWhatsAppPayload(sb, base) {
+  return buildProductionWhatsAppNotifyPayload(sb, base);
+}
+
+function inferPresetFromCreateBody(body, productName) {
+  const explicit = String(body?.preset || body?.product_preset || '').trim();
+  if (explicit) return explicit;
+  return '';
+}
 
 function getService() {
   const client = createFirestoreServerClient();
@@ -475,6 +500,7 @@ async function opProductionPacketCreate(body, user) {
     const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
     const deferLabels = deferProductPhoto && labelCopies > 0;
     const printedAt = new Date();
+    const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Production kiosk';
     let labelJobId = null;
     let labelPrintWarning = null;
     if (labelCopies > 0 && !deferLabels) {
@@ -484,7 +510,7 @@ async function opProductionPacketCreate(body, user) {
             name: assembly.name,
             sku: labelSku,
             qty: labelCopies,
-            printedBy: user?.full_name || user?.display_name || user?.email,
+            printedBy: labelPrintedBy,
             source: clientSource,
             printedAt,
           }),
@@ -522,13 +548,14 @@ async function opProductionPacketCreate(body, user) {
 
     if (!deferProductPhoto && catalogImageUrl) {
       const producedBy = await productionWhatsappProducerName(user);
-      queueProductionWhatsAppNotify({
+      queueProductionWhatsAppNotifyForProduct(sb, {
         variant: 'new',
         producedBy,
         sku: labelSku,
         name: assembly.name,
         qtyAdded: initialQty,
         qtyBefore: 0,
+        preset: body.preset || body.product_preset || inferPresetFromCreateBody(body, name),
         imageUrl: catalogImageUrl,
       });
     }
@@ -664,6 +691,7 @@ async function opProductionStockIncrease(body, user) {
 
   const printedAt = new Date();
   const fastMobile = printSource === 'warehouse_production_app';
+  const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Production kiosk';
   let labelJobId = null;
   let labelPrintWarning = null;
   try {
@@ -672,7 +700,7 @@ async function opProductionStockIncrease(body, user) {
         name: labelName,
         sku: labelSku,
         qty: delta,
-        printedBy: user?.full_name || user?.display_name || user?.email,
+        printedBy: labelPrintedBy,
         source: printSource,
         printedAt,
       }),
@@ -704,7 +732,7 @@ async function opProductionStockIncrease(body, user) {
 
   if (assembly) {
     const producedBy = await productionWhatsappProducerName(user);
-    queueProductionWhatsAppNotify({
+    queueProductionWhatsAppNotifyForProduct(sb, {
       variant: 'existing',
       producedBy,
       sku: labelSku,
@@ -712,6 +740,7 @@ async function opProductionStockIncrease(body, user) {
       qtyAdded: delta,
       qtyBefore,
       qtyOnHand: qtyAfter,
+      preset: body.preset || body.product_preset,
       imageUrl: assembly.image_url || '',
     });
   }
@@ -975,6 +1004,7 @@ async function opProductionLabelPrint(body, user) {
   if (!name || !sku) throw new Error('name and sku are required.');
   const printSource = String(body.client_source || '').trim() || 'warehouse_catalog_portal';
   const printedAt = new Date();
+  const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Production kiosk';
   const color = body.color || body.color_name || body.colorName || '';
   const boxUnitsPerCarton = Math.max(
     0,
@@ -987,7 +1017,7 @@ async function opProductionLabelPrint(body, user) {
       name,
       sku,
       qty,
-      printedBy: user?.full_name || user?.display_name || user?.email,
+      printedBy: labelPrintedBy,
       source: printSource,
       printedAt,
       color,
@@ -1256,6 +1286,7 @@ async function opDeliverySessionOpen(body, user) {
   const now = new Date().toISOString();
   const sessionId = newUuid();
   const mobileSource = await deliveryMobileSourceForUser(user);
+  const creatorName = await productionWhatsappProducerName(user);
   const row = {
     id: sessionId,
     delivery_number: deliveryNumber,
@@ -1266,7 +1297,7 @@ async function opDeliverySessionOpen(body, user) {
     transfer_datetime: now,
     total_qty: 0,
     created_by_email: email || user?.email || null,
-    created_by_name: user?.user_metadata?.full_name || user?.full_name || null,
+    created_by_name: creatorName || null,
     metadata: {
       source: mobileSource,
       hassan_alert_pending: false,
@@ -1448,6 +1479,24 @@ function deliveryShipmentUnits(assembly, packetRows, truckBoxes) {
   };
 }
 
+/** Firestore rejects undefined field values — omit box keys when not units-per-box. */
+function deliveryEntryBoxMetadata(shipment) {
+  const per = shipment?.unitsPerCarton;
+  if (!per || per <= 1) return {};
+  return {
+    truck_boxes: shipment.truckBoxes,
+    units_per_carton: per,
+  };
+}
+
+function stripUndefinedMetadata(metadata) {
+  const out = {};
+  Object.entries(metadata || {}).forEach(([key, val]) => {
+    if (val !== undefined) out[key] = val;
+  });
+  return out;
+}
+
 async function opDeliverySubmit(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
@@ -1567,16 +1616,15 @@ async function opDeliverySubmit(body, user) {
         name: assembly.name,
         sku: assembly.family_sku,
         quantity: shipment.finishedUnits,
-        metadata: {
+        metadata: stripUndefinedMetadata({
           assembly_id: assemblyId,
           assembly_name: assembly.name,
           finished_unit: true,
           units: shipment.finishedUnits,
-          truck_boxes: shipment.unitsPerCarton ? shipment.truckBoxes : undefined,
-          units_per_carton: shipment.unitsPerCarton ?? undefined,
+          ...deliveryEntryBoxMetadata(shipment),
           driver_checked_at: driverCheckedAt,
           receiver_checked_at: null,
-        },
+        }),
       });
       continue;
     }
@@ -1611,17 +1659,16 @@ async function opDeliverySubmit(body, user) {
         name: packet.name,
         sku: packet.sku,
         quantity: moveQty,
-        metadata: {
+        metadata: stripUndefinedMetadata({
           packet_id: packet.id,
           assembly_id: assemblyId,
           assembly_name: assembly.name,
           packet_number: packet.packet_number,
           units: shipment.finishedUnits,
-          truck_boxes: shipment.unitsPerCarton ? shipment.truckBoxes : undefined,
-          units_per_carton: shipment.unitsPerCarton ?? undefined,
+          ...deliveryEntryBoxMetadata(shipment),
           driver_checked_at: driverCheckedAt,
           receiver_checked_at: null,
-        },
+        }),
       });
     }
   }
@@ -1635,18 +1682,13 @@ async function opDeliverySubmit(body, user) {
   }
 
   const mobileSource = await deliveryMobileSourceForUser(user);
-  const accessRecord = await getLoginAccessRecord(user?.id);
-  const userAlias = accessRecord?.mobile_display_name
-    || accessRecord?.display_name
-    || user?.user_metadata?.full_name
-    || user?.full_name
-    || user?.email
-    || '—';
+  const userAlias = (await productionWhatsappProducerName(user)) || '—';
 
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
     submitted_at: now,
     total_qty: totalCartons,
+    created_by_name: session.created_by_name || userAlias || null,
     metadata: {
       ...(session.metadata || {}),
       source: mobileSource,
@@ -1870,6 +1912,25 @@ async function opDeliveryDriversSave(body, user) {
   const sb = getService();
   const drivers = await saveWarehouseDeliveryDrivers(sb, names);
   return { drivers };
+}
+
+async function opProductionPresetsList() {
+  const sb = getService();
+  return listProductionPresetsGrouped(sb);
+}
+
+async function opProductionPresetsSave(body, user) {
+  const { isLoginAccessAdmin } = await import('../lib/loginAccess.js');
+  if (!isLoginAccessAdmin(user?.email) && !canManageCatalog(user)) {
+    const err = new Error('Admin access required.');
+    err.status = 403;
+    throw err;
+  }
+  const sb = getService();
+  return saveProductionPresetsGrouped(sb, {
+    seater: body.seater || body.seater_presets,
+    carpentry: body.carpentry || body.carpentry_presets,
+  });
 }
 
 async function opDeliveryReceiverCheck(body, user) {
@@ -2126,6 +2187,12 @@ export default async function handler(req, res) {
         break;
       case 'delivery-drivers-save':
         result = await opDeliveryDriversSave(body, user);
+        break;
+      case 'production-presets-list':
+        result = await opProductionPresetsList();
+        break;
+      case 'production-presets-save':
+        result = await opProductionPresetsSave(body, user);
         break;
       case 'delivery-receiver-check':
         result = await opDeliveryReceiverCheck(body, user);

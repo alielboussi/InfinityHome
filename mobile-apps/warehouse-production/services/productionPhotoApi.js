@@ -24,7 +24,7 @@ function photoErrorRetryable(err) {
     || msg.includes('network');
 }
 
-async function postProductionAiPhotoOnce({ assemblyId, imageBase64, pendingLabelPrint }) {
+async function postProductionAiPhotoOnce({ assemblyId, imageBase64, pendingLabelPrint, preset }) {
   const token = await getFirebaseIdToken();
   if (!token) {
     const err = new Error('You must be signed in.');
@@ -46,6 +46,7 @@ async function postProductionAiPhotoOnce({ assemblyId, imageBase64, pendingLabel
       image_base64: imageBase64,
       client_source: CLIENT_SOURCE,
       require_ai_retouch: true,
+      ...(preset ? { preset: String(preset).trim(), product_preset: String(preset).trim() } : {}),
       ...(pendingLabelPrint ? { pending_label_print: pendingLabelPrint } : {}),
     }),
   });
@@ -91,6 +92,7 @@ export async function attachProductionProductPhotoWithAi({
   assemblyId,
   imageBase64,
   pendingLabelPrint,
+  preset,
   onAttempt,
 } = {}) {
   const id = String(assemblyId || '').trim();
@@ -109,6 +111,7 @@ export async function attachProductionProductPhotoWithAi({
         assemblyId: id,
         imageBase64: image,
         pendingLabelPrint,
+        preset,
       });
     } catch (err) {
       lastErr = err;

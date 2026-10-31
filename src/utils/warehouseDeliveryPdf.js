@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { deliveryLineQty } from './warehouseDelivery';
+import { deliveryLineQty, deliverySenderName } from './warehouseDelivery';
 
 const toDMY = (value) => {
   const d = value instanceof Date ? value : new Date(value);
@@ -129,7 +129,7 @@ export const buildWarehouseDeliveryPdf = async ({
   }
 
   doc.setFontSize(10);
-  doc.text(`Submitted by: ${session?.created_by_email || '-'}`, margin, y);
+  doc.text(`Submitted by: ${deliverySenderName(session) || '-'}`, margin, y);
   y += 14;
   doc.text(`Submitted: ${formatDateTimeDMY(session?.submitted_at || session?.transfer_datetime || session?.created_at)}`, margin, y);
   y += 14;

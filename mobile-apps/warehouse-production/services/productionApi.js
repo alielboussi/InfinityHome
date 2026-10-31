@@ -98,12 +98,13 @@ function parseCreateProductionPacketResponse(payload) {
   };
 }
 
-export async function attachProductionProductPhoto({ assemblyId, imageBase64, pendingLabelPrint, onAttempt }) {
+export async function attachProductionProductPhoto({ assemblyId, imageBase64, pendingLabelPrint, preset, onAttempt }) {
   const { attachProductionProductPhotoWithAi } = await import('./productionPhotoApi.js');
   return attachProductionProductPhotoWithAi({
     assemblyId,
     imageBase64,
     pendingLabelPrint,
+    preset,
     onAttempt,
   });
 }
@@ -116,6 +117,7 @@ export async function createProductionPacket({
   dimLength,
   dimWidth,
   dimHeight,
+  preset,
   onPhotoAttempt,
 } = {}) {
   const hasPhoto = Boolean(String(imageBase64 || '').trim());
@@ -131,6 +133,8 @@ export async function createProductionPacket({
     dim_length: dimLength,
     dim_width: dimWidth,
     dim_height: dimHeight,
+    preset: preset ? String(preset).trim() : undefined,
+    product_preset: preset ? String(preset).trim() : undefined,
   });
   const parsed = parseCreateProductionPacketResponse(createPayload);
   if (!hasPhoto) {

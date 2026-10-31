@@ -92,12 +92,14 @@ export function inferProductionPresetFromProductName(productName) {
   return '';
 }
 
-function defaultSubjectForPreset(preset) {
+function defaultSubjectForPreset(preset, { seaterPresets, carpentryPresets } = {}) {
   const p = String(preset || '').trim();
-  if (PRODUCTION_SEATER_PRESETS.includes(p)) {
+  const seater = seaterPresets || PRODUCTION_SEATER_PRESETS;
+  const carpentry = carpentryPresets || PRODUCTION_CARPENTRY_PRESETS;
+  if (seater.includes(p)) {
     return 'an upholstered furniture or soft-furnishing product (same materials and colors as photographed)';
   }
-  if (PRODUCTION_CARPENTRY_PRESETS.includes(p)) {
+  if (carpentry.includes(p)) {
     return 'a wooden furniture piece (same wood, finish, and shape as photographed)';
   }
   return 'a warehouse furniture product (same item as photographed)';
@@ -130,14 +132,33 @@ ${MATTRESS_CATALOG_REQUIREMENTS}`;
 /**
  * Gemini retouch prompt for Production create flow (white catalog background).
  */
-export function buildProductionPhotoRetouchPrompt({ productName, preset } = {}) {
+export function buildProductionPhotoRetouchPrompt({
+  productName,
+  preset,
+  seaterPresets,
+  carpentryPresets,
+} = {}) {
   const name = String(productName || '').trim();
   if (isMattressCatalogProductName(name)) {
     return buildMattressCatalogPhotoRetouchPrompt(name);
   }
-  const resolved = String(preset || '').trim() || inferProductionPresetFromProductName(productName);
+  const suffixSource = [
+    ...(seaterPresets || PRODUCTION_SEATER_PRESETS),
+    ...(carpentryPresets || PRODUCTION_CARPENTRY_PRESETS),
+    ...PRODUCTION_LEGACY_PRESET_SUFFIXES,
+  ].sort((a, b) => b.length - a.length);
+  let resolved = String(preset || '').trim();
+  if (!resolved) {
+    for (const candidate of suffixSource) {
+      const suffix = ` ${candidate}`;
+      if (name.endsWith(suffix) || name.toLowerCase() === candidate.toLowerCase()) {
+        resolved = candidate;
+        break;
+      }
+    }
+  }
   const subject = PRODUCTION_PHOTO_PRESET_SUBJECT[resolved]
-    || defaultSubjectForPreset(resolved);
+    || defaultSubjectForPreset(resolved, { seaterPresets, carpentryPresets });
   const label = resolved || 'furniture product';
   return `TASK: Edit this warehouse photo into a single catalog product image of ${subject}.
 

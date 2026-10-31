@@ -82,7 +82,8 @@ assert(
   fs.existsSync(path.join(root, 'src/utils/deliveryNoteCompanyLogoEmbedded.js')),
   'embedded delivery note logo must exist (run node scripts/embedDeliveryNoteLogo.js)',
 );
-assert(noteHtml.includes('Dispatched by:'), 'delivery note must show dispatched by');
+const deliveryPdf = fs.readFileSync(path.join(root, 'src/utils/warehouseDeliveryPdf.js'), 'utf8');
+assert(deliveryPdf.includes('deliverySenderName'), 'warehouse delivery PDF must show app name not email');
 assert(noteHtml.includes('Page ${pageIndex} of ${pageTotal}'), 'delivery note must show page numbers');
 assert(mobile.includes('delivery-sent-list'), 'warehouse-mobile must support delivery-sent-list');
 assert(mobile.includes('delivery-sent-detail'), 'warehouse-mobile must support delivery-sent-detail');

@@ -23,8 +23,6 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import {
   buildProductionItemName,
   extractProductionBaseName,
-  isProductionCarpentryPreset,
-  isProductionSeaterPreset,
   normalizeProductionNameInput,
   PRODUCTION_CARPENTRY_PRESETS,
   PRODUCTION_SEATER_PRESETS,
@@ -75,6 +73,8 @@ export default function CreateScreen({ navigation }) {
   const [catalogAssemblies, setCatalogAssemblies] = useState([]);
   const [seaterPickerOpen, setSeaterPickerOpen] = useState(false);
   const [carpentryPickerOpen, setCarpentryPickerOpen] = useState(false);
+  const [seaterPresets, setSeaterPresets] = useState(PRODUCTION_SEATER_PRESETS);
+  const [carpentryPresets, setCarpentryPresets] = useState(PRODUCTION_CARPENTRY_PRESETS);
   const [dimL, setDimL] = useState('');
   const [dimW, setDimW] = useState('');
   const [dimH, setDimH] = useState('');
@@ -97,8 +97,8 @@ export default function CreateScreen({ navigation }) {
     [baseNameEn, catalogAssemblies, recentBaseNames],
   );
 
-  const seaterPresetValue = isProductionSeaterPreset(preset) ? preset : '';
-  const carpentryPresetValue = isProductionCarpentryPreset(preset) ? preset : '';
+  const seaterPresetValue = preset && seaterPresets.includes(preset) ? preset : '';
+  const carpentryPresetValue = preset && carpentryPresets.includes(preset) ? preset : '';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,6 +108,14 @@ export default function CreateScreen({ navigation }) {
       setWarehouseLocationId(data.warehouseLocationId);
       setWarehouseLocationName(data.warehouseLocationName || 'Warehouse');
       setCatalogAssemblies(data.assemblies || []);
+      const remoteSeater = data.seater_presets || data.production_presets?.seater;
+      const remoteCarpentry = data.carpentry_presets || data.production_presets?.carpentry;
+      if (Array.isArray(remoteSeater) && remoteSeater.length) {
+        setSeaterPresets(remoteSeater);
+      }
+      if (Array.isArray(remoteCarpentry) && remoteCarpentry.length) {
+        setCarpentryPresets(remoteCarpentry);
+      }
       if (!data.warehouseLocationId) {
         setError(tUi('noWarehouse', locale));
       }
@@ -277,6 +285,7 @@ export default function CreateScreen({ navigation }) {
         dimLength: pending.dimLength,
         dimWidth: pending.dimWidth,
         dimHeight: pending.dimHeight,
+        preset: pending.preset,
         imageBase64: uploadPhoto,
         onPhotoAttempt: (attempt, max) => {
           setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
@@ -370,6 +379,7 @@ export default function CreateScreen({ navigation }) {
       name,
       qtyNum,
       warehouseLocationId,
+      preset: String(preset || '').trim(),
       dimLength: dimL.trim() || undefined,
       dimWidth: dimW.trim() || undefined,
       dimHeight: dimH.trim() || undefined,
@@ -613,7 +623,7 @@ export default function CreateScreen({ navigation }) {
     <ProductionPresetPicker
       visible={seaterPickerOpen}
       title={tUi('seaterGroupLabel', locale)}
-      presets={PRODUCTION_SEATER_PRESETS}
+      presets={seaterPresets}
       locale={locale}
       textAlign={textAlign}
       selectedPreset={seaterPresetValue}
@@ -624,7 +634,7 @@ export default function CreateScreen({ navigation }) {
     <ProductionPresetPicker
       visible={carpentryPickerOpen}
       title={tUi('carpentryGroupLabel', locale)}
-      presets={PRODUCTION_CARPENTRY_PRESETS}
+      presets={carpentryPresets}
       locale={locale}
       textAlign={textAlign}
       selectedPreset={carpentryPresetValue}

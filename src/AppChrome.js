@@ -187,6 +187,7 @@ const TITLE_MAP = {
   '/warehouse-storage': 'Warehouse Storage',
   '/kitwe-products': 'Kitwe',
   '/warehouse-delivery-drivers': 'Delivery drivers',
+  '/warehouse-production-presets': 'Production presets',
   '/warehouse-deliveries-admin': 'Deliveries',
   '/warehouse-repairs-admin': 'Repairs',
   '/warehouse-sales-storage-admin': 'Sales Storage',

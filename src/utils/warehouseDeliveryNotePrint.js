@@ -1,6 +1,7 @@
 import { buildDeliveryNotePrintHtml } from './buildDeliveryNotePrintHtml';
 import { getDeliveryNoteCompanyLogoDataUriWeb } from './deliveryNoteCompanyLogo';
 import { buildDeliveryPrintGroupsFromEntries } from './warehouseDeliveryPrintGroups';
+import { deliverySenderName } from './warehouseDelivery';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { waitForImages } from './labelPdfCapture';
@@ -21,7 +22,7 @@ export async function buildWarehouseDeliveryNoteHtml({
   return buildDeliveryNotePrintHtml({
     deliveryNumber: session?.delivery_number || session?.id || '',
     driverName: meta.driver_name || '',
-    dispatchedBy: meta.dispatched_by_name || session?.created_by_name || '',
+    dispatchedBy: deliverySenderName(session),
     driverSignatureSrc: driverSignatureSrc || meta.driver_signature_url || '',
     companyLogoSrc,
     submittedAt: session?.submitted_at || session?.created_at || new Date().toISOString(),

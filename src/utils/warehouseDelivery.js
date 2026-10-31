@@ -2,6 +2,7 @@ import {
   deliveryFinishedUnitsFromEntryMetadata,
   formatDeliveryPackSummary,
 } from './warehouseDeliveryBoxUnits.js';
+import { deliverySessionSubmittedByName } from './warehouseMobileDisplayName.js';
 
 export const WAREHOUSE_FROM_LOCATION_ID = '39ffaa82-8aee-4a33-8de8-06584cbaffcf';
 export const WAREHOUSE_TO_LOCATION_ID = '454a092c-5b12-441e-b99d-216f6fa72198';
@@ -29,16 +30,9 @@ export function deliveryLineQty(line) {
   return Number.isFinite(q) ? q : 0;
 }
 
-/** Prefer stored name → users.full_name → email. */
+/** App / display name for PDFs and UI — not email when metadata has dispatched or stored name. */
 export function deliverySenderName(session, usersById = null) {
-  const stored = String(session?.created_by_name || session?.metadata?.created_by_name || '').trim();
-  if (stored) return stored;
-  const id = session?.created_by_id;
-  if (id != null && usersById) {
-    const fromMap = usersById.get(Number(id)) || usersById.get(String(id));
-    if (fromMap) return fromMap;
-  }
-  return String(session?.created_by_email || session?.metadata?.created_by_email || '').trim() || 'Unknown';
+  return deliverySessionSubmittedByName(session, usersById);
 }
 
 export function deliveryEntryPacketId(entry) {

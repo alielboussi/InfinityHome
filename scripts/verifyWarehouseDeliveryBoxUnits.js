@@ -46,7 +46,7 @@ const { pathToFileURL } = require('url');
     path.join(__dirname, '../server/handlers/warehouse-mobile.js'),
     'utf8',
   );
-  assert(mobile.includes('deliveryShipmentUnits'), 'delivery submit must convert boxes to finished units');
+  assert(mobile.includes('stripUndefinedMetadata') || mobile.includes('deliveryEntryBoxMetadata'), 'delivery submit must omit undefined Firestore metadata');
   assert(mobile.includes('units_per_carton'), 'delivery submit must load units_per_carton');
 
   const kitwe = require('fs').readFileSync(

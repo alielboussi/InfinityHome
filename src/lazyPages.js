@@ -18,6 +18,7 @@ export const WarehouseDeliveriesAdmin = lazyRoute(() => import('./WarehouseDeliv
 export const WarehouseRepairsAdmin = lazyRoute(() => import('./WarehouseRepairsAdmin'));
 export const WarehouseSalesStorageAdmin = lazyRoute(() => import('./WarehouseSalesStorageAdmin'));
 export const WarehouseDeliveryDriversPage = lazyRoute(() => import('./WarehouseDeliveryDriversPage'));
+export const WarehouseProductionPresetsPage = lazyRoute(() => import('./WarehouseProductionPresetsPage'));
 export const KitweProductsPage = lazyRoute(() => import('./KitweProductsPage'));
 export const KitweSetsPage = lazyRoute(() => import('./KitweSetsPage'));
 /** Eager-loaded: factory tablets must not depend on a lazy chunk for stock moves. */

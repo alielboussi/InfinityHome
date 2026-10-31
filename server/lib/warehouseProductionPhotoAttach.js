@@ -9,6 +9,7 @@ import { normalizeWarehousePacketScan } from '../../src/utils/warehouseScanResol
 import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js';
 import { buildWarehouseProductionLabelPngBase64 } from './warehouseProductionLabelImage.js';
 import { sendWarehouseProductionWhatsApp } from './sendWarehouseProductionWhatsApp.js';
+import { buildProductionWhatsAppNotifyPayload } from './warehouseProductionPresets.js';
 
 async function productionWhatsappProducerName(user) {
   const record = await getLoginAccessRecord(user?.id);
@@ -26,20 +27,24 @@ async function notifyNewProductionProductWhatsApp({
   assembly,
   qtyAdded,
   imageUrl,
+  preset,
 }) {
   const qty = Math.max(0, Math.floor(Number(qtyAdded) || 0));
   const image = String(imageUrl || assembly?.image_url || '').trim();
   const producedBy = await productionWhatsappProducerName(user);
+  const sb = getService();
   try {
-    await sendWarehouseProductionWhatsApp({
+    const payload = await buildProductionWhatsAppNotifyPayload(sb, {
       variant: 'new',
       producedBy,
       sku: assembly?.family_sku || '',
       name: assembly?.name || '',
       qtyAdded: qty,
       qtyBefore: 0,
+      preset,
       imageUrl: image,
     });
+    await sendWarehouseProductionWhatsApp(payload);
   } catch (err) {
     console.warn('[warehouse-production-photo] WhatsApp notify failed:', err?.message || err);
   }
@@ -88,6 +93,7 @@ async function runPendingLabelPrint(sb, body, user, assembly) {
   const clientSource = String(pending.client_source || body.client_source || '').trim()
     || 'warehouse_production_app';
   const printedAt = new Date();
+  const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Production kiosk';
 
   let labelJobId = null;
   let labelPrintWarning = null;
@@ -97,7 +103,7 @@ async function runPendingLabelPrint(sb, body, user, assembly) {
         name,
         sku: labelSku,
         qty: labelCopies,
-        printedBy: user?.full_name || user?.display_name || user?.email,
+        printedBy: labelPrintedBy,
         source: clientSource,
         printedAt,
       }),
@@ -192,6 +198,7 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
     assembly,
     qtyAdded: pendingLabelQty(body),
     imageUrl: catalogImageUrl,
+    preset: body.preset || body.product_preset,
   });
 
   return {

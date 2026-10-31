@@ -52,6 +52,7 @@ import {
   WarehouseRepairsAdmin,
   WarehouseSalesStorageAdmin,
   WarehouseDeliveryDriversPage,
+  WarehouseProductionPresetsPage,
   KitweProductsPage,
   KitweSetsPage,
   WarehousePacketEditPage,
@@ -407,6 +408,7 @@ function App() {
             )}
           />
           <Route path="/warehouse-delivery-drivers" element={<WarehouseDeliveryDriversPage />} />
+          <Route path="/warehouse-production-presets" element={<WarehouseProductionPresetsPage />} />
           <Route path="/kitwe-products/sets/create" element={<KitweSetsPage mode="create" />} />
           <Route path="/kitwe-products/sets" element={<KitweSetsPage />} />
           <Route path="/kitwe-products" element={<KitweProductsPage />} />

@@ -8,6 +8,7 @@ import {
   sanitizeMobileAccessGrantForUser,
 } from '../shared/mobileAccessManifest';
 import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
+import { setProductionAppDisplayName } from '../lib/productionDispatcherLabel';
 
 function formatAccessHint(value, fallback = '') {
   if (value == null || value === '') return fallback;
@@ -63,6 +64,7 @@ export function useProductionAccessGrant() {
 
       const name = String(user.mobile_display_name || '').trim()
         || String(user.display_name || '').trim();
+      setProductionAppDisplayName(name);
       if (name) setUserDisplayName(name);
 
       const nextAllowed = productionAllowedFromAuthProfile(user);

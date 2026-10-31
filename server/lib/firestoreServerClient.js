@@ -37,6 +37,7 @@ const UUID_ID_TABLES = new Set([
   'warehouse_packets',
   'warehouse_packet_inventory',
   'warehouse_colors',
+  'warehouse_production_presets',
 ]);
 
 const IN_CHUNK = 30;

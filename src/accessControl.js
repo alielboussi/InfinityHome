@@ -499,6 +499,9 @@ export function isPathAllowed(user, path) {
   if (p === '/warehouse-delivery-drivers' || p.startsWith('/warehouse-delivery-drivers/')) {
     return canManageCatalog(user);
   }
+  if (p === '/warehouse-production-presets' || p.startsWith('/warehouse-production-presets/')) {
+    return canManageCatalog(user);
+  }
   if (p === '/warehouse-deliveries' || p.startsWith('/warehouse-deliveries/')) {
     if (isHassanAwadUser(user)) return true;
     if (canManageCatalog(user)) return true;

@@ -21,6 +21,7 @@ import {
 } from '../../src/utils/warehouseAssemblyProductQuantity.js';
 import { assemblyDerivesWarehouseStockFromPackets } from '../../src/utils/warehouseAssemblyMath.js';
 import { setWarehousePacketQuantityServer } from './warehouseLocationStockRecompute.js';
+import { listProductionPresetsGrouped } from './warehouseProductionPresets.js';
 import {
   buildWarehouseCategoryIndex,
   resolveWarehouseCategoryName,
@@ -215,6 +216,7 @@ export async function fetchCatalogForMobile(sb, options = {}) {
 
   const categories = await loadCategoriesForMobileCatalog(sb, assemblies);
   const assembliesWithCategories = enrichAssembliesWithCategoryNames(assemblies, categories);
+  const presetGroups = await listProductionPresetsGrouped(sb);
 
   return attachWarehouseStockTotals({
     assemblies: assembliesWithCategories || [],
@@ -229,6 +231,9 @@ export async function fetchCatalogForMobile(sb, options = {}) {
     warehouseLocationId,
     warehouseLocationName: warehouseLocation?.name ?? 'Warehouse',
     catalog_meta: { packet_load: packetLoad },
+    production_presets: presetGroups.production_presets,
+    seater_presets: presetGroups.seater,
+    carpentry_presets: presetGroups.carpentry,
   });
 }
 

@@ -33,6 +33,14 @@ export function saveDeliveryDrivers(names) {
   return warehouseDeliveryMobileOp('delivery-drivers-save', { names });
 }
 
+export function listProductionPresets() {
+  return warehouseDeliveryMobileOp('production-presets-list');
+}
+
+export function saveProductionPresets({ seater, carpentry }) {
+  return warehouseDeliveryMobileOp('production-presets-save', { seater, carpentry });
+}
+
 export function setDeliveryEntryReceiverCheck(entryId, checked) {
   return warehouseDeliveryMobileOp('delivery-receiver-check', { entry_id: entryId, checked });
 }
