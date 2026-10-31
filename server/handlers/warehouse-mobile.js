@@ -1938,7 +1938,6 @@ async function opDeliveryDraftDiscard(body, user) {
 
   const email = String(user?.email || '').trim().toLowerCase();
   const creator = String(session.created_by_email || '').trim().toLowerCase();
-  const isAdmin = isLoginAccessAdmin(user?.email) || canManageCatalog(user);
   const isCreator = creator && creator === email;
   if (!isAdmin && !isCreator) {
     const err = new Error('Only catalog admin or the delivery sender can discard this draft.');
@@ -2308,12 +2307,9 @@ export default async function handler(req, res) {
       case 'production-push-register':
         result = await opProductionPushRegister(body, user);
         break;
-      case 'production-access-self': {
-        const { requireBearerUser } = await import('../lib/verifyBearerUser.js');
-        const authedUser = await requireBearerUser(req);
-        result = await opProductionAccessSelf(authedUser);
+      case 'production-access-self':
+        result = await opProductionAccessSelf(user);
         break;
-      }
       case 'packet-name-check':
         result = await opPacketNameCheck(body);
         break;

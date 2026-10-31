@@ -51,6 +51,9 @@ assert(mobile.includes('driver_signature_url'), 'delivery submit must store driv
 assert(mobile.includes('delivery-cancel'), 'warehouse-mobile must support delivery-cancel');
 assert(mobile.includes('delivery-draft-discard'), 'warehouse-mobile must discard failed delivery drafts');
 assert(mobile.includes('deleteWarehouseDeliverySessionHard'), 'failed delivery submit must hard-delete draft');
+
+const { execSync } = require('child_process');
+execSync('node --check server/handlers/warehouse-mobile.js', { cwd: root, stdio: 'pipe' });
 assert(mobile.includes('delivery-signature-upload'), 'warehouse-mobile must support delivery-signature-upload');
 assert(
   /signature_png_base64|uploadWarehouseDeliverySignaturePng/.test(mobile),
@@ -99,7 +102,6 @@ assert(
   'A4 must keep separate titles for sold_delivery vs kitwe delivery',
 );
 
-const { execSync } = require('child_process');
 execSync(
   `node --input-type=module -e "
 import { buildDeliveryNotePrintHtml } from './src/utils/buildDeliveryNotePrintHtml.js';

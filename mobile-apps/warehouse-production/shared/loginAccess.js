@@ -20,6 +20,8 @@ export async function verifyMobileLoginAccess() {
       cache: 'no-store',
     });
     const payload = await response.json().catch(() => ({}));
+    const apiError = payload?.error;
+    const nestedMessage = apiError && typeof apiError === 'object' ? apiError.message : null;
     if (response.status === 403) {
       return {
         ok: false,
@@ -35,7 +37,7 @@ export async function verifyMobileLoginAccess() {
         ok: false,
         reason: 'server',
         error: formatWarehouseMobileApiError(
-          payload?.error,
+          nestedMessage || apiError,
           `Login check failed (${response.status})`,
         ),
       };
