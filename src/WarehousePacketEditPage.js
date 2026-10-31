@@ -244,16 +244,6 @@ export default function WarehousePacketEditPage() {
           </h3>
           <div className="warehouse-field">
             <label htmlFor="wh-packet-sku-edit">SKU (Code 128)</label>
-            <div className="warehouse-generate-sku-row">
-              <button
-                type="button"
-                className="warehouse-generate-sku-btn"
-                onClick={handleGenerateSku}
-                disabled={skuGenBusy || saving}
-              >
-                {skuGenBusy ? 'Generating…' : 'Generate random SKU (16 characters)'}
-              </button>
-            </div>
             <input
               ref={skuInputRef}
               id="wh-packet-sku-edit"
@@ -277,6 +267,17 @@ export default function WarehousePacketEditPage() {
               }}
               style={{ fontFamily: 'monospace' }}
             />
+            <div className="warehouse-generate-sku-row">
+              <button
+                type="button"
+                className="warehouse-generate-sku-btn"
+                onClick={handleGenerateSku}
+                disabled={skuGenBusy || saving}
+                title="Generate random 16-character SKU"
+              >
+                {skuGenBusy ? 'Generating…' : 'Random SKU'}
+              </button>
+            </div>
           </div>
           <div className="warehouse-field">
             <label htmlFor="wh-packet-name-edit">Name</label>

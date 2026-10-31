@@ -15,6 +15,7 @@ function cleanLine(value) {
 export function buildWarehouseProductionWhatsAppText({
   variant = 'new',
   accountAlias,
+  producedBy,
   sku,
   name,
   qtyAdded,
@@ -31,11 +32,13 @@ export function buildWarehouseProductionWhatsAppText({
   const before = Math.max(0, Math.floor(Number(qtyBefore) || 0));
   const onHand = Math.max(0, Math.floor(Number(qtyOnHand) ?? qty));
 
+  const producer = cleanLine(producedBy || accountAlias) || '—';
+
   const lines = [
     header,
     '',
     `Location: ${LOCATION_LABEL}`,
-    `Account Alias: ${cleanLine(accountAlias) || '—'}`,
+    `Produced By: ${producer}`,
     `Date: ${dateLine}`,
     `Time: ${timeLine}`,
     '',

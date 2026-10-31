@@ -17,9 +17,11 @@ async function main() {
   const { buildWarehouseProductionLabelPngBuffer } = await import('../server/lib/warehouseProductionLabelImage.js');
 
   const pngBuffer = await buildWarehouseProductionLabelPngBuffer({
-    name: 'Stella Single Seater',
-    sku: 'Y98NOTMUCONOUWPH',
-    printedAt: new Date('2026-10-27T10:15:00+02:00'),
+    name: 'Vanessa Dining Chair',
+    sku: '3002791082000040',
+    color: 'Walnut',
+    boxUnitsPerCarton: 2,
+    printedAt: new Date('2026-10-31T09:15:00+02:00'),
   });
 
   const doc = new jsPDF({

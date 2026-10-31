@@ -7,7 +7,7 @@ const at = new Date('2026-10-27T12:49:00.000Z');
 
 const newMsg = buildWarehouseProductionWhatsAppText({
   variant: 'new',
-  accountAlias: 'Test User',
+  producedBy: 'عبد العزيز الحلواني',
   sku: 'ABC123',
   name: 'Stella Single Seater',
   qtyAdded: 2,
@@ -16,6 +16,14 @@ const newMsg = buildWarehouseProductionWhatsAppText({
 
 if (!newMsg.includes('***New Product***')) {
   console.error('[verifyProductionWhatsAppMessage] missing new header');
+  process.exit(1);
+}
+if (!newMsg.includes('Produced By: عبد العزيز الحلواني')) {
+  console.error('[verifyProductionWhatsAppMessage] must use Name in app as Produced By');
+  process.exit(1);
+}
+if (newMsg.includes('Account Alias')) {
+  console.error('[verifyProductionWhatsAppMessage] must not use Account Alias header');
   process.exit(1);
 }
 if (!newMsg.includes('Location: 1st Floor Warehouse')) {
@@ -33,7 +41,7 @@ if (!newMsg.includes('Qty: 2')) {
 
 const existingWithPrior = buildWarehouseProductionWhatsAppText({
   variant: 'existing',
-  accountAlias: 'Test User',
+  producedBy: 'Test User',
   sku: 'ABC123',
   name: 'Stella Single Seater',
   qtyAdded: 3,

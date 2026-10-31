@@ -5,6 +5,7 @@ import {
   listPosSalesForStorage,
   submitStorageSend,
 } from './services/warehouseDeliveryMobileApi';
+import { loadKitwePosSalesForStoragePage, loadKitwePosSaleDetailForStoragePage } from './utils/warehouseStoragePosSales';
 
 const fieldStyle = {
   width: '100%',
@@ -31,8 +32,17 @@ export default function WarehouseStorage() {
     setLoading(true);
     setError('');
     try {
-      const res = await listPosSalesForStorage();
-      setSales(res?.sales || []);
+      let rows = [];
+      try {
+        const res = await listPosSalesForStorage();
+        rows = res?.sales || [];
+      } catch {
+        /* API may be undeployed or 403 — read Kitwe POS receipts directly */
+      }
+      if (!rows.length) {
+        rows = await loadKitwePosSalesForStoragePage();
+      }
+      setSales(rows);
     } catch (err) {
       setError(err?.message || 'Failed to load POS receipts.');
       setSales([]);
@@ -54,11 +64,32 @@ export default function WarehouseStorage() {
       setDetailLoading(true);
       setError('');
       try {
-        const res = await getPosSaleDetailForStorage({ sale_id: saleId });
+        let nextDetail = null;
+        try {
+          const res = await getPosSaleDetailForStorage({ sale_id: saleId });
+          nextDetail = {
+            sale: res?.sale,
+            items: res?.items || [],
+          };
+        } catch {
+          /* API may be undeployed — load from Firestore like the receipt list fallback */
+        }
+        if (!nextDetail?.items?.length) {
+          try {
+            const local = await loadKitwePosSaleDetailForStoragePage(saleId);
+            if (local?.items?.length || !nextDetail?.sale) nextDetail = local;
+          } catch (localErr) {
+            if (!nextDetail?.sale) throw localErr;
+          }
+        }
+        if (!nextDetail?.sale) throw new Error('Failed to load receipt.');
         if (cancelled) return;
-        setDetail(res);
+        setDetail(nextDetail);
         setSaleItemId('');
         setQuantity(1);
+        if (!nextDetail.items?.length) {
+          setError('This receipt has no sale lines to send to warehouse.');
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err?.message || 'Failed to load receipt.');
@@ -147,6 +178,10 @@ export default function WarehouseStorage() {
             <div><strong>Customer:</strong> {detail.sale.customer_name}{detail.sale.customer_phone ? ` · ${detail.sale.customer_phone}` : ''}</div>
           ) : null}
         </div>
+      ) : null}
+
+      {detail?.sale && !detailLoading && !detail?.items?.length && !error ? (
+        <p style={{ color: 'var(--br-muted)' }}>No product lines on this receipt.</p>
       ) : null}
 
       {detail?.items?.length ? (

@@ -3724,7 +3724,7 @@ async function handleWhatsAppProduction(body) {
     : 'new';
   const message = buildWarehouseProductionWhatsAppText({
     variant,
-    accountAlias: body.accountAlias || body.account_alias,
+    producedBy: body.producedBy || body.produced_by || body.accountAlias || body.account_alias,
     sku: body.sku,
     name: body.name,
     qtyAdded: body.qtyAdded ?? body.qty_added ?? body.qty,

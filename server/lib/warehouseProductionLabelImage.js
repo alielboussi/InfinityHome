@@ -24,6 +24,14 @@ import {
   rowTextBaselineMm,
 } from './warehouseProductionLabelLayout.js';
 import { formatBlockDate, formatBlockTime } from './zebraProductionLabelZpl.js';
+import {
+  normalizeProductionLabelColor,
+  productionLabelIncludesColorRow,
+} from './warehouseProductionLabelColor.js';
+import {
+  productionLabelIncludesBoxRow,
+  resolveProductionLabelBoxLine,
+} from './warehouseProductionLabelBox.js';
 
 const PX_PER_MM = 10;
 const W = Math.round(LABEL_WIDTH_MM * PX_PER_MM);
@@ -32,16 +40,20 @@ const BORDER = '#1e3a5f';
 
 const COMPANY_FONT_PX = 11;
 const ROW_FONT_PX = FONT_PT;
-export function buildProductionLabelMeta({ name, sku, printedAt } = {}) {
+export function buildProductionLabelMeta({ name, sku, printedAt, color, boxLine, boxUnitsPerCarton } = {}) {
   const at = printedAt ? new Date(printedAt) : new Date();
   if (Number.isNaN(at.getTime())) {
     throw new Error('Invalid printedAt');
   }
   const cleanSku = String(sku || '').trim().toUpperCase();
   const cleanName = String(name || '').trim();
+  const cleanColor = normalizeProductionLabelColor(color);
+  const cleanBoxLine = resolveProductionLabelBoxLine({ boxLine, boxUnitsPerCarton });
   return {
     sku: cleanSku,
     name: cleanName,
+    color: cleanColor,
+    box_line: cleanBoxLine,
     image_qr_url: buildProductPhotoQrUrl(cleanSku),
     printed_at: at.toISOString(),
     print_date: formatBlockDate(at),
@@ -122,11 +134,17 @@ function rowSvg({
   `;
 }
 
-export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printedAt } = {}) {
-  const meta = buildProductionLabelMeta({ name, sku, printedAt });
+export async function buildWarehouseProductionLabelPngBuffer({
+  name, sku, printedAt, color, boxLine, boxUnitsPerCarton,
+} = {}) {
+  const meta = buildProductionLabelMeta({
+    name, sku, printedAt, color, boxLine, boxUnitsPerCarton,
+  });
   const layout = computeProductionLabelLayout({
     heightMm: LABEL_HEIGHT_MM,
     marginMm: LABEL_MARGIN_MM,
+    includeColorRow: productionLabelIncludesColorRow(meta.color),
+    includeBoxRow: productionLabelIncludesBoxRow(meta.box_line),
   });
 
   const marginPx = mmToPx(layout.marginMm);
@@ -153,6 +171,24 @@ export async function buildWarehouseProductionLabelPngBuffer({ name, sku, printe
   <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f">${escapeXml(COMPANY_NAME)}</text>
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm, ROW_TEXT_MM), label: FIELD_LABELS.sku, value: meta.sku })}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameBlockTopMm, NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES), label: FIELD_LABELS.name, value: meta.name })}
+  ${meta.color && layout.colorRowMm != null
+    ? rowSvg({
+      labelXpx,
+      centerXpx: centerXPx,
+      rowYpx: textBaseline(layout.colorRowMm, ROW_TEXT_MM),
+      label: FIELD_LABELS.color,
+      value: meta.color,
+    })
+    : ''}
+  ${meta.box_line && layout.boxRowMm != null
+    ? rowSvg({
+      labelXpx,
+      centerXpx: centerXPx,
+      rowYpx: textBaseline(layout.boxRowMm, ROW_TEXT_MM),
+      label: FIELD_LABELS.pack,
+      value: meta.box_line,
+    })
+    : ''}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm, ROW_TEXT_MM), label: FIELD_LABELS.date, value: meta.print_date })}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.timeRowMm, ROW_TEXT_MM), label: FIELD_LABELS.time, value: meta.print_time })}
 </svg>`;

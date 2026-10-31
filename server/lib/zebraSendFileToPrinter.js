@@ -65,6 +65,8 @@ export async function sendWarehouseProductionLabelToZebra({
   printedBy,
   printedAt,
   imageQrUrl,
+  color,
+  boxUnitsPerCarton,
 }) {
   const at = printedAt ? new Date(printedAt) : new Date();
   const cleanSku = String(sku || '').trim();
@@ -74,6 +76,8 @@ export async function sendWarehouseProductionLabelToZebra({
     copies: qty,
     printedAt: at,
     imageQrUrl: String(imageQrUrl || '').trim() || buildProductPhotoQrUrl(cleanSku),
+    color,
+    boxUnitsPerCarton,
   });
   return sendZplToZebraPrinter({ zpl });
 }

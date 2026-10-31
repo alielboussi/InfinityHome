@@ -1,9 +1,10 @@
 import { newUuid } from './uuid.js';
 import { allocateWarehouseStorageNumber } from './warehouseStorageNumber.js';
-import { adjustAssemblyStock } from './warehouseReturnStock.js';
+import { adjustAssemblyStock, getAssemblyStockQty } from './warehouseReturnStock.js';
 import { printWarehouseReturnCustomerLabel } from './warehouseReturnCustomerLabelPrint.js';
 import { getFirestore } from './firestoreDb.js';
-import { HASSAN_AWAD } from '../../src/accessControl.js';
+import { HASSAN_AWAD, canManageCatalog } from '../../src/accessControl.js';
+import { isLoginAccessAdmin } from './loginAccess.js';
 import { KITWE_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 import { WAREHOUSE_FROM_LOCATION_ID } from '../../src/utils/warehouseDelivery.js';
 import {
@@ -16,15 +17,18 @@ import { isWarehouseProductAssembly } from '../../src/utils/warehouseCatalogHier
 const TABLE = 'warehouse_storage_sends';
 const FACTORY_ID = WAREHOUSE_FROM_LOCATION_ID;
 
-function isHassanStorageUser(user) {
+function canWarehouseKitweStorageCreator(user) {
   const email = String(user?.email || '').trim().toLowerCase();
   if (HASSAN_AWAD.emails.some((e) => e.toLowerCase() === email)) return true;
   const uid = String(user?.id || user?.uid || '').toLowerCase();
-  return uid === String(HASSAN_AWAD.id).toLowerCase();
+  if (uid === String(HASSAN_AWAD.id).toLowerCase()) return true;
+  if (isLoginAccessAdmin(user?.email)) return true;
+  if (canManageCatalog(user)) return true;
+  return false;
 }
 
 export async function assertWarehouseStorageCreator(user) {
-  if (!isHassanStorageUser(user)) {
+  if (!canWarehouseKitweStorageCreator(user)) {
     const err = new Error('Only Hassan Awad can send POS sales to warehouse storage.');
     err.status = 403;
     throw err;
@@ -171,27 +175,90 @@ async function createAssemblyFromSaleItem(sb, { productId, displayName }) {
   return { id: assemblyId, name, family_sku: sku, item_kind: 'product' };
 }
 
+function isStorageEligibleSaleRow(row) {
+  const receipt = String(row?.receipt_number || '').trim();
+  if (!receipt) return false;
+  const status = String(row?.status || '').toLowerCase();
+  if (status === 'void' || status === 'cancelled' || status === 'canceled') return false;
+  return String(row?.location_id || '') === String(KITWE_LOCATION_ID);
+}
+
+/** Firestore equality is strict — HTML/API often pass sale_id as string while rows store numbers. */
+function saleIdEqVariants(saleId) {
+  const trimmed = String(saleId ?? '').trim();
+  if (!trimmed) return [saleId];
+  const variants = [saleId, trimmed];
+  if (/^\d+$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (Number.isSafeInteger(n)) variants.unshift(n);
+  }
+  return [...new Set(variants)];
+}
+
+function mapStorageSaleItems(rows) {
+  return (rows || []).map((row) => ({
+    id: row.id,
+    product_id: row.product_id,
+    display_name: String(row.display_name || row.name || '').trim() || 'Item',
+    quantity: Math.max(0, Number(row.quantity) || 0),
+    unit_price: row.unit_price,
+  })).filter((row) => row.quantity > 0);
+}
+
+async function querySaleItemsForStorage(sb, saleId) {
+  let lastErr = null;
+  for (const key of saleIdEqVariants(saleId)) {
+    const { data, error } = await sb
+      .from('sales_items')
+      .select('id, sale_id, product_id, display_name, name, quantity, unit_price')
+      .eq('sale_id', key);
+    if (error) {
+      lastErr = error;
+      continue;
+    }
+    if ((data || []).length) return data;
+  }
+  if (lastErr) throw new Error(lastErr.message || 'Failed to load sale lines.');
+  return [];
+}
+
+function mapPosSaleForStorage(row) {
+  return {
+    id: row.id,
+    receipt_number: String(row.receipt_number || '').trim(),
+    sale_date: row.sale_date || row.created_at,
+    customer_id: row.customer_id,
+    total_amount: row.total_amount,
+    currency: row.currency,
+    status: row.status,
+    created_by_id: row.created_by_id ?? row.user_id ?? null,
+    created_by_email: row.created_by_email ?? row.cashier_email ?? null,
+  };
+}
+
 export async function listPosSalesForStorage(sb, user) {
   await assertWarehouseStorageCreator(user);
   const { data, error } = await sb
     .from('sales')
-    .select('id, receipt_number, sale_date, created_at, customer_id, total_amount, currency, status')
+    .select('id, receipt_number, sale_date, created_at, customer_id, total_amount, currency, status, location_id, created_by_id, user_id, created_by_email, cashier_email')
     .eq('location_id', KITWE_LOCATION_ID)
     .order('created_at', { ascending: false })
-    .limit(150);
+    .limit(300);
   if (error) throw new Error(error.message || 'Failed to load sales.');
-  const sales = (data || []).filter((s) => String(s.receipt_number || '').trim());
-  return {
-    sales: sales.map((s) => ({
-      id: s.id,
-      receipt_number: String(s.receipt_number || '').trim(),
-      sale_date: s.sale_date || s.created_at,
-      customer_id: s.customer_id,
-      total_amount: s.total_amount,
-      currency: s.currency,
-      status: s.status,
-    })),
-  };
+  let sales = (data || []).filter(isStorageEligibleSaleRow);
+
+  if (!sales.length) {
+    const { data: recent, error: recentErr } = await sb
+      .from('sales')
+      .select('id, receipt_number, sale_date, created_at, customer_id, total_amount, currency, status, location_id, created_by_id, user_id, created_by_email, cashier_email')
+      .order('created_at', { ascending: false })
+      .limit(400);
+    if (!recentErr) {
+      sales = (recent || []).filter(isStorageEligibleSaleRow);
+    }
+  }
+
+  return { sales: sales.map(mapPosSaleForStorage) };
 }
 
 export async function getPosSaleDetailForStorage(sb, user, body) {
@@ -208,24 +275,18 @@ export async function getPosSaleDetailForStorage(sb, user, body) {
   if (String(sale.location_id) !== KITWE_LOCATION_ID) {
     throw new Error('Only Kitwe POS receipts can be sent to warehouse storage.');
   }
-  const [{ data: items, error: itemsErr }, customer] = await Promise.all([
-    sb.from('sales_items').select('id, sale_id, product_id, display_name, quantity, unit_price').eq('sale_id', saleId),
+  const [itemsRaw, customer] = await Promise.all([
+    querySaleItemsForStorage(sb, saleId),
     loadSaleCustomer(sb, sale),
   ]);
-  if (itemsErr) throw new Error(itemsErr.message || 'Failed to load sale lines.');
+  const items = mapStorageSaleItems(itemsRaw);
   return {
     sale: {
       ...sale,
       receipt_number: String(sale.receipt_number || '').trim(),
       ...customer,
     },
-    items: (items || []).map((row) => ({
-      id: row.id,
-      product_id: row.product_id,
-      display_name: String(row.display_name || '').trim() || 'Item',
-      quantity: Math.max(0, Number(row.quantity) || 0),
-      unit_price: row.unit_price,
-    })).filter((row) => row.quantity > 0),
+    items,
   };
 }
 
@@ -251,6 +312,12 @@ export async function submitWarehouseStorageSend(sb, body, user) {
     });
   }
 
+  const kitweQty = await getAssemblyStockQty(sb, assembly.id, KITWE_LOCATION_ID);
+  if (kitweQty < qty) {
+    throw new Error(`Insufficient Kitwe stock (need ${qty}, have ${kitweQty}).`);
+  }
+
+  await adjustAssemblyStock(sb, assembly.id, KITWE_LOCATION_ID, -qty);
   await adjustAssemblyStock(sb, assembly.id, FACTORY_ID, qty);
 
   const storageNumber = await allocateWarehouseStorageNumber();
@@ -274,11 +341,15 @@ export async function submitWarehouseStorageSend(sb, body, user) {
     updated_at: now,
     created_by_email: user?.email || null,
     created_by_name: user?.user_metadata?.full_name || user?.full_name || HASSAN_AWAD.displayName,
-    metadata: { receipt_number: detail.sale.receipt_number },
+    metadata: { receipt_number: detail.sale.receipt_number, kitwe_deducted_at: now },
   };
 
   const { error } = await sb.from(TABLE).insert(row);
-  if (error) throw new Error(error.message || 'Failed to save storage send.');
+  if (error) {
+    await adjustAssemblyStock(sb, assembly.id, KITWE_LOCATION_ID, qty);
+    await adjustAssemblyStock(sb, assembly.id, FACTORY_ID, -qty);
+    throw new Error(error.message || 'Failed to save storage send.');
+  }
 
   const result = await printWarehouseReturnCustomerLabel(getFirestore(), {
     name: assembly.name,

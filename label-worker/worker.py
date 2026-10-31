@@ -179,6 +179,138 @@ def send_raw(printer_name, data):
         win32print.ClosePrinter(handle)
 
 
+def _edge_executable():
+    if EDGE_EXE and os.path.isfile(EDGE_EXE):
+        return EDGE_EXE
+    candidates = [
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return ""
+
+
+def _html_to_pdf(html_text, pdf_path):
+    import tempfile
+
+    edge = _edge_executable()
+    if not edge:
+        raise RuntimeError("Microsoft Edge not found (install Edge or set EDGE_EXE for delivery PDF).")
+
+    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as handle:
+        handle.write(html_text or "")
+        html_path = handle.name
+
+    try:
+        html_uri = "file:///" + html_path.replace("\\", "/")
+        import subprocess
+
+        result = subprocess.run(
+            [
+                edge,
+                "--headless",
+                "--disable-gpu",
+                "--no-pdf-header-footer",
+                f"--print-to-pdf={pdf_path}",
+                html_uri,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0 or not os.path.isfile(pdf_path):
+            detail = (result.stderr or result.stdout or "").strip()
+            raise RuntimeError(detail or "Edge failed to render delivery PDF.")
+    finally:
+        try:
+            os.remove(html_path)
+        except Exception:
+            pass
+
+
+def _print_pdf_copies(pdf_path, printer_name, copies):
+    import subprocess
+    import win32api
+
+    copies = max(1, int(copies or 1))
+    if SUMATRA_PDF_PATH and os.path.isfile(SUMATRA_PDF_PATH):
+        settings = f"{copies}x,noscale,portrait"
+        subprocess.run(
+            [
+                SUMATRA_PDF_PATH,
+                "-print-to",
+                printer_name,
+                "-print-settings",
+                settings,
+                "-silent",
+                pdf_path,
+            ],
+            check=True,
+            timeout=180,
+        )
+        return
+
+    previous = None
+    try:
+        previous = win32print.GetDefaultPrinter()
+    except Exception:
+        previous = None
+    try:
+        win32print.SetDefaultPrinter(printer_name)
+        for _ in range(copies):
+            win32api.ShellExecute(0, "print", pdf_path, None, ".", 0)
+            time.sleep(max(1.0, PRINT_RETRY_DELAY_SECONDS * 2))
+    finally:
+        if previous:
+            try:
+                win32print.SetDefaultPrinter(previous)
+            except Exception:
+                pass
+
+
+def process_delivery_note_job(job):
+    job_id = job.get("id")
+    payload = job.get("payload") or {}
+    html_text = payload.get("html")
+    if not html_text:
+        update_job(job_id, FAILED_STATUS, "Missing delivery note HTML.")
+        return
+
+    printer_name = _safe_text(payload.get("printer_name")) or DELIVERY_PRINTER_NAME
+    if not printer_name:
+        update_job(
+            job_id,
+            FAILED_STATUS,
+            "Set DELIVERY_PRINTER_NAME in label-worker .env (Canon MF237w Windows name).",
+        )
+        return
+
+    copies = payload.get("copies")
+    try:
+        copies = max(1, min(10, int(copies)))
+    except Exception:
+        copies = DELIVERY_PRINT_COPIES
+
+    update_job(job_id, PROCESSING_STATUS, None)
+
+    import tempfile
+
+    pdf_path = os.path.join(tempfile.gettempdir(), f"delivery-note-{job_id}.pdf")
+    try:
+        _html_to_pdf(str(html_text), pdf_path)
+        _print_pdf_copies(pdf_path, printer_name, copies)
+    finally:
+        try:
+            if os.path.isfile(pdf_path):
+                os.remove(pdf_path)
+        except Exception:
+            pass
+
+    update_job(job_id, SUCCESS_STATUS, None)
+
+
 def build_tspl_label(name, sku, print_date, printed_by=None):
     name_text = _ascii_bytes(name)
     sku_text = _ascii_bytes(sku)
@@ -356,138 +488,6 @@ def build_zebra_zpl_price_label(name, sku, print_date, printed_by=None, item=Non
     print_standard_only = bool(item.get("print_standard_only"))
     has_promo = _price_label_has_promo(
         item.get("standard"),
-        item.get("promo"),
-        print_standard_only,
-    )
-
-    def wrap_text(value, max_chars=24, max_lines=2):
-        words = _safe_text(value).split()
-        lines = []
-        current = ""
-        for word in words:
-            if not current:
-                current = word
-            elif len(current) + 1 + len(word) <= max_chars:
-                current += " " + word
-            else:
-                lines.append(current)
-                current = word
-                if len(lines) >= max_lines:
-                    break
-        if len(lines) < max_lines and current:
-            lines.append(current)
-        return lines[:max_lines]
-
-    name_lines = wrap_text(name_text)
-    first_line = name_lines[0] if name_lines else ""
-    second_line = name_lines[1] if len(name_lines) > 1 else ""
-
-    barcode_height = min(90, max(55, int(height_dots * 0.22)))
-    barcode_y = 98
-
-    lines = [
-        "^XA",
-        "^CI28",
-        f"^PW{width_dots}",
-        f"^LL{pitch_dots}",
-        "^LH0,0",
-        f"^FO{margin_dots},{margin_dots}^GB{width_dots - (margin_dots * 2)},{height_dots - (margin_dots * 2)},2^FS",
-        f"^FO{margin_dots},10^A0N,18,18^FB{inner_width},1,0,C,0^FDBestrest Furniture^FS",
-        f"^FO{margin_dots},30^A0N,18,18^FB{inner_width},1,0,C,0^FD{first_line}^FS",
-        f"^FO{margin_dots},50^A0N,18,18^FB{inner_width},1,0,C,0^FD{second_line}^FS",
-        f"^FO{margin_dots},{barcode_y}^BY2,2,{max(6, barcode_height // 10)}^BCN,{barcode_height},N,N,N^FD{sku_text}^FS",
-        f"^FO{margin_dots},{barcode_y + barcode_height + 4}^A0N,14,14^FB{inner_width},1,0,C,0^FD{sku_text}^FS",
-    ]
-
-    price_y = height_dots - 56
-    if has_promo and standard_text and promo_text:
-        lines.append(
-            f"^FO{margin_dots},{price_y}^A0N,14,14^FB{inner_width},1,0,C,0^FDWas: {_zpl_escape(standard_text)}^FS"
-        )
-        lines.append(
-            f"^FO{margin_dots},{price_y + 18}^A0N,22,22^FB{inner_width},1,0,C,0^FDPROMO {_zpl_escape(promo_text)}^FS"
-        )
-    elif has_promo and promo_text:
-        lines.append(
-            f"^FO{margin_dots},{price_y + 8}^A0N,22,22^FB{inner_width},1,0,C,0^FDPROMO {_zpl_escape(promo_text)}^FS"
-        )
-    elif standard_text:
-        lines.append(
-            f"^FO{margin_dots},{price_y + 8}^A0N,22,22^FB{inner_width},1,0,C,0^FD{_zpl_escape(standard_text)}^FS"
-        )
-
-    lines.append(
-        f"^FO{margin_dots},{height_dots - 22}^A0N,12,12^FB{inner_width},1,0,C,0^FD{date_text}^FS"
-    )
-    if printed_by_text:
-        lines.append(
-            f"^FO{margin_dots},{height_dots - 10}^A0N,10,10^FB{inner_width},1,0,C,0^FD{printed_by_text}^FS"
-        )
-    lines.append("^PQ1")
-    lines.append("^XZ")
-    return ("\r\n".join(lines) + "\r\n").encode("ascii", "replace")
-
-
-def build_ezpl_label(name, sku, print_date, printed_by=None):
-    width_dots = _mm_to_dots(LABEL_WIDTH_MM)
-    height_dots = _mm_to_dots(LABEL_HEIGHT_MM)
-    pitch_dots = _mm_to_dots(LABEL_HEIGHT_MM + LABEL_GAP_MM)
-    border_offset = 4
-    inner_width = max(0, width_dots - 32)
-
-    name_text = _safe_text(name)
-    sku_text = _safe_text(sku)
-    date_text = _safe_text(print_date)
-    printed_by_text = _safe_text(printed_by)
-
-    def wrap_text(value, max_chars=26, max_lines=2):
-        words = _safe_text(value).split()
-        lines = []
-        current = ""
-        for word in words:
-            if not current:
-                current = word
-            elif len(current) + 1 + len(word) <= max_chars:
-                current += " " + word
-            else:
-                lines.append(current)
-                current = word
-                if len(lines) >= max_lines:
-                    break
-        if len(lines) < max_lines and current:
-            lines.append(current)
-        return lines[:max_lines]
-
-    name_lines = wrap_text(name_text)
-    first_line = name_lines[0] if name_lines else ""
-    second_line = name_lines[1] if len(name_lines) > 1 else ""
-
-    lines = [
-        "^XA",
-        f"^PW{width_dots}",
-        f"^LL{pitch_dots}",
-        "^LS0",
-        f"^FO{border_offset},{border_offset}^GB{width_dots - (border_offset * 2)},{height_dots - (border_offset * 2)},4^FS",
-        f"^FO16,20^A0N,24,24^FB{inner_width},1,0,C,0^FDBestrest Furniture^FS",
-        f"^FO16,50^A0N,18,18^FB{inner_width},1,0,C,0^FDProduct Name:^FS",
-        f"^FO16,70^A0N,20,20^FB{inner_width},1,0,C,0^FD{first_line}^FS",
-        f"^FO16,92^A0N,20,20^FB{inner_width},1,0,C,0^FD{second_line}^FS",
-        f"^FO{int((width_dots - 100) / 2)},150^BQN,2,4^FDLA,{sku_text}^FS",
-        f"^FO16,290^A0N,18,18^FB{inner_width},1,0,C,0^FDDate Printed: {date_text}^FS",
-    ]
-
-    if printed_by_text:
-        lines.append(f"^FO16,312^A0N,18,18^FB{inner_width},2,0,C,0^FDPrinted By: {printed_by_text}^FS")
-
-    lines.append("^PQ1")
-    lines.append("^XZ")
-
-    return ("\r\n".join(lines) + "\r\n").encode("ascii", "replace")
-
-
-def process_job(job):
-    job_id = job.get("id")
-    payload = job.get("payload") or {}
     items = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(items, list) or not items:
         update_job(job_id, FAILED_STATUS, "No items to print.")
@@ -555,6 +555,138 @@ def main():
         raise SystemExit("Configure INFINITY_API_BASE and LABEL_WORKER_SECRET in .env")
     if not PRINTER_NAME:
         raise SystemExit("Missing PRINTER_NAME.")
+def build_ezpl_label(name, sku, print_date, printed_by=None):
+    width_dots = _mm_to_dots(LABEL_WIDTH_MM)
+    height_dots = _mm_to_dots(LABEL_HEIGHT_MM)
+    pitch_dots = _mm_to_dots(LABEL_HEIGHT_MM + LABEL_GAP_MM)
+    border_offset = 4
+    inner_width = max(0, width_dots - 32)
+
+    name_text = _safe_text(name)
+    sku_text = _safe_text(sku)
+    date_text = _safe_text(print_date)
+    printed_by_text = _safe_text(printed_by)
+
+    def wrap_text(value, max_chars=26, max_lines=2):
+        words = _safe_text(value).split()
+        lines = []
+        current = ""
+        for word in words:
+            if not current:
+                current = word
+            elif len(current) + 1 + len(word) <= max_chars:
+                current += " " + word
+            else:
+                lines.append(current)
+                current = word
+                if len(lines) >= max_lines:
+                    break
+        if len(lines) < max_lines and current:
+            lines.append(current)
+        return lines[:max_lines]
+
+    name_lines = wrap_text(name_text)
+    first_line = name_lines[0] if name_lines else ""
+    second_line = name_lines[1] if len(name_lines) > 1 else ""
+
+    lines = [
+        "^XA",
+        f"^PW{width_dots}",
+        f"^LL{pitch_dots}",
+        "^LS0",
+        f"^FO{border_offset},{border_offset}^GB{width_dots - (border_offset * 2)},{height_dots - (border_offset * 2)},4^FS",
+        f"^FO16,20^A0N,24,24^FB{inner_width},1,0,C,0^FDBestrest Furniture^FS",
+        f"^FO16,50^A0N,18,18^FB{inner_width},1,0,C,0^FDProduct Name:^FS",
+        f"^FO16,70^A0N,20,20^FB{inner_width},1,0,C,0^FD{first_line}^FS",
+        f"^FO16,92^A0N,20,20^FB{inner_width},1,0,C,0^FD{second_line}^FS",
+        f"^FO{int((width_dots - 100) / 2)},150^BQN,2,4^FDLA,{sku_text}^FS",
+        f"^FO16,290^A0N,18,18^FB{inner_width},1,0,C,0^FDDate Printed: {date_text}^FS",
+    ]
+
+    if printed_by_text:
+        lines.append(f"^FO16,312^A0N,18,18^FB{inner_width},2,0,C,0^FDPrinted By: {printed_by_text}^FS")
+
+    lines.append("^PQ1")
+    lines.append("^XZ")
+
+    return ("\r\n".join(lines) + "\r\n").encode("ascii", "replace")
+
+
+def process_job(job):
+    job_id = job.get("id")
+    payload = job.get("payload") or {}
+    job_type = _safe_text(payload.get("job_type")).lower()
+    if job_type == "warehouse_delivery_note":
+        process_delivery_note_job(job)
+        return
+
+    items = payload.get("items") if isinstance(payload, dict) else []
+    if not isinstance(items, list) or not items:
+        update_job(job_id, FAILED_STATUS, "No items to print.")
+        return
+
+    update_job(job_id, PROCESSING_STATUS, None)
+
+    transfer_id = _safe_text(payload.get("transfer_id"))
+    item_count = 0
+    try:
+        item_count = len(items)
+    except Exception:
+        item_count = 0
+    if WHATSAPP_NOTIFY_ON_RECEIVED:
+        send_whatsapp_alert()
+
+    print_date = _print_date(payload)
+    printed_by = _safe_text(
+        payload.get("printed_by")
+        or payload.get("user_full_name")
+        or payload.get("full_name")
+        or payload.get("user_name")
+    )
+    job_type = _safe_text(payload.get("job_type")).lower()
+
+    for item in items:
+        name = _safe_text(item.get("name"))
+        sku = _safe_text(item.get("sku"))
+        qty = int(item.get("qty") or 1)
+        qty = max(qty, 1)
+        for _ in range(qty):
+            zpl_raw = _safe_text(item.get("zpl"))
+            if zpl_raw and PRINTER_LANGUAGE == "ZPL":
+                label_payload = zpl_raw.encode("utf-8")
+            elif job_type == "price_label" and PRINTER_LANGUAGE == "ZPL":
+                label_payload = build_zebra_zpl_price_label(
+                    name, sku, print_date, printed_by, item=item
+                )
+            elif PRINTER_LANGUAGE == "TSPL":
+                label_payload = build_tspl_label(name, sku, print_date, printed_by)
+            elif PRINTER_LANGUAGE == "ZPL":
+                label_payload = build_zebra_zpl_label(name, sku, print_date, printed_by)
+            else:
+                label_payload = build_ezpl_label(name, sku, print_date, printed_by)
+            last_err = None
+            for attempt in range(1, max(1, PRINT_RETRY_COUNT) + 1):
+                try:
+                    send_raw(PRINTER_NAME, label_payload)
+                    last_err = None
+                    break
+                except Exception as err:
+                    last_err = err
+                    if attempt < max(1, PRINT_RETRY_COUNT):
+                        time.sleep(max(0.0, PRINT_RETRY_DELAY_SECONDS))
+            if last_err is not None:
+                raise last_err
+
+    update_job(job_id, SUCCESS_STATUS, None)
+    if WHATSAPP_NOTIFY_ON_DONE:
+        send_whatsapp_alert()
+
+
+def main():
+    if not INFINITY_API_BASE or not LABEL_WORKER_SECRET:
+        raise SystemExit("Configure INFINITY_API_BASE and LABEL_WORKER_SECRET in .env")
+    if not PRINTER_NAME and not DELIVERY_PRINTER_NAME:
+        raise SystemExit("Set PRINTER_NAME (labels) and/or DELIVERY_PRINTER_NAME (A4 delivery notes).")
 
     while True:
         try:

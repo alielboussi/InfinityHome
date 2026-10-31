@@ -6,27 +6,35 @@ import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
-import { normalizeWarehouseReturnReason } from '../../src/utils/warehouseReturnReasons.js';
-import { WAREHOUSE_RETURN_STATUSES } from '../../src/utils/warehouseReturnOrder.js';
+import { WAREHOUSE_RETURN_REASON_GROUPS } from '../../src/utils/warehouseReturnReasons.js';
+import {
+  parseReturnCreateLines,
+  WAREHOUSE_RETURN_STATUSES,
+} from '../../src/utils/warehouseReturnOrder.js';
 import { isWarehouseProductAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
 import { isWarehouseSetAssembly } from '../../src/utils/warehouseSetMath.js';
 import { KITWE_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
-import { HASSAN_AWAD } from '../../src/accessControl.js';
+import { HASSAN_AWAD, canManageCatalog } from '../../src/accessControl.js';
+import { buildKitweReturnProductOptions } from '../../src/utils/kitweSetStock.js';
+import { isLoginAccessAdmin } from './loginAccess.js';
 import {
   isWarehouseProductionKitweDeliveryAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
 
 const RETURNS = 'warehouse_return_orders';
 
-function isHassanReturnCreator(user) {
+function canWarehouseKitweReturnCreator(user) {
   const email = String(user?.email || '').trim().toLowerCase();
   if (HASSAN_AWAD.emails.some((e) => e.toLowerCase() === email)) return true;
   const uid = String(user?.id || user?.uid || '').toLowerCase();
-  return uid === String(HASSAN_AWAD.id).toLowerCase();
+  if (uid === String(HASSAN_AWAD.id).toLowerCase()) return true;
+  if (isLoginAccessAdmin(user?.email)) return true;
+  if (canManageCatalog(user)) return true;
+  return false;
 }
 
 export async function assertWarehouseReturnCreator(user) {
-  if (!isHassanReturnCreator(user)) {
+  if (!canWarehouseKitweReturnCreator(user)) {
     const err = new Error('Only Hassan Awad can create Kitwe returns.');
     err.status = 403;
     throw err;
@@ -50,30 +58,18 @@ function mapReturnRow(row) {
 
 export async function listKitweReturnProductOptions(sb) {
   const [{ data: assemblies }, { data: inventory }] = await Promise.all([
-    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind'),
+    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata'),
     sb.from('warehouse_assembly_inventory').select('assembly_id, location_id, quantity'),
   ]);
-  const kitweQty = new Map();
-  (inventory || []).forEach((row) => {
-    if (String(row.location_id) !== KITWE_LOCATION_ID) return;
-    kitweQty.set(String(row.assembly_id), Number(row.quantity) || 0);
-  });
-  const products = (assemblies || [])
-    .filter((a) => isWarehouseProductAssembly(a) && !isWarehouseSetAssembly(a))
-    .filter((a) => (kitweQty.get(String(a.id)) ?? 0) > 0)
-    .map((a) => ({
-      assembly_id: a.id,
-      name: a.name,
-      sku: a.family_sku,
-      kitwe_qty: kitweQty.get(String(a.id)) ?? 0,
-    }))
-    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const kitweInventory = (inventory || []).filter(
+    (row) => String(row.location_id) === KITWE_LOCATION_ID,
+  );
+  const products = buildKitweReturnProductOptions(assemblies || [], kitweInventory);
   return { products };
 }
 
 /** Quote customers for Hassan’s return form (same pool as Quotationer). */
-export async function listReturnQuoteCustomers(sb, user) {
-  await assertWarehouseReturnCreator(user);
+export async function listReturnQuoteCustomers(sb, _user) {
   const { data, error } = await sb
     .from('quote_customers')
     .select('id, name, phone')
@@ -88,27 +84,40 @@ export async function listReturnQuoteCustomers(sb, user) {
   };
 }
 
+function expandReturnLinesToUnitRows(lines) {
+  const unitLines = [];
+  for (const line of lines || []) {
+    const q = Math.max(1, Math.floor(Number(line.quantity) || 1));
+    for (let i = 0; i < q; i += 1) {
+      unitLines.push({
+        reason: line.reason,
+        leather_code: line.leather_code || null,
+        quantity: 1,
+      });
+    }
+  }
+  return unitLines;
+}
+
 export async function createWarehouseReturnOrder(sb, body, user) {
   await assertWarehouseReturnCreator(user);
-  const assemblyId = String(body.assembly_id || '').trim();
-  const qty = Math.max(1, Math.floor(Number(body.quantity) || 0));
-  const reason = normalizeWarehouseReturnReason(body.reason);
-  if (!assemblyId) throw new Error('Product is required.');
-  if (!reason) throw new Error('Return reason is required.');
+
+  const assemblyIdGuess = String(body?.assembly_id || '').trim();
+  const currentKitwe = assemblyIdGuess
+    ? await getAssemblyStockQty(sb, assemblyIdGuess, KITWE_LOCATION_ID)
+    : 0;
+  const parsed = parseReturnCreateLines(body, { maxQty: currentKitwe });
+  const unitLines = expandReturnLinesToUnitRows(parsed.lines);
+  if (!unitLines.length) throw new Error('Return quantity must be at least 1.');
 
   const { data: assembly } = await sb
     .from('warehouse_assemblies')
     .select('id, name, family_sku, item_kind')
-    .eq('id', assemblyId)
+    .eq('id', parsed.assemblyId)
     .maybeSingle();
   if (!assembly) throw new Error('Product not found.');
   if (!isWarehouseProductAssembly(assembly) || isWarehouseSetAssembly(assembly)) {
     throw new Error('Only Kitwe warehouse products (not sets) can be returned.');
-  }
-
-  const currentKitwe = await getAssemblyStockQty(sb, assemblyId, KITWE_LOCATION_ID);
-  if (currentKitwe < qty) {
-    throw new Error(`Insufficient Kitwe stock (need ${qty}, have ${currentKitwe}).`);
   }
 
   let customerName = '';
@@ -128,41 +137,55 @@ export async function createWarehouseReturnOrder(sb, body, user) {
 
   const returnNumber = await allocateWarehouseReturnNumber();
   const now = new Date().toISOString();
-  const id = newUuid();
-  const leatherCode = String(body.leather_code || '').trim() || null;
+  const batchCount = unitLines.length;
 
-  await adjustAssemblyStock(sb, assemblyId, KITWE_LOCATION_ID, -qty);
+  await adjustAssemblyStock(sb, parsed.assemblyId, KITWE_LOCATION_ID, -parsed.totalQty);
 
-  const row = {
-    id,
-    return_number: returnNumber,
-    assembly_id: assemblyId,
-    assembly_name: assembly.name,
-    assembly_sku: assembly.family_sku || null,
-    reason,
-    leather_code: leatherCode,
-    quantity: qty,
-    customer_id: customerId || null,
-    customer_name: customerName || null,
-    customer_phone: customerPhone || null,
-    status: WAREHOUSE_RETURN_STATUSES.SUBMITTED,
-    created_at: now,
-    updated_at: now,
-    created_by_id: user?.id || user?.uid || null,
-    created_by_email: user?.email || null,
-    created_by_name: user?.user_metadata?.full_name || user?.full_name || HASSAN_AWAD.displayName,
-    metadata: { kitwe_deducted_at: now },
-  };
-
-  const { error } = await sb.from(RETURNS).insert(row);
-  if (error) {
-    await adjustAssemblyStock(sb, assemblyId, KITWE_LOCATION_ID, qty);
-    throw new Error(error.message || 'Failed to save return order.');
+  const inserted = [];
+  try {
+    for (let i = 0; i < unitLines.length; i += 1) {
+      const unit = unitLines[i];
+      const id = newUuid();
+      const row = {
+        id,
+        return_number: returnNumber,
+        assembly_id: parsed.assemblyId,
+        assembly_name: assembly.name,
+        assembly_sku: assembly.family_sku || null,
+        reason: unit.reason,
+        leather_code: unit.leather_code,
+        quantity: 1,
+        customer_id: customerId || null,
+        customer_name: customerName || null,
+        customer_phone: customerPhone || null,
+        status: WAREHOUSE_RETURN_STATUSES.SUBMITTED,
+        created_at: now,
+        updated_at: now,
+        created_by_id: user?.id || user?.uid || null,
+        created_by_email: user?.email || null,
+        created_by_name: user?.user_metadata?.full_name || user?.full_name || HASSAN_AWAD.displayName,
+        metadata: {
+          kitwe_deducted_at: now,
+          batch_line_index: i + 1,
+          batch_line_count: batchCount,
+        },
+      };
+      const { error } = await sb.from(RETURNS).insert(row);
+      if (error) throw new Error(error.message || 'Failed to save return order.');
+      const mapped = mapReturnRow(row);
+      inserted.push(mapped);
+      queueProductionReturnPush(mapped);
+    }
+  } catch (err) {
+    await adjustAssemblyStock(sb, parsed.assemblyId, KITWE_LOCATION_ID, parsed.totalQty);
+    throw err;
   }
 
-  const mapped = mapReturnRow(row);
-  queueProductionReturnPush(mapped);
-  return { return_order: mapped };
+  return {
+    return_number: returnNumber,
+    return_orders: inserted,
+    return_order: inserted[0] || null,
+  };
 }
 
 async function queueProductionReturnPush(order) {
@@ -187,6 +210,7 @@ export async function listWarehouseReturnOrders(sb, { forProduction = false, tra
     query = query.in('status', [
       WAREHOUSE_RETURN_STATUSES.COMPLETED,
       WAREHOUSE_RETURN_STATUSES.SHIPPED,
+      WAREHOUSE_RETURN_STATUSES.CUSTOMER_DELIVERED,
     ]);
   }
   const { data, error } = await query;
@@ -234,10 +258,7 @@ export async function completeWarehouseReturnOrder(sb, body, user) {
     : null;
 
   if (!prevMeta.factory_stock_added_at) {
-    const factoryQty = await getAssemblyStockQty(sb, row.assembly_id, WAREHOUSE_FROM_LOCATION_ID);
-    if (factoryQty < qty) {
-      await adjustAssemblyStock(sb, row.assembly_id, WAREHOUSE_FROM_LOCATION_ID, qty);
-    }
+    await adjustAssemblyStock(sb, row.assembly_id, WAREHOUSE_FROM_LOCATION_ID, qty);
   }
 
   const { error } = await sb.from(RETURNS).update({
@@ -268,6 +289,10 @@ export async function prepareReturnShipmentSession(sb, body, user) {
   if (!row) throw new Error('Return order not found.');
   if (row.status !== WAREHOUSE_RETURN_STATUSES.COMPLETED) {
     throw new Error('Return must be completed before shipping back to Kitwe.');
+  }
+  const shipMeta = row.metadata || {};
+  if (shipMeta.kitwe_restored_at || shipMeta.customer_fulfilled_at) {
+    throw new Error('This return unit is already fulfilled.');
   }
 
   const deliveryNumber = await allocateWarehouseDeliveryNumber();
@@ -372,6 +397,13 @@ export async function submitReturnShipment(sb, body, user, uploadSignature) {
 
   const { data: row } = await sb.from(RETURNS).select('*').eq('id', returnOrderId).maybeSingle();
   if (!row) throw new Error('Return order not found.');
+  if (row.status !== WAREHOUSE_RETURN_STATUSES.COMPLETED) {
+    throw new Error('Return must be completed before shipping.');
+  }
+  const shipMeta = row.metadata || {};
+  if (shipMeta.kitwe_restored_at || shipMeta.customer_fulfilled_at) {
+    throw new Error('This return unit is already fulfilled.');
+  }
   const qty = Math.max(1, Number(row.quantity) || 1);
 
   const signatureUrl = await uploadSignature(sessionId, body.signature_png_base64);
@@ -393,7 +425,17 @@ export async function submitReturnShipment(sb, body, user, uploadSignature) {
     },
   }).eq('id', sessionId);
 
-  await markReturnOrderShipped(sb, returnOrderId, session.delivery_number, sessionId);
+  await sb.from(RETURNS).update({
+    status: WAREHOUSE_RETURN_STATUSES.SHIPPED,
+    outbound_delivery_number: session.delivery_number || null,
+    outbound_delivery_session_id: sessionId || null,
+    shipped_at: now,
+    updated_at: now,
+    metadata: {
+      ...(row.metadata || {}),
+      kitwe_restored_at: now,
+    },
+  }).eq('id', returnOrderId);
 
   return {
     session_id: sessionId,
@@ -409,7 +451,7 @@ export async function getWarehouseReturnOrder(sb, id) {
   return mapReturnRow(data);
 }
 
-/** Customer pickup label — factory stock unchanged, no delivery flow. */
+/** Customer pickup label — deduct factory stock; do not restore Kitwe. */
 export async function printReturnCustomerPickupLabel(sb, body, user) {
   const id = String(body.return_order_id || body.id || '').trim();
   if (!id) throw new Error('return_order_id is required.');
@@ -419,6 +461,14 @@ export async function printReturnCustomerPickupLabel(sb, body, user) {
   if (row.status !== WAREHOUSE_RETURN_STATUSES.COMPLETED) {
     throw new Error('Customer pickup label is available after the return timer is stopped (complete the return first).');
   }
+  const prevMeta = row.metadata || {};
+  if (prevMeta.customer_fulfilled_at || prevMeta.kitwe_restored_at) {
+    throw new Error('This return unit is already fulfilled.');
+  }
+  if (!prevMeta.factory_stock_added_at) {
+    throw new Error('Factory stock was not recorded — complete the return first.');
+  }
+  const qty = Math.max(1, Number(row.quantity) || 1);
   const customerName = String(row.customer_name || '').trim();
   if (!customerName) throw new Error('This return has no customer — label not available.');
 
@@ -446,12 +496,17 @@ export async function printReturnCustomerPickupLabel(sb, body, user) {
   });
 
   const now = printedAt.toISOString();
+  await adjustAssemblyStock(sb, row.assembly_id, WAREHOUSE_FROM_LOCATION_ID, -qty);
+
   await sb.from(RETURNS).update({
+    status: WAREHOUSE_RETURN_STATUSES.CUSTOMER_DELIVERED,
     updated_at: now,
     metadata: {
       ...(row.metadata || {}),
       customer_pickup_label_printed_at: now,
       customer_pickup_label_copies: result.copies,
+      customer_fulfilled_at: now,
+      factory_stock_removed_at: now,
     },
   }).eq('id', id);
 

@@ -31,7 +31,8 @@ export function WarehouseCatalogProvider({ children }) {
 
   const patchCatalog = useCallback((patch) => {
     setCatalog((prev) => {
-      const merged = mergeWarehouseCatalogPatch(prev, patch);
+      const base = prev || getWarehouseCatalogCache();
+      const merged = mergeWarehouseCatalogPatch(base, patch);
       if (merged) setWarehouseCatalogCache(merged);
       return merged;
     });

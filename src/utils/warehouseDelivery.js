@@ -36,8 +36,21 @@ export function deliverySenderName(session, usersById = null) {
   return String(session?.created_by_email || session?.metadata?.created_by_email || '').trim() || 'Unknown';
 }
 
+export function deliveryEntryPacketId(entry) {
+  return String(entry?.metadata?.packet_id || '').trim();
+}
+
+/** Factory → Kitwe line Hassan can tick and accept (packet cartons or finished units). */
+export function deliveryEntryFinishedUnit(entry) {
+  return entry?.metadata?.finished_unit === true && !deliveryEntryPacketId(entry);
+}
+
+export function deliveryEntryReceivable(entry) {
+  return Boolean(deliveryEntryPacketId(entry) || deliveryEntryFinishedUnit(entry));
+}
+
 export function deliveryEntryReceiverProgress(entries) {
-  const lines = (entries || []).filter((e) => e?.metadata?.packet_id);
+  const lines = (entries || []).filter((e) => deliveryEntryReceivable(e));
   const total = lines.length;
   const confirmed = lines.filter((e) => Boolean(e?.metadata?.receiver_checked_at)).length;
   return { total, confirmed };
@@ -58,7 +71,7 @@ export function deliveryEntryReceived(entry) {
 }
 
 export function deliveryEntryPendingReceive(entry) {
-  return entry?.metadata?.packet_id && !deliveryEntryReceived(entry);
+  return deliveryEntryReceivable(entry) && !deliveryEntryReceived(entry);
 }
 
 /** Finished product name stored on packet lines at submit. */
@@ -71,11 +84,24 @@ export function warehousePacketDisplayLabel(line) {
   const product = warehousePacketProductName(line);
   const packet = String(line?.name || 'Packet').trim();
   const qty = deliveryLineQty(line);
+  if (deliveryEntryFinishedUnit(line)) {
+    const label = product || packet;
+    return `${label} × ${qty} (finished units)`;
+  }
   if (product && product.toLowerCase() !== packet.toLowerCase()) {
     return `${product} — ${packet} × ${qty}`;
   }
   if (product) return `${product} × ${qty}`;
   return `${packet} × ${qty}`;
+}
+
+/** Detail panel: packet rows and finished-unit assembly rows get checkboxes. */
+export function warehouseDeliveryReceiverLineKind(line) {
+  if (line?.kind === 'assembly-header') return 'assembly-header';
+  if (line?.kind === 'packet-line') return 'receiver-line';
+  if (line?.kind === 'set-parent' || line?.kind === 'set-component') return 'skip';
+  if (deliveryEntryReceivable(line)) return 'receiver-line';
+  return 'skip';
 }
 
 export function groupWarehouseDisplayLines(entries) {

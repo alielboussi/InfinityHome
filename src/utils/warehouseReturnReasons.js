@@ -46,3 +46,11 @@ export function normalizeWarehouseReturnReason(value) {
   );
   return hit || v;
 }
+
+/** Leather code field on Hassan returns — upholstery-related reasons only. */
+export function returnReasonShowsLeatherCode(reason) {
+  const normalized = normalizeWarehouseReturnReason(reason);
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  return lower === 'upholstery' || lower === 'cushion' || lower === 'color';
+}

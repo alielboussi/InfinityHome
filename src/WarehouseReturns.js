@@ -5,8 +5,14 @@ import {
   listReturnOrders,
   listReturnQuoteCustomers,
 } from './services/warehouseDeliveryMobileApi';
-import { WAREHOUSE_RETURN_REASON_GROUPS } from './utils/warehouseReturnReasons';
-import { formatReturnElapsedDuration } from './utils/warehouseReturnOrder';
+import { fetchWarehouseCatalog } from './services/warehouseCatalog';
+import { buildKitweReturnProductOptions } from './utils/kitweSetStock';
+import db from './dataClient';
+import {
+  WAREHOUSE_RETURN_REASON_GROUPS,
+  returnReasonShowsLeatherCode,
+} from './utils/warehouseReturnReasons';
+import { formatReturnElapsedDuration, returnOrderUnitLabel } from './utils/warehouseReturnOrder';
 
 const fieldStyle = {
   width: '100%',
@@ -21,9 +27,8 @@ export default function WarehouseReturns() {
   const [products, setProducts] = React.useState([]);
   const [customers, setCustomers] = React.useState([]);
   const [assemblyId, setAssemblyId] = React.useState('');
-  const [reason, setReason] = React.useState('');
-  const [leatherCode, setLeatherCode] = React.useState('');
   const [quantity, setQuantity] = React.useState(1);
+  const [unitLines, setUnitLines] = React.useState([{ reason: '', leather_code: '' }]);
   const [customerId, setCustomerId] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -39,18 +44,68 @@ export default function WarehouseReturns() {
     return msg || 'Failed to load returns data.';
   };
 
+  const loadKitweProductsFromCatalog = React.useCallback(async () => {
+    const data = await fetchWarehouseCatalog();
+    return buildKitweReturnProductOptions(data.assemblies || [], data.assemblyInventory || []);
+  }, []);
+
+  const loadReturnQuoteCustomers = React.useCallback(async () => {
+    try {
+      const res = await listReturnQuoteCustomers();
+      if (res?.customers?.length) return res.customers;
+    } catch {
+      /* fall through to Firestore (same pool as Quotationer) */
+    }
+    const { data, error } = await db
+      .from('quote_customers')
+      .select('id, name, phone')
+      .order('name');
+    if (error) throw error;
+    return (data || [])
+      .map((row) => ({
+        id: row.id,
+        name: String(row.name || '').trim(),
+        phone: String(row.phone || '').trim(),
+      }))
+      .filter((row) => row.id && row.name);
+  }, []);
+
   const load = React.useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [prodRes, listRes, custRes] = await Promise.all([
-        listReturnKitweProducts(),
-        listReturnOrders({ trackage_only: false }),
-        listReturnQuoteCustomers(),
+      let products = [];
+      let productsApiError = '';
+      let listRes = { return_orders: [] };
+      let customers = [];
+
+      await Promise.all([
+        listReturnKitweProducts()
+          .then((prodRes) => { products = prodRes?.products || []; })
+          .catch((err) => { productsApiError = mapLoadError(err); }),
+        listReturnOrders({ trackage_only: false })
+          .then((res) => { listRes = res; })
+          .catch(() => {}),
+        loadReturnQuoteCustomers()
+          .then((rows) => { customers = rows; })
+          .catch(() => {}),
       ]);
-      setProducts(prodRes?.products || []);
+
+      if (!products.length) {
+        try {
+          products = await loadKitweProductsFromCatalog();
+        } catch (catalogErr) {
+          if (productsApiError) throw new Error(productsApiError);
+          throw catalogErr;
+        }
+      }
+
+      setProducts(products);
       setRecent((listRes?.return_orders || []).slice(0, 20));
-      setCustomers(custRes?.customers || []);
+      setCustomers(customers);
+      if (!products.length && productsApiError) {
+        setError(`${productsApiError} No Kitwe products with stock were found in the catalog.`);
+      }
     } catch (err) {
       setError(mapLoadError(err));
       setProducts([]);
@@ -59,12 +114,37 @@ export default function WarehouseReturns() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadKitweProductsFromCatalog, loadReturnQuoteCustomers]);
 
   React.useEffect(() => { load(); }, [load]);
 
   const selectedProduct = products.find((p) => String(p.assembly_id) === String(assemblyId));
   const maxQty = selectedProduct?.kitwe_qty ?? 999;
+  const qtyNum = Math.max(1, Math.min(maxQty, Math.floor(Number(quantity) || 1)));
+
+  React.useEffect(() => {
+    setUnitLines((prev) => {
+      const next = [...prev];
+      while (next.length < qtyNum) next.push({ reason: '', leather_code: '' });
+      while (next.length > qtyNum) next.pop();
+      return next;
+    });
+  }, [qtyNum]);
+
+  const applyReasonToAllUnits = (reason) => {
+    setUnitLines((prev) => prev.map((line) => ({ ...line, reason })));
+  };
+
+  const updateUnitLine = (index, patch) => {
+    setUnitLines((prev) => prev.map((line, i) => {
+      if (i !== index) return line;
+      const next = { ...line, ...patch };
+      if (patch.reason != null && !returnReasonShowsLeatherCode(patch.reason)) {
+        next.leather_code = '';
+      }
+      return next;
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -72,17 +152,27 @@ export default function WarehouseReturns() {
     setError('');
     setNotice('');
     try {
+      const lines = unitLines.map((line, index) => {
+        const reason = String(line.reason || '').trim();
+        if (!reason) throw new Error(`Choose a reason for unit ${index + 1}.`);
+        return {
+          reason,
+          leather_code: String(line.leather_code || '').trim() || undefined,
+          quantity: 1,
+        };
+      });
       const out = await createReturnOrder({
         assembly_id: assemblyId,
-        reason,
-        leather_code: leatherCode.trim() || undefined,
-        quantity: Math.max(1, Math.floor(Number(quantity) || 1)),
         customer_id: customerId || undefined,
+        lines,
       });
-      setNotice(`Return ${out?.return_order?.return_number || ''} created. Kitwe stock updated; factory stock adds when repair is completed.`);
+      const count = out?.return_orders?.length || 1;
+      setNotice(
+        `Return note ${out?.return_number || out?.return_order?.return_number || ''} created `
+        + `(${count} separate ${count === 1 ? 'job' : 'jobs'} in Production). Kitwe stock reduced; factory stock adds when each job is completed.`,
+      );
       setAssemblyId('');
-      setReason('');
-      setLeatherCode('');
+      setUnitLines([{ reason: '', leather_code: '' }]);
       setQuantity(1);
       setCustomerId('');
       await load();
@@ -101,7 +191,7 @@ export default function WarehouseReturns() {
     <div style={{ maxWidth: 720, margin: '0 auto', padding: 16 }}>
       <h2 style={{ marginTop: 0 }}>Kitwe product returns</h2>
       <p style={{ color: 'var(--br-text-muted, #666)', marginBottom: 20 }}>
-        Select a warehouse product with Kitwe stock (not sets). Quantity is deducted from Kitwe when the return is created; factory warehouse stock is added when production taps Complete (repair done). Ship back to Kitwe uses driver signature on step 5.
+        Select a warehouse product with Kitwe stock (not sets). For quantity 2+, set a reason per unit — Production gets separate cards under one return note #. Kitwe stock is deducted on create; factory stock adds when each job is completed. Ship back to Kitwe restores Kitwe; customer label removes factory stock only.
       </p>
 
       {error ? (
@@ -131,36 +221,11 @@ export default function WarehouseReturns() {
               </option>
             ))}
           </select>
-        </label>
-
-        <label>
-          <span style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Reason for return</span>
-          <select
-            required
-            value={reason}
-            onChange={(ev) => setReason(ev.target.value)}
-            style={fieldStyle}
-          >
-            <option value="">Choose reason…</option>
-            {WAREHOUSE_RETURN_REASON_GROUPS.map((group) => (
-              <optgroup key={group.id} label={group.label}>
-                {group.reasons.map((r) => (
-                  <option key={`${group.id}-${r}`} value={r}>{r}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <span style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Leather code (optional)</span>
-          <input
-            type="text"
-            value={leatherCode}
-            onChange={(ev) => setLeatherCode(ev.target.value)}
-            style={fieldStyle}
-            placeholder="e.g. LC-204"
-          />
+          {!products.length ? (
+            <p style={{ marginTop: 8, color: 'var(--br-text-muted, #666)', fontSize: 14 }}>
+              No Kitwe warehouse products with stock yet. Accept a factory delivery or add stock on Kitwe Products first.
+            </p>
+          ) : null}
         </label>
 
         <label>
@@ -176,6 +241,107 @@ export default function WarehouseReturns() {
           />
         </label>
 
+        {qtyNum > 1 ? (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <span style={{ fontWeight: 700 }}>Reason per unit ({qtyNum})</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const first = String(unitLines[0]?.reason || '').trim();
+                  if (first) applyReasonToAllUnits(first);
+                }}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--br-border, #ccc)',
+                  background: 'var(--br-surface, #fff)',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                }}
+              >
+                Copy unit 1 reason to all
+              </button>
+            </div>
+            {unitLines.map((line, index) => (
+              <div
+                key={`unit-${index}`}
+                style={{
+                  border: '1px solid var(--br-border, #ddd)',
+                  borderRadius: 10,
+                  padding: 12,
+                  background: 'var(--br-surface, #fafafa)',
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Unit {index + 1}</div>
+                <label>
+                  <span style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Reason</span>
+                  <select
+                    required
+                    value={line.reason}
+                    onChange={(ev) => updateUnitLine(index, { reason: ev.target.value })}
+                    style={fieldStyle}
+                  >
+                    <option value="">Choose reason…</option>
+                    {WAREHOUSE_RETURN_REASON_GROUPS.map((group) => (
+                      <optgroup key={group.id} label={group.label}>
+                        {group.reasons.map((r) => (
+                          <option key={`${group.id}-${r}-${index}`} value={r}>{r}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+                {returnReasonShowsLeatherCode(line.reason) ? (
+                  <label style={{ display: 'block', marginTop: 10 }}>
+                    <span style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Leather code (optional)</span>
+                    <input
+                      type="text"
+                      value={line.leather_code}
+                      onChange={(ev) => updateUnitLine(index, { leather_code: ev.target.value })}
+                      style={fieldStyle}
+                      placeholder="e.g. LC-204"
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            <label>
+              <span style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Reason for return</span>
+              <select
+                required
+                value={unitLines[0]?.reason || ''}
+                onChange={(ev) => updateUnitLine(0, { reason: ev.target.value })}
+                style={fieldStyle}
+              >
+                <option value="">Choose reason…</option>
+                {WAREHOUSE_RETURN_REASON_GROUPS.map((group) => (
+                  <optgroup key={group.id} label={group.label}>
+                    {group.reasons.map((r) => (
+                      <option key={`${group.id}-${r}`} value={r}>{r}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+            {returnReasonShowsLeatherCode(unitLines[0]?.reason) ? (
+              <label>
+                <span style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Leather code (optional)</span>
+                <input
+                  type="text"
+                  value={unitLines[0]?.leather_code || ''}
+                  onChange={(ev) => updateUnitLine(0, { leather_code: ev.target.value })}
+                  style={fieldStyle}
+                  placeholder="e.g. LC-204"
+                />
+              </label>
+            ) : null}
+          </>
+        )}
+
         <label>
           <span style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Customer (optional)</span>
           <select
@@ -185,7 +351,9 @@ export default function WarehouseReturns() {
             disabled={loading || !customers.length}
           >
             <option value="">
-              {customers.length ? 'No customer' : 'No quote customers found'}
+              {customers.length
+                ? 'No customer'
+                : 'Add customers under Quotationer → Manage Customers, then refresh'}
             </option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
@@ -197,7 +365,7 @@ export default function WarehouseReturns() {
 
         <button
           type="submit"
-          disabled={busy || !assemblyId || !reason}
+          disabled={busy || !assemblyId || unitLines.some((l) => !String(l.reason || '').trim())}
           style={{
             padding: '12px 18px',
             fontWeight: 700,
@@ -227,7 +395,8 @@ export default function WarehouseReturns() {
                   background: 'var(--br-surface, #fafafa)',
                 }}
               >
-                <strong>{row.return_number}</strong> · {row.assembly_name} × {row.quantity}
+                <strong>{returnOrderUnitLabel(row)}</strong>
+                {' · '}{row.assembly_name} × {row.quantity}
                 <br />
                 <span style={{ color: '#666', fontSize: 14 }}>
                   {row.reason} · {row.status.replace(/_/g, ' ')}

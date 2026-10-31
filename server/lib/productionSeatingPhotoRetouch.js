@@ -51,9 +51,17 @@ function buildGenerationConfig() {
   return config;
 }
 
-async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, promptText } = {}) {
-  const apiKey = getGeminiProductionApiKey();
-  if (!apiKey) throw new Error('GEMINI_API_KEY_PRODUCTION is not configured for photo retouching.');
+async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, promptText, resolveApiKey } = {}) {
+  const apiKey = typeof resolveApiKey === 'function'
+    ? resolveApiKey()
+    : getGeminiProductionApiKey();
+  if (!apiKey) {
+    throw new Error(
+      typeof resolveApiKey === 'function' && resolveApiKey !== getGeminiProductionApiKey
+        ? 'GEMINI_API_KEY_CATALOG (or GEMINI_API_KEY) is not configured for catalog photo retouching.'
+        : 'GEMINI_API_KEY_PRODUCTION is not configured for photo retouching.',
+    );
+  }
 
   const prompt = String(promptText || '').trim() || buildProductionPhotoRetouchPrompt({});
 
@@ -151,6 +159,7 @@ export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
   requireAi = false,
   productName = '',
   preset = '',
+  resolveApiKey = getGeminiProductionApiKey,
 } = {}) {
   const skipAi = skipAiOption
     || String(process.env.PRODUCTION_PHOTO_SKIP_AI || '').trim().toLowerCase() === 'true';
@@ -166,7 +175,7 @@ export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
     throw new Error('AI photo retouch is required but PRODUCTION_PHOTO_SKIP_AI is enabled on the server.');
   }
   try {
-    const generated = await requestGeminiSeatingRetouch(input, { requireAi, promptText });
+    const generated = await requestGeminiSeatingRetouch(input, { requireAi, promptText, resolveApiKey });
     return finalizeCatalogJpeg(generated.buffer, generated.mime);
   } catch (err) {
     if (requireAi || !catalogFallbackWithoutAiEnabled()) {

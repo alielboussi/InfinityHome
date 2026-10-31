@@ -20,11 +20,27 @@ const MATTRESS_WRAP_REMOVAL = `MATTRESS / BEDDING (critical when plastic or nylo
 - Show only the fabric/quilted surface and sides of the mattress — crisp, sharp, color-accurate textile detail.
 - Remove warehouse clutter, floor tape, and label stickers on the wrap; do not invent a different pattern or size.`;
 
-const MATTRESS_CATALOG_ORIENTATION = `ORIENTATION & FRAMING (critical — customer must see the top design):
-- Present the mattress facing forward toward the camera. The top sleeping surface (quilted, tufted, or patterned fabric) must be the main visible face — not a narrow side edge, end cap, or thickness-only profile.
-- If the source photo is side-on or mostly shows the edge, re-angle to a standard catalog hero view: slightly elevated three-quarter angle OR straight-on from the foot/head so the full top pattern is readable across the frame.
-- Do not crop away the decorative top; keep the entire mattress in frame with the surface design clearly visible (handles on the side are OK if they do not hide the pattern).
-- Preserve the real quilt/stitch pattern and colors from the photo — only improve angle, lighting, and background; do not replace the design.`;
+const MATTRESS_HERO_FRAMING = `HERO FRAMING (critical — match other finished-goods catalog thumbnails in this app):
+- Zoom in so the mattress fills most of the square frame (about 70–90% of height and width). Minimal white padding — same tight crop as sofas and chairs in this catalog, NOT a small mattress floating with huge empty margins.
+- Center the product. The full mattress silhouette should read clearly (top face + visible side depth), not an abstract texture patch only.
+- Preserve exact fabric pattern, quilt geometry, puff spacing, and colors from the source — only reframe, relight, rotate upright, and clean the background; never replace the design.`;
+
+const MATTRESS_CATALOG_ORIENTATION = `ORIENTATION (critical — never lay flat on the floor):
+- The mattress must stand UPRIGHT (vertical), the same way other warehouse finished products are photographed for this catalog — NOT lying horizontal on the ground, warehouse floor, or pallet.
+- Rotate/repose from flat warehouse shots: prop the mattress on its long edge or end so it stands tall; the TOP sleeping surface (quilted/tufted/patterned fabric) faces the camera forward (straight-on or slight 3/4 hero angle, ~5–20°).
+- The customer must see the top design as the main face — not a top-down flat-lay, not a bird's-eye view, not mostly side thickness or end cap only.
+- Forbidden poses: mattress lying flat, mattress on the ground seen from above, extreme macro crop with no product shape, narrow edge-only profile hiding the quilt pattern.
+- Side handles or piping are OK at the edges if the top quilt pattern remains the hero.`;
+
+const MATTRESS_CATALOG_REQUIREMENTS = `REQUIREMENTS (follow exactly):
+1. Background: solid pure white #FFFFFF only — no floor, walls, warehouse, or gradient.
+2. Subject: keep the same mattress — same fabric pattern, colors, and proportions. Do not swap or redesign the item.
+3. Cleanup: remove people, hands, tags, clutter, and background objects.
+4. Lighting: bright, even catalog lighting; sharp focus on the top quilt and edges; optional very soft contact shadow under the standing base only.
+5. Framing: upright hero shot as specified above — zoomed in like other catalog products; NOT distant, NOT flat on the floor, NOT top-down flat-lay.
+6. Forbidden: text, logos, watermarks, extra furniture, props, or scenery.
+
+OUTPUT: Return ONLY the finished catalog image (no text).`;
 
 /** Subject line per Create-screen preset (upholstery + carpentry). */
 export const PRODUCTION_PHOTO_PRESET_SUBJECT = Object.freeze({
@@ -102,11 +118,13 @@ function buildMattressCatalogPhotoRetouchPrompt(productName) {
 
 Product: ${label}.
 
+${MATTRESS_HERO_FRAMING}
+
 ${MATTRESS_CATALOG_ORIENTATION}
 
 ${MATTRESS_WRAP_REMOVAL}
 
-${SHARED_REQUIREMENTS}`;
+${MATTRESS_CATALOG_REQUIREMENTS}`;
 }
 
 /**

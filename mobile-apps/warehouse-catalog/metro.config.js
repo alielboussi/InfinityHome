@@ -58,10 +58,14 @@ config.resolver.nodeModulesPaths = [appNodeModules];
 
 const reactRoot = packageRoot('react');
 const rnRoot = packageRoot('react-native');
+const safeAreaRoot = packageRoot('react-native-safe-area-context');
+const screensRoot = packageRoot('react-native-screens');
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules || {}),
   ...(reactRoot ? { react: reactRoot } : {}),
   ...(rnRoot ? { 'react-native': rnRoot } : {}),
+  ...(safeAreaRoot ? { 'react-native-safe-area-context': safeAreaRoot } : {}),
+  ...(screensRoot ? { 'react-native-screens': screensRoot } : {}),
 };
 
 config.resolver.blockList = [

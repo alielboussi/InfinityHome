@@ -2,6 +2,7 @@ import { createFirestoreServerClient } from './firestoreServerClient.js';
 import { attachProductionAssemblyCatalogPhoto } from './productionPacketCatalogPhoto.js';
 import { evaluateWarehouseProductionAppAccess } from '../../src/mobile/mobileAccessManifest.js';
 import { getLoginAccessRecord } from './loginAccess.js';
+import { resolveWarehouseProductionWhatsAppProducerName } from './warehouseProductionWhatsAppProducer.js';
 import { normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
 import { enqueueWarehouseProductionLabelJob } from './productionLabelPrint.js';
 import { normalizeWarehousePacketScan } from '../../src/utils/warehouseScanResolver.js';
@@ -9,8 +10,9 @@ import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js
 import { buildWarehouseProductionLabelPngBase64 } from './warehouseProductionLabelImage.js';
 import { sendWarehouseProductionWhatsApp } from './sendWarehouseProductionWhatsApp.js';
 
-function productionWhatsappAlias(user) {
-  return String(user?.full_name || user?.display_name || user?.email || '').trim();
+async function productionWhatsappProducerName(user) {
+  const record = await getLoginAccessRecord(user?.id);
+  return resolveWarehouseProductionWhatsAppProducerName(user, record);
 }
 
 function pendingLabelQty(body) {
@@ -27,10 +29,11 @@ async function notifyNewProductionProductWhatsApp({
 }) {
   const qty = Math.max(0, Math.floor(Number(qtyAdded) || 0));
   const image = String(imageUrl || assembly?.image_url || '').trim();
+  const producedBy = await productionWhatsappProducerName(user);
   try {
     await sendWarehouseProductionWhatsApp({
       variant: 'new',
-      accountAlias: productionWhatsappAlias(user),
+      producedBy,
       sku: assembly?.family_sku || '',
       name: assembly?.name || '',
       qtyAdded: qty,

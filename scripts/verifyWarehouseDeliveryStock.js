@@ -24,6 +24,14 @@ assert(accept.includes('kitweQtyBefore'), 'accept must pass BOM gain context int
 assert(kitweSync.includes('catalogDelta - bomGain'), 'Kitwe sync must not double-count BOM recompute with catalog delta');
 assert(kitweSync.includes('ensureAssemblyListedAtKitwe'), 'Kitwe sync must list assembly at Kitwe location');
 assert(kitweSync.includes('findOrCreateKitweProduct'), 'Kitwe sync must match SKU or create product');
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/warehouseProductionLabelLayout.js'), 'utf8').includes("color: 'Color:'"),
+  'production label layout must include Color row',
+);
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/zebraProductionLabelZpl.js'), 'utf8').includes('FIELD_LABELS.color'),
+  'ZPL must print Color before Date',
+);
 assert(kitweSync.includes('repairKitweCatalogForSession'), 'repair helper must exist for backfill');
 assert(kitweSync.includes('assemblyUnitsReadyForKitweCatalog'), 'accept must detect fully received assemblies for Kitwe catalog');
 assert(kitweSync.includes('assemblyUnitsFullyReceived'), 'POS mirror only when full BOM received for assembly');

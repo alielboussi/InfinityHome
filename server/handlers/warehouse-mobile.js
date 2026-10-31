@@ -28,6 +28,7 @@ import {
   upsertFinishedAssemblyInventoryQuantity,
 } from '../lib/warehouseCatalogMobile.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
+import { resolveWarehouseProductionWhatsAppProducerName } from '../lib/warehouseProductionWhatsAppProducer.js';
 import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeliveryWhatsAppMessage.js';
 import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhatsApp.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
@@ -116,8 +117,9 @@ import {
   uploadBufferToFirebaseStorage,
 } from '../lib/firebaseStorage.js';
 
-function productionWhatsappAlias(user) {
-  return String(user?.full_name || user?.display_name || user?.email || '').trim();
+async function productionWhatsappProducerName(user) {
+  const record = await getLoginAccessRecord(user?.id);
+  return resolveWarehouseProductionWhatsAppProducerName(user, record);
 }
 
 function queueProductionWhatsAppNotify(payload) {
@@ -514,9 +516,10 @@ async function opProductionPacketCreate(body, user) {
     };
 
     if (!deferProductPhoto && catalogImageUrl) {
+      const producedBy = await productionWhatsappProducerName(user);
       queueProductionWhatsAppNotify({
         variant: 'new',
-        accountAlias: productionWhatsappAlias(user),
+        producedBy,
         sku: labelSku,
         name: assembly.name,
         qtyAdded: initialQty,
@@ -695,9 +698,10 @@ async function opProductionStockIncrease(body, user) {
     : packet;
 
   if (assembly) {
+    const producedBy = await productionWhatsappProducerName(user);
     queueProductionWhatsAppNotify({
       variant: 'existing',
-      accountAlias: productionWhatsappAlias(user),
+      producedBy,
       sku: labelSku,
       name: labelName,
       qtyAdded: delta,
@@ -917,9 +921,13 @@ async function opPacketNameCheck(body) {
   };
 }
 
-async function buildProductionLabelPreviewPayload({ name, sku, printedAt, skipPng = false }) {
+async function buildProductionLabelPreviewPayload({
+  name, sku, printedAt, color, boxUnitsPerCarton, skipPng = false,
+}) {
   const at = printedAt ? new Date(printedAt) : new Date();
-  const label = buildProductionLabelMeta({ name, sku, printedAt: at });
+  const label = buildProductionLabelMeta({
+    name, sku, printedAt: at, color, boxUnitsPerCarton,
+  });
   let label_preview_png_base64 = null;
   if (!skipPng) {
     try {
@@ -927,6 +935,8 @@ async function buildProductionLabelPreviewPayload({ name, sku, printedAt, skipPn
         name: label.name,
         sku: label.sku,
         printedAt: at,
+        color: label.color,
+        boxUnitsPerCarton,
       });
     } catch (err) {
       console.warn('[warehouse-mobile] label preview png failed:', err?.message || err);
@@ -941,7 +951,14 @@ async function opProductionLabelPreview(body, user) {
   const sku = normalizeWarehousePacketScan(body.sku) || normalizeWarehouseProductSku(body.sku);
   if (!name || !sku) throw new Error('name and sku are required.');
   const printedAt = body.printed_at || body.printedAt || new Date().toISOString();
-  return buildProductionLabelPreviewPayload({ name, sku, printedAt });
+  const color = body.color || body.color_name || body.colorName || '';
+  const boxUnitsPerCarton = Math.max(
+    0,
+    Math.floor(Number(body.box_units_per_carton ?? body.boxUnitsPerCarton) || 0),
+  );
+  return buildProductionLabelPreviewPayload({
+    name, sku, printedAt, color, boxUnitsPerCarton,
+  });
 }
 
 async function opProductionLabelPrint(body, user) {
@@ -953,6 +970,11 @@ async function opProductionLabelPrint(body, user) {
   if (!name || !sku) throw new Error('name and sku are required.');
   const printSource = String(body.client_source || '').trim() || 'warehouse_catalog_portal';
   const printedAt = new Date();
+  const color = body.color || body.color_name || body.colorName || '';
+  const boxUnitsPerCarton = Math.max(
+    0,
+    Math.floor(Number(body.box_units_per_carton ?? body.boxUnitsPerCarton) || 0),
+  );
   let labelJobId = null;
   let labelPrintWarning = null;
   try {
@@ -963,6 +985,8 @@ async function opProductionLabelPrint(body, user) {
       printedBy: user?.full_name || user?.display_name || user?.email,
       source: printSource,
       printedAt,
+      color,
+      boxUnitsPerCarton,
     });
     if (!labelJobId) {
       labelPrintWarning = 'Labels were not sent to the printer (Zebra Weblink is not configured on the server).';
@@ -972,7 +996,9 @@ async function opProductionLabelPrint(body, user) {
     labelPrintWarning = formatZebraPrintError(printErr);
     console.warn('[warehouse-mobile] production label print failed:', printErr?.message || printErr);
   }
-  const preview = await buildProductionLabelPreviewPayload({ name, sku, printedAt, skipPng: false });
+  const preview = await buildProductionLabelPreviewPayload({
+    name, sku, printedAt, color, boxUnitsPerCarton, skipPng: false,
+  });
   return {
     label_copies: qty,
     label_job_id: labelJobId,

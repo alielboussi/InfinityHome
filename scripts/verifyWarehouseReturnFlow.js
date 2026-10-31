@@ -47,8 +47,16 @@ assert(reasons.includes('Upholstery'), 'return reasons must include Upholstery g
 assert(reasons.includes('Legs'), 'return reasons must include Legs');
 assert(returns.includes('RO'), 'return numbers must use RO prefix');
 assert(returns.includes('factory_stock_added_at'), 'complete must add factory warehouse stock');
-assert(returns.includes('kitwe_deducted_at'), 'create must deduct Kitwe only until complete');
+assert(returns.includes('buildKitweReturnProductOptions'), 'returns must list Kitwe catalog products with stock');
+assert(returns.includes('canWarehouseKitweReturnCreator'), 'returns API must allow login-access admin like deliveries');
+assert(returns.includes('batch_line_index'), 'multi-unit returns must tag production cards');
+assert(returns.includes('CUSTOMER_DELIVERED'), 'customer fulfillment status must exist');
+assert(returns.includes('kitwe_restored_at'), 'ship back must restore Kitwe stock per unit');
+assert(returns.includes('factory_stock_removed_at'), 'customer label must deduct factory stock');
+assert(read('src/WarehouseReturns.js').includes('loadReturnQuoteCustomers'), 'returns must fallback to quote_customers catalog');
+assert(read('src/utils/warehouseReturnReasons.js').includes('returnReasonShowsLeatherCode'), 'leather code reasons helper required');
 assert(chrome.includes('/warehouse-returns'), 'Hassan nav must link Returns');
+assert(chrome.includes('/warehouse-repairs-admin'), 'catalog nav must link Repairs admin');
 assert(chrome.includes('Returns Trackage'), 'Hassan nav must link Returns Trackage');
 
 const returnScreen = read('mobile-apps/warehouse-production/screens/ReturnOrdersScreen.js');

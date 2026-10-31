@@ -15,7 +15,9 @@ import {
   anyDeliveryPacketsReceiverConfirmed,
   deliveryEntryReceiverProgress,
   deliveryEntryReceived,
+  deliveryEntryReceivable,
   warehousePacketDisplayLabel,
+  warehouseDeliveryReceiverLineKind,
 } from './utils/warehouseDelivery';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
 import {
@@ -426,13 +428,14 @@ export default function WarehouseDeliveries() {
           {sessions.map((session) => {
             const entries = entriesBySession[String(session.id)] || [];
             const { total, confirmed } = deliveryEntryReceiverProgress(entries);
-            const packetLines = (entries || []).filter((e) => e?.metadata?.packet_id);
-            const receivedCount = packetLines.filter((e) => deliveryEntryReceived(e)).length;
+            const receivableLines = (entries || []).filter((e) => deliveryEntryReceivable(e));
+            const receivedCount = receivableLines.filter((e) => deliveryEntryReceived(e)).length;
+            const progressItemLabel = receivableLines.some((e) => e?.metadata?.finished_unit) ? 'Items' : 'Packets';
             const completed = isWarehouseCompleted(session.status);
             const driver = session?.metadata?.driver_name;
             const progressLabel = completed || (total > 0 && receivedCount === total)
-              ? `Packets received: ${receivedCount}/${total}`
-              : `Packets confirmed: ${confirmed}/${total}`;
+              ? `${progressItemLabel} received: ${receivedCount}/${total}`
+              : `${progressItemLabel} confirmed: ${confirmed}/${total}`;
             const progressColor = completed || (total > 0 && receivedCount === total) ? '#4ade80' : '#fbbf24';
             return (
               <button
@@ -488,7 +491,7 @@ export default function WarehouseDeliveries() {
           const completed = isWarehouseCompleted(session.status);
           const canAcceptSession = anyDeliveryPacketsReceiverConfirmed(entries);
           const toAcceptCount = entries.filter(
-            (e) => e?.metadata?.packet_id
+            (e) => deliveryEntryReceivable(e)
               && e?.metadata?.receiver_checked_at
               && !deliveryEntryReceived(e),
           ).length;
@@ -528,14 +531,15 @@ export default function WarehouseDeliveries() {
                 </button>
               </div>
               {displayLines.map((line) => {
-                if (line.kind === 'assembly-header') {
+                const rowKind = warehouseDeliveryReceiverLineKind(line);
+                if (rowKind === 'assembly-header') {
                   return (
                     <div key={line.id} style={{ fontWeight: 700, marginTop: 14, color: PAGE_THEME.text }}>
                       {line.name}
                     </div>
                   );
                 }
-                if (line.kind !== 'packet-line') return null;
+                if (rowKind !== 'receiver-line') return null;
                 const checked = Boolean(line?.metadata?.receiver_checked_at);
                 const received = deliveryEntryReceived(line);
                 return (
@@ -590,11 +594,11 @@ export default function WarehouseDeliveries() {
                     disabled={busyId === session.id || !canAccept || !canAcceptSession || toAcceptCount < 1}
                     style={{ opacity: !canAcceptSession ? 0.5 : 1 }}
                   >
-                    {busyId === session.id ? 'Accepting…' : `Accept received packets (${toAcceptCount})`}
+                    {busyId === session.id ? 'Accepting…' : `Accept received items (${toAcceptCount})`}
                   </button>
                 ) : (
                   <span style={{ color: PAGE_THEME.muted, fontWeight: 600, alignSelf: 'center' }}>
-                    All packets accepted — use PDF buttons above to review or save.
+                    All items accepted — use PDF buttons above to review or save.
                   </span>
                 )}
               </div>

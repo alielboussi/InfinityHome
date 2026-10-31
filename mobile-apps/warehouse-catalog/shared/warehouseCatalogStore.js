@@ -60,19 +60,49 @@ export function isWarehouseCatalogStale() {
 
 /** Merge qty maps (and optional full catalog) after packet/product qty API calls. */
 export function mergeWarehouseCatalogPatch(catalog, patch) {
-  if (!catalog || !patch) return catalog;
+  if (!patch) return catalog || null;
+  const base = catalog || {};
   return {
-    ...catalog,
-    warehouseLocationId: patch.warehouseLocationId ?? catalog.warehouseLocationId,
+    ...base,
+    warehouseLocationId: patch.warehouseLocationId ?? base.warehouseLocationId,
     assemblyWarehouseQty: {
-      ...(catalog.assemblyWarehouseQty || {}),
+      ...(base.assemblyWarehouseQty || {}),
       ...(patch.assemblyWarehouseQty || {}),
     },
     packetWarehouseQty: {
-      ...(catalog.packetWarehouseQty || {}),
+      ...(base.packetWarehouseQty || {}),
       ...(patch.packetWarehouseQty || {}),
     },
   };
+}
+
+/** Normalize assembly-product-quantity-set / packet-quantity-set API payloads for patchCatalog. */
+export function qtyPatchFromMobileQuantityResponse(result, assemblyId, fallbackQty) {
+  const key = String(assemblyId || result?.assembly_id || '').trim();
+  const assemblyWarehouseQty = { ...(result?.assemblyWarehouseQty || {}) };
+  if (key) {
+    if (result?.quantity != null && result?.quantity !== '') {
+      assemblyWarehouseQty[key] = Math.max(0, Math.floor(Number(result.quantity) || 0));
+    } else if (fallbackQty != null) {
+      assemblyWarehouseQty[key] = Math.max(0, Math.floor(Number(fallbackQty) || 0));
+    }
+  }
+  return {
+    warehouseLocationId: result?.warehouseLocationId,
+    assemblyWarehouseQty,
+    packetWarehouseQty: result?.packetWarehouseQty || {},
+  };
+}
+
+export function mergeAssemblyIntoCatalog(catalog, assembly) {
+  if (!assembly?.id) return catalog || null;
+  const base = catalog || {};
+  const id = String(assembly.id);
+  const assemblies = [...(base.assemblies || [])];
+  const idx = assemblies.findIndex((row) => String(row.id) === id);
+  if (idx >= 0) assemblies[idx] = { ...assemblies[idx], ...assembly };
+  else assemblies.push(assembly);
+  return { ...base, assemblies };
 }
 
 export async function loadPersistedWarehouseCatalog() {

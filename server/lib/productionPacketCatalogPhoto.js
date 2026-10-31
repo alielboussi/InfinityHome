@@ -89,7 +89,8 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
   productName,
   skipAiRetouch = false,
   requireAiRetouch = false,
-}) {
+  resolveApiKey,
+} = {}) {
   const assemblyId = String(assembly?.id || '').trim();
   const sku = String(assembly?.family_sku || assembly?.sku || '').trim();
   if (!assemblyId || !sku) throw new Error('assembly id and sku are required.');
@@ -99,6 +100,7 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
     skipAi: skipAiRetouch,
     requireAi: requireAiRetouch,
     productName: productName || assembly?.name,
+    resolveApiKey,
   });
   const objectPath = `${storageFolder(assemblyId, 'assembly')}/catalog-${Date.now()}.jpg`;
   await uploadBufferToFirebaseStorage({

@@ -39,6 +39,8 @@ export const BLOCK_GAP_MM = 0.55;
 export const FIELD_LABELS = {
   sku: 'SKU:',
   name: 'Name:',
+  color: 'Color:',
+  pack: 'Pack:',
   date: 'Date:',
   time: 'Time:',
 };
@@ -67,6 +69,8 @@ export function computeProductionLabelLayout({
   heightMm = LABEL_HEIGHT_MM,
   marginMm = LABEL_MARGIN_MM,
   dpi = 203,
+  includeColorRow = false,
+  includeBoxRow = false,
 } = {}) {
   const mainWidthMm = LABEL_WIDTH_MM - marginMm * 2;
   const centerXMm = LABEL_WIDTH_MM / 2;
@@ -89,6 +93,20 @@ export function computeProductionLabelLayout({
   const imageQrLeftMm = centerXMm - QR_SIZE_MM / 2;
   const imageQrCenterMm = centerXMm;
   y += QR_SIZE_MM + BLOCK_GAP_MM + 0.4;
+
+  let colorRowMm = null;
+  if (includeColorRow) {
+    block = advanceBlock(y, ROW_TEXT_MM);
+    colorRowMm = block.rowY;
+    y = block.nextY;
+  }
+
+  let boxRowMm = null;
+  if (includeBoxRow) {
+    block = advanceBlock(y, ROW_TEXT_MM);
+    boxRowMm = block.rowY;
+    y = block.nextY;
+  }
 
   block = advanceBlock(y, ROW_TEXT_MM);
   const dateRowMm = block.rowY;
@@ -121,6 +139,10 @@ export function computeProductionLabelLayout({
     imageQrLeftMm,
     imageQrCenterMm,
     qrSizeMm: QR_SIZE_MM,
+    colorRowMm,
+    includeColorRow: Boolean(includeColorRow),
+    boxRowMm,
+    includeBoxRow: Boolean(includeBoxRow),
     dateRowMm,
     timeRowMm,
     fontPt: FONT_PT,
@@ -141,6 +163,8 @@ export function computeProductionLabelLayout({
       qrBlockY: toDots(qrBlockYMm),
       imageQrX: toDots(imageQrLeftMm),
       qrSize: toDots(QR_SIZE_MM),
+      colorRowY: colorRowMm != null ? textTopDots(colorRowMm) : null,
+      boxRowY: boxRowMm != null ? textTopDots(boxRowMm) : null,
       dateRowY: textTopDots(dateRowMm),
       timeRowY: textTopDots(timeRowMm),
       boxW: toDots(mainWidthMm),

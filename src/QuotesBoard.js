@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import { openOrCreateQuotationPdf } from './QuotationerPdfService';
@@ -7,7 +7,7 @@ import { convertQuoteToLayby } from './services/quoteConversion';
 import { cacheClear } from './utils/staleCache';
 import { LAYBY_ROWS_CACHE_KEY } from './utils/laybyRollup';
 import BackToDashboard from './BackToDashboard';
-import { canDeleteQuotationData, canEditQuotation, isQuotationerOnlyUser } from './accessControl';
+import { canDeleteQuotationData, canEditQuotation, isQuotationerOnlyExperience } from './accessControl';
 import { computeQuotationDisplayTotal, quotationHasOutstandingDue, sortQuotationRows } from './utils/quotationDisplay';
 import { enrichQuotationListTotals } from './services/quotationListTotals';
 
@@ -61,8 +61,9 @@ export default function QuotesBoard() {
   const [customerMap, setCustomerMap] = React.useState({});
   const [salePaidBySaleId, setSalePaidBySaleId] = React.useState(() => new Map());
   const navigate = useNavigate();
+  const location = useLocation();
   const user = React.useMemo(() => readLocalUser(), []);
-  const isQuotationerOnly = isQuotationerOnlyUser(user);
+  const isQuotationerOnly = isQuotationerOnlyExperience(user, location.pathname);
   const canDelete = canDeleteQuotationData(user);
 
   const normalizeQuoteItemForSale = React.useCallback((item) => {

@@ -12,7 +12,10 @@ export default function WarehouseProductionLabelPrintDialog({
 }) {
   const name = String(item?.name || '').trim();
   const sku = String(item?.sku || '').trim();
+  const color = String(item?.color || '').trim();
+  const boxUnitsPerCarton = Math.max(0, Math.floor(Number(item?.boxUnitsPerCarton) || 0));
   const [copies, setCopies] = useState(1);
+  const [copiesInput, setCopiesInput] = useState('1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
@@ -21,15 +24,24 @@ export default function WarehouseProductionLabelPrintDialog({
 
   useEffect(() => {
     if (!open) return;
-    setCopies(Math.max(1, Math.floor(Number(item?.defaultCopies) || 1)));
+    const n = Math.max(1, Math.floor(Number(item?.defaultCopies) || 1));
+    setCopies(n);
+    setCopiesInput(String(n));
     setBusy(false);
     setError('');
     setWarning('');
     setPreviewPng('');
     setDone(false);
-  }, [open, item?.defaultCopies, name, sku]);
+  }, [open, item?.defaultCopies, item?.color, name, sku]);
 
   if (!open) return null;
+
+  const commitCopiesInput = (raw) => {
+    const n = Math.max(1, Math.floor(Number(String(raw ?? '').trim()) || 0));
+    setCopies(n);
+    setCopiesInput(String(n));
+    return n;
+  };
 
   const close = () => {
     if (busy) return;
@@ -38,11 +50,14 @@ export default function WarehouseProductionLabelPrintDialog({
 
   const onPrint = async () => {
     if (!name || !sku || busy) return;
+    const printCopies = commitCopiesInput(copiesInput);
     setBusy(true);
     setError('');
     setWarning('');
     try {
-      const result = await printWarehouseProductionLabel({ name, sku, copies });
+      const result = await printWarehouseProductionLabel({
+        name, sku, copies: printCopies, color, boxUnitsPerCarton,
+      });
       setPreviewPng(result.labelPreviewPngBase64 || '');
       setWarning(String(result.labelPrintWarning || '').trim());
       setDone(true);
@@ -71,6 +86,11 @@ export default function WarehouseProductionLabelPrintDialog({
         <p className="warehouse-label-print-modal__sku">
           <code>{sku}</code>
         </p>
+        {color ? (
+          <p className="warehouse-label-print-modal__color">
+            Color: <strong>{color}</strong>
+          </p>
+        ) : null}
 
         <div className="warehouse-label-print-modal__qty">
           <span className="products-adjust-modal__label">Label copies</span>
@@ -78,17 +98,47 @@ export default function WarehouseProductionLabelPrintDialog({
             <button
               type="button"
               className="warehouse-label-print-modal__qty-btn"
-              onClick={() => setCopies((n) => Math.max(1, n - 1))}
+              onClick={() => {
+                const next = Math.max(1, copies - 1);
+                setCopies(next);
+                setCopiesInput(String(next));
+              }}
               disabled={busy || copies <= 1}
               aria-label="Decrease copies"
             >
               −
             </button>
-            <span className="warehouse-label-print-modal__qty-val">{copies}</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="warehouse-label-print-modal__qty-input"
+              value={copiesInput}
+              disabled={busy}
+              aria-label="Label copies"
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '');
+                setCopiesInput(digits);
+                if (digits) {
+                  setCopies(Math.max(1, Math.floor(Number(digits) || 0)));
+                }
+              }}
+              onBlur={() => commitCopiesInput(copiesInput)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitCopiesInput(copiesInput);
+                }
+              }}
+            />
             <button
               type="button"
               className="warehouse-label-print-modal__qty-btn"
-              onClick={() => setCopies((n) => n + 1)}
+              onClick={() => {
+                const next = copies + 1;
+                setCopies(next);
+                setCopiesInput(String(next));
+              }}
               disabled={busy}
               aria-label="Increase copies"
             >
@@ -99,9 +149,11 @@ export default function WarehouseProductionLabelPrintDialog({
 
         {previewPng ? (
           <div className="warehouse-label-print-modal__preview">
+            <p className="warehouse-label-print-modal__preview-caption">Preview (actual label size 80 × 68 mm)</p>
             <img
+              className="warehouse-label-print-modal__preview-img"
               src={`data:image/png;base64,${previewPng}`}
-              alt="Label preview"
+              alt="Label preview at 80 by 68 millimetres"
             />
           </div>
         ) : null}

@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -24,6 +25,7 @@ export default function CatalogLabelPrintModal({
   const name = String(item?.name || '').trim();
   const sku = String(item?.sku || '').trim();
   const [copies, setCopies] = useState(1);
+  const [copiesInput, setCopiesInput] = useState('1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -36,6 +38,7 @@ export default function CatalogLabelPrintModal({
     if (!visible) return;
     const n = Math.max(1, Math.floor(Number(item?.defaultCopies) || 1));
     setCopies(n);
+    setCopiesInput(String(n));
     setError('');
     setBusy(false);
     setPreviewOpen(false);
@@ -44,6 +47,13 @@ export default function CatalogLabelPrintModal({
     setPrintWarning('');
   }, [visible, item?.defaultCopies, name, sku]);
 
+  const commitCopiesInput = (raw) => {
+    const n = Math.max(1, Math.floor(Number(String(raw ?? '').trim()) || 0));
+    setCopies(n);
+    setCopiesInput(String(n));
+    return n;
+  };
+
   const closeAll = () => {
     setPreviewOpen(false);
     onClose();
@@ -51,10 +61,11 @@ export default function CatalogLabelPrintModal({
 
   const onPrint = async () => {
     if (!name || !sku || busy) return;
+    const printCopies = commitCopiesInput(copiesInput);
     setBusy(true);
     setError('');
     try {
-      const result = await printWarehouseCatalogLabel({ name, sku, copies });
+      const result = await printWarehouseCatalogLabel({ name, sku, copies: printCopies });
       const warning = String(result?.labelPrintWarning || '').trim();
       setPrintWarning(warning);
       setLabelCopies(result?.labelCopies || copies);
@@ -108,15 +119,39 @@ export default function CatalogLabelPrintModal({
               <Text style={styles.qtyLabel}>Copies</Text>
               <Pressable
                 style={styles.qtyBtn}
-                onPress={() => setCopies((n) => Math.max(1, n - 1))}
+                onPress={() => {
+                  const next = Math.max(1, copies - 1);
+                  setCopies(next);
+                  setCopiesInput(String(next));
+                }}
                 accessibilityLabel="Decrease copies"
               >
                 <Text style={styles.qtyBtnText}>−</Text>
               </Pressable>
-              <Text style={styles.qtyVal}>{copies}</Text>
+              <TextInput
+                style={styles.qtyInput}
+                value={copiesInput}
+                onChangeText={(v) => {
+                  const digits = String(v || '').replace(/\D/g, '');
+                  setCopiesInput(digits);
+                  if (digits) {
+                    setCopies(Math.max(1, Math.floor(Number(digits) || 0)));
+                  }
+                }}
+                onBlur={() => commitCopiesInput(copiesInput)}
+                keyboardType="number-pad"
+                maxLength={4}
+                selectTextOnFocus
+                editable={!busy}
+                accessibilityLabel="Label copies"
+              />
               <Pressable
                 style={styles.qtyBtn}
-                onPress={() => setCopies((n) => n + 1)}
+                onPress={() => {
+                  const next = copies + 1;
+                  setCopies(next);
+                  setCopiesInput(String(next));
+                }}
                 accessibilityLabel="Increase copies"
               >
                 <Text style={styles.qtyBtnText}>+</Text>
@@ -229,6 +264,20 @@ const styles = StyleSheet.create({
     backgroundColor: theme.bg,
   },
   qtyBtnText: { fontSize: 20, fontWeight: '700', color: theme.text },
+  qtyInput: {
+    fontSize: 18,
+    fontWeight: '800',
+    minWidth: 48,
+    maxWidth: 72,
+    textAlign: 'center',
+    color: theme.text,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: theme.bg,
+  },
   qtyVal: { fontSize: 18, fontWeight: '800', minWidth: 32, textAlign: 'center', color: theme.text },
   error: { color: theme.danger, fontSize: 13, marginBottom: 10 },
   primaryBtn: {

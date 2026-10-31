@@ -39,6 +39,16 @@ function formatElapsed(startIso, endIso) {
   return parts.join(' ');
 }
 
+function returnCardTitle(row) {
+  const meta = row?.metadata || {};
+  const total = Number(meta.batch_line_count) || 0;
+  const index = Number(meta.batch_line_index) || 0;
+  if (total > 1 && index > 0) {
+    return `${row.return_number} · unit ${index}/${total}`;
+  }
+  return row.return_number;
+}
+
 function ReturnCard({
   row,
   locale,
@@ -52,7 +62,8 @@ function ReturnCard({
 }) {
   const inProgress = row.status === 'in_progress';
   const timerStopped = Boolean(row.work_completed_at) && row.status === 'completed';
-  const showCustomerLabel = Boolean(String(row.customer_name || '').trim()) && timerStopped;
+  const fulfilled = row.status === 'shipped' || row.status === 'customer_delivered';
+  const showCustomerLabel = Boolean(String(row.customer_name || '').trim()) && timerStopped && !fulfilled;
   const timerLabel = inProgress
     ? formatElapsed(row.work_started_at || row.accepted_at)
     : row.work_completed_at
@@ -61,7 +72,7 @@ function ReturnCard({
 
   return (
     <View style={styles.card}>
-      <Text style={[styles.cardTitle, { textAlign }]}>{row.return_number}</Text>
+      <Text style={[styles.cardTitle, { textAlign }]}>{returnCardTitle(row)}</Text>
       <Text style={[styles.cardProduct, { textAlign }]}>
         {row.assembly_name} × {row.quantity}
       </Text>
@@ -85,6 +96,11 @@ function ReturnCard({
           {inProgress ? ` ${tUi('returnTimerRunning', locale)}` : ''}
         </Text>
       ) : null}
+      {fulfilled ? (
+        <Text style={[styles.cardMeta, { textAlign, fontWeight: '700' }]}>
+          {row.status === 'customer_delivered' ? 'Delivered to customer' : 'Shipped to Kitwe'}
+        </Text>
+      ) : null}
       <View style={styles.actions}>
         {row.status === 'submitted' ? (
           <Pressable
@@ -106,7 +122,7 @@ function ReturnCard({
             <Text style={styles.iconLabel}>{tUi('returnComplete', locale)}</Text>
           </Pressable>
         ) : null}
-        {row.status === 'completed' ? (
+        {row.status === 'completed' && !fulfilled ? (
           <Pressable
             style={styles.iconBtn}
             onPress={() => onShip(row)}

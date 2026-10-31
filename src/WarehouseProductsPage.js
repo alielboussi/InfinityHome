@@ -41,6 +41,7 @@ import {
 import {
   isCompleteCatalogProduct,
   isIncompletePacketBomProduct,
+  isUncategorizedWarehouseProduct,
 } from './utils/warehouseCatalogProductCompleteness';
 import WarehouseProductionLabelPrintDialog, {
   WarehouseLabelPrintIconButton,
@@ -49,16 +50,24 @@ import WarehouseAssemblyCategoryDialog, {
   WarehouseCategoryIconButton,
 } from './components/WarehouseAssemblyCategoryDialog';
 import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
-import { isWarehouseCatalogAddProductAllowed } from './mobile/mobileAccessManifest';
+import { isWarehouseCatalogAddProductAllowed, isWarehouseCatalogLabelPrintAllowed } from './mobile/mobileAccessManifest';
+import { formatWarehouseProductionLabelColor } from './utils/warehouseProductionLabelColor';
+import { printWarehouseProductionLabel } from './services/warehouseProductionApi';
+import { warehouseBulkLabelPrintSummary, resolveWarehouseLabelPrintPlan } from './utils/warehouseBulkLabelPrint';
+import WarehouseCatalogBulkLabelToolbar, {
+  WarehouseBulkLabelSelectCheckbox,
+} from './components/WarehouseCatalogBulkLabelToolbar';
 
 export default function WarehouseProductsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isIncompleteView = location.pathname.startsWith('/warehouse-products/incomplete');
+  const isUncategorizedView = location.pathname.startsWith('/warehouse-products/uncategorized');
   const sessionUser = useMemo(() => getCurrentUser(), []);
   const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
   const { grant } = useAuthProfileMobileGrant();
   const canAddProduct = canManage || isWarehouseCatalogAddProductAllowed(grant);
+  const canPrintLabels = canManage || isWarehouseCatalogLabelPrintAllowed(grant);
   const rtTick = useRealtimeRefresh([
     'warehouse_assemblies',
     'warehouse_packets',
@@ -83,10 +92,13 @@ export default function WarehouseProductsPage() {
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
   const [, setSaving] = useState(false);
   const [labelPrintItem, setLabelPrintItem] = useState(null);
   const [categoryDialogAssembly, setCategoryDialogAssembly] = useState(null);
+  const [bulkLabelSelected, setBulkLabelSelected] = useState(() => new Set());
+  const [bulkLabelBusy, setBulkLabelBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,6 +134,11 @@ export default function WarehouseProductsPage() {
     return (id) => map.get(String(id)) || '—';
   }, [categories]);
 
+  const sortedCategories = useMemo(
+    () => [...(categories || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+    [categories],
+  );
+
   const packetsByAssembly = useMemo(
     () => buildPacketsByAssembly(assemblyPacketRows, packets),
     [assemblyPacketRows, packets],
@@ -132,9 +149,10 @@ export default function WarehouseProductsPage() {
     return base.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
       if (isIncompleteView) return isIncompletePacketBomProduct(a, pktList);
+      if (isUncategorizedView) return isUncategorizedWarehouseProduct(a, categories);
       return isCompleteCatalogProduct(a, pktList);
     });
-  }, [assemblies, isIncompleteView, packetsByAssembly]);
+  }, [assemblies, categories, isIncompleteView, isUncategorizedView, packetsByAssembly]);
 
   const inventoryByPacketId = useMemo(() => {
     const map = new Map();
@@ -198,7 +216,11 @@ export default function WarehouseProductsPage() {
 
   const filteredAssemblies = useMemo(() => {
     const raw = search.trim();
-    if (!raw) return warehouseCatalogProducts;
+    const base = warehouseCatalogProducts.filter((a) => {
+      if (categoryFilter && String(a.category_id || '') !== String(categoryFilter)) return false;
+      return true;
+    });
+    if (!raw) return base;
     const qLower = raw.toLowerCase();
     const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
     const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
@@ -211,7 +233,7 @@ export default function WarehouseProductsPage() {
       return false;
     };
 
-    return warehouseCatalogProducts.filter((a) => {
+    return base.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
       const cat = categoryName(a.category_id).toLowerCase();
       if (String(a.name || '').toLowerCase().includes(qLower)) return true;
@@ -224,7 +246,7 @@ export default function WarehouseProductsPage() {
           || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
       );
     });
-  }, [warehouseCatalogProducts, packetsByAssembly, search, categoryName]);
+  }, [warehouseCatalogProducts, packetsByAssembly, search, categoryFilter, categoryName]);
 
   const toggleExpanded = (assemblyId) => {
     setExpanded((prev) => {
@@ -236,14 +258,77 @@ export default function WarehouseProductsPage() {
     });
   };
 
-  const openLabelPrint = (name, sku, defaultCopies = 1) => {
+  const openLabelPrint = (
+    name,
+    sku,
+    defaultCopies = 1,
+    assembly = null,
+    assemblyColorRows = null,
+    boxUnitsPerCarton = 0,
+  ) => {
     const labelName = String(name || '').trim();
     const labelSku = String(sku || '').trim();
     if (!labelName || !labelSku) {
       setError('Name and SKU are required to print a label.');
       return;
     }
-    setLabelPrintItem({ name: labelName, sku: labelSku, defaultCopies });
+    const color = assembly
+      ? formatWarehouseProductionLabelColor(assembly, assemblyColorRows || [])
+      : '';
+    setLabelPrintItem({
+      name: labelName,
+      sku: labelSku,
+      defaultCopies,
+      color,
+      boxUnitsPerCarton: Math.max(0, Math.floor(Number(boxUnitsPerCarton) || 0)),
+    });
+  };
+
+  const handleBulkLabelToggleAll = (checked, selectableIds) => {
+    setBulkLabelSelected(checked ? new Set(selectableIds) : new Set());
+  };
+
+  const handleBulkLabelToggleOne = (assemblyId, checked) => {
+    const key = String(assemblyId);
+    setBulkLabelSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
+
+  const handleBulkLabelPrint = async (jobs) => {
+    if (!jobs?.length || bulkLabelBusy) return;
+    const { totalLabels } = warehouseBulkLabelPrintSummary(jobs);
+    const ok = window.confirm(
+      `Print ${totalLabels} label${totalLabels === 1 ? '' : 's'} for ${jobs.length} product${jobs.length === 1 ? '' : 's'}?\n\nBox products (e.g. 2 units per box): one label per box showing "Pack: 1 Box = N Units". Other products: one label per finished unit.`,
+    );
+    if (!ok) return;
+    setBulkLabelBusy(true);
+    setError('');
+    const warnings = [];
+    try {
+      for (let i = 0; i < jobs.length; i += 1) {
+        const job = jobs[i];
+        const result = await printWarehouseProductionLabel({
+          name: job.name,
+          sku: job.sku,
+          copies: job.copies,
+          color: job.color,
+          boxUnitsPerCarton: job.boxUnitsPerCarton,
+        });
+        const warn = String(result?.labelPrintWarning || '').trim();
+        if (warn) warnings.push(`${job.sku}: ${warn}`);
+      }
+      if (warnings.length) {
+        setError(warnings.join(' · '));
+      }
+    } catch (err) {
+      setError(err?.message || 'Bulk label print failed.');
+    } finally {
+      setBulkLabelBusy(false);
+    }
   };
 
   const colorCatalogById = useMemo(
@@ -321,7 +406,11 @@ export default function WarehouseProductsPage() {
       <div className="page-header-row">
         <BackToDashboard />
         <h1 className="products-title" style={{ margin: 0 }}>
-          {isIncompleteView ? 'Incomplete products (Warehouse)' : 'Warehouse'}
+          {isIncompleteView
+            ? 'Incomplete products (Warehouse)'
+            : isUncategorizedView
+              ? 'Uncategorized products (Warehouse)'
+              : 'Warehouse'}
         </h1>
       </div>
 
@@ -367,25 +456,65 @@ export default function WarehouseProductsPage() {
           </div>
         )}
       </div>
-      <input
-        className="products-search-bar warehouse-catalog-search"
-        placeholder="Search product SKU, packet SKU, name…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        onBlur={(e) => {
-          const v = e.target.value.trim();
-          if (!v) return;
-          const normalized = normalizeWarehouseCatalogSearchQuery(v);
-          if (normalized && normalized !== v) setSearch(normalized);
-        }}
-      />
+      <div className="warehouse-catalog-filter-row">
+        <input
+          className="warehouse-catalog-filter-control warehouse-catalog-search products-search-bar"
+          placeholder="Search product SKU, packet SKU, name…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (!v) return;
+            const normalized = normalizeWarehouseCatalogSearchQuery(v);
+            if (normalized && normalized !== v) setSearch(normalized);
+          }}
+        />
+        <select
+          className="warehouse-catalog-filter-control warehouse-catalog-category-select"
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          aria-label="Filter by category"
+        >
+          <option value="">All categories</option>
+          {sortedCategories.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {canPrintLabels && !loading ? (
+        <WarehouseCatalogBulkLabelToolbar
+          assemblies={filteredAssemblies}
+          warehouseLocationId={warehouseLocationId}
+          finishedStockByAssembly={finishedStockByAssembly}
+          colorsByAssembly={colorsByAssembly}
+          packetsByAssembly={packetsByAssembly}
+          selectedIds={bulkLabelSelected}
+          onToggleAll={handleBulkLabelToggleAll}
+          onPrint={handleBulkLabelPrint}
+          busy={bulkLabelBusy}
+          disabled={!warehouseLocationId}
+        />
+      ) : null}
 
       {loading ? (
         <p>Loading…</p>
       ) : (
         <>
           {filteredAssemblies.length === 0 ? (
-            <p>No products yet. Create packets on <Link to="/warehouse-products/packets">Packets (Warehouse)</Link>, then add a product and link them.</p>
+            <p>
+              {isUncategorizedView
+                ? 'No uncategorized products — every product has a category assigned.'
+                : isIncompleteView
+                  ? 'No incomplete products — all packet BOMs match their carton counts.'
+                  : (
+                    <>
+                      No products yet. Create packets on{' '}
+                      <Link to="/warehouse-products/packets">Packets (Warehouse)</Link>
+                      , then add a product and link them.
+                    </>
+                  )}
+            </p>
           ) : null}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -419,9 +548,29 @@ export default function WarehouseProductsPage() {
               const warehouseDisplayQty = warehouseBoxEntry
                 ? boxCountFromFinishedUnits(warehouseOnHand, unitsPerBox)
                 : warehouseOnHand;
+              const labelPlan = resolveWarehouseLabelPrintPlan(
+                assembly,
+                warehouseLocationId,
+                finishedStockByAssembly,
+                pktList,
+              );
+              const labelCopiesAtWarehouse = labelPlan?.copies ?? 0;
               return (
                 <div key={assembly.id} className="warehouse-assembly-card">
-                  <div className="warehouse-assembly-card__header">
+                  <div
+                    className={`warehouse-assembly-card__header${
+                      canPrintLabels ? ' warehouse-assembly-card__header--bulk' : ''
+                    }`}
+                  >
+                    {canPrintLabels ? (
+                      <WarehouseBulkLabelSelectCheckbox
+                        assemblyId={assembly.id}
+                        checked={bulkLabelSelected.has(String(assembly.id))}
+                        copies={labelCopiesAtWarehouse}
+                        disabled={bulkLabelBusy}
+                        onChange={handleBulkLabelToggleOne}
+                      />
+                    ) : null}
                     <button
                       type="button"
                       className="warehouse-assembly-card__expand"
@@ -521,12 +670,48 @@ export default function WarehouseProductsPage() {
                         </p>
                       ) : null}
                     </div>
-                    {canManage && (
+                    {canPrintLabels ? (
                       <div className="warehouse-assembly-card__actions">
                         <div className="warehouse-assembly-card__actions-row">
                           <WarehouseLabelPrintIconButton
-                            onClick={() => openLabelPrint(assembly.name, assembly.family_sku)}
+                            onClick={() => openLabelPrint(
+                              assembly.name,
+                              assembly.family_sku,
+                              Math.max(1, labelCopiesAtWarehouse),
+                              assembly,
+                              assemblyColorsList,
+                              labelPlan?.boxUnitsPerCarton || 0,
+                            )}
                           />
+                          {canManage ? (
+                            <>
+                              <WarehouseCategoryIconButton
+                                onClick={() => setCategoryDialogAssembly(assembly)}
+                              />
+                              <button
+                                type="button"
+                                className="warehouse-card-btn"
+                                style={{ flex: 1 }}
+                                onClick={() => navigate(`/warehouse-products/${assembly.id}/edit`)}
+                              >
+                                Edit
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                        {canManage ? (
+                          <button
+                            type="button"
+                            className="warehouse-card-btn warehouse-card-btn--danger"
+                            onClick={() => handleDeleteProduct(assembly)}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : canManage ? (
+                      <div className="warehouse-assembly-card__actions">
+                        <div className="warehouse-assembly-card__actions-row">
                           <WarehouseCategoryIconButton
                             onClick={() => setCategoryDialogAssembly(assembly)}
                           />
@@ -547,7 +732,7 @@ export default function WarehouseProductsPage() {
                           Delete
                         </button>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   {isOpen && useFinishedBoxReceiving && pktList.length === 1 && (
                     <div className="warehouse-finished-box-stock-panel">
@@ -689,7 +874,14 @@ export default function WarehouseProductsPage() {
                               {canManage && (
                                 <td style={{ padding: 8 }}>
                                   <WarehouseLabelPrintIconButton
-                                    onClick={() => openLabelPrint(packet.name, packet.sku)}
+                                    onClick={() => openLabelPrint(
+                                      packet.name,
+                                      packet.sku,
+                                      Math.max(1, labelCopiesAtWarehouse),
+                                      assembly,
+                                      assemblyColorsList,
+                                      labelPlan?.boxUnitsPerCarton || 0,
+                                    )}
                                   />
                                   {' '}
                                   <button type="button" onClick={() => navigate(`/warehouse-products/packets/${packet.id}/edit`)}>Edit</button>

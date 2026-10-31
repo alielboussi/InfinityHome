@@ -91,3 +91,24 @@ export function kitweProductAssemblyOptions(assemblies, assemblyInventory) {
     .filter((a) => (qtyByAssembly.get(String(a.id)) ?? 0) > 0)
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
+
+/** Kitwe /warehouse-returns product picker — catalog + any product assembly with Kitwe stock. */
+export function buildKitweReturnProductOptions(assemblies, assemblyInventory) {
+  const qtyByAssembly = kitweQtyByAssembly(assemblyInventory);
+  const map = new Map();
+  const addAssembly = (a) => {
+    if (!a?.id) return;
+    if (!isWarehouseProductAssembly(a) || isWarehouseSetAssembly(a)) return;
+    const kitwe_qty = qtyByAssembly.get(String(a.id)) ?? 0;
+    if (kitwe_qty < 1) return;
+    map.set(String(a.id), {
+      assembly_id: a.id,
+      name: a.name,
+      sku: a.family_sku,
+      kitwe_qty,
+    });
+  };
+  filterKitweCatalogProducts(assemblies || [], assemblyInventory || []).forEach(addAssembly);
+  kitweProductAssemblyOptions(assemblies || [], assemblyInventory || []).forEach(addAssembly);
+  return [...map.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}

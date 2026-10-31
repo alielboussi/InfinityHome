@@ -111,7 +111,9 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
     now,
   });
 
-  const openAfter = (refreshedLines || []).some((e) => entryPacketId(e) && !entryReceived(e));
+  const openAfter = (refreshedLines || []).some(
+    (e) => (entryPacketId(e) || deliveryEntryFinishedUnit(e)) && !entryReceived(e),
+  );
 
   const allDone = !openAfter;
   const meta = {
@@ -151,8 +153,9 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
 
 export function deliveryEntryProgress(entries) {
   const list = entries || [];
-  const total = list.filter((e) => entryPacketId(e)).length;
-  const confirmed = list.filter((e) => entryReceiverChecked(e)).length;
+  const receivable = list.filter((e) => entryPacketId(e) || deliveryEntryFinishedUnit(e));
+  const total = receivable.length;
+  const confirmed = receivable.filter((e) => entryReceiverChecked(e)).length;
   return { total, confirmed };
 }
 

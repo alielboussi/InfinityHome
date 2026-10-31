@@ -114,7 +114,7 @@ export default function CatalogProductPhotoCaptureModal({
           </Pressable>
         </View>
         <Text style={styles.hint}>
-          Frame the product clearly. After save, AI will sharpen it and add a white catalog background.
+          Frame the product clearly. Mattresses: avoid tight plastic in frame if you can — AI removes wrap and adds a white catalog background after save.
         </Text>
 
         {permissionLoading ? (

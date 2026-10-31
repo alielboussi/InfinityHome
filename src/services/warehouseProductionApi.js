@@ -244,12 +244,17 @@ export async function fetchProductionLabelPreview({ name, sku, printedAt }) {
   });
 }
 
-export async function printWarehouseProductionLabel({ name, sku, copies = 1 }) {
+export async function printWarehouseProductionLabel({
+  name, sku, copies = 1, color = '', boxUnitsPerCarton = 0,
+}) {
   try {
+    const per = Math.max(0, Math.floor(Number(boxUnitsPerCarton) || 0));
     const payload = await productionOp('production-label-print', {
       name,
       sku,
       qty: copies,
+      color: String(color || '').trim() || undefined,
+      box_units_per_carton: per > 1 ? per : undefined,
       client_source: 'warehouse_catalog_portal',
     });
     return {

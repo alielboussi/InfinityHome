@@ -39,8 +39,28 @@ if (!mattressPrompt.includes('shrink wrap') || !mattressPrompt.includes('nylon')
   console.error('[verifyProductionPhotoRetouchPrompts] mattress wrap removal prompt missing');
   process.exit(1);
 }
-if (!mattressPrompt.includes('facing forward') || !mattressPrompt.includes('top sleeping surface')) {
-  console.error('[verifyProductionPhotoRetouchPrompts] mattress forward-facing prompt missing');
+if (!/top sleeping surface/i.test(mattressPrompt) || !/quilted/i.test(mattressPrompt)) {
+  console.error('[verifyProductionPhotoRetouchPrompts] mattress orientation prompt missing');
+  process.exit(1);
+}
+if (
+  !mattressPrompt.includes('UPRIGHT')
+  || !mattressPrompt.includes('faces the camera')
+  || !mattressPrompt.includes('NOT lying horizontal')
+) {
+  console.error('[verifyProductionPhotoRetouchPrompts] mattress must stand upright facing forward');
+  process.exit(1);
+}
+if (!mattressPrompt.includes('HERO FRAMING') || !mattressPrompt.includes('70–90%')) {
+  console.error('[verifyProductionPhotoRetouchPrompts] mattress zoomed hero framing prompt missing');
+  process.exit(1);
+}
+if (mattressPrompt.includes('straight-down flat-lay') || mattressPrompt.includes('TEXTURE CLOSE-UP')) {
+  console.error('[verifyProductionPhotoRetouchPrompts] mattress prompt must not use flat-lay texture crop');
+  process.exit(1);
+}
+if (mattressPrompt.includes('full item visible')) {
+  console.error('[verifyProductionPhotoRetouchPrompts] mattress prompt must not use distant full-item framing');
   process.exit(1);
 }
 

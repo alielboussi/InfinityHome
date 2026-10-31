@@ -36,6 +36,14 @@ assert(
 );
 assert(mobile.includes('whatsapp_sent_at'), 'delivery submit must record whatsapp_sent_at on success');
 assert(!deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must not include Hassan test mirror');
+assert(
+  deliveries.includes('warehouseDeliveryReceiverLineKind'),
+  'Hassan page must render finished-unit delivery lines (not packet_id only)',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/utils/warehouseDelivery.js'), 'utf8').includes('deliveryEntryReceivable'),
+  'receiver progress must count finished-unit assembly lines',
+);
 assert(deliveries.includes('WAREHOUSE_RECEIVER_LIST_STATUSES'), 'Hassan page must load completed deliveries for history');
 assert(!deliveries.includes('prev.filter((s) => String(s.id)'), 'Hassan page must not remove cards when accept completes');
 assert(mobile.includes('admin_registry'), 'return/storage list must support admin registry');

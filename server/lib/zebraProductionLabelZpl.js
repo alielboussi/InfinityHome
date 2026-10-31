@@ -18,6 +18,11 @@ import {
   formatProductionLabelBlockDate,
   formatProductionLabelBlockTime,
 } from './warehouseProductionLabelCatTime.js';
+import { normalizeProductionLabelColor, productionLabelIncludesColorRow } from './warehouseProductionLabelColor.js';
+import {
+  productionLabelIncludesBoxRow,
+  resolveProductionLabelBoxLine,
+} from './warehouseProductionLabelBox.js';
 
 function zplEscape(value) {
   return String(value || '')
@@ -48,24 +53,37 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     throw new Error('Invalid printedAt');
   }
 
+  const skuText = zplEscape(opts.sku).toUpperCase();
+  const nameRaw = String(opts.name || '').trim();
+  const nameText = zplEscape(nameRaw);
+  const dateText = zplEscape(formatProductionLabelBlockDate(printedAt));
+  const timeText = zplEscape(formatProductionLabelBlockTime(printedAt));
+  const colorRaw = normalizeProductionLabelColor(opts.color);
+  const colorText = zplEscape(colorRaw);
+  const boxRaw = resolveProductionLabelBoxLine({
+    boxLine: opts.boxLine,
+    boxUnitsPerCarton: opts.boxUnitsPerCarton ?? opts.box_units_per_carton,
+  });
+  const boxText = zplEscape(boxRaw);
+  const photoQrUrl = String(opts.imageQrUrl || '').trim()
+    || buildProductPhotoQrUrl(String(opts.sku || '').trim());
+  const imageQr = qrEscape(photoQrUrl);
+  const companyLine = zplEscape(COMPANY_NAME);
+
   const widthDots = mmToDots(widthMm, dpi);
-  const layout = computeProductionLabelLayout({ heightMm, marginMm, dpi });
+  const layout = computeProductionLabelLayout({
+    heightMm,
+    marginMm,
+    dpi,
+    includeColorRow: productionLabelIncludesColorRow(colorRaw),
+    includeBoxRow: productionLabelIncludesBoxRow(boxRaw),
+  });
   const d = layout.dots;
   const mainX = d.margin;
   const mainW = d.mainWidth;
   const hf = d.headerFont;
   const vf = d.valueFont;
   const cf = d.companyFont;
-
-  const skuText = zplEscape(opts.sku).toUpperCase();
-  const nameRaw = String(opts.name || '').trim();
-  const nameText = zplEscape(nameRaw);
-  const dateText = zplEscape(formatProductionLabelBlockDate(printedAt));
-  const timeText = zplEscape(formatProductionLabelBlockTime(printedAt));
-  const photoQrUrl = String(opts.imageQrUrl || '').trim()
-    || buildProductPhotoQrUrl(String(opts.sku || '').trim());
-  const imageQr = qrEscape(photoQrUrl);
-  const companyLine = zplEscape(COMPANY_NAME);
 
   const labelField = (y, text) => (
     `^FO${d.labelX},${y}^A0N,${hf},${hf}^FD${text}^FS`
@@ -93,6 +111,18 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     `^FO0,${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.labelWidth},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
     ...(imageQr
       ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${imageMag}^FDLA,${imageQr}^FS`]
+      : []),
+    ...(colorRaw && d.colorRowY != null
+      ? [
+        labelField(d.colorRowY, FIELD_LABELS.color),
+        valueField(d.colorRowY, colorText),
+      ]
+      : []),
+    ...(boxRaw && d.boxRowY != null
+      ? [
+        labelField(d.boxRowY, FIELD_LABELS.pack),
+        valueField(d.boxRowY, boxText),
+      ]
       : []),
     labelField(d.dateRowY, FIELD_LABELS.date),
     valueField(d.dateRowY, dateText),

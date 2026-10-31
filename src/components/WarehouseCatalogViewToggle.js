@@ -7,11 +7,12 @@ export default function WarehouseCatalogViewToggle({ 'aria-labelledby': ariaLabe
   const path = location.pathname;
   const isPackets = path.startsWith('/warehouse-products/packets');
   const isIncomplete = path.startsWith('/warehouse-products/incomplete');
-  const isProducts = !isPackets && !isIncomplete;
+  const isUncategorized = path.startsWith('/warehouse-products/uncategorized');
+  const isProducts = !isPackets && !isIncomplete && !isUncategorized;
 
   return (
     <div
-      className="warehouse-catalog-view-toggle"
+      className="warehouse-catalog-view-toggle warehouse-catalog-view-toggle--compact"
       role="group"
       aria-label={ariaLabelledBy ? undefined : 'Warehouse catalog view'}
       aria-labelledby={ariaLabelledBy || undefined}
@@ -39,6 +40,14 @@ export default function WarehouseCatalogViewToggle({ 'aria-labelledby': ariaLabe
         onClick={() => navigate('/warehouse-products/incomplete')}
       >
         Incomplete
+      </button>
+      <button
+        type="button"
+        className={`warehouse-catalog-view-toggle__option${isUncategorized ? ' is-active' : ''}`}
+        aria-pressed={isUncategorized}
+        onClick={() => navigate('/warehouse-products/uncategorized')}
+      >
+        Uncategorized
       </button>
     </div>
   );

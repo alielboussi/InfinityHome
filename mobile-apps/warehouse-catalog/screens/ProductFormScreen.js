@@ -18,7 +18,12 @@ import {
   warehouseMobileRequest,
 } from '../shared/warehouseMobileApi';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
-import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
+import {
+  fetchWarehouseCatalogCached,
+  getWarehouseCatalogCache,
+  mergeAssemblyIntoCatalog,
+  qtyPatchFromMobileQuantityResponse,
+} from '../shared/warehouseCatalogStore';
 import {
   expandWarehouseSkuMatchKeys,
   isExactPacketSkuScan,
@@ -132,7 +137,7 @@ export default function ProductFormScreen({ route, navigation }) {
     setTimeout(() => skuInputRef.current?.focus?.(), 50);
   }, []);
 
-  const { refresh: refreshGlobalCatalog, patchCatalog } = useWarehouseCatalog();
+  const { refresh: refreshGlobalCatalog, patchCatalog, applyCatalog } = useWarehouseCatalog();
 
   const refreshCatalog = useCallback(async () => {
     try {
@@ -465,6 +470,10 @@ export default function ProductFormScreen({ route, navigation }) {
           name: turkishName.trim(),
         }).catch(() => {});
       }
+      if (saveResult?.assembly) {
+        const merged = mergeAssemblyIntoCatalog(getWarehouseCatalogCache(), saveResult.assembly);
+        if (merged) applyCatalog(merged);
+      }
       refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
       const createdAssemblyId = saveResult?.assembly?.id
         ? String(saveResult.assembly.id)
@@ -545,18 +554,40 @@ export default function ProductFormScreen({ route, navigation }) {
     setFinishedQtySaving(true);
     setError('');
     const assemblyKey = String(finishedQtyPrompt.assemblyId);
-    patchCatalog({
-      assemblyWarehouseQty: { [assemblyKey]: qty },
-    });
+
+    const applySavedQtyPatch = (apiResult) => {
+      const patch = qtyPatchFromMobileQuantityResponse(apiResult, assemblyKey, qty);
+      patchCatalog(patch);
+      return patch;
+    };
+
+    const reconcileQtyOnCatalog = async (expectedQty, lastPatch) => {
+      try {
+        await refreshGlobalCatalog({ force: true, background: true });
+      } catch {
+        return;
+      }
+      const cached = getWarehouseCatalogCache();
+      const shown = Math.max(0, Math.floor(Number(cached?.assemblyWarehouseQty?.[assemblyKey] ?? 0)));
+      if (shown < expectedQty) {
+        patchCatalog(lastPatch || { assemblyWarehouseQty: { [assemblyKey]: expectedQty } });
+      }
+    };
+
     try {
       const result = await warehouseMobileRequest('assembly-product-quantity-set', {
         assembly_id: finishedQtyPrompt.assemblyId,
         warehouse_location_id: warehouseLocationId,
         quantity: qty,
       });
-      patchCatalog(result);
-      dismissFinishedQtyPrompt('WarehouseProducts');
-      refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+      const patch = applySavedQtyPatch(result);
+      setFinishedQtyPrompt(null);
+      try {
+        returnToCatalogListScreen(navigation, 'WarehouseProducts');
+      } catch {
+        navigation.goBack();
+      }
+      reconcileQtyOnCatalog(qty, patch);
     } catch (err) {
       const msg = formatWarehouseMobileApiError(err?.message, 'Could not save quantity.');
       const maybeGateway = err?.gateway
@@ -569,10 +600,7 @@ export default function ProductFormScreen({ route, navigation }) {
             qtyMap[String(finishedQtyPrompt.assemblyId)] ?? 0,
           )));
           if (got === qty) {
-            patchCatalog({
-              assemblyWarehouseQty: { [assemblyKey]: qty },
-            });
-            refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+            const patch = applySavedQtyPatch({ assembly_id: assemblyKey, quantity: qty, assemblyWarehouseQty: { [assemblyKey]: qty } });
             setFinishedQtyPrompt(null);
             setNotice('Quantity saved (confirmed in catalog).');
             try {
@@ -580,6 +608,7 @@ export default function ProductFormScreen({ route, navigation }) {
             } catch {
               navigation.goBack();
             }
+            reconcileQtyOnCatalog(qty, patch);
             return;
           }
         } catch {

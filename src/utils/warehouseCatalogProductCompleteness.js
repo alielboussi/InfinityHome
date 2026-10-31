@@ -59,6 +59,17 @@ export function isCompleteCatalogProduct(assembly, pktList) {
   return true;
 }
 
+/** Product has no category or category id does not resolve in the categories list. */
+export function isUncategorizedWarehouseProduct(assembly, categories) {
+  if (!assembly || isSetAssembly(assembly)) return false;
+  const cid = assembly?.category_id;
+  if (cid == null || cid === '') return true;
+  const key = String(cid).trim();
+  if (!key) return true;
+  const known = (categories || []).some((c) => String(c?.id) === key);
+  return !known;
+}
+
 /** Production “Add stock” — finished units only, no carton/packet BOM. */
 export function isFinishedProductWithoutPacketBom(assembly, pktList) {
   if (!assembly || isSetAssembly(assembly)) return false;

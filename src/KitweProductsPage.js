@@ -28,6 +28,7 @@ import {
 import { generateRandomWarehouseSku16 } from './utils/warehouseRandomSku';
 import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { recomputeWarehouseLocationStock } from './services/warehouseTransfer';
+import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
 
 const emptyLine = () => ({ component_assembly_id: '', quantity: 1 });
 
@@ -66,6 +67,10 @@ export default function KitweProductsPage() {
   const [productSaving, setProductSaving] = useState(false);
   const [stockDraft, setStockDraft] = useState({});
   const [stockSavingId, setStockSavingId] = useState('');
+  const [packets, setPackets] = useState([]);
+  const [assemblyPacketRows, setAssemblyPacketRows] = useState([]);
+  const [packetInventory, setPacketInventory] = useState([]);
+  const [expandedAssemblyIds, setExpandedAssemblyIds] = useState(() => new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -81,6 +86,9 @@ export default function KitweProductsPage() {
       setAssemblyInventory(data.assemblyInventory || []);
       setWarehouseLocationId(data.warehouseLocationId || null);
       setSetItems(data.setItems || []);
+      setPackets(data.packets || []);
+      setAssemblyPacketRows(data.assemblyPackets || []);
+      setPacketInventory(data.inventory || []);
       setCategories(catRes?.data || []);
       setPriceMap(buildProductLocationPriceMap(locPrices || []));
       const deliveredProducts = filterKitweCatalogProducts(
@@ -141,6 +149,30 @@ export default function KitweProductsPage() {
     });
     return map;
   }, [assemblyInventory]);
+
+  const inventoryByPacketId = useMemo(() => {
+    const map = new Map();
+    (packetInventory || []).forEach((row) => {
+      if (String(row.location_id) !== KITWE_LOCATION_ID) return;
+      map.set(String(row.packet_id), Number(row.quantity) || 0);
+    });
+    return map;
+  }, [packetInventory]);
+
+  const packetsByAssembly = useMemo(
+    () => buildPacketsByAssembly(assemblyPacketRows, packets),
+    [assemblyPacketRows, packets],
+  );
+
+  const toggleAssemblyExpanded = (assemblyId) => {
+    const key = String(assemblyId);
+    setExpandedAssemblyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const categoriesById = useMemo(
     () => new Map((categories || []).map((c) => [String(c.id), c.name])),
@@ -362,94 +394,151 @@ export default function KitweProductsPage() {
     }
   };
 
-  const renderPriceRow = (row, { qtyValue, productExtra = null, editableStock = false }) => (
-    <tr key={row.id}>
-      <td className="col-sku">{row.family_sku || '—'}</td>
-      <td className="col-product">
-        <strong>{row.name}</strong>
-        {productExtra}
-      </td>
-      <td className="col-category">
-        <select
-          className="kitwe-cell-select"
-          value={row.category_id || ''}
-          onChange={(e) => saveCategory(row.id, e.target.value)}
-        >
-          <option value="">—</option>
-          {(categories || []).map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-      </td>
-      <td className="col-qty" style={{ fontWeight: editableStock ? 400 : 700 }}>
-        {editableStock ? (
-          <div className="kitwe-qty-edit">
+  const renderPriceRow = (row, { qtyValue, productExtra = null, editableStock = false, showPacketExpand = false }) => {
+    const pktList = packetsByAssembly.get(String(row.id)) || [];
+    const isOpen = expandedAssemblyIds.has(String(row.id));
+    const canExpand = showPacketExpand && pktList.length > 0;
+
+    return (
+      <React.Fragment key={row.id}>
+        <tr className="kitwe-catalog-row">
+          <td className="col-expand">
+            {canExpand ? (
+              <button
+                type="button"
+                className="kitwe-expand-btn"
+                onClick={() => toggleAssemblyExpanded(row.id)}
+                aria-expanded={isOpen}
+                aria-label={isOpen ? 'Hide packets' : 'Show packets'}
+              >
+                <span className="kitwe-expand-btn__icon" aria-hidden />
+              </button>
+            ) : null}
+          </td>
+          <td className="col-sku" title={row.family_sku || ''}>{row.family_sku || '—'}</td>
+          <td className="col-product">
+            <div className="kitwe-product-cell">
+              <strong className="kitwe-product-cell__name">{row.name}</strong>
+              {productExtra}
+            </div>
+          </td>
+          <td className="col-category">
+            <select
+              className="kitwe-cell-select"
+              value={row.category_id || ''}
+              onChange={(e) => saveCategory(row.id, e.target.value)}
+            >
+              <option value="">—</option>
+              {(categories || []).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </td>
+          <td className="col-qty">
+            {editableStock ? (
+              <div className="kitwe-qty-edit">
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  className="kitwe-cell-input kitwe-cell-input--qty"
+                  value={getStockDraft(row)}
+                  onChange={(e) => setStockDraft((d) => ({
+                    ...d,
+                    [draftKey(row.id, 'stock')]: e.target.value,
+                  }))}
+                />
+                <button
+                  type="button"
+                  className="kitwe-btn-secondary kitwe-btn-compact"
+                  disabled={stockSavingId === row.id}
+                  onClick={() => saveStockQty(row)}
+                >
+                  {stockSavingId === row.id ? '…' : 'Stock'}
+                </button>
+              </div>
+            ) : (
+              <span className="kitwe-qty-readonly">{qtyValue ?? row.kitweQty}</span>
+            )}
+          </td>
+          <td className="col-price">
             <input
               type="number"
               min={0}
-              step={1}
-              className="kitwe-cell-input kitwe-cell-input--qty"
-              value={getStockDraft(row)}
-              onChange={(e) => setStockDraft((d) => ({
-                ...d,
-                [draftKey(row.id, 'stock')]: e.target.value,
-              }))}
+              step="0.01"
+              className="kitwe-cell-input"
+              value={getDraft(row, 'price')}
+              onChange={(e) => setPriceDraft((d) => ({ ...d, [draftKey(row.id, 'price')]: e.target.value }))}
             />
-            <button
-              type="button"
-              className="kitwe-btn-secondary"
-              disabled={stockSavingId === row.id}
-              onClick={() => saveStockQty(row)}
-            >
-              {stockSavingId === row.id ? '…' : 'Stock'}
-            </button>
-          </div>
-        ) : (
-          qtyValue ?? row.kitweQty
-        )}
-      </td>
-      <td className="col-price">
-        <input
-          type="number"
-          min={0}
-          step="0.01"
-          className="kitwe-cell-input"
-          value={getDraft(row, 'price')}
-          onChange={(e) => setPriceDraft((d) => ({ ...d, [draftKey(row.id, 'price')]: e.target.value }))}
-        />
-      </td>
-      <td className="col-price">
-        <input
-          type="number"
-          min={0}
-          step="0.01"
-          className="kitwe-cell-input"
-          value={getDraft(row, 'promotional_price')}
-          onChange={(e) => setPriceDraft((d) => ({ ...d, [draftKey(row.id, 'promotional_price')]: e.target.value }))}
-        />
-      </td>
-      <td className="col-actions">
-        <div className="kitwe-row-actions">
-          <button
-            type="button"
-            className="kitwe-btn-save"
-            disabled={savingId === row.id}
-            onClick={() => savePrices(row)}
-          >
-            {savingId === row.id ? '…' : 'Save'}
-          </button>
-          <button
-            type="button"
-            className="kitwe-btn-secondary"
-            disabled={labelBusyId === row.id}
-            onClick={() => printLabel(row)}
-          >
-            {labelBusyId === row.id ? '…' : 'Label'}
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
+          </td>
+          <td className="col-price">
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className="kitwe-cell-input"
+              value={getDraft(row, 'promotional_price')}
+              onChange={(e) => setPriceDraft((d) => ({ ...d, [draftKey(row.id, 'promotional_price')]: e.target.value }))}
+            />
+          </td>
+          <td className="col-actions">
+            <div className="kitwe-row-actions">
+              <button
+                type="button"
+                className="kitwe-btn-save kitwe-btn-compact"
+                disabled={savingId === row.id}
+                onClick={() => savePrices(row)}
+              >
+                {savingId === row.id ? '…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="kitwe-btn-secondary kitwe-btn-compact"
+                disabled={labelBusyId === row.id}
+                onClick={() => printLabel(row)}
+              >
+                {labelBusyId === row.id ? '…' : 'Label'}
+              </button>
+            </div>
+          </td>
+        </tr>
+        {canExpand && isOpen ? (
+          <tr className="kitwe-packet-detail-row">
+            <td colSpan={8}>
+              <div className="kitwe-packet-panel">
+                <div className="kitwe-packet-panel__title">Packets at Kitwe</div>
+                <table className="kitwe-packet-nested-table">
+                  <thead>
+                    <tr>
+                      <th>Packet</th>
+                      <th>SKU</th>
+                      <th className="kitwe-packet-nested-table__qty">Qty @ Kitwe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pktList.map((packet) => (
+                      <tr key={packet.id}>
+                        <td>
+                          {packet.name || 'Packet'}
+                          {packet.packet_number != null && packet.packet_number !== ''
+                            ? ` · #${packet.packet_number}`
+                            : ''}
+                        </td>
+                        <td><code className="kitwe-packet-sku">{packet.sku || '—'}</code></td>
+                        <td className="kitwe-packet-nested-table__qty">
+                          {inventoryByPacketId.get(String(packet.id)) ?? 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+        ) : null}
+      </React.Fragment>
+    );
+  };
 
   return (
     <div className="kitwe-catalog-page">
@@ -617,25 +706,40 @@ export default function KitweProductsPage() {
         </div>
       ) : null}
 
+      <div className="kitwe-catalog-table-wrap">
       <table className="kitwe-catalog-table">
+        <colgroup>
+          <col className="kitwe-col-expand" />
+          <col className="kitwe-col-sku" />
+          <col className="kitwe-col-product" />
+          <col className="kitwe-col-category" />
+          <col className="kitwe-col-qty" />
+          <col className="kitwe-col-price" />
+          <col className="kitwe-col-price" />
+          <col className="kitwe-col-actions" />
+        </colgroup>
         <thead>
           <tr>
+            <th className="col-expand" aria-label="Expand" />
             <th className="col-sku">SKU</th>
             <th className="col-product">Product</th>
             <th className="col-category">Category</th>
             <th className="col-qty">Qty (edit)</th>
-            <th className="col-price">Standard price</th>
-            <th className="col-price">Promotional price</th>
+            <th className="col-price" title="Standard price">Std price</th>
+            <th className="col-price" title="Promotional price">Promo price</th>
             <th className="col-actions">Save</th>
           </tr>
         </thead>
         <tbody>
           {view === 'products' ? (
             productRows.length ? (
-              productRows.map((row) => renderPriceRow(row, { editableStock: view === 'products' }))
+              productRows.map((row) => renderPriceRow(row, {
+                editableStock: true,
+                showPacketExpand: true,
+              }))
             ) : (
               <tr>
-                <td colSpan={7} className="kitwe-empty-hint">
+                <td colSpan={8} className="kitwe-empty-hint">
                   No Kitwe products yet. Create one above, or accept a factory delivery into Kitwe.
                 </td>
               </tr>
@@ -654,6 +758,7 @@ export default function KitweProductsPage() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

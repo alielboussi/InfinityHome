@@ -46,14 +46,17 @@ export default function WarehouseAssemblyCategoryDialog({
     setCreateBusy(false);
   }, [open, assembly?.id]);
 
+  const sortedCategories = useMemo(() => (
+    (categories || []).slice().sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }),
+    )
+  ), [categories]);
+
   const filteredCategories = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const list = (categories || []).slice().sort((a, b) =>
-      String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }),
-    );
-    if (!term) return list;
-    return list.filter((cat) => String(cat.name || '').toLowerCase().includes(term));
-  }, [categories, search]);
+    if (!term) return sortedCategories;
+    return sortedCategories.filter((cat) => String(cat.name || '').toLowerCase().includes(term));
+  }, [sortedCategories, search]);
 
   if (!open || !assembly?.id) return null;
 
@@ -114,38 +117,45 @@ export default function WarehouseAssemblyCategoryDialog({
       aria-labelledby="warehouse-category-dialog-title"
       onClick={close}
     >
-      <div className="products-category-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="products-category-modal products-category-modal--pick-grid"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 id="warehouse-category-dialog-title" className="products-image-modal__title">
           Product category
         </h3>
         <div className="products-image-modal__meta">
           {assembly.name || '—'}
         </div>
+        <p className="products-category-modal__grid-hint">
+          Categories A–Z — click one to assign. Use search only if you need to narrow a long list.
+        </p>
         <input
           type="search"
-          className="products-category-modal__search"
-          placeholder="Search categories…"
+          className="products-category-modal__search products-category-modal__search--compact"
+          placeholder="Filter categories (optional)…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          autoFocus
           disabled={busy || createBusy}
         />
-        <div className="products-category-modal__list" role="listbox" aria-label="Categories">
-          <button
-            type="button"
-            className={`products-category-modal__option${!selectedId ? ' is-selected' : ''}`}
-            onClick={() => assignCategory(null)}
-            disabled={busy || createBusy}
-          >
-            — No category —
-          </button>
+        <div
+          className="products-category-modal__grid"
+          role="listbox"
+          aria-label="Categories A to Z"
+        >
+          {filteredCategories.length === 0 ? (
+            <p className="products-category-modal__grid-empty">No categories match your filter.</p>
+          ) : null}
           {filteredCategories.map((cat) => (
             <button
               key={cat.id}
               type="button"
-              className={`products-category-modal__option${selectedId === String(cat.id) ? ' is-selected' : ''}`}
+              className={`products-category-modal__grid-option${
+                selectedId === String(cat.id) ? ' is-selected' : ''
+              }`}
               onClick={() => assignCategory(cat.id)}
               disabled={busy || createBusy}
+              title={cat.name}
             >
               {cat.name}
             </button>

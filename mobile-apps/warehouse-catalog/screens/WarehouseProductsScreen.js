@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
 import { isWarehouseCatalogAddProductAllowed, isWarehouseCatalogLabelPrintAllowed, isWarehouseProductFormInsertAllowed } from '../shared/mobileAccessManifest';
 import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
+import CatalogProductPhotoZoomModal from '../shared/CatalogProductPhotoZoomModal';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
@@ -356,8 +357,14 @@ export default function WarehouseProductsScreen({ navigation, route }) {
               }}
               accessibilityLabel={imageUri ? `View photo for ${assembly.name}` : 'No product photo'}
               disabled={!imageUri}
+              style={({ pressed }) => [imageUri && pressed && styles.thumbPressablePressed]}
             >
               <ProductThumbnail assembly={assembly} />
+              {imageUri ? (
+                <View style={styles.thumbZoomBadge} pointerEvents="none">
+                  <MaterialCommunityIcons name="magnify-plus-outline" size={16} color="#e2e8f0" />
+                </View>
+              ) : null}
             </Pressable>
             <Pressable
               style={styles.expandFab}
@@ -557,21 +564,12 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         </Pressable>
       </Modal>
 
-      <Modal
+      <CatalogProductPhotoZoomModal
         visible={Boolean(photoPreview?.uri)}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPhotoPreview(null)}
-      >
-        <Pressable style={styles.photoModalBackdrop} onPress={() => setPhotoPreview(null)}>
-          <Image
-            source={{ uri: photoPreview?.uri }}
-            style={styles.photoModalImage}
-            resizeMode="contain"
-            accessibilityLabel={photoPreview?.title || 'Product photo'}
-          />
-        </Pressable>
-      </Modal>
+        uri={photoPreview?.uri}
+        title={photoPreview?.title}
+        onClose={() => setPhotoPreview(null)}
+      />
 
       <CatalogLabelPrintModal
         visible={Boolean(labelPrintItem)}
@@ -711,6 +709,21 @@ const styles = StyleSheet.create({
   },
   cardMain: { flexGrow: 1 },
   thumbWrap: { position: 'relative' },
+  thumbPressablePressed: { opacity: 0.88 },
+  thumbZoomBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
   thumb: {
     width: '100%',
     aspectRatio: 1,
@@ -791,12 +804,4 @@ const styles = StyleSheet.create({
   packetName: { color: '#e2e8f0', fontSize: 11, marginTop: 2 },
   packetQty: { color: '#a5f3fc', fontSize: 11, fontWeight: '700', marginTop: 2 },
   packetEmpty: { color: '#64748b', fontStyle: 'italic', paddingVertical: 4, fontSize: 11 },
-  photoModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-  },
-  photoModalImage: { width: '100%', height: '80%' },
 });
