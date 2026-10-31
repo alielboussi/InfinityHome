@@ -53,7 +53,7 @@ import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
 import { isWarehouseCatalogAddProductAllowed, isWarehouseCatalogLabelPrintAllowed } from './mobile/mobileAccessManifest';
 import { formatWarehouseProductionLabelColor } from './utils/warehouseProductionLabelColor';
 import { printWarehouseProductionLabel } from './services/warehouseProductionApi';
-import { warehouseBulkLabelPrintSummary, resolveWarehouseLabelPrintPlan } from './utils/warehouseBulkLabelPrint';
+import { warehouseBulkLabelPrintSummary, resolveWarehouseLabelPrintPlan, assemblyUsesWarehouseBoxLabels } from './utils/warehouseBulkLabelPrint';
 import WarehouseCatalogBulkLabelToolbar, {
   WarehouseBulkLabelSelectCheckbox,
 } from './components/WarehouseCatalogBulkLabelToolbar';
@@ -555,6 +555,9 @@ export default function WarehouseProductsPage() {
                 pktList,
               );
               const labelCopiesAtWarehouse = labelPlan?.copies ?? 0;
+              const boxUnitsForLabel = assemblyUsesWarehouseBoxLabels(assembly, pktList)
+                ? unitsPerBox
+                : 0;
               return (
                 <div key={assembly.id} className="warehouse-assembly-card">
                   <div
@@ -680,7 +683,7 @@ export default function WarehouseProductsPage() {
                               Math.max(1, labelCopiesAtWarehouse),
                               assembly,
                               assemblyColorsList,
-                              labelPlan?.boxUnitsPerCarton || 0,
+                              boxUnitsForLabel,
                             )}
                           />
                           {canManage ? (
@@ -880,7 +883,7 @@ export default function WarehouseProductsPage() {
                                       Math.max(1, labelCopiesAtWarehouse),
                                       assembly,
                                       assemblyColorsList,
-                                      labelPlan?.boxUnitsPerCarton || 0,
+                                      boxUnitsForLabel,
                                     )}
                                   />
                                   {' '}

@@ -1,9 +1,16 @@
+import { assemblyDerivesWarehouseStockFromPackets } from './warehouseAssemblyMath.js';
 import { formatWarehouseProductionLabelColor } from './warehouseProductionLabelColor.js';
 import {
   assemblyUnitsPerCarton,
-  assemblyUsesFinishedBoxReceiving,
   boxCountFromFinishedUnits,
 } from './warehouseUnitsPerCarton.js';
+
+/** One label per box + Pack row when portal shows units-per-box (not packet-BOM stock). */
+export function assemblyUsesWarehouseBoxLabels(assembly, pktList) {
+  if (!assembly) return false;
+  if (assemblyDerivesWarehouseStockFromPackets(assembly, pktList)) return false;
+  return assemblyUnitsPerCarton(assembly) > 1;
+}
 
 export function warehouseProductLabelCopiesAtLocation(assembly, warehouseLocationId, finishedStockByAssembly) {
   if (!assembly || !warehouseLocationId) return 0;
@@ -24,7 +31,7 @@ export function resolveWarehouseLabelPrintPlan(assembly, warehouseLocationId, fi
   if (finishedUnits < 1) return null;
 
   const unitsPerBox = assemblyUnitsPerCarton(assembly);
-  const usesBoxLabels = assemblyUsesFinishedBoxReceiving(assembly, pktList) && unitsPerBox > 1;
+  const usesBoxLabels = assemblyUsesWarehouseBoxLabels(assembly, pktList);
   if (usesBoxLabels) {
     const boxes = boxCountFromFinishedUnits(finishedUnits, unitsPerBox);
     if (boxes < 1) return null;

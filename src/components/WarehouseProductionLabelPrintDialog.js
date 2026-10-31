@@ -91,6 +91,11 @@ export default function WarehouseProductionLabelPrintDialog({
             Color: <strong>{color}</strong>
           </p>
         ) : null}
+        {boxUnitsPerCarton > 1 ? (
+          <p className="warehouse-label-print-modal__color">
+            Pack: <strong>1 Box = {boxUnitsPerCarton} Units</strong>
+          </p>
+        ) : null}
 
         <div className="warehouse-label-print-modal__qty">
           <span className="products-adjust-modal__label">Label copies</span>

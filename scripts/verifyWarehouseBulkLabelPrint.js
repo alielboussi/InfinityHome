@@ -58,6 +58,24 @@ const { pathToFileURL } = require('url');
   assert.strictEqual(boxJobs[0].copies, 3);
   assert.strictEqual(boxJobs[0].boxUnitsPerCarton, 2);
 
+  const finishedNoPacket = {
+    id: 'box2',
+    name: 'Alya Dining Chair',
+    family_sku: '3002791082000020',
+    inventory_mode: 'finished',
+    units_per_carton: 2,
+  };
+  const finishedNoPacketStock = new Map([['box2', new Map([[loc, 4]])]]);
+  const noPktJobs = buildWarehouseBulkLabelPrintJobs([finishedNoPacket], {
+    warehouseLocationId: loc,
+    finishedStockByAssembly: finishedNoPacketStock,
+    colorsByAssembly: new Map(),
+    packetsByAssembly: new Map([['box2', []]]),
+  });
+  assert.strictEqual(noPktJobs.length, 1);
+  assert.strictEqual(noPktJobs[0].copies, 2);
+  assert.strictEqual(noPktJobs[0].boxUnitsPerCarton, 2);
+
   const page = require('fs').readFileSync(
     path.join(__dirname, '../src/WarehouseProductsPage.js'),
     'utf8',
