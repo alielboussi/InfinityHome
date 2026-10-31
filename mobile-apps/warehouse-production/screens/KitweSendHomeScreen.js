@@ -21,6 +21,11 @@ import { assembliesUsingPacket, findWarehousePacketByScan } from '../lib/deliver
 import { filterAssembliesForDeliverySearch } from '../lib/deliveryCatalogSearch';
 import { resolveDeliveryCatalogScan } from '../lib/deliveryScanResolve';
 import { isFinishedProductWithoutPacketBom } from '../shared/warehouseCatalogProductCompleteness';
+import {
+  assemblyUsesWarehouseBoxLabels,
+  deliveryTruckBoxesToFinishedUnits,
+  formatDeliveryPackSummary,
+} from '../shared/warehouseDeliveryBoxUnits';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { tUi } from '../lib/productionKioskI18n';
@@ -106,6 +111,9 @@ export default function KitweSendHomeScreen({ navigation }) {
   const draftIsFinishedOnly = draftAssembly
     ? isFinishedProductWithoutPacketBom(draftAssembly, draftPacketRows)
     : false;
+  const draftUsesBoxUnits = draftAssembly
+    ? assemblyUsesWarehouseBoxLabels(draftAssembly, draftPacketRows)
+    : false;
   const unitsNum = Math.max(1, Number(units) || 1);
   const inputAlign = { textAlign: locale === 'ar' ? 'right' : 'left' };
 
@@ -188,10 +196,13 @@ export default function KitweSendHomeScreen({ navigation }) {
       packets,
       assemblyPackets: links,
     });
-    if (resolved?.kind === 'assembly') {
+    if (resolved?.kind === 'assembly' || resolved?.kind === 'assembly_box') {
       setError('');
       setSearch(resolved.assembly.name || value);
       selectAssemblyForDraft(resolved.assembly);
+      if (resolved.kind === 'assembly_box') {
+        setUnits('1');
+      }
       if (resolved.assembly) {
         setDraftFinishedConfirmed(true);
       }
@@ -471,7 +482,9 @@ export default function KitweSendHomeScreen({ navigation }) {
               </Text>
             </Pressable>
             <View style={kiosk.field}>
-              <Text style={[kiosk.label, { textAlign }]}>{tUi('deliverySetsLabel', locale)}</Text>
+              <Text style={[kiosk.label, { textAlign }]}>
+                {draftUsesBoxUnits ? 'Boxes on truck' : tUi('deliverySetsLabel', locale)}
+              </Text>
               <TextInput
                 style={[kiosk.input, inputAlign]}
                 keyboardType="number-pad"
@@ -479,6 +492,16 @@ export default function KitweSendHomeScreen({ navigation }) {
                 onChangeText={setUnits}
               />
             </View>
+            {draftUsesBoxUnits ? (
+              <Text style={[kiosk.metaLine, { textAlign }]}>
+                {formatDeliveryPackSummary(
+                  draftAssembly,
+                  draftPacketRows,
+                  deliveryTruckBoxesToFinishedUnits(draftAssembly, draftPacketRows, unitsNum),
+                  unitsNum,
+                )}
+              </Text>
+            ) : null}
             <Text style={[kiosk.label, { textAlign, marginTop: 4 }]}>
               {draftIsFinishedOnly
                 ? tUi('deliveryFinishedUnitsTick', locale)

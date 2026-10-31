@@ -1,3 +1,8 @@
+import {
+  deliveryFinishedUnitsFromEntryMetadata,
+  formatDeliveryPackSummary,
+} from './warehouseDeliveryBoxUnits.js';
+
 export const WAREHOUSE_FROM_LOCATION_ID = '39ffaa82-8aee-4a33-8de8-06584cbaffcf';
 export const WAREHOUSE_TO_LOCATION_ID = '454a092c-5b12-441e-b99d-216f6fa72198';
 export const WAREHOUSE_ACCEPT_USER_ID = '6b992ac8-8e39-4f31-a323-2271a974da8c';
@@ -84,9 +89,21 @@ export function warehousePacketDisplayLabel(line) {
   const product = warehousePacketProductName(line);
   const packet = String(line?.name || 'Packet').trim();
   const qty = deliveryLineQty(line);
+  const per = Math.max(0, Math.floor(Number(line?.metadata?.units_per_carton) || 0));
+  const trucks = Math.max(0, Math.floor(Number(line?.metadata?.truck_boxes) || 0));
+  const assemblyStub = per > 1 ? { units_per_carton: per, inventory_mode: 'finished' } : null;
+  const packSummary = assemblyStub && (trucks > 0 || qty > 0)
+    ? formatDeliveryPackSummary(assemblyStub, [], qty, trucks)
+    : '';
+
   if (deliveryEntryFinishedUnit(line)) {
     const label = product || packet;
-    return `${label} × ${qty} (finished units)`;
+    const finished = deliveryFinishedUnitsFromEntryMetadata(line, [], null) || qty;
+    if (packSummary) return `${label} — ${packSummary}`;
+    return `${label} × ${finished} (finished units)`;
+  }
+  if (packSummary && product) {
+    return `${product} — ${packet} × ${qty} carton${qty === 1 ? '' : 's'} · ${packSummary}`;
   }
   if (product && product.toLowerCase() !== packet.toLowerCase()) {
     return `${product} — ${packet} × ${qty}`;

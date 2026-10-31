@@ -4,6 +4,11 @@ import {
   resetWarehouseDeliveryNumberSequence,
 } from '../lib/warehouseDeliveryNumber.js';
 import { validateAssemblyShipmentBom, isAssemblyDeliveryFinishedUnits } from '../lib/warehouseMobileBom.js';
+import {
+  assemblyUsesWarehouseBoxLabels,
+  deliveryTruckBoxesToFinishedUnits,
+} from '../../src/utils/warehouseDeliveryBoxUnits.js';
+import { assemblyUnitsPerCarton } from '../../src/utils/warehouseUnitsPerCarton.js';
 import { newUuid } from '../lib/uuid.js';
 import {
   normalizeWarehouseSku,
@@ -1426,6 +1431,23 @@ async function sendWarehouseDeliverySubmitWhatsApp({
   return whatsappResult;
 }
 
+function deliveryShipmentUnits(assembly, packetRows, truckBoxes) {
+  const boxes = Math.max(1, Math.floor(Number(truckBoxes) || 0));
+  if (!assemblyUsesWarehouseBoxLabels(assembly, packetRows)) {
+    return {
+      truckBoxes: boxes,
+      finishedUnits: boxes,
+      unitsPerCarton: null,
+    };
+  }
+  const unitsPerCarton = assemblyUnitsPerCarton(assembly);
+  return {
+    truckBoxes: boxes,
+    finishedUnits: deliveryTruckBoxesToFinishedUnits(assembly, packetRows, boxes),
+    unitsPerCarton,
+  };
+}
+
 async function opDeliverySubmit(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
@@ -1449,7 +1471,7 @@ async function opDeliverySubmit(body, user) {
       const [{ data: packets }, { data: links }, { data: assemblies }] = await Promise.all([
         sb.from('warehouse_packets').select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
         sb.from('warehouse_assembly_packets').select('*'),
-        sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode'),
+        sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode, units_per_carton'),
       ]);
       const byAssembly = buildPacketsByAssembly(links || [], packets || []);
       const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
@@ -1491,7 +1513,7 @@ async function opDeliverySubmit(body, user) {
   const [{ data: packets }, { data: links }, { data: assemblies }] = await Promise.all([
     sb.from('warehouse_packets').select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
     sb.from('warehouse_assembly_packets').select('*'),
-    sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode'),
+    sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode, units_per_carton'),
   ]);
   const byAssembly = buildPacketsByAssembly(links || [], packets || []);
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
@@ -1529,8 +1551,14 @@ async function opDeliverySubmit(body, user) {
         err.details = validation;
         throw err;
       }
-      await assertAssemblyStockAvailable(sb, assemblyId, WAREHOUSE_FROM_LOCATION_ID, units);
-      totalCartons += units;
+      const shipment = deliveryShipmentUnits(assembly, packetRows, units);
+      await assertAssemblyStockAvailable(
+        sb,
+        assemblyId,
+        WAREHOUSE_FROM_LOCATION_ID,
+        shipment.finishedUnits,
+      );
+      totalCartons += shipment.finishedUnits;
       const driverCheckedAt = group.finished_driver_checked_at || now;
       entries.push({
         id: newUuid(),
@@ -1538,12 +1566,14 @@ async function opDeliverySubmit(body, user) {
         kind: 'assembly',
         name: assembly.name,
         sku: assembly.family_sku,
-        quantity: units,
+        quantity: shipment.finishedUnits,
         metadata: {
           assembly_id: assemblyId,
           assembly_name: assembly.name,
           finished_unit: true,
-          units,
+          units: shipment.finishedUnits,
+          truck_boxes: shipment.unitsPerCarton ? shipment.truckBoxes : undefined,
+          units_per_carton: shipment.unitsPerCarton ?? undefined,
           driver_checked_at: driverCheckedAt,
           receiver_checked_at: null,
         },
@@ -1558,8 +1588,11 @@ async function opDeliverySubmit(body, user) {
       throw err;
     }
 
+    const shipment = deliveryShipmentUnits(assembly, packetRows, units);
+    const truckMultiplier = shipment.unitsPerCarton ? shipment.truckBoxes : units;
+
     for (const packet of packetRows) {
-      const moveQty = units * Math.max(1, Number(packet.qty_per_unit) || 1);
+      const moveQty = truckMultiplier * Math.max(1, Number(packet.qty_per_unit) || 1);
       const scanLine = (group.scans || []).find((s) => String(s.packet_id) === String(packet.id));
       const have = scanned.get(String(packet.id)) || 0;
       if (have < moveQty) {
@@ -1583,7 +1616,9 @@ async function opDeliverySubmit(body, user) {
           assembly_id: assemblyId,
           assembly_name: assembly.name,
           packet_number: packet.packet_number,
-          units,
+          units: shipment.finishedUnits,
+          truck_boxes: shipment.unitsPerCarton ? shipment.truckBoxes : undefined,
+          units_per_carton: shipment.unitsPerCarton ?? undefined,
           driver_checked_at: driverCheckedAt,
           receiver_checked_at: null,
         },
