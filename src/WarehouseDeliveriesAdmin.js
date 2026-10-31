@@ -20,7 +20,7 @@ import {
   buildWarehouseDeliveryNoteHtml,
   renderWarehouseDeliveryNotePdfBlob,
 } from './utils/warehouseDeliveryNotePrint';
-import { cancelWarehouseDeliverySession } from './services/warehouseDeliveryMobileApi';
+import { cancelWarehouseDeliverySession, discardWarehouseDeliveryDraft } from './services/warehouseDeliveryMobileApi';
 
 const formatDateTime = (value) => {
   if (!value) return '-';
@@ -67,6 +67,7 @@ export default function WarehouseDeliveriesAdmin() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [cancelBusyId, setCancelBusyId] = useState('');
+  const [removeBusyId, setRemoveBusyId] = useState('');
   const [whatsappBusyId, setWhatsappBusyId] = useState('');
   const [catalogAdmin, setCatalogAdmin] = useState(false);
 
@@ -201,11 +202,13 @@ export default function WarehouseDeliveriesAdmin() {
     const q = search.trim().toLowerCase();
     return sessions.filter((s) => {
       const status = String(s.status || '').toLowerCase();
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'pending' && !isWarehousePending(status)) return false;
-        if (statusFilter === 'completed' && !isWarehouseCompleted(status)) return false;
-        if (statusFilter !== 'pending' && statusFilter !== 'completed' && status !== statusFilter) return false;
+      if (statusFilter === 'all') {
+        if (status === 'draft' || status === 'cancelled') return false;
+      } else if (statusFilter !== 'pending' && statusFilter !== 'completed') {
+        if (status !== statusFilter) return false;
       }
+      if (statusFilter === 'pending' && !isWarehousePending(status)) return false;
+      if (statusFilter === 'completed' && !isWarehouseCompleted(status)) return false;
       if (!q) return true;
       const hay = `${s.delivery_number || ''} ${s.id} ${s.created_by_email || ''} ${s.status || ''}`.toLowerCase();
       return hay.includes(q);
@@ -313,6 +316,25 @@ export default function WarehouseDeliveriesAdmin() {
     }
   };
 
+  const handleRemoveDraft = async (session) => {
+    if (!session?.id || removeBusyId) return;
+    const dn = session.delivery_number || session.id;
+    const ok = window.confirm(
+      `Remove ${dn} from the system? Use this for failed or abandoned drafts so the sender can start again.`,
+    );
+    if (!ok) return;
+    setRemoveBusyId(session.id);
+    setError('');
+    try {
+      await discardWarehouseDeliveryDraft({ sessionId: session.id });
+      await loadDeliveries();
+    } catch (err) {
+      setError(err?.message || 'Failed to remove delivery.');
+    } finally {
+      setRemoveBusyId('');
+    }
+  };
+
   const handleCancelDelivery = async (session) => {
     if (!session?.id || cancelBusyId) return;
     const dn = session.delivery_number || session.id;
@@ -374,9 +396,10 @@ export default function WarehouseDeliveriesAdmin() {
             color: theme.text,
           }}
         >
-          <option value="all">All statuses</option>
+          <option value="all">Active deliveries</option>
           <option value="pending">Pending</option>
           <option value="completed">Completed</option>
+          <option value="draft">Draft (cleanup)</option>
           <option value="cancelled">Cancelled</option>
           <option value="failed">Failed</option>
         </select>
@@ -559,6 +582,24 @@ export default function WarehouseDeliveriesAdmin() {
                   }}
                 >
                   {cancelBusyId === session.id ? 'Cancelling…' : 'Cancel delivery'}
+                </button>
+              )}
+              {catalogAdmin && (statusLower === 'draft' || statusLower === 'cancelled') && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveDraft(session)}
+                  disabled={removeBusyId === session.id}
+                  style={{
+                    background: '#b91c1c',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '8px 16px',
+                    fontWeight: 700,
+                    cursor: removeBusyId === session.id ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {removeBusyId === session.id ? 'Removing…' : 'Remove draft'}
                 </button>
               )}
               {completed && (

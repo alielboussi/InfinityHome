@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import DeliveryDriverPickerComponent from '../components/DeliveryDriverPicker.js';
 import DeliverySignaturePad from '../components/DeliverySignaturePad';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
@@ -135,7 +135,15 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         submittedAt,
       });
     } catch (err) {
-      setError(mapSubmitError(err, locale));
+      clearDeliveryWorkspace();
+      try {
+        await warehouseMobileRequest('delivery-draft-discard', { session_id: sessionId });
+      } catch {
+        // Server may have already removed the draft after a failed submit.
+      }
+      const msg = mapSubmitError(err, locale);
+      Alert.alert(tUi('deliveryTitle', locale), msg);
+      navigation.replace('KitweSendHome');
     } finally {
       setBusy(false);
       submitLockRef.current = false;

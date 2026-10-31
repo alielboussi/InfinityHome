@@ -49,6 +49,8 @@ assert(!deliveries.includes('prev.filter((s) => String(s.id)'), 'Hassan page mus
 assert(mobile.includes('admin_registry'), 'return/storage list must support admin registry');
 assert(mobile.includes('driver_signature_url'), 'delivery submit must store driver signature url');
 assert(mobile.includes('delivery-cancel'), 'warehouse-mobile must support delivery-cancel');
+assert(mobile.includes('delivery-draft-discard'), 'warehouse-mobile must discard failed delivery drafts');
+assert(mobile.includes('deleteWarehouseDeliverySessionHard'), 'failed delivery submit must hard-delete draft');
 assert(mobile.includes('delivery-signature-upload'), 'warehouse-mobile must support delivery-signature-upload');
 assert(
   /signature_png_base64|uploadWarehouseDeliverySignaturePng/.test(mobile),

@@ -8,7 +8,7 @@ const assert = require('assert');
 const root = path.resolve(__dirname, '..');
 
 assert(fs.existsSync(path.join(root, 'server/lib/warehouseProductionPresets.js')));
-assert(fs.existsSync(path.join(root, 'docs/supabase-warehouse-production-presets.sql')));
+assert(fs.existsSync(path.join(root, 'scripts/initWarehouseProductionPresets.js')));
 
 const mobile = fs.readFileSync(path.join(root, 'server/handlers/warehouse-mobile.js'), 'utf8');
 assert(mobile.includes('production-presets-list'), 'warehouse-mobile must list production presets');

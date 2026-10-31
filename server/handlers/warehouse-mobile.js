@@ -80,7 +80,7 @@ import {
 } from '../../src/utils/warehouseDelivery.js';
 import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryNotePrint.js';
 import { acceptWarehouseDeliveryServer } from '../lib/warehouseDeliveryAccept.js';
-import { cancelWarehouseDeliveryServer } from '../lib/cancelWarehouseDelivery.js';
+import { cancelWarehouseDeliveryServer, deleteWarehouseDeliverySessionHard } from '../lib/cancelWarehouseDelivery.js';
 import { assertPacketStockAvailable, assertAssemblyStockAvailable } from '../lib/warehouseDeliveryStock.js';
 import {
   listWarehouseDeliveryDrivers,
@@ -1497,6 +1497,14 @@ function stripUndefinedMetadata(metadata) {
   return out;
 }
 
+async function discardFailedDeliverySubmitDraft(sb, sessionId) {
+  try {
+    await deleteWarehouseDeliverySessionHard(sb, sessionId);
+  } catch (err) {
+    console.warn('[delivery-submit] discard draft after failure:', err?.message || err);
+  }
+}
+
 async function opDeliverySubmit(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
@@ -1673,6 +1681,7 @@ async function opDeliverySubmit(body, user) {
     }
   }
 
+  try {
   for (const entry of entries) {
     const { error } = await sb.from('warehouse_delivery_entries').insert({
       ...entry,
@@ -1743,6 +1752,10 @@ async function opDeliverySubmit(body, user) {
     submitted_at: now,
     driver_signature_url: driverSignatureUrl || null,
   });
+  } catch (submitErr) {
+    await discardFailedDeliverySubmitDraft(sb, sessionId);
+    throw submitErr;
+  }
 }
 
 const WAREHOUSE_PRODUCTION_MOBILE_SOURCE = 'warehouse_production_mobile';
@@ -1893,6 +1906,47 @@ async function opDeliveryCancel(body, user) {
     cancelledByEmail: user?.email || null,
     reason,
   });
+}
+
+async function opDeliveryDraftDiscard(body, user) {
+  const isAdmin = isLoginAccessAdmin(user?.email) || canManageCatalog(user);
+  if (!isAdmin) {
+    await assertMobileDeliverySubmitAccess(user);
+  }
+  const sessionId = String(body.session_id || body.sessionId || '').trim();
+  const deliveryNumber = String(body.delivery_number || body.deliveryNumber || '').trim();
+  if (!sessionId && !deliveryNumber) throw new Error('session_id or delivery_number is required.');
+
+  const sb = getService();
+  let sid = sessionId;
+  if (!sid && deliveryNumber) {
+    const { data: row } = await sb
+      .from('warehouse_delivery_sessions')
+      .select('id, created_by_email, status')
+      .eq('delivery_number', deliveryNumber)
+      .maybeSingle();
+    if (!row?.id) return { ok: true, already_gone: true };
+    sid = row.id;
+  }
+
+  const { data: session } = await sb
+    .from('warehouse_delivery_sessions')
+    .select('id, created_by_email, status')
+    .eq('id', sid)
+    .maybeSingle();
+  if (!session) return { ok: true, already_gone: true };
+
+  const email = String(user?.email || '').trim().toLowerCase();
+  const creator = String(session.created_by_email || '').trim().toLowerCase();
+  const isAdmin = isLoginAccessAdmin(user?.email) || canManageCatalog(user);
+  const isCreator = creator && creator === email;
+  if (!isAdmin && !isCreator) {
+    const err = new Error('Only catalog admin or the delivery sender can discard this draft.');
+    err.status = 403;
+    throw err;
+  }
+
+  return deleteWarehouseDeliverySessionHard(sb, sid);
 }
 
 async function opDeliveryDriversList() {
@@ -2169,6 +2223,9 @@ export default async function handler(req, res) {
         break;
       case 'delivery-cancel':
         result = await opDeliveryCancel(body, user);
+        break;
+      case 'delivery-draft-discard':
+        result = await opDeliveryDraftDiscard(body, user);
         break;
       case 'delivery-sent-list':
         result = await opDeliverySentList(body, user);

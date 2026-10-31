@@ -89,6 +89,7 @@ export default function KitweSendHomeScreen({ navigation }) {
   const [draftFinishedConfirmed, setDraftFinishedConfirmed] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [pickModal, setPickModal] = useState(null);
+  const [sessionOpening, setSessionOpening] = useState(false);
 
   const assemblies = catalog?.assemblies || [];
   const packets = catalog?.packets || [];
@@ -118,27 +119,7 @@ export default function KitweSendHomeScreen({ navigation }) {
   const inputAlign = { textAlign: locale === 'ar' ? 'right' : 'left' };
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setError('');
-      try {
-        const priorId = readDeliveryWorkspace()?.sessionId || '';
-        const sess = await warehouseMobileRequest('delivery-session-open', {
-          session_id: priorId || undefined,
-        });
-        if (cancelled) return;
-        const nextId = String(sess.session_id || '');
-        setSessionId(nextId);
-        setDeliveryNumber(sess.delivery_number || '');
-        if ((priorId && priorId !== nextId) || sess.replaced_stale_session) {
-          setGroups([]);
-        }
-      } catch (err) {
-        if (!cancelled) setError(err?.message || 'deliverySessionFailed');
-      }
-    })();
     fetchWarehouseCatalogCached({ force: false }).then(setCatalog).catch(() => {});
-    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -389,8 +370,8 @@ export default function KitweSendHomeScreen({ navigation }) {
     ? tUi('deliverySessionFailed', locale)
     : error;
 
-  const goToSignature = () => {
-    if (!sessionId || !groups.length) {
+  const goToSignature = async () => {
+    if (!groups.length) {
       const msg = tUi('deliveryNeedProduct', locale);
       setError(msg);
       Alert.alert(tUi('deliveryTitle', locale), msg);
@@ -403,19 +384,38 @@ export default function KitweSendHomeScreen({ navigation }) {
       return;
     }
     setError('');
-    navigation.navigate('KitweSendSignature', {
-      sessionId,
-      deliveryNumber,
-      dispatchedByName: getProductionDispatcherLabelSync(),
-      groups: groups.map((g) => ({
-        assembly_id: g.assembly_id,
-        units: g.units,
-        scans: g.scans,
-        finished_driver_checked: g.finished_driver_checked,
-        finished_driver_checked_at: g.finished_driver_checked_at,
-      })),
-      printGroups: buildPrintGroupsFromCart(groups, byAssembly, assemblies),
-    });
+    setSessionOpening(true);
+    try {
+      let sid = String(sessionId || '').trim();
+      let dnum = deliveryNumber;
+      if (!sid) {
+        const sess = await warehouseMobileRequest('delivery-session-open', {});
+        sid = String(sess.session_id || '');
+        dnum = sess.delivery_number || '';
+        if (!sid) throw new Error(tUi('deliverySessionFailed', locale));
+        setSessionId(sid);
+        setDeliveryNumber(dnum);
+      }
+      navigation.navigate('KitweSendSignature', {
+        sessionId: sid,
+        deliveryNumber: dnum,
+        dispatchedByName: getProductionDispatcherLabelSync(),
+        groups: groups.map((g) => ({
+          assembly_id: g.assembly_id,
+          units: g.units,
+          scans: g.scans,
+          finished_driver_checked: g.finished_driver_checked,
+          finished_driver_checked_at: g.finished_driver_checked_at,
+        })),
+        printGroups: buildPrintGroupsFromCart(groups, byAssembly, assemblies),
+      });
+    } catch (err) {
+      const msg = err?.message || tUi('deliverySessionFailed', locale);
+      setError(msg);
+      Alert.alert(tUi('deliveryTitle', locale), msg);
+    } finally {
+      setSessionOpening(false);
+    }
   };
 
   return (
@@ -637,9 +637,11 @@ export default function KitweSendHomeScreen({ navigation }) {
             !groups.length && styles.sendBtnDisabled,
           ]}
           onPress={goToSignature}
-          disabled={!groups.length}
+          disabled={!groups.length || sessionOpening}
         >
-          <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySendBtn', locale)}</Text>
+          <Text style={kiosk.btnPrimaryBlockText}>
+            {sessionOpening ? '…' : tUi('deliverySendBtn', locale)}
+          </Text>
         </Pressable>
       </KioskSafeScroll>
 

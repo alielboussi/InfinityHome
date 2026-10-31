@@ -62,6 +62,14 @@ export function cancelWarehouseDeliverySession({ sessionId, deliveryNumber, reas
   });
 }
 
+/** Hard-delete a draft/cancelled delivery (no Kitwe stock received). */
+export function discardWarehouseDeliveryDraft({ sessionId, deliveryNumber } = {}) {
+  return warehouseDeliveryMobileOp('delivery-draft-discard', {
+    session_id: sessionId,
+    delivery_number: deliveryNumber,
+  });
+}
+
 export function listReturnKitweProducts() {
   return warehouseDeliveryMobileOp('return-kitwe-products-list');
 }

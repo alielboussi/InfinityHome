@@ -1,5 +1,5 @@
 /**
- * Seed warehouse_production_presets in Firestore (no Postgres — see docs/supabase-warehouse-production-presets.sql for schema reference).
+ * Seed warehouse_production_presets in Firestore (see server/lib/warehouseProductionPresets.js).
  *
  * Usage: node scripts/initWarehouseProductionPresets.js
  */
