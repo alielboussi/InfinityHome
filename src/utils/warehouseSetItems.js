@@ -1,6 +1,6 @@
 import {
   WAREHOUSE_KIT_SHOWROOM_LOCATION_IDS,
-} from '../constants/warehouseShowroomLocations';
+} from '../constants/warehouseShowroomLocations.js';
 
 /** Legacy rows without location_id apply to both Kitwe and Lusaka (read-only expansion). */
 export function expandWarehouseSetItemsRows(rows) {

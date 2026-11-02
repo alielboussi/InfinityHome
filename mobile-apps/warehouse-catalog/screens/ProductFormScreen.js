@@ -138,26 +138,38 @@ export default function ProductFormScreen({ route, navigation }) {
     setTimeout(() => skuInputRef.current?.focus?.(), 50);
   }, []);
 
-  const { refresh: refreshGlobalCatalog, patchCatalog, applyCatalog } = useWarehouseCatalog();
+  const { catalog: globalCatalog, refresh: refreshGlobalCatalog, patchCatalog, applyCatalog } = useWarehouseCatalog();
 
-  const refreshCatalog = useCallback(async () => {
+  const refreshCatalog = useCallback(async ({ force = true } = {}) => {
     try {
-      const data = await fetchWarehouseCatalogCached({ force: false, fullPackets: true });
+      const data = await fetchWarehouseCatalogCached({ force, fullPackets: true });
       setCatalog(data);
+      return data;
     } catch {
       /* keep last catalog if refresh fails */
+      return null;
     }
   }, []);
 
+  useEffect(() => {
+    if (globalCatalog?.catalog_meta?.packet_load !== 'all') return;
+    setCatalog(globalCatalog);
+  }, [globalCatalog]);
+
   useFocusEffect(
     useCallback(() => {
-      refreshGlobalCatalog({ background: true, fullPackets: true }).catch(() => {});
-      if (!catalog) refreshCatalog();
+      refreshGlobalCatalog({ force: true, background: true, fullPackets: true })
+        .then((data) => {
+          if (data) setCatalog(data);
+        })
+        .catch(() => {
+          refreshCatalog({ force: true });
+        });
       if (!existing && !bomEditMode && !initialSkuFocusRef.current) {
         initialSkuFocusRef.current = true;
         focusSku();
       }
-    }, [bomEditMode, catalog, existing, focusSku, refreshCatalog, refreshGlobalCatalog]),
+    }, [bomEditMode, existing, focusSku, refreshCatalog, refreshGlobalCatalog]),
   );
 
   useFocusEffect(

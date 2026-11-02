@@ -38,30 +38,18 @@ import {
   readDeliveryWorkspace,
   writeDeliveryWorkspace,
 } from '../lib/productionDeliveryWorkspaceCache';
-
-function buildPrintGroupsFromCart(groups, byAssembly, assemblies) {
-  return (groups || []).map((g) => {
-    const packetRows = byAssembly.get(String(g.assembly_id)) || [];
-    const u = Math.max(1, Number(g.units) || 1);
-    const assembly = (assemblies || []).find((a) => String(a.id) === String(g.assembly_id));
-    if (assembly && isFinishedProductWithoutPacketBom(assembly, packetRows)) {
-      return {
-        assembly_name: g.assembly_name,
-        units: u,
-        lines: [],
-      };
-    }
-    return {
-      assembly_name: g.assembly_name,
-      units: u,
-      lines: packetRows.map((p) => ({
-        name: p.name,
-        packet_number: p.packet_number,
-        qty: u * Math.max(1, Number(p.qty_per_unit) || 1),
-      })),
-    };
-  });
-}
+import { buildPrintGroupsFromCart } from '../lib/deliveryPrintGroups';
+import {
+  buildSetComponentScans,
+  initSetDraftComponents,
+  isWarehouseSetAssembly,
+  refreshSetDraftComponentQty,
+  serializeSetGroupForSubmit,
+  validateSetDraftForCart,
+  validateSetGroupInCart,
+} from '../lib/deliverySetCart';
+import { isWarehouseSetDeliveryGroup } from '../lib/deliveryPrintGroups';
+import { uuid } from '../shared/uuid';
 
 function buildScansFromChecks(packetRows, unitsNum, checks) {
   const scans = [];
@@ -85,6 +73,8 @@ export default function KitweSendHomeScreen({ navigation }) {
   const [catalog, setCatalog] = useState(null);
   const [search, setSearch] = useState('');
   const [draftAssemblyId, setDraftAssemblyId] = useState('');
+  const [draftSetId, setDraftSetId] = useState('');
+  const [draftSetComponents, setDraftSetComponents] = useState([]);
   const [units, setUnits] = useState('1');
   const [draftChecks, setDraftChecks] = useState({});
   const [draftFinishedConfirmed, setDraftFinishedConfirmed] = useState(false);
@@ -95,6 +85,7 @@ export default function KitweSendHomeScreen({ navigation }) {
   const assemblies = catalog?.assemblies || [];
   const packets = catalog?.packets || [];
   const links = catalog?.assemblyPackets || [];
+  const setItems = catalog?.setItems || [];
 
   const byAssembly = useMemo(
     () => buildPacketsByAssembly(links, packets),
@@ -110,6 +101,7 @@ export default function KitweSendHomeScreen({ navigation }) {
     ? (byAssembly.get(String(draftAssemblyId)) || [])
     : [];
   const draftAssembly = assemblies.find((a) => String(a.id) === String(draftAssemblyId));
+  const draftSetAssembly = assemblies.find((a) => String(a.id) === String(draftSetId));
   const draftIsFinishedOnly = draftAssembly
     ? isFinishedProductWithoutPacketBom(draftAssembly, draftPacketRows)
     : false;
@@ -131,12 +123,31 @@ export default function KitweSendHomeScreen({ navigation }) {
 
   const clearDraft = useCallback(() => {
     setDraftAssemblyId('');
+    setDraftSetId('');
+    setDraftSetComponents([]);
     setDraftChecks({});
     setDraftFinishedConfirmed(false);
     setUnits('1');
   }, []);
 
+  const selectSetForDraft = useCallback((setAssembly) => {
+    setSearch('');
+    Keyboard.dismiss();
+    setDraftAssemblyId('');
+    setDraftSetId(setAssembly.id);
+    setDraftSetComponents(
+      initSetDraftComponents(setAssembly.id, unitsNum, setItems, assemblies, byAssembly),
+    );
+    setDraftChecks({});
+    setDraftFinishedConfirmed(false);
+    setError('');
+  }, [assemblies, byAssembly, setItems, unitsNum]);
+
   const selectAssemblyForDraft = useCallback((a) => {
+    if (isWarehouseSetAssembly(a)) {
+      selectSetForDraft(a);
+      return;
+    }
     const rows = byAssembly.get(String(a.id)) || [];
     setSearch('');
     Keyboard.dismiss();
@@ -144,7 +155,12 @@ export default function KitweSendHomeScreen({ navigation }) {
     setDraftChecks(buildDeliveryPacketChecks(rows, unitsNum, {}));
     setDraftFinishedConfirmed(false);
     setError('');
-  }, [byAssembly, unitsNum]);
+  }, [byAssembly, unitsNum, selectSetForDraft]);
+
+  useEffect(() => {
+    if (!draftSetId) return;
+    setDraftSetComponents((prev) => refreshSetDraftComponentQty(prev, byAssembly, unitsNum));
+  }, [unitsNum, draftSetId, byAssembly]);
 
   const applyAssemblyWithPacket = useCallback((nextAssembly, packet) => {
     if (!nextAssembly?.id) return;
@@ -230,7 +246,80 @@ export default function KitweSendHomeScreen({ navigation }) {
     });
   };
 
+  const toggleDraftSetPacket = (componentAssemblyId, packetId, requiredQty) => {
+    setDraftSetComponents((prev) => prev.map((comp) => {
+      if (String(comp.assembly_id) !== String(componentAssemblyId)) return comp;
+      const nextChecks = { ...(comp.checks || {}) };
+      const wasChecked = Boolean(nextChecks[packetId]?.driver_checked);
+      nextChecks[packetId] = {
+        packet_id: packetId,
+        quantity: requiredQty,
+        driver_checked: !wasChecked,
+        driver_checked_at: !wasChecked ? new Date().toISOString() : null,
+      };
+      return { ...comp, checks: nextChecks };
+    }));
+  };
+
+  const toggleDraftSetFinished = (componentAssemblyId) => {
+    setDraftSetComponents((prev) => prev.map((comp) => {
+      if (String(comp.assembly_id) !== String(componentAssemblyId)) return comp;
+      const on = !comp.finished_driver_checked;
+      return {
+        ...comp,
+        finished_driver_checked: on,
+        finished_driver_checked_at: on ? new Date().toISOString() : null,
+      };
+    }));
+  };
+
   const addDraftToCart = () => {
+    if (draftSetAssembly) {
+      const validation = validateSetDraftForCart(draftSetComponents, draftSetAssembly.name);
+      if (!validation.ok) {
+        setError(
+          tUi('deliveryCheckAllPackets', locale).replace('{name}', validation.message || draftSetAssembly.name),
+        );
+        return;
+      }
+      const components = draftSetComponents.map((comp) => {
+        if (comp.finishedOnly) {
+          return {
+            assembly_id: comp.assembly_id,
+            assembly_name: comp.assembly_name,
+            quantity_per_set: comp.quantity_per_set,
+            product_qty: comp.product_qty,
+            finished_driver_checked: true,
+            finished_driver_checked_at: new Date().toISOString(),
+            scans: [],
+          };
+        }
+        const built = buildSetComponentScans(comp.packetRows, comp.product_qty, comp.checks);
+        return {
+          assembly_id: comp.assembly_id,
+          assembly_name: comp.assembly_name,
+          quantity_per_set: comp.quantity_per_set,
+          product_qty: comp.product_qty,
+          scans: built.scans,
+        };
+      });
+      const groupId = uuid();
+      setError('');
+      setGroups((prev) => [
+        ...prev.filter((g) => String(g.group_id) !== groupId),
+        {
+          kind: 'set',
+          group_id: groupId,
+          set_assembly_id: draftSetAssembly.id,
+          set_name: draftSetAssembly.name,
+          units: unitsNum,
+          components,
+        },
+      ]);
+      clearDraft();
+      return;
+    }
+
     if (!draftAssembly) {
       setError(tUi('deliverySelectProduct', locale));
       return;
@@ -282,8 +371,8 @@ export default function KitweSendHomeScreen({ navigation }) {
     clearDraft();
   };
 
-  const confirmRemoveFromCart = (assemblyId, assemblyName) => {
-    const name = String(assemblyName || '').trim() || '—';
+  const confirmRemoveFromCart = (groupKey, displayName) => {
+    const name = String(displayName || '').trim() || '—';
     Alert.alert(
       tUi('deliveryDeleteConfirmTitle', locale),
       tUi('deliveryDeleteConfirmMessage', locale).replace('{name}', name),
@@ -293,7 +382,12 @@ export default function KitweSendHomeScreen({ navigation }) {
           text: tUi('deliveryRemoveProduct', locale),
           style: 'destructive',
           onPress: () => {
-            setGroups((prev) => prev.filter((g) => String(g.assembly_id) !== String(assemblyId)));
+            setGroups((prev) => prev.filter((g) => {
+              if (isWarehouseSetDeliveryGroup(g)) {
+                return String(g.group_id) !== String(groupKey);
+              }
+              return String(g.assembly_id) !== String(groupKey);
+            }));
           },
         },
       ],
@@ -301,8 +395,8 @@ export default function KitweSendHomeScreen({ navigation }) {
   };
 
   const confirmDiscardDraft = () => {
-    if (!draftAssembly) return;
-    const name = String(draftAssembly.name || '').trim() || '—';
+    if (!draftAssembly && !draftSetAssembly) return;
+    const name = String(draftAssembly?.name || draftSetAssembly?.name || '').trim() || '—';
     Alert.alert(
       tUi('deliveryDiscardDraftTitle', locale),
       tUi('deliveryDiscardDraftMessage', locale).replace('{name}', name),
@@ -315,6 +409,44 @@ export default function KitweSendHomeScreen({ navigation }) {
         },
       ],
     );
+  };
+
+  const toggleCartSetPacket = (groupId, componentAssemblyId, packetId, requiredQty) => {
+    setGroups((prev) => prev.map((g) => {
+      if (String(g.group_id) !== String(groupId)) return g;
+      const components = (g.components || []).map((comp) => {
+        if (String(comp.assembly_id) !== String(componentAssemblyId)) return comp;
+        const scans = [...(comp.scans || [])];
+        const idx = scans.findIndex((s) => String(s.packet_id) === String(packetId));
+        const wasChecked = idx >= 0 && scans[idx]?.driver_checked;
+        const nextLine = {
+          packet_id: packetId,
+          quantity: requiredQty,
+          driver_checked: !wasChecked,
+          driver_checked_at: !wasChecked ? new Date().toISOString() : null,
+        };
+        if (idx >= 0) scans[idx] = { ...scans[idx], ...nextLine };
+        else scans.push(nextLine);
+        return { ...comp, scans };
+      });
+      return { ...g, components };
+    }));
+  };
+
+  const toggleCartSetFinished = (groupId, componentAssemblyId) => {
+    setGroups((prev) => prev.map((g) => {
+      if (String(g.group_id) !== String(groupId)) return g;
+      const components = (g.components || []).map((comp) => {
+        if (String(comp.assembly_id) !== String(componentAssemblyId)) return comp;
+        const on = !comp.finished_driver_checked;
+        return {
+          ...comp,
+          finished_driver_checked: on,
+          finished_driver_checked_at: on ? new Date().toISOString() : null,
+        };
+      });
+      return { ...g, components };
+    }));
   };
 
   const toggleCartPacket = (assemblyId, packetId, requiredQty) => {
@@ -349,6 +481,13 @@ export default function KitweSendHomeScreen({ navigation }) {
 
   const validateCartForSubmit = () => {
     for (const g of groups) {
+      if (isWarehouseSetDeliveryGroup(g)) {
+        const setErr = validateSetGroupInCart(g, assemblies, byAssembly);
+        if (setErr) {
+          return tUi('deliveryCheckAllPackets', locale).replace('{name}', setErr);
+        }
+        continue;
+      }
       const asm = assemblies.find((a) => String(a.id) === String(g.assembly_id));
       const rows = byAssembly.get(String(g.assembly_id)) || [];
       if (asm && isFinishedProductWithoutPacketBom(asm, rows)) {
@@ -403,14 +542,17 @@ export default function KitweSendHomeScreen({ navigation }) {
         sessionId: sid,
         deliveryNumber: dnum,
         dispatchedByName: getProductionDispatcherLabelSync(),
-        groups: groups.map((g) => ({
-          assembly_id: g.assembly_id,
-          units: g.units,
-          scans: g.scans,
-          finished_driver_checked: g.finished_driver_checked,
-          finished_driver_checked_at: g.finished_driver_checked_at,
-        })),
-        printGroups: buildPrintGroupsFromCart(groups, byAssembly, assemblies),
+        groups: groups.map((g) => {
+          if (isWarehouseSetDeliveryGroup(g)) return serializeSetGroupForSubmit(g);
+          return {
+            assembly_id: g.assembly_id,
+            units: g.units,
+            scans: g.scans,
+            finished_driver_checked: g.finished_driver_checked,
+            finished_driver_checked_at: g.finished_driver_checked_at,
+          };
+        }),
+        printGroups: buildPrintGroupsFromCart(groups, byAssembly, assemblies, setItems),
       });
     } catch (err) {
       const msg = err?.message || tUi('deliverySessionFailed', locale);
@@ -463,7 +605,7 @@ export default function KitweSendHomeScreen({ navigation }) {
           </Pressable>
         </View>
 
-        {!draftAssemblyId && search.trim().length > 0 && filtered.length > 0 ? (
+        {!draftAssemblyId && !draftSetId && search.trim().length > 0 && filtered.length > 0 ? (
           <View style={kiosk.listGroup}>
             {filtered.map((a, index) => (
               <Pressable
@@ -471,9 +613,74 @@ export default function KitweSendHomeScreen({ navigation }) {
                 style={[kiosk.listItem, index === filtered.length - 1 && kiosk.listItemLast]}
                 onPress={() => selectAssemblyForDraft(a)}
               >
-                <Text style={[kiosk.listItemText, { textAlign }]}>{a.name}</Text>
+                <Text style={[kiosk.listItemText, { textAlign }]}>
+                  {a.name}
+                  {isWarehouseSetAssembly(a) ? ' (Set)' : ''}
+                </Text>
               </Pressable>
             ))}
+          </View>
+        ) : null}
+
+        {draftSetAssembly ? (
+          <View style={kiosk.panelCard}>
+            <Pressable onPress={clearDraft}>
+              <Text style={[kiosk.backText, styles.changeProduct, { textAlign }]}>
+                {tUi('back', locale)} — {draftSetAssembly.name} (Set)
+              </Text>
+            </Pressable>
+            <View style={kiosk.field}>
+              <Text style={[kiosk.label, { textAlign }]}>{tUi('deliverySetsLabel', locale)}</Text>
+              <TextInput
+                style={[kiosk.input, inputAlign]}
+                keyboardType="number-pad"
+                value={units}
+                onChangeText={setUnits}
+              />
+            </View>
+            {draftSetComponents.map((comp) => (
+              <View key={comp.assembly_id} style={styles.setComponentBlock}>
+                <Text style={[kiosk.label, { textAlign }]}>- {comp.assembly_name}</Text>
+                {comp.finishedOnly ? (
+                  <Pressable
+                    style={[kiosk.checkRow, comp.finished_driver_checked && kiosk.checkRowOn]}
+                    onPress={() => toggleDraftSetFinished(comp.assembly_id)}
+                  >
+                    <Text style={kiosk.checkMark}>{comp.finished_driver_checked ? '☑' : '☐'}</Text>
+                    <Text style={[kiosk.checkLabel, { textAlign }]}>
+                      {tUi('deliveryFinishedUnitLine', locale)
+                        .replace('{name}', comp.assembly_name)
+                        .replace('{req}', String(comp.product_qty))}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  (comp.packetRows || []).map((p) => {
+                    const req = comp.product_qty * Math.max(1, Number(p.qty_per_unit) || 1);
+                    const on = Boolean(comp.checks?.[p.id]?.driver_checked);
+                    const line = tUi('deliveryPacketLine', locale)
+                      .replace('{num}', String(p.packet_number))
+                      .replace('{name}', String(p.name || ''))
+                      .replace('{req}', String(req));
+                    return (
+                      <Pressable
+                        key={p.id}
+                        style={[kiosk.checkRow, on && kiosk.checkRowOn]}
+                        onPress={() => toggleDraftSetPacket(comp.assembly_id, p.id, req)}
+                      >
+                        <Text style={kiosk.checkMark}>{on ? '☑' : '☐'}</Text>
+                        <Text style={[kiosk.checkLabel, { textAlign }]}>{line}</Text>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
+            ))}
+            <Pressable style={[kiosk.btnOutlinePrimary, styles.addToCartBtn]} onPress={addDraftToCart}>
+              <Text style={kiosk.btnOutlinePrimaryText}>{tUi('deliveryAddToDelivery', locale)}</Text>
+            </Pressable>
+            <Pressable style={kiosk.draftDeleteBtn} onPress={confirmDiscardDraft}>
+              <Text style={kiosk.draftDeleteBtnText}>{tUi('deliveryRemoveProduct', locale)}</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -561,6 +768,77 @@ export default function KitweSendHomeScreen({ navigation }) {
           </Text>
         ) : null}
         {groups.map((g) => {
+          if (isWarehouseSetDeliveryGroup(g)) {
+            const u = Math.max(1, Number(g.units) || 1);
+            return (
+              <View key={g.group_id} style={kiosk.cartCard}>
+                <View style={kiosk.cartProductHeader}>
+                  <View style={styles.cartTitleCol}>
+                    <Text style={[kiosk.cartProductTitle, { textAlign }]}>{g.set_name} (Set)</Text>
+                    <Text style={[kiosk.cartMeta, { textAlign }]}>
+                      {tUi('deliverySetsOnTruck', locale).replace('{n}', String(u))}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => confirmRemoveFromCart(g.group_id, g.set_name)}
+                    hitSlop={8}
+                  >
+                    <Text style={kiosk.cartRemoveText}>{tUi('deliveryRemoveProduct', locale)}</Text>
+                  </Pressable>
+                </View>
+                <View style={kiosk.cartPacketList}>
+                  {(g.components || []).map((comp) => {
+                    const rows = byAssembly.get(String(comp.assembly_id)) || [];
+                    const asm = assemblies.find((a) => String(a.id) === String(comp.assembly_id));
+                    const finishedOnly = asm && isFinishedProductWithoutPacketBom(asm, rows);
+                    const productQty = Math.max(
+                      1,
+                      Number(comp.product_qty) || u * Math.max(1, Number(comp.quantity_per_set) || 1),
+                    );
+                    return (
+                      <View key={comp.assembly_id} style={styles.setComponentBlock}>
+                        <Text style={[kiosk.label, { textAlign }]}>- {comp.assembly_name}</Text>
+                        {finishedOnly ? (
+                          <Pressable
+                            style={[kiosk.checkRow, comp.finished_driver_checked && kiosk.checkRowOn]}
+                            onPress={() => toggleCartSetFinished(g.group_id, comp.assembly_id)}
+                          >
+                            <Text style={kiosk.checkMark}>{comp.finished_driver_checked ? '☑' : '☐'}</Text>
+                            <Text style={[kiosk.checkLabel, { textAlign }]}>
+                              {tUi('deliveryFinishedUnitLine', locale)
+                                .replace('{name}', comp.assembly_name)
+                                .replace('{req}', String(productQty))}
+                            </Text>
+                          </Pressable>
+                        ) : (
+                          rows.map((p) => {
+                            const req = productQty * Math.max(1, Number(p.qty_per_unit) || 1);
+                            const scan = (comp.scans || []).find((s) => String(s.packet_id) === String(p.id));
+                            const on = Boolean(scan?.driver_checked);
+                            const line = tUi('deliveryPacketLine', locale)
+                              .replace('{num}', String(p.packet_number))
+                              .replace('{name}', String(p.name || ''))
+                              .replace('{req}', String(req));
+                            return (
+                              <Pressable
+                                key={p.id}
+                                style={[kiosk.checkRow, on && kiosk.checkRowOn]}
+                                onPress={() => toggleCartSetPacket(g.group_id, comp.assembly_id, p.id, req)}
+                              >
+                                <Text style={kiosk.checkMark}>{on ? '☑' : '☐'}</Text>
+                                <Text style={[kiosk.checkLabel, { textAlign }]}>{line}</Text>
+                              </Pressable>
+                            );
+                          })
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          }
+
           const packetRows = byAssembly.get(String(g.assembly_id)) || [];
           const asm = assemblies.find((a) => String(a.id) === String(g.assembly_id));
           const finishedOnly = asm && isFinishedProductWithoutPacketBom(asm, packetRows);
@@ -683,4 +961,5 @@ const styles = StyleSheet.create({
   sendBtnBusy: { opacity: 0.65 },
   sendBtnDisabled: { opacity: 0.5 },
   flowHint: { marginTop: 10, marginBottom: 4, lineHeight: 20, color: theme.muted },
+  setComponentBlock: { marginTop: 8 },
 });

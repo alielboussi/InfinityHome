@@ -32,6 +32,7 @@ const routeMap = {
   WarehouseScan: 'warehouse_scan',
   PacketForm: 'warehouse_packet_form',
   ProductForm: 'warehouse_product_form',
+  SetForm: 'warehouse_set_form',
 };
 
 const appSrc = fs.readFileSync(appPath, 'utf8');

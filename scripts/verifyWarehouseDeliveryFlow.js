@@ -74,8 +74,24 @@ assert(
   'cancel delivery must not move stock',
 );
 assert(
-  fs.readFileSync(path.join(root, 'storage.rules'), 'utf8').includes('warehouse-delivery-signatures'),
-  'storage rules must allow warehouse-delivery-signatures',
+  fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAccept.js'), 'utf8')
+    .includes('finalizeWarehouseDeliverySession'),
+  'delivery accept must finalize Kitwe catalog when lines already received',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/WarehouseDeliveries.js'), 'utf8')
+    .includes('deliverySessionNeedsCatalogFinalize'),
+  'Hassan deliveries must finalize Kitwe catalog when lines already received',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/utils/kitweSetStock.js'), 'utf8')
+    .includes('kitwe_factory_delivery_units'),
+  'Kitwe products list must include factory delivery unit metadata fallback',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/utils/warehouseSetMath.js'), 'utf8')
+    .includes("from './warehouseCatalogHierarchy.js'"),
+  'warehouseSetMath must use .js import for Node delivery accept recompute',
 );
 
 

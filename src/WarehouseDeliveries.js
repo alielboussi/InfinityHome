@@ -16,6 +16,8 @@ import {
   deliveryEntryReceiverProgress,
   deliveryEntryReceived,
   deliveryEntryReceivable,
+  deliveryEntryPendingAcceptCount,
+  deliverySessionNeedsCatalogFinalize,
   warehousePacketDisplayLabel,
   warehouseDeliveryReceiverLineKind,
 } from './utils/warehouseDelivery';
@@ -154,7 +156,7 @@ export default function WarehouseDeliveries() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const loadDeliveries = useCallback(async ({ silent = false } = {}) => {
+  const loadDeliveries = useCallback(async ({ silent = false, skipAutoFinalize = false } = {}) => {
     if (!silent) setLoading(true);
     if (!silent) setError('');
     try {
@@ -230,6 +232,28 @@ export default function WarehouseDeliveries() {
       } else {
         setDestStockByProduct(new Map());
       }
+
+      if (canAccept && !skipAutoFinalize) {
+        let healedAny = false;
+        for (const session of sessionsList) {
+          const entries = grouped[String(session.id)] || [];
+          if (!deliverySessionNeedsCatalogFinalize(entries, session.status)) continue;
+          try {
+            await acceptWarehouseDeliverySession(session.id);
+            healedAny = true;
+          } catch (finalizeErr) {
+            console.warn(
+              '[warehouse-deliveries] Kitwe catalog finalize failed',
+              session.delivery_number || session.id,
+              finalizeErr,
+            );
+          }
+        }
+        if (healedAny) {
+          await loadDeliveries({ silent: true, skipAutoFinalize: true });
+          return;
+        }
+      }
     } catch (err) {
       setError(err?.message || 'Failed to load deliveries.');
       setSessions([]);
@@ -237,7 +261,7 @@ export default function WarehouseDeliveries() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [canAccept]);
 
   useEffect(() => {
     (async () => {
@@ -346,7 +370,7 @@ export default function WarehouseDeliveries() {
         }
       })();
 
-      await loadDeliveries({ silent: true });
+      await loadDeliveries({ silent: true, skipAutoFinalize: true });
     } catch (err) {
       setError(err?.message || 'Failed to accept delivery.');
     } finally {
@@ -374,7 +398,7 @@ export default function WarehouseDeliveries() {
     try {
       await setDeliveryEntryReceiverCheck(entryId, checked);
     } catch (err) {
-      await loadDeliveries({ silent: true });
+      await loadDeliveries({ silent: true, skipAutoFinalize: true });
       setError(err?.message || 'Failed to update packet confirmation.');
     }
   };
@@ -490,11 +514,9 @@ export default function WarehouseDeliveries() {
           const pending = isWarehousePending(session.status);
           const completed = isWarehouseCompleted(session.status);
           const canAcceptSession = anyDeliveryPacketsReceiverConfirmed(entries);
-          const toAcceptCount = entries.filter(
-            (e) => deliveryEntryReceivable(e)
-              && e?.metadata?.receiver_checked_at
-              && !deliveryEntryReceived(e),
-          ).length;
+          const toAcceptCount = deliveryEntryPendingAcceptCount(entries);
+          const needsCatalogFinalize = deliverySessionNeedsCatalogFinalize(entries, session.status);
+          const canRunAccept = canAcceptSession && (toAcceptCount > 0 || needsCatalogFinalize);
           return (
             <div
               key={`detail-${session.id}`}
@@ -591,10 +613,14 @@ export default function WarehouseDeliveries() {
                     type="button"
                     className="product-form-btn product-form-btn--primary"
                     onClick={() => handleAccept(session.id)}
-                    disabled={busyId === session.id || !canAccept || !canAcceptSession || toAcceptCount < 1}
-                    style={{ opacity: !canAcceptSession ? 0.5 : 1 }}
+                    disabled={busyId === session.id || !canAccept || !canRunAccept}
+                    style={{ opacity: !canRunAccept ? 0.5 : 1 }}
                   >
-                    {busyId === session.id ? 'Accepting…' : `Accept received items (${toAcceptCount})`}
+                    {busyId === session.id
+                      ? 'Accepting…'
+                      : (toAcceptCount > 0
+                        ? `Accept received items (${toAcceptCount})`
+                        : 'Complete delivery & Kitwe catalog')}
                   </button>
                 ) : (
                   <span style={{ color: PAGE_THEME.muted, fontWeight: 600, alignSelf: 'center' }}>

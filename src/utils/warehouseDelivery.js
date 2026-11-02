@@ -73,6 +73,25 @@ export function deliveryEntryPendingReceive(entry) {
   return deliveryEntryReceivable(entry) && !deliveryEntryReceived(entry);
 }
 
+/** Lines Hassan ticked that still need stock move + received_at on accept. */
+export function deliveryEntryPendingAcceptCount(entries) {
+  return (entries || []).filter(
+    (e) => deliveryEntryReceivable(e)
+      && Boolean(e?.metadata?.receiver_checked_at)
+      && !deliveryEntryReceived(e),
+  ).length;
+}
+
+/**
+ * Stock already moved (received_at) but session still pending — catalog finalize only.
+ * Happens when accept crashed after packet move (e.g. server ESM import error).
+ */
+export function deliverySessionNeedsCatalogFinalize(entries, sessionStatus) {
+  if (!isWarehousePending(sessionStatus)) return false;
+  const receivable = (entries || []).filter(deliveryEntryReceivable);
+  return receivable.length > 0 && receivable.every(deliveryEntryReceived);
+}
+
 /** Finished product name stored on packet lines at submit. */
 export function warehousePacketProductName(line) {
   return String(line?.metadata?.assembly_name || '').trim();

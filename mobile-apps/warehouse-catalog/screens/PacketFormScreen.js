@@ -161,7 +161,7 @@ export default function PacketFormScreen({ route, navigation }) {
           kind: LABEL_NAME_MEMORY_KIND.PACKET,
           name: name.trim(),
         });
-        refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+        refreshGlobalCatalog({ force: true, background: true, fullPackets: true }).catch(() => {});
         setNotice('Changes saved.');
         navigation.goBack();
         return;
@@ -175,7 +175,7 @@ export default function PacketFormScreen({ route, navigation }) {
         kind: LABEL_NAME_MEMORY_KIND.PACKET,
         name: name.trim(),
       });
-      refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
+      refreshGlobalCatalog({ force: true, background: true, fullPackets: true }).catch(() => {});
       setNotice('Packet saved. Scan the next packet SKU.');
       resetForNextPacket();
     } catch (err) {

@@ -32,6 +32,9 @@ import {
 import { logUserActivity } from './utils/userActivityLog';
 import { firebaseEnsureSession } from './utils/firebaseAuthApi';
 import { filterRowsByComboId } from './utils/comboId';
+import {
+  filterProductsListCatalogProducts,
+} from './utils/productsListKitweExclusion';
 
 const toolbarWrapperStyle = Object.freeze({
   width: '100%',
@@ -125,7 +128,7 @@ const getListItemImageUrl = (item) => {
 };
 
 const PRODUCT_IMAGE_BUCKET = 'productimages';
-const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v5';
+const PRODUCTS_LIST_CATALOG_CACHE_KEY = 'products:list:catalog:v6';
 const PRODUCTS_LIST_INVENTORY_CACHE_KEY = 'products:list:inventory:v5';
 const PRODUCTS_LIST_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const PRODUCTS_LIST_INVENTORY_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -1250,7 +1253,7 @@ function ProductsListPage() {
       const catalogPromise = Promise.all([
         db
           .from("products")
-          .select(`id, name, sku, sku_type, cost_price, price, promotional_price, promo_start_date, promo_end_date, currency, category_id, unit_of_measure_id, created_at, image_url, product_images(image_url), product_locations(location_id), unit:unit_of_measure(id, name, abbreviation)`)
+          .select(`id, name, sku, sku_type, cost_price, price, promotional_price, promo_start_date, promo_end_date, currency, category_id, unit_of_measure_id, created_at, image_url, metadata, product_images(image_url), product_locations(location_id), unit:unit_of_measure(id, name, abbreviation)`)
           .order("created_at", { ascending: false }),
         db.from("categories").select("id, name").order("name", { ascending: true }),
         db.from("locations").select("id, name").order("name", { ascending: true }),
@@ -1258,6 +1261,8 @@ function ProductsListPage() {
         db.from("combos").select("id, combo_name, sku, combo_price, standard_price, promotional_price, promo_start_date, promo_end_date, picture_url, currency, category_id"),
         db.from("combo_locations").select("combo_id, location_id"),
         db.from("combo_items").select("combo_id, product_id, quantity"),
+        db.from('warehouse_assemblies').select('id, retail_product_id, item_kind, metadata'),
+        db.from('warehouse_assembly_inventory').select('assembly_id, location_id, quantity'),
       ]);
 
       const [
@@ -1268,6 +1273,8 @@ function ProductsListPage() {
         { data: combos },
         { data: comboLocations },
         { data: comboItems },
+        { data: warehouseAssemblies },
+        { data: warehouseAssemblyInventory },
       ] = await catalogPromise;
 
       let productLocationPriceRows = [];
@@ -1283,7 +1290,14 @@ function ProductsListPage() {
 
       if (loadSeq !== catalogLoadSeqRef.current) return;
 
-      const mappedProducts = mapCatalogProducts(products || [], unitsData || []);
+      const mappedProducts = mapCatalogProducts(
+        filterProductsListCatalogProducts(
+          products || [],
+          warehouseAssemblies || [],
+          warehouseAssemblyInventory || [],
+        ),
+        unitsData || [],
+      );
       setProducts(mappedProducts);
       const sortedCategories = (categories || []).slice().sort((a, b) =>
         String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })

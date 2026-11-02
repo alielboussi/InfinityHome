@@ -42,6 +42,7 @@ import {
   defaultWarehouseKitShowroomLocationId,
   WAREHOUSE_KIT_SHOWROOM_LOCATION_IDS,
   warehouseCatalogAllowsSetCreate,
+  isWarehouseSetRecipeLocation,
 } from './constants/warehouseShowroomLocations';
 import {
   expandWarehouseSetItemsRows,
@@ -69,7 +70,7 @@ export default function WarehouseProductEditPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const isNew = !productId;
-  const allowSetCreate = warehouseCatalogAllowsSetCreate();
+  const allowSetCreate = warehouseCatalogAllowsSetCreate('warehouse-products');
   const newKind = allowSetCreate && searchParams.get('kind') === 'set' ? 'set' : 'product';
   const canManage = useMemo(() => canManageCatalog(getCurrentUser()), []);
   const { grant, loading: grantLoading } = useAuthProfileMobileGrant();
@@ -213,6 +214,15 @@ export default function WarehouseProductEditPage() {
       setLoading(false);
     }
   }, [applyCatalogSnapshot, isNew, productId, newKind]);
+
+  useEffect(() => {
+    if (!isNew || newKind !== 'set' || !warehouseLocationId) return;
+    setProductForm((f) => {
+      if (f.catalog_kind !== 'set') return f;
+      if (isWarehouseSetRecipeLocation(f.set_location_id, { portal: 'warehouse-products' })) return f;
+      return { ...f, set_location_id: warehouseLocationId };
+    });
+  }, [isNew, newKind, warehouseLocationId]);
 
   const refreshCatalogLists = useCallback(async () => {
     try {
@@ -484,10 +494,8 @@ export default function WarehouseProductEditPage() {
     }
     const savingSet = productForm.catalog_kind === 'set';
     if (savingSet) {
-      if (!WAREHOUSE_KIT_SHOWROOM_LOCATION_IDS.some(
-        (id) => String(id) === String(productForm.set_location_id),
-      )) {
-        setError('Choose Kitwe or Lusaka for this set recipe.');
+      if (!isWarehouseSetRecipeLocation(productForm.set_location_id, { portal: 'warehouse-products' })) {
+        setError('Set recipe location must be Warehouse (factory), Kitwe, or Lusaka.');
         return;
       }
       const validLines = (productForm.set_components || []).filter(
@@ -523,6 +531,7 @@ export default function WarehouseProductEditPage() {
       const saved = await saveWarehouseAssembly(
         {
           ...productPayload,
+          create_portal: 'warehouse-products',
           location_ids: savingSet ? (productPayload.location_ids || []) : [],
           warehouse_location_id: warehouseLocationId,
         },

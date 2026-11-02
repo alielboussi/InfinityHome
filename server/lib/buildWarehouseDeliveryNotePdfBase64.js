@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { DELIVERY_NOTE_DISCLAIMER } from '../../src/utils/buildDeliveryNotePrintHtml.js';
 import { DELIVERY_NOTE_LOGO_DATA_URI } from '../../src/utils/deliveryNoteCompanyLogoEmbedded.js';
 import { deliverySenderName } from '../../src/utils/warehouseDelivery.js';
-import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryNotePrint.js';
+import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryPrintGroups.js';
 import { formatZambiaDate, formatZambiaTime } from '../../src/utils/zambiaDateTime.js';
 
 function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
@@ -18,15 +18,29 @@ function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
   return Boolean(name);
 }
 
+function formatPrintLineLabel(line, assemblyName = '') {
+  const depth = Number(line.depth) || 0;
+  const namePart = String(line.name || line.reason || 'Packet').trim();
+  if (line.line_kind === 'reason' || line.kind === 'reason') {
+    return `-Reason ${namePart}`;
+  }
+  if (depth === 2) return `-- ${namePart}`;
+  if (depth === 1) return `- ${namePart}`;
+  if (!deliveryPrintSubrowIsPacketLine(line, assemblyName)) return null;
+  return `- ${namePart}`;
+}
+
 function tableBodyFromPrintGroups(printGroups) {
   const body = [];
   for (const group of printGroups || []) {
+    const title = String(group.set_name || group.assembly_name || 'Product');
     const units = Math.max(1, Number(group.units) || 1);
-    body.push([String(group.assembly_name || 'Product'), String(units)]);
+    body.push([title, String(units)]);
     for (const line of group.lines || []) {
-      if (!deliveryPrintSubrowIsPacketLine(line, group.assembly_name)) continue;
+      const label = formatPrintLineLabel(line, title);
+      if (label == null) continue;
       const qty = line.qty != null && line.qty !== '' ? String(line.qty) : '';
-      body.push([`- ${line.name || 'Packet'}`, qty]);
+      body.push([label, qty]);
     }
   }
   return body.length ? body : [['—', '0']];
@@ -43,9 +57,9 @@ function logoFormatFromDataUri(dataUri) {
 /**
  * A4 delivery note PDF (Node) for WhatsApp — same line data as the print HTML note.
  */
-export function buildWarehouseDeliveryNotePdfBase64({ session, entries, copies = 1 }) {
+export function buildWarehouseDeliveryNotePdfBase64({ session, entries, copies = 1, printGroups: printGroupsOverride } = {}) {
   const meta = session?.metadata || {};
-  const printGroups = buildDeliveryPrintGroupsFromEntries(entries || []);
+  const printGroups = printGroupsOverride || buildDeliveryPrintGroupsFromEntries(entries || []);
   const copyCount = Math.max(1, Math.min(3, Number(copies) || 1));
   const dn = String(session?.delivery_number || session?.id || '').trim() || 'Delivery';
   const at = session?.submitted_at || session?.created_at || new Date().toISOString();

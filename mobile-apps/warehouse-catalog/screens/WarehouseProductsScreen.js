@@ -44,6 +44,13 @@ import {
   buildWarehouseCategoryIndex,
   resolveWarehouseCategoryName,
 } from '../shared/warehouseCategoryLookup';
+import {
+  buildWarehouseCatalogSetEntries,
+  collectSetComponentAssemblyIds,
+  expandKeyProduct,
+  expandKeySet,
+  expandKeySetProduct,
+} from '../shared/warehouseCatalogSetList';
 
 const LIST_PERF = {
   initialNumToRender: 12,
@@ -165,21 +172,38 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     () => catalogStockMaps(catalog),
     [catalog],
   );
+
+  const setComponentIds = useMemo(
+    () => collectSetComponentAssemblyIds(catalog?.setItems),
+    [catalog?.setItems],
+  );
+
+  const catalogSetEntries = useMemo(() => {
+    if (catalogMode !== 'complete') return [];
+    return buildWarehouseCatalogSetEntries(catalog?.setItems, catalog?.assemblies);
+  }, [catalog?.assemblies, catalog?.setItems, catalogMode]);
+
   const productAssemblies = useMemo(
     () => (catalog?.assemblies || []).filter((a) => {
       if (isSetAssembly(a)) return false;
+      if (catalogMode === 'complete' && setComponentIds.has(String(a.id))) return false;
       const pktList = packetsByAssembly.get(String(a.id)) || [];
       if (catalogMode === 'incomplete') {
         return isIncompletePacketBomProduct(a, pktList);
       }
       return isCompleteCatalogProduct(a, pktList);
     }),
-    [catalog?.assemblies, catalogMode, packetsByAssembly],
+    [catalog?.assemblies, catalogMode, packetsByAssembly, setComponentIds],
   );
+
+  const assembliesForCategoryCounts = useMemo(() => {
+    const sets = catalogSetEntries.map((e) => e.setAssembly);
+    return [...productAssemblies, ...sets];
+  }, [productAssemblies, catalogSetEntries]);
 
   const warehouseCategoryOptions = useMemo(() => {
     const counts = new Map();
-    productAssemblies.forEach((a) => {
+    assembliesForCategoryCounts.forEach((a) => {
       const key = assemblyCategoryKey(a, categoryIndex);
       counts.set(key, (counts.get(key) || 0) + 1);
     });
@@ -195,7 +219,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
     return options;
-  }, [productAssemblies, categoryName, categoryIndex]);
+  }, [assembliesForCategoryCounts, categoryName, categoryIndex]);
 
   const categoryFilterActive = selectedCategoryIds.size > 0;
 
@@ -224,17 +248,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
 
   const clearCategoryFilter = () => setSelectedCategoryIds(new Set());
 
-  const filtered = useMemo(() => {
-    let base = productAssemblies;
-    if (selectedCategoryIds.size > 0) {
-      base = base.filter((a) => selectedCategoryIds.has(assemblyCategoryKey(a, categoryIndex)));
-    }
-    const raw = search.trim();
-    if (!raw) return base;
-    const qLower = raw.toLowerCase();
-    const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
-    const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
-
+  const matchesProductSearch = useCallback((a, qLower, qProductKeys, qPacketKeys) => {
+    const pktList = packetsByAssembly.get(String(a.id)) || [];
+    const cat = categoryName(a.category_id, a);
     const keysOverlap = (storedSku, queryKeys, normalizer) => {
       const storedKeys = expandWarehouseSkuMatchKeys(normalizer(storedSku));
       for (const k of queryKeys) {
@@ -242,27 +258,77 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       }
       return false;
     };
+    if (String(a.name || '').toLowerCase().includes(qLower)) return true;
+    if (cat.toLowerCase().includes(qLower)) return true;
+    if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
+    if (keysOverlap(a.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
+    return pktList.some(
+      (p) => String(p.name || '').toLowerCase().includes(qLower)
+        || String(p.sku || '').toLowerCase().includes(qLower)
+        || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
+    );
+  }, [packetsByAssembly, categoryName]);
 
-    return base.filter((a) => {
-      const pktList = packetsByAssembly.get(String(a.id)) || [];
-      const cat = categoryName(a.category_id, a);
-      if (String(a.name || '').toLowerCase().includes(qLower)) return true;
-      if (cat.toLowerCase().includes(qLower)) return true;
-      if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
-      if (keysOverlap(a.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
+  const matchesSetEntrySearch = useCallback((entry, qLower, qProductKeys, qPacketKeys) => {
+    const setAsm = entry.setAssembly;
+    if (matchesProductSearch(setAsm, qLower, qProductKeys, qPacketKeys)) return true;
+    return entry.components.some((line) => {
+      const product = line.component;
+      if (!product) return false;
+      if (matchesProductSearch(product, qLower, qProductKeys, qPacketKeys)) return true;
+      const pktList = packetsByAssembly.get(String(product.id)) || [];
       return pktList.some(
         (p) => String(p.name || '').toLowerCase().includes(qLower)
-          || String(p.sku || '').toLowerCase().includes(qLower)
-          || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
+          || String(p.sku || '').toLowerCase().includes(qLower),
       );
     });
+  }, [matchesProductSearch, packetsByAssembly]);
+
+  const filtered = useMemo(() => {
+    const rows = [];
+    const applyCategory = (a) => {
+      if (selectedCategoryIds.size === 0) return true;
+      return selectedCategoryIds.has(assemblyCategoryKey(a, categoryIndex));
+    };
+
+    catalogSetEntries.forEach((entry) => {
+      if (!applyCategory(entry.setAssembly)) return;
+      rows.push({ listKind: 'set', id: String(entry.setAssembly.id), entry });
+    });
+
+    productAssemblies.forEach((a) => {
+      if (!applyCategory(a)) return;
+      rows.push({ listKind: 'product', id: String(a.id), assembly: a });
+    });
+
+    const raw = search.trim();
+    let base = rows;
+    if (raw) {
+      const qLower = raw.toLowerCase();
+      const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
+      const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
+      base = rows.filter((row) => {
+        if (row.listKind === 'set') {
+          return matchesSetEntrySearch(row.entry, qLower, qProductKeys, qPacketKeys);
+        }
+        return matchesProductSearch(row.assembly, qLower, qProductKeys, qPacketKeys);
+      });
+    }
+
+    base.sort((a, b) => {
+      const nameA = a.listKind === 'set' ? a.entry.setAssembly.name : a.assembly.name;
+      const nameB = b.listKind === 'set' ? b.entry.setAssembly.name : b.assembly.name;
+      return String(nameA || '').localeCompare(String(nameB || ''), undefined, { sensitivity: 'base' });
+    });
+    return base;
   }, [
+    catalogSetEntries,
     productAssemblies,
-    packetsByAssembly,
     search,
-    categoryName,
     categoryIndex,
     selectedCategoryIds,
+    matchesProductSearch,
+    matchesSetEntrySearch,
   ]);
 
   const toggleExpanded = (id) => {
@@ -282,6 +348,10 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       warehouseLocationId: catalog?.warehouseLocationId,
       catalogSnapshot: catalog,
     });
+  };
+
+  const openNewSetForm = () => {
+    navigation.navigate('SetForm');
   };
 
   const formatQty = (value) => {
@@ -315,9 +385,95 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     );
   };
 
-  const renderItem = ({ item: assembly }) => {
+  const renderItem = ({ item }) => {
+    if (item.listKind === 'set') {
+      return renderSetCard(item.entry);
+    }
+    return renderProductCard(item.assembly);
+  };
+
+  const renderSetCard = (entry) => {
+    const setAssembly = entry.setAssembly;
+    const setId = String(setAssembly.id);
+    const setOpenKey = expandKeySet(setId);
+    const isSetOpen = expanded.has(setOpenKey);
+    const cat = categoryName(setAssembly.category_id, setAssembly);
+    const imageUri = resolveAssemblyImageUri(setAssembly);
+
+    return (
+      <View style={[styles.gridCard, styles.setGridCard]}>
+        <View style={styles.cardPress}>
+          <View style={styles.cardMain}>
+            <View style={styles.thumbWrap}>
+              <Pressable
+                onPress={() => {
+                  if (imageUri) setPhotoPreview({ uri: imageUri, title: setAssembly.name });
+                }}
+                disabled={!imageUri}
+              >
+                <ProductThumbnail assembly={setAssembly} />
+              </Pressable>
+              <Pressable
+                style={styles.expandFab}
+                onPress={() => toggleExpanded(setOpenKey)}
+                hitSlop={8}
+                accessibilityLabel={isSetOpen ? 'Hide set products' : 'Show set products'}
+              >
+                <Text style={[styles.expandIcon, isSetOpen && styles.expandIconOpen]}>▶</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.cardTitle} numberOfLines={2}>{setAssembly.name}</Text>
+            <Text style={styles.cardSku} numberOfLines={1}>{setAssembly.family_sku}</Text>
+            <Text style={styles.cardMeta} numberOfLines={2}>
+              Set · {cat || '—'} · {entry.components.length} product{entry.components.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+        </View>
+        {isSetOpen ? (
+          <View style={styles.setRecipeList}>
+            {entry.components.map((line) => {
+              const product = line.component;
+              if (!product) return null;
+              const prodId = String(product.id);
+              const pktList = packetsByAssembly.get(prodId) || [];
+              const perSet = Math.max(1, Number(line.quantity) || 1);
+              const prodKey = expandKeySetProduct(setId, prodId);
+              const prodOpen = expanded.has(prodKey);
+              const hasPackets = pktList.length > 0;
+              return (
+                <View key={prodId} style={styles.setComponentBlock}>
+                  <Pressable
+                    style={styles.setProductRow}
+                    onPress={hasPackets ? () => toggleExpanded(prodKey) : undefined}
+                    disabled={!hasPackets}
+                  >
+                    {hasPackets ? (
+                      <Text style={[styles.setExpandIcon, prodOpen && styles.expandIconOpen]}>▶</Text>
+                    ) : (
+                      <Text style={styles.setExpandIcon}>·</Text>
+                    )}
+                    <Text style={styles.setProductName} numberOfLines={2}>
+                      {product.name} ×{perSet}
+                    </Text>
+                  </Pressable>
+                  {prodOpen && hasPackets ? (
+                    <View style={styles.setPacketList}>
+                      {pktList.map(renderPacket)}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderProductCard = (assembly) => {
     const id = String(assembly.id);
-    const isOpen = expanded.has(id);
+    const expandKey = expandKeyProduct(id);
+    const isOpen = expanded.has(expandKey);
     const pktList = packetsByAssembly.get(id) || [];
     const cat = categoryName(assembly.category_id, assembly);
     const finishedQty = assemblyWarehouseQty[id] ?? 0;
@@ -368,7 +524,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             </Pressable>
             <Pressable
               style={styles.expandFab}
-              onPress={() => toggleExpanded(id)}
+              onPress={() => toggleExpanded(expandKey)}
               hitSlop={8}
               accessibilityLabel={isOpen ? 'Hide packets' : 'Show packets'}
             >
@@ -460,13 +616,22 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           />
         </Pressable>
         {catalogMode === 'complete' && canAddProduct ? (
-          <Pressable
-            style={styles.addBtn}
-            onPress={openNewProductForm}
-            accessibilityLabel="Add new product"
-          >
-            <Text style={styles.addBtnText}>+</Text>
-          </Pressable>
+          <>
+            <Pressable
+              style={styles.addSetBtn}
+              onPress={openNewSetForm}
+              accessibilityLabel="Add new set"
+            >
+              <Text style={styles.addSetBtnText}>Set</Text>
+            </Pressable>
+            <Pressable
+              style={styles.addBtn}
+              onPress={openNewProductForm}
+              accessibilityLabel="Add new product"
+            >
+              <Text style={styles.addBtnText}>+</Text>
+            </Pressable>
+          </>
         ) : null}
       </View>
 
@@ -484,13 +649,17 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         <FlatList
           key="warehouse-products-grid-2"
           data={filtered}
-          keyExtractor={(item) => String(item.id)}
+          keyExtractor={(item) => `${item.listKind}-${item.id}`}
           renderItem={renderItem}
           numColumns={2}
           columnWrapperStyle={styles.gridRow}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
-            <Text style={styles.empty}>No products yet. Tap + to add a product.</Text>
+            <Text style={styles.empty}>
+              {catalogMode === 'incomplete'
+                ? 'No incomplete products.'
+                : 'No products or sets yet. Tap + or Set to add.'}
+            </Text>
           }
           refreshing={refreshing}
           onRefresh={() => refresh({ force: true, background: true })}
@@ -690,6 +859,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addBtnText: { color: '#e2e8f0', fontSize: 26, fontWeight: '300', marginTop: -2 },
+  addSetBtn: {
+    height: 44,
+    paddingHorizontal: 10,
+    borderRadius: theme.radiusSm,
+    backgroundColor: theme.surfaceElevated,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addSetBtnText: { color: '#94a3b8', fontSize: 13, fontWeight: '700' },
+  setGridCard: { borderColor: 'rgba(56, 189, 248, 0.35)' },
+  setRecipeList: {
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+    paddingTop: 4,
+  },
+  setComponentBlock: { marginTop: 6 },
+  setProductRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  setExpandIcon: { width: 16, fontSize: 11, color: theme.textMuted, marginTop: 2 },
+  setProductName: { flex: 1, color: theme.text, fontSize: 13, fontWeight: '600' },
+  setPacketList: { marginLeft: 22, marginTop: 4 },
   listContent: { paddingHorizontal: 10, paddingBottom: 24 },
   gridRow: { gap: 8, marginBottom: 8 },
   gridCard: {

@@ -1,4 +1,4 @@
-import { isWarehouseSetAssembly as isSetAssembly } from './warehouseCatalogHierarchy';
+import { isWarehouseSetAssembly as isSetAssembly } from './warehouseCatalogHierarchy.js';
 
 /** How many complete sets can be built from component product stock. */
 export function assemblableSetUnits(setLines, resolveCompleteUnits) {

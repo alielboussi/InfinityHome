@@ -124,7 +124,7 @@ export const MOBILE_SCREENS = Object.freeze([
   {
     id: 'warehouse_products',
     label: 'Products',
-    description: 'Finished-only products and packet-BOM products with complete cartons',
+    description: 'Products and sets (expand sets for component products and packets)',
     permissionMatrix: true,
   },
   {
@@ -173,6 +173,12 @@ export const MOBILE_SCREENS = Object.freeze([
     id: 'warehouse_product_form',
     label: 'Add / edit product',
     description: 'Product form (inside warehouse products)',
+    permissionMatrix: false,
+  },
+  {
+    id: 'warehouse_set_form',
+    label: 'Add set',
+    description: 'Create warehouse set from products',
     permissionMatrix: false,
   },
 ]);

@@ -80,6 +80,11 @@ import {
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
 import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryNotePrint.js';
+import {
+  isWarehouseSetDeliveryGroup,
+  resolveSetComponentsForDelivery,
+} from '../../src/utils/warehouseDeliverySetPrint.js';
+import { isWarehouseSetAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
 import { acceptWarehouseDeliveryServer } from '../lib/warehouseDeliveryAccept.js';
 import { cancelWarehouseDeliveryServer, deleteWarehouseDeliverySessionHard } from '../lib/cancelWarehouseDelivery.js';
 import { assertPacketStockAvailable, assertAssemblyStockAvailable } from '../lib/warehouseDeliveryStock.js';
@@ -1548,6 +1553,173 @@ async function discardFailedDeliverySubmitDraft(sb, sessionId) {
   }
 }
 
+async function processSetDeliveryGroup({
+  sb,
+  sessionId,
+  group,
+  assemblyById,
+  byAssembly,
+  setItems,
+  now,
+}) {
+  const setId = String(group.set_assembly_id || '');
+  const setAssembly = assemblyById.get(setId);
+  if (!setAssembly || !isWarehouseSetAssembly(setAssembly)) {
+    throw new Error('Unknown set in shipment.');
+  }
+  const units = Math.max(1, Number(group.units) || 1);
+  const groupId = String(group.group_id || newUuid());
+  const recipeComponents = resolveSetComponentsForDelivery(
+    setId,
+    units,
+    setItems,
+    [...assemblyById.values()],
+  );
+  const clientComponents = Array.isArray(group.components) ? group.components : [];
+  if (!recipeComponents.length) {
+    throw new Error(`Set ${setAssembly.name} has no products configured for Kitwe.`);
+  }
+
+  const entries = [];
+  let totalCartons = 0;
+
+  entries.push({
+    id: newUuid(),
+    session_id: sessionId,
+    kind: 'set-parent',
+    name: setAssembly.name,
+    sku: setAssembly.family_sku,
+    quantity: units,
+    combo_id: groupId,
+    metadata: stripUndefinedMetadata({
+      delivery_set_group_id: groupId,
+      set_assembly_id: setId,
+      assembly_name: setAssembly.name,
+      units,
+    }),
+  });
+
+  for (const recipe of recipeComponents) {
+    const comp = clientComponents.find((c) => String(c.assembly_id) === String(recipe.assembly_id));
+    if (!comp) {
+      throw new Error(`Confirm all products for set ${setAssembly.name} (${recipe.assembly_name}).`);
+    }
+    const assemblyId = String(recipe.assembly_id);
+    const assembly = assemblyById.get(assemblyId);
+    if (!assembly) throw new Error(`Unknown product in set ${setAssembly.name}.`);
+    const packetRows = byAssembly.get(assemblyId) || [];
+    const productQty = recipe.product_qty;
+
+    const scanned = new Map();
+    (comp.scans || []).forEach((line) => {
+      const pid = String(line.packet_id || '');
+      const qty = Math.max(0, Number(line.quantity) || 0);
+      if (!pid || qty < 1) return;
+      scanned.set(pid, (scanned.get(pid) || 0) + qty);
+    });
+
+    if (isAssemblyDeliveryFinishedUnits(assembly, packetRows)) {
+      const finishedChecked = comp.finished_driver_checked === true
+        || scanLineDriverChecked({
+          driver_checked: comp.product_driver_checked,
+          driver_checked_at: comp.product_driver_checked_at,
+        });
+      const validation = validateAssemblyShipmentBom(assembly, packetRows, scanned, productQty, {
+        finishedDriverChecked: finishedChecked,
+      });
+      if (!validation.ok) {
+        throw new Error(validation.message || `Set product ${assembly.name} not confirmed`);
+      }
+      const shipment = deliveryShipmentUnits(assembly, packetRows, productQty);
+      await assertAssemblyStockAvailable(
+        sb,
+        assemblyId,
+        WAREHOUSE_FROM_LOCATION_ID,
+        shipment.finishedUnits,
+      );
+      totalCartons += shipment.finishedUnits;
+      entries.push({
+        id: newUuid(),
+        session_id: sessionId,
+        kind: 'set-component',
+        name: assembly.name,
+        sku: assembly.family_sku,
+        quantity: shipment.finishedUnits,
+        parent_combo_id: groupId,
+        metadata: stripUndefinedMetadata({
+          delivery_set_group_id: groupId,
+          assembly_id: assemblyId,
+          assembly_name: assembly.name,
+          finished_unit: true,
+          units: shipment.finishedUnits,
+          ...deliveryEntryBoxMetadata(shipment),
+        }),
+      });
+      continue;
+    }
+
+    const validation = validateAssemblyShipmentBom(assembly, packetRows, scanned, productQty);
+    if (!validation.ok) {
+      throw new Error(validation.message || `Set product ${assembly.name} incomplete`);
+    }
+
+    const shipment = deliveryShipmentUnits(assembly, packetRows, productQty);
+    const truckMultiplier = shipment.unitsPerCarton ? shipment.truckBoxes : productQty;
+
+    entries.push({
+      id: newUuid(),
+      session_id: sessionId,
+      kind: 'set-component',
+      name: assembly.name,
+      sku: assembly.family_sku,
+      quantity: productQty,
+      parent_combo_id: groupId,
+      metadata: stripUndefinedMetadata({
+        delivery_set_group_id: groupId,
+        assembly_id: assemblyId,
+        assembly_name: assembly.name,
+        units: productQty,
+      }),
+    });
+
+    for (const packet of packetRows) {
+      const moveQty = truckMultiplier * Math.max(1, Number(packet.qty_per_unit) || 1);
+      const scanLine = (comp.scans || []).find((s) => String(s.packet_id) === String(packet.id));
+      const have = scanned.get(String(packet.id)) || 0;
+      if (have < moveQty) {
+        throw new Error(`Check all cartons for ${setAssembly.name} → ${assembly.name}.`);
+      }
+      if (!scanLineDriverChecked(scanLine || {})) {
+        throw new Error(`Driver must confirm every packet for ${setAssembly.name} → ${assembly.name}.`);
+      }
+      await assertPacketStockAvailable(sb, packet.id, WAREHOUSE_FROM_LOCATION_ID, moveQty);
+      totalCartons += moveQty;
+      entries.push({
+        id: newUuid(),
+        session_id: sessionId,
+        kind: 'packet',
+        name: packet.name,
+        sku: packet.sku,
+        quantity: moveQty,
+        metadata: stripUndefinedMetadata({
+          delivery_set_group_id: groupId,
+          set_assembly_id: setId,
+          packet_id: packet.id,
+          assembly_id: assemblyId,
+          assembly_name: assembly.name,
+          packet_number: packet.packet_number,
+          units: shipment.finishedUnits,
+          ...deliveryEntryBoxMetadata(shipment),
+          driver_checked_at: scanLine?.driver_checked_at || now,
+          receiver_checked_at: null,
+        }),
+      });
+    }
+  }
+
+  return { entries, totalCartons };
+}
+
 async function opDeliverySubmit(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
@@ -1571,10 +1743,11 @@ async function opDeliverySubmit(body, user) {
   if (!session) throw new Error('Delivery session not found.');
   if (String(session.status) === 'submitted') {
     if (!session.metadata?.whatsapp_sent_at && groups.length) {
-      const [{ data: packets }, { data: links }, { data: assemblies }] = await Promise.all([
+      const [{ data: packets }, { data: links }, { data: assemblies }, { data: setItems }] = await Promise.all([
         sb.from('warehouse_packets').select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
         sb.from('warehouse_assembly_packets').select('*'),
-        sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode, units_per_carton'),
+        sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode, units_per_carton, item_kind'),
+        sb.from('warehouse_set_items').select('*'),
       ]);
       const byAssembly = buildPacketsByAssembly(links || [], packets || []);
       const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
@@ -1614,10 +1787,11 @@ async function opDeliverySubmit(body, user) {
     }
   }
 
-  const [{ data: packets }, { data: links }, { data: assemblies }] = await Promise.all([
+  const [{ data: packets }, { data: links }, { data: assemblies }, { data: setItems }] = await Promise.all([
     sb.from('warehouse_packets').select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
     sb.from('warehouse_assembly_packets').select('*'),
-    sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode, units_per_carton'),
+    sb.from('warehouse_assemblies').select('id, name, family_sku, packet_count, inventory_mode, units_per_carton, item_kind'),
+    sb.from('warehouse_set_items').select('*'),
   ]);
   const byAssembly = buildPacketsByAssembly(links || [], packets || []);
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
@@ -1627,6 +1801,21 @@ async function opDeliverySubmit(body, user) {
   const now = new Date().toISOString();
 
   for (const group of groups) {
+    if (isWarehouseSetDeliveryGroup(group)) {
+      const setResult = await processSetDeliveryGroup({
+        sb,
+        sessionId,
+        group,
+        assemblyById,
+        byAssembly,
+        setItems: setItems || [],
+        now,
+      });
+      entries.push(...setResult.entries);
+      totalCartons += setResult.totalCartons;
+      continue;
+    }
+
     const assemblyId = String(group.assembly_id || '');
     const units = Math.max(1, Number(group.units) || 1);
     const assembly = assemblyById.get(assemblyId);

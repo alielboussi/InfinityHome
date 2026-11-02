@@ -1,4 +1,5 @@
 import { groupWarehouseDisplayLines, deliveryEntryPacketId } from './warehouseDelivery.js';
+import { buildSetDeliveryPrintGroupsFromEntries } from './warehouseDeliverySetPrint.js';
 
 /** Sub-rows on the A4 note are packet/carton lines only — not finished-unit-only products. */
 export function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
@@ -17,7 +18,22 @@ export function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
  * Build printGroups for the A4 delivery note from persisted warehouse_delivery_entries.
  */
 export function buildDeliveryPrintGroupsFromEntries(entries) {
-  const lines = groupWarehouseDisplayLines(entries || []);
+  const raw = entries || [];
+  const setGroups = buildSetDeliveryPrintGroupsFromEntries(raw);
+  const setGroupIds = new Set(
+    raw
+      .filter((e) => e.kind === 'set-parent')
+      .map((e) => String(e.metadata?.delivery_set_group_id || e.combo_id || e.id)),
+  );
+  const nonSetEntries = raw.filter((e) => {
+    if (e.kind === 'set-parent' || e.kind === 'set-component') return false;
+    if (e.kind === 'packet' && setGroupIds.has(String(e.metadata?.delivery_set_group_id || ''))) {
+      return false;
+    }
+    return true;
+  });
+
+  const lines = groupWarehouseDisplayLines(nonSetEntries);
   const byAssembly = new Map();
 
   for (const row of lines) {
@@ -53,5 +69,5 @@ export function buildDeliveryPrintGroupsFromEntries(entries) {
     });
   }
 
-  return [...byAssembly.values()];
+  return [...setGroups, ...byAssembly.values()];
 }

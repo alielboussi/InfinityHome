@@ -43,6 +43,7 @@ function normalizeBlocks(printGroups) {
     const lines = group.lines || [];
     blocks.push({
       assembly_name: group.assembly_name,
+      set_name: group.set_name || null,
       units,
       lines,
       elapsed_display: group.elapsed_display,
@@ -123,26 +124,40 @@ function renderBlockRows(block, { showElapsedColumn = false } = {}) {
   const elapsedCell = showElapsedColumn
     ? `<td class="elapsed">${escapeHtml(String(block.elapsed_display || '—'))}</td>`
     : '';
+  const hasHierarchy = (block.lines || []).some((line) => Number(line.depth) > 0);
+  const titleName = block.set_name || block.assembly_name;
   const productRow = `
     <tr class="product-row">
-      <td><strong>${escapeHtml(block.assembly_name)}</strong></td>
+      <td><strong>${escapeHtml(titleName)}</strong></td>
       ${elapsedCell}
       <td class="qty">${escapeHtml(String(block.units))}</td>
     </tr>`;
   const packetRows = (block.lines || [])
-    .filter((line) => deliveryPrintSubrowIsPacketLine(line, block.assembly_name))
+    .filter((line) => deliveryPrintSubrowIsPacketLine(line, titleName) || Number(line.depth) > 0)
     .map((line) => {
+    const depth = Number(line.depth) || 0;
     const namePart = String(line.name || line.reason || 'Packet').trim();
-    const label = line.line_kind === 'reason' || line.kind === 'reason'
-      ? `-Reason ${namePart}`
-      : `- ${namePart}`;
+    let label;
+    if (line.line_kind === 'reason' || line.kind === 'reason') {
+      label = `-Reason ${namePart}`;
+    } else if (depth === 2) {
+      label = `-- ${namePart}`;
+    } else if (depth === 1) {
+      label = `- ${namePart}`;
+    } else {
+      label = `- ${namePart}`;
+    }
+    const rowClass = depth === 2 ? 'packet-row packet-row--nested' : (depth === 1 ? 'product-row product-row--nested' : 'packet-row');
     return `
-    <tr class="packet-row">
+    <tr class="${rowClass}">
       <td class="packet-label">${escapeHtml(label)}</td>
       ${showElapsedColumn ? '<td class="elapsed"></td>' : ''}
       <td class="qty">${escapeHtml(String(line.qty ?? ''))}</td>
     </tr>`;
   });
+  if (hasHierarchy) {
+    return productRow + packetRows.join('');
+  }
   return productRow + packetRows.join('');
 }
 

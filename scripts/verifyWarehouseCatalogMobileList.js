@@ -34,4 +34,22 @@ if (!store.includes('packet_load: packetLoad')) {
   process.exit(1);
 }
 
+const productForm = fs.readFileSync(
+  path.join(root, 'mobile-apps/warehouse-catalog/screens/ProductFormScreen.js'),
+  'utf8',
+);
+if (!productForm.includes('fullPackets: true')) {
+  console.error('[verifyWarehouseCatalogMobileList] ProductForm must load full packet list for BOM search');
+  process.exit(1);
+}
+
+const packetForm = fs.readFileSync(
+  path.join(root, 'mobile-apps/warehouse-catalog/screens/PacketFormScreen.js'),
+  'utf8',
+);
+if (!/refreshGlobalCatalog\(\{[^}]*fullPackets:\s*true/.test(packetForm)) {
+  console.error('[verifyWarehouseCatalogMobileList] PacketForm must refresh full packets after save');
+  process.exit(1);
+}
+
 console.log('verifyWarehouseCatalogMobileList: ok');

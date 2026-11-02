@@ -1,8 +1,7 @@
-import { KITWE_LOCATION_ID } from '../constants/warehouseShowroomLocations';
-import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy';
-import { isWarehouseSetAssembly } from './warehouseSetMath';
-import { assemblableSetUnits } from './warehouseSetMath';
-import { expandWarehouseSetItemsRows } from './warehouseSetItems';
+import { KITWE_LOCATION_ID } from '../constants/warehouseShowroomLocations.js';
+import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy.js';
+import { isWarehouseSetAssembly, assemblableSetUnits } from './warehouseSetMath.js';
+import { expandWarehouseSetItemsRows } from './warehouseSetItems.js';
 
 export function kitweQtyByAssembly(assemblyInventory) {
   const map = new Map();
@@ -59,17 +58,28 @@ export function isKitwePortalListedProduct(assembly) {
   return meta.kitwe_portal_listed === true;
 }
 
+/** True when assembly belongs on /kitwe-products (portal create or factory delivery accept). */
+export function isKitweProductsPortalAssembly(assembly, assemblyInventoryOrQtyMap) {
+  if (!assembly?.id) return false;
+  if (!isWarehouseProductAssembly(assembly) || isWarehouseSetAssembly(assembly)) return false;
+  const qtyByAssembly = assemblyInventoryOrQtyMap instanceof Map
+    ? assemblyInventoryOrQtyMap
+    : kitweQtyByAssembly(assemblyInventoryOrQtyMap);
+  const kitweQty = qtyByAssembly.get(String(assembly.id)) ?? 0;
+  if (isKitwePortalListedProduct(assembly)) return true;
+  const meta = assembly?.metadata || {};
+  if (kitweQty < 1) return false;
+  if (meta.kitwe_from_factory_delivery === true) return true;
+  if (meta.kitwe_factory_delivery_at) return true;
+  if (Number(meta.kitwe_factory_delivery_units) > 0) return true;
+  return false;
+}
+
 /** /kitwe-products table: Hassan-accepted deliveries (Kitwe qty > 0) + portal-created rows. */
 export function filterKitweCatalogProducts(assemblies, assemblyInventory) {
   const qtyByAssembly = kitweQtyByAssembly(assemblyInventory);
   return (assemblies || [])
-    .filter((a) => isWarehouseProductAssembly(a) && !isWarehouseSetAssembly(a))
-    .filter((a) => {
-      if (isKitwePortalListedProduct(a)) return true;
-      const meta = a?.metadata || {};
-      if (!meta.kitwe_from_factory_delivery) return false;
-      return (qtyByAssembly.get(String(a.id)) ?? 0) > 0;
-    })
+    .filter((a) => isKitweProductsPortalAssembly(a, qtyByAssembly))
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 

@@ -20,8 +20,8 @@ assert(acceptStock.includes('recomputeWarehouseStockForPacketTouch'), 'acceptSto
 assert(acceptStock.includes('recomputeWarehouseLocationStockServer'), 'acceptStock must full recompute both locations');
 assert(kitweSync.includes('addProductInventoryAtKitwe'), 'Kitwe sync must credit POS inventory at Kitwe');
 assert(accept.includes('readKitweAssemblyInventoryQtyMap'), 'accept must snapshot Kitwe assembly qty before/after BOM recompute');
-assert(accept.includes('kitweQtyBefore'), 'accept must pass BOM gain context into Kitwe catalog sync');
-assert(kitweSync.includes('catalogDelta - bomGain'), 'Kitwe sync must not double-count BOM recompute with catalog delta');
+assert(accept.includes('kitweQtyBeforeStockAccept'), 'accept must snapshot Kitwe qty before stock move for catalog sync');
+assert(kitweSync.includes('catalogDelta - stockGain'), 'Kitwe sync must not double-count BOM recompute with catalog delta');
 assert(kitweSync.includes('ensureAssemblyListedAtKitwe'), 'Kitwe sync must list assembly at Kitwe location');
 assert(kitweSync.includes('findOrCreateKitweProduct'), 'Kitwe sync must match SKU or create product');
 assert(
@@ -45,6 +45,17 @@ const kitwePage = fs.readFileSync(path.join(root, 'src/KitweProductsPage.js'), '
 assert(
   kitwePage.includes('filterKitweCatalogProducts'),
   'Kitwe products page must list deliveries and portal-created products',
+);
+
+const productsList = fs.readFileSync(path.join(root, 'src/ProductsListPage.js'), 'utf8');
+assert(
+  productsList.includes('filterProductsListCatalogProducts'),
+  'Products list must hide Kitwe portal catalog products',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/utils/productsListKitweExclusion.js'), 'utf8')
+    .includes('isKitweProductsPortalAssembly'),
+  'Kitwe exclusion must match /kitwe-products assembly visibility',
 );
 
 console.log('verifyWarehouseDeliveryStock: ok');

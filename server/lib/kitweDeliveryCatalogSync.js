@@ -260,6 +260,7 @@ export async function syncKitweCatalogForDeliveryAssemblies(sb, {
   mirroredBefore = {},
   kitweQtyBefore = null,
   kitweQtyAfter = null,
+  skipAssemblyInventoryDelta = false,
   now = new Date().toISOString(),
 }) {
   const mirroredAfter = { ...mirroredBefore };
@@ -284,8 +285,10 @@ export async function syncKitweCatalogForDeliveryAssemblies(sb, {
 
     const qtyBefore = beforeMap.has(aid) ? beforeMap.get(aid) : await readKitweAssemblyInventoryQty(sb, aid);
     const qtyAfter = afterMap.has(aid) ? afterMap.get(aid) : qtyBefore;
-    const bomGain = Math.max(0, qtyAfter - qtyBefore);
-    const assemblyAdd = Math.max(0, catalogDelta - bomGain);
+    const stockGain = Math.max(0, qtyAfter - qtyBefore);
+    const assemblyAdd = skipAssemblyInventoryDelta
+      ? 0
+      : Math.max(0, catalogDelta - stockGain);
 
     await ensureAssemblyListedAtKitwe(sb, aid);
     if (assemblyAdd > 0) {
@@ -310,54 +313,25 @@ export async function repairKitweCatalogForSession(sb, deliveryNumberOrSessionId
 
   const { data: sessions, error } = await sb
     .from('warehouse_delivery_sessions')
-    .select('id, delivery_number, status, metadata')
+    .select('*')
     .or(`delivery_number.eq.${filter},id.eq.${filter}`)
     .limit(5);
   if (error) throw error;
   const session = (sessions || [])[0];
   if (!session) throw new Error(`Delivery not found: ${filter}`);
 
-  const { data: lines, error: lineErr } = await sb
-    .from('warehouse_delivery_entries')
-    .select('*')
-    .eq('session_id', session.id);
-  if (lineErr) throw lineErr;
-
-  const assemblyIds = [...new Set(
-    (lines || [])
-      .map((l) => String(l.metadata?.assembly_id || ''))
-      .filter(Boolean),
-  )];
-  const assemblyUnits = assemblyUnitsReadyForKitweCatalog(lines || [], assemblyIds);
-  if (!assemblyUnits.size) {
-    return { session_id: session.id, delivery_number: session.delivery_number, repaired: 0, message: 'No fully received assemblies in this delivery.' };
-  }
-
-  const mirroredBefore = { ...(session.metadata?.mirrored_assembly_units || {}) };
-  const now = new Date().toISOString();
-  const mirroredAfter = await syncKitweCatalogForDeliveryAssemblies(sb, {
-    assemblyUnits,
-    mirroredBefore,
-    now,
+  const { finalizeWarehouseDeliverySession } = await import('./warehouseDeliveryAccept.js');
+  const result = await finalizeWarehouseDeliverySession(sb, session, {
+    acceptedByEmail: 'repair-kitwe-catalog',
+    finalizedOnly: true,
   });
-
-  const changed = Object.keys(mirroredAfter).some(
-    (k) => Number(mirroredAfter[k]) !== Number(mirroredBefore[k]),
-  );
-  if (changed) {
-    await sb.from('warehouse_delivery_sessions').update({
-      metadata: {
-        ...(session.metadata || {}),
-        mirrored_assembly_units: mirroredAfter,
-      },
-      updated_at: now,
-    }).eq('id', session.id);
-  }
 
   return {
     session_id: session.id,
     delivery_number: session.delivery_number,
-    repaired: assemblyUnits.size,
-    mirrored_assembly_units: mirroredAfter,
+    repaired: Object.keys(result.session?.metadata?.mirrored_assembly_units || {}).length,
+    mirrored_assembly_units: result.session?.metadata?.mirrored_assembly_units,
+    catalog_sync_error: result.catalog_sync_error || null,
+    status: result.session?.status,
   };
 }

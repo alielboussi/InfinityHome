@@ -15,6 +15,15 @@ import {
 } from '../../src/utils/warehouseScanResolver.js';
 import { buildPacketsByAssembly } from '../../src/utils/warehouseAssemblyPacketPool.js';
 import {
+  WAREHOUSE_FACTORY_LOCATION_ID,
+  isWarehouseSetRecipeLocation,
+  warehouseCatalogAllowsSetCreate,
+} from '../../src/constants/warehouseShowroomLocations.js';
+import {
+  validateSetComponentAssembly,
+  isWarehouseSetAssembly,
+} from '../../src/utils/warehouseCatalogHierarchy.js';
+import {
   assertWarehouseProductQtyIncrementOnly,
   currentAssemblyWarehouseUnits,
   packetUpdatesForAssemblyTargetUnits,
@@ -38,7 +47,8 @@ const ASSEMBLY_PACKETS = 'warehouse_assembly_packets';
 const PACKET_INVENTORY = 'warehouse_packet_inventory';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 
-const WAREHOUSE_ITEM_KIND = Object.freeze({ PRODUCT: 'product', PACKET: 'packet' });
+const WAREHOUSE_ITEM_KIND = Object.freeze({ PRODUCT: 'product', PACKET: 'packet', SET: 'set' });
+const SET_ITEMS = 'warehouse_set_items';
 
 function throwIfDatastoreError(err, fallback) {
   if (!err) return;
@@ -218,6 +228,9 @@ export async function fetchCatalogForMobile(sb, options = {}) {
   const assembliesWithCategories = enrichAssembliesWithCategoryNames(assemblies, categories);
   const presetGroups = await listProductionPresetsGrouped(sb);
 
+  const { data: setItems, error: setItemsErr } = await sb.from(SET_ITEMS).select('*');
+  throwIfDatastoreError(setItemsErr, 'Failed to load set items');
+
   return attachWarehouseStockTotals({
     assemblies: assembliesWithCategories || [],
     packets,
@@ -234,6 +247,7 @@ export async function fetchCatalogForMobile(sb, options = {}) {
     production_presets: presetGroups.production_presets,
     seater_presets: presetGroups.seater,
     carpentry_presets: presetGroups.carpentry,
+    setItems: setItems || [],
   });
 }
 
@@ -503,10 +517,111 @@ async function updateAssemblyPacketBomForMobile(sb, payload) {
   return refreshed || { ...assembly, id: assemblyId, packet_count: packetCount };
 }
 
+async function syncAssemblySetItemsMobile(
+  sb,
+  setAssemblyId,
+  setLocationId,
+  setComponents,
+  assembliesById,
+  portal = '',
+) {
+  const setId = String(setAssemblyId || '');
+  const locationId = String(setLocationId || '');
+  if (!setId) return;
+  if (!isWarehouseSetRecipeLocation(locationId, { portal })) {
+    throw new Error('Set recipe location must be Warehouse (factory), Kitwe, or Lusaka.');
+  }
+  await sb.from(SET_ITEMS).delete().eq('set_assembly_id', setId).eq('location_id', locationId);
+  const now = new Date().toISOString();
+  const rows = [];
+  const seen = new Set();
+  (setComponents || []).forEach((line) => {
+    const componentId = String(line?.component_assembly_id || line?.assembly_id || '').trim();
+    if (!componentId || componentId === setId || seen.has(componentId)) return;
+    const component = assembliesById?.get(componentId);
+    validateSetComponentAssembly(component, { setAssemblyId: setId });
+    seen.add(componentId);
+    rows.push({
+      location_id: locationId,
+      set_assembly_id: setId,
+      component_assembly_id: componentId,
+      quantity: Math.max(1, Number(line?.quantity) || 1),
+      updated_at: now,
+    });
+  });
+  if (!rows.length) {
+    throw new Error('Add at least one product to this set.');
+  }
+  const { error } = await sb.from(SET_ITEMS).upsert(rows, {
+    onConflict: 'location_id,set_assembly_id,component_assembly_id',
+  });
+  if (error) throw new Error(error.message || 'Failed to save set components');
+}
+
+async function saveSetAssemblyForMobile(sb, payload, createPortal) {
+  const name = String(payload?.name || '').trim();
+  const familySku = normalizeWarehouseProductSku(payload?.family_sku);
+  const categoryId = payload?.category_id || null;
+  const locationIds = payload?.location_ids || [];
+  const warehouseLocationId = payload?.warehouse_location_id;
+  const setComponents = payload?.set_components || [];
+  const setLocationId = payload?.set_location_id || WAREHOUSE_FACTORY_LOCATION_ID;
+
+  if (!name) throw new Error('Name is required');
+  if (!familySku) throw new Error('Set SKU is required');
+  if (!warehouseLocationId) throw new Error('Warehouse location is not configured');
+  if (!warehouseCatalogAllowsSetCreate(createPortal)) {
+    throw new Error('You do not have permission to create sets in this catalog.');
+  }
+  if (!isWarehouseSetRecipeLocation(setLocationId, { portal: createPortal })) {
+    throw new Error('Set recipe location must be Warehouse (factory), Kitwe, or Lusaka.');
+  }
+
+  await assertUniqueWarehouseSku(sb, familySku, {});
+
+  const now = new Date().toISOString();
+  const id = newUuid();
+  const row = {
+    id,
+    name,
+    family_sku: familySku,
+    category_id: categoryId,
+    retail_product_id: null,
+    packet_count: null,
+    inventory_mode: WAREHOUSE_INVENTORY_MODE.FINISHED,
+    has_color_variants: false,
+    item_kind: WAREHOUSE_ITEM_KIND.SET,
+    units_per_carton: 1,
+    turkish_name: null,
+    dim_length: null,
+    dim_width: null,
+    dim_height: null,
+    created_at: now,
+    updated_at: now,
+  };
+  const { error } = await sb.from(ASSEMBLIES).insert(row);
+  if (error) throw new Error(error.message || 'Failed to create set');
+
+  await syncAssemblyLocations(sb, id, locationIds);
+
+  const { data: allAssemblies } = await sb.from(ASSEMBLIES).select('id, item_kind, name');
+  const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
+  await syncAssemblySetItemsMobile(sb, id, setLocationId, setComponents, assembliesById, createPortal);
+
+  return row;
+}
+
 export async function saveAssemblyForMobile(sb, payload) {
   const updateId = String(payload?.id || payload?.assembly_id || '').trim();
   if (updateId) {
     return updateAssemblyPacketBomForMobile(sb, { ...payload, id: updateId });
+  }
+
+  const createPortal = String(payload?.create_portal || payload?.portal || '').trim();
+  const isSet = payload?.catalog_kind === 'set'
+    || String(payload?.item_kind || '').toLowerCase() === WAREHOUSE_ITEM_KIND.SET;
+  if (isSet) {
+    return saveSetAssemblyForMobile(sb, payload, createPortal);
   }
 
   const name = String(payload?.name || '').trim();

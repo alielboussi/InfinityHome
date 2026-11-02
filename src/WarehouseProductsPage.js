@@ -442,6 +442,16 @@ export default function WarehouseProductsPage() {
                   <span>Product</span>
                 </button>
               ) : null}
+              {canAddProduct ? (
+                <button
+                  type="button"
+                  className="warehouse-catalog-action-btn"
+                  onClick={() => navigate('/warehouse-products/new?kind=set')}
+                >
+                  <FaPlus aria-hidden />
+                  <span>Set</span>
+                </button>
+              ) : null}
               {canManage ? (
                 <button
                   type="button"

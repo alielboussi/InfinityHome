@@ -6,7 +6,7 @@ import {
   WAREHOUSE_INVENTORY_MODE,
 } from '../utils/warehouseAssemblyMath';
 import {
-  isWarehouseKitShowroomLocation,
+  isWarehouseSetRecipeLocation,
   warehouseCatalogAllowsSetCreate,
 } from '../constants/warehouseShowroomLocations';
 import { validateSetComponentAssembly } from '../utils/warehouseCatalogHierarchy';
@@ -445,12 +445,12 @@ async function syncAssemblyPackets(assemblyId, packetLinks, warehouseLocationId,
   }
 }
 
-async function syncAssemblySetItems(setAssemblyId, setLocationId, setComponents, assembliesById) {
+async function syncAssemblySetItems(setAssemblyId, setLocationId, setComponents, assembliesById, portal = '') {
   const setId = String(setAssemblyId || '');
   const locationId = String(setLocationId || '');
   if (!setId) return;
-  if (!isWarehouseKitShowroomLocation(locationId)) {
-    throw new Error('Set kitting location must be Kitwe or Lusaka.');
+  if (!isWarehouseSetRecipeLocation(locationId, { portal })) {
+    throw new Error('Set recipe location must be Warehouse (factory), Kitwe, or Lusaka.');
   }
   await db.from(SET_ITEMS).delete().eq('set_assembly_id', setId).eq('location_id', locationId);
   const now = new Date().toISOString();
@@ -514,11 +514,12 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
 
   if (!name) throw new Error('Name is required');
   if (!familySku) throw new Error('Product SKU is required');
-  if (isSet && !isWarehouseKitShowroomLocation(setLocationId)) {
-    throw new Error('Choose Kitwe or Lusaka for this set recipe.');
+  const createPortal = payload?.create_portal || payload?.portal || '';
+  if (isSet && !isWarehouseSetRecipeLocation(setLocationId, { portal: createPortal })) {
+    throw new Error('Set recipe location must be Warehouse (factory), Kitwe, or Lusaka.');
   }
-  if (isSet && !id && !warehouseCatalogAllowsSetCreate(payload?.create_portal)) {
-    throw new Error('Sets are built at showroom locations from products — not created in Warehouse.');
+  if (isSet && !id && !warehouseCatalogAllowsSetCreate(createPortal)) {
+    throw new Error('You do not have permission to create sets in this catalog.');
   }
   if (isSet) {
     const strayPackets = normalizePacketLinks(packetLinks, packetIds);
@@ -604,7 +605,7 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     const { data: allAssemblies } = await db.from(ASSEMBLIES).select('id, item_kind');
     const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
     await db.from(ASSEMBLY_PACKETS).delete().eq('assembly_id', assemblyId);
-    await syncAssemblySetItems(assemblyId, setLocationId, setComponents, assembliesById);
+    await syncAssemblySetItems(assemblyId, setLocationId, setComponents, assembliesById, createPortal);
   } else if (warehouseLocationId) {
     await syncAssemblyPackets(assemblyId, packetLinks, warehouseLocationId, packetIds);
     if (inventoryMode === WAREHOUSE_INVENTORY_MODE.PACKETS && packetCount != null) {
