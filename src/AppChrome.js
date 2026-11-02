@@ -83,6 +83,7 @@ const NAV_GROUPS = [
     items: [
       { label: 'User Activity', route: '/user-activity', icon: FaHistory },
       { label: 'Delivery drivers', route: '/warehouse-delivery-drivers', icon: FaTruckLoading, catalogOnly: true },
+      { label: 'Production presets', route: '/warehouse-production-presets', icon: FaClipboardList, catalogOnly: true },
       { label: 'User Login Access', route: '/user-access', icon: FaUserShield },
       { label: 'Database Backup', route: '/database-backup', icon: FaDatabase },
     ],

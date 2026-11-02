@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 import { getCurrentUser, canManageCatalog } from './accessControl';
 import { listDeliveryDrivers, saveDeliveryDrivers } from './services/warehouseDeliveryMobileApi';
@@ -129,12 +128,6 @@ export default function WarehouseDeliveryDriversPage() {
       <p style={{ color: 'var(--dash-muted)', marginTop: 8, lineHeight: 1.5 }}>
         Drivers appear in the Production app when staff send a Factory → Kitwe delivery.
       </p>
-      <p style={{ marginTop: 12 }}>
-        <Link to="/warehouse-production-presets" className="report-link" style={{ fontWeight: 600 }}>
-          Manage Production app presets (Seater / Carpentry) →
-        </Link>
-      </p>
-
       {error ? <div className="report-error" style={{ marginTop: 12 }}>{error}</div> : null}
       {success ? <div className="report-success" style={{ marginTop: 12 }}>{success}</div> : null}
 

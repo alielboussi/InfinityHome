@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 import { getCurrentUser, canManageCatalog } from './accessControl';
 import {
@@ -163,10 +162,6 @@ export default function WarehouseProductionPresetsPage() {
         Seater and Carpentry dropdowns on the Production app Create screen read this list from the server.
         Save here when you add types — staff get updates after the app refreshes catalog (pull to refresh or reopen Create).
       </p>
-      <p style={{ marginTop: 8 }}>
-        <Link to="/warehouse-delivery-drivers" className="report-link">← Delivery drivers</Link>
-      </p>
-
       {error ? <div className="report-error" style={{ marginTop: 12 }}>{error}</div> : null}
       {success ? <div className="report-success" style={{ marginTop: 12 }}>{success}</div> : null}
 

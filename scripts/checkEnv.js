@@ -183,6 +183,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyProductionPresetCategory.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-preset-category:fail] verifyProductionPresetCategory.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyProductionLabelCatTime.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

@@ -131,6 +131,7 @@ import {
   saveProductionPresetsGrouped,
   buildProductionWhatsAppNotifyPayload,
 } from '../lib/warehouseProductionPresets.js';
+import { ensureCategoryIdForProductionPreset } from '../lib/productionPresetCategory.js';
 import { resolveWarehouseMobileDisplayName } from '../../src/utils/warehouseMobileDisplayName.js';
 
 async function productionWhatsappProducerName(user) {
@@ -430,6 +431,11 @@ async function opProductionPacketCreate(body, user) {
   }
   await assertUniqueSku(sb, familySku);
 
+  const presetLabel = String(body.preset || body.product_preset || '').trim();
+  const categoryId = presetLabel
+    ? await ensureCategoryIdForProductionPreset(sb, presetLabel)
+    : null;
+
   const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
   let assemblyInserted = false;
   let assemblyId = '';
@@ -437,6 +443,7 @@ async function opProductionPacketCreate(body, user) {
     const assembly = await saveAssemblyForMobile(sb, {
       name,
       family_sku: familySku,
+      category_id: categoryId,
       warehouse_location_id: warehouseLocationId,
       inventory_mode: 'finished',
       packet_count: null,
@@ -561,7 +568,7 @@ async function opProductionPacketCreate(body, user) {
         name: assembly.name,
         qtyAdded: initialQty,
         qtyBefore: 0,
-        preset: body.preset || body.product_preset || inferPresetFromCreateBody(body, name),
+        preset: presetLabel || inferPresetFromCreateBody(body, name),
         imageUrl: catalogImageUrl,
       });
     }
