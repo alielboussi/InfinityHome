@@ -9,12 +9,12 @@ function notifyBaseUrl() {
   return raw.startsWith('http') ? raw : `https://${raw}`;
 }
 
-async function sendWarehouseDeliveryWhatsAppHttp(message) {
+async function sendWarehouseDeliveryWhatsAppHttp(body) {
   const url = `${notifyBaseUrl()}/api/notify?action=whatsapp-warehouse-delivery`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, action: 'whatsapp-warehouse-delivery' }),
+    body: JSON.stringify({ ...body, action: 'whatsapp-warehouse-delivery' }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -25,21 +25,37 @@ async function sendWarehouseDeliveryWhatsAppHttp(message) {
   return { ok: true, ...payload };
 }
 
+function normalizeWarehouseDeliveryWhatsAppBody(payload) {
+  if (typeof payload === 'string') {
+    return { message: String(payload || '').trim() };
+  }
+  const message = String(payload?.message || '').trim();
+  const pdfUrl = String(payload?.pdfUrl || '').trim();
+  const pdfBase64 = String(payload?.pdfBase64 || payload?.pdf_base64 || '')
+    .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
+    .replace(/\s+/g, '');
+  const pdfFilename = String(payload?.pdfFilename || payload?.pdf_filename || 'Delivery_Note.pdf').trim()
+    || 'Delivery_Note.pdf';
+  return { message, pdfUrl, pdfBase64, pdfFilename };
+}
+
 /**
  * Wasender group alert for Factory→Kitwe delivery submit (non-throwing).
  */
-export async function sendWarehouseDeliveryWhatsApp(message) {
-  const text = String(message || '').trim();
-  if (!text) return { ok: false, skipped: true, reason: 'empty_message' };
+export async function sendWarehouseDeliveryWhatsApp(payload) {
+  const body = normalizeWarehouseDeliveryWhatsAppBody(payload);
+  if (!body.message && !body.pdfUrl && !body.pdfBase64) {
+    return { ok: false, skipped: true, reason: 'empty_message' };
+  }
 
   try {
     const { deliverWarehouseDeliveryGroupMessage } = await import('../../api/notify.js');
-    const payload = await deliverWarehouseDeliveryGroupMessage({ message: text });
-    return { ok: true, ...payload };
+    const result = await deliverWarehouseDeliveryGroupMessage(body);
+    return { ok: true, ...result };
   } catch (err) {
     console.warn('[warehouse-delivery-whatsapp] inline notify failed, trying HTTP:', err?.message || err);
     try {
-      return await sendWarehouseDeliveryWhatsAppHttp(text);
+      return await sendWarehouseDeliveryWhatsAppHttp(body);
     } catch (httpErr) {
       console.warn('[warehouse-delivery-whatsapp]', httpErr?.message || httpErr);
       return { ok: false, error: String(httpErr?.message || httpErr) };

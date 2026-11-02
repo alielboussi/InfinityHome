@@ -6,6 +6,7 @@ import { getLoginAccessRecord, isLoginAccessAdmin } from './loginAccess.js';
 import { normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
 import { isMobileScreenAccessAllowed } from '../../src/mobile/mobileAccessManifest.js';
 import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js';
+import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
 
 const MAX_IMAGE_BASE64_CHARS = 3_200_000;
 
@@ -51,6 +52,9 @@ export async function runCatalogAssemblyPhotoAttach(body, user) {
     .maybeSingle();
   if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
   if (!assembly) throw new Error('Product not found.');
+  if (isMattressCatalogProductName(assembly.name)) {
+    throw new Error('AI catalog photo retouch is only for furniture. Add mattress images from web admin if needed.');
+  }
 
   const existingUrl = String(assembly.image_url || '').trim();
   if (!forceReupload && existingUrl) {

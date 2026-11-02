@@ -31,6 +31,16 @@ assert(
   'warehouse delivery WhatsApp must call notify inline (not VERCEL_URL self-fetch only)',
 );
 assert(
+  fs.readFileSync(path.join(root, 'server/handlers/warehouse-mobile.js'), 'utf8')
+    .includes('buildWarehouseDeliveryNotePdfBase64'),
+  'delivery submit WhatsApp must attach delivery note PDF',
+);
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/sendWarehouseDeliveryWhatsApp.js'), 'utf8')
+    .includes('pdfBase64'),
+  'sendWarehouseDeliveryWhatsApp must forward pdfBase64 to notify',
+);
+assert(
   fs.readFileSync(path.join(root, 'api/notify.js'), 'utf8').includes('deliverWarehouseDeliveryGroupMessage'),
   'notify must export deliverWarehouseDeliveryGroupMessage for delivery submit',
 );
@@ -100,6 +110,23 @@ assert(noteHtml.includes('DELIVERY_NOTE_DISCLAIMER'), 'delivery note must includ
 assert(
   noteHtml.includes("'sold_delivery'") && noteHtml.includes("'Delivery Note'"),
   'A4 must keep separate titles for sold_delivery vs kitwe delivery',
+);
+
+execSync(
+  `node --input-type=module -e "
+import { buildDeliveryPrintGroupsFromEntries } from './src/utils/warehouseDeliveryPrintGroups.js';
+import { buildDeliveryNotePrintHtml } from './src/utils/buildDeliveryNotePrintHtml.js';
+const groups = buildDeliveryPrintGroupsFromEntries([{
+  kind: 'assembly',
+  name: 'Bowl Single Seater',
+  quantity: 1,
+  metadata: { assembly_name: 'Bowl Single Seater', finished_unit: true, units: 1 },
+}]);
+if (groups[0].lines.length !== 0) throw new Error('finished unit must not add packet sub-rows');
+const html = buildDeliveryNotePrintHtml({ deliveryNumber: 'WHD1', driverName: 'D', printGroups: groups, documentKind: 'delivery' });
+if (html.includes('- Bowl Single Seater')) throw new Error('delivery note must not duplicate product as packet line');
+"`,
+  { cwd: root, stdio: 'pipe' },
 );
 
 execSync(

@@ -83,7 +83,9 @@ function shouldUseTrimmedBounds(bounds, width, height) {
   const horizontalLetterbox = left > 0.03 && right > 0.03;
   const verticalLetterbox = top > 0.03 && bottom > 0.03;
   const singleBand = left > 0.06 || right > 0.06 || top > 0.06 || bottom > 0.06;
-  return horizontalLetterbox || verticalLetterbox || (singleBand && areaRatio < 0.88);
+  if (verticalLetterbox && areaRatio < 0.92) return true;
+  if (horizontalLetterbox && areaRatio < 0.92) return true;
+  return singleBand && areaRatio < 0.88;
 }
 
 /**
@@ -92,10 +94,28 @@ function shouldUseTrimmedBounds(bounds, width, height) {
  * @param {number} size
  * @returns {HTMLCanvasElement}
  */
-export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX) {
+export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX, { fit = 'cover' } = {}) {
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
   if (!w || !h) throw new Error('Invalid image dimensions');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas not supported');
+
+  if (fit === 'contain') {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    const scale = Math.min(size / w, size / h);
+    const dw = w * scale;
+    const dh = h * scale;
+    const dx = (size - dw) / 2;
+    const dy = (size - dh) / 2;
+    ctx.drawImage(img, 0, 0, w, h, dx, dy, dw, dh);
+    return canvas;
+  }
 
   let x0 = 0;
   let y0 = 0;
@@ -129,11 +149,6 @@ export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX) 
   const sx = x0 + (cw - sw) / 2;
   const sy = y0 + (ch - sh) / 2;
 
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas not supported');
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
   return canvas;
 }
@@ -141,11 +156,13 @@ export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX) 
 /**
  * @param {File} file
  * @param {number} [size=512]
+ * @param {{ fit?: 'cover'|'contain', productName?: string }} [options]
  * @returns {Promise<File>}
  */
-export async function fileToSquareCatalogImage(file, size = WAREHOUSE_CATALOG_IMAGE_PX) {
+export async function fileToSquareCatalogImage(file, size = WAREHOUSE_CATALOG_IMAGE_PX, options = {}) {
   const img = await loadImageFromFile(file);
-  const canvas = drawImageToSquareCanvas(img, size);
+  const fit = options.fit === 'contain' ? 'contain' : 'cover';
+  const canvas = drawImageToSquareCanvas(img, size, { fit });
   const blob = await canvasToBlob(canvas, 'image/jpeg', 0.92);
   const base = (file.name || 'product').replace(/\.[^.]+$/, '');
   return new File([blob], `${base}-square.jpg`, { type: 'image/jpeg' });

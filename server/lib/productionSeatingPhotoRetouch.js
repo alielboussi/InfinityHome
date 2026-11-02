@@ -5,8 +5,11 @@ import {
   getProductionPhotoModelCandidatesForRequireAi,
 } from './productionPhotoGeminiModels.js';
 import { buildProductionPhotoRetouchPrompt } from './productionPhotoRetouchPrompt.js';
+import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
 
 export { buildProductionPhotoRetouchPrompt, PRODUCTION_SEATING_PHOTO_PROMPT } from './productionPhotoRetouchPrompt.js';
+
+const CATALOG_SQUARE_PX = 1024;
 
 function parseImageBase64Payload(raw) {
   const trimmed = String(raw || '').trim();
@@ -39,19 +42,21 @@ function extractGeneratedImage(payload) {
   return null;
 }
 
-function buildGenerationConfig() {
+function buildGenerationConfig({ productName = '' } = {}) {
   const config = {
     responseModalities: ['IMAGE'],
     temperature: 0.35,
   };
-  const aspect = String(process.env.GEMINI_PRODUCTION_PHOTO_ASPECT || '4:3').trim();
+  const aspect = isMattressCatalogProductName(productName)
+    ? '1:1'
+    : String(process.env.GEMINI_PRODUCTION_PHOTO_ASPECT || '4:3').trim();
   if (aspect) {
     config.imageConfig = { aspectRatio: aspect };
   }
   return config;
 }
 
-async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, promptText, resolveApiKey } = {}) {
+async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, promptText, resolveApiKey, productName = '' } = {}) {
   const apiKey = typeof resolveApiKey === 'function'
     ? resolveApiKey()
     : getGeminiProductionApiKey();
@@ -78,7 +83,7 @@ async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, prom
         },
       ],
     }],
-    generationConfig: buildGenerationConfig(),
+    generationConfig: buildGenerationConfig({ productName }),
   };
 
   const models = requireAi
@@ -136,12 +141,29 @@ async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, prom
 }
 
 async function finalizeCatalogJpeg(buffer, mime) {
-  return sharp(buffer, mime.includes('png') ? { density: 150 } : undefined)
+  const inputOpts = mime.includes('png') ? { density: 150 } : undefined;
+  const pipeline = () => sharp(buffer, inputOpts)
     .rotate()
-    .flatten({ background: '#ffffff' })
-    .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: 90, mozjpeg: true })
-    .toBuffer();
+    .flatten({ background: '#ffffff' });
+
+  try {
+    return await pipeline()
+      .trim({ background: '#ffffff', threshold: 20, lineArt: false })
+      .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, {
+        fit: 'cover',
+        position: 'centre',
+      })
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  } catch {
+    return pipeline()
+      .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, {
+        fit: 'cover',
+        position: 'centre',
+      })
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  }
 }
 
 /**
@@ -168,6 +190,9 @@ export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
     productName,
     preset,
   });
+  if (isMattressCatalogProductName(productName)) {
+    return finalizeCatalogJpeg(input, 'image/jpeg');
+  }
   if (skipAi && !requireAi) {
     return finalizeCatalogJpeg(input, 'image/jpeg');
   }
@@ -175,7 +200,12 @@ export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
     throw new Error('AI photo retouch is required but PRODUCTION_PHOTO_SKIP_AI is enabled on the server.');
   }
   try {
-    const generated = await requestGeminiSeatingRetouch(input, { requireAi, promptText, resolveApiKey });
+    const generated = await requestGeminiSeatingRetouch(input, {
+      requireAi,
+      promptText,
+      resolveApiKey,
+      productName,
+    });
     return finalizeCatalogJpeg(generated.buffer, generated.mime);
   } catch (err) {
     if (requireAi || !catalogFallbackWithoutAiEnabled()) {

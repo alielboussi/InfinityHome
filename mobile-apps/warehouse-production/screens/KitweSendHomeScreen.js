@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -47,7 +48,7 @@ function buildPrintGroupsFromCart(groups, byAssembly, assemblies) {
       return {
         assembly_name: g.assembly_name,
         units: u,
-        lines: [{ name: g.assembly_name, packet_number: '', qty: u }],
+        lines: [],
       };
     }
     return {
@@ -137,6 +138,8 @@ export default function KitweSendHomeScreen({ navigation }) {
 
   const selectAssemblyForDraft = useCallback((a) => {
     const rows = byAssembly.get(String(a.id)) || [];
+    setSearch('');
+    Keyboard.dismiss();
     setDraftAssemblyId(a.id);
     setDraftChecks(buildDeliveryPacketChecks(rows, unitsNum, {}));
     setDraftFinishedConfirmed(false);
@@ -460,7 +463,7 @@ export default function KitweSendHomeScreen({ navigation }) {
           </Pressable>
         </View>
 
-        {!draftAssemblyId && filtered.length > 0 ? (
+        {!draftAssemblyId && search.trim().length > 0 && filtered.length > 0 ? (
           <View style={kiosk.listGroup}>
             {filtered.map((a, index) => (
               <Pressable

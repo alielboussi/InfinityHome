@@ -4,6 +4,9 @@ import {
   PRODUCTION_LEGACY_PRESET_SUFFIXES,
   PRODUCTION_SEATER_PRESETS,
 } from '../../src/utils/productionItemName.js';
+import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
+
+export { isMattressCatalogProductName };
 
 const SHARED_REQUIREMENTS = `REQUIREMENTS (follow exactly):
 1. Background: solid pure white #FFFFFF only — no floor, walls, warehouse, or gradient.
@@ -23,13 +26,15 @@ const MATTRESS_WRAP_REMOVAL = `MATTRESS / BEDDING (critical when plastic or nylo
 const MATTRESS_HERO_FRAMING = `HERO FRAMING (critical — match other finished-goods catalog thumbnails in this app):
 - Zoom in so the mattress fills most of the square frame (about 70–90% of height and width). Minimal white padding — same tight crop as sofas and chairs in this catalog, NOT a small mattress floating with huge empty margins.
 - Center the product. The full mattress silhouette should read clearly (top face + visible side depth), not an abstract texture patch only.
+- Match sibling SKUs in the same product line (e.g. all Sleep Comfort sizes): same tight face-on hero crop — NOT a distant wide shot with large empty white bands above/below.
 - Preserve exact fabric pattern, quilt geometry, puff spacing, and colors from the source — only reframe, relight, rotate upright, and clean the background; never replace the design.`;
 
 const MATTRESS_CATALOG_ORIENTATION = `ORIENTATION (critical — never lay flat on the floor):
 - The mattress must stand UPRIGHT (vertical), the same way other warehouse finished products are photographed for this catalog — NOT lying horizontal on the ground, warehouse floor, or pallet.
 - Rotate/repose from flat warehouse shots: prop the mattress on its long edge or end so it stands tall; the TOP sleeping surface (quilted/tufted/patterned fabric) faces the camera forward (straight-on or slight 3/4 hero angle, ~5–20°).
 - The customer must see the top design as the main face — not a top-down flat-lay, not a bird's-eye view, not mostly side thickness or end cap only.
-- Forbidden poses: mattress lying flat, mattress on the ground seen from above, extreme macro crop with no product shape, narrow edge-only profile hiding the quilt pattern.
+- The top quilt plane must be roughly vertical in the output (parallel to the left/right edges of the image), not rotated 90° so quilting runs sideways across the frame.
+- Forbidden poses: mattress lying flat, mattress on the ground seen from above, extreme macro crop with no product shape, narrow edge-only profile hiding the quilt pattern, abstract texture fill with no readable mattress outline.
 - Side handles or piping are OK at the edges if the top quilt pattern remains the hero.`;
 
 const MATTRESS_CATALOG_REQUIREMENTS = `REQUIREMENTS (follow exactly):
@@ -105,15 +110,6 @@ function defaultSubjectForPreset(preset, { seaterPresets, carpentryPresets } = {
   return 'a warehouse furniture product (same item as photographed)';
 }
 
-/** Mattress / bed / topper names in warehouse catalog (English). */
-export function isMattressCatalogProductName(productName) {
-  const n = String(productName || '').trim().toLowerCase();
-  if (!n) return false;
-  return /\bmattress\b/.test(n)
-    || /\b(topper|bed base|bedbase)\b/.test(n)
-    || (/\bbed\b/.test(n) && !/\bbedside\b|\bbedroom set\b/.test(n));
-}
-
 function buildMattressCatalogPhotoRetouchPrompt(productName) {
   const label = String(productName || '').trim() || 'mattress';
   return `TASK: Edit this warehouse photo into a single crisp e-commerce catalog image of a mattress or bedding product (same dimensions, fabric pattern, and colors as photographed).
@@ -140,7 +136,7 @@ export function buildProductionPhotoRetouchPrompt({
 } = {}) {
   const name = String(productName || '').trim();
   if (isMattressCatalogProductName(name)) {
-    return buildMattressCatalogPhotoRetouchPrompt(name);
+    throw new Error('Mattress products do not use AI photo retouch.');
   }
   const suffixSource = [
     ...(seaterPresets || PRODUCTION_SEATER_PRESETS),

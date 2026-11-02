@@ -1,5 +1,6 @@
 /** Shared delivery note A4 HTML — also used by Production app (re-export) and web print. */
 import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime.js';
+import { deliveryPrintSubrowIsPacketLine } from './warehouseDeliveryPrintGroups.js';
 
 const PAGE_BORDER = '#000';
 const PAGE_BORDER_MM = 3;
@@ -128,7 +129,9 @@ function renderBlockRows(block, { showElapsedColumn = false } = {}) {
       ${elapsedCell}
       <td class="qty">${escapeHtml(String(block.units))}</td>
     </tr>`;
-  const packetRows = (block.lines || []).map((line) => {
+  const packetRows = (block.lines || [])
+    .filter((line) => deliveryPrintSubrowIsPacketLine(line, block.assembly_name))
+    .map((line) => {
     const namePart = String(line.name || line.reason || 'Packet').trim();
     const label = line.line_kind === 'reason' || line.kind === 'reason'
       ? `-Reason ${namePart}`

@@ -44,6 +44,7 @@ import {
   fetchProductionCatalog,
   fetchProductionSuggestedBaseName,
 } from '../services/productionApi';
+import { isMattressCatalogProductName } from '../lib/isMattressCatalogProductName';
 export default function CreateScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
@@ -86,6 +87,11 @@ export default function CreateScreen({ navigation }) {
     if (productNameEn.trim()) return normalizeProductionNameInput(productNameEn);
     return buildProductionItemName(baseNameEn, preset);
   }, [baseNameEn, preset, productNameEn]);
+
+  const mattressProduct = useMemo(
+    () => isMattressCatalogProductName(englishProductName),
+    [englishProductName],
+  );
 
   const nameLineSuggestions = useMemo(
     () => mergeBaseNameSuggestions({
@@ -259,6 +265,76 @@ export default function CreateScreen({ navigation }) {
     Alert.alert(tUi('saveFailedTitle', locale), msg);
   };
 
+  const applyCreateResult = async (pending, result) => {
+    pendingSaveRef.current = null;
+    await rememberBaseNameFromSave(pending.name);
+    await load();
+    const labelCount = result.labelCopies > 0 ? result.labelCopies : pending.qtyNum;
+    const printWarning = String(result.labelPrintWarning || '').trim();
+    setLabelPrintNote(printWarning);
+    if (printWarning) {
+      setSuccess(tUi('savedItemOnly', locale));
+      setError(printWarning);
+    } else if (labelCount < 1) {
+      setSuccess(tUi('savedNoLabelsQty', locale));
+    } else if (isMattressCatalogProductName(pending.name)) {
+      setSuccess(tUi('savedMattressNoPhoto', locale));
+    } else {
+      setSuccess(tUi('savedWithLabels', locale));
+    }
+
+    if (labelCount > 0) {
+      const labelMeta = result.label || {
+        sku: result.packet?.sku || '',
+        name: result.packet?.name || pending.name,
+        print_date: new Date().toLocaleDateString('en-GB'),
+        print_time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      };
+      deferFormResetRef.current = true;
+      setLabelPreview(labelMeta);
+      setLabelPng(result.labelPreviewPngBase64 || '');
+      setLabelCopies(labelCount);
+    } else {
+      resetForm();
+    }
+  };
+
+  const finishSaveWithoutPhoto = async () => {
+    const pending = pendingSaveRef.current;
+    if (!pending?.name || !pending.warehouseLocationId) {
+      showSaveFailure('Save data was lost. Tap Save production item again.');
+      return;
+    }
+    setSavePhase('processing');
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const available = await ensureProductNameAvailable(pending.name);
+      if (!available) return;
+      const result = await createProductionPacket({
+        name: pending.name,
+        warehouseLocationId: pending.warehouseLocationId,
+        initialQuantity: pending.qtyNum,
+        dimLength: pending.dimLength,
+        dimWidth: pending.dimWidth,
+        dimHeight: pending.dimHeight,
+        preset: pending.preset,
+      });
+      await applyCreateResult(pending, result);
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (msg.toLowerCase().includes('already exists')) {
+        showSaveFailure(tUi('duplicateName', locale));
+      } else {
+        showSaveFailure(msg);
+      }
+    } finally {
+      setSaving(false);
+      setSavePhase('');
+    }
+  };
+
   const finishSaveWithPhoto = async (photoSource) => {
     const pending = pendingSaveRef.current;
     if (!pending?.name || !pending.warehouseLocationId) {
@@ -292,35 +368,7 @@ export default function CreateScreen({ navigation }) {
         },
       });
 
-      pendingSaveRef.current = null;
-      await rememberBaseNameFromSave(pending.name);
-      await load();
-      const labelCount = result.labelCopies > 0 ? result.labelCopies : pending.qtyNum;
-      const printWarning = String(result.labelPrintWarning || '').trim();
-      setLabelPrintNote(printWarning);
-      if (printWarning) {
-        setSuccess(tUi('savedItemOnly', locale));
-        setError(printWarning);
-      } else if (labelCount < 1) {
-        setSuccess(tUi('savedNoLabelsQty', locale));
-      } else {
-        setSuccess(tUi('savedWithLabels', locale));
-      }
-
-      if (labelCount > 0) {
-        const labelMeta = result.label || {
-          sku: result.packet?.sku || '',
-          name: result.packet?.name || pending.name,
-          print_date: new Date().toLocaleDateString('en-GB'),
-          print_time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-        };
-        deferFormResetRef.current = true;
-        setLabelPreview(labelMeta);
-        setLabelPng(result.labelPreviewPngBase64 || '');
-        setLabelCopies(labelCount);
-      } else {
-        resetForm();
-      }
+      await applyCreateResult(pending, result);
     } catch (err) {
       const msg = String(err?.message || '');
       if (err?.code === 'product_saved_photo_failed' && err?.createResult) {
@@ -384,6 +432,10 @@ export default function CreateScreen({ navigation }) {
       dimWidth: dimW.trim() || undefined,
       dimHeight: dimH.trim() || undefined,
     };
+    if (isMattressCatalogProductName(name)) {
+      finishSaveWithoutPhoto();
+      return;
+    }
     setPhotoCaptureOpen(true);
   };
 

@@ -7,6 +7,7 @@ import { normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
 import { enqueueWarehouseProductionLabelJob } from './productionLabelPrint.js';
 import { normalizeWarehousePacketScan } from '../../src/utils/warehouseScanResolver.js';
 import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js';
+import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
 import { buildWarehouseProductionLabelPngBase64 } from './warehouseProductionLabelImage.js';
 import { sendWarehouseProductionWhatsApp } from './sendWarehouseProductionWhatsApp.js';
 import { buildProductionWhatsAppNotifyPayload } from './warehouseProductionPresets.js';
@@ -160,6 +161,9 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
   if (!assembly) throw new Error('Product not found.');
   if (String(assembly.inventory_mode || '').toLowerCase() !== 'finished') {
     throw new Error('Photos can only be attached to finished warehouse products.');
+  }
+  if (isMattressCatalogProductName(assembly.name)) {
+    throw new Error('AI catalog photo retouch is only for furniture. Mattresses are saved without a production photo.');
   }
 
   const existingUrl = String(assembly.image_url || '').trim();

@@ -35,6 +35,7 @@ import {
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
 import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeliveryWhatsAppMessage.js';
 import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhatsApp.js';
+import { buildWarehouseDeliveryNotePdfBase64 } from '../lib/buildWarehouseDeliveryNotePdfBase64.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
   evaluateWarehouseProductionAppAccess,
@@ -88,6 +89,7 @@ import {
 } from '../lib/warehouseDeliveryDrivers.js';
 import { HASSAN_AWAD } from '../../src/accessControl.js';
 import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku.js';
+import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
 import { enqueueWarehouseProductionLabelJob } from '../lib/productionLabelPrint.js';
 import { findProductionNameClash } from '../lib/productionCatalogNameCheck.js';
 import { runProductionAssemblyPhotoAttach } from '../lib/warehouseProductionPhotoAttach.js';
@@ -460,12 +462,13 @@ async function opProductionPacketCreate(body, user) {
       console.warn('[warehouse-mobile] warehouse stock recompute deferred:', reErr?.message || reErr);
     });
 
+    const mattressProduct = isMattressCatalogProductName(name);
     const deferProductPhoto = body.defer_product_photo === true
       || body.deferProductPhoto === true;
     const imageBase64 = deferProductPhoto
       ? ''
       : String(body.image_base64 || body.imageBase64 || '').trim();
-    const requiresPhoto = !deferProductPhoto && (
+    const requiresPhoto = !deferProductPhoto && !mattressProduct && (
       clientSource === 'warehouse_production_app'
       || body.require_product_photo === true
       || body.requireProductPhoto === true
@@ -473,6 +476,9 @@ async function opProductionPacketCreate(body, user) {
 
     let catalogImageUrl = null;
     const fastMobileCreate = clientSource === 'warehouse_production_app';
+    if (imageBase64 && mattressProduct) {
+      throw new Error('AI catalog photos are not used for mattresses. Save without a photo from the Production app.');
+    }
     if (imageBase64) {
       catalogImageUrl = await attachProductionAssemblyCatalogPhoto(sb, {
         assembly,
@@ -1404,6 +1410,8 @@ async function sendWarehouseDeliverySubmitWhatsApp({
   byAssembly,
   assemblyById,
   submittedAt,
+  entries: entriesArg,
+  clientPdfBase64 = '',
 }) {
   if (session?.metadata?.whatsapp_sent_at) {
     return { ok: true, skipped: 'already_sent' };
@@ -1447,7 +1455,35 @@ async function sendWarehouseDeliverySubmitWhatsApp({
     totalProducts,
   });
 
-  const whatsappResult = await sendWarehouseDeliveryWhatsApp(whatsappMessage);
+  const deliveryNumber = String(session?.delivery_number || sessionId || '').trim();
+  const pdfFilename = `${deliveryNumber || 'delivery'}-delivery-note.pdf`;
+  let pdfBase64 = String(clientPdfBase64 || '')
+    .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
+    .replace(/\s+/g, '');
+
+  if (!pdfBase64) {
+    try {
+      let entries = entriesArg;
+      if (!entries?.length) {
+        const { data: entryRows } = await sb
+          .from('warehouse_delivery_entries')
+          .select('*')
+          .eq('session_id', sessionId);
+        entries = entryRows || [];
+      }
+      if (entries.length) {
+        pdfBase64 = buildWarehouseDeliveryNotePdfBase64({ session, entries, copies: 1 });
+      }
+    } catch (pdfErr) {
+      console.warn('[delivery-submit] delivery note PDF for WhatsApp failed:', pdfErr?.message || pdfErr);
+    }
+  }
+
+  const whatsappResult = await sendWarehouseDeliveryWhatsApp({
+    message: whatsappMessage,
+    pdfBase64: pdfBase64 || undefined,
+    pdfFilename,
+  });
   if (whatsappResult?.ok) {
     const sentAt = new Date().toISOString();
     await sb.from('warehouse_delivery_sessions').update({
@@ -1511,6 +1547,9 @@ async function opDeliverySubmit(body, user) {
   const groups = Array.isArray(body.groups) ? body.groups : [];
   const driverName = String(body.driver_name || body.driverName || '').trim();
   const driverId = String(body.driver_id || body.driverId || '').trim();
+  const clientPdfBase64 = String(
+    body.delivery_note_pdf_base64 || body.deliveryNotePdfBase64 || '',
+  ).trim();
   let driverSignatureUrl = String(body.driver_signature_url || body.driverSignatureUrl || '').trim();
   if (!sessionId) throw new Error('session_id is required.');
   if (!groups.length) throw new Error('Add at least one product group.');
@@ -1543,6 +1582,7 @@ async function opDeliverySubmit(body, user) {
         byAssembly,
         assemblyById,
         submittedAt: session.submitted_at,
+        clientPdfBase64,
       });
       const { data: refreshed } = await sb
         .from('warehouse_delivery_sessions')
@@ -1738,6 +1778,8 @@ async function opDeliverySubmit(body, user) {
     byAssembly,
     assemblyById,
     submittedAt: now,
+    entries,
+    clientPdfBase64,
   });
 
   const { data: refreshedSession } = await sb

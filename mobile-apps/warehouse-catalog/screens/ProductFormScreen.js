@@ -54,6 +54,7 @@ import CatalogProductPhotoCaptureModal, {
 } from '../shared/CatalogProductPhotoCapture';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { attachCatalogProductPhotoWithAi } from '../shared/catalogPhotoApi';
+import { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';
 import { resolveWarehouseCategoryNameFromList } from '../shared/warehouseCategoryLookup';
 
 const INVENTORY_FINISHED = 'finished';
@@ -349,9 +350,14 @@ export default function ProductFormScreen({ route, navigation }) {
     return addPacketLink(match, { clearSearch: true });
   }, [addPacketLink, packets]);
 
-  const uploadPendingProductPhoto = useCallback(async (assemblyId) => {
+  const uploadPendingProductPhoto = useCallback(async (assemblyId, productName) => {
     const photo = productPhotoRef.current;
     if (!photo?.uri || !assemblyId) return;
+    if (isMattressCatalogProductName(productName)) {
+      setProductPhoto(null);
+      setNotice('Mattress saved without AI photo (furniture only). Add image from web admin if needed.');
+      return;
+    }
     setNotice('AI retouching product photo (white background)…');
     const imageBase64 = await prepareCatalogPhotoForUpload(photo);
     await attachCatalogProductPhotoWithAi({
@@ -493,7 +499,7 @@ export default function ProductFormScreen({ route, navigation }) {
             : 'Product saved. Enter warehouse on-hand qty.',
         );
         if (photoAssemblyId && productPhotoRef.current?.uri) {
-          uploadPendingProductPhoto(photoAssemblyId).catch((photoErr) => {
+          uploadPendingProductPhoto(photoAssemblyId, name.trim()).catch((photoErr) => {
             setError(formatWarehouseMobileApiError(photoErr?.message, 'Product saved but photo upload failed.'));
           });
         }
@@ -501,7 +507,7 @@ export default function ProductFormScreen({ route, navigation }) {
       }
       if (photoAssemblyId && productPhotoRef.current?.uri) {
         try {
-          await uploadPendingProductPhoto(photoAssemblyId);
+          await uploadPendingProductPhoto(photoAssemblyId, name.trim());
         } catch (photoErr) {
           throw photoErr;
         }

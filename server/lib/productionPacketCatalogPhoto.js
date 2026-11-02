@@ -1,6 +1,7 @@
 import { firebaseStoragePublicUrl, uploadBufferToFirebaseStorage } from './firebaseStorage.js';
 import { retouchProductionSeatingPhotoFromBase64 } from './productionSeatingPhotoRetouch.js';
 import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js';
+import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
 
 const IMAGE_BUCKET = 'productimages';
 
@@ -96,10 +97,18 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
   if (!assemblyId || !sku) throw new Error('assembly id and sku are required.');
   if (!imageBase64) throw new Error('Product photo is required.');
 
+  const resolvedName = productName || assembly?.name;
+  const mattressProduct = isMattressCatalogProductName(resolvedName);
+  const skipAi = skipAiRetouch || mattressProduct;
+  const requireAi = requireAiRetouch && !mattressProduct;
+  if (mattressProduct && requireAiRetouch) {
+    throw new Error('AI catalog photo retouch is only for furniture.');
+  }
+
   const jpeg = await retouchProductionSeatingPhotoFromBase64(imageBase64, {
-    skipAi: skipAiRetouch,
-    requireAi: requireAiRetouch,
-    productName: productName || assembly?.name,
+    skipAi,
+    requireAi,
+    productName: resolvedName,
     resolveApiKey,
   });
   const objectPath = `${storageFolder(assemblyId, 'assembly')}/catalog-${Date.now()}.jpg`;
