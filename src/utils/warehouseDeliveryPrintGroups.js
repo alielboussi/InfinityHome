@@ -1,4 +1,4 @@
-import { groupWarehouseDisplayLines, deliveryEntryPacketId } from './warehouseDelivery';
+import { groupWarehouseDisplayLines, deliveryEntryPacketId } from './warehouseDelivery.js';
 
 /** Sub-rows on the A4 note are packet/carton lines only — not finished-unit-only products. */
 export function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
