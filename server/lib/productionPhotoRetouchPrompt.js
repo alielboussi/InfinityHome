@@ -20,6 +20,12 @@ const SHARED_REQUIREMENTS = `REQUIREMENTS (follow exactly):
 
 OUTPUT: Return ONLY the finished catalog image (no text).`;
 
+/** Input from warehouse-catalog / production camera (any phone hold is valid). */
+const CATALOG_SOURCE_PHONE_CAPTURE = `SOURCE PHOTO (portrait or landscape phone — both OK):
+- The warehouse photo may be taken with the phone held upright (portrait) or sideways so the camera is horizontal (landscape). Treat either as a valid input; do not reject or distort based on frame aspect ratio alone.
+- Identify the furniture in the scene (shape, upholstery, legs) even when the raw image is wider-than-tall or taller-than-wide.
+- Your output must use standard catalog gravity and product orientation — rotate/reframe as needed so the finished image looks like a professional catalog shot, independent of how the phone was held when the photo was taken.`;
+
 const MATTRESS_WRAP_REMOVAL = `MATTRESS / BEDDING (critical when plastic or nylon is visible):
 - Remove ALL shrink wrap, cellophane, nylon, polyethylene film, and shipping plastic around the mattress or topper. Never leave crinkled wrap, taped corners, or loose nylon flaps.
 - Show only the fabric/quilted surface and sides of the mattress — crisp, sharp, color-accurate textile detail.
@@ -50,14 +56,20 @@ const MATTRESS_CATALOG_REQUIREMENTS = `REQUIREMENTS (follow exactly):
 OUTPUT: Return ONLY the finished catalog image (no text).`;
 
 /** Recliner catalog (matches ChatGPT-retouched warehouse thumbnails: centered, white, soft shadow). */
+const RECLINER_CATALOG_ORIENTATION = `ORIENTATION (critical — front catalog view, never sideways or rolled):
+- Standard e-commerce pose: the recliner faces the camera (straight-on or slight 3/4), seat cushions horizontal left-to-right, backrest vertical, footrests toward the camera or slightly angled — same upright pose as other recliners in this catalog (e.g. walnut leather sets).
+- The base/feet line must be parallel to the bottom edge of the image; gravity must read correctly (sofa sitting on the floor, not standing on an arm or back).
+- Landscape phone capture (camera held horizontal / sideways) is common in the warehouse — fully supported. Read the recliner correctly from wide landscape frames; output the same front catalog pose as portrait captures.
+- Portrait phone capture is also valid. In either case, if pixels look rotated relative to gravity, rotate the output so the product is upright — forbidden: the sofa lying on its side, back/arm running vertically up the frame, 90° roll, or edge-on profile that hides seat width.
+- Wide sofas: show the full width from left arm to right arm in one shot; do not crop arms, footrests, or back corners.`;
+
 const RECLINER_CATALOG_REQUIREMENTS = `RECLINER CATALOG (match ChatGPT-retouched reference thumbnails in warehouse catalog):
 1. Product: upholstered power or manual recliner — preserve channel tufting, seat seams, arm shape, footrest/leg rest, handles, and exact leather or fabric color from the source. Do not turn it into a fixed non-reclining sofa.
 2. Background: solid pure white #FFFFFF only — no floor, walls, warehouse, or gradient.
 3. Cleanup: remove people, hands, tags, clutter, and background objects.
 4. Lighting: bright, even studio catalog lighting; sharp focus; one soft contact shadow under the base only.
-5. Framing: center the full recliner with balanced padding on all sides (~65–85% of frame height); footrests, arms, and back must stay fully visible — never crop.
-6. Composition: product upright and centered (not pushed to an edge); same tight hero crop as other recliners in this catalog (e.g. Walnut leather set).
-7. Forbidden: text, logos, watermarks, extra furniture, props, or scenery.
+5. Framing: center the entire recliner with even white margins on all sides (~55–75% of frame height); footrests, arms, and back must stay fully visible — never crop or extreme zoom.
+6. Composition: match sibling recliner SKUs in this catalog (centered hero, full silhouette readable, balanced padding — not a tight crop that cuts off arms or rotates the piece sideways).
 
 OUTPUT: Return ONLY the finished catalog image (no text).`;
 
@@ -185,11 +197,14 @@ export function buildProductionPhotoRetouchPrompt({
     || defaultSubjectForPreset(resolved, { seaterPresets, carpentryPresets });
   const label = resolved || 'furniture product';
   const requirements = recliner ? RECLINER_CATALOG_REQUIREMENTS : SHARED_REQUIREMENTS;
+  const orientationBlock = recliner ? `${RECLINER_CATALOG_ORIENTATION}\n\n` : '';
   return `TASK: Edit this warehouse photo into a single catalog product image of ${subject}.
 
 Product type: ${label}.
 
-${requirements}`;
+${CATALOG_SOURCE_PHONE_CAPTURE}
+
+${orientationBlock}${requirements}`;
 }
 
 /** @deprecated use buildProductionPhotoRetouchPrompt */

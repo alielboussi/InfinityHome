@@ -115,7 +115,7 @@ export default function CatalogProductPhotoCaptureModal({
           </Pressable>
         </View>
         <Text style={styles.hint}>
-          Frame the product clearly. Mattresses: avoid tight plastic in frame if you can — AI removes wrap and adds a white catalog background after save.
+          Frame the product clearly. Portrait or sideways (landscape) phone angle is fine — AI straightens and adds a white catalog background after save. Mattresses: avoid tight plastic in frame if you can.
         </Text>
 
         {permissionLoading ? (

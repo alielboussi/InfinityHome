@@ -71,6 +71,23 @@ if (!reclinerPrompt.includes('recliner sofa') || !reclinerPrompt.includes('RECLI
   console.error('[verifyProductionPhotoRetouchPrompts] recliner catalog prompt missing recliner block');
   process.exit(1);
 }
+if (!reclinerPrompt.includes('ORIENTATION') || !/parallel to the bottom edge/i.test(reclinerPrompt)) {
+  console.error('[verifyProductionPhotoRetouchPrompts] recliner prompt missing orientation block');
+  process.exit(1);
+}
+if (!reclinerPrompt.includes('landscape phone') || !/portrait or landscape/i.test(reclinerPrompt)) {
+  console.error('[verifyProductionPhotoRetouchPrompts] recliner prompt missing landscape phone capture');
+  process.exit(1);
+}
+
+const anyFurniturePrompt = buildProductionPhotoRetouchPrompt({
+  productName: 'Amara Coffee Table',
+  categoryName: 'Coffee Tables',
+});
+if (!/portrait or landscape/i.test(anyFurniturePrompt)) {
+  console.error('[verifyProductionPhotoRetouchPrompts] furniture prompt missing source phone capture block');
+  process.exit(1);
+}
 
 const sofaPrompt = buildProductionPhotoRetouchPrompt({
   productName: 'Layla Coffee Table',
