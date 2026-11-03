@@ -63,13 +63,19 @@ const RECLINER_CATALOG_ORIENTATION = `ORIENTATION (critical — front catalog vi
 - Portrait phone capture is also valid. In either case, if pixels look rotated relative to gravity, rotate the output so the product is upright — forbidden: the sofa lying on its side, back/arm running vertically up the frame, 90° roll, or edge-on profile that hides seat width.
 - Wide sofas: show the full width from left arm to right arm in one shot; do not crop arms, footrests, or back corners.`;
 
+const RECLINER_CATALOG_FRAMING = `FRAMING / ZOOM (critical — match brown walnut recliner thumbnails in warehouse catalog):
+- Zoom OUT like the existing brown leather 2-seater and 3-seater recliner photos: the product should occupy roughly 45–60% of frame height (not 75–90%), centered with generous pure-white padding on all four sides.
+- Leave a clear white band between the sofa and every image edge — arms and footrests must NOT touch or bleed into the left/right borders; top of back and base must not touch top/bottom borders.
+- If the source is a tight close-up, scale the subject down and add white space so the finished shot matches sibling recliner SKUs (same “small sofa in a big white square” look as brown sets).
+- Forbidden: edge-to-edge crop, fill-the-frame zoom, arms cropped by the frame, or less white margin than the brown recliner examples in this catalog.`;
+
 const RECLINER_CATALOG_REQUIREMENTS = `RECLINER CATALOG (match ChatGPT-retouched reference thumbnails in warehouse catalog):
 1. Product: upholstered power or manual recliner — preserve channel tufting, seat seams, arm shape, footrest/leg rest, handles, and exact leather or fabric color from the source. Do not turn it into a fixed non-reclining sofa.
 2. Background: solid pure white #FFFFFF only — no floor, walls, warehouse, or gradient.
 3. Cleanup: remove people, hands, tags, clutter, and background objects.
 4. Lighting: bright, even studio catalog lighting; sharp focus; one soft contact shadow under the base only.
-5. Framing: center the entire recliner with even white margins on all sides (~55–75% of frame height); footrests, arms, and back must stay fully visible — never crop or extreme zoom.
-6. Composition: match sibling recliner SKUs in this catalog (centered hero, full silhouette readable, balanced padding — not a tight crop that cuts off arms or rotates the piece sideways).
+5. Framing: apply the zoom-out rules above — full recliner visible with wide even margins; never tight crop or maximum zoom.
+6. Composition: same scale and padding as brown leather recliners already in this catalog (centered, readable silhouette, ample white surround — lighter/white upholstery uses the same zoom level, not closer).
 
 OUTPUT: Return ONLY the finished catalog image (no text).`;
 
@@ -198,13 +204,14 @@ export function buildProductionPhotoRetouchPrompt({
   const label = resolved || 'furniture product';
   const requirements = recliner ? RECLINER_CATALOG_REQUIREMENTS : SHARED_REQUIREMENTS;
   const orientationBlock = recliner ? `${RECLINER_CATALOG_ORIENTATION}\n\n` : '';
+  const framingBlock = recliner ? `${RECLINER_CATALOG_FRAMING}\n\n` : '';
   return `TASK: Edit this warehouse photo into a single catalog product image of ${subject}.
 
 Product type: ${label}.
 
 ${CATALOG_SOURCE_PHONE_CAPTURE}
 
-${orientationBlock}${requirements}`;
+${framingBlock}${orientationBlock}${requirements}`;
 }
 
 /** @deprecated use buildProductionPhotoRetouchPrompt */

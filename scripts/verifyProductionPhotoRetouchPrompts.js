@@ -79,6 +79,10 @@ if (!reclinerPrompt.includes('landscape phone') || !/portrait or landscape/i.tes
   console.error('[verifyProductionPhotoRetouchPrompts] recliner prompt missing landscape phone capture');
   process.exit(1);
 }
+if (!/Zoom OUT/i.test(reclinerPrompt) || !/45–60%/i.test(reclinerPrompt)) {
+  console.error('[verifyProductionPhotoRetouchPrompts] recliner prompt missing zoom-out framing block');
+  process.exit(1);
+}
 
 const anyFurniturePrompt = buildProductionPhotoRetouchPrompt({
   productName: 'Amara Coffee Table',

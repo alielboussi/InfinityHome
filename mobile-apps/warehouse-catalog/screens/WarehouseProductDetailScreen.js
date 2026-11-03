@@ -12,7 +12,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { attachWarehouseStockTotals } from '../shared/warehouseCatalogStock';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
-import { resolveWarehouseCategoryNameFromList } from '../shared/warehouseCategoryLookup';
+import { resolveWarehouseCategoryNameFromList, buildWarehouseCategoryIndex } from '../shared/warehouseCategoryLookup';
+import { isSetAssembly } from '../shared/warehouseCatalogProductCompleteness';
+import { buildWarehouseCatalogSetEntries } from '../shared/warehouseCatalogSetList';
+import { resolveWarehouseCatalogAssemblyImageUri } from '../shared/warehouseAssemblyImageUri';
 
 function formatDimensionsLine(assembly) {
   const l = assembly?.dim_length;
@@ -38,17 +41,6 @@ function formatVolumeLine(assembly) {
   if (!Number.isFinite(m3)) return '';
   const display = m3.toLocaleString('en-US', { maximumFractionDigits: 2 });
   return `${display} m³`;
-}
-
-function resolveAssemblyImageUri(assembly) {
-  const candidates = [
-    assembly?.image_url,
-    assembly?.thumbnail_url,
-    assembly?.cover_image_url,
-    assembly?.photo_url,
-  ];
-  const hit = candidates.find((v) => v && String(v).trim());
-  return hit ? String(hit).trim() : null;
 }
 
 function formatQty(value) {
@@ -113,7 +105,21 @@ export default function WarehouseProductDetailScreen({ route }) {
     return resolveWarehouseCategoryNameFromList(assembly?.category_id, catalog?.categories);
   }, [assembly?.category_id, assembly?.category_name, catalog?.categories]);
 
-  const imageUri = assembly ? resolveAssemblyImageUri(assembly) : null;
+  const categoryIndex = useMemo(
+    () => buildWarehouseCategoryIndex(catalog?.categories),
+    [catalog?.categories],
+  );
+
+  const setComponentAssemblies = useMemo(() => {
+    if (!assembly || !isSetAssembly(assembly)) return [];
+    const entry = buildWarehouseCatalogSetEntries(catalog?.setItems, catalog?.assemblies)
+      .find((row) => String(row.setAssembly.id) === assemblyId);
+    return (entry?.components || []).map((line) => line.component).filter(Boolean);
+  }, [assembly, assemblyId, catalog?.assemblies, catalog?.setItems]);
+
+  const imageUri = assembly
+    ? resolveWarehouseCatalogAssemblyImageUri(assembly, { setComponentAssemblies, categoryIndex })
+    : null;
   const dimLine = assembly ? formatDimensionsLine(assembly) : '';
   const volumeLine = assembly ? formatVolumeLine(assembly) : '';
 

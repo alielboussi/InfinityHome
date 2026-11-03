@@ -27,6 +27,8 @@ import { assemblyDerivesWarehouseStockFromPackets } from '../utils/warehouseAsse
 import { generateRandomWarehouseSku16 } from '../utils/warehouseRandomSku';
 import { normalizeWarehousePacketNameKey } from '../utils/productionItemName';
 import { cacheClear, cacheGet, cacheSet } from '../utils/staleCache';
+import { buildWarehouseCategoryIndex } from '../utils/warehouseCategoryLookup.js';
+import { resolveSeaterSetCoverImageUrl } from '../utils/warehouseSeaterSetCoverImage.js';
 
 const WAREHOUSE_CATALOG_CACHE_KEY = 'warehouse:catalog:v2';
 
@@ -515,6 +517,26 @@ async function syncAssemblySetItems(setAssemblyId, setLocationId, setComponents,
   if (error) throw new Error(error.message || 'Failed to save set components');
 }
 
+async function applySeaterSetCoverImageForAssembly(setAssemblyId, componentIds) {
+  const ids = [...new Set((componentIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) return;
+  const { data: components, error: compErr } = await db
+    .from(ASSEMBLIES)
+    .select('id, name, category_id, image_url, thumbnail_url, cover_image_url, photo_url')
+    .in('id', ids);
+  if (compErr) throw new Error(compErr.message || 'Failed to load set products for cover image');
+  const { data: categories, error: catErr } = await db.from('categories').select('id, name');
+  if (catErr) throw new Error(catErr.message || 'Failed to load categories');
+  const categoryIndex = buildWarehouseCategoryIndex(categories || []);
+  const coverUrl = resolveSeaterSetCoverImageUrl(components || [], categoryIndex);
+  if (coverUrl === undefined) return;
+  const { error: updErr } = await db
+    .from(ASSEMBLIES)
+    .update({ image_url: coverUrl, updated_at: new Date().toISOString() })
+    .eq('id', setAssemblyId);
+  if (updErr) throw new Error(updErr.message || 'Failed to set cover image on set');
+}
+
 export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {}) {
   const name = titleCaseWords(String(payload?.name || '').trim());
   const familySku = normalizeWarehouseProductSku(payload?.family_sku);
@@ -641,6 +663,10 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
     await db.from(ASSEMBLY_PACKETS).delete().eq('assembly_id', assemblyId);
     await syncAssemblySetItems(assemblyId, setLocationId, setComponents, assembliesById, createPortal);
+    const componentIds = (setComponents || []).map(
+      (line) => String(line?.component_assembly_id || line?.assembly_id || '').trim(),
+    ).filter(Boolean);
+    await applySeaterSetCoverImageForAssembly(assemblyId, componentIds);
   } else if (warehouseLocationId) {
     await syncAssemblyPackets(assemblyId, packetLinks, warehouseLocationId, packetIds);
     if (inventoryMode === WAREHOUSE_INVENTORY_MODE.PACKETS && packetCount != null) {

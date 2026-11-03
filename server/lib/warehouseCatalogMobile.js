@@ -35,6 +35,7 @@ import {
   buildWarehouseCategoryIndex,
   resolveWarehouseCategoryName,
 } from '../../src/utils/warehouseCategoryLookup.js';
+import { resolveSeaterSetCoverImageUrl } from '../../src/utils/warehouseSeaterSetCoverImage.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const ASSEMBLY_QTY_SELECT = 'id, packet_count, inventory_mode, item_kind, units_per_carton';
@@ -558,6 +559,27 @@ async function syncAssemblySetItemsMobile(
   if (error) throw new Error(error.message || 'Failed to save set components');
 }
 
+async function applySeaterSetCoverImageFromComponents(sb, setAssemblyId, componentIds) {
+  const ids = [...new Set((componentIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) return;
+  const { data: components, error: compErr } = await sb
+    .from(ASSEMBLIES)
+    .select('id, name, category_id, image_url, thumbnail_url, cover_image_url, photo_url')
+    .in('id', ids);
+  if (compErr) throw new Error(compErr.message || 'Failed to load set products for cover image');
+  const { data: categories, error: catErr } = await sb.from('categories').select('id, name');
+  if (catErr) throw new Error(catErr.message || 'Failed to load categories');
+  const categoryIndex = buildWarehouseCategoryIndex(categories || []);
+  const coverUrl = resolveSeaterSetCoverImageUrl(components || [], categoryIndex);
+  if (coverUrl === undefined) return;
+  const now = new Date().toISOString();
+  const { error: updErr } = await sb
+    .from(ASSEMBLIES)
+    .update({ image_url: coverUrl, updated_at: now })
+    .eq('id', setAssemblyId);
+  if (updErr) throw new Error(updErr.message || 'Failed to set cover image on set');
+}
+
 async function saveSetAssemblyForMobile(sb, payload, createPortal) {
   const name = String(payload?.name || '').trim();
   const familySku = normalizeWarehouseProductSku(payload?.family_sku);
@@ -608,7 +630,13 @@ async function saveSetAssemblyForMobile(sb, payload, createPortal) {
   const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
   await syncAssemblySetItemsMobile(sb, id, setLocationId, setComponents, assembliesById, createPortal);
 
-  return row;
+  const componentIds = (setComponents || []).map(
+    (line) => String(line?.component_assembly_id || line?.assembly_id || '').trim(),
+  ).filter(Boolean);
+  await applySeaterSetCoverImageFromComponents(sb, id, componentIds);
+
+  const { data: refreshedSet } = await sb.from(ASSEMBLIES).select('*').eq('id', id).maybeSingle();
+  return refreshedSet || row;
 }
 
 export async function saveAssemblyForMobile(sb, payload) {

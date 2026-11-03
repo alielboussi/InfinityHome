@@ -24,6 +24,7 @@ import CatalogProductPhotoZoomModal from '../shared/CatalogProductPhotoZoomModal
 import { attachCatalogProductPhotoWithAi } from '../shared/catalogPhotoApi';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';
+import { resolveWarehouseCatalogAssemblyImageUri } from '../shared/warehouseAssemblyImageUri';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps';
@@ -104,19 +105,11 @@ function formatVolumeLine(assembly) {
   return `Volume (m³): ${display}`;
 }
 
-function resolveAssemblyImageUri(assembly) {
-  const candidates = [
-    assembly?.image_url,
-    assembly?.thumbnail_url,
-    assembly?.cover_image_url,
-    assembly?.photo_url,
-  ];
-  const hit = candidates.find((v) => v && String(v).trim());
-  return hit ? String(hit).trim() : null;
-}
-
-function ProductThumbnail({ assembly }) {
-  const uri = resolveAssemblyImageUri(assembly);
+function ProductThumbnail({ assembly, setComponentAssemblies, categoryIndex }) {
+  const uri = resolveWarehouseCatalogAssemblyImageUri(assembly, {
+    setComponentAssemblies,
+    categoryIndex,
+  });
   if (uri) {
     return (
       <Image
@@ -487,8 +480,12 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const productsOpen = expanded.has(productsOpenKey);
     const packetsOpen = expanded.has(packetsOpenKey);
     const cat = categoryName(setAssembly.category_id, setAssembly);
-    const imageUri = resolveAssemblyImageUri(setAssembly);
     const componentLines = (entry.components || []).filter((line) => line?.component);
+    const setComponentAssemblies = componentLines.map((line) => line.component).filter(Boolean);
+    const imageUri = resolveWarehouseCatalogAssemblyImageUri(setAssembly, {
+      setComponentAssemblies,
+      categoryIndex,
+    });
     const packetLines = componentLines.flatMap((line) => {
       const product = line.component;
       const prodId = String(product.id);
@@ -508,7 +505,11 @@ export default function WarehouseProductsScreen({ navigation, route }) {
                 }}
                 disabled={!imageUri}
               >
-                <ProductThumbnail assembly={setAssembly} />
+                <ProductThumbnail
+                  assembly={setAssembly}
+                  setComponentAssemblies={setComponentAssemblies}
+                  categoryIndex={categoryIndex}
+                />
               </Pressable>
               {renderCardPhotoActions(setAssembly)}
             </View>
@@ -610,7 +611,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const qtyStyle = catalogMode === 'incomplete'
       ? styles.qtyIncomplete
       : (qtyNum > 0 ? styles.qtyValuePositive : styles.qtyValueZero);
-    const imageUri = resolveAssemblyImageUri(assembly);
+    const imageUri = resolveWarehouseCatalogAssemblyImageUri(assembly, { categoryIndex });
 
     return (
       <View style={styles.gridCard}>
@@ -625,7 +626,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
               disabled={!imageUri}
               style={({ pressed }) => [imageUri && pressed && styles.thumbPressablePressed]}
             >
-              <ProductThumbnail assembly={assembly} />
+              <ProductThumbnail assembly={assembly} categoryIndex={categoryIndex} />
               {imageUri ? (
                 <View style={styles.thumbZoomBadge} pointerEvents="none">
                   <MaterialCommunityIcons name="magnify-plus-outline" size={16} color="#e2e8f0" />

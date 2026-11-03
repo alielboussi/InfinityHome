@@ -243,6 +243,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWarehouseSeaterSetCoverImage.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[warehouse-seater-set-cover:fail] verifyWarehouseSeaterSetCoverImage.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyProductionCatalogNameCheck.js', {
     cwd: process.cwd(),
     stdio: 'inherit',
