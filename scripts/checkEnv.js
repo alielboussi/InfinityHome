@@ -143,6 +143,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWarehouseProductionDeliverySearch.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[warehouse-production-delivery-search:fail] verifyWarehouseProductionDeliverySearch.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseDeliveryStock.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

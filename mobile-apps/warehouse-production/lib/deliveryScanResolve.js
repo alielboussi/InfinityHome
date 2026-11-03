@@ -20,7 +20,9 @@ export function resolveDeliveryCatalogScan(scan, { assemblies, packets, assembly
   if (packet) return { kind: 'packet', packet };
 
   const productKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(value));
-  const assembly = (assemblies || []).find((a) => {
+  const assembly = (Array.isArray(assemblies) ? assemblies : [])
+    .filter((a) => a && typeof a === 'object')
+    .find((a) => {
     const stored = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(a.family_sku));
     for (const key of productKeys) {
       if (key && stored.has(key)) return true;

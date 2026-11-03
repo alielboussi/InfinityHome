@@ -21,7 +21,10 @@ import {
 import { assembliesUsingPacket, findWarehousePacketByScan } from '../lib/deliveryPacketAssemblies';
 import { filterAssembliesForDeliverySearch } from '../lib/deliveryCatalogSearch';
 import { resolveDeliveryCatalogScan } from '../lib/deliveryScanResolve';
-import { isFinishedProductWithoutPacketBom } from '../shared/warehouseCatalogProductCompleteness';
+import {
+  isFinishedProductWithoutPacketBom,
+  isSetAssembly as isWarehouseSetAssembly,
+} from '../shared/warehouseCatalogProductCompleteness';
 import {
   assemblyUsesWarehouseBoxLabels,
   deliveryTruckBoxesToFinishedUnits,
@@ -42,7 +45,6 @@ import { buildPrintGroupsFromCart } from '../lib/deliveryPrintGroups';
 import {
   buildSetComponentScans,
   initSetDraftComponents,
-  isWarehouseSetAssembly,
   refreshSetDraftComponentQty,
   serializeSetGroupForSubmit,
   validateSetDraftForCart,
@@ -614,7 +616,7 @@ export default function KitweSendHomeScreen({ navigation }) {
                 onPress={() => selectAssemblyForDraft(a)}
               >
                 <Text style={[kiosk.listItemText, { textAlign }]}>
-                  {a.name}
+                  {String(a?.name || '').trim() || '—'}
                   {isWarehouseSetAssembly(a) ? ' (Set)' : ''}
                 </Text>
               </Pressable>

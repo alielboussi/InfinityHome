@@ -1,8 +1,8 @@
 import {
   buildDeliveryPrintGroupsFromCartGroups,
   isWarehouseSetDeliveryGroup,
-  resolveSetComponentsForDelivery,
 } from '../../../src/utils/warehouseDeliverySetPrint.js';
+import { resolveSetComponentsForDelivery } from './deliverySetCart.js';
 
 export {
   buildDeliveryPrintGroupsFromCartGroups,

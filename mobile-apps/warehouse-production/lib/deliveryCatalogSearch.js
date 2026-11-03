@@ -7,6 +7,11 @@ function compactText(value) {
   return String(value || '').toLowerCase().replace(/\s+/g, '');
 }
 
+function deliverySearchAssemblyRows(assemblies) {
+  if (!Array.isArray(assemblies)) return [];
+  return assemblies.filter((a) => a && typeof a === 'object');
+}
+
 /** Send Delivery product search — name or finished-product family SKU. */
 export function filterAssembliesForDeliverySearch(assemblies, rawQuery, { limit = 25 } = {}) {
   const q = String(rawQuery || '').trim();
@@ -15,7 +20,7 @@ export function filterAssembliesForDeliverySearch(assemblies, rawQuery, { limit 
   const qCompact = compactText(q);
   const scanKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(q));
 
-  return (assemblies || [])
+  return deliverySearchAssemblyRows(assemblies)
     .filter((a) => {
       const name = String(a.name || '');
       const nameLower = name.toLowerCase();

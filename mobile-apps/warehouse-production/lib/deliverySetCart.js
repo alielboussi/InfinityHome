@@ -1,12 +1,62 @@
 import { isFinishedProductWithoutPacketBom, isSetAssembly as isWarehouseSetAssembly } from '../shared/warehouseCatalogProductCompleteness';
 import {
+  KITWE_LOCATION_ID,
+  LUSAKA_BRANCH_ID,
+} from '../shared/locationIds';
+import {
   buildDeliveryPacketChecks,
   refreshDeliveryPacketCheckQty,
 } from './deliveryAssemblyChecks';
 import { filterAssembliesForDeliverySearch } from './deliveryCatalogSearch';
-import { resolveSetComponentsForDelivery } from './deliveryPrintGroups';
 
 export { isWarehouseSetAssembly };
+
+const KIT_SET_RECIPE_LOCATION_IDS = [KITWE_LOCATION_ID, LUSAKA_BRANCH_ID];
+
+function expandWarehouseSetItemsRows(rows) {
+  const out = [];
+  (rows || []).forEach((row) => {
+    if (!row || typeof row !== 'object') return;
+    if (row.location_id) {
+      out.push(row);
+      return;
+    }
+    KIT_SET_RECIPE_LOCATION_IDS.forEach((locationId) => {
+      out.push({ ...row, location_id: locationId });
+    });
+  });
+  return out;
+}
+
+/** Set BOM lines for Factory → Kitwe delivery (Kitwe recipe location). */
+export function resolveSetComponentsForDelivery(setAssemblyId, setUnits, setItems, assemblies) {
+  const setId = String(setAssemblyId || '').trim();
+  const u = Math.max(1, Number(setUnits) || 1);
+  const locId = KITWE_LOCATION_ID;
+  const assemblyById = new Map(
+    (Array.isArray(assemblies) ? assemblies : [])
+      .filter((a) => a && typeof a === 'object')
+      .map((a) => [String(a.id), a]),
+  );
+  const expanded = expandWarehouseSetItemsRows(setItems);
+  return expanded
+    .filter(
+      (row) => String(row.set_assembly_id) === setId
+        && (!locId || String(row.location_id) === locId),
+    )
+    .map((row) => {
+      const product = assemblyById.get(String(row.component_assembly_id));
+      if (!product || isWarehouseSetAssembly(product)) return null;
+      const perSet = Math.max(1, Number(row.quantity) || 1);
+      return {
+        assembly_id: product.id,
+        assembly_name: product.name,
+        quantity_per_set: perSet,
+        product_qty: u * perSet,
+      };
+    })
+    .filter(Boolean);
+}
 
 export function filterDeliverySearchAssemblies(assemblies, rawQuery, options) {
   return filterAssembliesForDeliverySearch(assemblies, rawQuery, options);
