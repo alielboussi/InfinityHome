@@ -115,7 +115,7 @@ export default function CatalogProductPhotoCaptureModal({
           </Pressable>
         </View>
         <Text style={styles.hint}>
-          Frame the product clearly. Portrait or sideways (landscape) phone angle is fine — AI straightens and adds a white catalog background after save. Mattresses: avoid tight plastic in frame if you can.
+          Import a product photo from your gallery when attaching on save (no in-app AI).
         </Text>
 
         {permissionLoading ? (
@@ -183,10 +183,12 @@ export default function CatalogProductPhotoCaptureModal({
 
 export function CatalogProductPhotoField({
   photoUri,
+  onOpenImport,
   onOpenCamera,
   onClear,
   disabled,
 }) {
+  const openImport = onOpenImport || onOpenCamera;
   return (
     <View style={fieldStyles.row}>
       <Text style={fieldStyles.label}>Product photo</Text>
@@ -209,15 +211,15 @@ export function CatalogProductPhotoField({
             </Pressable>
           </>
         ) : (
-          <Text style={fieldStyles.placeholder}>Optional — AI white background applied when you save.</Text>
+          <Text style={fieldStyles.placeholder}>Optional — import from gallery after you edit elsewhere.</Text>
         )}
         <Pressable
-          onPress={onOpenCamera}
-          disabled={disabled}
+          onPress={openImport}
+          disabled={disabled || !openImport}
           style={[formButtonStyles.iconCircle, disabled && formButtonStyles.disabled]}
-          accessibilityLabel="Take product photo"
+          accessibilityLabel="Import product photo"
         >
-          <Ionicons name="camera-outline" size={18} color={theme.primary} />
+          <Ionicons name="images-outline" size={18} color={theme.primary} />
         </Pressable>
       </View>
     </View>
@@ -231,14 +233,14 @@ export function CatalogProductPhotoIconButton({ onPress, disabled, busy }) {
       disabled={disabled || busy}
       hitSlop={8}
       style={[cardIconStyles.iconBtn, (disabled || busy) && cardIconStyles.iconBtnDisabled]}
-      accessibilityLabel="Retake product photo with AI"
+      accessibilityLabel="Import product photo"
       accessibilityRole="button"
     >
       {busy ? (
         <ActivityIndicator size="small" color="#38bdf8" />
       ) : (
         <MaterialCommunityIcons
-          name="camera"
+          name="image-plus"
           size={20}
           color={disabled ? '#475569' : '#38bdf8'}
         />

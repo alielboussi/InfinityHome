@@ -1,5 +1,5 @@
 /**
- * Long-running warehouse-catalog AI product photo attach (Vercel admin dispatcher — up to 300s).
+ * Warehouse-catalog product photo attach (direct import upload — up to 300s for large payloads).
  */
 import { runCatalogAssemblyPhotoAttach } from '../lib/warehouseCatalogPhotoAttach.js';
 

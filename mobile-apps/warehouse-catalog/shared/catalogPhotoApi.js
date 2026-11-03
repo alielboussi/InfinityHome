@@ -13,18 +13,13 @@ function sleep(ms) {
 
 function photoErrorRetryable(err) {
   if (!err) return false;
-  if (err.gateway) return true;
   const status = Number(err.status) || 0;
   if (status === 504 || status === 503 || status === 502) return true;
   const msg = String(err.message || '').toLowerCase();
-  return msg.includes('timeout')
-    || msg.includes('timed out')
-    || msg.includes('deployment')
-    || msg.includes('function_invocation')
-    || msg.includes('network');
+  return msg.includes('timeout') || msg.includes('timed out') || msg.includes('network');
 }
 
-async function postCatalogAiPhotoOnce({ assemblyId, imageBase64, categoryName, forceReupload }) {
+async function postCatalogPhotoOnce({ assemblyId, imageBase64, forceReupload }) {
   const token = await getFirebaseIdToken();
   if (!token) {
     const err = new Error('You must be signed in.');
@@ -44,10 +39,9 @@ async function postCatalogAiPhotoOnce({ assemblyId, imageBase64, categoryName, f
       adminAction: 'warehouse-catalog-photo',
       assembly_id: assemblyId,
       image_base64: imageBase64,
-      category_name: categoryName ? String(categoryName).trim() : undefined,
       force_reupload: forceReupload === true,
       client_source: CLIENT_SOURCE,
-      require_ai_retouch: true,
+      require_ai_retouch: false,
     }),
   });
 
@@ -57,34 +51,25 @@ async function postCatalogAiPhotoOnce({ assemblyId, imageBase64, categoryName, f
     try {
       payload = JSON.parse(rawBody);
     } catch {
-      const gateway = /deployment|function_invocation_timeout|DOCTYPE|<html/i.test(rawBody);
-      const err = new Error(
-        gateway ? 'AI photo server timed out. Retrying…' : `Request failed (${response.status})`,
-      );
-      err.gateway = gateway;
+      const err = new Error(`Request failed (${response.status})`);
       err.status = response.status;
       throw err;
     }
   }
 
   if (!response.ok || payload?.ok === false) {
-    const rawError = formatWarehouseMobileApiError(payload?.error, `Request failed (${response.status})`);
-    const timedOut = response.status === 504
-      || /deployment|function_invocation_timeout/i.test(rawError)
-      || /deployment|function_invocation_timeout/i.test(rawBody);
-    const err = new Error(timedOut ? 'AI photo server timed out. Retrying…' : rawError);
+    const err = new Error(formatWarehouseMobileApiError(payload?.error, `Request failed (${response.status})`));
     err.status = response.status;
-    err.gateway = timedOut;
     throw err;
   }
 
   return payload;
 }
 
-export async function attachCatalogProductPhotoWithAi({
+/** Upload imported catalog photo (no server-side AI). */
+export async function attachCatalogProductPhoto({
   assemblyId,
   imageBase64,
-  categoryName,
   forceReupload = false,
   onAttempt,
 } = {}) {
@@ -93,22 +78,24 @@ export async function attachCatalogProductPhotoWithAi({
   if (!id) throw new Error('assembly_id is required.');
   if (!image) throw new Error('Product photo is required.');
 
-  const maxAttempts = 4;
+  const maxAttempts = 3;
   let lastErr;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (typeof onAttempt === 'function') onAttempt(attempt, maxAttempts);
     try {
-      return await postCatalogAiPhotoOnce({
+      return await postCatalogPhotoOnce({
         assemblyId: id,
         imageBase64: image,
-        categoryName,
         forceReupload,
       });
     } catch (err) {
       lastErr = err;
       if (!photoErrorRetryable(err) || attempt === maxAttempts) throw err;
-      await sleep(3000 * attempt);
+      await sleep(2000 * attempt);
     }
   }
   throw lastErr || new Error('Photo upload failed.');
 }
+
+/** @deprecated use attachCatalogProductPhoto */
+export const attachCatalogProductPhotoWithAi = attachCatalogProductPhoto;

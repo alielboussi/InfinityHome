@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,11 +17,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
 import { isWarehouseCatalogAddProductAllowed, isWarehouseCatalogLabelPrintAllowed, isWarehouseProductFormInsertAllowed } from '../shared/mobileAccessManifest';
 import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
-import CatalogProductPhotoCaptureModal, {
-  CatalogProductPhotoIconButton,
-} from '../shared/CatalogProductPhotoCapture';
+import { CatalogProductPhotoIconButton } from '../shared/CatalogProductPhotoCapture';
 import CatalogProductPhotoZoomModal from '../shared/CatalogProductPhotoZoomModal';
-import { attachCatalogProductPhotoWithAi } from '../shared/catalogPhotoApi';
+import { attachCatalogProductPhoto } from '../shared/catalogPhotoApi';
+import { pickCatalogProductPhotoFromLibrary } from '../shared/pickCatalogProductPhoto';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';
 import { resolveWarehouseCatalogAssemblyImageUri } from '../shared/warehouseAssemblyImageUri';
@@ -144,14 +143,12 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const grant = useSharedMobileAccessGrant();
   const canAddProduct = isWarehouseCatalogAddProductAllowed(grant);
   const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant);
-  const canRetakePhoto = canAddProduct;
+  const canImportPhoto = canAddProduct;
   const [search, setSearch] = useState('');
   const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => new Set());
   const [photoPreview, setPhotoPreview] = useState(null);
   const [labelPrintItem, setLabelPrintItem] = useState(null);
-  const [photoCaptureTarget, setPhotoCaptureTarget] = useState(null);
-  const photoCaptureTargetRef = useRef(null);
   const [photoBusyAssemblyId, setPhotoBusyAssemblyId] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
 
@@ -160,10 +157,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       ensureFresh({ fullPackets: false });
     }, [ensureFresh]),
   );
-
-  useEffect(() => {
-    photoCaptureTargetRef.current = photoCaptureTarget;
-  }, [photoCaptureTarget]);
 
   const packetsByAssembly = useMemo(
     () => buildPacketsByAssembly(catalog?.assemblyPackets, catalog?.packets),
@@ -390,49 +383,42 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     setLabelPrintItem({ name: labelName, sku: labelSku, defaultCopies: 1 });
   };
 
-  const openPhotoRetake = (assembly) => {
-    if (!canRetakePhoto || !assembly?.id) return;
+  const importProductPhoto = async (assembly) => {
+    if (!canImportPhoto || !assembly?.id) return;
     const productName = String(assembly.name || '').trim();
     if (isMattressCatalogProductName(productName)) {
-      Alert.alert('Photo not available', 'Mattress photos are added from web admin, not AI retouch.');
+      Alert.alert('Photo not available', 'Mattress photos are added from web admin.');
       return;
     }
     if (photoBusyAssemblyId) return;
-    setPhotoCaptureTarget({
-      assemblyId: String(assembly.id),
-      productName,
-      categoryName: categoryName(assembly.category_id, assembly),
-    });
-  };
-
-  const handlePhotoCaptured = useCallback(async (photo, target) => {
-    if (!target?.assemblyId || !photo?.uri) return;
-    setPhotoBusyAssemblyId(target.assemblyId);
+    const assemblyId = String(assembly.id);
     try {
-      const imageBase64 = await prepareCatalogPhotoForUpload(photo);
-      await attachCatalogProductPhotoWithAi({
-        assemblyId: target.assemblyId,
+      const picked = await pickCatalogProductPhotoFromLibrary();
+      if (!picked?.uri) return;
+      setPhotoBusyAssemblyId(assemblyId);
+      const imageBase64 = await prepareCatalogPhotoForUpload(picked);
+      await attachCatalogProductPhoto({
+        assemblyId,
         imageBase64,
-        categoryName: target.categoryName,
         forceReupload: true,
       });
       await refresh({ force: true, background: true });
     } catch (err) {
-      Alert.alert('Photo failed', String(err?.message || 'Could not save AI photo.'));
+      Alert.alert('Photo import failed', String(err?.message || 'Could not upload photo.'));
     } finally {
       setPhotoBusyAssemblyId('');
     }
-  }, [refresh]);
+  };
 
   const renderCardPhotoActions = (assembly) => {
     const id = String(assembly?.id || '');
-    if (!canRetakePhoto && !canPrintLabel) return null;
+    if (!canImportPhoto && !canPrintLabel) return null;
     const busy = photoBusyAssemblyId === id;
     return (
       <View style={styles.printFab}>
-        {canRetakePhoto ? (
+        {canImportPhoto ? (
           <CatalogProductPhotoIconButton
-            onPress={() => openPhotoRetake(assembly)}
+            onPress={() => importProductPhoto(assembly)}
             disabled={Boolean(photoBusyAssemblyId && !busy)}
             busy={busy}
           />
@@ -840,16 +826,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         visible={Boolean(labelPrintItem)}
         item={labelPrintItem}
         onClose={() => setLabelPrintItem(null)}
-      />
-
-      <CatalogProductPhotoCaptureModal
-        visible={Boolean(photoCaptureTarget)}
-        onCancel={() => setPhotoCaptureTarget(null)}
-        onCaptured={(photo) => {
-          const target = photoCaptureTargetRef.current;
-          setPhotoCaptureTarget(null);
-          handlePhotoCaptured(photo, target);
-        }}
       />
     </View>
   );

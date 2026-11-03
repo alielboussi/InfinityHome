@@ -78,6 +78,12 @@ module.exports = {
         },
       ],
       [
+        'expo-image-picker',
+        {
+          photosPermission: 'Factory needs access to your photos to import catalog product images.',
+        },
+      ],
+      [
         'expo-local-authentication',
         { faceIDPermission: 'Unlock Factory with Face ID.' },
       ],

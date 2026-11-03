@@ -1,6 +1,5 @@
 import { createFirestoreServerClient } from './firestoreServerClient.js';
 import { attachProductionAssemblyCatalogPhoto } from './productionPacketCatalogPhoto.js';
-import { getGeminiCatalogPhotoApiKey } from './geminiImageEmbedding.js';
 import { canManageCatalog } from '../../src/accessControl.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from './loginAccess.js';
 import { normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
@@ -27,13 +26,10 @@ async function assertCatalogPhotoUser(user) {
 }
 
 /**
- * AI catalog photo for warehouse-catalog mobile (Gemini retouch + assembly image_url).
+ * Upload catalog product photo from warehouse-catalog mobile (direct import, no AI retouch).
  */
 export async function runCatalogAssemblyPhotoAttach(body, user) {
   await assertCatalogPhotoUser(user);
-  if (!getGeminiCatalogPhotoApiKey()) {
-    throw new Error('GEMINI_API_KEY_CATALOG or GEMINI_API_KEY is not configured on the server.');
-  }
 
   const sb = getService();
   const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
@@ -42,7 +38,7 @@ export async function runCatalogAssemblyPhotoAttach(body, user) {
   if (!assemblyId) throw new Error('assembly_id is required.');
   if (!imageBase64) throw new Error('Product photo is required.');
   if (imageBase64.length > MAX_IMAGE_BASE64_CHARS) {
-    throw new Error('Photo is too large. Retake the picture or move closer and try again.');
+    throw new Error('Photo is too large. Choose a smaller image and try again.');
   }
 
   const { data: assembly, error: loadErr } = await sb
@@ -53,17 +49,7 @@ export async function runCatalogAssemblyPhotoAttach(body, user) {
   if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
   if (!assembly) throw new Error('Product not found.');
   if (isMattressCatalogProductName(assembly.name)) {
-    throw new Error('AI catalog photo retouch is only for furniture. Add mattress images from web admin if needed.');
-  }
-
-  let categoryName = String(body.category_name || body.categoryName || '').trim();
-  if (!categoryName && assembly.category_id) {
-    const { data: catRow } = await sb
-      .from('categories')
-      .select('name')
-      .eq('id', assembly.category_id)
-      .maybeSingle();
-    categoryName = String(catRow?.name || '').trim();
+    throw new Error('Add mattress images from web admin.');
   }
 
   const existingUrl = String(assembly.image_url || '').trim();
@@ -81,10 +67,9 @@ export async function runCatalogAssemblyPhotoAttach(body, user) {
     assembly,
     imageBase64,
     productName: assembly.name,
-    categoryName,
-    skipAiRetouch: false,
-    requireAiRetouch: true,
-    resolveApiKey: getGeminiCatalogPhotoApiKey,
+    skipAiRetouch: true,
+    requireAiRetouch: false,
+    directCatalogUpload: true,
   });
 
   const { data: refreshed } = await sb

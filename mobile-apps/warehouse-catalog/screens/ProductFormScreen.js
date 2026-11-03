@@ -49,11 +49,10 @@ import {
   finishedUnitsFromBoxCount,
   formatWarehouseBoxAndUnitStock,
 } from '../shared/warehouseUnitsPerCarton';
-import CatalogProductPhotoCaptureModal, {
-  CatalogProductPhotoField,
-} from '../shared/CatalogProductPhotoCapture';
+import { CatalogProductPhotoField } from '../shared/CatalogProductPhotoCapture';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
-import { attachCatalogProductPhotoWithAi } from '../shared/catalogPhotoApi';
+import { attachCatalogProductPhoto } from '../shared/catalogPhotoApi';
+import { pickCatalogProductPhotoFromLibrary } from '../shared/pickCatalogProductPhoto';
 import { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';
 import { resolveWarehouseCategoryNameFromList } from '../shared/warehouseCategoryLookup';
 
@@ -92,7 +91,6 @@ export default function ProductFormScreen({ route, navigation }) {
   const [finishedQtyValue, setFinishedQtyValue] = useState('0');
   const [finishedQtySaving, setFinishedQtySaving] = useState(false);
   const [productPhoto, setProductPhoto] = useState(null);
-  const [photoCameraOpen, setPhotoCameraOpen] = useState(false);
   const productPhotoRef = useRef(null);
   productPhotoRef.current = productPhoto;
   const skuInputRef = useRef(null);
@@ -367,24 +365,19 @@ export default function ProductFormScreen({ route, navigation }) {
     if (!photo?.uri || !assemblyId) return;
     if (isMattressCatalogProductName(productName)) {
       setProductPhoto(null);
-      setNotice('Mattress saved without AI photo (furniture only). Add image from web admin if needed.');
+      setNotice('Mattress saved without photo. Add image from web admin if needed.');
       return;
     }
-    setNotice('AI retouching product photo (white background)…');
+    setNotice('Uploading product photo…');
     const imageBase64 = await prepareCatalogPhotoForUpload(photo);
-    const categoryName = resolveWarehouseCategoryNameFromList(categoryId, categories) || '';
-    await attachCatalogProductPhotoWithAi({
+    await attachCatalogProductPhoto({
       assemblyId,
       imageBase64,
-      categoryName,
-      onAttempt: (attempt, max) => {
-        setNotice(`AI retouching photo… ${attempt}/${max}`);
-      },
     });
     setProductPhoto(null);
     refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
-    setNotice('Product photo saved with white catalog background.');
-  }, [refreshGlobalCatalog, categoryId, categories]);
+    setNotice('Product photo saved.');
+  }, [refreshGlobalCatalog]);
 
   const handlePacketSearchChange = useCallback((text) => {
     const raw = String(text || '');
@@ -654,12 +647,22 @@ export default function ProductFormScreen({ route, navigation }) {
     <WarehouseCatalogFormScroll scrollRef={scrollRef} contentContainerStyle={styles.wrap}>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.hint}>
-        Tap the camera icon to add a product photo — on save, AI clears it up and adds a white catalog background.
+        Import a product photo from your gallery (e.g. after editing in ChatGPT). It uploads as-is when you save.
       </Text>
       {!existing && !bomEditMode ? (
         <CatalogProductPhotoField
           photoUri={productPhoto?.uri}
-          onOpenCamera={() => setPhotoCameraOpen(true)}
+          onOpenImport={async () => {
+            try {
+              const picked = await pickCatalogProductPhotoFromLibrary();
+              if (picked?.uri) {
+                setProductPhoto(picked);
+                setNotice('Photo ready — save the product to upload.');
+              }
+            } catch (err) {
+              setError(err?.message || 'Could not open photo library.');
+            }
+          }}
           onClear={() => setProductPhoto(null)}
           disabled={busy}
         />
@@ -1009,15 +1012,6 @@ export default function ProductFormScreen({ route, navigation }) {
         </View>
       </KeyboardAvoidingView>
     </Modal>
-    <CatalogProductPhotoCaptureModal
-      visible={photoCameraOpen}
-      onCancel={() => setPhotoCameraOpen(false)}
-      onCaptured={(photo) => {
-        setPhotoCameraOpen(false);
-        setProductPhoto(photo);
-        setNotice('Photo ready — save the product to run AI retouch.');
-      }}
-    />
     </>
   );
 }
