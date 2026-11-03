@@ -24,7 +24,7 @@ function photoErrorRetryable(err) {
     || msg.includes('network');
 }
 
-async function postCatalogAiPhotoOnce({ assemblyId, imageBase64, categoryName }) {
+async function postCatalogAiPhotoOnce({ assemblyId, imageBase64, categoryName, forceReupload }) {
   const token = await getFirebaseIdToken();
   if (!token) {
     const err = new Error('You must be signed in.');
@@ -45,6 +45,7 @@ async function postCatalogAiPhotoOnce({ assemblyId, imageBase64, categoryName })
       assembly_id: assemblyId,
       image_base64: imageBase64,
       category_name: categoryName ? String(categoryName).trim() : undefined,
+      force_reupload: forceReupload === true,
       client_source: CLIENT_SOURCE,
       require_ai_retouch: true,
     }),
@@ -84,6 +85,7 @@ export async function attachCatalogProductPhotoWithAi({
   assemblyId,
   imageBase64,
   categoryName,
+  forceReupload = false,
   onAttempt,
 } = {}) {
   const id = String(assemblyId || '').trim();
@@ -100,6 +102,7 @@ export async function attachCatalogProductPhotoWithAi({
         assemblyId: id,
         imageBase64: image,
         categoryName,
+        forceReupload,
       });
     } catch (err) {
       lastErr = err;

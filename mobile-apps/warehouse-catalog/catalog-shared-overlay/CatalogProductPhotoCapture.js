@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from './theme';
 import { formButtonStyles } from './formButtonStyles';
 import {
@@ -114,7 +115,7 @@ export default function CatalogProductPhotoCaptureModal({
           </Pressable>
         </View>
         <Text style={styles.hint}>
-          Frame the product clearly. After save, AI will sharpen it and add a white catalog background.
+          Frame the product clearly. Mattresses: avoid tight plastic in frame if you can — AI removes wrap and adds a white catalog background after save.
         </Text>
 
         {permissionLoading ? (
@@ -222,6 +223,43 @@ export function CatalogProductPhotoField({
     </View>
   );
 }
+
+export function CatalogProductPhotoIconButton({ onPress, disabled, busy }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || busy}
+      hitSlop={8}
+      style={[cardIconStyles.iconBtn, (disabled || busy) && cardIconStyles.iconBtnDisabled]}
+      accessibilityLabel="Retake product photo with AI"
+      accessibilityRole="button"
+    >
+      {busy ? (
+        <ActivityIndicator size="small" color="#38bdf8" />
+      ) : (
+        <MaterialCommunityIcons
+          name="camera"
+          size={20}
+          color={disabled ? '#475569' : '#38bdf8'}
+        />
+      )}
+    </Pressable>
+  );
+}
+
+const cardIconStyles = StyleSheet.create({
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnDisabled: { opacity: 0.4 },
+});
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: theme.bg, padding: 16 },
