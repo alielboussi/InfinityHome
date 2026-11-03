@@ -94,7 +94,7 @@ function shouldUseTrimmedBounds(bounds, width, height) {
  * @param {number} size
  * @returns {HTMLCanvasElement}
  */
-export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX, { fit = 'cover' } = {}) {
+export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX, { fit = 'contain' } = {}) {
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
   if (!w || !h) throw new Error('Invalid image dimensions');
@@ -161,7 +161,7 @@ export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX, 
  */
 export async function fileToSquareCatalogImage(file, size = WAREHOUSE_CATALOG_IMAGE_PX, options = {}) {
   const img = await loadImageFromFile(file);
-  const fit = options.fit === 'contain' ? 'contain' : 'cover';
+  const fit = options.fit === 'cover' ? 'cover' : 'contain';
   const canvas = drawImageToSquareCanvas(img, size, { fit });
   const blob = await canvasToBlob(canvas, 'image/jpeg', 0.92);
   const base = (file.name || 'product').replace(/\.[^.]+$/, '');

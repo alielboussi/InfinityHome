@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Modal,
@@ -49,7 +50,7 @@ import {
   collectSetComponentAssemblyIds,
   expandKeyProduct,
   expandKeySet,
-  expandKeySetProduct,
+  expandKeySetPackets,
 } from '../shared/warehouseCatalogSetList';
 
 const LIST_PERF = {
@@ -111,7 +112,14 @@ function resolveAssemblyImageUri(assembly) {
 function ProductThumbnail({ assembly }) {
   const uri = resolveAssemblyImageUri(assembly);
   if (uri) {
-    return <Image source={{ uri }} style={styles.thumb} resizeMode="cover" accessibilityLabel="" />;
+    return (
+      <Image
+        source={{ uri }}
+        style={styles.thumb}
+        resizeMode="contain"
+        accessibilityLabel=""
+      />
+    );
   }
   return (
     <View style={styles.thumbPlaceholder}>
@@ -354,6 +362,14 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     navigation.navigate('SetForm');
   };
 
+  const openAddMenu = () => {
+    Alert.alert('Add to catalog', 'Choose what to create', [
+      { text: 'Product', onPress: openNewProductForm },
+      { text: 'Set', onPress: openNewSetForm },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const formatQty = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return '0';
@@ -395,10 +411,20 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const renderSetCard = (entry) => {
     const setAssembly = entry.setAssembly;
     const setId = String(setAssembly.id);
-    const setOpenKey = expandKeySet(setId);
-    const isSetOpen = expanded.has(setOpenKey);
+    const productsOpenKey = expandKeySet(setId);
+    const packetsOpenKey = expandKeySetPackets(setId);
+    const productsOpen = expanded.has(productsOpenKey);
+    const packetsOpen = expanded.has(packetsOpenKey);
     const cat = categoryName(setAssembly.category_id, setAssembly);
     const imageUri = resolveAssemblyImageUri(setAssembly);
+    const componentLines = (entry.components || []).filter((line) => line?.component);
+    const packetLines = componentLines.flatMap((line) => {
+      const product = line.component;
+      const prodId = String(product.id);
+      const pktList = packetsByAssembly.get(prodId) || [];
+      const perSet = Math.max(1, Number(line.quantity) || 1);
+      return pktList.map((packet) => ({ packet, product, perSet }));
+    });
 
     return (
       <View style={[styles.gridCard, styles.setGridCard]}>
@@ -413,57 +439,69 @@ export default function WarehouseProductsScreen({ navigation, route }) {
               >
                 <ProductThumbnail assembly={setAssembly} />
               </Pressable>
-              <Pressable
-                style={styles.expandFab}
-                onPress={() => toggleExpanded(setOpenKey)}
-                hitSlop={8}
-                accessibilityLabel={isSetOpen ? 'Hide set products' : 'Show set products'}
-              >
-                <Text style={[styles.expandIcon, isSetOpen && styles.expandIconOpen]}>▶</Text>
-              </Pressable>
             </View>
             <Text style={styles.cardTitle} numberOfLines={2}>{setAssembly.name}</Text>
             <Text style={styles.cardSku} numberOfLines={1}>{setAssembly.family_sku}</Text>
             <Text style={styles.cardMeta} numberOfLines={2}>
-              Set · {cat || '—'} · {entry.components.length} product{entry.components.length === 1 ? '' : 's'}
+              Set · {cat || '—'} · {componentLines.length} product{componentLines.length === 1 ? '' : 's'}
             </Text>
           </View>
         </View>
-        {isSetOpen ? (
+        <View style={styles.setInlayBar}>
+          <Pressable
+            style={styles.setInlayToggle}
+            onPress={() => toggleExpanded(productsOpenKey)}
+            accessibilityLabel={productsOpen ? 'Hide set products' : 'Show set products'}
+          >
+            <Text style={[styles.setExpandIcon, productsOpen && styles.expandIconOpen]}>▶</Text>
+            <Text style={styles.setInlayLabel}>
+              Products ({componentLines.length})
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.setInlayToggle}
+            onPress={() => toggleExpanded(packetsOpenKey)}
+            accessibilityLabel={packetsOpen ? 'Hide set packets' : 'Show set packets'}
+          >
+            <Text style={[styles.setExpandIcon, packetsOpen && styles.expandIconOpen]}>▶</Text>
+            <Text style={styles.setInlayLabel}>
+              Packets ({packetLines.length})
+            </Text>
+          </Pressable>
+        </View>
+        {productsOpen ? (
           <View style={styles.setRecipeList}>
-            {entry.components.map((line) => {
-              const product = line.component;
-              if (!product) return null;
-              const prodId = String(product.id);
-              const pktList = packetsByAssembly.get(prodId) || [];
-              const perSet = Math.max(1, Number(line.quantity) || 1);
-              const prodKey = expandKeySetProduct(setId, prodId);
-              const prodOpen = expanded.has(prodKey);
-              const hasPackets = pktList.length > 0;
-              return (
-                <View key={prodId} style={styles.setComponentBlock}>
-                  <Pressable
-                    style={styles.setProductRow}
-                    onPress={hasPackets ? () => toggleExpanded(prodKey) : undefined}
-                    disabled={!hasPackets}
-                  >
-                    {hasPackets ? (
-                      <Text style={[styles.setExpandIcon, prodOpen && styles.expandIconOpen]}>▶</Text>
-                    ) : (
-                      <Text style={styles.setExpandIcon}>·</Text>
-                    )}
+            {componentLines.length === 0 ? (
+              <Text style={styles.packetEmpty}>No products in this set.</Text>
+            ) : (
+              componentLines.map((line) => {
+                const product = line.component;
+                const perSet = Math.max(1, Number(line.quantity) || 1);
+                return (
+                  <View key={String(product.id)} style={styles.setProductLine}>
                     <Text style={styles.setProductName} numberOfLines={2}>
                       {product.name} ×{perSet}
                     </Text>
-                  </Pressable>
-                  {prodOpen && hasPackets ? (
-                    <View style={styles.setPacketList}>
-                      {pktList.map(renderPacket)}
-                    </View>
-                  ) : null}
+                  </View>
+                );
+              })
+            )}
+          </View>
+        ) : null}
+        {packetsOpen ? (
+          <View style={[styles.setRecipeList, styles.setPacketInlay]}>
+            {packetLines.length === 0 ? (
+              <Text style={styles.packetEmpty}>No packets on set products.</Text>
+            ) : (
+              packetLines.map(({ packet, product, perSet }) => (
+                <View key={`${product.id}-${packet.id}`} style={styles.setPacketGroup}>
+                  <Text style={styles.setPacketProductHint} numberOfLines={1}>
+                    {product.name} ×{perSet}
+                  </Text>
+                  {renderPacket(packet)}
                 </View>
-              );
-            })}
+              ))
+            )}
           </View>
         ) : null}
       </View>
@@ -616,22 +654,13 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           />
         </Pressable>
         {catalogMode === 'complete' && canAddProduct ? (
-          <>
-            <Pressable
-              style={styles.addSetBtn}
-              onPress={openNewSetForm}
-              accessibilityLabel="Add new set"
-            >
-              <Text style={styles.addSetBtnText}>Set</Text>
-            </Pressable>
-            <Pressable
-              style={styles.addBtn}
-              onPress={openNewProductForm}
-              accessibilityLabel="Add new product"
-            >
-              <Text style={styles.addBtnText}>+</Text>
-            </Pressable>
-          </>
+          <Pressable
+            style={styles.addBtn}
+            onPress={openAddMenu}
+            accessibilityLabel="Add product or set"
+          >
+            <Text style={styles.addBtnText}>+</Text>
+          </Pressable>
         ) : null}
       </View>
 
@@ -658,7 +687,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             <Text style={styles.empty}>
               {catalogMode === 'incomplete'
                 ? 'No incomplete products.'
-                : 'No products or sets yet. Tap + or Set to add.'}
+                : 'No products or sets yet. Tap + to add a product or set.'}
             </Text>
           }
           refreshing={refreshing}
@@ -859,18 +888,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addBtnText: { color: '#e2e8f0', fontSize: 26, fontWeight: '300', marginTop: -2 },
-  addSetBtn: {
-    height: 44,
-    paddingHorizontal: 10,
-    borderRadius: theme.radiusSm,
-    backgroundColor: theme.surfaceElevated,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addSetBtnText: { color: '#94a3b8', fontSize: 13, fontWeight: '700' },
   setGridCard: { borderColor: 'rgba(56, 189, 248, 0.35)' },
+  setInlayBar: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.border,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  setInlayToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  setInlayLabel: { color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 },
   setRecipeList: {
     borderTopWidth: 1,
     borderTopColor: theme.border,
@@ -878,15 +910,25 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 4,
   },
-  setComponentBlock: { marginTop: 6 },
-  setProductRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  setProductLine: { paddingVertical: 4 },
   setExpandIcon: { width: 16, fontSize: 11, color: theme.textMuted, marginTop: 2 },
   setProductName: { flex: 1, color: theme.text, fontSize: 13, fontWeight: '600' },
-  setPacketList: { marginLeft: 22, marginTop: 4 },
+  setPacketInlay: { borderTopWidth: 0, paddingTop: 0 },
+  setPacketGroup: { marginTop: 6 },
+  setPacketProductHint: {
+    color: theme.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 2,
+    paddingHorizontal: 2,
+  },
   listContent: { paddingHorizontal: 10, paddingBottom: 24 },
   gridRow: { gap: 8, marginBottom: 8 },
   gridCard: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: '48%',
+    maxWidth: '48%',
     backgroundColor: theme.surface,
     borderRadius: theme.radius,
     borderWidth: 1,
@@ -921,7 +963,7 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 1,
     borderRadius: 8,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#ffffff',
   },
   thumbPlaceholder: {
     width: '100%',

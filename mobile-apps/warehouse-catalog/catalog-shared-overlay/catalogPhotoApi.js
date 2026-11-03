@@ -24,7 +24,7 @@ function photoErrorRetryable(err) {
     || msg.includes('network');
 }
 
-async function postCatalogAiPhotoOnce({ assemblyId, imageBase64 }) {
+async function postCatalogAiPhotoOnce({ assemblyId, imageBase64, categoryName }) {
   const token = await getFirebaseIdToken();
   if (!token) {
     const err = new Error('You must be signed in.');
@@ -44,6 +44,7 @@ async function postCatalogAiPhotoOnce({ assemblyId, imageBase64 }) {
       adminAction: 'warehouse-catalog-photo',
       assembly_id: assemblyId,
       image_base64: imageBase64,
+      category_name: categoryName ? String(categoryName).trim() : undefined,
       client_source: CLIENT_SOURCE,
       require_ai_retouch: true,
     }),
@@ -82,6 +83,7 @@ async function postCatalogAiPhotoOnce({ assemblyId, imageBase64 }) {
 export async function attachCatalogProductPhotoWithAi({
   assemblyId,
   imageBase64,
+  categoryName,
   onAttempt,
 } = {}) {
   const id = String(assemblyId || '').trim();
@@ -94,7 +96,11 @@ export async function attachCatalogProductPhotoWithAi({
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     if (typeof onAttempt === 'function') onAttempt(attempt, maxAttempts);
     try {
-      return await postCatalogAiPhotoOnce({ assemblyId: id, imageBase64: image });
+      return await postCatalogAiPhotoOnce({
+        assemblyId: id,
+        imageBase64: image,
+        categoryName,
+      });
     } catch (err) {
       lastErr = err;
       if (!photoErrorRetryable(err) || attempt === maxAttempts) throw err;

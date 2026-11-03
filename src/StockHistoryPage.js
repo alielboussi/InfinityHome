@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
+import useDebouncedValue from './hooks/useDebouncedValue';
 import {
   fetchComboAdjustmentHistory,
   fetchInventoryAdjustmentHistory,
@@ -40,6 +41,7 @@ export default function StockHistoryPage() {
   const [locationId, setLocationId] = useState('');
   const [catalogKey, setCatalogKey] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 160);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -107,7 +109,7 @@ export default function StockHistoryPage() {
   }, [comboItemsByCombo, getLiveLocationQty]);
 
   const filteredProducts = useMemo(() => {
-    const term = (search || '').trim().toLowerCase();
+    const term = (debouncedSearch || '').trim().toLowerCase();
     const list = products || [];
     if (!term) return list.slice(0, 80);
     return list
@@ -116,10 +118,10 @@ export default function StockHistoryPage() {
         || (p.sku && String(p.sku).toLowerCase().includes(term))
       )
       .slice(0, 80);
-  }, [products, search]);
+  }, [products, debouncedSearch]);
 
   const filteredCombos = useMemo(() => {
-    const term = (search || '').trim().toLowerCase();
+    const term = (debouncedSearch || '').trim().toLowerCase();
     const list = combos || [];
     if (!term) return list.slice(0, 80);
     return list
@@ -128,7 +130,7 @@ export default function StockHistoryPage() {
         || (c.sku && String(c.sku).toLowerCase().includes(term))
       )
       .slice(0, 80);
-  }, [combos, search]);
+  }, [combos, debouncedSearch]);
 
   const selectedProduct = useMemo(() => {
     if (itemKind !== 'product') return null;

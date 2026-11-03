@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 import db from './dataClient';
@@ -29,6 +29,7 @@ import { generateRandomWarehouseSku16 } from './utils/warehouseRandomSku';
 import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { recomputeWarehouseLocationStock } from './services/warehouseTransfer';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
+import useDebouncedValue from './hooks/useDebouncedValue';
 
 const emptyLine = () => ({ component_assembly_id: '', quantity: 1 });
 
@@ -48,6 +49,7 @@ export default function KitweProductsPage() {
   const [priceMap, setPriceMap] = useState(new Map());
   const [retailIndex, setRetailIndex] = useState(() => indexRetailProducts([]));
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 160);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [priceDraft, setPriceDraft] = useState({});
   const [savingId, setSavingId] = useState('');
@@ -71,13 +73,28 @@ export default function KitweProductsPage() {
   const [assemblyPacketRows, setAssemblyPacketRows] = useState([]);
   const [packetInventory, setPacketInventory] = useState([]);
   const [expandedAssemblyIds, setExpandedAssemblyIds] = useState(() => new Set());
+  const hasCatalogRef = useRef(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const background = hasCatalogRef.current;
+    if (!background) setLoading(true);
     setError('');
     try {
       const [data, locPrices, catRes] = await Promise.all([
-        fetchWarehouseCatalog(),
+        fetchWarehouseCatalog({
+          onCachedSnapshot: (snap) => {
+            const allAssemblies = snap.assemblies || [];
+            setAssemblies(allAssemblies);
+            setAssemblyInventory(snap.assemblyInventory || []);
+            setWarehouseLocationId(snap.warehouseLocationId || null);
+            setSetItems(snap.setItems || []);
+            setPackets(snap.packets || []);
+            setAssemblyPacketRows(snap.assemblyPackets || []);
+            setPacketInventory(snap.inventory || []);
+            hasCatalogRef.current = true;
+            setLoading(false);
+          },
+        }),
         fetchProductLocationPricesForLocation(db, KITWE_LOCATION_ID),
         db.from('categories').select('id, name').order('name'),
       ]);
@@ -97,6 +114,7 @@ export default function KitweProductsPage() {
       );
       const setAsm = allAssemblies.filter((a) => isWarehouseSetAssembly(a));
       setRetailIndex(await loadRetailProductsForAssemblies([...deliveredProducts, ...setAsm], []));
+      hasCatalogRef.current = true;
     } catch (err) {
       setError(err?.message || 'Failed to load Kitwe catalog');
     } finally {
@@ -185,7 +203,7 @@ export default function KitweProductsPage() {
   );
 
   const productRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     return filterKitweCatalogProducts(assemblies, assemblyInventory)
       .filter((a) => {
         if (categoryFilter && String(a.category_id || '') !== String(categoryFilter)) return false;
@@ -209,10 +227,10 @@ export default function KitweProductsPage() {
         };
       })
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  }, [assemblies, assemblyInventory, qtyByAssembly, search, categoryFilter, categoriesById, retailIndex, priceMap]);
+  }, [assemblies, assemblyInventory, qtyByAssembly, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap]);
 
   const setRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     return listKitweWarehouseSets(assemblies, setItems, assemblyInventory)
       .filter((row) => {
         if (categoryFilter && String(row.category_id || '') !== String(categoryFilter)) return false;
@@ -234,7 +252,7 @@ export default function KitweProductsPage() {
           promoPrice: pricing.promotional_price,
         };
       });
-  }, [assemblies, setItems, assemblyInventory, search, categoryFilter, categoriesById, retailIndex, priceMap]);
+  }, [assemblies, setItems, assemblyInventory, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap]);
 
   const draftKey = (assemblyId, field) => `${assemblyId}:${field}`;
 

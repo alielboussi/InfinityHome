@@ -26,6 +26,13 @@ import {
 import { assemblyDerivesWarehouseStockFromPackets } from '../utils/warehouseAssemblyMath';
 import { generateRandomWarehouseSku16 } from '../utils/warehouseRandomSku';
 import { normalizeWarehousePacketNameKey } from '../utils/productionItemName';
+import { cacheClear, cacheGet, cacheSet } from '../utils/staleCache';
+
+const WAREHOUSE_CATALOG_CACHE_KEY = 'warehouse:catalog:v2';
+
+export function invalidateWarehouseCatalogCache() {
+  cacheClear(WAREHOUSE_CATALOG_CACHE_KEY);
+}
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const PACKETS = 'warehouse_packets';
@@ -53,7 +60,34 @@ export function showroomLocations(locations, warehouseLocationId) {
   );
 }
 
-export async function fetchWarehouseCatalog() {
+export async function fetchWarehouseCatalog(options = {}) {
+  const { onCachedSnapshot } = options || {};
+  const cached = cacheGet(WAREHOUSE_CATALOG_CACHE_KEY);
+  if (cached && onCachedSnapshot) {
+    try {
+      onCachedSnapshot(cached);
+    } catch {
+      /* ignore snapshot handler errors */
+    }
+  }
+
+  if (fetchWarehouseCatalog._inFlight) {
+    return fetchWarehouseCatalog._inFlight;
+  }
+
+  fetchWarehouseCatalog._inFlight = fetchWarehouseCatalogFresh()
+    .then((data) => {
+      cacheSet(WAREHOUSE_CATALOG_CACHE_KEY, data, 3 * 60 * 1000);
+      return data;
+    })
+    .finally(() => {
+      fetchWarehouseCatalog._inFlight = null;
+    });
+
+  return fetchWarehouseCatalog._inFlight;
+}
+
+async function fetchWarehouseCatalogFresh() {
   const [
     { data: assemblies, error: assembliesErr },
     { data: packets, error: packetsErr },
@@ -240,6 +274,7 @@ export async function findOrCreateWarehouseCategory(rawName) {
     updated_at: now,
   }).select('id, name').single();
   if (insErr) throw new Error(insErr.message || 'Failed to create category');
+  invalidateWarehouseCatalogCache();
   return created;
 }
 
@@ -627,6 +662,7 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     }
   }
 
+  invalidateWarehouseCatalogCache();
   return { ...row, id: assemblyId };
 }
 
@@ -640,6 +676,7 @@ export async function setWarehouseAssemblyQuantity(assemblyId, locationId, quant
     updated_at: new Date().toISOString(),
   }, { onConflict: 'assembly_id,location_id' });
   if (error) throw new Error(error.message || 'Failed to update finished quantity');
+  invalidateWarehouseCatalogCache();
 }
 
 /**
@@ -725,6 +762,7 @@ export async function setWarehouseAssemblyProductQuantity(
   await setWarehouseAssemblyQuantity(aid, locId, target);
   const { recomputeWarehouseLocationStock } = await import('./warehouseTransfer');
   await recomputeWarehouseLocationStock(locId);
+  invalidateWarehouseCatalogCache();
   return { assembly_id: aid, quantity: target, previous: current };
 }
 
@@ -742,6 +780,7 @@ export async function deleteWarehouseAssembly(assemblyId) {
   await db.from(ASSEMBLY_COLORS).delete().eq('assembly_id', id);
   const { error } = await db.from(ASSEMBLIES).delete().eq('id', id);
   if (error) throw new Error(error.message || 'Failed to delete product');
+  invalidateWarehouseCatalogCache();
 }
 
 export async function saveWarehousePacket(payload, { id } = {}) {
@@ -825,6 +864,7 @@ export async function saveWarehousePacket(payload, { id } = {}) {
     const { error } = await db.from(PACKETS).update(row).eq('id', id);
     if (error) throw new Error(error.message || 'Failed to update packet');
     await syncPacketAssemblyLink(id);
+    invalidateWarehouseCatalogCache();
     return { ...row, id };
   }
 
@@ -842,6 +882,7 @@ export async function saveWarehousePacket(payload, { id } = {}) {
   }, { onConflict: 'packet_id,location_id' });
 
   await syncPacketAssemblyLink(data.id);
+  invalidateWarehouseCatalogCache();
   return data;
 }
 
@@ -876,6 +917,7 @@ export async function convertWarehousePacketToProduct(packetId, {
 
   await mergePacketInventoryIntoAssembly(result.id, inventoryRows);
 
+  invalidateWarehouseCatalogCache();
   return { assemblyId: result.id };
 }
 
@@ -886,6 +928,7 @@ export async function deleteWarehousePacket(packetId) {
   await db.from(INVENTORY).delete().eq('packet_id', id);
   const { error } = await db.from(PACKETS).delete().eq('id', id);
   if (error) throw new Error(error.message || 'Failed to delete packet');
+  invalidateWarehouseCatalogCache();
 }
 
 export async function incrementWarehousePacketByScan(scan, warehouseLocationId, delta = 1) {
@@ -917,6 +960,7 @@ export async function setWarehousePacketQuantity(packetId, locationId, quantity)
   if (error) throw new Error(error.message || 'Failed to update quantity');
   const { recomputeWarehouseLocationStock } = await import('./warehouseTransfer');
   await recomputeWarehouseLocationStock(locationId);
+  invalidateWarehouseCatalogCache();
 }
 
 const WAREHOUSE_IMAGE_BUCKET = 'productimages';
@@ -965,6 +1009,7 @@ export async function uploadWarehouseAssemblyImage(assemblyId, file) {
   }).eq('id', id);
   if (updErr) throw new Error(updErr.message || 'Failed to save image on product');
 
+  invalidateWarehouseCatalogCache();
   return publicUrl;
 }
 
@@ -979,6 +1024,7 @@ export async function removeWarehouseAssemblyImage(assemblyId) {
     updated_at: new Date().toISOString(),
   }).eq('id', id);
   if (updErr) throw new Error(updErr.message || 'Failed to remove image from product');
+  invalidateWarehouseCatalogCache();
 }
 
 const INLINE_ASSEMBLY_NUMERIC_FIELDS = new Set([
@@ -1026,5 +1072,6 @@ export async function patchWarehouseAssemblyFields(assemblyId, fields) {
   if (Object.keys(patch).length <= 1) return { id };
   const { error } = await db.from(ASSEMBLIES).update(patch).eq('id', id);
   if (error) throw new Error(error.message || 'Failed to update product');
+  invalidateWarehouseCatalogCache();
   return { id, ...patch };
 }

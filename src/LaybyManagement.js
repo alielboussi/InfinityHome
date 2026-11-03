@@ -13,6 +13,7 @@ import { fetchLaybyCustomerRows } from './services/laybyCustomerRows';
 import { insertLaybyPayments } from './services/laybyPayments';
 import { getCurrentUser, canManageLaybys } from './accessControl';
 import { cacheClear, cacheGet, cacheSet } from './utils/staleCache';
+import useDebouncedValue from './hooks/useDebouncedValue';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import { buildLaybySaleFinancials, buildPooledCustomerPdfPayload, buildPooledLaybyPaymentTarget, computeLaybyTotalsByCurrency, computePooledLaybyTotalsByCurrency, filterStatementToOutstandingSales, formatLaybyTotalsLine, getDisplayTotalsByCurrency, LAYBY_ROWS_CACHE_KEY, sumLaybyCustomerTotalsByCurrency } from './utils/laybyRollup';
 import {
@@ -229,6 +230,7 @@ export default function LaybyManagement() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 160);
   const [bulkExportBusy, setBulkExportBusy] = useState(false);
   const [monthlyBalanceBusy, setMonthlyBalanceBusy] = useState(false);
   const [bulkExportLabel, setBulkExportLabel] = useState('');
@@ -1267,14 +1269,14 @@ export default function LaybyManagement() {
   }
 
   const filteredRows = useMemo(() => {
-    const term = (search || '').toLowerCase().trim();
+    const term = (debouncedSearch || '').toLowerCase().trim();
     if (!term) return rows;
     return rows.filter(r => {
       const name = String(r.customer?.name || '').toLowerCase();
       const phone = String(r.customer?.phone || '').toLowerCase();
       return name.includes(term) || phone.includes(term);
     });
-  }, [rows, search]);
+  }, [rows, debouncedSearch]);
 
   async function resolveQuoteIdForRow(row) {
     let quoteId = resolveRowQuoteId(row, quoteLinkIndex);

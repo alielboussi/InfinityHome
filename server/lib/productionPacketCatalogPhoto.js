@@ -88,6 +88,7 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
   assembly,
   imageBase64,
   productName,
+  categoryName = '',
   skipAiRetouch = false,
   requireAiRetouch = false,
   resolveApiKey,
@@ -109,6 +110,7 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
     skipAi,
     requireAi,
     productName: resolvedName,
+    categoryName: String(categoryName || '').trim(),
     resolveApiKey,
   });
   const objectPath = `${storageFolder(assemblyId, 'assembly')}/catalog-${Date.now()}.jpg`;

@@ -2,7 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
+import { cacheGet, cacheSet, cacheClear } from './utils/staleCache';
 import { useNavigate } from 'react-router-dom';
+import useDebouncedValue from './hooks/useDebouncedValue';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 // Levenshtein distance function for fuzzy matching
@@ -54,6 +56,7 @@ const Categories = () => {
   const [error, setError] = useState('');
   const [form, setForm] = useState(initialForm);
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 160);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -67,7 +70,19 @@ const Categories = () => {
   // Removed permissions fetching logic
 
   const fetchCategories = async () => {
-    setLoading(true);
+    const cacheKey = 'categories:list:v1';
+    try {
+      const cached = cacheGet(cacheKey);
+      if (cached && Array.isArray(cached.categories)) {
+        setCategories(cached.categories);
+        setCategoryProductCounts(cached.counts || {});
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    } catch {
+      setLoading(true);
+    }
     setError('');
     try {
       const { data: categoriesData, error: categoriesError } = await db
@@ -107,6 +122,11 @@ const Categories = () => {
         setCategoryProductCounts(counts);
       } catch {
         setCategoryProductCounts({});
+      }
+      try {
+        cacheSet(cacheKey, { categories: sorted, counts }, 5 * 60 * 1000);
+      } catch {
+        /* ignore cache write */
       }
     } catch (err) {
       setCategories([]);
@@ -261,10 +281,10 @@ const Categories = () => {
   };
 
   // Filter categories by search (show all if search is empty)
-  const filteredCategories = search.trim() === ''
+  const filteredCategories = debouncedSearch.trim() === ''
     ? categories
     : categories.filter(cat =>
-        cat.name.toLowerCase().includes(search.toLowerCase())
+        cat.name.toLowerCase().includes(debouncedSearch.toLowerCase())
       );
 
   // All actions always accessible

@@ -5,6 +5,7 @@ import {
   PRODUCTION_SEATER_PRESETS,
 } from '../../src/utils/productionItemName.js';
 import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
+import { isReclinerCatalogProduct } from '../../src/utils/isReclinerCatalogProduct.js';
 
 export { isMattressCatalogProductName };
 
@@ -13,8 +14,9 @@ const SHARED_REQUIREMENTS = `REQUIREMENTS (follow exactly):
 2. Subject: keep the same product — same shape, materials, colors, and proportions. Do not swap or redesign the item.
 3. Cleanup: remove people, hands, tags, clutter, and background objects.
 4. Lighting: bright, even catalog lighting; sharp focus; optional very soft contact shadow under the base only.
-5. Framing: center the product with balanced padding; full item visible.
-6. Forbidden: text, logos, watermarks, extra furniture, props, or scenery.
+5. Framing: center the product with balanced padding on all sides; the full item must be visible — never crop off arms, back, base, or sides.
+6. Composition: keep the product upright and centered in the frame (not pushed to the left or right edge); use roughly 65–85% of the frame for the product with even white margins.
+7. Forbidden: text, logos, watermarks, extra furniture, props, or scenery.
 
 OUTPUT: Return ONLY the finished catalog image (no text).`;
 
@@ -46,6 +48,29 @@ const MATTRESS_CATALOG_REQUIREMENTS = `REQUIREMENTS (follow exactly):
 6. Forbidden: text, logos, watermarks, extra furniture, props, or scenery.
 
 OUTPUT: Return ONLY the finished catalog image (no text).`;
+
+/** Recliner catalog (matches ChatGPT-retouched warehouse thumbnails: centered, white, soft shadow). */
+const RECLINER_CATALOG_REQUIREMENTS = `RECLINER CATALOG (match ChatGPT-retouched reference thumbnails in warehouse catalog):
+1. Product: upholstered power or manual recliner — preserve channel tufting, seat seams, arm shape, footrest/leg rest, handles, and exact leather or fabric color from the source. Do not turn it into a fixed non-reclining sofa.
+2. Background: solid pure white #FFFFFF only — no floor, walls, warehouse, or gradient.
+3. Cleanup: remove people, hands, tags, clutter, and background objects.
+4. Lighting: bright, even studio catalog lighting; sharp focus; one soft contact shadow under the base only.
+5. Framing: center the full recliner with balanced padding on all sides (~65–85% of frame height); footrests, arms, and back must stay fully visible — never crop.
+6. Composition: product upright and centered (not pushed to an edge); same tight hero crop as other recliners in this catalog (e.g. Walnut leather set).
+7. Forbidden: text, logos, watermarks, extra furniture, props, or scenery.
+
+OUTPUT: Return ONLY the finished catalog image (no text).`;
+
+const RECLINER_PHOTO_PRESET_SUBJECT = Object.freeze({
+  '3 Seater':
+    'a three-seat recliner sofa (three reclining seats with matching upholstery and footrests; same configuration as photographed)',
+  '2 Seater':
+    'a two-seat recliner loveseat (two reclining seats with footrests; same upholstery as photographed)',
+  'Single Seater':
+    'a single-seat recliner armchair (one reclining seat with footrest; same upholstery as photographed)',
+  'Lounge Chair':
+    'a single recliner lounge chair (recliner armchair with footrest; same upholstery and silhouette as photographed)',
+});
 
 /** Subject line per Create-screen preset (upholstery + carpentry). */
 export const PRODUCTION_PHOTO_PRESET_SUBJECT = Object.freeze({
@@ -131,6 +156,7 @@ ${MATTRESS_CATALOG_REQUIREMENTS}`;
 export function buildProductionPhotoRetouchPrompt({
   productName,
   preset,
+  categoryName,
   seaterPresets,
   carpentryPresets,
 } = {}) {
@@ -138,6 +164,7 @@ export function buildProductionPhotoRetouchPrompt({
   if (isMattressCatalogProductName(name)) {
     throw new Error('Mattress products do not use AI photo retouch.');
   }
+  const recliner = isReclinerCatalogProduct({ productName: name, categoryName });
   const suffixSource = [
     ...(seaterPresets || PRODUCTION_SEATER_PRESETS),
     ...(carpentryPresets || PRODUCTION_CARPENTRY_PRESETS),
@@ -153,14 +180,16 @@ export function buildProductionPhotoRetouchPrompt({
       }
     }
   }
-  const subject = PRODUCTION_PHOTO_PRESET_SUBJECT[resolved]
+  const subjectMap = recliner ? RECLINER_PHOTO_PRESET_SUBJECT : PRODUCTION_PHOTO_PRESET_SUBJECT;
+  const subject = subjectMap[resolved]
     || defaultSubjectForPreset(resolved, { seaterPresets, carpentryPresets });
   const label = resolved || 'furniture product';
+  const requirements = recliner ? RECLINER_CATALOG_REQUIREMENTS : SHARED_REQUIREMENTS;
   return `TASK: Edit this warehouse photo into a single catalog product image of ${subject}.
 
 Product type: ${label}.
 
-${SHARED_REQUIREMENTS}`;
+${requirements}`;
 }
 
 /** @deprecated use buildProductionPhotoRetouchPrompt */

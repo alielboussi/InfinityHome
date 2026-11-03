@@ -150,7 +150,8 @@ async function finalizeCatalogJpeg(buffer, mime) {
     return await pipeline()
       .trim({ background: '#ffffff', threshold: 20, lineArt: false })
       .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, {
-        fit: 'cover',
+        fit: 'contain',
+        background: '#ffffff',
         position: 'centre',
       })
       .jpeg({ quality: 90, mozjpeg: true })
@@ -158,7 +159,8 @@ async function finalizeCatalogJpeg(buffer, mime) {
   } catch {
     return pipeline()
       .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, {
-        fit: 'cover',
+        fit: 'contain',
+        background: '#ffffff',
         position: 'centre',
       })
       .jpeg({ quality: 90, mozjpeg: true })
@@ -181,6 +183,7 @@ export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
   requireAi = false,
   productName = '',
   preset = '',
+  categoryName = '',
   resolveApiKey = getGeminiProductionApiKey,
 } = {}) {
   const skipAi = skipAiOption
@@ -189,6 +192,7 @@ export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
   const promptText = buildProductionPhotoRetouchPrompt({
     productName,
     preset,
+    categoryName,
   });
   if (isMattressCatalogProductName(productName)) {
     return finalizeCatalogJpeg(input, 'image/jpeg');

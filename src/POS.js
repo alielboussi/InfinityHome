@@ -11,6 +11,7 @@ import { insertSalesPayments } from './services/salesPayments';
 import { createSale } from './services/sales';
 import { fromPublic } from './dbSchema';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
+import useDebouncedValue from './hooks/useDebouncedValue';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { computeCustomerOutstandingLikeLaybyPage } from './utils/financials';
 import { logUserActivity } from './utils/userActivityLog';
@@ -321,6 +322,8 @@ export default function POS({ isMobile = false }) {
   const [catalogRefreshKey, setCatalogRefreshKey] = useState(0); // manual trigger when realtime misses
   const forceCatalogRefresh = () => setCatalogRefreshKey((key) => key + 1);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 140);
+  const debouncedCustomerSearch = useDebouncedValue(customerSearch, 140);
   const [cart, setCart] = useState([]); // [{product, qty, price, color, vat}]
   const [vatIncluded, setVatIncluded] = useState(true);
   const [discountAll, setDiscountAll] = useState(0);
@@ -2194,8 +2197,8 @@ export default function POS({ isMobile = false }) {
   const canDelete = true;
 
   // Filter products and sets by search
-  const searchValue = search.trim().toLowerCase();
-  const customerSearchValue = customerSearch.trim().toLowerCase();
+  const searchValue = debouncedSearch.trim().toLowerCase();
+  const customerSearchValue = debouncedCustomerSearch.trim().toLowerCase();
   const uuidCustomers = filterUuidCustomers(customers);
   const filteredCustomersForSelect = customerSearchValue
     ? uuidCustomers.filter(c => (

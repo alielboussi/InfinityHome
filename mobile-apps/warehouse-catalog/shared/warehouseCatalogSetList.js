@@ -37,9 +37,14 @@ export function buildWarehouseCatalogSetEntries(setItems, assemblies) {
 }
 
 export function expandKeySet(setId) {
-  return `s:${setId}`;
+  return `s:${setId}:products`;
 }
 
+export function expandKeySetPackets(setId) {
+  return `s:${setId}:packets`;
+}
+
+/** @deprecated nested per-product packet expand — use set-level packets inlay */
 export function expandKeySetProduct(setId, productId) {
   return `s:${setId}:p:${productId}`;
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaPlus } from 'react-icons/fa';
 import BackToDashboard from './BackToDashboard';
@@ -10,6 +10,7 @@ import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle'
 import WarehouseColorChip from './components/WarehouseColorChip';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
+import useDebouncedValue from './hooks/useDebouncedValue';
 import {
   deleteWarehouseAssembly,
   deleteWarehousePacket,
@@ -92,6 +93,7 @@ export default function WarehouseProductsPage() {
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 160);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
   const [, setSaving] = useState(false);
@@ -99,31 +101,44 @@ export default function WarehouseProductsPage() {
   const [categoryDialogAssembly, setCategoryDialogAssembly] = useState(null);
   const [bulkLabelSelected, setBulkLabelSelected] = useState(() => new Set());
   const [bulkLabelBusy, setBulkLabelBusy] = useState(false);
+  const hasCatalogRef = useRef(false);
+
+  const applyCatalog = useCallback((data) => {
+    setAssemblies(data.assemblies);
+    setPackets(data.packets);
+    setInventory(data.inventory);
+    setAssemblyColors(data.assemblyColors);
+    setAssemblyInventory(data.assemblyInventory);
+    setAssemblyPacketRows(data.assemblyPackets || []);
+    setVariantColors(data.colors);
+    setCategories(data.categories);
+    setWarehouseLocationId(data.warehouseLocationId);
+    setWarehouseLocationName(data.warehouseLocationName);
+    if (!data.warehouseLocationId) {
+      setError('Warehouse location could not be resolved for this catalog.');
+    }
+  }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const background = hasCatalogRef.current;
+    if (!background) setLoading(true);
     setError('');
     try {
-      const data = await fetchWarehouseCatalog();
-      setAssemblies(data.assemblies);
-      setPackets(data.packets);
-      setInventory(data.inventory);
-      setAssemblyColors(data.assemblyColors);
-      setAssemblyInventory(data.assemblyInventory);
-      setAssemblyPacketRows(data.assemblyPackets || []);
-      setVariantColors(data.colors);
-      setCategories(data.categories);
-      setWarehouseLocationId(data.warehouseLocationId);
-      setWarehouseLocationName(data.warehouseLocationName);
-      if (!data.warehouseLocationId) {
-        setError('Warehouse location could not be resolved for this catalog.');
-      }
+      const data = await fetchWarehouseCatalog({
+        onCachedSnapshot: (snap) => {
+          applyCatalog(snap);
+          hasCatalogRef.current = true;
+          setLoading(false);
+        },
+      });
+      applyCatalog(data);
+      hasCatalogRef.current = true;
     } catch (err) {
       setError(err?.message || 'Failed to load warehouse catalog');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyCatalog]);
 
   useEffect(() => {
     load();
@@ -215,7 +230,7 @@ export default function WarehouseProductsPage() {
   }, [warehouseCatalogProducts, stockForAssemblyAtLocation, warehouseLocationId]);
 
   const filteredAssemblies = useMemo(() => {
-    const raw = search.trim();
+    const raw = debouncedSearch.trim();
     const base = warehouseCatalogProducts.filter((a) => {
       if (categoryFilter && String(a.category_id || '') !== String(categoryFilter)) return false;
       return true;
@@ -246,7 +261,7 @@ export default function WarehouseProductsPage() {
           || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
       );
     });
-  }, [warehouseCatalogProducts, packetsByAssembly, search, categoryFilter, categoryName]);
+  }, [warehouseCatalogProducts, packetsByAssembly, debouncedSearch, categoryFilter, categoryName]);
 
   const toggleExpanded = (assemblyId) => {
     setExpanded((prev) => {

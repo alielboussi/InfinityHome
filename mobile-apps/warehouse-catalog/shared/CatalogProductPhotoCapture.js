@@ -192,7 +192,12 @@ export function CatalogProductPhotoField({
       <View style={fieldStyles.actions}>
         {photoUri ? (
           <>
-            <Image source={{ uri: photoUri }} style={fieldStyles.thumb} accessibilityLabel="Product photo preview" />
+            <Image
+              source={{ uri: photoUri }}
+              style={fieldStyles.thumb}
+              resizeMode="contain"
+              accessibilityLabel="Product photo preview"
+            />
             <Pressable
               onPress={onClear}
               disabled={disabled}

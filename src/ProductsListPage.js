@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
+import useDebouncedValue from './hooks/useDebouncedValue';
 import { deleteComboLocations, removeComboLocations, replaceComboLocations, upsertComboLocations } from './services/comboLocations';
 import { getFactoryStorageSummary, getFactoryStorageItems, createFactoryStorageItem, releaseFactoryStorageItem, updateFactoryStorageItem } from './services/factoryStorage';
 import { fetchInventorySnapshot } from './services/inventorySnapshot';
@@ -1212,6 +1213,7 @@ function ProductsListPage() {
     }
   };
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 160);
   const [loading, setLoading] = useState(true);
   const [negativeOnly, setNegativeOnly] = useState(false);
   const [resettingNegatives, setResettingNegatives] = useState(false);
@@ -1716,8 +1718,8 @@ function ProductsListPage() {
       }
     }
     // Search filter
-    if (search.trim() !== "") {
-      const searchLower = search.toLowerCase();
+    if (debouncedSearch.trim() !== "") {
+      const searchLower = debouncedSearch.toLowerCase();
       if (isCombo) {
         if (!(
           (item.combo_name && item.combo_name.toLowerCase().includes(searchLower)) ||
@@ -1753,7 +1755,7 @@ function ProductsListPage() {
     comboLocations,
     inventory,
     negativeOnly,
-    search,
+    debouncedSearch,
     units,
     selectedLocationIds,
     isLocationSelected,

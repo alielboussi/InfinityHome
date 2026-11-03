@@ -47,13 +47,23 @@ export async function runCatalogAssemblyPhotoAttach(body, user) {
 
   const { data: assembly, error: loadErr } = await sb
     .from('warehouse_assemblies')
-    .select('id, name, family_sku, inventory_mode, image_url')
+    .select('id, name, family_sku, inventory_mode, image_url, category_id')
     .eq('id', assemblyId)
     .maybeSingle();
   if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
   if (!assembly) throw new Error('Product not found.');
   if (isMattressCatalogProductName(assembly.name)) {
     throw new Error('AI catalog photo retouch is only for furniture. Add mattress images from web admin if needed.');
+  }
+
+  let categoryName = String(body.category_name || body.categoryName || '').trim();
+  if (!categoryName && assembly.category_id) {
+    const { data: catRow } = await sb
+      .from('categories')
+      .select('name')
+      .eq('id', assembly.category_id)
+      .maybeSingle();
+    categoryName = String(catRow?.name || '').trim();
   }
 
   const existingUrl = String(assembly.image_url || '').trim();
@@ -71,6 +81,7 @@ export async function runCatalogAssemblyPhotoAttach(body, user) {
     assembly,
     imageBase64,
     productName: assembly.name,
+    categoryName,
     skipAiRetouch: false,
     requireAiRetouch: true,
     resolveApiKey: getGeminiCatalogPhotoApiKey,

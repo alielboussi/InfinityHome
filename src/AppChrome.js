@@ -8,7 +8,7 @@ import {
   FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag
 } from 'react-icons/fa';
 import { getCurrentUser, getHomeDashboardPath, HASSAN_AWAD, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyExperience, isPublicAppRoute, canManageCatalog } from './accessControl';
-import { preloadAppRoute } from './lazyPages';
+import { preloadAppRoute, prefetchNavRoutesOnIdle } from './lazyPages';
 import { isShopPublicPath } from './utils/shopConstants';
 
 // Functional groupings for the slide-out navigation drawer.
@@ -269,6 +269,12 @@ export default function AppChrome() {
     }))
     .filter(group => group.items.length > 0)), [quotationerOnly, user]);
 
+  React.useEffect(() => {
+    const routes = visibleGroups.flatMap((group) => group.items.map((item) => item.route));
+    if (homePath) routes.push(homePath);
+    prefetchNavRoutesOnIdle(routes);
+  }, [visibleGroups, homePath]);
+
   if (isLogin || isPublicCount || isKioskStock || isShopRoute || !user) return null;
 
   const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
@@ -328,7 +334,10 @@ export default function AppChrome() {
                   className={`ent-drawer-link${active ? ' active' : ''}`}
                   onMouseEnter={() => preloadAppRoute(item.route)}
                   onFocus={() => preloadAppRoute(item.route)}
-                  onClick={() => go(item.route, item.search || '')}
+                  onClick={() => {
+                    preloadAppRoute(item.route);
+                    go(item.route, item.search || '');
+                  }}
                 >
                   <span className="ent-drawer-ico"><Icon /></span>
                   <span>{item.label}</span>

@@ -5449,7 +5449,7 @@ body {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   display: block;
   background: #ffffff;
@@ -6194,9 +6194,20 @@ body.enterprise-theme .warehouse-products-page .warehouse-assembly-card__categor
   box-sizing: border-box;
 }
 
+.app-route-shell {
+  width: 100%;
+  min-height: calc(100dvh - 56px);
+  box-sizing: border-box;
+  background: #ffffff;
+}
+
+body.enterprise-theme .app-route-shell {
+  background: #ffffff !important;
+}
+
 .app-session-loading,
 .app-route-fallback {
-  min-height: 42vh;
+  min-height: calc(100dvh - 56px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -6205,6 +6216,46 @@ body.enterprise-theme .warehouse-products-page .warehouse-assembly-card__categor
   color: var(--ent-text-muted, #64748b);
   font-size: 0.95rem;
   font-weight: 600;
+  background: #ffffff;
+}
+
+.app-route-error {
+  min-height: calc(100dvh - 56px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  background: #ffffff;
+  text-align: center;
+}
+
+.app-route-error__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ent-text, #1f2733);
+}
+
+.app-route-error__message {
+  margin: 0;
+  max-width: 420px;
+  font-size: 0.9rem;
+  color: #64748b;
+  word-break: break-word;
+}
+
+.app-route-error__btn {
+  margin-top: 8px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .app-route-fallback__spinner {

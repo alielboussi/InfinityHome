@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import AppChrome from './AppChrome';
 import RouteLoadingFallback from './components/RouteLoadingFallback';
+import RouteErrorBoundary from './components/RouteErrorBoundary';
 import {
   AllSales,
   Categories,
@@ -298,8 +299,10 @@ function App() {
                                                                                                                                                                   {/* Global chrome: page banner, back-to-dashboard, slide-out drawer */}
                                                                                                                                                                   <AppChrome />
                                                                                                                                                                   <RouteActivityLogger />
-      <Suspense fallback={<RouteLoadingFallback />}>
-      <Routes>
+      <RouteErrorBoundary resetKey={location.pathname}>
+      <Suspense fallback={<RouteLoadingFallback />} key={location.pathname}>
+      <div className="app-route-shell">
+      <Routes location={location}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/stocktake/count/:locationSlug" element={<StocktakeCountRoute />} />
         <Route path="/stocktake/count" element={<Navigate to="/login" replace />} />
@@ -423,7 +426,9 @@ function App() {
           <Route path="*" element={<FallbackRedirect />} />
         </Route>
       </Routes>
+      </div>
       </Suspense>
+      </RouteErrorBoundary>
                                                                                                                                                                   </SessionBootstrap>
     </div>
   );

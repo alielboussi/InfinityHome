@@ -372,9 +372,11 @@ export default function ProductFormScreen({ route, navigation }) {
     }
     setNotice('AI retouching product photo (white background)…');
     const imageBase64 = await prepareCatalogPhotoForUpload(photo);
+    const categoryName = resolveWarehouseCategoryNameFromList(categoryId, categories) || '';
     await attachCatalogProductPhotoWithAi({
       assemblyId,
       imageBase64,
+      categoryName,
       onAttempt: (attempt, max) => {
         setNotice(`AI retouching photo… ${attempt}/${max}`);
       },
@@ -382,7 +384,7 @@ export default function ProductFormScreen({ route, navigation }) {
     setProductPhoto(null);
     refreshGlobalCatalog({ force: true, background: true }).catch(() => {});
     setNotice('Product photo saved with white catalog background.');
-  }, [refreshGlobalCatalog]);
+  }, [refreshGlobalCatalog, categoryId, categories]);
 
   const handlePacketSearchChange = useCallback((text) => {
     const raw = String(text || '');

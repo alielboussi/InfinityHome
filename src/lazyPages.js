@@ -1,10 +1,30 @@
 import { lazy } from 'react';
 import LusakaTransfersPage from './LusakaTransfers';
 
+const modulePromises = new WeakMap();
+
+/** Same import promise for lazy(), preload, and drawer prefetch (avoids duplicate / racing loads). */
+function importRouteModule(factory, retriesLeft = 2) {
+  const cached = modulePromises.get(factory);
+  if (cached) return cached;
+
+  const attempt = (left) => factory().catch((err) => {
+    if (left <= 0) throw err;
+    return new Promise((resolve) => {
+      setTimeout(resolve, 400);
+    }).then(() => attempt(left - 1));
+  });
+
+  const promise = attempt(retriesLeft);
+  modulePromises.set(factory, promise);
+  return promise;
+}
+
 /** Attach .preload for drawer hover prefetch (same chunk as lazy()). */
 function lazyRoute(factory) {
-  const Component = lazy(factory);
-  Component.preload = factory;
+  const load = () => importRouteModule(factory);
+  const Component = lazy(load);
+  Component.preload = load;
   return Component;
 }
 
@@ -71,41 +91,78 @@ export const EcommerceSetup = lazyRoute(() => import('./EcommerceSetup'));
 export const EcommerceSales = lazyRoute(() => import('./EcommerceSales'));
 export const ShopRoutes = lazyRoute(() => import('./shop/ShopRoutes'));
 
-/** Nav route → dynamic import (for prefetch on drawer hover). */
+/** Nav route → dynamic import (for prefetch on drawer hover). Uses each page's lazy preload for one shared chunk promise. */
 export const routePreloadByPath = {
-  '/dashboard': () => import('./Dashboard'),
-  '/warehouse-deliveries-admin': () => import('./WarehouseDeliveriesAdmin'),
-  '/warehouse-repairs-admin': () => import('./WarehouseRepairsAdmin'),
-  '/warehouse-sales-storage-admin': () => import('./WarehouseSalesStorageAdmin'),
-  '/customers': () => import('./Customers'),
-  '/all-sales': () => import('./AllSales'),
-  '/pos': () => import('./POS'),
-  '/layby-management': () => import('./LaybyManagement'),
-  '/quotes-board': () => import('./QuotesBoard.js'),
-  '/reversal': () => import('./Reversal'),
-  '/ledger-mobile': () => import('./LedgerMobile'),
-  '/categories': () => import('./Categories'),
-  '/products-list': () => import('./ProductsListPage'),
-  '/warehouse-products': () => import('./WarehouseProductsPage'),
-  '/stock-history': () => import('./StockHistoryPage'),
-  '/price-labels': () => import('./PriceLabels'),
-  '/ecommerce-setup': () => import('./EcommerceSetup'),
-  '/ecommerce-sales': () => import('./EcommerceSales'),
-  '/stocktake': () => import('./StocktakeControlPage'),
-  '/stocktake/aggregation': () => import('./StocktakeAggregationPage'),
+  '/dashboard': () => Dashboard.preload(),
+  '/production': () => ProductionAdminPage.preload(),
+  '/kitwe-products': () => KitweProductsPage.preload(),
+  '/warehouse-products': () => WarehouseProductsPage.preload(),
+  '/categories': () => Categories.preload(),
+  '/reversal': () => Reversal.preload(),
+  '/warehouse-delivery-drivers': () => WarehouseDeliveryDriversPage.preload(),
+  '/warehouse-production-presets': () => WarehouseProductionPresetsPage.preload(),
+  '/warehouse-deliveries-admin': () => WarehouseDeliveriesAdmin.preload(),
+  '/warehouse-repairs-admin': () => WarehouseRepairsAdmin.preload(),
+  '/warehouse-sales-storage-admin': () => WarehouseSalesStorageAdmin.preload(),
+  '/customers': () => Customers.preload(),
+  '/all-sales': () => AllSales.preload(),
+  '/pos': () => POS.preload(),
+  '/layby-management': () => LaybyManagement.preload(),
+  '/quotes-board': () => QuotesBoard.preload(),
+  '/ledger-mobile': () => LedgerMobile.preload(),
+  '/products-list': () => ProductsListPage.preload(),
+  '/stock-history': () => StockHistoryPage.preload(),
+  '/price-labels': () => PriceLabels.preload(),
+  '/ecommerce-setup': () => EcommerceSetup.preload(),
+  '/ecommerce-sales': () => EcommerceSales.preload(),
+  '/stocktake': () => StocktakeControlPage.preload(),
+  '/stocktake/aggregation': () => StocktakeAggregationPage.preload(),
   '/transfers': () => Promise.resolve({ default: LusakaTransfersPage }),
-  '/All-Transfers': () => import('./WarehouseTransfer'),
-  '/All-Transfers-summary': () => import('./WarehouseTransferSummary'),
-  '/sales-report': () => import('./SalesReport'),
-  '/transfers-report': () => import('./TransfersReport'),
-  '/production-report': () => import('./ProductionReport'),
-  '/user-activity': () => import('./UserActivityLog'),
-  '/user-access': () => import('./UserAccessManagement'),
-  '/database-backup': () => import('./DatabaseBackup.js'),
-  '/products-list/locations': () => import('./ProductLocationBulkPage'),
-  '/sets': () => import('./Sets'),
-  '/products': () => import('./Products'),
+  '/All-Transfers': () => WarehouseTransfer.preload(),
+  '/All-Transfers-summary': () => WarehouseTransferSummary.preload(),
+  '/sales-report': () => SalesReport.preload(),
+  '/transfers-report': () => TransfersReport.preload(),
+  '/production-report': () => ProductionReport.preload(),
+  '/user-activity': () => UserActivityLog.preload(),
+  '/user-access': () => UserAccessManagement.preload(),
+  '/database-backup': () => DatabaseBackupPage.preload(),
+  '/products-list/locations': () => ProductLocationBulkPage.preload(),
+  '/sets': () => Sets.preload(),
+  '/products': () => Products.preload(),
+  '/warehouse-products/packets': () => WarehousePacketsPage.preload(),
+  '/kitwe-products/sets': () => KitweSetsPage.preload(),
 };
+
+function scheduleIdleWork(fn) {
+  if (typeof window === 'undefined') return;
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => fn(), { timeout: 4000 });
+    return;
+  }
+  setTimeout(fn, 120);
+}
+
+/** Warm lazy chunks for sidebar routes when the browser is idle (smooth first click). */
+export function prefetchNavRoutesOnIdle(paths, { batchSize = 2, gapMs = 40 } = {}) {
+  if (typeof window === 'undefined') return;
+  const list = [...new Set((paths || [])
+    .map((p) => String(p || '').split('?')[0].toLowerCase())
+    .filter(Boolean))];
+  if (!list.length) return;
+
+  let index = 0;
+  const pump = () => {
+    const end = Math.min(list.length, index + batchSize);
+    for (; index < end; index += 1) {
+      preloadAppRoute(list[index]);
+    }
+    if (index < list.length) {
+      setTimeout(() => scheduleIdleWork(pump), gapMs);
+    }
+  };
+
+  scheduleIdleWork(pump);
+}
 
 export function preloadAppRoute(path) {
   const key = String(path || '').split('?')[0].toLowerCase();

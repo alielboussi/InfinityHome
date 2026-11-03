@@ -5,6 +5,7 @@ import { FaChevronDown, FaChevronRight, FaFilePdf, FaWhatsapp } from 'react-icon
 import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
+import useDebouncedValue from './hooks/useDebouncedValue';
 import { fetchCanonicalFinancials } from './utils/financials';
 import { cacheGet, cacheSet } from './utils/staleCache';
 import { selectPrice } from './utils/setInventoryUtils';
@@ -132,6 +133,7 @@ export default function AllSales() {
   const [locationsMap, setLocationsMap] = useState({});
   const [aggregatesByCustomer, setAggregatesByCustomer] = useState({}); // customerId -> { total, paid, outstanding, currency }
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 160);
   const [sortBy, setSortBy] = useState('date');
   const [selectedLocation, setSelectedLocation] = useState('all');
   const [editing, setEditing] = useState(null); // { sale, layby }
@@ -876,7 +878,7 @@ export default function AllSales() {
   }, [locationsMap, sales]);
 
   const filtered = useMemo(() => {
-    const s = (search || '').toLowerCase().trim();
+    const s = (debouncedSearch || '').toLowerCase().trim();
     return sales.filter(row => {
       if (row.excludeFromList) return false;
       if (selectedLocation !== 'all') {
@@ -891,7 +893,7 @@ export default function AllSales() {
       if (!s) return true;
       return rec.includes(s) || name.includes(s) || loc.includes(s) || total.includes(s) || paid.includes(s) || due.includes(s);
     });
-  }, [sales, search, selectedLocation]);
+  }, [sales, debouncedSearch, selectedLocation]);
 
   const sortedRows = useMemo(() => {
     const rows = [...filtered];

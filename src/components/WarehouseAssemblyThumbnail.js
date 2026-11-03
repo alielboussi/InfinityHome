@@ -70,7 +70,7 @@ export default function WarehouseAssemblyThumbnail({
     if (!file || !assembly?.id) return;
     setBusy(true);
     try {
-      const squareFile = await fileToSquareCatalogImage(file);
+      const squareFile = await fileToSquareCatalogImage(file, undefined, { fit: 'contain' });
       const url = await uploadWarehouseAssemblyImage(assembly.id, squareFile);
       onUpdated?.(assembly.id, url);
     } catch (err) {

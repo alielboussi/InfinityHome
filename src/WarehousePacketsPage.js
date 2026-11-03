@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaPlus } from 'react-icons/fa';
 import BackToDashboard from './BackToDashboard';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
+import useDebouncedValue from './hooks/useDebouncedValue';
 import {
   deleteWarehousePacket,
   fetchWarehouseCatalog,
@@ -41,31 +42,45 @@ export default function WarehousePacketsPage() {
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 160);
   const [assignmentFilter, setAssignmentFilter] = useState(PACKET_FILTER.ALL);
   const [, setSaving] = useState(false);
   const [labelPrintItem, setLabelPrintItem] = useState(null);
+  const hasCatalogRef = useRef(false);
+
+  const applyCatalog = useCallback((data) => {
+    setAssemblies(data.assemblies);
+    setPackets(data.packets);
+    setAssemblyPacketRows(data.assemblyPackets || []);
+    setInventory(data.inventory);
+    setCategories(data.categories || []);
+    setWarehouseLocationId(data.warehouseLocationId);
+    setWarehouseLocationName(data.warehouseLocationName);
+    if (!data.warehouseLocationId) {
+      setError('No Warehouse location found. Add a location named "Warehouse".');
+    }
+  }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const background = hasCatalogRef.current;
+    if (!background) setLoading(true);
     setError('');
     try {
-      const data = await fetchWarehouseCatalog();
-      setAssemblies(data.assemblies);
-      setPackets(data.packets);
-      setAssemblyPacketRows(data.assemblyPackets || []);
-      setInventory(data.inventory);
-      setCategories(data.categories || []);
-      setWarehouseLocationId(data.warehouseLocationId);
-      setWarehouseLocationName(data.warehouseLocationName);
-      if (!data.warehouseLocationId) {
-        setError('No Warehouse location found. Add a location named "Warehouse".');
-      }
+      const data = await fetchWarehouseCatalog({
+        onCachedSnapshot: (snap) => {
+          applyCatalog(snap);
+          hasCatalogRef.current = true;
+          setLoading(false);
+        },
+      });
+      applyCatalog(data);
+      hasCatalogRef.current = true;
     } catch (err) {
       setError(err?.message || 'Failed to load packets');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyCatalog]);
 
   useEffect(() => {
     load();
@@ -96,7 +111,7 @@ export default function WarehousePacketsPage() {
   }, [inventory, warehouseLocationId]);
 
   const filteredPackets = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     return (packets || [])
       .filter((p) => {
         const assigned = packetIsAssigned(p.id);
@@ -115,7 +130,7 @@ export default function WarehousePacketsPage() {
         if (aAssigned !== bAssigned) return aAssigned - bAssigned;
         return String(a.sku || '').localeCompare(String(b.sku || ''));
       });
-  }, [packets, search, assignmentFilter, packetAssignmentsByPacketId, packetIsAssigned]);
+  }, [packets, debouncedSearch, assignmentFilter, packetAssignmentsByPacketId, packetIsAssigned]);
 
   const counts = useMemo(() => {
     const all = packets || [];

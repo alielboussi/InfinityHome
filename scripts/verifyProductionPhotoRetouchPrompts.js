@@ -12,6 +12,19 @@ import {
   inferProductionPresetFromProductName,
 } from '../server/lib/productionPhotoRetouchPrompt.js';
 import { isMattressCatalogProductName } from '../src/utils/isMattressCatalogProductName.js';
+import { isReclinerCatalogProduct } from '../src/utils/isReclinerCatalogProduct.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const retouchSrc = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), '../server/lib/productionSeatingPhotoRetouch.js'),
+  'utf8',
+);
+if (!retouchSrc.includes("fit: 'contain'")) {
+  console.error('[verifyProductionPhotoRetouchPrompts] catalog JPEG finalize must use contain (full product visible)');
+  process.exit(1);
+}
 
 for (const preset of [...PRODUCTION_SEATER_PRESETS, ...PRODUCTION_CARPENTRY_PRESETS]) {
   if (!PRODUCTION_PHOTO_PRESET_SUBJECT[preset]) {
@@ -48,6 +61,24 @@ try {
     console.error('[verifyProductionPhotoRetouchPrompts] unexpected mattress prompt error:', err?.message);
     process.exit(1);
   }
+}
+
+const reclinerPrompt = buildProductionPhotoRetouchPrompt({
+  productName: 'Layla 3 Seater',
+  categoryName: '3 Seaters',
+});
+if (!reclinerPrompt.includes('recliner sofa') || !reclinerPrompt.includes('RECLINER CATALOG')) {
+  console.error('[verifyProductionPhotoRetouchPrompts] recliner catalog prompt missing recliner block');
+  process.exit(1);
+}
+
+const sofaPrompt = buildProductionPhotoRetouchPrompt({
+  productName: 'Layla Coffee Table',
+  categoryName: 'Coffee Tables',
+});
+if (sofaPrompt.includes('RECLINER CATALOG')) {
+  console.error('[verifyProductionPhotoRetouchPrompts] carpentry must not use recliner block');
+  process.exit(1);
 }
 
 console.log('verifyProductionPhotoRetouchPrompts: ok');

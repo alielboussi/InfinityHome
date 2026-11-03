@@ -139,7 +139,7 @@ export default function WarehouseProductDetailScreen({ route }) {
   return (
     <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
       {imageUri ? (
-        <Image source={{ uri: imageUri }} style={styles.hero} resizeMode="cover" />
+        <Image source={{ uri: imageUri }} style={styles.hero} resizeMode="contain" />
       ) : (
         <View style={styles.heroPlaceholder}>
           <Text style={styles.heroPlaceholderText}>No photo</Text>
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: '#0f172a' },
   content: { padding: 16, paddingBottom: 32 },
   center: { flex: 1, backgroundColor: '#0f172a', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  hero: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#1e293b' },
+  hero: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#ffffff' },
   heroPlaceholder: {
     width: '100%',
     height: 220,
