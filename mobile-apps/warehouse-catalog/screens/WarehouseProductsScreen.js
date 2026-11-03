@@ -20,7 +20,7 @@ import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/C
 import { CatalogProductPhotoIconButton } from '../shared/CatalogProductPhotoCapture';
 import CatalogProductPhotoZoomModal from '../shared/CatalogProductPhotoZoomModal';
 import { attachCatalogProductPhoto } from '../shared/catalogPhotoApi';
-import { pickCatalogProductPhotoFromLibrary } from '../shared/pickCatalogProductPhoto';
+import { pickCatalogProductPhotoFromLibrary } from '../lib/pickCatalogProductPhoto';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';
 import { resolveWarehouseCatalogAssemblyImageUri } from '../shared/warehouseAssemblyImageUri';

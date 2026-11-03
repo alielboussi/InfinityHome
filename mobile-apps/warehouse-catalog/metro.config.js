@@ -60,12 +60,14 @@ const reactRoot = packageRoot('react');
 const rnRoot = packageRoot('react-native');
 const safeAreaRoot = packageRoot('react-native-safe-area-context');
 const screensRoot = packageRoot('react-native-screens');
+const imagePickerRoot = packageRoot('expo-image-picker');
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules || {}),
   ...(reactRoot ? { react: reactRoot } : {}),
   ...(rnRoot ? { 'react-native': rnRoot } : {}),
   ...(safeAreaRoot ? { 'react-native-safe-area-context': safeAreaRoot } : {}),
   ...(screensRoot ? { 'react-native-screens': screensRoot } : {}),
+  ...(imagePickerRoot ? { 'expo-image-picker': imagePickerRoot } : {}),
 };
 
 config.resolver.blockList = [

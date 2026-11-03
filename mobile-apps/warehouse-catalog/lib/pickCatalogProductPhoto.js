@@ -2,6 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 /**
  * Pick a processed catalog image from the device gallery (no camera AI flow).
+ * Lives under app lib/ (not shared/) so Metro resolves expo-image-picker from the app root.
  * @returns {Promise<{ uri: string } | null>}
  */
 export async function pickCatalogProductPhotoFromLibrary() {
