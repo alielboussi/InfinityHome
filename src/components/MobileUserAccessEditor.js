@@ -44,6 +44,7 @@ function normalizeGrant(raw) {
     warehouse_product_stock_qty: raw.warehouse_product_stock_qty === 'allow' ? 'allow' : 'deny',
     warehouse_catalog_add_product: raw.warehouse_catalog_add_product === 'allow' ? 'allow' : 'deny',
     warehouse_catalog_label_print: raw.warehouse_catalog_label_print === 'allow' ? 'allow' : 'deny',
+    warehouse_catalog_photo_import: raw.warehouse_catalog_photo_import === 'allow' ? 'allow' : 'deny',
     warehouse_production_app: raw.warehouse_production_app === 'allow' ? 'allow' : 'deny',
     screens: { ...base.screens, ...(raw.screens || {}) },
   };
@@ -169,6 +170,24 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
               <span className="mobile-access-permission-item__title">Print Zebra labels (warehouse catalog app)</span>
               <span className="mobile-access-permission-item__desc">
                 Label icon on product and packet cards; sends ZPL to the warehouse Zebra printer via the server.
+              </span>
+            </label>
+          </div>
+          <div className="mobile-access-permission-item">
+            <input
+              id="mobile-access-catalog-photo-import"
+              type="checkbox"
+              className="mobile-access-permission-item__check"
+              checked={grant.warehouse_catalog_photo_import === 'allow'}
+              onChange={(e) => setGrant((prev) => ({
+                ...prev,
+                warehouse_catalog_photo_import: e.target.checked ? 'allow' : 'deny',
+              }))}
+            />
+            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-photo-import">
+              <span className="mobile-access-permission-item__title">Import product photos (warehouse catalog app)</span>
+              <span className="mobile-access-permission-item__desc">
+                Gallery import icon on product and set cards; uploads the image to catalog storage (no in-app AI).
               </span>
             </label>
           </div>

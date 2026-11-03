@@ -131,6 +131,7 @@ import {
   buildProductionLabelMeta,
   buildWarehouseProductionLabelPngBase64,
 } from '../lib/warehouseProductionLabelImage.js';
+import { resolveWarehouseProductionLabelColorForPrint } from '../lib/resolveWarehouseProductionLabelColor.js';
 import {
   listProductionPresetsGrouped,
   saveProductionPresetsGrouped,
@@ -999,11 +1000,15 @@ async function buildProductionLabelPreviewPayload({
 
 async function opProductionLabelPreview(body, user) {
   await assertWarehouseLabelPrintUser(user);
+  const sb = getService();
   const name = titleCaseWords(String(body.name || '').trim());
   const sku = normalizeWarehousePacketScan(body.sku) || normalizeWarehouseProductSku(body.sku);
   if (!name || !sku) throw new Error('name and sku are required.');
   const printedAt = body.printed_at || body.printedAt || new Date().toISOString();
-  const color = body.color || body.color_name || body.colorName || '';
+  const color = await resolveWarehouseProductionLabelColorForPrint(sb, {
+    sku,
+    color: body.color || body.color_name || body.colorName || '',
+  });
   const boxUnitsPerCarton = Math.max(
     0,
     Math.floor(Number(body.box_units_per_carton ?? body.boxUnitsPerCarton) || 0),
@@ -1023,7 +1028,10 @@ async function opProductionLabelPrint(body, user) {
   const printSource = String(body.client_source || '').trim() || 'warehouse_catalog_portal';
   const printedAt = new Date();
   const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Production kiosk';
-  const color = body.color || body.color_name || body.colorName || '';
+  const color = await resolveWarehouseProductionLabelColorForPrint(sb, {
+    sku,
+    color: body.color || body.color_name || body.colorName || '',
+  });
   const boxUnitsPerCarton = Math.max(
     0,
     Math.floor(Number(body.box_units_per_carton ?? body.boxUnitsPerCarton) || 0),
@@ -2427,7 +2435,7 @@ export default async function handler(req, res) {
         const packetLoad = String(body.packet_load || body.packetLoad || '').trim().toLowerCase() === 'all'
           ? 'all'
           : 'linked';
-        const includeColors = body.include_colors === true || packetLoad === 'all';
+        const includeColors = body.include_colors !== false;
         result = await fetchCatalogForMobile(getService(), { packetLoad, includeColors });
         break;
       }

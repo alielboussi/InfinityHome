@@ -30,13 +30,12 @@ export function isWarehouseSetRecipeLocation(locationId, { portal } = {}) {
 }
 
 /**
- * Kitwe Products portal and Warehouse catalog (web + mobile) may define set recipes.
+ * Set recipes: Kitwe Products portal and warehouse web (`warehouse-products`) only — not the catalog mobile app.
  */
 export function warehouseCatalogAllowsSetCreate(portalOrOptions) {
   const portal = typeof portalOrOptions === 'string'
     ? portalOrOptions
     : portalOrOptions?.create_portal || portalOrOptions?.portal;
   return portal === 'kitwe-products'
-    || portal === 'warehouse-products'
-    || portal === 'warehouse-catalog-mobile';
+    || portal === 'warehouse-products';
 }

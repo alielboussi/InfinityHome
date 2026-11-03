@@ -139,7 +139,7 @@ export async function fetchWarehouseCatalogCached(opts = {}) {
   }
   inflight = warehouseMobileRequest('catalog-list', {
     packet_load: packetLoad,
-    include_colors: fullPackets,
+    include_colors: true,
   })
     .then((data) => {
       const merged = mergeCatalogResponses(cache, data, packetLoad);

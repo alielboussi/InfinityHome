@@ -33,7 +33,8 @@ export function isMobileScreenAccessAllowed(grant, screenId) {
 }
 
 /** /user-access — Add product (+) on warehouse catalog (web + app). */
-export function isWarehouseCatalogAddProductAllowed(grant) {
+export function isWarehouseCatalogAddProductAllowed(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
   if (!grant) return false;
   return grant.warehouse_catalog_add_product === 'allow';
 }
@@ -44,11 +45,24 @@ export function isWarehouseProductFormInsertAllowed(grant) {
 }
 
 /** /user-access — Zebra label print on warehouse catalog product/packet cards. */
-export function isWarehouseCatalogLabelPrintAllowed(grant) {
+export function isWarehouseCatalogLabelPrintAllowed(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
   if (!grant) return false;
-  if (grant.warehouse_catalog_label_print === 'allow') return true;
-  if (grant.warehouse_catalog_label_print === 'deny') return false;
-  return isWarehouseCatalogAddProductAllowed(grant);
+  return grant.warehouse_catalog_label_print === 'allow';
+}
+
+/** /user-access — import/upload product photo on warehouse catalog cards. */
+export function isWarehouseCatalogPhotoImportAllowed(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (!grant) return false;
+  return grant.warehouse_catalog_photo_import === 'allow';
+}
+
+/** Keep in sync with server/lib/loginAccess.js protected admin (User Access + Production app). */
+export const PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL = 'alielboussi00@gmail.com';
+
+export function isProductionLoginAccessAdminEmail(email) {
+  return String(email || '').trim().toLowerCase() === PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL;
 }
 
 /** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
@@ -197,6 +211,7 @@ export function defaultMobileAccessGrant() {
     warehouse_product_stock_qty: 'deny',
     warehouse_catalog_add_product: 'deny',
     warehouse_catalog_label_print: 'deny',
+    warehouse_catalog_photo_import: 'deny',
     warehouse_production_kiosk: 'deny',
     screens,
   };
@@ -324,6 +339,10 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     : 'deny';
 
   merged.warehouse_catalog_label_print = merged.warehouse_catalog_label_print === 'allow'
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_catalog_photo_import = merged.warehouse_catalog_photo_import === 'allow'
     ? 'allow'
     : 'deny';
 

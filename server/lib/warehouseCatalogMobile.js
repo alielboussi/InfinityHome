@@ -79,6 +79,7 @@ const MOBILE_ASSEMBLY_FIELDS = [
   'item_kind',
   'units_per_carton',
   'turkish_name',
+  'has_color_variants',
 ].join(', ');
 
 const MOBILE_PACKET_FIELDS = [

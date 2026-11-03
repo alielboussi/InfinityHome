@@ -667,7 +667,7 @@ export default function WarehouseProductsPage() {
                         onUpdated={handleAssemblyFieldsUpdated}
                         onError={(msg) => setError(msg)}
                       />
-                      {assembly.has_color_variants && assemblyColorsList.length > 0 ? (
+                      {assemblyColorsList.length > 0 ? (
                         <div className="warehouse-assembly-card__colors">
                           {assemblyColorsList.map((c) => (
                             <WarehouseColorChip key={c.id} name={c.name} className="warehouse-color-chip--compact" />

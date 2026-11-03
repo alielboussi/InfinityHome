@@ -18,7 +18,6 @@ import ScanScreen from './screens/ScanScreen';
 import PacketFormScreen from './screens/PacketFormScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
 import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
-import SetFormScreen from './screens/SetFormScreen';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { MOBILE_APP_DISPLAY_NAME } from './shared/mobileAccessManifest';
 import { stackScreenOptions, theme } from './shared/theme';
@@ -39,7 +38,7 @@ function MainStack() {
   }
 
   return (
-    <MobileAccessGrantProvider grant={grant}>
+    <MobileAccessGrantProvider grant={grant} userEmail={userEmail}>
     <WarehouseCatalogProvider>
     <Stack.Navigator initialRouteName="Dashboard" screenOptions={stackScreenOptions}>
       <Stack.Screen name="Dashboard" options={{ headerShown: false }}>
@@ -102,13 +101,6 @@ function MainStack() {
         )}
       </Stack.Screen>
       <Stack.Screen name="ProductForm" options={{ title: 'Product' }} component={ProductFormScreen} />
-      <Stack.Screen name="SetForm" options={{ title: 'New set' }}>
-        {(props) => (
-          <MobileScreenGate screenId="warehouse_set_form" grant={grant} navigation={props.navigation}>
-            <SetFormScreen {...props} />
-          </MobileScreenGate>
-        )}
-      </Stack.Screen>
     </Stack.Navigator>
     </WarehouseCatalogProvider>
     </MobileAccessGrantProvider>

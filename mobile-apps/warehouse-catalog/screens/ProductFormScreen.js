@@ -55,6 +55,8 @@ import { attachCatalogProductPhoto } from '../shared/catalogPhotoApi';
 import { pickCatalogProductPhotoFromLibrary } from '../lib/pickCatalogProductPhoto';
 import { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';
 import { resolveWarehouseCategoryNameFromList } from '../shared/warehouseCategoryLookup';
+import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../shared/MobileAccessGrantContext';
+import { isWarehouseCatalogAddProductAllowed } from '../shared/mobileAccessManifest';
 
 const INVENTORY_FINISHED = 'finished';
 const INVENTORY_PACKETS = 'packets';
@@ -137,6 +139,17 @@ export default function ProductFormScreen({ route, navigation }) {
   }, []);
 
   const { catalog: globalCatalog, refresh: refreshGlobalCatalog, patchCatalog, applyCatalog } = useWarehouseCatalog();
+  const grant = useSharedMobileAccessGrant();
+  const userEmail = useSharedMobileAccessUserEmail();
+  const creatingNewProduct = !bomEditMode && !existing;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (creatingNewProduct && !isWarehouseCatalogAddProductAllowed(grant, userEmail)) {
+        navigation.goBack();
+      }
+    }, [creatingNewProduct, grant, navigation, userEmail]),
+  );
 
   const refreshCatalog = useCallback(async ({ force = true } = {}) => {
     try {

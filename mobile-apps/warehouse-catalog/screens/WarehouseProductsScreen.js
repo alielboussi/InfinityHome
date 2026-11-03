@@ -14,8 +14,8 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
-import { isWarehouseCatalogAddProductAllowed, isWarehouseCatalogLabelPrintAllowed, isWarehouseProductFormInsertAllowed } from '../shared/mobileAccessManifest';
+import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../shared/MobileAccessGrantContext';
+import { isWarehouseCatalogLabelPrintAllowed, isWarehouseCatalogPhotoImportAllowed, isWarehouseCatalogAddProductAllowed } from '../shared/mobileAccessManifest';
 import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
 import { CatalogProductPhotoIconButton } from '../shared/CatalogProductPhotoCapture';
 import CatalogProductPhotoZoomModal from '../shared/CatalogProductPhotoZoomModal';
@@ -51,6 +51,11 @@ import {
   buildWarehouseCategoryIndex,
   resolveWarehouseCategoryName,
 } from '../shared/warehouseCategoryLookup';
+import {
+  buildWarehouseCatalogColorsByAssembly,
+  warehouseCatalogLabelColorForPrint,
+} from '../shared/warehouseCatalogLabelColor';
+import WarehouseCatalogColorChips from '../shared/WarehouseCatalogColorChips';
 import {
   buildWarehouseCatalogSetEntries,
   collectSetComponentAssemblyIds,
@@ -141,9 +146,10 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     refresh,
   } = useWarehouseCatalog();
   const grant = useSharedMobileAccessGrant();
-  const canAddProduct = isWarehouseCatalogAddProductAllowed(grant);
-  const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant);
-  const canImportPhoto = canAddProduct;
+  const userEmail = useSharedMobileAccessUserEmail();
+  const canAddProduct = isWarehouseCatalogAddProductAllowed(grant, userEmail);
+  const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant, userEmail);
+  const canImportPhoto = isWarehouseCatalogPhotoImportAllowed(grant, userEmail);
   const [search, setSearch] = useState('');
   const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => new Set());
@@ -179,6 +185,16 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const { assemblyWarehouseQty, packetWarehouseQty } = useMemo(
     () => catalogStockMaps(catalog),
     [catalog],
+  );
+
+  const colorsByAssembly = useMemo(
+    () => buildWarehouseCatalogColorsByAssembly(catalog),
+    [catalog],
+  );
+
+  const assemblyColorList = useCallback(
+    (assembly) => colorsByAssembly.get(String(assembly?.id || '')) || [],
+    [colorsByAssembly],
   );
 
   const setComponentIds = useMemo(
@@ -358,29 +374,21 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     });
   };
 
-  const openNewSetForm = () => {
-    navigation.navigate('SetForm');
-  };
-
-  const openAddMenu = () => {
-    Alert.alert('Add to catalog', 'Choose what to create', [
-      { text: 'Product', onPress: openNewProductForm },
-      { text: 'Set', onPress: openNewSetForm },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
   const formatQty = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return '0';
     return String(Math.max(0, Math.floor(n)));
   };
 
-  const openLabelPrint = (name, sku) => {
+  const openLabelPrint = (name, sku, assemblyForColor = null) => {
     const labelName = String(name || '').trim();
     const labelSku = String(sku || '').trim();
     if (!labelName || !labelSku) return;
-    setLabelPrintItem({ name: labelName, sku: labelSku, defaultCopies: 1 });
+    const color = warehouseCatalogLabelColorForPrint(catalog, {
+      assembly: assemblyForColor,
+      sku: labelSku,
+    });
+    setLabelPrintItem({ name: labelName, sku: labelSku, defaultCopies: 1, color });
   };
 
   const importProductPhoto = async (assembly) => {
@@ -425,7 +433,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         ) : null}
         {canPrintLabel ? (
           <CatalogLabelPrintIconButton
-            onPress={() => openLabelPrint(assembly.name, assembly.family_sku)}
+            onPress={() => openLabelPrint(assembly.name, assembly.family_sku, assembly)}
             disabled={busy}
           />
         ) : null}
@@ -444,7 +452,12 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         </View>
         {canPrintLabel ? (
           <CatalogLabelPrintIconButton
-            onPress={() => openLabelPrint(packet.name, packet.sku)}
+            onPress={() => {
+              const parentAssembly = (catalog?.assemblies || []).find(
+                (a) => String(a.id) === String(packet.assembly_id || ''),
+              );
+              openLabelPrint(packet.name, packet.sku, parentAssembly || null);
+            }}
           />
         ) : null}
       </View>
@@ -501,12 +514,18 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             </View>
             <Text style={styles.cardTitle} numberOfLines={2}>{setAssembly.name}</Text>
             <Text style={styles.cardSku} numberOfLines={1}>{setAssembly.family_sku}</Text>
+            <WarehouseCatalogColorChips colors={assemblyColorList(setAssembly)} compact />
             <Text style={styles.cardMeta} numberOfLines={2}>
               Set · {cat || '—'} · {componentLines.length} product{componentLines.length === 1 ? '' : 's'}
             </Text>
           </View>
+          <View style={styles.qtyFooter}>
+            <Text style={styles.qtySetLabel}>Set</Text>
+          </View>
         </View>
+        {(componentLines.length > 0 || packetLines.length > 0) ? (
         <View style={styles.setInlayBar}>
+          {componentLines.length > 0 ? (
           <Pressable
             style={styles.setInlayToggle}
             onPress={() => toggleExpanded(productsOpenKey)}
@@ -517,6 +536,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
               Products ({componentLines.length})
             </Text>
           </Pressable>
+          ) : null}
+          {packetLines.length > 0 ? (
           <Pressable
             style={styles.setInlayToggle}
             onPress={() => toggleExpanded(packetsOpenKey)}
@@ -527,7 +548,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
               Packets ({packetLines.length})
             </Text>
           </Pressable>
+          ) : null}
         </View>
+        ) : null}
         {productsOpen ? (
           <View style={styles.setRecipeList}>
             {componentLines.length === 0 ? (
@@ -572,7 +595,6 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const expandKey = expandKeyProduct(id);
     const isOpen = expanded.has(expandKey);
     const pktList = packetsByAssembly.get(id) || [];
-    const cat = categoryName(assembly.category_id, assembly);
     const finishedQty = assemblyWarehouseQty[id] ?? 0;
     const displayQty = catalogMode === 'incomplete' ? 0 : finishedQty;
     const dimLine = formatDimensionsLine(assembly);
@@ -598,6 +620,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       ? styles.qtyIncomplete
       : (qtyNum > 0 ? styles.qtyValuePositive : styles.qtyValueZero);
     const imageUri = resolveWarehouseCatalogAssemblyImageUri(assembly, { categoryIndex });
+    const colorList = assemblyColorList(assembly);
 
     return (
       <View style={styles.gridCard}>
@@ -620,6 +643,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
               ) : null}
             </Pressable>
             {renderCardPhotoActions(assembly)}
+            {pktList.length > 0 ? (
             <Pressable
               style={styles.expandFab}
               onPress={() => toggleExpanded(expandKey)}
@@ -628,14 +652,14 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             >
               <Text style={[styles.expandIcon, isOpen && styles.expandIconOpen]}>▶</Text>
             </Pressable>
+            ) : null}
           </View>
           <Text style={styles.cardTitle} numberOfLines={2}>{assembly.name}</Text>
           <Text style={styles.cardSku} numberOfLines={1}>{assembly.family_sku}</Text>
-          <Text style={styles.cardMeta} numberOfLines={2}>
-            {cat || '—'}
-            {assembly.packet_count ? ` · ${assembly.packet_count} pkt` : ''}
-            {bomHint ? ` · ${bomHint}` : ''}
-          </Text>
+          <WarehouseCatalogColorChips colors={colorList} />
+          {catalogMode === 'incomplete' && bomHint ? (
+            <Text style={styles.cardMeta} numberOfLines={2}>{bomHint}</Text>
+          ) : null}
           {dimLine ? (
             <Text style={styles.cardSpec} numberOfLines={2}>{dimLine}</Text>
           ) : null}
@@ -701,7 +725,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             : 'Filter by category'}
         >
           <MaterialCommunityIcons
-            name="shape-outline"
+            name="filter-outline"
             size={22}
             color={categoryFilterActive ? '#38bdf8' : '#94a3b8'}
           />
@@ -709,8 +733,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
         {catalogMode === 'complete' && canAddProduct ? (
           <Pressable
             style={styles.addBtn}
-            onPress={openAddMenu}
-            accessibilityLabel="Add product or set"
+            onPress={openNewProductForm}
+            accessibilityLabel="Add product"
           >
             <Text style={styles.addBtnText}>+</Text>
           </Pressable>
@@ -740,7 +764,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             <Text style={styles.empty}>
               {catalogMode === 'incomplete'
                 ? 'No incomplete products.'
-                : 'No products or sets yet. Tap + to add a product or set.'}
+                : 'No products or sets yet. Tap + to add a product.'}
             </Text>
           }
           refreshing={refreshing}
@@ -976,26 +1000,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   listContent: { paddingHorizontal: 10, paddingBottom: 24 },
-  gridRow: { gap: 8, marginBottom: 8 },
+  gridRow: { gap: 8, marginBottom: 8, alignItems: 'flex-start' },
   gridCard: {
     flexGrow: 0,
-    flexShrink: 0,
+    flexShrink: 1,
     flexBasis: '48%',
     maxWidth: '48%',
+    minWidth: 0,
     backgroundColor: theme.surface,
     borderRadius: theme.radius,
     borderWidth: 1,
     borderColor: theme.border,
     overflow: 'hidden',
-    minWidth: 0,
   },
   cardPress: {
-    flex: 1,
     padding: 8,
-    paddingBottom: 8,
-    justifyContent: 'space-between',
+    paddingBottom: 6,
   },
-  cardMain: { flexGrow: 1 },
+  cardMain: {},
   thumbWrap: { position: 'relative' },
   thumbPressablePressed: { opacity: 0.88 },
   thumbZoomBadge: {
@@ -1032,9 +1054,9 @@ const styles = StyleSheet.create({
   thumbPlaceholderIcon: { color: '#475569', fontSize: 28, marginBottom: 4 },
   thumbPlaceholderText: { color: '#64748b', fontSize: 12, fontWeight: '600' },
   qtyFooter: {
-    minHeight: 52,
-    marginTop: 6,
-    paddingTop: 8,
+    marginTop: 8,
+    paddingTop: 6,
+    paddingBottom: 2,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.border,
     alignItems: 'center',
@@ -1046,6 +1068,13 @@ const styles = StyleSheet.create({
   qtyValuePositive: { color: '#069506' },
   qtyValueZero: { color: '#B30707' },
   qtyIncomplete: { color: '#B30707' },
+  qtySetLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#38bdf8',
+    textAlign: 'center',
+    width: '100%',
+  },
   expandFab: {
     position: 'absolute',
     top: 14,

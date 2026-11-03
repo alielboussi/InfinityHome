@@ -3,7 +3,10 @@ import { attachProductionAssemblyCatalogPhoto } from './productionPacketCatalogP
 import { canManageCatalog } from '../../src/accessControl.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from './loginAccess.js';
 import { normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
-import { isMobileScreenAccessAllowed } from '../../src/mobile/mobileAccessManifest.js';
+import {
+  isProductionLoginAccessAdminEmail,
+  isWarehouseCatalogPhotoImportAllowed,
+} from '../../src/mobile/mobileAccessManifest.js';
 import { rewriteLegacyProductImageUrl } from '../../src/utils/storageImageUrl.js';
 import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
 
@@ -17,9 +20,10 @@ function getService() {
 
 async function assertCatalogPhotoUser(user) {
   if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) return;
+  if (isProductionLoginAccessAdminEmail(user?.email)) return;
   const record = await getLoginAccessRecord(user?.id);
   const grant = normalizeMobileAccessGrant(record?.mobile_access || {}, user?.email);
-  if (isMobileScreenAccessAllowed(grant, 'warehouse_product_form')) return;
+  if (isWarehouseCatalogPhotoImportAllowed(grant, user?.email)) return;
   const err = new Error('You do not have permission to upload catalog product photos.');
   err.status = 403;
   throw err;

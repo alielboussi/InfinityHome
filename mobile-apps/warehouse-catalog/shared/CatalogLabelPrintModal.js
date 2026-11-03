@@ -24,6 +24,8 @@ export default function CatalogLabelPrintModal({
 }) {
   const name = String(item?.name || '').trim();
   const sku = String(item?.sku || '').trim();
+  const color = String(item?.color || '').trim();
+  const boxUnitsPerCarton = Math.max(0, Math.floor(Number(item?.boxUnitsPerCarton) || 0));
   const [copies, setCopies] = useState(1);
   const [copiesInput, setCopiesInput] = useState('1');
   const [busy, setBusy] = useState(false);
@@ -65,7 +67,13 @@ export default function CatalogLabelPrintModal({
     setBusy(true);
     setError('');
     try {
-      const result = await printWarehouseCatalogLabel({ name, sku, copies: printCopies });
+      const result = await printWarehouseCatalogLabel({
+        name,
+        sku,
+        copies: printCopies,
+        color,
+        boxUnitsPerCarton,
+      });
       const warning = String(result?.labelPrintWarning || '').trim();
       setPrintWarning(warning);
       setLabelCopies(result?.labelCopies || copies);
@@ -77,6 +85,8 @@ export default function CatalogLabelPrintModal({
             name: label.name,
             sku: label.sku,
             printedAt: label.printed_at,
+            color: label.color || color,
+            boxUnitsPerCarton,
           });
           png = prev?.label_preview_png_base64 || '';
           if (!label && prev?.label) label = prev.label;
@@ -114,6 +124,9 @@ export default function CatalogLabelPrintModal({
             </View>
             <Text style={styles.name} numberOfLines={3}>{name}</Text>
             <Text style={styles.sku}>{sku}</Text>
+            {color ? (
+              <Text style={styles.colorLine}>Color: {color}</Text>
+            ) : null}
 
             <View style={styles.qtyRow}>
               <Text style={styles.qtyLabel}>Copies</Text>
@@ -246,6 +259,7 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 17, fontWeight: '700', color: theme.text },
   name: { fontSize: 15, fontWeight: '600', color: theme.text, marginBottom: 4 },
   sku: { fontSize: 13, color: theme.textMuted, fontFamily: 'monospace', marginBottom: 14 },
+  colorLine: { fontSize: 13, color: theme.text, marginBottom: 10 },
   qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
