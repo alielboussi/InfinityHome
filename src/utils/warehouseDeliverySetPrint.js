@@ -1,8 +1,4 @@
 import { WAREHOUSE_TO_LOCATION_ID } from './warehouseDelivery.js';
-import {
-  KITWE_SET_DELIVERY_LOCATION_ID,
-  resolveSetComponentsForDelivery,
-} from './warehouseSetDeliveryRecipe.js';
 
 export {
   resolveSetComponentsForDelivery,

@@ -107,7 +107,6 @@ export default function WarehouseProductEditPage() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryAddBusy, setCategoryAddBusy] = useState(false);
   const [formReady, setFormReady] = useState(false);
-  const [setComponentsByLocation, setSetComponentsByLocation] = useState({});
   const newProductFormInitializedRef = useRef(false);
 
   const applyCatalogSnapshot = useCallback((data) => {
@@ -165,7 +164,6 @@ export default function WarehouseProductEditPage() {
               : [{ component_assembly_id: '', quantity: 1 }],
           };
           const defaultSetLoc = factorySetLoc;
-          setSetComponentsByLocation(byLoc);
           setProductForm({
             name: row.name || '',
             turkish_name: String(row.turkish_name || '').trim()
@@ -195,7 +193,6 @@ export default function WarehouseProductEditPage() {
         }
       } else if (!newProductFormInitializedRef.current) {
         const defaultSetLoc = data.warehouseLocationId || WAREHOUSE_FACTORY_LOCATION_ID;
-        setSetComponentsByLocation({});
         setProductForm({
           ...emptyProductForm,
           catalog_kind: newKind,
