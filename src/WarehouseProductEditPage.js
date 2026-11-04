@@ -1098,6 +1098,10 @@ export default function WarehouseProductEditPage() {
                     <div
                       className="warehouse-set-component-pick"
                       ref={pickerOpen ? setComponentPickRef : null}
+                      role="combobox"
+                      aria-expanded={pickerOpen}
+                      aria-haspopup="listbox"
+                      aria-controls={pickerOpen ? `wh-set-component-results-${index}` : undefined}
                     >
                       <input
                         type="hidden"
@@ -1114,8 +1118,7 @@ export default function WarehouseProductEditPage() {
                         value={searchValue}
                         autoComplete="off"
                         aria-label="Search set component product"
-                        aria-expanded={pickerOpen}
-                        aria-controls={pickerOpen ? `wh-set-component-results-${index}` : undefined}
+                        aria-autocomplete="list"
                         onFocus={() => {
                           setSetComponentPickerOpen(index);
                           setSetComponentRowQuery((prev) => ({
