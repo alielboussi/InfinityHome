@@ -143,6 +143,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWarehouseSetDeliveryRecipe.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[warehouse-set-delivery-recipe:fail] verifyWarehouseSetDeliveryRecipe.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseProductionDeliverySearch.js', {
     cwd: process.cwd(),
     stdio: 'inherit',
@@ -239,6 +249,16 @@ try {
   });
 } catch (e) {
   console.error('[production-photo-retouch:fail] verifyProductionPhotoRetouchPrompts.js failed.');
+  process.exit(1);
+}
+
+try {
+  require('child_process').execSync('node scripts/verifyProductionPhotoAiPath.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-photo-retouch:fail] verifyProductionPhotoAiPath.js failed.');
   process.exit(1);
 }
 

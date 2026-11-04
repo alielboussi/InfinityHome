@@ -8,6 +8,7 @@ import {
 import {
   isWarehouseSetRecipeLocation,
   warehouseCatalogAllowsSetCreate,
+  WAREHOUSE_FACTORY_LOCATION_ID,
 } from '../constants/warehouseShowroomLocations';
 import { validateSetComponentAssembly } from '../utils/warehouseCatalogHierarchy';
 import { expandWarehouseSetItemsRows } from '../utils/warehouseSetItems';
@@ -574,6 +575,12 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
   const createPortal = payload?.create_portal || payload?.portal || '';
   if (isSet && !isWarehouseSetRecipeLocation(setLocationId, { portal: createPortal })) {
     throw new Error('Set recipe location must be Warehouse (factory), Kitwe, or Lusaka.');
+  }
+  if (isSet && createPortal === 'warehouse-products') {
+    const factoryId = warehouseLocationId || WAREHOUSE_FACTORY_LOCATION_ID;
+    if (String(setLocationId) !== String(factoryId)) {
+      throw new Error('Warehouse sets must use Warehouse (factory) as kitting location.');
+    }
   }
   if (isSet && !id && !warehouseCatalogAllowsSetCreate(createPortal)) {
     throw new Error('You do not have permission to create sets in this catalog.');

@@ -1,6 +1,17 @@
 import { WAREHOUSE_TO_LOCATION_ID } from './warehouseDelivery.js';
-import { isWarehouseSetAssembly } from './warehouseCatalogHierarchy.js';
-import { expandWarehouseSetItemsRows } from './warehouseSetItems.js';
+import {
+  KITWE_SET_DELIVERY_LOCATION_ID,
+  resolveSetComponentsForDelivery,
+} from './warehouseSetDeliveryRecipe.js';
+
+export {
+  resolveSetComponentsForDelivery,
+  resolveSetDeliveryRecipeLocationId,
+  factorySetRecipeComponentLines,
+  setRecipeRowsForLocation,
+  KITWE_SET_DELIVERY_LOCATION_ID,
+  FACTORY_SET_RECIPE_LOCATION_ID,
+} from './warehouseSetDeliveryRecipe.js';
 
 export function isWarehouseSetDeliveryGroup(group) {
   if (!group || typeof group !== 'object') return false;
@@ -10,31 +21,6 @@ export function isWarehouseSetDeliveryGroup(group) {
 
 export function deliverySetRecipeLocationId() {
   return WAREHOUSE_TO_LOCATION_ID;
-}
-
-export function resolveSetComponentsForDelivery(setAssemblyId, setUnits, setItems, assemblies) {
-  const setId = String(setAssemblyId || '').trim();
-  const u = Math.max(1, Number(setUnits) || 1);
-  const locId = deliverySetRecipeLocationId();
-  const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
-  const expanded = expandWarehouseSetItemsRows(setItems || []);
-  return expanded
-    .filter(
-      (row) => String(row.set_assembly_id) === setId
-        && (!locId || String(row.location_id) === locId),
-    )
-    .map((row) => {
-      const product = assemblyById.get(String(row.component_assembly_id));
-      if (!product || isWarehouseSetAssembly(product)) return null;
-      const perSet = Math.max(1, Number(row.quantity) || 1);
-      return {
-        assembly_id: product.id,
-        assembly_name: product.name,
-        quantity_per_set: perSet,
-        product_qty: u * perSet,
-      };
-    })
-    .filter(Boolean);
 }
 
 /**

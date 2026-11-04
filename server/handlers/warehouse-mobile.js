@@ -86,6 +86,7 @@ import {
 } from '../../src/utils/warehouseDeliverySetPrint.js';
 import { isWarehouseSetAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
 import { acceptWarehouseDeliveryServer } from '../lib/warehouseDeliveryAccept.js';
+import { ensureKitweSetRecipeFromFactory } from '../lib/ensureKitweSetRecipeFromFactory.js';
 import { cancelWarehouseDeliveryServer, deleteWarehouseDeliverySessionHard } from '../lib/cancelWarehouseDelivery.js';
 import { assertPacketStockAvailable, assertAssemblyStockAvailable } from '../lib/warehouseDeliveryStock.js';
 import {
@@ -493,11 +494,17 @@ async function opProductionPacketCreate(body, user) {
       throw new Error('AI catalog photos are not used for mattresses. Save without a photo from the Production app.');
     }
     if (imageBase64) {
+      const requireAiOnCreate = clientSource === 'warehouse_production_app'
+        || body.require_ai_retouch === true
+        || body.requireAiRetouch === true;
       catalogImageUrl = await attachProductionAssemblyCatalogPhoto(sb, {
         assembly,
         imageBase64,
         productName: name,
+        preset: presetLabel,
         skipAiRetouch: false,
+        requireAiRetouch: requireAiOnCreate,
+        directCatalogUpload: false,
       });
     } else if (requiresPhoto) {
       throw new Error('Take a product photo before saving (camera required).');
@@ -1575,17 +1582,29 @@ async function processSetDeliveryGroup({
   if (!setAssembly || !isWarehouseSetAssembly(setAssembly)) {
     throw new Error('Unknown set in shipment.');
   }
+
+  const mirror = await ensureKitweSetRecipeFromFactory(sb, setId, {
+    setItems,
+    assembliesById: assemblyById,
+    now,
+  });
+  const setItemsForRecipe = mirror.addedRows?.length
+    ? [...(setItems || []), ...mirror.addedRows]
+    : (setItems || []);
+
   const units = Math.max(1, Number(group.units) || 1);
   const groupId = String(group.group_id || newUuid());
   const recipeComponents = resolveSetComponentsForDelivery(
     setId,
     units,
-    setItems,
+    setItemsForRecipe,
     [...assemblyById.values()],
   );
   const clientComponents = Array.isArray(group.components) ? group.components : [];
   if (!recipeComponents.length) {
-    throw new Error(`Set ${setAssembly.name} has no products configured for Kitwe.`);
+    throw new Error(
+      `Set ${setAssembly.name} has no products configured at Kitwe or Warehouse (factory). Add the set recipe in Warehouse catalog first.`,
+    );
   }
 
   const entries = [];

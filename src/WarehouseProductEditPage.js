@@ -39,10 +39,8 @@ import {
 } from './utils/warehouseUnitsPerCarton';
 
 import {
-  defaultWarehouseKitShowroomLocationId,
-  WAREHOUSE_KIT_SHOWROOM_LOCATION_IDS,
+  WAREHOUSE_FACTORY_LOCATION_ID,
   warehouseCatalogAllowsSetCreate,
-  isWarehouseSetRecipeLocation,
 } from './constants/warehouseShowroomLocations';
 import {
   expandWarehouseSetItemsRows,
@@ -60,7 +58,7 @@ const emptyProductForm = {
   color_ids: [],
   inventory_mode: WAREHOUSE_INVENTORY_MODE.PACKETS,
   catalog_kind: 'product',
-  set_location_id: defaultWarehouseKitShowroomLocationId(),
+  set_location_id: WAREHOUSE_FACTORY_LOCATION_ID,
   set_components: [],
   units_per_carton: '1',
 };
@@ -153,21 +151,20 @@ export default function WarehouseProductEditPage() {
           const isSetRow = String(row.item_kind || '').toLowerCase() === 'set';
           const setLines = expandWarehouseSetItemsRows(data.setItems || [])
             .filter((line) => String(line.set_assembly_id) === String(row.id));
-          const byLoc = {};
-          WAREHOUSE_KIT_SHOWROOM_LOCATION_IDS.forEach((locId) => {
-            const key = setItemsAssemblyLocationKey(row.id, locId);
-            const lines = setLines
-              .filter((line) => String(line.location_id) === String(locId))
-              .map((line) => ({
-                component_assembly_id: line.component_assembly_id,
-                quantity: Math.max(1, Number(line.quantity) || 1),
-              }));
-            byLoc[key] = lines.length
-              ? lines
-              : [{ component_assembly_id: '', quantity: 1 }];
-          });
-          const defaultSetLoc = defaultWarehouseKitShowroomLocationId();
-          const setLocKey = setItemsAssemblyLocationKey(row.id, defaultSetLoc);
+          const factorySetLoc = data.warehouseLocationId || WAREHOUSE_FACTORY_LOCATION_ID;
+          const setLocKey = setItemsAssemblyLocationKey(row.id, factorySetLoc);
+          const factoryLines = setLines
+            .filter((line) => String(line.location_id) === String(factorySetLoc))
+            .map((line) => ({
+              component_assembly_id: line.component_assembly_id,
+              quantity: Math.max(1, Number(line.quantity) || 1),
+            }));
+          const byLoc = {
+            [setLocKey]: factoryLines.length
+              ? factoryLines
+              : [{ component_assembly_id: '', quantity: 1 }],
+          };
+          const defaultSetLoc = factorySetLoc;
           setSetComponentsByLocation(byLoc);
           setProductForm({
             name: row.name || '',
@@ -197,7 +194,7 @@ export default function WarehouseProductEditPage() {
           setFormReady(true);
         }
       } else if (!newProductFormInitializedRef.current) {
-        const defaultSetLoc = defaultWarehouseKitShowroomLocationId();
+        const defaultSetLoc = data.warehouseLocationId || WAREHOUSE_FACTORY_LOCATION_ID;
         setSetComponentsByLocation({});
         setProductForm({
           ...emptyProductForm,
@@ -215,14 +212,16 @@ export default function WarehouseProductEditPage() {
     }
   }, [applyCatalogSnapshot, isNew, productId, newKind]);
 
+  const warehouseSetRecipeLocationId = warehouseLocationId || WAREHOUSE_FACTORY_LOCATION_ID;
+
   useEffect(() => {
-    if (!isNew || newKind !== 'set' || !warehouseLocationId) return;
+    if (!warehouseSetRecipeLocationId) return;
     setProductForm((f) => {
       if (f.catalog_kind !== 'set') return f;
-      if (isWarehouseSetRecipeLocation(f.set_location_id, { portal: 'warehouse-products' })) return f;
-      return { ...f, set_location_id: warehouseLocationId };
+      if (String(f.set_location_id) === String(warehouseSetRecipeLocationId)) return f;
+      return { ...f, set_location_id: warehouseSetRecipeLocationId };
     });
-  }, [isNew, newKind, warehouseLocationId]);
+  }, [warehouseSetRecipeLocationId]);
 
   const refreshCatalogLists = useCallback(async () => {
     try {
@@ -494,8 +493,8 @@ export default function WarehouseProductEditPage() {
     }
     const savingSet = productForm.catalog_kind === 'set';
     if (savingSet) {
-      if (!isWarehouseSetRecipeLocation(productForm.set_location_id, { portal: 'warehouse-products' })) {
-        setError('Set recipe location must be Warehouse (factory), Kitwe, or Lusaka.');
+      if (String(productForm.set_location_id) !== String(warehouseSetRecipeLocationId)) {
+        setError('Set recipe location must be Warehouse (factory).');
         return;
       }
       const validLines = (productForm.set_components || []).filter(
@@ -522,7 +521,7 @@ export default function WarehouseProductEditPage() {
         turkish_name: turkishName || null,
         units_per_carton: finishedOnly ? productForm.units_per_carton : '1',
         family_sku: normalizedSku,
-        set_location_id: savingSet ? productForm.set_location_id : undefined,
+        set_location_id: savingSet ? warehouseSetRecipeLocationId : undefined,
         set_components: savingSet
           ? (productForm.set_components || []).filter((line) => String(line?.component_assembly_id || '').trim())
           : [],
@@ -667,32 +666,12 @@ export default function WarehouseProductEditPage() {
     }));
   };
 
-  const kitShowroomOptions = useMemo(
-    () => (locations || []).filter((loc) => WAREHOUSE_KIT_SHOWROOM_LOCATION_IDS.some(
-      (id) => String(id) === String(loc.id),
-    )),
-    [locations],
-  );
-
-  const switchSetKitLocation = (nextLocationId) => {
-    const prevLocId = productForm.set_location_id;
-    const assemblyKey = editingProductId || 'new';
-    if (prevLocId) {
-      const prevKey = setItemsAssemblyLocationKey(assemblyKey, prevLocId);
-      setSetComponentsByLocation((prev) => ({
-        ...prev,
-        [prevKey]: productForm.set_components || [],
-      }));
-    }
-    const nextKey = setItemsAssemblyLocationKey(assemblyKey, nextLocationId);
-    const nextComponents = setComponentsByLocation[nextKey]
-      || [{ component_assembly_id: '', quantity: 1 }];
-    setProductForm((f) => ({
-      ...f,
-      set_location_id: nextLocationId,
-      set_components: nextComponents,
-    }));
-  };
+  const warehouseSetRecipeLocationName = useMemo(() => {
+    const loc = (locations || []).find(
+      (l) => String(l.id) === String(warehouseSetRecipeLocationId),
+    );
+    return loc?.name || 'Warehouse';
+  }, [locations, warehouseSetRecipeLocationId]);
 
   if (!canManage && !(isNew && canAddProduct)) return null;
 
@@ -1026,18 +1005,15 @@ export default function WarehouseProductEditPage() {
           {isSetForm ? (
             <div className="warehouse-field warehouse-field--set-components warehouse-field--span-full">
               <label htmlFor="wh-set-kit-location">Set kitting location</label>
-              <select
+              <input
                 id="wh-set-kit-location"
-                required
-                value={productForm.set_location_id || ''}
-                onChange={(e) => switchSetKitLocation(e.target.value)}
-              >
-                {kitShowroomOptions.map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-              </select>
+                type="text"
+                readOnly
+                value={warehouseSetRecipeLocationName}
+                aria-readonly="true"
+              />
               <p className="warehouse-field-hint" style={{ marginTop: 4 }}>
-                Product + product = set (showroom kitting only). Packets are never added here — only finished products.
+                Warehouse sets are defined at central Warehouse (factory). Packets are never added here — only finished products.
               </p>
               <label>Set components (products)</label>
               <p className="warehouse-field-hint" style={{ marginTop: 0 }}>
