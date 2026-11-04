@@ -26,6 +26,8 @@ const create = fs.readFileSync(
   'utf8',
 );
 assert(create.includes('seater_presets'), 'Create screen must load remote seater presets');
+assert(create.includes('fetchProductionPresets'), 'Create screen must refresh presets from production-presets-list');
+assert(create.includes('reloadPresetsFromServer'), 'Create screen must reload presets when focused');
 assert(create.includes('prefetchPresetArabicLabels'), 'Create screen must auto-translate new presets in Arabic');
 
 const i18n = fs.readFileSync(

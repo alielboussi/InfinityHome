@@ -44,6 +44,7 @@ import {
   createProductionPacket,
   createProductionProductOnly,
   fetchProductionCatalog,
+  fetchProductionPresets,
   fetchProductionSuggestedBaseName,
 } from '../services/productionApi';
 import { isMattressCatalogProductName } from '../lib/isMattressCatalogProductName';
@@ -110,31 +111,49 @@ export default function CreateScreen({ navigation }) {
   const seaterPresetValue = preset && seaterPresets.includes(preset) ? preset : '';
   const carpentryPresetValue = preset && carpentryPresets.includes(preset) ? preset : '';
 
+  const applyRemotePresets = useCallback((data) => {
+    if (!data) return;
+    const remoteSeater = data.seater_presets || data.seater || data.production_presets?.seater;
+    const remoteCarpentry = data.carpentry_presets || data.carpentry || data.production_presets?.carpentry;
+    if (Array.isArray(remoteSeater) && remoteSeater.length) {
+      setSeaterPresets(remoteSeater);
+    }
+    if (Array.isArray(remoteCarpentry) && remoteCarpentry.length) {
+      setCarpentryPresets(remoteCarpentry);
+    }
+  }, []);
+
+  const reloadPresetsFromServer = useCallback(async () => {
+    try {
+      const grouped = await fetchProductionPresets();
+      applyRemotePresets(grouped);
+    } catch {
+      /* keep last known list */
+    }
+  }, [applyRemotePresets]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchProductionCatalog();
+      const [data] = await Promise.all([
+        fetchProductionCatalog(),
+        reloadPresetsFromServer(),
+      ]);
       setWarehouseLocationId(data.warehouseLocationId);
       setWarehouseLocationName(data.warehouseLocationName || 'Warehouse');
       setCatalogAssemblies(data.assemblies || []);
-      const remoteSeater = data.seater_presets || data.production_presets?.seater;
-      const remoteCarpentry = data.carpentry_presets || data.production_presets?.carpentry;
-      if (Array.isArray(remoteSeater) && remoteSeater.length) {
-        setSeaterPresets(remoteSeater);
-      }
-      if (Array.isArray(remoteCarpentry) && remoteCarpentry.length) {
-        setCarpentryPresets(remoteCarpentry);
-      }
+      applyRemotePresets(data);
       if (!data.warehouseLocationId) {
         setError(tUi('noWarehouse', locale));
       }
     } catch (err) {
       setError(err?.message || 'Failed to load warehouse');
+      await reloadPresetsFromServer();
     } finally {
       setLoading(false);
     }
-  }, [locale]);
+  }, [applyRemotePresets, locale, reloadPresetsFromServer]);
 
   useEffect(() => {
     load();
@@ -162,7 +181,8 @@ export default function CreateScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       reloadRecentNames();
-    }, [reloadRecentNames]),
+      reloadPresetsFromServer();
+    }, [reloadRecentNames, reloadPresetsFromServer]),
   );
 
   useEffect(() => {

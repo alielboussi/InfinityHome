@@ -20,6 +20,15 @@ export async function fetchProductionCatalog() {
   return productionOp('catalog-list');
 }
 
+/** Lightweight preset refresh — same data as portal /warehouse-production-presets. */
+export async function fetchProductionPresets() {
+  const payload = await productionOp('production-presets-list');
+  return {
+    seater: payload.seater || payload.production_presets?.seater || [],
+    carpentry: payload.carpentry || payload.production_presets?.carpentry || [],
+  };
+}
+
 export async function fetchProductionRecentBaseNames() {
   const payload = await productionOp('production-recent-base-names', {});
   const list = payload?.base_names || payload?.baseNames || [];
