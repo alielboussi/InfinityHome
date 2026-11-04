@@ -37,8 +37,6 @@ function mergeCatalogSharedFromGit() {
     if (!suffix) continue;
     const src = path.join(repoRoot, rel);
     const dest = path.join(sharedPath, suffix);
-    const baseFile = path.join(sharedSource, suffix);
-    if (fs.existsSync(baseFile)) continue;
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     if (fs.existsSync(src)) {
       fs.copyFileSync(src, dest);

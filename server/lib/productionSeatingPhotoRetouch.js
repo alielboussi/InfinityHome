@@ -158,27 +158,16 @@ async function trimCatalogContent(flattenedBuffer) {
   return null;
 }
 
-/** Tight-crop to product pixels, equal white padding → square, then scale (fixes low/high AI framing). */
+/** Tight-crop to product pixels, then letterbox on white square (never stretch). */
 async function centerTrimmedOnCatalogSquare(flattenedBuffer) {
   const trimmed = await trimCatalogContent(flattenedBuffer);
   const content = trimmed?.data || flattenedBuffer;
-  const width = trimmed?.info?.width || (await sharp(flattenedBuffer).metadata()).width || 1;
-  const height = trimmed?.info?.height || (await sharp(flattenedBuffer).metadata()).height || 1;
-  const side = Math.max(width, height, 1);
-  const padTop = Math.floor((side - height) / 2);
-  const padBottom = side - height - padTop;
-  const padLeft = Math.floor((side - width) / 2);
-  const padRight = side - width - padLeft;
-
   return sharp(content)
-    .extend({
-      top: padTop,
-      bottom: padBottom,
-      left: padLeft,
-      right: padRight,
+    .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, {
+      fit: 'contain',
       background: TRIM_BACKGROUND,
+      position: 'centre',
     })
-    .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, { fit: 'fill' })
     .jpeg({ quality: 90, mozjpeg: true })
     .toBuffer();
 }

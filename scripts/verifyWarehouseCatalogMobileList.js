@@ -34,6 +34,15 @@ if (!store.includes('packet_load: packetLoad')) {
   process.exit(1);
 }
 
+const grantCtx = fs.readFileSync(
+  path.join(root, 'mobile-apps/shared/MobileAccessGrantContext.js'),
+  'utf8',
+);
+if (!grantCtx.includes('useSharedMobileAccessUserEmail')) {
+  console.error('[verifyWarehouseCatalogMobileList] MobileAccessGrantContext must export user email hook');
+  process.exit(1);
+}
+
 const productForm = fs.readFileSync(
   path.join(root, 'mobile-apps/warehouse-catalog/screens/ProductFormScreen.js'),
   'utf8',

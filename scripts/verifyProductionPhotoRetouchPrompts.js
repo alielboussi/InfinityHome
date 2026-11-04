@@ -21,8 +21,8 @@ const retouchSrc = fs.readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), '../server/lib/productionSeatingPhotoRetouch.js'),
   'utf8',
 );
-if (!retouchSrc.includes('centerTrimmedOnCatalogSquare') || !retouchSrc.includes('.extend(')) {
-  console.error('[verifyProductionPhotoRetouchPrompts] catalog JPEG finalize must trim and pad to square before resize');
+if (!retouchSrc.includes('centerTrimmedOnCatalogSquare') || !retouchSrc.includes("fit: 'contain'")) {
+  console.error('[verifyProductionPhotoRetouchPrompts] catalog JPEG finalize must trim and letterbox to square (contain, no stretch)');
   process.exit(1);
 }
 

@@ -11,7 +11,7 @@ export { isMattressCatalogProductName };
 
 const SHARED_REQUIREMENTS = `REQUIREMENTS (follow exactly):
 1. Background: solid pure white #FFFFFF only — no floor, walls, warehouse, or gradient.
-2. Subject: keep the same product — same shape, materials, colors, and proportions. Do not swap or redesign the item.
+2. Subject: keep the same product — same shape, materials, colors, and proportions. Do not swap or redesign the item. Never stretch or squash the product wider or taller than the real furniture — preserve natural width-to-height ratio.
 3. Cleanup: remove people, hands, tags, clutter, and background objects.
 4. Lighting: bright, even catalog lighting; sharp focus; optional very soft contact shadow under the base only.
 5. Framing: center the product with balanced padding on all sides; the full item must be visible — never crop off arms, back, base, or sides.
