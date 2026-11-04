@@ -98,6 +98,12 @@ export async function listProductionPresetsGrouped(sb) {
   };
 }
 
+function throwIfDatastoreError(result, fallback) {
+  if (result?.error) {
+    throw new Error(result.error.message || fallback || 'Database write failed');
+  }
+}
+
 export async function saveProductionPresetsGrouped(sb, { seater = [], carpentry = [] } = {}) {
   const nextSeater = uniqueLabels(seater);
   const nextCarpentry = uniqueLabels(carpentry);
@@ -123,15 +129,16 @@ export async function saveProductionPresetsGrouped(sb, { seater = [], carpentry 
       const mapKey = `${groupKey}::${label.toLowerCase()}`;
       const hit = byKey.get(mapKey);
       if (hit) {
-        await sb.from(TABLE).update({
+        const { error } = await sb.from(TABLE).update({
           label,
           group_key: groupKey,
           sort_order: order,
           active: true,
           updated_at: now,
         }).eq('id', hit.id);
+        throwIfDatastoreError({ error }, 'Failed to update production preset');
       } else {
-        await sb.from(TABLE).insert({
+        const { error } = await sb.from(TABLE).insert({
           id: newUuid(),
           group_key: groupKey,
           label,
@@ -140,6 +147,7 @@ export async function saveProductionPresetsGrouped(sb, { seater = [], carpentry 
           created_at: now,
           updated_at: now,
         });
+        throwIfDatastoreError({ error }, 'Failed to insert production preset');
       }
       order += 1;
     }
@@ -156,7 +164,8 @@ export async function saveProductionPresetsGrouped(sb, { seater = [], carpentry 
     const label = normalizeLabel(row.label);
     const key = `${String(row.group_key)}::${label.toLowerCase()}`;
     if (!label || keepKeys.has(key)) continue;
-    await sb.from(TABLE).update({ active: false, updated_at: now }).eq('id', row.id);
+    const { error } = await sb.from(TABLE).update({ active: false, updated_at: now }).eq('id', row.id);
+    throwIfDatastoreError({ error }, 'Failed to deactivate production preset');
   }
 
   return listProductionPresetsGrouped(sb);

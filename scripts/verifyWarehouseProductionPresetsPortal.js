@@ -37,7 +37,8 @@ const i18n = fs.readFileSync(
 assert(i18n.includes('prefetchPresetArabicLabels'), 'production i18n must auto-translate unknown presets');
 
 const portal = fs.readFileSync(path.join(root, 'src/WarehouseProductionPresetsPage.js'), 'utf8');
-assert(portal.includes('Save presets'), 'admin presets page required');
+assert(portal.includes('persistPresets'), 'presets page must auto-save to server');
+assert(portal.includes('Save again') || portal.includes('Save presets'), 'presets page must offer manual save');
 assert(portal.includes('warehouse-production-presets-drag'), 'presets page must support drag reorder');
 assert(portal.includes('groupTitle="Upholstery"'), 'presets page must label upholstery group');
 assert(portal.includes('warehouse-production-presets-remove'), 'presets row remove must not use global button width');

@@ -22,7 +22,7 @@ function PresetSection({
   groupTitle,
   hint,
   items,
-  setItems,
+  onItemsChange,
   newValue,
   setNewValue,
   onAdd,
@@ -33,7 +33,7 @@ function PresetSection({
 
   const moveItem = (from, to) => {
     if (from == null || to == null || from === to) return;
-    setItems((prev) => reorderPresetList(prev, from, to));
+    onItemsChange(reorderPresetList(items, from, to));
   };
 
   return (
@@ -59,7 +59,7 @@ function PresetSection({
             className="product-form-btn product-form-btn--primary warehouse-production-presets-add-btn"
             disabled={busy}
           >
-            Add
+            Add &amp; save
           </button>
         </div>
       </form>
@@ -110,7 +110,7 @@ function PresetSection({
               type="button"
               className="warehouse-production-presets-remove"
               disabled={busy}
-              onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
+              onClick={() => onItemsChange(items.filter((_, i) => i !== index))}
             >
               Remove
             </button>
@@ -132,6 +132,24 @@ export default function WarehouseProductionPresetsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const persistPresets = useCallback(async (nextSeater, nextCarpentry) => {
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    try {
+      const saved = await saveProductionPresets({ seater: nextSeater, carpentry: nextCarpentry });
+      setSeater(saved.seater || saved.production_presets?.seater || nextSeater);
+      setCarpentry(saved.carpentry || saved.production_presets?.carpentry || nextCarpentry);
+      setSuccess('Presets saved to the server. Production app picks them up after Create screen refresh.');
+      return saved;
+    } catch (err) {
+      setError(err?.message || 'Save failed');
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -155,21 +173,14 @@ export default function WarehouseProductionPresetsPage() {
   }, [allowed, load]);
 
   const onSave = async () => {
-    setBusy(true);
-    setError('');
-    setSuccess('');
     try {
-      await saveProductionPresets({ seater, carpentry });
-      setSuccess('Presets saved. The Production app uses this order after the next catalog refresh (no rebuild).');
-      await load();
-    } catch (err) {
-      setError(err?.message || 'Save failed');
-    } finally {
-      setBusy(false);
+      await persistPresets(seater, carpentry);
+    } catch {
+      /* error shown in persistPresets */
     }
   };
 
-  const addSeater = (e) => {
+  const addSeater = async (e) => {
     e.preventDefault();
     const label = normalizeLabel(newSeater);
     if (!label) {
@@ -181,11 +192,16 @@ export default function WarehouseProductionPresetsPage() {
       return;
     }
     setError('');
-    setSeater((prev) => [...prev, label]);
+    const next = [...seater, label];
     setNewSeater('');
+    try {
+      await persistPresets(next, carpentry);
+    } catch {
+      await load();
+    }
   };
 
-  const addCarpentry = (e) => {
+  const addCarpentry = async (e) => {
     e.preventDefault();
     const label = normalizeLabel(newCarpentry);
     if (!label) {
@@ -197,9 +213,30 @@ export default function WarehouseProductionPresetsPage() {
       return;
     }
     setError('');
-    setCarpentry((prev) => [...prev, label]);
+    const next = [...carpentry, label];
     setNewCarpentry('');
+    try {
+      await persistPresets(seater, next);
+    } catch {
+      await load();
+    }
   };
+
+  const updateSeaterList = useCallback(async (nextSeater) => {
+    try {
+      await persistPresets(nextSeater, carpentry);
+    } catch {
+      await load();
+    }
+  }, [carpentry, load, persistPresets]);
+
+  const updateCarpentryList = useCallback(async (nextCarpentry) => {
+    try {
+      await persistPresets(seater, nextCarpentry);
+    } catch {
+      await load();
+    }
+  }, [load, persistPresets, seater]);
 
   if (!allowed) {
     return (
@@ -217,8 +254,8 @@ export default function WarehouseProductionPresetsPage() {
         <h1 style={{ margin: 0 }}>Production app presets</h1>
       </div>
       <p style={{ color: 'var(--dash-muted)', marginTop: 8, lineHeight: 1.5 }}>
-        Seater and Carpentry dropdowns on the Production app Create screen read this list from the server.
-        Drag to reorder each group, then save — the app uses the same order after catalog refresh (pull to refresh or reopen Create).
+        Lists feed the Production app Create screen. Add, remove, or drag to reorder — each change saves to the server
+        automatically. The Production app loads updates when you leave and return to Create.
       </p>
       {error ? <div className="report-error" style={{ marginTop: 12 }}>{error}</div> : null}
       {success ? <div className="report-success" style={{ marginTop: 12 }}>{success}</div> : null}
@@ -231,7 +268,7 @@ export default function WarehouseProductionPresetsPage() {
             groupTitle="Upholstery"
             hint="Seater / upholstery group on the Production app Create screen (sofas, curtains, etc.). WhatsApp alerts use the main Production group."
             items={seater}
-            setItems={setSeater}
+            onItemsChange={updateSeaterList}
             newValue={newSeater}
             setNewValue={setNewSeater}
             onAdd={addSeater}
@@ -241,7 +278,7 @@ export default function WarehouseProductionPresetsPage() {
             groupTitle="Carpentry"
             hint="Wood furniture group on Create. WhatsApp alerts use WHATSAPP_PRODUCTION_CARPENTRY_GROUP_ID when set (else main Production group)."
             items={carpentry}
-            setItems={setCarpentry}
+            onItemsChange={updateCarpentryList}
             newValue={newCarpentry}
             setNewValue={setNewCarpentry}
             onAdd={addCarpentry}
@@ -250,11 +287,11 @@ export default function WarehouseProductionPresetsPage() {
           <div style={{ marginTop: 32 }}>
             <button
               type="button"
-              className="product-form-btn product-form-btn--primary"
-              disabled={busy || (!seater.length && !carpentry.length)}
+              className="product-form-btn product-form-btn--secondary"
+              disabled={busy || loading}
               onClick={onSave}
             >
-              {busy ? 'Saving…' : 'Save presets'}
+              {busy ? 'Saving…' : 'Save again'}
             </button>
           </div>
         </>
