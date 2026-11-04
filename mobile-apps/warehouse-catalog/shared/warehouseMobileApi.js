@@ -57,10 +57,10 @@ export async function warehouseMobileRequest(op, body = {}) {
     try {
       payload = JSON.parse(rawBody);
     } catch {
-      const gateway = /deployment|DOCTYPE|<html/i.test(rawBody);
+      const gateway = /deployment|function_invocation_timeout|DOCTYPE|<html/i.test(rawBody);
       const err = new Error(
         gateway
-          ? 'Server busy or temporarily unavailable. Check the catalog — your change may already be saved.'
+          ? 'Server timed out. Your change may have saved — refresh and check qty before trying again.'
           : `Request failed (${response.status})`,
       );
       err.gateway = gateway;
@@ -69,8 +69,19 @@ export async function warehouseMobileRequest(op, body = {}) {
     }
   }
   if (!response.ok || payload?.ok === false) {
+    const rawError = formatWarehouseMobileApiError(payload?.error, `Request failed (${response.status})`);
+    const tooLarge = response.status === 413
+      || /entity too large/i.test(rawError)
+      || /entity too large/i.test(rawBody);
+    const timedOut = response.status === 504
+      || /deployment|function_invocation_timeout/i.test(rawError)
+      || /deployment|function_invocation_timeout/i.test(rawBody);
     const err = new Error(
-      formatWarehouseMobileApiError(payload?.error, `Request failed (${response.status})`),
+      tooLarge
+        ? 'Photo upload is too large. Retake the photo (move closer) or reload the app after updating.'
+        : timedOut
+          ? 'Server timed out. Your change may have saved — refresh and check qty before trying again.'
+          : rawError,
     );
     err.details = payload?.details || null;
     err.status = response.status;

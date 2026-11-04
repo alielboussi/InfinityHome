@@ -16716,3 +16716,52 @@ body.enterprise-theme .warehouse-deliveries-page .warehouse-packet-check-label {
   min-width: 0;
 }
 
+/* Warehouse portal — production preset drag reorder */
+.warehouse-production-presets-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 420px;
+}
+.warehouse-production-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--dash-border, #e2e8f0);
+  background: var(--dash-card, #fff);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.warehouse-production-presets-row--drop-target {
+  border-color: var(--dash-primary, #0ea5e9);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25);
+}
+.warehouse-production-presets-row--dragging {
+  opacity: 0.55;
+}
+.warehouse-production-presets-drag {
+  flex: 0 0 auto;
+  cursor: grab;
+  border: none;
+  background: transparent;
+  color: var(--dash-muted, #64748b);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  user-select: none;
+}
+.warehouse-production-presets-drag:active {
+  cursor: grabbing;
+}
+.warehouse-production-presets-drag:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.warehouse-production-presets-label {
+  flex: 1;
+  font-weight: 600;
+  min-width: 0;
+}

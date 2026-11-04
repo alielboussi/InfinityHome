@@ -138,6 +138,7 @@ export default function WarehouseDeliveries() {
   const [fromName, setFromName] = useState('Factory Warehouse');
   const [toName, setToName] = useState('Kitwe Branch');
   const [usersById, setUsersById] = useState(new Map());
+  const [deliveryColorContext, setDeliveryColorContext] = useState(null);
   const [isIpadSafari, setIsIpadSafari] = useState(() => detectIpadSafari());
   const [openSessionId, setOpenSessionId] = useState('');
   const sessionUser = useMemo(() => {
@@ -185,6 +186,21 @@ export default function WarehouseDeliveries() {
         .in('session_id', ids)
         .order('created_at', { ascending: true });
       if (entryErr) throw entryErr;
+
+      const [
+        { data: assemblies },
+        { data: assemblyColors },
+        { data: colors },
+      ] = await Promise.all([
+        db.from('warehouse_assemblies').select('id, name, has_color_variants, item_kind'),
+        db.from('warehouse_assembly_colors').select('assembly_id, color_id'),
+        db.from('warehouse_colors').select('id, name, name_key'),
+      ]);
+      setDeliveryColorContext({
+        assemblies: assemblies || [],
+        assemblyColors: assemblyColors || [],
+        colors: colors || [],
+      });
 
       const grouped = {};
       const productIds = new Set();
@@ -319,6 +335,7 @@ export default function WarehouseDeliveries() {
         session,
         entries,
         copies: 1,
+        assemblyColorContext: deliveryColorContext,
       });
       const base = session.delivery_number || session.id || 'delivery-note';
       await downloadWarehouseDeliveryNotePdf(html, `${base}-delivery-note.pdf`);

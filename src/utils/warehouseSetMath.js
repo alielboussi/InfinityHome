@@ -29,3 +29,9 @@ export function computeWarehouseFactorySetBuildableQty(setAssemblyId, setItems, 
   );
   return assemblableSetUnits(lines, resolveComponentQty);
 }
+
+/** Portal / catalog card: `1 Set` vs `4 Sets`. */
+export function formatWarehouseSetStockCount(qty) {
+  const n = Math.max(0, Math.floor(Number(qty) || 0));
+  return `${n} ${n === 1 ? 'Set' : 'Sets'}`;
+}

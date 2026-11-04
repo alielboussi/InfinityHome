@@ -1,4 +1,5 @@
 import { WAREHOUSE_TO_LOCATION_ID } from './warehouseDelivery.js';
+import { deliveryDisplayNameWithFormatter } from './warehouseDeliveryDisplayName.js';
 
 export {
   resolveSetComponentsForDelivery,
@@ -70,7 +71,7 @@ export function buildSetDeliveryPrintGroupFromCart(group, byAssembly, assemblies
 /**
  * Build printGroups from persisted delivery entries (set-parent + set-component + packets).
  */
-export function buildSetDeliveryPrintGroupsFromEntries(entries) {
+export function buildSetDeliveryPrintGroupsFromEntries(entries, nameFormatter = null) {
   const list = entries || [];
   const parents = list.filter((e) => e.kind === 'set-parent');
   if (!parents.length) return [];
@@ -78,7 +79,9 @@ export function buildSetDeliveryPrintGroupsFromEntries(entries) {
   const groups = [];
   parents.forEach((parent) => {
     const groupId = String(parent.metadata?.delivery_set_group_id || parent.combo_id || parent.id);
-    const setName = String(parent.name || parent.metadata?.assembly_name || 'Set').trim();
+    const setId = String(parent.metadata?.set_assembly_id || '');
+    const setNameRaw = String(parent.name || parent.metadata?.assembly_name || 'Set').trim();
+    const setName = deliveryDisplayNameWithFormatter(nameFormatter, setNameRaw, setId);
     const units = Math.max(1, Number(parent.quantity) || Number(parent.metadata?.units) || 1);
     const components = list.filter(
       (e) => e.kind === 'set-component'
@@ -93,7 +96,7 @@ export function buildSetDeliveryPrintGroupsFromEntries(entries) {
       const asmId = String(comp.metadata?.assembly_id || '');
       lines.push({
         depth: 1,
-        name: comp.name,
+        name: deliveryDisplayNameWithFormatter(nameFormatter, comp.name, asmId),
         qty: Math.max(1, Number(comp.quantity) || 1),
       });
       packets

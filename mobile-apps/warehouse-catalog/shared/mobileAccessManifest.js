@@ -58,13 +58,6 @@ export function isWarehouseCatalogPhotoImportAllowed(grant, email) {
   return grant.warehouse_catalog_photo_import === 'allow';
 }
 
-/** Keep in sync with server/lib/loginAccess.js protected admin (User Access + Production app). */
-export const PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL = 'alielboussi00@gmail.com';
-
-export function isProductionLoginAccessAdminEmail(email) {
-  return String(email || '').trim().toLowerCase() === PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL;
-}
-
 /** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
 export function isWarehouseProductTurkishSyncAllowed(grant) {
   if (!grant) return false;
@@ -78,6 +71,34 @@ export function isWarehouseProductTurkishSyncAllowed(grant) {
 /** /user-access — 10″ warehouse production kiosk (create + stock-in). */
 export function isWarehouseProductionKioskAllowed(grant) {
   return grant?.warehouse_production_kiosk === 'allow';
+}
+
+/** /user-access — Production Android app (create + stock-in). */
+export function isWarehouseProductionAppAllowed(grant) {
+  return grant?.warehouse_production_app === 'allow';
+}
+
+/** Production app — factory truck delivery to Kitwe (User Access → Production). */
+export function isWarehouseProductionKitweDeliveryAllowed(grant) {
+  if (grant?.warehouse_production_kitwe === 'allow') return true;
+  return isMobileScreenAccessAllowed(grant, 'kitwe_send_delivery');
+}
+
+export function isWarehouseProductionOperatorAllowed(grant) {
+  return isWarehouseProductionKioskAllowed(grant) || isWarehouseProductionAppAllowed(grant);
+}
+
+/** Keep in sync with server/lib/loginAccess.js protected admin (User Access + Production app). */
+export const PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL = 'alielboussi00@gmail.com';
+
+export function isProductionLoginAccessAdminEmail(email) {
+  return String(email || '').trim().toLowerCase() === PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL;
+}
+
+/** Same rule as warehouse-mobile `production-access-self` and API enforcement. */
+export function evaluateWarehouseProductionAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  return isWarehouseProductionOperatorAllowed(grant);
 }
 
 export function isWarehouseProductStockQtyEditAllowed(grant) {
@@ -213,6 +234,8 @@ export function defaultMobileAccessGrant() {
     warehouse_catalog_label_print: 'deny',
     warehouse_catalog_photo_import: 'deny',
     warehouse_production_kiosk: 'deny',
+    warehouse_production_app: 'deny',
+    warehouse_production_kitwe: 'deny',
     screens,
   };
 }
@@ -283,6 +306,9 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     merged.warehouse_catalog_add_product = legacyAdd ? 'allow' : 'deny';
   }
 
+  const kitweDeliveryAllowed = isMobileScreenAccessAllowed(merged, 'kitwe_send_delivery')
+    || merged.warehouse_production_kitwe === 'allow';
+
   const legacyCatalogScreenIds = [
     'scan',
     'packet_form',
@@ -300,6 +326,9 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   MOBILE_SCREENS.forEach((screen) => {
     if (screen.id === 'dashboard') {
       merged.screens.dashboard = buildMobileScreenAccessRow(true);
+      return;
+    }
+    if (screen.id === 'kitwe_send_delivery') {
       return;
     }
     const allowed = isMobileScreenAccessAllowed(merged, screen.id);
@@ -353,9 +382,20 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     insert: addProductAllowed ? 'allow' : 'deny',
   };
 
-  merged.warehouse_production_kiosk = merged.warehouse_production_kiosk === 'allow'
+  merged.warehouse_production_kiosk = (
+    merged.warehouse_production_kiosk === 'allow' || merged.warehouse_production_kiosk === true
+  )
     ? 'allow'
     : 'deny';
+
+  merged.warehouse_production_app = (
+    merged.warehouse_production_app === 'allow' || merged.warehouse_production_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_production_kitwe = kitweDeliveryAllowed ? 'allow' : 'deny';
+  merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweDeliveryAllowed);
 
   return merged;
 }

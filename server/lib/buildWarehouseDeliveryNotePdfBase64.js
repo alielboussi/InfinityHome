@@ -4,6 +4,7 @@ import { DELIVERY_NOTE_DISCLAIMER } from '../../src/utils/buildDeliveryNotePrint
 import { DELIVERY_NOTE_LOGO_DATA_URI } from '../../src/utils/deliveryNoteCompanyLogoEmbedded.js';
 import { deliverySenderName } from '../../src/utils/warehouseDelivery.js';
 import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryPrintGroups.js';
+import { createWarehouseDeliveryNameFormatter } from '../../src/utils/warehouseDeliveryDisplayName.js';
 import { formatZambiaDate, formatZambiaTime } from '../../src/utils/zambiaDateTime.js';
 
 function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
@@ -57,9 +58,18 @@ function logoFormatFromDataUri(dataUri) {
 /**
  * A4 delivery note PDF (Node) for WhatsApp — same line data as the print HTML note.
  */
-export function buildWarehouseDeliveryNotePdfBase64({ session, entries, copies = 1, printGroups: printGroupsOverride } = {}) {
+export function buildWarehouseDeliveryNotePdfBase64({
+  session,
+  entries,
+  copies = 1,
+  printGroups: printGroupsOverride,
+  assemblyColorContext = null,
+} = {}) {
   const meta = session?.metadata || {};
-  const printGroups = printGroupsOverride || buildDeliveryPrintGroupsFromEntries(entries || []);
+  const formatter = assemblyColorContext
+    ? createWarehouseDeliveryNameFormatter(assemblyColorContext)
+    : null;
+  const printGroups = printGroupsOverride || buildDeliveryPrintGroupsFromEntries(entries || [], formatter);
   const copyCount = Math.max(1, Math.min(3, Number(copies) || 1));
   const dn = String(session?.delivery_number || session?.id || '').trim() || 'Delivery';
   const at = session?.submitted_at || session?.created_at || new Date().toISOString();

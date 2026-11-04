@@ -70,6 +70,7 @@ export default function WarehouseDeliveriesAdmin() {
   const [removeBusyId, setRemoveBusyId] = useState('');
   const [whatsappBusyId, setWhatsappBusyId] = useState('');
   const [catalogAdmin, setCatalogAdmin] = useState(false);
+  const [deliveryColorContext, setDeliveryColorContext] = useState(null);
 
   useEffect(() => {
     try {
@@ -110,6 +111,21 @@ export default function WarehouseDeliveriesAdmin() {
         .in('session_id', ids)
         .order('created_at', { ascending: true });
       if (entryErr) throw entryErr;
+
+      const [
+        { data: assemblies },
+        { data: assemblyColors },
+        { data: colors },
+      ] = await Promise.all([
+        db.from('warehouse_assemblies').select('id, name, has_color_variants, item_kind'),
+        db.from('warehouse_assembly_colors').select('assembly_id, color_id'),
+        db.from('warehouse_colors').select('id, name, name_key'),
+      ]);
+      setDeliveryColorContext({
+        assemblies: assemblies || [],
+        assemblyColors: assemblyColors || [],
+        colors: colors || [],
+      });
 
       const grouped = {};
       const nextEdit = {};
@@ -290,7 +306,12 @@ export default function WarehouseDeliveriesAdmin() {
     setWhatsappBusyId(session.id);
     setError('');
     try {
-      const html = await buildWarehouseDeliveryNoteHtml({ session, entries, copies: 1 });
+      const html = await buildWarehouseDeliveryNoteHtml({
+        session,
+        entries,
+        copies: 1,
+        assemblyColorContext: deliveryColorContext,
+      });
       const pdfBlob = await renderWarehouseDeliveryNotePdfBlob(html);
       const pdfBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -301,7 +322,7 @@ export default function WarehouseDeliveriesAdmin() {
         reader.onerror = () => reject(reader.error || new Error('PDF read failed'));
         reader.readAsDataURL(pdfBlob);
       });
-      const message = buildKitweDeliveryWhatsAppText(session, entries, usersById);
+      const message = buildKitweDeliveryWhatsAppText(session, entries, usersById, deliveryColorContext);
       const dn = session.delivery_number || session.id;
       const wa = await sendWarehouseDeliveryWhatsApp({
         message,

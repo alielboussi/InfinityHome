@@ -10,6 +10,14 @@ function normalizeLabel(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+function reorderPresetList(list, fromIndex, toIndex) {
+  if (fromIndex === toIndex) return list;
+  const next = [...list];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
 function PresetSection({
   title,
   hint,
@@ -20,8 +28,16 @@ function PresetSection({
   onAdd,
   busy,
 }) {
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dropIndex, setDropIndex] = useState(null);
+
+  const moveItem = (from, to) => {
+    if (from == null || to == null || from === to) return;
+    setItems((prev) => reorderPresetList(prev, from, to));
+  };
+
   return (
-    <div className="product-form-locations-section" style={{ marginTop: 28 }}>
+    <div className="product-form-locations-section warehouse-production-presets-section" style={{ marginTop: 28 }}>
       <h2 style={{ fontSize: '1.1rem', marginBottom: 6 }}>{title}</h2>
       <p style={{ color: 'var(--dash-muted)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>{hint}</p>
       <form
@@ -43,10 +59,48 @@ function PresetSection({
           Add
         </button>
       </form>
-      <ul style={{ margin: 0, paddingLeft: 20 }}>
+      <ul className="warehouse-production-presets-list">
         {items.map((label, index) => (
-          <li key={`${label}-${index}`} style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontWeight: 600, flex: 1 }}>{label}</span>
+          <li
+            key={label}
+            className={`warehouse-production-presets-row${
+              dropIndex === index ? ' warehouse-production-presets-row--drop-target' : ''
+            }${dragIndex === index ? ' warehouse-production-presets-row--dragging' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (dropIndex !== index) setDropIndex(index);
+            }}
+            onDragLeave={() => {
+              if (dropIndex === index) setDropIndex(null);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const from = dragIndex ?? Number(e.dataTransfer.getData('text/plain'));
+              moveItem(from, index);
+              setDragIndex(null);
+              setDropIndex(null);
+            }}
+          >
+            <button
+              type="button"
+              className="warehouse-production-presets-drag"
+              aria-label={`Reorder ${label}`}
+              disabled={busy}
+              draggable={!busy}
+              onDragStart={(e) => {
+                setDragIndex(index);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', String(index));
+              }}
+              onDragEnd={() => {
+                setDragIndex(null);
+                setDropIndex(null);
+              }}
+            >
+              ⋮⋮
+            </button>
+            <span className="warehouse-production-presets-label">{label}</span>
             <button
               type="button"
               className="report-link"
@@ -102,7 +156,7 @@ export default function WarehouseProductionPresetsPage() {
     setSuccess('');
     try {
       await saveProductionPresets({ seater, carpentry });
-      setSuccess('Presets saved. The Production app loads these on next catalog refresh (no rebuild).');
+      setSuccess('Presets saved. The Production app uses this order after the next catalog refresh (no rebuild).');
       await load();
     } catch (err) {
       setError(err?.message || 'Save failed');
@@ -160,7 +214,7 @@ export default function WarehouseProductionPresetsPage() {
       </div>
       <p style={{ color: 'var(--dash-muted)', marginTop: 8, lineHeight: 1.5 }}>
         Seater and Carpentry dropdowns on the Production app Create screen read this list from the server.
-        Save here when you add types — staff get updates after the app refreshes catalog (pull to refresh or reopen Create).
+        Drag to reorder each group, then save — the app uses the same order after catalog refresh (pull to refresh or reopen Create).
       </p>
       {error ? <div className="report-error" style={{ marginTop: 12 }}>{error}</div> : null}
       {success ? <div className="report-success" style={{ marginTop: 12 }}>{success}</div> : null}

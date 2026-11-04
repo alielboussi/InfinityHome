@@ -18,6 +18,7 @@ import {
 import { GoogleSignInButton, isGoogleSignInConfigured } from './GoogleSignInButton';
 import { resetBiometricUnlock } from './biometricSession';
 import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
+import { formatWarehouseMobileApiError } from './warehouseMobileApi';
 
 export { getFirebaseIdToken };
 
@@ -29,14 +30,19 @@ export function useFirebaseUser() {
   return user;
 }
 
+/** @typedef {'google' | 'email' | 'both'} SignInMethods */
+
 export default function FirebaseAuthGate({
   children,
   title = 'Infinity Home',
   showUserBar = true,
   staySignedIn = true,
+  signInMethods = 'both',
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const allowEmail = signInMethods === 'email' || signInMethods === 'both';
+  const allowGoogle = signInMethods === 'google' || signInMethods === 'both';
   const user = useFirebaseUser();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,7 +71,7 @@ export default function FirebaseAuthGate({
       if (shouldForceSignOutForAccessCheck(access)) {
         verifiedUidRef.current = '';
         await signOutFirebase();
-        setError(access.error || 'Login not allowed.');
+        setError(formatWarehouseMobileApiError(access.error, 'Login not allowed.'));
       } else {
         verifiedUidRef.current = user.uid;
       }
@@ -86,7 +92,7 @@ export default function FirebaseAuthGate({
       if (shouldForceSignOutForAccessCheck(access)) {
         verifiedUidRef.current = '';
         await signOutFirebase();
-        setError(access.error || 'Login not allowed.');
+        setError(formatWarehouseMobileApiError(access.error, 'Login not allowed.'));
       } else if (getFirebaseAuth().currentUser?.uid) {
         verifiedUidRef.current = getFirebaseAuth().currentUser.uid;
       }
@@ -122,32 +128,45 @@ export default function FirebaseAuthGate({
     return (
       <View style={styles.container}>
         <Text style={styles.title}>{title}</Text>
-        <Text style={styles.hint}>Sign in with Google or your Firebase email and password.</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
+        <Text style={styles.hint}>
+          {allowGoogle && !allowEmail
+            ? 'Sign in with the Google account your administrator added in User Login Access.'
+            : 'Sign in with Google or your Firebase email and password.'}
+        </Text>
+        {allowEmail ? (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+          </>
+        ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable style={styles.button} onPress={handleSignIn} disabled={busy}>
-          <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Sign in'}</Text>
-        </Pressable>
-        {isGoogleSignInConfigured() ? (
+        {allowEmail ? (
+          <Pressable style={styles.button} onPress={handleSignIn} disabled={busy}>
+            <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Sign in'}</Text>
+          </Pressable>
+        ) : null}
+        {allowGoogle && isGoogleSignInConfigured() ? (
           <GoogleSignInButton
             disabled={busy}
             onError={(message) => setError(message || 'Google sign-in failed')}
             onSuccess={() => setError('')}
           />
+        ) : null}
+        {allowGoogle && !isGoogleSignInConfigured() ? (
+          <Text style={styles.error}>Google sign-in is not configured for this build.</Text>
         ) : null}
       </View>
     );

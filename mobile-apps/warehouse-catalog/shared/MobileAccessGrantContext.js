@@ -1,13 +1,10 @@
-import { createContext, useContext, useMemo } from 'react';
+import { createContext, useContext } from 'react';
 import { defaultMobileAccessGrant } from './mobileAccessManifest';
 
-const MobileAccessGrantContext = createContext({ grant: null, userEmail: '' });
+const MobileAccessGrantContext = createContext(null);
 
-export function MobileAccessGrantProvider({ grant, userEmail = '', children }) {
-  const value = useMemo(() => ({
-    grant: grant || defaultMobileAccessGrant(),
-    userEmail: String(userEmail || '').trim(),
-  }), [grant, userEmail]);
+export function MobileAccessGrantProvider({ grant, children }) {
+  const value = grant || defaultMobileAccessGrant();
   return (
     <MobileAccessGrantContext.Provider value={value}>
       {children}
@@ -17,11 +14,6 @@ export function MobileAccessGrantProvider({ grant, userEmail = '', children }) {
 
 /** Grant from MainStack — avoids a second async fetch per screen. */
 export function useSharedMobileAccessGrant() {
-  const ctx = useContext(MobileAccessGrantContext);
-  return ctx?.grant || defaultMobileAccessGrant();
-}
-
-export function useSharedMobileAccessUserEmail() {
-  const ctx = useContext(MobileAccessGrantContext);
-  return ctx?.userEmail || '';
+  const grant = useContext(MobileAccessGrantContext);
+  return grant || defaultMobileAccessGrant();
 }

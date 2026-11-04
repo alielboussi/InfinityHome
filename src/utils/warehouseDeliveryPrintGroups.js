@@ -1,6 +1,14 @@
 import { groupWarehouseDisplayLines, deliveryEntryPacketId } from './warehouseDelivery.js';
 import { buildSetDeliveryPrintGroupsFromEntries } from './warehouseDeliverySetPrint.js';
 
+function assemblyDisplayName(nameFormatter, rawName, assemblyId) {
+  const raw = String(rawName || '').trim() || 'Product';
+  if (nameFormatter?.displayName) {
+    return nameFormatter.displayName(raw, assemblyId);
+  }
+  return raw;
+}
+
 /** Sub-rows on the A4 note are packet/carton lines only — not finished-unit-only products. */
 export function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
   if (!line || typeof line !== 'object') return false;
@@ -16,10 +24,12 @@ export function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
 
 /**
  * Build printGroups for the A4 delivery note from persisted warehouse_delivery_entries.
+ * @param {Array} entries
+ * @param {{ displayName?: (rawName: string, assemblyId?: string) => string } | null} nameFormatter
  */
-export function buildDeliveryPrintGroupsFromEntries(entries) {
+export function buildDeliveryPrintGroupsFromEntries(entries, nameFormatter = null) {
   const raw = entries || [];
-  const setGroups = buildSetDeliveryPrintGroupsFromEntries(raw);
+  const setGroups = buildSetDeliveryPrintGroupsFromEntries(raw, nameFormatter);
   const setGroupIds = new Set(
     raw
       .filter((e) => e.kind === 'set-parent')
@@ -40,7 +50,11 @@ export function buildDeliveryPrintGroupsFromEntries(entries) {
     const meta = row.metadata || {};
     if (row.kind === 'assembly-header') continue;
 
-    const assemblyName = meta.assembly_name || row.name || 'Product';
+    const assemblyName = assemblyDisplayName(
+      nameFormatter,
+      meta.assembly_name || row.name || 'Product',
+      meta.assembly_id,
+    );
     const assemblyId = String(meta.assembly_id || assemblyName);
     const units = Math.max(1, Number(meta.units) || Number(row.quantity) || 1);
     const key = assemblyId;

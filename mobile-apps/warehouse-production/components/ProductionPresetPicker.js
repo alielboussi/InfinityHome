@@ -8,6 +8,7 @@ export default function ProductionPresetPicker({
   title,
   presets,
   locale,
+  presetArLabels,
   textAlign,
   selectedPreset,
   disabled,
@@ -35,7 +36,7 @@ export default function ProductionPresetPicker({
                   disabled={disabled}
                 >
                   <Text style={[styles.rowText, active && styles.rowTextActive, { textAlign: 'left' }]}>
-                    {presetLabel(p, locale)}
+                    {presetLabel(p, locale, presetArLabels)}
                   </Text>
                 </Pressable>
               );

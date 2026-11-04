@@ -36,6 +36,16 @@ assert(
   'delivery submit WhatsApp must attach delivery note PDF',
 );
 assert(
+  fs.readFileSync(path.join(root, 'server/handlers/warehouse-mobile.js'), 'utf8')
+    .includes('buildWarehouseDeliveryWhatsAppProductGroups'),
+  'delivery submit WhatsApp must build product groups from entries with colors',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/utils/warehouseDeliveryDisplayName.js'), 'utf8')
+    .includes('formatWarehouseDeliveryDisplayName'),
+  'delivery display name helper must exist',
+);
+assert(
   fs.readFileSync(path.join(root, 'server/lib/sendWarehouseDeliveryWhatsApp.js'), 'utf8')
     .includes('pdfBase64'),
   'sendWarehouseDeliveryWhatsApp must forward pdfBase64 to notify',

@@ -26,8 +26,19 @@ const create = fs.readFileSync(
   'utf8',
 );
 assert(create.includes('seater_presets'), 'Create screen must load remote seater presets');
+assert(create.includes('prefetchPresetArabicLabels'), 'Create screen must auto-translate new presets in Arabic');
+
+const i18n = fs.readFileSync(
+  path.join(root, 'mobile-apps/warehouse-production/lib/productionKioskI18n.js'),
+  'utf8',
+);
+assert(i18n.includes('prefetchPresetArabicLabels'), 'production i18n must auto-translate unknown presets');
 
 const portal = fs.readFileSync(path.join(root, 'src/WarehouseProductionPresetsPage.js'), 'utf8');
 assert(portal.includes('Save presets'), 'admin presets page required');
+assert(portal.includes('warehouse-production-presets-drag'), 'presets page must support drag reorder');
+
+const presetsLib = fs.readFileSync(path.join(root, 'server/lib/warehouseProductionPresets.js'), 'utf8');
+assert(presetsLib.includes('sort_order'), 'presets save must persist sort_order');
 
 console.log('verifyWarehouseProductionPresetsPortal: ok');

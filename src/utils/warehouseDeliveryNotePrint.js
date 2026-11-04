@@ -2,6 +2,7 @@ import { buildDeliveryNotePrintHtml } from './buildDeliveryNotePrintHtml';
 import { getDeliveryNoteCompanyLogoDataUriWeb } from './deliveryNoteCompanyLogo';
 import { buildDeliveryPrintGroupsFromEntries } from './warehouseDeliveryPrintGroups';
 import { deliverySenderName } from './warehouseDelivery';
+import { createWarehouseDeliveryNameFormatter } from './warehouseDeliveryDisplayName';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { waitForImages } from './labelPdfCapture';
@@ -15,9 +16,13 @@ export async function buildWarehouseDeliveryNoteHtml({
   entries,
   driverSignatureSrc = '',
   copies = DEFAULT_DELIVERY_NOTE_PRINT_COPIES,
+  assemblyColorContext = null,
 }) {
   const meta = session?.metadata || {};
-  const printGroups = buildDeliveryPrintGroupsFromEntries(entries);
+  const formatter = assemblyColorContext
+    ? createWarehouseDeliveryNameFormatter(assemblyColorContext)
+    : null;
+  const printGroups = buildDeliveryPrintGroupsFromEntries(entries, formatter);
   const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUriWeb().catch(() => '');
   return buildDeliveryNotePrintHtml({
     deliveryNumber: session?.delivery_number || session?.id || '',

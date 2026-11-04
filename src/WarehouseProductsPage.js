@@ -25,7 +25,7 @@ import {
   packetBomBottleneck,
 } from './utils/warehouseAssemblyMath';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
-import { isWarehouseSetAssembly, computeWarehouseFactorySetBuildableQty } from './utils/warehouseSetMath';
+import { isWarehouseSetAssembly, computeWarehouseFactorySetBuildableQty, formatWarehouseSetStockCount } from './utils/warehouseSetMath';
 import {
   assemblyUsesFinishedBoxReceiving,
   assemblyUnitsPerCarton,
@@ -609,9 +609,11 @@ export default function WarehouseProductsPage() {
               const usePacketStock = assemblyDerivesWarehouseStockFromPackets(assembly, pktList);
               const useFinishedBoxReceiving = assemblyUsesFinishedBoxReceiving(assembly, pktList);
               const unitsPerBox = assemblyUnitsPerCarton(assembly);
-              const stockDisplay = unitsPerBox > 1 && !usePacketStock
-                ? formatWarehouseBoxAndUnitStock(complete, unitsPerBox).text
-                : String(complete);
+              const stockDisplay = isWarehouseSetAssembly(assembly)
+                ? formatWarehouseSetStockCount(complete)
+                : unitsPerBox > 1 && !usePacketStock
+                  ? formatWarehouseBoxAndUnitStock(complete, unitsPerBox).text
+                  : String(complete);
               const warehousePacketOnHand = usePacketStock
                 ? pktList.reduce((sum, p) => sum + (inventoryByPacketId.get(String(p.id)) ?? 0), 0)
                 : 0;
@@ -892,7 +894,9 @@ export default function WarehouseProductsPage() {
                             >
                               {warehouseBoxEntry
                                 ? `${warehouseDisplayQty} boxes (${warehouseOnHand} units)`
-                                : warehouseOnHand}
+                                : isWarehouseSetAssembly(assembly)
+                                  ? formatWarehouseSetStockCount(warehouseOnHand)
+                                  : warehouseOnHand}
                             </strong>
                           </td>
                         </tr>

@@ -518,7 +518,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             </View>
             <Text style={styles.cardTitle} numberOfLines={2}>{setAssembly.name}</Text>
             <Text style={styles.cardSku} numberOfLines={1}>{setAssembly.family_sku}</Text>
-            <WarehouseCatalogColorChips colors={assemblyColorList(setAssembly)} compact />
+            <WarehouseCatalogColorChips colors={assemblyColorList(setAssembly)} />
             <Text style={styles.cardMeta} numberOfLines={2}>
               Set · {cat || '—'} · {componentLines.length} product{componentLines.length === 1 ? '' : 's'}
             </Text>

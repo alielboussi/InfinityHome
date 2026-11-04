@@ -430,10 +430,47 @@ const PRESET_I18N = {
   'Dresser Mirror': 'presetDresserMirror',
 };
 
-export function presetLabel(preset, locale) {
-  const key = PRESET_I18N[preset];
-  if (!key) return preset;
-  return tUi(key, locale);
+const presetAutoArCache = new Map();
+
+/** Fetch Arabic display strings for presets (built-in + MyMemory for new portal labels). */
+export async function prefetchPresetArabicLabels(presets) {
+  const unique = [
+    ...new Set(
+      (presets || [])
+        .map((raw) => String(raw || '').trim())
+        .filter(Boolean),
+    ),
+  ];
+  const out = {};
+  await Promise.all(
+    unique.map(async (label) => {
+      const key = PRESET_I18N[label];
+      if (key) {
+        out[label] = tUi(key, 'ar');
+        return;
+      }
+      if (presetAutoArCache.has(label)) {
+        out[label] = presetAutoArCache.get(label);
+        return;
+      }
+      const ar = await translateEnToAr(label);
+      presetAutoArCache.set(label, ar);
+      out[label] = ar;
+    }),
+  );
+  return out;
+}
+
+export function presetLabel(preset, locale, autoArByPreset = null) {
+  const p = String(preset || '').trim();
+  if (!p) return '';
+  const key = PRESET_I18N[p];
+  if (key) return tUi(key, locale);
+  if (locale === 'ar') {
+    if (autoArByPreset && autoArByPreset[p]) return autoArByPreset[p];
+    if (presetAutoArCache.has(p)) return presetAutoArCache.get(p);
+  }
+  return p;
 }
 
 export function tUi(key, locale) {

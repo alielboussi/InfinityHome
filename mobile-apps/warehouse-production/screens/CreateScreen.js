@@ -35,7 +35,7 @@ import {
 } from '../lib/productionRecentBaseNames';
 import ProductionPresetPicker from '../components/ProductionPresetPicker';
 import { kioskFooterBottomPad, kioskScreenEdges } from '../lib/kioskLayout';
-import { presetLabel, tUi } from '../lib/productionKioskI18n';
+import { presetLabel, prefetchPresetArabicLabels, tUi } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
 import ProductionPhotoCaptureModal from '../components/ProductionPhotoCaptureModal';
 import { prepareProductionPhotoForUpload } from '../lib/prepareProductionPhotoUpload';
@@ -79,6 +79,7 @@ export default function CreateScreen({ navigation }) {
   const [carpentryPickerOpen, setCarpentryPickerOpen] = useState(false);
   const [seaterPresets, setSeaterPresets] = useState(PRODUCTION_SEATER_PRESETS);
   const [carpentryPresets, setCarpentryPresets] = useState(PRODUCTION_CARPENTRY_PRESETS);
+  const [presetArLabels, setPresetArLabels] = useState({});
   const [dimL, setDimL] = useState('');
   const [dimW, setDimW] = useState('');
   const [dimH, setDimH] = useState('');
@@ -138,6 +139,21 @@ export default function CreateScreen({ navigation }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (locale !== 'ar') {
+        setPresetArLabels({});
+        return;
+      }
+      const labels = await prefetchPresetArabicLabels([...seaterPresets, ...carpentryPresets]);
+      if (!cancelled) setPresetArLabels(labels);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [locale, seaterPresets, carpentryPresets]);
 
   const reloadRecentNames = useCallback(() => {
     refreshRecentProductionBaseNames().then(setRecentBaseNames).catch(() => {});
@@ -629,7 +645,7 @@ export default function CreateScreen({ navigation }) {
                 numberOfLines={2}
               >
                 {seaterPresetValue
-                  ? presetLabel(seaterPresetValue, locale)
+                  ? presetLabel(seaterPresetValue, locale, presetArLabels)
                   : tUi('seaterPickerPlaceholder', locale)}
               </Text>
             </Pressable>
@@ -656,7 +672,7 @@ export default function CreateScreen({ navigation }) {
                 numberOfLines={2}
               >
                 {carpentryPresetValue
-                  ? presetLabel(carpentryPresetValue, locale)
+                  ? presetLabel(carpentryPresetValue, locale, presetArLabels)
                   : tUi('carpentryPickerPlaceholder', locale)}
               </Text>
             </Pressable>
@@ -747,6 +763,7 @@ export default function CreateScreen({ navigation }) {
       title={tUi('seaterGroupLabel', locale)}
       presets={seaterPresets}
       locale={locale}
+      presetArLabels={presetArLabels}
       textAlign={textAlign}
       selectedPreset={seaterPresetValue}
       disabled={!baseNameEn.trim() || saving}
@@ -758,6 +775,7 @@ export default function CreateScreen({ navigation }) {
       title={tUi('carpentryGroupLabel', locale)}
       presets={carpentryPresets}
       locale={locale}
+      presetArLabels={presetArLabels}
       textAlign={textAlign}
       selectedPreset={carpentryPresetValue}
       disabled={!baseNameEn.trim() || saving}

@@ -1,6 +1,6 @@
 import { WAREHOUSE_FACTORY_LOCATION_ID } from '../src/constants/warehouseShowroomLocations.js';
 import { attachWarehouseStockTotals } from '../src/utils/warehouseCatalogStock.js';
-import { computeWarehouseFactorySetBuildableQty } from '../src/utils/warehouseSetMath.js';
+import { computeWarehouseFactorySetBuildableQty, formatWarehouseSetStockCount } from '../src/utils/warehouseSetMath.js';
 
 const setId = 'set-1';
 const threeSeater = 'prod-3';
@@ -51,6 +51,11 @@ const catalog = attachWarehouseStockTotals({
 
 if (catalog.assemblyWarehouseQty[setId] !== 9) {
   console.error('[verifyWarehouseCatalogSetStock] attachWarehouseStockTotals set qty wrong');
+  process.exit(1);
+}
+
+if (formatWarehouseSetStockCount(1) !== '1 Set' || formatWarehouseSetStockCount(4) !== '4 Sets') {
+  console.error('[verifyWarehouseCatalogSetStock] formatWarehouseSetStockCount failed');
   process.exit(1);
 }
 

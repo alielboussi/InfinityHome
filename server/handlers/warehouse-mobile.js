@@ -34,6 +34,8 @@ import {
 } from '../lib/warehouseCatalogMobile.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
 import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeliveryWhatsAppMessage.js';
+import { buildWarehouseDeliveryWhatsAppProductGroups } from '../../src/utils/kitweDeliveryWhatsAppAdmin.js';
+import { loadWarehouseDeliveryColorContext, createWarehouseDeliveryNameFormatter } from '../lib/warehouseDeliveryNameFormatter.js';
 import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhatsApp.js';
 import { buildWarehouseDeliveryNotePdfBase64 } from '../lib/buildWarehouseDeliveryNotePdfBase64.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
@@ -1463,21 +1465,38 @@ async function sendWarehouseDeliverySubmitWhatsApp({
     (sum, group) => sum + Math.max(1, Number(group.units) || 1),
     0,
   );
-  const productGroups = groups.map((group) => {
-    const assemblyId = String(group.assembly_id || '');
-    const assembly = assemblyById.get(assemblyId);
-    const units = Math.max(1, Number(group.units) || 1);
-    const packetRows = byAssembly.get(assemblyId) || [];
-    return {
-      assemblyName: assembly?.name || 'Product',
-      packetLines: isAssemblyDeliveryFinishedUnits(assembly, packetRows)
-        ? [{ name: assembly?.name || 'Product', quantity: units }]
-        : packetRows.map((packet) => ({
-          name: packet.name,
-          quantity: units * Math.max(1, Number(packet.qty_per_unit) || 1),
-        })),
-    };
-  });
+
+  let entries = entriesArg;
+  if (!entries?.length) {
+    const { data: entryRows } = await sb
+      .from('warehouse_delivery_entries')
+      .select('*')
+      .eq('session_id', sessionId);
+    entries = entryRows || [];
+  }
+
+  let productGroups;
+  let assemblyColorContext = null;
+  if (entries?.length) {
+    assemblyColorContext = await loadWarehouseDeliveryColorContext(sb);
+    productGroups = buildWarehouseDeliveryWhatsAppProductGroups(entries, assemblyColorContext);
+  } else {
+    productGroups = groups.map((group) => {
+      const assemblyId = String(group.assembly_id || group.set_assembly_id || '');
+      const assembly = assemblyById.get(assemblyId);
+      const units = Math.max(1, Number(group.units) || 1);
+      const packetRows = byAssembly.get(assemblyId) || [];
+      return {
+        assemblyName: assembly?.name || group.set_name || 'Product',
+        packetLines: isAssemblyDeliveryFinishedUnits(assembly, packetRows)
+          ? [{ name: assembly?.name || 'Product', quantity: units }]
+          : packetRows.map((packet) => ({
+            name: packet.name,
+            quantity: units * Math.max(1, Number(packet.qty_per_unit) || 1),
+          })),
+      };
+    });
+  }
 
   const whatsappMessage = buildWarehouseDeliveryWhatsAppMessage({
     userAlias,
@@ -1497,7 +1516,6 @@ async function sendWarehouseDeliverySubmitWhatsApp({
 
   if (!pdfBase64) {
     try {
-      let entries = entriesArg;
       if (!entries?.length) {
         const { data: entryRows } = await sb
           .from('warehouse_delivery_entries')
@@ -1506,7 +1524,15 @@ async function sendWarehouseDeliverySubmitWhatsApp({
         entries = entryRows || [];
       }
       if (entries.length) {
-        pdfBase64 = buildWarehouseDeliveryNotePdfBase64({ session, entries, copies: 1 });
+        if (!assemblyColorContext) {
+          assemblyColorContext = await loadWarehouseDeliveryColorContext(sb);
+        }
+        pdfBase64 = buildWarehouseDeliveryNotePdfBase64({
+          session,
+          entries,
+          copies: 1,
+          assemblyColorContext,
+        });
       }
     } catch (pdfErr) {
       console.warn('[delivery-submit] delivery note PDF for WhatsApp failed:', pdfErr?.message || pdfErr);
@@ -2112,6 +2138,9 @@ async function opDeliverySentDetail(body, user) {
     .order('created_at', { ascending: true });
   if (entErr) throw new Error(entErr.message || 'Failed to load delivery lines');
 
+  const assemblyColorContext = await loadWarehouseDeliveryColorContext(sb);
+  const nameFormatter = createWarehouseDeliveryNameFormatter(assemblyColorContext);
+
   const meta = session.metadata || {};
   return {
     session: {
@@ -2123,7 +2152,7 @@ async function opDeliverySentDetail(body, user) {
       dispatched_by_name: meta.dispatched_by_name || session.created_by_name || '',
       driver_signature_url: meta.driver_signature_url || '',
     },
-    print_groups: buildDeliveryPrintGroupsFromEntries(entries || []),
+    print_groups: buildDeliveryPrintGroupsFromEntries(entries || [], nameFormatter),
   };
 }
 

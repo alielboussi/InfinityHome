@@ -9,3 +9,15 @@ export function formatWarehouseProductionLabelColor(assembly, colorRecords) {
   if (!assembly?.has_color_variants) return '';
   return '';
 }
+
+/** Product picker label: name, optional color, family SKU. */
+export function formatWarehouseAssemblySelectLabel(assembly, colorRecords) {
+  const name = String(assembly?.name || '').trim() || 'Product';
+  const sku = String(assembly?.family_sku || '').trim();
+  const color = formatWarehouseProductionLabelColor(assembly, colorRecords);
+  const skuPart = sku ? ` (${sku})` : '';
+  if (color) {
+    return `${name} — ${color}${skuPart}`;
+  }
+  return `${name}${skuPart}`;
+}

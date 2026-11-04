@@ -46,6 +46,7 @@ import {
   expandWarehouseSetItemsRows,
   setItemsAssemblyLocationKey,
 } from './utils/warehouseSetItems';
+import { formatWarehouseAssemblySelectLabel } from './utils/warehouseProductionLabelColor';
 
 const emptyProductForm = {
   name: '',
@@ -89,6 +90,7 @@ export default function WarehouseProductEditPage() {
   const [assemblies, setAssemblies] = useState([]);
   const [packets, setPackets] = useState([]);
   const [assemblyPacketRows, setAssemblyPacketRows] = useState([]);
+  const [assemblyColors, setAssemblyColors] = useState([]);
   const [variantColors, setVariantColors] = useState([]);
   const [categories, setCategories] = useState([]);
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
@@ -112,6 +114,7 @@ export default function WarehouseProductEditPage() {
     setAssemblies(data.assemblies || []);
     setPackets(data.packets);
     setAssemblyPacketRows(data.assemblyPackets || []);
+    setAssemblyColors(data.assemblyColors || []);
     setVariantColors(data.colors);
     setCategories(data.categories);
     setWarehouseLocationId(data.warehouseLocationId);
@@ -371,6 +374,18 @@ export default function WarehouseProductEditPage() {
     () => new Map((variantColors || []).map((c) => [String(c.id), c])),
     [variantColors],
   );
+
+  const colorsByAssembly = useMemo(() => {
+    const out = new Map();
+    for (const row of assemblyColors || []) {
+      const color = colorCatalogById.get(String(row.color_id));
+      if (!color) continue;
+      const key = String(row.assembly_id);
+      if (!out.has(key)) out.set(key, []);
+      out.get(key).push(color);
+    }
+    return out;
+  }, [assemblyColors, colorCatalogById]);
 
   const linkedProductColors = useMemo(
     () => (productForm.color_ids || [])
@@ -639,6 +654,20 @@ export default function WarehouseProductEditPage() {
     [assemblies, isNew, productId],
   );
 
+  const componentProductById = useMemo(
+    () => new Map(componentProductOptions.map((a) => [String(a.id), a])),
+    [componentProductOptions],
+  );
+
+  const componentOptionLabel = useCallback((assemblyId) => {
+    const a = componentProductById.get(String(assemblyId || ''));
+    if (!a) return '';
+    return formatWarehouseAssemblySelectLabel(
+      a,
+      colorsByAssembly.get(String(a.id)) || [],
+    );
+  }, [componentProductById, colorsByAssembly]);
+
   const addSetComponentLine = () => {
     setProductForm((f) => ({
       ...f,
@@ -892,7 +921,6 @@ export default function WarehouseProductEditPage() {
               </p>
             </div>
           )}
-          {!isSetForm ? (
           <div
             className={`warehouse-field warehouse-field--variant-colors${
               productForm.has_color_variants ? ' warehouse-field--span-full' : ''
@@ -909,11 +937,16 @@ export default function WarehouseProductEditPage() {
                   color_ids: e.target.checked ? f.color_ids : [],
                 }))}
               />
-              <span>This product has variant colors</span>
+              <span>{isSetForm ? 'This set has variant colors' : 'This product has variant colors'}</span>
             </label>
             {productForm.has_color_variants ? (
               <>
                 <label htmlFor="wh-color-pick" className="warehouse-color-pick-label">Variant colors</label>
+                {isSetForm ? (
+                  <p className="warehouse-field-hint" style={{ marginTop: 0 }}>
+                    Shown on the warehouse set card and in the catalog app on the set tile.
+                  </p>
+                ) : null}
                 <div className="warehouse-color-pick-row">
                   <input
                     id="wh-color-pick"
@@ -983,13 +1016,12 @@ export default function WarehouseProductEditPage() {
                   </div>
                 ) : (
                   <p className="warehouse-field-hint" style={{ marginTop: 8 }}>
-                    Add at least one color variant for this product.
+                    Add at least one color variant for this {isSetForm ? 'set' : 'product'}.
                   </p>
                 )}
               </>
             ) : null}
           </div>
-          ) : null}
           {isSetForm ? (
             <div className="warehouse-field warehouse-field--set-components warehouse-field--span-full">
               <label>Set components (products)</label>
@@ -1002,18 +1034,23 @@ export default function WarehouseProductEditPage() {
                   <span>Qty / set</span>
                   <span />
                 </div>
-                {(productForm.set_components || []).map((line, index) => (
+                {(productForm.set_components || []).map((line, index) => {
+                  const assemblyId = String(line.component_assembly_id || '');
+                  return (
                   <div key={`set-line-${index}`} className="warehouse-packet-linked-row">
                     <select
                       className="warehouse-set-component-select"
-                      value={line.component_assembly_id || ''}
-                      onChange={(e) => updateSetComponentLine(index, { component_assembly_id: e.target.value })}
+                      value={assemblyId}
                       required
+                      aria-label="Set component product"
+                      onChange={(e) => updateSetComponentLine(index, {
+                        component_assembly_id: e.target.value,
+                      })}
                     >
                       <option value="">Select product…</option>
                       {componentProductOptions.map((a) => (
                         <option key={a.id} value={a.id}>
-                          {a.name} ({a.family_sku})
+                          {componentOptionLabel(a.id)}
                         </option>
                       ))}
                     </select>
@@ -1037,7 +1074,8 @@ export default function WarehouseProductEditPage() {
                       Remove
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <button
                 type="button"
