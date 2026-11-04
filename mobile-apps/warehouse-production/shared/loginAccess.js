@@ -27,7 +27,7 @@ export async function verifyMobileLoginAccess() {
         ok: false,
         reason: 'disabled',
         error: formatWarehouseMobileApiError(
-          payload?.error,
+          nestedMessage || apiError,
           'Your account has been disabled. Contact an administrator.',
         ),
       };
