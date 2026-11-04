@@ -224,9 +224,10 @@ export async function createProductionPacket({
     throw err;
   }
 
-  const pendingLabelPrint = parsed.pendingLabelPrint
+  const resolvedPendingLabelPrint = parsed.pendingLabelPrint
     || createPayload?.pending_label_print
     || createPayload?.pendingLabelPrint
+    || pendingLabelPrint
     || null;
   let photoPayload = null;
 
@@ -234,7 +235,7 @@ export async function createProductionPacket({
     photoPayload = await attachProductionProductPhoto({
       assemblyId,
       imageBase64,
-      pendingLabelPrint,
+      pendingLabelPrint: resolvedPendingLabelPrint,
       preset,
       onAttempt: onPhotoAttempt,
     });
@@ -257,7 +258,7 @@ export async function createProductionPacket({
     err.createResult = {
       ...parsed,
       assemblyId,
-      pendingLabelPrint,
+      pendingLabelPrint: resolvedPendingLabelPrint,
     };
     throw err;
   }
