@@ -90,6 +90,7 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
   imageBase64,
   productName,
   categoryName = '',
+  preset = '',
   skipAiRetouch = false,
   requireAiRetouch = false,
   directCatalogUpload = false,
@@ -107,6 +108,9 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
   if (mattressProduct && requireAiRetouch) {
     throw new Error('AI catalog photo retouch is only for furniture.');
   }
+  if (directCatalogUpload && requireAiRetouch) {
+    throw new Error('Catalog direct upload cannot be combined with required AI retouch.');
+  }
 
   let jpeg;
   if (directCatalogUpload) {
@@ -116,6 +120,7 @@ export async function attachProductionAssemblyCatalogPhoto(sb, {
       skipAi,
       requireAi,
       productName: resolvedName,
+      preset: String(preset || '').trim(),
       categoryName: String(categoryName || '').trim(),
       resolveApiKey,
     });

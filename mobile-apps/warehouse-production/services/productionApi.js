@@ -162,6 +162,7 @@ export async function createProductionPacket({
       assemblyId,
       imageBase64,
       pendingLabelPrint,
+      preset,
       onAttempt: onPhotoAttempt,
     });
     const photoLabelWarning = String(photoPayload?.label_print_warning || '').trim();

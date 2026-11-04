@@ -146,10 +146,10 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
   const sb = getService();
   const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
   const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
-  const requireAi = body.require_ai_retouch === true
-    || body.requireAiRetouch === true
-    || String(body.client_source || '').trim() === 'warehouse_production_app';
+  /** This handler is Production-only — always Gemini retouch (catalog uses warehouse-catalog-photo). */
+  const requireAi = true;
   const forceReupload = body.force_reupload === true || body.forceReupload === true;
+  const preset = String(body.preset || body.product_preset || '').trim();
   if (!assemblyId) throw new Error('assembly_id is required.');
 
   const { data: assembly, error: loadErr } = await sb
@@ -190,8 +190,10 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
     assembly,
     imageBase64,
     productName: assembly.name,
+    preset,
     skipAiRetouch: false,
     requireAiRetouch: requireAi,
+    directCatalogUpload: false,
   });
 
   const labelResult = await runPendingLabelPrint(sb, body, user, assembly);
