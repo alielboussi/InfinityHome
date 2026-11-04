@@ -40,7 +40,9 @@ import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewMod
 import ProductionPhotoCaptureModal from '../components/ProductionPhotoCaptureModal';
 import { prepareProductionPhotoForUpload } from '../lib/prepareProductionPhotoUpload';
 import {
+  attachProductionProductPhoto,
   createProductionPacket,
+  createProductionProductOnly,
   fetchProductionCatalog,
   fetchProductionSuggestedBaseName,
 } from '../services/productionApi';
@@ -185,11 +187,11 @@ export default function CreateScreen({ navigation }) {
     const check = await checkProductionProductName(fullName);
     if (check?.taken) {
       const existing = String(check.existing || '').trim();
-      setError(
-        existing
-          ? `${tUi('duplicateName', locale)} (${existing})`
-          : tUi('duplicateName', locale),
-      );
+      const msg = existing
+        ? `${tUi('duplicateName', locale)} (${existing})`
+        : tUi('duplicateName', locale);
+      setError(msg);
+      showSaveFailure(msg);
       return false;
     }
     return true;
@@ -350,30 +352,84 @@ export default function CreateScreen({ navigation }) {
     setSuccess('');
 
     try {
-      const available = await ensureProductNameAvailable(pending.name);
-      if (!available) return;
+      let parsed;
+      if (pending.resumeAssemblyId) {
+        parsed = {
+          assemblyId: pending.resumeAssemblyId,
+          pendingLabelPrint: pending.pendingLabelPrint || null,
+          labelCopies: pending.qtyNum,
+          packet: { id: pending.resumeAssemblyId, assembly_id: pending.resumeAssemblyId },
+        };
+      } else {
+        const available = await ensureProductNameAvailable(pending.name);
+        if (!available) return;
+        setAiPhotoStatus(tUi('savePhaseCreatingProduct', locale));
+        parsed = await createProductionProductOnly({
+          name: pending.name,
+          warehouseLocationId: pending.warehouseLocationId,
+          initialQuantity: pending.qtyNum,
+          dimLength: pending.dimLength,
+          dimWidth: pending.dimWidth,
+          dimHeight: pending.dimHeight,
+          preset: pending.preset,
+        });
+        pendingSaveRef.current = {
+          ...pending,
+          resumeAssemblyId: parsed.assemblyId,
+          pendingLabelPrint: parsed.pendingLabelPrint || null,
+        };
+      }
 
+      setAiPhotoStatus(tUi('savePhasePreparingPhoto', locale));
       const uploadPhoto = await prepareProductionPhotoForUpload(photoSource);
-      const result = await createProductionPacket({
-        name: pending.name,
-        warehouseLocationId: pending.warehouseLocationId,
-        initialQuantity: pending.qtyNum,
-        dimLength: pending.dimLength,
-        dimWidth: pending.dimWidth,
-        dimHeight: pending.dimHeight,
-        preset: pending.preset,
+
+      setAiPhotoStatus(tUi('photoProcessing', locale));
+      const photoPayload = await attachProductionProductPhoto({
+        assemblyId: parsed.assemblyId,
         imageBase64: uploadPhoto,
+        pendingLabelPrint: parsed.pendingLabelPrint,
+        preset: pending.preset,
         onPhotoAttempt: (attempt, max) => {
           setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
         },
       });
 
+      const result = {
+        ...parsed,
+        labelJobId: photoPayload?.label_job_id || parsed.labelJobId || null,
+        labelPrintWarning: photoPayload?.label_print_warning || parsed.labelPrintWarning || null,
+        labelPreviewPngBase64: photoPayload?.label_preview_png_base64 || parsed.labelPreviewPngBase64 || '',
+        photoSaved: true,
+        catalogImageUrl: photoPayload?.catalog_image_url || null,
+      };
+
       await applyCreateResult(pending, result);
     } catch (err) {
       const msg = String(err?.message || '');
+      const resumeId = String(pendingSaveRef.current?.resumeAssemblyId || '').trim();
+      if (resumeId && err?.code !== 'product_saved_photo_failed') {
+        showSaveFailure(
+          msg
+            ? `${msg}\n\nThe product was saved in Warehouse. Tap Save and take the photo again to finish the catalog photo.`
+            : 'Photo step failed. The product may already be in Warehouse — tap Save to retry the photo.',
+        );
+        return;
+      }
       if (err?.code === 'product_saved_photo_failed' && err?.createResult) {
         const partial = err.createResult;
-        pendingSaveRef.current = null;
+        const resumeId = String(
+          partial.assemblyId
+          || partial.packet?.assembly_id
+          || partial.packet?.id
+          || '',
+        ).trim();
+        pendingSaveRef.current = resumeId
+          ? {
+            ...pending,
+            resumeAssemblyId: resumeId,
+            pendingLabelPrint: partial.pendingLabelPrint || pending.pendingLabelPrint || null,
+          }
+          : null;
         if (pending?.name) {
           await rememberBaseNameFromSave(pending.name);
         }
@@ -391,7 +447,7 @@ export default function CreateScreen({ navigation }) {
       if (msg.toLowerCase().includes('already exists')) {
         showSaveFailure(tUi('duplicateName', locale));
       } else {
-        showSaveFailure(msg);
+        showSaveFailure(msg || 'Save failed. Check your connection and try again.');
       }
     } finally {
       setSaving(false);
@@ -399,7 +455,7 @@ export default function CreateScreen({ navigation }) {
     }
   };
 
-  const onSave = () => {
+  const onSave = async () => {
     setError('');
     setSuccess('');
     setLabelPrintNote('');
@@ -423,7 +479,7 @@ export default function CreateScreen({ navigation }) {
     }
 
     Keyboard.dismiss();
-    pendingSaveRef.current = {
+    const pending = {
       name,
       qtyNum,
       warehouseLocationId,
@@ -431,11 +487,29 @@ export default function CreateScreen({ navigation }) {
       dimLength: dimL.trim() || undefined,
       dimWidth: dimW.trim() || undefined,
       dimHeight: dimH.trim() || undefined,
+      resumeAssemblyId: pendingSaveRef.current?.resumeAssemblyId,
+      pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint,
     };
+    pendingSaveRef.current = pending;
+
     if (isMattressCatalogProductName(name)) {
       finishSaveWithoutPhoto();
       return;
     }
+
+    if (!pending.resumeAssemblyId) {
+      setSaving(true);
+      try {
+        const available = await ensureProductNameAvailable(name);
+        if (!available) {
+          pendingSaveRef.current = null;
+          return;
+        }
+      } finally {
+        setSaving(false);
+      }
+    }
+
     setPhotoCaptureOpen(true);
   };
 

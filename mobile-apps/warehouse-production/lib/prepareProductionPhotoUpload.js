@@ -1,3 +1,5 @@
+import * as FileSystem from 'expo-file-system';
+
 /** Keep JSON body under Vercel's ~4.5MB limit (room for other fields). */
 const MAX_UPLOAD_BASE64_CHARS = 2_400_000;
 
@@ -17,8 +19,26 @@ async function loadImageManipulator() {
     return await import('expo-image-manipulator');
   } catch {
     throw new Error(
-      'Photo compression module is missing. In mobile-apps/warehouse-production run: npm install && npx expo start --clear',
+      'Photo compression module is missing. Reinstall the Production app from the latest build.',
     );
+  }
+}
+
+/** Camera URIs (content:// on Android) must be copied before manipulateAsync. */
+async function normalizeCameraPhotoUri(uri) {
+  const trimmed = String(uri || '').trim();
+  if (!trimmed || trimmed.startsWith('data:')) return trimmed;
+  if (trimmed.startsWith('file://') && !trimmed.includes('content://')) {
+    return trimmed;
+  }
+  const cacheDir = FileSystem.cacheDirectory;
+  if (!cacheDir) return trimmed;
+  const dest = `${cacheDir}production-upload-${Date.now()}.jpg`;
+  try {
+    await FileSystem.copyAsync({ from: trimmed, to: dest });
+    return dest.startsWith('file://') ? dest : `file://${dest}`;
+  } catch {
+    return trimmed;
   }
 }
 
@@ -28,10 +48,11 @@ async function loadImageManipulator() {
  * @returns {Promise<string>} data:image/jpeg;base64,...
  */
 export async function prepareProductionPhotoForUpload(source) {
-  const input = resolvePhotoUri(source);
+  let input = resolvePhotoUri(source);
   if (!input) {
     throw new Error('Photo is required.');
   }
+  input = await normalizeCameraPhotoUri(input);
 
   const { manipulateAsync, SaveFormat } = await loadImageManipulator();
 

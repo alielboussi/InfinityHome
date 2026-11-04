@@ -90,8 +90,16 @@ const UI_STRINGS = {
     en: 'Saved — labels sent. Mattresses do not use AI catalog photos (furniture only).',
     ar: 'تم الحفظ — أُرسلت الملصقات. المراتب بدون صورة AI (الأثاث فقط).',
   },
+  savePhaseCreatingProduct: {
+    en: 'Creating product in warehouse…',
+    ar: 'Creating product in warehouse…',
+  },
+  savePhasePreparingPhoto: {
+    en: 'Preparing photo for upload…',
+    ar: 'Preparing photo for upload…',
+  },
   photoProcessing: {
-    en: 'Saving product… then AI will retouch the photo (white catalog background). Do not close the app.',
+    en: 'AI retouching photo (white catalog background). This can take 1–2 minutes — do not close the app.',
     ar: 'جاري حفظ المنتج… ثم الذكاء الاصطناعي يعالج الصورة (خلفية بيضاء). لا تغلق التطبيق.',
   },
   photoCancelled: {

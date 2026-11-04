@@ -90,11 +90,13 @@ function parseCreateProductionPacketResponse(payload) {
   const labelCopies = Number(payload?.label_copies);
   return {
     packet,
+    assemblyId: String(payload?.assembly?.id || packet?.assembly_id || packet?.id || '').trim(),
     labelCopies: Number.isFinite(labelCopies) ? labelCopies : 0,
     labelJobId: payload?.label_job_id || null,
     labelPrintWarning: payload?.label_print_warning || null,
     label: payload?.label || null,
     labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
+    pendingLabelPrint: payload?.pending_label_print || payload?.pendingLabelPrint || null,
   };
 }
 
@@ -109,6 +111,38 @@ export async function attachProductionProductPhoto({ assemblyId, imageBase64, pe
   });
 }
 
+/** Create finished product + stock only (photo deferred — attach with attachProductionProductPhoto). */
+export async function createProductionProductOnly({
+  name,
+  warehouseLocationId,
+  initialQuantity,
+  dimLength,
+  dimWidth,
+  dimHeight,
+  preset,
+} = {}) {
+  const createPayload = await productionOp('production-packet-create', {
+    name,
+    warehouse_location_id: warehouseLocationId,
+    initial_quantity: initialQuantity,
+    packet_number: 1,
+    qty_per_unit: 1,
+    client_source: CLIENT_SOURCE,
+    defer_product_photo: true,
+    require_product_photo: false,
+    dim_length: dimLength,
+    dim_width: dimWidth,
+    dim_height: dimHeight,
+    preset: preset ? String(preset).trim() : undefined,
+    product_preset: preset ? String(preset).trim() : undefined,
+  });
+  const parsed = parseCreateProductionPacketResponse(createPayload);
+  if (!parsed.assemblyId) {
+    throw new Error('Product save failed — server did not return a product id.');
+  }
+  return parsed;
+}
+
 export async function createProductionPacket({
   name,
   warehouseLocationId,
@@ -119,8 +153,49 @@ export async function createProductionPacket({
   dimHeight,
   preset,
   onPhotoAttempt,
+  existingAssemblyId,
+  pendingLabelPrint,
 } = {}) {
+  const resumeAssemblyId = String(existingAssemblyId || '').trim();
   const hasPhoto = Boolean(String(imageBase64 || '').trim());
+
+  if (resumeAssemblyId && hasPhoto) {
+    let photoPayload = null;
+    try {
+      photoPayload = await attachProductionProductPhoto({
+        assemblyId: resumeAssemblyId,
+        imageBase64,
+        pendingLabelPrint,
+        preset,
+        onAttempt: onPhotoAttempt,
+      });
+    } catch (photoErr) {
+      const err = new Error(
+        photoErr?.message
+          || 'AI photo could not be saved. Tap Save and take the photo again to retry.',
+      );
+      err.code = 'product_saved_photo_failed';
+      err.createResult = {
+        assemblyId: resumeAssemblyId,
+        pendingLabelPrint,
+        labelCopies: Math.max(0, Math.floor(Number(initialQuantity) || 0)),
+      };
+      throw err;
+    }
+    const labelCopies = Math.max(0, Math.floor(Number(initialQuantity) || 0));
+    return {
+      packet: { id: resumeAssemblyId, assembly_id: resumeAssemblyId },
+      assemblyId: resumeAssemblyId,
+      labelCopies,
+      labelJobId: photoPayload?.label_job_id || null,
+      labelPrintWarning: photoPayload?.label_print_warning || null,
+      label: null,
+      labelPreviewPngBase64: photoPayload?.label_preview_png_base64 || '',
+      photoSaved: true,
+      catalogImageUrl: photoPayload?.catalog_image_url || null,
+    };
+  }
+
   const createPayload = await productionOp('production-packet-create', {
     name,
     warehouse_location_id: warehouseLocationId,
@@ -141,12 +216,7 @@ export async function createProductionPacket({
     return parsed;
   }
 
-  const assemblyId = String(
-    createPayload?.assembly?.id
-    || parsed.packet?.assembly_id
-    || parsed.packet?.id
-    || '',
-  ).trim();
+  const assemblyId = parsed.assemblyId;
   if (!assemblyId) {
     const err = new Error('Product was created but the server did not return a product id for the photo.');
     err.code = 'product_saved_photo_failed';
@@ -154,7 +224,10 @@ export async function createProductionPacket({
     throw err;
   }
 
-  const pendingLabelPrint = createPayload?.pending_label_print || null;
+  const pendingLabelPrint = parsed.pendingLabelPrint
+    || createPayload?.pending_label_print
+    || createPayload?.pendingLabelPrint
+    || null;
   let photoPayload = null;
 
   try {
@@ -181,7 +254,11 @@ export async function createProductionPacket({
         || 'AI photo could not be saved. Check Warehouse — the product may exist without an image.',
     );
     err.code = 'product_saved_photo_failed';
-    err.createResult = parsed;
+    err.createResult = {
+      ...parsed,
+      assemblyId,
+      pendingLabelPrint,
+    };
     throw err;
   }
 
