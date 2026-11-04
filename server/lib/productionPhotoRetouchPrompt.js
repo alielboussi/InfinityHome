@@ -15,7 +15,7 @@ const SHARED_REQUIREMENTS = `REQUIREMENTS (follow exactly):
 3. Cleanup: remove people, hands, tags, clutter, and background objects.
 4. Lighting: bright, even catalog lighting; sharp focus; optional very soft contact shadow under the base only.
 5. Framing: center the product with balanced padding on all sides; the full item must be visible — never crop off arms, back, base, or sides.
-6. Composition: keep the product upright and centered in the frame (not pushed to the left or right edge); use roughly 65–85% of the frame for the product with even white margins.
+6. Composition: keep the product upright and centered in the frame (not pushed to the left or right edge); use roughly 65–85% of the frame for the product with even white margins on all four sides — equal space above and below the silhouette (never parked on the bottom edge with empty space only at the top).
 7. Forbidden: text, logos, watermarks, extra furniture, props, or scenery.
 
 OUTPUT: Return ONLY the finished catalog image (no text).`;

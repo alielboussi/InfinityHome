@@ -49,7 +49,7 @@ function buildGenerationConfig({ productName = '' } = {}) {
   };
   const aspect = isMattressCatalogProductName(productName)
     ? '1:1'
-    : String(process.env.GEMINI_PRODUCTION_PHOTO_ASPECT || '4:3').trim();
+    : String(process.env.GEMINI_PRODUCTION_PHOTO_ASPECT || '1:1').trim();
   if (aspect) {
     config.imageConfig = { aspectRatio: aspect };
   }
@@ -140,32 +140,57 @@ async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, prom
   );
 }
 
+const TRIM_BACKGROUND = '#ffffff';
+
+async function trimCatalogContent(flattenedBuffer) {
+  for (const threshold of [20, 12, 6]) {
+    try {
+      const trimmed = await sharp(flattenedBuffer)
+        .trim({ background: TRIM_BACKGROUND, threshold, lineArt: false })
+        .toBuffer({ resolveWithObject: true });
+      if (trimmed.info.width > 0 && trimmed.info.height > 0) {
+        return trimmed;
+      }
+    } catch {
+      // try a looser threshold
+    }
+  }
+  return null;
+}
+
+/** Tight-crop to product pixels, equal white padding → square, then scale (fixes low/high AI framing). */
+async function centerTrimmedOnCatalogSquare(flattenedBuffer) {
+  const trimmed = await trimCatalogContent(flattenedBuffer);
+  const content = trimmed?.data || flattenedBuffer;
+  const width = trimmed?.info?.width || (await sharp(flattenedBuffer).metadata()).width || 1;
+  const height = trimmed?.info?.height || (await sharp(flattenedBuffer).metadata()).height || 1;
+  const side = Math.max(width, height, 1);
+  const padTop = Math.floor((side - height) / 2);
+  const padBottom = side - height - padTop;
+  const padLeft = Math.floor((side - width) / 2);
+  const padRight = side - width - padLeft;
+
+  return sharp(content)
+    .extend({
+      top: padTop,
+      bottom: padBottom,
+      left: padLeft,
+      right: padRight,
+      background: TRIM_BACKGROUND,
+    })
+    .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, { fit: 'fill' })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+}
+
 async function finalizeCatalogJpeg(buffer, mime) {
   const inputOpts = mime.includes('png') ? { density: 150 } : undefined;
-  const pipeline = () => sharp(buffer, inputOpts)
+  const flattened = await sharp(buffer, inputOpts)
     .rotate()
-    .flatten({ background: '#ffffff' });
+    .flatten({ background: TRIM_BACKGROUND })
+    .toBuffer();
 
-  try {
-    return await pipeline()
-      .trim({ background: '#ffffff', threshold: 20, lineArt: false })
-      .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, {
-        fit: 'contain',
-        background: '#ffffff',
-        position: 'centre',
-      })
-      .jpeg({ quality: 90, mozjpeg: true })
-      .toBuffer();
-  } catch {
-    return pipeline()
-      .resize(CATALOG_SQUARE_PX, CATALOG_SQUARE_PX, {
-        fit: 'contain',
-        background: '#ffffff',
-        position: 'centre',
-      })
-      .jpeg({ quality: 90, mozjpeg: true })
-      .toBuffer();
-  }
+  return centerTrimmedOnCatalogSquare(flattened);
 }
 
 /**
