@@ -493,8 +493,12 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       return pktList.map((packet) => ({ packet, product, perSet }));
     });
 
+    const buildableQty = assemblyWarehouseQty[setId] ?? 0;
+    const qtyNum = Math.max(0, Math.floor(Number(buildableQty) || 0));
+    const qtyStyle = qtyNum > 0 ? styles.qtyValuePositive : styles.qtyValueZero;
+
     return (
-      <View style={[styles.gridCard, styles.setGridCard]}>
+      <View style={styles.gridCard}>
         <View style={styles.cardPress}>
           <View style={styles.cardMain}>
             <View style={styles.thumbWrap}>
@@ -520,7 +524,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             </Text>
           </View>
           <View style={styles.qtyFooter}>
-            <Text style={styles.qtySetLabel}>Set</Text>
+            <Text style={[styles.qtyValue, qtyStyle]} numberOfLines={1}>
+              {formatQty(buildableQty)}
+            </Text>
           </View>
         </View>
         {(componentLines.length > 0 || packetLines.length > 0) ? (
@@ -965,7 +971,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addBtnText: { color: '#e2e8f0', fontSize: 26, fontWeight: '300', marginTop: -2 },
-  setGridCard: { borderColor: 'rgba(56, 189, 248, 0.35)' },
   setInlayBar: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.border,
@@ -1068,13 +1073,6 @@ const styles = StyleSheet.create({
   qtyValuePositive: { color: '#069506' },
   qtyValueZero: { color: '#B30707' },
   qtyIncomplete: { color: '#B30707' },
-  qtySetLabel: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#38bdf8',
-    textAlign: 'center',
-    width: '100%',
-  },
   expandFab: {
     position: 'absolute',
     top: 14,

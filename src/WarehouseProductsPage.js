@@ -25,7 +25,7 @@ import {
   packetBomBottleneck,
 } from './utils/warehouseAssemblyMath';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
-import { isWarehouseSetAssembly } from './utils/warehouseSetMath';
+import { isWarehouseSetAssembly, computeWarehouseFactorySetBuildableQty } from './utils/warehouseSetMath';
 import {
   assemblyUsesFinishedBoxReceiving,
   assemblyUnitsPerCarton,
@@ -64,6 +64,7 @@ export default function WarehouseProductsPage() {
   const location = useLocation();
   const isIncompleteView = location.pathname.startsWith('/warehouse-products/incomplete');
   const isUncategorizedView = location.pathname.startsWith('/warehouse-products/uncategorized');
+  const isSetsView = location.pathname.startsWith('/warehouse-products/sets');
   const sessionUser = useMemo(() => getCurrentUser(), []);
   const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
   const { grant } = useAuthProfileMobileGrant();
@@ -101,6 +102,7 @@ export default function WarehouseProductsPage() {
   const [categoryDialogAssembly, setCategoryDialogAssembly] = useState(null);
   const [bulkLabelSelected, setBulkLabelSelected] = useState(() => new Set());
   const [bulkLabelBusy, setBulkLabelBusy] = useState(false);
+  const [setItems, setSetItems] = useState([]);
   const hasCatalogRef = useRef(false);
 
   const applyCatalog = useCallback((data) => {
@@ -112,6 +114,7 @@ export default function WarehouseProductsPage() {
     setAssemblyPacketRows(data.assemblyPackets || []);
     setVariantColors(data.colors);
     setCategories(data.categories);
+    setSetItems(data.setItems || []);
     setWarehouseLocationId(data.warehouseLocationId);
     setWarehouseLocationName(data.warehouseLocationName);
     if (!data.warehouseLocationId) {
@@ -160,6 +163,9 @@ export default function WarehouseProductsPage() {
   );
 
   const warehouseCatalogProducts = useMemo(() => {
+    if (isSetsView) {
+      return (assemblies || []).filter((a) => isWarehouseSetAssembly(a));
+    }
     const base = (assemblies || []).filter((a) => !isWarehouseSetAssembly(a));
     return base.filter((a) => {
       const pktList = packetsByAssembly.get(String(a.id)) || [];
@@ -167,7 +173,7 @@ export default function WarehouseProductsPage() {
       if (isUncategorizedView) return isUncategorizedWarehouseProduct(a, categories);
       return isCompleteCatalogProduct(a, pktList);
     });
-  }, [assemblies, categories, isIncompleteView, isUncategorizedView, packetsByAssembly]);
+  }, [assemblies, categories, isIncompleteView, isUncategorizedView, isSetsView, packetsByAssembly]);
 
   const inventoryByPacketId = useMemo(() => {
     const map = new Map();
@@ -222,12 +228,48 @@ export default function WarehouseProductsPage() {
     const out = new Map();
     if (!warehouseLocationId) return out;
     const whKey = String(warehouseLocationId);
-    warehouseCatalogProducts.forEach((assembly) => {
+    const componentQty = new Map();
+
+    const qtyForAssembly = (assembly) => {
+      const id = String(assembly.id);
+      if (componentQty.has(id)) return componentQty.get(id);
+      if (isWarehouseSetAssembly(assembly)) {
+        componentQty.set(id, 0);
+        return 0;
+      }
       const qty = stockForAssemblyAtLocation(assembly, warehouseLocationId, out);
+      componentQty.set(id, qty);
+      return qty;
+    };
+
+    (assemblies || []).forEach((a) => {
+      if (!isWarehouseSetAssembly(a)) qtyForAssembly(a);
+    });
+
+    warehouseCatalogProducts.forEach((assembly) => {
+      let qty;
+      if (isWarehouseSetAssembly(assembly)) {
+        qty = computeWarehouseFactorySetBuildableQty(
+          assembly.id,
+          setItems,
+          (componentId) => {
+            const comp = (assemblies || []).find((row) => String(row.id) === String(componentId));
+            return comp ? qtyForAssembly(comp) : 0;
+          },
+        );
+      } else {
+        qty = qtyForAssembly(assembly);
+      }
       out.set(String(assembly.id), new Map([[whKey, qty]]));
     });
     return out;
-  }, [warehouseCatalogProducts, stockForAssemblyAtLocation, warehouseLocationId]);
+  }, [
+    assemblies,
+    setItems,
+    stockForAssemblyAtLocation,
+    warehouseCatalogProducts,
+    warehouseLocationId,
+  ]);
 
   const filteredAssemblies = useMemo(() => {
     const raw = debouncedSearch.trim();
@@ -425,7 +467,9 @@ export default function WarehouseProductsPage() {
             ? 'Incomplete products (Warehouse)'
             : isUncategorizedView
               ? 'Uncategorized products (Warehouse)'
-              : 'Warehouse'}
+              : isSetsView
+                ? 'Sets (Warehouse)'
+                : 'Warehouse'}
         </h1>
       </div>
 
@@ -532,6 +576,17 @@ export default function WarehouseProductsPage() {
                 ? 'No uncategorized products — every product has a category assigned.'
                 : isIncompleteView
                   ? 'No incomplete products — all packet BOMs match their carton counts.'
+                  : isSetsView
+                    ? (
+                      <>
+                        No sets yet.{' '}
+                        {canAddProduct ? (
+                          <Link to="/warehouse-products/new?kind=set">Create a set</Link>
+                        ) : (
+                          'Ask a catalog manager to create one.'
+                        )}
+                      </>
+                    )
                   : (
                     <>
                       No products yet. Create packets on{' '}
@@ -616,8 +671,8 @@ export default function WarehouseProductsPage() {
                     />
                     <div className="warehouse-assembly-card__main">
                       <div className="warehouse-assembly-card__title-row">
-                        <span className="warehouse-kind-badge warehouse-kind-badge--product">
-                          Product
+                        <span className={`warehouse-kind-badge warehouse-kind-badge--${isWarehouseSetAssembly(assembly) ? 'set' : 'product'}`}>
+                          {isWarehouseSetAssembly(assembly) ? 'Set' : 'Product'}
                         </span>
                         <WarehouseAssemblyInlineName
                           assembly={assembly}

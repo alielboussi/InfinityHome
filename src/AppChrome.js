@@ -166,6 +166,7 @@ const TITLE_MAP = {
   '/production-report': 'Production Report',
   '/warehouse-products/incomplete': 'Incomplete products (Warehouse)',
   '/warehouse-products/uncategorized': 'Uncategorized products (Warehouse)',
+  '/warehouse-products/sets': 'Sets (Warehouse)',
   '/stock-history': 'Stock History',
   '/categories': 'Categories',
   '/sets': 'Sets',

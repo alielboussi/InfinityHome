@@ -1,4 +1,6 @@
 import { isWarehouseSetAssembly as isSetAssembly } from './warehouseCatalogHierarchy.js';
+import { WAREHOUSE_FACTORY_LOCATION_ID } from '../constants/warehouseShowroomLocations.js';
+import { expandWarehouseSetItemsRows } from './warehouseSetItems.js';
 
 /** How many complete sets can be built from component product stock. */
 export function assemblableSetUnits(setLines, resolveCompleteUnits) {
@@ -17,4 +19,13 @@ export function assemblableSetUnits(setLines, resolveCompleteUnits) {
 
 export function isWarehouseSetAssembly(assembly) {
   return isSetAssembly(assembly);
+}
+
+/** Factory warehouse catalog — buildable sets from component finished stock at Warehouse. */
+export function computeWarehouseFactorySetBuildableQty(setAssemblyId, setItems, resolveComponentQty) {
+  const lines = expandWarehouseSetItemsRows(setItems || []).filter(
+    (row) => String(row.set_assembly_id) === String(setAssemblyId)
+      && String(row.location_id) === String(WAREHOUSE_FACTORY_LOCATION_ID),
+  );
+  return assemblableSetUnits(lines, resolveComponentQty);
 }

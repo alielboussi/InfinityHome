@@ -6,9 +6,10 @@ export default function WarehouseCatalogViewToggle({ 'aria-labelledby': ariaLabe
   const navigate = useNavigate();
   const path = location.pathname;
   const isPackets = path.startsWith('/warehouse-products/packets');
+  const isSets = path.startsWith('/warehouse-products/sets');
   const isIncomplete = path.startsWith('/warehouse-products/incomplete');
   const isUncategorized = path.startsWith('/warehouse-products/uncategorized');
-  const isProducts = !isPackets && !isIncomplete && !isUncategorized;
+  const isProducts = !isPackets && !isSets && !isIncomplete && !isUncategorized;
 
   return (
     <div
@@ -24,6 +25,14 @@ export default function WarehouseCatalogViewToggle({ 'aria-labelledby': ariaLabe
         onClick={() => navigate('/warehouse-products')}
       >
         Products
+      </button>
+      <button
+        type="button"
+        className={`warehouse-catalog-view-toggle__option${isSets ? ' is-active' : ''}`}
+        aria-pressed={isSets}
+        onClick={() => navigate('/warehouse-products/sets')}
+      >
+        Sets
       </button>
       <button
         type="button"

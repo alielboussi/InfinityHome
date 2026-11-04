@@ -5,6 +5,10 @@ import {
   assemblableUnits,
 } from './warehouseAssemblyMath.js';
 import { buildPacketsByAssembly } from './warehouseAssemblyPacketPool.js';
+import {
+  computeWarehouseFactorySetBuildableQty,
+  isWarehouseSetAssembly,
+} from './warehouseSetMath.js';
 
 const WAREHOUSE_COMPOSITE_DOC_KEYS = {
   warehouse_packet_inventory: ['packet_id', 'location_id'],
@@ -132,6 +136,16 @@ export function attachWarehouseStockTotals(catalog) {
     } else {
       assemblyWarehouseQty[id] = assemblyInvMap.get(id) ?? 0;
     }
+  });
+
+  (assemblies || []).forEach((assembly) => {
+    if (!isWarehouseSetAssembly(assembly)) return;
+    const id = String(assembly.id);
+    assemblyWarehouseQty[id] = computeWarehouseFactorySetBuildableQty(
+      id,
+      normalized?.setItems,
+      (componentId) => assemblyWarehouseQty[String(componentId)] ?? 0,
+    );
   });
 
   return {

@@ -153,6 +153,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWarehouseCatalogSetStock.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[warehouse-catalog-set-stock:fail] verifyWarehouseCatalogSetStock.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseProductionDeliverySearch.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

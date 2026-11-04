@@ -663,13 +663,6 @@ export default function WarehouseProductEditPage() {
     }));
   };
 
-  const warehouseSetRecipeLocationName = useMemo(() => {
-    const loc = (locations || []).find(
-      (l) => String(l.id) === String(warehouseSetRecipeLocationId),
-    );
-    return loc?.name || 'Warehouse';
-  }, [locations, warehouseSetRecipeLocationId]);
-
   if (!canManage && !(isNew && canAddProduct)) return null;
 
   return (
@@ -1001,20 +994,9 @@ export default function WarehouseProductEditPage() {
           ) : null}
           {isSetForm ? (
             <div className="warehouse-field warehouse-field--set-components warehouse-field--span-full">
-              <label htmlFor="wh-set-kit-location">Set kitting location</label>
-              <input
-                id="wh-set-kit-location"
-                type="text"
-                readOnly
-                value={warehouseSetRecipeLocationName}
-                aria-readonly="true"
-              />
-              <p className="warehouse-field-hint" style={{ marginTop: 4 }}>
-                Warehouse sets are defined at central Warehouse (factory). Packets are never added here — only finished products.
-              </p>
               <label>Set components (products)</label>
               <p className="warehouse-field-hint" style={{ marginTop: 0 }}>
-                Each line is a warehouse product (built from packets) and how many go into one set at this location.
+                Each line is a warehouse product (built from packets) and how many go into one set at Warehouse (factory).
               </p>
               <div className="warehouse-packet-linked-list">
                 <div className="warehouse-packet-linked-header">

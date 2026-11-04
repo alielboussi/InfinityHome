@@ -366,6 +366,7 @@ function App() {
           <Route path="/warehouse-products/packets" element={<WarehousePacketsPage />} />
           <Route path="/warehouse-products/incomplete" element={<WarehouseProductsPage />} />
           <Route path="/warehouse-products/uncategorized" element={<WarehouseProductsPage />} />
+          <Route path="/warehouse-products/sets" element={<WarehouseProductsPage />} />
           <Route path="/warehouse-products/new" element={<WarehouseProductEditPage />} />
           <Route path="/warehouse-products/:productId/transfer" element={<WarehouseProductTransferPage />} />
           <Route path="/warehouse-products/:productId/edit" element={<WarehouseProductEditPage />} />
