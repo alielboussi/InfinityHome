@@ -7,6 +7,7 @@ import {
 import { buildPacketsByAssembly } from './warehouseAssemblyPacketPool.js';
 import {
   computeWarehouseFactorySetBuildableQty,
+  buildWarehouseAssemblyLeftoverQtyMap,
   isWarehouseSetAssembly,
 } from './warehouseSetMath.js';
 
@@ -148,9 +149,16 @@ export function attachWarehouseStockTotals(catalog) {
     );
   });
 
+  const assemblyWarehouseLeftoverQty = buildWarehouseAssemblyLeftoverQtyMap(
+    assemblyWarehouseQty,
+    normalized?.setItems,
+    assemblies,
+  );
+
   return {
     ...normalized,
     packetWarehouseQty,
     assemblyWarehouseQty,
+    assemblyWarehouseLeftoverQty,
   };
 }

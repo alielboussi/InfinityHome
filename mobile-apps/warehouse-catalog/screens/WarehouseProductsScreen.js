@@ -182,7 +182,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     };
   }, [categoryIndex]);
 
-  const { assemblyWarehouseQty, packetWarehouseQty } = useMemo(
+  const { assemblyWarehouseQty, assemblyWarehouseLeftoverQty, packetWarehouseQty } = useMemo(
     () => catalogStockMaps(catalog),
     [catalog],
   );
@@ -210,14 +210,23 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const productAssemblies = useMemo(
     () => (catalog?.assemblies || []).filter((a) => {
       if (isSetAssembly(a)) return false;
-      if (catalogMode === 'complete' && setComponentIds.has(String(a.id))) return false;
+      if (catalogMode === 'complete' && setComponentIds.has(String(a.id))) {
+        const leftover = assemblyWarehouseLeftoverQty[String(a.id)] ?? 0;
+        if (leftover <= 0) return false;
+      }
       const pktList = packetsByAssembly.get(String(a.id)) || [];
       if (catalogMode === 'incomplete') {
         return isIncompletePacketBomProduct(a, pktList);
       }
       return isCompleteCatalogProduct(a, pktList);
     }),
-    [catalog?.assemblies, catalogMode, packetsByAssembly, setComponentIds],
+    [
+      catalog?.assemblies,
+      catalogMode,
+      packetsByAssembly,
+      setComponentIds,
+      assemblyWarehouseLeftoverQty,
+    ],
   );
 
   const assembliesForCategoryCounts = useMemo(() => {
@@ -602,7 +611,11 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const isOpen = expanded.has(expandKey);
     const pktList = packetsByAssembly.get(id) || [];
     const finishedQty = assemblyWarehouseQty[id] ?? 0;
-    const displayQty = catalogMode === 'incomplete' ? 0 : finishedQty;
+    const isSetComponent = setComponentIds.has(id);
+    const leftoverQty = assemblyWarehouseLeftoverQty[id];
+    const displayQty = catalogMode === 'incomplete'
+      ? 0
+      : (isSetComponent && leftoverQty != null ? leftoverQty : finishedQty);
     const dimLine = formatDimensionsLine(assembly);
     const volumeLine = formatVolumeLine(assembly);
     const bom = analyzeAssemblyPacketBom(assembly.packet_count, pktList);

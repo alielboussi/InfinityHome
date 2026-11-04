@@ -19,7 +19,7 @@ function reorderPresetList(list, fromIndex, toIndex) {
 }
 
 function PresetSection({
-  title,
+  groupTitle,
   hint,
   items,
   setItems,
@@ -37,28 +37,33 @@ function PresetSection({
   };
 
   return (
-    <div className="product-form-locations-section warehouse-production-presets-section" style={{ marginTop: 28 }}>
-      <h2 style={{ fontSize: '1.1rem', marginBottom: 6 }}>{title}</h2>
-      <p style={{ color: 'var(--dash-muted)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>{hint}</p>
-      <form
-        onSubmit={onAdd}
-        style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 16 }}
-      >
-        <label style={{ flex: '1 1 220px', display: 'block' }}>
-          <span className="product-form-label" style={{ display: 'block', marginBottom: 6 }}>New preset</span>
-          <input
-            type="text"
-            value={newValue}
-            onChange={(e) => setNewValue(e.target.value)}
+    <section className="product-form-locations-section warehouse-production-presets-section">
+      <h2 className="warehouse-production-presets-group-title">{groupTitle}</h2>
+      <p className="warehouse-production-presets-hint">{hint}</p>
+      <form className="warehouse-production-presets-add-form" onSubmit={onAdd}>
+        <p className="warehouse-production-presets-add-heading">Add {groupTitle} preset</p>
+        <div className="warehouse-production-presets-add-row">
+          <label className="warehouse-production-presets-add-label">
+            <span className="product-form-label">Preset name</span>
+            <input
+              type="text"
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              disabled={busy}
+              autoComplete="off"
+              placeholder={`e.g. ${groupTitle === 'Carpentry' ? 'Coffee Table' : '3 Seater'}`}
+            />
+          </label>
+          <button
+            type="submit"
+            className="product-form-btn product-form-btn--primary warehouse-production-presets-add-btn"
             disabled={busy}
-            autoComplete="off"
-            style={{ width: '100%' }}
-          />
-        </label>
-        <button type="submit" className="product-form-btn product-form-btn--primary" disabled={busy}>
-          Add
-        </button>
+          >
+            Add
+          </button>
+        </div>
       </form>
+      <p className="warehouse-production-presets-list-heading">Presets — drag to reorder</p>
       <ul className="warehouse-production-presets-list">
         {items.map((label, index) => (
           <li
@@ -103,8 +108,7 @@ function PresetSection({
             <span className="warehouse-production-presets-label">{label}</span>
             <button
               type="button"
-              className="report-link"
-              style={{ color: 'var(--dash-danger, #f87171)' }}
+              className="warehouse-production-presets-remove"
               disabled={busy}
               onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
             >
@@ -113,7 +117,7 @@ function PresetSection({
           </li>
         ))}
       </ul>
-    </div>
+    </section>
   );
 }
 
@@ -224,8 +228,8 @@ export default function WarehouseProductionPresetsPage() {
       {!loading ? (
         <>
           <PresetSection
-            title="Seater / upholstery"
-            hint="Upholstery group on Create (sofas, curtains, etc.). WhatsApp alerts use the main Production group."
+            groupTitle="Upholstery"
+            hint="Seater / upholstery group on the Production app Create screen (sofas, curtains, etc.). WhatsApp alerts use the main Production group."
             items={seater}
             setItems={setSeater}
             newValue={newSeater}
@@ -234,7 +238,7 @@ export default function WarehouseProductionPresetsPage() {
             busy={busy}
           />
           <PresetSection
-            title="Carpentry"
+            groupTitle="Carpentry"
             hint="Wood furniture group on Create. WhatsApp alerts use WHATSAPP_PRODUCTION_CARPENTRY_GROUP_ID when set (else main Production group)."
             items={carpentry}
             setItems={setCarpentry}

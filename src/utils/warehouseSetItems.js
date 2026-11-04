@@ -21,6 +21,16 @@ export function setItemsAssemblyLocationKey(assemblyId, locationId) {
   return `${String(assemblyId)}:${String(locationId)}`;
 }
 
+/** Product assembly ids used as set components (any recipe location). */
+export function collectSetComponentAssemblyIds(setItems) {
+  const ids = new Set();
+  (setItems || []).forEach((row) => {
+    const cid = String(row?.component_assembly_id || '').trim();
+    if (cid) ids.add(cid);
+  });
+  return ids;
+}
+
 export function buildSetItemsByAssemblyAndLocation(setItems, assemblies) {
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
   const out = new Map();

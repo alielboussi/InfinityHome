@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSharedMobileAccessGrant } from '../shared/MobileAccessGrantContext';
+import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../shared/MobileAccessGrantContext';
 import { isWarehouseCatalogLabelPrintAllowed } from '../shared/mobileAccessManifest';
 import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
 import { buildPacketAssemblyAssignments } from '../shared/warehousePacketGrouping';
@@ -52,7 +52,8 @@ export default function WarehousePacketsScreen({ navigation }) {
     patchCatalog,
   } = useWarehouseCatalog();
   const grant = useSharedMobileAccessGrant();
-  const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant);
+  const userEmail = useSharedMobileAccessUserEmail();
+  const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant, userEmail);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [labelPrintItem, setLabelPrintItem] = useState(null);

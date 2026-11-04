@@ -103,6 +103,9 @@ export default function WarehouseProductEditPage() {
   const [saving, setSaving] = useState(false);
   const [skuGenBusy, setSkuGenBusy] = useState(false);
   const [packetPickSearch, setPacketPickSearch] = useState('');
+  const [setComponentPickerOpen, setSetComponentPickerOpen] = useState(null);
+  const [setComponentRowQuery, setSetComponentRowQuery] = useState({});
+  const setComponentPickRef = useRef(null);
   const [colorDraft, setColorDraft] = useState('');
   const [colorPickBusy, setColorPickBusy] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -668,6 +671,39 @@ export default function WarehouseProductEditPage() {
     );
   }, [componentProductById, colorsByAssembly]);
 
+  const filterComponentProductOptions = useCallback((query) => {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return componentProductOptions.slice(0, 30);
+    return componentProductOptions.filter((a) => {
+      const colors = colorsByAssembly.get(String(a.id)) || [];
+      const label = formatWarehouseAssemblySelectLabel(a, colors).toLowerCase();
+      if (label.includes(q)) return true;
+      if (String(a.family_sku || '').toLowerCase().includes(q)) return true;
+      if (String(a.name || '').toLowerCase().includes(q)) return true;
+      return colors.some((c) => String(c.name || '').toLowerCase().includes(q));
+    }).slice(0, 25);
+  }, [componentProductOptions, colorsByAssembly]);
+
+  useEffect(() => {
+    if (setComponentPickerOpen == null) return undefined;
+    const onDocDown = (e) => {
+      if (setComponentPickRef.current?.contains(e.target)) return;
+      setSetComponentPickerOpen(null);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [setComponentPickerOpen]);
+
+  const pickSetComponent = (rowIndex, pickedAssemblyId) => {
+    updateSetComponentLine(rowIndex, { component_assembly_id: pickedAssemblyId });
+    setSetComponentPickerOpen(null);
+    setSetComponentRowQuery((prev) => {
+      const next = { ...prev };
+      delete next[rowIndex];
+      return next;
+    });
+  };
+
   const addSetComponentLine = () => {
     setProductForm((f) => ({
       ...f,
@@ -688,6 +724,20 @@ export default function WarehouseProductEditPage() {
       ...f,
       set_components: (f.set_components || []).filter((_, i) => i !== index),
     }));
+    setSetComponentRowQuery((prev) => {
+      const next = {};
+      Object.keys(prev).forEach((key) => {
+        const i = Number(key);
+        if (i === index) return;
+        next[i > index ? i - 1 : i] = prev[key];
+      });
+      return next;
+    });
+    setSetComponentPickerOpen((open) => {
+      if (open == null) return null;
+      if (open === index) return null;
+      return open > index ? open - 1 : open;
+    });
   };
 
   if (!canManage && !(isNew && canAddProduct)) return null;
@@ -1036,24 +1086,85 @@ export default function WarehouseProductEditPage() {
                 </div>
                 {(productForm.set_components || []).map((line, index) => {
                   const assemblyId = String(line.component_assembly_id || '');
+                  const pickerOpen = setComponentPickerOpen === index;
+                  const searchValue = pickerOpen
+                    ? (setComponentRowQuery[index] ?? '')
+                    : (componentOptionLabel(assemblyId) || '');
+                  const resultOptions = pickerOpen
+                    ? filterComponentProductOptions(setComponentRowQuery[index] ?? '')
+                    : [];
                   return (
                   <div key={`set-line-${index}`} className="warehouse-packet-linked-row">
-                    <select
-                      className="warehouse-set-component-select"
-                      value={assemblyId}
-                      required
-                      aria-label="Set component product"
-                      onChange={(e) => updateSetComponentLine(index, {
-                        component_assembly_id: e.target.value,
-                      })}
+                    <div
+                      className="warehouse-set-component-pick"
+                      ref={pickerOpen ? setComponentPickRef : null}
                     >
-                      <option value="">Select product…</option>
-                      {componentProductOptions.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {componentOptionLabel(a.id)}
-                        </option>
-                      ))}
-                    </select>
+                      <input
+                        type="hidden"
+                        value={assemblyId}
+                        required
+                        tabIndex={-1}
+                        aria-hidden
+                        onChange={() => {}}
+                      />
+                      <input
+                        type="search"
+                        className="warehouse-set-component-search"
+                        placeholder="Search name, SKU, or color…"
+                        value={searchValue}
+                        autoComplete="off"
+                        aria-label="Search set component product"
+                        aria-expanded={pickerOpen}
+                        aria-controls={pickerOpen ? `wh-set-component-results-${index}` : undefined}
+                        onFocus={() => {
+                          setSetComponentPickerOpen(index);
+                          setSetComponentRowQuery((prev) => ({
+                            ...prev,
+                            [index]: prev[index] ?? componentOptionLabel(assemblyId),
+                          }));
+                        }}
+                        onChange={(e) => {
+                          setSetComponentPickerOpen(index);
+                          setSetComponentRowQuery((prev) => ({
+                            ...prev,
+                            [index]: e.target.value,
+                          }));
+                          if (!e.target.value.trim()) {
+                            updateSetComponentLine(index, { component_assembly_id: '' });
+                          }
+                        }}
+                      />
+                      {pickerOpen ? (
+                        <ul
+                          id={`wh-set-component-results-${index}`}
+                          className="warehouse-packet-pick-results warehouse-set-component-results"
+                          role="listbox"
+                        >
+                          {!resultOptions.length ? (
+                            <li className="warehouse-set-component-results__empty">
+                              No products match — try another name or SKU.
+                            </li>
+                          ) : null}
+                          {resultOptions.map((a) => (
+                            <li key={a.id}>
+                              <button
+                                type="button"
+                                className="warehouse-set-component-results__pick"
+                                role="option"
+                                aria-selected={String(a.id) === assemblyId}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => pickSetComponent(index, a.id)}
+                              >
+                                {formatWarehouseAssemblySelectLabel(
+                                  a,
+                                  colorsByAssembly.get(String(a.id)) || [],
+                                )}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
                     <input
                       type="number"
                       min="1"

@@ -25,7 +25,8 @@ import {
   packetBomBottleneck,
 } from './utils/warehouseAssemblyMath';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
-import { isWarehouseSetAssembly, computeWarehouseFactorySetBuildableQty, formatWarehouseSetStockCount } from './utils/warehouseSetMath';
+import { isWarehouseSetAssembly, computeWarehouseFactorySetBuildableQty, buildWarehouseAssemblyLeftoverQtyMap, formatWarehouseSetStockCount } from './utils/warehouseSetMath';
+import { collectSetComponentAssemblyIds } from './utils/warehouseSetItems';
 import {
   assemblyUsesFinishedBoxReceiving,
   assemblyUnitsPerCarton,
@@ -162,19 +163,6 @@ export default function WarehouseProductsPage() {
     [assemblyPacketRows, packets],
   );
 
-  const warehouseCatalogProducts = useMemo(() => {
-    if (isSetsView) {
-      return (assemblies || []).filter((a) => isWarehouseSetAssembly(a));
-    }
-    const base = (assemblies || []).filter((a) => !isWarehouseSetAssembly(a));
-    return base.filter((a) => {
-      const pktList = packetsByAssembly.get(String(a.id)) || [];
-      if (isIncompleteView) return isIncompletePacketBomProduct(a, pktList);
-      if (isUncategorizedView) return isUncategorizedWarehouseProduct(a, categories);
-      return isCompleteCatalogProduct(a, pktList);
-    });
-  }, [assemblies, categories, isIncompleteView, isUncategorizedView, isSetsView, packetsByAssembly]);
-
   const inventoryByPacketId = useMemo(() => {
     const map = new Map();
     (inventory || []).forEach((row) => {
@@ -223,11 +211,15 @@ export default function WarehouseProductsPage() {
     packetsByAssembly,
   ]);
 
-  /** Finished qty at warehouse only (this page does not manage showroom stock). */
-  const finishedStockByAssembly = useMemo(() => {
-    const out = new Map();
-    if (!warehouseLocationId) return out;
-    const whKey = String(warehouseLocationId);
+  const warehouseSetStockContext = useMemo(() => {
+    const empty = {
+      qtyById: new Map(),
+      leftoverById: new Map(),
+      setComponentIds: new Set(),
+    };
+    if (!warehouseLocationId) return empty;
+
+    const qtyById = new Map();
     const componentQty = new Map();
 
     const qtyForAssembly = (assembly) => {
@@ -237,7 +229,7 @@ export default function WarehouseProductsPage() {
         componentQty.set(id, 0);
         return 0;
       }
-      const qty = stockForAssemblyAtLocation(assembly, warehouseLocationId, out);
+      const qty = stockForAssemblyAtLocation(assembly, warehouseLocationId);
       componentQty.set(id, qty);
       return qty;
     };
@@ -246,7 +238,8 @@ export default function WarehouseProductsPage() {
       if (!isWarehouseSetAssembly(a)) qtyForAssembly(a);
     });
 
-    warehouseCatalogProducts.forEach((assembly) => {
+    (assemblies || []).forEach((assembly) => {
+      const id = String(assembly.id);
       let qty;
       if (isWarehouseSetAssembly(assembly)) {
         qty = computeWarehouseFactorySetBuildableQty(
@@ -260,14 +253,89 @@ export default function WarehouseProductsPage() {
       } else {
         qty = qtyForAssembly(assembly);
       }
-      out.set(String(assembly.id), new Map([[whKey, qty]]));
+      qtyById.set(id, qty);
     });
-    return out;
+
+    const qtyRecord = Object.fromEntries(qtyById);
+    const leftoverRecord = buildWarehouseAssemblyLeftoverQtyMap(qtyRecord, setItems, assemblies);
+    const leftoverById = new Map(Object.entries(leftoverRecord));
+
+    return {
+      qtyById,
+      leftoverById,
+      setComponentIds: collectSetComponentAssemblyIds(setItems),
+    };
   }, [
     assemblies,
     setItems,
     stockForAssemblyAtLocation,
+    warehouseLocationId,
+  ]);
+
+  const isCompleteProductsView = !isSetsView && !isIncompleteView && !isUncategorizedView;
+
+  const warehouseCatalogProducts = useMemo(() => {
+    if (isSetsView) {
+      return (assemblies || []).filter((a) => isWarehouseSetAssembly(a));
+    }
+    const base = (assemblies || []).filter((a) => !isWarehouseSetAssembly(a));
+    return base.filter((a) => {
+      if (isCompleteProductsView) {
+        const id = String(a.id);
+        if (warehouseSetStockContext.setComponentIds.has(id)) {
+          const leftover = warehouseSetStockContext.leftoverById.get(id) ?? 0;
+          if (leftover <= 0) return false;
+        }
+      }
+      const pktList = packetsByAssembly.get(String(a.id)) || [];
+      if (isIncompleteView) return isIncompletePacketBomProduct(a, pktList);
+      if (isUncategorizedView) return isUncategorizedWarehouseProduct(a, categories);
+      return isCompleteCatalogProduct(a, pktList);
+    });
+  }, [
+    assemblies,
+    categories,
+    isCompleteProductsView,
+    isIncompleteView,
+    isUncategorizedView,
+    isSetsView,
+    packetsByAssembly,
+    warehouseSetStockContext.leftoverById,
+    warehouseSetStockContext.setComponentIds,
+  ]);
+
+  /** Physical / buildable qty (labels, packet math) — not set-component leftover. */
+  const finishedStockByAssembly = useMemo(() => {
+    const out = new Map();
+    if (!warehouseLocationId) return out;
+    const whKey = String(warehouseLocationId);
+    warehouseCatalogProducts.forEach((assembly) => {
+      const qty = warehouseSetStockContext.qtyById.get(String(assembly.id)) ?? 0;
+      out.set(String(assembly.id), new Map([[whKey, qty]]));
+    });
+    return out;
+  }, [warehouseCatalogProducts, warehouseSetStockContext.qtyById, warehouseLocationId]);
+
+  /** Catalog list qty — leftover units for set components on the complete products view. */
+  const catalogDisplayStockByAssembly = useMemo(() => {
+    const out = new Map();
+    if (!warehouseLocationId) return out;
+    const whKey = String(warehouseLocationId);
+    warehouseCatalogProducts.forEach((assembly) => {
+      const id = String(assembly.id);
+      let qty = warehouseSetStockContext.qtyById.get(id) ?? 0;
+      if (isCompleteProductsView && warehouseSetStockContext.setComponentIds.has(id)) {
+        qty = warehouseSetStockContext.leftoverById.get(id) ?? 0;
+      }
+      out.set(id, new Map([[whKey, qty]]));
+    });
+    return out;
+  }, [
+    isCompleteProductsView,
     warehouseCatalogProducts,
+    warehouseSetStockContext.leftoverById,
+    warehouseSetStockContext.qtyById,
+    warehouseSetStockContext.setComponentIds,
     warehouseLocationId,
   ]);
 
@@ -600,7 +668,7 @@ export default function WarehouseProductsPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {filteredAssemblies.map((assembly) => {
               const pktList = packetsByAssembly.get(String(assembly.id)) || [];
-              const stockByLoc = finishedStockByAssembly.get(String(assembly.id)) || new Map();
+              const stockByLoc = catalogDisplayStockByAssembly.get(String(assembly.id)) || new Map();
               const complete = stockByLoc.get(String(warehouseLocationId)) ?? 0;
               const isOpen = expanded.has(String(assembly.id));
               const totalPackets = Number(assembly.packet_count) || 0;
