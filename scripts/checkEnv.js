@@ -283,6 +283,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyProductionNameClashUi.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-name-clash-ui:fail] verifyProductionNameClashUi.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyProductionStockCatalog.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

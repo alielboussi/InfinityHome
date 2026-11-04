@@ -47,6 +47,7 @@ import {
   fetchProductionSuggestedBaseName,
 } from '../services/productionApi';
 import { isMattressCatalogProductName } from '../lib/isMattressCatalogProductName';
+import { formatProductionNameClashMessage } from '../lib/productionNameClashUi';
 export default function CreateScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
@@ -185,16 +186,11 @@ export default function CreateScreen({ navigation }) {
   const ensureProductNameAvailable = async (fullName) => {
     const { checkProductionProductName } = await import('../services/productionApi');
     const check = await checkProductionProductName(fullName);
-    if (check?.taken) {
-      const existing = String(check.existing || '').trim();
-      const msg = existing
-        ? `${tUi('duplicateName', locale)} (${existing})`
-        : tUi('duplicateName', locale);
-      setError(msg);
-      showSaveFailure(msg);
-      return false;
-    }
-    return true;
+    if (!check?.taken) return true;
+    const msg = formatProductionNameClashMessage(check, tUi('duplicateName', locale));
+    setError(msg);
+    showSaveFailure(msg);
+    return false;
   };
 
   const onSelectPreset = (value) => {

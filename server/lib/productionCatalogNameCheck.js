@@ -3,6 +3,7 @@
  */
 import {
   extractProductionBaseName,
+  matchProductionGirlNameFromPool,
   normalizeProductionNameInput,
   normalizeWarehousePacketNameKey,
 } from '../../src/utils/productionItemName.js';
@@ -13,6 +14,13 @@ function productionNameHasSeatPreset(name) {
   const fullKey = normalizeWarehousePacketNameKey(normalized);
   const baseKey = normalizeWarehousePacketNameKey(extractProductionBaseName(normalized));
   return Boolean(fullKey && baseKey && fullKey !== baseKey);
+}
+
+/** Pool first names only — shop "Olivia" blocks "Olivia Single Seater"; brand lines like "High Class" do not. */
+function shopBareNameBlocksProductionPreset(proposedName) {
+  if (!productionNameHasSeatPreset(proposedName)) return true;
+  const base = extractProductionBaseName(proposedName);
+  return Boolean(matchProductionGirlNameFromPool(base));
 }
 
 export function productionNamesConflict(proposedName, existingName) {
@@ -29,16 +37,25 @@ export function productionNamesConflict(proposedName, existingName) {
   const presetA = productionNameHasSeatPreset(proposed);
   const presetB = productionNameHasSeatPreset(existing);
 
-  // Same line, different seater presets (e.g. Stella 3 Seater vs Stella 2 Seater).
-  if (baseA && baseB && baseA === baseB && presetA && presetB && fullA !== fullB) {
-    return false;
+  // Same brand line, different product types (3 Seater vs Single Seater, etc.).
+  if (baseA && baseB && baseA === baseB && fullA !== fullB) {
+    if (presetA && presetB) return false;
+    if (presetA && !presetB) {
+      return shopBareNameBlocksProductionPreset(proposed);
+    }
+    if (!presetA && presetB) return false;
+    return true;
   }
 
   if (baseA && baseB && baseA === baseB) return true;
 
-  // e.g. catalog product "Olivia" blocks "Olivia Single Seater"
-  if (baseA && baseA === fullB) return true;
-  if (baseB && baseB === fullA) return true;
+  // Shop catalog bare name vs production preset (pool names only).
+  if (baseA && baseA === fullB) {
+    return shopBareNameBlocksProductionPreset(proposed);
+  }
+  if (baseB && baseB === fullA) {
+    return shopBareNameBlocksProductionPreset(existing);
+  }
 
   return false;
 }

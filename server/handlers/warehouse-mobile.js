@@ -972,12 +972,19 @@ async function opPacketNameCheck(body) {
     return { taken: false, name };
   }
   const sameFullName = normalizeWarehousePacketNameKey(clash.name) === normalizeWarehousePacketNameKey(name);
+  const lookupHint = clash.kind === 'catalog'
+    ? 'Search Products List (shop catalog), not Warehouse → Products.'
+    : clash.kind === 'packet'
+      ? 'Search Warehouse → Products (packet name on a product).'
+      : 'Search Warehouse → Products.';
   return {
     taken: true,
     name,
     existing: clash.name,
+    existing_id: clash.id,
     existing_kind: clash.kind,
     reason: sameFullName ? 'exact_name' : 'base_name_in_use',
+    lookup_hint: lookupHint,
   };
 }
 
