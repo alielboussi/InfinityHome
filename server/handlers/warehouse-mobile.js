@@ -41,6 +41,7 @@ import { buildWarehouseDeliveryNotePdfBase64 } from '../lib/buildWarehouseDelive
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
   evaluateCarpentryWorkshopAppAccess,
+  evaluateWarehouseDeliveryDriverAppAccess,
   evaluateWarehouseProductionAppAccess,
   isMobileScreenAccessAllowed,
   isWarehouseCatalogAddProductAllowed,
@@ -405,6 +406,16 @@ async function opCarpentryAccessSelf(user) {
   const record = await getLoginAccessRecord(user?.id);
   return {
     allowed: evaluateCarpentryWorkshopAppAccess(grant, user?.email),
+    display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
+    grant,
+  };
+}
+
+async function opDeliveryAccessSelf(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  const record = await getLoginAccessRecord(user?.id);
+  return {
+    allowed: evaluateWarehouseDeliveryDriverAppAccess(grant, user?.email),
     display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
     grant,
   };
@@ -1380,16 +1391,18 @@ async function opBomValidate(body) {
 async function assertMobileDeliverySubmitAccess(user) {
   if (canManageCatalog(user)) return;
   const grant = await mobileAccessGrantForUser(user);
-  if (isWarehouseProductionKitweDeliveryAllowed(grant)) return;
-  if (isMobileScreenAccessAllowed(grant, 'warehouse_products')) return;
-  const err = new Error('Warehouse delivery is not enabled for your account.');
+  if (evaluateWarehouseDeliveryDriverAppAccess(grant, user?.email)) return;
+  const err = new Error('Warehouse delivery app access is not enabled for your account.');
   err.status = 403;
   throw err;
 }
 
 async function deliveryMobileSourceForUser(user) {
   const grant = await mobileAccessGrantForUser(user);
-  if (isWarehouseProductionAppAllowed(grant) || isWarehouseProductionKitweDeliveryAllowed(grant)) {
+  if (
+    isWarehouseProductionAppAllowed(grant)
+    || evaluateWarehouseDeliveryDriverAppAccess(grant, user?.email)
+  ) {
     return 'warehouse_production_mobile';
   }
   return 'warehouse_catalog_mobile';
@@ -2264,6 +2277,11 @@ async function opDeliverySentDetail(body, user) {
   const nameFormatter = createWarehouseDeliveryNameFormatter(assemblyColorContext);
 
   const meta = session.metadata || {};
+  const signatureUrl = meta.driver_signature_url || '';
+  const { fetchDeliverySignatureAsDataUri } = await import('../lib/deliverySignatureInline.js');
+  const driverSignatureDataUri = signatureUrl
+    ? await fetchDeliverySignatureAsDataUri(signatureUrl)
+    : '';
   return {
     session: {
       id: session.id,
@@ -2272,9 +2290,10 @@ async function opDeliverySentDetail(body, user) {
       submitted_at: session.submitted_at || session.created_at,
       driver_name: meta.driver_name || '',
       dispatched_by_name: meta.dispatched_by_name || session.created_by_name || '',
-      driver_signature_url: meta.driver_signature_url || '',
+      driver_signature_url: signatureUrl,
     },
     print_groups: buildDeliveryPrintGroupsFromEntries(entries || [], nameFormatter),
+    driver_signature_data_uri: driverSignatureDataUri,
   };
 }
 
@@ -2735,6 +2754,9 @@ export default async function handler(req, res) {
         break;
       case 'carpentry-access-self':
         result = await opCarpentryAccessSelf(user);
+        break;
+      case 'delivery-access-self':
+        result = await opDeliveryAccessSelf(user);
         break;
       case 'carpentry-catalog-list':
         result = await opCarpentryCatalogList(user);

@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { canManageLoginAccess, getCurrentUser } from './accessControl';
 import MobileUserAccessEditor from './components/MobileUserAccessEditor';
 import ProductionUserAccessEditor from './components/ProductionUserAccessEditor';
+import DeliveryUserAccessEditor from './components/DeliveryUserAccessEditor';
 import { firebaseGetAccessToken } from './utils/firebaseAuthApi';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
 
@@ -62,6 +63,7 @@ export default function UserAccessManagement() {
   const [busyUid, setBusyUid] = useState('');
   const [mobileUserId, setMobileUserId] = useState('');
   const [productionUserId, setProductionUserId] = useState('');
+  const [deliveryUserId, setDeliveryUserId] = useState('');
 
   useEffect(() => {
     setSessionUser(getCurrentUser());
@@ -114,6 +116,7 @@ export default function UserAccessManagement() {
 
   const mobileUser = rows.find((r) => r.id === mobileUserId) || null;
   const productionUser = rows.find((r) => r.id === productionUserId) || null;
+  const deliveryUser = rows.find((r) => r.id === deliveryUserId) || null;
 
   return (
     <div className="report-page user-access-page">
@@ -121,10 +124,10 @@ export default function UserAccessManagement() {
         <h2 style={{ margin: 0 }}>User Login Access</h2>
       </div>
       <p className="user-access-intro">
-        New mobile users are added when they sign in with <strong>Google on Production</strong> (or Warehouse
-        app). They appear in the list below after first sign-in — use <strong>Refresh</strong>, then set{' '}
-        <strong>Warehouse app</strong> or <strong>Production</strong> permissions. Login can be disabled here;
-        you cannot create accounts from this page.
+        New mobile users are added when they sign in with <strong>Google</strong> on Production, Delivery, or Warehouse
+        app. They appear in the list below after first sign-in — use <strong>Refresh</strong>, then set{' '}
+        <strong>Warehouse app</strong>, <strong>Production</strong>, or <strong>Delivery</strong> permissions. Login can
+        be disabled here; you cannot create accounts from this page.
       </p>
 
       {error ? <div className="report-error user-access-error">{error}</div> : null}
@@ -163,8 +166,9 @@ export default function UserAccessManagement() {
                   const isBusy = busyUid === row.id;
                   const isWarehouseSelected = mobileUserId === row.id;
                   const isProductionSelected = productionUserId === row.id;
+                  const isDeliverySelected = deliveryUserId === row.id;
                   return (
-                    <tr key={row.id} className={(isWarehouseSelected || isProductionSelected) ? 'user-access-table__row--active' : ''}>
+                    <tr key={row.id} className={(isWarehouseSelected || isProductionSelected || isDeliverySelected) ? 'user-access-table__row--active' : ''}>
                       <td>{row.display_name || '—'}</td>
                       <td>{row.mobile_display_name || '—'}</td>
                       <td>{row.email || '—'}</td>
@@ -190,6 +194,7 @@ export default function UserAccessManagement() {
                             onClick={() => {
                               setMobileUserId(isWarehouseSelected ? '' : row.id);
                               setProductionUserId('');
+                              setDeliveryUserId('');
                             }}
                           >
                             {isWarehouseSelected ? 'Editing' : 'Warehouse app'}
@@ -200,9 +205,21 @@ export default function UserAccessManagement() {
                             onClick={() => {
                               setProductionUserId(isProductionSelected ? '' : row.id);
                               setMobileUserId('');
+                              setDeliveryUserId('');
                             }}
                           >
                             {isProductionSelected ? 'Editing' : 'Production'}
+                          </button>
+                          <button
+                            type="button"
+                            className={`user-access-btn ${isDeliverySelected ? 'user-access-btn--active' : ''}`}
+                            onClick={() => {
+                              setDeliveryUserId(isDeliverySelected ? '' : row.id);
+                              setMobileUserId('');
+                              setProductionUserId('');
+                            }}
+                          >
+                            {isDeliverySelected ? 'Editing' : 'Delivery'}
                           </button>
                         </div>
                       </td>
@@ -234,6 +251,18 @@ export default function UserAccessManagement() {
           onSaved={(updated) => {
             setRows((prev) => prev.map((item) => (
               item.id === productionUser.id ? { ...item, ...updated } : item
+            )));
+          }}
+        />
+      ) : null}
+
+      {deliveryUser ? (
+        <DeliveryUserAccessEditor
+          userRow={deliveryUser}
+          onClose={() => setDeliveryUserId('')}
+          onSaved={(updated) => {
+            setRows((prev) => prev.map((item) => (
+              item.id === deliveryUser.id ? { ...item, ...updated } : item
             )));
           }}
         />

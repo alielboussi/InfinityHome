@@ -84,6 +84,11 @@ export function isCarpentryWorkshopAppAllowed(grant) {
   return grant?.carpentry_workshop_app === 'allow';
 }
 
+/** /user-access — Warehouse Delivery Android app (factory truck → Kitwe). */
+export function isWarehouseDeliveryAppAllowed(grant) {
+  return grant?.warehouse_delivery_app === 'allow';
+}
+
 /** Production app — factory truck delivery to Kitwe (User Access → Production). */
 export function isWarehouseProductionKitweDeliveryAllowed(grant) {
   if (grant?.warehouse_production_kitwe === 'allow') return true;
@@ -113,9 +118,10 @@ export function evaluateCarpentryWorkshopAppAccess(grant, email) {
   return isCarpentryWorkshopAppAllowed(grant);
 }
 
-/** Driver delivery Android app — same gate as Kitwe truck send (User Access → Send to Kitwe). */
+/** Driver delivery Android app — User Access → Delivery (legacy: Production → Send to Kitwe). */
 export function evaluateWarehouseDeliveryDriverAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (isWarehouseDeliveryAppAllowed(grant)) return true;
   return isWarehouseProductionKitweDeliveryAllowed(grant);
 }
 
@@ -254,6 +260,7 @@ export function defaultMobileAccessGrant() {
     warehouse_production_kiosk: 'deny',
     warehouse_production_app: 'deny',
     warehouse_production_kitwe: 'deny',
+    warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
     screens,
   };
@@ -290,7 +297,8 @@ export function canMobileScreenView(grant, screenId) {
   }
 
   if (screenId === 'kitwe_send_delivery') {
-    return isWarehouseProductionKitweDeliveryAllowed(grant);
+    return isWarehouseProductionKitweDeliveryAllowed(grant)
+      || isWarehouseDeliveryAppAllowed(grant);
   }
 
   return isMobileScreenAccessAllowed(grant, screenId);
@@ -419,6 +427,12 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
 
   merged.carpentry_workshop_app = (
     merged.carpentry_workshop_app === 'allow' || merged.carpentry_workshop_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_delivery_app = (
+    merged.warehouse_delivery_app === 'allow' || merged.warehouse_delivery_app === true
   )
     ? 'allow'
     : 'deny';

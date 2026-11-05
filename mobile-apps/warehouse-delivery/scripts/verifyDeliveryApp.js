@@ -33,11 +33,20 @@ try {
     metro.includes('shouldResolvePeerFromApp') || metro.includes('deliveryKitPeerSet'),
     'metro must pin deliveryKit peer deps to this app node_modules (duplicate RNCSafeAreaProvider)',
   );
-  assert(fs.existsSync(path.join(appRoot, 'shared', 'MobileScreenGate.js')), 'shared/ junction missing — run npm install');
+  assert(fs.existsSync(path.join(appRoot, 'deliveryKit', '.standalone-materialized')), 'Run npm run materialize — deliveryKit must not junction to warehouse-production');
   assert(
-    fs.existsSync(path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendHomeScreen.js')),
-    'deliveryKit/ junction missing — run npm install',
+    !fs.lstatSync(path.join(appRoot, 'deliveryKit')).isSymbolicLink(),
+    'deliveryKit must be a real folder, not a symlink to production',
   );
+
+  assert(fs.existsSync(path.join(appRoot, 'shared', '.standalone-shared')), 'shared/ must be materialized — run npm run materialize');
+  assert(fs.existsSync(path.join(appRoot, 'shared', 'MobileScreenGate.js')), 'shared/ must be a real copy — run npm run materialize');
+  try {
+    const sh = fs.lstatSync(path.join(appRoot, 'shared'));
+    assert(!sh.isSymbolicLink(), 'shared/ must not be a junction to mobile-apps/shared');
+  } catch (e) {
+    assert(false, `shared/ check failed: ${e.message}`);
+  }
 
   const appJs = fs.readFileSync(path.join(appRoot, 'App.js'), 'utf8');
   assert(appJs.includes('./deliveryKit/components/ProductionAppAuthGate'), 'App.js must import auth gate from ./deliveryKit');
@@ -53,6 +62,13 @@ try {
     'Delivery app must not default to Warehouse Production Firebase appId',
   );
 
+  assert(fs.existsSync(path.join(appRoot, 'config', 'deliveryAppUi.js')), 'config/deliveryAppUi.js required');
+  const deliveryUi = fs.readFileSync(path.join(appRoot, 'config', 'deliveryAppUi.js'), 'utf8');
+  assert(
+    /showKitweSendScopeHints\s*=\s*false/.test(deliveryUi),
+    'Delivery app config must hide Kitwe Send scope hints (number only)',
+  );
+
   const kitweHome = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendHomeScreen.js'),
     'utf8',
@@ -63,13 +79,35 @@ try {
   assert(kitweHome.includes("'delivery-session-open'"), 'Kitwe send must open delivery session');
   assert(kitweHome.includes('KitweSendSignature'), 'Kitwe send must navigate to driver signature');
 
+  assert(fs.existsSync(path.join(appRoot, 'lib', 'deliveryDriversStore.js')), 'lib/deliveryDriversStore.js required (outside deliveryKit)');
+
+  assert(fs.existsSync(path.join(appRoot, 'delivery-screens', 'KitweSendHomeScreen.js')), 'delivery-screens/ required — Kitwe UI lives in Delivery app only');
+
   const sig = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendSignatureScreen.js'),
     'utf8',
   );
-  assert(sig.includes("'delivery-drivers-list'"), 'Signature screen must load drivers');
+  assert(
+    sig.includes("'delivery-drivers-list'")
+      || sig.includes('useDeliveryDrivers')
+      || sig.includes('fetchDeliveryDriversCached'),
+    'Signature screen must load drivers',
+  );
   assert(sig.includes("'delivery-submit'"), 'Signature screen must submit delivery');
   assert(sig.includes('DeliverySignaturePad'), 'Signature screen must capture driver signature');
+
+  const zambia = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'lib', 'zambiaDateTime.js'),
+    'utf8',
+  );
+  assert(
+    !/from ['"]\.\.\/\.\.\/\.\.\/src\//.test(zambia),
+    'deliveryKit/lib/zambiaDateTime.js must not use production ../../../src paths — run npm run materialize',
+  );
+  assert(
+    zambia.includes('formatZambiaDate') && zambia.includes('formatZambiaTime'),
+    'deliveryKit/lib/zambiaDateTime.js must export Zambia formatters locally',
+  );
 
   const manifest = fs.readFileSync(path.join(appRoot, 'shared', 'mobileAccessManifest.js'), 'utf8');
   assert(

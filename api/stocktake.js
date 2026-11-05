@@ -423,8 +423,9 @@ async function handleAuthProfile(req, res) {
     profileUser.mobile_display_name = loginRecord.mobile_display_name;
   }
 
-  const { evaluateWarehouseProductionAppAccess } = await import('../src/mobile/mobileAccessManifest.js');
+  const { evaluateWarehouseProductionAppAccess, evaluateWarehouseDeliveryDriverAppAccess } = await import('../src/mobile/mobileAccessManifest.js');
   const productionAppAllowed = evaluateWarehouseProductionAppAccess(mobileAccess, authUser.email);
+  const deliveryAppAllowed = evaluateWarehouseDeliveryDriverAppAccess(mobileAccess, authUser.email);
 
   res.status(200).json({
     ok: true,
@@ -432,6 +433,7 @@ async function handleAuthProfile(req, res) {
       ...profileUser,
       mobile_access: mobileAccess,
       production_app_allowed: productionAppAllowed,
+      delivery_app_allowed: deliveryAppAllowed,
     },
   });
 }

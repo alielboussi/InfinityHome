@@ -37,21 +37,25 @@ On Vercel, `REACT_APP_API_BASE` is usually **unset**. The UI uses same-origin `/
 
 ## Warehouse Production app (Expo)
 
-Run from **`mobile-apps/warehouse-production`** (not the repo root). After pulling JS changes, clear Metro cache or you may still see the old scanner UI:
+Run from **`mobile-apps/warehouse-upholstery`** (Upholstery app, not the repo root). After pulling JS changes, clear Metro cache or you may still see the old scanner UI:
 
 ```powershell
-cd mobile-apps\warehouse-production
+cd mobile-apps\warehouse-upholstery
 npm install
 npx expo start -c
 ```
 
-Open the project in **Expo Go** (or your dev build) and use **Reload** on the Kitwe Send screen. The barcode scanner should show a **red horizontal line** (not a large box). Kitwe Send loads a **delivery number** from the API when the screen opens (needs sign-in and network to `EXPO_PUBLIC_API_BASE`, default `https://www.infinity-home.online`).
+This app is **standalone** (factory create/stock, **upholstery quotes**, manufacture). It does **not** share folders with Delivery or Carpentry — see **`docs/mobile-apps-independence.md`**.
 
 Optional `.env` in that folder:
 
 ```env
 EXPO_PUBLIC_API_BASE=https://www.infinity-home.online
 ```
+
+**Printing on Expo web (localhost):** Press `w` in the Expo terminal to open the app in the browser. Delivery note print uses **Open browser print** (not the empty network-printer list). Pick your **Windows printer** or **Microsoft Print to PDF** in the dialog. On a **physical Android device**, use **Choose printer (system list)** instead.
+
+**Metro “Codegen didn't run for …” warnings:** In **Expo Go** with RN bridgeless, React Native may log these for `react-native-screens`, `react-native-svg`, and `react-native-safe-area-context`. They are suppressed in dev (`shared/suppressBridgelessCodegenWarnings.js`) and do not block the app. Release **EAS APK** builds use full codegen; clear Metro cache after Babel changes: `npx expo start -c`.
 
 ## Warehouse Delivery app (drivers, Expo)
 
@@ -63,6 +67,6 @@ npm install
 npx expo start -c
 ```
 
-Enable **Send to Kitwe** on the driver’s User Access row before testing submit.
+Enable **User Access → Delivery → Warehouse Delivery (Android)** on the driver’s row before testing submit (legacy: Production → Send to Kitwe).
 
 **Firebase:** add Android app **`com.bestrest.warehousedelivery`** (display name **Warehouse Delivery**) in project `bestrest-portal-system-43108`, place `google-services.json` in `mobile-apps/warehouse-delivery/`, or run `scripts/setupWarehouseDeliveryGoogleSignIn.mjs`. See `mobile-apps/warehouse-delivery/README.md`.

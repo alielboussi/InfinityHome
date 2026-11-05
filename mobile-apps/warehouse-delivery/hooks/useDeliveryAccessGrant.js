@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { ensureFirebaseAuthToken, getFirebaseAuth, subscribeFirebaseAuth } from '../shared/firebase';
+import { ensureFirebaseAuthToken, getFirebaseAuth, subscribeFirebaseAuth, waitForFirebaseAuthReady } from '../shared/firebase';
 import { verifyMobileLoginAccess } from '../shared/loginAccess';
+import { invalidateDeliveryDriversCache, prefetchDeliveryDrivers } from '../lib/deliveryDriversStore';
 import {
   defaultMobileAccessGrant,
   evaluateWarehouseDeliveryDriverAppAccess,
@@ -30,7 +31,8 @@ export function useDeliveryAccessGrant() {
     if (!background) setLoading(true);
     if (!background) setAccessHint('');
     try {
-      await ensureFirebaseAuthToken(true);
+      await waitForFirebaseAuthReady();
+      await ensureFirebaseAuthToken(false);
       const fbEmail = String(getFirebaseAuth().currentUser?.email || '').trim();
       if (fbEmail) setUserEmail(fbEmail);
 
@@ -63,8 +65,10 @@ export function useDeliveryAccessGrant() {
 
       if (!nextAllowed) {
         setAccessHint(
-          'Driver delivery access is off. On the web, open User Access → Production, enable Send to Kitwe / truck delivery, Save, then tap Check access again.',
+          'Delivery app access is off. On the web, open User Access → Delivery, enable Warehouse Delivery (Android), Save, then tap Check access again.',
         );
+      } else {
+        prefetchDeliveryDrivers();
       }
     } finally {
       if (!background) setLoading(false);
@@ -88,6 +92,7 @@ export function useDeliveryAccessGrant() {
         setUserDisplayName('');
         setGrant(defaultMobileAccessGrant());
         setAccessHint('');
+        invalidateDeliveryDriversCache();
         setLoading(false);
         setBootstrapped(true);
         return;

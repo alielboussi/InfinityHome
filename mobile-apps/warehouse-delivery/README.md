@@ -14,9 +14,17 @@ npm install
 npx expo start -c
 ```
 
-`npm install` / `prestart` junction `shared/` → `mobile-apps/shared`, overlay production helpers, and link `deliveryKit/` → `warehouse-production`. **`deliveryKit` peer dependencies** must match `warehouse-production` (see `scripts/deliveryKitPeerDependencies.js`). After dependency changes run `npm install` and `npm run verify`.
+`npm install` / `prestart` **materialize** real `deliveryKit/` and `shared/` copies (no junctions to production or `mobile-apps/shared`). See **`docs/mobile-apps-independence.md`**.
 
-Metro pins all deliveryKit peers to **this app’s** `node_modules` (the `deliveryKit` junction would otherwise load `warehouse-production/node_modules` and crash Expo Go with **`RNCSafeAreaProvider` registered twice**). If you still see that error, stop Metro and run **`npx expo start -c`** again so the old bundle is dropped.
+To refresh Kitwe code from production after a deliberate portal sync:
+
+```bash
+npm run materialize
+```
+
+**Always start Metro from this folder** (`warehouse-delivery`), not `warehouse-upholstery`. Kitwe Send “delivery number only” UI uses **`config/deliveryAppUi.js`** (Metro alias `delivery-app-ui-config`).
+
+`npm run verify` checks peers and standalone layout. Metro pins deliveryKit peers to **this app’s** `node_modules`. After dependency changes: `npm install` and **`npx expo start -c`**.
 
 Optional:
 
@@ -26,7 +34,7 @@ EXPO_PUBLIC_API_BASE=https://www.infinity-home.online
 
 ## Access
 
-Enable **User Access → Production → Send to Kitwe / truck delivery** (`kitwe_send_delivery` or `warehouse_production_kitwe`) for the driver Google account.
+Enable **User Access → Delivery → Warehouse Delivery (Android)** (`warehouse_delivery_app`) for the driver Google account. Legacy: **Production → Send to Kitwe** still grants delivery access until turned off.
 
 ## Android package & Firebase
 
