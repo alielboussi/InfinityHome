@@ -5,15 +5,28 @@ const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 
-const filterPath = path.join(
-  __dirname,
-  '../mobile-apps/warehouse-production/lib/deliveryWarehouseCatalog.js',
-);
-const kitwePath = path.join(
-  __dirname,
-  '../mobile-apps/warehouse-production/screens/KitweSendHomeScreen.js',
-);
-const flowDocPath = path.join(__dirname, '../docs/factory-warehouse-flow.md');
+const root = path.resolve(__dirname, '..');
+
+function firstExistingPath(relativePaths) {
+  for (const rel of relativePaths) {
+    const full = path.join(root, rel);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
+const filterPath = firstExistingPath([
+  'mobile-apps/warehouse-upholstery/lib/deliveryWarehouseCatalog.js',
+  'mobile-apps/warehouse-production/lib/deliveryWarehouseCatalog.js',
+]);
+const kitwePath = firstExistingPath([
+  'mobile-apps/warehouse-delivery/delivery-screens/KitweSendHomeScreen.js',
+  'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendHomeScreen.js',
+]);
+const flowDocPath = path.join(root, 'docs/factory-warehouse-flow.md');
+
+assert(filterPath, 'deliveryWarehouseCatalog.js missing (upholstery or production app lib)');
+assert(kitwePath, 'KitweSendHomeScreen.js missing under warehouse-delivery');
 
 const filterSrc = fs.readFileSync(filterPath, 'utf8');
 const kitweSrc = fs.readFileSync(kitwePath, 'utf8');

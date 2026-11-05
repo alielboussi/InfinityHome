@@ -9,6 +9,23 @@ const root = path.resolve(__dirname, '..');
 const mobile = fs.readFileSync(path.join(root, 'server/handlers/warehouse-mobile.js'), 'utf8');
 const deliveries = fs.readFileSync(path.join(root, 'src/WarehouseDeliveries.js'), 'utf8');
 
+function firstExistingPath(relativePaths) {
+  for (const rel of relativePaths) {
+    const full = path.join(root, rel);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
+function readKitweSendHomeScreenSource() {
+  const filePath = firstExistingPath([
+    'mobile-apps/warehouse-delivery/delivery-screens/KitweSendHomeScreen.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendHomeScreen.js',
+  ]);
+  assert(filePath, 'KitweSendHomeScreen.js missing under warehouse-delivery');
+  return fs.readFileSync(filePath, 'utf8');
+}
+
 assert(mobile.includes('assertMobileDeliverySubmitAccess'), 'delivery submit must check mobile access');
 assert(
   mobile.includes('await sendWarehouseDeliveryWhatsApp'),
@@ -158,8 +175,7 @@ assert(
   'Hassan deliveries page must accept received lines',
 );
 assert(
-  fs.readFileSync(path.join(root, 'mobile-apps/warehouse-delivery/delivery-screens/KitweSendHomeScreen.js'), 'utf8')
-    .includes('filterAssembliesForDeliveryWarehouse'),
+  readKitweSendHomeScreenSource().includes('filterAssembliesForDeliveryWarehouse'),
   'Kitwe send must filter to warehouse-products catalog scope',
 );
 assert(
@@ -167,6 +183,19 @@ assert(
     .includes('warehouse_delivery_app'),
   'User Access must include Delivery app editor',
 );
+const upholsteryEditor = path.join(root, 'src/components/UpholsteryUserAccessEditor.js');
+const productionEditor = path.join(root, 'src/components/ProductionUserAccessEditor.js');
+assert(
+  fs.existsSync(upholsteryEditor) || fs.existsSync(productionEditor),
+  'User Access must include Upholstery or Production app editor',
+);
+if (fs.existsSync(upholsteryEditor)) {
+  assert(
+    fs.readFileSync(upholsteryEditor, 'utf8').includes('warehouse_production_app'),
+    'Upholstery User Access editor must toggle warehouse_production_app',
+  );
+  assert(!fs.existsSync(productionEditor), 'Remove ProductionUserAccessEditor when Upholstery editor is present');
+}
 execSync('node scripts/verifyDeliveryWarehouseCatalog.js', { cwd: root, stdio: 'pipe' });
 execSync('node scripts/verifyDeliveryApp.js', {
   cwd: path.join(root, 'mobile-apps/warehouse-delivery'),
