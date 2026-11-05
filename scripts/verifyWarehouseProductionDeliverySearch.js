@@ -7,16 +7,36 @@ import { fileURLToPath } from 'url';
 import assert from 'assert';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+function firstExisting(rels) {
+  for (const rel of rels) {
+    const full = path.join(root, rel);
+    if (fs.existsSync(full)) return full;
+  }
+  throw new Error(`Missing file from candidates: ${rels.join(', ')}`);
+}
+
 const searchJs = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/lib/deliveryCatalogSearch.js'),
+  firstExisting([
+    'mobile-apps/warehouse-upholstery/lib/deliveryCatalogSearch.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/lib/deliveryCatalogSearch.js',
+    'mobile-apps/warehouse-production/lib/deliveryCatalogSearch.js',
+  ]),
   'utf8',
 );
 const kitweHome = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/screens/KitweSendHomeScreen.js'),
+  firstExisting([
+    'mobile-apps/warehouse-delivery/delivery-screens/KitweSendHomeScreen.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendHomeScreen.js',
+    'mobile-apps/warehouse-production/screens/KitweSendHomeScreen.js',
+  ]),
   'utf8',
 );
 const setCart = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/lib/deliverySetCart.js'),
+  firstExisting([
+    'mobile-apps/warehouse-upholstery/lib/deliverySetCart.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/lib/deliverySetCart.js',
+    'mobile-apps/warehouse-production/lib/deliverySetCart.js',
+  ]),
   'utf8',
 );
 

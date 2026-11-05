@@ -21,8 +21,12 @@ const notify = fs.readFileSync(path.join(root, 'api/notify.js'), 'utf8');
 assert(notify.includes('WHATSAPP_PRODUCTION_CARPENTRY_GROUP_ID'), 'notify must support carpentry production group');
 assert(notify.includes('productionCarpentry'), 'notify must route carpentry production alerts');
 
+const upholsteryDir = fs.existsSync(path.join(root, 'mobile-apps/warehouse-upholstery'))
+  ? 'mobile-apps/warehouse-upholstery'
+  : 'mobile-apps/warehouse-production';
+
 const create = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/screens/CreateScreen.js'),
+  path.join(root, `${upholsteryDir}/screens/CreateScreen.js`),
   'utf8',
 );
 assert(create.includes('seater_presets'), 'Create screen must load remote seater presets');
@@ -31,7 +35,7 @@ assert(create.includes('reloadPresetsFromServer'), 'Create screen must reload pr
 assert(create.includes('prefetchPresetArabicLabels'), 'Create screen must auto-translate new presets in Arabic');
 
 const i18n = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/lib/productionKioskI18n.js'),
+  path.join(root, `${upholsteryDir}/lib/productionKioskI18n.js`),
   'utf8',
 );
 assert(i18n.includes('prefetchPresetArabicLabels'), 'production i18n must auto-translate unknown presets');

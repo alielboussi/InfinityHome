@@ -17,10 +17,11 @@ const packetPhoto = fs.readFileSync(
   path.join(root, 'server/lib/productionPacketCatalogPhoto.js'),
   'utf8',
 );
-const prodPhotoApi = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/services/productionPhotoApi.js'),
-  'utf8',
-);
+const prodPhotoApiPath = [
+  'mobile-apps/warehouse-upholstery/services/productionPhotoApi.js',
+  'mobile-apps/warehouse-production/services/productionPhotoApi.js',
+].map((rel) => path.join(root, rel)).find((p) => fs.existsSync(p));
+const prodPhotoApi = fs.readFileSync(prodPhotoApiPath, 'utf8');
 
 function assert(cond, msg) {
   if (!cond) {

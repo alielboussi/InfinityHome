@@ -59,7 +59,13 @@ assert(chrome.includes('/warehouse-returns'), 'Hassan nav must link Returns');
 assert(chrome.includes('/warehouse-repairs-admin'), 'catalog nav must link Repairs admin');
 assert(chrome.includes('Returns Trackage'), 'Hassan nav must link Returns Trackage');
 
-const returnScreen = read('mobile-apps/warehouse-production/screens/ReturnOrdersScreen.js');
+const returnScreenRel = [
+  'mobile-apps/warehouse-delivery/delivery-screens/ReturnOrdersScreen.js',
+  'mobile-apps/warehouse-delivery/deliveryKit/screens/ReturnOrdersScreen.js',
+  'mobile-apps/warehouse-production/screens/ReturnOrdersScreen.js',
+].find((rel) => fs.existsSync(path.join(root, rel)));
+assert(returnScreenRel, 'ReturnOrdersScreen.js must exist');
+const returnScreen = read(returnScreenRel);
 assert(returnScreen.includes('onToggleLocale={toggleLocale}'), 'returns must use kiosk locale toggle');
 assert(!returnScreen.includes("mode: 'complete'"), 'complete must not open signature screen');
 assert(returnScreen.includes("tUi('returnAccept'"), 'returns actions must use i18n');

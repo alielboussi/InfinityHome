@@ -23,6 +23,7 @@ const HANDLER_LOADERS = {
   'warehouse-catalog-photo': () => import('../server/handlers/warehouse-catalog-photo.js'),
   'carpentry-catalog': () => import('../server/handlers/carpentry-catalog.js'),
   'upholstery-catalog': () => import('../server/handlers/upholstery-catalog.js'),
+  'quote-production': () => import('../server/handlers/quote-production.js'),
 };
 
 function resolveHandler(mod) {

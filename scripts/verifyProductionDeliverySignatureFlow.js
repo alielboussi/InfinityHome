@@ -6,16 +6,36 @@ const path = require('path');
 const assert = require('assert');
 
 const root = path.resolve(__dirname, '..');
+function firstExisting(rels) {
+  for (const rel of rels) {
+    const full = path.join(root, rel);
+    if (fs.existsSync(full)) return full;
+  }
+  throw new Error(`Missing file from candidates: ${rels.join(', ')}`);
+}
+
 const pad = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/components/DeliverySignaturePad.js'),
+  firstExisting([
+    'mobile-apps/warehouse-upholstery/components/DeliverySignaturePad.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/components/DeliverySignaturePad.js',
+    'mobile-apps/warehouse-production/components/DeliverySignaturePad.js',
+  ]),
   'utf8',
 );
 const sigScreen = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/screens/KitweSendSignatureScreen.js'),
+  firstExisting([
+    'mobile-apps/warehouse-delivery/delivery-screens/KitweSendSignatureScreen.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendSignatureScreen.js',
+    'mobile-apps/warehouse-production/screens/KitweSendSignatureScreen.js',
+  ]),
   'utf8',
 );
 const doneScreen = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/screens/KitweSendDoneScreen.js'),
+  firstExisting([
+    'mobile-apps/warehouse-delivery/delivery-screens/KitweSendDoneScreen.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendDoneScreen.js',
+    'mobile-apps/warehouse-production/screens/KitweSendDoneScreen.js',
+  ]),
   'utf8',
 );
 

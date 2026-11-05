@@ -72,10 +72,13 @@ assert(mobile.includes('ensureKitweSetRecipeFromFactory'), 'submit must mirror K
 const accept = fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAccept.js'), 'utf8');
 assert(accept.includes('ensureKitweSetRecipesForDeliverySession'), 'accept must ensure Kitwe set recipe');
 
-const setCart = fs.readFileSync(
-  path.join(root, 'mobile-apps/warehouse-production/lib/deliverySetCart.js'),
-  'utf8',
-);
+const setCartPath = [
+  'mobile-apps/warehouse-upholstery/lib/deliverySetCart.js',
+  'mobile-apps/warehouse-delivery/deliveryKit/lib/deliverySetCart.js',
+  'mobile-apps/warehouse-production/lib/deliverySetCart.js',
+].map((rel) => path.join(root, rel)).find((p) => fs.existsSync(p));
+assert(setCartPath, 'deliverySetCart.js missing');
+const setCart = fs.readFileSync(setCartPath, 'utf8');
 assert(setCart.includes('warehouseSetDeliveryRecipe'), 'production app must use shared set recipe resolver');
 
 console.log('verifyWarehouseSetDeliveryRecipe: ok');

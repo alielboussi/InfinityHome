@@ -33,7 +33,12 @@ assert(read('src/AppChrome.js').includes('/warehouse-repairs-admin'), 'nav must 
 assert(read('src/AppChrome.js').includes('/warehouse-sales-storage-admin'), 'nav must include Sales Storage admin');
 assert(read('server/lib/warehouseStorageSends.js').includes('kitwe_deducted_at'), 'storage send must deduct Kitwe stock');
 assert(read('server/lib/warehouseStorageSends.js').includes('KITWE_LOCATION_ID'), 'storage send must adjust Kitwe location');
-assert(read('mobile-apps/warehouse-production/screens/SoldOrdersScreen.js').includes('storage-send-list'), 'Sold screen must list storage sends');
+const soldOrdersPath = [
+  'mobile-apps/warehouse-delivery/delivery-screens/SoldOrdersScreen.js',
+  'mobile-apps/warehouse-delivery/deliveryKit/screens/SoldOrdersScreen.js',
+  'mobile-apps/warehouse-production/screens/SoldOrdersScreen.js',
+].find((rel) => fs.existsSync(path.join(root, rel)));
+assert(soldOrdersPath && read(soldOrdersPath).includes('storage-send-list'), 'Sold screen must list storage sends');
 
 assert(read('src/utils/warehouseReturnReasons.js').includes('returnReasonShowsLeatherCode'), 'leather code must be gated by reason');
 assert(read('src/WarehouseReturns.js').includes('returnReasonShowsLeatherCode'), 'returns UI must gate leather code');

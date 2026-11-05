@@ -132,6 +132,9 @@
 
     { "source": "/api/shop-catalog", "destination": "/api/admin?adminAction=shop-catalog" },
     { "source": "/api/web-orders", "destination": "/api/admin?adminAction=web-orders" },
+    { "source": "/api/carpentry-catalog", "destination": "/api/admin?adminAction=carpentry-catalog" },
+    { "source": "/api/upholstery-catalog", "destination": "/api/admin?adminAction=upholstery-catalog" },
+    { "source": "/api/quote-production", "destination": "/api/admin?adminAction=quote-production" },
 
     { "source": "/api/opening-stock-entry", "destination": "/api/admin?adminAction=inventory-bulk&action=opening-stock-entry" },
     { "source": "/api/inventory-snapshot", "destination": "/api/admin?adminAction=inventory-bulk&action=snapshot" },

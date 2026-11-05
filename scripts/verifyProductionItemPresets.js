@@ -8,7 +8,10 @@ import {
   PRODUCTION_SEATER_PRESETS,
 } from '../src/utils/productionItemName.js';
 
-const mobilePath = path.join(process.cwd(), 'mobile-apps/warehouse-production/lib/productionItemName.js');
+const mobilePath = [
+  'mobile-apps/warehouse-upholstery/lib/productionItemName.js',
+  'mobile-apps/warehouse-production/lib/productionItemName.js',
+].map((rel) => path.join(process.cwd(), rel)).find((p) => fs.existsSync(p));
 const mobileSrc = fs.readFileSync(mobilePath, 'utf8');
 
 function extractList(src, constName) {

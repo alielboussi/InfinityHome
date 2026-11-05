@@ -21,10 +21,13 @@ const warehouseMobileSrc = fs.readFileSync(
   'utf8',
 );
 const stocktakeSrc = fs.readFileSync(path.join(root, 'api/stocktake.js'), 'utf8');
-const hookSrc = fs.readFileSync(
+const hookCandidates = [
+  path.join(root, 'mobile-apps/warehouse-upholstery/hooks/useProductionAccessGrant.js'),
   path.join(root, 'mobile-apps/warehouse-production/hooks/useProductionAccessGrant.js'),
-  'utf8',
-);
+];
+const hookPath = hookCandidates.find((p) => fs.existsSync(p));
+assert(hookPath, 'Missing useProductionAccessGrant.js in warehouse-upholstery or warehouse-production');
+const hookSrc = fs.readFileSync(hookPath, 'utf8');
 
 function extractAdminEmail(src) {
   const m = src.match(/PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL\s*=\s*'([^']+)'/);

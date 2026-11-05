@@ -51,7 +51,10 @@ try {
     'production-quote-material-scan',
   ], 'carpentry api');
 
-  includesAll(read('mobile-apps/warehouse-production/services/productionApi.js'), [
+  const productionApiPath = fs.existsSync(path.join(root, 'mobile-apps/warehouse-upholstery/services/productionApi.js'))
+    ? 'mobile-apps/warehouse-upholstery/services/productionApi.js'
+    : 'mobile-apps/warehouse-production/services/productionApi.js';
+  includesAll(read(productionApiPath), [
     'fetchUpholsteryProductionQuotes',
     'upholstery',
   ], 'production api');

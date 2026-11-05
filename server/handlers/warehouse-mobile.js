@@ -500,6 +500,66 @@ async function opCarpentryFinishing(body, user) {
   });
 }
 
+async function assertQuoteRouteUser(user, route) {
+  const normalized = String(route || '').trim().toLowerCase();
+  if (normalized === 'carpentry') {
+    await assertCarpentryWorkshopUser(user);
+    return 'carpentry';
+  }
+  await assertProductionKioskUser(user);
+  return 'upholstery';
+}
+
+async function opProductionQuotesList(body, user) {
+  const route = await assertQuoteRouteUser(user, body.route);
+  const sb = getService();
+  const { listProductionQuotesForRoute } = await import('../lib/quoteProductionRouting.js');
+  return listProductionQuotesForRoute(sb, route, { limit: body.limit });
+}
+
+async function opProductionQuoteAccept(body, user) {
+  const route = await assertQuoteRouteUser(user, body.route);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  if (!quoteId) throw new Error('quote_id required');
+  const sb = getService();
+  const { acceptQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
+  return acceptQuoteProductionOrder(sb, {
+    quoteId,
+    route,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opProductionQuoteComplete(body, user) {
+  const route = await assertQuoteRouteUser(user, body.route);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  if (!quoteId) throw new Error('quote_id required');
+  const sb = getService();
+  const { completeQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
+  return completeQuoteProductionOrder(sb, {
+    quoteId,
+    route,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opProductionQuoteMaterialScan(body, user) {
+  const route = await assertQuoteRouteUser(user, body.route);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  const scan = String(body.scan || '').trim();
+  if (!quoteId || !scan) throw new Error('quote_id and scan required');
+  const quantity = Math.max(0.0001, Number(body.quantity) || 1);
+  const sb = getService();
+  const { scanQuoteProductionMaterial } = await import('../lib/quoteProductionRouting.js');
+  return scanQuoteProductionMaterial(sb, {
+    quoteId,
+    route,
+    scan,
+    quantity,
+    userId: user?.id || user?.uid,
+  });
+}
+
 async function removeProductionPacketDraft(sb, packetId) {
   const id = String(packetId || '').trim();
   if (!id) return;
@@ -2778,6 +2838,18 @@ export default async function handler(req, res) {
         break;
       case 'carpentry-finishing':
         result = await opCarpentryFinishing(body, user);
+        break;
+      case 'production-quotes-list':
+        result = await opProductionQuotesList(body, user);
+        break;
+      case 'production-quote-accept':
+        result = await opProductionQuoteAccept(body, user);
+        break;
+      case 'production-quote-complete':
+        result = await opProductionQuoteComplete(body, user);
+        break;
+      case 'production-quote-material-scan':
+        result = await opProductionQuoteMaterialScan(body, user);
         break;
       case 'packet-name-check':
         result = await opPacketNameCheck(body);

@@ -1,12 +1,15 @@
+const fs = require('fs');
 const path = require('path');
+const strokeModulePath = [
+  '../mobile-apps/warehouse-upholstery/lib/validateDeliverySignatureStrokes.js',
+  '../mobile-apps/warehouse-delivery/deliveryKit/lib/validateDeliverySignatureStrokes.js',
+  '../mobile-apps/warehouse-production/lib/validateDeliverySignatureStrokes.js',
+].map((rel) => path.join(__dirname, rel)).find((p) => fs.existsSync(p));
 const {
   validateDeliverySignatureStrokes,
   sanitizeDeliverySignatureStrokes,
   isSignatureEdgeArtifactStroke,
-} = require(path.join(
-  __dirname,
-  '../mobile-apps/warehouse-production/lib/validateDeliverySignatureStrokes.js',
-));
+} = require(strokeModulePath);
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);

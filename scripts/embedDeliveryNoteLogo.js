@@ -18,9 +18,10 @@ export const DELIVERY_NOTE_LOGO_DATA_URI = ${JSON.stringify(dataUri)};
 `;
 
 const targets = [
-  path.join(root, 'mobile-apps/warehouse-production/lib/deliveryNoteCompanyLogoEmbedded.js'),
   path.join(root, 'src/utils/deliveryNoteCompanyLogoEmbedded.js'),
-];
+  path.join(root, 'mobile-apps/warehouse-upholstery/lib/deliveryNoteCompanyLogoEmbedded.js'),
+  path.join(root, 'mobile-apps/warehouse-delivery/deliveryKit/lib/deliveryNoteCompanyLogoEmbedded.js'),
+].filter((file) => fs.existsSync(path.dirname(file)));
 for (const file of targets) {
   fs.writeFileSync(file, contents);
   console.log('Wrote', path.relative(root, file));
