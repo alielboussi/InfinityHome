@@ -708,6 +708,8 @@ async function opProductionPacketCreate(body, user) {
         clientSource,
         portal_catalog: body.portal_catalog,
         auto_portal_catalog: body.auto_portal_catalog,
+        initialQuantity: initialQty,
+        userId: user?.id || user?.uid || null,
       });
     } catch (portalErr) {
       console.warn('[warehouse-mobile] portal catalog auto-select failed:', portalErr?.message || portalErr);

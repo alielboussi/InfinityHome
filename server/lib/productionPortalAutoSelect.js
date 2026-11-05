@@ -1,5 +1,9 @@
 import { saveCarpentryProductSelection } from './carpentryCatalog.js';
-import { saveUpholsteryProductSelection } from './upholsteryCatalog.js';
+import { addFloor1ProductToFloor2 } from './carpentryManufacture.js';
+import {
+  saveUpholsteryProductSelection,
+  saveUpholsteryRawAssemblyLink,
+} from './upholsteryCatalog.js';
 
 function resolvePortalChannel(clientSource, explicit) {
   const fromBody = String(explicit || '').trim().toLowerCase();
@@ -11,12 +15,17 @@ function resolvePortalChannel(clientSource, explicit) {
 }
 
 /**
- * When a workshop app creates a product on Floor 1, auto-add it to /carpentry or /upholstery.
+ * When a workshop app creates a new product on Floor 1:
+ * - Carpentry app: adds it to /carpentry only.
+ * - Upholstery app: adds it to /upholstery, adds it to Warehouse Floor 2 (and Carpentry raw catalog),
+ *   and automatically links the Upholstery finished product to that Floor 2 raw product.
  */
 export async function autoSelectProductionPortalCatalog(sb, assemblyId, {
   clientSource = '',
   portal_catalog: portalCatalog,
   auto_portal_catalog: autoPortalCatalog,
+  initialQuantity = 1,
+  userId = null,
 } = {}) {
   const id = String(assemblyId || '').trim();
   if (!id) return { applied: null };
@@ -29,8 +38,19 @@ export async function autoSelectProductionPortalCatalog(sb, assemblyId, {
     return { applied: 'carpentry' };
   }
   if (channel === 'upholstery') {
+    const qty = Math.max(1, Math.floor(Number(initialQuantity) || 1));
     await saveUpholsteryProductSelection(sb, id, true);
-    return { applied: 'upholstery' };
+    await addFloor1ProductToFloor2(sb, {
+      assemblyId: id,
+      productQty: qty,
+      userId,
+    });
+    await saveUpholsteryRawAssemblyLink(sb, id, id);
+    return {
+      applied: 'upholstery',
+      floor2_added: true,
+      raw_assembly_id: id,
+    };
   }
   return { applied: null };
 }

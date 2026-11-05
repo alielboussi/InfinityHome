@@ -99,14 +99,23 @@ export async function executeCarpentryFloorManufacture(sb, {
 }
 
 export async function listCarpentryFloorRunsEnriched(sb, { limit = 200 } = {}) {
-  const { data: runs, error } = await sb
-    .from(RUNS)
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(Math.min(500, Math.max(1, Number(limit) || 200)));
+  const { data: locRows } = await sb.from(LOCATIONS).select('id, name');
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  const floor2LocationId = floor2Loc?.id ? String(floor2Loc.id) : '';
+
+  const [{ data: runs, error }, { data: floor2InvRows }] = await Promise.all([
+    sb
+      .from(RUNS)
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(Math.min(500, Math.max(1, Number(limit) || 200))),
+    floor2LocationId
+      ? sb.from('warehouse_assembly_inventory').select('assembly_id, location_id, quantity').eq('location_id', floor2LocationId)
+      : Promise.resolve({ data: [] }),
+  ]);
   if (error) {
     if (/not found|does not exist/i.test(String(error.message || ''))) {
-      return { rows: [], tableMissing: true };
+      return { rows: [], floor2Stock: [], tableMissing: true };
     }
     throw new Error(error.message || 'Failed to load runs');
   }
@@ -122,11 +131,87 @@ export async function listCarpentryFloorRunsEnriched(sb, { limit = 200 } = {}) {
     if (!usageByRun.has(key)) usageByRun.set(key, []);
     usageByRun.get(key).push(row);
   });
+  const floor2Stock = (floor2InvRows || [])
+    .filter((r) => Number(r.quantity) > 0)
+    .map((r) => ({
+      assembly_id: String(r.assembly_id),
+      quantity: Number(r.quantity) || 0,
+    }));
   return {
     tableMissing: false,
+    floor2_location_id: floor2LocationId || null,
+    floor2Stock,
     rows: (runs || []).map((run) => ({
       ...run,
       materials: usageByRun.get(String(run.id)) || [],
     })),
+  };
+}
+
+/**
+ * Manually add a Warehouse Floor 1 product to Warehouse Floor 2 from the web portal.
+ * Ensures the product is enabled on the Carpentry catalog so Finishing & Upholstery can use it.
+ */
+export async function addFloor1ProductToFloor2(sb, {
+  assemblyId,
+  productQty = 1,
+  userId = null,
+}) {
+  const productId = String(assemblyId || '').trim();
+  const qty = Math.max(1, Math.floor(Number(productQty) || 1));
+  if (!productId) throw new Error('assembly_id required');
+
+  const [{ data: assembly, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
+    sb.from(ASSEMBLIES).select('id, name, family_sku, metadata, item_kind').eq('id', productId).maybeSingle(),
+    sb.from(LOCATIONS).select('id, name'),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load product');
+  if (!assembly?.id) throw new Error('Product not found');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  const outputLocationId = floor2Loc?.id
+    ? String(floor2Loc.id)
+    : WAREHOUSE_FACTORY_LOCATION_ID;
+
+  const prevMeta = parseCarpentryMeta(assembly);
+  if (!prevMeta.selected) {
+    await sb.from(ASSEMBLIES).update({
+      metadata: {
+        ...(assembly.metadata || {}),
+        carpentry: {
+          ...prevMeta,
+          selected: true,
+        },
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', productId);
+  }
+
+  await adjustAssemblyInventory(sb, productId, outputLocationId, qty);
+
+  const now = new Date().toISOString();
+  const runId = newUuid();
+  const { error: runErr } = await sb.from(RUNS).insert({
+    id: runId,
+    source: 'manual_floor1',
+    quote_id: null,
+    assembly_id: productId,
+    product_qty: qty,
+    started_at: now,
+    completed_at: now,
+    accepted_by: userId,
+    metadata: { channel: 'warehouse_floor2_portal', manual_from_floor1: true },
+    created_at: now,
+  });
+  if (runErr) throw new Error(runErr.message || 'Failed to save Floor 2 entry');
+
+  await recomputeWarehouseLocationStockServer(sb, outputLocationId);
+
+  return {
+    run_id: runId,
+    assembly_id: productId,
+    product_qty: qty,
+    floor2_location_id: outputLocationId,
   };
 }

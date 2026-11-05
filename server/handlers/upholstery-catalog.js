@@ -40,7 +40,7 @@ export default async function handler(req, res) {
 
     if (op === 'list') {
       const [{ data: assemblies, error }, { data: setItems, error: setItemsErr }] = await Promise.all([
-        db.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata'),
+        db.from('warehouse_assemblies').select('id, name, family_sku, item_kind, category_id, metadata'),
         db.from('warehouse_set_items').select('set_assembly_id, component_assembly_id, quantity, location_id'),
       ]);
       if (error) throw new Error(error.message || 'Failed to load catalog');

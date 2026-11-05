@@ -49,7 +49,7 @@ export default async function handler(req, res) {
 
     if (op === 'list') {
       const [{ data: assemblies, error }, { data: setItems, error: setItemsErr }] = await Promise.all([
-        db.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata'),
+        db.from('warehouse_assemblies').select('id, name, family_sku, item_kind, category_id, metadata'),
         db.from('warehouse_set_items').select('set_assembly_id, component_assembly_id, quantity, location_id'),
       ]);
       if (error) throw new Error(error.message || 'Failed to load catalog');
@@ -106,6 +106,17 @@ export default async function handler(req, res) {
     if (op === 'list-floor-runs') {
       const { listCarpentryFloorRunsEnriched } = await import('../lib/carpentryManufacture.js');
       const result = await listCarpentryFloorRunsEnriched(db, { limit: body.limit });
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
+    if (op === 'add-floor2-product') {
+      const { addFloor1ProductToFloor2 } = await import('../lib/carpentryManufacture.js');
+      const result = await addFloor1ProductToFloor2(db, {
+        assemblyId: body.assembly_id || body.assemblyId,
+        productQty: body.product_qty ?? body.productQty ?? body.quantity ?? 1,
+        userId: user?.id || user?.uid || null,
+      });
       res.status(200).json({ ok: true, ...result });
       return;
     }
