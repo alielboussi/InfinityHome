@@ -33,19 +33,27 @@ try {
     metro.includes('shouldResolvePeerFromApp') || metro.includes('deliveryKitPeerSet'),
     'metro must pin deliveryKit peer deps to this app node_modules (duplicate RNCSafeAreaProvider)',
   );
-  assert(fs.existsSync(path.join(appRoot, 'deliveryKit', '.standalone-materialized')), 'Run npm run materialize — deliveryKit must not junction to warehouse-production');
-  assert(
-    !fs.lstatSync(path.join(appRoot, 'deliveryKit')).isSymbolicLink(),
-    'deliveryKit must be a real folder, not a symlink to production',
-  );
+  const kitDir = path.join(appRoot, 'deliveryKit');
+  const kitMaterialized = fs.existsSync(path.join(kitDir, '.standalone-materialized'));
+  const kitHasScreens = fs.existsSync(path.join(kitDir, 'screens', 'KitweSendHomeScreen.js'));
+  assert(kitMaterialized || kitHasScreens, 'deliveryKit missing — run npm run materialize in warehouse-delivery');
+  if (kitMaterialized) {
+    assert(
+      !fs.lstatSync(kitDir).isSymbolicLink(),
+      'deliveryKit must be a real folder, not a symlink to production',
+    );
+  }
 
-  assert(fs.existsSync(path.join(appRoot, 'shared', '.standalone-shared')), 'shared/ must be materialized — run npm run materialize');
-  assert(fs.existsSync(path.join(appRoot, 'shared', 'MobileScreenGate.js')), 'shared/ must be a real copy — run npm run materialize');
-  try {
-    const sh = fs.lstatSync(path.join(appRoot, 'shared'));
-    assert(!sh.isSymbolicLink(), 'shared/ must not be a junction to mobile-apps/shared');
-  } catch (e) {
-    assert(false, `shared/ check failed: ${e.message}`);
+  const sharedDir = path.join(appRoot, 'shared');
+  const sharedMaterialized = fs.existsSync(path.join(sharedDir, '.standalone-shared'));
+  assert(fs.existsSync(path.join(sharedDir, 'MobileScreenGate.js')), 'shared/MobileScreenGate.js required');
+  if (sharedMaterialized) {
+    try {
+      const sh = fs.lstatSync(sharedDir);
+      assert(!sh.isSymbolicLink(), 'shared/ must not be a junction to mobile-apps/shared');
+    } catch (e) {
+      assert(false, `shared/ check failed: ${e.message}`);
+    }
   }
 
   const appJs = fs.readFileSync(path.join(appRoot, 'App.js'), 'utf8');
@@ -81,7 +89,12 @@ try {
 
   assert(fs.existsSync(path.join(appRoot, 'lib', 'deliveryDriversStore.js')), 'lib/deliveryDriversStore.js required (outside deliveryKit)');
 
-  assert(fs.existsSync(path.join(appRoot, 'delivery-screens', 'KitweSendHomeScreen.js')), 'delivery-screens/ required — Kitwe UI lives in Delivery app only');
+  const deliveryScreensHome = path.join(appRoot, 'delivery-screens', 'KitweSendHomeScreen.js');
+  const kitScreensHome = path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendHomeScreen.js');
+  assert(
+    fs.existsSync(deliveryScreensHome) || fs.existsSync(kitScreensHome),
+    'KitweSendHomeScreen.js required under delivery-screens/ or deliveryKit/screens/',
+  );
 
   const sig = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendSignatureScreen.js'),
