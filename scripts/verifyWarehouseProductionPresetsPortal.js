@@ -50,6 +50,10 @@ const i18nPath = firstExistingPath([
 assert(i18nPath, 'expected productionKioskI18n.js beside production Create screen');
 
 const i18n = fs.readFileSync(i18nPath, 'utf8');
+assert(
+  i18n.includes('export function textForDisplay') || i18n.includes('export const textForDisplay'),
+  'production i18n must export textForDisplay',
+);
 assert(i18n.includes('prefetchPresetArabicLabels'), 'production i18n must auto-translate unknown presets');
 
 const portal = fs.readFileSync(path.join(root, 'src/WarehouseProductionPresetsPage.js'), 'utf8');

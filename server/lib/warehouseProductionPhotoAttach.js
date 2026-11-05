@@ -250,16 +250,20 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
     directCatalogUpload: false,
   });
 
-  const portalResult = await runPendingPortalSetup(sb, body, user, assembly);
-  const labelResult = await runPendingLabelPrint(sb, body, user, assembly);
-  const label_preview_png_base64 = await buildLabelPreviewForAssembly(assembly);
+  const [portalResult, labelResult, label_preview_png_base64] = await Promise.all([
+    runPendingPortalSetup(sb, body, user, assembly),
+    runPendingLabelPrint(sb, body, user, assembly),
+    buildLabelPreviewForAssembly(assembly),
+  ]);
 
-  await notifyNewProductionProductWhatsApp({
+  void notifyNewProductionProductWhatsApp({
     user,
     assembly,
     qtyAdded: pendingLabelQty(body),
     imageUrl: catalogImageUrl,
     preset: body.preset || body.product_preset,
+  }).catch((err) => {
+    console.warn('[warehouse-production-photo] WhatsApp notify failed:', err?.message || err);
   });
 
   return {

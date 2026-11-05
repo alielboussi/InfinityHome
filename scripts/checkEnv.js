@@ -193,12 +193,32 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWarehouseReturnRepairDepartment.js', {
+    stdio: 'inherit',
+    cwd: path.join(__dirname, '..'),
+  });
+} catch {
+  console.error('[warehouse-return-repair-dept:fail] verifyWarehouseReturnRepairDepartment.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseReturnFlow.js', {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),
   });
 } catch {
   console.error('[warehouse-return-flow:fail] verifyWarehouseReturnFlow.js failed.');
+  process.exit(1);
+}
+
+try {
+  require('child_process').execSync('node scripts/verifyWorkshopRepairReturnFlow.js', {
+    stdio: 'inherit',
+    cwd: path.join(__dirname, '..'),
+  });
+} catch {
+  console.error('[workshop-repair-return:fail] verifyWorkshopRepairReturnFlow.js failed.');
   process.exit(1);
 }
 

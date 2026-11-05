@@ -180,3 +180,30 @@ export function groupWarehousePacketLinesByAssembly(packetEntries) {
   });
   return out;
 }
+
+export const WAREHOUSE_RETURN_DELIVERY_SOURCES = [
+  'warehouse_return_shipment',
+  'warehouse_return_customer_delivery',
+];
+
+export function warehouseDeliverySessionKind(session) {
+  const src = String(session?.metadata?.source || '').trim();
+  if (src === 'warehouse_return_shipment') return 'return_shipment';
+  if (src === 'warehouse_return_customer_delivery') return 'return_customer';
+  return 'factory_transfer';
+}
+
+/** Hassan receiver list — factory→Kitwe plus return WHR/CR sessions (any route). */
+export function warehouseDeliverySessionRouteLabel(session, { fromName = 'Factory', toName = 'Kitwe' } = {}) {
+  const kind = warehouseDeliverySessionKind(session);
+  const note = String(session?.delivery_number || '').trim();
+  if (kind === 'return_shipment') {
+    const ret = String(session?.metadata?.return_number || '').trim();
+    return `Return to Kitwe (WHR)${ret ? ` · ${ret}` : ''}${note ? ` · ${note}` : ''}`;
+  }
+  if (kind === 'return_customer') {
+    const customer = String(session?.metadata?.customer_name || '').trim();
+    return `Customer return delivery (CR)${customer ? ` · ${customer}` : ''}${note ? ` · ${note}` : ''}`;
+  }
+  return `${fromName} → ${toName}`;
+}

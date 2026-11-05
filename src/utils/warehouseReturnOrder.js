@@ -4,6 +4,8 @@ export const WAREHOUSE_RETURN_STATUSES = Object.freeze({
   SUBMITTED: 'submitted',
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
+  /** No-customer unit shipped from Floor 1 — Kitwe stock pending Hassan accept on Deliveries. */
+  AWAITING_KITWE_ACCEPT: 'awaiting_kitwe_accept',
   SHIPPED: 'shipped',
   CUSTOMER_DELIVERED: 'customer_delivered',
 });
@@ -13,6 +15,33 @@ export const WAREHOUSE_RETURN_TERMINAL_STATUSES = Object.freeze([
   WAREHOUSE_RETURN_STATUSES.SHIPPED,
   WAREHOUSE_RETURN_STATUSES.CUSTOMER_DELIVERED,
 ]);
+
+/** Human-readable Floor 1 / Kitwe lifecycle for Hassan and production UIs. */
+export function returnOrderLifecycleBadge(row) {
+  const status = String(row?.status || '').trim();
+  const meta = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+  const hasCustomer = Boolean(String(row?.customer_name || '').trim());
+
+  if (status === WAREHOUSE_RETURN_STATUSES.AWAITING_KITWE_ACCEPT) {
+    return 'In transit to Kitwe — awaiting Hassan accept on Warehouse Deliveries';
+  }
+  if (
+    status === WAREHOUSE_RETURN_STATUSES.COMPLETED
+    && meta.floor1_awaiting_hassan
+    && !hasCustomer
+    && !meta.kitwe_restored_at
+    && !meta.customer_fulfilled_at
+  ) {
+    return 'On Floor 1 — ship back from production; Hassan accepts on Deliveries when it arrives';
+  }
+  if (status === WAREHOUSE_RETURN_STATUSES.SHIPPED && meta.kitwe_restored_at) {
+    return 'Back on Kitwe stock';
+  }
+  if (status === WAREHOUSE_RETURN_STATUSES.CUSTOMER_DELIVERED) {
+    return 'Delivered to customer';
+  }
+  return '';
+}
 
 /**
  * Hassan create payload → one row per production card (qty 1 each), shared return note # applied server-side.
@@ -31,6 +60,7 @@ export function parseReturnCreateLines(body, { maxQty = 999 } = {}) {
       const quantity = Math.max(1, Math.floor(Number(raw?.quantity) || 1));
       return {
         reason,
+        reason_group: String(raw?.reason_group || raw?.reasonGroup || '').trim() || null,
         leather_code: String(raw?.leather_code || '').trim() || null,
         quantity,
       };
@@ -49,9 +79,11 @@ export function parseReturnCreateLines(body, { maxQty = 999 } = {}) {
   }
   const reason = normalizeWarehouseReturnReason(body?.reason);
   if (!reason) throw new Error('Return reason is required.');
+  const reason_group = String(body?.reason_group || body?.reasonGroup || '').trim() || null;
   const leather_code = String(body?.leather_code || '').trim() || null;
   const lines = Array.from({ length: totalQty }, () => ({
     reason,
+    reason_group,
     leather_code,
     quantity: 1,
   }));

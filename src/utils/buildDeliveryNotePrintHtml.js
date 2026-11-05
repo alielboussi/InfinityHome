@@ -168,6 +168,7 @@ function safeImgSrc(value) {
 function deliveryNoteTitle(documentKind = 'delivery') {
   const kind = String(documentKind || 'delivery').trim();
   if (kind === 'return' || kind === 'return_shipment') return 'Return Note';
+  if (kind === 'return_customer_delivery') return 'Return Delivery Note';
   if (kind === 'sold_delivery') return 'Sold Delivery Note';
   /** Kitwe truck send + sent-delivery reprints only — never mix with sold_delivery. */
   return 'Delivery Note';
@@ -176,12 +177,14 @@ function deliveryNoteTitle(documentKind = 'delivery') {
 function deliveryNoteNumberLabel(documentKind = 'delivery') {
   const kind = String(documentKind || 'delivery').trim();
   if (kind === 'return' || kind === 'return_shipment') return 'Return No.';
+  if (kind === 'return_customer_delivery') return 'Return Delivery No.';
   if (kind === 'sold_delivery') return 'Sold Delivery No.';
   return 'Delivery No.';
 }
 
 function deliveryNoteShowsCustomerBlock(documentKind = 'delivery') {
-  return String(documentKind || '').trim() === 'sold_delivery';
+  const kind = String(documentKind || '').trim();
+  return kind === 'sold_delivery' || kind === 'return_customer_delivery';
 }
 
 function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {

@@ -1,3 +1,5 @@
+import { parseLegacyDimensionsLwh } from './quoteProductionItemFields.js';
+
 /** Qty for line math: blank defaults to 1; explicit 0 stays 0 unless price is set (legacy saves). */
 export function resolveQuoteLineQuantity(quantity, unitPrice = 0) {
   if (quantity === '' || quantity === null || quantity === undefined) return 1;
@@ -14,12 +16,30 @@ export function normalizeQuotationItemRow(row) {
   if (Number(quantity) === 0 && Number(unit_price || 0) > 0) {
     quantity = 1;
   }
+  const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+  let dim_l_cm = row.dim_l_cm ?? meta.dim_l_cm ?? '';
+  let dim_w_cm = row.dim_w_cm ?? meta.dim_w_cm ?? '';
+  let dim_h_cm = row.dim_h_cm ?? meta.dim_h_cm ?? '';
+  const legacyLwh = row.dimensions_lwh ?? meta.dimensions_lwh ?? '';
+  if (!dim_l_cm && !dim_w_cm && !dim_h_cm && legacyLwh) {
+    const parsed = parseLegacyDimensionsLwh(legacyLwh);
+    dim_l_cm = parsed.dim_l_cm || '';
+    dim_w_cm = parsed.dim_w_cm || '';
+    dim_h_cm = parsed.dim_h_cm || '';
+  }
   return {
     ...row,
     name: row.name_override || row.name || row.product_name || '',
     description: row.description || '',
     quantity,
     unit_price,
+    leather_code: row.leather_code ?? meta.leather_code ?? '',
+    dim_l_cm,
+    dim_w_cm,
+    dim_h_cm,
+    dimensions_lwh: legacyLwh,
+    color_code: row.color_code ?? meta.color_code ?? '',
+    wood: row.wood ?? meta.wood ?? '',
   };
 }
 

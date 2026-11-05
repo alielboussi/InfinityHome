@@ -41,6 +41,7 @@ import { buildWarehouseDeliveryNotePdfBase64 } from '../lib/buildWarehouseDelive
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
   evaluateCarpentryWorkshopAppAccess,
+  evaluatePaintingWorkshopAppAccess,
   evaluateWarehouseDeliveryDriverAppAccess,
   evaluateWarehouseProductionAppAccess,
   isMobileScreenAccessAllowed,
@@ -113,7 +114,11 @@ import {
   listKitweReturnProductOptions,
   listReturnQuoteCustomers,
   listWarehouseReturnOrders,
+  pauseWarehouseReturnOrder,
+  resumeWarehouseReturnOrder,
   prepareReturnShipmentSession,
+  prepareReturnCustomerDeliverySession,
+  submitReturnCustomerDelivery,
   submitReturnShipment,
   printReturnCustomerPickupLabel,
 } from '../lib/warehouseReturnOrders.js';
@@ -337,6 +342,16 @@ async function assertCarpentryWorkshopUser(user) {
   throw err;
 }
 
+async function assertPaintingWorkshopUser(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  if (evaluatePaintingWorkshopAppAccess(grant, user?.email)) {
+    return grant;
+  }
+  const err = new Error('You do not have access to the painting workshop app.');
+  err.status = 403;
+  throw err;
+}
+
 /** Catalog portal + production app — same Zebra / worker label template. */
 async function assertWarehouseLabelPrintUser(user) {
   if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) {
@@ -383,12 +398,13 @@ async function assertUniqueProductionProductName(sb, name, { excludePacketId, ex
 }
 
 async function opProductionPushRegister(body, user) {
-  const grant = await mobileAccessGrantForUser(user);
-  await assertWarehouseReturnProductionAccess(user, grant);
+  if (!user?.email && !user?.id) throw new Error('Authentication required.');
+  const appTarget = String(body.app_target || body.appTarget || 'upholstery').trim().toLowerCase();
   return registerProductionPushToken({
     userId: user?.id || user?.uid,
     email: user?.email,
     expoPushToken: body.expo_push_token,
+    appTarget,
   });
 }
 
@@ -407,6 +423,16 @@ async function opCarpentryAccessSelf(user) {
   const record = await getLoginAccessRecord(user?.id);
   return {
     allowed: evaluateCarpentryWorkshopAppAccess(grant, user?.email),
+    display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
+    grant,
+  };
+}
+
+async function opPaintingAccessSelf(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  const record = await getLoginAccessRecord(user?.id);
+  return {
+    allowed: evaluatePaintingWorkshopAppAccess(grant, user?.email),
     display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
     grant,
   };
@@ -609,6 +635,130 @@ async function opCarpentryManufacture(body, user) {
   return executeCarpentryFloorManufacture(sb, {
     assemblyId,
     productQty,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opCarpentryManufactureList(user) {
+  await assertCarpentryWorkshopUser(user);
+  const sb = createFirestoreServerClient();
+  const { listCarpentryManufactureCandidates } = await import('../lib/carpentryProductionJobs.js');
+  return listCarpentryManufactureCandidates(sb);
+}
+
+async function opCarpentryJobStart(body, user) {
+  await assertCarpentryWorkshopUser(user);
+  const assemblyId = String(body.assembly_id || body.assemblyId || body.raw_assembly_id || '').trim();
+  if (!assemblyId) throw new Error('assembly_id required');
+  const sb = createFirestoreServerClient();
+  const { startCarpentryProductionJob } = await import('../lib/carpentryProductionJobs.js');
+  return startCarpentryProductionJob(sb, {
+    assemblyId,
+    productQty: 1,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opCarpentryJobList(body, user) {
+  try {
+    await assertCarpentryWorkshopUser(user);
+  } catch (workshopErr) {
+    if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
+      throw workshopErr;
+    }
+  }
+  const sb = createFirestoreServerClient();
+  const activeOnly = body.active_only !== false && body.activeOnly !== false;
+  const limit = body.limit ?? body.max;
+  const { listCarpentryProductionJobs } = await import('../lib/carpentryProductionJobs.js');
+  return listCarpentryProductionJobs(sb, { activeOnly, limit });
+}
+
+async function opCarpentryJobPause(body, user) {
+  await assertCarpentryWorkshopUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = createFirestoreServerClient();
+  const { pauseCarpentryProductionJob } = await import('../lib/carpentryProductionJobs.js');
+  return pauseCarpentryProductionJob(sb, { jobId, userId: user?.id || user?.uid });
+}
+
+async function opCarpentryJobResume(body, user) {
+  await assertCarpentryWorkshopUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = createFirestoreServerClient();
+  const { resumeCarpentryProductionJob } = await import('../lib/carpentryProductionJobs.js');
+  return resumeCarpentryProductionJob(sb, { jobId, userId: user?.id || user?.uid });
+}
+
+async function opCarpentryJobFinish(body, user) {
+  await assertCarpentryWorkshopUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = createFirestoreServerClient();
+  const { finishCarpentryProductionJob } = await import('../lib/carpentryProductionJobs.js');
+  return finishCarpentryProductionJob(sb, {
+    jobId,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opPaintingSendFromFloor2(body, user) {
+  await assertCarpentryWorkshopUser(user);
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
+  if (!assemblyId) throw new Error('assembly_id required');
+  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty ?? body.quantity) || 1));
+  const sb = createFirestoreServerClient();
+  const { sendAssemblyToPaintingDepartment } = await import('../lib/paintingProductionJobs.js');
+  return sendAssemblyToPaintingDepartment(sb, {
+    assemblyId,
+    productQty,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opPaintingJobList(body, user) {
+  try {
+    await assertPaintingWorkshopUser(user);
+  } catch (paintErr) {
+    if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
+      throw paintErr;
+    }
+  }
+  const sb = createFirestoreServerClient();
+  const activeOnly = body.active_only !== false && body.activeOnly !== false;
+  const limit = body.limit ?? body.max;
+  const { listPaintingProductionJobs } = await import('../lib/paintingProductionJobs.js');
+  return listPaintingProductionJobs(sb, { activeOnly, limit });
+}
+
+async function opPaintingJobPause(body, user) {
+  await assertPaintingWorkshopUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = createFirestoreServerClient();
+  const { pausePaintingProductionJob } = await import('../lib/paintingProductionJobs.js');
+  return pausePaintingProductionJob(sb, { jobId, userId: user?.id || user?.uid });
+}
+
+async function opPaintingJobResume(body, user) {
+  await assertPaintingWorkshopUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = createFirestoreServerClient();
+  const { resumePaintingProductionJob } = await import('../lib/paintingProductionJobs.js');
+  return resumePaintingProductionJob(sb, { jobId, userId: user?.id || user?.uid });
+}
+
+async function opPaintingJobFinish(body, user) {
+  await assertPaintingWorkshopUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = createFirestoreServerClient();
+  const { finishPaintingProductionJob } = await import('../lib/paintingProductionJobs.js');
+  return finishPaintingProductionJob(sb, {
+    jobId,
     userId: user?.id || user?.uid,
   });
 }
@@ -2729,22 +2879,48 @@ async function opReturnOrderList(body, user) {
   const trackageOnly = body.trackage_only === true;
   const forProduction = body.for_production === true;
   const adminRegistry = body.admin_registry === true;
+  const repairDepartment = String(body.repair_department || body.repairDepartment || '').trim().toLowerCase() || null;
+  const hassanOnly = repairDepartment
+    ? body.hassan_only !== false && body.hassanOnly !== false
+    : body.hassan_only === true || body.hassanOnly === true;
   if (adminRegistry) {
     if (!canManageCatalog(user)) {
       const err = new Error('Catalog admin access required.');
       err.status = 403;
       throw err;
     }
-    return listWarehouseReturnOrders(getService(), {});
+    return listWarehouseReturnOrders(getService(), {
+      hassanOnly: body.hassan_only === true || body.hassanOnly === true,
+      limit: body.limit ?? body.max ?? 500,
+    });
   }
   if (trackageOnly) {
     await assertWarehouseReturnCreator(user);
-  } else if (forProduction) {
+  } else if (forProduction || repairDepartment) {
     await assertWarehouseReturnProductionAccess(user, grant);
   } else {
     await assertWarehouseReturnCreator(user);
   }
-  return listWarehouseReturnOrders(getService(), { forProduction, trackageOnly });
+  return listWarehouseReturnOrders(getService(), {
+    forProduction: repairDepartment ? true : forProduction,
+    trackageOnly,
+    repairDepartment,
+    hassanOnly: trackageOnly
+      ? body.hassan_only !== false && body.hassanOnly !== false
+      : hassanOnly,
+  });
+}
+
+async function opReturnOrderPause(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return pauseWarehouseReturnOrder(getService(), body, user);
+}
+
+async function opReturnOrderResume(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return resumeWarehouseReturnOrder(getService(), body, user);
 }
 
 async function opReturnOrderAccept(body, user) {
@@ -2757,6 +2933,23 @@ async function opReturnOrderComplete(body, user) {
   const grant = await mobileAccessGrantForUser(user);
   await assertWarehouseReturnProductionAccess(user, grant);
   return completeWarehouseReturnOrder(getService(), body, user);
+}
+
+async function opReturnOrderCustomerDeliveryPrepare(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return prepareReturnCustomerDeliverySession(getService(), body, user);
+}
+
+async function opReturnOrderCustomerDeliverySubmit(body, user) {
+  const grant = await mobileAccessGrantForUser(user);
+  await assertWarehouseReturnProductionAccess(user, grant);
+  return submitReturnCustomerDelivery(
+    getService(),
+    body,
+    user,
+    (id, b64) => uploadWarehouseDeliverySignaturePng(id, b64),
+  );
 }
 
 async function opReturnOrderShipPrepare(body, user) {
@@ -2960,8 +3153,20 @@ export default async function handler(req, res) {
       case 'return-order-accept':
         result = await opReturnOrderAccept(body, user);
         break;
+      case 'return-order-pause':
+        result = await opReturnOrderPause(body, user);
+        break;
+      case 'return-order-resume':
+        result = await opReturnOrderResume(body, user);
+        break;
       case 'return-order-complete':
         result = await opReturnOrderComplete(body, user);
+        break;
+      case 'return-order-customer-delivery-prepare':
+        result = await opReturnOrderCustomerDeliveryPrepare(body, user);
+        break;
+      case 'return-order-customer-delivery-submit':
+        result = await opReturnOrderCustomerDeliverySubmit(body, user);
         break;
       case 'return-order-ship-prepare':
         result = await opReturnOrderShipPrepare(body, user);
@@ -3002,6 +3207,9 @@ export default async function handler(req, res) {
       case 'carpentry-access-self':
         result = await opCarpentryAccessSelf(user);
         break;
+      case 'painting-access-self':
+        result = await opPaintingAccessSelf(user);
+        break;
       case 'delivery-access-self':
         result = await opDeliveryAccessSelf(user);
         break;
@@ -3040,6 +3248,39 @@ export default async function handler(req, res) {
         break;
       case 'carpentry-manufacture':
         result = await opCarpentryManufacture(body, user);
+        break;
+      case 'carpentry-manufacture-list':
+        result = await opCarpentryManufactureList(user);
+        break;
+      case 'carpentry-job-start':
+        result = await opCarpentryJobStart(body, user);
+        break;
+      case 'carpentry-job-list':
+        result = await opCarpentryJobList(body, user);
+        break;
+      case 'carpentry-job-pause':
+        result = await opCarpentryJobPause(body, user);
+        break;
+      case 'carpentry-job-resume':
+        result = await opCarpentryJobResume(body, user);
+        break;
+      case 'carpentry-job-finish':
+        result = await opCarpentryJobFinish(body, user);
+        break;
+      case 'painting-send-from-floor2':
+        result = await opPaintingSendFromFloor2(body, user);
+        break;
+      case 'painting-job-list':
+        result = await opPaintingJobList(body, user);
+        break;
+      case 'painting-job-pause':
+        result = await opPaintingJobPause(body, user);
+        break;
+      case 'painting-job-resume':
+        result = await opPaintingJobResume(body, user);
+        break;
+      case 'painting-job-finish':
+        result = await opPaintingJobFinish(body, user);
         break;
       case 'carpentry-finishing-list':
         result = await opCarpentryFinishingList(user);

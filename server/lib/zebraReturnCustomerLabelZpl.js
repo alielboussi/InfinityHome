@@ -108,6 +108,7 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
   const nameText = zplEscape(opts.name);
   const customerName = zplEscape(opts.customerName);
   const customerPhone = zplEscape(opts.customerPhone);
+  const qrUrl = String(opts.returnNotePdfUrl || '').trim();
   const dateText = zplEscape(formatProductionLabelBlockDate(printedAt));
   const timeText = zplEscape(formatProductionLabelBlockTime(printedAt));
   const companyLine = zplEscape(COMPANY_NAME);
@@ -122,6 +123,10 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
   const barcodeH = d.barcodeHeight;
   const barcodeModule = Math.max(2, Math.min(3, Math.floor(d.barcodeWidth / (skuText.length * 11 + 35))));
 
+  const barcodeOrQrBlock = qrUrl
+    ? `^FO${d.barcodeLeft},${d.barcodeTop}^BQN,2,6^FDQA,${zplEscape(qrUrl)}^FS`
+    : `^FO${d.barcodeLeft},${d.barcodeTop}^BY${barcodeModule},3,${Math.max(5, Math.floor(barcodeH / 10))}^BCN,${barcodeH},N,N,N^FD${skuText}^FS`;
+
   const lines = [
     '^XA',
     '^CI28',
@@ -130,9 +135,9 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
     '^LH0,0',
     `^FO${mainX},${d.margin}^GB${d.boxW},${d.boxH},2^FS`,
     `^FO${mainX},${d.companyTextTop}^A0N,${cf},${cf}^FB${mainW},1,0,C,0^FD${companyLine}^FS`,
-    `^FO${d.barcodeLeft},${d.barcodeTop}^BY${barcodeModule},3,${Math.max(5, Math.floor(barcodeH / 10))}^BCN,${barcodeH},N,N,N^FD${skuText}^FS`,
-    labelField(d.skuRowY, FIELD_LABELS.sku),
-    valueField(d.skuRowY, skuText),
+    barcodeOrQrBlock,
+    labelField(d.skuRowY, qrUrl ? 'Return PDF:' : FIELD_LABELS.sku),
+    valueField(d.skuRowY, qrUrl ? 'Scan QR' : skuText),
     labelField(d.nameBlockTop, FIELD_LABELS.name),
     `^FO0,${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.labelWidth},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
     labelField(d.customerNameRowY, FIELD_LABELS.customerName),

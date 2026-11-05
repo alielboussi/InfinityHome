@@ -8,19 +8,24 @@ import { useProductionDashboardTileLayout } from '../productionKiosk/lib/product
 import { theme } from '../shared/theme';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi } from '../productionKiosk/lib/productionKioskI18n';
+import ProductionPressableHint from '../productionKiosk/components/ProductionPressableHint';
 
-function DashboardTile({ icon, title, width, height, onPress }) {
+function DashboardTile({
+  icon, title, width, height, onPress, hintKey, locale, textAlign,
+}) {
   const iconSize = Math.round(Math.min(44, height * 0.32));
   return (
-    <Pressable
+    <ProductionPressableHint
+      hintKey={hintKey}
+      locale={locale}
+      textAlign={textAlign}
+      onPress={onPress}
       style={({ pressed }) => [
         kiosk.dashTile,
         kiosk.dashTileCard,
         { width, height },
         pressed && kiosk.dashTilePressed,
       ]}
-      onPress={onPress}
-      accessibilityRole="button"
     >
       <MaterialCommunityIcons
         name={icon}
@@ -36,7 +41,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
       >
         {title}
       </Text>
-    </Pressable>
+    </ProductionPressableHint>
   );
 }
 
@@ -49,8 +54,8 @@ export default function DashboardScreen({
   accessHint,
 }) {
   const insets = useSafeAreaInsets();
-  const { locale, toggleLocale, ready } = useProductionKioskLocale();
-  const tileCount = 4;
+  const { locale, toggleLocale, ready, textAlign } = useProductionKioskLocale();
+  const tileCount = 6;
   const {
     tileWidth, tileHeight, gap, contentWidth,
   } = useProductionDashboardTileLayout(tileCount);
@@ -60,25 +65,43 @@ export default function DashboardScreen({
       key: 'create',
       icon: 'hammer-wrench',
       title: tUi('dashCreate', locale),
+      hintKey: 'dashTileHint_create',
       onPress: () => navigation.navigate('Create'),
     },
     {
       key: 'manufacture',
       icon: 'factory',
       title: tUi('dashManufacture', locale),
+      hintKey: 'dashTileHint_manufacture',
       onPress: () => navigation.navigate('Manufacture'),
     },
     {
-      key: 'finishing',
-      icon: 'check-decagram',
-      title: tUi('dashFinishing', locale),
-      onPress: () => navigation.navigate('Finishing'),
+      key: 'jobs',
+      icon: 'progress-clock',
+      title: tUi('carpentryJobsTitle', locale),
+      hintKey: 'dashTileHint_jobs',
+      onPress: () => navigation.navigate('Jobs'),
+    },
+    {
+      key: 'painting',
+      icon: 'format-paint',
+      title: tUi('dashPainting', locale),
+      hintKey: 'dashTileHint_painting',
+      onPress: () => navigation.navigate('Painting'),
     },
     {
       key: 'quotes',
       icon: 'clipboard-text-outline',
       title: tUi('dashCarpentryQuoteOrders', locale),
+      hintKey: 'dashTileHint_quotes',
       onPress: () => navigation.navigate('Quotes'),
+    },
+    {
+      key: 'repairs',
+      icon: 'wrench-clock',
+      title: tUi('dashRepairs', locale),
+      hintKey: 'dashTileHint_repairs',
+      onPress: () => navigation.navigate('Repairs'),
     },
   ];
 
@@ -161,6 +184,9 @@ export default function DashboardScreen({
               key={tile.key}
               icon={tile.icon}
               title={tile.title}
+              hintKey={tile.hintKey}
+              locale={locale}
+              textAlign={textAlign}
               width={tileWidth}
               height={tileHeight}
               onPress={tile.onPress}

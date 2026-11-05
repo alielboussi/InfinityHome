@@ -4,7 +4,7 @@ const firebase = {
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'bestrest-portal-system-43108',
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || 'bestrest-portal-system-43108.firebasestorage.app',
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '876299148810',
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:876299148810:android:9cb085a252a1f4939049f3',
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:876299148810:android:c709c380f8fdcf669049f3',
 };
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
@@ -22,10 +22,20 @@ module.exports = {
     version: '0.1.0',
     orientation: 'portrait',
     userInterfaceStyle: 'dark',
+    icon: './assets/icon.png',
+    splash: {
+      image: './assets/icon.png',
+      resizeMode: 'contain',
+      backgroundColor: '#0d47a1',
+    },
     android: {
       package: 'online.infinityhome.carpentry',
       softwareKeyboardLayoutMode: 'resize',
       permissions: ['INTERNET', 'ACCESS_NETWORK_STATE'],
+      adaptiveIcon: {
+        foregroundImage: './assets/adaptive-icon.png',
+        backgroundColor: '#0d47a1',
+      },
     },
     plugins: [
       'expo-font',

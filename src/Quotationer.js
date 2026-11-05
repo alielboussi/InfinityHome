@@ -7,7 +7,12 @@ import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import generateQuotePdf from './quotespdf';
 import { FaTrashAlt } from 'react-icons/fa';
 import { cacheGet, cacheSet, cacheClear } from './utils/staleCache';
-import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationConverted, isQuotationerOnlyExperience, getUserDisplayName } from './accessControl';
+import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationConverted, isQuotationerOnlyExperience, getUserDisplayName, isHassanAwadUser, canManageCatalog } from './accessControl';
+import {
+  fetchQuoteProductionRouting,
+  saveQuoteProductionRoute,
+  sendQuoteToWarehouseProduction,
+} from './services/quoteProductionApi';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
@@ -24,6 +29,7 @@ import {
   sortQuotationRows,
   sumPaymentRows,
 } from './utils/quotationDisplay';
+import { CARPENTRY_WOOD_OPTIONS } from './utils/quoteProductionItemFields';
 
 function htmlToPlainPreview(html) {
   if (!html) return '';
@@ -41,6 +47,18 @@ const QUOTE_PRODUCT_CATALOG_CACHE_KEY = 'quotationer:quote-products:v1';
 const QUOTE_UNIT_CATALOG_CACHE_KEY = 'quotationer:quote-units:v1';
 const QUOTATION_CACHE_TTL_MS = 10 * 60 * 1000;
 const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
+
+async function uploadQuoteProductionDrawing(quoteId, file) {
+  const safeName = String(file.name || 'drawing.jpg').replace(/[^\w.-]+/g, '_');
+  const path = `production-drawings/${quoteId}/${Date.now()}-${safeName}`;
+  const { error: upErr } = await db.storage.from('Quotations').upload(path, file, {
+    upsert: true,
+    contentType: file.type || 'image/jpeg',
+  });
+  if (upErr) throw new Error(upErr.message || 'Drawing upload failed');
+  const { data: pub } = db.storage.from('Quotations').getPublicUrl(path);
+  return pub?.publicUrl || null;
+}
 
 const defaultQuote = { customer_id: null, discount: 0, vat_apply: false, vat_inclusive: false, vat_rate: 0.16, currency: 'K' };
 const titleCaseWords = (text) => String(text || '')
@@ -788,7 +806,19 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const [custPrefix, setCustPrefix] = React.useState('+260');
   const [addSearch, setAddSearch] = React.useState('');
   const [currentQuoteId, setCurrentQuoteId] = React.useState(quoteId || '');
+  const [productionRoute, setProductionRoute] = React.useState('');
+  const [productionRoutingLocked, setProductionRoutingLocked] = React.useState(false);
+  const [productionSendBusy, setProductionSendBusy] = React.useState(false);
+  const [productionDrawingUrl, setProductionDrawingUrl] = React.useState('');
+  const [productionDrawingPendingFile, setProductionDrawingPendingFile] = React.useState(null);
+  const [productionDrawingUploadBusy, setProductionDrawingUploadBusy] = React.useState(false);
+  const productionDrawingInputRef = React.useRef(null);
   const isIpadProLayout = useIpadProLayout();
+  const quoteUser = React.useMemo(() => readLocalUser(), []);
+  const canManageProductionRouting = React.useMemo(
+    () => isHassanAwadUser(quoteUser) || canManageCatalog(quoteUser),
+    [quoteUser],
+  );
 
   const normalizeDescription = (text) => {
     const plain = htmlToPlainPreview(text);
@@ -811,6 +841,10 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
     setCustPhone('');
     setCustPrefix('+260');
     setShowCustomerManager(false);
+    setProductionRoute('');
+    setProductionRoutingLocked(false);
+    setProductionDrawingUrl('');
+    setProductionDrawingPendingFile(null);
   }, []);
 
   React.useEffect(() => {
@@ -901,6 +935,31 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   }, [quoteId, resetToNewQuote]);
 
   React.useEffect(() => {
+    if (!canManageProductionRouting || !currentQuoteId) {
+      setProductionRoute('');
+      setProductionRoutingLocked(false);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const routing = await fetchQuoteProductionRouting(currentQuoteId);
+        if (cancelled) return;
+        setProductionRoute(routing?.route || '');
+        setProductionRoutingLocked(Boolean(routing?.sent_to_production_at));
+        setProductionDrawingUrl(routing?.metadata?.drawing_url || '');
+      } catch {
+        if (!cancelled) {
+          setProductionRoute('');
+          setProductionRoutingLocked(false);
+          setProductionDrawingUrl('');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [canManageProductionRouting, currentQuoteId]);
+
+  React.useEffect(() => {
     if (!quote.customer_id) return;
     const cust = (quoteCustomers || []).find(c => String(c.id) === String(quote.customer_id));
     if (cust && cust.currency && cust.currency !== quote.currency) {
@@ -917,8 +976,15 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
     }));
   }, [vatChoice]);
 
+  const productionRouteRequired = canManageProductionRouting && !locked && !productionRoutingLocked;
+  const productionRouteMissing = productionRouteRequired && !productionRoute;
+
   const addItemFromQuoteProduct = (qp) => {
     if (locked) return;
+    if (productionRouteMissing) {
+      alert('Select Upholstery or Carpentry before adding products.');
+      return;
+    }
     setItems(prev => [...prev, {
       id: 'local-' + Math.random().toString(36).slice(2),
       quote_product_id: qp.id,
@@ -936,6 +1002,36 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const removeItem = (id) => {
     if (locked) return;
     setItems(prev => prev.filter(it => it.id !== id));
+  };
+
+  const onProductionDrawingSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!String(file.type || '').startsWith('image/')) {
+      alert('Please choose an image file (JPEG, PNG, etc.).');
+      return;
+    }
+    if (!productionRoute) {
+      alert('Choose Upholstery or Carpentry before attaching a drawing.');
+      return;
+    }
+    if (productionRoutingLocked) return;
+    if (!currentQuoteId) {
+      setProductionDrawingPendingFile(file);
+      return;
+    }
+    setProductionDrawingUploadBusy(true);
+    try {
+      const url = await uploadQuoteProductionDrawing(currentQuoteId, file);
+      await saveQuoteProductionRoute(currentQuoteId, productionRoute, { drawing_url: url });
+      setProductionDrawingUrl(url);
+      setProductionDrawingPendingFile(null);
+    } catch (err) {
+      alert(err?.message || 'Drawing upload failed.');
+    } finally {
+      setProductionDrawingUploadBusy(false);
+    }
   };
   const getNormalizedItems = () => items.map(it => ({
     ...it,
@@ -966,6 +1062,10 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       alert('Please choose VAT Exclusive or VAT @ 16%');
       return;
     }
+    if (canManageProductionRouting && !productionRoute) {
+      alert('Choose Carpentry or Upholstery before saving this quote.');
+      return;
+    }
     if (locked) return;
     setSaving(true);
     try {
@@ -974,6 +1074,20 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       const createdQuoteId = out.id;
       if (!createdQuoteId) throw new Error('Quote saved but no id returned');
       if (createdQuoteId && !currentQuoteId) setCurrentQuoteId(createdQuoteId);
+
+      if (canManageProductionRouting && productionRoute) {
+        try {
+          await saveQuoteProductionRoute(createdQuoteId, productionRoute);
+          if (productionDrawingPendingFile) {
+            const drawingUrl = await uploadQuoteProductionDrawing(createdQuoteId, productionDrawingPendingFile);
+            await saveQuoteProductionRoute(createdQuoteId, productionRoute, { drawing_url: drawingUrl });
+            setProductionDrawingUrl(drawingUrl);
+            setProductionDrawingPendingFile(null);
+          }
+        } catch (routeErr) {
+          console.warn('Production route save failed:', routeErr?.message || routeErr);
+        }
+      }
 
       if (out.laybyEditNotify?.laybyId) {
         try {
@@ -1156,6 +1270,115 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       )}
 
       <div className="quotes-create-panel">
+        {canManageProductionRouting ? (
+          <div
+            className={`quotes-production-panel quotes-production-panel--top${productionRouteMissing ? ' quotes-production-panel--missing' : ''}`}
+          >
+            <div className="quotes-production-heading">
+              Workshop route <span className="quotes-production-required">Required</span>
+            </div>
+            <p className="quotes-production-lead">
+              Select Upholstery or Carpentry before adding lines or saving this quote.
+            </p>
+            <div className="quotes-production-route" role="group" aria-label="Production route">
+              <button
+                type="button"
+                className={`quotes-production-route-btn${productionRoute === 'upholstery' ? ' active' : ''}`}
+                disabled={locked || productionRoutingLocked}
+                onClick={() => setProductionRoute('upholstery')}
+                aria-pressed={productionRoute === 'upholstery'}
+              >
+                Upholstery
+              </button>
+              <button
+                type="button"
+                className={`quotes-production-route-btn${productionRoute === 'carpentry' ? ' active' : ''}`}
+                disabled={locked || productionRoutingLocked}
+                onClick={() => setProductionRoute('carpentry')}
+                aria-pressed={productionRoute === 'carpentry'}
+              >
+                Carpentry
+              </button>
+            </div>
+            {productionRouteMissing ? (
+              <p className="quotes-production-hint" role="status">
+                Choose a workshop to continue.
+              </p>
+            ) : null}
+            {!productionRoutingLocked && productionRoute ? (
+              <div className="quotes-production-drawing">
+                <div className="quotes-production-drawing-label">Production drawing (optional)</div>
+                <div className="quotes-production-drawing-actions">
+                  <input
+                    ref={productionDrawingInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="quotes-production-drawing-input"
+                    disabled={locked || productionDrawingUploadBusy}
+                    onChange={onProductionDrawingSelected}
+                  />
+                  <button
+                    type="button"
+                    className="action-button quotes-production-drawing-btn"
+                    style={compactButton}
+                    disabled={locked || productionDrawingUploadBusy}
+                    onClick={() => productionDrawingInputRef.current?.click()}
+                  >
+                    {productionDrawingUploadBusy ? 'Uploading…' : 'Attach drawing'}
+                  </button>
+                  {productionDrawingUrl ? (
+                    <a
+                      className="quotes-production-drawing-link"
+                      href={productionDrawingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View attached drawing
+                    </a>
+                  ) : productionDrawingPendingFile ? (
+                    <span className="quotes-production-drawing-pending">
+                      {productionDrawingPendingFile.name} — saves with quote
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {productionRoutingLocked ? (
+              <p className="quotes-production-locked-note">
+                Already sent to production — route is locked.
+                {productionDrawingUrl ? (
+                  <>
+                    {' '}
+                    <a href={productionDrawingUrl} target="_blank" rel="noopener noreferrer">View drawing</a>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            {currentQuoteId && productionRoute && !productionRoutingLocked ? (
+              <button
+                type="button"
+                className="action-button quotes-production-send-btn"
+                style={compactButton}
+                disabled={productionSendBusy || locked}
+                onClick={async () => {
+                  setProductionSendBusy(true);
+                  try {
+                    await sendQuoteToWarehouseProduction(currentQuoteId);
+                    setProductionRoutingLocked(true);
+                    alert('Quote sent to warehouse for production.');
+                  } catch (err) {
+                    alert(err?.message || 'Send to production failed.');
+                  } finally {
+                    setProductionSendBusy(false);
+                  }
+                }}
+              >
+                {productionSendBusy ? 'Sending…' : 'Send to warehouse for production'}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="quotes-create-panel-grid">
           <div className="quotes-create-panel-row">
             <select
@@ -1270,11 +1493,12 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
             <input
               className="quotes-input"
-              placeholder="Search products to add (name/description)"
+              placeholder={productionRouteMissing ? 'Select Upholstery or Carpentry first' : 'Search products to add (name/description)'}
               value={addSearch}
               onChange={e => setAddSearch(e.target.value)}
               aria-label="Search products to add"
-              style={{ width: '100%', maxWidth: 480 }}
+              disabled={locked || productionRouteMissing}
+              style={{ width: '100%', maxWidth: 480, opacity: productionRouteMissing ? 0.65 : 1 }}
             />
             {addSearch.trim() && (
               <div className="quotes-create-product-results">
@@ -1293,7 +1517,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                         <span style={{ color:'#8ab' }}>{p.unit_id ? normalizeUnitAbbreviation(units.find(u => u.id === p.unit_id)?.abbreviation, units.find(u => u.id === p.unit_id)?.name) : ''}</span>
                       </div>
                       <div style={{ color:'#8ab', minWidth:80, textAlign:'right' }}>{Number(p.price||0).toFixed(2)}</div>
-                      <button className="action-button" style={compactButton} disabled={locked} onClick={() => addItemFromQuoteProduct(p)}>Add</button>
+                      <button className="action-button" style={compactButton} disabled={locked || productionRouteMissing} onClick={() => addItemFromQuoteProduct(p)}>Add</button>
                     </div>
                   ))}
                 {!((quoteProducts||[]).some(p => {
@@ -1308,14 +1532,14 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           </div>
 
           <div className="quotes-table-wrap" style={tableWrapperStyle}>
-            <table className="table quotes-table" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: tableLayoutMode, minWidth: isIpadProLayout ? 900 : undefined }}>
+            <table className="table quotes-table quotes-table--create-lines" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: tableLayoutMode, minWidth: isIpadProLayout ? 900 : undefined }}>
               <thead>
                 <tr>
-                  <th style={{ ...tableCellStyle, width: '42%' }}>Item & Description</th>
-                  <th style={{ ...tableCellStyle, width: '14%', textAlign: 'center' }}>Qty / Unit</th>
-                  <th style={{ ...tableCellStyle, width: '18%', textAlign: 'center' }}>Price</th>
-                  <th style={{ ...tableCellStyle, width: '12%', textAlign: 'right' }}>Amount</th>
-                  <th style={{ ...tableCellStyle, width: '14%', textAlign: 'center' }}>Actions</th>
+                  <th style={{ ...tableCellStyle, width: '44%' }}>Item &amp; description</th>
+                  <th style={{ ...tableCellStyle, width: '13%', textAlign: 'center' }}>Qty / unit</th>
+                  <th style={{ ...tableCellStyle, width: '16%', textAlign: 'center' }}>Price</th>
+                  <th style={{ ...tableCellStyle, width: '11%', textAlign: 'right' }}>Amount</th>
+                  <th style={{ ...tableCellStyle, width: '8%', textAlign: 'center' }} aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -1326,32 +1550,117 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                   const lineTotal = (
                     resolveQuoteLineQuantity(it.quantity, it.unit_price) * Number(it.unit_price || 0)
                   ).toFixed(2);
+                  const showUpholsteryMeta = canManageProductionRouting && productionRoute === 'upholstery';
+                  const showCarpentryMeta = canManageProductionRouting && productionRoute === 'carpentry';
                   return (
-                    <tr key={it.id}>
-                      <td style={{ ...tableCellStyle, width: '42%' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <tr key={it.id} className="quotes-line-row">
+                      <td style={{ ...tableCellStyle, width: '44%' }} className="quotes-line-item-cell">
+                        <div className="quotes-line-cell">
                           <input
-                            className="quotes-input"
+                            className="quotes-input quotes-input--slim quotes-line-name"
                             value={it.name || ''}
                             disabled={locked}
                             onChange={e => updateItem(it.id, { name: e.target.value })}
                             placeholder="Item name"
                           />
                           <textarea
-                            className="quotes-textarea"
-                            rows={3}
+                            className="quotes-textarea quotes-textarea--slim quotes-line-desc"
+                            rows={2}
                             value={it.description || ''}
                             disabled={locked}
                             onChange={e => updateItem(it.id, { description: normalizeDescription(e.target.value) })}
                             placeholder="Description"
-                            style={{ resize: 'vertical' }}
                           />
+                          {showUpholsteryMeta ? (
+                            <div className="quotes-line-meta-grid quotes-line-meta-grid--one">
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">Leather</span>
+                                <input
+                                  className="quotes-input quotes-input--slim"
+                                  value={it.leather_code || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { leather_code: e.target.value })}
+                                  placeholder="Optional"
+                                  aria-label="Leather code optional"
+                                />
+                              </label>
+                            </div>
+                          ) : null}
+                          {showCarpentryMeta ? (
+                            <div className="quotes-line-meta-grid quotes-line-meta-grid--carpentry">
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">L (cm)</span>
+                                <input
+                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={it.dim_l_cm || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { dim_l_cm: e.target.value, dimensions_lwh: '' })}
+                                  placeholder="L"
+                                  aria-label="Length cm optional"
+                                />
+                              </label>
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">W (cm)</span>
+                                <input
+                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={it.dim_w_cm || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { dim_w_cm: e.target.value, dimensions_lwh: '' })}
+                                  placeholder="W"
+                                  aria-label="Width cm optional"
+                                />
+                              </label>
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">H (cm)</span>
+                                <input
+                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={it.dim_h_cm || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { dim_h_cm: e.target.value, dimensions_lwh: '' })}
+                                  placeholder="H"
+                                  aria-label="Height cm optional"
+                                />
+                              </label>
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">Color</span>
+                                <input
+                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                  value={it.color_code || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { color_code: e.target.value })}
+                                  placeholder="RAL 9010"
+                                  aria-label="Color code optional"
+                                />
+                              </label>
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">Wood</span>
+                                <select
+                                  className="quotes-select quotes-select--slim quotes-line-meta-control"
+                                  value={it.wood || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { wood: e.target.value })}
+                                  aria-label="Wood type optional"
+                                >
+                                  <option value="">—</option>
+                                  {CARPENTRY_WOOD_OPTIONS.map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                          ) : null}
                         </div>
                       </td>
-                      <td style={{ ...tableCellStyle, width: '14%', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                      <td style={{ ...tableCellStyle, width: '13%', textAlign: 'center' }} className="quotes-line-qty-cell">
+                        <div className="quotes-line-qty-row">
                           <input
-                            className="quotes-input"
+                            className="quotes-input quotes-input--slim quotes-line-qty"
                             type="text"
                             inputMode="decimal"
                             pattern="[0-9]*"
@@ -1360,68 +1669,64 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                             onChange={e => updateItem(it.id, { quantity: e.target.value })}
                             onWheel={e => e.preventDefault()}
                             onWheelCapture={e => e.preventDefault()}
-                            style={{ textAlign: 'center', width: '90%', maxWidth: 110, minWidth: 80, height: 36, padding: '6px 8px' }}
                             placeholder="Qty"
+                            aria-label="Quantity"
                           />
                           <select
-                            className="quotes-select"
+                            className="quotes-select quotes-select--slim quotes-line-unit"
                             value={it.unit_id || ''}
                             disabled={locked}
                             onChange={e => updateItem(it.id, { unit_id: e.target.value })}
-                            style={{ width: '90%', maxWidth: 110, minWidth: 80, fontSize: 12, padding: '6px 8px', height: 32 }}
+                            aria-label="Unit"
                           >
-                            <option value="">No Unit</option>
+                            <option value="">Unit</option>
                             {units.map(u => (
                               <option key={u.id} value={u.id}>{normalizeUnitAbbreviation(u.abbreviation, u.name)}</option>
                             ))}
                           </select>
                         </div>
                       </td>
-                      <td style={{ ...tableCellStyle, textAlign: 'center', width: '18%', padding: '8px 6px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-                          {!locked ? (
-                            <div style={{ position: 'relative', width: 150, maxWidth: '100%' }}>
-                              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#8ab', pointerEvents: 'none' }}>{currencyLabel}</span>
-                              <input
-                                className="quotes-input price-inline-input"
-                                type="number"
-                                value={unitPriceValue}
-                                disabled={locked}
-                                onChange={e => updateItem(it.id, { unit_price: e.target.value })}
-                                onWheelCapture={e => e.preventDefault()}
-                                placeholder={`${currencyLabel} 0.00`}
-                                style={{ width: '100%', textAlign: 'right', padding: '6px 10px', paddingLeft: 30 }}
-                              />
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 36 }}>
-                              <span style={{ minWidth: 14, color: '#8ab' }}>{currencyLabel}</span>
-                              <span>{unitPriceValue === '' ? '0.00' : Number(unitPriceValue || 0).toFixed(2)}</span>
-                            </div>
-                          )}
-                        </div>
+                      <td style={{ ...tableCellStyle, textAlign: 'center', width: '16%' }} className="quotes-line-price-cell">
+                        {!locked ? (
+                          <div className="quotes-line-price-wrap">
+                            <span className="quotes-line-price-prefix">{currencyLabel}</span>
+                            <input
+                              className="quotes-input quotes-input--slim price-inline-input quotes-line-price"
+                              type="number"
+                              value={unitPriceValue}
+                              disabled={locked}
+                              onChange={e => updateItem(it.id, { unit_price: e.target.value })}
+                              onWheelCapture={e => e.preventDefault()}
+                              placeholder="0.00"
+                              aria-label="Unit price"
+                            />
+                          </div>
+                        ) : (
+                          <div className="quotes-line-amount-readonly">
+                            <span className="quotes-line-price-prefix">{currencyLabel}</span>
+                            <span>{unitPriceValue === '' ? '0.00' : Number(unitPriceValue || 0).toFixed(2)}</span>
+                          </div>
+                        )}
                       </td>
-                      <td style={{ ...tableCellStyle, textAlign: 'right', width: '12%' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, minHeight: 36 }}>
-                          <span style={{ minWidth: 14, color: '#8ab' }}>{currencyLabel}</span>
+                      <td style={{ ...tableCellStyle, textAlign: 'right', width: '11%' }}>
+                        <div className="quotes-line-amount-readonly quotes-line-amount-total">
+                          <span className="quotes-line-price-prefix">{currencyLabel}</span>
                           <span>{lineTotal}</span>
                         </div>
                       </td>
-                      <td style={{ ...tableCellStyle, width: '16%', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-                          {!locked && (
-                            <button
-                              className="danger-button"
-                              disabled={locked}
-                              onClick={() => removeItem(it.id)}
-                              title="Delete item"
-                              aria-label="Delete item"
-                              style={{ ...compactDanger, display: 'inline-flex', justifyContent: 'center', minWidth: 90 }}
-                            >
-                              <FaTrashAlt size={12} />
-                            </button>
-                          )}
-                        </div>
+                      <td style={{ ...tableCellStyle, width: '8%', textAlign: 'center' }}>
+                        {!locked ? (
+                          <button
+                            type="button"
+                            className="danger-button quotes-line-delete"
+                            disabled={locked}
+                            onClick={() => removeItem(it.id)}
+                            title="Remove line"
+                            aria-label="Remove line"
+                          >
+                            <FaTrashAlt size={12} />
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -1430,11 +1735,21 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
             </table>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 12, color: '#cfe' }}>
-            <div>Subtotal: {subtotal.toFixed(2)}</div>
-            <div>Discount: {discount.toFixed(2)}</div>
-            <div>VAT: {vatAmount.toFixed(2)}{vatChoice === 'vat16' ? '' : ' (Exclusive)'}</div>
-            <div style={{ fontWeight: 'bold' }}>Total: {total.toFixed(2)}</div>
+          <div className="quotes-totals-bar" role="status" aria-live="polite">
+            <div className="quotes-totals-bar-inner">
+              <span><span className="quotes-totals-label">Subtotal</span> {subtotal.toFixed(2)}</span>
+              <span className="quotes-totals-sep" aria-hidden="true" />
+              <span><span className="quotes-totals-label">Discount</span> {discount.toFixed(2)}</span>
+              <span className="quotes-totals-sep" aria-hidden="true" />
+              <span>
+                <span className="quotes-totals-label">VAT</span> {vatAmount.toFixed(2)}
+                {vatChoice === 'vat16' ? '' : ' (excl.)'}
+              </span>
+              <span className="quotes-totals-sep" aria-hidden="true" />
+              <span className="quotes-totals-total">
+                <span className="quotes-totals-label">Total</span> {total.toFixed(2)}
+              </span>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap:'wrap' }}>
@@ -1442,7 +1757,8 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
               <button
                 className="action-button"
                 style={{ ...compactButton, minWidth: 140 }}
-                disabled={saving}
+                disabled={saving || productionRouteMissing}
+                title={productionRouteMissing ? 'Select Upholstery or Carpentry first' : undefined}
                 onClick={saveQuote}
               >
                 {isEditing ? 'Update Quote' : 'Create Quote'}

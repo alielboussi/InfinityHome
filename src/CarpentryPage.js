@@ -5,15 +5,18 @@ import { resolveCarpentryWarehouseLocations } from './constants/carpentryWarehou
 import { useMaterialUomOptions } from './hooks/useMaterialUomOptions';
 import {
   fetchCarpentryCatalog,
-  getCachedCarpentryCatalog,
   postCarpentryCatalog,
 } from './services/carpentryCatalogApi';
+import { getCachedCarpentryCatalog } from './utils/productionPortalCatalogCache';
 import {
   applyStoreroomMaterialUomToLine,
-  labelForMaterialUom,
   uomFromStoreroomMaterial,
 } from './utils/storeroomBomLineUom';
 import CategoryRemainingChecklist from './components/CategoryRemainingChecklist';
+import { groupKitweCatalogByFamilyBase } from './utils/groupKitweCatalogByFamilyBase';
+import { buildKitweCrossPortalImageLookup } from './utils/kitweCatalogFamilyCardImage';
+import KitweCatalogFamilyGrid from './components/KitweCatalogFamilyGrid';
+import CatalogProductBomEditor from './components/CatalogProductBomEditor';
 
 const emptyMaterial = () => ({
   material_assembly_id: '',
@@ -42,7 +45,9 @@ export default function CarpentryPage() {
   const [categories, setCategories] = useState(() => initialCached?.categories || []);
   const [storeroomMaterials, setStoreroomMaterials] = useState(() => initialCached?.storeroomMaterials || []);
   const [carpentryProducts, setCarpentryProducts] = useState(() => initialCached?.carpentryProducts || []);
+  const [upholsteryProducts, setUpholsteryProducts] = useState(() => initialCached?.upholsteryProducts || []);
   const [expandedId, setExpandedId] = useState('');
+  const [inlayFamilyKey, setInlayFamilyKey] = useState('');
   const [expandedSetId, setExpandedSetId] = useState('');
   const [materialDrafts, setMaterialDrafts] = useState(() => buildDraftsForProducts(initialCached?.carpentryProducts));
   const [carpentryLocations, setCarpentryLocations] = useState(
@@ -64,6 +69,7 @@ export default function CarpentryPage() {
     setWarehouseSetCandidates(catalog.setCandidates || []);
     setStoreroomMaterials(catalog.storeroomMaterials || []);
     setCarpentryProducts(catalog.carpentryProducts || []);
+    setUpholsteryProducts(catalog.upholsteryProducts || []);
     setMaterialDrafts(buildDraftsForProducts(catalog.carpentryProducts));
   }, []);
 
@@ -117,7 +123,15 @@ export default function CarpentryPage() {
     });
   }, [warehouseSetCandidates, search]);
 
-  const catalogRows = useMemo(() => carpentryProducts || [], [carpentryProducts]);
+  const catalogFamilyGroups = useMemo(
+    () => groupKitweCatalogByFamilyBase(carpentryProducts),
+    [carpentryProducts],
+  );
+
+  const catalogImageLookup = useMemo(
+    () => buildKitweCrossPortalImageLookup(carpentryProducts, upholsteryProducts),
+    [carpentryProducts, upholsteryProducts],
+  );
 
   const materialOptions = useMemo(
     () => (storeroomMaterials || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))),
@@ -205,30 +219,93 @@ export default function CarpentryPage() {
     });
   };
 
+  const renderCatalogInlay = (group) => (
+    <div className="floor2-inlay-panel__table-wrap">
+      <table className="kitwe-catalog-table kitwe-catalog-table--upholstery">
+        <thead>
+          <tr>
+            <th style={{ width: '18%' }}>SKU</th>
+            <th style={{ width: '46%' }}>Product</th>
+            <th className="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(group.items || []).map((row) => {
+            const open = expandedId === row.id;
+            const lines = materialDrafts[row.id] || [emptyMaterial()];
+            return (
+              <React.Fragment key={row.id}>
+                <tr>
+                  <td className="col-sku">{row.family_sku || '—'}</td>
+                  <td><strong>{row.name}</strong></td>
+                  <td className="col-actions">
+                    <div className="kitwe-row-actions">
+                      <button
+                        type="button"
+                        className="kitwe-btn-secondary kitwe-btn-compact"
+                        onClick={() => setExpandedId(open ? '' : row.id)}
+                      >
+                        {open ? 'Close BOM' : `Edit BOM (${(row.materials || []).length})`}
+                      </button>
+                      <button
+                        type="button"
+                        className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
+                        disabled={busyId === row.id}
+                        onClick={() => removeProduct(row.id)}
+                      >
+                        {busyId === row.id ? '…' : 'Remove'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {open ? (
+                  <tr>
+                    <td colSpan={3} style={{ background: 'var(--kitwe-panel-bg, #f8fafc)', padding: 16 }}>
+                      <CatalogProductBomEditor
+                        row={row}
+                        lines={lines}
+                        materialOptions={materialOptions}
+                        uomOptions={uomOptions}
+                        storeroomLocations={carpentryLocations}
+                        busyId={busyId}
+                        bomHint="Storeroom materials per unit of product (deducted on carpentry manufacture)."
+                        onUpdateLine={(index, patch) => updateMaterialLine(row.id, index, patch)}
+                        onRemoveLine={(index) => setMaterialDrafts((prev) => ({
+                          ...prev,
+                          [row.id]: (prev[row.id] || []).filter((_, i) => i !== index),
+                        }))}
+                        onAddLine={() => setMaterialDrafts((prev) => ({
+                          ...prev,
+                          [row.id]: [...(prev[row.id] || []), emptyMaterial()],
+                        }))}
+                        onSave={() => saveMaterials(row.id)}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div className="kitwe-catalog-page">
       <BackToDashboard />
       <h1 style={{ marginTop: 16 }}>Carpentry</h1>
-      <p style={{ color: 'var(--kitwe-muted, #64748b)', marginBottom: 16, maxWidth: 720 }}>
-        Choose warehouse products from <strong>Warehouse Floor 1</strong> (
-        <code>/warehouse-products</code>
-        {' '}
-        catalog). The carpentry app manufactures from this list; output WIP goes to{' '}
-        <strong>Warehouse Floor 2</strong> only. Sets are added via their components — search a set, open{' '}
-        <strong>Components</strong>
-        ). Define BOM materials from <strong>Storeroom 1–3</strong> (shared with upholstery); manufacturing deducts storeroom qty.
-      </p>
       {carpentryLocations.length < 3 ? (
         <p style={{ color: '#b45309', marginBottom: 12 }}>
-          Run <code>node scripts/seedCarpentryWarehouseLocations.js</code> to create Carpentry Warehouse 1–3 in Inventory locations.
+          Run <code>node scripts/seedCarpentryWarehouseLocations.js</code> for Storeroom 1–3 locations.
         </p>
       ) : null}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
-        <div className="carpentry-add-search-wrap" style={{ marginBottom: 0, flex: '1 1 340px' }}>
+      <div className="kitwe-catalog-add-toolbar kitwe-catalog-add-toolbar--inline-row">
+        <div className="carpentry-add-search-wrap kitwe-catalog-add-toolbar__search">
           <input
             className="kitwe-search-input carpentry-add-search-input"
-            style={{ width: '100%', maxWidth: 520, minWidth: 340 }}
+            style={{ width: '100%' }}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search SKU or name to add a product…"
@@ -328,169 +405,32 @@ export default function CarpentryPage() {
           ) : null}
         </div>
 
-        <div style={{ flex: '1 1 340px' }}>
-          <CategoryRemainingChecklist
-            categories={categories}
-            candidates={candidates}
-            setCandidates={warehouseSetCandidates}
-            existingProductIds={selectedProductIds}
-            busy={Boolean(busyId)}
-            selectPlaceholder="Select category to add remaining…"
-            addButtonLabel="Add selected to Carpentry"
-            onAddSelected={(ids) => addProducts(ids)}
-          />
-        </div>
+        <CategoryRemainingChecklist
+          toolbarInline
+          categories={categories}
+          candidates={candidates}
+          setCandidates={warehouseSetCandidates}
+          existingProductIds={selectedProductIds}
+          busy={Boolean(busyId)}
+          selectPlaceholder="Select category to add remaining…"
+          addButtonLabel="Add selected to Carpentry"
+          onAddSelected={(ids) => addProducts(ids)}
+        />
       </div>
 
       {loading ? <p>Loading…</p> : null}
       {error ? <p style={{ color: '#f87171' }}>{error}</p> : null}
 
-      <h2 style={{ fontSize: '1.1rem', marginTop: 24 }}>Carpentry catalog (workshop view)</h2>
-      <div className="kitwe-catalog-table-wrap">
-        <table className="kitwe-catalog-table">
-          <thead>
-            <tr>
-              <th className="col-sku">SKU</th>
-              <th className="col-product">Product</th>
-              <th className="col-actions">Materials</th>
-            </tr>
-          </thead>
-          <tbody>
-            {catalogRows.length ? catalogRows.map((row) => {
-              const open = expandedId === row.id;
-              const lines = materialDrafts[row.id] || [emptyMaterial()];
-              return (
-                <React.Fragment key={row.id}>
-                  <tr>
-                    <td className="col-sku">{row.family_sku || '—'}</td>
-                    <td className="col-product"><strong>{row.name}</strong></td>
-                    <td className="col-actions">
-                      <div className="kitwe-row-actions">
-                        <button
-                          type="button"
-                          className="kitwe-btn-secondary kitwe-btn-compact"
-                          onClick={() => setExpandedId(open ? '' : row.id)}
-                        >
-                          {open ? 'Close' : 'Edit BOM'}
-                        </button>
-                        <button
-                          type="button"
-                          className="kitwe-btn-secondary kitwe-btn-compact"
-                          disabled={busyId === row.id}
-                          onClick={() => removeProduct(row.id)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  {open ? (
-                    <tr>
-                      <td colSpan={3} style={{ background: 'var(--kitwe-panel-bg, #f8fafc)', padding: 16 }}>
-                        <p style={{ margin: '0 0 12px', fontSize: '0.9rem', color: 'var(--kitwe-muted)' }}>
-                          Materials per unit — pick storeroom materials (create on each storeroom page).
-                        </p>
-                        {lines.map((line, index) => (
-                          <div key={index} className="kitwe-component-row">
-                            <select
-                              className="kitwe-form-control kitwe-form-control--product"
-                              value={line.material_assembly_id}
-                              onChange={(e) => updateMaterialLine(row.id, index, { material_assembly_id: e.target.value })}
-                            >
-                              <option value="">Material…</option>
-                              {materialOptions.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.name}
-                                  {' '}
-                                  (
-                                  {m.family_sku || 'SKU'}
-                                  ·
-                                  {' '}
-                                  {m.default_uom || 'no UOM'}
-                                  ·
-                                  {' '}
-                                  {m.storeroom_qty}
-                                  {' '}
-                                  in storerooms)
-                                </option>
-                              ))}
-                            </select>
-                            <input
-                              type="number"
-                              min={0}
-                              step="any"
-                              className="kitwe-form-control kitwe-form-control--qty"
-                              value={line.quantity}
-                              onChange={(e) => updateMaterialLine(row.id, index, { quantity: e.target.value })}
-                            />
-                            <input
-                              type="text"
-                              className="kitwe-form-control"
-                              readOnly
-                              tabIndex={-1}
-                              value={labelForMaterialUom(
-                                uomFromStoreroomMaterial(materialOptions, line.material_assembly_id)
-                                  || line.uom,
-                                uomOptions,
-                              )}
-                              title="Unit of measure from the storeroom material"
-                              placeholder="Pick material…"
-                            />
-                            <select
-                              className="kitwe-form-control"
-                              value={line.warehouse_location_id || ''}
-                              onChange={(e) => updateMaterialLine(row.id, index, { warehouse_location_id: e.target.value })}
-                            >
-                              <option value="">Any warehouse (1→2→3)</option>
-                              {carpentryLocations.map((loc) => (
-                                <option key={loc.id} value={loc.id}>{loc.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              className="kitwe-btn-secondary"
-                              onClick={() => setMaterialDrafts((prev) => ({
-                                ...prev,
-                                [row.id]: (prev[row.id] || []).filter((_, i) => i !== index),
-                              }))}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                        <div className="kitwe-create-form-actions">
-                          <button
-                            type="button"
-                            className="kitwe-btn-secondary"
-                            onClick={() => setMaterialDrafts((prev) => ({
-                              ...prev,
-                              [row.id]: [...(prev[row.id] || []), emptyMaterial()],
-                            }))}
-                          >
-                            Add material
-                          </button>
-                          <button
-                            type="button"
-                            className="kitwe-btn-create-set"
-                            disabled={busyId === `mat-${row.id}`}
-                            onClick={() => saveMaterials(row.id)}
-                          >
-                            {busyId === `mat-${row.id}` ? 'Saving…' : 'Save materials'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                </React.Fragment>
-              );
-            }) : (
-              <tr>
-                <td colSpan={3} className="kitwe-empty-hint">No carpentry products yet — search above to add from Warehouse Floor 1.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <KitweCatalogFamilyGrid
+        title="Carpentry catalog"
+        groups={catalogFamilyGroups}
+        imageLookup={catalogImageLookup}
+        inlayFamilyKey={inlayFamilyKey}
+        onInlayFamilyKeyChange={setInlayFamilyKey}
+        emptyHint="No carpentry products yet — search above to add from Warehouse Floor 1."
+        inlayIntro="Edit BOM materials or remove variants from the carpentry workshop catalog."
+        renderInlayContent={renderCatalogInlay}
+      />
     </div>
   );
 }

@@ -1,20 +1,27 @@
+import { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ProductionAppAuthGate from '../productionKiosk/components/ProductionAppAuthGate';
 import { useCarpentryAccessGrant } from './hooks/useCarpentryAccessGrant';
+import { useProductionPushNotifications } from '../productionKiosk/hooks/useProductionPushNotifications';
 import DashboardScreen from './screens/DashboardScreen';
 import CarpentryCreateScreen from './screens/CarpentryCreateScreen';
 import ManufactureScreen from './screens/ManufactureScreen';
 import FinishingScreen from './screens/FinishingScreen';
 import QuotesScreen from './screens/QuotesScreen';
 import QuoteDetailScreen from './screens/QuoteDetailScreen';
+import WarehouseRepairsScreen from './screens/WarehouseRepairsScreen';
+import RepairReturnSignatureScreen from './screens/RepairReturnSignatureScreen';
+import RepairReturnDoneScreen from './screens/RepairReturnDoneScreen';
+import JobsScreen from './screens/JobsScreen';
+import PaintingScreen from './screens/PaintingScreen';
 import { stackScreenOptions, theme } from './shared/theme';
 
 const Stack = createNativeStackNavigator();
 
-function MainStack() {
+function MainStack({ navigationRef }) {
   const {
     loading,
     bootstrapped,
@@ -24,6 +31,8 @@ function MainStack() {
     refresh,
     accessHint,
   } = useCarpentryAccessGrant();
+
+  useProductionPushNotifications(navigationRef, { allowed });
 
   if (!bootstrapped && loading) {
     return (
@@ -58,6 +67,26 @@ function MainStack() {
           />
         )}
       </Stack.Screen>
+      <Stack.Screen name="Jobs" options={{ headerShown: false }}>
+        {(props) => (
+          <JobsScreen
+            {...props}
+            allowed={allowed}
+            accessHint={accessHint}
+            onRefreshAccess={refresh}
+          />
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="Painting" options={{ headerShown: false }}>
+        {(props) => (
+          <PaintingScreen
+            {...props}
+            allowed={allowed}
+            accessHint={accessHint}
+            onRefreshAccess={refresh}
+          />
+        )}
+      </Stack.Screen>
       <Stack.Screen name="Finishing" options={{ headerShown: false }}>
         {(props) => (
           <FinishingScreen
@@ -80,19 +109,36 @@ function MainStack() {
         )}
       </Stack.Screen>
       <Stack.Screen name="QuoteDetail" options={{ headerShown: false }} component={QuoteDetailScreen} />
+      <Stack.Screen name="Repairs" options={{ headerShown: false }}>
+        {(props) => (
+          <WarehouseRepairsScreen
+            {...props}
+            route={{
+              ...props.route,
+              params: { repairDepartment: 'carpentry', titleKey: 'dashRepairs', ...props.route.params },
+            }}
+            allowed={allowed}
+            accessHint={accessHint}
+            onRefreshAccess={refresh}
+          />
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="RepairReturnSignature" options={{ headerShown: false }} component={RepairReturnSignatureScreen} />
+      <Stack.Screen name="RepairReturnDone" options={{ headerShown: false }} component={RepairReturnDoneScreen} />
     </Stack.Navigator>
   );
 }
 
 export default function App() {
+  const navigationRef = useRef(null);
   return (
     <SafeAreaProvider>
       <ProductionAppAuthGate
         titleKey="dashCarpentryTitle"
         signInMethods={__DEV__ ? 'both' : 'google'}
       >
-        <NavigationContainer>
-          <MainStack />
+        <NavigationContainer ref={navigationRef}>
+          <MainStack navigationRef={navigationRef} />
         </NavigationContainer>
       </ProductionAppAuthGate>
     </SafeAreaProvider>

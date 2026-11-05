@@ -30,7 +30,14 @@ const mobile = read('server/handlers/warehouse-mobile.js');
 assert(fs.existsSync(path.join(root, 'src/WarehouseStorage.js')), 'Hassan Warehouse Storage page must exist');
 assert(read('src/AppChrome.js').includes('/warehouse-storage'), 'nav must include Warehouse Storage');
 assert(read('src/AppChrome.js').includes('/warehouse-repairs-admin'), 'nav must include Repairs admin');
-assert(read('src/AppChrome.js').includes('/warehouse-sales-storage-admin'), 'nav must include Sales Storage admin');
+assert(
+  read('src/components/WarehouseCatalogViewToggle.js').includes('/warehouse-products/sales-storage'),
+  'Floor 1 catalog must include Sales Storage view',
+);
+assert(
+  !read('src/AppChrome.js').includes("route: '/warehouse-sales-storage-admin'"),
+  'Sales Storage must not be a top-level sidebar item',
+);
 assert(read('server/lib/warehouseStorageSends.js').includes('kitwe_deducted_at'), 'storage send must deduct Kitwe stock');
 assert(read('server/lib/warehouseStorageSends.js').includes('KITWE_LOCATION_ID'), 'storage send must adjust Kitwe location');
 const soldOrdersPath = [

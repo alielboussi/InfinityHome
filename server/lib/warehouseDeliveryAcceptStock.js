@@ -69,6 +69,28 @@ export async function moveAssembliesForDeliveryReceive(sb, lines, {
 }
 
 /**
+ * Return WHR: Floor 1 was deducted on ship submit — Kitwe + only when Hassan accepts.
+ */
+export async function moveReturnShipmentAssembliesToKitwe(sb, lines, {
+  toLocationId = WAREHOUSE_TO_LOCATION_ID,
+} = {}) {
+  const moved = [];
+  for (const line of lines || []) {
+    if (!deliveryEntryFinishedUnit(line)) continue;
+    const aid = String(line.metadata?.assembly_id || '').trim();
+    const qty = Math.max(0, Number(line.quantity) || 0);
+    if (!aid || qty < 1) continue;
+    await adjustAssemblyStock(sb, aid, toLocationId, qty);
+    moved.push({
+      lineId: String(line.id),
+      assemblyId: aid,
+      qty,
+    });
+  }
+  return moved;
+}
+
+/**
  * After packet moves: refresh derived finished-product qty at both locations, then full location recompute (sets at Kitwe).
  */
 export async function syncWarehouseStockAfterDeliveryReceive(sb, moved, {

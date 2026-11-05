@@ -16,6 +16,7 @@ import { useProductionKioskLocale } from '../productionKiosk/hooks/useProduction
 import { tUi } from '../productionKiosk/lib/productionKioskI18n';
 import { fetchCarpentryProductionQuotes } from '../services/carpentryApi';
 import { theme } from '../shared/theme';
+import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
 
 export default function QuotesScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
   const insets = useSafeAreaInsets();
@@ -53,7 +54,7 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
     return (
       <View style={[kiosk.screen, kioskScreenEdgesSafe(insets, 32), styles.flex]}>
         <ProductionKioskTopBar
-          title={tUi('carpentryQuotesTitle', locale)}
+          title={tUi('dashCarpentryQuoteOrders', locale)}
           locale={locale}
           onToggleLocale={toggleLocale}
         />
@@ -76,7 +77,7 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
   return (
     <View style={[kiosk.screen, styles.flex, kioskScreenEdgesSafe(insets, 16)]}>
       <ProductionKioskTopBar
-        title={tUi('carpentryQuotesTitle', locale)}
+        title={tUi('dashCarpentryQuoteOrders', locale)}
         locale={locale}
         onToggleLocale={toggleLocale}
       />
@@ -108,6 +109,13 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
                 ? tUi('carpentryQuoteInProduction', locale)
                 : tUi('carpentryQuoteAwaiting', locale)}
             </Text>
+            <QuoteProductionCardExtras
+              quote={item}
+              route="carpentry"
+              textAlign={textAlign}
+              tUi={tUi}
+              locale={locale}
+            />
           </Pressable>
         )}
         ListEmptyComponent={

@@ -129,7 +129,12 @@ assert(
   'Deliveries admin must support resend WhatsApp with delivery note PDF',
 );
 assert(chrome.includes('/warehouse-repairs-admin'), 'inventory nav must include Repairs');
-assert(chrome.includes('/warehouse-sales-storage-admin'), 'inventory nav must include Sales Storage');
+assert(
+  chrome.includes('/warehouse-products/sales-storage')
+  || read('src/components/WarehouseCatalogViewToggle.js').includes('Sales Storage'),
+  'Sales Storage must live under warehouse-products',
+);
+assert(!chrome.includes("route: '/warehouse-sales-storage-admin'"), 'Sales Storage sidebar link must be removed');
 assert(!chrome.includes('warehouse-deliveries-hassan-test'), 'Hassan mirror test route must be removed');
 
 const noteHtml = fs.readFileSync(path.join(root, 'src/utils/buildDeliveryNotePrintHtml.js'), 'utf8');

@@ -8,6 +8,7 @@
     "prestart": "node scripts/assertDeliveryKitStandalone.js && node scripts/assertDeliverySharedStandalone.js && node scripts/verifyDeliveryApp.js",
     "materialize": "node scripts/materializeDeliveryStandalone.js",
     "icons": "node scripts/ensureDeliveryIcons.js",
+    "eas:build:android": "eas build --platform android --profile preview --non-interactive",
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
     "android": "expo start --android"

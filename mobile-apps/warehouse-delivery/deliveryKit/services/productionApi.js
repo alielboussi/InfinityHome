@@ -26,9 +26,51 @@ export async function fetchUpholsteryCatalogAssemblyIds() {
   return rows.map((row) => String(row.id || row.assembly_id || '')).filter(Boolean);
 }
 
-export async function fetchUpholsteryManufactureProducts() {
-  const payload = await productionOp('upholstery-manufacture-list');
-  return payload?.products || [];
+const MANUFACTURE_LIST_STALE_MS = 90_000;
+let manufactureListCache = null;
+let manufactureListFetchedAt = 0;
+/** @type {Promise<unknown[]> | null} */
+let manufactureListInflight = null;
+
+export function invalidateUpholsteryManufactureListCache() {
+  manufactureListCache = null;
+  manufactureListFetchedAt = 0;
+  manufactureListInflight = null;
+}
+
+/** Instant paint when returning to Manufacture within the stale window. */
+export function peekUpholsteryManufactureListCache() {
+  if (!Array.isArray(manufactureListCache)) return null;
+  if (Date.now() - manufactureListFetchedAt > MANUFACTURE_LIST_STALE_MS) return null;
+  return manufactureListCache;
+}
+
+export async function fetchUpholsteryManufactureProducts({ force = false } = {}) {
+  const now = Date.now();
+  if (
+    !force
+    && Array.isArray(manufactureListCache)
+    && now - manufactureListFetchedAt <= MANUFACTURE_LIST_STALE_MS
+  ) {
+    return manufactureListCache;
+  }
+  if (manufactureListInflight && !force) {
+    return manufactureListInflight;
+  }
+  const run = async () => {
+    const payload = await productionOp('upholstery-manufacture-list');
+    const list = Array.isArray(payload?.products) ? payload.products : [];
+    manufactureListCache = list;
+    manufactureListFetchedAt = Date.now();
+    return list;
+  };
+  const pending = run().finally(() => {
+    if (manufactureListInflight === pending) {
+      manufactureListInflight = null;
+    }
+  });
+  manufactureListInflight = pending;
+  return pending;
 }
 
 export async function runUpholsteryManufacture({ rawAssemblyId, productQty = 1 }) {
@@ -36,6 +78,76 @@ export async function runUpholsteryManufacture({ rawAssemblyId, productQty = 1 }
     raw_assembly_id: rawAssemblyId,
     product_qty: productQty,
   });
+}
+
+export async function uploadUpholsteryFloor2WipPhoto({ rawAssemblyId, imageBase64 }) {
+  const payload = await productionOp('upholstery-floor2-wip-photo', {
+    raw_assembly_id: rawAssemblyId,
+    image_base64: imageBase64,
+  });
+  invalidateUpholsteryManufactureListCache();
+  return payload;
+}
+
+export async function fetchUpholsteryProductionJobs({ activeOnly = true } = {}) {
+  try {
+    const payload = await productionOp('upholstery-job-list', {
+      active_only: activeOnly,
+    });
+    const jobs = payload?.jobs;
+    if (Array.isArray(jobs)) return jobs;
+    return [];
+  } catch (err) {
+    if (isUnknownWarehouseOpError(err?.message)) {
+      throw new Error(
+        'Production jobs are not on the server yet. Deploy the latest Infinity Home API, then try again.',
+      );
+    }
+    throw err;
+  }
+}
+
+function isUnknownWarehouseOpError(message) {
+  return /unknown op/i.test(String(message || ''));
+}
+
+export async function startUpholsteryProductionJob({ rawAssemblyId, productQty = 1 }) {
+  try {
+    const payload = await productionOp('upholstery-job-start', {
+      raw_assembly_id: rawAssemblyId,
+      product_qty: productQty,
+    });
+    return payload?.job || payload;
+  } catch (err) {
+    if (isUnknownWarehouseOpError(err?.message)) {
+      throw new Error(
+        'Production jobs are not on the server yet. Deploy the latest Infinity Home API, then try again.',
+      );
+    }
+    throw err;
+  }
+}
+
+export async function pauseUpholsteryProductionJob(jobId) {
+  const payload = await productionOp('upholstery-job-pause', { job_id: jobId });
+  return payload?.job || payload;
+}
+
+export async function resumeUpholsteryProductionJob(jobId) {
+  const payload = await productionOp('upholstery-job-resume', { job_id: jobId });
+  return payload?.job || payload;
+}
+
+export async function toggleUpholsteryProductionJobUnit(jobId, unitIndex) {
+  const payload = await productionOp('upholstery-job-check-unit', {
+    job_id: jobId,
+    unit_index: unitIndex,
+  });
+  return payload?.job || payload;
+}
+
+export async function finishUpholsteryProductionJob(jobId) {
+  return productionOp('upholstery-job-finish', { job_id: jobId });
 }
 
 /** Lightweight preset refresh — same data as portal /warehouse-production-presets. */
@@ -124,15 +236,30 @@ function parseCreateProductionPacketResponse(payload) {
     label: payload?.label || null,
     labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
     pendingLabelPrint: payload?.pending_label_print || payload?.pendingLabelPrint || null,
+    pendingPortalSetup: payload?.pending_portal_setup || payload?.pendingPortalSetup || null,
   };
 }
 
-export async function attachProductionProductPhoto({ assemblyId, imageBase64, pendingLabelPrint, preset, onAttempt }) {
+export async function cancelProductionPacketDraft(assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) throw new Error('assembly_id is required.');
+  return productionOp('production-packet-cancel-draft', { assembly_id: id });
+}
+
+export async function attachProductionProductPhoto({
+  assemblyId,
+  imageBase64,
+  pendingLabelPrint,
+  pendingPortalSetup: pendingPortalSetupPayload,
+  preset,
+  onAttempt,
+}) {
   const { attachProductionProductPhotoWithAi } = await import('./productionPhotoApi.js');
   return attachProductionProductPhotoWithAi({
     assemblyId,
     imageBase64,
     pendingLabelPrint,
+    pendingPortalSetup: pendingPortalSetupPayload,
     preset,
     onAttempt,
   });
@@ -183,6 +310,7 @@ export async function createProductionPacket({
   onPhotoAttempt,
   existingAssemblyId,
   pendingLabelPrint,
+  pendingPortalSetup: pendingPortalSetupArg,
 } = {}) {
   const resumeAssemblyId = String(existingAssemblyId || '').trim();
   const hasPhoto = Boolean(String(imageBase64 || '').trim());
@@ -194,6 +322,7 @@ export async function createProductionPacket({
         assemblyId: resumeAssemblyId,
         imageBase64,
         pendingLabelPrint,
+        pendingPortalSetup: pendingPortalSetupArg,
         preset,
         onAttempt: onPhotoAttempt,
       });
@@ -258,6 +387,11 @@ export async function createProductionPacket({
     || createPayload?.pendingLabelPrint
     || pendingLabelPrint
     || null;
+  const resolvedPendingPortalSetup = parsed.pendingPortalSetup
+    || createPayload?.pending_portal_setup
+    || createPayload?.pendingPortalSetup
+    || pendingPortalSetupArg
+    || null;
   let photoPayload = null;
 
   try {
@@ -265,6 +399,7 @@ export async function createProductionPacket({
       assemblyId,
       imageBase64,
       pendingLabelPrint: resolvedPendingLabelPrint,
+      pendingPortalSetup: resolvedPendingPortalSetup,
       preset,
       onAttempt: onPhotoAttempt,
     });

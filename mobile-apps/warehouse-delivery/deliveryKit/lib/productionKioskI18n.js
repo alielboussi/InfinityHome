@@ -1,5 +1,13 @@
 /** Keep in sync with src/utils/productionKioskI18n.js */
 
+function coalesceDisplayText(value, fallback = '') {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value);
+  return text || fallback;
+}
+
+export const textForDisplay = coalesceDisplayText;
+
 const UI_STRINGS = {
   pageTitle: { en: 'Upholstery', ar: 'التنجيد' },
   preset3Seater: { en: '3 seater', ar: 'ثلاث مقاعد' },
@@ -51,7 +59,10 @@ const UI_STRINGS = {
     en: 'Tap a recent name, then choose a product type to finish.',
     ar: 'اختر اسمًا حديثًا، ثم نوع المنتج لإكمال الإنشاء.',
   },
-  qtyLabel: { en: 'Stock qty (warehouse)', ar: 'كمية المخزون (المستودع)' },
+  qtyLabel: {
+    en: 'Stock qty (Floor 1 finished + Floor 2 WIP)',
+    ar: 'كمية المخزون (Floor 1 جاهز + WIP في Floor 2)',
+  },
   save: { en: 'Save production item', ar: 'حفظ عنصر الإنتاج' },
   saving: { en: 'Saving…', ar: 'جاري الحفظ…' },
   translateToggle: { en: 'عربي', ar: 'English' },
@@ -99,7 +110,7 @@ const UI_STRINGS = {
     ar: 'Preparing photo for upload…',
   },
   photoProcessing: {
-    en: 'AI retouching photo (white catalog background). This can take 1–2 minutes — do not close the app.',
+    en: 'AI retouching photo (white catalog background). Usually 30–90 seconds — do not close the app.',
     ar: 'جاري حفظ المنتج… ثم الذكاء الاصطناعي يعالج الصورة (خلفية بيضاء). لا تغلق التطبيق.',
   },
   photoCancelled: {
@@ -110,6 +121,17 @@ const UI_STRINGS = {
   needPreset: { en: 'Choose a product type to build the product name.', ar: 'اختر نوع المنتج لبناء اسم المنتج.' },
   needQty: { en: 'Enter stock quantity (1 or more — one label per unit).', ar: 'أدخل كمية المخزون (1 أو أكثر — ملصق لكل وحدة).' },
   saveFailedTitle: { en: 'Could not save item', ar: 'تعذر حفظ العنصر' },
+  createAiPhotoFailedHint: {
+    en: 'AI photo retouch did not finish. Warehouse stock is not updated until retouch succeeds. Tap Retry or discard the draft.',
+    ar: 'لم يكتمل تحسين الصورة بالذكاء الاصطناعي. لا يُحدَّث مخزون المستودع حتى ينجح. اضغط إعادة المحاولة أو تجاهل المسودة.',
+  },
+  createAiPhotoRetry: { en: 'Retry AI photo', ar: 'إعادة محاولة الصورة' },
+  createDiscardDraft: { en: 'Discard draft', ar: 'تجاهل المسودة' },
+  createDiscardDraftFailed: { en: 'Could not discard draft.', ar: 'تعذر تجاهل المسودة.' },
+  createAiPhotoRetryLost: {
+    en: 'Retry data was lost. Tap Save and take the photo again.',
+    ar: 'فُقدت بيانات إعادة المحاولة. اضغط حفظ والتقط الصورة من جديد.',
+  },
   savedNoLabelsQty: {
     en: 'Saved, but no labels were queued because stock qty was 0. Set qty to at least 1 before saving.',
     ar: 'تم الحفظ، لكن لم تُرسل ملصقات لأن الكمية كانت 0. اضبط الكمية على 1 أو أكثر قبل الحفظ.',
@@ -264,9 +286,48 @@ const UI_STRINGS = {
     ar: 'لا قائمة مواد — أضف المواد في صفحة Carpentry',
   },
   manufactureUpholsteryIntro: {
-    en: 'Raw carpentry output on Warehouse Floor 2 (linked on web Upholstery). Tap to finish ×1 — deducts Floor 2 raw; finished SKU credits Warehouse Floor 1 (new SKU creates product, existing adds qty).',
-    ar: 'خرج النجارة في Warehouse Floor 2 (مرتبط في صفحة التنجيد). اضغط ×1 — يُخصم من Floor 2 ويُضاف SKU النهائي إلى Floor 1.',
+    en: 'Products linked on web /upholstery with raw on Floor 2. Tap to set qty and begin production — stock and labels post when you finish the job.',
+    ar: 'منتجات مرتبطة في /upholstery مع خام في Floor 2. اضغط لتحديد الكمية وبدء الإنتاج — يُضاف المخزون والملصقات عند إنهاء المهمة.',
   },
+  manufactureBeginHint: { en: 'Tap to begin production', ar: 'اضغط لبدء الإنتاج' },
+  dashInProduction: { en: 'In production', ar: 'قيد الإنتاج' },
+  upholsteryJobsTitle: { en: 'Jobs', ar: 'المهام' },
+  upholsteryJobBegin: { en: 'Begin production', ar: 'بدء الإنتاج' },
+  upholsteryJobQtyLabel: { en: 'Units (max {max} on Floor 2)', ar: 'الوحدات (حد أقصى {max} في Floor 2)' },
+  upholsteryJobIntro: {
+    en: 'One product per job. Play starts the timer, pause holds it, stop finishes and sends ×1 to Warehouse Floor 1 (labels print when configured).',
+    ar: 'منتج واحد لكل مهمة. تشغيل يبدأ المؤقت، إيقاف مؤقت يعلّقه، Stop ينهي المهمة ويُضيف ×1 إلى Floor 1 (الملصقات عند التفعيل).',
+  },
+  upholsteryJobEmpty: {
+    en: 'No active jobs. Begin production from Manufacture.',
+    ar: 'لا مهام نشطة. ابدأ من «تصنيع».',
+  },
+  upholsteryJobLoadFailed: { en: 'Could not load jobs.', ar: 'تعذر تحميل المهام.' },
+  upholsteryJobQtyBadge: { en: 'Job qty {qty}', ar: 'كمية المهمة {qty}' },
+  upholsteryJobPause: { en: 'Pause timer', ar: 'إيقاف المؤقت مؤقتًا' },
+  upholsteryJobResume: { en: 'Resume timer', ar: 'استئناف المؤقت' },
+  upholsteryJobFinish: { en: 'Finish job', ar: 'إنهاء المهمة' },
+  upholsteryJobFinishTitle: { en: 'Finish production?', ar: 'إنهاء الإنتاج؟' },
+  upholsteryJobFinishBody: {
+    en: 'Send 1 × {name} to Warehouse Floor 1 and close this job?',
+    ar: 'إرسال 1 × {name} إلى Floor 1 وإغلاق المهمة؟',
+  },
+  upholsteryJobControlsHint: {
+    en: 'Play · Pause · Stop (complete → Floor 1)',
+    ar: 'تشغيل · إيقاف مؤقت · Stop (إنهاء → Floor 1)',
+  },
+  upholsteryJobFinishDone: {
+    en: 'Done — Floor 1 updated and labels queued.',
+    ar: 'تم — حُدّث Floor 1 و أُرسلت الملصقات.',
+  },
+  upholsteryJobFinishHint: {
+    en: 'Check every unit before finish.',
+    ar: 'ضع علامة على كل وحدة قبل الإنهاء.',
+  },
+  upholsteryJobStatus_ready: { en: 'Ready', ar: 'جاهز' },
+  upholsteryJobStatus_running: { en: 'Running', ar: 'يعمل' },
+  upholsteryJobStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتًا' },
+  upholsteryJobStatus_completed: { en: 'Completed', ar: 'مكتمل' },
   manufactureUpholsteryConfirmBody: {
     en: 'Finish 1 × {name}? Deducts raw from Warehouse Floor 2; {finished} credits Warehouse Floor 1.',
     ar: 'إنهاء 1 × {name}؟ يُخصم الخام من Floor 2 ويُضاف {finished} إلى Floor 1.',
@@ -282,6 +343,17 @@ const UI_STRINGS = {
   manufactureUpholsteryLoadFailed: { en: 'Could not load manufacture list.', ar: 'تعذر تحميل قائمة التصنيع.' },
   manufactureRawQty: { en: 'Raw on Floor 2: {qty}', ar: 'الخام في Floor 2: {qty}' },
   manufactureFinishedSku: { en: '→ {sku}', ar: '→ {sku}' },
+  manufactureCardFloor2: { en: '{qty}', ar: '{qty}' },
+  manufactureSameNameInlay: { en: '{count}', ar: '{count}' },
+  manufactureInlayTitle: { en: 'Family — pick variant', ar: 'العائلة — اختر النوع' },
+  manufactureInlayHint: { en: 'Tap a line to set job qty from Floor 2 stock.', ar: 'اضغط على سطر لتحديد كمية المهمة من مخزون Floor 2.' },
+  manufactureInlaySkuLine: { en: '{sku} · Floor 2: {qty}', ar: '{sku} · Floor 2: {qty}' },
+  manufactureSearch: { en: 'Search family name', ar: 'ابحث عن اسم العائلة' },
+  manufactureSearchNoMatch: { en: 'No families match your search.', ar: 'لا عائلات مطابقة للبحث.' },
+  manufactureQtyLabel: { en: 'Qty: {qty}', ar: 'الكمية: {qty}' },
+  manufacturePhotoPromptTitle: { en: 'Product WIP Photo', ar: 'صورة المنتج (Floor 2)' },
+  manufacturePhotoChooseLibrary: { en: 'Import from gallery', ar: 'استيراد من المعرض' },
+  manufacturePhotoUploadFailed: { en: 'Could not save photo.', ar: 'تعذر حفظ الصورة.' },
   dashManufactureUpholsterySub: {
     en: 'Finish raw carpentry frames → factory warehouse',
     ar: 'إنهاء الهياكل الخام → مستودع المصنع',
@@ -525,6 +597,7 @@ const UI_STRINGS = {
     en: 'Tap a product below, or search / scan to filter.',
     ar: 'اختر منتجاً أدناه، أو ابحث / امسح للتصفية.',
   },
+  stockTapAdd: { en: 'Tap to add stock', ar: 'اضغط لإضافة مخزون' },
   back: { en: 'Back', ar: 'رجوع' },
   labelPreviewTitle: { en: 'Label preview', ar: 'معاينة الملصق' },
   labelPreviewSent: { en: 'Sent to printer (preview below).', ar: 'أُرسل إلى الطابعة (معاينة أدناه).' },
@@ -569,6 +642,15 @@ const UI_STRINGS = {
   returnCompleteFailed: { en: 'Could not complete return.', ar: 'تعذر إكمال المرتجع.' },
   returnShipFailed: { en: 'Could not start return shipment.', ar: 'تعذر بدء شحن المرتجع.' },
   returnLabelFailed: { en: 'Customer label print failed.', ar: 'فشلت طباعة ملصق العميل.' },
+  repairCompleteConfirm: { en: 'Complete repair?', ar: 'إكمال الإصلاح؟' },
+  repairDispositionPrompt: {
+    en: 'Send to Floor 1 stock or start customer / Kitwe delivery?',
+    ar: 'إرسال إلى مخزون الطابق 1 أو بدء تسليم للعميل / Kitwe؟',
+  },
+  repairDispositionFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
+  repairDispositionDelivery: { en: 'Send delivery', ar: 'إرسال تسليم' },
+  cancel: { en: 'Cancel', ar: 'إلغاء' },
+  returnCustomerDeliveryTitle: { en: 'Customer return delivery', ar: 'تسليم مرتجع للعميل' },
   returnCompleteTitle: { en: 'Complete return', ar: 'إكمال المرتجع' },
   returnShipTitle: { en: 'Ship return', ar: 'شحن المرتجع' },
   returnSignSubmit: { en: 'Sign & submit', ar: 'توقيع وإرسال' },
@@ -643,18 +725,23 @@ export function presetLabel(preset, locale, autoArByPreset = null) {
   const p = String(preset || '').trim();
   if (!p) return '';
   const key = PRESET_I18N[p];
-  if (key) return tUi(key, locale);
+  if (key) return coalesceDisplayText(tUi(key, locale), p);
   if (locale === 'ar') {
-    if (autoArByPreset && autoArByPreset[p]) return autoArByPreset[p];
-    if (presetAutoArCache.has(p)) return presetAutoArCache.get(p);
+    if (autoArByPreset && autoArByPreset[p]) return coalesceDisplayText(autoArByPreset[p], p);
+    if (presetAutoArCache.has(p)) return coalesceDisplayText(presetAutoArCache.get(p), p);
   }
   return p;
 }
 
 export function tUi(key, locale) {
   const row = UI_STRINGS[key];
-  if (!row) return key;
-  return row[locale === 'ar' ? 'ar' : 'en'] || row.en;
+  if (!row) return coalesceDisplayText(key, '');
+  const localized = row[locale === 'ar' ? 'ar' : 'en'];
+  const fallback = row.en ?? row.ar ?? key;
+  return coalesceDisplayText(
+    localized ?? fallback,
+    coalesceDisplayText(fallback, coalesceDisplayText(key, '')),
+  );
 }
 
 /** Same free translation API as web kiosk (MyMemory). */

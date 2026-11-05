@@ -2,6 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import { fetchProductionEventsLog } from './services/warehouseProductionApi';
+import { WAREHOUSE_FROM_LOCATION_ID } from './utils/warehouseDelivery';
+import BackToDashboard from './BackToDashboard';
+import {
+  defaultReportDateRange,
+  filterRowsByLocalDate as filterByDateRange,
+} from './utils/reportDateRange';
 import {
   downloadProductionCreationsPdf,
   downloadProductionStockIncreasesPdf,
@@ -11,40 +17,24 @@ import {
   formatProductionLogSource,
 } from './utils/productionReportPdf';
 
-const toYMD = (value) => {
-  const d = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const yy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yy}-${mm}-${dd}`;
-};
-
 const formatNumber = (value) => {
   const num = Number(value ?? 0);
   if (!Number.isFinite(num)) return '0';
   return num.toLocaleString();
 };
 
-function filterRowsByLocalDate(rows, startDate, endDate) {
-  const start = new Date(`${startDate}T00:00:00`).getTime();
-  const end = new Date(`${endDate}T23:59:59.999`).getTime();
-  if (Number.isNaN(start) || Number.isNaN(end)) return rows || [];
-  return (rows || []).filter((row) => {
-    const t = new Date(row.created_at).getTime();
-    return !Number.isNaN(t) && t >= start && t <= end;
-  });
+function isFloor1ProductionRow(row) {
+  const loc = String(row?.warehouse_location_id || '').trim();
+  if (!loc) return true;
+  return loc === WAREHOUSE_FROM_LOCATION_ID;
 }
 
 export default function ProductionReport() {
   const canView = canManageCatalog(getCurrentUser());
-  const today = useMemo(() => new Date(), []);
-  const defaultEnd = useMemo(() => toYMD(today), [today]);
-  const defaultStart = useMemo(() => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - 30);
-    return toYMD(d);
-  }, [today]);
+  const { startDate: defaultStart, endDate: defaultEnd } = useMemo(
+    () => defaultReportDateRange(),
+    [],
+  );
 
   const [reportType, setReportType] = useState('creates');
   const [startDate, setStartDate] = useState(defaultStart);
@@ -78,8 +68,12 @@ export default function ProductionReport() {
         endDate,
         limit: 5000,
       });
-      setCreates(filterRowsByLocalDate(data.creates, startDate, endDate));
-      setIncreases(filterRowsByLocalDate(data.stock_increases, startDate, endDate));
+      const createsFiltered = filterByDateRange(data.creates, startDate, endDate)
+        .filter(isFloor1ProductionRow);
+      const increasesFiltered = filterByDateRange(data.stock_increases, startDate, endDate)
+        .filter(isFloor1ProductionRow);
+      setCreates(createsFiltered);
+      setIncreases(increasesFiltered);
     } catch (err) {
       setError(err?.message || 'Failed to load production activity.');
       setCreates([]);
@@ -139,9 +133,13 @@ export default function ProductionReport() {
 
   return (
     <div className="report-page production-report-page">
+      <div className="page-header-row">
+        <BackToDashboard />
+        <h2 style={{ margin: 0 }}>Upholstery Report</h2>
+      </div>
       <p className="user-access-intro production-report-page__intro">
-        Activity from the Production Android app: new seating items and stock increases on
-        existing warehouse packets, filtered by date. PDF layout matches the Transfers Report.
+        Upholstery production from the Production Android app: new seating created and stock
+        increases credited to Warehouse Floor 1, filtered by the date range you choose.
       </p>
 
       <div className="report-filters">
@@ -156,8 +154,8 @@ export default function ProductionReport() {
         <div className="report-filter-block">
           <label>Report type</label>
           <select value={reportType} onChange={(e) => setReportType(e.target.value)}>
-            <option value="creates">New items created (sent to warehouse)</option>
-            <option value="increases">Stock increases (existing packets)</option>
+            <option value="creates">New items created (sent to Floor 1)</option>
+            <option value="increases">Stock increases on Floor 1 packets</option>
           </select>
         </div>
       </div>
@@ -196,7 +194,7 @@ export default function ProductionReport() {
         </div>
       ) : null}
 
-      {loading ? <div className="report-blank">Loading production activity…</div> : null}
+      {loading ? <div className="report-blank">Loading upholstery activity…</div> : null}
 
       {!loading && reportType === 'creates' && !creates.length && !error ? (
         <div className="report-blank">No new production items in this date range.</div>

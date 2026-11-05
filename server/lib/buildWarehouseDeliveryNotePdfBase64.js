@@ -58,12 +58,34 @@ function logoFormatFromDataUri(dataUri) {
 /**
  * A4 delivery note PDF (Node) for WhatsApp — same line data as the print HTML note.
  */
+function pdfNoteTitle(documentKind) {
+  const kind = String(documentKind || 'delivery').trim();
+  if (kind === 'return_shipment') return 'Return Note';
+  if (kind === 'return_customer_delivery') return 'Return Delivery Note';
+  if (kind === 'sold_delivery') return 'Sold Delivery Note';
+  return 'Delivery Note';
+}
+
+function pdfNoteNumberLabel(documentKind) {
+  const kind = String(documentKind || 'delivery').trim();
+  if (kind === 'return_shipment') return 'Return No.';
+  if (kind === 'return_customer_delivery') return 'Return Delivery No.';
+  if (kind === 'sold_delivery') return 'Sold Delivery No.';
+  return 'Delivery #';
+}
+
 export function buildWarehouseDeliveryNotePdfBase64({
   session,
   entries,
   copies = 1,
   printGroups: printGroupsOverride,
   assemblyColorContext = null,
+  documentKind = 'delivery',
+  customerName = '',
+  customerPhone = '',
+  driverNameOverride = '',
+  dispatchedByOverride = '',
+  submittedAtOverride = '',
 } = {}) {
   const meta = session?.metadata || {};
   const formatter = assemblyColorContext
@@ -72,9 +94,14 @@ export function buildWarehouseDeliveryNotePdfBase64({
   const printGroups = printGroupsOverride || buildDeliveryPrintGroupsFromEntries(entries || [], formatter);
   const copyCount = Math.max(1, Math.min(3, Number(copies) || 1));
   const dn = String(session?.delivery_number || session?.id || '').trim() || 'Delivery';
-  const at = session?.submitted_at || session?.created_at || new Date().toISOString();
-  const dispatched = deliverySenderName(session) || '—';
-  const driver = String(meta.driver_name || '').trim() || '—';
+  const at = submittedAtOverride || session?.submitted_at || session?.created_at || new Date().toISOString();
+  const dispatched = String(dispatchedByOverride || '').trim()
+    || deliverySenderName(session)
+    || '—';
+  const driver = String(driverNameOverride || meta.driver_name || '').trim() || '—';
+  const kind = String(documentKind || 'delivery').trim();
+  const custName = String(customerName || meta.customer_name || '').trim();
+  const custPhone = String(customerPhone || meta.customer_phone || '').trim();
 
   const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -95,17 +122,21 @@ export function buildWarehouseDeliveryNotePdfBase64({
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
-    doc.text('Delivery Note', pageW / 2, y + 6, { align: 'center' });
+    doc.text(pdfNoteTitle(kind), pageW / 2, y + 6, { align: 'center' });
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text('Bestrest Furniture', pageW / 2, y + 12, { align: 'center' });
     y += 22;
 
     doc.setFontSize(10);
-    doc.text(`Delivery #: ${dn}`, margin, y);
+    doc.text(`${pdfNoteNumberLabel(kind)} ${dn}`, margin, y);
     y += 5;
     doc.text(`Date: ${formatZambiaDate(at)}    Time: ${formatZambiaTime(at)}`, margin, y);
     y += 5;
+    if (kind === 'return_customer_delivery' && (custName || custPhone)) {
+      doc.text(`Customer: ${custName || '—'}${custPhone ? ` · ${custPhone}` : ''}`, margin, y);
+      y += 5;
+    }
     doc.text(`Dispatched by: ${dispatched}`, margin, y);
     y += 5;
     doc.text(`Driver: ${driver}`, margin, y);

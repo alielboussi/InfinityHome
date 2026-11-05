@@ -116,10 +116,6 @@ function main() {
     path.join(kitRoot, 'screens', 'SoldDeliverSignatureScreen.js'),
     'SoldDeliverSignature',
   );
-  patchSignatureScreen(
-    path.join(kitRoot, 'screens', 'ReturnOrderSignatureScreen.js'),
-    'ReturnOrderSignature',
-  );
   patchKitweSendHome(path.join(kitRoot, 'screens', 'KitweSendHomeScreen.js'));
 
   console.log('[applyDeliveryKitPatches] ok');

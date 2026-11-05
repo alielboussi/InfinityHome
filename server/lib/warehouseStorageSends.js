@@ -1,7 +1,7 @@
 import { newUuid } from './uuid.js';
 import { allocateWarehouseStorageNumber } from './warehouseStorageNumber.js';
 import { adjustAssemblyStock, getAssemblyStockQty } from './warehouseReturnStock.js';
-import { printWarehouseReturnCustomerLabel } from './warehouseReturnCustomerLabelPrint.js';
+import { printWarehouseStorageSaleLabel } from './warehouseStorageSaleLabelPrint.js';
 import { getFirestore } from './firestoreDb.js';
 import { HASSAN_AWAD, canManageCatalog } from '../../src/accessControl.js';
 import { isLoginAccessAdmin } from './loginAccess.js';
@@ -175,12 +175,89 @@ async function createAssemblyFromSaleItem(sb, { productId, displayName }) {
   return { id: assemblyId, name, family_sku: sku, item_kind: 'product' };
 }
 
+export async function resolveAssemblyForPosSaleLine(sb, line) {
+  let assembly = await findAssemblyForProduct(sb, line.product_id, line.display_name);
+  if (!assembly) {
+    assembly = await createAssemblyFromSaleItem(sb, {
+      productId: line.product_id,
+      displayName: line.display_name,
+    });
+  }
+  return assembly;
+}
+
 function isStorageEligibleSaleRow(row) {
   const receipt = String(row?.receipt_number || '').trim();
   if (!receipt) return false;
   const status = String(row?.status || '').toLowerCase();
   if (status === 'void' || status === 'cancelled' || status === 'canceled') return false;
   return String(row?.location_id || '') === String(KITWE_LOCATION_ID);
+}
+
+async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
+  if (qty > line.quantity) {
+    throw new Error(`Cannot send more than sold quantity (${line.quantity}).`);
+  }
+
+  const assembly = await resolveAssemblyForPosSaleLine(sb, line);
+
+  const kitweQty = await getAssemblyStockQty(sb, assembly.id, KITWE_LOCATION_ID);
+  if (kitweQty < qty) {
+    throw new Error(`Insufficient Kitwe stock for ${line.display_name} (need ${qty}, have ${kitweQty}).`);
+  }
+
+  await adjustAssemblyStock(sb, assembly.id, KITWE_LOCATION_ID, -qty);
+  await adjustAssemblyStock(sb, assembly.id, FACTORY_ID, qty);
+
+  const storageNumber = await allocateWarehouseStorageNumber();
+  const now = new Date().toISOString();
+  const id = newUuid();
+  const row = {
+    id,
+    storage_number: storageNumber,
+    sale_id: saleId,
+    sale_item_id: line.id,
+    receipt_number: detail.sale.receipt_number,
+    assembly_id: assembly.id,
+    assembly_name: assembly.name,
+    assembly_sku: assembly.family_sku || null,
+    customer_id: detail.sale.customer_id || null,
+    customer_name: detail.sale.customer_name || null,
+    customer_phone: detail.sale.customer_phone || null,
+    quantity: qty,
+    status: WAREHOUSE_STORAGE_SEND_STATUSES.IN_STORAGE,
+    created_at: now,
+    updated_at: now,
+    created_by_email: user?.email || null,
+    created_by_name: user?.user_metadata?.full_name || user?.full_name || HASSAN_AWAD.displayName,
+    metadata: { receipt_number: detail.sale.receipt_number, kitwe_deducted_at: now },
+  };
+
+  const { error } = await sb.from(TABLE).insert(row);
+  if (error) {
+    await adjustAssemblyStock(sb, assembly.id, KITWE_LOCATION_ID, qty);
+    await adjustAssemblyStock(sb, assembly.id, FACTORY_ID, -qty);
+    throw new Error(error.message || 'Failed to save storage send.');
+  }
+
+  await printWarehouseStorageSaleLabel(getFirestore(), {
+    name: assembly.name,
+    sku: assembly.family_sku || assembly.name,
+    customerName: detail.sale.customer_name || 'Customer',
+    customerPhone: detail.sale.customer_phone || '',
+    qty,
+    saleDate: detail.sale.sale_date || detail.sale.created_at,
+    printedBy: row.created_by_name,
+  });
+
+  await sb.from(TABLE).update({
+    labels_printed_at: now,
+    updated_at: now,
+  }).eq('id', id);
+
+  const mapped = mapRow({ ...row, labels_printed_at: now });
+  queueProductionStoragePush(mapped);
+  return mapped;
 }
 
 /** Firestore equality is strict — HTML/API often pass sale_id as string while rows store numbers. */
@@ -293,82 +370,28 @@ export async function getPosSaleDetailForStorage(sb, user, body) {
 export async function submitWarehouseStorageSend(sb, body, user) {
   await assertWarehouseStorageCreator(user);
   const saleId = body.sale_id;
-  const saleItemId = body.sale_item_id;
-  const qty = Math.max(1, Math.floor(Number(body.quantity) || 0));
-  if (saleId == null || saleItemId == null) throw new Error('Receipt line is required.');
+  if (saleId == null) throw new Error('Receipt is required.');
+
+  const lineRequests = Array.isArray(body.lines) && body.lines.length
+    ? body.lines
+    : [{
+      sale_item_id: body.sale_item_id,
+      quantity: body.quantity,
+    }];
 
   const detail = await getPosSaleDetailForStorage(sb, user, { sale_id: saleId });
-  const line = detail.items.find((i) => String(i.id) === String(saleItemId));
-  if (!line) throw new Error('Sale line not found.');
-  if (qty > line.quantity) {
-    throw new Error(`Cannot send more than sold quantity (${line.quantity}).`);
+  const sends = [];
+
+  for (const req of lineRequests) {
+    const saleItemId = req.sale_item_id ?? req.saleItemId;
+    const qty = Math.max(1, Math.floor(Number(req.quantity) || 0));
+    if (saleItemId == null) throw new Error('Receipt line is required.');
+    const line = detail.items.find((i) => String(i.id) === String(saleItemId));
+    if (!line) throw new Error('Sale line not found.');
+    sends.push(await executeStorageSendLine(sb, user, detail, saleId, line, qty));
   }
 
-  let assembly = await findAssemblyForProduct(sb, line.product_id, line.display_name);
-  if (!assembly) {
-    assembly = await createAssemblyFromSaleItem(sb, {
-      productId: line.product_id,
-      displayName: line.display_name,
-    });
-  }
-
-  const kitweQty = await getAssemblyStockQty(sb, assembly.id, KITWE_LOCATION_ID);
-  if (kitweQty < qty) {
-    throw new Error(`Insufficient Kitwe stock (need ${qty}, have ${kitweQty}).`);
-  }
-
-  await adjustAssemblyStock(sb, assembly.id, KITWE_LOCATION_ID, -qty);
-  await adjustAssemblyStock(sb, assembly.id, FACTORY_ID, qty);
-
-  const storageNumber = await allocateWarehouseStorageNumber();
-  const now = new Date().toISOString();
-  const id = newUuid();
-  const row = {
-    id,
-    storage_number: storageNumber,
-    sale_id: saleId,
-    sale_item_id: saleItemId,
-    receipt_number: detail.sale.receipt_number,
-    assembly_id: assembly.id,
-    assembly_name: assembly.name,
-    assembly_sku: assembly.family_sku || null,
-    customer_id: detail.sale.customer_id || null,
-    customer_name: detail.sale.customer_name || null,
-    customer_phone: detail.sale.customer_phone || null,
-    quantity: qty,
-    status: WAREHOUSE_STORAGE_SEND_STATUSES.IN_STORAGE,
-    created_at: now,
-    updated_at: now,
-    created_by_email: user?.email || null,
-    created_by_name: user?.user_metadata?.full_name || user?.full_name || HASSAN_AWAD.displayName,
-    metadata: { receipt_number: detail.sale.receipt_number, kitwe_deducted_at: now },
-  };
-
-  const { error } = await sb.from(TABLE).insert(row);
-  if (error) {
-    await adjustAssemblyStock(sb, assembly.id, KITWE_LOCATION_ID, qty);
-    await adjustAssemblyStock(sb, assembly.id, FACTORY_ID, -qty);
-    throw new Error(error.message || 'Failed to save storage send.');
-  }
-
-  const result = await printWarehouseReturnCustomerLabel(getFirestore(), {
-    name: assembly.name,
-    sku: assembly.family_sku || assembly.name,
-    customerName: detail.sale.customer_name || 'Customer',
-    customerPhone: detail.sale.customer_phone || '',
-    qty,
-    printedBy: row.created_by_name,
-    printedAt: now,
-  });
-
-  await sb.from(TABLE).update({
-    labels_printed_at: now,
-    updated_at: now,
-  }).eq('id', id);
-
-  const mapped = mapRow({ ...row, labels_printed_at: now });
-  queueProductionStoragePush(mapped);
-  return { storage_send: mapped };
+  return { storage_sends: sends, storage_send: sends[0] || null };
 }
 
 async function queueProductionStoragePush(row) {

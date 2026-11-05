@@ -59,6 +59,7 @@ import { warehouseBulkLabelPrintSummary, resolveWarehouseLabelPrintPlan, assembl
 import WarehouseCatalogBulkLabelToolbar, {
   WarehouseBulkLabelSelectCheckbox,
 } from './components/WarehouseCatalogBulkLabelToolbar';
+import WarehouseSalesStoragePanel from './components/WarehouseSalesStoragePanel';
 
 export default function WarehouseProductsPage() {
   const navigate = useNavigate();
@@ -66,6 +67,7 @@ export default function WarehouseProductsPage() {
   const isIncompleteView = location.pathname.startsWith('/warehouse-products/incomplete');
   const isUncategorizedView = location.pathname.startsWith('/warehouse-products/uncategorized');
   const isSetsView = location.pathname.startsWith('/warehouse-products/sets');
+  const isSalesStorageView = location.pathname.startsWith('/warehouse-products/sales-storage');
   const sessionUser = useMemo(() => getCurrentUser(), []);
   const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
   const { grant } = useAuthProfileMobileGrant();
@@ -531,7 +533,9 @@ export default function WarehouseProductsPage() {
       <div className="page-header-row">
         <BackToDashboard />
         <h1 className="products-title" style={{ margin: 0 }}>
-          {isIncompleteView
+          {isSalesStorageView
+            ? 'Sales Storage (Warehouse)'
+            : isIncompleteView
             ? 'Incomplete products (Warehouse)'
             : isUncategorizedView
               ? 'Uncategorized products (Warehouse)'
@@ -542,8 +546,16 @@ export default function WarehouseProductsPage() {
       </div>
 
       <p className="stc-note" style={{ margin: '8px 0 16px', opacity: 0.85 }}>
-        <strong>{warehouseLocationName} stock only</strong> — factory Floor 1 catalog for Send Delivery (finished goods, sets, warehouse packets). Not Floor 2 WIP.
-        Showroom stock (Kitwe / Lusaka) is not managed on this page.
+        {isSalesStorageView ? (
+          <>
+            <strong>Floor 1 — sales storage registry</strong> — POS lines sent to factory warehouse storage (not the main product grid).
+          </>
+        ) : (
+          <>
+            <strong>{warehouseLocationName} stock only</strong> — factory Floor 1 catalog for Send Delivery (finished goods, sets, warehouse packets). Not Floor 2 WIP.
+            Showroom stock (Kitwe / Lusaka) is not managed on this page.
+          </>
+        )}
       </p>
 
       {error ? (
@@ -555,7 +567,7 @@ export default function WarehouseProductsPage() {
           <span className="warehouse-catalog-toolbar__label" id="wh-catalog-view-label">View</span>
           <WarehouseCatalogViewToggle aria-labelledby="wh-catalog-view-label" />
         </div>
-        {(canManage || canAddProduct) && (
+        {(canManage || canAddProduct) && !isSalesStorageView && (
           <div className="warehouse-catalog-toolbar__create">
             <span className="warehouse-catalog-toolbar__label" id="wh-catalog-create-label">Create</span>
             <div className="warehouse-catalog-toolbar__actions" aria-labelledby="wh-catalog-create-label">
@@ -593,6 +605,10 @@ export default function WarehouseProductsPage() {
           </div>
         )}
       </div>
+      {isSalesStorageView ? (
+        <WarehouseSalesStoragePanel />
+      ) : (
+        <>
       <div className="warehouse-catalog-filter-row">
         <input
           className="warehouse-catalog-filter-control warehouse-catalog-search products-search-bar"
@@ -1055,6 +1071,8 @@ export default function WarehouseProductsPage() {
             })}
           </div>
 
+        </>
+      )}
         </>
       )}
 

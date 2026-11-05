@@ -1,5 +1,13 @@
 /** Keep in sync with src/utils/productionKioskI18n.js */
 
+function coalesceDisplayText(value, fallback = '') {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value);
+  return text || fallback;
+}
+
+export const textForDisplay = coalesceDisplayText;
+
 const UI_STRINGS = {
   pageTitle: { en: 'Production', ar: 'الإنتاج' },
   preset3Seater: { en: '3 seater', ar: 'ثلاث مقاعد' },
@@ -145,10 +153,18 @@ const UI_STRINGS = {
   quoteOrderScanPlaceholder: { en: 'Scan or type SKU / barcode', ar: 'امسح أو اكتب SKU / الباركود' },
   quoteOrderDeductScan: { en: 'Deduct scan', ar: 'خصم المسح' },
   quoteOrderLines: { en: 'Lines', ar: 'البنود' },
+  quoteOrderLeatherCode: { en: 'Leather code', ar: 'رمز الجلد' },
+  quoteOrderDimensions: { en: 'L×W×H (cm)', ar: 'ط×ع×ار (سم)' },
+  quoteOrderColorCode: { en: 'Color code', ar: 'رمز اللون' },
+  quoteOrderWood: { en: 'Wood', ar: 'الخشب' },
+  quoteOrderViewDrawing: { en: 'View drawing', ar: 'عرض الرسم' },
+  quoteOrderDrawingTitle: { en: 'Production drawing', ar: 'رسم الإنتاج' },
+  quoteOrderOpenInBrowser: { en: 'Open in browser', ar: 'فتح في المتصفح' },
+  quoteOrderDrawingAttached: { en: 'Drawing attached', ar: 'مرفق رسم' },
   quoteOrderScanDeducted: { en: 'Material stock updated for this order.', ar: 'تم تحديث مخزون المواد لهذا الطلب.' },
   quoteOrderScanFailed: { en: 'Scan failed', ar: 'فشل المسح' },
   quoteOrderFailed: { en: 'Failed', ar: 'فشل' },
-  dashTitle: { en: 'Production', ar: 'الإنتاج' },
+  dashTitle: { en: 'Carpentry', ar: 'الأثاث الخشبي' },
   dashCreate: { en: 'Create new item', ar: 'إنشاء قطعة جديدة' },
   dashCreateSub: {
     en: 'New seating → warehouse packet + labels',
@@ -180,6 +196,22 @@ const UI_STRINGS = {
   },
   upholsteryQuotesLoadFailed: { en: 'Could not load quote orders.', ar: 'تعذر تحميل طلبات العروض.' },
   dashCarpentryQuoteOrders: { en: 'Orders', ar: 'الطلبات' },
+  dashRepairs: { en: 'Repairs', ar: 'إصلاحات' },
+  repairQueueEmpty: { en: 'No repair jobs in this queue.', ar: 'لا توجد إصلاحات في هذه القائمة.' },
+  repairCompleteConfirm: {
+    en: 'Stop the repair timer and choose what happens next.',
+    ar: 'إيقاف مؤقت الإصلاح واختيار الخطوة التالية.',
+  },
+  repairDispositionPrompt: {
+    en: 'Send repaired stock to Floor 1, or dispatch a delivery with driver signature?',
+    ar: 'إرسال المخزون إلى الطابق 1، أم تسليم مع توقيع السائق؟',
+  },
+  repairDispositionFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
+  repairDispositionDelivery: { en: 'Send delivery', ar: 'إرسال تسليم' },
+  repairTimerStatus_ready: { en: 'Ready', ar: 'جاهز' },
+  repairTimerStatus_running: { en: 'Running', ar: 'قيد التشغيل' },
+  repairTimerStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتاً' },
+  repairTimerStatus_completed: { en: 'Done', ar: 'منتهي' },
   dashCarpentryQuoteOrdersSub: {
     en: 'Carpentry route — sent from Factory Orders',
     ar: 'مسار النجارة — مرسلة من طلبات المصنع',
@@ -197,6 +229,47 @@ const UI_STRINGS = {
   carpentryQuoteAwaiting: { en: 'Awaiting accept', ar: 'بانتظار القبول' },
   carpentryQuoteInProduction: { en: 'In production', ar: 'قيد الإنتاج' },
   dashCarpentryTitle: { en: 'Carpentry', ar: 'الأثاث الخشبي' },
+  dashHintDismiss: { en: 'Tap outside to close', ar: 'اضغط خارج النافذة للإغلاق' },
+  dashTileHint_create: {
+    en: 'Create new carpentry catalog items and stock them at the warehouse (carpentry presets).',
+    ar: 'إنشاء منتجات نجارة جديدة وإدخالها للمستودع.',
+  },
+  dashTileHint_manufacture: {
+    en: 'Start a timed carpentry job: materials deduct from storeroom; finish in Jobs to credit Warehouse Floor 2.',
+    ar: 'بدء مهمة نجارة: تُخصم المواد؛ عند الإنهاء في «المهام» يُضاف الإنتاج إلى Floor 2.',
+  },
+  dashTileHint_jobs: {
+    en: 'Active carpentry jobs — play/pause the timer, then stop to credit units to Warehouse Floor 2.',
+    ar: 'مهام النجارة — مؤقت تشغيل/إيقاف، ثم Stop لإضافة الوحدات إلى Floor 2.',
+  },
+  dashTileHint_painting: {
+    en: 'Send Floor 2 WIP to Painting (deducts Floor 2 and creates jobs in the Painting app).',
+    ar: 'إرسال Floor 2 إلى الدهان (يُخصم من Floor 2 وتُنشأ مهام في تطبيق الدهان).',
+  },
+  dashTileHint_quotes: {
+    en: 'Carpentry quote orders — accept, scan materials, complete when finished.',
+    ar: 'طلبات عروض النجارة — قبول، مسح المواد، إنهاء عند الانتهاء.',
+  },
+  dashTileHint_paintingJobs: {
+    en: 'Your painting queue — play/pause timer, stop when done to credit Warehouse Floor 1.',
+    ar: 'قائمة الدهان — مؤقت تشغيل/إيقاف، Stop عند الانتهاء لإضافة Floor 1.',
+  },
+  hintJobPlay: {
+    en: 'Start or resume the job timer (does not move stock).',
+    ar: 'تشغيل أو استئناف المؤقت (لا يحرّك المخزون).',
+  },
+  hintJobPause: {
+    en: 'Pause the timer — resume later with play.',
+    ar: 'إيقاف المؤقت مؤقتًا — استأنف لاحقًا بتشغيل.',
+  },
+  hintJobFinish: {
+    en: 'Stop and complete — updates warehouse stock when you confirm.',
+    ar: 'إنهاء المهمة — يحدّث مخزون المستودع بعد التأكيد.',
+  },
+  hintJobCard: {
+    en: 'Job in your queue. Long-press each button below for help; tap play, pause, or stop.',
+    ar: 'مهمة في قائمتك. اضغط مطولًا على الأزرار للمساعدة؛ تشغيل، إيقاف، أو Stop.',
+  },
   dashDeliveryAppTitle: { en: 'Delivery', ar: 'تسليم' },
   dashDeliveryCatalogHint: {
     en: 'Same warehouse catalog as web /warehouse-products — factory stock including carpentry output.',
@@ -209,8 +282,8 @@ const UI_STRINGS = {
   },
   manufactureTitle: { en: 'Manufacture', ar: 'تصنيع' },
   manufactureIntro: {
-    en: 'Products from the web Carpentry catalog. Tap one to produce ×1 — BOM deducts from Storerooms 1–3; unfinished units store on Warehouse Floor 2.',
-    ar: 'منتجات من كتالوج النجارة. اضغط ×1 — تُخصم المواد من المستودعات 1–3 وتُخزَّن الوحدات غير المنتهية في Warehouse Floor 2.',
+    en: 'Carpentry catalog grouped by family name. Tap a tile to start a timed job, or open variants with the inlay button. Materials deduct when the job starts; Floor 2 credits when you finish in Jobs.',
+    ar: 'منتجات النجارة مجمّعة حسب اسم العائلة. اضغط لبدء مهمة، أو افتح الأصناف. تُخصم المواد عند البدء ويُضاف Floor 2 عند الإنهاء.',
   },
   dashFinishing: { en: 'Finishing', ar: 'إنهاء' },
   finishingTitle: { en: 'Finishing', ar: 'إنهاء' },
@@ -239,6 +312,30 @@ const UI_STRINGS = {
     en: 'No quantity left on Floor 2 for this product.',
     ar: 'لا كمية متبقية في Floor 2 لهذا المنتج.',
   },
+  dashPainting: { en: 'Painting', ar: 'دهان' },
+  paintingTitle: { en: 'Painting', ar: 'دهان' },
+  paintingIntro: {
+    en: 'Unfinished stock on Warehouse Floor 2. Choose a product and quantity to send to the Painting department (deducts Floor 2 and creates painting jobs).',
+    ar: 'مخزون غير منتهٍ في Warehouse Floor 2. اختر منتجًا وكمية لإرسالها إلى قسم الدهان (يُخصم من Floor 2 وتُنشأ مهام دهان).',
+  },
+  paintingConfirmTitle: { en: 'Send to painting', ar: 'إرسال للدهان' },
+  paintingConfirmBody: {
+    en: 'Send {qty} × {name} to Painting? Deducts Floor 2 and opens a job in the Painting app.',
+    ar: 'إرسال {qty} × {name} للدهان؟ يُخصم من Floor 2 وتُفتح مهمة في تطبيق الدهان.',
+  },
+  paintingDone: {
+    en: 'Sent — painters can start the job in the Painting app.',
+    ar: 'تم الإرسال — يمكن للدهانين بدء المهمة في تطبيق الدهان.',
+  },
+  paintingFailed: { en: 'Send to painting failed', ar: 'فشل الإرسال للدهان' },
+  paintingQtyLabel: { en: 'Qty to send', ar: 'الكمية للإرسال' },
+  paintingJobsTitle: { en: 'Painting jobs', ar: 'مهام الدهان' },
+  dashPaintingTitle: { en: 'Painting', ar: 'دهان' },
+  dashPaintingAppTitle: { en: 'Painting', ar: 'دهان' },
+  paintingJobFinishDone: {
+    en: 'Finished — stock credited on Warehouse Floor 1 (/warehouse-products).',
+    ar: 'تم — أُضيف المخزون إلى Warehouse Floor 1.',
+  },
   manufactureConfirmTitle: { en: 'Manufacture', ar: 'تصنيع' },
   manufactureConfirmBody: {
     en: 'Produce 1 × {name}? Materials will deduct from Carpentry warehouses per the BOM on the web portal.',
@@ -263,6 +360,34 @@ const UI_STRINGS = {
     en: 'No BOM — add materials on web Carpentry page',
     ar: 'لا قائمة مواد — أضف المواد في صفحة Carpentry',
   },
+  manufactureSearch: { en: 'Search family or product…', ar: 'بحث عن العائلة أو المنتج…' },
+  manufactureSearchNoMatch: { en: 'No matching products.', ar: 'لا منتجات مطابقة.' },
+  manufactureSameNameInlay: { en: '{count} variants', ar: '{count} أصناف' },
+  manufactureInlayTitle: { en: 'Choose variant', ar: 'اختر الصنف' },
+  manufactureInlayHint: {
+    en: 'Tap a variant to start a timed job (materials deduct immediately).',
+    ar: 'اضغط على صنف لبدء مهمة مؤقتة (تُخصم المواد فورًا).',
+  },
+  carpentryJobsTitle: { en: 'Jobs', ar: 'المهام' },
+  upholsteryJobLoadFailed: { en: 'Could not load jobs.', ar: 'تعذر تحميل المهام.' },
+  upholsteryJobPause: { en: 'Pause timer', ar: 'إيقاف المؤقت مؤقتًا' },
+  upholsteryJobResume: { en: 'Resume timer', ar: 'استئناف المؤقت' },
+  upholsteryJobFinish: { en: 'Finish job', ar: 'إنهاء المهمة' },
+  upholsteryJobFinishTitle: { en: 'Finish production?', ar: 'إنهاء الإنتاج؟' },
+  upholsteryJobFinishBody: {
+    en: 'Finish {name}? Credits Warehouse Floor 2 and closes the timer.',
+    ar: 'إنهاء {name}؟ يُضاف إلى Floor 2 ويُغلق المؤقت.',
+  },
+  upholsteryJobControlsHint: {
+    en: 'Play starts the timer; stop finishes and sends WIP to Floor 2.',
+    ar: 'التشغيل يبدأ المؤقت؛ الإيقاف ينهي ويرسل إلى Floor 2.',
+  },
+  upholsteryJobFinishDone: { en: 'Job finished.', ar: 'تم إنهاء المهمة.' },
+  upholsteryJobStatus_ready: { en: 'Ready', ar: 'جاهز' },
+  upholsteryJobStatus_running: { en: 'Running', ar: 'يعمل' },
+  upholsteryJobStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتًا' },
+  upholsteryJobStatus_completed: { en: 'Completed', ar: 'مكتمل' },
+  quoteOrderTimer: { en: 'Timer', ar: 'المؤقت' },
   manufactureUpholsteryIntro: {
     en: 'Raw carpentry output on Warehouse Floor 2 (linked on web Upholstery). Tap to finish ×1 — deducts Floor 2 raw; finished SKU credits Warehouse Floor 1 (new SKU creates product, existing adds qty).',
     ar: 'خرج النجارة في Warehouse Floor 2 (مرتبط في صفحة التنجيد). اضغط ×1 — يُخصم من Floor 2 ويُضاف SKU النهائي إلى Floor 1.',
@@ -639,18 +764,23 @@ export function presetLabel(preset, locale, autoArByPreset = null) {
   const p = String(preset || '').trim();
   if (!p) return '';
   const key = PRESET_I18N[p];
-  if (key) return tUi(key, locale);
+  if (key) return coalesceDisplayText(tUi(key, locale), p);
   if (locale === 'ar') {
-    if (autoArByPreset && autoArByPreset[p]) return autoArByPreset[p];
-    if (presetAutoArCache.has(p)) return presetAutoArCache.get(p);
+    if (autoArByPreset && autoArByPreset[p]) return coalesceDisplayText(autoArByPreset[p], p);
+    if (presetAutoArCache.has(p)) return coalesceDisplayText(presetAutoArCache.get(p), p);
   }
   return p;
 }
 
 export function tUi(key, locale) {
   const row = UI_STRINGS[key];
-  if (!row) return key;
-  return row[locale === 'ar' ? 'ar' : 'en'] || row.en;
+  if (!row) return coalesceDisplayText(key, '');
+  const localized = row[locale === 'ar' ? 'ar' : 'en'];
+  const fallback = row.en ?? row.ar ?? key;
+  return coalesceDisplayText(
+    localized ?? fallback,
+    coalesceDisplayText(fallback, coalesceDisplayText(key, '')),
+  );
 }
 
 /** Same free translation API as web kiosk (MyMemory). */

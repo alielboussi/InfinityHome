@@ -487,10 +487,23 @@ export function isPathAllowed(user, path) {
   if (p === PRODUCTION_REPORT_ROUTE || p.startsWith(`${PRODUCTION_REPORT_ROUTE}/`)) {
     return canManageCatalog(user);
   }
+  if (
+    p === '/carpentry-production-report'
+    || p.startsWith('/carpentry-production-report/')
+    || p === '/painting-report'
+    || p.startsWith('/painting-report/')
+    || p === '/repair-report'
+    || p.startsWith('/repair-report/')
+  ) {
+    return canManageCatalog(user);
+  }
   if (p === '/warehouse-repairs-admin' || p.startsWith('/warehouse-repairs-admin/')) {
     return canManageCatalog(user);
   }
   if (p === '/warehouse-sales-storage-admin' || p.startsWith('/warehouse-sales-storage-admin/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/warehouse-products/sales-storage' || p.startsWith('/warehouse-products/sales-storage/')) {
     return canManageCatalog(user);
   }
   if (p === '/warehouse-deliveries-admin' || p.startsWith('/warehouse-deliveries-admin/')) {
@@ -503,6 +516,12 @@ export function isPathAllowed(user, path) {
     return canManageCatalog(user);
   }
   if (p === '/carpentry' || p.startsWith('/carpentry/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/carpentry-jobs' || p.startsWith('/carpentry-jobs/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/painting-jobs' || p.startsWith('/painting-jobs/')) {
     return canManageCatalog(user);
   }
   if (p === '/upholstery' || p.startsWith('/upholstery/')) {

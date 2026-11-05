@@ -1,5 +1,9 @@
 import { lazy } from 'react';
 import LusakaTransfersPage from './LusakaTransfers';
+import CarpentryPageComponent from './CarpentryPage';
+import CarpentryJobsPageComponent from './CarpentryJobsPage';
+import PaintingJobsPageComponent from './PaintingJobsPage';
+import UpholsteryPageComponent from './UpholsteryPage';
 
 const modulePromises = new WeakMap();
 
@@ -22,7 +26,12 @@ function importRouteModule(factory, retriesLeft = 2) {
 
 /** Attach .preload for drawer hover prefetch (same chunk as lazy()). */
 function lazyRoute(factory) {
-  const load = () => importRouteModule(factory);
+  const load = () => importRouteModule(factory).then((mod) => {
+    if (mod?.default == null) {
+      throw new Error(`Route chunk missing default export (${String(factory)})`);
+    }
+    return mod;
+  });
   const Component = lazy(load);
   Component.preload = load;
   return Component;
@@ -77,13 +86,24 @@ export const WarehouseProductEditPage = lazyRoute(() => import('./WarehouseProdu
 export const WarehouseProductTransferPage = lazyRoute(() => import('./WarehouseProductTransferPage'));
 export const WarehousePacketEditPage = lazyRoute(() => import('./WarehousePacketEditPage'));
 export const ProductionAdminPage = lazyRoute(() => import('./ProductionAdminPage'));
-export const CarpentryPage = lazyRoute(() => import('./CarpentryPage'));
-export const UpholsteryPage = lazyRoute(() => import('./UpholsteryPage'));
+/** Eager-loaded: production catalog pages (avoid lazy chunk/HMR undefined default). */
+export const CarpentryPage = CarpentryPageComponent;
+export const CarpentryJobsPage = CarpentryJobsPageComponent;
+export const PaintingJobsPage = PaintingJobsPageComponent;
+export const UpholsteryPage = UpholsteryPageComponent;
+CarpentryPage.preload = () => Promise.resolve({ default: CarpentryPageComponent });
+CarpentryJobsPage.preload = () => Promise.resolve({ default: CarpentryJobsPageComponent });
+PaintingJobsPage.preload = () => Promise.resolve({ default: PaintingJobsPageComponent });
+UpholsteryPage.preload = () => Promise.resolve({ default: UpholsteryPageComponent });
+
 export const UpholsteryTimerPage = lazyRoute(() => import('./UpholsteryTimerPage'));
 export const WarehouseFloor2Page = lazyRoute(() => import('./WarehouseFloor2Page'));
 export const CarpentryWarehouseStockPage = lazyRoute(() => import('./CarpentryWarehouseStockPage'));
 export const MaterialsUomPage = lazyRoute(() => import('./MaterialsUomPage'));
 export const ProductionReport = lazyRoute(() => import('./ProductionReport'));
+export const CarpentryProductionReportPage = lazyRoute(() => import('./CarpentryProductionReportPage'));
+export const PaintingReportPage = lazyRoute(() => import('./PaintingReportPage'));
+export const RepairReportPage = lazyRoute(() => import('./RepairReportPage'));
 export const StockHistoryPage = lazyRoute(() => import('./StockHistoryPage'));
 export const ZeroStockLocationReset = lazyRoute(() => import('./ZeroStockLocationReset'));
 export const AllSales = lazyRoute(() => import('./AllSales'));
@@ -104,6 +124,8 @@ export const routePreloadByPath = {
   '/kitwe-products': () => KitweProductsPage.preload(),
   '/warehouse-products': () => WarehouseProductsPage.preload(),
   '/upholstery': () => UpholsteryPage.preload(),
+  '/carpentry-jobs': () => CarpentryJobsPage.preload(),
+  '/painting-jobs': () => PaintingJobsPage.preload(),
   '/upholstery-timer': () => UpholsteryTimerPage.preload(),
   '/carpentry': () => CarpentryPage.preload(),
   '/warehouse-floor-2': () => WarehouseFloor2Page.preload(),
@@ -115,6 +137,7 @@ export const routePreloadByPath = {
   '/warehouse-production-presets': () => WarehouseProductionPresetsPage.preload(),
   '/warehouse-deliveries-admin': () => WarehouseDeliveriesAdmin.preload(),
   '/warehouse-repairs-admin': () => WarehouseRepairsAdmin.preload(),
+  '/warehouse-products/sales-storage': () => WarehouseProductsPage.preload(),
   '/warehouse-sales-storage-admin': () => WarehouseSalesStorageAdmin.preload(),
   '/customers': () => Customers.preload(),
   '/all-sales': () => AllSales.preload(),
@@ -135,6 +158,9 @@ export const routePreloadByPath = {
   '/sales-report': () => SalesReport.preload(),
   '/transfers-report': () => TransfersReport.preload(),
   '/production-report': () => ProductionReport.preload(),
+  '/carpentry-production-report': () => CarpentryProductionReportPage.preload(),
+  '/painting-report': () => PaintingReportPage.preload(),
+  '/repair-report': () => RepairReportPage.preload(),
   '/user-activity': () => UserActivityLog.preload(),
   '/user-access': () => UserAccessManagement.preload(),
   '/database-backup': () => DatabaseBackupPage.preload(),

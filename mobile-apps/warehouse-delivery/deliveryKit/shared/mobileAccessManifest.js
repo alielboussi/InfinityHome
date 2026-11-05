@@ -82,6 +82,13 @@ export function isWarehouseProductionAppAllowed(grant) {
   return grant?.warehouse_production_app === 'allow';
 }
 
+/** /user-access — Upholstery app: upload Floor 2 WIP photos on Manufacture variant inlay. */
+export function isWarehouseProductionPhotoUploadAllowed(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (!grant) return false;
+  return grant.warehouse_production_photo_upload === 'allow';
+}
+
 /** /user-access — Carpentry workshop Android app (manufacture + create/stock with carpentry presets). */
 export function isCarpentryWorkshopAppAllowed(grant) {
   return grant?.carpentry_workshop_app === 'allow';
@@ -261,6 +268,7 @@ export function defaultMobileAccessGrant() {
     warehouse_catalog_photo_import: 'deny',
     warehouse_production_kiosk: 'deny',
     warehouse_production_app: 'deny',
+    warehouse_production_photo_upload: 'deny',
     warehouse_production_kitwe: 'deny',
     warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
@@ -422,6 +430,13 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
 
   merged.warehouse_production_app = (
     merged.warehouse_production_app === 'allow' || merged.warehouse_production_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_production_photo_upload = (
+    merged.warehouse_production_photo_upload === 'allow'
+    || merged.warehouse_production_photo_upload === true
   )
     ? 'allow'
     : 'deny';

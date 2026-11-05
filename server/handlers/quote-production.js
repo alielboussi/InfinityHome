@@ -4,6 +4,7 @@ import { isHassanAwadUser, canManageCatalog } from '../../src/accessControl.js';
 import {
   getQuoteProductionRouting,
   sendQuoteToProduction,
+  upsertQuoteProductionRoute,
 } from '../lib/quoteProductionRouting.js';
 
 function setCors(res) {
@@ -47,6 +48,18 @@ export default async function handler(req, res) {
         res.status(400).json({ ok: false, error: 'quote_id required' });
         return;
       }
+      const routing = await getQuoteProductionRouting(db, quoteId);
+      res.status(200).json({ ok: true, routing });
+      return;
+    }
+
+    if (op === 'set-routing') {
+      if (!quoteId) {
+        res.status(400).json({ ok: false, error: 'quote_id required' });
+        return;
+      }
+      const route = body.route || body.production_route || body.productionRoute;
+      await upsertQuoteProductionRoute(db, quoteId, route, { metadata: body.metadata || {} });
       const routing = await getQuoteProductionRouting(db, quoteId);
       res.status(200).json({ ok: true, routing });
       return;

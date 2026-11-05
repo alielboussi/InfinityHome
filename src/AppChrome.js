@@ -5,7 +5,7 @@ import {
   FaCashRegister, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag,   FaToolbox, FaRuler, FaClock,
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag,   FaToolbox, FaRuler, FaClock, FaFillDrip,
 } from 'react-icons/fa';
 import { FaStairs } from 'react-icons/fa6';
 import { getCurrentUser, getHomeDashboardPath, HASSAN_AWAD, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyExperience, isPublicAppRoute, canManageCatalog } from './accessControl';
@@ -30,7 +30,6 @@ const NAV_GROUPS = [
       { label: 'Reversal', route: '/reversal', icon: FaUndo },
       { label: 'Deliveries', route: '/warehouse-deliveries-admin', icon: FaTruckLoading, catalogOnly: true },
       { label: 'Repairs', route: '/warehouse-repairs-admin', icon: FaUndo, catalogOnly: true },
-      { label: 'Sales Storage', route: '/warehouse-sales-storage-admin', icon: FaShoppingBag, catalogOnly: true },
     ],
   },
   {
@@ -42,18 +41,20 @@ const NAV_GROUPS = [
   {
     title: 'Production',
     items: [
-      { label: 'Floor 2', route: '/warehouse-floor-2', icon: FaStairs, catalogOnly: true },
-      { label: 'Floor 1', route: '/warehouse-products', icon: FaStairs },
       { label: 'Upholstery Products', route: '/upholstery', icon: FaPlus, catalogOnly: true },
-      { label: 'Upholstery Jobs', route: '/upholstery-timer', icon: FaClock, catalogOnly: true },
       { label: 'Carpentry Products', route: '/carpentry', icon: FaToolbox, catalogOnly: true },
+      { label: 'Upholstery Jobs', route: '/upholstery-timer', icon: FaClock, catalogOnly: true },
+      { label: 'Carpentry Jobs', route: '/carpentry-jobs', icon: FaClock, catalogOnly: true },
+      { label: 'Painting Jobs', route: '/painting-jobs', icon: FaFillDrip, catalogOnly: true },
       { label: 'New Products', route: '/production', icon: FaPlus, catalogOnly: true },
     ],
   },
   {
-    title: 'Materials',
-    subtitle: 'Storerooms 1–3 · BOM stock for carpentry & upholstery',
+    title: 'Warehouses & Storerooms',
+    subtitle: 'Floor 1–2 · Storerooms 1–3 · BOM stock for carpentry & upholstery',
     items: [
+      { label: 'Floor 2', route: '/warehouse-floor-2', icon: FaStairs, catalogOnly: true },
+      { label: 'Floor 1', route: '/warehouse-products', icon: FaStairs },
       { label: 'Storeroom 1', route: '/carpentry-warehouse/1', icon: FaBoxOpen, catalogOnly: true },
       { label: 'Storeroom 2', route: '/carpentry-warehouse/2', icon: FaBoxOpen, catalogOnly: true },
       { label: 'Storeroom 3', route: '/carpentry-warehouse/3', icon: FaBoxOpen, catalogOnly: true },
@@ -95,7 +96,10 @@ const NAV_GROUPS = [
     items: [
       { label: 'Sales Report', route: '/sales-report', icon: FaChartLine },
       { label: 'Transfers Report', route: '/transfers-report', icon: FaExchangeAlt },
-      { label: 'Production Report', route: '/production-report', icon: FaPlus, catalogOnly: true },
+      { label: 'Upholstery Report', route: '/production-report', icon: FaPlus, catalogOnly: true },
+      { label: 'Carpentry Production', route: '/carpentry-production-report', icon: FaToolbox, catalogOnly: true },
+      { label: 'Painting Report', route: '/painting-report', icon: FaFillDrip, catalogOnly: true },
+      { label: 'Repair Report', route: '/repair-report', icon: FaUndo, catalogOnly: true },
     ],
   },
   {
@@ -184,6 +188,8 @@ const TITLE_MAP = {
   '/upholstery': 'Upholstery Products',
   '/upholstery-timer': 'Upholstery Jobs',
   '/carpentry': 'Carpentry Products',
+  '/carpentry-jobs': 'Carpentry Jobs',
+  '/painting-jobs': 'Painting Jobs',
   '/carpentry-warehouse/1': 'Storeroom 1',
   '/carpentry-warehouse/2': 'Storeroom 2',
   '/carpentry-warehouse/3': 'Storeroom 3',
@@ -191,7 +197,7 @@ const TITLE_MAP = {
   '/warehouse-floor-2': 'Floor 2',
   '/warehouse-products/packets': 'Packets (Warehouse)',
   '/production': 'New Products',
-  '/production-report': 'Production Report',
+  '/production-report': 'Upholstery Report',
   '/warehouse-products/incomplete': 'Incomplete products (Warehouse)',
   '/warehouse-products/uncategorized': 'Uncategorized products (Warehouse)',
   '/warehouse-products/sets': 'Sets (Warehouse)',
@@ -211,6 +217,9 @@ const TITLE_MAP = {
   '/All-Transfers': 'Transfers',
   '/All-Transfers-summary': 'Transfers Summary',
   '/transfers-report': 'Transfers Report',
+  '/carpentry-production-report': 'Carpentry Production',
+  '/painting-report': 'Painting Report',
+  '/repair-report': 'Repair Report',
   '/warehouse-deliveries': 'Warehouse Deliveries',
   '/warehouse-returns': 'Returns',
   '/warehouse-returns-trackage': 'Returns Trackage',
@@ -220,7 +229,7 @@ const TITLE_MAP = {
   '/warehouse-production-presets': 'Production presets',
   '/warehouse-deliveries-admin': 'Deliveries',
   '/warehouse-repairs-admin': 'Repairs',
-  '/warehouse-sales-storage-admin': 'Sales Storage',
+  '/warehouse-products/sales-storage': 'Sales Storage',
   '/transfers': 'Transfers',
   '/lusaka-transfers': 'Transfers',
   '/company-settings': 'Company Settings',

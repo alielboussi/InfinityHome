@@ -21,6 +21,35 @@ export async function runCarpentryManufacture({ assemblyId, productQty = 1 }) {
   });
 }
 
+export async function fetchCarpentryManufactureProducts() {
+  const payload = await warehouseMobileRequest('carpentry-manufacture-list');
+  return payload?.products || [];
+}
+
+export async function startCarpentryProductionJob({ assemblyId, productQty = 1 }) {
+  return warehouseMobileRequest('carpentry-job-start', {
+    assembly_id: assemblyId,
+    product_qty: productQty,
+  });
+}
+
+export async function fetchCarpentryProductionJobs({ activeOnly = true } = {}) {
+  const payload = await warehouseMobileRequest('carpentry-job-list', { active_only: activeOnly });
+  return payload?.jobs || [];
+}
+
+export async function pauseCarpentryProductionJob(jobId) {
+  return warehouseMobileRequest('carpentry-job-pause', { job_id: jobId });
+}
+
+export async function resumeCarpentryProductionJob(jobId) {
+  return warehouseMobileRequest('carpentry-job-resume', { job_id: jobId });
+}
+
+export async function finishCarpentryProductionJob(jobId) {
+  return warehouseMobileRequest('carpentry-job-finish', { job_id: jobId });
+}
+
 export async function fetchCarpentryFinishingProducts() {
   const payload = await warehouseMobileRequest('carpentry-finishing-list');
   return payload?.products || [];
@@ -28,6 +57,13 @@ export async function fetchCarpentryFinishingProducts() {
 
 export async function runCarpentryFinishing({ assemblyId, productQty = 1 }) {
   return warehouseMobileRequest('carpentry-finishing', {
+    assembly_id: assemblyId,
+    product_qty: productQty,
+  });
+}
+
+export async function sendCarpentryProductToPainting({ assemblyId, productQty = 1 }) {
+  return warehouseMobileRequest('painting-send-from-floor2', {
     assembly_id: assemblyId,
     product_qty: productQty,
   });

@@ -13,6 +13,7 @@ export async function printWarehouseReturnCustomerLabel(db, {
   qty = 1,
   printedBy,
   printedAt,
+  returnNotePdfUrl,
 }) {
   const labelName = String(name || '').trim();
   const labelSku = String(sku || '').trim();
@@ -32,6 +33,7 @@ export async function printWarehouseReturnCustomerLabel(db, {
     customerPhone: custPhone || '—',
     copies,
     printedAt: at,
+    returnNotePdfUrl: returnNotePdfUrl,
   });
 
   if (isZebraWeblinkPrintConfigured()) {

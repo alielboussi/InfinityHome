@@ -20,11 +20,14 @@ function parseImageBase64Payload(raw) {
   return buffer;
 }
 
-async function prepareInputJpeg(buffer) {
+async function prepareInputJpeg(buffer, { forRequireAi = false } = {}) {
+  const maxEdge = forRequireAi
+    ? Math.max(512, Math.min(1024, Number(process.env.GEMINI_PRODUCTION_PHOTO_INPUT_PX) || 768))
+    : 1024;
   return sharp(buffer)
     .rotate()
-    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: 86 })
+    .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: forRequireAi ? 82 : 86 })
     .toBuffer();
 }
 
@@ -70,6 +73,11 @@ async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, prom
 
   const prompt = String(promptText || '').trim() || buildProductionPhotoRetouchPrompt({});
 
+  const generationConfig = buildGenerationConfig({ productName });
+  if (requireAi) {
+    generationConfig.imageConfig = { aspectRatio: '1:1' };
+  }
+
   const body = {
     contents: [{
       role: 'user',
@@ -83,7 +91,7 @@ async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, prom
         },
       ],
     }],
-    generationConfig: buildGenerationConfig({ productName }),
+    generationConfig,
   };
 
   const models = requireAi
@@ -92,9 +100,12 @@ async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, prom
   const errors = [];
   const maxMs = Math.max(
     8000,
-    Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || (requireAi ? 120000 : 22000),
+    Number(process.env.GEMINI_PRODUCTION_PHOTO_MAX_MS) || (requireAi ? 90000 : 22000),
   );
   const deadline = Date.now() + maxMs;
+  const perModelCapMs = requireAi
+    ? Math.max(8000, Math.min(75000, Number(process.env.GEMINI_PRODUCTION_PHOTO_PER_MODEL_MS) || 75000))
+    : null;
 
   for (const model of models) {
     if (Date.now() >= deadline) {
@@ -102,7 +113,10 @@ async function requestGeminiSeatingRetouch(jpegBuffer, { requireAi = false, prom
       break;
     }
     try {
-      const remaining = Math.max(1000, deadline - Date.now());
+      let remaining = Math.max(1000, deadline - Date.now());
+      if (perModelCapMs) {
+        remaining = Math.min(remaining, perModelCapMs);
+      }
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
@@ -202,7 +216,7 @@ export async function retouchProductionSeatingPhotoFromBase64(imageBase64, {
 } = {}) {
   const skipAi = skipAiOption
     || String(process.env.PRODUCTION_PHOTO_SKIP_AI || '').trim().toLowerCase() === 'true';
-  const input = await prepareInputJpeg(parseImageBase64Payload(imageBase64));
+  const input = await prepareInputJpeg(parseImageBase64Payload(imageBase64), { forRequireAi: requireAi });
   const promptText = buildProductionPhotoRetouchPrompt({
     productName,
     preset,

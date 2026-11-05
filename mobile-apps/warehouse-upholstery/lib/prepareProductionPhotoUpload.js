@@ -57,9 +57,9 @@ export async function prepareProductionPhotoForUpload(source) {
   const { manipulateAsync, SaveFormat } = await loadImageManipulator();
 
   const attempts = [
-    { width: 880, compress: 0.58 },
-    { width: 720, compress: 0.48 },
-    { width: 560, compress: 0.38 },
+    { width: 720, compress: 0.52 },
+    { width: 640, compress: 0.44 },
+    { width: 520, compress: 0.36 },
   ];
 
   let lastBase64 = '';

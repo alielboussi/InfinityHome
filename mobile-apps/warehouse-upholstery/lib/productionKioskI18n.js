@@ -1,5 +1,13 @@
 /** Keep in sync with src/utils/productionKioskI18n.js */
 
+function coalesceDisplayText(value, fallback = '') {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value);
+  return text || fallback;
+}
+
+export const textForDisplay = coalesceDisplayText;
+
 const UI_STRINGS = {
   pageTitle: { en: 'Upholstery', ar: 'التنجيد' },
   preset3Seater: { en: '3 seater', ar: 'ثلاث مقاعد' },
@@ -102,7 +110,7 @@ const UI_STRINGS = {
     ar: 'Preparing photo for upload…',
   },
   photoProcessing: {
-    en: 'AI retouching photo (white catalog background). This can take 1–2 minutes — do not close the app.',
+    en: 'AI retouching photo (white catalog background). Usually 30–90 seconds — do not close the app.',
     ar: 'جاري حفظ المنتج… ثم الذكاء الاصطناعي يعالج الصورة (خلفية بيضاء). لا تغلق التطبيق.',
   },
   photoCancelled: {
@@ -159,6 +167,14 @@ const UI_STRINGS = {
   quoteOrderScanPlaceholder: { en: 'Scan or type SKU / barcode', ar: 'امسح أو اكتب SKU / الباركود' },
   quoteOrderDeductScan: { en: 'Deduct scan', ar: 'خصم المسح' },
   quoteOrderLines: { en: 'Lines', ar: 'البنود' },
+  quoteOrderLeatherCode: { en: 'Leather code', ar: 'رمز الجلد' },
+  quoteOrderDimensions: { en: 'L×W×H (cm)', ar: 'ط×ع×ار (سم)' },
+  quoteOrderColorCode: { en: 'Color code', ar: 'رمز اللون' },
+  quoteOrderWood: { en: 'Wood', ar: 'الخشب' },
+  quoteOrderViewDrawing: { en: 'View drawing', ar: 'عرض الرسم' },
+  quoteOrderDrawingTitle: { en: 'Production drawing', ar: 'رسم الإنتاج' },
+  quoteOrderOpenInBrowser: { en: 'Open in browser', ar: 'فتح في المتصفح' },
+  quoteOrderDrawingAttached: { en: 'Drawing attached', ar: 'مرفق رسم' },
   quoteOrderScanDeducted: { en: 'Material stock updated for this order.', ar: 'تم تحديث مخزون المواد لهذا الطلب.' },
   quoteOrderScanFailed: { en: 'Scan failed', ar: 'فشل المسح' },
   quoteOrderFailed: { en: 'Failed', ar: 'فشل' },
@@ -179,6 +195,22 @@ const UI_STRINGS = {
     ar: 'قبول طلبات التنجيد من حسن',
   },
   dashUpholsteryQuoteOrders: { en: 'Orders', ar: 'الطلبات' },
+  dashRepairs: { en: 'Repairs', ar: 'إصلاحات' },
+  repairQueueEmpty: { en: 'No repair jobs in this queue.', ar: 'لا توجد إصلاحات في هذه القائمة.' },
+  repairCompleteConfirm: {
+    en: 'Stop the repair timer and choose what happens next.',
+    ar: 'إيقاف مؤقت الإصلاح واختيار الخطوة التالية.',
+  },
+  repairDispositionPrompt: {
+    en: 'Send repaired stock to Floor 1, or dispatch a delivery with driver signature?',
+    ar: 'إرسال المخزون إلى الطابق 1، أم تسليم مع توقيع السائق؟',
+  },
+  repairDispositionFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
+  repairDispositionDelivery: { en: 'Send delivery', ar: 'إرسال تسليم' },
+  repairTimerStatus_ready: { en: 'Ready', ar: 'جاهز' },
+  repairTimerStatus_running: { en: 'Running', ar: 'قيد التشغيل' },
+  repairTimerStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتاً' },
+  repairTimerStatus_completed: { en: 'Done', ar: 'منتهي' },
   dashUpholsteryQuoteOrdersSub: {
     en: 'Upholstery route — sent from Factory Orders',
     ar: 'مسار التنجيد — مرسلة من طلبات المصنع',
@@ -320,6 +352,45 @@ const UI_STRINGS = {
   upholsteryJobStatus_running: { en: 'Running', ar: 'يعمل' },
   upholsteryJobStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتًا' },
   upholsteryJobStatus_completed: { en: 'Completed', ar: 'مكتمل' },
+  dashPaintingTitle: { en: 'Painting', ar: 'دهان' },
+  dashHintDismiss: { en: 'Tap outside to close', ar: 'اضغط خارج النافذة للإغلاق' },
+  dashTileHint_paintingJobs: {
+    en: 'Your painting queue — play/pause timer, stop when done to credit Warehouse Floor 1.',
+    ar: 'قائمة الدهان — مؤقت تشغيل/إيقاف، Stop عند الانتهاء لإضافة Floor 1.',
+  },
+  hintJobPlay: {
+    en: 'Start or resume the job timer (does not move stock).',
+    ar: 'تشغيل أو استئناف المؤقت (لا يحرّك المخزون).',
+  },
+  hintJobPause: {
+    en: 'Pause the timer — resume later with play.',
+    ar: 'إيقاف المؤقت مؤقتًا — استأنف لاحقًا بتشغيل.',
+  },
+  hintJobFinish: {
+    en: 'Stop and complete — credits finished qty to Warehouse Floor 1 when you confirm.',
+    ar: 'إنهاء المهمة — يُضاف المخزون الجاهز إلى Floor 1 بعد التأكيد.',
+  },
+  hintJobCard: {
+    en: 'Job in your queue. Long-press each button below for help; tap play, pause, or stop.',
+    ar: 'مهمة في قائمتك. اضغط مطولًا على الأزرار للمساعدة؛ تشغيل، إيقاف، أو Stop.',
+  },
+  paintingJobsTitle: { en: 'Painting jobs', ar: 'مهام الدهان' },
+  paintingJobFinishBody: {
+    en: 'Finish {qty} × {name}? Credits Warehouse Floor 1 (/warehouse-products).',
+    ar: 'إنهاء {qty} × {name}؟ يُضاف إلى Warehouse Floor 1.',
+  },
+  paintingJobFinishDone: {
+    en: 'Done — finished stock is on Warehouse Floor 1.',
+    ar: 'تم — المخزون الجاهز في Warehouse Floor 1.',
+  },
+  paintingJobEmpty: {
+    en: 'No painting jobs yet. Carpentry sends WIP from Floor 2 using the Painting button.',
+    ar: 'لا مهام دهان بعد. ترسل النجارة من Floor 2 عبر زر الدهان.',
+  },
+  paintingJobControlsHint: {
+    en: 'Play · Pause · Stop (complete → Floor 1)',
+    ar: 'تشغيل · إيقاف مؤقت · Stop (إنهاء → Floor 1)',
+  },
   manufactureUpholsteryConfirmBody: {
     en: 'Finish 1 × {name}? Deducts raw from Warehouse Floor 2; {finished} credits Warehouse Floor 1.',
     ar: 'إنهاء 1 × {name}؟ يُخصم الخام من Floor 2 ويُضاف {finished} إلى Floor 1.',
@@ -708,18 +779,23 @@ export function presetLabel(preset, locale, autoArByPreset = null) {
   const p = String(preset || '').trim();
   if (!p) return '';
   const key = PRESET_I18N[p];
-  if (key) return tUi(key, locale);
+  if (key) return coalesceDisplayText(tUi(key, locale), p);
   if (locale === 'ar') {
-    if (autoArByPreset && autoArByPreset[p]) return autoArByPreset[p];
-    if (presetAutoArCache.has(p)) return presetAutoArCache.get(p);
+    if (autoArByPreset && autoArByPreset[p]) return coalesceDisplayText(autoArByPreset[p], p);
+    if (presetAutoArCache.has(p)) return coalesceDisplayText(presetAutoArCache.get(p), p);
   }
   return p;
 }
 
 export function tUi(key, locale) {
   const row = UI_STRINGS[key];
-  if (!row) return key;
-  return row[locale === 'ar' ? 'ar' : 'en'] || row.en;
+  if (!row) return coalesceDisplayText(key, '');
+  const localized = row[locale === 'ar' ? 'ar' : 'en'];
+  const fallback = row.en ?? row.ar ?? key;
+  return coalesceDisplayText(
+    localized ?? fallback,
+    coalesceDisplayText(fallback, coalesceDisplayText(key, '')),
+  );
 }
 
 /** Same free translation API as web kiosk (MyMemory). */

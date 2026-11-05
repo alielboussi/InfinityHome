@@ -12,6 +12,7 @@ import {
   resolveQuoteLineQuantity,
 } from '../../src/utils/quotationDisplay.js';
 import { buildQuoteLaybyEditSummary } from '../../src/utils/quoteLaybyEditNotify.js';
+import { buildQuoteItemMetadataFromPayload } from '../../src/utils/quoteProductionItemFields.js';
 import { getDataClient } from '../lib/getDataClient.js';
 
 function setCors(res) {
@@ -362,17 +363,22 @@ export default async function handler(req, res) {
     }
 
     // Sanitize and compute totals server-side
-    const cleanItems = items.map((it, idx) => ({
-      quotation_id: id || null,
-      quote_product_id: it.quote_product_id ?? null,
-      product_id: it.product_id ?? null,
-      name_override: it.name || it.name_override || null,
-      description: it.description || null,
-      unit_id: it.unit_id != null && it.unit_id !== '' ? Number(it.unit_id) : null,
-      quantity: resolveQuoteLineQuantity(it.quantity, it.unit_price),
-      unit_price: Number(it.unit_price || 0),
-      sort_order: idx + 1,
-    }));
+    const cleanItems = items.map((it, idx) => {
+      const metadata = buildQuoteItemMetadataFromPayload(it);
+      const row = {
+        quotation_id: id || null,
+        quote_product_id: it.quote_product_id ?? null,
+        product_id: it.product_id ?? null,
+        name_override: it.name || it.name_override || null,
+        description: it.description || null,
+        unit_id: it.unit_id != null && it.unit_id !== '' ? Number(it.unit_id) : null,
+        quantity: resolveQuoteLineQuantity(it.quantity, it.unit_price),
+        unit_price: Number(it.unit_price || 0),
+        sort_order: idx + 1,
+      };
+      if (metadata) row.metadata = metadata;
+      return row;
+    });
 
     const subtotal = cleanItems.reduce((s, it) => s + (Number(it.quantity || 0) * Number(it.unit_price || 0)), 0);
     const discount = Number(quote.discount || 0);

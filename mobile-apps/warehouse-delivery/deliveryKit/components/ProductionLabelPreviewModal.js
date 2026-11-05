@@ -1,6 +1,6 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'react-native';
-import { tUi } from '../lib/productionKioskI18n';
+import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
 
 export default function ProductionLabelPreviewModal({
@@ -16,11 +16,14 @@ export default function ProductionLabelPreviewModal({
   if (!label) return null;
 
   const uri = pngBase64 ? `data:image/png;base64,${pngBase64}` : null;
-  const subText = !labelsPrinted || printWarning
-    ? tUi('labelPreviewNotPrinted', locale)
-    : (copies > 1
-      ? tUi('labelPreviewCopies', locale).replace('{n}', String(copies))
-      : tUi('labelPreviewSent', locale));
+  const subText = textForDisplay(
+    !labelsPrinted || printWarning
+      ? tUi('labelPreviewNotPrinted', locale)
+      : (copies > 1
+        ? tUi('labelPreviewCopies', locale).replace('{n}', String(copies))
+        : tUi('labelPreviewSent', locale)),
+    '',
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -29,7 +32,7 @@ export default function ProductionLabelPreviewModal({
           <Text style={styles.title}>{tUi('labelPreviewTitle', locale)}</Text>
           <Text style={styles.sub}>{subText}</Text>
           {printWarning ? (
-            <Text style={styles.warn}>{printWarning}</Text>
+            <Text style={styles.warn}>{textForDisplay(printWarning, '')}</Text>
           ) : null}
 
           {uri ? (
@@ -38,10 +41,10 @@ export default function ProductionLabelPreviewModal({
             </ScrollView>
           ) : (
             <View style={styles.fallback}>
-              <Text style={styles.fallbackSku}>{label.sku}</Text>
-              <Text style={styles.fallbackName}>{label.name}</Text>
-              <Text style={styles.fallbackMeta}>{label.print_date}</Text>
-              <Text style={styles.fallbackMeta}>{label.print_time}</Text>
+              <Text style={styles.fallbackSku}>{textForDisplay(label.sku, '—')}</Text>
+              <Text style={styles.fallbackName}>{textForDisplay(label.name, '—')}</Text>
+              <Text style={styles.fallbackMeta}>{textForDisplay(label.print_date, '')}</Text>
+              <Text style={styles.fallbackMeta}>{textForDisplay(label.print_time, '')}</Text>
             </View>
           )}
 

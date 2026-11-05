@@ -1,9 +1,11 @@
 import {
   movePacketsForDeliveryReceive,
   moveAssembliesForDeliveryReceive,
+  moveReturnShipmentAssembliesToKitwe,
   syncWarehouseStockAfterDeliveryReceive,
   deliveryEntryFinishedUnit,
 } from './warehouseDeliveryAcceptStock.js';
+import { finalizeReturnShipmentOnKitweAccept } from './warehouseReturnOrders.js';
 import {
   assemblyUnitsReadyForKitweCatalog,
   readKitweAssemblyInventoryQtyMap,
@@ -218,8 +220,14 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
     ? await readKitweAssemblyInventoryQtyMap(sb, touchedAssemblyIds)
     : null;
 
-  const moved = await movePacketsForDeliveryReceive(sb, toReceive);
-  await moveAssembliesForDeliveryReceive(sb, toReceive);
+  const isReturnShipment = session.metadata?.is_return_shipment === true;
+  let moved;
+  if (isReturnShipment) {
+    moved = await moveReturnShipmentAssembliesToKitwe(sb, toReceive);
+  } else {
+    moved = await movePacketsForDeliveryReceive(sb, toReceive);
+    await moveAssembliesForDeliveryReceive(sb, toReceive);
+  }
   for (const line of toReceive) {
     const metadata = {
       ...(line.metadata || {}),
@@ -234,7 +242,7 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
     ? await readKitweAssemblyInventoryQtyMap(sb, touchedAssemblyIds)
     : null;
 
-  return finalizeWarehouseDeliverySession(sb, session, {
+  const finalizeResult = await finalizeWarehouseDeliverySession(sb, session, {
     acceptedBy,
     acceptedByEmail,
     now,
@@ -243,6 +251,12 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
     kitweQtyBeforeStockAccept,
     kitweQtyAfterStockAccept,
   });
+
+  if (isReturnShipment) {
+    await finalizeReturnShipmentOnKitweAccept(sb, session, { acceptedAt: now });
+  }
+
+  return finalizeResult;
 }
 
 export function deliveryEntryProgress(entries) {

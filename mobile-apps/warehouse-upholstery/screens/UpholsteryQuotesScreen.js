@@ -16,6 +16,7 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import { fetchUpholsteryProductionQuotes } from '../services/productionApi';
 import { theme } from '../shared/theme';
+import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
 
 export default function UpholsteryQuotesScreen({
   navigation,
@@ -113,6 +114,13 @@ export default function UpholsteryQuotesScreen({
                 ? tUi('carpentryQuoteInProduction', locale)
                 : tUi('carpentryQuoteAwaiting', locale)}
             </Text>
+            <QuoteProductionCardExtras
+              quote={item}
+              route="upholstery"
+              textAlign={textAlign}
+              tUi={tUi}
+              locale={locale}
+            />
           </Pressable>
         )}
         ListEmptyComponent={

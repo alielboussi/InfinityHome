@@ -16,6 +16,10 @@ const ADAPTIVE_SCALE = 0.62;
 async function main() {
   const iconPng = path.join(assetsDir, 'icon.png');
   const adaptivePng = path.join(assetsDir, 'adaptive-icon.png');
+  if (fs.existsSync(iconPng) && fs.existsSync(adaptivePng) && !process.env.FORCE_DELIVERY_ICONS) {
+    console.log('[ensureDeliveryIcons] skip — using committed assets/icon.png & adaptive-icon.png');
+    return;
+  }
   if (!fs.existsSync(frameScript)) {
     if (fs.existsSync(iconPng) && fs.existsSync(adaptivePng)) {
       console.log('[ensureDeliveryIcons] skip — using existing assets/icon.png & adaptive-icon.png');
@@ -24,7 +28,16 @@ async function main() {
     console.error('[ensureDeliveryIcons] missing', frameScript);
     process.exit(1);
   }
-  const { postprocessWarehouseProductionIcons } = require(frameScript);
+  let postprocessWarehouseProductionIcons;
+  try {
+    ({ postprocessWarehouseProductionIcons } = require(frameScript));
+  } catch (err) {
+    if (fs.existsSync(iconPng) && fs.existsSync(adaptivePng)) {
+      console.log('[ensureDeliveryIcons] skip — icon frame unavailable, using committed assets:', err?.message || err);
+      return;
+    }
+    throw err;
+  }
   const result = await postprocessWarehouseProductionIcons({
     sourcePath,
     assetsDir,

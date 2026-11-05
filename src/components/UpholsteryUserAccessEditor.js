@@ -6,7 +6,7 @@ import {
   sanitizeMobileAccessGrantForUser,
 } from '../mobile/mobileAccessManifest';
 
-const UPHOLSTERY_APP_NAME = 'Upholstery';
+const UPHOLSTERY_APP_NAME = 'Production workshop apps';
 
 async function saveUpholsteryAppAccess(uid, mobile_access, mobile_display_name) {
   const token = await firebaseGetAccessToken();
@@ -34,12 +34,36 @@ async function saveUpholsteryAppAccess(uid, mobile_access, mobile_display_name) 
 function normalizeGrant(raw) {
   const base = defaultMobileAccessGrant();
   if (!raw) return base;
+  const allowDeny = (v) => (v === 'allow' ? 'allow' : 'deny');
   return {
     ...base,
     ...raw,
-    warehouse_production_app: raw.warehouse_production_app === 'allow' ? 'allow' : 'deny',
-    warehouse_production_photo_upload: raw.warehouse_production_photo_upload === 'allow' ? 'allow' : 'deny',
+    warehouse_production_app: allowDeny(raw.warehouse_production_app),
+    warehouse_production_photo_upload: allowDeny(raw.warehouse_production_photo_upload),
+    carpentry_workshop_app: allowDeny(raw.carpentry_workshop_app),
+    painting_workshop_app: allowDeny(raw.painting_workshop_app),
   };
+}
+
+function AccessSelect({ id, label, description, value, onChange }) {
+  return (
+    <div className="mobile-access-permission-item">
+      <label className="mobile-access-permission-item__body" htmlFor={id}>
+        <span className="mobile-access-permission-item__title">{label}</span>
+        <span className="mobile-access-permission-item__desc">{description}</span>
+      </label>
+      <select
+        id={id}
+        className="mobile-access-yesno"
+        value={value === 'allow' ? 'yes' : 'no'}
+        onChange={(e) => onChange(e.target.value === 'yes' ? 'allow' : 'deny')}
+        aria-label={label}
+      >
+        <option value="no">No</option>
+        <option value="yes">Yes</option>
+      </select>
+    </div>
+  );
 }
 
 export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }) {
@@ -76,7 +100,7 @@ export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }
       setGrant(normalizeGrant(updated?.mobile_access));
       setToast(`${UPHOLSTERY_APP_NAME} access saved.`);
     } catch (err) {
-      setError(err?.message || 'Failed to save upholstery access');
+      setError(err?.message || 'Failed to save workshop app access');
     } finally {
       setBusy(false);
     }
@@ -91,12 +115,11 @@ export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }
       <div className="mobile-access-panel__head">
         <div>
           <h3 id="upholstery-access-title" className="mobile-access-panel__title">
-            {UPHOLSTERY_APP_NAME} app — {displayName}
+            {UPHOLSTERY_APP_NAME} — {displayName}
           </h3>
           <p className="mobile-access-panel__hint">
-            Allows the <strong>Upholstery</strong> Android app: create items, stock-in, manufacture, and Hassan quotes.
-            Labels print via Zebra cloud Weblink. User must sign in with <strong>Google on the app</strong> first, then
-            enable login and app access here.
+            Upholstery, Carpentry, and Painting Android apps — use <strong>Yes</strong> / <strong>No</strong> for each.
+            Labels print via Zebra cloud Weblink where applicable.
           </p>
         </div>
         <div className="mobile-access-panel__head-actions">
@@ -118,44 +141,36 @@ export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }
       {toast ? <div className="report-success mobile-access-panel__error">{toast}</div> : null}
 
       <div className="mobile-access-panel__section mobile-access-panel__section--permissions">
-        <h4 className="mobile-access-panel__section-label">Upholstery app</h4>
+        <h4 className="mobile-access-panel__section-label">Workshop apps</h4>
         <div className="mobile-access-permission-list">
-          <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-upholstery-app"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={grant.warehouse_production_app === 'allow'}
-              onChange={(e) => setGrant((prev) => ({
-                ...prev,
-                warehouse_production_app: e.target.checked ? 'allow' : 'deny',
-              }))}
-            />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-upholstery-app">
-              <span className="mobile-access-permission-item__title">Upholstery (Android)</span>
-              <span className="mobile-access-permission-item__desc">
-                Create seating items and stock-in at the warehouse. Activity appears on Production Report.
-              </span>
-            </label>
-          </div>
-          <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-upholstery-photo-upload"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={grant.warehouse_production_photo_upload === 'allow'}
-              onChange={(e) => setGrant((prev) => ({
-                ...prev,
-                warehouse_production_photo_upload: e.target.checked ? 'allow' : 'deny',
-              }))}
-            />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-upholstery-photo-upload">
-              <span className="mobile-access-permission-item__title">Picture upload (Floor 2 WIP)</span>
-              <span className="mobile-access-permission-item__desc">
-                Allow importing product WIP photos from the gallery in Manufacture (no camera); saved on Warehouse Floor 2.
-              </span>
-            </label>
-          </div>
+          <AccessSelect
+            id="mobile-access-upholstery-app"
+            label="Upholstery (Android)"
+            description="Create seating items, stock-in, manufacture, quotes, and repair queue."
+            value={grant.warehouse_production_app}
+            onChange={(v) => setGrant((prev) => ({ ...prev, warehouse_production_app: v }))}
+          />
+          <AccessSelect
+            id="mobile-access-carpentry-app"
+            label="Carpentry (Android)"
+            description="Carpentry manufacture, quotes, painting send, and repair queue (excludes Color → Painting)."
+            value={grant.carpentry_workshop_app}
+            onChange={(v) => setGrant((prev) => ({ ...prev, carpentry_workshop_app: v }))}
+          />
+          <AccessSelect
+            id="mobile-access-painting-app"
+            label="Painting (Android)"
+            description="Painting jobs and Color repair returns; finish credits Floor 1."
+            value={grant.painting_workshop_app}
+            onChange={(v) => setGrant((prev) => ({ ...prev, painting_workshop_app: v }))}
+          />
+          <AccessSelect
+            id="mobile-access-upholstery-photo-upload"
+            label="Picture upload (Floor 2 WIP)"
+            description="Gallery import on Manufacture inlay photos (Upholstery app)."
+            value={grant.warehouse_production_photo_upload}
+            onChange={(v) => setGrant((prev) => ({ ...prev, warehouse_production_photo_upload: v }))}
+          />
         </div>
       </div>
 
@@ -167,7 +182,7 @@ export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }
           id="upholstery-app-display-name"
           type="text"
           className="mobile-access-name-input"
-          placeholder="Shown on upholstery app dashboard"
+          placeholder="Shown on workshop app dashboards"
           value={appDisplayName}
           onChange={(e) => setAppDisplayName(e.target.value)}
         />

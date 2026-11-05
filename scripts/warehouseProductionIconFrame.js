@@ -76,6 +76,7 @@ async function postprocessWarehouseProductionIcons({
   assetsDir,
   contentScale,
   adaptiveContentScale,
+  backgroundHex: backgroundHexOption,
 } = {}) {
   const root = path.resolve(__dirname, '..');
   const assets = assetsDir || path.join(root, 'mobile-apps/warehouse-upholstery/assets');
@@ -94,7 +95,9 @@ async function postprocessWarehouseProductionIcons({
   }
 
   const sampled = await sampleBackgroundHex(source);
-  const backgroundHex = PRODUCTION_ICON_BACKGROUND || sampled;
+  const backgroundHex = backgroundHexOption === undefined
+    ? (PRODUCTION_ICON_BACKGROUND || sampled)
+    : (backgroundHexOption || sampled);
   const mainScale = contentScale ?? ICON_CONTENT_SCALE;
   const adaptiveScale = adaptiveContentScale ?? mainScale;
   const framed = await buildIconPng(source, backgroundHex, mainScale);

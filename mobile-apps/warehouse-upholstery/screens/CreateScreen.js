@@ -29,7 +29,7 @@ import {
 import ProductionDimensionsInput from '../components/ProductionDimensionsInput';
 import ProductionPresetPicker from '../components/ProductionPresetPicker';
 import { kioskFooterBottomPad, kioskScreenEdges } from '../lib/kioskLayout';
-import { presetLabel, prefetchPresetArabicLabels, tUi } from '../lib/productionKioskI18n';
+import { presetLabel, prefetchPresetArabicLabels, tUi, textForDisplay } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
 import ProductionPhotoCaptureModal from '../components/ProductionPhotoCaptureModal';
 import { prepareProductionPhotoForUpload } from '../lib/prepareProductionPhotoUpload';
@@ -109,7 +109,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     }
     const remoteSeater = data.seater_presets || data.seater || data.production_presets?.seater;
     if (Array.isArray(remoteSeater) && remoteSeater.length) {
-      setActivePresets(remoteSeater);
+      setActivePresets(remoteSeater.map((p) => String(p || '').trim()).filter(Boolean));
     }
   }, [carpentryOnly]);
 
@@ -552,14 +552,14 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       <Text style={[kiosk.subtitle, { textAlign }]}>{tUi('subtitle', locale)}</Text>
 
       {loading ? <Text>{tUi('loading', locale)}</Text> : null}
-      {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
-      {success ? <Text style={kiosk.noticeOk}>{success}</Text> : null}
+      {error ? <Text style={kiosk.noticeErr}>{textForDisplay(error, '')}</Text> : null}
+      {success ? <Text style={kiosk.noticeOk}>{textForDisplay(success, '')}</Text> : null}
 
       <View style={kiosk.card}>
         <View style={kiosk.field}>
           <Text style={[kiosk.label, { textAlign }]}>{tUi('locationLabel', locale)}</Text>
           <Text style={kiosk.locationPill}>
-            {warehouseLocationName} — {tUi('warehouseOnly', locale)}
+            {textForDisplay(warehouseLocationName, 'Warehouse')} — {tUi('warehouseOnly', locale)}
           </Text>
         </View>
 
@@ -673,7 +673,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
         <View style={styles.busyCard}>
           <ActivityIndicator size="large" color={theme.primary} />
           <Text style={styles.busyText}>
-            {aiPhotoStatus || tUi('photoProcessing', locale)}
+            {textForDisplay(aiPhotoStatus || tUi('photoProcessing', locale), tUi('photoProcessing', locale))}
           </Text>
         </View>
       </View>
@@ -682,7 +682,9 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       <View style={styles.busyBackdrop}>
         <View style={styles.busyCard}>
           <Text style={styles.busyTitle}>{tUi('saveFailedTitle', locale)}</Text>
-          <Text style={styles.busyText}>{photoRetryMessage || tUi('createAiPhotoFailedHint', locale)}</Text>
+          <Text style={styles.busyText}>
+            {textForDisplay(photoRetryMessage || tUi('createAiPhotoFailedHint', locale), tUi('createAiPhotoFailedHint', locale))}
+          </Text>
           <Pressable
             style={[kiosk.btn, kiosk.btnPrimary, styles.retryBtn]}
             onPress={retryAiPhotoSave}

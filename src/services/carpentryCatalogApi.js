@@ -2,9 +2,9 @@ import db from '../dataClient';
 import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
 import { buildCarpentryCatalogPayload } from '../utils/carpentryCatalogView';
+import { listUpholsteryCatalogProducts } from '../utils/upholsteryCatalogView';
 import {
   fetchSharedProductionPortalSnapshot,
-  getCachedProductionPortalSnapshot,
   invalidateProductionPortalSnapshotCache,
 } from '../utils/loadProductionPortalCatalogInputs';
 import { canManageCatalog, getCurrentUser } from '../accessControl';
@@ -17,6 +17,8 @@ import {
 } from '../utils/carpentryCatalogMutations';
 import { receiveStoreroomMaterial, createStoreroomMaterial, setStoreroomMaterialStockQty } from '../utils/storeroomStockMutations';
 import { cacheClear, cacheGet, cacheSet } from '../utils/staleCache';
+
+export { getCachedCarpentryCatalog } from '../utils/productionPortalCatalogCache';
 
 const CANONICAL = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
 const FLOOR_RUNS_CACHE_KEY = 'warehouse:floor2Runs:v1';
@@ -44,15 +46,6 @@ async function parseResponse(resp) {
   }
 }
 
-export function getCachedCarpentryCatalog() {
-  const snap = getCachedProductionPortalSnapshot();
-  if (!snap || !Array.isArray(snap.assemblies)) return null;
-  return {
-    ...buildCarpentryCatalogPayload(snap.assemblies, snap.setItems, snap.portalInputs),
-    locations: snap.portalInputs?.locations || [],
-  };
-}
-
 export function getCachedCarpentryFloorRuns() {
   return cacheGet(FLOOR_RUNS_CACHE_KEY);
 }
@@ -61,6 +54,7 @@ export async function fetchCarpentryCatalog({ forceFresh = false } = {}) {
   const snap = await fetchSharedProductionPortalSnapshot({ forceFresh });
   return {
     ...buildCarpentryCatalogPayload(snap.assemblies, snap.setItems, snap.portalInputs),
+    upholsteryProducts: listUpholsteryCatalogProducts(snap.assemblies),
     locations: snap.portalInputs?.locations || [],
   };
 }
@@ -178,6 +172,30 @@ export async function postCarpentryCatalog(body) {
     return await postCarpentryCatalogDirect(body);
   } catch (directErr) {
     throw new Error(directErr?.message || lastErr || 'carpentry-catalog failed');
+  }
+}
+
+export async function fetchCarpentryProductionJobs({ activeOnly = false, limit = 150 } = {}) {
+  try {
+    return await postCarpentryCatalog({
+      op: 'list-carpentry-jobs',
+      active_only: activeOnly,
+      limit,
+    });
+  } catch {
+    return { ok: true, jobs: [] };
+  }
+}
+
+export async function fetchPaintingProductionJobs({ activeOnly = false, limit = 150 } = {}) {
+  try {
+    return await postCarpentryCatalog({
+      op: 'list-painting-jobs',
+      active_only: activeOnly,
+      limit,
+    });
+  } catch {
+    return { ok: true, jobs: [] };
   }
 }
 

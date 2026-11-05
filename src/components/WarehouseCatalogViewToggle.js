@@ -9,7 +9,8 @@ export default function WarehouseCatalogViewToggle({ 'aria-labelledby': ariaLabe
   const isSets = path.startsWith('/warehouse-products/sets');
   const isIncomplete = path.startsWith('/warehouse-products/incomplete');
   const isUncategorized = path.startsWith('/warehouse-products/uncategorized');
-  const isProducts = !isPackets && !isSets && !isIncomplete && !isUncategorized;
+  const isSalesStorage = path.startsWith('/warehouse-products/sales-storage');
+  const isProducts = !isPackets && !isSets && !isIncomplete && !isUncategorized && !isSalesStorage;
 
   return (
     <div
@@ -57,6 +58,14 @@ export default function WarehouseCatalogViewToggle({ 'aria-labelledby': ariaLabe
         onClick={() => navigate('/warehouse-products/uncategorized')}
       >
         Uncategorized
+      </button>
+      <button
+        type="button"
+        className={`warehouse-catalog-view-toggle__option${isSalesStorage ? ' is-active' : ''}`}
+        aria-pressed={isSalesStorage}
+        onClick={() => navigate('/warehouse-products/sales-storage')}
+      >
+        Sales Storage
       </button>
     </div>
   );

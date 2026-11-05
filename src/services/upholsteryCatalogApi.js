@@ -5,7 +5,6 @@ import { buildUpholsteryCatalogPayload } from '../utils/upholsteryCatalogView';
 import { listCarpentryCatalogProducts } from '../utils/carpentryCatalogView';
 import {
   fetchSharedProductionPortalSnapshot,
-  getCachedProductionPortalSnapshot,
   invalidateProductionPortalSnapshotCache,
 } from '../utils/loadProductionPortalCatalogInputs';
 import { canManageCatalog, getCurrentUser } from '../accessControl';
@@ -14,6 +13,8 @@ import {
   saveUpholsteryRawAssemblyLink,
   saveUpholsteryProductMaterials,
 } from '../utils/upholsteryCatalogMutations';
+
+export { getCachedUpholsteryCatalog } from '../utils/productionPortalCatalogCache';
 
 const CANONICAL = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
 
@@ -38,16 +39,6 @@ async function parseResponse(resp) {
   } catch {
     return { payload: {}, raw };
   }
-}
-
-export function getCachedUpholsteryCatalog() {
-  const snap = getCachedProductionPortalSnapshot();
-  if (!snap || !Array.isArray(snap.assemblies)) return null;
-  return {
-    ...buildUpholsteryCatalogPayload(snap.assemblies, snap.setItems, snap.portalInputs),
-    carpentryProducts: listCarpentryCatalogProducts(snap.assemblies),
-    locations: snap.portalInputs?.locations || [],
-  };
 }
 
 export async function fetchUpholsteryCatalog({ forceFresh = false } = {}) {

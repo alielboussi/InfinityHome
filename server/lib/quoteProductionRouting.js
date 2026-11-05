@@ -10,6 +10,7 @@ import {
   resolvePacketFromScan,
 } from '../../src/utils/warehouseScanResolver.js';
 import { productionScanResolveCandidates } from '../../src/utils/productionLabelQrScan.js';
+import { buildProductionLineSummaryRow } from '../../src/utils/quoteProductionItemFields.js';
 
 const ROUTING = 'quote_production_routing';
 const RUNS = 'carpentry_production_runs';
@@ -156,12 +157,7 @@ export async function sendQuoteToProduction(sb, quoteId, userId) {
   const primary_assembly_id = await resolvePrimaryAssemblyId(sb, items);
   const customer = await resolveCustomerContact(sb, quote.customer_id);
   const now = new Date().toISOString();
-  const lineSummary = (items || []).map((it) => ({
-    id: it.id,
-    name: it.name_override || it.name || '',
-    quantity: Number(it.quantity) || 0,
-    unit_price: Number(it.unit_price) || 0,
-  }));
+  const lineSummary = (items || []).map((it) => buildProductionLineSummaryRow(it));
 
   const { error } = await sb.from(ROUTING).update({
     sent_to_production_at: now,
@@ -176,6 +172,18 @@ export async function sendQuoteToProduction(sb, quoteId, userId) {
     },
   }).eq('quote_id', String(quoteId));
   if (error) throw new Error(error.message || 'Failed to send to production');
+
+  try {
+    const { notifyProductionQuoteOrderSent } = await import('./productionExpoPush.js');
+    await notifyProductionQuoteOrderSent({
+      route: routing.route,
+      quoteNumber: quote.quote_number || routing.metadata?.quote_number,
+      customerName: customer.name,
+      quoteId,
+    });
+  } catch (pushErr) {
+    console.warn('[sendQuoteToProduction] push notify failed:', pushErr?.message || pushErr);
+  }
 
   return { quote_id: quoteId, route: routing.route, sent_to_production_at: now };
 }
@@ -202,6 +210,21 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
   }
   const quoteById = new Map(quotes.map((q) => [String(q.id), q]));
 
+  const itemsByQuoteId = new Map();
+  if (quoteIds.length) {
+    const { data: allItems, error: itemsErr } = await sb
+      .from('quotation_items')
+      .select('*')
+      .in('quotation_id', quoteIds)
+      .order('sort_order');
+    if (itemsErr) throw new Error(itemsErr.message || 'Failed to load quote items');
+    for (const it of allItems || []) {
+      const qid = String(it.quotation_id);
+      if (!itemsByQuoteId.has(qid)) itemsByQuoteId.set(qid, []);
+      itemsByQuoteId.get(qid).push(buildProductionLineSummaryRow(it));
+    }
+  }
+
   const { data: runs } = quoteIds.length
     ? await sb.from(RUNS).select('*').in('quote_id', quoteIds).eq('source', 'quote_order')
     : { data: [] };
@@ -226,7 +249,8 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
       run_id: run?.id || null,
       run_started_at: run?.started_at || null,
       run_completed_at: run?.completed_at || null,
-      lines: r.metadata?.lines || [],
+      lines: itemsByQuoteId.get(String(r.quote_id)) || r.metadata?.lines || [],
+      drawing_url: r.metadata?.drawing_url || null,
     });
   }
   return { rows };

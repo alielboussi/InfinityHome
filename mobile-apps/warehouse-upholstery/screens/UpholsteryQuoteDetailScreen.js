@@ -20,6 +20,10 @@ import {
   scanUpholsteryQuoteMaterial,
 } from '../services/productionApi';
 import { theme } from '../shared/theme';
+import {
+  QuoteProductionDrawingSection,
+  QuoteProductionLineRows,
+} from '../shared/quoteProductionOrderUi';
 
 function formatElapsed(ms) {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -123,6 +127,12 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
       <Text style={[styles.name, { textAlign }]}>{quote.customer_name}</Text>
       <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
+      <QuoteProductionDrawingSection
+        drawingUrl={quote.drawing_url}
+        textAlign={textAlign}
+        tUi={tUi}
+        locale={locale}
+      />
       <View style={styles.timerBox}>
         <Text style={[styles.timerLabel, { textAlign }]}>{tUi('quoteOrderTimer', locale)}</Text>
         <Text style={styles.timer}>{elapsedLabel}</Text>
@@ -151,11 +161,13 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         <Text style={kiosk.btnText}>{tUi('quoteOrderDeductScan', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
-      {lines.map((line) => (
-        <Text key={String(line.id || line.name)} style={[styles.line, { textAlign }]}>
-          {line.quantity} × {line.name}
-        </Text>
-      ))}
+      <QuoteProductionLineRows
+        lines={lines}
+        route="upholstery"
+        textAlign={textAlign}
+        tUi={tUi}
+        locale={locale}
+      />
     </ScrollView>
   );
 }

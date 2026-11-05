@@ -22,6 +22,23 @@ export async function fetchQuoteProductionRouting(quoteId) {
   return payload.routing || null;
 }
 
+export async function saveQuoteProductionRoute(quoteId, route, { metadata } = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders()),
+  };
+  const body = { op: 'set-routing', quote_id: quoteId, route };
+  if (metadata && typeof metadata === 'object') body.metadata = metadata;
+  const resp = await fetch(apiUrl('/api/admin?adminAction=quote-production'), {
+    method: 'POST',
+    headers: withApiHeaders(headers),
+    body: JSON.stringify(body),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || !payload?.ok) throw new Error(payload?.error || 'Failed to save production route');
+  return payload.routing || null;
+}
+
 export async function sendQuoteToWarehouseProduction(quoteId) {
   const headers = {
     'Content-Type': 'application/json',

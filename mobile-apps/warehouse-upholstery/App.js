@@ -13,6 +13,9 @@ import ManufactureScreen from './screens/ManufactureScreen';
 import JobsScreen from './screens/JobsScreen';
 import UpholsteryQuotesScreen from './screens/UpholsteryQuotesScreen';
 import UpholsteryQuoteDetailScreen from './screens/UpholsteryQuoteDetailScreen';
+import WarehouseRepairsScreen from './screens/WarehouseRepairsScreen';
+import RepairReturnSignatureScreen from './screens/RepairReturnSignatureScreen';
+import RepairReturnDoneScreen from './screens/RepairReturnDoneScreen';
 import { stackScreenOptions, theme } from './shared/theme';
 
 const Stack = createNativeStackNavigator();
@@ -86,6 +89,22 @@ function MainStack({ navigationRef }) {
         )}
       </Stack.Screen>
       <Stack.Screen name="UpholsteryQuoteDetail" options={{ headerShown: false }} component={UpholsteryQuoteDetailScreen} />
+      <Stack.Screen name="Repairs" options={{ headerShown: false }}>
+        {(props) => (
+          <WarehouseRepairsScreen
+            {...props}
+            route={{
+              ...props.route,
+              params: { repairDepartment: 'upholstery', titleKey: 'dashRepairs', ...props.route.params },
+            }}
+            allowed={allowed}
+            accessHint={accessHint}
+            onRefreshAccess={() => refresh({ background: false })}
+          />
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="RepairReturnSignature" options={{ headerShown: false }} component={RepairReturnSignatureScreen} />
+      <Stack.Screen name="RepairReturnDone" options={{ headerShown: false }} component={RepairReturnDoneScreen} />
     </Stack.Navigator>
   );
 }

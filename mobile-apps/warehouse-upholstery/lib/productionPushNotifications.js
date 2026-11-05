@@ -47,6 +47,7 @@ export async function registerProductionPushTokenWithServer() {
   await warehouseMobileRequest('production-push-register', {
     expo_push_token: token,
     platform: Platform.OS,
+    app_target: 'upholstery',
   });
   return { ok: true, token };
 }
@@ -61,5 +62,9 @@ export function navigateFromProductionNotification(navigationRef, data) {
     if (quoteId) {
       nav.navigate('UpholsteryQuoteDetail', { quote: { quote_id: quoteId } });
     }
+    return;
+  }
+  if (screen === 'Repairs') {
+    nav.navigate('Repairs');
   }
 }

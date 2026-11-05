@@ -59,6 +59,11 @@ try {
   const appJs = fs.readFileSync(path.join(appRoot, 'App.js'), 'utf8');
   assert(appJs.includes('./deliveryKit/components/ProductionAppAuthGate'), 'App.js must import auth gate from ./deliveryKit');
   assert(appJs.includes('./shared/MobileScreenGate'), 'App.js must import MobileScreenGate from ./shared');
+  assert(!appJs.includes('ReturnOrders'), 'Delivery app must not register return/repair routes — use workshop apps');
+  assert(
+    !fs.existsSync(path.join(appRoot, 'delivery-screens', 'ReturnOrdersScreen.js')),
+    'delivery-screens must not include ReturnOrdersScreen — repairs belong in upholstery/carpentry/painting apps',
+  );
 
   const appConfig = fs.readFileSync(path.join(appRoot, 'app.config.js'), 'utf8');
   assert(

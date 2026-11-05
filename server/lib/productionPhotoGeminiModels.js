@@ -45,13 +45,13 @@ export function getProductionPhotoModelCandidates() {
   return preferFree ? [...FREE_FIRST_MODELS] : [...PAID_FALLBACK_MODELS, ...FREE_FIRST_MODELS];
 }
 
-/** Mandatory AI retouch: paid image-output models only (avoids slow free-preview loops). */
+/** Mandatory AI retouch: one fast image model first (optional second via env). */
 export function getProductionPhotoModelCandidatesForRequireAi() {
   const forced = String(process.env.GEMINI_PRODUCTION_PHOTO_MODEL || '').trim();
   if (forced) return [forced];
 
   const csv = parseCsvModels(process.env.GEMINI_PRODUCTION_PHOTO_MODELS);
-  if (csv.length) return csv.slice(0, 3);
+  if (csv.length) return csv.slice(0, 2);
 
-  return [...PAID_FALLBACK_MODELS];
+  return ['gemini-2.5-flash-image'];
 }

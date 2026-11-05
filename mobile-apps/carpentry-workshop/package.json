@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "materialize": "node scripts/materializeSharedStandalone.js",
     "materialize": "node scripts/materializeCarpentryStandalone.js",
-    "postinstall": "node scripts/materializeCarpentryStandalone.js && node scripts/assertCarpentryKioskStandalone.js && node scripts/assertCarpentrySharedStandalone.js",
-    "prestart": "node scripts/assertCarpentryKioskStandalone.js && node scripts/assertCarpentrySharedStandalone.js",
+    "icons": "node scripts/ensureCarpentryIcons.js",
+    "prestart": "node scripts/ensureCarpentryIcons.js && node scripts/assertCarpentryKioskStandalone.js && node scripts/assertCarpentrySharedStandalone.js",
+    "postinstall": "node scripts/materializeCarpentryStandalone.js && node scripts/ensureCarpentryIcons.js && node scripts/assertCarpentryKioskStandalone.js && node scripts/assertCarpentrySharedStandalone.js",
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
     "android": "expo start --android"

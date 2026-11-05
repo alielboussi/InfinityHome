@@ -16,12 +16,18 @@ const fieldStyle = {
   fontSize: 15,
 };
 
+function emptyLineState(line) {
+  return {
+    selected: false,
+    quantity: Math.max(1, Number(line?.quantity) || 1),
+  };
+}
+
 export default function WarehouseStorage() {
   const [sales, setSales] = React.useState([]);
   const [saleId, setSaleId] = React.useState('');
   const [detail, setDetail] = React.useState(null);
-  const [saleItemId, setSaleItemId] = React.useState('');
-  const [quantity, setQuantity] = React.useState(1);
+  const [lineState, setLineState] = React.useState({});
   const [loading, setLoading] = React.useState(true);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -56,7 +62,7 @@ export default function WarehouseStorage() {
   React.useEffect(() => {
     if (!saleId) {
       setDetail(null);
-      setSaleItemId('');
+      setLineState({});
       return undefined;
     }
     let cancelled = false;
@@ -85,8 +91,11 @@ export default function WarehouseStorage() {
         if (!nextDetail?.sale) throw new Error('Failed to load receipt.');
         if (cancelled) return;
         setDetail(nextDetail);
-        setSaleItemId('');
-        setQuantity(1);
+        const nextState = {};
+        for (const line of nextDetail.items || []) {
+          nextState[String(line.id)] = emptyLineState(line);
+        }
+        setLineState(nextState);
         if (!nextDetail.items?.length) {
           setError('This receipt has no sale lines to send to warehouse.');
         }
@@ -94,6 +103,7 @@ export default function WarehouseStorage() {
         if (!cancelled) {
           setError(err?.message || 'Failed to load receipt.');
           setDetail(null);
+          setLineState({});
         }
       } finally {
         if (!cancelled) setDetailLoading(false);
@@ -102,36 +112,41 @@ export default function WarehouseStorage() {
     return () => { cancelled = true; };
   }, [saleId]);
 
-  const selectedLine = detail?.items?.find((i) => String(i.id) === String(saleItemId));
-  const maxQty = selectedLine?.quantity ?? 1;
-
-  React.useEffect(() => {
-    if (quantity > maxQty) setQuantity(maxQty);
-  }, [maxQty, quantity]);
+  const selectedLines = (detail?.items || []).filter(
+    (line) => lineState[String(line.id)]?.selected,
+  );
 
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!saleId || !saleItemId) {
-      setError('Select a receipt line.');
+    if (!saleId || !selectedLines.length) {
+      setError('Select a receipt and at least one product line.');
       return;
     }
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      const out = await submitStorageSend({
-        sale_id: saleId,
-        sale_item_id: saleItemId,
-        quantity: Math.max(1, Math.min(maxQty, Math.floor(Number(quantity) || 1))),
+      const lines = selectedLines.map((line) => {
+        const st = lineState[String(line.id)] || {};
+        const qty = Math.max(1, Math.min(line.quantity, Math.floor(Number(st.quantity) || 1)));
+        return { sale_item_id: line.id, quantity: qty };
       });
-      const sn = out?.storage_send?.storage_number || '';
+      const out = await submitStorageSend({ sale_id: saleId, lines });
+      const sends = out?.storage_sends || (out?.storage_send ? [out.storage_send] : []);
+      const numbers = sends.map((s) => s.storage_number).filter(Boolean).join(', ');
+      const totalLabels = sends.reduce((n, s) => n + (Number(s.quantity) || 0), 0);
       setNotice(
-        sn
-          ? `${sn} sent to factory warehouse. Zebra labels printed (${out?.storage_send?.quantity || quantity}×).`
-          : 'Sent to warehouse. Labels printed.',
+        numbers
+          ? `${numbers} sent to Floor 1 (${totalLabels} label${totalLabels === 1 ? '' : 's'} on Zebra).`
+          : 'Sent to Floor 1. Labels printed.',
       );
-      setSaleItemId('');
-      setQuantity(1);
+      setLineState((prev) => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          next[key] = { ...next[key], selected: false };
+        }
+        return next;
+      });
     } catch (err) {
       setError(err?.message || 'Send failed.');
     } finally {
@@ -140,11 +155,11 @@ export default function WarehouseStorage() {
   };
 
   return (
-    <div className="page-pad" style={{ maxWidth: 720, margin: '0 auto' }}>
-      <h1 style={{ marginBottom: 8 }}>Warehouse Storage</h1>
-      <p style={{ color: 'var(--br-muted, #64748b)', marginBottom: 20, lineHeight: 1.5 }}>
-        Choose a Kitwe POS receipt, pick a sold line, and send quantity to factory warehouse stock.
-        Labels print on the Zebra printer automatically.
+    <div className="warehouse-storage-page">
+      <p className="warehouse-storage-page__intro">
+        Choose a Kitwe POS receipt, select one or more sold lines, and send quantity to Floor 1 stock.
+        Existing SKUs increase quantity; new products are created on Floor 1. Zebra labels print automatically
+        (Code 128 SKU, product name, customer, sale date).
       </p>
 
       {error ? <p style={{ color: '#b91c1c', marginBottom: 12 }}>{error}</p> : null}
@@ -180,48 +195,73 @@ export default function WarehouseStorage() {
         </div>
       ) : null}
 
-      {detail?.sale && !detailLoading && !detail?.items?.length && !error ? (
-        <p style={{ color: 'var(--br-muted)' }}>No product lines on this receipt.</p>
-      ) : null}
-
       {detail?.items?.length ? (
         <form onSubmit={handleSend}>
-          <label style={{ display: 'block', marginBottom: 12 }}>
-            <span style={{ fontWeight: 700, display: 'block', marginBottom: 6 }}>Sale line</span>
-            <select
-              style={fieldStyle}
-              value={saleItemId}
-              onChange={(ev) => {
-                setSaleItemId(ev.target.value);
-                const line = detail.items.find((i) => String(i.id) === ev.target.value);
-                setQuantity(line?.quantity ?? 1);
-              }}
-              required
-            >
-              <option value="">— Select product —</option>
-              {detail.items.map((line) => (
-                <option key={line.id} value={line.id}>
-                  {line.display_name} (sold {line.quantity})
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ display: 'block', marginBottom: 16 }}>
-            <span style={{ fontWeight: 700, display: 'block', marginBottom: 6 }}>Qty to send to warehouse</span>
-            <input
-              type="number"
-              min={1}
-              max={maxQty}
-              style={fieldStyle}
-              value={quantity}
-              onChange={(ev) => setQuantity(ev.target.value)}
-            />
-          </label>
+          <p style={{ fontWeight: 700, marginBottom: 10 }}>Products on receipt</p>
+          <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
+            {detail.items.map((line) => {
+              const st = lineState[String(line.id)] || emptyLineState(line);
+              return (
+                <div
+                  key={line.id}
+                  style={{
+                    border: '1px solid var(--br-border, #ddd)',
+                    borderRadius: 10,
+                    padding: 12,
+                    background: st.selected ? 'var(--br-surface-elevated, #f0f9ff)' : 'var(--br-surface, #fff)',
+                  }}
+                >
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(st.selected)}
+                      onChange={(ev) => {
+                        setLineState((prev) => ({
+                          ...prev,
+                          [String(line.id)]: {
+                            ...(prev[String(line.id)] || emptyLineState(line)),
+                            selected: ev.target.checked,
+                          },
+                        }));
+                      }}
+                      style={{ marginTop: 4 }}
+                    />
+                    <span>
+                      <strong>{line.display_name}</strong>
+                      <span style={{ color: 'var(--br-muted)', marginLeft: 8 }}>
+                        sold {line.quantity}
+                      </span>
+                    </span>
+                  </label>
+                  {st.selected ? (
+                    <label style={{ display: 'block', marginTop: 10, marginLeft: 28 }}>
+                      <span style={{ fontWeight: 600, display: 'block', marginBottom: 4 }}>Qty to Floor 1</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={line.quantity}
+                        style={{ ...fieldStyle, maxWidth: 120 }}
+                        value={st.quantity}
+                        onChange={(ev) => {
+                          setLineState((prev) => ({
+                            ...prev,
+                            [String(line.id)]: {
+                              ...(prev[String(line.id)] || emptyLineState(line)),
+                              quantity: ev.target.value,
+                            },
+                          }));
+                        }}
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
 
           <button
             type="submit"
-            disabled={busy || !saleItemId}
+            disabled={busy || !selectedLines.length}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -234,10 +274,11 @@ export default function WarehouseStorage() {
               fontWeight: 800,
               fontSize: 16,
               cursor: busy ? 'wait' : 'pointer',
+              opacity: busy || !selectedLines.length ? 0.6 : 1,
             }}
           >
             <FaShareSquare aria-hidden />
-            Send to warehouse
+            Send To Warehouse
           </button>
         </form>
       ) : null}

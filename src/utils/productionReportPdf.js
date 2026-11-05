@@ -61,7 +61,7 @@ export function downloadProductionCreationsPdf({ rows, startDate, endDate }) {
     const dateLabel = formatProductionReportDateTime(row.created_at);
     const userLabel = productionLogUserLabel(row);
     const y = writeTransfersStyleHeader(doc, {
-      title: 'Production Report',
+      title: 'Upholstery Report',
       lines: [
         'Report type: New seating items sent to warehouse',
         `Period: ${startDate || '—'} to ${endDate || '—'}`,
@@ -116,7 +116,7 @@ export function downloadProductionStockIncreasesPdf({ rows, startDate, endDate }
       0,
     );
     const y = writeTransfersStyleHeader(doc, {
-      title: 'Production Report',
+      title: 'Upholstery Report',
       lines: [
         'Report type: Stock increases on existing warehouse packets',
         `Period: ${startDate || '—'} to ${endDate || '—'}`,

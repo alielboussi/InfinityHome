@@ -3,10 +3,56 @@ import { WAREHOUSE_FACTORY_LOCATION_ID } from '../constants/warehouseShowroomLoc
 
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 const RUNS = 'carpentry_production_runs';
+const USAGE = 'carpentry_production_material_usage';
+const JOBS = 'upholstery_production_jobs';
 const LOCATIONS = 'locations';
 
+function isMissingTableError(err) {
+  return /relation .* does not exist|not found|does not exist/i.test(String(err?.message || ''));
+}
+
+async function deleteCarpentryRunsForAssembly(sb, assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) return;
+
+  const { data: runs, error: listErr } = await sb.from(RUNS).select('id').eq('assembly_id', id);
+  if (listErr && !isMissingTableError(listErr)) {
+    throw new Error(listErr.message || 'Failed to list Floor 2 production runs');
+  }
+
+  const runIds = (runs || []).map((row) => String(row.id || '').trim()).filter(Boolean);
+  if (runIds.length) {
+    const { error: usageByRunErr } = await sb.from(USAGE).delete().in('run_id', runIds);
+    if (usageByRunErr && !isMissingTableError(usageByRunErr)) {
+      throw new Error(usageByRunErr.message || 'Failed to clear production material usage');
+    }
+  }
+
+  const { error: usageMatErr } = await sb.from(USAGE).delete().eq('material_assembly_id', id);
+  if (usageMatErr && !isMissingTableError(usageMatErr)) {
+    throw new Error(usageMatErr.message || 'Failed to clear material usage for product');
+  }
+
+  const { error: runErr } = await sb.from(RUNS).delete().eq('assembly_id', id);
+  if (runErr && !isMissingTableError(runErr)) {
+    throw new Error(runErr.message || 'Failed to clear Floor 2 production runs');
+  }
+}
+
+async function deleteUpholsteryJobsForAssembly(sb, assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) return;
+
+  for (const column of ['raw_assembly_id', 'finished_assembly_id']) {
+    const { error } = await sb.from(JOBS).delete().eq(column, id);
+    if (error && !isMissingTableError(error)) {
+      throw new Error(error.message || 'Failed to clear upholstery production jobs');
+    }
+  }
+}
+
 /**
- * Remove Floor 2 WIP stock, all location inventory rows, and carpentry floor runs
+ * Remove Floor 2 WIP stock, all location inventory rows, carpentry runs/usage, and related jobs
  * before deleting a warehouse product (Floor 1 catalog delete).
  */
 export async function purgeWarehouseAssemblyInventoryAndFloorRuns(sb, assemblyId) {
@@ -17,13 +63,11 @@ export async function purgeWarehouseAssemblyInventoryAndFloorRuns(sb, assemblyId
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
   const floor2Id = floor2Loc?.id ? String(floor2Loc.id) : '';
 
+  await deleteCarpentryRunsForAssembly(sb, id);
+  await deleteUpholsteryJobsForAssembly(sb, id);
+
   const { error: invErr } = await sb.from(ASSEMBLY_INVENTORY).delete().eq('assembly_id', id);
   if (invErr) throw new Error(invErr.message || 'Failed to clear warehouse inventory');
-
-  const { error: runErr } = await sb.from(RUNS).delete().eq('assembly_id', id);
-  if (runErr && !/relation .* does not exist|not found/i.test(String(runErr.message || ''))) {
-    throw new Error(runErr.message || 'Failed to clear Floor 2 production runs');
-  }
 
   const { recomputeWarehouseLocationStock } = await import('../services/warehouseTransfer');
   await recomputeWarehouseLocationStock(WAREHOUSE_FACTORY_LOCATION_ID);

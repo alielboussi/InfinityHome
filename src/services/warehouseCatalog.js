@@ -815,11 +815,17 @@ export async function deleteWarehouseAssembly(assemblyId) {
   for (const row of links || []) {
     await refreshPacketPrimaryAssemblyId(row.packet_id);
   }
+  const now = new Date().toISOString();
+  await db.from(PACKETS).update({ assembly_id: null, updated_at: now }).eq('assembly_id', id);
   await db.from(ASSEMBLY_LOCATIONS).delete().eq('assembly_id', id);
   await db.from(ASSEMBLY_COLORS).delete().eq('assembly_id', id);
+  await purgeWarehouseAssemblyImages(id);
+  await purgeWarehouseFloor2WipImages(id);
   const { error } = await db.from(ASSEMBLIES).delete().eq('id', id);
   if (error) throw new Error(error.message || 'Failed to delete product');
   invalidateWarehouseCatalogCache();
+  const { invalidateProductionPortalSnapshotCache } = await import('../utils/loadProductionPortalCatalogInputs.js');
+  invalidateProductionPortalSnapshotCache();
 }
 
 export async function saveWarehousePacket(payload, { id } = {}) {

@@ -37,7 +37,7 @@ You already added (keep these):
 | Name | Typical value |
 |------|----------------|
 | `GEMINI_PRODUCTION_PHOTO_PREFER_FREE` | `true` |
-| `GEMINI_PRODUCTION_PHOTO_ASPECT` | `4:3` |
+| `GEMINI_PRODUCTION_PHOTO_ASPECT` | `1:1` (Production app forces 1:1 for required retouch — faster than `4:3`) |
 
 **Optional** overrides:
 

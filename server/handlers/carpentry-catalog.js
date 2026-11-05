@@ -110,6 +110,28 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (op === 'list-carpentry-jobs') {
+      const { listCarpentryProductionJobs } = await import('../lib/carpentryProductionJobs.js');
+      const activeOnly = body.active_only === true || body.activeOnly === true;
+      const result = await listCarpentryProductionJobs(db, {
+        activeOnly,
+        limit: body.limit ?? 150,
+      });
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
+    if (op === 'list-painting-jobs') {
+      const { listPaintingProductionJobs } = await import('../lib/paintingProductionJobs.js');
+      const activeOnly = body.active_only === true || body.activeOnly === true;
+      const result = await listPaintingProductionJobs(db, {
+        activeOnly,
+        limit: body.limit ?? 150,
+      });
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
     if (op === 'add-floor2-product') {
       const { addFloor1ProductToFloor2 } = await import('../lib/carpentryManufacture.js');
       const result = await addFloor1ProductToFloor2(db, {

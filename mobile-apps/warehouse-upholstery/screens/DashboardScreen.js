@@ -7,7 +7,7 @@ import { kioskFooterBottomPad } from '../lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../lib/productionDashLayout';
 import { theme } from '../shared/theme';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
-import { tUi } from '../lib/productionKioskI18n';
+import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 
 function DashboardTile({ icon, title, width, height, onPress }) {
   const iconSize = Math.round(Math.min(44, height * 0.32));
@@ -34,7 +34,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
         adjustsFontSizeToFit
         minimumFontScale={0.72}
       >
-        {title}
+        {textForDisplay(title, '')}
       </Text>
     </Pressable>
   );
@@ -50,7 +50,7 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
-  const tileCount = 4;
+  const tileCount = 5;
   const {
     tileWidth, tileHeight, gap, contentWidth,
   } = useProductionDashboardTileLayout(tileCount);
@@ -79,6 +79,12 @@ export default function DashboardScreen({
       icon: 'clipboard-text-outline',
       title: tUi('dashUpholsteryQuoteOrders', locale),
       onPress: () => navigation.navigate('UpholsteryQuotes'),
+    },
+    {
+      key: 'repairs',
+      icon: 'wrench-clock',
+      title: tUi('dashRepairs', locale),
+      onPress: () => navigation.navigate('Repairs'),
     },
   ];
 

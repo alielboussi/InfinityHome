@@ -6,6 +6,8 @@ import { sendTransferWhatsApp } from './services/whatsapp';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
+  WAREHOUSE_RETURN_DELIVERY_SOURCES,
+  warehouseDeliverySessionRouteLabel,
   deliveryLineQty,
   deliverySenderName,
   groupWarehouseDisplayLines,
@@ -161,16 +163,36 @@ export default function WarehouseDeliveries() {
     if (!silent) setLoading(true);
     if (!silent) setError('');
     try {
-      const { data: sessionData, error: sessErr } = await db
-        .from('warehouse_delivery_sessions')
-        .select('id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, accepted_at, applied_at, completed_at, pdf_url, metadata')
-        .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
-        .eq('to_location', WAREHOUSE_TO_LOCATION_ID)
-        .in('status', WAREHOUSE_RECEIVER_LIST_STATUSES)
-        .order('delivery_number', { ascending: false });
-      if (sessErr) throw sessErr;
+      const sessionSelect = 'id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, accepted_at, applied_at, completed_at, pdf_url, metadata';
+      const statusFilter = (q) => q.in('status', WAREHOUSE_RECEIVER_LIST_STATUSES);
 
-      const sessionsList = sessionData || [];
+      const [{ data: factoryRows, error: sessErr }, { data: returnRows, error: returnErr }] = await Promise.all([
+        statusFilter(
+          db
+            .from('warehouse_delivery_sessions')
+            .select(sessionSelect)
+            .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
+            .eq('to_location', WAREHOUSE_TO_LOCATION_ID),
+        ).order('delivery_number', { ascending: false }),
+        statusFilter(
+          db
+            .from('warehouse_delivery_sessions')
+            .select(sessionSelect)
+            .in('metadata->>source', WAREHOUSE_RETURN_DELIVERY_SOURCES),
+        ).order('delivery_number', { ascending: false }),
+      ]);
+      if (sessErr) throw sessErr;
+      if (returnErr) throw returnErr;
+
+      const byId = new Map();
+      [...(factoryRows || []), ...(returnRows || [])].forEach((row) => {
+        if (row?.id) byId.set(String(row.id), row);
+      });
+      const sessionsList = [...byId.values()].sort((a, b) => {
+        const na = String(a.delivery_number || '');
+        const nb = String(b.delivery_number || '');
+        return nb.localeCompare(na, undefined, { numeric: true });
+      });
       setSessions(sessionsList);
 
       const ids = sessionsList.map((s) => s.id).filter(Boolean);
@@ -444,7 +466,7 @@ export default function WarehouseDeliveries() {
           </h1>
         </div>
         <p style={{ color: PAGE_THEME.muted, marginBottom: 16, lineHeight: 1.5, marginTop: 0 }}>
-          Factory → Kitwe deliveries from the Production app. Accepted deliveries stay on this list for PDFs and review. Auto-refresh every {refreshSeconds} seconds.
+          Factory → Kitwe deliveries from the Production app, plus return shipments (WHR) and customer return deliveries (CR) when they use the delivery flow. Accepted sessions stay on this list for PDFs and review. Auto-refresh every {refreshSeconds} seconds.
         </p>
         {!canAccept && sessionUser && (
           <div style={{ color: '#b45309', marginBottom: 12, fontWeight: 600 }}>
@@ -506,7 +528,9 @@ export default function WarehouseDeliveries() {
                     </span>
                   ) : null}
                 </div>
-                <div style={{ color: PAGE_THEME.muted, marginTop: 6 }}>{fromName} → {toName}</div>
+                <div style={{ color: PAGE_THEME.muted, marginTop: 6 }}>
+                  {warehouseDeliverySessionRouteLabel(session, { fromName, toName })}
+                </div>
                 <div style={{ color: PAGE_THEME.muted, marginTop: 4 }}>
                   Sent: {formatDateTime(session.submitted_at || session.created_at)}
                 </div>

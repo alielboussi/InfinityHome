@@ -332,10 +332,27 @@ export default function WarehouseFloor2Page({
     });
   }, [warehouseSetCandidates, search]);
 
-  const resolveQtyForId = (id) => {
+  const resolveQtyForId = (id, currentOnFloor2 = 0) => {
     const raw = qtyDraftById[String(id)];
-    const n = Math.floor(Number(raw));
-    return Number.isFinite(n) && n >= 1 ? n : 1;
+    if (raw !== undefined && raw !== '') {
+      const n = Math.floor(Number(raw));
+      if (Number.isFinite(n)) {
+        if (currentOnFloor2 > 0) return Math.max(0, n);
+        return n >= 1 ? n : 1;
+      }
+    }
+    return currentOnFloor2 > 0 ? currentOnFloor2 : 1;
+  };
+
+  const qtyDraftDisplay = (id, currentOnFloor2, fallback = 1) => {
+    const key = String(id);
+    if (qtyDraftById[key] !== undefined) return qtyDraftById[key];
+    return currentOnFloor2 > 0 ? currentOnFloor2 : fallback;
+  };
+
+  const floor2SearchActionLabel = (currentOnFloor2, isBusy) => {
+    if (isBusy) return currentOnFloor2 > 0 ? 'Saving…' : 'Adding…';
+    return currentOnFloor2 > 0 ? 'Save' : 'Add to Floor 2';
   };
 
   const setQtyDraft = (id, val) => {
@@ -348,18 +365,28 @@ export default function WarehouseFloor2Page({
   const handleAddProduct = async (assemblyId, overrideQty = null) => {
     const id = String(assemblyId || '').trim();
     if (!id) return;
+    const currentFloor2 = floor2QtyByAssembly.get(id) || 0;
     const qty = overrideQty !== null
-      ? Math.max(1, Math.floor(Number(overrideQty) || 1))
-      : resolveQtyForId(id);
+      ? Math.floor(Number(overrideQty) || 0)
+      : resolveQtyForId(id, currentFloor2);
     setBusyId(id);
     setError('');
     try {
-      await postAddFloor2Product(id, qty);
+      if (currentFloor2 > 0) {
+        await postSetFloor2ProductStock(id, Math.max(0, qty));
+      } else {
+        await postAddFloor2Product(id, Math.max(1, qty));
+      }
+      setQtyDraftById((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
       setSearch('');
       setExpandedSetId('');
       await load({ forceFresh: true });
     } catch (err) {
-      setError(err?.message || 'Failed to add product to Warehouse Floor 2');
+      setError(err?.message || 'Failed to update Warehouse Floor 2 stock');
     } finally {
       setBusyId('');
     }
@@ -531,9 +558,9 @@ export default function WarehouseFloor2Page({
                               <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                 <input
                                   type="number"
-                                  min="1"
+                                  min={currentFloor2 > 0 ? 0 : 1}
                                   step="1"
-                                  value={qtyDraftById[String(comp.id)] ?? (comp.quantity || 1)}
+                                  value={qtyDraftDisplay(comp.id, currentFloor2, comp.quantity || 1)}
                                   onChange={(e) => setQtyDraft(comp.id, e.target.value)}
                                   style={{ width: 72, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
                                   aria-label={`Quantity for ${comp.name}`}
@@ -544,10 +571,10 @@ export default function WarehouseFloor2Page({
                                   disabled={busyId === String(comp.id)}
                                   onClick={() => handleAddProduct(
                                     comp.id,
-                                    qtyDraftById[String(comp.id)] ?? (comp.quantity || 1),
+                                    resolveQtyForId(comp.id, currentFloor2),
                                   )}
                                 >
-                                  Add to Floor 2
+                                  {floor2SearchActionLabel(currentFloor2, busyId === String(comp.id))}
                                 </button>
                               </span>
                             </li>
@@ -585,9 +612,9 @@ export default function WarehouseFloor2Page({
                     <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <input
                         type="number"
-                        min="1"
+                        min={currentFloor2 > 0 ? 0 : 1}
                         step="1"
-                        value={qtyDraftById[String(c.id)] ?? 1}
+                        value={qtyDraftDisplay(c.id, currentFloor2, 1)}
                         onChange={(e) => setQtyDraft(c.id, e.target.value)}
                         style={{ width: 72, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
                         aria-label={`Quantity for ${c.name}`}
@@ -598,7 +625,7 @@ export default function WarehouseFloor2Page({
                         disabled={busyId === String(c.id)}
                         onClick={() => handleAddProduct(c.id)}
                       >
-                        Add to Floor 2
+                        {floor2SearchActionLabel(currentFloor2, busyId === String(c.id))}
                       </button>
                     </span>
                   </li>

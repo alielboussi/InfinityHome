@@ -31,9 +31,9 @@ export function resolveFloor2SeedQuantity(body, initialQty = 0) {
 
 /**
  * When a workshop app creates a new product on Floor 1:
- * - Carpentry app: adds it to /carpentry only.
- * - Upholstery app: adds it to /upholstery, adds it to Warehouse Floor 2 (and Carpentry raw catalog),
- *   and automatically links the Upholstery finished product to that Floor 2 raw product.
+ * - Carpentry app: adds it to /carpentry only (and seeds Floor 2 qty when applicable).
+ * - Upholstery app: adds it to /upholstery only, seeds Warehouse Floor 2 WIP, and links finished SKU to raw.
+ *   Does not add the product to /carpentry — that catalog is explicit on the web Carpentry page only.
  */
 export async function autoSelectProductionPortalCatalog(sb, assemblyId, {
   clientSource = '',
@@ -50,13 +50,30 @@ export async function autoSelectProductionPortalCatalog(sb, assemblyId, {
     portalCatalog || autoPortalCatalog,
   );
   if (channel === 'carpentry') {
+    const qty = resolveFloor2SeedQuantity({ initial_quantity: initialQuantity, floor2_product_qty: floor2ProductQty }, initialQuantity);
     await saveCarpentryProductSelection(sb, id, true);
-    return { applied: 'carpentry' };
+    let floor2_added = false;
+    let floor2_error = null;
+    try {
+      await addFloor1ProductToFloor2(sb, {
+        assemblyId: id,
+        productQty: qty,
+        userId,
+      });
+      floor2_added = true;
+    } catch (err) {
+      floor2_error = err?.message || String(err);
+    }
+    return {
+      applied: 'carpentry',
+      floor2_added,
+      floor2_product_qty: qty,
+      floor2_error,
+    };
   }
   if (channel === 'upholstery') {
     const qty = Math.max(1, Math.floor(Number(floor2ProductQty ?? initialQuantity) || 1));
     await saveUpholsteryProductSelection(sb, id, true);
-    await saveCarpentryProductSelection(sb, id, true);
     await saveUpholsteryRawAssemblyLink(sb, id, id);
     let floor2_added = false;
     let floor2_error = null;

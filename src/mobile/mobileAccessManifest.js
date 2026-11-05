@@ -94,6 +94,11 @@ export function isCarpentryWorkshopAppAllowed(grant) {
   return grant?.carpentry_workshop_app === 'allow';
 }
 
+/** /user-access — Painting workshop Android app (timed painting jobs → Floor 1 stock). */
+export function isPaintingWorkshopAppAllowed(grant) {
+  return grant?.painting_workshop_app === 'allow';
+}
+
 /** /user-access — Warehouse Delivery Android app (factory truck → Kitwe). */
 export function isWarehouseDeliveryAppAllowed(grant) {
   return grant?.warehouse_delivery_app === 'allow';
@@ -126,6 +131,12 @@ export function evaluateWarehouseProductionAppAccess(grant, email) {
 export function evaluateCarpentryWorkshopAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
   return isCarpentryWorkshopAppAllowed(grant);
+}
+
+/** Same rule as warehouse-mobile `painting-access-self` and painting mobile ops. */
+export function evaluatePaintingWorkshopAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  return isPaintingWorkshopAppAllowed(grant);
 }
 
 /** Driver delivery Android app — User Access → Delivery (`warehouse_delivery_app` only). */
@@ -272,6 +283,7 @@ export function defaultMobileAccessGrant() {
     warehouse_production_kitwe: 'deny',
     warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
+    painting_workshop_app: 'deny',
     screens,
   };
 }
@@ -443,6 +455,12 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
 
   merged.carpentry_workshop_app = (
     merged.carpentry_workshop_app === 'allow' || merged.carpentry_workshop_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.painting_workshop_app = (
+    merged.painting_workshop_app === 'allow' || merged.painting_workshop_app === true
   )
     ? 'allow'
     : 'deny';

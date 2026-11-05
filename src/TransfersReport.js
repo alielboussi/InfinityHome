@@ -6,6 +6,7 @@ import db from './dataClient';
 import { applyInventoryBulk } from './utils/inventoryApi';
 import { syncProductLocations } from './services/productLocations';
 import BackToDashboard from './BackToDashboard';
+import { loadFloor1KitweDeliveryReportSessions } from './utils/workshopReportData';
 
 const toYMD = (value) => {
   const d = value instanceof Date ? value : new Date(value);
@@ -126,11 +127,22 @@ export default function TransfersReport() {
         dtQuery = dtQuery.eq('to_location', toLocation);
         dateQuery = dateQuery.eq('to_location', toLocation);
       }
-      const [dtRes, dateRes] = await Promise.all([dtQuery, dateQuery]);
+      const [dtRes, dateRes, warehouseDelivery] = await Promise.all([dtQuery, dateQuery, loadFloor1KitweDeliveryReportSessions(startDate, endDate)]);
 
       const merged = new Map();
-      (dtRes?.data || []).forEach(row => merged.set(row.id, row));
-      (dateRes?.data || []).forEach(row => merged.set(row.id, row));
+      (dtRes?.data || []).forEach(row => merged.set(row.id, { ...row, reportKind: 'outlet_transfer' }));
+      (dateRes?.data || []).forEach(row => merged.set(row.id, { ...row, reportKind: 'outlet_transfer' }));
+
+      (warehouseDelivery.sessions || []).forEach((session) => {
+        if (fromLocation && String(session.from_location) !== String(fromLocation)) return;
+        if (toLocation && String(session.to_location) !== String(toLocation)) return;
+        merged.set(session.id, {
+          ...session,
+          reportKind: 'floor1_kitwe_delivery',
+          transfer_datetime: session.submitted_at || session.transfer_datetime || session.created_at,
+        });
+      });
+
       let sessions = Array.from(merged.values());
       sessions.sort((a, b) => {
         const ta = a.transfer_datetime || a.transfer_date || a.created_at;
@@ -146,14 +158,44 @@ export default function TransfersReport() {
         return;
       }
 
-      const { data: entryRows, error: entryErr } = await fromPublic('stock_transfer_entries')
-        .select('session_id, product_id, parent_product_id, quantity')
-        .in('session_id', sessionIds);
-      if (entryErr) throw entryErr;
+      const outletSessionIds = sessions
+        .filter((s) => s.reportKind !== 'floor1_kitwe_delivery')
+        .map((s) => s.id)
+        .filter(Boolean);
+      const warehouseSessionIds = sessions
+        .filter((s) => s.reportKind === 'floor1_kitwe_delivery')
+        .map((s) => s.id)
+        .filter(Boolean);
 
-      const filteredEntries = (entryRows || []).filter(row => {
+      const entryLoads = [];
+      if (outletSessionIds.length) {
+        entryLoads.push(
+          fromPublic('stock_transfer_entries')
+            .select('session_id, product_id, parent_product_id, quantity')
+            .in('session_id', outletSessionIds),
+        );
+      } else {
+        entryLoads.push(Promise.resolve({ data: [], error: null }));
+      }
+      if (warehouseSessionIds.length) {
+        entryLoads.push(
+          db
+            .from('warehouse_delivery_entries')
+            .select('session_id, product_id, name, sku, quantity, edited_quantity, metadata')
+            .in('session_id', warehouseSessionIds),
+        );
+      } else {
+        entryLoads.push(Promise.resolve({ data: [], error: null }));
+      }
+
+      const [outletEntryRes, warehouseEntryRes] = await Promise.all(entryLoads);
+      if (outletEntryRes.error) throw outletEntryRes.error;
+      if (warehouseEntryRes.error) throw warehouseEntryRes.error;
+      const entryRows = [...(outletEntryRes.data || []), ...(warehouseEntryRes.data || [])];
+
+      const filteredEntries = (entryRows || []).filter((row) => {
         const pid = row.product_id || row.parent_product_id;
-        return Boolean(pid);
+        return Boolean(pid) || Boolean(row.name);
       });
 
       const itemsMap = new Map();
@@ -161,14 +203,15 @@ export default function TransfersReport() {
         if (!row.session_id) return;
         const sid = String(row.session_id);
         const pid = row.product_id || row.parent_product_id;
-        if (!pid) return;
+        if (!pid && !row.name) return;
         if (!itemsMap.has(sid)) itemsMap.set(sid, []);
-        const info = productMap.get(String(pid));
+        const info = pid ? productMap.get(String(pid)) : null;
+        const qty = Number(row.edited_quantity ?? row.quantity) || 0;
         itemsMap.get(sid).push({
           product_id: pid,
-          name: info?.name || String(pid),
-          sku: info?.sku || '',
-          qty: Number(row.quantity) || 0,
+          name: row.name || info?.name || String(pid || 'Item'),
+          sku: row.sku || info?.sku || '',
+          qty,
         });
       });
 
@@ -446,6 +489,7 @@ export default function TransfersReport() {
           <table className="report-table">
             <thead>
               <tr>
+                <th>Type</th>
                 <th>Date</th>
                 <th>From</th>
                 <th>To</th>
@@ -468,6 +512,7 @@ export default function TransfersReport() {
                 return (
                   <React.Fragment key={sid}>
                     <tr>
+                      <td>{session.reportKind === 'floor1_kitwe_delivery' ? 'Floor 1 → Kitwe' : 'Outlet transfer'}</td>
                       <td>{formatDateTime(session.transfer_datetime || session.transfer_date || session.created_at)}</td>
                       <td>{fromName}</td>
                       <td>{toName}</td>
@@ -490,7 +535,9 @@ export default function TransfersReport() {
                         </button>
                       </td>
                       <td>
-                        {String(session.status || '').toLowerCase() === 'pending' ? (
+                        {session.reportKind === 'floor1_kitwe_delivery' ? (
+                          '—'
+                        ) : String(session.status || '').toLowerCase() === 'pending' ? (
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             <button type="button" className="report-link" onClick={() => handleApprove(session)} disabled={actionBusy === sid}>
                               {actionBusy === sid ? 'Approving…' : 'Approve'}
@@ -506,7 +553,7 @@ export default function TransfersReport() {
                     </tr>
                     {isOpen && (
                       <tr className="report-detail-row">
-                        <td colSpan={9}>
+                        <td colSpan={10}>
                           {items.length === 0 ? (
                             <div className="report-blank">No items recorded for this transfer.</div>
                           ) : (

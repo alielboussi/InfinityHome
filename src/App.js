@@ -43,6 +43,9 @@ import {
   StocktakeCountRoute,
   TransfersReport,
   ProductionReport,
+  CarpentryProductionReportPage,
+  PaintingReportPage,
+  RepairReportPage,
   UserAccessManagement,
   UserActivityLog,
   WarehouseDeliveries,
@@ -55,6 +58,8 @@ import {
   WarehouseDeliveryDriversPage,
   WarehouseProductionPresetsPage,
   CarpentryPage,
+  CarpentryJobsPage,
+  PaintingJobsPage,
   UpholsteryPage,
   UpholsteryTimerPage,
   WarehouseFloor2Page,
@@ -94,7 +99,7 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/all-transfers',
       '/warehouse-deliveries-admin',
       '/warehouse-repairs-admin',
-      '/warehouse-sales-storage-admin',
+      '/warehouse-products/sales-storage',
       '/stock-periods',
       '/stocktake',
       '/stocktake/aggregation',
@@ -104,9 +109,14 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/lusaka-transfers',
       '/transfers-report',
       '/production-report',
+      '/carpentry-production-report',
+      '/painting-report',
+      '/repair-report',
       '/upholstery',
       '/upholstery-timer',
       '/carpentry',
+      '/carpentry-jobs',
+      '/painting-jobs',
       '/warehouse-floor-2',
       '/carpentry-warehouse/1',
       '/carpentry-warehouse/2',
@@ -375,9 +385,13 @@ function App() {
           <Route path="/products-list" element={<ProductsListPage />} />
           <Route path="/production" element={<ProductionAdminPage />} />
           <Route path="/production-report" element={<ProductionReport />} />
+          <Route path="/carpentry-production-report" element={<CarpentryProductionReportPage />} />
+          <Route path="/painting-report" element={<PaintingReportPage />} />
+          <Route path="/repair-report" element={<RepairReportPage />} />
           <Route path="/warehouse-products/packets/new" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets/:packetId/edit" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets" element={<WarehousePacketsPage />} />
+          <Route path="/warehouse-products/sales-storage" element={<WarehouseProductsPage />} />
           <Route path="/warehouse-products/incomplete" element={<WarehouseProductsPage />} />
           <Route path="/warehouse-products/uncategorized" element={<WarehouseProductsPage />} />
           <Route path="/warehouse-products/sets" element={<WarehouseProductsPage />} />
@@ -388,6 +402,8 @@ function App() {
           <Route path="/upholstery" element={<UpholsteryPage />} />
           <Route path="/upholstery-timer" element={<UpholsteryTimerPage />} />
           <Route path="/carpentry" element={<CarpentryPage />} />
+          <Route path="/carpentry-jobs" element={<CarpentryJobsPage />} />
+          <Route path="/painting-jobs" element={<PaintingJobsPage />} />
           <Route path="/warehouse-floor-2" element={<WarehouseFloor2Page />} />
           <Route path="/carpentry-warehouse/:index" element={<CarpentryWarehouseStockPage />} />
           <Route path="/materials-uom" element={<MaterialsUomPage />} />

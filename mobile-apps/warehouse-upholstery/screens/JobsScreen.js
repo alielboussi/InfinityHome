@@ -15,7 +15,7 @@ import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
-import { tUi } from '../lib/productionKioskI18n';
+import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import {
   fetchUpholsteryProductionJobs,
   finishUpholsteryProductionJob,
@@ -39,9 +39,9 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish }) {
 
   return (
     <View style={[kiosk.card, styles.jobCard]}>
-      <Text style={[styles.jobTitle, { textAlign }]}>{job.finished_name || job.raw_name}</Text>
+      <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.finished_name || job.raw_name, '—')}</Text>
       <Text style={[styles.jobMeta, { textAlign }]}>
-        {job.raw_name || job.finished_sku || ''}
+        {textForDisplay(job.raw_name || job.finished_sku, '')}
       </Text>
       <View style={styles.timerRow}>
         <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>

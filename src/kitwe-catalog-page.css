@@ -653,6 +653,25 @@ body.enterprise-theme .kitwe-catalog-page .kitwe-catalog-table select {
   white-space: nowrap;
 }
 
+.kitwe-catalog-family-header td {
+  background: var(--kitwe-panel-bg, #f1f5f9);
+  border-bottom: 1px solid var(--kitwe-border, #cbd5e1);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+}
+
+.kitwe-catalog-family-header__name {
+  font-weight: 700;
+  color: var(--kitwe-text, #0f172a);
+}
+
+.kitwe-catalog-family-header__count {
+  margin-left: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--kitwe-muted, #64748b);
+}
+
 .carpentry-add-dropdown {
   list-style: none;
   margin: 8px 0 0;
@@ -1045,6 +1064,10 @@ body.enterprise-theme .floor2-manufacture-tile__inlay:hover {
   box-sizing: border-box;
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
   border: 1px solid #e2e8f0;
+}
+
+.kitwe-catalog-inlay-panel {
+  width: min(100%, 980px);
 }
 
 .floor2-inlay-panel__table-wrap {

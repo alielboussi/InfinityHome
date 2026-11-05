@@ -2,6 +2,56 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import BackToDashboard from './BackToDashboard';
 import { listReturnOrders } from './services/warehouseDeliveryMobileApi';
 import { formatWarehouseAdminDateTime } from './utils/warehouseAdminFormat';
+import {
+  REPAIR_DEPARTMENTS,
+  repairDepartmentLabel,
+  resolveReturnRepairDepartment,
+} from './utils/warehouseReturnRepairDepartment';
+
+function RepairAdminCard({ row }) {
+  return (
+    <article
+      style={{
+        border: '1px solid var(--dash-border-soft)',
+        borderRadius: 10,
+        padding: 16,
+        background: 'var(--dash-surface)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 700 }}>{row.return_number || row.id}</div>
+          <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
+            {formatWarehouseAdminDateTime(row.created_at)}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 600 }}>{String(row.status || '').replace(/_/g, ' ')}</div>
+          {row.outbound_delivery_number ? (
+            <div style={{ color: 'var(--dash-muted)', fontSize: 14 }}>
+              Shipment {row.outbound_delivery_number}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <strong>{row.assembly_name}</strong>
+        {row.assembly_sku ? ` · ${row.assembly_sku}` : ''}
+        {' · Qty '}
+        {row.quantity}
+      </div>
+      <div style={{ color: 'var(--dash-muted)', marginTop: 6 }}>
+        Sent by: {row.created_by_name || row.created_by_email || '—'}
+      </div>
+      <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
+        Reason: {row.reason || '—'}
+        {row.leather_code ? ` · Leather: ${row.leather_code}` : ''}
+        {row.customer_name ? ` · Customer: ${row.customer_name}` : ''}
+        {row.customer_phone ? ` · ${row.customer_phone}` : ''}
+      </div>
+    </article>
+  );
+}
 
 export default function WarehouseRepairsAdmin() {
   const [rows, setRows] = useState([]);
@@ -29,6 +79,7 @@ export default function WarehouseRepairsAdmin() {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((row) => {
+      const dept = resolveReturnRepairDepartment(row);
       const hay = [
         row.return_number,
         row.assembly_name,
@@ -40,10 +91,22 @@ export default function WarehouseRepairsAdmin() {
         row.leather_code,
         row.status,
         row.outbound_delivery_number,
+        dept,
+        repairDepartmentLabel(dept),
       ].join(' ').toLowerCase();
       return hay.includes(q);
     });
   }, [rows, search]);
+
+  const byDepartment = useMemo(() => {
+    const buckets = Object.fromEntries(REPAIR_DEPARTMENTS.map((d) => [d.id, []]));
+    for (const row of filtered) {
+      const dept = row.repair_department || resolveReturnRepairDepartment(row);
+      if (buckets[dept]) buckets[dept].push(row);
+      else buckets.upholstery.push(row);
+    }
+    return buckets;
+  }, [filtered]);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--dash-bg)', color: 'var(--dash-text)', padding: 24 }}>
@@ -52,8 +115,8 @@ export default function WarehouseRepairsAdmin() {
         <h1 style={{ margin: 0 }}>Repairs</h1>
       </div>
       <p style={{ color: 'var(--dash-muted)', marginBottom: 16, lineHeight: 1.5 }}>
-        Kitwe returns submitted by Hassan Awad. Kitwe stock is reduced when a return is created;
-        factory warehouse stock increases when production completes the repair.
+        Kitwe returns submitted by Hassan Awad, grouped by workshop department (Upholstery, Carpentry, Painting).
+        Kitwe stock is reduced when a return is created; factory warehouse stock increases when production completes the repair.
       </p>
 
       <input
@@ -78,50 +141,24 @@ export default function WarehouseRepairsAdmin() {
         <div style={{ color: 'var(--dash-muted)' }}>No repair records found.</div>
       )}
 
-      <div style={{ display: 'grid', gap: 12 }}>
-        {filtered.map((row) => (
-          <article
-            key={row.id}
-            style={{
-              border: '1px solid var(--dash-border-soft)',
-              borderRadius: 10,
-              padding: 16,
-              background: 'var(--dash-surface)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontWeight: 700 }}>{row.return_number || row.id}</div>
-                <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
-                  {formatWarehouseAdminDateTime(row.created_at)}
-                </div>
+      {REPAIR_DEPARTMENTS.map((dept) => {
+        const sectionRows = byDepartment[dept.id] || [];
+        if (!sectionRows.length && !loading) return null;
+        return (
+          <section key={dept.id} style={{ marginBottom: 32 }}>
+            <h2 style={{ margin: '0 0 12px', fontSize: 20 }}>{dept.label}</h2>
+            {sectionRows.length === 0 ? (
+              <div style={{ color: 'var(--dash-muted)', marginBottom: 8 }}>No repairs in this department.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {sectionRows.map((row) => (
+                  <RepairAdminCard key={row.id} row={row} />
+                ))}
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 600 }}>{String(row.status || '').replace(/_/g, ' ')}</div>
-                {row.outbound_delivery_number ? (
-                  <div style={{ color: 'var(--dash-muted)', fontSize: 14 }}>
-                    Shipment {row.outbound_delivery_number}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <strong>{row.assembly_name}</strong>
-              {row.assembly_sku ? ` · ${row.assembly_sku}` : ''}
-              {' · Qty '}
-              {row.quantity}
-            </div>
-            <div style={{ color: 'var(--dash-muted)', marginTop: 6 }}>
-              Sent by: {row.created_by_name || row.created_by_email || '—'}
-            </div>
-            <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
-              Reason: {row.reason || '—'}
-              {row.leather_code ? ` · Leather: ${row.leather_code}` : ''}
-              {row.customer_name ? ` · Customer: ${row.customer_name}` : ''}
-            </div>
-          </article>
-        ))}
-      </div>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
