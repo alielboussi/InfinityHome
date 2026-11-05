@@ -5,8 +5,9 @@ import {
   FaCashRegister, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag,   FaToolbox, FaIndustry, FaRuler,
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag,   FaToolbox, FaRuler, FaClock,
 } from 'react-icons/fa';
+import { FaStairs } from 'react-icons/fa6';
 import { getCurrentUser, getHomeDashboardPath, HASSAN_AWAD, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyExperience, isPublicAppRoute, canManageCatalog } from './accessControl';
 import { preloadAppRoute, prefetchNavRoutesOnIdle } from './lazyPages';
 import { isShopPublicPath } from './utils/shopConstants';
@@ -39,10 +40,14 @@ const NAV_GROUPS = [
     ],
   },
   {
-    title: 'Warehouses',
+    title: 'Production',
     items: [
-      { label: 'Warehouse Floor 2', route: '/warehouse-floor-2', icon: FaIndustry, catalogOnly: true },
-      { label: 'Warehouse Floor 1', route: '/warehouse-products', icon: FaBoxOpen },
+      { label: 'Floor 2', route: '/warehouse-floor-2', icon: FaStairs, catalogOnly: true },
+      { label: 'Floor 1', route: '/warehouse-products', icon: FaStairs },
+      { label: 'Upholstery Products', route: '/upholstery', icon: FaPlus, catalogOnly: true },
+      { label: 'Upholstery Jobs', route: '/upholstery-timer', icon: FaClock, catalogOnly: true },
+      { label: 'Carpentry Products', route: '/carpentry', icon: FaToolbox, catalogOnly: true },
+      { label: 'New Products', route: '/production', icon: FaPlus, catalogOnly: true },
     ],
   },
   {
@@ -61,9 +66,6 @@ const NAV_GROUPS = [
       { label: 'Categories', route: '/categories', icon: FaThLarge },
       { label: 'Products', route: '/products-list', icon: FaTags },
       { label: 'Kitwe', route: '/kitwe-products', icon: FaTags },
-      { label: 'Upholstery', route: '/upholstery', icon: FaPlus, catalogOnly: true },
-      { label: 'Carpentry', route: '/carpentry', icon: FaToolbox, catalogOnly: true },
-      { label: 'Production', route: '/production', icon: FaPlus, catalogOnly: true },
       { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
       { label: 'Print Labels', route: '/price-labels', icon: FaPrint },
     ],
@@ -178,16 +180,17 @@ const TITLE_MAP = {
   '/products': 'Products',
   '/products-list': 'Products',
   '/products-list/locations': 'Product locations',
-  '/warehouse-products': 'Warehouse Floor 1',
-  '/upholstery': 'Upholstery',
-  '/carpentry': 'Carpentry',
+  '/warehouse-products': 'Floor 1',
+  '/upholstery': 'Upholstery Products',
+  '/upholstery-timer': 'Upholstery Jobs',
+  '/carpentry': 'Carpentry Products',
   '/carpentry-warehouse/1': 'Storeroom 1',
   '/carpentry-warehouse/2': 'Storeroom 2',
   '/carpentry-warehouse/3': 'Storeroom 3',
   '/materials-uom': 'Units of measure',
-  '/warehouse-floor-2': 'Warehouse Floor 2',
+  '/warehouse-floor-2': 'Floor 2',
   '/warehouse-products/packets': 'Packets (Warehouse)',
-  '/production': 'Production',
+  '/production': 'New Products',
   '/production-report': 'Production Report',
   '/warehouse-products/incomplete': 'Incomplete products (Warehouse)',
   '/warehouse-products/uncategorized': 'Uncategorized products (Warehouse)',

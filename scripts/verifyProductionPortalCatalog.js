@@ -13,6 +13,16 @@ function resolvePortalChannel(clientSource, explicit) {
   return '';
 }
 
+function resolveFloor2SeedQuantity(body, initialQty = 0) {
+  const raw = body?.floor2_quantity
+    ?? body?.floor2_product_qty
+    ?? body?.raw_wip_qty
+    ?? body?.initial_quantity
+    ?? body?.initialQuantity
+    ?? initialQty;
+  return Math.max(1, Math.floor(Number(raw) || 0));
+}
+
 function testPortalProductScope() {
   const wipOnlyIncomplete = 'wip-incomplete';
   const floor1Id = 'floor1-product';
@@ -53,6 +63,14 @@ function testClientSourceRouting() {
   assert.equal(resolvePortalChannel('other', ''), '');
 }
 
+function testFloor2SeedQty() {
+  assert.equal(resolveFloor2SeedQuantity({ initial_quantity: 12 }, 0), 12);
+  assert.equal(resolveFloor2SeedQuantity({ floor2_quantity: 7 }, 3), 7);
+  assert.equal(resolveFloor2SeedQuantity({}, 4), 4);
+  assert.equal(resolveFloor2SeedQuantity({}, 0), 1);
+}
+
 testPortalProductScope();
 testClientSourceRouting();
+testFloor2SeedQty();
 console.log('verifyProductionPortalCatalog: ok');

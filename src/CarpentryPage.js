@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import BackToDashboard from './BackToDashboard';
-import db from './dataClient';
 import './kitwe-catalog-page.css';
 import { resolveCarpentryWarehouseLocations } from './constants/carpentryWarehouses';
 import { useMaterialUomOptions } from './hooks/useMaterialUomOptions';
 import {
   fetchCarpentryCatalog,
+  getCachedCarpentryCatalog,
   postCarpentryCatalog,
 } from './services/carpentryCatalogApi';
 import {
@@ -13,6 +13,7 @@ import {
   labelForMaterialUom,
   uomFromStoreroomMaterial,
 } from './utils/storeroomBomLineUom';
+import CategoryRemainingChecklist from './components/CategoryRemainingChecklist';
 
 const emptyMaterial = () => ({
   material_assembly_id: '',
@@ -21,48 +22,69 @@ const emptyMaterial = () => ({
   warehouse_location_id: '',
 });
 
+function buildDraftsForProducts(products) {
+  const drafts = {};
+  (products || []).forEach((p) => {
+    drafts[p.id] = (p.materials || []).length
+      ? p.materials.map((m) => ({ ...m, warehouse_location_id: m.warehouse_location_id || '' }))
+      : [emptyMaterial()];
+  });
+  return drafts;
+}
+
 export default function CarpentryPage() {
-  const [loading, setLoading] = useState(true);
+  const initialCached = useMemo(() => getCachedCarpentryCatalog(), []);
+  const [loading, setLoading] = useState(!initialCached);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [candidates, setCandidates] = useState([]);
-  const [warehouseSetCandidates, setWarehouseSetCandidates] = useState([]);
-  const [storeroomMaterials, setStoreroomMaterials] = useState([]);
-  const [carpentryProducts, setCarpentryProducts] = useState([]);
+  const [candidates, setCandidates] = useState(() => initialCached?.candidates || []);
+  const [warehouseSetCandidates, setWarehouseSetCandidates] = useState(() => initialCached?.setCandidates || []);
+  const [categories, setCategories] = useState(() => initialCached?.categories || []);
+  const [storeroomMaterials, setStoreroomMaterials] = useState(() => initialCached?.storeroomMaterials || []);
+  const [carpentryProducts, setCarpentryProducts] = useState(() => initialCached?.carpentryProducts || []);
   const [expandedId, setExpandedId] = useState('');
   const [expandedSetId, setExpandedSetId] = useState('');
-  const [materialDrafts, setMaterialDrafts] = useState({});
-  const [carpentryLocations, setCarpentryLocations] = useState([]);
+  const [materialDrafts, setMaterialDrafts] = useState(() => buildDraftsForProducts(initialCached?.carpentryProducts));
+  const [carpentryLocations, setCarpentryLocations] = useState(
+    () => resolveCarpentryWarehouseLocations(initialCached?.locations || []),
+  );
   const [busyId, setBusyId] = useState('');
 
   const { options: uomOptions } = useMaterialUomOptions();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const applyCatalogSnapshot = useCallback((catalog) => {
+    if (!catalog) return;
+    setCarpentryLocations(resolveCarpentryWarehouseLocations(catalog.locations || []));
+    setCategories(
+      (catalog.categories || [])
+        .map((c) => ({ id: String(c.id), name: String(c.name || '').trim() }))
+        .filter((c) => c.name),
+    );
+    setCandidates(catalog.candidates || []);
+    setWarehouseSetCandidates(catalog.setCandidates || []);
+    setStoreroomMaterials(catalog.storeroomMaterials || []);
+    setCarpentryProducts(catalog.carpentryProducts || []);
+    setMaterialDrafts(buildDraftsForProducts(catalog.carpentryProducts));
+  }, []);
+
+  const load = useCallback(async ({ forceFresh = false } = {}) => {
+    const cached = !forceFresh ? getCachedCarpentryCatalog() : null;
+    if (cached) {
+      applyCatalogSnapshot(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError('');
     try {
-      const [{ data: locs }, catalog] = await Promise.all([
-        db.from('locations').select('id, name').order('name'),
-        fetchCarpentryCatalog(),
-      ]);
-      setCarpentryLocations(resolveCarpentryWarehouseLocations(locs || []));
-      setCandidates(catalog.candidates || []);
-      setWarehouseSetCandidates(catalog.setCandidates || []);
-      setStoreroomMaterials(catalog.storeroomMaterials || []);
-      setCarpentryProducts(catalog.carpentryProducts || []);
-      const drafts = {};
-      (catalog.carpentryProducts || []).forEach((p) => {
-        drafts[p.id] = (p.materials || []).length
-          ? p.materials.map((m) => ({ ...m, warehouse_location_id: m.warehouse_location_id || '' }))
-          : [emptyMaterial()];
-      });
-      setMaterialDrafts(drafts);
+      const catalog = await fetchCarpentryCatalog({ forceFresh });
+      applyCatalogSnapshot(catalog);
     } catch (err) {
       setError(err?.message || 'Failed to load Carpentry catalog');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyCatalogSnapshot]);
 
   useEffect(() => {
     load();
@@ -103,20 +125,21 @@ export default function CarpentryPage() {
   );
 
   const addProducts = async (assemblyIds) => {
-    const ids = [...new Set((assemblyIds || []).map((id) => String(id)).filter(Boolean))];
+    const ids = [...new Set((assemblyIds || []).map((id) => String(id)).filter(Boolean))]
+      .filter((id) => !selectedProductIds.has(id));
     if (!ids.length) return;
     setBusyId(`batch-${ids[0]}`);
     setError('');
     try {
-      for (const assemblyId of ids) {
-        if (selectedProductIds.has(assemblyId)) continue;
-        await postCarpentryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true });
-      }
+      await Promise.all(
+        ids.map((assemblyId) => postCarpentryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true })),
+      );
       setSearch('');
       setExpandedSetId('');
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to add products');
+      throw err;
     } finally {
       setBusyId('');
     }
@@ -129,7 +152,7 @@ export default function CarpentryPage() {
       await postCarpentryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true });
       setSearch('');
       setExpandedSetId('');
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to add product');
     } finally {
@@ -142,7 +165,7 @@ export default function CarpentryPage() {
     setError('');
     try {
       await postCarpentryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: false });
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to remove product');
     } finally {
@@ -162,7 +185,7 @@ export default function CarpentryPage() {
         assembly_id: assemblyId,
         materials: lines,
       });
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to save materials');
     } finally {
@@ -200,117 +223,123 @@ export default function CarpentryPage() {
           Run <code>node scripts/seedCarpentryWarehouseLocations.js</code> to create Carpentry Warehouse 1–3 in Inventory locations.
         </p>
       ) : null}
-      {!loading && !storeroomMaterials.length ? (
-        <p style={{ color: '#b45309', marginBottom: 12 }}>
-          No storeroom stock yet — create UOMs under Materials, then create materials on Storeroom 1–3 before defining BOM lines.
-        </p>
-      ) : null}
-      {!loading && !uomOptions.length ? (
-        <p style={{ color: '#b45309', marginBottom: 12 }}>
-          Add units of measure on <strong>Materials → Units of measure</strong> before saving BOM lines.
-        </p>
-      ) : null}
 
-      <div className="carpentry-add-search-wrap">
-        <input
-          className="kitwe-search-input carpentry-add-search-input"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search SKU or name to add a product…"
-          autoComplete="off"
-        />
-        {search.trim() ? (
-          <ul id="carpentry-add-dropdown" className="carpentry-add-dropdown" role="listbox">
-            {matchingSets.map((set) => {
-              const open = expandedSetId === String(set.id);
-              const missing = (set.components || []).filter((c) => !selectedProductIds.has(String(c.id)));
-              const setBusy = String(busyId).startsWith('batch-') || busyId === String(set.id);
-              return (
-                <li key={`set-${set.id}`} className="carpentry-add-dropdown__item upholstery-add-set" role="presentation">
-                  <div className="carpentry-add-dropdown__item" role="option" aria-selected="false">
-                    <div className="carpentry-add-dropdown__meta">
-                      <span className="carpentry-add-dropdown__sku">{set.family_sku || '—'}</span>
-                      <span className="carpentry-add-dropdown__name">
-                        {set.name}
-                        {' '}
-                        <span className="warehouse-kind-badge warehouse-kind-badge--set">Set</span>
-                      </span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', marginBottom: 16 }}>
+        <div className="carpentry-add-search-wrap" style={{ marginBottom: 0, flex: '1 1 340px' }}>
+          <input
+            className="kitwe-search-input carpentry-add-search-input"
+            style={{ width: '100%', maxWidth: 520, minWidth: 340 }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search SKU or name to add a product…"
+            autoComplete="off"
+          />
+          {search.trim() ? (
+            <ul id="carpentry-add-dropdown" className="carpentry-add-dropdown">
+              {matchingSets.map((set) => {
+                const open = expandedSetId === String(set.id);
+                const missing = (set.components || []).filter((c) => !selectedProductIds.has(String(c.id)));
+                const setBusy = String(busyId).startsWith('batch-') || busyId === String(set.id);
+                return (
+                  <li key={`set-${set.id}`} className="carpentry-add-dropdown__item upholstery-add-set" role="presentation">
+                    <div className="carpentry-add-dropdown__item">
+                      <div className="carpentry-add-dropdown__meta">
+                        <span className="carpentry-add-dropdown__sku">{set.family_sku || '—'}</span>
+                        <span className="carpentry-add-dropdown__name">
+                          {set.name}
+                          {' '}
+                          <span className="warehouse-kind-badge warehouse-kind-badge--set">Set</span>
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="kitwe-btn-compact"
+                        disabled={setBusy}
+                        onClick={() => setExpandedSetId(open ? '' : String(set.id))}
+                      >
+                        {open ? 'Hide' : 'Components'}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="kitwe-btn-compact"
-                      disabled={setBusy}
-                      onClick={() => setExpandedSetId(open ? '' : String(set.id))}
-                    >
-                      {open ? 'Hide' : 'Components'}
-                    </button>
-                  </div>
-                  {open ? (
-                    <ul className="upholstery-set-component-list">
-                      {missing.length ? (
-                        <li className="upholstery-set-component-list__actions">
-                          <button
-                            type="button"
-                            className="kitwe-btn-create-set kitwe-btn-compact"
-                            disabled={setBusy}
-                            onClick={() => addProducts(missing.map((c) => c.id))}
-                          >
-                            Add all missing ({missing.length})
-                          </button>
-                        </li>
-                      ) : null}
-                      {(set.components || []).map((comp) => {
-                        const inCatalog = selectedProductIds.has(String(comp.id));
-                        return (
-                          <li key={comp.id} className="carpentry-add-dropdown__item upholstery-set-component-list__row">
-                            <div className="carpentry-add-dropdown__meta">
-                              <span className="carpentry-add-dropdown__sku">{comp.family_sku || '—'}</span>
-                              <span className="carpentry-add-dropdown__name">
-                                {comp.qty_per_set > 1 ? `${comp.qty_per_set}× ` : ''}
-                                {comp.name}
-                              </span>
-                            </div>
-                            {inCatalog ? (
-                              <span className="upholstery-set-component-list__added">In catalog</span>
-                            ) : (
-                              <button
-                                type="button"
-                                className="kitwe-btn-create-set kitwe-btn-compact"
-                                disabled={busyId === String(comp.id) || setBusy}
-                                onClick={() => addProduct(comp.id)}
-                              >
-                                {busyId === String(comp.id) ? '…' : 'Add'}
-                              </button>
-                            )}
+                    {open ? (
+                      <ul className="upholstery-set-component-list">
+                        {missing.length ? (
+                          <li className="upholstery-set-component-list__actions">
+                            <button
+                              type="button"
+                              className="kitwe-btn-create-set kitwe-btn-compact"
+                              disabled={setBusy}
+                              onClick={() => addProducts(missing.map((c) => c.id))}
+                            >
+                              Add all missing ({missing.length})
+                            </button>
                           </li>
-                        );
-                      })}
-                    </ul>
-                  ) : null}
+                        ) : null}
+                        {(set.components || []).map((comp) => {
+                          const inCatalog = selectedProductIds.has(String(comp.id));
+                          return (
+                            <li key={comp.id} className="carpentry-add-dropdown__item upholstery-set-component-list__row">
+                              <div className="carpentry-add-dropdown__meta">
+                                <span className="carpentry-add-dropdown__sku">{comp.family_sku || '—'}</span>
+                                <span className="carpentry-add-dropdown__name">
+                                  {comp.qty_per_set > 1 ? `${comp.qty_per_set}× ` : ''}
+                                  {comp.name}
+                                </span>
+                              </div>
+                              {inCatalog ? (
+                                <span className="upholstery-set-component-list__added">In catalog</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="kitwe-btn-create-set kitwe-btn-compact"
+                                  disabled={busyId === String(comp.id) || setBusy}
+                                  onClick={() => addProduct(comp.id)}
+                                >
+                                  {busyId === String(comp.id) ? '…' : 'Add'}
+                                </button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })}
+              {candidateRows.length ? candidateRows.slice(0, 40).map((row) => (
+                <li key={row.id} className="carpentry-add-dropdown__item">
+                  <div className="carpentry-add-dropdown__meta">
+                    <span className="carpentry-add-dropdown__sku">{row.family_sku || '—'}</span>
+                    <span className="carpentry-add-dropdown__name">{row.name}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="kitwe-btn-create-set kitwe-btn-compact"
+                    disabled={busyId === String(row.id)}
+                    onClick={() => addProduct(row.id)}
+                  >
+                    {busyId === String(row.id) ? '…' : 'Add'}
+                  </button>
                 </li>
-              );
-            })}
-            {candidateRows.length ? candidateRows.slice(0, 40).map((row) => (
-              <li key={row.id} className="carpentry-add-dropdown__item" role="option" aria-selected="false">
-                <div className="carpentry-add-dropdown__meta">
-                  <span className="carpentry-add-dropdown__sku">{row.family_sku || '—'}</span>
-                  <span className="carpentry-add-dropdown__name">{row.name}</span>
-                </div>
-                <button
-                  type="button"
-                  className="kitwe-btn-create-set kitwe-btn-compact"
-                  disabled={busyId === String(row.id)}
-                  onClick={() => addProduct(row.id)}
-                >
-                  {busyId === String(row.id) ? '…' : 'Add'}
-                </button>
-              </li>
-            )) : null}
-            {!candidateRows.length && !matchingSets.length ? (
-              <li className="carpentry-add-dropdown__empty">No matching warehouse products or sets.</li>
-            ) : null}
-          </ul>
-        ) : null}
+              )) : null}
+              {!candidateRows.length && !matchingSets.length ? (
+                <li className="carpentry-add-dropdown__empty">No matching warehouse products or sets.</li>
+              ) : null}
+            </ul>
+          ) : null}
+        </div>
+
+        <div style={{ flex: '1 1 340px' }}>
+          <CategoryRemainingChecklist
+            categories={categories}
+            candidates={candidates}
+            setCandidates={warehouseSetCandidates}
+            existingProductIds={selectedProductIds}
+            busy={Boolean(busyId)}
+            selectPlaceholder="Select category to add remaining…"
+            addButtonLabel="Add selected to Carpentry"
+            onAddSelected={(ids) => addProducts(ids)}
+          />
+        </div>
       </div>
 
       {loading ? <p>Loading…</p> : null}

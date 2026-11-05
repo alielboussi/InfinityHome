@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import BackToDashboard from './BackToDashboard';
-import db from './dataClient';
 import './kitwe-catalog-page.css';
 import { resolveCarpentryWarehouseLocations } from './constants/carpentryWarehouses';
 import { useMaterialUomOptions } from './hooks/useMaterialUomOptions';
-import { fetchCarpentryCatalog } from './services/carpentryCatalogApi';
 import {
   fetchUpholsteryCatalog,
+  getCachedUpholsteryCatalog,
   postUpholsteryCatalog,
 } from './services/upholsteryCatalogApi';
 import {
@@ -14,6 +13,7 @@ import {
   labelForMaterialUom,
   uomFromStoreroomMaterial,
 } from './utils/storeroomBomLineUom';
+import CategoryRemainingChecklist from './components/CategoryRemainingChecklist';
 
 const emptyMaterial = () => ({
   material_assembly_id: '',
@@ -22,51 +22,71 @@ const emptyMaterial = () => ({
   warehouse_location_id: '',
 });
 
+function buildDraftsForProducts(products) {
+  const drafts = {};
+  (products || []).forEach((p) => {
+    drafts[p.id] = (p.materials || []).length
+      ? p.materials.map((m) => ({ ...m, warehouse_location_id: m.warehouse_location_id || '' }))
+      : [emptyMaterial()];
+  });
+  return drafts;
+}
+
 export default function UpholsteryPage() {
-  const [loading, setLoading] = useState(true);
+  const initialCached = useMemo(() => getCachedUpholsteryCatalog(), []);
+  const [loading, setLoading] = useState(!initialCached);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [candidates, setCandidates] = useState([]);
-  const [warehouseSetCandidates, setWarehouseSetCandidates] = useState([]);
-  const [upholsteryProducts, setUpholsteryProducts] = useState([]);
-  const [carpentryProducts, setCarpentryProducts] = useState([]);
-  const [storeroomMaterials, setStoreroomMaterials] = useState([]);
-  const [carpentryLocations, setCarpentryLocations] = useState([]);
-  const [materialDrafts, setMaterialDrafts] = useState({});
+  const [candidates, setCandidates] = useState(() => initialCached?.candidates || []);
+  const [warehouseSetCandidates, setWarehouseSetCandidates] = useState(() => initialCached?.setCandidates || []);
+  const [categories, setCategories] = useState(() => initialCached?.categories || []);
+  const [upholsteryProducts, setUpholsteryProducts] = useState(() => initialCached?.upholsteryProducts || []);
+  const [carpentryProducts, setCarpentryProducts] = useState(() => initialCached?.carpentryProducts || []);
+  const [storeroomMaterials, setStoreroomMaterials] = useState(() => initialCached?.storeroomMaterials || []);
+  const [carpentryLocations, setCarpentryLocations] = useState(
+    () => resolveCarpentryWarehouseLocations(initialCached?.locations || []),
+  );
+  const [materialDrafts, setMaterialDrafts] = useState(() => buildDraftsForProducts(initialCached?.upholsteryProducts));
   const [expandedId, setExpandedId] = useState('');
   const [busyId, setBusyId] = useState('');
   const [expandedSetId, setExpandedSetId] = useState('');
 
   const { options: uomOptions } = useMaterialUomOptions();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const applyCatalogSnapshot = useCallback((catalog) => {
+    if (!catalog) return;
+    setCarpentryLocations(resolveCarpentryWarehouseLocations(catalog.locations || []));
+    setCategories(
+      (catalog.categories || [])
+        .map((c) => ({ id: String(c.id), name: String(c.name || '').trim() }))
+        .filter((c) => c.name),
+    );
+    setCandidates(catalog.candidates || []);
+    setWarehouseSetCandidates(catalog.setCandidates || []);
+    setStoreroomMaterials(catalog.storeroomMaterials || []);
+    setUpholsteryProducts(catalog.upholsteryProducts || []);
+    setCarpentryProducts(catalog.carpentryProducts || []);
+    setMaterialDrafts(buildDraftsForProducts(catalog.upholsteryProducts));
+  }, []);
+
+  const load = useCallback(async ({ forceFresh = false } = {}) => {
+    const cached = !forceFresh ? getCachedUpholsteryCatalog() : null;
+    if (cached) {
+      applyCatalogSnapshot(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError('');
     try {
-      const [{ data: locs }, catalog, carpentry] = await Promise.all([
-        db.from('locations').select('id, name').order('name'),
-        fetchUpholsteryCatalog(),
-        fetchCarpentryCatalog().catch(() => ({ carpentryProducts: [] })),
-      ]);
-      setCarpentryLocations(resolveCarpentryWarehouseLocations(locs || []));
-      setCandidates(catalog.candidates || []);
-      setWarehouseSetCandidates(catalog.setCandidates || []);
-      setStoreroomMaterials(catalog.storeroomMaterials || []);
-      setUpholsteryProducts(catalog.upholsteryProducts || []);
-      setCarpentryProducts(carpentry.carpentryProducts || []);
-      const drafts = {};
-      (catalog.upholsteryProducts || []).forEach((p) => {
-        drafts[p.id] = (p.materials || []).length
-          ? p.materials.map((m) => ({ ...m, warehouse_location_id: m.warehouse_location_id || '' }))
-          : [emptyMaterial()];
-      });
-      setMaterialDrafts(drafts);
+      const catalog = await fetchUpholsteryCatalog({ forceFresh });
+      applyCatalogSnapshot(catalog);
     } catch (err) {
       setError(err?.message || 'Failed to load Upholstery catalog');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyCatalogSnapshot]);
 
   useEffect(() => {
     load();
@@ -110,20 +130,21 @@ export default function UpholsteryPage() {
   );
 
   const addProducts = async (assemblyIds) => {
-    const ids = [...new Set((assemblyIds || []).map((id) => String(id)).filter(Boolean))];
+    const ids = [...new Set((assemblyIds || []).map((id) => String(id)).filter(Boolean))]
+      .filter((id) => !selectedProductIds.has(id));
     if (!ids.length) return;
     setBusyId(`batch-${ids[0]}`);
     setError('');
     try {
-      for (const assemblyId of ids) {
-        if (selectedProductIds.has(assemblyId)) continue;
-        await postUpholsteryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true });
-      }
+      await Promise.all(
+        ids.map((assemblyId) => postUpholsteryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true })),
+      );
       setSearch('');
       setExpandedSetId('');
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to add products');
+      throw err;
     } finally {
       setBusyId('');
     }
@@ -136,7 +157,7 @@ export default function UpholsteryPage() {
       await postUpholsteryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true });
       setSearch('');
       setExpandedSetId('');
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to add product');
     } finally {
@@ -149,7 +170,7 @@ export default function UpholsteryPage() {
     setError('');
     try {
       await postUpholsteryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: false });
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to remove product');
     } finally {
@@ -166,7 +187,7 @@ export default function UpholsteryPage() {
         assembly_id: finishedId,
         raw_assembly_id: rawAssemblyId || '',
       });
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to save raw product link');
     } finally {
@@ -186,7 +207,7 @@ export default function UpholsteryPage() {
         assembly_id: assemblyId,
         materials: lines,
       });
-      await load();
+      await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to save materials');
     } finally {
@@ -210,49 +231,31 @@ export default function UpholsteryPage() {
     <div className="kitwe-catalog-page">
       <BackToDashboard />
       <h1 style={{ marginTop: 16 }}>Upholstery</h1>
-      <p style={{ color: 'var(--kitwe-muted, #64748b)', marginBottom: 16, maxWidth: 720 }}>
-        Add finished products from <strong>Warehouse Floor 1</strong> (
-        <code>/warehouse-products</code>
-        ). Sets cannot be added as a whole — search a set, open
-        {' '}
-        <strong>Components</strong>
-        , then add each line individually. Link each row to a <strong>raw carpentry product</strong>
-        on Floor 2. Define <strong>storeroom BOM</strong> (fabric, foam, etc.) per finished product; upholstery manufacture
-        deducts those materials from Storerooms 1–3 plus raw from Floor 2, then credits Floor 1 for Send Delivery.
-      </p>
       {carpentryLocations.length < 3 ? (
         <p style={{ color: '#b45309', marginBottom: 12 }}>
           Run <code>node scripts/seedCarpentryWarehouseLocations.js</code> for Storeroom 1–3 locations.
         </p>
       ) : null}
-      {!loading && !storeroomMaterials.length ? (
-        <p style={{ color: '#b45309', marginBottom: 12 }}>
-          No storeroom stock yet — create UOMs and materials on Storeroom 1–3 before defining upholstery BOM lines.
-        </p>
-      ) : null}
-      {!loading && !uomOptions.length ? (
-        <p style={{ color: '#b45309', marginBottom: 12 }}>
-          Add units of measure on <strong>Materials → Units of measure</strong> before saving BOM lines.
-        </p>
-      ) : null}
 
-      <div className="carpentry-add-search-wrap">
-        <input
-          className="kitwe-search-input carpentry-add-search-input"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search SKU or name to add a finished product…"
-          autoComplete="off"
-        />
+      <div className="kitwe-catalog-add-toolbar kitwe-catalog-add-toolbar--inline-row">
+        <div className="carpentry-add-search-wrap kitwe-catalog-add-toolbar__search">
+          <input
+            className="kitwe-search-input carpentry-add-search-input"
+            style={{ width: '100%' }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search SKU or name to add a finished product…"
+            autoComplete="off"
+          />
         {search.trim() ? (
-          <ul id="upholstery-add-dropdown" className="carpentry-add-dropdown" role="listbox">
+          <ul id="upholstery-add-dropdown" className="carpentry-add-dropdown">
             {matchingSets.map((set) => {
               const open = expandedSetId === String(set.id);
               const missing = (set.components || []).filter((c) => !selectedProductIds.has(String(c.id)));
               const setBusy = String(busyId).startsWith('batch-') || busyId === String(set.id);
               return (
                 <li key={`set-${set.id}`} className="carpentry-add-dropdown__item upholstery-add-set" role="presentation">
-                  <div className="carpentry-add-dropdown__item" role="option" aria-selected="false">
+                  <div className="carpentry-add-dropdown__item">
                     <div className="carpentry-add-dropdown__meta">
                       <span className="carpentry-add-dropdown__sku">{set.family_sku || '—'}</span>
                       <span className="carpentry-add-dropdown__name">
@@ -316,7 +319,7 @@ export default function UpholsteryPage() {
               );
             })}
             {candidateRows.length ? candidateRows.slice(0, 40).map((row) => (
-              <li key={row.id} className="carpentry-add-dropdown__item" role="option" aria-selected="false">
+              <li key={row.id} className="carpentry-add-dropdown__item">
                 <div className="carpentry-add-dropdown__meta">
                   <span className="carpentry-add-dropdown__sku">{row.family_sku || '—'}</span>
                   <span className="carpentry-add-dropdown__name">{row.name}</span>
@@ -336,6 +339,19 @@ export default function UpholsteryPage() {
             ) : null}
           </ul>
         ) : null}
+        </div>
+
+        <CategoryRemainingChecklist
+          toolbarInline
+          categories={categories}
+          candidates={candidates}
+          setCandidates={warehouseSetCandidates}
+          existingProductIds={selectedProductIds}
+          busy={Boolean(busyId)}
+          selectPlaceholder="Select category to add remaining…"
+          addButtonLabel="Add selected to Upholstery"
+          onAddSelected={(ids) => addProducts(ids)}
+        />
       </div>
 
       {loading ? <p>Loading…</p> : null}
@@ -343,14 +359,13 @@ export default function UpholsteryPage() {
 
       <h2 style={{ fontSize: '1.1rem', marginTop: 24 }}>Upholstery catalog</h2>
       <div className="kitwe-catalog-table-wrap">
-        <table className="kitwe-catalog-table">
+        <table className="kitwe-catalog-table kitwe-catalog-table--upholstery">
           <thead>
             <tr>
-              <th>Finished SKU</th>
-              <th>Finished name</th>
-              <th>Raw carpentry product</th>
-              <th className="col-actions">Materials</th>
-              <th />
+              <th style={{ width: '18%' }}>Finished SKU</th>
+              <th style={{ width: '26%' }}>Finished name</th>
+              <th className="col-raw-select">Raw carpentry product</th>
+              <th className="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -362,17 +377,17 @@ export default function UpholsteryPage() {
               return (
                 <React.Fragment key={row.id}>
                   <tr>
-                    <td>{row.family_sku || '—'}</td>
-                    <td>{row.name}</td>
-                    <td>
+                    <td className="col-sku">{row.family_sku || '—'}</td>
+                    <td><strong>{row.name}</strong></td>
+                    <td className="col-raw-select">
                       <select
-                        className="kitwe-search-input"
-                        style={{ maxWidth: 320, width: '100%' }}
+                        className="kitwe-cell-select"
+                        style={{ maxWidth: 340, width: '100%' }}
                         value={rawId}
                         disabled={busyId === `raw-${row.id}`}
                         onChange={(e) => saveRawLink(row.id, e.target.value)}
                       >
-                        <option value="">— Select raw product —</option>
+                        <option value="">— Select raw product (from Carpentry catalog) —</option>
                         {(carpentryProducts || []).map((cp) => (
                           <option key={cp.id} value={cp.id}>
                             {cp.family_sku || '—'}
@@ -386,30 +401,35 @@ export default function UpholsteryPage() {
                           Linked: {raw.family_sku} — {raw.name}
                         </div>
                       ) : null}
+                      {!carpentryProducts.length ? (
+                        <div style={{ fontSize: 12, color: '#b45309', marginTop: 4 }}>
+                          No raw products yet — add frames on the <strong>Carpentry</strong> page first.
+                        </div>
+                      ) : null}
                     </td>
                     <td className="col-actions">
-                      <button
-                        type="button"
-                        className="kitwe-btn-secondary kitwe-btn-compact"
-                        onClick={() => setExpandedId(open ? '' : row.id)}
-                      >
-                        {open ? 'Close' : 'Edit BOM'}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="kitwe-btn-compact"
-                        disabled={busyId === row.id}
-                        onClick={() => removeProduct(row.id)}
-                      >
-                        {busyId === row.id ? '…' : 'Remove'}
-                      </button>
+                      <div className="kitwe-row-actions">
+                        <button
+                          type="button"
+                          className="kitwe-btn-secondary kitwe-btn-compact"
+                          onClick={() => setExpandedId(open ? '' : row.id)}
+                        >
+                          {open ? 'Close BOM' : `Edit BOM (${(row.materials || []).length})`}
+                        </button>
+                        <button
+                          type="button"
+                          className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
+                          disabled={busyId === row.id}
+                          onClick={() => removeProduct(row.id)}
+                        >
+                          {busyId === row.id ? '…' : 'Remove'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   {open ? (
                     <tr>
-                      <td colSpan={5} style={{ background: 'var(--kitwe-panel-bg, #f8fafc)', padding: 16 }}>
+                      <td colSpan={4} style={{ background: 'var(--kitwe-panel-bg, #f8fafc)', padding: 16 }}>
                         <p style={{ margin: '0 0 12px', fontSize: '0.9rem', color: 'var(--kitwe-muted)' }}>
                           Storeroom materials per unit of finished product (deducted on upholstery manufacture).
                         </p>
@@ -508,7 +528,7 @@ export default function UpholsteryPage() {
               );
             }) : (
               <tr>
-                <td colSpan={5} className="kitwe-empty-hint">
+                <td colSpan={4} className="kitwe-empty-hint">
                   No upholstery products yet — search above to add from Warehouse Floor 1.
                 </td>
               </tr>

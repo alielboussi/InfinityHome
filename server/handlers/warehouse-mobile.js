@@ -464,6 +464,82 @@ async function opUpholsteryManufacture(body, user) {
   });
 }
 
+async function opUpholsteryJobStart(body, user) {
+  await assertProductionKioskUser(user);
+  const rawAssemblyId = String(body.raw_assembly_id || body.rawAssemblyId || '').trim();
+  if (!rawAssemblyId) throw new Error('raw_assembly_id required');
+  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
+  const sb = getService();
+  const { startUpholsteryProductionJob } = await import('../lib/upholsteryProductionJobs.js');
+  return startUpholsteryProductionJob(sb, {
+    rawAssemblyId,
+    productQty,
+    userId: user?.id || user?.uid,
+    user,
+  });
+}
+
+async function opUpholsteryJobList(body, user) {
+  try {
+    await assertProductionKioskUser(user);
+  } catch (prodErr) {
+    if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
+      throw prodErr;
+    }
+  }
+  const sb = getService();
+  const activeOnly = body.active_only !== false && body.activeOnly !== false;
+  const { listUpholsteryProductionJobs } = await import('../lib/upholsteryProductionJobs.js');
+  return listUpholsteryProductionJobs(sb, { activeOnly });
+}
+
+async function opUpholsteryJobPause(body, user) {
+  await assertProductionKioskUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = getService();
+  const { pauseUpholsteryProductionJob } = await import('../lib/upholsteryProductionJobs.js');
+  return pauseUpholsteryProductionJob(sb, { jobId, userId: user?.id || user?.uid });
+}
+
+async function opUpholsteryJobResume(body, user) {
+  await assertProductionKioskUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = getService();
+  const { resumeUpholsteryProductionJob } = await import('../lib/upholsteryProductionJobs.js');
+  return resumeUpholsteryProductionJob(sb, { jobId, userId: user?.id || user?.uid });
+}
+
+async function opUpholsteryJobCheckUnit(body, user) {
+  await assertProductionKioskUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  const unitIndex = body.unit_index ?? body.unitIndex;
+  if (!jobId) throw new Error('job_id required');
+  const sb = getService();
+  const { toggleUpholsteryProductionJobUnit } = await import('../lib/upholsteryProductionJobs.js');
+  return toggleUpholsteryProductionJobUnit(sb, {
+    jobId,
+    unitIndex,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opUpholsteryJobFinish(body, user) {
+  await assertProductionKioskUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = getService();
+  const printedBy = (await productionWhatsappProducerName(user)) || 'Upholstery production';
+  const { finishUpholsteryProductionJob } = await import('../lib/upholsteryProductionJobs.js');
+  return finishUpholsteryProductionJob(sb, {
+    jobId,
+    userId: user?.id || user?.uid,
+    user,
+    labelPrintedBy: printedBy,
+  });
+}
+
 async function opCarpentryManufacture(body, user) {
   await assertCarpentryWorkshopUser(user);
   const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
@@ -624,6 +700,14 @@ async function opProductionPacketCreate(body, user) {
     : null;
 
   const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const portalExplicit = body.portal_catalog || body.auto_portal_catalog;
+  const {
+    resolveProductionPortalChannel,
+    resolveFloor2SeedQuantity,
+  } = await import('../lib/productionPortalAutoSelect.js');
+  const portalChannel = resolveProductionPortalChannel(clientSource, portalExplicit);
+  const floor2SeedQty = resolveFloor2SeedQuantity(body, initialQty);
+  const openingFloor1Qty = portalChannel === 'upholstery' ? 0 : initialQty;
   let assemblyInserted = false;
   let assemblyId = '';
   try {
@@ -648,7 +732,7 @@ async function opProductionPacketCreate(body, user) {
     const { error: invErr } = await sb.from('warehouse_assembly_inventory').upsert({
       assembly_id: assemblyId,
       location_id: warehouseLocationId,
-      quantity: initialQty,
+      quantity: openingFloor1Qty,
       updated_at: now,
     }, { onConflict: 'assembly_id,location_id' });
     if (invErr) throw new Error(invErr.message || 'Failed to set opening stock');
@@ -702,17 +786,23 @@ async function opProductionPacketCreate(body, user) {
       console.warn('[warehouse-mobile] production create log failed:', logErr?.message || logErr);
     }
 
+    let portalCatalog = null;
     try {
       const { autoSelectProductionPortalCatalog } = await import('../lib/productionPortalAutoSelect.js');
-      await autoSelectProductionPortalCatalog(sb, assemblyId, {
+      portalCatalog = await autoSelectProductionPortalCatalog(sb, assemblyId, {
         clientSource,
         portal_catalog: body.portal_catalog,
         auto_portal_catalog: body.auto_portal_catalog,
-        initialQuantity: initialQty,
+        initialQuantity: floor2SeedQty,
+        floor2_product_qty: floor2SeedQty,
         userId: user?.id || user?.uid || null,
       });
     } catch (portalErr) {
       console.warn('[warehouse-mobile] portal catalog auto-select failed:', portalErr?.message || portalErr);
+      portalCatalog = {
+        applied: null,
+        error: portalErr?.message || String(portalErr),
+      };
     }
 
     const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
@@ -785,6 +875,7 @@ async function opProductionPacketCreate(body, user) {
       defer_product_photo: deferProductPhoto,
       created_by: user?.email || null,
       catalog_image_url: catalogImageUrl,
+      portal_catalog: portalCatalog,
       label_copies: labelCopies,
       label_job_id: labelJobId,
       label_print_warning: labelPrintWarning,
@@ -2831,6 +2922,24 @@ export default async function handler(req, res) {
         break;
       case 'upholstery-manufacture':
         result = await opUpholsteryManufacture(body, user);
+        break;
+      case 'upholstery-job-start':
+        result = await opUpholsteryJobStart(body, user);
+        break;
+      case 'upholstery-job-list':
+        result = await opUpholsteryJobList(body, user);
+        break;
+      case 'upholstery-job-pause':
+        result = await opUpholsteryJobPause(body, user);
+        break;
+      case 'upholstery-job-resume':
+        result = await opUpholsteryJobResume(body, user);
+        break;
+      case 'upholstery-job-check-unit':
+        result = await opUpholsteryJobCheckUnit(body, user);
+        break;
+      case 'upholstery-job-finish':
+        result = await opUpholsteryJobFinish(body, user);
         break;
       case 'carpentry-manufacture':
         result = await opCarpentryManufacture(body, user);
