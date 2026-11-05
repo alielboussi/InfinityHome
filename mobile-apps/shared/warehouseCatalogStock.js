@@ -7,7 +7,7 @@ import {
   computeWarehouseFactorySetBuildableQty,
   buildWarehouseAssemblyLeftoverQtyMap,
   isWarehouseSetAssembly,
-} from '../../src/utils/warehouseSetMath.js';
+} from '../../../src/utils/warehouseSetMath.js';
 
 const COMPOSITE_KEYS = {
   warehouse_packet_inventory: ['packet_id', 'location_id'],

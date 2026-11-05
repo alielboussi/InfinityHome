@@ -49,6 +49,7 @@ import {
   isWarehouseProductionAppAllowed,
   isWarehouseProductionKitweDeliveryAllowed,
   isWarehouseProductionOperatorAllowed,
+  isWarehouseProductionPhotoUploadAllowed,
   isWarehouseProductStockQtyEditAllowed,
   isWarehouseProductTurkishSyncAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
@@ -464,16 +465,74 @@ async function opUpholsteryManufacture(body, user) {
   });
 }
 
+async function opUpholsteryFloor2WipPhotoUpload(body, user) {
+  const grant = await assertProductionKioskUser(user);
+  if (
+    !isWarehouseProductionPhotoUploadAllowed(grant, user?.email)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Picture upload is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+  const assemblyId = String(
+    body.raw_assembly_id || body.rawAssemblyId || body.assembly_id || body.assemblyId || '',
+  ).trim();
+  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+  if (!assemblyId) throw new Error('raw_assembly_id is required.');
+  if (!imageBase64) throw new Error('Photo is required.');
+  if (imageBase64.length > 3_200_000) {
+    throw new Error('Photo is too large. Try taking a closer or smaller image.');
+  }
+
+  const sb = getService();
+  const { data: existing, error: loadErr } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name, metadata')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
+  if (!existing) throw new Error('Product not found.');
+
+  const { jpegBufferFromCatalogDirectUpload } = await import('../lib/catalogDirectPhotoUpload.js');
+  const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const jpeg = await jpegBufferFromCatalogDirectUpload(imageBase64);
+  const objectPath = `warehouse-assemblies/${assemblyId}/floor2-wip/main-${Date.now()}.jpg`;
+  await uploadBufferToFirebaseStorage({
+    bucketFolder: 'productimages',
+    objectPath,
+    buffer: jpeg,
+    contentType: 'image/jpeg',
+    cacheControl: '86400',
+  });
+  const publicUrl = firebaseStoragePublicUrl('productimages', objectPath);
+  if (!publicUrl) throw new Error('Failed to resolve public image URL.');
+
+  const now = new Date().toISOString();
+  const metadata = mergeWarehouseFloor2WipImageMetadata(existing.metadata, publicUrl);
+  const { error: updErr } = await sb
+    .from('warehouse_assemblies')
+    .update({ metadata, updated_at: now })
+    .eq('id', assemblyId);
+  if (updErr) throw new Error(updErr.message || 'Failed to save Floor 2 WIP photo');
+
+  return {
+    assembly_id: assemblyId,
+    raw_assembly_id: assemblyId,
+    image_url: publicUrl,
+  };
+}
+
 async function opUpholsteryJobStart(body, user) {
   await assertProductionKioskUser(user);
   const rawAssemblyId = String(body.raw_assembly_id || body.rawAssemblyId || '').trim();
   if (!rawAssemblyId) throw new Error('raw_assembly_id required');
-  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
   const sb = getService();
   const { startUpholsteryProductionJob } = await import('../lib/upholsteryProductionJobs.js');
   return startUpholsteryProductionJob(sb, {
     rawAssemblyId,
-    productQty,
+    productQty: 1,
     userId: user?.id || user?.uid,
     user,
   });
@@ -664,7 +723,8 @@ async function removeProductionAssemblyDraft(sb, assemblyId) {
   const id = String(assemblyId || '').trim();
   if (!id) return;
   try {
-    await sb.from('warehouse_assembly_inventory').delete().eq('assembly_id', id);
+    const { purgeWarehouseAssemblyInventoryAndFloorRuns } = await import('../../src/utils/warehouseAssemblyDelete.js');
+    await purgeWarehouseAssemblyInventoryAndFloorRuns(sb, id);
     await sb.from('warehouse_assembly_locations').delete().eq('assembly_id', id);
     await sb.from('warehouse_assembly_packets').delete().eq('assembly_id', id);
     await sb.from('warehouse_assembly_colors').delete().eq('assembly_id', id);
@@ -707,7 +767,11 @@ async function opProductionPacketCreate(body, user) {
   } = await import('../lib/productionPortalAutoSelect.js');
   const portalChannel = resolveProductionPortalChannel(clientSource, portalExplicit);
   const floor2SeedQty = resolveFloor2SeedQuantity(body, initialQty);
-  const openingFloor1Qty = portalChannel === 'upholstery' ? 0 : initialQty;
+  const deferPortalCatalog = deferProductPhoto === true
+    && portalChannel === 'upholstery'
+    && clientSource === 'warehouse_production_app';
+  /** Upholstery app: finished qty on Floor 1; raw WIP seed on Floor 2 after portal (deferred until AI photo). */
+  const openingFloor1Qty = deferPortalCatalog ? 0 : (portalChannel === 'upholstery' ? 0 : initialQty);
   let assemblyInserted = false;
   let assemblyId = '';
   try {
@@ -787,22 +851,24 @@ async function opProductionPacketCreate(body, user) {
     }
 
     let portalCatalog = null;
-    try {
-      const { autoSelectProductionPortalCatalog } = await import('../lib/productionPortalAutoSelect.js');
-      portalCatalog = await autoSelectProductionPortalCatalog(sb, assemblyId, {
-        clientSource,
-        portal_catalog: body.portal_catalog,
-        auto_portal_catalog: body.auto_portal_catalog,
-        initialQuantity: floor2SeedQty,
-        floor2_product_qty: floor2SeedQty,
-        userId: user?.id || user?.uid || null,
-      });
-    } catch (portalErr) {
-      console.warn('[warehouse-mobile] portal catalog auto-select failed:', portalErr?.message || portalErr);
-      portalCatalog = {
-        applied: null,
-        error: portalErr?.message || String(portalErr),
-      };
+    if (!deferPortalCatalog) {
+      try {
+        const { autoSelectProductionPortalCatalog } = await import('../lib/productionPortalAutoSelect.js');
+        portalCatalog = await autoSelectProductionPortalCatalog(sb, assemblyId, {
+          clientSource,
+          portal_catalog: body.portal_catalog,
+          auto_portal_catalog: body.auto_portal_catalog,
+          initialQuantity: floor2SeedQty,
+          floor2_product_qty: floor2SeedQty,
+          userId: user?.id || user?.uid || null,
+        });
+      } catch (portalErr) {
+        console.warn('[warehouse-mobile] portal catalog auto-select failed:', portalErr?.message || portalErr);
+        portalCatalog = {
+          applied: null,
+          error: portalErr?.message || String(portalErr),
+        };
+      }
     }
 
     const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
@@ -887,6 +953,15 @@ async function opProductionPacketCreate(body, user) {
           client_source: clientSource,
         }
         : null,
+      pending_portal_setup: deferPortalCatalog
+        ? {
+          initial_quantity: initialQty,
+          floor2_product_qty: floor2SeedQty,
+          portal_catalog: body.portal_catalog || portalChannel || 'upholstery',
+          client_source: clientSource,
+          warehouse_location_id: warehouseLocationId,
+        }
+        : null,
       label: preview.label,
       label_preview_png_base64: preview.label_preview_png_base64,
     };
@@ -896,6 +971,25 @@ async function opProductionPacketCreate(body, user) {
     }
     throw err;
   }
+}
+
+async function opProductionPacketCancelDraft(body, user) {
+  await assertProductionKioskUser(user);
+  const sb = getService();
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
+  if (!assemblyId) throw new Error('assembly_id is required.');
+  const { data: assembly, error: loadErr } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name, image_url, inventory_mode')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
+  if (!assembly?.id) throw new Error('Product not found.');
+  if (String(assembly.image_url || '').trim()) {
+    throw new Error('This product already has a catalog photo and cannot be discarded.');
+  }
+  await removeProductionAssemblyDraft(sb, assemblyId);
+  return { assembly_id: assemblyId, cancelled: true };
 }
 
 async function opProductionAssemblyPhoto(body, user) {
@@ -2923,6 +3017,9 @@ export default async function handler(req, res) {
       case 'upholstery-manufacture':
         result = await opUpholsteryManufacture(body, user);
         break;
+      case 'upholstery-floor2-wip-photo':
+        result = await opUpholsteryFloor2WipPhotoUpload(body, user);
+        break;
       case 'upholstery-job-start':
         result = await opUpholsteryJobStart(body, user);
         break;
@@ -2979,6 +3076,9 @@ export default async function handler(req, res) {
         break;
       case 'production-packet-create':
         result = await opProductionPacketCreate(body, user);
+        break;
+      case 'production-packet-cancel-draft':
+        result = await opProductionPacketCancelDraft(body, user);
         break;
       case 'production-assembly-photo':
         result = await opProductionAssemblyPhoto(body, user);

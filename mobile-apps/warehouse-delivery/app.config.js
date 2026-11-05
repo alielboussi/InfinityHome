@@ -106,6 +106,10 @@ module.exports = {
       googleWebClientId,
       googleAndroidClientId,
       appScheme: 'warehouse-delivery',
+      expoProjectFullName: '@alielboussi/warehouse-delivery',
+      eas: {
+        projectId: 'd72e9b6e-4f3d-40cf-bdaa-840558e3d221',
+      },
     },
   },
 };

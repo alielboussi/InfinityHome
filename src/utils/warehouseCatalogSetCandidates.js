@@ -26,6 +26,7 @@ export function listWarehouseSetComponentCandidates(assemblies, setItems) {
         id: compId,
         name: component.name,
         family_sku: component.family_sku,
+        category_id: component.category_id || null,
         qty_per_set: qty,
       });
     }
@@ -41,6 +42,7 @@ export function listWarehouseSetComponentCandidates(assemblies, setItems) {
         id: set.id,
         name: set.name,
         family_sku: set.family_sku,
+        category_id: set.category_id || null,
         components,
       };
     })

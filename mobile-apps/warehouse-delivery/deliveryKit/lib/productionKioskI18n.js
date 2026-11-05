@@ -1,7 +1,7 @@
 /** Keep in sync with src/utils/productionKioskI18n.js */
 
 const UI_STRINGS = {
-  pageTitle: { en: 'Production', ar: 'الإنتاج' },
+  pageTitle: { en: 'Upholstery', ar: 'التنجيد' },
   preset3Seater: { en: '3 seater', ar: 'ثلاث مقاعد' },
   preset2Seater: { en: '2 seater', ar: 'مقعدان' },
   presetSingleSeater: { en: 'Single seater', ar: 'مقعد واحد' },
@@ -148,13 +148,13 @@ const UI_STRINGS = {
   quoteOrderScanDeducted: { en: 'Material stock updated for this order.', ar: 'تم تحديث مخزون المواد لهذا الطلب.' },
   quoteOrderScanFailed: { en: 'Scan failed', ar: 'فشل المسح' },
   quoteOrderFailed: { en: 'Failed', ar: 'فشل' },
-  dashTitle: { en: 'Production', ar: 'الإنتاج' },
+  dashTitle: { en: 'Upholstery', ar: 'التنجيد' },
   dashCreate: { en: 'Create new item', ar: 'إنشاء قطعة جديدة' },
   dashCreateSub: {
     en: 'New seating → warehouse packet + labels',
     ar: 'مقعد جديد → حزمة مستودع + ملصقات',
   },
-  dashStock: { en: 'Add warehouse stock', ar: 'إضافة مخزون' },
+  dashStock: { en: 'Add Upholstery Stock', ar: 'إضافة مخزون تنجيد' },
   dashStockSub: {
     en: 'Search product → increase qty + labels',
     ar: 'بحث عن منتج → زيادة الكمية + ملصقات',
@@ -169,7 +169,7 @@ const UI_STRINGS = {
     en: 'Upholstery route — sent from Factory Orders',
     ar: 'مسار التنجيد — مرسلة من طلبات المصنع',
   },
-  upholsteryQuotesTitle: { en: 'Hassan Awad quote orders', ar: 'طلبات عروض حسن عوض' },
+  upholsteryQuotesTitle: { en: 'Orders', ar: 'الطلبات' },
   upholsteryQuotesIntro: {
     en: 'Quotes Hassan sends to production with route Upholstery. Accept, scan materials, then end when finished.',
     ar: 'عروض يرسلها حسن للإنتاج بمسار التنجيد. قبول، مسح المواد، ثم إنهاء عند الانتهاء.',
@@ -494,7 +494,7 @@ const UI_STRINGS = {
     en: 'Tick the confirmation box for {name} before adding or sending.',
     ar: 'ضع علامة على تأكيد {name} قبل الإضافة أو الإرسال.',
   },
-  stockTitle: { en: 'Add production stock', ar: 'إضافة مخزون إنتاج' },
+  stockTitle: { en: 'Add Upholstery Stock', ar: 'إضافة مخزون تنجيد' },
   stockSearch: { en: 'Search name or scan barcode', ar: 'ابحث بالاسم أو امسح الباركود' },
   keyboardBtn: { en: 'Keyboard', ar: 'لوحة المفاتيح' },
   stockQrBtn: { en: 'QR', ar: 'QR' },
@@ -513,13 +513,17 @@ const UI_STRINGS = {
   stockAfter: { en: 'After save', ar: 'بعد الحفظ' },
   stockSaved: { en: 'Stock updated — labels sent to printer.', ar: 'تم التحديث — أُرسلت الملصقات إلى الطابعة.' },
   stockNoMatch: { en: 'No matching product.', ar: 'لا يوجد منتج مطابق.' },
+  stockEmptyList: {
+    en: 'No products assigned on web Upholstery yet.',
+    ar: 'لا توجد منتجات معيّنة في صفحة التنجيد على البوابة بعد.',
+  },
   stockNotEligible: {
     en: 'Not on the Upholstery catalog. Add this product on the web Upholstery page first (finished product, no packet BOM).',
     ar: 'المنتج غير مدرج في قائمة التنجيد. أضفه أولاً من صفحة التنجيد على البوابة (منتج جاهز بدون طرود).',
   },
   stockSearchHint: {
-    en: 'Search or scan — only products assigned on web Upholstery appear here.',
-    ar: 'ابحث أو امسح — تظهر هنا المنتجات المعيّنة في صفحة التنجيد على البوابة فقط.',
+    en: 'Tap a product below, or search / scan to filter.',
+    ar: 'اختر منتجاً أدناه، أو ابحث / امسح للتصفية.',
   },
   back: { en: 'Back', ar: 'رجوع' },
   labelPreviewTitle: { en: 'Label preview', ar: 'معاينة الملصق' },

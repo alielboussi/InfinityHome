@@ -56,6 +56,7 @@ import {
   WarehouseProductionPresetsPage,
   CarpentryPage,
   UpholsteryPage,
+  UpholsteryTimerPage,
   WarehouseFloor2Page,
   CarpentryWarehouseStockPage,
   MaterialsUomPage,
@@ -104,6 +105,7 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/transfers-report',
       '/production-report',
       '/upholstery',
+      '/upholstery-timer',
       '/carpentry',
       '/warehouse-floor-2',
       '/carpentry-warehouse/1',
@@ -384,6 +386,7 @@ function App() {
           <Route path="/warehouse-products/:productId/edit" element={<WarehouseProductEditPage />} />
           <Route path="/warehouse-products" element={<WarehouseProductsPage />} />
           <Route path="/upholstery" element={<UpholsteryPage />} />
+          <Route path="/upholstery-timer" element={<UpholsteryTimerPage />} />
           <Route path="/carpentry" element={<CarpentryPage />} />
           <Route path="/warehouse-floor-2" element={<WarehouseFloor2Page />} />
           <Route path="/carpentry-warehouse/:index" element={<CarpentryWarehouseStockPage />} />

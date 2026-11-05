@@ -33,10 +33,19 @@ export async function fetchDeliverySentList(limit = 40) {
 export async function fetchDeliverySentDetail(sessionId) {
   const sid = String(sessionId || '').trim();
   if (!sid) throw new Error('Missing delivery id.');
+  const local = await getLocalSentDelivery(sid);
   try {
-    return await warehouseMobileRequest('delivery-sent-detail', { session_id: sid });
+    const payload = await warehouseMobileRequest('delivery-sent-detail', { session_id: sid });
+    const localUri = String(local?.driver_signature_data_uri || '').trim();
+    const apiUri = String(payload?.driver_signature_data_uri || '').trim();
+    if (localUri && !apiUri) {
+      return { ...payload, driver_signature_data_uri: localUri };
+    }
+    if (localUri && apiUri && localUri.startsWith('data:image/')) {
+      return { ...payload, driver_signature_data_uri: localUri };
+    }
+    return payload;
   } catch (err) {
-    const local = await getLocalSentDelivery(sid);
     if (local) return localSentToDetail(local);
     if (isUnknownOpError(err)) {
       const apiErr = new Error('delivery_sent_detail_not_deployed');

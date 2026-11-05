@@ -13924,7 +13924,7 @@ body.enterprise-theme .dashboard-card-meta {
 }
 
 /* ---- Inputs / entry fields (consistent, aligned) ---- */
-body.enterprise-theme input,
+body.enterprise-theme input:not([type="checkbox"]):not([type="radio"]),
 body.enterprise-theme select,
 body.enterprise-theme textarea {
   background: #ffffff !important;
@@ -13935,6 +13935,38 @@ body.enterprise-theme textarea {
   box-shadow: none !important;
   min-height: 40px;
   box-sizing: border-box;
+}
+body.enterprise-theme input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  padding: 0 !important;
+  border-radius: 4px !important;
+  border: 1px solid #94a3b8 !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 16px !important;
+  position: relative;
+}
+body.enterprise-theme input[type="checkbox"]:checked {
+  border-color: #0284c7 !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+body.enterprise-theme input[type="checkbox"]:checked::after {
+  content: '✓' !important;
+  color: #0284c7 !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+  transform: none !important;
 }
 body.enterprise-theme textarea { min-height: 72px; }
 body.enterprise-theme input:focus,

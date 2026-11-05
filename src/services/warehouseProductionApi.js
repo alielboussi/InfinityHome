@@ -193,6 +193,16 @@ export async function fetchProductionCatalog() {
   return payload;
 }
 
+export async function fetchUpholsteryProductionJobs({ activeOnly = true } = {}) {
+  try {
+    const payload = await productionOp('upholstery-job-list', { active_only: activeOnly });
+    return payload?.jobs || [];
+  } catch (err) {
+    if (isUnknownWarehouseOpError(err?.message)) return [];
+    throw err;
+  }
+}
+
 export async function fetchProductionEventsLog(options = {}) {
   const body = { limit: options.limit ?? 800 };
   if (options.startDate) body.start_date = options.startDate;

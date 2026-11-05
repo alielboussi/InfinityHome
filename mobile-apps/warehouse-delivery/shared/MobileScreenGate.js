@@ -5,9 +5,7 @@ import { theme } from './theme';
 
 /** Blocks stack screens unless /user-access allows view for screenId. */
 export default function MobileScreenGate({ screenId, grant, navigation, children }) {
-  const allowed = screenId === 'kitwe_send_delivery'
-    ? isWarehouseProductionKitweDeliveryAllowed(grant)
-    : canMobileScreenView(grant, screenId);
+  const allowed = canMobileScreenView(grant, screenId);
 
   useEffect(() => {
     if (!grant || allowed) return;

@@ -5,6 +5,9 @@
  * Permission values: 'allow' | 'deny' (default deny until admin enables).
  */
 
+/** User Access panel label (warehouse catalog mobile app). Device app title may still use MOBILE_APP_DISPLAY_NAME. */
+export const USER_ACCESS_CATALOG_APP_LABEL = 'Catalog';
+
 /** Launcher / login title (keep in sync with warehouse-catalog app.config.js `expo.name`). */
 export const MOBILE_APP_DISPLAY_NAME = 'Warehouse';
 
@@ -118,11 +121,10 @@ export function evaluateCarpentryWorkshopAppAccess(grant, email) {
   return isCarpentryWorkshopAppAllowed(grant);
 }
 
-/** Driver delivery Android app — User Access → Delivery (legacy: Production → Send to Kitwe). */
+/** Driver delivery Android app — User Access → Delivery (`warehouse_delivery_app` only). */
 export function evaluateWarehouseDeliveryDriverAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
-  if (isWarehouseDeliveryAppAllowed(grant)) return true;
-  return isWarehouseProductionKitweDeliveryAllowed(grant);
+  return isWarehouseDeliveryAppAllowed(grant);
 }
 
 export function isWarehouseProductStockQtyEditAllowed(grant) {
@@ -297,8 +299,7 @@ export function canMobileScreenView(grant, screenId) {
   }
 
   if (screenId === 'kitwe_send_delivery') {
-    return isWarehouseProductionKitweDeliveryAllowed(grant)
-      || isWarehouseDeliveryAppAllowed(grant);
+    return isWarehouseDeliveryAppAllowed(grant);
   }
 
   return isMobileScreenAccessAllowed(grant, screenId);

@@ -40,14 +40,16 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { tUi } from '../lib/productionKioskI18n';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
-import { fetchWarehouseCatalogCached } from '../shared/warehouseCatalogStore';
+import { fetchWarehouseCatalogCached, loadPersistedWarehouseCatalog } from '../shared/warehouseCatalogStore';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { theme } from '../shared/theme';
+import { showKitweSendScopeHints } from 'delivery-app-ui-config';
 import {
   readDeliveryWorkspace,
   writeDeliveryWorkspace,
 } from '../lib/productionDeliveryWorkspaceCache';
 import { buildPrintGroupsFromCart } from '../lib/deliveryPrintGroups';
+import { prefetchDeliveryDrivers } from '../../lib/deliveryDriversStore';
 import {
   buildSetComponentScans,
   initSetDraftComponents,
@@ -128,7 +130,21 @@ export default function KitweSendHomeScreen({ navigation }) {
   const inputAlign = { textAlign: locale === 'ar' ? 'right' : 'left' };
 
   useEffect(() => {
-    fetchWarehouseCatalogCached({ force: true, fullPackets: true }).then(setCatalog).catch(() => {});
+    let cancelled = false;
+    prefetchDeliveryDrivers();
+    (async () => {
+      const persisted = await loadPersistedWarehouseCatalog();
+      if (persisted && !cancelled) setCatalog(persisted);
+      try {
+        const fresh = await fetchWarehouseCatalogCached({ fullPackets: true });
+        if (!cancelled) setCatalog(fresh);
+      } catch {
+        // keep persisted catalog if any
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -703,15 +719,16 @@ export default function KitweSendHomeScreen({ navigation }) {
           <Text style={[kiosk.heroNumber, { textAlign }]}>
             {deliveryNumber || (sessionOpening ? '…' : '—')}
           </Text>
-          <Text style={[kiosk.metaLine, { textAlign, marginBottom: 0 }]}>
-            {tUi('deliverySubtitle', locale)}
-          </Text>
-          <Text style={[kiosk.metaLine, { textAlign, marginTop: 6, opacity: 0.88 }]}>
-            {tUi('deliveryScopeHint', locale)}
-          </Text>
-          <Text style={[kiosk.metaLine, { textAlign, marginTop: 6, opacity: 0.88 }]}>
-            {tUi('deliveryScopeHint', locale)}
-          </Text>
+          {showKitweSendScopeHints ? (
+            <>
+              <Text style={[kiosk.metaLine, { textAlign, marginBottom: 0 }]}>
+                {tUi('deliverySubtitle', locale)}
+              </Text>
+              <Text style={[kiosk.metaLine, { textAlign, marginTop: 6, opacity: 0.88 }]}>
+                {tUi('deliveryScopeHint', locale)}
+              </Text>
+            </>
+          ) : null}
         </View>
 
         {displayError ? (

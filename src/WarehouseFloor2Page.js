@@ -1,7 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import BackToDashboard from './BackToDashboard';
 import db from './dataClient';
 import './kitwe-catalog-page.css';
+import { canManageCatalog, getCurrentUser } from './accessControl';
+import WarehouseFloor2WipThumbnail from './components/WarehouseFloor2WipThumbnail';
+import { uploadWarehouseFloor2WipFamilyImage } from './services/warehouseCatalog';
+import { fileToSquareCatalogImage } from './utils/squareCatalogImage';
+import {
+  mergeWarehouseFloor2WipFamilyImageMetadata,
+  mergeWarehouseFloor2WipImageMetadata,
+  floor2FamilyCoverSeaterRank,
+  readWarehouseFloor2WipFamilyImageUrl,
+  readWarehouseFloor2WipImageUrl,
+} from './utils/warehouseFloor2WipImage';
+import { groupFloor2StockByFamily } from './utils/warehouseFloor2StockGroups';
+import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
 import {
   fetchCarpentryCatalog,
   fetchCarpentryFloorRuns,
@@ -46,6 +60,63 @@ export default function WarehouseFloor2Page({
   const [stockEditById, setStockEditById] = useState({});
   const [expandedSetId, setExpandedSetId] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [inlayFamilyKey, setInlayFamilyKey] = useState('');
+  const [cardPhotoBusyKey, setCardPhotoBusyKey] = useState('');
+  const cardPhotoInputRef = useRef(null);
+  const cardPhotoTargetRef = useRef(null);
+  const sessionUser = useMemo(() => getCurrentUser(), []);
+  const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
+
+  const handleAssemblyImageUpdated = useCallback((assemblyId, imageUrl) => {
+    const id = String(assemblyId || '');
+    if (!id) return;
+    setAssemblyById((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(id) || { id };
+      const metadata = mergeWarehouseFloor2WipImageMetadata(existing.metadata, imageUrl);
+      next.set(id, { ...existing, metadata });
+      return next;
+    });
+  }, []);
+
+  const handleFamilyImageUpdated = useCallback((assemblyIds, imageUrl) => {
+    const ids = [...new Set((assemblyIds || []).map((id) => String(id).trim()).filter(Boolean))];
+    if (!ids.length) return;
+    setAssemblyById((prev) => {
+      const next = new Map(prev);
+      ids.forEach((id) => {
+        const existing = next.get(id) || { id };
+        const metadata = mergeWarehouseFloor2WipFamilyImageMetadata(existing.metadata, imageUrl);
+        next.set(id, { ...existing, metadata });
+      });
+      return next;
+    });
+  }, []);
+
+  const openFamilyCardPhotoPicker = useCallback((group) => {
+    if (!canManage || cardPhotoBusyKey || !group?.assemblyIds?.length) return;
+    cardPhotoTargetRef.current = group;
+    cardPhotoInputRef.current?.click();
+  }, [canManage, cardPhotoBusyKey]);
+
+  const handleFamilyCardPhotoChange = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const group = cardPhotoTargetRef.current;
+    cardPhotoTargetRef.current = null;
+    if (!file || !group?.assemblyIds?.length) return;
+    setCardPhotoBusyKey(group.key);
+    setError('');
+    try {
+      const squareFile = await fileToSquareCatalogImage(file, undefined, { fit: 'contain' });
+      const url = await uploadWarehouseFloor2WipFamilyImage(group.assemblyIds, squareFile);
+      handleFamilyImageUpdated(group.assemblyIds, url);
+    } catch (err) {
+      setError(err?.message || 'Failed to upload family WIP photo');
+    } finally {
+      setCardPhotoBusyKey('');
+    }
+  }, [handleFamilyImageUpdated]);
 
   const load = useCallback(async ({ forceFresh = false } = {}) => {
     if (forceFresh || !(getCachedCarpentryCatalog() && getCachedCarpentryFloorRuns())) {
@@ -71,6 +142,23 @@ export default function WarehouseFloor2Page({
       );
 
       const baseMap = buildAssemblyMapFromCatalog(catalog);
+      const floor2AssemblyIds = [
+        ...new Set([
+          ...stockRows.map((r) => r.assembly_id),
+          ...runRows.map((r) => r.assembly_id),
+        ].filter(Boolean).map(String)),
+      ];
+      if (floor2AssemblyIds.length) {
+        const { data: photoRows } = await db
+          .from('warehouse_assemblies')
+          .select('id, name, family_sku, metadata')
+          .in('id', floor2AssemblyIds);
+        (photoRows || []).forEach((a) => {
+          const id = String(a.id);
+          const prev = baseMap.get(id) || { id };
+          baseMap.set(id, { ...prev, ...a, name: prev.name || a.name, family_sku: prev.family_sku || a.family_sku });
+        });
+      }
       const missingIds = [
         ...new Set([
           ...runRows.map((r) => r.assembly_id),
@@ -78,7 +166,7 @@ export default function WarehouseFloor2Page({
         ].filter((id) => id && !baseMap.has(String(id)))),
       ];
       if (missingIds.length) {
-        const { data } = await db.from('warehouse_assemblies').select('id, name, family_sku').in('id', missingIds);
+        const { data } = await db.from('warehouse_assemblies').select('id, name, family_sku, metadata').in('id', missingIds);
         (data || []).forEach((a) => {
           baseMap.set(String(a.id), a);
         });
@@ -102,6 +190,70 @@ export default function WarehouseFloor2Page({
     });
     return map;
   }, [floor2Stock]);
+
+  const stockFamilyGroups = useMemo(
+    () => groupFloor2StockByFamily(floor2Stock, assemblyById),
+    [floor2Stock, assemblyById],
+  );
+
+  const inlayGroup = useMemo(
+    () => stockFamilyGroups.find((g) => g.key === inlayFamilyKey) || null,
+    [stockFamilyGroups, inlayFamilyKey],
+  );
+
+  const pickFamilyCardImageUrl = useCallback((group) => {
+    const rows = group.rows || [];
+    const ranked = [...rows].sort((a, b) => {
+      const asmA = assemblyById.get(String(a.assembly_id));
+      const asmB = assemblyById.get(String(b.assembly_id));
+      return (
+        floor2FamilyCoverSeaterRank(asmA?.name) - floor2FamilyCoverSeaterRank(asmB?.name)
+      );
+    });
+    for (const row of ranked) {
+      const asm = assemblyById.get(String(row.assembly_id));
+      const variant = readWarehouseFloor2WipImageUrl(asm);
+      if (variant) return rewriteLegacyStorageUrl(variant, { bucket: 'productimages' });
+    }
+    for (const row of rows) {
+      const asm = assemblyById.get(String(row.assembly_id));
+      const family = readWarehouseFloor2WipFamilyImageUrl(asm);
+      if (family) return rewriteLegacyStorageUrl(family, { bucket: 'productimages' });
+    }
+    return '';
+  }, [assemblyById]);
+
+  const renderStockEditor = (aid, rowQty) => {
+    const draftVal = stockEditById[aid] !== undefined ? stockEditById[aid] : rowQty;
+    const isSaving = busyId === `stock-${aid}`;
+    const asm = assemblyById.get(aid);
+    return (
+      <div className="floor2-stock-editor">
+        <input
+          type="number"
+          min="0"
+          step="1"
+          className="kitwe-cell-input"
+          style={{ width: 84, textAlign: 'center' }}
+          value={draftVal}
+          disabled={isSaving}
+          onChange={(e) => setStockEditById((prev) => ({ ...prev, [aid]: e.target.value }))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSaveStockOnHand(aid);
+          }}
+          aria-label={`Stock on hand for ${asm?.name || aid}`}
+        />
+        <button
+          type="button"
+          className="kitwe-btn kitwe-btn-primary kitwe-btn-compact"
+          disabled={isSaving}
+          onClick={() => handleSaveStockOnHand(aid)}
+        >
+          {isSaving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    );
+  };
 
   const handleSaveStockOnHand = async (assemblyId) => {
     const id = String(assemblyId || '').trim();
@@ -461,124 +613,166 @@ export default function WarehouseFloor2Page({
 
       {floor2Stock.length > 0 ? (
         <div className="kitwe-catalog-table-wrap" style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 16, margin: '8px 0 12px', padding: '0 10px' }}>Current Unfinished Stock on Floor 2</h2>
-          <table className="kitwe-catalog-table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Stock on hand (Floor 2)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {floor2Stock.map((row) => {
-                const aid = String(row.assembly_id);
-                const asm = assemblyById.get(aid);
-                const draftVal = stockEditById[aid] !== undefined ? stockEditById[aid] : row.quantity;
-                const isSaving = busyId === `stock-${aid}`;
-                return (
-                  <tr key={`stock-${aid}`}>
-                    <td><strong>{asm?.name || aid}</strong></td>
-                    <td>{asm?.family_sku || '—'}</td>
-                    <td>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          className="kitwe-cell-input"
-                          style={{ width: 84, textAlign: 'center' }}
-                          value={draftVal}
-                          disabled={isSaving}
-                          onChange={(e) => setStockEditById((prev) => ({ ...prev, [aid]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveStockOnHand(aid);
-                          }}
-                          aria-label={`Stock on hand for ${asm?.name || aid}`}
-                        />
-                        <button
-                          type="button"
-                          className="kitwe-btn kitwe-btn-primary kitwe-btn-compact"
-                          disabled={isSaving}
-                          onClick={() => handleSaveStockOnHand(aid)}
-                        >
-                          {isSaving ? 'Saving…' : 'Save'}
-                        </button>
+          <h2 style={{ fontSize: 16, margin: '8px 0 12px', padding: '0 10px' }}>
+            Current Unfinished Stock on Floor 2
+            {canManage ? (
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: '#64748b', marginTop: 4 }}>
+                Click a card to upload its family WIP photo; use the top-right badge for variants and stock.
+              </span>
+            ) : null}
+          </h2>
+          <input
+            ref={cardPhotoInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleFamilyCardPhotoChange}
+            disabled={!canManage || Boolean(cardPhotoBusyKey)}
+          />
+          <div className="floor2-manufacture-grid">
+            {stockFamilyGroups.map((group) => {
+              const variantCount = group.rows.length;
+              const imageUrl = pickFamilyCardImageUrl(group);
+              const inlayLabel = variantCount === 1 ? '1 product' : `${variantCount} variants`;
+              const photoBusy = cardPhotoBusyKey === group.key;
+              return (
+                <div
+                  key={group.key}
+                  className={`floor2-manufacture-tile${imageUrl ? ' has-photo' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="floor2-manufacture-tile__photo-hit"
+                    disabled={!canManage || photoBusy}
+                    onClick={() => openFamilyCardPhotoPicker(group)}
+                    aria-label={
+                      canManage
+                        ? (imageUrl
+                          ? `Change family WIP photo for ${group.familyBase}`
+                          : `Add family WIP photo for ${group.familyBase}`)
+                        : group.familyBase
+                    }
+                    title={canManage ? (imageUrl ? 'Click to change family WIP photo' : 'Click to add family WIP photo') : undefined}
+                  >
+                    {imageUrl ? (
+                      <img className="floor2-manufacture-tile__photo" src={imageUrl} alt="" />
+                    ) : (
+                      <div className="floor2-manufacture-tile__photo-placeholder" aria-hidden />
+                    )}
+                    <div className="floor2-manufacture-tile__overlay" aria-hidden />
+                    <h3 className="floor2-manufacture-tile__title">{group.familyBase}</h3>
+                    {!imageUrl ? (
+                      <div className="floor2-manufacture-tile__no-image-center">
+                        <span className="floor2-manufacture-tile__no-image-icon" aria-hidden>
+                          ▦
+                        </span>
+                        {canManage ? (
+                          <span className="floor2-manufacture-tile__photo-hint">Click to add photo</span>
+                        ) : null}
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    ) : null}
+                    {photoBusy ? (
+                      <span className="floor2-manufacture-tile__busy" aria-hidden>Uploading…</span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    className="floor2-manufacture-tile__inlay"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInlayFamilyKey(group.key);
+                    }}
+                    aria-label={`${inlayLabel} — ${group.familyBase}`}
+                  >
+                    <span className="floor2-manufacture-tile__inlay-icon" aria-hidden>☰</span>
+                    {inlayLabel}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
-      <div className="kitwe-catalog-table-wrap">
-        <table className="kitwe-catalog-table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>SKU</th>
-              <th>Stock on hand</th>
-              <th>Run Qty</th>
-              <th>Started</th>
-              <th>Completed</th>
-              <th>Materials</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.length ? runs.map((run) => {
-              const aid = String(run.assembly_id || '');
-              const asm = assemblyById.get(aid);
-              const matCount = Array.isArray(run.materials) ? run.materials.length : 0;
-              const currentStock = floor2QtyByAssembly.get(aid) ?? 0;
-              const draftVal = stockEditById[aid] !== undefined ? stockEditById[aid] : currentStock;
-              const isSaving = busyId === `stock-${aid}`;
-              return (
-                <tr key={run.id}>
-                  <td>{asm?.name || run.assembly_id}</td>
-                  <td>{asm?.family_sku || '—'}</td>
-                  <td>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        className="kitwe-cell-input"
-                        style={{ width: 72, textAlign: 'center' }}
-                        value={draftVal}
-                        disabled={isSaving || !aid}
-                        onChange={(e) => setStockEditById((prev) => ({ ...prev, [aid]: e.target.value }))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveStockOnHand(aid);
-                        }}
-                        aria-label={`Stock on hand for ${asm?.name || aid}`}
-                      />
-                      <button
-                        type="button"
-                        className="kitwe-btn-secondary kitwe-btn-compact"
-                        disabled={isSaving || !aid}
-                        onClick={() => handleSaveStockOnHand(aid)}
-                      >
-                        {isSaving ? '…' : 'Save'}
-                      </button>
-                    </div>
-                  </td>
-                  <td>{run.product_qty ?? '—'}</td>
-                  <td>{run.started_at ? new Date(run.started_at).toLocaleString() : '—'}</td>
-                  <td>{run.completed_at ? new Date(run.completed_at).toLocaleString() : 'In progress'}</td>
-                  <td>{matCount ? `${matCount} line${matCount === 1 ? '' : 's'}` : '—'}</td>
-                </tr>
-              );
-            }) : (
-              <tr>
-                <td colSpan={7} className="kitwe-empty-hint">No floor production runs yet.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {inlayGroup && typeof document !== 'undefined'
+        ? createPortal(
+          <div
+            className="floor2-inlay-backdrop"
+            role="presentation"
+            onClick={() => setInlayFamilyKey('')}
+          >
+            <div
+              className="floor2-inlay-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="floor2-inlay-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="floor2-inlay-panel__head">
+                <h3 id="floor2-inlay-title">{inlayGroup.familyBase}</h3>
+                <button type="button" className="kitwe-btn-secondary kitwe-btn-compact" onClick={() => setInlayFamilyKey('')}>
+                  Close
+                </button>
+              </div>
+              <p className="floor2-inlay-panel__sub">
+                Family and variant WIP photos (production apps only) plus Floor 2 stock per product.
+              </p>
+              <div className="floor2-inlay-panel__family-photo">
+                <span className="floor2-family-card__photo-label">Family WIP (all variants)</span>
+                {inlayGroup.rows[0] && assemblyById.get(String(inlayGroup.rows[0].assembly_id)) ? (
+                  <WarehouseFloor2WipThumbnail
+                    assembly={assemblyById.get(String(inlayGroup.rows[0].assembly_id))}
+                    imageKind="family"
+                    familyAssemblyIds={inlayGroup.assemblyIds}
+                    canEdit={canManage}
+                    onFamilyUpdated={handleFamilyImageUpdated}
+                    onError={(msg) => setError(msg)}
+                    compactLabel="Family"
+                  />
+                ) : null}
+              </div>
+              <div className="floor2-inlay-panel__table-wrap">
+                <table className="kitwe-catalog-table floor2-inlay-table">
+                  <thead>
+                    <tr>
+                      <th className="floor2-inlay-col-wip">Variant WIP</th>
+                      <th>Product</th>
+                      <th className="floor2-inlay-col-sku">SKU</th>
+                      <th className="floor2-inlay-col-stock">Stock on hand</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inlayGroup.rows.map((row) => {
+                      const aid = String(row.assembly_id);
+                      const asm = assemblyById.get(aid);
+                      return (
+                        <tr key={`inlay-${aid}`}>
+                          <td className="floor2-inlay-col-wip">
+                            {asm ? (
+                              <WarehouseFloor2WipThumbnail
+                                assembly={asm}
+                                imageKind="component"
+                                canEdit={canManage}
+                                onUpdated={handleAssemblyImageUpdated}
+                                onError={(msg) => setError(msg)}
+                                compactLabel="Variant"
+                              />
+                            ) : '—'}
+                          </td>
+                          <td><strong>{asm?.name || aid}</strong></td>
+                          <td className="floor2-inlay-col-sku">{asm?.family_sku || '—'}</td>
+                          <td className="floor2-inlay-col-stock">{renderStockEditor(aid, row.quantity)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
     </div>
   );
 }

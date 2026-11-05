@@ -121,6 +121,16 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (op === 'set-floor2-stock') {
+      const { setFloor2ProductStockQty } = await import('../lib/carpentryManufacture.js');
+      const result = await setFloor2ProductStockQty(db, {
+        assemblyId: body.assembly_id || body.assemblyId,
+        quantity: body.quantity ?? body.product_qty ?? body.productQty ?? 0,
+      });
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
     res.status(400).json({ ok: false, error: `Unknown op: ${op}` });
   } catch (err) {
     const status = err.status || 500;

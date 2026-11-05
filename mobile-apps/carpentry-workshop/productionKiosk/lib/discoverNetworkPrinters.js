@@ -18,8 +18,8 @@ function serviceKey(service) {
 }
 
 /**
- * Browse mDNS for IPP / printer services on the LAN (requires native build with multicast).
- * @returns {Promise<Array<{ id: string, name: string, host: string, port: number }>>}
+ * Optional mDNS browse for IPP printers on the LAN. Never rejects — failures return [].
+ * Delivery notes still print via Android system print (expo-print) without this list.
  */
 export function discoverNetworkPrinters() {
   if (!Zeroconf || Platform.OS !== 'android') {
@@ -27,10 +27,20 @@ export function discoverNetworkPrinters() {
   }
 
   return new Promise((resolve) => {
+    let zc = null;
+    try {
+      zc = new Zeroconf();
+    } catch {
+      resolve([]);
+      return;
+    }
+
     const found = new Map();
-    const zc = new Zeroconf();
+    let finished = false;
 
     const finish = () => {
+      if (finished) return;
+      finished = true;
       try {
         zc.stop();
         zc.removeAllListeners?.();
@@ -54,10 +64,9 @@ export function discoverNetworkPrinters() {
       found.set(row.id, row);
     };
 
-    zc.on('resolved', onResolved);
-    zc.on('error', () => {});
-
     try {
+      zc.on('resolved', onResolved);
+      zc.on('error', finish);
       zc.scan('ipp', 'tcp', 'local.');
       zc.scan('printer', 'tcp', 'local.');
     } catch {
@@ -66,7 +75,7 @@ export function discoverNetworkPrinters() {
     }
 
     setTimeout(finish, SCAN_MS);
-  });
+  }).catch(() => []);
 }
 
 export function isPrinterDiscoveryAvailable() {

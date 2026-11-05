@@ -8,6 +8,7 @@ import { kiosk } from '../components/kioskStyles';
 import { sortDeliveryDriversByName } from '../lib/sortDeliveryDrivers';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
+import { useDeliveryDrivers } from '../../hooks/useDeliveryDrivers';
 import { tUi } from '../lib/productionKioskI18n';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
@@ -23,19 +24,14 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
   const customerName = route.params?.customerName || '';
   const customerPhone = route.params?.customerPhone || '';
 
-  const [drivers, setDrivers] = useState([]);
   const [driverId, setDriverId] = useState('');
   const [driverName, setDriverName] = useState('');
   const [driverPickerOpen, setDriverPickerOpen] = useState(false);
+  const { drivers, loading: driversLoading } = useDeliveryDrivers();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sigValid, setSigValid] = useState(false);
 
-  useEffect(() => {
-    warehouseMobileRequest('delivery-drivers-list')
-      .then((res) => setDrivers(res?.drivers || []))
-      .catch(() => setDrivers([]));
-  }, []);
 
   useEffect(() => {
     if (!storageSendId) navigation.replace('SoldOrders');
@@ -75,6 +71,8 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
         driverName,
         supervisorName: getProductionDispatcherLabelSync() || '',
         printGroups: out.print_groups || printGroups,
+        driverSignatureDataUri: dataUri,
+        driverSignatureDataUri: dataUri,
         driverSignatureUrl: out.driver_signature_url || '',
         submittedAt: out.submitted_at,
         documentKind: 'sold_delivery',
@@ -122,6 +120,7 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
         visible={driverPickerOpen}
         title={tUi('deliveryDriver', locale)}
         drivers={sortDeliveryDriversByName(drivers)}
+        loading={driversLoading}
         locale={locale}
         textAlign={textAlign}
         selectedDriverId={driverId}

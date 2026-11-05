@@ -33,23 +33,11 @@ export function uniqueBaseNamesFromCatalog(assemblies, query = '', limit = 8) {
 export function mergeBaseNameSuggestions({
   catalogAssemblies,
   query,
-  recentNames,
   limit = 8,
 }) {
   const q = String(query || '').trim();
   if (!q) {
-    const out = [];
-    const seen = new Set();
-    (recentNames || []).forEach((name) => {
-      const normalized = matchProductionGirlNameFromPool(name)
-        || normalizeProductionNameInput(name);
-      if (!normalized) return;
-      const key = normalized.toLowerCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push(normalized);
-    });
-    return out.slice(0, 2);
+    return [];
   }
   return uniqueBaseNamesFromCatalog(catalogAssemblies, q, limit);
 }

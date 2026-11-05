@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { canManageLoginAccess, getCurrentUser } from './accessControl';
 import MobileUserAccessEditor from './components/MobileUserAccessEditor';
-import ProductionUserAccessEditor from './components/ProductionUserAccessEditor';
+import UpholsteryUserAccessEditor from './components/UpholsteryUserAccessEditor';
 import DeliveryUserAccessEditor from './components/DeliveryUserAccessEditor';
 import { firebaseGetAccessToken } from './utils/firebaseAuthApi';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
@@ -62,7 +62,7 @@ export default function UserAccessManagement() {
   const [error, setError] = useState('');
   const [busyUid, setBusyUid] = useState('');
   const [mobileUserId, setMobileUserId] = useState('');
-  const [productionUserId, setProductionUserId] = useState('');
+  const [upholsteryUserId, setUpholsteryUserId] = useState('');
   const [deliveryUserId, setDeliveryUserId] = useState('');
 
   useEffect(() => {
@@ -115,8 +115,14 @@ export default function UserAccessManagement() {
   };
 
   const mobileUser = rows.find((r) => r.id === mobileUserId) || null;
-  const productionUser = rows.find((r) => r.id === productionUserId) || null;
+  const upholsteryUser = rows.find((r) => r.id === upholsteryUserId) || null;
   const deliveryUser = rows.find((r) => r.id === deliveryUserId) || null;
+
+  const clearOtherEditors = (keep) => {
+    if (keep !== 'warehouse') setMobileUserId('');
+    if (keep !== 'upholstery') setUpholsteryUserId('');
+    if (keep !== 'delivery') setDeliveryUserId('');
+  };
 
   return (
     <div className="report-page user-access-page">
@@ -124,9 +130,9 @@ export default function UserAccessManagement() {
         <h2 style={{ margin: 0 }}>User Login Access</h2>
       </div>
       <p className="user-access-intro">
-        New mobile users are added when they sign in with <strong>Google</strong> on Production, Delivery, or Warehouse
-        app. They appear in the list below after first sign-in — use <strong>Refresh</strong>, then set{' '}
-        <strong>Warehouse app</strong>, <strong>Production</strong>, or <strong>Delivery</strong> permissions. Login can
+        New mobile users are added when they sign in with <strong>Google</strong> on a warehouse mobile app. They appear
+        in the list below after first sign-in — use <strong>Refresh</strong>, then set{' '}
+        <strong>Catalog</strong>, <strong>Upholstery</strong>, or <strong>Delivery</strong> permissions. Login can
         be disabled here; you cannot create accounts from this page.
       </p>
 
@@ -144,7 +150,7 @@ export default function UserAccessManagement() {
           <div className="report-blank">Loading users…</div>
         ) : rows.length === 0 ? (
           <div className="report-blank">
-            No mobile users yet. Ask staff to open <strong>Production</strong> and tap <strong>Continue with Google</strong>,
+            No mobile users yet. Ask staff to open a mobile app and tap <strong>Continue with Google</strong>,
             then refresh this page.
           </div>
         ) : (
@@ -165,10 +171,10 @@ export default function UserAccessManagement() {
                   const enabled = row.login_enabled !== false;
                   const isBusy = busyUid === row.id;
                   const isWarehouseSelected = mobileUserId === row.id;
-                  const isProductionSelected = productionUserId === row.id;
+                  const isUpholsterySelected = upholsteryUserId === row.id;
                   const isDeliverySelected = deliveryUserId === row.id;
                   return (
-                    <tr key={row.id} className={(isWarehouseSelected || isProductionSelected || isDeliverySelected) ? 'user-access-table__row--active' : ''}>
+                    <tr key={row.id} className={(isWarehouseSelected || isUpholsterySelected || isDeliverySelected) ? 'user-access-table__row--active' : ''}>
                       <td>{row.display_name || '—'}</td>
                       <td>{row.mobile_display_name || '—'}</td>
                       <td>{row.email || '—'}</td>
@@ -192,31 +198,40 @@ export default function UserAccessManagement() {
                             type="button"
                             className={`user-access-btn ${isWarehouseSelected ? 'user-access-btn--active' : ''}`}
                             onClick={() => {
-                              setMobileUserId(isWarehouseSelected ? '' : row.id);
-                              setProductionUserId('');
-                              setDeliveryUserId('');
+                              if (isWarehouseSelected) {
+                                setMobileUserId('');
+                              } else {
+                                clearOtherEditors('warehouse');
+                                setMobileUserId(row.id);
+                              }
                             }}
                           >
-                            {isWarehouseSelected ? 'Editing' : 'Warehouse app'}
+                            {isWarehouseSelected ? 'Editing' : 'Catalog'}
                           </button>
                           <button
                             type="button"
-                            className={`user-access-btn ${isProductionSelected ? 'user-access-btn--active' : ''}`}
+                            className={`user-access-btn ${isUpholsterySelected ? 'user-access-btn--active' : ''}`}
                             onClick={() => {
-                              setProductionUserId(isProductionSelected ? '' : row.id);
-                              setMobileUserId('');
-                              setDeliveryUserId('');
+                              if (isUpholsterySelected) {
+                                setUpholsteryUserId('');
+                              } else {
+                                clearOtherEditors('upholstery');
+                                setUpholsteryUserId(row.id);
+                              }
                             }}
                           >
-                            {isProductionSelected ? 'Editing' : 'Production'}
+                            {isUpholsterySelected ? 'Editing' : 'Upholstery'}
                           </button>
                           <button
                             type="button"
                             className={`user-access-btn ${isDeliverySelected ? 'user-access-btn--active' : ''}`}
                             onClick={() => {
-                              setDeliveryUserId(isDeliverySelected ? '' : row.id);
-                              setMobileUserId('');
-                              setProductionUserId('');
+                              if (isDeliverySelected) {
+                                setDeliveryUserId('');
+                              } else {
+                                clearOtherEditors('delivery');
+                                setDeliveryUserId(row.id);
+                              }
                             }}
                           >
                             {isDeliverySelected ? 'Editing' : 'Delivery'}
@@ -244,13 +259,13 @@ export default function UserAccessManagement() {
         />
       ) : null}
 
-      {productionUser ? (
-        <ProductionUserAccessEditor
-          userRow={productionUser}
-          onClose={() => setProductionUserId('')}
+      {upholsteryUser ? (
+        <UpholsteryUserAccessEditor
+          userRow={upholsteryUser}
+          onClose={() => setUpholsteryUserId('')}
           onSaved={(updated) => {
             setRows((prev) => prev.map((item) => (
-              item.id === productionUser.id ? { ...item, ...updated } : item
+              item.id === upholsteryUser.id ? { ...item, ...updated } : item
             )));
           }}
         />

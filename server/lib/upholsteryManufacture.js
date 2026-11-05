@@ -14,6 +14,10 @@ import {
 import { newUuid } from './uuid.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { saveAssemblyForMobile } from './warehouseCatalogMobile.js';
+import {
+  readWarehouseFloor2WipFamilyImageUrl,
+  readWarehouseFloor2WipImageUrl,
+} from '../../src/utils/warehouseFloor2WipImage.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
@@ -50,6 +54,28 @@ async function adjustAssemblyInventory(sb, assemblyId, locationId, delta) {
 async function sumRawQtyOnWarehouseFloor2(sb, rawAssemblyId, floor2LocationId) {
   if (!floor2LocationId) return 0;
   return loadAssemblyInventoryQty(sb, rawAssemblyId, floor2LocationId);
+}
+
+/** One query (chunked) instead of per-assembly round trips for manufacture list. */
+async function loadFloor2QtyByAssemblyId(sb, assemblyIds, floor2LocationId) {
+  const loc = String(floor2LocationId || '').trim();
+  const ids = [...new Set((assemblyIds || []).map((id) => String(id).trim()).filter(Boolean))];
+  const out = new Map();
+  if (!loc || !ids.length) return out;
+  const CHUNK = 200;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const { data, error } = await sb
+      .from(ASSEMBLY_INVENTORY)
+      .select('assembly_id, quantity')
+      .eq('location_id', loc)
+      .in('assembly_id', slice);
+    if (error) throw new Error(error.message || 'Failed to load Floor 2 stock');
+    (data || []).forEach((row) => {
+      out.set(String(row.assembly_id), Number(row.quantity) || 0);
+    });
+  }
+  return out;
 }
 
 async function deductRawFromWarehouseFloor2(sb, rawAssemblyId, qty, floor2LocationId) {
@@ -115,17 +141,93 @@ async function resolveOrCreateFinishedAtFactory(sb, templateAssembly, qty) {
   };
 }
 
-function listCarpentryRawAssemblyIds(assemblies) {
-  const ids = new Set();
-  for (const a of assemblies || []) {
-    if (!parseCarpentryMeta(a).selected) continue;
-    ids.add(String(a.id));
+/**
+ * Load catalog context for upholstery manufacture / WIP jobs (web /upholstery catalog only).
+ */
+export async function loadUpholsteryManufactureContext(sb, rawAssemblyId) {
+  const rawId = String(rawAssemblyId || '').trim();
+  if (!rawId) throw new Error('raw_assembly_id required');
+
+  const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
+    sb.from(ASSEMBLIES).select('*'),
+    sb.from(LOCATIONS).select('id, name'),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  if (!floor2Loc?.id) {
+    throw new Error('Warehouse Floor 2 location not configured — run seedWarehouseFloor2Location.js');
   }
-  return ids;
+
+  const rawRow = (assemblies || []).find((a) => String(a.id) === rawId);
+  if (!rawRow) throw new Error('Raw product not found');
+  if (!parseCarpentryMeta(rawRow).selected) {
+    throw new Error('Raw product is not in the Carpentry catalog');
+  }
+
+  const finishedTemplate = findUpholsteryFinishedForRawAssembly(assemblies || [], rawId);
+  if (!finishedTemplate || !parseUpholsteryMeta(finishedTemplate).selected) {
+    throw new Error('Add and link this product on the web Upholstery page first');
+  }
+
+  const finishedCatalog = listUpholsteryCatalogProducts([finishedTemplate]);
+  const upholsteryMaterials = finishedCatalog[0]?.materials || [];
+
+  return {
+    assemblies,
+    floor2Loc,
+    rawId,
+    rawRow,
+    finishedTemplate,
+    upholsteryMaterials,
+  };
+}
+
+/** Deduct Floor 2 raw + storeroom BOM (does not credit Floor 1). */
+export async function consumeUpholsteryRawAndMaterials(sb, ctx, productQty) {
+  const qty = Math.max(1, Math.floor(Number(productQty) || 1));
+  const { rawId, floor2Loc, upholsteryMaterials } = ctx;
+
+  const available = await sumRawQtyOnWarehouseFloor2(sb, rawId, floor2Loc.id);
+  if (available < qty) {
+    throw new Error(`Insufficient raw stock on Warehouse Floor 2 (have ${available}, need ${qty})`);
+  }
+
+  await deductRawFromWarehouseFloor2(sb, rawId, qty, floor2Loc.id);
+
+  let materialUsageRows = [];
+  let storeroomLocsForRecompute = [];
+  if (upholsteryMaterials.length) {
+    storeroomLocsForRecompute = await resolveCarpentryStoreroomLocations(sb);
+    materialUsageRows = await deductStoreroomBomMaterials(
+      sb,
+      upholsteryMaterials,
+      qty,
+      storeroomLocsForRecompute,
+    );
+  }
+
+  return { qty, materialUsageRows, storeroomLocsForRecompute };
+}
+
+/** Credit finished qty on Warehouse Floor 1 (create assembly if SKU missing). */
+export async function creditUpholsteryFinishedOutput(sb, ctx, productQty) {
+  const qty = Math.max(1, Math.floor(Number(productQty) || 1));
+  return resolveOrCreateFinishedAtFactory(sb, ctx.finishedTemplate, qty);
+}
+
+export async function recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocsForRecompute = []) {
+  for (const loc of storeroomLocsForRecompute) {
+    await recomputeWarehouseLocationStockServer(sb, loc.id);
+  }
+  if (ctx.floor2Loc?.id) {
+    await recomputeWarehouseLocationStockServer(sb, ctx.floor2Loc.id);
+  }
+  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FACTORY_LOCATION_ID);
 }
 
 /**
- * Raw carpentry stock on Warehouse Floor 2 with an upholstery finished mapping on the web portal.
+ * Raw on Warehouse Floor 2 — only rows selected on web /upholstery with a raw link.
  */
 export async function listUpholsteryManufactureCandidates(sb) {
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
@@ -140,28 +242,29 @@ export async function listUpholsteryManufactureCandidates(sb) {
   }
 
   const rows = assemblies || [];
-  const carpentryIds = listCarpentryRawAssemblyIds(rows);
+  const assemblyById = new Map(rows.map((row) => [String(row.id), row]));
   const upholsteryRows = listUpholsteryCatalogProducts(rows);
-  const rawToFinished = new Map();
-  upholsteryRows.forEach((u) => {
-    const rawId = String(u.raw_assembly_id || '').trim();
-    if (rawId) rawToFinished.set(rawId, u);
-  });
+  const rawIds = upholsteryRows
+    .map((u) => String(u.raw_assembly_id || '').trim())
+    .filter(Boolean);
+  const floor2QtyByAssembly = await loadFloor2QtyByAssemblyId(sb, rawIds, floor2Loc.id);
 
   const products = [];
-  for (const rawId of carpentryIds) {
-    const finishedMeta = rawToFinished.get(rawId);
-    if (!finishedMeta) continue;
+  for (const u of upholsteryRows) {
+    const rawId = String(u.raw_assembly_id || '').trim();
+    if (!rawId) continue;
     const finishedAsm = findUpholsteryFinishedForRawAssembly(rows, rawId);
     if (!finishedAsm) continue;
-    const rawAsm = rows.find((r) => String(r.id) === rawId);
-    const rawQty = await sumRawQtyOnWarehouseFloor2(sb, rawId, floor2Loc.id);
+    const rawAsm = assemblyById.get(rawId);
+    const rawQty = floor2QtyByAssembly.get(rawId) || 0;
     if (rawQty < 1) continue;
     products.push({
       id: rawId,
       raw_assembly_id: rawId,
       raw_name: rawAsm?.name || rawId,
       raw_sku: rawAsm?.family_sku || '',
+      image_url: readWarehouseFloor2WipImageUrl(rawAsm),
+      family_image_url: readWarehouseFloor2WipFamilyImageUrl(rawAsm),
       finished_assembly_id: finishedAsm.id,
       finished_name: finishedAsm.name,
       finished_sku: finishedAsm.family_sku,
@@ -179,53 +282,14 @@ export async function executeUpholsteryManufacture(sb, {
   productQty = 1,
   userId = null,
 }) {
-  const rawId = String(rawAssemblyId || '').trim();
-  const qty = Math.max(1, Math.floor(Number(productQty) || 1));
-  if (!rawId) throw new Error('raw_assembly_id required');
-
-  const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
-    sb.from(ASSEMBLIES).select('*'),
-    sb.from(LOCATIONS).select('id, name'),
-  ]);
-  if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
-  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
-  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
-  if (!floor2Loc?.id) {
-    throw new Error('Warehouse Floor 2 location not configured — run seedWarehouseFloor2Location.js');
-  }
-
-  const rawRow = (assemblies || []).find((a) => String(a.id) === rawId);
-  if (!rawRow || !parseCarpentryMeta(rawRow).selected) {
-    throw new Error('Raw product is not in the Carpentry catalog');
-  }
-
-  const finishedTemplate = findUpholsteryFinishedForRawAssembly(assemblies || [], rawId);
-  if (!finishedTemplate) {
-    throw new Error('Link this raw product to a finished Upholstery catalog row on the web portal first');
-  }
-
-  const available = await sumRawQtyOnWarehouseFloor2(sb, rawId, floor2Loc.id);
-  if (available < qty) {
-    throw new Error(`Insufficient raw stock on Warehouse Floor 2 (have ${available}, need ${qty})`);
-  }
-
-  await deductRawFromWarehouseFloor2(sb, rawId, qty, floor2Loc.id);
-
-  const finishedCatalog = listUpholsteryCatalogProducts([finishedTemplate]);
-  const upholsteryMaterials = finishedCatalog[0]?.materials || [];
-  let materialUsageRows = [];
-  let storeroomLocsForRecompute = [];
-  if (upholsteryMaterials.length) {
-    storeroomLocsForRecompute = await resolveCarpentryStoreroomLocations(sb);
-    materialUsageRows = await deductStoreroomBomMaterials(
-      sb,
-      upholsteryMaterials,
-      qty,
-      storeroomLocsForRecompute,
-    );
-  }
-
-  const output = await resolveOrCreateFinishedAtFactory(sb, finishedTemplate, qty);
+  const ctx = await loadUpholsteryManufactureContext(sb, rawAssemblyId);
+  const { qty, materialUsageRows, storeroomLocsForRecompute } = await consumeUpholsteryRawAndMaterials(
+    sb,
+    ctx,
+    productQty,
+  );
+  const { rawId, finishedTemplate } = ctx;
+  const output = await creditUpholsteryFinishedOutput(sb, ctx, qty);
 
   const now = new Date().toISOString();
   const runId = newUuid();
@@ -268,13 +332,7 @@ export async function executeUpholsteryManufacture(sb, {
     }
   }
 
-  for (const loc of storeroomLocsForRecompute) {
-    await recomputeWarehouseLocationStockServer(sb, loc.id);
-  }
-  for (const loc of [floor2Loc]) {
-    await recomputeWarehouseLocationStockServer(sb, loc.id);
-  }
-  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FACTORY_LOCATION_ID);
+  await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocsForRecompute);
 
   return {
     run_id: runErr ? null : runId,

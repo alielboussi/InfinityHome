@@ -242,7 +242,9 @@ function renderCartTableHead(showElapsedColumn = false) {
 }
 
 function renderDriverSignatureFooter(driverName, signatureSrc) {
-  const safeSrc = String(signatureSrc || '').trim();
+  const raw = String(signatureSrc || '').trim();
+  // expo-print WebView cannot load remote images in PDF/print — only inline data URIs render.
+  const safeSrc = raw.startsWith('data:image/') ? raw : '';
   const safeName = String(driverName || '').trim() || '—';
   const img = safeSrc
     ? `<img class="sig-image" src="${safeSrc.replace(/"/g, '&quot;')}" alt="Driver signature" />`

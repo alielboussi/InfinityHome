@@ -36,8 +36,15 @@ export async function runCarpentryFinishing({ assemblyId, productQty = 1 }) {
 const CARPENTRY_ROUTE = 'carpentry';
 
 export async function fetchCarpentryProductionQuotes() {
-  const payload = await warehouseMobileRequest('production-quotes-list', { route: CARPENTRY_ROUTE });
-  return payload?.rows || [];
+  try {
+    const payload = await warehouseMobileRequest('production-quotes-list', { route: CARPENTRY_ROUTE });
+    return payload?.rows || [];
+  } catch (err) {
+    if (/unknown op/i.test(String(err?.message || ''))) {
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function acceptCarpentryQuote(quoteId) {

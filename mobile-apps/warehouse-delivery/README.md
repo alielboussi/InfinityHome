@@ -34,7 +34,7 @@ EXPO_PUBLIC_API_BASE=https://www.infinity-home.online
 
 ## Access
 
-Enable **User Access → Delivery → Warehouse Delivery (Android)** (`warehouse_delivery_app`) for the driver Google account. Legacy: **Production → Send to Kitwe** still grants delivery access until turned off.
+Enable **User Access → Delivery → Warehouse Delivery (Android)** (`warehouse_delivery_app`) for the driver Google account.
 
 ## Android package & Firebase
 

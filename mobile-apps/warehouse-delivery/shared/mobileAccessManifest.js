@@ -5,6 +5,9 @@
  * Permission values: 'allow' | 'deny' (default deny until admin enables).
  */
 
+/** User Access panel label (warehouse catalog mobile app). Device app title may still use MOBILE_APP_DISPLAY_NAME. */
+export const USER_ACCESS_CATALOG_APP_LABEL = 'Catalog';
+
 /** Launcher / login title (keep in sync with warehouse-catalog app.config.js `expo.name`). */
 export const MOBILE_APP_DISPLAY_NAME = 'Warehouse';
 
@@ -79,6 +82,13 @@ export function isWarehouseProductionAppAllowed(grant) {
   return grant?.warehouse_production_app === 'allow';
 }
 
+/** /user-access — Upholstery app: upload Floor 2 WIP photos on Manufacture variant inlay. */
+export function isWarehouseProductionPhotoUploadAllowed(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (!grant) return false;
+  return grant.warehouse_production_photo_upload === 'allow';
+}
+
 /** /user-access — Carpentry workshop Android app (manufacture + create/stock with carpentry presets). */
 export function isCarpentryWorkshopAppAllowed(grant) {
   return grant?.carpentry_workshop_app === 'allow';
@@ -118,11 +128,10 @@ export function evaluateCarpentryWorkshopAppAccess(grant, email) {
   return isCarpentryWorkshopAppAllowed(grant);
 }
 
-/** Driver delivery Android app — User Access → Delivery (legacy: Production → Send to Kitwe). */
+/** Driver delivery Android app — User Access → Delivery (`warehouse_delivery_app` only). */
 export function evaluateWarehouseDeliveryDriverAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
-  if (isWarehouseDeliveryAppAllowed(grant)) return true;
-  return isWarehouseProductionKitweDeliveryAllowed(grant);
+  return isWarehouseDeliveryAppAllowed(grant);
 }
 
 export function isWarehouseProductStockQtyEditAllowed(grant) {
@@ -259,6 +268,7 @@ export function defaultMobileAccessGrant() {
     warehouse_catalog_photo_import: 'deny',
     warehouse_production_kiosk: 'deny',
     warehouse_production_app: 'deny',
+    warehouse_production_photo_upload: 'deny',
     warehouse_production_kitwe: 'deny',
     warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
@@ -297,8 +307,7 @@ export function canMobileScreenView(grant, screenId) {
   }
 
   if (screenId === 'kitwe_send_delivery') {
-    return isWarehouseProductionKitweDeliveryAllowed(grant)
-      || isWarehouseDeliveryAppAllowed(grant);
+    return isWarehouseDeliveryAppAllowed(grant);
   }
 
   return isMobileScreenAccessAllowed(grant, screenId);
@@ -421,6 +430,13 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
 
   merged.warehouse_production_app = (
     merged.warehouse_production_app === 'allow' || merged.warehouse_production_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_production_photo_upload = (
+    merged.warehouse_production_photo_upload === 'allow'
+    || merged.warehouse_production_photo_upload === true
   )
     ? 'allow'
     : 'deny';

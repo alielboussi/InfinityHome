@@ -1,4 +1,4 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../shared/theme';
 import { kiosk } from './kioskStyles';
 import { tUi } from '../lib/productionKioskI18n';
@@ -10,16 +10,24 @@ function DeliveryDriverPicker({
   locale,
   textAlign,
   selectedDriverId,
+  loading,
   onClose,
   onSelect,
 }) {
   const list = Array.isArray(drivers) ? drivers : [];
+  const showLoading = loading && !list.length;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <Text style={[styles.title, { textAlign }]}>{title}</Text>
           <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+            {showLoading ? (
+              <View style={styles.loadingWrap}>
+                <ActivityIndicator size="small" color={theme.primary} />
+                <Text style={[styles.loadingText, { textAlign }]}>{tUi('loading', locale)}</Text>
+              </View>
+            ) : null}
             {list.map((d) => {
               const active = String(selectedDriverId) === String(d.id);
               return (
@@ -72,6 +80,15 @@ const styles = StyleSheet.create({
   },
   list: {
     marginBottom: 12,
+  },
+  loadingWrap: {
+    paddingVertical: 28,
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 15,
+    color: theme.muted || '#64748b',
   },
   row: {
     minHeight: 52,

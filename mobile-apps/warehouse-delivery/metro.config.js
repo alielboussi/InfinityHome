@@ -5,10 +5,10 @@ const { resolve: metroResolve } = require('metro-resolver');
 
 const projectRoot = __dirname;
 const appNodeModules = path.join(projectRoot, 'node_modules');
-const sharedDir = path.resolve(projectRoot, '..', 'shared');
-const sharedLink = path.join(projectRoot, 'shared');
+const appSharedDir = path.join(projectRoot, 'shared');
+const kitSharedDir = path.join(projectRoot, 'deliveryKit', 'shared');
 const deliveryKitLink = path.join(projectRoot, 'deliveryKit');
-const productionRoot = path.resolve(projectRoot, '..', 'warehouse-production');
+const upholsteryRoot = path.resolve(projectRoot, '..', 'warehouse-upholstery');
 const deliveryKitPeers = require('./scripts/deliveryKitPeerDependencies');
 
 function normalizePath(filePath) {
@@ -18,12 +18,9 @@ function normalizePath(filePath) {
 function isSharedFile(originModulePath) {
   if (!originModulePath) return false;
   const norm = normalizePath(originModulePath);
-  if (norm.includes('/mobile-apps/shared/')) return true;
-  if (norm.includes('/warehouse-production/shared/')) return true;
   if (norm.includes('/warehouse-delivery/shared/')) return true;
-  const sharedNorm = normalizePath(sharedDir);
-  const linkNorm = normalizePath(sharedLink);
-  return norm.startsWith(`${sharedNorm}/`) || norm.startsWith(`${linkNorm}/`);
+  if (norm.includes('/warehouse-delivery/deliverykit/shared/')) return true;
+  return false;
 }
 
 /** Code pulled in via deliveryKit → warehouse-production (outside this app's node_modules). */
@@ -31,8 +28,8 @@ function isDeliveryKitFile(originModulePath) {
   if (!originModulePath) return false;
   const norm = normalizePath(originModulePath);
   if (norm.includes('/warehouse-delivery/deliverykit/')) return true;
-  const prodNorm = normalizePath(productionRoot);
-  if (norm.startsWith(`${prodNorm}/`) && !norm.includes('/node_modules/')) return true;
+  const upholsteryNorm = normalizePath(upholsteryRoot);
+  if (norm.startsWith(`${upholsteryNorm}/`) && !norm.includes('/node_modules/')) return true;
   return false;
 }
 
@@ -52,28 +49,16 @@ function packageRoot(moduleName) {
   return null;
 }
 
-let sharedRealRoot = null;
-function getSharedRealRoot() {
-  if (sharedRealRoot) return sharedRealRoot;
-  try {
-    sharedRealRoot = fs.realpathSync(sharedDir);
-  } catch {
-    sharedRealRoot = sharedDir;
-  }
-  return sharedRealRoot;
-}
-
-/** One module instance for shared/ (deliveryKit/shared junction vs warehouse-delivery/shared). */
+/** One module instance: deliveryKit/shared → warehouse-delivery/shared (both are real copies). */
 function canonicalizeSharedSource(filePath) {
   if (!filePath || typeof filePath !== 'string') return filePath;
-  try {
-    const resolved = fs.realpathSync(filePath);
-    const rel = path.relative(getSharedRealRoot(), resolved);
-    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-      return path.join(sharedDir, rel);
+  const norm = normalizePath(filePath);
+  const kitPrefix = normalizePath(kitSharedDir);
+  if (norm.startsWith(`${kitPrefix}/`)) {
+    const rel = path.relative(kitSharedDir, filePath);
+    if (rel && !rel.startsWith('..')) {
+      return path.join(appSharedDir, rel);
     }
-  } catch {
-    // keep original
   }
   return filePath;
 }
@@ -88,9 +73,8 @@ function finishResolve(result) {
 const config = getDefaultConfig(projectRoot);
 
 const watchFolders = new Set(config.watchFolders || []);
-watchFolders.add(sharedDir);
+watchFolders.add(appSharedDir);
 watchFolders.add(path.resolve(projectRoot, '..', '..', 'src'));
-if (fs.existsSync(sharedLink)) watchFolders.add(sharedLink);
 if (fs.existsSync(deliveryKitLink)) watchFolders.add(deliveryKitLink);
 config.watchFolders = [...watchFolders];
 
@@ -108,14 +92,13 @@ for (const name of deliveryKitPeers) {
 }
 config.resolver.extraNodeModules = extraNodeModules;
 
-const prodNodeModules = path.join(productionRoot, 'node_modules').replace(/\\/g, '[\\\\/]');
+const upholsteryNodeModules = path.join(upholsteryRoot, 'node_modules').replace(/\\/g, '[\\\\/]');
 config.resolver.blockList = [
   ...(Array.isArray(config.resolver.blockList) ? config.resolver.blockList : []),
   /[\\/]node_modules[\\/]expo[\\/]node_modules[\\/]@react-native[\\/]\.debugger-frontend-[^/\\]+[\\/]/,
-  new RegExp(`${prodNodeModules}[\\\\/].*`),
-  /** deliveryKit junction → warehouse-production; never bundle its node_modules (duplicate native views). */
+  new RegExp(`${upholsteryNodeModules}[\\\\/].*`),
   /[\\/]warehouse-delivery[\\/][Dd]elivery[Kk]it[\\/]node_modules[\\/]/,
-  /[\\/]warehouse-production[\\/]node_modules[\\/]/,
+  /[\\/]warehouse-upholstery[\\/]node_modules[\\/]/,
 ];
 
 function shouldResolvePeerFromApp(moduleName) {
@@ -125,9 +108,19 @@ function shouldResolvePeerFromApp(moduleName) {
   return false;
 }
 
+const deliveryAppUiConfig = path.join(projectRoot, 'config', 'deliveryAppUi.js');
+const expoCryptoSafeShim = path.join(projectRoot, 'shared', 'expoCryptoSafeShim.js');
+
 const priorResolve = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === 'delivery-app-ui-config') {
+    return finishResolve({ type: 'sourceFile', filePath: deliveryAppUiConfig });
+  }
+  if (moduleName === 'expo-crypto' && fs.existsSync(expoCryptoSafeShim)) {
+    return finishResolve({ type: 'sourceFile', filePath: expoCryptoSafeShim });
+  }
+
   const isBare = !moduleName.startsWith('.') && !moduleName.startsWith('\0');
   const external = isSharedFile(context.originModulePath) || isDeliveryKitFile(context.originModulePath);
 

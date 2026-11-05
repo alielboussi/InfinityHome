@@ -55,6 +55,8 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
     driverName: session.driver_name,
     dispatchedBy: session.dispatched_by_name,
     driverSignatureSrc: detail?.driver_signature_data_uri || session.driver_signature_url,
+    driverSignatureDataUri: detail?.driver_signature_data_uri || '',
+    driverSignatureUrl: session.driver_signature_url || '',
     submittedAt: session.submitted_at,
     printGroups,
     copies: DELIVERY_SENT_REPRINT_COPIES,

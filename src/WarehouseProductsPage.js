@@ -476,7 +476,7 @@ export default function WarehouseProductsPage() {
 
   const handleDeleteProduct = async (row) => {
     if (!canManage) return;
-    if (!window.confirm(`Delete product "${row.name}"? Packets will be unlinked, not deleted.`)) return;
+    if (!window.confirm(`Delete product "${row.name}"? This removes all warehouse stock (Floor 1 and Floor 2 WIP) and unlinks packets.`)) return;
     setSaving(true);
     try {
       await deleteWarehouseAssembly(row.id);

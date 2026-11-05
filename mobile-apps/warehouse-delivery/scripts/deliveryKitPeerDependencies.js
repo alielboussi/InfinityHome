@@ -1,6 +1,5 @@
 /**
- * Delivery app reuses warehouse-production via deliveryKit — keep these deps aligned with
- * mobile-apps/warehouse-production/package.json for anything Kitwe send / shared / scan uses.
+ * Keep aligned with warehouse-upholstery/package.json for Kitwe peers.
  */
 module.exports = [
   '@expo/vector-icons',

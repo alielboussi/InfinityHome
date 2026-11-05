@@ -11,6 +11,9 @@ import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogP
 import { buildWarehouseProductionLabelPngBase64 } from './warehouseProductionLabelImage.js';
 import { sendWarehouseProductionWhatsApp } from './sendWarehouseProductionWhatsApp.js';
 import { buildProductionWhatsAppNotifyPayload } from './warehouseProductionPresets.js';
+import { upsertFinishedAssemblyInventoryQuantity } from './warehouseCatalogMobile.js';
+import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
+import { parseUpholsteryMeta } from '../../src/utils/upholsteryCatalogView.js';
 
 async function productionWhatsappProducerName(user) {
   const record = await getLoginAccessRecord(user?.id);
@@ -78,6 +81,55 @@ function promiseWithTimeout(promise, ms, timeoutMessage) {
   });
   return Promise.race([promise, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
+  });
+}
+
+function pendingPortalSetup(body) {
+  return body.pending_portal_setup || body.pendingPortalSetup || null;
+}
+
+async function runPendingPortalSetup(sb, body, user, assembly) {
+  const pending = pendingPortalSetup(body);
+  if (!pending || !assembly?.id) return null;
+
+  const assemblyId = String(assembly.id).trim();
+  const { data: freshRow } = await sb
+    .from('warehouse_assemblies')
+    .select('id, metadata')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  const upholsteryMeta = parseUpholsteryMeta(freshRow || assembly);
+  if (upholsteryMeta?.selected) {
+    return { applied: 'upholstery', skipped: true };
+  }
+
+  const warehouseLocationId = String(
+    pending.warehouse_location_id || pending.warehouseLocationId || '',
+  ).trim();
+  const initialQty = Math.max(0, Math.floor(Number(pending.initial_quantity) || 0));
+  const floor2SeedQty = Math.max(1, Math.floor(
+    Number(pending.floor2_product_qty ?? pending.initial_quantity) || 0,
+  ));
+
+  if (warehouseLocationId && initialQty > 0) {
+    await upsertFinishedAssemblyInventoryQuantity(sb, {
+      assemblyId,
+      locationId: warehouseLocationId,
+      quantity: initialQty,
+    });
+    void recomputeWarehouseLocationStockServer(sb, warehouseLocationId).catch((reErr) => {
+      console.warn('[warehouse-production-photo] warehouse stock recompute deferred:', reErr?.message || reErr);
+    });
+  }
+
+  const { autoSelectProductionPortalCatalog } = await import('./productionPortalAutoSelect.js');
+  return autoSelectProductionPortalCatalog(sb, assemblyId, {
+    clientSource: pending.client_source || body.client_source || '',
+    portal_catalog: pending.portal_catalog || pending.portalCatalog || 'upholstery',
+    auto_portal_catalog: pending.auto_portal_catalog,
+    initialQuantity: floor2SeedQty,
+    floor2_product_qty: floor2SeedQty,
+    userId: user?.id || user?.uid || null,
   });
 }
 
@@ -169,6 +221,7 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
   const existingUrl = String(assembly.image_url || '').trim();
   if (!forceReupload && existingUrl) {
     const catalogImageUrl = rewriteLegacyProductImageUrl(existingUrl) || existingUrl;
+    const portalResult = await runPendingPortalSetup(sb, body, user, assembly);
     const labelResult = await runPendingLabelPrint(sb, body, user, assembly);
     const label_preview_png_base64 = await buildLabelPreviewForAssembly(assembly);
     return {
@@ -176,6 +229,7 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
       catalog_image_url: catalogImageUrl,
       assembly: { ...assembly, image_url: catalogImageUrl },
       idempotent: true,
+      portal_catalog: portalResult,
       label_preview_png_base64,
       ...labelResult,
     };
@@ -196,6 +250,7 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
     directCatalogUpload: false,
   });
 
+  const portalResult = await runPendingPortalSetup(sb, body, user, assembly);
   const labelResult = await runPendingLabelPrint(sb, body, user, assembly);
   const label_preview_png_base64 = await buildLabelPreviewForAssembly(assembly);
 
@@ -211,6 +266,7 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
     assembly_id: assemblyId,
     catalog_image_url: catalogImageUrl,
     assembly: { ...assembly, image_url: catalogImageUrl },
+    portal_catalog: portalResult,
     label_preview_png_base64,
     ...labelResult,
   };

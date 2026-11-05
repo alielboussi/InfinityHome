@@ -2,17 +2,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import * as Print from 'expo-print';
 import { kiosk } from './kioskStyles';
 import { buildDeliveryNotePrintHtml } from '../lib/buildDeliveryNotePrintHtml';
 import { discoverNetworkPrinters, isPrinterDiscoveryAvailable } from '../lib/discoverNetworkPrinters';
 import { getDeliveryNoteCompanyLogoDataUri } from '../lib/deliveryNoteCompanyLogo';
+import {
+  openDeliveryNoteHtmlInBrowser,
+  printDeliveryNoteFromHtml,
+} from '../lib/printDeliveryNoteHtml';
+import { resolveDeliveryDriverSignatureDataUri } from '../lib/resolveDeliveryDriverSignatureDataUri';
+import { openDeliveryNotePdf } from '../lib/openDeliveryNotePdf';
 import { tUi } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
 
@@ -51,21 +57,52 @@ export default function DeliveryPrintModal({
 
   const runScan = useCallback(async () => {
     setScanning(true);
-    setError('');
     try {
       const list = await discoverNetworkPrinters();
-      setPrinters(list);
-      if (!list.length && isPrinterDiscoveryAvailable()) {
-        setError(tUi('deliveryPrintNoPrinters', locale));
-      } else if (!isPrinterDiscoveryAvailable()) {
-        setError(tUi('deliveryPrintDiscoveryUnavailable', locale));
-      }
+      setPrinters(Array.isArray(list) ? list : []);
     } catch {
-      setError(tUi('deliveryPrintScanFailed', locale));
+      setPrinters([]);
     } finally {
       setScanning(false);
     }
-  }, [locale]);
+  }, []);
+
+  const isWeb = Platform.OS === 'web';
+  const showLanList = !isWeb && isPrinterDiscoveryAvailable();
+
+  const buildNoteHtml = useCallback(async () => {
+    const copies = Math.max(1, Math.min(10, Number(copyCount) || DEFAULT_DELIVERY_PRINT_COPIES));
+    const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUri().catch(() => '');
+    const signatureSrc = await resolveDeliveryDriverSignatureDataUri({
+      dataUri: driverSignatureDataUri,
+      url: driverSignatureUrl,
+    });
+    return buildDeliveryNotePrintHtml({
+      deliveryNumber,
+      driverName,
+      dispatchedBy: dispatchedBy || '',
+      driverSignatureSrc: signatureSrc,
+      companyLogoSrc,
+      submittedAt: submittedAt || new Date().toISOString(),
+      printGroups,
+      copies,
+      documentKind,
+      customerName,
+      customerPhone,
+    });
+  }, [
+    copyCount,
+    customerName,
+    customerPhone,
+    deliveryNumber,
+    dispatchedBy,
+    documentKind,
+    driverName,
+    driverSignatureDataUri,
+    driverSignatureUrl,
+    printGroups,
+    submittedAt,
+  ]);
 
   const printNote = useCallback(async () => {
     if (!String(deliveryNumber || '').trim()) {
@@ -81,46 +118,70 @@ export default function DeliveryPrintModal({
     setPrinting(true);
     setError('');
     try {
-      const copies = Math.max(1, Math.min(10, Number(copyCount) || DEFAULT_DELIVERY_PRINT_COPIES));
-      const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUri().catch(() => '');
-      const html = buildDeliveryNotePrintHtml({
-        deliveryNumber,
-        driverName,
-        dispatchedBy: dispatchedBy || '',
-        driverSignatureSrc: driverSignatureDataUri || driverSignatureUrl || '',
-        companyLogoSrc,
-        submittedAt: submittedAt || new Date().toISOString(),
-        printGroups,
-        copies,
-        documentKind,
-        customerName,
-        customerPhone,
-      });
-      const file = await Print.printToFileAsync({
-        html,
-        width: 595,
-        height: 842,
-      });
-      await Print.printAsync({ uri: file.uri });
+      const html = await buildNoteHtml();
+      await printDeliveryNoteFromHtml(html);
     } catch (err) {
-      setError(err?.message || tUi('deliveryPrintFailed', locale));
+      const msg = String(err?.message || '');
+      if (/cancel/i.test(msg) || /did not complete/i.test(msg)) {
+        setPrintAttemptDone(true);
+        return;
+      }
+      setError(msg || tUi('deliveryPrintFailed', locale));
     } finally {
       setPrinting(false);
       setPrintAttemptDone(true);
     }
   }, [
+    buildNoteHtml,
+    deliveryNumber,
+    locale,
+    printGroups,
+  ]);
+
+  const viewPdf = useCallback(async () => {
+    if (!String(deliveryNumber || '').trim()) {
+      setError(tUi('deliverySubmitFailed', locale));
+      return;
+    }
+    if (!Array.isArray(printGroups) || !printGroups.length) {
+      setError(tUi('deliveryPrintNoLines', locale));
+      return;
+    }
+    setPrinting(true);
+    setError('');
+    try {
+      const html = await buildNoteHtml();
+      if (isWeb) {
+        openDeliveryNoteHtmlInBrowser(html, deliveryNumber || 'Delivery note');
+      } else {
+        await openDeliveryNotePdf({
+          deliveryNumber,
+          driverName,
+          dispatchedBy,
+          driverSignatureDataUri,
+          driverSignatureUrl,
+          submittedAt,
+          printGroups,
+          copies: Math.max(1, Math.min(10, Number(copyCount) || DEFAULT_DELIVERY_PRINT_COPIES)),
+        });
+      }
+    } catch (err) {
+      setError(err?.message || tUi('sentDeliveryOpenFailed', locale));
+    } finally {
+      setPrinting(false);
+    }
+  }, [
+    buildNoteHtml,
     copyCount,
     deliveryNumber,
     dispatchedBy,
     driverName,
     driverSignatureDataUri,
     driverSignatureUrl,
+    isWeb,
+    locale,
     printGroups,
     submittedAt,
-    locale,
-    documentKind,
-    customerName,
-    customerPhone,
   ]);
 
   useEffect(() => {
@@ -131,13 +192,16 @@ export default function DeliveryPrintModal({
     setSelectedId('');
     setError('');
     setPrintAttemptDone(false);
-    runScan();
-  }, [visible, runScan]);
+    if (showLanList) runScan();
+  }, [visible, runScan, showLanList]);
 
   useEffect(() => {
     if (!visible || !autoPrintOnOpen || autoStarted.current || printing) return;
     autoStarted.current = true;
-    printNote();
+    const timer = setTimeout(() => {
+      printNote();
+    }, 450);
+    return () => clearTimeout(timer);
   }, [visible, autoPrintOnOpen, printing, printNote]);
 
   const onSelectPrinter = (printer) => {
@@ -159,9 +223,11 @@ export default function DeliveryPrintModal({
                   : tUi('deliveryPrintTitleCopies', locale).replace('{n}', String(copyCount || DEFAULT_DELIVERY_PRINT_COPIES)))}
           </Text>
           <Text style={[styles.hint, { textAlign }]}>
-            {reprintMode
-              ? tUi('deliveryPrintReprintHint', locale)
-              : (autoPrintOnOpen ? tUi('deliveryPrintAutoHint', locale) : tUi('deliveryPrintHint', locale))}
+            {isWeb
+              ? tUi('deliveryPrintWebHint', locale)
+              : reprintMode
+                ? tUi('deliveryPrintReprintHint', locale)
+                : (autoPrintOnOpen ? tUi('deliveryPrintAutoHint', locale) : tUi('deliveryPrintHint', locale))}
           </Text>
 
           {printing ? (
@@ -171,31 +237,40 @@ export default function DeliveryPrintModal({
             </View>
           ) : null}
 
-          <Pressable
-            style={[kiosk.btnOutlinePrimary, styles.scanBtn]}
-            onPress={runScan}
-            disabled={scanning || printing}
-          >
-            {scanning ? (
-              <ActivityIndicator color={theme.primary} />
-            ) : (
-              <Text style={kiosk.btnOutlinePrimaryText}>{tUi('deliveryPrintRescan', locale)}</Text>
-            )}
-          </Pressable>
-
-          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
-            {printers.map((p) => (
+          {showLanList ? (
+            <>
               <Pressable
-                key={p.id}
-                style={[styles.row, selectedId === p.id && styles.rowOn]}
-                onPress={() => onSelectPrinter(p)}
-                disabled={printing}
+                style={[kiosk.btnOutlinePrimary, styles.scanBtn]}
+                onPress={runScan}
+                disabled={scanning || printing}
               >
-                <Text style={styles.rowTitle}>{p.name}</Text>
-                <Text style={styles.rowSub}>{p.host}{p.port ? `:${p.port}` : ''}</Text>
+                {scanning ? (
+                  <ActivityIndicator color={theme.primary} />
+                ) : (
+                  <Text style={kiosk.btnOutlinePrimaryText}>{tUi('deliveryPrintRescan', locale)}</Text>
+                )}
               </Pressable>
-            ))}
-          </ScrollView>
+
+              <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+                {printers.map((p) => (
+                  <Pressable
+                    key={p.id}
+                    style={[styles.row, selectedId === p.id && styles.rowOn]}
+                    onPress={() => onSelectPrinter(p)}
+                    disabled={printing}
+                  >
+                    <Text style={styles.rowTitle}>{p.name}</Text>
+                    <Text style={styles.rowSub}>{p.host}{p.port ? `:${p.port}` : ''}</Text>
+                  </Pressable>
+                ))}
+                {!scanning && !printers.length ? (
+                  <Text style={[styles.listEmpty, { textAlign }]}>
+                    {tUi('deliveryPrintLanListOptional', locale)}
+                  </Text>
+                ) : null}
+              </ScrollView>
+            </>
+          ) : null}
 
           <Pressable
             style={[kiosk.btnPrimaryBlock, styles.printBtn]}
@@ -205,8 +280,18 @@ export default function DeliveryPrintModal({
             {printing ? (
               <ActivityIndicator color="#0f172a" />
             ) : (
-              <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryPrintSystemPicker', locale)}</Text>
+              <Text style={kiosk.btnPrimaryBlockText}>
+                {isWeb ? tUi('deliveryPrintBrowserDialog', locale) : tUi('deliveryPrintSystemPicker', locale)}
+              </Text>
             )}
+          </Pressable>
+
+          <Pressable
+            style={[kiosk.btnOutlinePrimary, styles.viewPdfBtn]}
+            onPress={viewPdf}
+            disabled={printing}
+          >
+            <Text style={kiosk.btnOutlinePrimaryText}>{tUi('sentDeliveryViewPdf', locale)}</Text>
           </Pressable>
 
           {printAttemptDone && !printing ? (
@@ -266,6 +351,8 @@ const styles = StyleSheet.create({
   rowTitle: { color: theme.text, fontWeight: '700', fontSize: 15 },
   rowSub: { color: theme.muted, fontSize: 12, marginTop: 4 },
   printBtn: { marginTop: 4 },
+  viewPdfBtn: { marginTop: 10 },
+  listEmpty: { fontSize: 13, color: theme.muted, lineHeight: 19, paddingVertical: 8 },
   retryBlock: { marginTop: 14 },
   retryHint: { fontSize: 13, color: theme.muted, lineHeight: 19, marginBottom: 10 },
   retryBtn: { marginTop: 0 },

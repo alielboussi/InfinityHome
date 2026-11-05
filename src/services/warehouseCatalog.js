@@ -27,6 +27,10 @@ import {
 import { assemblyDerivesWarehouseStockFromPackets } from '../utils/warehouseAssemblyMath';
 import { generateRandomWarehouseSku16 } from '../utils/warehouseRandomSku';
 import { normalizeWarehousePacketNameKey } from '../utils/productionItemName';
+import {
+  mergeWarehouseFloor2WipFamilyImageMetadata,
+  mergeWarehouseFloor2WipImageMetadata,
+} from '../utils/warehouseFloor2WipImage.js';
 import { cacheClear, cacheGet, cacheSet } from '../utils/staleCache';
 import { buildWarehouseCategoryIndex } from '../utils/warehouseCategoryLookup.js';
 import { resolveSeaterSetCoverImageUrl } from '../utils/warehouseSeaterSetCoverImage.js';
@@ -802,6 +806,8 @@ export async function setWarehouseAssemblyProductQuantity(
 export async function deleteWarehouseAssembly(assemblyId) {
   const id = String(assemblyId || '');
   if (!id) return;
+  const { purgeWarehouseAssemblyInventoryAndFloorRuns } = await import('../utils/warehouseAssemblyDelete.js');
+  await purgeWarehouseAssemblyInventoryAndFloorRuns(db, id);
   await db.from(SET_ITEMS).delete().eq('set_assembly_id', id);
   await db.from(SET_ITEMS).delete().eq('component_assembly_id', id);
   const { data: links } = await db.from(ASSEMBLY_PACKETS).select('packet_id').eq('assembly_id', id);
@@ -1058,6 +1064,138 @@ export async function removeWarehouseAssemblyImage(assemblyId) {
   }).eq('id', id);
   if (updErr) throw new Error(updErr.message || 'Failed to remove image from product');
   invalidateWarehouseCatalogCache();
+}
+
+function warehouseFloor2WipImageFolder(assemblyId) {
+  return `${warehouseAssemblyImageFolder(assemblyId)}/floor2-wip`;
+}
+
+async function purgeWarehouseFloor2WipImages(assemblyId) {
+  const folderPath = warehouseFloor2WipImageFolder(assemblyId);
+  try {
+    const bucket = db.storage.from(WAREHOUSE_IMAGE_BUCKET);
+    const { data: entries, error } = await bucket.list(folderPath, { limit: 100 });
+    if (error || !Array.isArray(entries) || !entries.length) return;
+    const targets = entries.map((entry) => `${folderPath}/${entry.name}`);
+    await bucket.remove(targets);
+  } catch (err) {
+    console.warn('Failed to purge Floor 2 WIP images', err);
+  }
+}
+
+/** Upload WIP photo for Floor 2 / production apps (metadata.floor2_wip_image_url — not Floor 1 image_url). */
+export async function uploadWarehouseFloor2WipImage(assemblyId, file) {
+  const id = String(assemblyId || '').trim();
+  if (!id) throw new Error('Product id is required');
+  if (!file) throw new Error('No image file selected');
+
+  const { data: existing, error: loadErr } = await db.from(ASSEMBLIES).select('metadata').eq('id', id).maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
+
+  await purgeWarehouseFloor2WipImages(id);
+  const fallbackExt = 'jpg';
+  const rawExt = (file.name || '').split('.').pop();
+  const ext = (rawExt || fallbackExt).replace(/[^0-9a-z]/gi, '').toLowerCase() || fallbackExt;
+  const filePath = `${warehouseFloor2WipImageFolder(id)}/main-${Date.now()}.${ext}`;
+
+  const bucket = db.storage.from(WAREHOUSE_IMAGE_BUCKET);
+  const { error: uploadError } = await bucket.upload(filePath, file, { upsert: true });
+  if (uploadError) throw new Error(uploadError.message || 'Image upload failed');
+
+  const { data: publicUrlData } = bucket.getPublicUrl(filePath);
+  const publicUrl = publicUrlData?.publicUrl;
+  if (!publicUrl) throw new Error('Failed to get public URL for image.');
+
+  const now = new Date().toISOString();
+  const metadata = mergeWarehouseFloor2WipImageMetadata(existing?.metadata, publicUrl);
+  const { error: updErr } = await db.from(ASSEMBLIES).update({
+    metadata,
+    updated_at: now,
+  }).eq('id', id);
+  if (updErr) throw new Error(updErr.message || 'Failed to save Floor 2 WIP image');
+
+  invalidateWarehouseCatalogCache();
+  return publicUrl;
+}
+
+/** Remove Floor 2 WIP photo only (does not change Floor 1 catalog image_url). */
+export async function removeWarehouseFloor2WipImage(assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) throw new Error('Product id is required');
+
+  const { data: existing, error: loadErr } = await db.from(ASSEMBLIES).select('metadata').eq('id', id).maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
+
+  await purgeWarehouseFloor2WipImages(id);
+  const metadata = mergeWarehouseFloor2WipImageMetadata(existing?.metadata, '');
+  const { error: updErr } = await db.from(ASSEMBLIES).update({
+    metadata,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id);
+  if (updErr) throw new Error(updErr.message || 'Failed to remove Floor 2 WIP image');
+  invalidateWarehouseCatalogCache();
+}
+
+async function applyFloor2WipFamilyImageToAssemblies(assemblyIds, publicUrl) {
+  const ids = [...new Set((assemblyIds || []).map((id) => String(id).trim()).filter(Boolean))];
+  if (!ids.length) throw new Error('assembly_ids required');
+  const now = new Date().toISOString();
+  for (const id of ids) {
+    const { data: existing, error: loadErr } = await db.from(ASSEMBLIES).select('metadata').eq('id', id).maybeSingle();
+    if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
+    const metadata = mergeWarehouseFloor2WipFamilyImageMetadata(existing?.metadata, publicUrl);
+    const { error: updErr } = await db.from(ASSEMBLIES).update({ metadata, updated_at: now }).eq('id', id);
+    if (updErr) throw new Error(updErr.message || 'Failed to save family WIP image');
+  }
+}
+
+/** Family-level WIP photo (shared across variants) — stored on each variant assembly metadata. */
+export async function uploadWarehouseFloor2WipFamilyImage(assemblyIds, file) {
+  const ids = [...new Set((assemblyIds || []).map((id) => String(id).trim()).filter(Boolean))];
+  if (!ids.length) throw new Error('assembly_ids required');
+  if (!file) throw new Error('No image file selected');
+
+  const primaryId = ids[0];
+  await purgeWarehouseFloor2WipFamilyImages(primaryId);
+
+  const fallbackExt = 'jpg';
+  const rawExt = (file.name || '').split('.').pop();
+  const ext = (rawExt || fallbackExt).replace(/[^0-9a-z]/gi, '').toLowerCase() || fallbackExt;
+  const filePath = `${warehouseFloor2WipImageFolder(primaryId)}/family-${Date.now()}.${ext}`;
+
+  const bucket = db.storage.from(WAREHOUSE_IMAGE_BUCKET);
+  const { error: uploadError } = await bucket.upload(filePath, file, { upsert: true });
+  if (uploadError) throw new Error(uploadError.message || 'Image upload failed');
+
+  const { data: publicUrlData } = bucket.getPublicUrl(filePath);
+  const publicUrl = publicUrlData?.publicUrl;
+  if (!publicUrl) throw new Error('Failed to get public URL for image.');
+
+  await applyFloor2WipFamilyImageToAssemblies(ids, publicUrl);
+  invalidateWarehouseCatalogCache();
+  return publicUrl;
+}
+
+export async function removeWarehouseFloor2WipFamilyImage(assemblyIds) {
+  const ids = [...new Set((assemblyIds || []).map((id) => String(id).trim()).filter(Boolean))];
+  if (!ids.length) throw new Error('assembly_ids required');
+  await purgeWarehouseFloor2WipFamilyImages(ids[0]);
+  await applyFloor2WipFamilyImageToAssemblies(ids, '');
+}
+
+async function purgeWarehouseFloor2WipFamilyImages(assemblyId) {
+  const folderPath = warehouseFloor2WipImageFolder(assemblyId);
+  try {
+    const bucket = db.storage.from(WAREHOUSE_IMAGE_BUCKET);
+    const { data: entries, error } = await bucket.list(folderPath, { limit: 100 });
+    if (error || !Array.isArray(entries) || !entries.length) return;
+    const targets = entries
+      .filter((entry) => String(entry.name || '').startsWith('family-'))
+      .map((entry) => `${folderPath}/${entry.name}`);
+    if (targets.length) await bucket.remove(targets);
+  } catch (err) {
+    console.warn('Failed to purge Floor 2 family WIP images', err);
+  }
 }
 
 const INLINE_ASSEMBLY_NUMERIC_FIELDS = new Set([

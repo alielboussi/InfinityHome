@@ -17,6 +17,7 @@ export async function buildWarehouseDeliveryNoteHtml({
   driverSignatureSrc = '',
   copies = DEFAULT_DELIVERY_NOTE_PRINT_COPIES,
   assemblyColorContext = null,
+  fetchAuthenticated = null,
 }) {
   const meta = session?.metadata || {};
   const formatter = assemblyColorContext
@@ -24,11 +25,13 @@ export async function buildWarehouseDeliveryNoteHtml({
     : null;
   const printGroups = buildDeliveryPrintGroupsFromEntries(entries, formatter);
   const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUriWeb().catch(() => '');
+  const resolvedSignature = driverSignatureSrc
+    || await resolveDeliverySignatureSrc(session, fetchAuthenticated);
   return buildDeliveryNotePrintHtml({
     deliveryNumber: session?.delivery_number || session?.id || '',
     driverName: meta.driver_name || '',
     dispatchedBy: deliverySenderName(session),
-    driverSignatureSrc: driverSignatureSrc || meta.driver_signature_url || '',
+    driverSignatureSrc: resolvedSignature,
     companyLogoSrc,
     submittedAt: session?.submitted_at || session?.created_at || new Date().toISOString(),
     printGroups,
@@ -145,18 +148,26 @@ export function printWarehouseDeliveryNoteInBrowser(html) {
 export async function resolveDeliverySignatureSrc(session, fetchAuthenticated) {
   const url = String(session?.metadata?.driver_signature_url || '').trim();
   if (!url) return '';
-  if (url.startsWith('data:')) return url;
-  if (typeof fetchAuthenticated !== 'function') return url;
+  if (url.startsWith('data:image/')) return url;
   try {
-    const blob = await fetchAuthenticated(url);
-    if (!blob) return url;
+    let blob = null;
+    if (typeof fetchAuthenticated === 'function') {
+      blob = await fetchAuthenticated(url);
+    } else if (typeof fetch === 'function') {
+      const res = await fetch(url);
+      if (!res.ok) return '';
+      blob = await res.blob();
+    }
+    if (!blob) return '';
     return await new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result || url);
+      reader.onload = () => resolve(String(reader.result || '').startsWith('data:image/')
+        ? reader.result
+        : '');
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(blob);
     });
   } catch {
-    return url;
+    return '';
   }
 }

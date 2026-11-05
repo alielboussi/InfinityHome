@@ -1,18 +1,30 @@
 /**
  * Build rounded launcher icons from Driver.png (safe inset, no mask clipping).
+ * In EAS cloud builds, repo-root scripts/ may not be uploaded — skip if assets already exist.
  */
+const fs = require('fs');
 const path = require('path');
-const { postprocessWarehouseProductionIcons } = require('../../../scripts/warehouseProductionIconFrame');
 
 const appRoot = path.resolve(__dirname, '..');
 const sourcePath = path.join(appRoot, 'Driver.png');
 const assetsDir = path.join(appRoot, 'assets');
+const frameScript = path.resolve(__dirname, '../../../scripts/warehouseProductionIconFrame.js');
 
-/** Slightly smaller than production so wide artwork stays inside Android adaptive safe zone. */
 const MAIN_SCALE = 0.68;
 const ADAPTIVE_SCALE = 0.62;
 
 async function main() {
+  const iconPng = path.join(assetsDir, 'icon.png');
+  const adaptivePng = path.join(assetsDir, 'adaptive-icon.png');
+  if (!fs.existsSync(frameScript)) {
+    if (fs.existsSync(iconPng) && fs.existsSync(adaptivePng)) {
+      console.log('[ensureDeliveryIcons] skip — using existing assets/icon.png & adaptive-icon.png');
+      return;
+    }
+    console.error('[ensureDeliveryIcons] missing', frameScript);
+    process.exit(1);
+  }
+  const { postprocessWarehouseProductionIcons } = require(frameScript);
   const result = await postprocessWarehouseProductionIcons({
     sourcePath,
     assetsDir,

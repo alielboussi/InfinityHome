@@ -215,3 +215,56 @@ export async function addFloor1ProductToFloor2(sb, {
     floor2_location_id: outputLocationId,
   };
 }
+
+export async function setFloor2ProductStockQty(sb, {
+  assemblyId,
+  quantity,
+}) {
+  const productId = String(assemblyId || '').trim();
+  const nextQty = Math.max(0, Math.floor(Number(quantity) || 0));
+  if (!productId) throw new Error('assembly_id required');
+
+  const [{ data: assembly, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
+    sb.from(ASSEMBLIES).select('id, name, family_sku, metadata, item_kind').eq('id', productId).maybeSingle(),
+    sb.from(LOCATIONS).select('id, name'),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load product');
+  if (!assembly?.id) throw new Error('Product not found');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  const outputLocationId = floor2Loc?.id
+    ? String(floor2Loc.id)
+    : WAREHOUSE_FACTORY_LOCATION_ID;
+
+  const prevMeta = parseCarpentryMeta(assembly);
+  if (!prevMeta.selected && nextQty > 0) {
+    await sb.from(ASSEMBLIES).update({
+      metadata: {
+        ...(assembly.metadata || {}),
+        carpentry: {
+          ...prevMeta,
+          selected: true,
+        },
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', productId);
+  }
+
+  const now = new Date().toISOString();
+  const { error: invErr } = await sb.from('warehouse_assembly_inventory').upsert({
+    assembly_id: productId,
+    location_id: outputLocationId,
+    quantity: nextQty,
+    updated_at: now,
+  }, { onConflict: 'assembly_id,location_id' });
+  if (invErr) throw new Error(invErr.message || 'Failed to update Floor 2 quantity');
+
+  await recomputeWarehouseLocationStockServer(sb, outputLocationId);
+
+  return {
+    assembly_id: productId,
+    quantity: nextQty,
+    floor2_location_id: outputLocationId,
+  };
+}

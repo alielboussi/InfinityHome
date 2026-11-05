@@ -138,7 +138,23 @@ export function extractProductionBaseName(productName) {
   if (!n) return '';
   for (const preset of allPresetSuffixes()) {
     const suffix = ` ${preset}`;
-    if (n.endsWith(suffix)) {
+    if (n.toLowerCase().endsWith(suffix.toLowerCase())) {
+      return n.slice(0, -suffix.length).trim();
+    }
+  }
+  const extraSuffixes = [
+    '3 Seater Recliner',
+    '2 Seater Recliner',
+    'Single Seater Recliner',
+    '1 Seater Recliner',
+    'Recliner',
+    '1 Seater',
+    'Corner Sofa',
+    'L Shape',
+  ];
+  for (const extra of extraSuffixes) {
+    const suffix = ` ${extra}`;
+    if (n.toLowerCase().endsWith(suffix.toLowerCase())) {
       return n.slice(0, -suffix.length).trim();
     }
   }

@@ -55,6 +55,10 @@ assert(
   'Production app must not call warehouse-catalog-photo API',
 );
 assert(
+  prodAttach.includes('runPendingPortalSetup'),
+  'production photo attach must apply deferred portal stock after AI retouch',
+);
+assert(
   packetPhoto.includes('directCatalogUpload && requireAiRetouch'),
   'must block direct upload combined with required AI',
 );

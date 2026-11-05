@@ -7,7 +7,7 @@ const sharp = require('sharp');
 
 const SIZE = 1024;
 const CORNER_RADIUS = 200;
-/** Matches warehouse-production app.config.js splash + adaptiveIcon backgroundColor. */
+/** Matches warehouse-upholstery app.config.js splash + adaptiveIcon backgroundColor. */
 const PRODUCTION_ICON_BACKGROUND = '#000928';
 /** Inset artwork so circle/squircle launcher masks never clip the saw handle or wood. */
 const ICON_CONTENT_SCALE = 0.72;
@@ -78,9 +78,11 @@ async function postprocessWarehouseProductionIcons({
   adaptiveContentScale,
 } = {}) {
   const root = path.resolve(__dirname, '..');
-  const assets = assetsDir || path.join(root, 'mobile-apps/warehouse-production/assets');
-  const defaultSource = path.join(root, 'ICON_PRODUCTION.png');
-  const source = sourcePath || defaultSource;
+  const assets = assetsDir || path.join(root, 'mobile-apps/warehouse-upholstery/assets');
+  const defaultSource = path.join(root, 'mobile-apps/warehouse-upholstery/Upholstery Production.png');
+  const source = sourcePath
+    ? (path.isAbsolute(sourcePath) ? sourcePath : path.resolve(process.cwd(), sourcePath))
+    : defaultSource;
   if (!fs.existsSync(source)) {
     throw new Error(`Icon source not found: ${source}`);
   }

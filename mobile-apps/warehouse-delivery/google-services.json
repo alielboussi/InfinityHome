@@ -125,6 +125,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "876299148810-j96q692q3c2l35vgorqqs25qvjku3oqn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bestrest.warehousedelivery",
+            "certificate_hash": "71de3e9d9c498d1d0522f90a2ebaa64dee1556b0"
+          }
+        },
+        {
           "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
           "client_type": 3
         }

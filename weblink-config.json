@@ -1,0 +1,5 @@
+{}{
+"weblink.logging.max_entries":"500",
+"weblink.ip.conn1.location":"https://savanna-device.zpc.zebra.com/weblink/connect?r=6172d94fbde7154d65f44b7405ae0ce1",
+"device.reset":"1"
+}

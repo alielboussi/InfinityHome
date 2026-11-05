@@ -1,0 +1,5 @@
+{}{"protect":{"authentication":{"username":"admin","password":"","type":"basic"},"operation":"setup","setup":{"username":"admin","password":"Lebanon1111$$$"}}}
+{}{"protect":{"authentication":{"username":"admin","password":"Lebanon1111$$$","type":"basic"},"operation":"configure-one","configure-one":{"protected-mode-allowed":"no"}}}
+{}{"protect":{"authentication":{"username":"admin","password":"Lebanon1111$$$","type":"basic"},"operation":"set","set":{"ip.tcp.enable":"on","usb.mirror.enable":"off","wlan.enable":"on","ip.ftp.enable":"off","ip.snmp.enable":"off","zbi.enable":"on","ip.lpd.enable":"off","ip.https.enable":"on","ip.http.admin_password":"Lebanon1111$$$","device.allow_firmware_downloads":"yes"}}}
+{}{"protect":{"authentication":{"username":"admin","password":"Lebanon1111$$$","type":"basic"},"operation":"set","set":{"device.prompted_network_reset":"yes"}}}
+

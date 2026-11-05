@@ -19,6 +19,9 @@ export function buildCarpentryFinishingCandidates(assemblies, inventoryRows, flo
       family_sku: p.family_sku,
       material_count: p.material_count,
       floor2_qty: qtyByAssembly.get(String(p.id)) || 0,
+      floor2_image_url: p.floor2_image_url || p.image_url || '',
+      image_url: p.floor2_image_url || p.image_url || '',
+      family_image_url: p.family_image_url || '',
     }))
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }

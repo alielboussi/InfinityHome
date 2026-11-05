@@ -1,6 +1,6 @@
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
-const CLIENT_SOURCE = 'carpentry_workshop_app';
+const CLIENT_SOURCE = 'warehouse_production_app';
 
 async function productionOp(op, body = {}) {
   return warehouseMobileRequest(op, body);
@@ -155,6 +155,7 @@ export async function createProductionProductOnly({
     packet_number: 1,
     qty_per_unit: 1,
     client_source: CLIENT_SOURCE,
+    portal_catalog: 'upholstery',
     defer_product_photo: true,
     require_product_photo: false,
     dim_length: dimLength,
@@ -230,6 +231,7 @@ export async function createProductionPacket({
     packet_number: 1,
     qty_per_unit: 1,
     client_source: CLIENT_SOURCE,
+    portal_catalog: 'upholstery',
     defer_product_photo: hasPhoto,
     require_product_photo: false,
     dim_length: dimLength,
@@ -348,8 +350,15 @@ export async function resolveProductionScan(scan) {
 const UPHOLSTERY_ROUTE = 'upholstery';
 
 export async function fetchUpholsteryProductionQuotes() {
-  const payload = await productionOp('production-quotes-list', { route: UPHOLSTERY_ROUTE });
-  return payload?.rows || payload?.quotes || [];
+  try {
+    const payload = await productionOp('production-quotes-list', { route: UPHOLSTERY_ROUTE });
+    return payload?.rows || payload?.quotes || [];
+  } catch (err) {
+    if (/unknown op/i.test(String(err?.message || ''))) {
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function acceptUpholsteryQuote(quoteId) {

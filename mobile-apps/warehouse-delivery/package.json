@@ -4,8 +4,9 @@
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "verify": "node scripts/verifyDeliveryApp.js",
-    "postinstall": "node scripts/ensureSharedLink.js && node scripts/mergeProductionSharedOverlay.js && node scripts/ensureDeliveryKitLink.js && node scripts/ensureDeliveryIcons.js",
-    "prestart": "node scripts/ensureSharedLink.js && node scripts/mergeProductionSharedOverlay.js && node scripts/ensureDeliveryKitLink.js && node scripts/verifyDeliveryApp.js",
+    "postinstall": "node scripts/materializeDeliveryStandalone.js && node scripts/applyDeliveryKitPatches.js && node scripts/assertDeliveryKitStandalone.js && node scripts/assertDeliverySharedStandalone.js && node scripts/ensureDeliveryIcons.js",
+    "prestart": "node scripts/assertDeliveryKitStandalone.js && node scripts/assertDeliverySharedStandalone.js && node scripts/verifyDeliveryApp.js",
+    "materialize": "node scripts/materializeDeliveryStandalone.js",
     "icons": "node scripts/ensureDeliveryIcons.js",
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
@@ -41,8 +42,12 @@
     "react-native-zeroconf": "^0.17.6"
   },
   "devDependencies": {
+    "@react-native/babel-plugin-codegen": "0.88.1",
     "babel-preset-expo": "~58.0.0",
     "sharp": "^0.34.5"
+  },
+  "overrides": {
+    "@react-native/babel-plugin-codegen": "0.88.1"
   },
   "private": true
 }

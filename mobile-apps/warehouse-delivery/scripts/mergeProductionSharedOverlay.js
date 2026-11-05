@@ -6,7 +6,7 @@ const path = require('path');
 
 const appRoot = path.resolve(__dirname, '..');
 const sharedPath = path.join(appRoot, 'shared');
-const overlayPath = path.resolve(appRoot, '..', 'warehouse-production', 'shared');
+const overlayPath = path.resolve(appRoot, '..', 'warehouse-upholstery', 'shared');
 
 if (!fs.existsSync(sharedPath)) {
   console.warn('[mergeProductionSharedOverlay] missing shared at', sharedPath);

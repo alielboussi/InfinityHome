@@ -7,6 +7,7 @@ import KioskSafeScroll from '../components/KioskSafeScroll';
 import { kiosk } from '../components/kioskStyles';
 import { sortDeliveryDriversByName } from '../lib/sortDeliveryDrivers';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
+import { useDeliveryDrivers } from '../../hooks/useDeliveryDrivers';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { saveLocalSentDelivery } from '../lib/deliverySentLocalStore';
 import { clearDeliveryWorkspace } from '../lib/productionDeliveryWorkspaceCache';
@@ -42,10 +43,10 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
     || getProductionDispatcherLabelSync()
     || '';
 
-  const [drivers, setDrivers] = useState([]);
   const [driverId, setDriverId] = useState('');
   const [driverName, setDriverName] = useState('');
   const [driverPickerOpen, setDriverPickerOpen] = useState(false);
+  const { drivers, loading: driversLoading } = useDeliveryDrivers();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sigValid, setSigValid] = useState(false);
@@ -56,11 +57,6 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
     }
   }, [sessionId, groups.length, navigation]);
 
-  useEffect(() => {
-    warehouseMobileRequest('delivery-drivers-list')
-      .then((res) => setDrivers(res?.drivers || []))
-      .catch(() => setDrivers([]));
-  }, []);
 
   useEffect(() => {
     if (!busy) return undefined;
@@ -237,6 +233,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         visible={driverPickerOpen}
         title={tUi('deliveryDriver', locale)}
         drivers={sortDeliveryDriversByName(drivers)}
+        loading={driversLoading}
         locale={locale}
         textAlign={textAlign}
         selectedDriverId={driverId}

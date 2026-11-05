@@ -13,6 +13,7 @@ export default function SoldDeliverDoneScreen({ route, navigation }) {
   const driverName = route.params?.driverName || '';
   const supervisorName = route.params?.supervisorName || '';
   const printGroups = route.params?.printGroups || [];
+  const driverSignatureDataUri = route.params?.driverSignatureDataUri || '';
   const driverSignatureUrl = route.params?.driverSignatureUrl || '';
   const submittedAt = route.params?.submittedAt || '';
   const customerName = route.params?.customerName || '';

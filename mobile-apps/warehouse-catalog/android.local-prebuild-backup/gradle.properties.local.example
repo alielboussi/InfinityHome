@@ -1,0 +1,4 @@
+# Copy to gradle.properties.local (gitignored) and set your JDK 17 install path.
+# Android Studio reads org.gradle.java.home and uses it for this project.
+#
+# org.gradle.java.home=C\:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot

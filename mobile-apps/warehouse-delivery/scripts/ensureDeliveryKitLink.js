@@ -3,7 +3,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const appRoot = path.resolve(__dirname, '..');
-const productionRoot = path.resolve(appRoot, '..', 'warehouse-production');
+const upholsteryRoot = path.resolve(appRoot, '..', 'warehouse-upholstery');
 const linkPath = path.join(appRoot, 'deliveryKit');
 const marker = path.join(linkPath, 'screens', 'KitweSendHomeScreen.js');
 
@@ -11,8 +11,8 @@ function linkIsValid() {
   return fs.existsSync(marker);
 }
 
-if (!fs.existsSync(productionRoot)) {
-  console.error('[ensureDeliveryKitLink] missing warehouse-production at', productionRoot);
+if (!fs.existsSync(upholsteryRoot)) {
+  console.error('[ensureDeliveryKitLink] missing warehouse-upholstery at', upholsteryRoot);
   process.exit(1);
 }
 
@@ -26,9 +26,9 @@ if (linkIsValid()) {
 }
 
 if (process.platform === 'win32') {
-  execSync(`cmd /c mklink /J "${linkPath}" "${productionRoot}"`, { stdio: 'inherit' });
+  execSync(`cmd /c mklink /J "${linkPath}" "${upholsteryRoot}"`, { stdio: 'inherit' });
 } else {
-  fs.symlinkSync(productionRoot, linkPath, 'dir');
+  fs.symlinkSync(upholsteryRoot, linkPath, 'dir');
 }
 
 if (!linkIsValid()) {
@@ -36,4 +36,4 @@ if (!linkIsValid()) {
   process.exit(1);
 }
 
-console.log('[ensureDeliveryKitLink] linked deliveryKit ->', productionRoot);
+console.log('[ensureDeliveryKitLink] linked deliveryKit ->', upholsteryRoot);

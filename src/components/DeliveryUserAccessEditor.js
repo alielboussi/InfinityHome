@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
 import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import {
+  buildMobileScreenAccessRow,
   defaultMobileAccessGrant,
-  isWarehouseProductionKitweDeliveryAllowed,
   sanitizeMobileAccessGrantForUser,
 } from '../mobile/mobileAccessManifest';
 
@@ -42,6 +42,18 @@ function normalizeGrant(raw) {
   };
 }
 
+/** Delivery app uses warehouse_delivery_app only — clear legacy Kitwe flags on save. */
+function grantForDeliverySave(grant) {
+  return {
+    ...grant,
+    warehouse_production_kitwe: 'deny',
+    screens: {
+      ...(grant.screens || {}),
+      kitwe_send_delivery: buildMobileScreenAccessRow(false),
+    },
+  };
+}
+
 export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) {
   const [grant, setGrant] = useState(() => normalizeGrant(userRow?.mobile_access));
   const [appDisplayName, setAppDisplayName] = useState(() => userRow?.mobile_display_name || '');
@@ -66,7 +78,10 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
     setBusy(true);
     setError('');
     try {
-      const payload = sanitizeMobileAccessGrantForUser(grant, userRow.email);
+      const payload = sanitizeMobileAccessGrantForUser(
+        grantForDeliverySave(grant),
+        userRow.email,
+      );
       const updated = await saveDeliveryAppAccess(
         userRow.id,
         payload,
@@ -86,8 +101,6 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
 
   const displayName = userRow.display_name || userRow.email || 'User';
   const deliveryChecked = grant.warehouse_delivery_app === 'allow';
-  const legacyKitwe = isWarehouseProductionKitweDeliveryAllowed(userRow?.mobile_access)
-    && userRow?.mobile_access?.warehouse_delivery_app !== 'allow';
 
   return (
     <div className="mobile-access-panel" role="dialog" aria-labelledby="delivery-access-title">
@@ -142,12 +155,6 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
             </label>
           </div>
         </div>
-        {legacyKitwe ? (
-          <p className="mobile-access-panel__hint" style={{ marginTop: 12 }}>
-            This user still has <strong>Production → Send to Kitwe</strong> enabled (legacy). They can use the
-            Delivery app until you turn that off or save with Delivery access only.
-          </p>
-        ) : null}
       </div>
 
       <div className="mobile-access-panel__section">
