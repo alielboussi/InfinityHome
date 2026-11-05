@@ -40,6 +40,7 @@ import { sendWarehouseDeliveryWhatsApp } from '../lib/sendWarehouseDeliveryWhats
 import { buildWarehouseDeliveryNotePdfBase64 } from '../lib/buildWarehouseDeliveryNotePdfBase64.js';
 import { normalizeMobileAccessGrant } from '../lib/mobileAccessDefaults.js';
 import {
+  evaluateCarpentryWorkshopAppAccess,
   evaluateWarehouseProductionAppAccess,
   isMobileScreenAccessAllowed,
   isWarehouseCatalogAddProductAllowed,
@@ -316,7 +317,20 @@ async function assertProductionKioskUser(user) {
   if (evaluateWarehouseProductionAppAccess(grant, user?.email)) {
     return grant;
   }
+  if (evaluateCarpentryWorkshopAppAccess(grant, user?.email)) {
+    return grant;
+  }
   const err = new Error('You do not have access to warehouse production.');
+  err.status = 403;
+  throw err;
+}
+
+async function assertCarpentryWorkshopUser(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  if (evaluateCarpentryWorkshopAppAccess(grant, user?.email)) {
+    return grant;
+  }
+  const err = new Error('You do not have access to the carpentry workshop app.');
   err.status = 403;
   throw err;
 }
@@ -384,6 +398,95 @@ async function opProductionAccessSelf(user) {
     display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
     grant,
   };
+}
+
+async function opCarpentryAccessSelf(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  const record = await getLoginAccessRecord(user?.id);
+  return {
+    allowed: evaluateCarpentryWorkshopAppAccess(grant, user?.email),
+    display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
+    grant,
+  };
+}
+
+async function opCarpentryCatalogList(user) {
+  await assertCarpentryWorkshopUser(user);
+  const sb = createFirestoreServerClient();
+  const { data: assemblies, error } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name, family_sku, item_kind, metadata');
+  if (error) throw new Error(error.message || 'Failed to load carpentry catalog');
+  const { listCarpentryCatalogProducts } = await import('../lib/carpentryCatalog.js');
+  return { carpentryProducts: listCarpentryCatalogProducts(assemblies || []) };
+}
+
+async function opUpholsteryCatalogList(user) {
+  await assertProductionKioskUser(user);
+  const sb = getService();
+  const { data: assemblies, error } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name, family_sku, item_kind, metadata');
+  if (error) throw new Error(error.message || 'Failed to load upholstery catalog');
+  const { listUpholsteryCatalogProducts } = await import('../lib/upholsteryCatalog.js');
+  return { products: listUpholsteryCatalogProducts(assemblies || []) };
+}
+
+async function opUpholsteryManufactureList(user) {
+  await assertProductionKioskUser(user);
+  const sb = getService();
+  const { listUpholsteryManufactureCandidates } = await import('../lib/upholsteryManufacture.js');
+  return listUpholsteryManufactureCandidates(sb);
+}
+
+async function opUpholsteryManufacture(body, user) {
+  await assertProductionKioskUser(user);
+  const rawAssemblyId = String(body.raw_assembly_id || body.rawAssemblyId || body.assembly_id || '').trim();
+  if (!rawAssemblyId) throw new Error('raw_assembly_id required');
+  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
+  const sb = getService();
+  const { executeUpholsteryManufacture } = await import('../lib/upholsteryManufacture.js');
+  return executeUpholsteryManufacture(sb, {
+    rawAssemblyId,
+    productQty,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opCarpentryManufacture(body, user) {
+  await assertCarpentryWorkshopUser(user);
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
+  if (!assemblyId) throw new Error('assembly_id required');
+  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
+  const sb = createFirestoreServerClient();
+  const { executeCarpentryFloorManufacture } = await import('../lib/carpentryManufacture.js');
+  return executeCarpentryFloorManufacture(sb, {
+    assemblyId,
+    productQty,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opCarpentryFinishingList(user) {
+  await assertCarpentryWorkshopUser(user);
+  const sb = createFirestoreServerClient();
+  const { listCarpentryFinishingCandidates } = await import('../lib/carpentryFinishing.js');
+  return listCarpentryFinishingCandidates(sb);
+}
+
+async function opCarpentryFinishing(body, user) {
+  await assertCarpentryWorkshopUser(user);
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
+  if (!assemblyId) throw new Error('assembly_id required');
+  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
+  const sb = createFirestoreServerClient();
+  const { executeCarpentryFinishing } = await import('../lib/carpentryFinishing.js');
+  return executeCarpentryFinishing(sb, {
+    assemblyId,
+    productQty,
+    userId: user?.id || user?.uid,
+    channel: 'carpentry_workshop_app',
+  });
 }
 
 async function removeProductionPacketDraft(sb, packetId) {
@@ -528,6 +631,17 @@ async function opProductionPacketCreate(body, user) {
       console.warn('[warehouse-mobile] production create log failed:', logErr?.message || logErr);
     }
 
+    try {
+      const { autoSelectProductionPortalCatalog } = await import('../lib/productionPortalAutoSelect.js');
+      await autoSelectProductionPortalCatalog(sb, assemblyId, {
+        clientSource,
+        portal_catalog: body.portal_catalog,
+        auto_portal_catalog: body.auto_portal_catalog,
+      });
+    } catch (portalErr) {
+      console.warn('[warehouse-mobile] portal catalog auto-select failed:', portalErr?.message || portalErr);
+    }
+
     const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
     const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
     const deferLabels = deferProductPhoto && labelCopies > 0;
@@ -644,6 +758,10 @@ async function opProductionStockIncrease(body, user) {
   let assembly = null;
 
   if (assemblyId) {
+    if (printSource === 'warehouse_production_app') {
+      const { assertUpholsteryCatalogAssembly } = await import('../lib/upholsteryCatalog.js');
+      await assertUpholsteryCatalogAssembly(sb, assemblyId);
+    }
     const { data: asmRow, error: aErr } = await sb
       .from('warehouse_assemblies')
       .select('id, name, family_sku, inventory_mode, image_url')
@@ -2614,6 +2732,30 @@ export default async function handler(req, res) {
         break;
       case 'production-access-self':
         result = await opProductionAccessSelf(user);
+        break;
+      case 'carpentry-access-self':
+        result = await opCarpentryAccessSelf(user);
+        break;
+      case 'carpentry-catalog-list':
+        result = await opCarpentryCatalogList(user);
+        break;
+      case 'upholstery-catalog-list':
+        result = await opUpholsteryCatalogList(user);
+        break;
+      case 'upholstery-manufacture-list':
+        result = await opUpholsteryManufactureList(user);
+        break;
+      case 'upholstery-manufacture':
+        result = await opUpholsteryManufacture(body, user);
+        break;
+      case 'carpentry-manufacture':
+        result = await opCarpentryManufacture(body, user);
+        break;
+      case 'carpentry-finishing-list':
+        result = await opCarpentryFinishingList(user);
+        break;
+      case 'carpentry-finishing':
+        result = await opCarpentryFinishing(body, user);
         break;
       case 'packet-name-check':
         result = await opPacketNameCheck(body);

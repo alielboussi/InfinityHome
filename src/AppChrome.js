@@ -5,7 +5,7 @@ import {
   FaCashRegister, FaQuoteRight, FaChartLine,
   FaUsers, FaWallet, FaClipboardList, FaTags,
   FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag
+  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag,   FaToolbox, FaIndustry, FaRuler,
 } from 'react-icons/fa';
 import { getCurrentUser, getHomeDashboardPath, HASSAN_AWAD, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyExperience, isPublicAppRoute, canManageCatalog } from './accessControl';
 import { preloadAppRoute, prefetchNavRoutesOnIdle } from './lazyPages';
@@ -20,13 +20,16 @@ const NAV_GROUPS = [
     ],
   },
   {
-    title: 'Sales',
+    title: 'Daily',
     items: [
       { label: 'Customers', route: '/customers', icon: FaUsers },
       { label: 'POS', route: '/all-sales', icon: FaCashRegister },
       { label: 'Laybys', route: '/layby-management', icon: FaClipboardList },
       { label: 'Factory Orders', route: '/quotes-board', icon: FaQuoteRight },
       { label: 'Reversal', route: '/reversal', icon: FaUndo },
+      { label: 'Deliveries', route: '/warehouse-deliveries-admin', icon: FaTruckLoading, catalogOnly: true },
+      { label: 'Repairs', route: '/warehouse-repairs-admin', icon: FaUndo, catalogOnly: true },
+      { label: 'Sales Storage', route: '/warehouse-sales-storage-admin', icon: FaShoppingBag, catalogOnly: true },
     ],
   },
   {
@@ -36,15 +39,30 @@ const NAV_GROUPS = [
     ],
   },
   {
+    title: 'Warehouses',
+    items: [
+      { label: 'Warehouse Floor 2', route: '/warehouse-floor-2', icon: FaIndustry, catalogOnly: true },
+      { label: 'Warehouse Floor 1', route: '/warehouse-products', icon: FaBoxOpen },
+    ],
+  },
+  {
+    title: 'Materials',
+    subtitle: 'Storerooms 1–3 · BOM stock for carpentry & upholstery',
+    items: [
+      { label: 'Storeroom 1', route: '/carpentry-warehouse/1', icon: FaBoxOpen, catalogOnly: true },
+      { label: 'Storeroom 2', route: '/carpentry-warehouse/2', icon: FaBoxOpen, catalogOnly: true },
+      { label: 'Storeroom 3', route: '/carpentry-warehouse/3', icon: FaBoxOpen, catalogOnly: true },
+      { label: 'Units of measure', route: '/materials-uom', icon: FaRuler, catalogOnly: true },
+    ],
+  },
+  {
     title: 'Inventory',
     items: [
       { label: 'Categories', route: '/categories', icon: FaThLarge },
       { label: 'Products', route: '/products-list', icon: FaTags },
       { label: 'Kitwe', route: '/kitwe-products', icon: FaTags },
-      { label: 'Warehouse', route: '/warehouse-products', icon: FaBoxOpen },
-      { label: 'Deliveries', route: '/warehouse-deliveries-admin', icon: FaTruckLoading, catalogOnly: true },
-      { label: 'Repairs', route: '/warehouse-repairs-admin', icon: FaUndo, catalogOnly: true },
-      { label: 'Sales Storage', route: '/warehouse-sales-storage-admin', icon: FaShoppingBag, catalogOnly: true },
+      { label: 'Upholstery', route: '/upholstery', icon: FaPlus, catalogOnly: true },
+      { label: 'Carpentry', route: '/carpentry', icon: FaToolbox, catalogOnly: true },
       { label: 'Production', route: '/production', icon: FaPlus, catalogOnly: true },
       { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
       { label: 'Print Labels', route: '/price-labels', icon: FaPrint },
@@ -160,7 +178,14 @@ const TITLE_MAP = {
   '/products': 'Products',
   '/products-list': 'Products',
   '/products-list/locations': 'Product locations',
-  '/warehouse-products': 'Warehouse',
+  '/warehouse-products': 'Warehouse Floor 1',
+  '/upholstery': 'Upholstery',
+  '/carpentry': 'Carpentry',
+  '/carpentry-warehouse/1': 'Storeroom 1',
+  '/carpentry-warehouse/2': 'Storeroom 2',
+  '/carpentry-warehouse/3': 'Storeroom 3',
+  '/materials-uom': 'Units of measure',
+  '/warehouse-floor-2': 'Warehouse Floor 2',
   '/warehouse-products/packets': 'Packets (Warehouse)',
   '/production': 'Production',
   '/production-report': 'Production Report',
@@ -325,6 +350,11 @@ export default function AppChrome() {
         {visibleGroups.map((group, groupIndex) => (
           <div className="ent-drawer-group" key={group.id || `${group.title}-${groupIndex}`}>
             <div className="ent-drawer-group-title">{group.title}</div>
+            {group.subtitle ? (
+              <div className="ent-drawer-group-subtitle" style={{ fontSize: 11, opacity: 0.72, padding: '0 12px 6px', lineHeight: 1.35 }}>
+                {group.subtitle}
+              </div>
+            ) : null}
             {group.items.map(item => {
               const Icon = item.icon;
               const active = isItemActive(item);

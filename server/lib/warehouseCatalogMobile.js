@@ -31,6 +31,7 @@ import {
 import { assemblyDerivesWarehouseStockFromPackets } from '../../src/utils/warehouseAssemblyMath.js';
 import { setWarehousePacketQuantityServer } from './warehouseLocationStockRecompute.js';
 import { listProductionPresetsGrouped } from './warehouseProductionPresets.js';
+import { listCarpentryFloorRuns } from './carpentryCatalog.js';
 import {
   buildWarehouseCategoryIndex,
   resolveWarehouseCategoryName,

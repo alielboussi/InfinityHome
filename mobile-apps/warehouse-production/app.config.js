@@ -36,7 +36,7 @@ const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r
 
 module.exports = {
   expo: {
-    name: 'Production',
+    name: 'Upholstery',
     owner: 'alielboussi',
     slug: 'warehouse-production',
     scheme: 'warehouse-production',

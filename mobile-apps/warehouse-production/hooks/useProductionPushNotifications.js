@@ -1,28 +1,26 @@
 import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
-import { isWarehouseProductionKitweDeliveryAllowed } from '../shared/mobileAccessManifest';
 import {
   navigateFromProductionNotification,
   registerProductionPushTokenWithServer,
 } from '../lib/productionPushNotifications';
 
 /**
- * Register Expo push + open Sold/Returns when Hassan creates returns or storage sends.
+ * Register Expo push for upholstery production alerts (quote orders, etc.).
  */
-export function useProductionPushNotifications(navigationRef, { grant, allowed } = {}) {
+export function useProductionPushNotifications(navigationRef, { allowed } = {}) {
   const registered = useRef(false);
-  const kitwe = grant && isWarehouseProductionKitweDeliveryAllowed(grant);
 
   useEffect(() => {
-    if (!allowed || !kitwe) return undefined;
+    if (!allowed) return undefined;
     if (registered.current) return undefined;
     registered.current = true;
     registerProductionPushTokenWithServer().catch(() => {});
     return undefined;
-  }, [allowed, kitwe]);
+  }, [allowed]);
 
   useEffect(() => {
-    if (!allowed || !kitwe) return undefined;
+    if (!allowed) return undefined;
     const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response?.notification?.request?.content?.data || {};
       navigateFromProductionNotification(navigationRef, data);
@@ -34,5 +32,5 @@ export function useProductionPushNotifications(navigationRef, { grant, allowed }
       subResponse.remove();
       subReceived.remove();
     };
-  }, [allowed, kitwe, navigationRef]);
+  }, [allowed, navigationRef]);
 }

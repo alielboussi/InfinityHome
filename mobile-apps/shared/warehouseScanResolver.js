@@ -7,6 +7,7 @@
  * (3) unknown scan / search → normalizeWarehouseCatalogSearchQuery.
  */
 
+/** Normalize warehouse / packet SKU for comparison (trim + strip Code128 / GS1 control chars). */
 export function sanitizeWarehouseScannerInput(value) {
   let s = String(value ?? '');
   // eslint-disable-next-line no-control-regex -- strip GS1 FNC1 / Code128 prefix control bytes from scans

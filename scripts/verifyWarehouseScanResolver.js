@@ -16,6 +16,7 @@ const webSrc = fs.readFileSync(webPath, 'utf8');
 const mobileSrc = fs.readFileSync(mobilePath, 'utf8');
 
 for (const fn of [
+  'sanitizeWarehouseScannerInput',
   'stripFactoryLotSuffix',
   'stripProductLotPrefix',
   'stripIstikbalXDigitScanPrefix',

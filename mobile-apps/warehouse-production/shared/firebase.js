@@ -37,7 +37,18 @@ function resolveFirebaseConfig() {
 
 const firebaseConfig = resolveFirebaseConfig();
 
+const AUTH_GLOBAL_KEY = '__infinity_mobile_firebase_auth__';
 let authInstance = null;
+
+function getGlobalAuth() {
+  return globalThis[AUTH_GLOBAL_KEY] || null;
+}
+
+function setGlobalAuth(auth) {
+  if (auth) globalThis[AUTH_GLOBAL_KEY] = auth;
+  authInstance = auth;
+  return auth;
+}
 
 function loadAsyncStorage() {
   try {
@@ -49,28 +60,36 @@ function loadAsyncStorage() {
 }
 
 function initAuth(app) {
+  const existing = getGlobalAuth();
+  if (existing) return existing;
+
   const AsyncStorage = loadAsyncStorage();
   if (AsyncStorage) {
     try {
-      return initializeAuth(app, {
+      return setGlobalAuth(initializeAuth(app, {
         persistence: getReactNativePersistence(AsyncStorage),
-      });
+      }));
     } catch (error) {
       if (error?.code === 'auth/already-initialized') {
-        return authInstance || getAuth(app);
+        return setGlobalAuth(getAuth(app));
       }
       throw error;
     }
   }
-  return getAuth(app);
+  return setGlobalAuth(getAuth(app));
 }
 
 export function getFirebaseApp() {
   if (!getApps().length) {
     const app = initializeApp(firebaseConfig);
-    authInstance = initAuth(app);
+    initAuth(app);
+    return app;
   }
-  return getApps()[0];
+  const app = getApps()[0];
+  if (!getGlobalAuth()) {
+    initAuth(app);
+  }
+  return app;
 }
 
 export function getDb() {
@@ -78,8 +97,22 @@ export function getDb() {
 }
 
 export function getFirebaseAuth() {
+  const globalAuth = getGlobalAuth();
+  if (globalAuth) {
+    authInstance = globalAuth;
+    return globalAuth;
+  }
   if (!authInstance) {
     getFirebaseApp();
+  }
+  if (!authInstance && getApps().length) {
+    authInstance = getAuth(getApps()[0]);
+    setGlobalAuth(authInstance);
+  }
+  if (!authInstance) {
+    throw new Error(
+      'Firebase Auth failed to initialize. Check firebase config in app.config.js / EXPO_PUBLIC_FIREBASE_*.',
+    );
   }
   return authInstance;
 }

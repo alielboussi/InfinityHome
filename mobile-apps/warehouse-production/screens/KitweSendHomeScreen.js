@@ -20,6 +20,11 @@ import {
 } from '../lib/deliveryAssemblyChecks';
 import { assembliesUsingPacket, findWarehousePacketByScan } from '../lib/deliveryPacketAssemblies';
 import { filterAssembliesForDeliverySearch } from '../lib/deliveryCatalogSearch';
+import {
+  deliveryWarehouseAssemblyIdSet,
+  filterAssembliesForDeliveryWarehouse,
+  filterAssembliesToDeliveryWarehouse,
+} from '../lib/deliveryWarehouseCatalog';
 import { resolveDeliveryCatalogScan } from '../lib/deliveryScanResolve';
 import {
   hasIncompletePacketCartonBom,
@@ -85,7 +90,15 @@ export default function KitweSendHomeScreen({ navigation }) {
   const [pickModal, setPickModal] = useState(null);
   const [sessionOpening, setSessionOpening] = useState(false);
 
-  const assemblies = catalog?.assemblies || [];
+  const allAssemblies = catalog?.assemblies || [];
+  const deliveryAssemblies = useMemo(
+    () => filterAssembliesForDeliveryWarehouse(catalog),
+    [catalog],
+  );
+  const deliveryAssemblyIds = useMemo(
+    () => deliveryWarehouseAssemblyIdSet(catalog),
+    [catalog],
+  );
   const packets = catalog?.packets || [];
   const links = catalog?.assemblyPackets || [];
   const setItems = catalog?.setItems || [];
@@ -96,15 +109,15 @@ export default function KitweSendHomeScreen({ navigation }) {
   );
 
   const filtered = useMemo(
-    () => filterAssembliesForDeliverySearch(assemblies, search, { limit: 25 }),
-    [assemblies, search],
+    () => filterAssembliesForDeliverySearch(deliveryAssemblies, search, { limit: 25 }),
+    [deliveryAssemblies, search],
   );
 
   const draftPacketRows = draftAssemblyId
     ? (byAssembly.get(String(draftAssemblyId)) || [])
     : [];
-  const draftAssembly = assemblies.find((a) => String(a.id) === String(draftAssemblyId));
-  const draftSetAssembly = assemblies.find((a) => String(a.id) === String(draftSetId));
+  const draftAssembly = allAssemblies.find((a) => String(a.id) === String(draftAssemblyId));
+  const draftSetAssembly = allAssemblies.find((a) => String(a.id) === String(draftSetId));
   const draftIsFinishedOnly = draftAssembly
     ? isFinishedProductWithoutPacketBom(draftAssembly, draftPacketRows)
     : false;
@@ -186,19 +199,27 @@ export default function KitweSendHomeScreen({ navigation }) {
   }, []);
 
   const selectSetForDraft = useCallback((setAssembly) => {
+    if (!deliveryAssemblyIds.has(String(setAssembly?.id))) {
+      setError(tUi('deliveryScanNotInWarehouse', locale));
+      return;
+    }
     setSearch('');
     Keyboard.dismiss();
     setDraftAssemblyId('');
     setDraftSetId(setAssembly.id);
     setDraftSetComponents(
-      initSetDraftComponents(setAssembly.id, unitsNum, setItems, assemblies, byAssembly),
+      initSetDraftComponents(setAssembly.id, unitsNum, setItems, allAssemblies, byAssembly),
     );
     setDraftChecks({});
     setDraftFinishedConfirmed(false);
     setError('');
-  }, [assemblies, byAssembly, setItems, unitsNum]);
+  }, [allAssemblies, byAssembly, deliveryAssemblyIds, locale, setItems, unitsNum]);
 
   const selectAssemblyForDraft = useCallback((a) => {
+    if (!a?.id || !deliveryAssemblyIds.has(String(a.id))) {
+      setError(tUi('deliveryScanNotInWarehouse', locale));
+      return;
+    }
     if (isWarehouseSetAssembly(a)) {
       selectSetForDraft(a);
       return;
@@ -210,7 +231,7 @@ export default function KitweSendHomeScreen({ navigation }) {
     setDraftChecks(buildDeliveryPacketChecks(rows, unitsNum, {}));
     setDraftFinishedConfirmed(false);
     setError('');
-  }, [byAssembly, unitsNum, selectSetForDraft]);
+  }, [byAssembly, unitsNum, selectSetForDraft, deliveryAssemblyIds, locale]);
 
   useEffect(() => {
     if (!draftSetId) return;
@@ -241,17 +262,21 @@ export default function KitweSendHomeScreen({ navigation }) {
   const handleScanValue = useCallback((raw) => {
     const value = String(raw || '').trim();
     if (!value) return;
-    if (!packets.length && !assemblies.length) {
+    if (!packets.length && !deliveryAssemblies.length) {
       setError(tUi('loading', locale));
       return;
     }
 
     const resolved = resolveDeliveryCatalogScan(value, {
-      assemblies,
+      assemblies: deliveryAssemblies,
       packets,
       assemblyPackets: links,
     });
     if (resolved?.kind === 'assembly' || resolved?.kind === 'assembly_box') {
+      if (!deliveryAssemblyIds.has(String(resolved.assembly?.id))) {
+        setError(tUi('deliveryScanNotInWarehouse', locale));
+        return;
+      }
       setError('');
       setSearch(resolved.assembly.name || value);
       selectAssemblyForDraft(resolved.assembly);
@@ -263,9 +288,12 @@ export default function KitweSendHomeScreen({ navigation }) {
     }
     if (resolved?.kind === 'packet' && resolved.packet) {
       const packet = resolved.packet;
-      const productCandidates = assembliesUsingPacket(packet.id, links, assemblies, packets);
+      const productCandidates = filterAssembliesToDeliveryWarehouse(
+        catalog,
+        assembliesUsingPacket(packet.id, links, allAssemblies, packets),
+      );
       if (!productCandidates.length) {
-        setError(tUi('deliveryScanNoProduct', locale));
+        setError(tUi('deliveryScanNotInWarehouse', locale));
         return;
       }
       setError('');
@@ -278,6 +306,10 @@ export default function KitweSendHomeScreen({ navigation }) {
       return;
     }
     if (resolved?.kind === 'assembly_sku_needs_carton') {
+      if (!deliveryAssemblyIds.has(String(resolved.assembly?.id))) {
+        setError(tUi('deliveryScanNotInWarehouse', locale));
+        return;
+      }
       setError('');
       setSearch(resolved.assembly.name || value);
       selectAssemblyForDraft(resolved.assembly);
@@ -286,7 +318,7 @@ export default function KitweSendHomeScreen({ navigation }) {
 
     const packet = findWarehousePacketByScan(value, packets);
     if (!packet) {
-      const nameHits = filterAssembliesForDeliverySearch(assemblies, value, { limit: 1 });
+      const nameHits = filterAssembliesForDeliverySearch(deliveryAssemblies, value, { limit: 1 });
       if (nameHits.length === 1) {
         setError('');
         selectAssemblyForDraft(nameHits[0]);
@@ -295,9 +327,12 @@ export default function KitweSendHomeScreen({ navigation }) {
       setError(tUi('deliveryScanNoPacket', locale));
       return;
     }
-    const candidates = assembliesUsingPacket(packet.id, links, assemblies, packets);
+    const candidates = filterAssembliesToDeliveryWarehouse(
+      catalog,
+      assembliesUsingPacket(packet.id, links, allAssemblies, packets),
+    );
     if (!candidates.length) {
-      setError(tUi('deliveryScanNoProduct', locale));
+      setError(tUi('deliveryScanNotInWarehouse', locale));
       return;
     }
     setError('');
@@ -307,7 +342,17 @@ export default function KitweSendHomeScreen({ navigation }) {
     }
     const label = `#${packet.packet_number || ''} ${packet.name || ''}`.trim();
     setPickModal({ packet, assemblies: candidates, packetLabel: label });
-  }, [packets, links, assemblies, locale, applyAssemblyWithPacket, selectAssemblyForDraft]);
+  }, [
+    allAssemblies,
+    applyAssemblyWithPacket,
+    catalog,
+    deliveryAssemblies,
+    deliveryAssemblyIds,
+    links,
+    locale,
+    packets,
+    selectAssemblyForDraft,
+  ]);
 
   const toggleDraftPacket = (packetId, requiredQty) => {
     setDraftChecks((prev) => {
@@ -559,13 +604,13 @@ export default function KitweSendHomeScreen({ navigation }) {
   const validateCartForSubmit = () => {
     for (const g of groups) {
       if (isWarehouseSetDeliveryGroup(g)) {
-        const setErr = validateSetGroupInCart(g, assemblies, byAssembly);
+        const setErr = validateSetGroupInCart(g, allAssemblies, byAssembly);
         if (setErr) {
           return tUi('deliveryCheckAllPackets', locale).replace('{name}', setErr);
         }
         continue;
       }
-      const asm = assemblies.find((a) => String(a.id) === String(g.assembly_id));
+      const asm = allAssemblies.find((a) => String(a.id) === String(g.assembly_id));
       const rows = byAssembly.get(String(g.assembly_id)) || [];
       if (asm && isFinishedProductWithoutPacketBom(asm, rows)) {
         if (!g.finished_driver_checked) {
@@ -631,7 +676,7 @@ export default function KitweSendHomeScreen({ navigation }) {
             finished_driver_checked_at: g.finished_driver_checked_at,
           };
         }),
-        printGroups: buildPrintGroupsFromCart(groups, byAssembly, assemblies, setItems),
+        printGroups: buildPrintGroupsFromCart(groups, byAssembly, allAssemblies, setItems),
       });
     } catch (err) {
       const msg = err?.message || tUi('deliverySessionFailed', locale);
@@ -660,6 +705,12 @@ export default function KitweSendHomeScreen({ navigation }) {
           </Text>
           <Text style={[kiosk.metaLine, { textAlign, marginBottom: 0 }]}>
             {tUi('deliverySubtitle', locale)}
+          </Text>
+          <Text style={[kiosk.metaLine, { textAlign, marginTop: 6, opacity: 0.88 }]}>
+            {tUi('deliveryScopeHint', locale)}
+          </Text>
+          <Text style={[kiosk.metaLine, { textAlign, marginTop: 6, opacity: 0.88 }]}>
+            {tUi('deliveryScopeHint', locale)}
           </Text>
         </View>
 
@@ -877,7 +928,7 @@ export default function KitweSendHomeScreen({ navigation }) {
                 <View style={kiosk.cartPacketList}>
                   {(g.components || []).map((comp) => {
                     const rows = byAssembly.get(String(comp.assembly_id)) || [];
-                    const asm = assemblies.find((a) => String(a.id) === String(comp.assembly_id));
+                    const asm = allAssemblies.find((a) => String(a.id) === String(comp.assembly_id));
                     const finishedOnly = asm && isFinishedProductWithoutPacketBom(asm, rows);
                     const productQty = Math.max(
                       1,
@@ -928,7 +979,7 @@ export default function KitweSendHomeScreen({ navigation }) {
           }
 
           const packetRows = byAssembly.get(String(g.assembly_id)) || [];
-          const asm = assemblies.find((a) => String(a.id) === String(g.assembly_id));
+          const asm = allAssemblies.find((a) => String(a.id) === String(g.assembly_id));
           const finishedOnly = asm && isFinishedProductWithoutPacketBom(asm, packetRows);
           const u = Math.max(1, Number(g.units) || 1);
           const checkedCount = finishedOnly

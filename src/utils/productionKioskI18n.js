@@ -52,7 +52,14 @@ const UI_STRINGS = {
   deliveryTitle: { en: 'Send Delivery', ar: 'إرسال التسليم' },
   deliveryAddProductTitle: { en: 'Add product', ar: 'إضافة منتج' },
   deliverySentTitle: { en: 'Sent', ar: 'تم الإرسال' },
-  deliverySubtitle: { en: 'Factory → Kitwe delivery', ar: 'تسليم من المصنع إلى كيتوي' },
+  deliverySubtitle: {
+    en: 'Floor 1 only · Truck loads /warehouse-products scope',
+    ar: 'Floor 1 فقط · نطاق warehouse-products للشاحنات',
+  },
+  deliveryScopeHint: {
+    en: 'Finished goods, sets, and warehouse packets — not Floor 2 WIP.',
+    ar: 'منتجات نهائية ومجموعات وحزم المستودع — وليس WIP في Floor 2.',
+  },
   deliveryDriver: { en: 'Driver', ar: 'السائق' },
   deliveryDriverPlaceholder: { en: 'Choose driver', ar: 'اختر السائق' },
   deliveryAddProductBtn: { en: '+ Add warehouse product', ar: '+ إضافة منتج من المستودع' },

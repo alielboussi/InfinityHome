@@ -9,13 +9,24 @@ import {
   View,
 } from 'react-native';
 import { CameraView } from 'expo-camera';
+import Svg, { Line, Rect } from 'react-native-svg';
 import { theme } from '../shared/theme';
 import { tUi } from '../lib/productionKioskI18n';
-import { sanitizeWarehouseScannerInput } from '../shared/warehouseScanResolver';
+import { sanitizeWarehouseScannerInput as sanitizeScanFromShared } from '../shared/warehouseScanResolver';
 import {
   askProductionCameraPermission,
   readProductionCameraPermission,
 } from '../lib/productionCameraPermission';
+
+function sanitizeWarehouseScannerInput(value) {
+  if (typeof sanitizeScanFromShared === 'function') {
+    return sanitizeScanFromShared(value);
+  }
+  let s = String(value ?? '');
+  s = s.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+  s = s.replace(/^\][A-Z]\d/i, '');
+  return s.trim();
+}
 
 export default function ProductionQrScanModal({
   visible,
@@ -25,6 +36,7 @@ export default function ProductionQrScanModal({
 }) {
   const [permission, setPermission] = useState(null);
   const [permissionBusy, setPermissionBusy] = useState(false);
+  const [cameraBoxLayout, setCameraBoxLayout] = useState({ width: 0, height: 0 });
   const lastScanRef = useRef({ value: '', at: 0 });
   const granted = Boolean(permission?.granted);
 
@@ -44,14 +56,16 @@ export default function ProductionQrScanModal({
     }
   }, [granted, permissionBusy]);
 
-  const handleBarcode = useCallback(({ data }) => {
-    const value = sanitizeWarehouseScannerInput(data);
+  const handleBarcode = useCallback((event) => {
+    const raw = event?.data ?? event?.nativeEvent?.data ?? '';
+    const value = sanitizeWarehouseScannerInput(raw);
     if (!value) return;
     const now = Date.now();
     if (lastScanRef.current.value === value && now - lastScanRef.current.at < 1500) {
       return;
     }
     lastScanRef.current = { value, at: now };
+    if (typeof onScan !== 'function') return;
     onScan(value);
   }, [onScan]);
 
@@ -71,7 +85,13 @@ export default function ProductionQrScanModal({
             <ActivityIndicator size="large" color={theme.primary} />
           </View>
         ) : granted ? (
-          <View style={styles.cameraBox}>
+          <View
+            style={styles.cameraBox}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              setCameraBoxLayout({ width, height });
+            }}
+          >
             <CameraView
               style={StyleSheet.absoluteFill}
               barcodeScannerSettings={{
@@ -79,15 +99,47 @@ export default function ProductionQrScanModal({
               }}
               onBarcodeScanned={handleBarcode}
             />
-            <View style={styles.scanGuide} pointerEvents="none">
-              <View style={styles.scanDimTop} />
-              <View style={styles.scanLineRow}>
-                <View style={styles.scanLineCap} />
-                <View style={styles.scanLine} />
-                <View style={styles.scanLineCap} />
-              </View>
-              <View style={styles.scanDimBottom} />
-            </View>
+            {cameraBoxLayout.width > 0 && cameraBoxLayout.height > 0 ? (
+              <Svg
+                width={cameraBoxLayout.width}
+                height={cameraBoxLayout.height}
+                style={styles.scanSvg}
+                pointerEvents="none"
+              >
+                <Rect
+                  x={0}
+                  y={0}
+                  width={cameraBoxLayout.width}
+                  height={cameraBoxLayout.height / 2 - 6}
+                  fill="rgba(0,0,0,0.25)"
+                />
+                <Rect
+                  x={0}
+                  y={cameraBoxLayout.height / 2 + 6}
+                  width={cameraBoxLayout.width}
+                  height={cameraBoxLayout.height / 2 - 6}
+                  fill="rgba(0,0,0,0.25)"
+                />
+                <Line
+                  x1={16}
+                  y1={cameraBoxLayout.height / 2}
+                  x2={cameraBoxLayout.width - 16}
+                  y2={cameraBoxLayout.height / 2}
+                  stroke="#ffffff"
+                  strokeWidth={12}
+                  strokeLinecap="round"
+                />
+                <Line
+                  x1={16}
+                  y1={cameraBoxLayout.height / 2}
+                  x2={cameraBoxLayout.width - 16}
+                  y2={cameraBoxLayout.height / 2}
+                  stroke="#ff2d2d"
+                  strokeWidth={6}
+                  strokeLinecap="round"
+                />
+              </Svg>
+            ) : null}
           </View>
         ) : (
           <View style={styles.permissionBox}>
@@ -169,41 +221,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
   },
-  scanGuide: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-  },
-  scanDimTop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-  },
-  scanDimBottom: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-  },
-  scanLineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 4,
-  },
-  scanLine: {
-    flex: 1,
-    height: 4,
-    backgroundColor: '#ff4444',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.85)',
-    shadowColor: '#ff4444',
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
-  },
-  scanLineCap: {
-    width: 32,
-    height: 4,
-    backgroundColor: '#ff4444',
-    opacity: 0.9,
+  scanSvg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 10,
+    elevation: 10,
   },
   allowBtn: {
     minHeight: 52,

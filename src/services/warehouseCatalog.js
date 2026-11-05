@@ -151,7 +151,7 @@ async function fetchWarehouseCatalogFresh() {
 /**
  * One SKU namespace: warehouse products, warehouse packets, and legacy products.
  */
-async function assertUniqueWarehouseSku(sku, {
+export async function assertUniqueWarehouseSku(sku, {
   excludeAssemblyId,
   excludePacketId,
   linkedAssemblyId,

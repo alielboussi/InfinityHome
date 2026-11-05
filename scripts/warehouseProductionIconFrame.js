@@ -43,8 +43,8 @@ async function applyRoundClip(pngBuffer) {
     .toBuffer();
 }
 
-async function buildIconPng(sourcePath, backgroundHex) {
-  const inner = Math.round(SIZE * ICON_CONTENT_SCALE);
+async function buildIconPng(sourcePath, backgroundHex, contentScale = ICON_CONTENT_SCALE) {
+  const inner = Math.round(SIZE * contentScale);
   const inset = Math.floor((SIZE - inner) / 2);
   const { r, g, b } = parseHex(backgroundHex);
 
@@ -71,7 +71,12 @@ async function buildIconPng(sourcePath, backgroundHex) {
   return applyRoundClip(flat);
 }
 
-async function postprocessWarehouseProductionIcons({ sourcePath, assetsDir } = {}) {
+async function postprocessWarehouseProductionIcons({
+  sourcePath,
+  assetsDir,
+  contentScale,
+  adaptiveContentScale,
+} = {}) {
   const root = path.resolve(__dirname, '..');
   const assets = assetsDir || path.join(root, 'mobile-apps/warehouse-production/assets');
   const defaultSource = path.join(root, 'ICON_PRODUCTION.png');
@@ -88,14 +93,17 @@ async function postprocessWarehouseProductionIcons({ sourcePath, assetsDir } = {
 
   const sampled = await sampleBackgroundHex(source);
   const backgroundHex = PRODUCTION_ICON_BACKGROUND || sampled;
-  const framed = await buildIconPng(source, backgroundHex);
+  const mainScale = contentScale ?? ICON_CONTENT_SCALE;
+  const adaptiveScale = adaptiveContentScale ?? mainScale;
+  const framed = await buildIconPng(source, backgroundHex, mainScale);
+  const adaptiveFramed = await buildIconPng(source, backgroundHex, adaptiveScale);
 
   const iconPath = path.join(assets, 'icon.png');
   const adaptivePath = path.join(assets, 'adaptive-icon.png');
   await sharp(framed).png().toFile(iconPath);
-  await sharp(framed).png().toFile(adaptivePath);
+  await sharp(adaptiveFramed).png().toFile(adaptivePath);
 
-  return { iconPath, adaptivePath, backgroundHex };
+  return { iconPath, adaptivePath, backgroundHex, mainScale, adaptiveScale };
 }
 
 module.exports = { postprocessWarehouseProductionIcons, ICON_CONTENT_SCALE, CORNER_RADIUS };

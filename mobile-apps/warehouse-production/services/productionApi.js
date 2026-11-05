@@ -1,6 +1,6 @@
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
-const CLIENT_SOURCE = 'warehouse_production_app';
+const CLIENT_SOURCE = 'carpentry_workshop_app';
 
 async function productionOp(op, body = {}) {
   return warehouseMobileRequest(op, body);
@@ -18,6 +18,24 @@ export async function fetchProductionAccess() {
 
 export async function fetchProductionCatalog() {
   return productionOp('catalog-list');
+}
+
+export async function fetchUpholsteryCatalogAssemblyIds() {
+  const payload = await productionOp('upholstery-catalog-list');
+  const rows = payload?.products || payload?.upholsteryProducts || [];
+  return rows.map((row) => String(row.id || row.assembly_id || '')).filter(Boolean);
+}
+
+export async function fetchUpholsteryManufactureProducts() {
+  const payload = await productionOp('upholstery-manufacture-list');
+  return payload?.products || [];
+}
+
+export async function runUpholsteryManufacture({ rawAssemblyId, productQty = 1 }) {
+  return productionOp('upholstery-manufacture', {
+    raw_assembly_id: rawAssemblyId,
+    product_qty: productQty,
+  });
 }
 
 /** Lightweight preset refresh — same data as portal /warehouse-production-presets. */
@@ -325,4 +343,34 @@ export async function printProductionLabel({ name, sku, copies = 1 }) {
 
 export async function resolveProductionScan(scan) {
   return productionOp('scan-resolve', { scan });
+}
+
+const UPHOLSTERY_ROUTE = 'upholstery';
+
+export async function fetchUpholsteryProductionQuotes() {
+  const payload = await productionOp('production-quotes-list', { route: UPHOLSTERY_ROUTE });
+  return payload?.rows || payload?.quotes || [];
+}
+
+export async function acceptUpholsteryQuote(quoteId) {
+  return productionOp('production-quote-accept', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+  });
+}
+
+export async function completeUpholsteryQuote(quoteId) {
+  return productionOp('production-quote-complete', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+  });
+}
+
+export async function scanUpholsteryQuoteMaterial(quoteId, scan, quantity = 1) {
+  return productionOp('production-quote-material-scan', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+    scan,
+    quantity,
+  });
 }

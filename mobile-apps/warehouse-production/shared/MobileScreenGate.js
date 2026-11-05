@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { canMobileScreenView } from './mobileAccessManifest';
+import { canMobileScreenView, isWarehouseProductionKitweDeliveryAllowed } from './mobileAccessManifest';
 import { theme } from './theme';
 
 /** Blocks stack screens unless /user-access allows view for screenId. */
 export default function MobileScreenGate({ screenId, grant, navigation, children }) {
-  const allowed = canMobileScreenView(grant, screenId);
+  const allowed = screenId === 'kitwe_send_delivery'
+    ? isWarehouseProductionKitweDeliveryAllowed(grant)
+    : canMobileScreenView(grant, screenId);
 
   useEffect(() => {
     if (!grant || allowed) return;

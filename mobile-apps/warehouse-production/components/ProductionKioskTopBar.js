@@ -6,19 +6,22 @@ export default function ProductionKioskTopBar({ title, locale, onToggleLocale, h
   const showLang = !hideLocaleToggle && typeof onToggleLocale === 'function';
   return (
     <View style={styles.header}>
-      <Text style={[kiosk.title, styles.titleFlex]} numberOfLines={2}>
+      <View style={styles.headerSide} />
+      <Text style={[kiosk.title, styles.titleCenter]} numberOfLines={2}>
         {title}
       </Text>
-      {showLang ? (
-      <Pressable
-        style={({ pressed }) => [kiosk.langBtn, pressed && styles.langBtnPressed]}
-        onPress={onToggleLocale}
-        accessibilityRole="button"
-        accessibilityLabel={tUi('translateToggle', locale)}
-      >
-        <Text style={kiosk.langBtnText}>{tUi('translateToggle', locale)}</Text>
-      </Pressable>
-      ) : null}
+      <View style={styles.headerSide}>
+        {showLang ? (
+          <Pressable
+            style={({ pressed }) => [kiosk.langBtn, pressed && styles.langBtnPressed]}
+            onPress={onToggleLocale}
+            accessibilityRole="button"
+            accessibilityLabel={tUi('translateToggle', locale)}
+          >
+            <Text style={kiosk.langBtnText}>{tUi('translateToggle', locale)}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -27,11 +30,17 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
     marginBottom: 12,
     minHeight: 48,
   },
-  titleFlex: { flex: 1, flexShrink: 1 },
+  headerSide: {
+    width: 92,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  titleCenter: {
+    flex: 1,
+    textAlign: 'center',
+  },
   langBtnPressed: { opacity: 0.85 },
 });

@@ -7,7 +7,6 @@ import { kioskFooterBottomPad } from '../lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../lib/productionDashLayout';
 import { theme } from '../shared/theme';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
-import { isWarehouseProductionKitweDeliveryAllowed } from '../shared/mobileAccessManifest';
 import { tUi } from '../lib/productionKioskI18n';
 
 function DashboardTile({ icon, title, width, height, onPress }) {
@@ -43,7 +42,6 @@ function DashboardTile({ icon, title, width, height, onPress }) {
 
 export default function DashboardScreen({
   navigation,
-  grant,
   userDisplayName,
   userEmail,
   allowed,
@@ -52,8 +50,7 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
-  const canSendDelivery = grant && isWarehouseProductionKitweDeliveryAllowed(grant);
-  const tileCount = canSendDelivery ? 6 : 2;
+  const tileCount = 4;
   const {
     tileWidth, tileHeight, gap, contentWidth,
   } = useProductionDashboardTileLayout(tileCount);
@@ -71,27 +68,18 @@ export default function DashboardScreen({
       title: tUi('dashStock', locale),
       onPress: () => navigation.navigate('Stock'),
     },
-    ...(canSendDelivery ? [{
-      key: 'delivery',
-      icon: 'truck-delivery-outline',
-      title: tUi('dashDelivery', locale),
-      onPress: () => navigation.navigate('KitweSendHome'),
-    }, {
-      key: 'sent',
-      icon: 'clipboard-text-clock-outline',
-      title: tUi('dashSentDeliveries', locale),
-      onPress: () => navigation.navigate('KitweSentDeliveries'),
-    }, {
-      key: 'returns',
-      icon: 'keyboard-return',
-      title: tUi('dashReturns', locale),
-      onPress: () => navigation.navigate('ReturnOrders'),
-    }, {
-      key: 'sold',
-      icon: 'cart-outline',
-      title: tUi('dashSold', locale),
-      onPress: () => navigation.navigate('SoldOrders'),
-    }] : []),
+    {
+      key: 'manufacture',
+      icon: 'factory',
+      title: tUi('dashManufacture', locale),
+      onPress: () => navigation.navigate('Manufacture'),
+    },
+    {
+      key: 'quotes',
+      icon: 'clipboard-text-outline',
+      title: tUi('dashUpholsteryQuoteOrders', locale),
+      onPress: () => navigation.navigate('UpholsteryQuotes'),
+    },
   ];
 
   if (!allowed) {
@@ -106,7 +94,12 @@ export default function DashboardScreen({
         },
       ]}
       >
-        <Text style={kiosk.noticeErr}>{tUi('accessDenied', ready ? locale : 'ar')}</Text>
+        <ProductionKioskTopBar
+          title={tUi('dashTitle', ready ? locale : 'en')}
+          locale={ready ? locale : 'en'}
+          onToggleLocale={toggleLocale}
+        />
+        <Text style={[kiosk.noticeErr, { textAlign: 'center' }]}>{tUi('accessDenied', ready ? locale : 'ar')}</Text>
         {userEmail ? (
           <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>Signed in as {userEmail}</Text>
         ) : (

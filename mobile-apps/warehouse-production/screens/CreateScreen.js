@@ -49,7 +49,9 @@ import {
 } from '../services/productionApi';
 import { isMattressCatalogProductName } from '../lib/isMattressCatalogProductName';
 import { formatProductionNameClashMessage } from '../lib/productionNameClashUi';
-export default function CreateScreen({ navigation }) {
+/** @param {'upholstery'|'carpentry'} presetGroup — upholstery = seater presets only; carpentry = carpentry presets only */
+export default function CreateScreen({ navigation, presetGroup = 'upholstery' }) {
+  const carpentryOnly = presetGroup === 'carpentry';
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
 
@@ -76,10 +78,10 @@ export default function CreateScreen({ navigation }) {
   const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
   const [recentBaseNames, setRecentBaseNames] = useState([]);
   const [catalogAssemblies, setCatalogAssemblies] = useState([]);
-  const [seaterPickerOpen, setSeaterPickerOpen] = useState(false);
-  const [carpentryPickerOpen, setCarpentryPickerOpen] = useState(false);
-  const [seaterPresets, setSeaterPresets] = useState(PRODUCTION_SEATER_PRESETS);
-  const [carpentryPresets, setCarpentryPresets] = useState(PRODUCTION_CARPENTRY_PRESETS);
+  const [presetPickerOpen, setPresetPickerOpen] = useState(false);
+  const [activePresets, setActivePresets] = useState(
+    carpentryOnly ? PRODUCTION_CARPENTRY_PRESETS : PRODUCTION_SEATER_PRESETS,
+  );
   const [presetArLabels, setPresetArLabels] = useState({});
   const [dimL, setDimL] = useState('');
   const [dimW, setDimW] = useState('');
@@ -108,20 +110,22 @@ export default function CreateScreen({ navigation }) {
     [baseNameEn, catalogAssemblies, recentBaseNames],
   );
 
-  const seaterPresetValue = preset && seaterPresets.includes(preset) ? preset : '';
-  const carpentryPresetValue = preset && carpentryPresets.includes(preset) ? preset : '';
+  const selectedPresetValue = preset && activePresets.includes(preset) ? preset : '';
 
   const applyRemotePresets = useCallback((data) => {
     if (!data) return;
+    if (carpentryOnly) {
+      const remoteCarpentry = data.carpentry_presets || data.carpentry || data.production_presets?.carpentry;
+      if (Array.isArray(remoteCarpentry) && remoteCarpentry.length) {
+        setActivePresets(remoteCarpentry);
+      }
+      return;
+    }
     const remoteSeater = data.seater_presets || data.seater || data.production_presets?.seater;
-    const remoteCarpentry = data.carpentry_presets || data.carpentry || data.production_presets?.carpentry;
     if (Array.isArray(remoteSeater) && remoteSeater.length) {
-      setSeaterPresets(remoteSeater);
+      setActivePresets(remoteSeater);
     }
-    if (Array.isArray(remoteCarpentry) && remoteCarpentry.length) {
-      setCarpentryPresets(remoteCarpentry);
-    }
-  }, []);
+  }, [carpentryOnly]);
 
   const reloadPresetsFromServer = useCallback(async () => {
     try {
@@ -166,13 +170,13 @@ export default function CreateScreen({ navigation }) {
         setPresetArLabels({});
         return;
       }
-      const labels = await prefetchPresetArabicLabels([...seaterPresets, ...carpentryPresets]);
+      const labels = await prefetchPresetArabicLabels([...activePresets]);
       if (!cancelled) setPresetArLabels(labels);
     })();
     return () => {
       cancelled = true;
     };
-  }, [locale, seaterPresets, carpentryPresets]);
+  }, [locale, activePresets]);
 
   const reloadRecentNames = useCallback(() => {
     refreshRecentProductionBaseNames().then(setRecentBaseNames).catch(() => {});
@@ -569,7 +573,7 @@ export default function CreateScreen({ navigation }) {
       ]}
     >
       <ProductionKioskTopBar
-        title={tUi('pageTitle', locale)}
+        title={tUi(carpentryOnly ? 'dashCarpentryTitle' : 'pageTitle', locale)}
         locale={locale}
         onToggleLocale={toggleLocale}
       />
@@ -642,12 +646,14 @@ export default function CreateScreen({ navigation }) {
             </View>
           ) : null}
           <View style={styles.dropdownColumn}>
-            <Text style={[kiosk.label, styles.groupLabel, { textAlign }]}>{tUi('seaterGroupLabel', locale)}</Text>
+            <Text style={[kiosk.label, styles.groupLabel, { textAlign }]}>
+              {tUi(carpentryOnly ? 'carpentryGroupLabel' : 'seaterGroupLabel', locale)}
+            </Text>
             <Pressable
               style={[
                 kiosk.btn,
                 styles.presetDropdownBtn,
-                seaterPresetValue && kiosk.btnActive,
+                selectedPresetValue && kiosk.btnActive,
                 (!baseNameEn.trim() || saving) && { opacity: 0.45 },
               ]}
               onPress={() => {
@@ -655,45 +661,17 @@ export default function CreateScreen({ navigation }) {
                   setError(tUi('needBaseName', locale));
                   return;
                 }
-                setCarpentryPickerOpen(false);
-                setSeaterPickerOpen(true);
+                setPresetPickerOpen(true);
               }}
               disabled={!baseNameEn.trim() || saving}
             >
               <Text
-                style={[kiosk.btnText, seaterPresetValue && kiosk.btnActiveText, styles.presetDropdownText]}
+                style={[kiosk.btnText, selectedPresetValue && kiosk.btnActiveText, styles.presetDropdownText]}
                 numberOfLines={2}
               >
-                {seaterPresetValue
-                  ? presetLabel(seaterPresetValue, locale, presetArLabels)
-                  : tUi('seaterPickerPlaceholder', locale)}
-              </Text>
-            </Pressable>
-            <Text style={[kiosk.label, styles.groupLabel, { textAlign }]}>{tUi('carpentryGroupLabel', locale)}</Text>
-            <Pressable
-              style={[
-                kiosk.btn,
-                styles.presetDropdownBtn,
-                carpentryPresetValue && kiosk.btnActive,
-                (!baseNameEn.trim() || saving) && { opacity: 0.45 },
-              ]}
-              onPress={() => {
-                if (!baseNameEn.trim()) {
-                  setError(tUi('needBaseName', locale));
-                  return;
-                }
-                setSeaterPickerOpen(false);
-                setCarpentryPickerOpen(true);
-              }}
-              disabled={!baseNameEn.trim() || saving}
-            >
-              <Text
-                style={[kiosk.btnText, carpentryPresetValue && kiosk.btnActiveText, styles.presetDropdownText]}
-                numberOfLines={2}
-              >
-                {carpentryPresetValue
-                  ? presetLabel(carpentryPresetValue, locale, presetArLabels)
-                  : tUi('carpentryPickerPlaceholder', locale)}
+                {selectedPresetValue
+                  ? presetLabel(selectedPresetValue, locale, presetArLabels)
+                  : tUi(carpentryOnly ? 'carpentryPickerPlaceholder' : 'seaterPickerPlaceholder', locale)}
               </Text>
             </Pressable>
           </View>
@@ -779,27 +757,15 @@ export default function CreateScreen({ navigation }) {
       }}
     />
     <ProductionPresetPicker
-      visible={seaterPickerOpen}
-      title={tUi('seaterGroupLabel', locale)}
-      presets={seaterPresets}
+      visible={presetPickerOpen}
+      title={tUi(carpentryOnly ? 'carpentryGroupLabel' : 'seaterGroupLabel', locale)}
+      presets={activePresets}
       locale={locale}
       presetArLabels={presetArLabels}
       textAlign={textAlign}
-      selectedPreset={seaterPresetValue}
+      selectedPreset={selectedPresetValue}
       disabled={!baseNameEn.trim() || saving}
-      onClose={() => setSeaterPickerOpen(false)}
-      onSelect={(value) => onSelectPreset(value)}
-    />
-    <ProductionPresetPicker
-      visible={carpentryPickerOpen}
-      title={tUi('carpentryGroupLabel', locale)}
-      presets={carpentryPresets}
-      locale={locale}
-      presetArLabels={presetArLabels}
-      textAlign={textAlign}
-      selectedPreset={carpentryPresetValue}
-      disabled={!baseNameEn.trim() || saving}
-      onClose={() => setCarpentryPickerOpen(false)}
+      onClose={() => setPresetPickerOpen(false)}
       onSelect={(value) => onSelectPreset(value)}
     />
     <ProductionPhotoCaptureModal

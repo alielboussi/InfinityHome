@@ -55,21 +55,11 @@ export function navigateFromProductionNotification(navigationRef, data) {
   const nav = navigationRef?.current;
   if (!nav?.navigate) return;
   const screen = String(data?.screen || '').trim();
-  const storageId = String(data?.storage_send_id || '').trim();
-  const returnId = String(data?.return_order_id || '').trim();
-  if (screen === 'SoldOrders') {
-    if (storageId) {
-      nav.navigate('SoldOrders');
-      nav.navigate('SoldOrderDetail', { id: storageId });
-      return;
-    }
-    nav.navigate('SoldOrders');
-    return;
-  }
-  if (screen === 'ReturnOrders') {
-    nav.navigate('ReturnOrders');
-    if (returnId) {
-      // Detail is inline on list; optional future: deep link to signature step
+  const quoteId = String(data?.quote_id || '').trim();
+  if (screen === 'UpholsteryQuotes' || screen === 'UpholsteryQuoteDetail') {
+    nav.navigate('UpholsteryQuotes');
+    if (quoteId) {
+      nav.navigate('UpholsteryQuoteDetail', { quote: { quote_id: quoteId } });
     }
   }
 }

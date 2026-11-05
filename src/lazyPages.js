@@ -77,6 +77,11 @@ export const WarehouseProductEditPage = lazyRoute(() => import('./WarehouseProdu
 export const WarehouseProductTransferPage = lazyRoute(() => import('./WarehouseProductTransferPage'));
 export const WarehousePacketEditPage = lazyRoute(() => import('./WarehousePacketEditPage'));
 export const ProductionAdminPage = lazyRoute(() => import('./ProductionAdminPage'));
+export const CarpentryPage = lazyRoute(() => import('./CarpentryPage'));
+export const UpholsteryPage = lazyRoute(() => import('./UpholsteryPage'));
+export const WarehouseFloor2Page = lazyRoute(() => import('./WarehouseFloor2Page'));
+export const CarpentryWarehouseStockPage = lazyRoute(() => import('./CarpentryWarehouseStockPage'));
+export const MaterialsUomPage = lazyRoute(() => import('./MaterialsUomPage'));
 export const ProductionReport = lazyRoute(() => import('./ProductionReport'));
 export const StockHistoryPage = lazyRoute(() => import('./StockHistoryPage'));
 export const ZeroStockLocationReset = lazyRoute(() => import('./ZeroStockLocationReset'));
@@ -97,6 +102,11 @@ export const routePreloadByPath = {
   '/production': () => ProductionAdminPage.preload(),
   '/kitwe-products': () => KitweProductsPage.preload(),
   '/warehouse-products': () => WarehouseProductsPage.preload(),
+  '/upholstery': () => UpholsteryPage.preload(),
+  '/carpentry': () => CarpentryPage.preload(),
+  '/warehouse-floor-2': () => WarehouseFloor2Page.preload(),
+  '/carpentry-warehouse/1': () => CarpentryWarehouseStockPage.preload(),
+  '/materials-uom': () => MaterialsUomPage.preload(),
   '/categories': () => Categories.preload(),
   '/reversal': () => Reversal.preload(),
   '/warehouse-delivery-drivers': () => WarehouseDeliveryDriversPage.preload(),

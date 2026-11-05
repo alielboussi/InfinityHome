@@ -54,6 +54,11 @@ import {
   WarehouseSalesStorageAdmin,
   WarehouseDeliveryDriversPage,
   WarehouseProductionPresetsPage,
+  CarpentryPage,
+  UpholsteryPage,
+  WarehouseFloor2Page,
+  CarpentryWarehouseStockPage,
+  MaterialsUomPage,
   KitweProductsPage,
   KitweSetsPage,
   WarehousePacketEditPage,
@@ -98,6 +103,13 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/lusaka-transfers',
       '/transfers-report',
       '/production-report',
+      '/upholstery',
+      '/carpentry',
+      '/warehouse-floor-2',
+      '/carpentry-warehouse/1',
+      '/carpentry-warehouse/2',
+      '/carpentry-warehouse/3',
+      '/materials-uom',
       '/sales-report',
       '/price-labels',
       '/ecommerce-setup',
@@ -371,6 +383,11 @@ function App() {
           <Route path="/warehouse-products/:productId/transfer" element={<WarehouseProductTransferPage />} />
           <Route path="/warehouse-products/:productId/edit" element={<WarehouseProductEditPage />} />
           <Route path="/warehouse-products" element={<WarehouseProductsPage />} />
+          <Route path="/upholstery" element={<UpholsteryPage />} />
+          <Route path="/carpentry" element={<CarpentryPage />} />
+          <Route path="/warehouse-floor-2" element={<WarehouseFloor2Page />} />
+          <Route path="/carpentry-warehouse/:index" element={<CarpentryWarehouseStockPage />} />
+          <Route path="/materials-uom" element={<MaterialsUomPage />} />
           <Route path="/ecommerce-setup" element={<EcommerceSetup />} />
           <Route path="/ecommerce-sales" element={<EcommerceSales />} />
           <Route path="/stock-history" element={<StockHistoryPage />} />

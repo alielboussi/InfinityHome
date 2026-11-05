@@ -56,3 +56,15 @@ export function isProductionStockProductId(catalog, assemblyId) {
   if (!id) return false;
   return listProductionFinishedStockProducts(catalog).some((row) => row.id === id);
 }
+
+/** Stock screen (upholstery app): finished products assigned on web /upholstery. */
+export function listUpholsteryStockProducts(catalog, upholsteryAssemblyIds) {
+  const allowed = new Set((upholsteryAssemblyIds || []).map((x) => String(x)));
+  return listProductionFinishedStockProducts(catalog).filter((row) => allowed.has(row.id));
+}
+
+export function isUpholsteryStockProductId(catalog, assemblyId, upholsteryAssemblyIds) {
+  const id = String(assemblyId || '').trim();
+  if (!id) return false;
+  return listUpholsteryStockProducts(catalog, upholsteryAssemblyIds).some((row) => row.id === id);
+}

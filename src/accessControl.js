@@ -502,6 +502,21 @@ export function isPathAllowed(user, path) {
   if (p === '/warehouse-production-presets' || p.startsWith('/warehouse-production-presets/')) {
     return canManageCatalog(user);
   }
+  if (p === '/carpentry' || p.startsWith('/carpentry/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/upholstery' || p.startsWith('/upholstery/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/warehouse-floor-2' || p.startsWith('/warehouse-floor-2/')) {
+    return canManageCatalog(user);
+  }
+  if (p.startsWith('/carpentry-warehouse/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/materials-uom' || p.startsWith('/materials-uom/')) {
+    return canManageCatalog(user);
+  }
   if (p === '/warehouse-deliveries' || p.startsWith('/warehouse-deliveries/')) {
     if (isHassanAwadUser(user)) return true;
     if (canManageCatalog(user)) return true;

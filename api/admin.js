@@ -21,6 +21,8 @@ const HANDLER_LOADERS = {
   'product-image-search': () => import('../server/handlers/product-image-search.js'),
   'warehouse-production-photo': () => import('../server/handlers/warehouse-production-photo.js'),
   'warehouse-catalog-photo': () => import('../server/handlers/warehouse-catalog-photo.js'),
+  'carpentry-catalog': () => import('../server/handlers/carpentry-catalog.js'),
+  'upholstery-catalog': () => import('../server/handlers/upholstery-catalog.js'),
 };
 
 function resolveHandler(mod) {

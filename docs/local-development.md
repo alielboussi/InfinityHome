@@ -52,3 +52,17 @@ Optional `.env` in that folder:
 ```env
 EXPO_PUBLIC_API_BASE=https://www.infinity-home.online
 ```
+
+## Warehouse Delivery app (drivers, Expo)
+
+Run from **`mobile-apps/warehouse-delivery`**. Uses the same Kitwe send flow as production (Code 128, packet ticks, driver signature). Catalog matches web **`/warehouse-products`** / factory stock (including carpentry manufacture output).
+
+```powershell
+cd mobile-apps\warehouse-delivery
+npm install
+npx expo start -c
+```
+
+Enable **Send to Kitwe** on the driver’s User Access row before testing submit.
+
+**Firebase:** add Android app **`com.bestrest.warehousedelivery`** (display name **Warehouse Delivery**) in project `bestrest-portal-system-43108`, place `google-services.json` in `mobile-apps/warehouse-delivery/`, or run `scripts/setupWarehouseDeliveryGoogleSignIn.mjs`. See `mobile-apps/warehouse-delivery/README.md`.

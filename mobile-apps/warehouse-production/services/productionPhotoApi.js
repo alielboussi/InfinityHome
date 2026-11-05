@@ -1,7 +1,7 @@
 import { API_BASE, getFirebaseIdToken } from '../shared/firebase';
 import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
 
-const CLIENT_SOURCE = 'warehouse_production_app';
+const CLIENT_SOURCE = 'carpentry_workshop_app';
 
 function resolveApiBase() {
   return String(process.env.EXPO_PUBLIC_API_BASE || API_BASE || '').replace(/\/+$/, '');

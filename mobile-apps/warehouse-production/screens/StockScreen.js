@@ -18,14 +18,15 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { filterPacketsForProductionSearch } from '../lib/productionPacketSearch';
 import {
   assemblyWarehouseQty,
-  isProductionStockProductId,
-  listProductionFinishedStockProducts,
+  isUpholsteryStockProductId,
+  listUpholsteryStockProducts,
 } from '../lib/productionStockCatalog';
 import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { tUi } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
 import {
   fetchProductionCatalog,
+  fetchUpholsteryCatalogAssemblyIds,
   increaseProductionStock,
   resolveProductionScan,
 } from '../services/productionApi';
@@ -51,14 +52,19 @@ export default function StockScreen({ navigation }) {
   const [labelCopies, setLabelCopies] = useState(1);
   const [labelPrintNote, setLabelPrintNote] = useState('');
   const catalogRef = useRef(null);
+  const upholsteryIdsRef = useRef([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchProductionCatalog();
+      const [data, upholsteryIds] = await Promise.all([
+        fetchProductionCatalog(),
+        fetchUpholsteryCatalogAssemblyIds().catch(() => []),
+      ]);
       catalogRef.current = data;
-      setProducts(listProductionFinishedStockProducts(data));
+      upholsteryIdsRef.current = upholsteryIds;
+      setProducts(listUpholsteryStockProducts(data, upholsteryIds));
       setAssemblyInventory(data.assemblyInventory || []);
       setWarehouseLocationId(data.warehouseLocationId);
     } catch (err) {
@@ -86,7 +92,8 @@ export default function StockScreen({ navigation }) {
 
   const rejectIneligibleAssembly = (assemblyId) => {
     const catalog = catalogRef.current;
-    if (!catalog || !isProductionStockProductId(catalog, assemblyId)) {
+    const upholsteryIds = upholsteryIdsRef.current;
+    if (!catalog || !isUpholsteryStockProductId(catalog, assemblyId, upholsteryIds)) {
       setError(tUi('stockNotEligible', locale));
       return true;
     }

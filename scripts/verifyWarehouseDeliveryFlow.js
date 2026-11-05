@@ -132,6 +132,39 @@ assert(
   fs.existsSync(path.join(root, 'mobile-apps/warehouse-production/screens/KitweSentDeliveriesScreen.js')),
   'Production app must include sent deliveries list screen',
 );
+assert(
+  fs.existsSync(path.join(root, 'mobile-apps/warehouse-delivery/App.js')),
+  'Warehouse Delivery driver app must exist',
+);
+assert(
+  fs.readFileSync(path.join(root, 'mobile-apps/warehouse-delivery/App.js'), 'utf8').includes('KitweSendHomeScreen'),
+  'Warehouse Delivery app must register Kitwe send flow',
+);
+assert(
+  fs.readFileSync(path.join(root, 'mobile-apps/shared/mobileAccessManifest.js'), 'utf8')
+    .includes('evaluateWarehouseDeliveryDriverAppAccess'),
+  'mobile-apps/shared manifest must export driver delivery access helper',
+);
+assert(
+  fs.readFileSync(path.join(root, 'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendSignatureScreen.js'), 'utf8')
+    .includes("'delivery-submit'"),
+  'driver app must submit signed delivery to warehouse-mobile',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/WarehouseDeliveries.js'), 'utf8')
+    .includes('acceptWarehouseDeliverySession'),
+  'Hassan deliveries page must accept received lines',
+);
+assert(
+  fs.readFileSync(path.join(root, 'mobile-apps/warehouse-production/screens/KitweSendHomeScreen.js'), 'utf8')
+    .includes('filterAssembliesForDeliveryWarehouse'),
+  'Kitwe send must filter to warehouse-products catalog scope',
+);
+execSync('node scripts/verifyDeliveryWarehouseCatalog.js', { cwd: root, stdio: 'pipe' });
+execSync('node scripts/verifyDeliveryApp.js', {
+  cwd: path.join(root, 'mobile-apps/warehouse-delivery'),
+  stdio: 'pipe',
+});
 assert(noteHtml.includes('DELIVERY_NOTE_DISCLAIMER'), 'delivery note must include disclaimer');
 assert(
   noteHtml.includes("'sold_delivery'") && noteHtml.includes("'Delivery Note'"),

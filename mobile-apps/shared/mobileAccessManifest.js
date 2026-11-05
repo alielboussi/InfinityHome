@@ -78,6 +78,11 @@ export function isWarehouseProductionAppAllowed(grant) {
   return grant?.warehouse_production_app === 'allow';
 }
 
+/** /user-access — Carpentry workshop Android app (manufacture + create/stock with carpentry presets). */
+export function isCarpentryWorkshopAppAllowed(grant) {
+  return grant?.carpentry_workshop_app === 'allow';
+}
+
 /** Production app — factory truck delivery to Kitwe (User Access → Production). */
 export function isWarehouseProductionKitweDeliveryAllowed(grant) {
   if (grant?.warehouse_production_kitwe === 'allow') return true;
@@ -99,6 +104,18 @@ export function isProductionLoginAccessAdminEmail(email) {
 export function evaluateWarehouseProductionAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
   return isWarehouseProductionOperatorAllowed(grant);
+}
+
+/** Same rule as warehouse-mobile `carpentry-access-self` and carpentry mobile ops. */
+export function evaluateCarpentryWorkshopAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  return isCarpentryWorkshopAppAllowed(grant);
+}
+
+/** Driver delivery Android app — same gate as Kitwe truck send (User Access → Send to Kitwe). */
+export function evaluateWarehouseDeliveryDriverAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  return isWarehouseProductionKitweDeliveryAllowed(grant);
 }
 
 export function isWarehouseProductStockQtyEditAllowed(grant) {
@@ -236,6 +253,7 @@ export function defaultMobileAccessGrant() {
     warehouse_production_kiosk: 'deny',
     warehouse_production_app: 'deny',
     warehouse_production_kitwe: 'deny',
+    carpentry_workshop_app: 'deny',
     screens,
   };
 }
@@ -268,6 +286,10 @@ export function canMobileScreenView(grant, screenId) {
 
   if (screenId === 'warehouse_unused_packets') {
     return isMobileScreenAccessAllowed(grant, 'warehouse_unused_packets');
+  }
+
+  if (screenId === 'kitwe_send_delivery') {
+    return isWarehouseProductionKitweDeliveryAllowed(grant);
   }
 
   return isMobileScreenAccessAllowed(grant, screenId);
@@ -390,6 +412,12 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
 
   merged.warehouse_production_app = (
     merged.warehouse_production_app === 'allow' || merged.warehouse_production_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.carpentry_workshop_app = (
+    merged.carpentry_workshop_app === 'allow' || merged.carpentry_workshop_app === true
   )
     ? 'allow'
     : 'deny';

@@ -1,8 +1,19 @@
-import {
-  getCameraPermissionsAsync,
-  requestCameraPermissionsAsync,
-} from 'expo-camera';
+import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+
+async function getExpoCameraPermission() {
+  if (typeof Camera?.getCameraPermissionsAsync === 'function') {
+    return Camera.getCameraPermissionsAsync();
+  }
+  return null;
+}
+
+async function requestExpoCameraPermission() {
+  if (typeof Camera?.requestCameraPermissionsAsync === 'function') {
+    return Camera.requestCameraPermissionsAsync();
+  }
+  return null;
+}
 
 /**
  * Read current camera permission (no prompt).
@@ -10,10 +21,12 @@ import * as ImagePicker from 'expo-image-picker';
  */
 export async function readProductionCameraPermission() {
   try {
-    return await getCameraPermissionsAsync();
+    const fromCamera = await getExpoCameraPermission();
+    if (fromCamera) return fromCamera;
   } catch {
-    return await ImagePicker.getCameraPermissionsAsync();
+    // fall through to image-picker
   }
+  return ImagePicker.getCameraPermissionsAsync();
 }
 
 /**
@@ -28,7 +41,7 @@ export async function askProductionCameraPermission() {
 
   let fromCamera;
   try {
-    fromCamera = await requestCameraPermissionsAsync();
+    fromCamera = await requestExpoCameraPermission();
   } catch {
     fromCamera = null;
   }

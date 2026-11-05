@@ -542,7 +542,7 @@ export default function WarehouseProductsPage() {
       </div>
 
       <p className="stc-note" style={{ margin: '8px 0 16px', opacity: 0.85 }}>
-        <strong>{warehouseLocationName} stock only</strong> — enter on-hand on packets (BOM) or finished qty here.
+        <strong>{warehouseLocationName} stock only</strong> — factory Floor 1 catalog for Send Delivery (finished goods, sets, warehouse packets). Not Floor 2 WIP.
         Showroom stock (Kitwe / Lusaka) is not managed on this page.
       </p>
 
