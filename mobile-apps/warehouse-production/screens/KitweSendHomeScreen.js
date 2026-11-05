@@ -119,6 +119,43 @@ export default function KitweSendHomeScreen({ navigation }) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const sid0 = String(restored?.sessionId || '').trim();
+    const dnum0 = String(restored?.deliveryNumber || '').trim();
+    if (sid0 && dnum0) return undefined;
+
+    (async () => {
+      setSessionOpening(true);
+      setError('');
+      try {
+        const sess = await warehouseMobileRequest('delivery-session-open', {
+          ...(sid0 ? { session_id: sid0 } : {}),
+        });
+        if (cancelled) return;
+        const sid = String(sess.session_id || '').trim();
+        const dnum = String(sess.delivery_number || '').trim();
+        if (!sid || !dnum) {
+          throw new Error(tUi('deliverySessionFailed', locale));
+        }
+        setSessionId(sid);
+        setDeliveryNumber(dnum);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err?.message || tUi('deliverySessionFailed', locale));
+        }
+      } finally {
+        if (!cancelled) setSessionOpening(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  // Reserve delivery # as soon as the screen opens (not only on Send).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (!draftAssemblyId || !draftAssembly) return;
     if (draftIsFinishedOnly || draftUsesBoxUnits) return;
     if (draftPacketRows.length > 0) return;
@@ -569,12 +606,14 @@ export default function KitweSendHomeScreen({ navigation }) {
     setSessionOpening(true);
     try {
       let sid = String(sessionId || '').trim();
-      let dnum = deliveryNumber;
-      if (!sid) {
-        const sess = await warehouseMobileRequest('delivery-session-open', {});
-        sid = String(sess.session_id || '');
-        dnum = sess.delivery_number || '';
-        if (!sid) throw new Error(tUi('deliverySessionFailed', locale));
+      let dnum = String(deliveryNumber || '').trim();
+      if (!sid || !dnum) {
+        const sess = await warehouseMobileRequest('delivery-session-open', {
+          ...(sid ? { session_id: sid } : {}),
+        });
+        sid = String(sess.session_id || '').trim();
+        dnum = String(sess.delivery_number || '').trim();
+        if (!sid || !dnum) throw new Error(tUi('deliverySessionFailed', locale));
         setSessionId(sid);
         setDeliveryNumber(dnum);
       }
@@ -616,7 +655,9 @@ export default function KitweSendHomeScreen({ navigation }) {
         </Pressable>
 
         <View style={kiosk.card}>
-          <Text style={[kiosk.heroNumber, { textAlign }]}>{deliveryNumber || '…'}</Text>
+          <Text style={[kiosk.heroNumber, { textAlign }]}>
+            {deliveryNumber || (sessionOpening ? '…' : '—')}
+          </Text>
           <Text style={[kiosk.metaLine, { textAlign, marginBottom: 0 }]}>
             {tUi('deliverySubtitle', locale)}
           </Text>

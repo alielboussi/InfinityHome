@@ -34,3 +34,21 @@ On Vercel, `REACT_APP_API_BASE` is usually **unset**. The UI uses same-origin `/
 - Local UI changes apply immediately; **API behavior** matches whatever is **deployed** at `REACT_APP_API_BASE` until you deploy your branch.
 - **Quotationer on localhost:** Sign in as `alielboussi00@gmail.com` and open [http://localhost:3000/quotationer](http://localhost:3000/quotationer). On localhost only, that account gets Hassan Awad’s sidebar and dashboard (layby overview + quotation nav) on his routes (`/quotationer`, `/quotes-board`, `/warehouse-deliveries`, `/warehouse-returns`, `/warehouse-storage`, `/layby-management`, `/transfers`). On **`/warehouse-deliveries`**, the same account can tick packets, accept deliveries, and **Save delivery note as PDF** like Hassan. Hard-refresh (`Ctrl+F5`) if the UI looks stale after pulls. Your full admin menu returns on other paths (e.g. `/dashboard`).
 - APIs send `Access-Control-Allow-Origin: *`, so browser calls from `localhost:3000` work without a dev proxy.
+
+## Warehouse Production app (Expo)
+
+Run from **`mobile-apps/warehouse-production`** (not the repo root). After pulling JS changes, clear Metro cache or you may still see the old scanner UI:
+
+```powershell
+cd mobile-apps\warehouse-production
+npm install
+npx expo start -c
+```
+
+Open the project in **Expo Go** (or your dev build) and use **Reload** on the Kitwe Send screen. The barcode scanner should show a **red horizontal line** (not a large box). Kitwe Send loads a **delivery number** from the API when the screen opens (needs sign-in and network to `EXPO_PUBLIC_API_BASE`, default `https://www.infinity-home.online`).
+
+Optional `.env` in that folder:
+
+```env
+EXPO_PUBLIC_API_BASE=https://www.infinity-home.online
+```

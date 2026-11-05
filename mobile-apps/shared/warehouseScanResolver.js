@@ -9,6 +9,7 @@
 
 export function sanitizeWarehouseScannerInput(value) {
   let s = String(value ?? '');
+  // eslint-disable-next-line no-control-regex -- strip GS1 FNC1 / Code128 prefix control bytes from scans
   s = s.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
   s = s.replace(/^\][A-Z]\d/i, '');
   return s.trim();
