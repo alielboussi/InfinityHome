@@ -1,11 +1,14 @@
 /**
- * Warehouse Catalog mobile app — screens and permission axes.
- * Keep in sync with src/mobile/mobileAccessManifest.js (web /user-access + CI).
+ * Warehouse Catalog mobile app — screens and permission axes (web /user-access).
+ * When a new screen ships in the APK, register it here AND copy to mobile-apps/shared/mobileAccessManifest.js.
  *
  * Permission values: 'allow' | 'deny' (default deny until admin enables).
  */
 
-/** Launcher / login title (keep in sync with app.config.js `expo.name`). */
+/** User Access panel label (warehouse catalog mobile app). Device app title may still use MOBILE_APP_DISPLAY_NAME. */
+export const USER_ACCESS_CATALOG_APP_LABEL = 'Catalog';
+
+/** Launcher / login title (keep in sync with warehouse-catalog app.config.js `expo.name`). */
 export const MOBILE_APP_DISPLAY_NAME = 'Warehouse';
 
 /** Stored per screen; admin UI only exposes Yes/No (maps to full allow vs full deny). */
@@ -51,7 +54,7 @@ export function isWarehouseCatalogLabelPrintAllowed(grant, email) {
   return grant.warehouse_catalog_label_print === 'allow';
 }
 
-/** /user-access — import/upload product photo on warehouse catalog cards. */
+/** /user-access — import/upload product photo on warehouse catalog cards and product form. */
 export function isWarehouseCatalogPhotoImportAllowed(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
   if (!grant) return false;
@@ -59,6 +62,7 @@ export function isWarehouseCatalogPhotoImportAllowed(grant, email) {
 }
 
 /** /user-access — edit finished product qty (increments only; scales linked packet cartons). */
+/** Upload device-local Turkish names to warehouse_assemblies (bulk sync). */
 export function isWarehouseProductTurkishSyncAllowed(grant) {
   if (!grant) return false;
   if (isMobileScreenAccessAllowed(grant, 'warehouse_products')) return true;
@@ -73,14 +77,31 @@ export function isWarehouseProductionKioskAllowed(grant) {
   return grant?.warehouse_production_kiosk === 'allow';
 }
 
-/** /user-access — Production Android app (create + stock-in). */
+/** /user-access — Production Android app (create + stock-in, Zebra Weblink labels). */
 export function isWarehouseProductionAppAllowed(grant) {
   return grant?.warehouse_production_app === 'allow';
+}
+
+/** /user-access — Upholstery app: upload Floor 2 WIP photos on Manufacture variant inlay. */
+export function isWarehouseProductionPhotoUploadAllowed(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (!grant) return false;
+  return grant.warehouse_production_photo_upload === 'allow';
 }
 
 /** /user-access — Carpentry workshop Android app (manufacture + create/stock with carpentry presets). */
 export function isCarpentryWorkshopAppAllowed(grant) {
   return grant?.carpentry_workshop_app === 'allow';
+}
+
+/** /user-access — Painting workshop Android app (timed painting jobs → Floor 1 stock). */
+export function isPaintingWorkshopAppAllowed(grant) {
+  return grant?.painting_workshop_app === 'allow';
+}
+
+/** /user-access — Warehouse Delivery Android app (factory truck → Kitwe). */
+export function isWarehouseDeliveryAppAllowed(grant) {
+  return grant?.warehouse_delivery_app === 'allow';
 }
 
 /** Production app — factory truck delivery to Kitwe (User Access → Production). */
@@ -112,10 +133,16 @@ export function evaluateCarpentryWorkshopAppAccess(grant, email) {
   return isCarpentryWorkshopAppAllowed(grant);
 }
 
-/** Driver delivery Android app — same gate as Kitwe truck send (User Access → Send to Kitwe). */
+/** Same rule as warehouse-mobile `painting-access-self` and painting mobile ops. */
+export function evaluatePaintingWorkshopAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  return isPaintingWorkshopAppAllowed(grant);
+}
+
+/** Driver delivery Android app — User Access → Delivery (`warehouse_delivery_app` only). */
 export function evaluateWarehouseDeliveryDriverAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
-  return isWarehouseProductionKitweDeliveryAllowed(grant);
+  return isWarehouseDeliveryAppAllowed(grant);
 }
 
 export function isWarehouseProductStockQtyEditAllowed(grant) {
@@ -252,8 +279,11 @@ export function defaultMobileAccessGrant() {
     warehouse_catalog_photo_import: 'deny',
     warehouse_production_kiosk: 'deny',
     warehouse_production_app: 'deny',
+    warehouse_production_photo_upload: 'deny',
     warehouse_production_kitwe: 'deny',
+    warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
+    painting_workshop_app: 'deny',
     screens,
   };
 }
@@ -289,7 +319,7 @@ export function canMobileScreenView(grant, screenId) {
   }
 
   if (screenId === 'kitwe_send_delivery') {
-    return isWarehouseProductionKitweDeliveryAllowed(grant);
+    return isWarehouseDeliveryAppAllowed(grant);
   }
 
   return isMobileScreenAccessAllowed(grant, screenId);
@@ -416,8 +446,27 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     ? 'allow'
     : 'deny';
 
+  merged.warehouse_production_photo_upload = (
+    merged.warehouse_production_photo_upload === 'allow'
+    || merged.warehouse_production_photo_upload === true
+  )
+    ? 'allow'
+    : 'deny';
+
   merged.carpentry_workshop_app = (
     merged.carpentry_workshop_app === 'allow' || merged.carpentry_workshop_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.painting_workshop_app = (
+    merged.painting_workshop_app === 'allow' || merged.painting_workshop_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_delivery_app = (
+    merged.warehouse_delivery_app === 'allow' || merged.warehouse_delivery_app === true
   )
     ? 'allow'
     : 'deny';

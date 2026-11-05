@@ -1,4 +1,4 @@
-import { buildWarehouseAssemblyLeftoverQtyMap } from '../../../../src/utils/warehouseSetMath.js';
+import { buildWarehouseAssemblyLeftoverQtyMap } from '../lib/_repoUtils/warehouseSetMath.js';
 
 /** Use server-computed qty maps from catalog-list when present (avoids heavy client recompute). */
 export function catalogStockMaps(catalog) {

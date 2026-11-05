@@ -22,25 +22,20 @@ import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import {
   buildProductionItemName,
-  extractProductionBaseName,
   normalizeProductionNameInput,
   PRODUCTION_CARPENTRY_PRESETS,
   PRODUCTION_SEATER_PRESETS,
 } from '../lib/productionItemName';
-import { mergeBaseNameSuggestions } from '../lib/productionBaseNameSuggestions';
 import ProductionDimensionsInput from '../components/ProductionDimensionsInput';
-import {
-  recordRecentProductionBaseName,
-  refreshRecentProductionBaseNames,
-} from '../lib/productionRecentBaseNames';
 import ProductionPresetPicker from '../components/ProductionPresetPicker';
 import { kioskFooterBottomPad, kioskScreenEdges } from '../lib/kioskLayout';
-import { presetLabel, prefetchPresetArabicLabels, tUi } from '../lib/productionKioskI18n';
+import { presetLabel, prefetchPresetArabicLabels, tUi, textForDisplay } from '../lib/productionKioskI18n';
 import ProductionLabelPreviewModal from '../components/ProductionLabelPreviewModal';
 import ProductionPhotoCaptureModal from '../components/ProductionPhotoCaptureModal';
 import { prepareProductionPhotoForUpload } from '../lib/prepareProductionPhotoUpload';
 import {
   attachProductionProductPhoto,
+  cancelProductionPacketDraft,
   createProductionPacket,
   createProductionProductOnly,
   fetchProductionCatalog,
@@ -76,8 +71,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
   const [labelPrintNote, setLabelPrintNote] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
-  const [recentBaseNames, setRecentBaseNames] = useState([]);
-  const [catalogAssemblies, setCatalogAssemblies] = useState([]);
   const [presetPickerOpen, setPresetPickerOpen] = useState(false);
   const [activePresets, setActivePresets] = useState(
     carpentryOnly ? PRODUCTION_CARPENTRY_PRESETS : PRODUCTION_SEATER_PRESETS,
@@ -88,7 +81,10 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
   const [dimH, setDimH] = useState('');
   const scrollRef = useRef(null);
   const pendingSaveRef = useRef(null);
+  const pendingPhotoRef = useRef(null);
   const deferFormResetRef = useRef(false);
+  const [photoRetryOpen, setPhotoRetryOpen] = useState(false);
+  const [photoRetryMessage, setPhotoRetryMessage] = useState('');
 
   const englishProductName = useMemo(() => {
     if (productNameEn.trim()) return normalizeProductionNameInput(productNameEn);
@@ -98,16 +94,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
   const mattressProduct = useMemo(
     () => isMattressCatalogProductName(englishProductName),
     [englishProductName],
-  );
-
-  const nameLineSuggestions = useMemo(
-    () => mergeBaseNameSuggestions({
-      catalogAssemblies,
-      query: baseNameEn,
-      recentNames: recentBaseNames,
-      limit: 8,
-    }),
-    [baseNameEn, catalogAssemblies, recentBaseNames],
   );
 
   const selectedPresetValue = preset && activePresets.includes(preset) ? preset : '';
@@ -123,7 +109,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     }
     const remoteSeater = data.seater_presets || data.seater || data.production_presets?.seater;
     if (Array.isArray(remoteSeater) && remoteSeater.length) {
-      setActivePresets(remoteSeater);
+      setActivePresets(remoteSeater.map((p) => String(p || '').trim()).filter(Boolean));
     }
   }, [carpentryOnly]);
 
@@ -146,7 +132,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       ]);
       setWarehouseLocationId(data.warehouseLocationId);
       setWarehouseLocationName(data.warehouseLocationName || 'Warehouse');
-      setCatalogAssemblies(data.assemblies || []);
       applyRemotePresets(data);
       if (!data.warehouseLocationId) {
         setError(tUi('noWarehouse', locale));
@@ -178,15 +163,10 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     };
   }, [locale, activePresets]);
 
-  const reloadRecentNames = useCallback(() => {
-    refreshRecentProductionBaseNames().then(setRecentBaseNames).catch(() => {});
-  }, []);
-
   useFocusEffect(
     useCallback(() => {
-      reloadRecentNames();
       reloadPresetsFromServer();
-    }, [reloadRecentNames, reloadPresetsFromServer]),
+    }, [reloadPresetsFromServer]),
   );
 
   useEffect(() => {
@@ -243,21 +223,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     setProductNameEn(buildProductionItemName(baseNameEn, value));
   };
 
-  const onSelectRecentBaseName = (name) => {
-    setSuccess('');
-    setError('');
-    setPreset('');
-    const next = normalizeProductionNameInput(name);
-    setBaseNameEn(next);
-    setProductNameEn('');
-  };
-
-  const rememberBaseNameFromSave = async (fullProductName) => {
-    const base = extractProductionBaseName(fullProductName) || baseNameEn;
-    const next = await recordRecentProductionBaseName(base);
-    setRecentBaseNames(next);
-  };
-
   const onGenerateName = async () => {
     setNameGenBusy(true);
     setError('');
@@ -305,7 +270,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
 
   const applyCreateResult = async (pending, result) => {
     pendingSaveRef.current = null;
-    await rememberBaseNameFromSave(pending.name);
     await load();
     const labelCount = result.labelCopies > 0 ? result.labelCopies : pending.qtyNum;
     const printWarning = String(result.labelPrintWarning || '').trim();
@@ -373,6 +337,20 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     }
   };
 
+  const discardPendingDraft = async () => {
+    const resumeId = String(pendingSaveRef.current?.resumeAssemblyId || '').trim();
+    pendingSaveRef.current = null;
+    pendingPhotoRef.current = null;
+    setPhotoRetryOpen(false);
+    setPhotoRetryMessage('');
+    if (!resumeId) return;
+    try {
+      await cancelProductionPacketDraft(resumeId);
+    } catch (e) {
+      setError(e?.message || tUi('createDiscardDraftFailed', locale));
+    }
+  };
+
   const finishSaveWithPhoto = async (photoSource) => {
     const pending = pendingSaveRef.current;
     if (!pending?.name || !pending.warehouseLocationId) {
@@ -380,7 +358,12 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       return;
     }
 
+    if (!photoSource) return;
+    pendingPhotoRef.current = photoSource;
+
     setPhotoCaptureOpen(false);
+    setPhotoRetryOpen(false);
+    setPhotoRetryMessage('');
     setSavePhase('processing');
     setAiPhotoStatus('');
     setSaving(true);
@@ -413,6 +396,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
           ...pending,
           resumeAssemblyId: parsed.assemblyId,
           pendingLabelPrint: parsed.pendingLabelPrint || null,
+          pendingPortalSetup: parsed.pendingPortalSetup || null,
         };
       }
 
@@ -423,7 +407,8 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       const photoPayload = await attachProductionProductPhoto({
         assemblyId: parsed.assemblyId,
         imageBase64: uploadPhoto,
-        pendingLabelPrint: parsed.pendingLabelPrint,
+        pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint || parsed.pendingLabelPrint,
+        pendingPortalSetup: pendingSaveRef.current?.pendingPortalSetup || parsed.pendingPortalSetup,
         preset: pending.preset,
         onPhotoAttempt: (attempt, max) => {
           setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
@@ -440,44 +425,17 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       };
 
       await applyCreateResult(pending, result);
+      pendingSaveRef.current = null;
+      pendingPhotoRef.current = null;
     } catch (err) {
-      const msg = String(err?.message || '');
+      const msg = String(err?.message || '').trim()
+        || tUi('createAiPhotoFailedHint', locale);
       const resumeId = String(pendingSaveRef.current?.resumeAssemblyId || '').trim();
-      if (resumeId && err?.code !== 'product_saved_photo_failed') {
-        showSaveFailure(
-          msg
-            ? `${msg}\n\nThe product was saved in Warehouse. Tap Save and take the photo again to finish the catalog photo.`
-            : 'Photo step failed. The product may already be in Warehouse — tap Save to retry the photo.',
-        );
-        return;
-      }
-      if (err?.code === 'product_saved_photo_failed' && err?.createResult) {
-        const partial = err.createResult;
-        const resumeId = String(
-          partial.assemblyId
-          || partial.packet?.assembly_id
-          || partial.packet?.id
-          || '',
-        ).trim();
-        pendingSaveRef.current = resumeId
-          ? {
-            ...pending,
-            resumeAssemblyId: resumeId,
-            pendingLabelPrint: partial.pendingLabelPrint || pending.pendingLabelPrint || null,
-          }
-          : null;
-        if (pending?.name) {
-          await rememberBaseNameFromSave(pending.name);
-        }
-        setSuccess(tUi('savedItemOnly', locale));
-        const labelCount = partial.labelCopies > 0 ? partial.labelCopies : pending?.qtyNum || 0;
-        if (partial.label && labelCount > 0) {
-          deferFormResetRef.current = true;
-          setLabelPreview(partial.label);
-          setLabelPng(partial.labelPreviewPngBase64 || '');
-          setLabelCopies(labelCount);
-        }
-        showSaveFailure(msg);
+      if (resumeId) {
+        setPhotoRetryMessage(msg);
+        setPhotoRetryOpen(true);
+        setError('');
+        setSuccess('');
         return;
       }
       if (msg.toLowerCase().includes('already exists')) {
@@ -489,6 +447,16 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       setSaving(false);
       setSavePhase('');
     }
+  };
+
+  const retryAiPhotoSave = () => {
+    const photo = pendingPhotoRef.current;
+    if (!photo || !pendingSaveRef.current?.resumeAssemblyId) {
+      setPhotoRetryOpen(false);
+      showSaveFailure(tUi('createAiPhotoRetryLost', locale));
+      return;
+    }
+    finishSaveWithPhoto(photo);
   };
 
   const onSave = async () => {
@@ -525,6 +493,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       dimHeight: dimH.trim() || undefined,
       resumeAssemblyId: pendingSaveRef.current?.resumeAssemblyId,
       pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint,
+      pendingPortalSetup: pendingSaveRef.current?.pendingPortalSetup,
     };
     pendingSaveRef.current = pending;
 
@@ -549,7 +518,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     setPhotoCaptureOpen(true);
   };
 
-  const saveDisabled = saving || loading || !warehouseLocationId || photoCaptureOpen;
+  const saveDisabled = saving || loading || !warehouseLocationId || photoCaptureOpen || photoRetryOpen;
   const footerPad = kioskFooterBottomPad(insets) + 72;
   const keyboardOpen = keyboardHeight > 0;
   const scrollBottomPad = keyboardOpen
@@ -583,14 +552,14 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
       <Text style={[kiosk.subtitle, { textAlign }]}>{tUi('subtitle', locale)}</Text>
 
       {loading ? <Text>{tUi('loading', locale)}</Text> : null}
-      {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
-      {success ? <Text style={kiosk.noticeOk}>{success}</Text> : null}
+      {error ? <Text style={kiosk.noticeErr}>{textForDisplay(error, '')}</Text> : null}
+      {success ? <Text style={kiosk.noticeOk}>{textForDisplay(success, '')}</Text> : null}
 
       <View style={kiosk.card}>
         <View style={kiosk.field}>
           <Text style={[kiosk.label, { textAlign }]}>{tUi('locationLabel', locale)}</Text>
           <Text style={kiosk.locationPill}>
-            {warehouseLocationName} — {tUi('warehouseOnly', locale)}
+            {textForDisplay(warehouseLocationName, 'Warehouse')} — {tUi('warehouseOnly', locale)}
           </Text>
         </View>
 
@@ -616,35 +585,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
             autoCorrect={false}
             autoCapitalize="words"
           />
-          <Text style={[kiosk.hint, styles.nameActionsHint, { textAlign }]}>
-            {tUi('nameSearchHint', locale)}
-          </Text>
-          {nameLineSuggestions.length > 0 ? (
-            <View style={kiosk.row}>
-              {nameLineSuggestions.map((name) => (
-                <Pressable
-                  key={name}
-                  style={[
-                    kiosk.btn,
-                    styles.presetInlineChip,
-                    baseNameEn.trim().toLowerCase() === name.trim().toLowerCase() && kiosk.btnActive,
-                    saving && { opacity: 0.45 },
-                  ]}
-                  onPress={() => onSelectRecentBaseName(name)}
-                  disabled={saving}
-                >
-                  <Text
-                    style={[
-                      kiosk.btnText,
-                      baseNameEn.trim().toLowerCase() === name.trim().toLowerCase() && kiosk.btnActiveText,
-                    ]}
-                  >
-                    {name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
           <View style={styles.dropdownColumn}>
             <Text style={[kiosk.label, styles.groupLabel, { textAlign }]}>
               {tUi(carpentryOnly ? 'carpentryGroupLabel' : 'seaterGroupLabel', locale)}
@@ -733,8 +673,38 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
         <View style={styles.busyCard}>
           <ActivityIndicator size="large" color={theme.primary} />
           <Text style={styles.busyText}>
-            {aiPhotoStatus || tUi('photoProcessing', locale)}
+            {textForDisplay(aiPhotoStatus || tUi('photoProcessing', locale), tUi('photoProcessing', locale))}
           </Text>
+        </View>
+      </View>
+    </Modal>
+    <Modal visible={photoRetryOpen} transparent animationType="fade" onRequestClose={() => {}}>
+      <View style={styles.busyBackdrop}>
+        <View style={styles.busyCard}>
+          <Text style={styles.busyTitle}>{tUi('saveFailedTitle', locale)}</Text>
+          <Text style={styles.busyText}>
+            {textForDisplay(photoRetryMessage || tUi('createAiPhotoFailedHint', locale), tUi('createAiPhotoFailedHint', locale))}
+          </Text>
+          <Pressable
+            style={[kiosk.btn, kiosk.btnPrimary, styles.retryBtn]}
+            onPress={retryAiPhotoSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('createAiPhotoRetry', locale)}</Text>
+            )}
+          </Pressable>
+          <Pressable
+            style={[kiosk.btn, styles.retryBtn]}
+            onPress={async () => {
+              await discardPendingDraft();
+            }}
+            disabled={saving}
+          >
+            <Text style={kiosk.btnText}>{tUi('createDiscardDraft', locale)}</Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -775,6 +745,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
         if (saving || savePhase === 'processing') return;
         setPhotoCaptureOpen(false);
         pendingSaveRef.current = null;
+        pendingPhotoRef.current = null;
         setError(tUi('photoCancelled', locale));
       }}
       onCaptured={(dataUri) => {
@@ -817,6 +788,17 @@ const styles = StyleSheet.create({
     color: theme.text,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  busyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: theme.text,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    marginTop: 14,
+    width: '100%',
+    minHeight: 48,
   },
   nameActionsHint: {
     marginTop: 10,

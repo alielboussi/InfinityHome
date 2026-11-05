@@ -16,7 +16,7 @@ import { kiosk } from '../productionKiosk/components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../productionKiosk/lib/productionKioskI18n';
-import ProductionPressableHint from '../productionKiosk/components/ProductionPressableHint';
+import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 import {
   fetchCarpentryProductionJobs,
   finishCarpentryProductionJob,

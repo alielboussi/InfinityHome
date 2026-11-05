@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const appRoot = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(appRoot, '..', '..');
 const upholsteryRoot = path.resolve(appRoot, '..', 'warehouse-upholstery');
 const kioskPath = path.join(appRoot, 'productionKiosk');
 const templateShared = path.resolve(appRoot, '..', 'shared');
@@ -53,7 +54,6 @@ function copyDir(srcDir, destDir, { fileFilter } = {}) {
 }
 
 function patchRepoImports(root) {
-  const repoRoot = path.resolve(appRoot, '..', '..');
   for (const sub of ['lib', 'shared']) {
     const dir = path.join(root, sub);
     if (!fs.existsSync(dir)) continue;
@@ -74,6 +74,47 @@ function patchRepoImports(root) {
       '/** Standalone for carpentry-workshop. */\n' + fs.readFileSync(zambiaSrc, 'utf8'),
     );
   }
+}
+
+function vendorRepoUtils(root) {
+  const repoUtils = path.join(repoRoot, 'src', 'utils');
+  const vendorDir = path.join(root, 'lib', '_repoUtils');
+  if (!fs.existsSync(repoUtils)) return;
+  rmDeep(vendorDir);
+  copyDir(repoUtils, vendorDir);
+  const repoConstants = path.join(repoRoot, 'src', 'constants');
+  const constVendor = path.join(root, 'lib', '_repoConstants');
+  if (fs.existsSync(repoConstants)) {
+    rmDeep(constVendor);
+    copyDir(repoConstants, constVendor);
+    for (const name of fs.readdirSync(vendorDir)) {
+      if (!name.endsWith('.js')) continue;
+      const p = path.join(vendorDir, name);
+      let text = fs.readFileSync(p, 'utf8');
+      const next = text.replace(/\.\.\/constants\//g, '../_repoConstants/');
+      if (next !== text) fs.writeFileSync(p, next);
+    }
+  }
+  function rewriteFile(filePath) {
+    let text = fs.readFileSync(filePath, 'utf8');
+    const relToLib = path.relative(path.dirname(filePath), path.join(root, 'lib', '_repoUtils')).replace(/\\/g, '/');
+    const prefix = relToLib.startsWith('.') ? relToLib : `./${relToLib}`;
+    const next = text.replace(/\.\.\/\.\.\/\.\.\/\.\.\/src\/utils\//g, `${prefix}/`);
+    if (next !== text) fs.writeFileSync(filePath, next);
+  }
+  function walk(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      if (fs.statSync(p).isDirectory()) {
+        if (p === vendorDir) continue;
+        walk(p);
+      } else if (name.endsWith('.js')) {
+        rewriteFile(p);
+      }
+    }
+  }
+  walk(root);
 }
 
 function materializeShared() {
@@ -120,6 +161,7 @@ function main() {
   materializeShared();
   copyDir(path.join(appRoot, 'shared'), path.join(kioskPath, 'shared'));
   patchRepoImports(kioskPath);
+  vendorRepoUtils(kioskPath);
 
   if (!fs.existsSync(path.join(kioskPath, 'components', 'ProductionAppAuthGate.js'))) {
     console.error('[materializeCarpentryStandalone] failed');

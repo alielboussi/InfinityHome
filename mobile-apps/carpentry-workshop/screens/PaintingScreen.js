@@ -25,7 +25,7 @@ import {
   fetchCarpentryFinishingProducts,
   sendCarpentryProductToPainting,
 } from '../services/carpentryApi';
-import ProductionPressableHint from '../productionKiosk/components/ProductionPressableHint';
+import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { extractProductionBaseName } from '../productionKiosk/lib/productionItemName';

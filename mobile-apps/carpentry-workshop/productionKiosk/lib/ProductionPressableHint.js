@@ -6,8 +6,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import { theme } from '../../shared/theme';
-import { tUi } from '../lib/productionKioskI18n';
+import { theme } from '../shared/theme';
+import { tUi } from './productionKioskI18n';
 
 function HintModal({ visible, title, body, locale, textAlign, onClose }) {
   if (!visible) return null;
@@ -28,9 +28,6 @@ function HintModal({ visible, title, body, locale, textAlign, onClose }) {
   );
 }
 
-/**
- * Tap = onPress. Long-press = short help popup (when hintBody or hintKey is set).
- */
 export default function ProductionPressableHint({
   hintKey,
   hintBody,
@@ -99,9 +96,6 @@ const styles = StyleSheet.create({
     borderColor: theme.border,
     paddingVertical: 18,
     paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
     elevation: 8,
   },
   title: {

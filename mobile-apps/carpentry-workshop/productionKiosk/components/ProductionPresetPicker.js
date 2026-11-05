@@ -1,7 +1,7 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { theme } from '../shared/theme';
 import { kiosk } from './kioskStyles';
-import { presetLabel, tUi } from '../lib/productionKioskI18n';
+import { presetLabel, tUi, textForDisplay } from '../lib/productionKioskI18n';
 
 export default function ProductionPresetPicker({
   visible,
@@ -15,12 +15,14 @@ export default function ProductionPresetPicker({
   onClose,
   onSelect,
 }) {
-  const list = Array.isArray(presets) ? presets : [];
+  const list = (Array.isArray(presets) ? presets : [])
+    .map((p) => String(p || '').trim())
+    .filter(Boolean);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={[styles.title, { textAlign }]}>{title}</Text>
+          <Text style={[styles.title, { textAlign }]}>{textForDisplay(title, '')}</Text>
           <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             {list.map((p) => {
               const active = selectedPreset === p;
@@ -36,7 +38,7 @@ export default function ProductionPresetPicker({
                   disabled={disabled}
                 >
                   <Text style={[styles.rowText, active && styles.rowTextActive, { textAlign: 'left' }]}>
-                    {presetLabel(p, locale, presetArLabels)}
+                    {textForDisplay(presetLabel(p, locale, presetArLabels), p)}
                   </Text>
                 </Pressable>
               );

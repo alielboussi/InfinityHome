@@ -8,7 +8,7 @@ import { useProductionDashboardTileLayout } from '../productionKiosk/lib/product
 import { theme } from '../shared/theme';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi } from '../productionKiosk/lib/productionKioskI18n';
-import ProductionPressableHint from '../productionKiosk/components/ProductionPressableHint';
+import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 
 function DashboardTile({
   icon, title, width, height, onPress, hintKey, locale, textAlign,

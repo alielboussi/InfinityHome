@@ -47,7 +47,7 @@ export async function registerProductionPushTokenWithServer() {
   await warehouseMobileRequest('production-push-register', {
     expo_push_token: token,
     platform: Platform.OS,
-    app_target: 'carpentry',
+    app_target: 'upholstery',
   });
   return { ok: true, token };
 }
@@ -57,10 +57,10 @@ export function navigateFromProductionNotification(navigationRef, data) {
   if (!nav?.navigate) return;
   const screen = String(data?.screen || '').trim();
   const quoteId = String(data?.quote_id || '').trim();
-  if (screen === 'Quotes' || screen === 'QuoteDetail') {
-    nav.navigate('Quotes');
+  if (screen === 'UpholsteryQuotes' || screen === 'UpholsteryQuoteDetail') {
+    nav.navigate('UpholsteryQuotes');
     if (quoteId) {
-      nav.navigate('QuoteDetail', { quote: { quote_id: quoteId } });
+      nav.navigate('UpholsteryQuoteDetail', { quote: { quote_id: quoteId } });
     }
     return;
   }

@@ -5,6 +5,7 @@ import { verifyMobileLoginAccess } from '../shared/loginAccess';
 import {
   defaultMobileAccessGrant,
   evaluateWarehouseProductionAppAccess,
+  isWarehouseProductionPhotoUploadAllowed,
   sanitizeMobileAccessGrantForUser,
 } from '../shared/mobileAccessManifest';
 import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
@@ -119,6 +120,8 @@ export function useProductionAccessGrant() {
     };
   }, [refresh]);
 
+  const photoUploadAllowed = isWarehouseProductionPhotoUploadAllowed(grant, userEmail);
+
   return {
     grant,
     loading,
@@ -126,6 +129,7 @@ export function useProductionAccessGrant() {
     userEmail,
     userDisplayName,
     allowed,
+    photoUploadAllowed,
     refresh,
     accessHint,
   };

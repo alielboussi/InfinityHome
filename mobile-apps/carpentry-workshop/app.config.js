@@ -60,6 +60,9 @@ module.exports = {
       ],
     ],
     extra: {
+      eas: {
+        projectId: 'c3fbf07e-ecd4-46d1-b6ff-1eddba06858c',
+      },
       firebase,
       apiBase: (process.env.EXPO_PUBLIC_API_BASE || 'https://www.infinity-home.online').replace(/\/+$/, ''),
       googleWebClientId,
