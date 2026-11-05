@@ -78,10 +78,15 @@ export function buildUpholsteryCatalogPayload(assemblies, setItems, portalInputs
   );
   return {
     ok: true,
+    categories: (portalInputs.categories || []).map((c) => ({
+      id: String(c.id),
+      name: String(c.name || '').trim(),
+    })),
     candidates: portal.productCandidates.map((a) => ({
       id: a.id,
       name: a.name,
       family_sku: a.family_sku,
+      category_id: a.category_id ? String(a.category_id) : null,
     })),
     setCandidates,
     storeroomMaterials: portal.storeroomMaterials,

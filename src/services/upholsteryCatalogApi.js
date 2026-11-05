@@ -2,7 +2,12 @@ import db from '../dataClient';
 import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
 import { buildUpholsteryCatalogPayload } from '../utils/upholsteryCatalogView';
-import { loadProductionPortalCatalogInputs } from '../utils/loadProductionPortalCatalogInputs';
+import { listCarpentryCatalogProducts } from '../utils/carpentryCatalogView';
+import {
+  fetchSharedProductionPortalSnapshot,
+  getCachedProductionPortalSnapshot,
+  invalidateProductionPortalSnapshotCache,
+} from '../utils/loadProductionPortalCatalogInputs';
 import { canManageCatalog, getCurrentUser } from '../accessControl';
 import {
   saveUpholsteryProductSelection,
@@ -12,8 +17,12 @@ import {
 
 const CANONICAL = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
 
+function uniqueUrls(urls) {
+  return [...new Set((urls || []).filter(Boolean))];
+}
+
 async function staffAuthHeaders() {
-  const token = await firebaseGetAccessToken(true);
+  const token = await firebaseGetAccessToken(false);
   if (!token) throw new Error('Sign in required to load Upholstery catalog');
   return withApiHeaders({
     Authorization: `Bearer ${token}`,
@@ -31,60 +40,34 @@ async function parseResponse(resp) {
   }
 }
 
-async function fetchUpholsteryCatalogFromFirestore() {
-  const [{ data, error }, { data: setItems, error: setItemsErr }] = await Promise.all([
-    db.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata'),
-    db.from('warehouse_set_items').select('set_assembly_id, component_assembly_id, quantity, location_id'),
-  ]);
-  if (error) throw new Error(error.message || 'Failed to load warehouse catalog');
-  if (setItemsErr) throw new Error(setItemsErr.message || 'Failed to load warehouse set lines');
-  const portalInputs = await loadProductionPortalCatalogInputs(db);
-  return buildUpholsteryCatalogPayload(data || [], setItems || [], portalInputs);
+export function getCachedUpholsteryCatalog() {
+  const snap = getCachedProductionPortalSnapshot();
+  if (!snap || !Array.isArray(snap.assemblies)) return null;
+  return {
+    ...buildUpholsteryCatalogPayload(snap.assemblies, snap.setItems, snap.portalInputs),
+    carpentryProducts: listCarpentryCatalogProducts(snap.assemblies),
+    locations: snap.portalInputs?.locations || [],
+  };
 }
 
-export async function fetchUpholsteryCatalog() {
-  let headers;
-  try {
-    headers = await staffAuthHeaders();
-  } catch (authErr) {
-    return fetchUpholsteryCatalogFromFirestore();
-  }
-
-  const body = JSON.stringify({ op: 'list' });
-  const urls = [
-    apiUrl('/api/admin?adminAction=upholstery-catalog'),
-    `${CANONICAL}/api/admin?adminAction=upholstery-catalog`,
-  ].filter(Boolean);
-
-  let lastErr = '';
-  for (const url of urls) {
-    try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body,
-      });
-      const { payload, raw } = await parseResponse(resp);
-      if (resp.ok && payload?.ok) return payload;
-      lastErr = payload?.error
-        || (raw && !raw.startsWith('{') ? `Server error (${resp.status})` : '')
-        || `upholstery-catalog failed (${resp.status})`;
-    } catch (netErr) {
-      lastErr = netErr?.message || 'Network error';
-    }
-  }
-
-  try {
-    return await fetchUpholsteryCatalogFromFirestore();
-  } catch (fallbackErr) {
-    throw new Error(lastErr || fallbackErr?.message || 'upholstery-catalog failed');
-  }
+export async function fetchUpholsteryCatalog({ forceFresh = false } = {}) {
+  const snap = await fetchSharedProductionPortalSnapshot({ forceFresh });
+  return {
+    ...buildUpholsteryCatalogPayload(snap.assemblies, snap.setItems, snap.portalInputs),
+    carpentryProducts: listCarpentryCatalogProducts(snap.assemblies),
+    locations: snap.portalInputs?.locations || [],
+  };
 }
 
 function shouldFallbackFromAdminError(message, status) {
   const msg = String(message || '').toLowerCase();
   if (status === 404) return true;
-  return msg.includes('unknown adminaction') || msg.includes('network error') || msg.includes('failed to fetch');
+  return (
+    msg.includes('unknown adminaction')
+    || msg.includes('unknown op')
+    || msg.includes('network error')
+    || msg.includes('failed to fetch')
+  );
 }
 
 async function postUpholsteryCatalogDirect(body) {
@@ -121,14 +104,25 @@ async function postUpholsteryCatalogDirect(body) {
 }
 
 export async function postUpholsteryCatalog(body) {
+  invalidateProductionPortalSnapshotCache();
+
+  try {
+    const user = getCurrentUser();
+    if (canManageCatalog(user)) {
+      return await postUpholsteryCatalogDirect(body);
+    }
+  } catch {
+    /* fallback to serverless endpoint */
+  }
+
   const headers = {
     'Content-Type': 'application/json',
     ...(await staffAuthHeaders()),
   };
-  const urls = [
+  const urls = uniqueUrls([
     apiUrl('/api/admin?adminAction=upholstery-catalog'),
     `${CANONICAL}/api/admin?adminAction=upholstery-catalog`,
-  ].filter(Boolean);
+  ]);
 
   let lastErr = '';
   for (const url of urls) {
