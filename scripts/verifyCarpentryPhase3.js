@@ -59,6 +59,11 @@ try {
     'upholstery',
   ], 'production api');
 
+  includesAll(read('mobile-apps/carpentry-workshop/productionKiosk/lib/productionPushNotifications.js'), [
+    "app_target: 'carpentry'",
+    "screen === 'Quotes'",
+  ], 'carpentry push registration');
+
   console.log('verifyCarpentryPhase3: ok');
 } catch (e) {
   if (!process.exitCode) process.exitCode = 1;
