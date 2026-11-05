@@ -88,6 +88,12 @@ const RECLINER_PHOTO_PRESET_SUBJECT = Object.freeze({
     'a single-seat recliner armchair (one reclining seat with footrest; same upholstery as photographed)',
   'Lounge Chair':
     'a single recliner lounge chair (recliner armchair with footrest; same upholstery and silhouette as photographed)',
+  '3 Seater Recliner':
+    'a three-seat recliner sofa (three reclining seats with matching upholstery and footrests; same configuration as photographed)',
+  '2 Seater Recliner':
+    'a two-seat recliner loveseat (two reclining seats with footrests; same upholstery as photographed)',
+  'Single Seater Recliner':
+    'a single-seat recliner armchair (one reclining seat with footrest; same upholstery as photographed)',
 });
 
 /** Subject line per Create-screen preset (upholstery + carpentry). */
@@ -104,6 +110,8 @@ export const PRODUCTION_PHOTO_PRESET_SUBJECT = Object.freeze({
     'curtain panels or drapery (fabric, pleats/folds, heading, and hems; same pattern and color as photographed)',
   Pillows:
     'decorative throw pillows or cushions (same fabric, color, and shape; single pillow or a small matching set)',
+  Puff:
+    'an upholstered ottoman or puff (same fabric, shape, and proportions as photographed; not a full sofa)',
   'Coffee Table':
     'a coffee table (low living-room table; same top, legs, and finish as photographed)',
   'Side Table':
@@ -199,7 +207,12 @@ export function buildProductionPhotoRetouchPrompt({
     }
   }
   const subjectMap = recliner ? RECLINER_PHOTO_PRESET_SUBJECT : PRODUCTION_PHOTO_PRESET_SUBJECT;
-  const subject = subjectMap[resolved]
+  let subject = subjectMap[resolved];
+  if (!subject && recliner) {
+    const baseRecliner = resolved.replace(/\s+Recliner$/i, '').trim();
+    subject = RECLINER_PHOTO_PRESET_SUBJECT[baseRecliner];
+  }
+  subject = subject
     || defaultSubjectForPreset(resolved, { seaterPresets, carpentryPresets });
   const label = resolved || 'furniture product';
   const requirements = recliner ? RECLINER_CATALOG_REQUIREMENTS : SHARED_REQUIREMENTS;

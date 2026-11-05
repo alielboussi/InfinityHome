@@ -760,6 +760,8 @@ async function opProductionPacketCreate(body, user) {
     : null;
 
   const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const deferProductPhoto = body.defer_product_photo === true
+    || body.deferProductPhoto === true;
   const portalExplicit = body.portal_catalog || body.auto_portal_catalog;
   const {
     resolveProductionPortalChannel,
@@ -805,8 +807,6 @@ async function opProductionPacketCreate(body, user) {
     });
 
     const mattressProduct = isMattressCatalogProductName(name);
-    const deferProductPhoto = body.defer_product_photo === true
-      || body.deferProductPhoto === true;
     const imageBase64 = deferProductPhoto
       ? ''
       : String(body.image_base64 || body.imageBase64 || '').trim();

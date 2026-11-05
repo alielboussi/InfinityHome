@@ -26,6 +26,14 @@ if (!retouchSrc.includes('centerTrimmedOnCatalogSquare') || !retouchSrc.includes
   process.exit(1);
 }
 
+/** Seater presets on server / upholstery app (may exceed static PRODUCTION_SEATER_PRESETS). */
+const UPHOLSTERY_SERVER_SEATER_PRESETS = Object.freeze([
+  '3 Seater Recliner',
+  '2 Seater Recliner',
+  'Single Seater Recliner',
+  'Puff',
+]);
+
 for (const preset of [...PRODUCTION_SEATER_PRESETS, ...PRODUCTION_CARPENTRY_PRESETS]) {
   if (!PRODUCTION_PHOTO_PRESET_SUBJECT[preset]) {
     console.error('[verifyProductionPhotoRetouchPrompts] missing subject for', preset);
@@ -34,6 +42,25 @@ for (const preset of [...PRODUCTION_SEATER_PRESETS, ...PRODUCTION_CARPENTRY_PRES
   const prompt = buildProductionPhotoRetouchPrompt({ preset });
   if (!prompt.includes('pure white') || !prompt.includes(preset)) {
     console.error('[verifyProductionPhotoRetouchPrompts] invalid prompt for', preset);
+    process.exit(1);
+  }
+}
+
+for (const preset of UPHOLSTERY_SERVER_SEATER_PRESETS) {
+  const prompt = buildProductionPhotoRetouchPrompt({
+    preset,
+    productName: `Sample ${preset}`,
+  });
+  if (!prompt.includes('pure white') || !prompt.includes(preset)) {
+    console.error('[verifyProductionPhotoRetouchPrompts] invalid upholstery server preset prompt for', preset);
+    process.exit(1);
+  }
+  if (/recliner/i.test(preset) && !prompt.includes('RECLINER CATALOG')) {
+    console.error('[verifyProductionPhotoRetouchPrompts] recliner preset missing recliner block:', preset);
+    process.exit(1);
+  }
+  if (preset === 'Puff' && !/ottoman or puff/i.test(prompt)) {
+    console.error('[verifyProductionPhotoRetouchPrompts] Puff preset missing puff subject');
     process.exit(1);
   }
 }
