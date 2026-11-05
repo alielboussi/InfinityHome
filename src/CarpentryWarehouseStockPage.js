@@ -324,7 +324,7 @@ export default function CarpentryWarehouseStockPage() {
                 {stockSearchLoading ? (
                   <li className="carpentry-add-dropdown__item">Searching…</li>
                 ) : stockSearchRows.length ? stockSearchRows.map((a) => (
-                  <li key={a.id} role="option">
+                  <li key={a.id} role="option" aria-selected={stockPickId === String(a.id)}>
                     <button
                       type="button"
                       className="carpentry-add-dropdown__item"

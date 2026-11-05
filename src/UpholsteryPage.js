@@ -9,6 +9,11 @@ import {
   fetchUpholsteryCatalog,
   postUpholsteryCatalog,
 } from './services/upholsteryCatalogApi';
+import {
+  applyStoreroomMaterialUomToLine,
+  labelForMaterialUom,
+  uomFromStoreroomMaterial,
+} from './utils/storeroomBomLineUom';
 
 const emptyMaterial = () => ({
   material_assembly_id: '',
@@ -32,7 +37,7 @@ export default function UpholsteryPage() {
   const [busyId, setBusyId] = useState('');
   const [expandedSetId, setExpandedSetId] = useState('');
 
-  const { options: uomOptions, defaultUom } = useMaterialUomOptions();
+  const { options: uomOptions } = useMaterialUomOptions();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -173,9 +178,9 @@ export default function UpholsteryPage() {
     setBusyId(`mat-${assemblyId}`);
     setError('');
     try {
-      const lines = (materialDrafts[assemblyId] || []).filter(
-        (l) => String(l.material_assembly_id || '').trim(),
-      );
+      const lines = (materialDrafts[assemblyId] || [])
+        .filter((l) => String(l.material_assembly_id || '').trim())
+        .map((l) => applyStoreroomMaterialUomToLine(l, materialOptions));
       await postUpholsteryCatalog({
         op: 'save-materials',
         assembly_id: assemblyId,
@@ -193,10 +198,8 @@ export default function UpholsteryPage() {
     setMaterialDrafts((prev) => {
       const lines = [...(prev[productId] || [emptyMaterial()])];
       const next = { ...lines[index], ...patch };
-      if (patch.material_assembly_id && !patch.uom) {
-        const mat = materialOptions.find((m) => String(m.id) === String(patch.material_assembly_id));
-        if (mat?.default_uom) next.uom = mat.default_uom;
-        else if (defaultUom && !next.uom) next.uom = defaultUom;
+      if (Object.prototype.hasOwnProperty.call(patch, 'material_assembly_id')) {
+        next.uom = uomFromStoreroomMaterial(materialOptions, patch.material_assembly_id);
       }
       lines[index] = next;
       return { ...prev, [productId]: lines };
@@ -239,8 +242,6 @@ export default function UpholsteryPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search SKU or name to add a finished product…"
-          aria-expanded={Boolean(search.trim())}
-          aria-controls="upholstery-add-dropdown"
           autoComplete="off"
         />
         {search.trim() ? (
@@ -251,7 +252,7 @@ export default function UpholsteryPage() {
               const setBusy = String(busyId).startsWith('batch-') || busyId === String(set.id);
               return (
                 <li key={`set-${set.id}`} className="carpentry-add-dropdown__item upholstery-add-set" role="presentation">
-                  <div className="carpentry-add-dropdown__item" role="option">
+                  <div className="carpentry-add-dropdown__item" role="option" aria-selected="false">
                     <div className="carpentry-add-dropdown__meta">
                       <span className="carpentry-add-dropdown__sku">{set.family_sku || '—'}</span>
                       <span className="carpentry-add-dropdown__name">
@@ -315,7 +316,7 @@ export default function UpholsteryPage() {
               );
             })}
             {candidateRows.length ? candidateRows.slice(0, 40).map((row) => (
-              <li key={row.id} className="carpentry-add-dropdown__item" role="option">
+              <li key={row.id} className="carpentry-add-dropdown__item" role="option" aria-selected="false">
                 <div className="carpentry-add-dropdown__meta">
                   <span className="carpentry-add-dropdown__sku">{row.family_sku || '—'}</span>
                   <span className="carpentry-add-dropdown__name">{row.name}</span>
@@ -428,6 +429,9 @@ export default function UpholsteryPage() {
                                   {m.family_sku || 'SKU'}
                                   ·
                                   {' '}
+                                  {m.default_uom || 'no UOM'}
+                                  ·
+                                  {' '}
                                   {m.storeroom_qty}
                                   {' '}
                                   in storerooms)
@@ -442,16 +446,19 @@ export default function UpholsteryPage() {
                               value={line.quantity}
                               onChange={(e) => updateMaterialLine(row.id, index, { quantity: e.target.value })}
                             />
-                            <select
+                            <input
+                              type="text"
                               className="kitwe-form-control"
-                              value={line.uom || ''}
-                              onChange={(e) => updateMaterialLine(row.id, index, { uom: e.target.value })}
-                            >
-                              <option value="">UOM…</option>
-                              {uomOptions.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                              ))}
-                            </select>
+                              readOnly
+                              tabIndex={-1}
+                              value={labelForMaterialUom(
+                                uomFromStoreroomMaterial(materialOptions, line.material_assembly_id)
+                                  || line.uom,
+                                uomOptions,
+                              )}
+                              title="Unit of measure from the storeroom material"
+                              placeholder="Pick material…"
+                            />
                             <select
                               className="kitwe-form-control"
                               value={line.warehouse_location_id || ''}
