@@ -1,7 +1,14 @@
 /** Keep in sync with src/utils/productionLabelQrScan.js */
 
+import {
+  normalizeWarehouseCatalogSearchQuery,
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+  sanitizeWarehouseScannerInput,
+} from '../shared/warehouseScanResolver';
+
 export function parseProductPhotoQrSku(raw) {
-  const trimmed = String(raw || '').trim();
+  const trimmed = sanitizeWarehouseScannerInput(raw);
   if (!trimmed) return '';
 
   const skuFromQuery = (queryString) => {
@@ -39,11 +46,18 @@ export function parseProductPhotoQrSku(raw) {
 }
 
 export function productionScanResolveCandidates(raw) {
-  const trimmed = String(raw || '').trim();
+  const trimmed = sanitizeWarehouseScannerInput(raw);
   if (!trimmed) return [];
   const out = [];
+  const push = (v) => {
+    const s = String(v || '').trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
   const photoSku = parseProductPhotoQrSku(trimmed);
-  if (photoSku) out.push(photoSku);
-  if (!out.includes(trimmed)) out.push(trimmed);
+  push(photoSku);
+  push(trimmed);
+  push(normalizeWarehouseCatalogSearchQuery(trimmed));
+  push(normalizeWarehousePacketScan(trimmed));
+  push(normalizeWarehouseProductSku(trimmed));
   return out;
 }

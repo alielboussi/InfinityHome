@@ -1,5 +1,12 @@
 /** Parse production label QRs / scan strings for stock search (web + API). */
 
+import {
+  normalizeWarehouseCatalogSearchQuery,
+  normalizeWarehousePacketScan,
+  normalizeWarehouseProductSku,
+  sanitizeWarehouseScannerInput,
+} from './warehouseScanResolver.js';
+
 export function parseProductPhotoQrSku(raw) {
   const trimmed = String(raw || '').trim();
   if (!trimmed) return '';
@@ -38,13 +45,20 @@ export function parseProductPhotoQrSku(raw) {
   return '';
 }
 
-/** Candidate strings to try for SKU / barcode resolution (longest first). */
+/** Candidate strings to try for SKU / barcode resolution (longest / most specific first). */
 export function productionScanResolveCandidates(raw) {
-  const trimmed = String(raw || '').trim();
+  const trimmed = sanitizeWarehouseScannerInput(raw);
   if (!trimmed) return [];
   const out = [];
+  const push = (v) => {
+    const s = String(v || '').trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
   const photoSku = parseProductPhotoQrSku(trimmed);
-  if (photoSku) out.push(photoSku);
-  if (!out.includes(trimmed)) out.push(trimmed);
+  push(photoSku);
+  push(trimmed);
+  push(normalizeWarehouseCatalogSearchQuery(trimmed));
+  push(normalizeWarehousePacketScan(trimmed));
+  push(normalizeWarehouseProductSku(trimmed));
   return out;
 }

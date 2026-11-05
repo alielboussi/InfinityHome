@@ -1,4 +1,18 @@
-import { normalizeWarehouseSku, normalizeWarehouseSkuKey } from './warehouseAssemblyMath.js';
+/** Normalize warehouse / packet SKU for comparison (trim + strip Code128 / GS1 control chars). */
+export function sanitizeWarehouseScannerInput(value) {
+  let s = String(value ?? '');
+  s = s.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+  s = s.replace(/^\][A-Z]\d/i, '');
+  return s.trim();
+}
+
+export function normalizeWarehouseSku(value) {
+  return sanitizeWarehouseScannerInput(value);
+}
+
+export function normalizeWarehouseSkuKey(value) {
+  return normalizeWarehouseSku(value).toLowerCase();
+}
 
 /**
  * Warehouse label / scan types (Istikbal-style; keep web + mobile in sync).

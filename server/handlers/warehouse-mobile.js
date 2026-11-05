@@ -293,14 +293,18 @@ async function opScanResolve(body) {
       : null;
     return { kind: 'packet', packet, assembly };
   }
-  const productKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(scan));
-  const assembly = (assemblies || []).find((a) => {
-    const stored = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(a.family_sku));
-    for (const k of productKeys) {
-      if (k && stored.has(k)) return true;
-    }
-    return false;
-  });
+  let assembly = null;
+  for (const candidate of productionScanResolveCandidates(scan)) {
+    const productKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(candidate));
+    assembly = (assemblies || []).find((a) => {
+      const stored = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(a.family_sku));
+      for (const k of productKeys) {
+        if (k && stored.has(k)) return true;
+      }
+      return false;
+    });
+    if (assembly) break;
+  }
   if (assembly) {
     return { kind: 'assembly', assembly };
   }

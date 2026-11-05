@@ -7,8 +7,15 @@
  * (3) unknown scan / search → normalizeWarehouseCatalogSearchQuery.
  */
 
+export function sanitizeWarehouseScannerInput(value) {
+  let s = String(value ?? '');
+  s = s.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+  s = s.replace(/^\][A-Z]\d/i, '');
+  return s.trim();
+}
+
 export function normalizeWarehouseSku(value) {
-  return String(value || '').trim();
+  return sanitizeWarehouseScannerInput(value);
 }
 
 export function normalizeWarehouseSkuKey(value) {

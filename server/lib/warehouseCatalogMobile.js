@@ -153,12 +153,23 @@ async function loadMobileCatalogPackets(sb, assemblyPacketRows, packetLoad) {
     return packets || [];
   }
 
-  const ids = [...new Set((assemblyPacketRows || []).map((row) => String(row.packet_id)).filter(Boolean))];
-  if (!ids.length) return [];
+  const ids = new Set(
+    (assemblyPacketRows || []).map((row) => String(row.packet_id)).filter(Boolean),
+  );
+  const { data: legacyAssigned, error: legacyErr } = await sb
+    .from(PACKETS)
+    .select('id')
+    .not('assembly_id', 'is', null);
+  throwIfDatastoreError(legacyErr, 'Failed to load packet assignments');
+  (legacyAssigned || []).forEach((row) => {
+    if (row?.id) ids.add(String(row.id));
+  });
+  const idList = [...ids];
+  if (!idList.length) return [];
 
   const merged = [];
-  for (let i = 0; i < ids.length; i += PACKET_INVENTORY_IN_CHUNK) {
-    const chunk = ids.slice(i, i + PACKET_INVENTORY_IN_CHUNK);
+  for (let i = 0; i < idList.length; i += PACKET_INVENTORY_IN_CHUNK) {
+    const chunk = idList.slice(i, i + PACKET_INVENTORY_IN_CHUNK);
     const { data, error } = await sb.from(PACKETS).select(MOBILE_PACKET_FIELDS).in('id', chunk);
     throwIfDatastoreError(error, 'Failed to load packets');
     merged.push(...(data || []));

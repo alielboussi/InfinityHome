@@ -96,6 +96,7 @@ export default function StockScreen({ navigation }) {
   const tryResolveScan = async (raw) => {
     const scan = String(raw || '').trim();
     if (!scan) return;
+    setError('');
     try {
       const result = await resolveProductionScan(scan);
       if (result?.kind === 'assembly' && result.assembly) {

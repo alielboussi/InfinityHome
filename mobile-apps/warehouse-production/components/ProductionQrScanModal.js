@@ -11,6 +11,7 @@ import {
 import { CameraView } from 'expo-camera';
 import { theme } from '../shared/theme';
 import { tUi } from '../lib/productionKioskI18n';
+import { sanitizeWarehouseScannerInput } from '../shared/warehouseScanResolver';
 import {
   askProductionCameraPermission,
   readProductionCameraPermission,
@@ -44,7 +45,7 @@ export default function ProductionQrScanModal({
   }, [granted, permissionBusy]);
 
   const handleBarcode = useCallback(({ data }) => {
-    const value = String(data || '').trim();
+    const value = sanitizeWarehouseScannerInput(data);
     if (!value) return;
     const now = Date.now();
     if (lastScanRef.current.value === value && now - lastScanRef.current.at < 1500) {
@@ -78,7 +79,15 @@ export default function ProductionQrScanModal({
               }}
               onBarcodeScanned={handleBarcode}
             />
-            <View style={styles.frame} pointerEvents="none" />
+            <View style={styles.scanGuide} pointerEvents="none">
+              <View style={styles.scanDimTop} />
+              <View style={styles.scanLineRow}>
+                <View style={styles.scanLineCap} />
+                <View style={styles.scanLine} />
+                <View style={styles.scanLineCap} />
+              </View>
+              <View style={styles.scanDimBottom} />
+            </View>
           </View>
         ) : (
           <View style={styles.permissionBox}>
@@ -160,15 +169,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
   },
-  frame: {
-    position: 'absolute',
-    left: '12%',
-    right: '12%',
-    top: '22%',
-    bottom: '22%',
-    borderWidth: 2,
-    borderColor: theme.primary,
-    borderRadius: 8,
+  scanGuide: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+  },
+  scanDimTop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  scanDimBottom: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  scanLineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 2,
+  },
+  scanLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: theme.primary,
+    shadowColor: theme.primary,
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  scanLineCap: {
+    width: 28,
+    height: 2,
+    backgroundColor: theme.primary,
+    opacity: 0.85,
   },
   allowBtn: {
     minHeight: 52,

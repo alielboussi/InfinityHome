@@ -43,8 +43,16 @@ assert(portal.includes('kitwe_portal_listed'), 'portal create must mark assembli
 
 const kitwePage = fs.readFileSync(path.join(root, 'src/KitweProductsPage.js'), 'utf8');
 assert(
-  kitwePage.includes('filterKitweCatalogProducts'),
-  'Kitwe products page must list deliveries and portal-created products',
+  kitwePage.includes('listKitweWarehouseSets'),
+  'Kitwe products page must list delivery-accepted sets via listKitweWarehouseSets',
+);
+assert(
+  !kitwePage.includes('kitwe-view-toggle'),
+  'Kitwe products page must not use a separate Sets tab',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/utils/kitweSetStock.js'), 'utf8').includes('filterKitweCatalogProductAssemblies'),
+  'Kitwe products filter must hide set components',
 );
 
 const productsList = fs.readFileSync(path.join(root, 'src/ProductsListPage.js'), 'utf8');

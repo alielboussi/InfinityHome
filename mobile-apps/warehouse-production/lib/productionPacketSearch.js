@@ -1,7 +1,13 @@
 /** Keep search behaviour aligned with src/utils/productionPacketSearch.js */
 
 import { normalizeWarehousePacketNameKey } from './productionItemName';
-import { parseProductPhotoQrSku } from './productionLabelQrScan';
+import { parseProductPhotoQrSku, productionScanResolveCandidates } from './productionLabelQrScan';
+import {
+  expandWarehouseSkuMatchKeys,
+  normalizeWarehouseCatalogSearchQuery,
+  normalizeWarehousePacketScan,
+  resolvePacketFromScan,
+} from '../shared/warehouseScanResolver';
 
 const ARABIC_CHAR_TO_LATIN = {
   ا: 'a', أ: 'a', إ: 'i', آ: 'a', ى: 'a', ة: 'a', ء: '',
@@ -55,8 +61,13 @@ function nameMatchesLatinKeys(name, keys) {
   });
 }
 
-function normalizeWarehouseCatalogSearchQuery(raw) {
-  return String(raw || '').trim().replace(/\s+/g, '');
+function skuKeysForPacketMatch(rawQuery) {
+  const keys = new Set();
+  for (const candidate of productionScanResolveCandidates(rawQuery)) {
+    expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(candidate)).forEach((k) => keys.add(k));
+    expandWarehouseSkuMatchKeys(normalizeWarehouseCatalogSearchQuery(candidate)).forEach((k) => keys.add(k));
+  }
+  return keys;
 }
 
 export function packetMatchesProductionSearch(packet, rawQuery) {
@@ -67,6 +78,18 @@ export function packetMatchesProductionSearch(packet, rawQuery) {
   const sku = String(packet?.sku || '');
   const photoSku = parseProductPhotoQrSku(q);
   if (photoSku && sku.toUpperCase() === photoSku.toUpperCase()) return true;
+
+  if (resolvePacketFromScan(q, [packet])) return true;
+
+  const scanKeys = skuKeysForPacketMatch(q);
+  const packetKeys = new Set();
+  expandWarehouseSkuMatchKeys(sku).forEach((k) => packetKeys.add(k));
+  (packet.sku_aliases || []).forEach((alias) => {
+    expandWarehouseSkuMatchKeys(alias).forEach((k) => packetKeys.add(k));
+  });
+  for (const key of scanKeys) {
+    if (key && packetKeys.has(key)) return true;
+  }
 
   const nameKey = normalizeWarehousePacketNameKey(q);
   if (nameKey && normalizeWarehousePacketNameKey(name) === nameKey) return true;

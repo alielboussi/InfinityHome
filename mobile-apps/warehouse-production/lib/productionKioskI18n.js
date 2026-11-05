@@ -308,6 +308,14 @@ const UI_STRINGS = {
     en: 'That is the product SKU — scan a carton (packet) barcode on the label, not the main product code.',
     ar: 'هذا SKU المنتج — امسح باركود الطرد على الملصق وليس رمز المنتج الرئيسي.',
   },
+  deliveryNoPacketLines: {
+    en: 'No packet cartons are linked to this product. Add packet BOM on Warehouse Products, then try again.',
+    ar: 'لا طرود مرتبطة بهذا المنتج. أضف BOM على منتجات المستودع ثم أعد المحاولة.',
+  },
+  deliveryIncompleteBom: {
+    en: 'Packet BOM is incomplete (carton count ≠ packet count). Fix on Warehouse Products before delivery.',
+    ar: 'BOM الطرود غير مكتمل. صحّحه في منتجات المستودع قبل الإرسال.',
+  },
   deliveryFinishedUnitsTick: {
     en: 'Confirm finished units on the truck',
     ar: 'تأكيد الوحدات الجاهزة على الشاحنة',
@@ -326,8 +334,8 @@ const UI_STRINGS = {
   stockQrBtn: { en: 'QR', ar: 'QR' },
   stockQrTitle: { en: 'Scan QR or barcode', ar: 'مسح QR أو الباركود' },
   stockQrHint: {
-    en: 'Point at Image Qr, Product Name Qr, or the SKU barcode on the label.',
-    ar: 'وجّه الكاميرا نحو QR الصورة، QR اسم المنتج، أو باركود SKU على الملصق.',
+    en: 'Hold the phone steady and align the barcode with the red line across the screen.',
+    ar: 'ثبّت الهاتف ومحِّ الباركود مع الخط الأحمر في منتصف الشاشة.',
   },
   stockQrAllowCamera: {
     en: 'Allow camera to scan',

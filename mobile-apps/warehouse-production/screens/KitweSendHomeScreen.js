@@ -22,6 +22,7 @@ import { assembliesUsingPacket, findWarehousePacketByScan } from '../lib/deliver
 import { filterAssembliesForDeliverySearch } from '../lib/deliveryCatalogSearch';
 import { resolveDeliveryCatalogScan } from '../lib/deliveryScanResolve';
 import {
+  hasIncompletePacketCartonBom,
   isFinishedProductWithoutPacketBom,
   isSetAssembly as isWarehouseSetAssembly,
 } from '../shared/warehouseCatalogProductCompleteness';
@@ -114,8 +115,23 @@ export default function KitweSendHomeScreen({ navigation }) {
   const inputAlign = { textAlign: locale === 'ar' ? 'right' : 'left' };
 
   useEffect(() => {
-    fetchWarehouseCatalogCached({ force: false }).then(setCatalog).catch(() => {});
+    fetchWarehouseCatalogCached({ force: true, fullPackets: true }).then(setCatalog).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!draftAssemblyId || !draftAssembly) return;
+    if (draftIsFinishedOnly || draftUsesBoxUnits) return;
+    if (draftPacketRows.length > 0) return;
+    if (catalog?.catalog_meta?.packet_load === 'all') return;
+    fetchWarehouseCatalogCached({ force: true, fullPackets: true }).then(setCatalog).catch(() => {});
+  }, [
+    draftAssemblyId,
+    draftAssembly,
+    draftIsFinishedOnly,
+    draftUsesBoxUnits,
+    draftPacketRows.length,
+    catalog?.catalog_meta?.packet_load,
+  ]);
 
   useEffect(() => {
     if (sessionId) {
@@ -204,23 +220,45 @@ export default function KitweSendHomeScreen({ navigation }) {
       selectAssemblyForDraft(resolved.assembly);
       if (resolved.kind === 'assembly_box') {
         setUnits('1');
-      }
-      if (resolved.assembly) {
         setDraftFinishedConfirmed(true);
       }
       return;
     }
+    if (resolved?.kind === 'packet' && resolved.packet) {
+      const packet = resolved.packet;
+      const productCandidates = assembliesUsingPacket(packet.id, links, assemblies, packets);
+      if (!productCandidates.length) {
+        setError(tUi('deliveryScanNoProduct', locale));
+        return;
+      }
+      setError('');
+      if (productCandidates.length === 1) {
+        applyAssemblyWithPacket(productCandidates[0], packet);
+        return;
+      }
+      const label = `#${packet.packet_number || ''} ${packet.name || ''}`.trim();
+      setPickModal({ packet, assemblies: productCandidates, packetLabel: label });
+      return;
+    }
     if (resolved?.kind === 'assembly_sku_needs_carton') {
-      setError(tUi('deliveryScanProductSkuUseCarton', locale));
+      setError('');
+      setSearch(resolved.assembly.name || value);
+      selectAssemblyForDraft(resolved.assembly);
       return;
     }
 
     const packet = findWarehousePacketByScan(value, packets);
     if (!packet) {
+      const nameHits = filterAssembliesForDeliverySearch(assemblies, value, { limit: 1 });
+      if (nameHits.length === 1) {
+        setError('');
+        selectAssemblyForDraft(nameHits[0]);
+        return;
+      }
       setError(tUi('deliveryScanNoPacket', locale));
       return;
     }
-    const candidates = assembliesUsingPacket(packet.id, links, assemblies);
+    const candidates = assembliesUsingPacket(packet.id, links, assemblies, packets);
     if (!candidates.length) {
       setError(tUi('deliveryScanNoProduct', locale));
       return;
@@ -719,6 +757,13 @@ export default function KitweSendHomeScreen({ navigation }) {
                 ? tUi('deliveryFinishedUnitsTick', locale)
                 : tUi('deliveryPacketsTick', locale)}
             </Text>
+            {!draftIsFinishedOnly && draftPacketRows.length === 0 ? (
+              <Text style={[kiosk.errText, { textAlign, marginBottom: 8 }]}>
+                {hasIncompletePacketCartonBom(draftAssembly, draftPacketRows)
+                  ? tUi('deliveryIncompleteBom', locale)
+                  : tUi('deliveryNoPacketLines', locale)}
+              </Text>
+            ) : null}
             {draftIsFinishedOnly ? (
               <Pressable
                 style={[kiosk.checkRow, draftFinishedConfirmed && kiosk.checkRowOn]}
