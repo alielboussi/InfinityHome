@@ -787,7 +787,6 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
 
 function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const compactButton = { padding: '8px 12px', fontSize: 13, background: '#0f7fff', color: '#fff', border: '1px solid #0c6ed8', borderRadius: 6, minHeight: 32 };
-  const compactDanger = { padding: '8px 12px', fontSize: 13, background: '#d64545', color: '#fff', border: '1px solid #b53434', borderRadius: 6, minHeight: 32 };
   const tableCellStyle = { border: '1px solid #c9d3df', padding: '8px 10px' };
   const navigate = useNavigate();
   const location = useLocation();

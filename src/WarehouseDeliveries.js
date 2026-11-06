@@ -500,6 +500,7 @@ export default function WarehouseDeliveries() {
               ? `${progressItemLabel} received: ${receivedCount}/${total}`
               : `${progressItemLabel} confirmed: ${confirmed}/${total}`;
             const progressColor = completed || (total > 0 && receivedCount === total) ? '#4ade80' : '#fbbf24';
+            const routeLabel = warehouseDeliverySessionRouteLabel(session, { fromName, toName });
             return (
               <button
                 key={session.id}
@@ -529,7 +530,7 @@ export default function WarehouseDeliveries() {
                   ) : null}
                 </div>
                 <div style={{ color: PAGE_THEME.muted, marginTop: 6 }}>
-                  {warehouseDeliverySessionRouteLabel(session, { fromName, toName })}
+                  {routeLabel}
                 </div>
                 <div style={{ color: PAGE_THEME.muted, marginTop: 4 }}>
                   Sent: {formatDateTime(session.submitted_at || session.created_at)}
