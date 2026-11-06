@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import db from '../dataClient';
 import { pickQuoteItemProductionFields } from './quoteProductionItemFields';
 import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime';
 import { translateQuoteStringsToArabic } from '../services/quoteProductionApi';
 
 export const ARABIC_TERMS = Object.freeze({
@@ -188,53 +189,30 @@ export function translateTermToArabic(term, serverMap = {}) {
  * Department : Upholstery / Carpentry
  * Customer Name: ...
  * Customer Phone Number: ...
- * Products
- * ____________________________________
+ * Quote Date: DD/MM/YYYY
+ * Quote Time: HH:MM (CAT, UTC+02:00)
  */
 export function buildFactoryOrderWhatsAppMessage({
   route,
   customerName,
   customerPhone,
-  items = [],
+  createdAt,
 } = {}) {
   const dept = String(route || '').trim().toLowerCase() === 'carpentry'
     ? 'Carpentry'
     : 'Upholstery';
   const cName = String(customerName || '').trim() || '—';
   const cPhone = String(customerPhone || '').trim() || '—';
-
-  const productLines = (items || [])
-    .map((it) => {
-      const name = String(it.name_override || it.name || it.product_name || '').trim();
-      const qty = Number(it.quantity || 1);
-      if (!name) return null;
-      const fields = pickQuoteItemProductionFields(it);
-      const subLines = [];
-      if (fields.wood) subLines.push(`-${fields.wood}`);
-      const cleanDim = (v) => String(v).replace(/\s*cm$/i, '').trim();
-      const dims = [];
-      if (fields.dim_l_cm) dims.push(`${cleanDim(fields.dim_l_cm)}cm Length`);
-      if (fields.dim_w_cm) dims.push(`${cleanDim(fields.dim_w_cm)}cm Width`);
-      if (fields.dim_h_cm) dims.push(`${cleanDim(fields.dim_h_cm)}cm Height`);
-      if (dims.length) subLines.push(`-${dims.join(' * ')}`);
-      if (fields.color_code) subLines.push(`-Color Code: ${fields.color_code}`);
-      if (fields.leather_code) subLines.push(`-Leather Code: ${fields.leather_code}`);
-      const desc = cleanDescriptionText(it.description);
-      if (desc) subLines.push(`Description: "${desc}"`);
-      if (fields.accessories?.length) {
-        subLines.push(`Included Accessories : ${fields.accessories.join(', ')}`);
-      }
-      return [`${qty} × ${name}`, ...subLines].join('\n');
-    })
-    .filter(Boolean);
+  const stamp = createdAt || new Date().toISOString();
+  const quoteDate = formatZambiaDate(stamp);
+  const quoteTime = `${formatZambiaTime(stamp)} Central Africa Time (CAT), UTC+02:00`;
 
   return [
     `Department : ${dept}`,
     `Customer Name: ${cName}`,
     `Customer Phone Number: ${cPhone}`,
-    'Products',
-    '____________________________________',
-    ...(productLines.length ? productLines : ['—']),
+    `Quote Date: ${quoteDate}`,
+    `Quote Time: ${quoteTime}`,
   ].join('\n');
 }
 
@@ -323,13 +301,9 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
   const custName = String(quote?.customer_name || quote?.name || '—').trim();
   const custPhone = String(quote?.customer_phone || quote?.phone || '—').trim();
   const quoteNumber = String(quote?.quote_number || quote?.id || '—').trim();
-  const quoteDate = (() => {
-    try {
-      return new Date(quote?.created_at || Date.now()).toLocaleDateString();
-    } catch {
-      return '';
-    }
-  })();
+  const stamp = quote?.created_at || new Date().toISOString();
+  const quoteDate = formatZambiaDate(stamp);
+  const quoteTime = `${formatZambiaTime(stamp)} CAT (UTC+02:00)`;
 
   const rowsHtml = (items || [])
     .map((it) => {
@@ -563,7 +537,8 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         <div><strong>Customer:</strong> ${escapeHtml(custName)}</div>
         <div><strong>Phone:</strong> ${escapeHtml(custPhone)}</div>
         <div><strong>Quote #:</strong> ${escapeHtml(quoteNumber)}</div>
-        <div><strong>Date:</strong> ${escapeHtml(quoteDate)}</div>
+        <div><strong>Quote Date:</strong> ${escapeHtml(quoteDate)}</div>
+        <div><strong>Quote Time:</strong> ${escapeHtml(quoteTime)}</div>
       </div>
       <div class="meta-right">
         <div><strong>${escapeHtml(companyName)}</strong></div>

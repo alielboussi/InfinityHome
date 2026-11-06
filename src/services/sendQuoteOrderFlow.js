@@ -100,7 +100,7 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
     route,
     customerName,
     customerPhone,
-    items: enrichedItems,
+    createdAt: quoteRow.created_at || new Date().toISOString(),
   });
 
   const { base64 } = await generateFactoryOrderBilingualPdf(
