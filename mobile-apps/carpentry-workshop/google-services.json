@@ -199,6 +199,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "876299148810-mvojpid3qvupl69re0bomgoed7tuh8s5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "online.infinityhome.carpentry",
+            "certificate_hash": "ad1b56820f169a69be42b4eb7ee50f6e672717aa"
+          }
+        },
+        {
           "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
           "client_type": 3
         }

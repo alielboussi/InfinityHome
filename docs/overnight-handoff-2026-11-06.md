@@ -1,64 +1,64 @@
-# Overnight handoff (2026-11-06)
+# Overnight handoff (2026-11-06) — updated
 
-## Git
+## Git (`sync-light`)
 
-- **Pushed** to `origin/sync-light`: commit `ee6973c` (workshop reports, quote production routing, returns/repairs, painting app, push targets, Quotationer UX).
-- **Local fixes not yet pushed** (carpentry EAS): `App.js` import paths, `expo-notifications`, EAS `projectId` in app.config, materialize vendoring, `ProductionPressableHint` path fixes.
+| Commit | Summary |
+|--------|---------|
+| `ee6973c` | Quote production routing, Quotationer UX, reports, returns, painting app |
+| `52cde7f` | Carpentry EAS bundle fixes, materialize vendoring, Expo project IDs |
+| `515e452` | **Carpentry push fix:** `app_target: carpentry`, navigate `Quotes` / `QuoteDetail` |
 
-## Web / CI checks (passed)
+## Web / CI (passed)
 
-- `npm run build` — success (prebuild ran all stocktake + warehouse + production verify scripts).
-- `node scripts/verifyCarpentryPhase3.js` — ok
-- `mobile-apps/warehouse-delivery/scripts/verifyDeliveryApp.js` — ok
-- `verifyWarehouseReturnFlow`, `verifyWorkshopRepairReturnFlow`, `verifyWarehouseStorageFlow` — ok (via prebuild)
+- `npm run build` — success (all prebuild verify scripts including stocktake locks).
+- `node scripts/verifyCarpentryPhase3.js` — ok (includes carpentry push registration check).
+- `mobile-apps/warehouse-delivery/scripts/verifyDeliveryApp.js` — ok.
+- `verifyWarehouseStorageFlow`, return/repair verifies — ok via prebuild.
 
 **ESLint warnings only:** unused `compactDanger` in `Quotationer.js`, unused import in `WarehouseDeliveries.js`.
 
-## Integration sweep (code review)
+## Integration sweep
 
-| Flow | Web (Hassan / catalog) | API | Mobile |
-|------|------------------------|-----|--------|
-| Quote → upholstery/carpentry | `Quotationer.js` required route + line metadata + drawing | `quotation-save`, `quote-production`, `quoteProductionRouting` | Quote list/detail + push on send |
-| Returns / repairs | `WarehouseReturns*`, Hassan paths in `accessControl` | `warehouseReturnOrders`, `warehouse-mobile` | Upholstery + carpentry + painting repair screens (not delivery) |
-| Push notifications | N/A | `productionExpoPush.js` + `app_target` on register | upholstery, carpentry, painting hooks |
-| Reports | Transfers, Upholstery, Carpentry, Painting, Repair pages | `workshopReportData.js` | N/A |
+| Flow | Web (Hassan) | API | Mobile / push |
+|------|--------------|-----|----------------|
+| Quote → upholstery/carpentry | `Quotationer.js` required route, line metadata, drawing | `quotation-save`, `quote-production`, `quoteProductionRouting` | Push via `notifyProductionQuoteOrderSent` → `appTargets` by route |
+| Carpentry push (fixed `515e452`) | — | `production-push-register` | Was registering as `upholstery` — **fixed** to `carpentry` |
+| Returns / repairs | Hassan returns + trackage | `warehouseReturnOrders`, repair department routing | upholstery / carpentry / painting `Repairs` + dept push |
+| Storage sends | Hassan storage | warehouse storage API | upholstery `SoldOrders` push |
+| Painting jobs | — | painting production jobs | painting `Jobs` push |
+| Delivery | Hassan receiver | warehouse delivery mobile | delivery app (no quote push) |
 
-**Deploy reminder:** Vercel needs latest `sync-light` + env `FIREBASE_SERVICE_ACCOUNT` / bucket for return PDFs.
+**Vercel:** Latest code is on `sync-light`; production deploy was not run from this session (run `npx vercel --prod` when ready).
 
 ## EAS Android builds
 
-| App | Status | Notes |
-|-----|--------|--------|
-| **warehouse-upholstery** | **SUCCESS** | APK: https://expo.dev/artifacts/eas/v3n5suLL4oxmN0Gbx4BDJrmKPYOj8mMeTU3pccD1SDE.apk — SHA-1 already in Firebase (`eas-android-keystore-fingerprints.txt`) |
-| **carpentry-workshop** | **FAILED** then fixes in progress | First fail: bad `App.js` imports + missing `expo-notifications`. Bundle still needs full `productionKiosk` standalone (vendor `src/utils` + `src/constants` into EAS upload). Keystore **was created** on EAS — register SHA-1 after a green build. |
-| **painting-workshop** | **Not started** | EAS project `206ae533-ceb2-474b-a2a1-bcad4f2704c3` linked in `app.config.js`. Add deps + export test like carpentry before build. |
-| **warehouse-delivery** | **In progress / queued** | Build: https://expo.dev/accounts/alielboussi/projects/warehouse-delivery/builds/89eca996-b56f-4e4e-95a8-c0cf37a41f2c |
+| App | Status | APK / build |
+|-----|--------|-------------|
+| **warehouse-upholstery** | **SUCCESS** (prior) | SHA-1 in Firebase — `eas-android-keystore-fingerprints.txt` |
+| **warehouse-delivery** | **SUCCESS** | https://expo.dev/artifacts/eas/Dqs5Cq7liImkHTmC0rKmsZjml38tXaCg5ozB_tmVaBI.apk — build `89eca996-…` — SHA-1 registered in Firebase (`71:DE:3E:…`) |
+| **carpentry-workshop** | **In progress** | Build `299ecc75-e191-4de4-a235-c0e33bffa232` (uploaded **before** push fix `515e452`) — **re-run EAS after green build** for correct push registration |
+| **painting-workshop** | **Pending** | Local `npx expo export --platform android` ok; queue EAS after carpentry |
 
-## Firebase SHA-1 (Google Sign-In)
+Local export verified: carpentry + painting `expo export --platform android` clean.
 
-Scripts (repo root, need `FIREBASE_SERVICE_ACCOUNT` or adminsdk JSON file):
+## Firebase SHA-1
 
-```powershell
-$env:CARPENTRY_WORKSHOP_ANDROID_SHA1="<from eas credentials>"
-node scripts/setupCarpentryWorkshopGoogleSignIn.mjs
-
-$env:PAINTING_WORKSHOP_ANDROID_SHA1="<from eas credentials>"
-node scripts/setupPaintingWorkshopGoogleSignIn.mjs
-```
-
-Get SHA-1:
+Use JDK 21 for apksigner on Windows:
 
 ```powershell
-cd mobile-apps/carpentry-workshop
-eas credentials -p android --profile production
+$env:JAVA_HOME="C:\Program Files\Java\jdk-21"
+$env:FIREBASE_SERVICE_ACCOUNT_PATH="C:\Projects\Infinity Home\bestrest-portal-system-43108-firebase-adminsdk-fbsvc-b259e84074.json"
+node scripts/setupWarehouseDeliveryGoogleSignIn.mjs "<apk-url>"
+node scripts/setupCarpentryWorkshopGoogleSignIn.mjs "<apk-url>"
+node scripts/setupPaintingWorkshopGoogleSignIn.mjs "<apk-url>"
 ```
 
-(Carpentry keystore created on failed build `76448c94-35da-4ff7-9fbc-45db6b89e5db`.)
+Firebase Android apps ensured for carpentry + painting (`--create-app-only`).
 
-## Morning to-do
+## Morning checklist
 
-1. Push follow-up commit (carpentry EAS fixes + materialize `_repoUtils`).
-2. Re-run `node scripts/materializeCarpentryStandalone.js` + `npx expo export --platform android` until clean; then `eas build -p android --profile production --non-interactive`.
-3. Build painting; register SHA-1 for carpentry + painting in Firebase.
-4. Confirm delivery build finished; install APKs and smoke-test push + quote orders on devices.
-5. Deploy Vercel from `sync-light`.
+1. Confirm carpentry build `299ecc75` finished; register SHA-1 from APK; **start second carpentry build** on commit `515e452+` for push fix.
+2. EAS build **painting-workshop**; register SHA-1 from APK.
+3. Install APKs; smoke-test Hassan quote send → upholstery + carpentry notifications; repair dept pushes.
+4. Deploy Vercel from `sync-light`.
+5. Optional: remove ESLint unused vars in Quotationer / WarehouseDeliveries.

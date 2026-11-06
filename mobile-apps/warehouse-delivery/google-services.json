@@ -155,28 +155,78 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:876299148810:android:9cb085a252a1f4939049f3",
+        "mobilesdk_app_id": "1:876299148810:android:65bc4ce178a7fbf49049f3",
         "android_client_info": {
-          "package_name": "com.bestrest.warehouseproduction"
+          "package_name": "com.bestrest.warehouseupholstery"
         }
       },
       "oauth_client": [
         {
-          "client_id": "876299148810-bofj9e8tu0hmfpjetsn00bo64vif5raj.apps.googleusercontent.com",
+          "client_id": "876299148810-v2vqsetqq06odmklafscv411aciatnq5.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.bestrest.warehouseproduction",
-            "certificate_hash": "968920ecd40e43d3fbadf145b1d2bd8242bc49b1"
+            "package_name": "com.bestrest.warehouseupholstery",
+            "certificate_hash": "0235ff9614b9f52f8364ce76db75e32870600c34"
           }
         },
         {
-          "client_id": "876299148810-kf879063sbm6vrmkbjct16ih70ge6kk0.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.bestrest.warehouseproduction",
-            "certificate_hash": "81e9f6007dc21168055e451f176fbff8943bdbd4"
-          }
-        },
+          "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABZmogUJBZoVpygrweBqyv3fcQK6rQut0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:876299148810:android:c709c380f8fdcf669049f3",
+        "android_client_info": {
+          "package_name": "online.infinityhome.carpentry"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABZmogUJBZoVpygrweBqyv3fcQK6rQut0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:876299148810:android:f186bd9850ff84449049f3",
+        "android_client_info": {
+          "package_name": "online.infinityhome.painting"
+        }
+      },
+      "oauth_client": [
         {
           "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
           "client_type": 3
