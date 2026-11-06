@@ -10,6 +10,7 @@ export function buildWarehouseDeliveryWhatsAppProductGroups(entries, assemblyCol
   const printGroups = buildDeliveryPrintGroupsFromEntries(entries, formatter);
   return printGroups.map((g) => ({
     assemblyName: g.assembly_name,
+    units: Math.max(1, Number(g.units) || 1),
     packetLines: (g.lines || []).map((line) => ({
       name: line.name,
       quantity: Number(line.qty) || 0,
@@ -18,7 +19,13 @@ export function buildWarehouseDeliveryWhatsAppProductGroups(entries, assemblyCol
 }
 
 /** Same text as production app submit → Automated Delivery Receipts group. */
-export function buildKitweDeliveryWhatsAppText(session, entries, usersById, assemblyColorContext = null) {
+export function buildKitweDeliveryWhatsAppText(
+  session,
+  entries,
+  usersById,
+  assemblyColorContext = null,
+  { fromName = 'Warehouse', toName = 'Kitwe' } = {},
+) {
   const productGroups = buildWarehouseDeliveryWhatsAppProductGroups(entries, assemblyColorContext);
   const formatter = assemblyColorContext
     ? createWarehouseDeliveryNameFormatter(assemblyColorContext)
@@ -34,6 +41,8 @@ export function buildKitweDeliveryWhatsAppText(session, entries, usersById, asse
   );
   const meta = session?.metadata || {};
   return buildWarehouseDeliveryWhatsAppMessage({
+    fromName,
+    toName,
     userAlias: meta.dispatched_by_name || deliverySenderName(session, usersById) || '—',
     submittedAt: session?.submitted_at || session?.created_at,
     driverName: meta.driver_name || '—',

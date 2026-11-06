@@ -2,13 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
-import { sendTransferWhatsApp } from './services/whatsapp';
+import { sendWarehouseDeliveryWhatsApp } from './services/whatsapp';
 import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
   WAREHOUSE_RETURN_DELIVERY_SOURCES,
   warehouseDeliverySessionRouteLabel,
-  deliveryLineQty,
   deliverySenderName,
   groupWarehouseDisplayLines,
   isWarehousePending,
@@ -23,10 +22,12 @@ import {
   warehousePacketDisplayLabel,
   warehouseDeliveryReceiverLineKind,
 } from './utils/warehouseDelivery';
+import { buildKitweDeliveryWhatsAppText } from './utils/kitweDeliveryWhatsAppAdmin';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
 import {
   buildWarehouseDeliveryNoteHtml,
   downloadWarehouseDeliveryNotePdf,
+  renderWarehouseDeliveryNotePdfBlob,
 } from './utils/warehouseDeliveryNotePrint';
 import {
   acceptWarehouseDeliverySession,
@@ -51,56 +52,6 @@ const formatDateTime = (value) => {
     return d.toLocaleString();
   }
 };
-
-function buildWarehouseDeliveryWhatsAppMessage({
-  session,
-  entries,
-  fromName,
-  toName,
-  usersById,
-}) {
-  const display = groupWarehouseDisplayLines(entries || []);
-  const productLines = [];
-  let totalItems = 0;
-
-  display.forEach((line) => {
-    if (line.kind === 'set-parent') return;
-    const qty = deliveryLineQty(line);
-    if (qty <= 0) return;
-    const name = String(line.name || line.sku || 'Item').trim();
-    productLines.push(`${qty} * ${name}`);
-    totalItems += qty;
-  });
-
-  const fromLabel = fromName || 'Factory Warehouse';
-  const toLabel = toName || 'Kitwe Branch';
-  const sentBy = deliverySenderName(session, usersById);
-
-  const parts = [
-    '📦 *_Delivery Transfer_*',
-    '━━━━━━━━━━━━━━━━━━━━',
-    `🏭 *From:* ${fromLabel}`,
-    `📍 *To:* ${toLabel}`,
-    `👤 *Sent By:* ${sentBy}`,
-    '',
-    '📋 *Products:*',
-    '────────────────────',
-  ];
-
-  if (!productLines.length) {
-    parts.push('_No products_');
-    parts.push('────────────────────');
-  } else {
-    productLines.forEach((row) => {
-      parts.push(row);
-      parts.push('────────────────────');
-    });
-  }
-
-  parts.push(`✅ *Total Delivery Items:* ${totalItems}`);
-
-  return parts.join('\n');
-}
 
 const detectIpadSafari = () => {
   if (typeof navigator === 'undefined') return false;
@@ -395,14 +346,40 @@ export default function WarehouseDeliveries() {
 
       void (async () => {
         try {
-          const message = buildWarehouseDeliveryWhatsAppMessage({
-            session: updatedSession,
+          const message = buildKitweDeliveryWhatsAppText(
+            updatedSession,
             entries,
-            fromName,
-            toName,
             usersById,
+            deliveryColorContext,
+            { fromName, toName },
+          );
+          let pdfBase64 = '';
+          try {
+            const html = await buildWarehouseDeliveryNoteHtml({
+              session: updatedSession,
+              entries,
+              copies: 1,
+              assemblyColorContext: deliveryColorContext,
+            });
+            const pdfBlob = await renderWarehouseDeliveryNotePdfBlob(html);
+            pdfBase64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const dataUrl = String(reader.result || '');
+                resolve(dataUrl.replace(/^data:application\/pdf[^,]*,/, '').replace(/\s+/g, ''));
+              };
+              reader.onerror = () => reject(reader.error || new Error('PDF read failed'));
+              reader.readAsDataURL(pdfBlob);
+            });
+          } catch (pdfErr) {
+            console.warn('Warehouse delivery PDF build failed:', pdfErr);
+          }
+          const dn = updatedSession?.delivery_number || updatedSession?.id || 'delivery';
+          const wa = await sendWarehouseDeliveryWhatsApp({
+            message,
+            pdfBase64: pdfBase64 || undefined,
+            pdfFilename: `${dn}-delivery-note.pdf`,
           });
-          const wa = await sendTransferWhatsApp({ message });
           if (!wa.ok) console.warn('Warehouse delivery WhatsApp failed:', wa.error);
         } catch (waErr) {
           console.warn('Warehouse delivery WhatsApp error:', waErr);

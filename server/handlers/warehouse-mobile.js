@@ -2378,6 +2378,7 @@ async function sendWarehouseDeliverySubmitWhatsApp({
       const packetRows = byAssembly.get(assemblyId) || [];
       return {
         assemblyName: assembly?.name || group.set_name || 'Product',
+        units,
         packetLines: isAssemblyDeliveryFinishedUnits(assembly, packetRows)
           ? [{ name: assembly?.name || 'Product', quantity: units }]
           : packetRows.map((packet) => ({
@@ -2389,6 +2390,9 @@ async function sendWarehouseDeliverySubmitWhatsApp({
   }
 
   const whatsappMessage = buildWarehouseDeliveryWhatsAppMessage({
+    fromName: 'Warehouse',
+    toName: 'Kitwe',
+    sentBy: userAlias,
     userAlias,
     submittedAt: submittedAt || session?.submitted_at || new Date().toISOString(),
     driverName: String(driverName || session?.metadata?.driver_name || '').trim() || '—',
