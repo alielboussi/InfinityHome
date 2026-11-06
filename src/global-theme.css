@@ -16698,7 +16698,8 @@ body.enterprise-theme .production-admin-tabs__btn.is-active {
 }
 
 .user-access-table__actions-col {
-  width: 200px;
+  width: 1%;
+  white-space: nowrap;
   text-align: right;
 }
 
@@ -16707,23 +16708,36 @@ body.enterprise-theme .production-admin-tabs__btn.is-active {
 }
 
 .user-access-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
   justify-content: flex-end;
-  align-items: center;
+  align-items: stretch;
+  width: 112px;
+}
+
+.user-access-btn,
+.user-access-app-select {
+  box-sizing: border-box !important;
+  width: 112px !important;
+  min-width: 112px !important;
+  max-width: 112px !important;
+  height: 32px !important;
+  padding: 0 10px !important;
+  border-radius: 6px !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  line-height: 30px !important;
+  cursor: pointer;
+  white-space: nowrap;
+  margin: 0 !important;
 }
 
 .user-access-btn {
   border: 1px solid var(--br-border-soft, #334155);
   background: var(--br-surface, #1e293b);
   color: var(--br-text, #e2e8f0);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
+  text-align: center;
 }
 
 .user-access-btn:hover:not(:disabled) {
@@ -16748,12 +16762,6 @@ body.enterprise-theme .production-admin-tabs__btn.is-active {
   border: 1px solid var(--br-border-soft, #334155);
   background: var(--br-surface, #1e293b);
   color: var(--br-text, #e2e8f0);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  min-width: 120px;
 }
 
 .user-access-app-select:hover:not(:disabled) {
