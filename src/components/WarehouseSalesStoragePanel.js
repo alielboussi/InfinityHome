@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FaPlus, FaPrint, FaTrashAlt } from 'react-icons/fa';
 import db from '../dataClient';
-import { fetchWarehouseCatalog } from '../services/warehouseCatalog';
+import {
+  fetchWarehouseCatalog,
+  invalidateWarehouseCatalogCache,
+} from '../services/warehouseCatalog';
 import {
   createManualStorageSend,
   listStorageSends,
@@ -11,7 +14,7 @@ import { expandWarehouseSetItemsRows } from '../utils/warehouseSetItems';
 import { formatWarehouseAdminDateTime } from '../utils/warehouseAdminFormat';
 
 /** Sales storage registry — embedded in Floor 1 /warehouse-products/sales-storage view. */
-export default function WarehouseSalesStoragePanel() {
+export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -202,10 +205,14 @@ export default function WarehouseSalesStoragePanel() {
       const totalLabels = Number(res?.total_labels_printed)
         || sends.reduce((n, s) => n + (Number(s.quantity) || 0), 0);
       setNotice(
-        `${numbers || 'Added'} saved to Sales Storage · ${totalLabels} Zebra label${totalLabels === 1 ? '' : 's'} printed.`,
+        `${numbers || 'Added'} saved to Sales Storage (deducted from Floor 1) · ${totalLabels} Zebra label${totalLabels === 1 ? '' : 's'} printed.`,
       );
       setSelectedLines([]);
       setAddOpen(false);
+      invalidateWarehouseCatalogCache();
+      if (typeof onStockChanged === 'function') {
+        onStockChanged();
+      }
       await load();
     } catch (err) {
       setModalError(err?.message || 'Failed to print Zebra labels and add to Sales Storage.');
@@ -250,7 +257,7 @@ export default function WarehouseSalesStoragePanel() {
         <p style={{ color: 'var(--dash-muted)', margin: 0, lineHeight: 1.5, maxWidth: 680 }}>
           POS sold lines and manual customer storage entries in factory warehouse storage. Use the{' '}
           <strong>+</strong> button to select a customer and products/sets, print Zebra labels (SKU, Code 128,
-          Product Name, Customer Name, Customer Phone, Image QR), and add them to Sales Storage.
+          Product Name, Customer Name, Customer Phone, Image QR), and move them from Floor 1 into Sales Storage.
         </p>
         <button
           type="button"
@@ -258,6 +265,8 @@ export default function WarehouseSalesStoragePanel() {
           onClick={openAddModal}
           title="Print Zebra labels & add to Sales Storage"
           style={{
+            width: 'auto',
+            minWidth: 0,
             display: 'inline-flex',
             alignItems: 'center',
             gap: 8,
@@ -315,7 +324,7 @@ export default function WarehouseSalesStoragePanel() {
               className="product-form-btn product-form-btn--secondary"
               disabled={submitBusy}
               onClick={closeAddModal}
-              style={{ width: 'auto', minWidth: 80, padding: '6px 12px', margin: 0 }}
+              style={{ width: 'auto', minWidth: 80, padding: '6px 14px', margin: 0 }}
             >
               Close
             </button>
@@ -333,34 +342,43 @@ export default function WarehouseSalesStoragePanel() {
             </div>
           ) : (
             <form onSubmit={handlePrintAndAdd}>
-              <div style={{ display: 'grid', gap: 14, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gap: 16, marginBottom: 18 }}>
                 <div>
-                  <label style={{ fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>
                     1. Select Customer (from /customers)
                   </label>
-                  <input
-                    type="search"
-                    className="warehouse-catalog-filter-control products-search-bar"
-                    placeholder="Filter customer by name or phone…"
-                    value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
-                    style={{ width: '100%', maxWidth: 420, marginBottom: 8 }}
-                  />
-                  <select
-                    className="warehouse-catalog-filter-control"
-                    value={selectedCustomerId}
-                    onChange={(e) => setSelectedCustomerId(e.target.value)}
-                    style={{ width: '100%', maxWidth: 420 }}
-                    required
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                      gap: 10,
+                      maxWidth: 720,
+                    }}
                   >
-                    <option value="">— Choose customer —</option>
-                    {filteredCustomers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                        {c.phone ? ` (${c.phone})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    <input
+                      type="search"
+                      className="warehouse-catalog-filter-control products-search-bar"
+                      placeholder="Filter customer by name or phone…"
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      style={{ width: '100%', margin: 0 }}
+                    />
+                    <select
+                      className="warehouse-catalog-filter-control"
+                      value={selectedCustomerId}
+                      onChange={(e) => setSelectedCustomerId(e.target.value)}
+                      style={{ width: '100%', margin: 0 }}
+                      required
+                    >
+                      <option value="">— Choose customer —</option>
+                      {filteredCustomers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                          {c.phone ? ` (${c.phone})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   {selectedCustomer ? (
                     <div style={{ marginTop: 6, fontSize: 13, color: 'var(--dash-muted)' }}>
                       Customer Name: <strong>{selectedCustomer.name}</strong> · Customer Phone:{' '}
@@ -370,7 +388,7 @@ export default function WarehouseSalesStoragePanel() {
                 </div>
 
                 <div>
-                  <label style={{ fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>
                     2. Add Products or Sets (from /warehouse-products)
                   </label>
                   <input
@@ -379,22 +397,22 @@ export default function WarehouseSalesStoragePanel() {
                     placeholder="Search product or set by name or SKU…"
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
-                    style={{ width: '100%', maxWidth: 480 }}
+                    style={{ width: '100%', maxWidth: 520, margin: 0 }}
                   />
                   {productSearch.trim() ? (
                     <div
                       style={{
-                        marginTop: 6,
-                        maxHeight: 220,
+                        marginTop: 8,
+                        maxHeight: 280,
                         overflowY: 'auto',
                         border: '1px solid var(--dash-border-soft, #cbd5e1)',
                         borderRadius: 8,
                         background: 'var(--dash-surface, #fff)',
-                        maxWidth: 560,
+                        maxWidth: 720,
                       }}
                     >
                       {filteredAssemblies.length === 0 ? (
-                        <div style={{ padding: 10, color: 'var(--dash-muted)', fontSize: 13 }}>
+                        <div style={{ padding: 12, color: 'var(--dash-muted)', fontSize: 13 }}>
                           No matching products or sets.
                         </div>
                       ) : (
@@ -405,31 +423,40 @@ export default function WarehouseSalesStoragePanel() {
                             <div
                               key={asm.id}
                               style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
+                                display: 'grid',
+                                gridTemplateColumns: 'minmax(0, 1fr) auto',
                                 alignItems: 'center',
-                                gap: 10,
-                                padding: '8px 12px',
+                                gap: 12,
+                                padding: '10px 14px',
                                 borderBottom: '1px solid var(--dash-border-soft, #f1f5f9)',
                               }}
                             >
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                <div style={{ fontWeight: 600 }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: 6,
+                                    fontWeight: 600,
+                                    lineHeight: 1.35,
+                                  }}
+                                >
                                   <span
                                     className={`warehouse-kind-badge warehouse-kind-badge--${isSet ? 'set' : 'product'}`}
-                                    style={{ marginRight: 6 }}
+                                    style={{ margin: 0, flexShrink: 0 }}
                                   >
                                     {isSet ? 'Set' : 'Product'}
                                   </span>
-                                  {asm.name}
+                                  <span>{asm.name}</span>
                                   {asm.family_sku ? (
-                                    <span style={{ color: 'var(--dash-muted)', marginLeft: 6, fontSize: 12 }}>
+                                    <span style={{ color: 'var(--dash-muted)', fontSize: 12, fontWeight: 500 }}>
                                       ({asm.family_sku})
                                     </span>
                                   ) : null}
                                 </div>
                                 {isSet && comps.length > 0 ? (
-                                  <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 2 }}>
+                                  <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 4 }}>
                                     Components:{' '}
                                     {comps.map((c) => `${c.perSetQty}× ${c.component?.name}`).join(' + ')}
                                   </div>
@@ -437,11 +464,26 @@ export default function WarehouseSalesStoragePanel() {
                               </div>
                               <button
                                 type="button"
-                                className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
                                 onClick={() => addLineItem(asm)}
-                                style={{ padding: '5px 12px', fontSize: 13 }}
+                                style={{
+                                  width: 'auto',
+                                  minWidth: 78,
+                                  maxWidth: 'none',
+                                  height: 34,
+                                  padding: '0 14px',
+                                  margin: 0,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 6,
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  borderRadius: 6,
+                                  flexShrink: 0,
+                                }}
                               >
-                                <FaPlus aria-hidden /> Add
+                                <FaPlus size={11} aria-hidden />
+                                <span>Add</span>
                               </button>
                             </div>
                           );
@@ -454,7 +496,7 @@ export default function WarehouseSalesStoragePanel() {
                 {selectedLines.length > 0 ? (
                   <div>
                     <div style={{ fontWeight: 700, marginBottom: 8 }}>Selected Items to Print &amp; Store</div>
-                    <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'grid', gap: 8, maxWidth: 720 }}>
                       {selectedLines.map((line) => {
                         const asm = assemblyById.get(String(line.assembly_id));
                         if (!asm) return null;
@@ -468,44 +510,47 @@ export default function WarehouseSalesStoragePanel() {
                           <div
                             key={line.assembly_id}
                             style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
+                              display: 'grid',
+                              gridTemplateColumns: 'minmax(0, 1fr) auto',
                               alignItems: 'center',
                               gap: 12,
-                              flexWrap: 'wrap',
-                              padding: '10px 12px',
+                              padding: '10px 14px',
                               border: '1px solid var(--dash-border-soft, #cbd5e1)',
                               borderRadius: 8,
                             }}
                           >
-                            <div style={{ flex: 1, minWidth: 200 }}>
-                              <div style={{ fontWeight: 700 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                 <span
                                   className={`warehouse-kind-badge warehouse-kind-badge--${isSet ? 'set' : 'product'}`}
-                                  style={{ marginRight: 6 }}
+                                  style={{ margin: 0 }}
                                 >
                                   {isSet ? 'Set' : 'Product'}
                                 </span>
-                                {asm.name}
-                                {asm.family_sku ? ` · ${asm.family_sku}` : ''}
+                                <span>{asm.name}</span>
+                                {asm.family_sku ? (
+                                  <span style={{ color: 'var(--dash-muted)', fontWeight: 500, fontSize: 13 }}>
+                                    · {asm.family_sku}
+                                  </span>
+                                ) : null}
                               </div>
                               {isSet ? (
-                                <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 3 }}>
-                                  Prints Zebra labels for each component ({totalLabelsForLine} label
-                                  {totalLabelsForLine === 1 ? '' : 's'} total):{' '}
+                                <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 4 }}>
+                                  Deducts {qtyNum} set{qtyNum === 1 ? '' : 's'} from Floor 1 &amp; prints{' '}
+                                  {totalLabelsForLine} component Zebra label{totalLabelsForLine === 1 ? '' : 's'}:{' '}
                                   {comps
                                     .map((c) => `${c.perSetQty * qtyNum}× ${c.component?.name}`)
                                     .join(', ')}
                                 </div>
                               ) : (
-                                <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 3 }}>
-                                  Prints {totalLabelsForLine} Zebra label
+                                <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 4 }}>
+                                  Deducts {qtyNum} from Floor 1 &amp; prints {totalLabelsForLine} Zebra label
                                   {totalLabelsForLine === 1 ? '' : 's'}
                                 </div>
                               )}
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <label style={{ fontSize: 13, fontWeight: 600 }}>Qty:</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                              <label style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>Qty:</label>
                               <input
                                 type="number"
                                 min={1}
@@ -513,8 +558,9 @@ export default function WarehouseSalesStoragePanel() {
                                 value={line.quantity}
                                 onChange={(e) => updateLineQty(line.assembly_id, e.target.value)}
                                 style={{
-                                  width: 72,
+                                  width: 68,
                                   padding: '6px 8px',
+                                  margin: 0,
                                   borderRadius: 6,
                                   border: '1px solid var(--dash-border, #cbd5e1)',
                                   textAlign: 'center',
@@ -525,13 +571,19 @@ export default function WarehouseSalesStoragePanel() {
                                 onClick={() => removeLineItem(line.assembly_id)}
                                 title="Remove"
                                 style={{
-                                  padding: '6px 10px',
+                                  width: 34,
+                                  minWidth: 34,
+                                  height: 34,
+                                  padding: 0,
+                                  margin: 0,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
                                   borderRadius: 6,
                                   border: '1px solid #fca5a5',
                                   background: '#fef2f2',
                                   color: '#dc2626',
                                   cursor: 'pointer',
-                                  width: 'auto',
                                 }}
                               >
                                 <FaTrashAlt size={13} />
@@ -550,10 +602,15 @@ export default function WarehouseSalesStoragePanel() {
                 disabled={submitBusy || !selectedCustomerId || !selectedLines.length}
                 className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
                 style={{
+                  width: 'auto',
+                  minWidth: 240,
+                  maxWidth: '100%',
                   display: 'inline-flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: 8,
-                  padding: '10px 18px',
+                  padding: '10px 20px',
+                  margin: 0,
                   fontWeight: 700,
                 }}
               >

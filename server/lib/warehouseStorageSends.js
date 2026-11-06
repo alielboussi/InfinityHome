@@ -11,9 +11,20 @@ import {
   isWarehouseProductionKitweDeliveryAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
 import { WAREHOUSE_STORAGE_SEND_STATUSES } from '../../src/utils/warehouseStorageSend.js';
-import { normalizeWarehouseSku } from '../../src/utils/warehouseAssemblyMath.js';
+import {
+  assemblyDerivesWarehouseStockFromPackets,
+  normalizeWarehouseSku,
+} from '../../src/utils/warehouseAssemblyMath.js';
+import { buildPacketsByAssembly } from '../../src/utils/warehouseAssemblyPacketPool.js';
+import {
+  assemblyUnitsPerCarton,
+  assemblyUsesFinishedBoxReceiving,
+  boxCountFromFinishedUnits,
+} from '../../src/utils/warehouseUnitsPerCarton.js';
 import { isWarehouseProductAssembly, isWarehouseSetAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
 import { expandWarehouseSetItemsRows } from '../../src/utils/warehouseSetItems.js';
+import { adjustPacketStock } from './warehouseDeliveryStock.js';
+import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 
 const TABLE = 'warehouse_storage_sends';
 const FACTORY_ID = WAREHOUSE_FROM_LOCATION_ID;
@@ -456,7 +467,10 @@ export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
   if (!deliveryNumber) throw new Error('Storage number missing.');
   const now = new Date().toISOString();
   const qty = Number(row.quantity) || 0;
-  await adjustAssemblyStock(sb, row.assembly_id, FACTORY_ID, -qty);
+  const alreadyDeductedFloor1 = row.metadata?.floor1_deducted_on_create === true;
+  if (!alreadyDeductedFloor1) {
+    await adjustAssemblyStock(sb, row.assembly_id, FACTORY_ID, -qty);
+  }
 
   const { error } = await sb.from(TABLE).update({
     status: WAREHOUSE_STORAGE_SEND_STATUSES.DELIVERED,
@@ -472,7 +486,9 @@ export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
     },
   }).eq('id', id);
   if (error) {
-    await adjustAssemblyStock(sb, row.assembly_id, FACTORY_ID, qty);
+    if (!alreadyDeductedFloor1) {
+      await adjustAssemblyStock(sb, row.assembly_id, FACTORY_ID, qty);
+    }
     throw new Error(error.message || 'Failed to complete delivery.');
   }
 
@@ -584,18 +600,52 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
     throw new Error('Select at least one product or set.');
   }
 
-  const [{ data: allAssemblies, error: aErr }, { data: allSetItems, error: sErr }] = await Promise.all([
-    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind'),
+  const [
+    { data: allAssemblies, error: aErr },
+    { data: allSetItems, error: sErr },
+    { data: allPackets, error: pErr },
+    { data: assemblyPacketRows, error: apErr },
+  ] = await Promise.all([
+    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, packet_count, inventory_mode, units_per_carton'),
     sb.from('warehouse_set_items').select('*'),
+    sb.from('warehouse_packets').select('id, sku, name, packet_number, qty_per_unit, assembly_id'),
+    sb.from('warehouse_assembly_packets').select('*'),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to load warehouse catalog.');
   if (sErr) throw new Error(sErr.message || 'Failed to load set components.');
+  if (pErr) throw new Error(pErr.message || 'Failed to load warehouse packets.');
+  if (apErr) throw new Error(apErr.message || 'Failed to load packet links.');
 
   const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
+  const packetsByAssembly = buildPacketsByAssembly(assemblyPacketRows || [], allPackets || []);
   const operatorName = user?.user_metadata?.full_name || user?.full_name || user?.email || 'Warehouse Catalog';
   const now = new Date().toISOString();
   const createdRows = [];
   let totalLabelsPrinted = 0;
+
+  async function deductComponentFromFloor1(compAsm, unitsToDeduct) {
+    const u = Math.max(1, Math.floor(Number(unitsToDeduct) || 1));
+    const aid = String(compAsm.id);
+    const pktList = packetsByAssembly.get(aid) || [];
+    if (assemblyDerivesWarehouseStockFromPackets(compAsm, pktList)) {
+      for (const pkt of pktList) {
+        const cartonDelta = u * Math.max(1, Math.floor(Number(pkt.qty_per_unit) || 1));
+        await adjustPacketStock(sb, pkt.id, FACTORY_ID, -cartonDelta);
+      }
+      return;
+    }
+    if (assemblyUsesFinishedBoxReceiving(compAsm, pktList) && pktList[0]?.id) {
+      const perBox = assemblyUnitsPerCarton(compAsm);
+      const boxesDelta = boxCountFromFinishedUnits(u, perBox);
+      await adjustPacketStock(sb, pktList[0].id, FACTORY_ID, -boxesDelta);
+      return;
+    }
+    const have = await getAssemblyStockQty(sb, aid, FACTORY_ID);
+    if (have < u) {
+      throw new Error(`Insufficient Floor 1 stock for "${compAsm.name}" (need ${u}, have ${have}).`);
+    }
+    await adjustAssemblyStock(sb, aid, FACTORY_ID, -u);
+  }
 
   for (const reqLine of validLines) {
     const selectedAsm = assembliesById.get(reqLine.assembly_id);
@@ -628,7 +678,12 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
       }];
     }
 
-    // Print Zebra labels first for each component (if set) or product
+    // Deduct from Floor 1 stock first (validates sufficient stock before printing/saving)
+    for (const target of labelTargets) {
+      await deductComponentFromFloor1(target.assembly, target.printQty);
+    }
+
+    // Print Zebra labels for each component (if set) or product
     for (const target of labelTargets) {
       const compAsm = target.assembly;
       const copies = Math.max(1, Math.floor(Number(target.printQty) || 1));
@@ -668,6 +723,8 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
       created_by_name: operatorName,
       metadata: {
         manual_catalog_storage: true,
+        floor1_deducted_on_create: true,
+        floor1_deducted_at: now,
         item_kind: isSet ? 'set' : 'product',
         printed_components: labelTargets.map((t) => ({
           assembly_id: t.assembly.id,
@@ -678,11 +735,8 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
       },
     };
 
-    await adjustAssemblyStock(sb, selectedAsm.id, FACTORY_ID, reqLine.quantity);
-
     const { error: insErr } = await sb.from(TABLE).insert(row);
     if (insErr) {
-      await adjustAssemblyStock(sb, selectedAsm.id, FACTORY_ID, -reqLine.quantity);
       throw new Error(insErr.message || 'Failed to add to sales storage.');
     }
 
@@ -690,6 +744,8 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
     queueProductionStoragePush(mapped);
     createdRows.push(mapped);
   }
+
+  await recomputeWarehouseLocationStockServer(sb, FACTORY_ID);
 
   return {
     storage_sends: createdRows,

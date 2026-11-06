@@ -606,7 +606,7 @@ export default function WarehouseProductsPage() {
         )}
       </div>
       {isSalesStorageView ? (
-        <WarehouseSalesStoragePanel />
+        <WarehouseSalesStoragePanel onStockChanged={() => load({ forceFresh: true })} />
       ) : (
         <>
       <div className="warehouse-catalog-filter-row">
