@@ -4,7 +4,14 @@ function trimOrNull(v) {
 }
 
 /** Allowed carpentry wood types (Quotationer + workshop display). */
-export const CARPENTRY_WOOD_OPTIONS = ['Laminated', 'Rosewood', 'Mukwa', 'Hardwood', 'Sprayed Wood'];
+export const CARPENTRY_WOOD_OPTIONS = [
+  'Laminated',
+  'Rosewood',
+  'Mukwa',
+  'Hardwood',
+  'Sprayed Wood',
+  'Melamine Wood',
+];
 
 export function normalizeCarpentryWoodChoice(raw) {
   const v = trimOrNull(raw);
