@@ -696,6 +696,7 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
         customerPhone: customerPhone || '—',
         qty: copies,
         saleDate: effectiveSaleDate,
+        setName: target.parentSet ? target.parentSet.name : '',
         printedBy: operatorName,
       });
       totalLabelsPrinted += copies;
@@ -790,6 +791,10 @@ export async function reprintWarehouseStorageLabels(sb, body, user) {
     ? row.metadata.printed_components
     : [];
 
+  const isSetRow = row?.metadata?.item_kind === 'set'
+    || /^SET\s*\(/i.test(String(row.receipt_number || ''));
+  const parentSetName = isSetRow ? String(row.assembly_name || '').trim() : '';
+
   let totalLabelsPrinted = 0;
 
   if (printedComps.length > 0) {
@@ -802,6 +807,7 @@ export async function reprintWarehouseStorageLabels(sb, body, user) {
         customerPhone,
         qty: copies,
         saleDate,
+        setName: parentSetName,
         printedBy: operatorName,
       });
       totalLabelsPrinted += copies;
@@ -830,6 +836,7 @@ export async function reprintWarehouseStorageLabels(sb, body, user) {
             customerPhone,
             qty: copies,
             saleDate,
+            setName: selectedAsm.name,
             printedBy: operatorName,
           });
           totalLabelsPrinted += copies;

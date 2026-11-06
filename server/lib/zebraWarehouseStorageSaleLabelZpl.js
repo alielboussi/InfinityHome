@@ -30,6 +30,7 @@ const FIELD_LABELS = {
   customerName: 'Customer Name:',
   customerPhone: 'Customer #:',
   saleDate: 'Sale Date:',
+  setName: 'Set:',
 };
 
 /** Left edge of value column (in mm) so values never overlap "Product Name:" / "Customer Name:" headers. */
@@ -68,7 +69,7 @@ function parseSaleDateInput(raw) {
   return new Date(s);
 }
 
-function computeStorageSaleLabelDots({ dpi = 203 } = {}) {
+function computeStorageSaleLabelDots({ dpi = 203, includeSetRow = false } = {}) {
   const base = computeProductionLabelLayout({ dpi });
   const toDots = (mm) => mmToDots(mm, dpi);
   const textTopDots = (rowStartMm, padMm = 0.35) => toDots(rowStartMm + padMm);
@@ -92,6 +93,8 @@ function computeStorageSaleLabelDots({ dpi = 203 } = {}) {
   const customerPhoneRowMm = y;
   y += ROW_TEXT_MM + BLOCK_GAP_MM;
   const saleDateRowMm = y;
+  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  const setRowMm = includeSetRow ? y : null;
 
   const valueBoxWidthMm = LABEL_WIDTH_MM - VALUE_COL_LEFT_MM - LABEL_MARGIN_MM - 1;
 
@@ -108,6 +111,7 @@ function computeStorageSaleLabelDots({ dpi = 203 } = {}) {
     customerNameRowY: textTopDots(customerNameRowMm),
     customerPhoneRowY: textTopDots(customerPhoneRowMm),
     saleDateRowY: textTopDots(saleDateRowMm),
+    setRowY: setRowMm != null ? textTopDots(setRowMm) : null,
   };
 }
 
@@ -122,8 +126,11 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
   const saleAt = parseSaleDateInput(opts.saleDate);
   if (Number.isNaN(saleAt.getTime())) throw new Error('Invalid saleDate');
 
+  const setNameText = zplEscape(opts.setName || opts.set_name || '');
+  const includeSetRow = Boolean(setNameText);
+
   const widthDots = mmToDots(widthMm, dpi);
-  const d = computeStorageSaleLabelDots({ dpi });
+  const d = computeStorageSaleLabelDots({ dpi, includeSetRow });
   const mainX = d.margin;
   const mainW = d.mainWidth;
   const hf = d.headerFont;
@@ -174,6 +181,12 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
     valueField(d.customerPhoneRowY, customerPhone),
     labelField(d.saleDateRowY, FIELD_LABELS.saleDate),
     valueField(d.saleDateRowY, saleDateText),
+    ...(includeSetRow && d.setRowY != null
+      ? [
+        labelField(d.setRowY, FIELD_LABELS.setName),
+        valueField(d.setRowY, setNameText, 2),
+      ]
+      : []),
     `^PQ${copies}`,
     '^XZ',
   ];

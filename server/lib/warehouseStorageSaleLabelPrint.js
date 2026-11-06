@@ -11,12 +11,14 @@ export async function printWarehouseStorageSaleLabel(db, {
   customerPhone,
   qty = 1,
   saleDate,
+  setName,
   printedBy,
 }) {
   const labelName = String(name || '').trim();
   const labelSku = String(sku || '').trim();
   const custName = String(customerName || '').trim() || '—';
   const custPhone = String(customerPhone || '').trim() || '—';
+  const parentSetName = String(setName || '').trim();
   const copies = Math.max(1, Math.floor(Number(qty) || 1));
   if (!labelName || !labelSku) throw new Error('Product name and SKU are required for label.');
 
@@ -27,6 +29,7 @@ export async function printWarehouseStorageSaleLabel(db, {
     customerPhone: custPhone,
     copies,
     saleDate: saleDate || new Date(),
+    setName: parentSetName,
   });
 
   if (isZebraWeblinkPrintConfigured()) {
