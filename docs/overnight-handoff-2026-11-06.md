@@ -36,8 +36,8 @@
 |-----|--------|-------------|
 | **warehouse-upholstery** | **SUCCESS** (prior) | SHA-1 in Firebase — `eas-android-keystore-fingerprints.txt` |
 | **warehouse-delivery** | **SUCCESS** | https://expo.dev/artifacts/eas/Dqs5Cq7liImkHTmC0rKmsZjml38tXaCg5ozB_tmVaBI.apk — build `89eca996-…` — SHA-1 registered in Firebase (`71:DE:3E:…`) |
-| **carpentry-workshop** | **In progress** | Build `299ecc75-e191-4de4-a235-c0e33bffa232` (uploaded **before** push fix `515e452`) — **re-run EAS after green build** for correct push registration |
-| **painting-workshop** | **Pending** | Local `npx expo export --platform android` ok; queue EAS after carpentry |
+| **carpentry-workshop** | **SUCCESS** @ `515e452` | https://expo.dev/artifacts/eas/b2CZSWChda8kwpIxJ6tQwoW66hhdoyRGElB0351DU68.apk — SHA-1 `AD:1B:56:…` in Firebase |
+| **painting-workshop** | **SUCCESS** | https://expo.dev/artifacts/eas/hBuyU88jsbPewYgHiSBnZX4LGcWf6b8muk2Z27OdkX8.apk — SHA-1 `A2:3B:87:…` in Firebase |
 
 Local export verified: carpentry + painting `expo export --platform android` clean.
 
@@ -57,8 +57,7 @@ Firebase Android apps ensured for carpentry + painting (`--create-app-only`).
 
 ## Morning checklist
 
-1. Confirm carpentry build `299ecc75` finished; register SHA-1 from APK; **start second carpentry build** on commit `515e452+` for push fix.
-2. EAS build **painting-workshop**; register SHA-1 from APK.
-3. Install APKs; smoke-test Hassan quote send → upholstery + carpentry notifications; repair dept pushes.
-4. Deploy Vercel from `sync-light`.
-5. Optional: remove ESLint unused vars in Quotationer / WarehouseDeliveries.
+1. ~~Carpentry + painting EAS + SHA-1~~ — **done** (see table above).
+2. Install APKs; smoke-test Hassan quote send → upholstery + carpentry notifications; repair dept pushes.
+3. Deploy Vercel from `sync-light` (`npx vercel --prod`).
+4. Optional: remove ESLint unused vars in Quotationer / WarehouseDeliveries.
