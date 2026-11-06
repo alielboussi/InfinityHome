@@ -75,6 +75,33 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (op === 'translate-arabic') {
+      const { translateStringsToArabicServer } = await import('../lib/quoteArabicTranslate.js');
+      const texts = Array.isArray(body.texts) ? body.texts : [];
+      const translations = await translateStringsToArabicServer(texts);
+      res.status(200).json({ ok: true, translations });
+      return;
+    }
+
+    if (op === 'list-routings') {
+      const rawIds = body.quote_ids || body.quoteIds || '';
+      const ids = (Array.isArray(rawIds) ? rawIds : String(rawIds).split(','))
+        .map((s) => String(s || '').trim())
+        .filter(Boolean)
+        .slice(0, 250);
+      if (!ids.length) {
+        res.status(200).json({ ok: true, routings: [] });
+        return;
+      }
+      const { data: routings, error: rErr } = await db
+        .from('quote_production_routing')
+        .select('quote_id, route, sent_to_production_at, accepted_at, completed_at, metadata')
+        .in('quote_id', ids);
+      if (rErr) throw new Error(rErr.message || 'Failed to load quote routings');
+      res.status(200).json({ ok: true, routings: routings || [] });
+      return;
+    }
+
     res.status(400).json({ ok: false, error: `Unknown op: ${op}` });
   } catch (err) {
     const status = err.status || 500;

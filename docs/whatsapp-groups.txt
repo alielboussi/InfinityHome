@@ -14,6 +14,7 @@ Sales & Deliveries = 120363428119118757@g.us
 Lusaka Sales = 260966000444-1611566360@g.us
 Warehouse Production (new / stock) = 120363430993260511@g.us
 Carpentry Production = 120363432968895012@g.us
+Factory New = 120363201559496504@g.us
 
 # Warehouse catalog → Kitwe delivery submit (driver selected) uses Automated Delivery Reciepts group.
 # Warehouse Production app → upholstery/seater create + stock: 120363430993260511@g.us
@@ -36,3 +37,4 @@ WHATSAPP_FAHME_GROUP_ID=120363372527723284@g.us
 WHATSAPP_LEDGER_GROUP_ID=120363246815974105@g.us
 WHATSAPP_PRODUCTION_GROUP_ID=120363430993260511@g.us
 WHATSAPP_PRODUCTION_CARPENTRY_GROUP_ID=120363432968895012@g.us
+WHATSAPP_FACTORY_NEW_GROUP_ID=120363201559496504@g.us

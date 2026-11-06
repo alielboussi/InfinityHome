@@ -41,10 +41,15 @@ try {
 
   includesAll(read('src/Quotationer.js'), [
     'productionRoute',
-    'Send to warehouse for production',
+    'Send Order',
     'Carpentry',
     'Upholstery',
   ], 'Quotationer');
+
+  includesAll(read('src/QuotesBoard.js'), [
+    'Send Order',
+    'executeSendQuoteOrder',
+  ], 'QuotesBoard');
 
   includesAll(read('mobile-apps/carpentry-workshop/services/carpentryApi.js'), [
     'production-quotes-list',

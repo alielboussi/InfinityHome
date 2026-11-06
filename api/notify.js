@@ -117,6 +117,8 @@ const GROUP_KEYS = {
 
   productionCarpentry: 'WHATSAPP_PRODUCTION_CARPENTRY_GROUP_ID',
 
+  factoryNew: 'WHATSAPP_FACTORY_NEW_GROUP_ID',
+
 };
 
 // Documented in docs/whatsapp-groups.txt — safe fallback when env group id is unset.
@@ -132,6 +134,7 @@ const DOCUMENTED_WHATSAPP_GROUP_IDS = {
   warehouseDelivery: '120363410583418058@g.us',
   production: '120363430993260511@g.us',
   productionCarpentry: '120363432968895012@g.us',
+  factoryNew: '120363201559496504@g.us',
 };
 
 
@@ -3848,6 +3851,58 @@ export async function deliverWarehouseDeliveryGroupMessage(body) {
   return handleWhatsAppWarehouseDelivery(body);
 }
 
+async function handleWhatsAppFactoryOrder(body) {
+  const rawMessage = String(body.message || '').trim();
+  const pdfUrl = String(body.pdfUrl || '').trim();
+  const pdfBase64 = String(body.pdfBase64 || '')
+    .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
+    .replace(/\s+/g, '');
+  const documentLink = pdfUrl || pdfBase64;
+
+  if (!rawMessage && !documentLink) {
+    const err = new Error('Missing message or PDF document');
+    err.status = 400;
+    err.stage = 'validate';
+    throw err;
+  }
+
+  const routing = resolveDeliveryTargets('factoryNew', null);
+  if (!routing.targets.length) {
+    const err = new Error('WhatsApp env not configured (WHATSAPP_FACTORY_NEW_GROUP_ID)');
+    err.status = 500;
+    err.stage = 'env';
+    throw err;
+  }
+
+  const message = rawMessage.slice(0, WHATSAPP_TEXT_LIMIT);
+  const filename = String(body.pdfFilename || body.pdf_filename || 'Factory_Order.pdf').trim() || 'Factory_Order.pdf';
+
+  if (documentLink) {
+    const caption = message || 'Factory Order';
+    const deliveries = await deliverDocument(
+      routing.targets,
+      documentLink,
+      filename,
+      routing.mode,
+      routing.provider,
+      caption.slice(0, WHATSAPP_CAPTION_LIMIT),
+    );
+    return {
+      ok: true,
+      deliveries,
+      truncated: rawMessage.length > WHATSAPP_TEXT_LIMIT,
+      document: true,
+    };
+  }
+
+  const deliveries = await deliverText(routing.targets, message, routing.mode, routing.provider);
+  return {
+    ok: true,
+    deliveries,
+    truncated: rawMessage.length > WHATSAPP_TEXT_LIMIT,
+  };
+}
+
 
 
 function formatLedgerUsd(amount) {
@@ -4425,6 +4480,16 @@ export default async function handler(req, res) {
     if (action === 'whatsapp-warehouse-delivery' || action === 'warehouse-delivery') {
 
       const payload = await handleWhatsAppWarehouseDelivery(body);
+
+      res.status(200).json(payload);
+
+      return;
+
+    }
+
+    if (action === 'whatsapp-factory-order' || action === 'factory-order') {
+
+      const payload = await handleWhatsAppFactoryOrder(body);
 
       res.status(200).json(payload);
 

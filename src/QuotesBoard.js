@@ -7,9 +7,17 @@ import { convertQuoteToLayby } from './services/quoteConversion';
 import { cacheClear } from './utils/staleCache';
 import { LAYBY_ROWS_CACHE_KEY } from './utils/laybyRollup';
 import BackToDashboard from './BackToDashboard';
-import { canDeleteQuotationData, canEditQuotation, isQuotationerOnlyExperience } from './accessControl';
+import {
+  canDeleteQuotationData,
+  canEditQuotation,
+  canManageCatalog,
+  isHassanAwadUser,
+  isQuotationerOnlyExperience,
+} from './accessControl';
 import { computeQuotationDisplayTotal, quotationHasOutstandingDue, sortQuotationRows } from './utils/quotationDisplay';
 import { enrichQuotationListTotals } from './services/quotationListTotals';
+import { fetchQuoteProductionRoutingsMap } from './services/quoteProductionApi';
+import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 
 const readLocalUser = () => {
   try {
@@ -60,11 +68,17 @@ export default function QuotesBoard() {
   const [search, setSearch] = React.useState('');
   const [customerMap, setCustomerMap] = React.useState({});
   const [salePaidBySaleId, setSalePaidBySaleId] = React.useState(() => new Map());
+  const [routingsMap, setRoutingsMap] = React.useState({});
+  const [sendBusyId, setSendBusyId] = React.useState('');
   const navigate = useNavigate();
   const location = useLocation();
   const user = React.useMemo(() => readLocalUser(), []);
   const isQuotationerOnly = isQuotationerOnlyExperience(user, location.pathname);
   const canDelete = canDeleteQuotationData(user);
+  const canSendOrder = React.useMemo(
+    () => isHassanAwadUser(user) || canManageCatalog(user) || isQuotationerOnly,
+    [user, isQuotationerOnly],
+  );
 
   const normalizeQuoteItemForSale = React.useCallback((item) => {
     const rawQty = Number(item.quantity || 0);
@@ -116,6 +130,12 @@ export default function QuotesBoard() {
             console.warn('Quote list total enrichment failed:', enrichErr?.message || enrichErr);
           }
           setQuotes(rows);
+          const quoteIds = rows.map(r => r.id).filter(Boolean);
+          fetchQuoteProductionRoutingsMap(quoteIds)
+            .then((rmap) => {
+              if (!cancelled) setRoutingsMap(rmap || {});
+            })
+            .catch(() => {});
           try {
             const ids = Array.from(new Set((data || []).map(q => q.customer_id).filter(Boolean)));
             let map = {};
@@ -246,6 +266,30 @@ export default function QuotesBoard() {
     }
   }
 
+  async function handleSendOrder(q) {
+    if (!q?.id || sendBusyId) return;
+    setSendBusyId(String(q.id));
+    try {
+      const existingRouting = routingsMap[String(q.id)];
+      const res = await executeSendQuoteOrder(q, { fallbackRoute: existingRouting?.route || '' });
+      setRoutingsMap((prev) => ({
+        ...prev,
+        [String(q.id)]: {
+          ...(prev[String(q.id)] || {}),
+          quote_id: q.id,
+          route: res.route,
+          sent_to_production_at: res.sent_to_production_at,
+        },
+      }));
+      const deptLabel = res.route === 'carpentry' ? 'Carpentry' : 'Upholstery';
+      alert(`Order sent to ${deptLabel} app and Factory New WhatsApp group.`);
+    } catch (e) {
+      alert('Send Order failed: ' + (e?.message || e));
+    } finally {
+      setSendBusyId('');
+    }
+  }
+
   async function handleDeleteQuote(q) {
     const ok = window.confirm('Delete this quote? This cannot be undone.');
     if (!ok) return;
@@ -303,45 +347,61 @@ export default function QuotesBoard() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(q => (
-                <tr key={q.id}>
-                  <td>{q.quote_number || `Q-${String(q.id).slice(0, 8)}`}</td>
-                  <td>{customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-')}</td>
-                  <td>{new Date(q.created_at).toLocaleString()}</td>
-                  <td>{(q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote'}</td>
-                  <td style={{ textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>
-                  <td style={{ minWidth: 200 }}>
-                    <div className="quotes-list-actions">
-                      {quoteIsEditable(q) && (
-                        <button
-                          type="button"
-                          className="quotes-list-action-btn"
-                          style={btn}
-                          onClick={() => handleEditQuote(q)}
-                        >
-                          Edit Quote
+              {filtered.map(q => {
+                const isSending = sendBusyId === String(q.id);
+                const routing = routingsMap[String(q.id)];
+                const alreadySent = Boolean(routing?.sent_to_production_at);
+                return (
+                  <tr key={q.id}>
+                    <td>{q.quote_number || `Q-${String(q.id).slice(0, 8)}`}</td>
+                    <td>{customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-')}</td>
+                    <td>{new Date(q.created_at).toLocaleString()}</td>
+                    <td>{(q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote'}</td>
+                    <td style={{ textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>
+                    <td style={{ minWidth: 200 }}>
+                      <div className="quotes-list-actions">
+                        {quoteIsEditable(q) && (
+                          <button
+                            type="button"
+                            className="quotes-list-action-btn"
+                            style={btn}
+                            onClick={() => handleEditQuote(q)}
+                          >
+                            Edit Quote
+                          </button>
+                        )}
+                        <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleDownloadPdf(q)}>
+                          Download PDF
                         </button>
-                      )}
-                      <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleDownloadPdf(q)}>
-                        Download PDF
-                      </button>
-                      {!isQuotationerOnly && (
-                        <>
-                          {q.status !== 'converted' && (
-                            <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleConvert(q)}>Convert to Layby</button>
-                          )}
-                          {q.status === 'converted' && q.sale_id && (
-                            <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => navigate(`/layby-management?laybyId=${encodeURIComponent(q.layby_id || '')}&saleId=${encodeURIComponent(q.sale_id)}`)}>Go to Layby</button>
-                          )}
-                          {canDelete && (
-                            <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleDeleteQuote(q)}>Delete Quote</button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {canSendOrder && (
+                          <button
+                            type="button"
+                            className="quotes-list-action-btn"
+                            style={btn}
+                            disabled={Boolean(sendBusyId)}
+                            onClick={() => handleSendOrder(q)}
+                          >
+                            {isSending ? 'Sending…' : alreadySent ? 'Send Order (Resend)' : 'Send Order'}
+                          </button>
+                        )}
+                        {!isQuotationerOnly && (
+                          <>
+                            {q.status !== 'converted' && (
+                              <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleConvert(q)}>Convert to Layby</button>
+                            )}
+                            {q.status === 'converted' && q.sale_id && (
+                              <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => navigate(`/layby-management?laybyId=${encodeURIComponent(q.layby_id || '')}&saleId=${encodeURIComponent(q.sale_id)}`)}>Go to Layby</button>
+                            )}
+                            {canDelete && (
+                              <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleDeleteQuote(q)}>Delete Quote</button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

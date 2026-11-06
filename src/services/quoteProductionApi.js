@@ -53,3 +53,69 @@ export async function sendQuoteToWarehouseProduction(quoteId) {
   if (!resp.ok || !payload?.ok) throw new Error(payload?.error || 'Send to production failed');
   return payload;
 }
+
+export async function fetchQuoteProductionRoutingsMap(quoteIds = []) {
+  const ids = [...new Set((quoteIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) return {};
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders()),
+  };
+  const resp = await fetch(apiUrl('/api/admin?adminAction=quote-production'), {
+    method: 'POST',
+    headers: withApiHeaders(headers),
+    body: JSON.stringify({ op: 'list-routings', quote_ids: ids }),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || !payload?.ok) return {};
+  const map = {};
+  for (const row of payload.routings || []) {
+    if (row?.quote_id) map[String(row.quote_id)] = row;
+  }
+  return map;
+}
+
+export async function translateQuoteStringsToArabic(texts = []) {
+  const list = [...new Set((texts || []).map((t) => String(t ?? '').trim()).filter(Boolean))];
+  if (!list.length) return {};
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(await authHeaders()),
+    };
+    const resp = await fetch(apiUrl('/api/admin?adminAction=quote-production'), {
+      method: 'POST',
+      headers: withApiHeaders(headers),
+      body: JSON.stringify({ op: 'translate-arabic', texts: list }),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (resp.ok && payload?.ok && payload.translations) {
+      return payload.translations;
+    }
+  } catch {
+    // ignore and return empty map so local fallback handles it
+  }
+  return {};
+}
+
+export async function sendFactoryOrderWhatsApp({ message, pdfBase64, pdfFilename } = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(await authHeaders()),
+  };
+  const resp = await fetch(apiUrl('/api/whatsapp-factory-order'), {
+    method: 'POST',
+    headers: withApiHeaders(headers),
+    body: JSON.stringify({
+      action: 'whatsapp-factory-order',
+      message,
+      pdfBase64,
+      pdfFilename,
+    }),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `WhatsApp send failed (${resp.status})`);
+  }
+  return payload;
+}

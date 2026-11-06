@@ -10,9 +10,10 @@ import { cacheGet, cacheSet, cacheClear } from './utils/staleCache';
 import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationConverted, isQuotationerOnlyExperience, getUserDisplayName, isHassanAwadUser, canManageCatalog } from './accessControl';
 import {
   fetchQuoteProductionRouting,
+  fetchQuoteProductionRoutingsMap,
   saveQuoteProductionRoute,
-  sendQuoteToWarehouseProduction,
 } from './services/quoteProductionApi';
+import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
@@ -590,8 +591,14 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
   const [search, setSearch] = React.useState('');
   const [customerMap, setCustomerMap] = React.useState({});
   const [salePaidBySaleId, setSalePaidBySaleId] = React.useState(() => new Map());
+  const [routingsMap, setRoutingsMap] = React.useState({});
+  const [sendBusyId, setSendBusyId] = React.useState('');
 
   const localUser = React.useMemo(() => readLocalUser(), []);
+  const canSendOrder = React.useMemo(
+    () => isHassanAwadUser(localUser) || canManageCatalog(localUser),
+    [localUser],
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -661,6 +668,11 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
             console.warn('Quote list total enrichment failed:', enrichErr?.message || enrichErr);
           }
           setQuotes(nextQuotes);
+          fetchQuoteProductionRoutingsMap(nextQuotes.map(r => r.id).filter(Boolean))
+            .then((rmap) => {
+              if (!cancelled) setRoutingsMap(rmap || {});
+            })
+            .catch(() => {});
           try {
             const map = await buildQuotationCustomerMap(nextQuotes);
             if (!cancelled) {
@@ -724,6 +736,30 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
     }
   }
 
+  async function handleSendOrder(q) {
+    if (!q?.id || sendBusyId) return;
+    setSendBusyId(String(q.id));
+    try {
+      const existingRouting = routingsMap[String(q.id)];
+      const res = await executeSendQuoteOrder(q, { fallbackRoute: existingRouting?.route || '' });
+      setRoutingsMap((prev) => ({
+        ...prev,
+        [String(q.id)]: {
+          ...(prev[String(q.id)] || {}),
+          quote_id: q.id,
+          route: res.route,
+          sent_to_production_at: res.sent_to_production_at,
+        },
+      }));
+      const deptLabel = res.route === 'carpentry' ? 'Carpentry' : 'Upholstery';
+      alert(`Order sent to ${deptLabel} app and Factory New WhatsApp group.`);
+    } catch (e) {
+      alert('Send Order failed: ' + (e?.message || e));
+    } finally {
+      setSendBusyId('');
+    }
+  }
+
   return (
     <div className="quotes-page quotes-list-page">
       <div className="quotes-header" style={{ marginBottom: 12 }}>
@@ -752,35 +788,50 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(q => (
-                <tr key={q.id}>
-                  <td style={tableCellStyle}>{q.quote_number || `Q-${String(q.id).slice(0,8)}`}</td>
-                  <td style={{ ...tableCellStyle, minWidth: 220 }}>{customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-')}</td>
-                  <td style={tableCellStyle}>{new Date(q.created_at).toLocaleString()}</td>
-                  <td style={tableCellStyle}>{(q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote'}</td>
-                  <td style={{ ...tableCellStyle, textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>
-                  <td style={{ ...tableCellStyle, minWidth: 200 }}>
-                    <div className="quotes-list-actions">
-                      {quoteIsEditable(q) && (
+              {filtered.map(q => {
+                const isSending = sendBusyId === String(q.id);
+                const routing = routingsMap[String(q.id)];
+                const alreadySent = Boolean(routing?.sent_to_production_at);
+                return (
+                  <tr key={q.id}>
+                    <td style={tableCellStyle}>{q.quote_number || `Q-${String(q.id).slice(0,8)}`}</td>
+                    <td style={{ ...tableCellStyle, minWidth: 220 }}>{customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-')}</td>
+                    <td style={tableCellStyle}>{new Date(q.created_at).toLocaleString()}</td>
+                    <td style={tableCellStyle}>{(q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote'}</td>
+                    <td style={{ ...tableCellStyle, textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>
+                    <td style={{ ...tableCellStyle, minWidth: 200 }}>
+                      <div className="quotes-list-actions">
+                        {quoteIsEditable(q) && (
+                          <button
+                            type="button"
+                            className="quotes-list-action-btn"
+                            onClick={() => onOpenQuote(q.id)}
+                          >
+                            Edit Quote
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="quotes-list-action-btn"
-                          onClick={() => onOpenQuote(q.id)}
+                          onClick={() => handleDownloadPdf(q)}
                         >
-                          Edit Quote
+                          Download PDF
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        className="quotes-list-action-btn"
-                        onClick={() => handleDownloadPdf(q)}
-                      >
-                        Download PDF
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {canSendOrder && (
+                          <button
+                            type="button"
+                            className="quotes-list-action-btn"
+                            disabled={Boolean(sendBusyId)}
+                            onClick={() => handleSendOrder(q)}
+                          >
+                            {isSending ? 'Sending…' : alreadySent ? 'Send Order (Resend)' : 'Send Order'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -811,7 +862,6 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const [currentQuoteId, setCurrentQuoteId] = React.useState(quoteId || '');
   const [productionRoute, setProductionRoute] = React.useState('');
   const [productionRoutingLocked, setProductionRoutingLocked] = React.useState(false);
-  const [productionSendBusy, setProductionSendBusy] = React.useState(false);
   const [productionDrawingUrl, setProductionDrawingUrl] = React.useState('');
   const [productionDrawingPendingFile, setProductionDrawingPendingFile] = React.useState(null);
   const [productionDrawingUploadBusy, setProductionDrawingUploadBusy] = React.useState(false);
@@ -1385,28 +1435,6 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                   </>
                 ) : null}
               </p>
-            ) : null}
-            {currentQuoteId && productionRoute && !productionRoutingLocked ? (
-              <button
-                type="button"
-                className="action-button quotes-production-send-btn"
-                style={compactButton}
-                disabled={productionSendBusy || locked}
-                onClick={async () => {
-                  setProductionSendBusy(true);
-                  try {
-                    await sendQuoteToWarehouseProduction(currentQuoteId);
-                    setProductionRoutingLocked(true);
-                    alert('Quote sent to warehouse for production.');
-                  } catch (err) {
-                    alert(err?.message || 'Send to production failed.');
-                  } finally {
-                    setProductionSendBusy(false);
-                  }
-                }}
-              >
-                {productionSendBusy ? 'Sending…' : 'Send to warehouse for production'}
-              </button>
             ) : null}
           </div>
         ) : null}
