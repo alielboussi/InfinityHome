@@ -995,6 +995,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       image_url: qp.image_url,
       qr_code_url: qp.qr_code_url,
     }]);
+    setAddSearch('');
   };
 
   const updateItem = (id, patch) => setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
