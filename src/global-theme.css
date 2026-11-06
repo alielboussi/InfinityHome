@@ -16744,6 +16744,38 @@ body.enterprise-theme .production-admin-tabs__btn.is-active {
   cursor: not-allowed;
 }
 
+.user-access-app-select {
+  border: 1px solid var(--br-border-soft, #334155);
+  background: var(--br-surface, #1e293b);
+  color: var(--br-text, #e2e8f0);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.user-access-app-select:hover:not(:disabled) {
+  border-color: #38bdf8;
+}
+
+.user-access-app-select--active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+}
+
+body.enterprise-theme .user-access-app-select {
+  background: #fff;
+  color: var(--ent-text, #1f2733);
+  border-color: var(--ent-border, #cbd5e1);
+}
+
+body.enterprise-theme .user-access-app-select--active {
+  border-color: var(--ent-blue, #1565c0);
+  background: rgba(21, 101, 192, 0.08);
+}
+
 .user-access-status {
   font-weight: 700;
   font-size: 0.85rem;
@@ -16891,6 +16923,11 @@ body.enterprise-theme .production-admin-tabs__btn.is-active {
   border-radius: 10px;
   border: 1px solid var(--br-border-soft, #334155);
   background: rgba(15, 23, 42, 0.35);
+}
+
+.mobile-access-permission-item:has(.mobile-access-yesno) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
 }
 
 .mobile-access-permission-item__check {

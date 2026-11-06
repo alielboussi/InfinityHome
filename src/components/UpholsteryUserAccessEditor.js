@@ -2,11 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
 import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import {
+  buildMobileScreenAccessRow,
   defaultMobileAccessGrant,
   sanitizeMobileAccessGrantForUser,
 } from '../mobile/mobileAccessManifest';
 
 const UPHOLSTERY_APP_NAME = 'Production workshop apps';
+
+function grantForWorkshopSave(grant) {
+  return {
+    ...grant,
+    warehouse_production_kitwe: 'deny',
+    screens: {
+      ...(grant.screens || {}),
+      kitwe_send_delivery: buildMobileScreenAccessRow(false),
+    },
+  };
+}
 
 async function saveUpholsteryAppAccess(uid, mobile_access, mobile_display_name) {
   const token = await firebaseGetAccessToken();
@@ -42,6 +54,7 @@ function normalizeGrant(raw) {
     warehouse_production_photo_upload: allowDeny(raw.warehouse_production_photo_upload),
     carpentry_workshop_app: allowDeny(raw.carpentry_workshop_app),
     painting_workshop_app: allowDeny(raw.painting_workshop_app),
+    warehouse_delivery_app: allowDeny(raw.warehouse_delivery_app),
   };
 }
 
@@ -90,7 +103,7 @@ export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }
     setBusy(true);
     setError('');
     try {
-      const payload = sanitizeMobileAccessGrantForUser(grant, userRow.email);
+      const payload = sanitizeMobileAccessGrantForUser(grantForWorkshopSave(grant), userRow.email);
       const updated = await saveUpholsteryAppAccess(
         userRow.id,
         payload,
@@ -118,7 +131,7 @@ export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }
             {UPHOLSTERY_APP_NAME} — {displayName}
           </h3>
           <p className="mobile-access-panel__hint">
-            Upholstery, Carpentry, and Painting Android apps — use <strong>Yes</strong> / <strong>No</strong> for each.
+            Upholstery, Carpentry, Painting, and Delivery Android apps — use <strong>Yes</strong> / <strong>No</strong> for each.
             Labels print via Zebra cloud Weblink where applicable.
           </p>
         </div>
@@ -163,6 +176,13 @@ export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }
             description="Painting jobs and Color repair returns; finish credits Floor 1."
             value={grant.painting_workshop_app}
             onChange={(v) => setGrant((prev) => ({ ...prev, painting_workshop_app: v }))}
+          />
+          <AccessSelect
+            id="mobile-access-delivery-app"
+            label="Delivery (Android)"
+            description="Warehouse Delivery app: Kitwe truck send, driver signature, sent deliveries list, and delivery note print."
+            value={grant.warehouse_delivery_app}
+            onChange={(v) => setGrant((prev) => ({ ...prev, warehouse_delivery_app: v }))}
           />
           <AccessSelect
             id="mobile-access-upholstery-photo-upload"

@@ -173,8 +173,15 @@ export default function UserAccessManagement() {
                   const isWarehouseSelected = mobileUserId === row.id;
                   const isUpholsterySelected = upholsteryUserId === row.id;
                   const isDeliverySelected = deliveryUserId === row.id;
+                  const selectedAppEditor = isWarehouseSelected
+                    ? 'catalog'
+                    : isUpholsterySelected
+                      ? 'upholstery'
+                      : isDeliverySelected
+                        ? 'delivery'
+                        : '';
                   return (
-                    <tr key={row.id} className={(isWarehouseSelected || isUpholsterySelected || isDeliverySelected) ? 'user-access-table__row--active' : ''}>
+                    <tr key={row.id} className={selectedAppEditor ? 'user-access-table__row--active' : ''}>
                       <td>{row.display_name || '—'}</td>
                       <td>{row.mobile_display_name || '—'}</td>
                       <td>{row.email || '—'}</td>
@@ -186,6 +193,31 @@ export default function UserAccessManagement() {
                       <td className="user-access-table__date">{formatDateTime(row.last_seen_at || row.updated_at || row.created_at)}</td>
                       <td className="user-access-table__actions-col">
                         <div className="user-access-row-actions">
+                          <select
+                            className={`user-access-app-select ${selectedAppEditor ? 'user-access-app-select--active' : ''}`}
+                            value={selectedAppEditor}
+                            aria-label={`Mobile app permissions for ${row.display_name || row.email || 'user'}`}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              if (next === 'catalog') {
+                                clearOtherEditors('warehouse');
+                                setMobileUserId(row.id);
+                              } else if (next === 'upholstery') {
+                                clearOtherEditors('upholstery');
+                                setUpholsteryUserId(row.id);
+                              } else if (next === 'delivery') {
+                                clearOtherEditors('delivery');
+                                setDeliveryUserId(row.id);
+                              } else {
+                                clearOtherEditors('');
+                              }
+                            }}
+                          >
+                            <option value="">Apps…</option>
+                            <option value="catalog">Catalog</option>
+                            <option value="upholstery">Upholstery</option>
+                            <option value="delivery">Delivery</option>
+                          </select>
                           <button
                             type="button"
                             className="user-access-btn user-access-btn--ghost"
@@ -193,48 +225,6 @@ export default function UserAccessManagement() {
                             onClick={() => toggleUser(row)}
                           >
                             {isBusy ? '…' : (enabled ? 'Disable' : 'Enable')}
-                          </button>
-                          <button
-                            type="button"
-                            className={`user-access-btn ${isWarehouseSelected ? 'user-access-btn--active' : ''}`}
-                            onClick={() => {
-                              if (isWarehouseSelected) {
-                                setMobileUserId('');
-                              } else {
-                                clearOtherEditors('warehouse');
-                                setMobileUserId(row.id);
-                              }
-                            }}
-                          >
-                            {isWarehouseSelected ? 'Editing' : 'Catalog'}
-                          </button>
-                          <button
-                            type="button"
-                            className={`user-access-btn ${isUpholsterySelected ? 'user-access-btn--active' : ''}`}
-                            onClick={() => {
-                              if (isUpholsterySelected) {
-                                setUpholsteryUserId('');
-                              } else {
-                                clearOtherEditors('upholstery');
-                                setUpholsteryUserId(row.id);
-                              }
-                            }}
-                          >
-                            {isUpholsterySelected ? 'Editing' : 'Upholstery'}
-                          </button>
-                          <button
-                            type="button"
-                            className={`user-access-btn ${isDeliverySelected ? 'user-access-btn--active' : ''}`}
-                            onClick={() => {
-                              if (isDeliverySelected) {
-                                setDeliveryUserId('');
-                              } else {
-                                clearOtherEditors('delivery');
-                                setDeliveryUserId(row.id);
-                              }
-                            }}
-                          >
-                            {isDeliverySelected ? 'Editing' : 'Delivery'}
                           </button>
                         </div>
                       </td>

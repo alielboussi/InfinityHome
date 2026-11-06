@@ -137,22 +137,25 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
         <h4 className="mobile-access-panel__section-label">Delivery app</h4>
         <div className="mobile-access-permission-list">
           <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-delivery-app"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={deliveryChecked}
-              onChange={(e) => setGrant((prev) => ({
-                ...prev,
-                warehouse_delivery_app: e.target.checked ? 'allow' : 'deny',
-              }))}
-            />
             <label className="mobile-access-permission-item__body" htmlFor="mobile-access-delivery-app">
               <span className="mobile-access-permission-item__title">Warehouse Delivery (Android)</span>
               <span className="mobile-access-permission-item__desc">
                 Kitwe truck send, sent deliveries list, and delivery note print. Off by default until enabled here.
               </span>
             </label>
+            <select
+              id="mobile-access-delivery-app"
+              className="mobile-access-yesno"
+              value={deliveryChecked ? 'yes' : 'no'}
+              onChange={(e) => setGrant((prev) => ({
+                ...prev,
+                warehouse_delivery_app: e.target.value === 'yes' ? 'allow' : 'deny',
+              }))}
+              aria-label="Warehouse Delivery (Android)"
+            >
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
           </div>
         </div>
       </div>
