@@ -5,7 +5,7 @@ export {
   setRecipeRowsForLocation,
   KITWE_SET_DELIVERY_LOCATION_ID,
   FACTORY_SET_RECIPE_LOCATION_ID,
-} from '../../../src/utils/warehouseSetDeliveryRecipe.js';
+} from './_repoUtils/warehouseSetDeliveryRecipe.js';
 
 export { isWarehouseSetAssembly } from '../shared/warehouseCatalogProductCompleteness';
 
@@ -15,7 +15,7 @@ import {
   refreshDeliveryPacketCheckQty,
 } from './deliveryAssemblyChecks';
 import { filterAssembliesForDeliverySearch } from './deliveryCatalogSearch';
-import { resolveSetComponentsForDelivery } from '../../../src/utils/warehouseSetDeliveryRecipe.js';
+import { resolveSetComponentsForDelivery } from './_repoUtils/warehouseSetDeliveryRecipe.js';
 
 export function filterDeliverySearchAssemblies(assemblies, rawQuery, options) {
   return filterAssembliesForDeliverySearch(assemblies, rawQuery, options);

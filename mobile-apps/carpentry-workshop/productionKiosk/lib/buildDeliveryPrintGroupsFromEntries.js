@@ -1,1 +1,1 @@
-export { buildDeliveryPrintGroupsFromEntries } from '../../../src/utils/warehouseDeliveryNotePrint.js';
+export { buildDeliveryPrintGroupsFromEntries } from './_repoUtils/warehouseDeliveryNotePrint.js';

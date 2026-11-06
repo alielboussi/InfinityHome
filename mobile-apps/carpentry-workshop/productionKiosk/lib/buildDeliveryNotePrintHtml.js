@@ -1,4 +1,4 @@
 export {
   paginateDeliveryNoteBlocks,
   buildDeliveryNotePrintHtml,
-} from '../../../src/utils/buildDeliveryNotePrintHtml';
+} from './_repoUtils/buildDeliveryNotePrintHtml';

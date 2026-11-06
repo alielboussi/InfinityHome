@@ -1,7 +1,7 @@
 import {
   buildDeliveryPrintGroupsFromCartGroups,
   isWarehouseSetDeliveryGroup,
-} from '../../../src/utils/warehouseDeliverySetPrint.js';
+} from './_repoUtils/warehouseDeliverySetPrint.js';
 
 export {
   buildDeliveryPrintGroupsFromCartGroups,
