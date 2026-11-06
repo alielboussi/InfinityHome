@@ -90,9 +90,10 @@ function computeStorageSaleLabelDots({ dpi = 203, includeSetRow = false } = {}) 
   const nameBlockTopMm = y;
   y = nameBlockTopMm + NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES + gapMm;
 
-  const qrBlockYMm = y;
-  const imageQrLeftMm = valueCenterXMm - qrSizeMm / 2;
-  y += qrSizeMm + gapMm + 0.3;
+  // Lift QR up slightly (~2.2mm) and shift right (+3.5mm) so it aligns with the right-hand details column
+  const qrBlockYMm = y - 2.2;
+  const imageQrLeftMm = valueCenterXMm - qrSizeMm / 2 + 3.5;
+  y += qrSizeMm + gapMm - 1.2;
 
   const customerNameRowMm = y;
   y += rowStepMm + gapMm;
