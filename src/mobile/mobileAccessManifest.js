@@ -154,9 +154,32 @@ export function isWarehouseProductStockQtyEditAllowed(grant) {
   return false;
 }
 
+export const FLOOR2_AND_STOREROOM_SCREEN_IDS = Object.freeze([
+  'warehouse_floor_2',
+  'warehouse_storeroom_1',
+  'warehouse_storeroom_2',
+  'warehouse_storeroom_3',
+]);
+
+export function isCatalogLocationStockIncreaseAllowed(grant, screenId, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (!grant) return false;
+  return grant.location_stock_increase?.[screenId] === 'allow';
+}
+
+export function isCatalogLocationPhotoUploadAllowed(grant, screenId, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (!grant) return false;
+  return grant.location_photo_upload?.[screenId] === 'allow';
+}
+
 /** Screens that can appear as buttons on the mobile dashboard. */
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
+  'warehouse_floor_2',
+  'warehouse_storeroom_1',
+  'warehouse_storeroom_2',
+  'warehouse_storeroom_3',
   'warehouse_packets',
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
@@ -173,9 +196,37 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_products',
-    label: 'Products',
-    description: 'Products and sets (expand sets for component products and packets)',
+    label: 'Floor 1',
+    description: 'Warehouse Floor 1 products and sets (expand sets for component products and packets)',
     permissionMatrix: true,
+  },
+  {
+    id: 'warehouse_floor_2',
+    label: 'Floor 2',
+    description: 'Warehouse Floor 2 WIP products — grid view, stock increase, and photo import',
+    permissionMatrix: true,
+    supportsLocationStockAndPhoto: true,
+  },
+  {
+    id: 'warehouse_storeroom_1',
+    label: 'Storeroom 1',
+    description: 'Storeroom 1 materials, UOMs, stock on hand, qty increase, and photo import',
+    permissionMatrix: true,
+    supportsLocationStockAndPhoto: true,
+  },
+  {
+    id: 'warehouse_storeroom_2',
+    label: 'Storeroom 2',
+    description: 'Storeroom 2 materials, UOMs, stock on hand, qty increase, and photo import',
+    permissionMatrix: true,
+    supportsLocationStockAndPhoto: true,
+  },
+  {
+    id: 'warehouse_storeroom_3',
+    label: 'Storeroom 3',
+    description: 'Storeroom 3 materials, UOMs, stock on hand, qty increase, and photo import',
+    permissionMatrix: true,
+    supportsLocationStockAndPhoto: true,
   },
   {
     id: 'warehouse_incomplete_products',
@@ -237,6 +288,10 @@ export const DEFAULT_MOBILE_LANDING_SCREEN = 'dashboard';
 
 const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_products: 'WarehouseProducts',
+  warehouse_floor_2: 'WarehouseFloor2',
+  warehouse_storeroom_1: 'WarehouseStoreroom1',
+  warehouse_storeroom_2: 'WarehouseStoreroom2',
+  warehouse_storeroom_3: 'WarehouseStoreroom3',
   warehouse_incomplete_products: 'WarehouseIncompleteProducts',
   warehouse_packets: 'WarehousePackets',
   warehouse_unused_packets: 'WarehouseUnusedPackets',
@@ -379,6 +434,12 @@ export function defaultMobileAccessGrant() {
       screens[screen.id] = buildMobileScreenAccessRow(false);
     });
   });
+  const locationStockIncrease = {};
+  const locationPhotoUpload = {};
+  FLOOR2_AND_STOREROOM_SCREEN_IDS.forEach((id) => {
+    locationStockIncrease[id] = 'deny';
+    locationPhotoUpload[id] = 'deny';
+  });
   return {
     app: 'warehouse-catalog',
     landing_screen: DEFAULT_MOBILE_LANDING_SCREEN,
@@ -393,6 +454,8 @@ export function defaultMobileAccessGrant() {
     warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
     painting_workshop_app: 'deny',
+    location_stock_increase: locationStockIncrease,
+    location_photo_upload: locationPhotoUpload,
     screens,
   };
 }
@@ -535,6 +598,27 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   merged.warehouse_catalog_photo_import = merged.warehouse_catalog_photo_import === 'allow'
     ? 'allow'
     : 'deny';
+
+  const rawStockInc = grant?.location_stock_increase && typeof grant.location_stock_increase === 'object'
+    ? grant.location_stock_increase
+    : {};
+  const rawPhotoUp = grant?.location_photo_upload && typeof grant.location_photo_upload === 'object'
+    ? grant.location_photo_upload
+    : {};
+  merged.location_stock_increase = {};
+  merged.location_photo_upload = {};
+  FLOOR2_AND_STOREROOM_SCREEN_IDS.forEach((id) => {
+    merged.location_stock_increase[id] = (
+      rawStockInc[id] === 'allow' || rawStockInc[id] === true
+    )
+      ? 'allow'
+      : 'deny';
+    merged.location_photo_upload[id] = (
+      rawPhotoUp[id] === 'allow' || rawPhotoUp[id] === true
+    )
+      ? 'allow'
+      : 'deny';
+  });
 
   const addProductAllowed = merged.warehouse_catalog_add_product === 'allow';
   const productFormRow = merged.screens.warehouse_product_form || buildMobileScreenAccessRow(false);

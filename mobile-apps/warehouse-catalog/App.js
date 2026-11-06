@@ -12,6 +12,8 @@ import { WarehouseCatalogProvider } from './shared/WarehouseCatalogContext';
 import { useMobileAccessGrant } from './shared/useMobileAccessGrant';
 import DashboardScreen from './screens/DashboardScreen';
 import WarehouseProductsScreen from './screens/WarehouseProductsScreen';
+import WarehouseFloor2Screen from './screens/WarehouseFloor2Screen';
+import WarehouseStoreroomScreen from './screens/WarehouseStoreroomScreen';
 import WarehousePacketsScreen from './screens/WarehousePacketsScreen';
 import WarehouseUnusedPacketsScreen from './screens/WarehouseUnusedPacketsScreen';
 import ScanScreen from './screens/ScanScreen';
@@ -53,12 +55,55 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="WarehouseProducts"
-        options={{ title: 'Products' }}
+        options={{ title: 'Floor 1' }}
         initialParams={{ catalogMode: 'complete' }}
       >
         {(props) => (
           <MobileScreenGate screenId="warehouse_products" grant={grant} navigation={props.navigation}>
             <WarehouseProductsScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="WarehouseFloor2"
+        options={{ title: 'Floor 2' }}
+      >
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_floor_2" grant={grant} navigation={props.navigation}>
+            <WarehouseFloor2Screen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="WarehouseStoreroom1"
+        options={{ title: 'Storeroom 1' }}
+        initialParams={{ storeroomIndex: 1 }}
+      >
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_storeroom_1" grant={grant} navigation={props.navigation}>
+            <WarehouseStoreroomScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="WarehouseStoreroom2"
+        options={{ title: 'Storeroom 2' }}
+        initialParams={{ storeroomIndex: 2 }}
+      >
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_storeroom_2" grant={grant} navigation={props.navigation}>
+            <WarehouseStoreroomScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="WarehouseStoreroom3"
+        options={{ title: 'Storeroom 3' }}
+        initialParams={{ storeroomIndex: 3 }}
+      >
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_storeroom_3" grant={grant} navigation={props.navigation}>
+            <WarehouseStoreroomScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

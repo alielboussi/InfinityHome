@@ -44,6 +44,8 @@ import {
   evaluatePaintingWorkshopAppAccess,
   evaluateWarehouseDeliveryDriverAppAccess,
   evaluateWarehouseProductionAppAccess,
+  isCatalogLocationPhotoUploadAllowed,
+  isCatalogLocationStockIncreaseAllowed,
   isMobileScreenAccessAllowed,
   isWarehouseCatalogAddProductAllowed,
   isWarehouseCatalogLabelPrintAllowed,
@@ -546,6 +548,361 @@ async function opUpholsteryFloor2WipPhotoUpload(body, user) {
   return {
     assembly_id: assemblyId,
     raw_assembly_id: assemblyId,
+    image_url: publicUrl,
+  };
+}
+
+function storeroomScreenIdForIndex(index) {
+  const n = Math.floor(Number(index) || 0);
+  if (n === 1) return 'warehouse_storeroom_1';
+  if (n === 2) return 'warehouse_storeroom_2';
+  if (n === 3) return 'warehouse_storeroom_3';
+  return '';
+}
+
+async function assertCatalogScreenViewUser(user, screenId) {
+  if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) {
+    return mobileAccessGrantForUser(user);
+  }
+  const grant = await mobileAccessGrantForUser(user);
+  if (isMobileScreenAccessAllowed(grant, screenId)) {
+    return grant;
+  }
+  const err = new Error('You do not have access to this page in User Access.');
+  err.status = 403;
+  throw err;
+}
+
+async function opCatalogFloor2List(user) {
+  await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+  const sb = getService();
+  const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
+  const { parseCarpentryMeta } = await import('../../src/utils/carpentryCatalogView.js');
+  const { findUpholsteryFinishedForRawAssembly } = await import('../../src/utils/upholsteryCatalogView.js');
+  const {
+    readWarehouseFloor2WipFamilyImageUrl,
+    readWarehouseFloor2WipImageUrl,
+  } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const { assemblyImageUrlFromRow } = await import('../../src/utils/warehouseSeaterSetCoverImage.js');
+
+  const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
+    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata, category_id, image_url, thumbnail_url, cover_image_url, photo_url'),
+    sb.from('locations').select('id, name'),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  if (!floor2Loc?.id) {
+    return { products: [], floor2Missing: true };
+  }
+  const floor2Id = String(floor2Loc.id);
+  const { data: invRows, error: invErr } = await sb
+    .from('warehouse_assembly_inventory')
+    .select('assembly_id, quantity')
+    .eq('location_id', floor2Id);
+  if (invErr) throw new Error(invErr.message || 'Failed to load Floor 2 stock');
+  const qtyByAssembly = new Map();
+  (invRows || []).forEach((r) => {
+    qtyByAssembly.set(String(r.assembly_id), Math.max(0, Math.floor(Number(r.quantity) || 0)));
+  });
+
+  const allRows = assemblies || [];
+  const products = [];
+  for (const row of allRows) {
+    if (!row?.id || row.item_kind === 'set') continue;
+    if (row?.metadata?.storeroom?.is_storeroom_material === true) continue;
+    const aid = String(row.id);
+    const qty = qtyByAssembly.get(aid) || 0;
+    const inCarpentry = parseCarpentryMeta(row).selected;
+    const linkedUpholstery = Boolean(findUpholsteryFinishedForRawAssembly(allRows, aid));
+    if (qty <= 0 && !inCarpentry && !linkedUpholstery) continue;
+    const wipImage = readWarehouseFloor2WipImageUrl(row) || assemblyImageUrlFromRow(row) || '';
+    const familyImage = readWarehouseFloor2WipFamilyImageUrl(row) || '';
+    products.push({
+      id: aid,
+      assembly_id: aid,
+      raw_assembly_id: aid,
+      name: String(row.name || aid).trim(),
+      raw_name: String(row.name || aid).trim(),
+      family_sku: String(row.family_sku || '').trim(),
+      quantity: qty,
+      floor2_qty: qty,
+      image_url: wipImage,
+      family_image_url: familyImage,
+    });
+  }
+  products.sort((a, b) => a.name.localeCompare(b.name));
+  return { products, floor2_location_id: floor2Id };
+}
+
+async function opCatalogFloor2StockIncrease(body, user) {
+  const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+  if (
+    !isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', user?.email)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Floor 2 stock qty increase is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+  const assemblyId = String(
+    body.assembly_id || body.assemblyId || body.raw_assembly_id || body.rawAssemblyId || '',
+  ).trim();
+  const delta = Math.floor(Number(body.delta ?? body.quantity ?? body.product_qty ?? 0));
+  if (!assemblyId) throw new Error('assembly_id is required.');
+  if (!Number.isFinite(delta) || delta <= 0) {
+    throw new Error('Quantity increase must be at least 1.');
+  }
+  const sb = getService();
+  const { addFloor1ProductToFloor2 } = await import('../lib/carpentryManufacture.js');
+  const res = await addFloor1ProductToFloor2(sb, {
+    assemblyId,
+    productQty: delta,
+    userId: user?.id || user?.uid || null,
+  });
+  const { data: inv } = await sb
+    .from('warehouse_assembly_inventory')
+    .select('quantity')
+    .eq('assembly_id', assemblyId)
+    .eq('location_id', res.floor2_location_id)
+    .maybeSingle();
+  return {
+    ...res,
+    quantity: Math.max(0, Math.floor(Number(inv?.quantity) || 0)),
+  };
+}
+
+async function opCatalogFloor2PhotoUpload(body, user) {
+  const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+  if (
+    !isCatalogLocationPhotoUploadAllowed(grant, 'warehouse_floor_2', user?.email)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Floor 2 image upload is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+  const assemblyId = String(
+    body.assembly_id || body.assemblyId || body.raw_assembly_id || body.rawAssemblyId || '',
+  ).trim();
+  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+  if (!assemblyId) throw new Error('assembly_id is required.');
+  if (!imageBase64) throw new Error('Photo is required.');
+  if (imageBase64.length > 3_200_000) {
+    throw new Error('Photo is too large. Try selecting a smaller image.');
+  }
+
+  const sb = getService();
+  const { data: existing, error: loadErr } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name, metadata')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
+  if (!existing) throw new Error('Product not found.');
+
+  const { jpegBufferFromCatalogDirectUpload } = await import('../lib/catalogDirectPhotoUpload.js');
+  const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const jpeg = await jpegBufferFromCatalogDirectUpload(imageBase64);
+  const objectPath = `warehouse-assemblies/${assemblyId}/floor2-wip/main-${Date.now()}.jpg`;
+  await uploadBufferToFirebaseStorage({
+    bucketFolder: 'productimages',
+    objectPath,
+    buffer: jpeg,
+    contentType: 'image/jpeg',
+    cacheControl: '86400',
+  });
+  const publicUrl = firebaseStoragePublicUrl('productimages', objectPath);
+  if (!publicUrl) throw new Error('Failed to resolve public image URL.');
+
+  const now = new Date().toISOString();
+  const metadata = mergeWarehouseFloor2WipImageMetadata(existing.metadata, publicUrl);
+  const { error: updErr } = await sb
+    .from('warehouse_assemblies')
+    .update({ metadata, updated_at: now })
+    .eq('id', assemblyId);
+  if (updErr) throw new Error(updErr.message || 'Failed to save Floor 2 photo');
+
+  return {
+    assembly_id: assemblyId,
+    image_url: publicUrl,
+  };
+}
+
+async function opCatalogStoreroomList(body, user) {
+  const storeroomIndex = Math.floor(Number(body.storeroom_index ?? body.storeroomIndex ?? 0));
+  const screenId = storeroomScreenIdForIndex(storeroomIndex);
+  if (!screenId) throw new Error('storeroom_index must be 1, 2, or 3.');
+  await assertCatalogScreenViewUser(user, screenId);
+
+  const { CARPENTRY_WAREHOUSE_NAMES, storeroomLabelForWarehouseIndex } = await import('../../src/constants/carpentryWarehouses.js');
+  const { parseStoreroomMaterialMeta } = await import('../../src/utils/productionPortalCatalog.js');
+  const { readWarehouseFloor2WipImageUrl } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const { assemblyImageUrlFromRow } = await import('../../src/utils/warehouseSeaterSetCoverImage.js');
+
+  const locationName = CARPENTRY_WAREHOUSE_NAMES[storeroomIndex - 1];
+  const sb = getService();
+  const [{ data: locs, error: locErr }, { data: assemblies, error: aErr }] = await Promise.all([
+    sb.from('locations').select('id, name'),
+    sb.from('warehouse_assemblies').select('id, name, family_sku, metadata, image_url, thumbnail_url, cover_image_url, photo_url'),
+  ]);
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+  if (aErr) throw new Error(aErr.message || 'Failed to load materials');
+
+  const loc = (locs || []).find((l) => String(l.name || '').trim() === locationName);
+  if (!loc?.id) {
+    return {
+      storeroom_index: storeroomIndex,
+      storeroom_label: storeroomLabelForWarehouseIndex(storeroomIndex),
+      location_id: null,
+      materials: [],
+    };
+  }
+  const locationId = String(loc.id);
+  const { data: invRows, error: invErr } = await sb
+    .from('warehouse_assembly_inventory')
+    .select('assembly_id, quantity')
+    .eq('location_id', locationId);
+  if (invErr) throw new Error(invErr.message || 'Failed to load storeroom stock');
+
+  const qtyByAssembly = new Map();
+  (invRows || []).forEach((r) => {
+    qtyByAssembly.set(String(r.assembly_id), Math.max(0, Number(r.quantity) || 0));
+  });
+
+  const materials = [];
+  for (const asm of assemblies || []) {
+    if (!asm?.id) continue;
+    const isMaterial = asm?.metadata?.storeroom?.is_storeroom_material === true;
+    const qtyHere = qtyByAssembly.get(String(asm.id)) || 0;
+    if (!isMaterial && qtyHere <= 0) continue;
+    const uom = parseStoreroomMaterialMeta(asm).default_uom || '';
+    const storeroomImage = String(asm?.metadata?.storeroom?.image_url || '').trim()
+      || readWarehouseFloor2WipImageUrl(asm)
+      || assemblyImageUrlFromRow(asm)
+      || '';
+    materials.push({
+      id: String(asm.id),
+      assembly_id: String(asm.id),
+      name: String(asm.name || asm.id).trim(),
+      family_sku: String(asm.family_sku || '').trim(),
+      uom,
+      quantity: qtyHere,
+      image_url: storeroomImage,
+    });
+  }
+  materials.sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    storeroom_index: storeroomIndex,
+    storeroom_label: storeroomLabelForWarehouseIndex(storeroomIndex),
+    location_id: locationId,
+    materials,
+  };
+}
+
+async function opCatalogStoreroomStockIncrease(body, user) {
+  const storeroomIndex = Math.floor(Number(body.storeroom_index ?? body.storeroomIndex ?? 0));
+  const screenId = storeroomScreenIdForIndex(storeroomIndex);
+  if (!screenId) throw new Error('storeroom_index must be 1, 2, or 3.');
+  const grant = await assertCatalogScreenViewUser(user, screenId);
+  if (
+    !isCatalogLocationStockIncreaseAllowed(grant, screenId, user?.email)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Storeroom stock qty increase is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
+  const delta = Number(body.delta ?? body.quantity ?? 0);
+  if (!assemblyId) throw new Error('assembly_id is required.');
+  if (!Number.isFinite(delta) || delta <= 0) {
+    throw new Error('Quantity increase must be greater than zero.');
+  }
+
+  const { CARPENTRY_WAREHOUSE_NAMES } = await import('../../src/constants/carpentryWarehouses.js');
+  const { receiveStoreroomMaterial } = await import('../../src/utils/storeroomStockMutations.js');
+  const locationName = CARPENTRY_WAREHOUSE_NAMES[storeroomIndex - 1];
+  const sb = getService();
+  const { data: locs, error: locErr } = await sb.from('locations').select('id, name');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+  const loc = (locs || []).find((l) => String(l.name || '').trim() === locationName);
+  if (!loc?.id) throw new Error(`Location "${locationName}" not found.`);
+
+  return receiveStoreroomMaterial(sb, {
+    assembly_id: assemblyId,
+    location_id: String(loc.id),
+    quantity: delta,
+  });
+}
+
+async function opCatalogStoreroomPhotoUpload(body, user) {
+  const storeroomIndex = Math.floor(Number(body.storeroom_index ?? body.storeroomIndex ?? 0));
+  const screenId = storeroomScreenIdForIndex(storeroomIndex);
+  if (!screenId) throw new Error('storeroom_index must be 1, 2, or 3.');
+  const grant = await assertCatalogScreenViewUser(user, screenId);
+  if (
+    !isCatalogLocationPhotoUploadAllowed(grant, screenId, user?.email)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Storeroom image upload is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
+  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+  if (!assemblyId) throw new Error('assembly_id is required.');
+  if (!imageBase64) throw new Error('Photo is required.');
+  if (imageBase64.length > 3_200_000) {
+    throw new Error('Photo is too large. Try selecting a smaller image.');
+  }
+
+  const sb = getService();
+  const { data: existing, error: loadErr } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name, metadata')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load material');
+  if (!existing) throw new Error('Material not found.');
+
+  const { jpegBufferFromCatalogDirectUpload } = await import('../lib/catalogDirectPhotoUpload.js');
+  const jpeg = await jpegBufferFromCatalogDirectUpload(imageBase64);
+  const objectPath = `warehouse-assemblies/${assemblyId}/storeroom/main-${Date.now()}.jpg`;
+  await uploadBufferToFirebaseStorage({
+    bucketFolder: 'productimages',
+    objectPath,
+    buffer: jpeg,
+    contentType: 'image/jpeg',
+    cacheControl: '86400',
+  });
+  const publicUrl = firebaseStoragePublicUrl('productimages', objectPath);
+  if (!publicUrl) throw new Error('Failed to resolve public image URL.');
+
+  const now = new Date().toISOString();
+  const prevMeta = existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {};
+  const prevStoreroom = prevMeta.storeroom && typeof prevMeta.storeroom === 'object' ? prevMeta.storeroom : {};
+  const metadata = {
+    ...prevMeta,
+    storeroom: {
+      ...prevStoreroom,
+      image_url: publicUrl,
+    },
+  };
+  const { error: updErr } = await sb
+    .from('warehouse_assemblies')
+    .update({ metadata, image_url: publicUrl, updated_at: now })
+    .eq('id', assemblyId);
+  if (updErr) throw new Error(updErr.message || 'Failed to save material photo');
+
+  return {
+    assembly_id: assemblyId,
     image_url: publicUrl,
   };
 }
@@ -3227,6 +3584,24 @@ export default async function handler(req, res) {
         break;
       case 'upholstery-floor2-wip-photo':
         result = await opUpholsteryFloor2WipPhotoUpload(body, user);
+        break;
+      case 'catalog-floor2-list':
+        result = await opCatalogFloor2List(user);
+        break;
+      case 'catalog-floor2-stock-increase':
+        result = await opCatalogFloor2StockIncrease(body, user);
+        break;
+      case 'catalog-floor2-photo-upload':
+        result = await opCatalogFloor2PhotoUpload(body, user);
+        break;
+      case 'catalog-storeroom-list':
+        result = await opCatalogStoreroomList(body, user);
+        break;
+      case 'catalog-storeroom-stock-increase':
+        result = await opCatalogStoreroomStockIncrease(body, user);
+        break;
+      case 'catalog-storeroom-photo-upload':
+        result = await opCatalogStoreroomPhotoUpload(body, user);
         break;
       case 'upholstery-job-start':
         result = await opUpholsteryJobStart(body, user);

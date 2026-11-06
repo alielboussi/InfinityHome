@@ -17,6 +17,7 @@ const body = src.replace(/^\/\*\*[\s\S]*?\*\/\n\n/, '');
 
 const targets = [
   path.join(root, 'mobile-apps/shared/mobileAccessManifest.js'),
+  path.join(root, 'mobile-apps/warehouse-catalog/shared/mobileAccessManifest.js'),
   path.join(root, 'mobile-apps/warehouse-delivery/shared/mobileAccessManifest.js'),
   path.join(root, 'mobile-apps/warehouse-upholstery/shared/mobileAccessManifest.js'),
   path.join(root, 'mobile-apps/carpentry-workshop/shared/mobileAccessManifest.js'),

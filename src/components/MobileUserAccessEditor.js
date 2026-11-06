@@ -4,7 +4,10 @@ import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import {
   buildMobileScreenAccessRow,
   defaultMobileAccessGrant,
+  FLOOR2_AND_STOREROOM_SCREEN_IDS,
   getMobilePermissionMatrixScreens,
+  isCatalogLocationPhotoUploadAllowed,
+  isCatalogLocationStockIncreaseAllowed,
   isMobileScreenAccessAllowed,
   sanitizeMobileAccessGrantForUser,
   USER_ACCESS_CATALOG_APP_LABEL,
@@ -35,20 +38,10 @@ async function saveMobileAccess(uid, mobile_access, mobile_display_name, login_e
 }
 
 function normalizeGrant(raw) {
-  const base = defaultMobileAccessGrant();
-  if (!raw) return base;
-  return {
-    ...base,
-    ...raw,
-    landing_screen: base.landing_screen,
-    warehouse_product_stock_qty: raw.warehouse_product_stock_qty === 'allow' ? 'allow' : 'deny',
-    warehouse_catalog_add_product: raw.warehouse_catalog_add_product === 'allow' ? 'allow' : 'deny',
-    warehouse_catalog_label_print: raw.warehouse_catalog_label_print === 'allow' ? 'allow' : 'deny',
-    warehouse_catalog_photo_import: raw.warehouse_catalog_photo_import === 'allow' ? 'allow' : 'deny',
-    warehouse_production_app: raw.warehouse_production_app === 'allow' ? 'allow' : 'deny',
-    screens: { ...base.screens, ...(raw.screens || {}) },
-  };
+  return sanitizeMobileAccessGrantForUser(raw || defaultMobileAccessGrant(), '');
 }
+
+const LOCATION_RIGHTS_SET = new Set(FLOOR2_AND_STOREROOM_SCREEN_IDS);
 
 export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
   const [grant, setGrant] = useState(() => normalizeGrant(userRow?.mobile_access));
@@ -76,6 +69,26 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
       screens: {
         ...prev.screens,
         [screenId]: buildMobileScreenAccessRow(allowed),
+      },
+    }));
+  };
+
+  const setLocationStockIncrease = (screenId, allowed) => {
+    setGrant((prev) => ({
+      ...prev,
+      location_stock_increase: {
+        ...(prev.location_stock_increase || {}),
+        [screenId]: allowed ? 'allow' : 'deny',
+      },
+    }));
+  };
+
+  const setLocationPhotoUpload = (screenId, allowed) => {
+    setGrant((prev) => ({
+      ...prev,
+      location_photo_upload: {
+        ...(prev.location_photo_upload || {}),
+        [screenId]: allowed ? 'allow' : 'deny',
       },
     }));
   };
@@ -114,7 +127,8 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
           </h3>
           <p className="mobile-access-panel__hint">
             Users always open the <strong>dashboard</strong> first. <strong>Yes</strong> adds a button for that screen;
-            <strong> No</strong> blocks it entirely.
+            <strong> No</strong> blocks it entirely. For <strong>Floor 2</strong> and <strong>Storerooms 1–3</strong>,
+            you can also choose whether the user can increase stock qty or upload/import photos on that page.
           </p>
         </div>
         <div className="mobile-access-panel__head-actions">
@@ -135,7 +149,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
       {error ? <div className="report-error mobile-access-panel__error">{error}</div> : null}
 
       <div className="mobile-access-panel__section mobile-access-panel__section--permissions">
-        <h4 className="mobile-access-panel__section-label">Warehouse &amp; web permissions</h4>
+        <h4 className="mobile-access-panel__section-label">Floor 1 &amp; web permissions</h4>
         <div className="mobile-access-permission-list">
           <div className="mobile-access-permission-item">
             <input
@@ -151,7 +165,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
             <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-add-product">
               <span className="mobile-access-permission-item__title">Add new product</span>
               <span className="mobile-access-permission-item__desc">
-                Web warehouse catalog and warehouse app — shows the + button and allows creating a new product.
+                Web warehouse catalog and Floor 1 app — shows the + button and allows creating a new product.
               </span>
             </label>
           </div>
@@ -167,7 +181,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
               }))}
             />
             <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-label-print">
-              <span className="mobile-access-permission-item__title">Print Zebra labels (warehouse catalog app)</span>
+              <span className="mobile-access-permission-item__title">Print Zebra labels (Floor 1)</span>
               <span className="mobile-access-permission-item__desc">
                 Label icon on product and packet cards; sends ZPL to the warehouse Zebra printer via the server.
               </span>
@@ -185,7 +199,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
               }))}
             />
             <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-photo-import">
-              <span className="mobile-access-permission-item__title">Import product photos (warehouse catalog app)</span>
+              <span className="mobile-access-permission-item__title">Import product photos (Floor 1)</span>
               <span className="mobile-access-permission-item__desc">
                 Gallery import icon on product and set cards; uploads the image to catalog storage (no in-app AI).
               </span>
@@ -218,11 +232,16 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
               <tr>
                 <th className="mobile-access-matrix__screen-col">Screen</th>
                 <th className="mobile-access-matrix__access-col">Access</th>
+                <th className="mobile-access-matrix__access-col">Qty Increase</th>
+                <th className="mobile-access-matrix__access-col">Image Upload</th>
               </tr>
             </thead>
             <tbody>
               {matrixScreens.map((screen) => {
                 const allowed = isMobileScreenAccessAllowed(grant, screen.id);
+                const hasLocationRights = LOCATION_RIGHTS_SET.has(screen.id);
+                const stockIncAllowed = isCatalogLocationStockIncreaseAllowed(grant, screen.id, '');
+                const photoUpAllowed = isCatalogLocationPhotoUploadAllowed(grant, screen.id, '');
                 return (
                   <tr key={screen.id}>
                     <td className="mobile-access-matrix__screen-col" title={screen.description}>
@@ -238,6 +257,36 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                         <option value="yes">Yes</option>
                         <option value="no">No</option>
                       </select>
+                    </td>
+                    <td className="mobile-access-matrix__access-col">
+                      {hasLocationRights ? (
+                        <select
+                          className="mobile-access-yesno"
+                          value={stockIncAllowed ? 'yes' : 'no'}
+                          onChange={(e) => setLocationStockIncrease(screen.id, e.target.value === 'yes')}
+                          aria-label={`${screen.label} qty stock increase`}
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : (
+                        <span style={{ color: 'var(--br-subtle, #64748b)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="mobile-access-matrix__access-col">
+                      {hasLocationRights ? (
+                        <select
+                          className="mobile-access-yesno"
+                          value={photoUpAllowed ? 'yes' : 'no'}
+                          onChange={(e) => setLocationPhotoUpload(screen.id, e.target.value === 'yes')}
+                          aria-label={`${screen.label} image upload`}
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : (
+                        <span style={{ color: 'var(--br-subtle, #64748b)' }}>—</span>
+                      )}
                     </td>
                   </tr>
                 );
