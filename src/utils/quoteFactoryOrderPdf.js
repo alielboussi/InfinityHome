@@ -315,8 +315,9 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       if (fields.wood) {
         const woodAr = translateTermToArabic(fields.wood, serverTranslations);
         specBlocks.push(`
-          <div class="spec-pair" dir="rtl">
-            <div class="ar-line" dir="rtl">-${escapeHtml(woodAr)}</div>
+          <div class="bilingual-row">
+            <div class="en-col" dir="ltr">-${escapeHtml(fields.wood)}</div>
+            <div class="ar-col" dir="rtl">-${escapeHtml(woodAr)}</div>
           </div>
         `);
       }
@@ -324,24 +325,27 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       const dimLines = buildBilingualDimensionsLines(fields);
       if (dimLines) {
         specBlocks.push(`
-          <div class="spec-pair" dir="rtl">
-            <div class="ar-line" dir="rtl">${escapeHtml(dimLines.ar)}</div>
+          <div class="bilingual-row">
+            <div class="en-col" dir="ltr">${escapeHtml(dimLines.en)}</div>
+            <div class="ar-col" dir="rtl">${escapeHtml(dimLines.ar)}</div>
           </div>
         `);
       }
 
       if (fields.color_code) {
         specBlocks.push(`
-          <div class="spec-pair" dir="rtl">
-            <div class="ar-line" dir="rtl">-رمز اللون: ${escapeHtml(fields.color_code)}</div>
+          <div class="bilingual-row">
+            <div class="en-col" dir="ltr">-Color Code: ${escapeHtml(fields.color_code)}</div>
+            <div class="ar-col" dir="rtl">-رمز اللون: ${escapeHtml(fields.color_code)}</div>
           </div>
         `);
       }
 
       if (fields.leather_code) {
         specBlocks.push(`
-          <div class="spec-pair" dir="rtl">
-            <div class="ar-line" dir="rtl">-رمز الجلد: ${escapeHtml(fields.leather_code)}</div>
+          <div class="bilingual-row">
+            <div class="en-col" dir="ltr">-Leather Code: ${escapeHtml(fields.leather_code)}</div>
+            <div class="ar-col" dir="rtl">-رمز الجلد: ${escapeHtml(fields.leather_code)}</div>
           </div>
         `);
       }
@@ -350,19 +354,22 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       if (desc) {
         const descAr = translateTermToArabic(desc, serverTranslations);
         specBlocks.push(`
-          <div class="spec-pair desc-pair" dir="rtl">
-            <div class="ar-line" dir="rtl">الوصف: "${escapeHtml(descAr)}"</div>
+          <div class="bilingual-row desc-pair">
+            <div class="en-col" dir="ltr">Description: "${escapeHtml(desc)}"</div>
+            <div class="ar-col" dir="rtl">الوصف: "${escapeHtml(descAr)}"</div>
           </div>
         `);
       }
 
       if (fields.accessories?.length) {
+        const accEn = fields.accessories.join(', ');
         const accAr = fields.accessories
           .map((a) => translateTermToArabic(a, serverTranslations))
           .join(' ، ');
         specBlocks.push(`
-          <div class="spec-pair acc-pair" dir="rtl">
-            <div class="ar-line" dir="rtl">الإكسسوارات المرفقة : ${escapeHtml(accAr)}</div>
+          <div class="bilingual-row acc-pair">
+            <div class="en-col" dir="ltr">Included Accessories : ${escapeHtml(accEn)}</div>
+            <div class="ar-col" dir="rtl">الإكسسوارات المرفقة : ${escapeHtml(accAr)}</div>
           </div>
         `);
       }
@@ -373,8 +380,11 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
       return `
         <tr>
-          <td class="col-product" dir="rtl">
-            <div class="prod-name-ar" dir="rtl">${escapeHtml(nameAr)}</div>
+          <td class="col-product">
+            <div class="bilingual-row prod-title-row">
+              <div class="prod-name-en" dir="ltr">${escapeHtml(nameEn)}</div>
+              <div class="prod-name-ar" dir="rtl">${escapeHtml(nameAr)}</div>
+            </div>
             ${specBlocks.join('')}
           </td>
           <td class="col-qty">${escapeHtml(qtyText)}</td>
@@ -398,7 +408,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     }
     .page {
       width: 210mm;
-      padding: 12mm 14mm 10mm;
+      padding: 10mm 12mm 8mm;
       background: #ffffff;
       position: relative;
       display: block;
@@ -408,10 +418,10 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       page-break-after: auto;
     }
     .page-footer {
-      margin-top: 10px;
-      padding-top: 6px;
+      margin-top: 8px;
+      padding-top: 5px;
       text-align: center;
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 700;
       color: #334155;
     }
@@ -420,12 +430,12 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       align-items: center;
       justify-content: space-between;
       border-bottom: 2px solid #0d6efd;
-      padding-bottom: 10px;
-      margin-bottom: 14px;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
     }
     .logo-box img {
-      max-width: 90px;
-      max-height: 75px;
+      max-width: 82px;
+      max-height: 68px;
       object-fit: contain;
     }
     .title-center {
@@ -434,75 +444,96 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     }
     .title-center h1 {
       margin: 0;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 800;
       color: #0f172a;
     }
     .meta-row {
       display: flex;
       justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 16px;
-      font-size: 13px;
-      line-height: 1.55;
+      gap: 14px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      line-height: 1.5;
     }
     table.order-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 6px;
+      margin-top: 4px;
     }
     table.order-table thead th {
       background: #0d6efd;
       color: #ffffff;
-      font-size: 13.5px;
+      font-size: 12.5px;
       font-weight: 700;
-      padding: 9px 10px;
+      padding: 7px 10px;
       border: 1px solid #0d6efd;
       text-align: center;
     }
     table.order-table thead th.col-product {
-      width: 78%;
+      width: 82%;
       text-align: center;
     }
     table.order-table thead th.col-qty {
-      width: 22%;
+      width: 18%;
       text-align: center;
     }
     table.order-table tbody td {
       border-bottom: 1px solid #cbd5e1;
-      padding: 12px 14px;
+      padding: 8px 10px;
       vertical-align: top;
-      font-size: 13px;
+      font-size: 11px;
     }
     td.col-product {
-      text-align: right;
-      direction: rtl;
+      direction: ltr;
     }
     td.col-qty {
       text-align: center;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 12.5px;
       vertical-align: middle !important;
+    }
+    .bilingual-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      margin-top: 2px;
+    }
+    .prod-title-row {
+      margin-top: 0;
+      margin-bottom: 3px;
+    }
+    .prod-name-en {
+      font-weight: 800;
+      font-size: 12.5px;
+      color: #0f172a;
+      text-align: left;
+      line-height: 1.3;
     }
     .prod-name-ar {
       font-weight: 800;
-      font-size: 15px;
+      font-size: 13px;
       color: #0f172a;
-      margin-bottom: 4px;
       text-align: right;
-    }
-    .spec-pair {
-      margin-top: 4px;
-      text-align: right;
+      line-height: 1.3;
     }
     .desc-pair, .acc-pair {
-      margin-top: 8px;
+      margin-top: 4px;
     }
-    .ar-line {
+    .en-col {
+      color: #1e293b;
+      font-size: 10.8px;
+      font-weight: 500;
+      text-align: left;
+      line-height: 1.32;
+    }
+    .ar-col {
       color: #0f172a;
-      font-size: 13px;
+      font-size: 11.2px;
       font-weight: 600;
       text-align: right;
+      line-height: 1.35;
     }
   </style>
 </head>
