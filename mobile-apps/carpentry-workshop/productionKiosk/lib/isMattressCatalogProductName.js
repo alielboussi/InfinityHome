@@ -1,1 +1,1 @@
-export { isMattressCatalogProductName } from './_repoUtils/isMattressCatalogProductName.js';
+export { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';

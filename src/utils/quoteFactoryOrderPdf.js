@@ -609,8 +609,8 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     );
 
     // Paginate rows into discrete A4 pages so each page ends cleanly on its last row,
-    // starts subsequent pages with a fresh table header, and displays "1 of X" footer at the bottom of the A4 sheet.
-    const MAX_PAGE_CONTENT_PX = 990;
+    // starts subsequent pages with a fresh table header, and displays "1 of X" footer inside the page.
+    const MAX_PAGE_CONTENT_PX = 900;
     const firstPage = doc.querySelector('section.page');
     if (firstPage) {
       const headerEl = firstPage.querySelector('.header-top');
@@ -621,9 +621,9 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       const rowNodes = tbodyEl ? [...tbodyEl.querySelectorAll('tr')] : [];
 
       if (tableEl && theadEl && tbodyEl && rowNodes.length > 0) {
-        const headerH = (headerEl?.offsetHeight || 0) + (metaEl?.offsetHeight || 0) + 28;
-        const theadH = (theadEl.offsetHeight || 38) + 8;
-        const footerReservePx = 42;
+        const headerH = (headerEl?.offsetHeight || 0) + (metaEl?.offsetHeight || 0) + 32;
+        const theadH = (theadEl.offsetHeight || 38) + 10;
+        const footerReservePx = 56;
         const rowHeights = rowNodes.map((tr) => Math.max(40, tr.offsetHeight || 60));
 
         const pagesRows = [];

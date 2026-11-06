@@ -1,1 +1,1 @@
-export { formatProductionNameClashMessage } from './_repoUtils/productionNameClashUi.js';
+export { formatProductionNameClashMessage } from '../../../src/utils/productionNameClashUi.js';
