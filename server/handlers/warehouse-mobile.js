@@ -128,6 +128,7 @@ import { registerProductionPushToken } from '../lib/productionExpoPush.js';
 import {
   assertWarehouseStorageCreator,
   assertWarehouseStorageProductionAccess,
+  createManualWarehouseStorageSend,
   getPosSaleDetailForStorage,
   getWarehouseStorageSend,
   listPosSalesForStorage,
@@ -3344,6 +3345,10 @@ async function opStorageSendSubmit(body, user) {
   return submitWarehouseStorageSend(getService(), body, user);
 }
 
+async function opStorageManualCreate(body, user) {
+  return createManualWarehouseStorageSend(getService(), body, user);
+}
+
 async function opStorageSendList(body, user) {
   const grant = await mobileAccessGrantForUser(user);
   const forProduction = body.for_production === true;
@@ -3542,6 +3547,9 @@ export default async function handler(req, res) {
         break;
       case 'storage-send-submit':
         result = await opStorageSendSubmit(body, user);
+        break;
+      case 'storage-manual-create':
+        result = await opStorageManualCreate(body, user);
         break;
       case 'storage-send-list':
         result = await opStorageSendList(body, user);

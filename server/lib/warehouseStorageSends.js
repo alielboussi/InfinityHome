@@ -12,7 +12,8 @@ import {
 } from '../../src/mobile/mobileAccessManifest.js';
 import { WAREHOUSE_STORAGE_SEND_STATUSES } from '../../src/utils/warehouseStorageSend.js';
 import { normalizeWarehouseSku } from '../../src/utils/warehouseAssemblyMath.js';
-import { isWarehouseProductAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
+import { isWarehouseProductAssembly, isWarehouseSetAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
+import { expandWarehouseSetItemsRows } from '../../src/utils/warehouseSetItems.js';
 
 const TABLE = 'warehouse_storage_sends';
 const FACTORY_ID = WAREHOUSE_FROM_LOCATION_ID;
@@ -494,5 +495,205 @@ export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
     }],
     customer_name: row.customer_name,
     customer_phone: row.customer_phone,
+  };
+}
+
+function resolveSetComponentsForManualStorage(setAssemblyId, setItems, assembliesById) {
+  const sid = String(setAssemblyId || '').trim();
+  const expanded = expandWarehouseSetItemsRows(setItems || []).filter(
+    (r) => String(r.set_assembly_id) === sid,
+  );
+  if (!expanded.length) return [];
+
+  let lines = expanded.filter((r) => String(r.location_id) === String(FACTORY_ID));
+  if (!lines.length) {
+    lines = expanded.filter((r) => String(r.location_id) === String(KITWE_LOCATION_ID));
+  }
+  if (!lines.length) {
+    const firstLoc = expanded[0]?.location_id;
+    lines = expanded.filter((r) => String(r.location_id) === String(firstLoc));
+  }
+
+  const byComponent = new Map();
+  for (const row of lines) {
+    const cid = String(row.component_assembly_id || '').trim();
+    if (!cid) continue;
+    const comp = assembliesById.get(cid);
+    if (!comp) continue;
+    const perSet = Math.max(1, Math.floor(Number(row.quantity) || 1));
+    byComponent.set(cid, (byComponent.get(cid) || 0) + perSet);
+  }
+  return [...byComponent.entries()].map(([cid, perSetQty]) => ({
+    component: assembliesById.get(cid),
+    perSetQty,
+  }));
+}
+
+export async function createManualWarehouseStorageSend(sb, body, user) {
+  if (!canManageCatalog(user) && !canWarehouseKitweStorageCreator(user)) {
+    const err = new Error('Catalog admin access required to add to Sales Storage.');
+    err.status = 403;
+    throw err;
+  }
+
+  const customerId = body.customer_id ? String(body.customer_id).trim() : '';
+  let customerName = String(body.customer_name || '').trim();
+  let customerPhone = String(body.customer_phone || '').trim();
+
+  if (customerId && (!customerName || !customerPhone)) {
+    const { data: cust } = await sb
+      .from('customers')
+      .select('id, name, phone')
+      .eq('id', customerId)
+      .maybeSingle();
+    if (cust) {
+      if (!customerName) customerName = String(cust.name || '').trim();
+      if (!customerPhone) customerPhone = String(cust.phone || '').trim();
+    } else {
+      const { data: qc } = await sb
+        .from('quote_customers')
+        .select('id, name, phone')
+        .eq('id', customerId)
+        .maybeSingle();
+      if (qc) {
+        if (!customerName) customerName = String(qc.name || '').trim();
+        if (!customerPhone) customerPhone = String(qc.phone || '').trim();
+      }
+    }
+  }
+
+  if (!customerName) {
+    throw new Error('Select a customer first.');
+  }
+
+  const rawLines = Array.isArray(body.lines) && body.lines.length
+    ? body.lines
+    : [{
+      assembly_id: body.assembly_id,
+      quantity: body.quantity,
+    }];
+
+  const validLines = rawLines
+    .map((l) => ({
+      assembly_id: String(l?.assembly_id || l?.assemblyId || '').trim(),
+      quantity: Math.max(1, Math.floor(Number(l?.quantity ?? l?.qty) || 1)),
+    }))
+    .filter((l) => l.assembly_id);
+
+  if (!validLines.length) {
+    throw new Error('Select at least one product or set.');
+  }
+
+  const [{ data: allAssemblies, error: aErr }, { data: allSetItems, error: sErr }] = await Promise.all([
+    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind'),
+    sb.from('warehouse_set_items').select('*'),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load warehouse catalog.');
+  if (sErr) throw new Error(sErr.message || 'Failed to load set components.');
+
+  const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
+  const operatorName = user?.user_metadata?.full_name || user?.full_name || user?.email || 'Warehouse Catalog';
+  const now = new Date().toISOString();
+  const createdRows = [];
+  let totalLabelsPrinted = 0;
+
+  for (const reqLine of validLines) {
+    const selectedAsm = assembliesById.get(reqLine.assembly_id);
+    if (!selectedAsm) {
+      throw new Error('Selected product or set not found in warehouse catalog.');
+    }
+
+    const isSet = isWarehouseSetAssembly(selectedAsm);
+    let labelTargets = [];
+
+    if (isSet) {
+      const comps = resolveSetComponentsForManualStorage(
+        selectedAsm.id,
+        allSetItems || [],
+        assembliesById,
+      );
+      if (!comps.length) {
+        throw new Error(`Set "${selectedAsm.name}" has no component products configured.`);
+      }
+      labelTargets = comps.map(({ component, perSetQty }) => ({
+        assembly: component,
+        printQty: perSetQty * reqLine.quantity,
+        parentSet: selectedAsm,
+      }));
+    } else {
+      labelTargets = [{
+        assembly: selectedAsm,
+        printQty: reqLine.quantity,
+        parentSet: null,
+      }];
+    }
+
+    // Print Zebra labels first for each component (if set) or product
+    for (const target of labelTargets) {
+      const compAsm = target.assembly;
+      const copies = Math.max(1, Math.floor(Number(target.printQty) || 1));
+      await printWarehouseStorageSaleLabel(getFirestore(), {
+        name: compAsm.name,
+        sku: compAsm.family_sku || compAsm.name,
+        customerName,
+        customerPhone: customerPhone || '—',
+        qty: copies,
+        saleDate: now,
+        printedBy: operatorName,
+      });
+      totalLabelsPrinted += copies;
+    }
+
+    // Add to sales-storage after printing
+    const storageNumber = await allocateWarehouseStorageNumber();
+    const id = newUuid();
+    const row = {
+      id,
+      storage_number: storageNumber,
+      sale_id: null,
+      sale_item_id: null,
+      receipt_number: isSet ? `SET (${selectedAsm.family_sku || selectedAsm.name})` : 'MANUAL',
+      assembly_id: selectedAsm.id,
+      assembly_name: selectedAsm.name,
+      assembly_sku: selectedAsm.family_sku || null,
+      customer_id: customerId || null,
+      customer_name: customerName,
+      customer_phone: customerPhone || null,
+      quantity: reqLine.quantity,
+      status: WAREHOUSE_STORAGE_SEND_STATUSES.IN_STORAGE,
+      labels_printed_at: now,
+      created_at: now,
+      updated_at: now,
+      created_by_email: user?.email || null,
+      created_by_name: operatorName,
+      metadata: {
+        manual_catalog_storage: true,
+        item_kind: isSet ? 'set' : 'product',
+        printed_components: labelTargets.map((t) => ({
+          assembly_id: t.assembly.id,
+          name: t.assembly.name,
+          sku: t.assembly.family_sku || '',
+          printed_qty: t.printQty,
+        })),
+      },
+    };
+
+    await adjustAssemblyStock(sb, selectedAsm.id, FACTORY_ID, reqLine.quantity);
+
+    const { error: insErr } = await sb.from(TABLE).insert(row);
+    if (insErr) {
+      await adjustAssemblyStock(sb, selectedAsm.id, FACTORY_ID, -reqLine.quantity);
+      throw new Error(insErr.message || 'Failed to add to sales storage.');
+    }
+
+    const mapped = mapRow(row);
+    queueProductionStoragePush(mapped);
+    createdRows.push(mapped);
+  }
+
+  return {
+    storage_sends: createdRows,
+    storage_send: createdRows[0] || null,
+    total_labels_printed: totalLabelsPrinted,
   };
 }

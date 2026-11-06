@@ -1,5 +1,6 @@
-/** Zebra ZPL — POS → Floor 1 storage label (Code 128 SKU, sale date, no print time). */
+/** Zebra ZPL — POS / Sales Storage label (80×68 mm: Code 128 SKU, Product Name, Image QR, Customer Name, Customer Phone, Sale Date). */
 
+import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import {
   COMPANY_NAME,
   BARCODE_HEIGHT_MM,
@@ -14,10 +15,12 @@ import {
   LABEL_WIDTH_MM,
   NAME_LINE_HEIGHT_MM,
   NAME_VALUE_MAX_LINES,
+  QR_SIZE_MM,
   ROW_TEXT_MM,
   computeProductionLabelLayout,
   labelPitchMm,
   mmToDots,
+  zebraQrMagnification,
 } from './warehouseProductionLabelLayout.js';
 import { formatProductionLabelBlockDate } from './warehouseProductionLabelCatTime.js';
 
@@ -37,10 +40,18 @@ function zplEscape(value) {
     .replace(/~/g, ' ');
 }
 
+function qrEscape(data) {
+  return String(data || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/,/g, '\\,')
+    .replace(/\^/g, '\\^');
+}
+
 function computeStorageSaleLabelDots({ dpi = 203 } = {}) {
   const base = computeProductionLabelLayout({ dpi });
   const toDots = (mm) => mmToDots(mm, dpi);
   const textTopDots = (rowStartMm, padMm = 0.35) => toDots(rowStartMm + padMm);
+  const centerXMm = LABEL_WIDTH_MM / 2;
 
   const companyTextTopMm = LABEL_MARGIN_MM + BORDER_TOP_INSET_MM;
   const barcodeTopMm = companyTextTopMm + COMPANY_TEXT_HEIGHT_MM + GAP_AFTER_COMPANY_MM;
@@ -50,6 +61,11 @@ function computeStorageSaleLabelDots({ dpi = 203 } = {}) {
   y += ROW_TEXT_MM + BLOCK_GAP_MM;
   const nameBlockTopMm = y;
   y = nameBlockTopMm + NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES + BLOCK_GAP_MM;
+
+  const qrBlockYMm = y;
+  const imageQrLeftMm = centerXMm - QR_SIZE_MM / 2;
+  y += QR_SIZE_MM + BLOCK_GAP_MM + 0.4;
+
   const customerNameRowMm = y;
   y += ROW_TEXT_MM + BLOCK_GAP_MM;
   const customerPhoneRowMm = y;
@@ -61,6 +77,9 @@ function computeStorageSaleLabelDots({ dpi = 203 } = {}) {
     ...d,
     skuRowY: textTopDots(skuRowMm),
     nameBlockTop: textTopDots(nameBlockTopMm),
+    qrBlockY: toDots(qrBlockYMm),
+    imageQrX: toDots(imageQrLeftMm),
+    qrSize: toDots(QR_SIZE_MM),
     customerNameRowY: textTopDots(customerNameRowMm),
     customerPhoneRowY: textTopDots(customerPhoneRowMm),
     saleDateRowY: textTopDots(saleDateRowMm),
@@ -93,6 +112,11 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
   const saleDateText = zplEscape(formatProductionLabelBlockDate(saleAt));
   const companyLine = zplEscape(COMPANY_NAME);
 
+  const photoQrUrl = String(opts.imageQrUrl || '').trim()
+    || buildProductPhotoQrUrl(String(opts.sku || '').trim());
+  const imageQr = qrEscape(photoQrUrl);
+  const imageMag = zebraQrMagnification(d.qrSize, imageQr.length);
+
   const labelField = (y, text) => (
     `^FO${d.labelX},${y}^A0N,${hf},${hf}^FD${text}^FS`
   );
@@ -116,6 +140,9 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
     valueField(d.skuRowY, skuText),
     labelField(d.nameBlockTop, FIELD_LABELS.name),
     `^FO0,${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.labelWidth},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
+    ...(imageQr
+      ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${imageMag}^FDLA,${imageQr}^FS`]
+      : []),
     labelField(d.customerNameRowY, FIELD_LABELS.customerName),
     valueField(d.customerNameRowY, customerName),
     labelField(d.customerPhoneRowY, FIELD_LABELS.customerPhone),

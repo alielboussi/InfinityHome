@@ -1,13 +1,36 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { listStorageSends } from '../services/warehouseDeliveryMobileApi';
+import { FaPlus, FaPrint, FaTrashAlt } from 'react-icons/fa';
+import db from '../dataClient';
+import { fetchWarehouseCatalog } from '../services/warehouseCatalog';
+import {
+  createManualStorageSend,
+  listStorageSends,
+} from '../services/warehouseDeliveryMobileApi';
+import { isWarehouseSetAssembly } from '../utils/warehouseCatalogHierarchy';
+import { expandWarehouseSetItemsRows } from '../utils/warehouseSetItems';
 import { formatWarehouseAdminDateTime } from '../utils/warehouseAdminFormat';
 
-/** Sales storage registry — embedded in Floor 1 /warehouse-products view. */
+/** Sales storage registry — embedded in Floor 1 /warehouse-products/sales-storage view. */
 export default function WarehouseSalesStoragePanel() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [customers, setCustomers] = useState([]);
+  const [assemblies, setAssemblies] = useState([]);
+  const [setItems, setSetItems] = useState([]);
+
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+
+  const [productSearch, setProductSearch] = useState('');
+  const [selectedLines, setSelectedLines] = useState([]);
+  const [submitBusy, setSubmitBusy] = useState(false);
+  const [modalError, setModalError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -23,7 +46,173 @@ export default function WarehouseSalesStoragePanel() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const loadPickerData = useCallback(async () => {
+    setCatalogLoading(true);
+    setModalError('');
+    try {
+      const [{ data: custRows, error: custErr }, catalog] = await Promise.all([
+        db.from('customers').select('id, name, phone').order('name', { ascending: true }),
+        fetchWarehouseCatalog(),
+      ]);
+      if (custErr) throw new Error(custErr.message || 'Failed to load customers');
+      setCustomers(custRows || []);
+      setAssemblies(catalog?.assemblies || []);
+      setSetItems(catalog?.setItems || []);
+    } catch (err) {
+      setModalError(err?.message || 'Failed to load customers or warehouse catalog.');
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, []);
+
+  const openAddModal = () => {
+    setAddOpen(true);
+    setModalError('');
+    setNotice('');
+    if (!customers.length || !assemblies.length) {
+      loadPickerData();
+    }
+  };
+
+  const closeAddModal = () => {
+    if (submitBusy) return;
+    setAddOpen(false);
+    setModalError('');
+  };
+
+  const assemblyById = useMemo(
+    () => new Map((assemblies || []).map((a) => [String(a.id), a])),
+    [assemblies],
+  );
+
+  const getSetComponentPreview = useCallback(
+    (setAssemblyId) => {
+      const sid = String(setAssemblyId || '').trim();
+      const expanded = expandWarehouseSetItemsRows(setItems || []).filter(
+        (r) => String(r.set_assembly_id) === sid,
+      );
+      if (!expanded.length) return [];
+      const firstLoc = expanded[0]?.location_id;
+      const lines = expanded.filter((r) => String(r.location_id) === String(firstLoc));
+      const map = new Map();
+      for (const r of lines) {
+        const cid = String(r.component_assembly_id || '').trim();
+        if (!cid) continue;
+        const comp = assemblyById.get(cid);
+        if (!comp) continue;
+        const qty = Math.max(1, Math.floor(Number(r.quantity) || 1));
+        map.set(cid, (map.get(cid) || 0) + qty);
+      }
+      return [...map.entries()].map(([cid, perSetQty]) => ({
+        component: assemblyById.get(cid),
+        perSetQty,
+      }));
+    },
+    [setItems, assemblyById],
+  );
+
+  const selectedCustomer = useMemo(
+    () => (customers || []).find((c) => String(c.id) === String(selectedCustomerId)) || null,
+    [customers, selectedCustomerId],
+  );
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return (customers || []).slice(0, 60);
+    return (customers || [])
+      .filter(
+        (c) => String(c.name || '').toLowerCase().includes(q)
+          || String(c.phone || '').toLowerCase().includes(q),
+      )
+      .slice(0, 60);
+  }, [customers, customerSearch]);
+
+  const filteredAssemblies = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    const valid = (assemblies || []).filter(
+      (a) => a?.id && a?.metadata?.storeroom?.is_storeroom_material !== true,
+    );
+    if (!q) return valid.slice(0, 30);
+    return valid
+      .filter(
+        (a) => String(a.name || '').toLowerCase().includes(q)
+          || String(a.family_sku || '').toLowerCase().includes(q),
+      )
+      .slice(0, 30);
+  }, [assemblies, productSearch]);
+
+  const addLineItem = (assembly) => {
+    const id = String(assembly?.id || '');
+    if (!id) return;
+    setSelectedLines((prev) => {
+      const existingIdx = prev.findIndex((l) => String(l.assembly_id) === id);
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = {
+          ...next[existingIdx],
+          quantity: Math.max(1, Number(next[existingIdx].quantity || 1) + 1),
+        };
+        return next;
+      }
+      return [...prev, { assembly_id: id, quantity: 1 }];
+    });
+    setProductSearch('');
+  };
+
+  const updateLineQty = (assemblyId, rawQty) => {
+    const clean = rawQty === '' ? '' : Math.max(1, Math.floor(Number(rawQty) || 1));
+    setSelectedLines((prev) =>
+      prev.map((l) => (String(l.assembly_id) === String(assemblyId) ? { ...l, quantity: clean } : l)),
+    );
+  };
+
+  const removeLineItem = (assemblyId) => {
+    setSelectedLines((prev) => prev.filter((l) => String(l.assembly_id) !== String(assemblyId)));
+  };
+
+  const handlePrintAndAdd = async (e) => {
+    e.preventDefault();
+    if (!selectedCustomer) {
+      setModalError('Please select a customer from /customers.');
+      return;
+    }
+    if (!selectedLines.length) {
+      setModalError('Please add at least one product or set from /warehouse-products.');
+      return;
+    }
+
+    setSubmitBusy(true);
+    setModalError('');
+    try {
+      const res = await createManualStorageSend({
+        customer_id: selectedCustomer.id,
+        customer_name: selectedCustomer.name,
+        customer_phone: selectedCustomer.phone || '',
+        lines: selectedLines.map((l) => ({
+          assembly_id: l.assembly_id,
+          quantity: Math.max(1, Math.floor(Number(l.quantity) || 1)),
+        })),
+      });
+      const sends = res?.storage_sends || (res?.storage_send ? [res.storage_send] : []);
+      const numbers = sends.map((s) => s.storage_number).filter(Boolean).join(', ');
+      const totalLabels = Number(res?.total_labels_printed)
+        || sends.reduce((n, s) => n + (Number(s.quantity) || 0), 0);
+      setNotice(
+        `${numbers || 'Added'} saved to Sales Storage · ${totalLabels} Zebra label${totalLabels === 1 ? '' : 's'} printed.`,
+      );
+      setSelectedLines([]);
+      setAddOpen(false);
+      await load();
+    } catch (err) {
+      setModalError(err?.message || 'Failed to print Zebra labels and add to Sales Storage.');
+    } finally {
+      setSubmitBusy(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -37,18 +226,346 @@ export default function WarehouseSalesStoragePanel() {
         row.created_by_name,
         row.created_by_email,
         row.customer_name,
+        row.customer_phone,
         row.status,
-      ].join(' ').toLowerCase();
+      ]
+        .join(' ')
+        .toLowerCase();
       return hay.includes(q);
     });
   }, [rows, search]);
 
   return (
     <>
-      <p style={{ color: 'var(--dash-muted)', marginBottom: 16, lineHeight: 1.5 }}>
-        POS sold lines Hassan Awad sends to factory warehouse storage. Kitwe and factory assembly stock
-        adjust automatically when each send is submitted.
-      </p>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 12,
+          flexWrap: 'wrap',
+          marginBottom: 16,
+        }}
+      >
+        <p style={{ color: 'var(--dash-muted)', margin: 0, lineHeight: 1.5, maxWidth: 680 }}>
+          POS sold lines and manual customer storage entries in factory warehouse storage. Use the{' '}
+          <strong>+</strong> button to select a customer and products/sets, print Zebra labels (SKU, Code 128,
+          Product Name, Customer Name, Customer Phone, Image QR), and add them to Sales Storage.
+        </p>
+        <button
+          type="button"
+          className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
+          onClick={openAddModal}
+          title="Print Zebra labels & add to Sales Storage"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 16px',
+            fontWeight: 700,
+          }}
+        >
+          <FaPlus aria-hidden />
+          <span>Add &amp; Print Zebra Label</span>
+        </button>
+      </div>
+
+      {notice ? (
+        <div
+          role="status"
+          style={{
+            color: '#047857',
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            borderRadius: 8,
+            padding: '10px 14px',
+            marginBottom: 14,
+            fontWeight: 600,
+          }}
+        >
+          {notice}
+        </div>
+      ) : null}
+
+      {addOpen ? (
+        <div
+          style={{
+            border: '1px solid var(--dash-border, #cbd5e1)',
+            borderRadius: 12,
+            padding: 18,
+            marginBottom: 20,
+            background: 'var(--dash-surface, #ffffff)',
+            boxShadow: '0 4px 16px rgba(15, 23, 42, 0.08)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 14,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
+              Print Zebra Label &amp; Add to Sales Storage
+            </h3>
+            <button
+              type="button"
+              className="product-form-btn product-form-btn--secondary"
+              disabled={submitBusy}
+              onClick={closeAddModal}
+              style={{ width: 'auto', minWidth: 80, padding: '6px 12px', margin: 0 }}
+            >
+              Close
+            </button>
+          </div>
+
+          {modalError ? (
+            <div role="alert" style={{ color: '#dc2626', marginBottom: 12, fontWeight: 600 }}>
+              {modalError}
+            </div>
+          ) : null}
+
+          {catalogLoading ? (
+            <div style={{ color: 'var(--dash-muted)', padding: '12px 0' }}>
+              Loading customers and warehouse products…
+            </div>
+          ) : (
+            <form onSubmit={handlePrintAndAdd}>
+              <div style={{ display: 'grid', gap: 14, marginBottom: 16 }}>
+                <div>
+                  <label style={{ fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                    1. Select Customer (from /customers)
+                  </label>
+                  <input
+                    type="search"
+                    className="warehouse-catalog-filter-control products-search-bar"
+                    placeholder="Filter customer by name or phone…"
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    style={{ width: '100%', maxWidth: 420, marginBottom: 8 }}
+                  />
+                  <select
+                    className="warehouse-catalog-filter-control"
+                    value={selectedCustomerId}
+                    onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    style={{ width: '100%', maxWidth: 420 }}
+                    required
+                  >
+                    <option value="">— Choose customer —</option>
+                    {filteredCustomers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.phone ? ` (${c.phone})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCustomer ? (
+                    <div style={{ marginTop: 6, fontSize: 13, color: 'var(--dash-muted)' }}>
+                      Customer Name: <strong>{selectedCustomer.name}</strong> · Customer Phone:{' '}
+                      <strong>{selectedCustomer.phone || '—'}</strong>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label style={{ fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                    2. Add Products or Sets (from /warehouse-products)
+                  </label>
+                  <input
+                    type="search"
+                    className="warehouse-catalog-filter-control products-search-bar"
+                    placeholder="Search product or set by name or SKU…"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    style={{ width: '100%', maxWidth: 480 }}
+                  />
+                  {productSearch.trim() ? (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        maxHeight: 220,
+                        overflowY: 'auto',
+                        border: '1px solid var(--dash-border-soft, #cbd5e1)',
+                        borderRadius: 8,
+                        background: 'var(--dash-surface, #fff)',
+                        maxWidth: 560,
+                      }}
+                    >
+                      {filteredAssemblies.length === 0 ? (
+                        <div style={{ padding: 10, color: 'var(--dash-muted)', fontSize: 13 }}>
+                          No matching products or sets.
+                        </div>
+                      ) : (
+                        filteredAssemblies.map((asm) => {
+                          const isSet = isWarehouseSetAssembly(asm);
+                          const comps = isSet ? getSetComponentPreview(asm.id) : [];
+                          return (
+                            <div
+                              key={asm.id}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: 10,
+                                padding: '8px 12px',
+                                borderBottom: '1px solid var(--dash-border-soft, #f1f5f9)',
+                              }}
+                            >
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontWeight: 600 }}>
+                                  <span
+                                    className={`warehouse-kind-badge warehouse-kind-badge--${isSet ? 'set' : 'product'}`}
+                                    style={{ marginRight: 6 }}
+                                  >
+                                    {isSet ? 'Set' : 'Product'}
+                                  </span>
+                                  {asm.name}
+                                  {asm.family_sku ? (
+                                    <span style={{ color: 'var(--dash-muted)', marginLeft: 6, fontSize: 12 }}>
+                                      ({asm.family_sku})
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {isSet && comps.length > 0 ? (
+                                  <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 2 }}>
+                                    Components:{' '}
+                                    {comps.map((c) => `${c.perSetQty}× ${c.component?.name}`).join(' + ')}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
+                                onClick={() => addLineItem(asm)}
+                                style={{ padding: '5px 12px', fontSize: 13 }}
+                              >
+                                <FaPlus aria-hidden /> Add
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                {selectedLines.length > 0 ? (
+                  <div>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>Selected Items to Print &amp; Store</div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {selectedLines.map((line) => {
+                        const asm = assemblyById.get(String(line.assembly_id));
+                        if (!asm) return null;
+                        const isSet = isWarehouseSetAssembly(asm);
+                        const comps = isSet ? getSetComponentPreview(asm.id) : [];
+                        const qtyNum = Math.max(1, Math.floor(Number(line.quantity) || 1));
+                        const totalLabelsForLine = isSet
+                          ? comps.reduce((sum, c) => sum + c.perSetQty * qtyNum, 0)
+                          : qtyNum;
+                        return (
+                          <div
+                            key={line.assembly_id}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: 12,
+                              flexWrap: 'wrap',
+                              padding: '10px 12px',
+                              border: '1px solid var(--dash-border-soft, #cbd5e1)',
+                              borderRadius: 8,
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 200 }}>
+                              <div style={{ fontWeight: 700 }}>
+                                <span
+                                  className={`warehouse-kind-badge warehouse-kind-badge--${isSet ? 'set' : 'product'}`}
+                                  style={{ marginRight: 6 }}
+                                >
+                                  {isSet ? 'Set' : 'Product'}
+                                </span>
+                                {asm.name}
+                                {asm.family_sku ? ` · ${asm.family_sku}` : ''}
+                              </div>
+                              {isSet ? (
+                                <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 3 }}>
+                                  Prints Zebra labels for each component ({totalLabelsForLine} label
+                                  {totalLabelsForLine === 1 ? '' : 's'} total):{' '}
+                                  {comps
+                                    .map((c) => `${c.perSetQty * qtyNum}× ${c.component?.name}`)
+                                    .join(', ')}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: 12, color: 'var(--dash-muted)', marginTop: 3 }}>
+                                  Prints {totalLabelsForLine} Zebra label
+                                  {totalLabelsForLine === 1 ? '' : 's'}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <label style={{ fontSize: 13, fontWeight: 600 }}>Qty:</label>
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={line.quantity}
+                                onChange={(e) => updateLineQty(line.assembly_id, e.target.value)}
+                                style={{
+                                  width: 72,
+                                  padding: '6px 8px',
+                                  borderRadius: 6,
+                                  border: '1px solid var(--dash-border, #cbd5e1)',
+                                  textAlign: 'center',
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeLineItem(line.assembly_id)}
+                                title="Remove"
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: 6,
+                                  border: '1px solid #fca5a5',
+                                  background: '#fef2f2',
+                                  color: '#dc2626',
+                                  cursor: 'pointer',
+                                  width: 'auto',
+                                }}
+                              >
+                                <FaTrashAlt size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitBusy || !selectedCustomerId || !selectedLines.length}
+                className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 18px',
+                  fontWeight: 700,
+                }}
+              >
+                <FaPrint aria-hidden />
+                <span>
+                  {submitBusy ? 'Printing & Saving…' : 'Print Zebra Labels & Add to Sales Storage'}
+                </span>
+              </button>
+            </form>
+          )}
+        </div>
+      ) : null}
 
       <input
         type="search"
@@ -91,12 +608,23 @@ export default function WarehouseSalesStoragePanel() {
               {' · Qty '}
               {row.quantity}
             </div>
+            {Array.isArray(row?.metadata?.printed_components)
+            && row.metadata.item_kind === 'set'
+            && row.metadata.printed_components.length > 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--dash-muted)', marginTop: 4 }}>
+                Printed components:{' '}
+                {row.metadata.printed_components
+                  .map((c) => `${c.printed_qty}× ${c.name}`)
+                  .join(', ')}
+              </div>
+            ) : null}
             <div style={{ color: 'var(--dash-muted)', marginTop: 6 }}>
               Sent by: {row.created_by_name || row.created_by_email || '—'}
             </div>
             <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
               Receipt: {row.receipt_number || '—'}
               {row.customer_name ? ` · Customer: ${row.customer_name}` : ''}
+              {row.customer_phone ? ` (${row.customer_phone})` : ''}
             </div>
           </article>
         ))}

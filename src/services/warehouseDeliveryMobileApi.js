@@ -98,6 +98,10 @@ export function submitStorageSend(payload) {
   return warehouseDeliveryMobileOp('storage-send-submit', payload);
 }
 
+export function createManualStorageSend(payload) {
+  return warehouseDeliveryMobileOp('storage-manual-create', payload);
+}
+
 export function listStorageSends(options = {}) {
   return warehouseDeliveryMobileOp('storage-send-list', options);
 }
