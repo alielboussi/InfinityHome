@@ -1,4 +1,4 @@
-/** Zebra ZPL — POS / Sales Storage label (80×68 mm: Code 128 SKU, Product Name, Image QR, Customer Name, Customer Phone, Sale Date). */
+/** Zebra ZPL — POS / Sales Storage label (80×68 mm: Code 128 SKU, Product Name, Image QR aligned with values, Customer Name, Customer Phone, Sale Date, optional Set). */
 
 import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import {
@@ -33,7 +33,7 @@ const FIELD_LABELS = {
   setName: 'Set:',
 };
 
-/** Left edge of value column (in mm) so values never overlap "Product Name:" / "Customer Name:" headers. */
+/** Left edge of value column (in mm) so values and Image QR align to the right of headers. */
 const VALUE_COL_LEFT_MM = 29;
 
 function zplEscape(value) {
@@ -72,42 +72,49 @@ function parseSaleDateInput(raw) {
 function computeStorageSaleLabelDots({ dpi = 203, includeSetRow = false } = {}) {
   const base = computeProductionLabelLayout({ dpi });
   const toDots = (mm) => mmToDots(mm, dpi);
-  const textTopDots = (rowStartMm, padMm = 0.35) => toDots(rowStartMm + padMm);
-  const centerXMm = LABEL_WIDTH_MM / 2;
+  const textTopDots = (rowStartMm, padMm = 0.25) => toDots(rowStartMm + padMm);
+
+  const valueBoxWidthMm = LABEL_WIDTH_MM - VALUE_COL_LEFT_MM - LABEL_MARGIN_MM - 1;
+  const valueCenterXMm = VALUE_COL_LEFT_MM + valueBoxWidthMm / 2;
+
+  const rowStepMm = includeSetRow ? 3.55 : ROW_TEXT_MM;
+  const gapMm = includeSetRow ? 0.4 : BLOCK_GAP_MM;
+  const qrSizeMm = includeSetRow ? 8.2 : QR_SIZE_MM;
 
   const companyTextTopMm = LABEL_MARGIN_MM + BORDER_TOP_INSET_MM;
   const barcodeTopMm = companyTextTopMm + COMPANY_TEXT_HEIGHT_MM + GAP_AFTER_COMPANY_MM;
   let y = barcodeTopMm + BARCODE_HEIGHT_MM + GAP_AFTER_BARCODE_MM;
 
   const skuRowMm = y;
-  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  y += rowStepMm + gapMm;
   const nameBlockTopMm = y;
-  y = nameBlockTopMm + NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES + BLOCK_GAP_MM;
+  y = nameBlockTopMm + NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES + gapMm;
 
   const qrBlockYMm = y;
-  const imageQrLeftMm = centerXMm - QR_SIZE_MM / 2;
-  y += QR_SIZE_MM + BLOCK_GAP_MM + 0.4;
+  const imageQrLeftMm = valueCenterXMm - qrSizeMm / 2;
+  y += qrSizeMm + gapMm + 0.3;
 
   const customerNameRowMm = y;
-  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  y += rowStepMm + gapMm;
   const customerPhoneRowMm = y;
-  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  y += rowStepMm + gapMm;
   const saleDateRowMm = y;
-  y += ROW_TEXT_MM + BLOCK_GAP_MM;
+  y += rowStepMm + gapMm;
   const setRowMm = includeSetRow ? y : null;
 
-  const valueBoxWidthMm = LABEL_WIDTH_MM - VALUE_COL_LEFT_MM - LABEL_MARGIN_MM - 1;
-
   const d = base.dots;
+  const rowFont = includeSetRow ? Math.max(24, d.headerFont - 3) : d.headerFont;
   return {
     ...d,
+    headerFont: rowFont,
+    valueFont: rowFont,
     valueX: toDots(VALUE_COL_LEFT_MM),
     valueBoxW: toDots(valueBoxWidthMm),
     skuRowY: textTopDots(skuRowMm),
     nameBlockTop: textTopDots(nameBlockTopMm),
     qrBlockY: toDots(qrBlockYMm),
     imageQrX: toDots(imageQrLeftMm),
-    qrSize: toDots(QR_SIZE_MM),
+    qrSize: toDots(qrSizeMm),
     customerNameRowY: textTopDots(customerNameRowMm),
     customerPhoneRowY: textTopDots(customerPhoneRowMm),
     saleDateRowY: textTopDots(saleDateRowMm),
@@ -184,7 +191,7 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
     ...(includeSetRow && d.setRowY != null
       ? [
         labelField(d.setRowY, FIELD_LABELS.setName),
-        valueField(d.setRowY, setNameText, 2),
+        `^FO${d.valueX},${d.setRowY}^A0N,${vf},${vf}^FB${d.valueBoxW},2,${Math.max(1, Math.floor(vf * 0.85))},C,0^FD${setNameText}^FS`,
       ]
       : []),
     `^PQ${copies}`,

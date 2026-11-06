@@ -791,9 +791,22 @@ export async function reprintWarehouseStorageLabels(sb, body, user) {
     ? row.metadata.printed_components
     : [];
 
-  const isSetRow = row?.metadata?.item_kind === 'set'
-    || /^SET\s*\(/i.test(String(row.receipt_number || ''));
-  const parentSetName = isSetRow ? String(row.assembly_name || '').trim() : '';
+  let isSetRow = row?.metadata?.item_kind === 'set'
+    || /^SET\s*\(/i.test(String(row.receipt_number || ''))
+    || /\bset\b/i.test(String(row.assembly_name || ''))
+    || printedComps.length > 0;
+  let parentSetName = isSetRow ? String(row.assembly_name || '').trim() : '';
+  if (!parentSetName && row.assembly_id) {
+    const { data: asmRow } = await sb
+      .from('warehouse_assemblies')
+      .select('name, item_kind')
+      .eq('id', row.assembly_id)
+      .maybeSingle();
+    if (asmRow && isWarehouseSetAssembly(asmRow)) {
+      isSetRow = true;
+      parentSetName = String(asmRow.name || row.assembly_name || '').trim();
+    }
+  }
 
   let totalLabelsPrinted = 0;
 
