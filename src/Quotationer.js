@@ -29,7 +29,11 @@ import {
   sortQuotationRows,
   sumPaymentRows,
 } from './utils/quotationDisplay';
-import { CARPENTRY_WOOD_OPTIONS } from './utils/quoteProductionItemFields';
+import {
+  CARPENTRY_ACCESSORY_GROUPS,
+  CARPENTRY_WOOD_OPTIONS,
+  normalizeQuoteItemAccessories,
+} from './utils/quoteProductionItemFields';
 
 function htmlToPlainPreview(html) {
   if (!html) return '';
@@ -811,6 +815,8 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const [productionDrawingUrl, setProductionDrawingUrl] = React.useState('');
   const [productionDrawingPendingFile, setProductionDrawingPendingFile] = React.useState(null);
   const [productionDrawingUploadBusy, setProductionDrawingUploadBusy] = React.useState(false);
+  const [openAccessoryLineId, setOpenAccessoryLineId] = React.useState('');
+  const [accessorySearchByLine, setAccessorySearchByLine] = React.useState({});
   const productionDrawingInputRef = React.useRef(null);
   const isIpadProLayout = useIpadProLayout();
   const quoteUser = React.useMemo(() => readLocalUser(), []);
@@ -999,6 +1005,26 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   };
 
   const updateItem = (id, patch) => setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
+  const addAccessoryToItem = (lineId, accName) => {
+    if (locked) return;
+    const clean = String(accName || '').trim();
+    if (!clean) return;
+    setItems(prev => prev.map(it => {
+      if (it.id !== lineId) return it;
+      const current = normalizeQuoteItemAccessories(it.accessories);
+      if (current.some(a => a.toLowerCase() === clean.toLowerCase())) return it;
+      return { ...it, accessories: [...current, clean] };
+    }));
+  };
+  const removeAccessoryFromItem = (lineId, accName) => {
+    if (locked) return;
+    const clean = String(accName || '').trim().toLowerCase();
+    setItems(prev => prev.map(it => {
+      if (it.id !== lineId) return it;
+      const current = normalizeQuoteItemAccessories(it.accessories);
+      return { ...it, accessories: current.filter(a => a.toLowerCase() !== clean) };
+    }));
+  };
   const removeItem = (id) => {
     if (locked) return;
     setItems(prev => prev.filter(it => it.id !== id));
@@ -1593,73 +1619,166 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                             </div>
                           ) : null}
                           {showCarpentryMeta ? (
-                            <div className="quotes-line-meta-grid quotes-line-meta-grid--carpentry">
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">L (cm)</span>
-                                <input
-                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={it.dim_l_cm || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { dim_l_cm: e.target.value, dimensions_lwh: '' })}
-                                  placeholder="L"
-                                  aria-label="Length cm optional"
-                                />
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">W (cm)</span>
-                                <input
-                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={it.dim_w_cm || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { dim_w_cm: e.target.value, dimensions_lwh: '' })}
-                                  placeholder="W"
-                                  aria-label="Width cm optional"
-                                />
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">H (cm)</span>
-                                <input
-                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={it.dim_h_cm || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { dim_h_cm: e.target.value, dimensions_lwh: '' })}
-                                  placeholder="H"
-                                  aria-label="Height cm optional"
-                                />
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">Color</span>
-                                <input
-                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                  value={it.color_code || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { color_code: e.target.value })}
-                                  placeholder="RAL 9010"
-                                  aria-label="Color code optional"
-                                />
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">Wood</span>
-                                <select
-                                  className="quotes-select quotes-select--slim quotes-line-meta-control"
-                                  value={it.wood || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { wood: e.target.value })}
-                                  aria-label="Wood type optional"
-                                >
-                                  <option value="">—</option>
-                                  {CARPENTRY_WOOD_OPTIONS.map((opt) => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
-                              </label>
-                            </div>
+                            <>
+                              <div className="quotes-line-meta-grid quotes-line-meta-grid--carpentry">
+                                <label className="quotes-line-meta-field">
+                                  <span className="quotes-line-meta-label">L (cm)</span>
+                                  <input
+                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={it.dim_l_cm || ''}
+                                    disabled={locked}
+                                    onChange={e => updateItem(it.id, { dim_l_cm: e.target.value, dimensions_lwh: '' })}
+                                    placeholder="L"
+                                    aria-label="Length cm optional"
+                                  />
+                                </label>
+                                <label className="quotes-line-meta-field">
+                                  <span className="quotes-line-meta-label">W (cm)</span>
+                                  <input
+                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={it.dim_w_cm || ''}
+                                    disabled={locked}
+                                    onChange={e => updateItem(it.id, { dim_w_cm: e.target.value, dimensions_lwh: '' })}
+                                    placeholder="W"
+                                    aria-label="Width cm optional"
+                                  />
+                                </label>
+                                <label className="quotes-line-meta-field">
+                                  <span className="quotes-line-meta-label">H (cm)</span>
+                                  <input
+                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={it.dim_h_cm || ''}
+                                    disabled={locked}
+                                    onChange={e => updateItem(it.id, { dim_h_cm: e.target.value, dimensions_lwh: '' })}
+                                    placeholder="H"
+                                    aria-label="Height cm optional"
+                                  />
+                                </label>
+                                <label className="quotes-line-meta-field">
+                                  <span className="quotes-line-meta-label">Color</span>
+                                  <input
+                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                    value={it.color_code || ''}
+                                    disabled={locked}
+                                    onChange={e => updateItem(it.id, { color_code: e.target.value })}
+                                    placeholder="RAL 9010"
+                                    aria-label="Color code optional"
+                                  />
+                                </label>
+                                <label className="quotes-line-meta-field">
+                                  <span className="quotes-line-meta-label">Wood</span>
+                                  <select
+                                    className="quotes-select quotes-select--slim quotes-line-meta-control"
+                                    value={it.wood || ''}
+                                    disabled={locked}
+                                    onChange={e => updateItem(it.id, { wood: e.target.value })}
+                                    aria-label="Wood type optional"
+                                  >
+                                    <option value="">—</option>
+                                    {CARPENTRY_WOOD_OPTIONS.map((opt) => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <div className="quotes-line-accessories-block">
+                                <div className="quotes-line-accessories-head">
+                                  <span className="quotes-line-meta-label">Accessories</span>
+                                  <button
+                                    type="button"
+                                    className={`quotes-accessories-toggle-btn${openAccessoryLineId === it.id ? ' active' : ''}`}
+                                    disabled={locked}
+                                    onClick={() => setOpenAccessoryLineId(prev => prev === it.id ? '' : it.id)}
+                                  >
+                                    {openAccessoryLineId === it.id
+                                      ? 'Hide Accessories ▲'
+                                      : `Select Accessories (${normalizeQuoteItemAccessories(it.accessories).length}) ▼`}
+                                  </button>
+                                </div>
+                                {normalizeQuoteItemAccessories(it.accessories).length > 0 ? (
+                                  <div className="quotes-accessories-chips">
+                                    {normalizeQuoteItemAccessories(it.accessories).map((acc) => (
+                                      <span key={acc} className="quotes-accessory-chip">
+                                        <span>{acc}</span>
+                                        {!locked ? (
+                                          <button
+                                            type="button"
+                                            className="quotes-accessory-chip-remove"
+                                            onClick={() => removeAccessoryFromItem(it.id, acc)}
+                                            aria-label={`Remove ${acc}`}
+                                            title={`Remove ${acc}`}
+                                          >
+                                            ×
+                                          </button>
+                                        ) : null}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                {openAccessoryLineId === it.id && !locked ? (
+                                  <div className="quotes-accessories-dropdown-panel">
+                                    <input
+                                      type="text"
+                                      className="quotes-input quotes-input--slim quotes-accessories-search"
+                                      placeholder="Search accessories (e.g. Granite, Sink, Mixer, Lock, LED)…"
+                                      value={accessorySearchByLine[it.id] || ''}
+                                      onChange={(e) => setAccessorySearchByLine(prev => ({ ...prev, [it.id]: e.target.value }))}
+                                    />
+                                    <div className="quotes-accessories-groups">
+                                      {CARPENTRY_ACCESSORY_GROUPS.map((group) => {
+                                        const q = String(accessorySearchByLine[it.id] || '').trim().toLowerCase();
+                                        const selectedSet = new Set(
+                                          normalizeQuoteItemAccessories(it.accessories).map(a => a.toLowerCase()),
+                                        );
+                                        const visibleItems = group.items.filter((item) =>
+                                          !q
+                                          || item.toLowerCase().includes(q)
+                                          || group.category.toLowerCase().includes(q),
+                                        );
+                                        if (!visibleItems.length) return null;
+                                        return (
+                                          <div key={group.category} className="quotes-accessories-group">
+                                            <div className="quotes-accessories-group-title">{group.category}</div>
+                                            <div className="quotes-accessories-group-list">
+                                              {visibleItems.map((acc) => {
+                                                const isAdded = selectedSet.has(acc.toLowerCase());
+                                                return (
+                                                  <div
+                                                    key={acc}
+                                                    className={`quotes-accessory-option${isAdded ? ' is-added' : ''}`}
+                                                  >
+                                                    <span className="quotes-accessory-option-name">{acc}</span>
+                                                    <button
+                                                      type="button"
+                                                      className={`quotes-accessory-add-btn${isAdded ? ' added' : ''}`}
+                                                      onClick={() => (
+                                                        isAdded
+                                                          ? removeAccessoryFromItem(it.id, acc)
+                                                          : addAccessoryToItem(it.id, acc)
+                                                      )}
+                                                      title={isAdded ? `Remove ${acc}` : `Include ${acc}`}
+                                                      aria-label={isAdded ? `Remove ${acc}` : `Include ${acc}`}
+                                                    >
+                                                      {isAdded ? '✓' : '+'}
+                                                    </button>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </>
                           ) : null}
                         </div>
                       </td>

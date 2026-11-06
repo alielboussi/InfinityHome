@@ -1,4 +1,7 @@
-import { parseLegacyDimensionsLwh } from './quoteProductionItemFields.js';
+import {
+  normalizeQuoteItemAccessories,
+  parseLegacyDimensionsLwh,
+} from './quoteProductionItemFields.js';
 
 /** Qty for line math: blank defaults to 1; explicit 0 stays 0 unless price is set (legacy saves). */
 export function resolveQuoteLineQuantity(quantity, unitPrice = 0) {
@@ -40,6 +43,7 @@ export function normalizeQuotationItemRow(row) {
     dimensions_lwh: legacyLwh,
     color_code: row.color_code ?? meta.color_code ?? '',
     wood: row.wood ?? meta.wood ?? '',
+    accessories: normalizeQuoteItemAccessories(row.accessories ?? meta.accessories),
   };
 }
 

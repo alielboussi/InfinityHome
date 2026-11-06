@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -17,6 +18,7 @@ import { tUi } from '../lib/productionKioskI18n';
 import {
   acceptUpholsteryQuote,
   completeUpholsteryQuote,
+  fetchUpholsteryProductionQuotes,
   scanUpholsteryQuoteMaterial,
 } from '../services/productionApi';
 import { theme } from '../shared/theme';
@@ -36,14 +38,41 @@ function formatElapsed(ms) {
 export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
-  const quote = route.params?.quote || {};
-  const quoteId = String(quote.quote_id || '');
+  const initialQuote = route.params?.quote || {};
+  const [quote, setQuote] = useState(initialQuote);
+  const [loadingOrder, setLoadingOrder] = useState(() => !Array.isArray(initialQuote.lines));
+  const quoteId = String(quote.quote_id || initialQuote.quote_id || '');
   const startedAt = quote.run_started_at || quote.accepted_at;
   const [accepted, setAccepted] = useState(Boolean(quote.accepted_at));
   const [completed, setCompleted] = useState(Boolean(quote.completed_at));
   const [tick, setTick] = useState(Date.now());
   const [scan, setScan] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!quoteId || Array.isArray(quote.lines)) return;
+    let alive = true;
+    setLoadingOrder(true);
+    fetchUpholsteryProductionQuotes()
+      .then((list) => {
+        if (!alive) return;
+        const found = (Array.isArray(list) ? list : []).find(
+          (q) => String(q.quote_id) === quoteId,
+        );
+        if (found) {
+          setQuote(found);
+          setAccepted(Boolean(found.accepted_at));
+          setCompleted(Boolean(found.completed_at));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoadingOrder(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [quoteId, quote.lines]);
 
   useEffect(() => {
     if (!accepted || completed || !startedAt) return undefined;
@@ -62,7 +91,9 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     setBusy(true);
     try {
       await acceptUpholsteryQuote(quoteId);
+      const nowIso = new Date().toISOString();
       setAccepted(true);
+      setQuote((prev) => ({ ...prev, accepted_at: nowIso, run_started_at: nowIso }));
     } catch (e) {
       Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
     } finally {
@@ -82,6 +113,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
             setBusy(true);
             try {
               await completeUpholsteryQuote(quoteId);
+              setCompleted(true);
               navigation.goBack();
             } catch (e) {
               Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
@@ -99,8 +131,12 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     if (!value) return;
     setBusy(true);
     try {
-      if (!accepted) await acceptUpholsteryQuote(quoteId);
-      setAccepted(true);
+      if (!accepted) {
+        await acceptUpholsteryQuote(quoteId);
+        const nowIso = new Date().toISOString();
+        setAccepted(true);
+        setQuote((prev) => ({ ...prev, accepted_at: nowIso, run_started_at: nowIso }));
+      }
       await scanUpholsteryQuoteMaterial(quoteId, value, 1);
       setScan('');
     } catch (e) {
@@ -124,8 +160,11 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
+      {loadingOrder ? (
+        <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
+      ) : null}
       <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
-      <Text style={[styles.name, { textAlign }]}>{quote.customer_name}</Text>
+      <Text style={[styles.name, { textAlign }]}>{quote.customer_name || '—'}</Text>
       <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
       <QuoteProductionDrawingSection
         drawingUrl={quote.drawing_url}

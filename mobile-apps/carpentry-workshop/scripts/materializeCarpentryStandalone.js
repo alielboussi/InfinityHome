@@ -152,6 +152,17 @@ function main() {
     copyDir(path.join(upholsteryRoot, dir), path.join(kioskPath, dir));
   }
 
+  const pushNotifPath = path.join(kioskPath, 'lib', 'productionPushNotifications.js');
+  if (fs.existsSync(pushNotifPath)) {
+    let pushText = fs.readFileSync(pushNotifPath, 'utf8');
+    pushText = pushText
+      .replace("app_target: 'upholstery'", "app_target: 'carpentry'")
+      .replace("screen === 'UpholsteryQuotes' || screen === 'UpholsteryQuoteDetail'", "screen === 'Quotes' || screen === 'QuoteDetail'")
+      .replace("nav.navigate('UpholsteryQuotes')", "nav.navigate('Quotes')")
+      .replace("nav.navigate('UpholsteryQuoteDetail'", "nav.navigate('QuoteDetail'");
+    fs.writeFileSync(pushNotifPath, pushText, 'utf8');
+  }
+
   const screensDest = path.join(kioskPath, 'screens');
   fs.mkdirSync(screensDest, { recursive: true });
   copyDir(path.join(upholsteryRoot, 'screens'), screensDest, {

@@ -1,11 +1,11 @@
-import { normalizeCarpentryUom } from '../_repoConstants/carpentryUom';
-import { loadMaterialUomAllowedSet } from './materialUomMutations';
+import { normalizeCarpentryUom } from '../_repoConstants/carpentryUom.js';
+import { loadMaterialUomAllowedSet } from './materialUomMutations.js';
 import {
   normalizeWarehousePacketScan,
   normalizeWarehouseProductSku,
   normalizeWarehouseSkuKey,
-} from './warehouseScanResolver';
-import { generateRandomWarehouseSku16 } from './warehouseRandomSku';
+} from './warehouseScanResolver.js';
+import { generateRandomWarehouseSku16 } from './warehouseRandomSku.js';
 import { parseStoreroomMaterialMeta } from './productionPortalCatalog.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';

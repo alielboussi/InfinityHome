@@ -171,6 +171,8 @@ const UI_STRINGS = {
   quoteOrderDimensions: { en: 'L×W×H (cm)', ar: 'ط×ع×ار (سم)' },
   quoteOrderColorCode: { en: 'Color code', ar: 'رمز اللون' },
   quoteOrderWood: { en: 'Wood', ar: 'الخشب' },
+  quoteOrderDescription: { en: 'Description', ar: 'الوصف' },
+  quoteOrderIncludedAccessories: { en: 'Included Accessories', ar: 'الإكسسوارات المرفقة' },
   quoteOrderViewDrawing: { en: 'View drawing', ar: 'عرض الرسم' },
   quoteOrderDrawingTitle: { en: 'Production drawing', ar: 'رسم الإنتاج' },
   quoteOrderOpenInBrowser: { en: 'Open in browser', ar: 'فتح في المتصفح' },

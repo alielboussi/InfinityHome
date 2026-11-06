@@ -2,7 +2,7 @@ import {
   labelFromMaterialUomCode,
   normalizeMaterialUom,
   slugifyMaterialUomCode,
-} from '../_repoConstants/carpentryUom';
+} from '../_repoConstants/carpentryUom.js';
 import { newUuid } from './uuid.js';
 
 const TABLE = 'warehouse_material_uoms';

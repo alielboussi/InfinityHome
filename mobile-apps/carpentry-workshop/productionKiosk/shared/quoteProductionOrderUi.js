@@ -23,13 +23,28 @@ function formatDimensionsCm(line) {
   return partial.length ? partial.join(' × ') : '';
 }
 
+function normalizeAccessoriesList(raw) {
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : String(raw).split(',');
+  return arr.map((s) => String(s ?? '').trim()).filter(Boolean);
+}
+
 function carpentryLineHasExtras(line) {
   if (!line) return false;
-  return Boolean(formatDimensionsCm(line) || line.color_code || line.wood);
+  return Boolean(
+    formatDimensionsCm(line)
+    || line.color_code
+    || line.wood
+    || normalizeAccessoriesList(line.accessories).length
+    || line.description,
+  );
 }
 
 function buildCarpentryLineExtraTexts(line, tUi, locale) {
   const rows = [];
+  if (line.wood) {
+    rows.push(`${tUi('quoteOrderWood', locale)}: ${line.wood}`);
+  }
   const dims = formatDimensionsCm(line);
   if (dims) {
     rows.push(`${tUi('quoteOrderDimensions', locale)}: ${dims}`);
@@ -37,8 +52,12 @@ function buildCarpentryLineExtraTexts(line, tUi, locale) {
   if (line.color_code) {
     rows.push(`${tUi('quoteOrderColorCode', locale)}: ${line.color_code}`);
   }
-  if (line.wood) {
-    rows.push(`${tUi('quoteOrderWood', locale)}: ${line.wood}`);
+  if (line.description) {
+    rows.push(`${tUi('quoteOrderDescription', locale)}: "${String(line.description).trim()}"`);
+  }
+  const accessories = normalizeAccessoriesList(line.accessories);
+  if (accessories.length) {
+    rows.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${accessories.join(', ')}`);
   }
   return rows;
 }
@@ -48,14 +67,17 @@ export function summarizeProductionQuoteCardExtras(lines, route) {
   const list = Array.isArray(lines) ? lines : [];
   const bits = [];
   for (const line of list.slice(0, 3)) {
-    if (normalized === 'upholstery' && line.leather_code) {
-      bits.push(`Leather: ${line.leather_code}`);
+    if (normalized === 'upholstery') {
+      if (line.leather_code) bits.push(`Leather: ${line.leather_code}`);
+      if (line.description) bits.push(`Desc: "${line.description}"`);
     }
     if (normalized === 'carpentry') {
+      if (line.wood) bits.push(`Wood: ${line.wood}`);
       const dims = formatDimensionsCm(line);
       if (dims) bits.push(`L×W×H (cm): ${dims}`);
       if (line.color_code) bits.push(`Color: ${line.color_code}`);
-      if (line.wood) bits.push(`Wood: ${line.wood}`);
+      const acc = normalizeAccessoriesList(line.accessories);
+      if (acc.length) bits.push(`Included Accessories : ${acc.join(', ')}`);
     }
   }
   return bits.join(' · ');
@@ -66,11 +88,20 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale }
   const list = Array.isArray(lines) ? lines : [];
   if (!list.length) return null;
 
-  return list.map((line) => {
-    const key = String(line.id || line.name);
+  return list.map((line, index) => {
+    const key = String(line.id || `${line.name}-${index}`);
     const extras = [];
-    if (normalized === 'upholstery' && line.leather_code) {
-      extras.push(`${tUi('quoteOrderLeatherCode', locale)}: ${line.leather_code}`);
+    if (normalized === 'upholstery') {
+      if (line.leather_code) {
+        extras.push(`${tUi('quoteOrderLeatherCode', locale)}: ${line.leather_code}`);
+      }
+      if (line.description) {
+        extras.push(`${tUi('quoteOrderDescription', locale)}: "${String(line.description).trim()}"`);
+      }
+      const acc = normalizeAccessoriesList(line.accessories);
+      if (acc.length) {
+        extras.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${acc.join(', ')}`);
+      }
     }
     if (normalized === 'carpentry') {
       extras.push(...buildCarpentryLineExtraTexts(line, tUi, locale));
@@ -130,19 +161,17 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
   const allLines = Array.isArray(quote.lines) ? quote.lines : [];
 
   if (normalized === 'carpentry') {
-    const linesWithExtras = allLines.filter(carpentryLineHasExtras);
-    if (!linesWithExtras.length && !hasDrawing) return null;
+    if (!allLines.length && !hasDrawing) return null;
     return (
       <View style={styles.cardExtras}>
-        {linesWithExtras.map((line) => {
+        {allLines.map((line, index) => {
           const extras = buildCarpentryLineExtraTexts(line, tUi, locale);
-          const lineKey = String(line.id || line.name);
-          const showTitle = allLines.length > 1 && line.name;
+          const lineKey = String(line.id || `${line.name}-${index}`);
           return (
             <View key={lineKey} style={styles.cardLineBlock}>
-              {showTitle ? (
-                <Text style={[styles.cardLineTitle, { textAlign }]} numberOfLines={1}>
-                  {line.name}
+              {line.name ? (
+                <Text style={[styles.cardLineTitle, { textAlign }]} numberOfLines={2}>
+                  {line.quantity || 1} × {line.name}
                 </Text>
               ) : null}
               {extras.map((extra) => (
@@ -178,7 +207,7 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
 
 const styles = StyleSheet.create({
   lineBlock: { marginBottom: 10 },
-  lineMain: { color: theme.textSecondary, fontSize: 15 },
+  lineMain: { color: theme.textSecondary, fontSize: 15, fontWeight: '600' },
   lineExtra: { color: theme.textMuted, fontSize: 13, marginTop: 2 },
   drawingBtn: {
     marginTop: 12,
@@ -217,7 +246,7 @@ const styles = StyleSheet.create({
   modalBtnText: { color: '#fff', fontWeight: '600', textAlign: 'center' },
   cardExtras: { marginTop: 6 },
   cardLineBlock: { marginBottom: 6 },
-  cardLineTitle: { color: theme.textSecondary, fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  cardLineTitle: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', marginBottom: 2 },
   cardExtraText: { color: theme.textMuted, fontSize: 12, lineHeight: 17 },
   cardDrawingTag: { color: theme.primary, fontSize: 12, marginTop: 4, fontWeight: '600' },
 });

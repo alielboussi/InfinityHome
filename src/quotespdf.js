@@ -2,7 +2,10 @@ import jsPDF from 'jspdf';
 import db from './dataClient';
 import { formatCurrency } from './pdfTheme';
 import { computeQuotationTotals } from './utils/quotationDisplay';
-import { formatQuoteItemProductionPdfLines } from './utils/quoteProductionItemFields';
+import {
+  formatQuoteItemAccessoriesPdfLine,
+  formatQuoteItemProductionPdfLines,
+} from './utils/quoteProductionItemFields';
 import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
 
 function computeTotals(quote, items = []) {
@@ -301,7 +304,7 @@ export async function generateQuotePdf(quote = {}, items = [], opts = {}) {
   const rowLineH = 14;
   const descWidth = tableWidths.item - 10;
 
-  const drawRow = ({ name, specLines = [], desc, qtyText, priceText, amtText }) => {
+  const drawRow = ({ name, specLines = [], desc, accessoriesLine = '', qtyText, priceText, amtText }) => {
     const nameLines = doc.splitTextToSize(name || '-', descWidth);
     const wrappedSpecs = [];
     (specLines || []).forEach((spec) => {
@@ -309,7 +312,10 @@ export async function generateQuotePdf(quote = {}, items = [], opts = {}) {
       wrappedSpecs.push(...doc.splitTextToSize(spec, descWidth));
     });
     const descLines = desc ? ['', ...doc.splitTextToSize(desc, descWidth)] : [];
-    const contentLines = [...nameLines, ...wrappedSpecs, ...descLines];
+    const accLines = accessoriesLine
+      ? [desc ? '' : '', ...doc.splitTextToSize(accessoriesLine, descWidth)].filter((ln, idx) => !(idx === 0 && desc))
+      : [];
+    const contentLines = [...nameLines, ...wrappedSpecs, ...descLines, ...accLines];
     const rowHeight = Math.max(rowLineH * contentLines.length + 8, rowLineH + 8);
     ensureSpace(doc, margin, rowHeight + 12);
     // text only (no borders)
@@ -333,12 +339,13 @@ export async function generateQuotePdf(quote = {}, items = [], opts = {}) {
     const name = formatName(it.name_override || it.name || it.product_name || it.quote_product_name || it.description);
     const specLines = formatQuoteItemProductionPdfLines(it);
     const desc = formatDesc(it.description);
+    const accessoriesLine = formatQuoteItemAccessoriesPdfLine(it);
     const qty = safe(it.quantity, '');
     const unitAbbr = normalizeUnitAbbreviation(it.unit_abbr || it.abbreviation, it.unit_label || it.unit);
     const qtyText = `${qty} ${unitAbbr}`.trim();
     const unitPrice = formatCurrency(Number(it.unit_price || 0), currencyLabel);
     const amount = formatCurrency(Number(it.quantity || 0) * Number(it.unit_price || 0), currencyLabel);
-    drawRow({ name, specLines, desc, qtyText, priceText: unitPrice, amtText: amount });
+    drawRow({ name, specLines, desc, accessoriesLine, qtyText, priceText: unitPrice, amtText: amount });
   });
 
   if (!noPrices) {
