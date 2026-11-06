@@ -63,6 +63,7 @@ export default function UserAccessManagement() {
   const [busyUid, setBusyUid] = useState('');
   const [mobileUserId, setMobileUserId] = useState('');
   const [upholsteryUserId, setUpholsteryUserId] = useState('');
+  const [upholsteryFocusApp, setUpholsteryFocusApp] = useState('upholstery');
   const [deliveryUserId, setDeliveryUserId] = useState('');
 
   useEffect(() => {
@@ -132,8 +133,8 @@ export default function UserAccessManagement() {
       <p className="user-access-intro">
         New mobile users are added when they sign in with <strong>Google</strong> on a warehouse mobile app. They appear
         in the list below after first sign-in — use <strong>Refresh</strong>, then set{' '}
-        <strong>Catalog</strong>, <strong>Upholstery</strong>, or <strong>Delivery</strong> permissions. Login can
-        be disabled here; you cannot create accounts from this page.
+        <strong>Catalog</strong>, <strong>Upholstery</strong>, <strong>Carpentry</strong>, <strong>Painting</strong>, or{' '}
+        <strong>Delivery</strong> permissions. Login can be disabled here; you cannot create accounts from this page.
       </p>
 
       {error ? <div className="report-error user-access-error">{error}</div> : null}
@@ -176,7 +177,7 @@ export default function UserAccessManagement() {
                   const selectedAppEditor = isWarehouseSelected
                     ? 'catalog'
                     : isUpholsterySelected
-                      ? 'upholstery'
+                      ? upholsteryFocusApp
                       : isDeliverySelected
                         ? 'delivery'
                         : '';
@@ -202,8 +203,9 @@ export default function UserAccessManagement() {
                               if (next === 'catalog') {
                                 clearOtherEditors('warehouse');
                                 setMobileUserId(row.id);
-                              } else if (next === 'upholstery') {
+                              } else if (next === 'upholstery' || next === 'carpentry' || next === 'painting') {
                                 clearOtherEditors('upholstery');
+                                setUpholsteryFocusApp(next);
                                 setUpholsteryUserId(row.id);
                               } else if (next === 'delivery') {
                                 clearOtherEditors('delivery');
@@ -216,6 +218,8 @@ export default function UserAccessManagement() {
                             <option value="">Apps…</option>
                             <option value="catalog">Catalog</option>
                             <option value="upholstery">Upholstery</option>
+                            <option value="carpentry">Carpentry</option>
+                            <option value="painting">Painting</option>
                             <option value="delivery">Delivery</option>
                           </select>
                           <button
@@ -252,6 +256,7 @@ export default function UserAccessManagement() {
       {upholsteryUser ? (
         <UpholsteryUserAccessEditor
           userRow={upholsteryUser}
+          focusApp={upholsteryFocusApp}
           onClose={() => setUpholsteryUserId('')}
           onSaved={(updated) => {
             setRows((prev) => prev.map((item) => (

@@ -79,7 +79,7 @@ function AccessSelect({ id, label, description, value, onChange }) {
   );
 }
 
-export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }) {
+export default function UpholsteryUserAccessEditor({ userRow, focusApp, onClose, onSaved }) {
   const [grant, setGrant] = useState(() => normalizeGrant(userRow?.mobile_access));
   const [appDisplayName, setAppDisplayName] = useState(() => userRow?.mobile_display_name || '');
   const [busy, setBusy] = useState(false);
@@ -92,6 +92,20 @@ export default function UpholsteryUserAccessEditor({ userRow, onClose, onSaved }
     setError('');
     setToast('');
   }, [userRow?.id, userRow?.mobile_access, userRow?.mobile_display_name]);
+
+  useEffect(() => {
+    const idMap = {
+      upholstery: 'mobile-access-upholstery-app',
+      carpentry: 'mobile-access-carpentry-app',
+      painting: 'mobile-access-painting-app',
+    };
+    const targetId = idMap[focusApp];
+    if (!targetId) return;
+    const el = document.getElementById(targetId);
+    if (el) {
+      el.focus({ preventScroll: false });
+    }
+  }, [focusApp, userRow?.id]);
 
   useEffect(() => {
     if (!toast) return undefined;
