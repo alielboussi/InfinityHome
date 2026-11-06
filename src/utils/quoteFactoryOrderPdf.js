@@ -398,21 +398,22 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     }
     .page {
       width: 210mm;
-      padding: 12mm 14mm 14mm;
+      padding: 12mm 14mm 10mm;
       background: #ffffff;
       position: relative;
+      display: block;
       page-break-after: always;
     }
     .page:last-child {
       page-break-after: auto;
     }
     .page-footer {
-      margin-top: 14px;
+      margin-top: 10px;
       padding-top: 6px;
       text-align: center;
-      font-size: 11.5px;
-      font-weight: 600;
-      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+      color: #334155;
     }
     .header-top {
       display: flex;
@@ -577,8 +578,8 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     );
 
     // Paginate rows into discrete A4 pages so each page ends cleanly on its last row,
-    // starts subsequent pages with a fresh table header, and displays "1 of X" footer.
-    const MAX_PAGE_CONTENT_PX = 980;
+    // starts subsequent pages with a fresh table header, and displays "1 of X" footer at the bottom of the A4 sheet.
+    const MAX_PAGE_CONTENT_PX = 990;
     const firstPage = doc.querySelector('section.page');
     if (firstPage) {
       const headerEl = firstPage.querySelector('.header-top');
@@ -589,9 +590,9 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       const rowNodes = tbodyEl ? [...tbodyEl.querySelectorAll('tr')] : [];
 
       if (tableEl && theadEl && tbodyEl && rowNodes.length > 0) {
-        const headerH = (headerEl?.offsetHeight || 0) + (metaEl?.offsetHeight || 0) + 32;
+        const headerH = (headerEl?.offsetHeight || 0) + (metaEl?.offsetHeight || 0) + 28;
         const theadH = (theadEl.offsetHeight || 38) + 8;
-        const footerReservePx = 36;
+        const footerReservePx = 42;
         const rowHeights = rowNodes.map((tr) => Math.max(40, tr.offsetHeight || 60));
 
         const pagesRows = [];
@@ -639,7 +640,6 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     const pageSections = [...doc.querySelectorAll('section.page')];
     const targets = pageSections.length ? pageSections : [doc.body];
     const pageWidthMm = 210;
-    const isMultiPage = targets.length > 1;
     let pdf = null;
 
     for (let i = 0; i < targets.length; i += 1) {
@@ -650,8 +650,8 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         backgroundColor: '#ffffff',
       });
       const imgWidthMm = pageWidthMm;
-      const contentHeightMm = Math.max(90, Math.ceil((canvas.height * imgWidthMm) / canvas.width));
-      const pageHeightMm = isMultiPage ? 297 : Math.min(297, contentHeightMm + 4);
+      const contentHeightMm = Math.max(60, Math.ceil((canvas.height * imgWidthMm) / canvas.width));
+      const pageHeightMm = Math.min(297, contentHeightMm + 2);
       if (i === 0) {
         pdf = new jsPDF({
           orientation: 'p',
@@ -659,7 +659,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
           format: [pageWidthMm, pageHeightMm],
         });
       } else {
-        pdf.addPage([pageWidthMm, 297], 'p');
+        pdf.addPage([pageWidthMm, pageHeightMm], 'p');
       }
       const imgData = canvas.toDataURL('image/jpeg', 0.92);
       pdf.addImage(imgData, 'JPEG', 0, 0, imgWidthMm, Math.min(pageHeightMm, contentHeightMm));
