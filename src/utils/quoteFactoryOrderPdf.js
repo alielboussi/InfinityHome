@@ -398,10 +398,21 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     }
     .page {
       width: 210mm;
-      min-height: 297mm;
-      padding: 14mm 14mm 18mm;
+      padding: 12mm 14mm 14mm;
       background: #ffffff;
       position: relative;
+      page-break-after: always;
+    }
+    .page:last-child {
+      page-break-after: auto;
+    }
+    .page-footer {
+      margin-top: 14px;
+      padding-top: 6px;
+      text-align: center;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #475569;
     }
     .header-top {
       display: flex;
@@ -565,32 +576,93 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       ),
     );
 
-    const target = doc.querySelector('section.page') || doc.body;
-    const canvas = await html2canvas(target, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-    });
+    // Paginate rows into discrete A4 pages so each page ends cleanly on its last row,
+    // starts subsequent pages with a fresh table header, and displays "1 of X" footer.
+    const MAX_PAGE_CONTENT_PX = 980;
+    const firstPage = doc.querySelector('section.page');
+    if (firstPage) {
+      const headerEl = firstPage.querySelector('.header-top');
+      const metaEl = firstPage.querySelector('.meta-row');
+      const tableEl = firstPage.querySelector('table.order-table');
+      const theadEl = tableEl?.querySelector('thead');
+      const tbodyEl = tableEl?.querySelector('tbody');
+      const rowNodes = tbodyEl ? [...tbodyEl.querySelectorAll('tr')] : [];
 
-    const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+      if (tableEl && theadEl && tbodyEl && rowNodes.length > 0) {
+        const headerH = (headerEl?.offsetHeight || 0) + (metaEl?.offsetHeight || 0) + 32;
+        const theadH = (theadEl.offsetHeight || 38) + 8;
+        const footerReservePx = 36;
+        const rowHeights = rowNodes.map((tr) => Math.max(40, tr.offsetHeight || 60));
+
+        const pagesRows = [];
+        let currentRows = [];
+        let usedPx = headerH + theadH + footerReservePx;
+
+        rowNodes.forEach((tr, idx) => {
+          const rh = rowHeights[idx];
+          if (currentRows.length > 0 && usedPx + rh > MAX_PAGE_CONTENT_PX) {
+            pagesRows.push(currentRows);
+            currentRows = [tr];
+            usedPx = theadH + footerReservePx + rh;
+          } else {
+            currentRows.push(tr);
+            usedPx += rh;
+          }
+        });
+        if (currentRows.length > 0) {
+          pagesRows.push(currentRows);
+        }
+
+        const totalPages = pagesRows.length;
+        const theadCloneHtml = theadEl.outerHTML;
+        const headerCloneHtml = (headerEl?.outerHTML || '') + (metaEl?.outerHTML || '');
+
+        doc.body.innerHTML = '';
+        pagesRows.forEach((rowsForPage, pageIdx) => {
+          const sec = doc.createElement('section');
+          sec.className = 'page';
+          sec.innerHTML = `
+            ${pageIdx === 0 ? headerCloneHtml : ''}
+            <table class="order-table">
+              ${theadCloneHtml}
+              <tbody></tbody>
+            </table>
+            <div class="page-footer">${pageIdx + 1} of ${totalPages}</div>
+          `;
+          const pageTbody = sec.querySelector('tbody');
+          rowsForPage.forEach((tr) => pageTbody.appendChild(tr));
+          doc.body.appendChild(sec);
+        });
+      }
+    }
+
+    const pageSections = [...doc.querySelectorAll('section.page')];
+    const targets = pageSections.length ? pageSections : [doc.body];
     const pageWidthMm = 210;
-    const pageHeightMm = 297;
-    const imgWidthMm = pageWidthMm;
-    const imgHeightMm = (canvas.height * imgWidthMm) / canvas.width;
+    const isMultiPage = targets.length > 1;
+    let pdf = null;
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
-    let heightLeft = imgHeightMm;
-    let position = 0;
-
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidthMm, imgHeightMm);
-    heightLeft -= pageHeightMm;
-
-    while (heightLeft > 2) {
-      position = heightLeft - imgHeightMm;
-      pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidthMm, imgHeightMm);
-      heightLeft -= pageHeightMm;
+    for (let i = 0; i < targets.length; i += 1) {
+      const canvas = await html2canvas(targets[i], {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+      const imgWidthMm = pageWidthMm;
+      const contentHeightMm = Math.max(90, Math.ceil((canvas.height * imgWidthMm) / canvas.width));
+      const pageHeightMm = isMultiPage ? 297 : Math.min(297, contentHeightMm + 4);
+      if (i === 0) {
+        pdf = new jsPDF({
+          orientation: 'p',
+          unit: 'mm',
+          format: [pageWidthMm, pageHeightMm],
+        });
+      } else {
+        pdf.addPage([pageWidthMm, 297], 'p');
+      }
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidthMm, Math.min(pageHeightMm, contentHeightMm));
     }
 
     const blob = pdf.output('blob');
