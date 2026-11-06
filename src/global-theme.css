@@ -4752,33 +4752,56 @@ body {
 }
 .warehouse-products-page .warehouse-set-component-results {
   position: absolute;
-  z-index: 30;
+  z-index: 100;
   left: 0;
   right: 0;
   top: calc(100% + 4px);
-  max-height: 220px;
+  margin: 0 !important;
+  max-height: 240px;
   overflow-y: auto;
-  background: #fff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  background: #fff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16) !important;
 }
 .warehouse-products-page .warehouse-set-component-results li {
-  padding: 0;
+  display: block !important;
+  padding: 0 !important;
+  border-bottom: 1px solid #f1f5f9 !important;
 }
+.warehouse-products-page .warehouse-set-component-results li:last-child {
+  border-bottom: none !important;
+}
+.warehouse-products-page .product-form button.warehouse-set-component-results__pick,
 .warehouse-products-page .warehouse-set-component-results__pick {
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  padding: 0.5rem 0.65rem;
-  font: inherit;
-  font-size: 0.88rem;
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  text-align: left !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0.55rem 0.75rem !important;
+  font: inherit !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  line-height: 1.35 !important;
   cursor: pointer;
-  color: inherit;
+  color: #0f172a !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
+.warehouse-products-page .product-form button.warehouse-set-component-results__pick:hover,
+.warehouse-products-page .product-form button.warehouse-set-component-results__pick:focus-visible,
 .warehouse-products-page .warehouse-set-component-results__pick:hover,
 .warehouse-products-page .warehouse-set-component-results__pick:focus-visible {
-  background: #eff6ff;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
   outline: none;
+  transform: none !important;
 }
 .warehouse-products-page .warehouse-set-component-results__empty {
   padding: 0.65rem;
@@ -5218,7 +5241,7 @@ body {
   margin-top: 0.75rem;
   border: 1px solid var(--br-border-soft);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
 }
 .warehouse-products-page .warehouse-packet-linked-header,
 .warehouse-products-page .warehouse-packet-linked-row {
@@ -5235,6 +5258,7 @@ body {
   letter-spacing: 0.02em;
   opacity: 0.75;
   background: #0f172a;
+  border-radius: 7px 7px 0 0;
   border-bottom: 1px solid var(--br-border-soft);
 }
 .warehouse-products-page .warehouse-packet-linked-row {
