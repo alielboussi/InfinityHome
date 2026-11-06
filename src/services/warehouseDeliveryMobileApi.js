@@ -102,6 +102,10 @@ export function createManualStorageSend(payload) {
   return warehouseDeliveryMobileOp('storage-manual-create', payload);
 }
 
+export function reprintStorageSendLabels(payload) {
+  return warehouseDeliveryMobileOp('storage-reprint-labels', payload);
+}
+
 export function listStorageSends(options = {}) {
   return warehouseDeliveryMobileOp('storage-send-list', options);
 }

@@ -71,8 +71,12 @@ function computeReturnCustomerLabelDots({ dpi = 203 } = {}) {
   const timeRowMm = y;
 
   const d = base.dots;
+  const valueX = toDots(29);
+  const valueBoxW = toDots(LABEL_WIDTH_MM - 29 - LABEL_MARGIN_MM - 1);
   return {
     ...d,
+    valueX,
+    valueBoxW,
     skuRowY: textTopDots(skuRowMm),
     nameBlockTop: textTopDots(nameBlockTopMm),
     customerNameRowY: textTopDots(customerNameRowMm),
@@ -117,7 +121,7 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
     `^FO${d.labelX},${y}^A0N,${hf},${hf}^FD${text}^FS`
   );
   const valueField = (y, text, maxLines = 1) => (
-    `^FO0,${y}^A0N,${vf},${vf}^FB${d.labelWidth},${maxLines},0,C,0^FD${text}^FS`
+    `^FO${d.valueX},${y}^A0N,${vf},${vf}^FB${d.valueBoxW},${maxLines},0,C,0^FD${text}^FS`
   );
 
   const barcodeH = d.barcodeHeight;
@@ -139,7 +143,7 @@ export function buildWarehouseReturnCustomerLabelZpl(opts = {}) {
     labelField(d.skuRowY, qrUrl ? 'Return PDF:' : FIELD_LABELS.sku),
     valueField(d.skuRowY, qrUrl ? 'Scan QR' : skuText),
     labelField(d.nameBlockTop, FIELD_LABELS.name),
-    `^FO0,${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.labelWidth},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
+    `^FO${d.valueX},${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.valueBoxW},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
     labelField(d.customerNameRowY, FIELD_LABELS.customerName),
     valueField(d.customerNameRowY, customerName),
     labelField(d.customerPhoneRowY, FIELD_LABELS.customerPhone),

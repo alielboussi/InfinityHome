@@ -620,6 +620,8 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
   const packetsByAssembly = buildPacketsByAssembly(assemblyPacketRows || [], allPackets || []);
   const operatorName = user?.user_metadata?.full_name || user?.full_name || user?.email || 'Warehouse Catalog';
   const now = new Date().toISOString();
+  const rawSaleDate = String(body.sale_date || body.saleDate || '').trim();
+  const effectiveSaleDate = rawSaleDate || now;
   const createdRows = [];
   let totalLabelsPrinted = 0;
 
@@ -693,7 +695,7 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
         customerName,
         customerPhone: customerPhone || '—',
         qty: copies,
-        saleDate: now,
+        saleDate: effectiveSaleDate,
         printedBy: operatorName,
       });
       totalLabelsPrinted += copies;
@@ -715,6 +717,7 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
       customer_name: customerName,
       customer_phone: customerPhone || null,
       quantity: reqLine.quantity,
+      sale_date: effectiveSaleDate,
       status: WAREHOUSE_STORAGE_SEND_STATUSES.IN_STORAGE,
       labels_printed_at: now,
       created_at: now,
@@ -723,6 +726,7 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
       created_by_name: operatorName,
       metadata: {
         manual_catalog_storage: true,
+        sale_date: effectiveSaleDate,
         floor1_deducted_on_create: true,
         floor1_deducted_at: now,
         item_kind: isSet ? 'set' : 'product',
@@ -750,6 +754,111 @@ export async function createManualWarehouseStorageSend(sb, body, user) {
   return {
     storage_sends: createdRows,
     storage_send: createdRows[0] || null,
+    total_labels_printed: totalLabelsPrinted,
+  };
+}
+
+export async function reprintWarehouseStorageLabels(sb, body, user) {
+  if (!canManageCatalog(user) && !canWarehouseKitweStorageCreator(user)) {
+    const err = new Error('Catalog admin access required to reprint Sales Storage labels.');
+    err.status = 403;
+    throw err;
+  }
+
+  const id = String(body.storage_send_id || body.id || '').trim();
+  if (!id) throw new Error('storage_send_id is required.');
+
+  const { storage_send: row } = await getWarehouseStorageSend(sb, id);
+  const operatorName = user?.user_metadata?.full_name || user?.full_name || user?.email || 'Warehouse Catalog';
+  const customerName = String(row.customer_name || 'Customer').trim();
+  const customerPhone = String(row.customer_phone || '—').trim();
+
+  let saleDate = row.sale_date || row.metadata?.sale_date || null;
+  if (!saleDate && row.sale_id) {
+    const { data: saleRow } = await sb
+      .from('sales')
+      .select('sale_date, created_at')
+      .eq('id', row.sale_id)
+      .maybeSingle();
+    saleDate = saleRow?.sale_date || saleRow?.created_at || null;
+  }
+  if (!saleDate) {
+    saleDate = row.created_at || new Date().toISOString();
+  }
+
+  const printedComps = Array.isArray(row?.metadata?.printed_components)
+    ? row.metadata.printed_components
+    : [];
+
+  let totalLabelsPrinted = 0;
+
+  if (printedComps.length > 0) {
+    for (const comp of printedComps) {
+      const copies = Math.max(1, Math.floor(Number(comp.printed_qty) || 1));
+      await printWarehouseStorageSaleLabel(getFirestore(), {
+        name: comp.name || row.assembly_name,
+        sku: comp.sku || row.assembly_sku || comp.name || row.assembly_name,
+        customerName,
+        customerPhone,
+        qty: copies,
+        saleDate,
+        printedBy: operatorName,
+      });
+      totalLabelsPrinted += copies;
+    }
+  } else {
+    const [{ data: allAssemblies }, { data: allSetItems }] = await Promise.all([
+      sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind'),
+      sb.from('warehouse_set_items').select('*'),
+    ]);
+    const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
+    const selectedAsm = assembliesById.get(String(row.assembly_id));
+    if (selectedAsm && isWarehouseSetAssembly(selectedAsm)) {
+      const comps = resolveSetComponentsForManualStorage(
+        selectedAsm.id,
+        allSetItems || [],
+        assembliesById,
+      );
+      if (comps.length > 0) {
+        const setQty = Math.max(1, Math.floor(Number(row.quantity) || 1));
+        for (const { component, perSetQty } of comps) {
+          const copies = Math.max(1, perSetQty * setQty);
+          await printWarehouseStorageSaleLabel(getFirestore(), {
+            name: component.name,
+            sku: component.family_sku || component.name,
+            customerName,
+            customerPhone,
+            qty: copies,
+            saleDate,
+            printedBy: operatorName,
+          });
+          totalLabelsPrinted += copies;
+        }
+      }
+    }
+    if (totalLabelsPrinted === 0) {
+      const copies = Math.max(1, Math.floor(Number(row.quantity) || 1));
+      await printWarehouseStorageSaleLabel(getFirestore(), {
+        name: row.assembly_name,
+        sku: row.assembly_sku || row.assembly_name,
+        customerName,
+        customerPhone,
+        qty: copies,
+        saleDate,
+        printedBy: operatorName,
+      });
+      totalLabelsPrinted += copies;
+    }
+  }
+
+  const now = new Date().toISOString();
+  await sb.from(TABLE).update({
+    labels_printed_at: now,
+    updated_at: now,
+  }).eq('id', row.id);
+
+  return {
+    storage_send: mapRow({ ...row, labels_printed_at: now }),
     total_labels_printed: totalLabelsPrinted,
   };
 }

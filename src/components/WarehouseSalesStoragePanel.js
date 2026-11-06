@@ -8,10 +8,52 @@ import {
 import {
   createManualStorageSend,
   listStorageSends,
+  reprintStorageSendLabels,
 } from '../services/warehouseDeliveryMobileApi';
 import { isWarehouseSetAssembly } from '../utils/warehouseCatalogHierarchy';
 import { expandWarehouseSetItemsRows } from '../utils/warehouseSetItems';
 import { formatWarehouseAdminDateTime } from '../utils/warehouseAdminFormat';
+
+function defaultTodayYmd() {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Lusaka',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (y && m && d) return `${y}-${m}-${d}`;
+  } catch {}
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatSaleDateDisplay(value) {
+  if (!value) return '—';
+  const s = String(value).trim();
+  const dmy = s.match(/^(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(\d{4})$/);
+  if (dmy) {
+    return `${String(dmy[1]).padStart(2, '0')}/${String(dmy[2]).padStart(2, '0')}/${dmy[3]}`;
+  }
+  const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) {
+    return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
+  }
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Lusaka',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(d);
+  } catch {
+    return s;
+  }
+}
 
 /** Sales storage registry — embedded in Floor 1 /warehouse-products/sales-storage view. */
 export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
@@ -29,10 +71,12 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
 
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [saleDate, setSaleDate] = useState(() => defaultTodayYmd());
 
   const [productSearch, setProductSearch] = useState('');
   const [selectedLines, setSelectedLines] = useState([]);
   const [submitBusy, setSubmitBusy] = useState(false);
+  const [reprintBusyId, setReprintBusyId] = useState('');
   const [modalError, setModalError] = useState('');
 
   const load = useCallback(async () => {
@@ -76,6 +120,7 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
     setAddOpen(true);
     setModalError('');
     setNotice('');
+    if (!saleDate) setSaleDate(defaultTodayYmd());
     if (!customers.length || !assemblies.length) {
       loadPickerData();
     }
@@ -183,6 +228,10 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
       setModalError('Please select a customer from /customers.');
       return;
     }
+    if (!saleDate) {
+      setModalError('Please enter the date of sale.');
+      return;
+    }
     if (!selectedLines.length) {
       setModalError('Please add at least one product or set from /warehouse-products.');
       return;
@@ -195,6 +244,7 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
         customer_id: selectedCustomer.id,
         customer_name: selectedCustomer.name,
         customer_phone: selectedCustomer.phone || '',
+        sale_date: saleDate,
         lines: selectedLines.map((l) => ({
           assembly_id: l.assembly_id,
           quantity: Math.max(1, Math.floor(Number(l.quantity) || 1)),
@@ -218,6 +268,25 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
       setModalError(err?.message || 'Failed to print Zebra labels and add to Sales Storage.');
     } finally {
       setSubmitBusy(false);
+    }
+  };
+
+  const handleReprint = async (row) => {
+    if (!row?.id || reprintBusyId) return;
+    setReprintBusyId(String(row.id));
+    setError('');
+    setNotice('');
+    try {
+      const res = await reprintStorageSendLabels({ storage_send_id: row.id });
+      const count = Number(res?.total_labels_printed) || Number(row.quantity) || 1;
+      setNotice(
+        `Reprinted ${count} Zebra label${count === 1 ? '' : 's'} for ${row.storage_number || row.assembly_name}.`,
+      );
+      await load();
+    } catch (err) {
+      setError(err?.message || 'Reprint failed.');
+    } finally {
+      setReprintBusyId('');
     }
   };
 
@@ -256,8 +325,9 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
       >
         <p style={{ color: 'var(--dash-muted)', margin: 0, lineHeight: 1.5, maxWidth: 680 }}>
           POS sold lines and manual customer storage entries in factory warehouse storage. Use the{' '}
-          <strong>+</strong> button to select a customer and products/sets, print Zebra labels (SKU, Code 128,
-          Product Name, Customer Name, Customer Phone, Image QR), and move them from Floor 1 into Sales Storage.
+          <strong>+</strong> button to select a customer, enter the date of sale, pick products/sets, print Zebra
+          labels (SKU, Code 128, Product Name, Customer Name, Customer Phone, Image QR), and move them from Floor 1 into
+          Sales Storage.
         </p>
         <button
           type="button"
@@ -345,14 +415,14 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
               <div style={{ display: 'grid', gap: 16, marginBottom: 18 }}>
                 <div>
                   <label style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>
-                    1. Select Customer (from /customers)
+                    1. Select Customer (from /customers) &amp; Date of Sale
                   </label>
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                       gap: 10,
-                      maxWidth: 720,
+                      maxWidth: 840,
                     }}
                   >
                     <input
@@ -378,11 +448,22 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
                         </option>
                       ))}
                     </select>
+                    <input
+                      type="date"
+                      className="warehouse-catalog-filter-control"
+                      value={saleDate}
+                      onChange={(e) => setSaleDate(e.target.value)}
+                      aria-label="Date of Sale"
+                      title="Date of Sale"
+                      style={{ width: '100%', margin: 0 }}
+                      required
+                    />
                   </div>
                   {selectedCustomer ? (
                     <div style={{ marginTop: 6, fontSize: 13, color: 'var(--dash-muted)' }}>
                       Customer Name: <strong>{selectedCustomer.name}</strong> · Customer Phone:{' '}
-                      <strong>{selectedCustomer.phone || '—'}</strong>
+                      <strong>{selectedCustomer.phone || '—'}</strong> · Sale Date:{' '}
+                      <strong>{formatSaleDateDisplay(saleDate)}</strong>
                     </div>
                   ) : null}
                 </div>
@@ -640,51 +721,82 @@ export default function WarehouseSalesStoragePanel({ onStockChanged } = {}) {
       ) : null}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        {filtered.map((row) => (
-          <article
-            key={row.id}
-            style={{
-              border: '1px solid var(--dash-border-soft, var(--dash-border))',
-              borderRadius: 10,
-              padding: 16,
-              background: 'var(--dash-surface)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontWeight: 700 }}>{row.storage_number || row.id}</div>
-                <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
-                  {formatWarehouseAdminDateTime(row.created_at)}
+        {filtered.map((row) => {
+          const isReprinting = reprintBusyId === String(row.id);
+          const rowSaleDate = row.sale_date || row?.metadata?.sale_date || '';
+          return (
+            <article
+              key={row.id}
+              style={{
+                border: '1px solid var(--dash-border-soft, var(--dash-border))',
+                borderRadius: 10,
+                padding: 16,
+                background: 'var(--dash-surface)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{row.storage_number || row.id}</div>
+                  <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
+                    {formatWarehouseAdminDateTime(row.created_at)}
+                    {rowSaleDate ? ` · Sale Date: ${formatSaleDateDisplay(rowSaleDate)}` : ''}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontWeight: 600 }}>{String(row.status || '').replace(/_/g, ' ')}</span>
+                  <button
+                    type="button"
+                    disabled={Boolean(reprintBusyId)}
+                    onClick={() => handleReprint(row)}
+                    title="Reprint Zebra label(s)"
+                    style={{
+                      width: 'auto',
+                      minWidth: 0,
+                      maxWidth: 'none',
+                      height: 34,
+                      padding: '0 12px',
+                      margin: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      borderRadius: 6,
+                      cursor: reprintBusyId ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <FaPrint size={12} aria-hidden />
+                    <span>{isReprinting ? 'Reprinting…' : 'Reprint'}</span>
+                  </button>
                 </div>
               </div>
-              <div style={{ fontWeight: 600 }}>{String(row.status || '').replace(/_/g, ' ')}</div>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              <strong>{row.assembly_name}</strong>
-              {row.assembly_sku ? ` · ${row.assembly_sku}` : ''}
-              {' · Qty '}
-              {row.quantity}
-            </div>
-            {Array.isArray(row?.metadata?.printed_components)
-            && row.metadata.item_kind === 'set'
-            && row.metadata.printed_components.length > 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--dash-muted)', marginTop: 4 }}>
-                Printed components:{' '}
-                {row.metadata.printed_components
-                  .map((c) => `${c.printed_qty}× ${c.name}`)
-                  .join(', ')}
+              <div style={{ marginTop: 10 }}>
+                <strong>{row.assembly_name}</strong>
+                {row.assembly_sku ? ` · ${row.assembly_sku}` : ''}
+                {' · Qty '}
+                {row.quantity}
               </div>
-            ) : null}
-            <div style={{ color: 'var(--dash-muted)', marginTop: 6 }}>
-              Sent by: {row.created_by_name || row.created_by_email || '—'}
-            </div>
-            <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
-              Receipt: {row.receipt_number || '—'}
-              {row.customer_name ? ` · Customer: ${row.customer_name}` : ''}
-              {row.customer_phone ? ` (${row.customer_phone})` : ''}
-            </div>
-          </article>
-        ))}
+              {Array.isArray(row?.metadata?.printed_components)
+              && row.metadata.item_kind === 'set'
+              && row.metadata.printed_components.length > 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--dash-muted)', marginTop: 4 }}>
+                  Printed components:{' '}
+                  {row.metadata.printed_components
+                    .map((c) => `${c.printed_qty}× ${c.name}`)
+                    .join(', ')}
+                </div>
+              ) : null}
+              <div style={{ color: 'var(--dash-muted)', marginTop: 6 }}>
+                Sent by: {row.created_by_name || row.created_by_email || '—'}
+              </div>
+              <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
+                Receipt: {row.receipt_number || '—'}
+                {row.customer_name ? ` · Customer: ${row.customer_name}` : ''}
+                {row.customer_phone ? ` (${row.customer_phone})` : ''}
+              </div>
+            </article>
+          );
+        })}
       </div>
     </>
   );

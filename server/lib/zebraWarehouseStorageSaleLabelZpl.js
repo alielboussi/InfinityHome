@@ -32,6 +32,9 @@ const FIELD_LABELS = {
   saleDate: 'Sale Date:',
 };
 
+/** Left edge of value column (in mm) so values never overlap "Product Name:" / "Customer Name:" headers. */
+const VALUE_COL_LEFT_MM = 29;
+
 function zplEscape(value) {
   return String(value || '')
     .trim()
@@ -45,6 +48,24 @@ function qrEscape(data) {
     .replace(/\\/g, '\\\\')
     .replace(/,/g, '\\,')
     .replace(/\^/g, '\\^');
+}
+
+function parseSaleDateInput(raw) {
+  if (!raw) return new Date();
+  if (raw instanceof Date) return raw;
+  const s = String(raw).trim();
+  const dmyMatch = s.match(/^(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(\d{4})$/);
+  if (dmyMatch) {
+    const dd = String(dmyMatch[1]).padStart(2, '0');
+    const mm = String(dmyMatch[2]).padStart(2, '0');
+    const yyyy = dmyMatch[3];
+    return new Date(`${yyyy}-${mm}-${dd}T12:00:00+02:00`);
+  }
+  const ymdMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymdMatch) {
+    return new Date(`${s}T12:00:00+02:00`);
+  }
+  return new Date(s);
 }
 
 function computeStorageSaleLabelDots({ dpi = 203 } = {}) {
@@ -72,9 +93,13 @@ function computeStorageSaleLabelDots({ dpi = 203 } = {}) {
   y += ROW_TEXT_MM + BLOCK_GAP_MM;
   const saleDateRowMm = y;
 
+  const valueBoxWidthMm = LABEL_WIDTH_MM - VALUE_COL_LEFT_MM - LABEL_MARGIN_MM - 1;
+
   const d = base.dots;
   return {
     ...d,
+    valueX: toDots(VALUE_COL_LEFT_MM),
+    valueBoxW: toDots(valueBoxWidthMm),
     skuRowY: textTopDots(skuRowMm),
     nameBlockTop: textTopDots(nameBlockTopMm),
     qrBlockY: toDots(qrBlockYMm),
@@ -94,7 +119,7 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
   const pitchMm = labelPitchMm(heightMm, gapMm);
   const copies = Math.max(1, Math.floor(Number(opts.copies) || 1));
 
-  const saleAt = opts.saleDate ? new Date(opts.saleDate) : new Date();
+  const saleAt = parseSaleDateInput(opts.saleDate);
   if (Number.isNaN(saleAt.getTime())) throw new Error('Invalid saleDate');
 
   const widthDots = mmToDots(widthMm, dpi);
@@ -121,7 +146,7 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
     `^FO${d.labelX},${y}^A0N,${hf},${hf}^FD${text}^FS`
   );
   const valueField = (y, text, maxLines = 1) => (
-    `^FO0,${y}^A0N,${vf},${vf}^FB${d.labelWidth},${maxLines},0,C,0^FD${text}^FS`
+    `^FO${d.valueX},${y}^A0N,${vf},${vf}^FB${d.valueBoxW},${maxLines},0,C,0^FD${text}^FS`
   );
 
   const barcodeH = d.barcodeHeight;
@@ -139,7 +164,7 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
     labelField(d.skuRowY, FIELD_LABELS.sku),
     valueField(d.skuRowY, skuText),
     labelField(d.nameBlockTop, FIELD_LABELS.name),
-    `^FO0,${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.labelWidth},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
+    `^FO${d.valueX},${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.valueBoxW},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
     ...(imageQr
       ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${imageMag}^FDLA,${imageQr}^FS`]
       : []),
@@ -156,4 +181,4 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
   return `${lines.join('\n')}\n`;
 }
 
-export { FIELD_LABELS };
+export { FIELD_LABELS, parseSaleDateInput };

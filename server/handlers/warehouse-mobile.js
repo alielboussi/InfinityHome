@@ -134,6 +134,7 @@ import {
   listPosSalesForStorage,
   listWarehouseStorageSends,
   prepareWarehouseStorageDelivery,
+  reprintWarehouseStorageLabels,
   submitWarehouseStorageDelivery,
   submitWarehouseStorageSend,
 } from '../lib/warehouseStorageSends.js';
@@ -3353,6 +3354,10 @@ async function opStorageManualCreate(body, user) {
   return createManualWarehouseStorageSend(getService(), body, user);
 }
 
+async function opStorageReprintLabels(body, user) {
+  return reprintWarehouseStorageLabels(getService(), body, user);
+}
+
 async function opStorageSendList(body, user) {
   const grant = await mobileAccessGrantForUser(user);
   const forProduction = body.for_production === true;
@@ -3554,6 +3559,9 @@ export default async function handler(req, res) {
         break;
       case 'storage-manual-create':
         result = await opStorageManualCreate(body, user);
+        break;
+      case 'storage-reprint-labels':
+        result = await opStorageReprintLabels(body, user);
         break;
       case 'storage-send-list':
         result = await opStorageSendList(body, user);
