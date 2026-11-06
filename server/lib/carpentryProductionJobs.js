@@ -146,9 +146,9 @@ export async function startCarpentryProductionJob(sb, {
   if (insErr) throw new Error(insErr.message || 'Failed to create carpentry job');
   if (!inserted?.id) throw new Error('Failed to create carpentry job (no row returned)');
 
-  for (const loc of ctx.carpentryLocs) {
-    await recomputeWarehouseLocationStockServer(sb, loc.id);
-  }
+  await Promise.all(
+    ctx.carpentryLocs.map((loc) => recomputeWarehouseLocationStockServer(sb, loc.id)),
+  );
 
   return { job: serializeJob(inserted) };
 }

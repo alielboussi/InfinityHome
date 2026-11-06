@@ -80,12 +80,14 @@ export async function deductStoreroomBomMaterials(sb, materials, productQty, sto
 
   const materialIds = [...new Set(lines.map((m) => String(m.material_assembly_id)))];
   const qtyMap = new Map();
-  for (const loc of storeroomLocs) {
-    for (const mid of materialIds) {
-      const q = await loadAssemblyInventoryQty(sb, mid, loc.id);
-      qtyMap.set(`${mid}:${loc.id}`, q);
-    }
-  }
+  await Promise.all(
+    storeroomLocs.flatMap((loc) =>
+      materialIds.map(async (mid) => {
+        const q = await loadAssemblyInventoryQty(sb, mid, loc.id);
+        qtyMap.set(`${mid}:${loc.id}`, q);
+      }),
+    ),
+  );
 
   const usageRows = [];
   for (const line of lines) {

@@ -152,7 +152,9 @@ export async function startUpholsteryProductionJob(sb, {
   if (insErr) throw new Error(insErr.message || 'Failed to create production job');
   if (!inserted?.id) throw new Error('Failed to create production job (no row returned)');
 
-  await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocsForRecompute);
+  await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocsForRecompute, {
+    includeFactory: false,
+  });
 
   return { job: serializeJob(inserted) };
 }

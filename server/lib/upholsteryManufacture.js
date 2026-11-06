@@ -216,14 +216,25 @@ export async function creditUpholsteryFinishedOutput(sb, ctx, productQty) {
   return resolveOrCreateFinishedAtFactory(sb, ctx.finishedTemplate, qty);
 }
 
-export async function recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocsForRecompute = []) {
-  for (const loc of storeroomLocsForRecompute) {
-    await recomputeWarehouseLocationStockServer(sb, loc.id);
+export async function recomputeUpholsteryManufactureLocations(
+  sb,
+  ctx,
+  storeroomLocsForRecompute = [],
+  { includeFactory = true } = {},
+) {
+  const locIds = new Set();
+  (storeroomLocsForRecompute || []).forEach((loc) => {
+    if (loc?.id) locIds.add(String(loc.id));
+  });
+  if (ctx?.floor2Loc?.id) {
+    locIds.add(String(ctx.floor2Loc.id));
   }
-  if (ctx.floor2Loc?.id) {
-    await recomputeWarehouseLocationStockServer(sb, ctx.floor2Loc.id);
+  if (includeFactory) {
+    locIds.add(String(WAREHOUSE_FACTORY_LOCATION_ID));
   }
-  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FACTORY_LOCATION_ID);
+  await Promise.all(
+    [...locIds].map((id) => recomputeWarehouseLocationStockServer(sb, id)),
+  );
 }
 
 /**
