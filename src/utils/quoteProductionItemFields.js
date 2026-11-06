@@ -83,6 +83,30 @@ export function buildQuoteItemMetadataFromPayload(it) {
   return Object.keys(out).length ? out : null;
 }
 
+/** Format per-line production bullets for Quote PDF (`-Wood`, `-Lcm Length * Wcm Width * Hcm Height`, `-Color Code: ...`, `-Leather Code: ...`). */
+export function formatQuoteItemProductionPdfLines(it) {
+  const fields = pickQuoteItemProductionFields(it);
+  const lines = [];
+  if (fields.wood) {
+    lines.push(`-${fields.wood}`);
+  }
+  const dimParts = [];
+  const cleanDim = (val) => String(val).replace(/\s*cm$/i, '').trim();
+  if (fields.dim_l_cm) dimParts.push(`${cleanDim(fields.dim_l_cm)}cm Length`);
+  if (fields.dim_w_cm) dimParts.push(`${cleanDim(fields.dim_w_cm)}cm Width`);
+  if (fields.dim_h_cm) dimParts.push(`${cleanDim(fields.dim_h_cm)}cm Height`);
+  if (dimParts.length) {
+    lines.push(`-${dimParts.join(' * ')}`);
+  }
+  if (fields.color_code) {
+    lines.push(`-Color Code: ${fields.color_code}`);
+  }
+  if (fields.leather_code) {
+    lines.push(`-Leather Code: ${fields.leather_code}`);
+  }
+  return lines;
+}
+
 /** Line row stored on quote_production_routing.metadata.lines and returned to workshop apps. */
 export function buildProductionLineSummaryRow(it) {
   return {

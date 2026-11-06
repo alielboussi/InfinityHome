@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import db from './dataClient';
 import { formatCurrency } from './pdfTheme';
 import { computeQuotationTotals } from './utils/quotationDisplay';
+import { formatQuoteItemProductionPdfLines } from './utils/quoteProductionItemFields';
 import { rewriteLegacyStorageUrl } from './utils/storageImageUrl';
 
 function computeTotals(quote, items = []) {
@@ -101,11 +102,13 @@ function formatName(val) {
 function formatDesc(val) {
   let s = safe(val, '').trim();
   if (!s) return '';
+  s = s.replace(/^[-•\s]+/, '').trim();
+  if (!s) return '';
+  s = s.replace(/^description\s*:\s*/i, '').trim();
+  s = s.replace(/^["“]+|["”]+$/g, '').trim();
+  if (!s) return '';
   s = s.charAt(0).toUpperCase() + s.slice(1);
-  if (!s.startsWith('-')) s = `- ${s}`;
-  else if (!s.startsWith('- ')) s = `- ${s.slice(1).trim()}`;
-  if (!/[.!?]$/.test(s)) s += '.';
-  return s;
+  return `Description: "${s}"`;
 }
 
 function ensureSpace(doc, margin, needed) {
@@ -298,16 +301,23 @@ export async function generateQuotePdf(quote = {}, items = [], opts = {}) {
   const rowLineH = 14;
   const descWidth = tableWidths.item - 10;
 
-  const drawRow = ({ name, desc, qtyText, priceText, amtText }) => {
+  const drawRow = ({ name, specLines = [], desc, qtyText, priceText, amtText }) => {
     const nameLines = doc.splitTextToSize(name || '-', descWidth);
-    const descLines = desc ? doc.splitTextToSize(desc, descWidth) : [];
-    const contentLines = [...nameLines, ...descLines];
+    const wrappedSpecs = [];
+    (specLines || []).forEach((spec) => {
+      if (!spec) return;
+      wrappedSpecs.push(...doc.splitTextToSize(spec, descWidth));
+    });
+    const descLines = desc ? ['', ...doc.splitTextToSize(desc, descWidth)] : [];
+    const contentLines = [...nameLines, ...wrappedSpecs, ...descLines];
     const rowHeight = Math.max(rowLineH * contentLines.length + 8, rowLineH + 8);
     ensureSpace(doc, margin, rowHeight + 12);
     // text only (no borders)
     let textY = cursor + 14;
     contentLines.forEach((ln) => {
-      doc.text(ln, colItem + 6, textY);
+      if (ln) {
+        doc.text(ln, colItem + 6, textY);
+      }
       textY += rowLineH;
     });
     const centerY = cursor + rowHeight / 2 + 4;
@@ -321,13 +331,14 @@ export async function generateQuotePdf(quote = {}, items = [], opts = {}) {
 
   (items || []).forEach(it => {
     const name = formatName(it.name_override || it.name || it.product_name || it.quote_product_name || it.description);
+    const specLines = formatQuoteItemProductionPdfLines(it);
     const desc = formatDesc(it.description);
     const qty = safe(it.quantity, '');
     const unitAbbr = normalizeUnitAbbreviation(it.unit_abbr || it.abbreviation, it.unit_label || it.unit);
     const qtyText = `${qty} ${unitAbbr}`.trim();
     const unitPrice = formatCurrency(Number(it.unit_price || 0), currencyLabel);
     const amount = formatCurrency(Number(it.quantity || 0) * Number(it.unit_price || 0), currencyLabel);
-    drawRow({ name, desc, qtyText, priceText: unitPrice, amtText: amount });
+    drawRow({ name, specLines, desc, qtyText, priceText: unitPrice, amtText: amount });
   });
 
   if (!noPrices) {

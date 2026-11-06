@@ -1123,10 +1123,16 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           setQuote(q => ({ ...q, ...freshQuote }));
           setCurrentQuoteId(freshQuote.id || createdQuoteId || currentQuoteId);
         }
-        if (freshItems) setItems(freshItems);
+        if (freshItems) setItems(freshItems.map(normalizeQuotationItemRow));
 
         const quoteForPdf = freshQuote || { ...quote, id: createdQuoteId, quote_number: out?.quote?.quote_number }; // fallback to current quote state
-        const itemsForPdf = freshItems || getNormalizedItems();
+        const normalizedLocalItems = getNormalizedItems();
+        const itemsForPdf = freshItems
+          ? freshItems.map((row, idx) => ({
+              ...(normalizedLocalItems[idx] || {}),
+              ...normalizeQuotationItemRow(row),
+            }))
+          : normalizedLocalItems;
 
         const qpIds = [...new Set((itemsForPdf||[]).map(i => i.quote_product_id).filter(Boolean))];
         let productMap = new Map();
