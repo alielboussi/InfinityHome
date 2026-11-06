@@ -269,15 +269,11 @@ function buildBilingualDimensionsLines(fields) {
 }
 
 /**
- * Generate a bilingual (English + Arabic below each row) A4 Factory Order PDF
- * with NO prices (only Product and Qty columns) and return `{ blob, base64 }`.
+ * Generate a Factory Order A4 PDF with NO prices (only Product and Qty columns),
+ * header "Order / طلب إنتاج", centered column headers, and right-aligned Arabic-only product rows.
  */
 export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], { route = '' } = {}) {
   const company = await getCompanySettings();
-  const companyName = String(company?.company_name || company?.name || 'Best Rest Furniture').trim();
-  const companyAddress = String(company?.company_address || company?.address || '').trim();
-  const companyPhone = String(company?.company_phone || company?.phone || '').trim();
-  const companyEmail = String(company?.company_email || company?.email || '').trim();
   const logoUrl = getLogoUrl(company);
 
   const phrasesToTranslate = [];
@@ -319,8 +315,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       if (fields.wood) {
         const woodAr = translateTermToArabic(fields.wood, serverTranslations);
         specBlocks.push(`
-          <div class="spec-pair">
-            <div class="en-line">-${escapeHtml(fields.wood)}</div>
+          <div class="spec-pair" dir="rtl">
             <div class="ar-line" dir="rtl">-${escapeHtml(woodAr)}</div>
           </div>
         `);
@@ -329,8 +324,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       const dimLines = buildBilingualDimensionsLines(fields);
       if (dimLines) {
         specBlocks.push(`
-          <div class="spec-pair">
-            <div class="en-line">${escapeHtml(dimLines.en)}</div>
+          <div class="spec-pair" dir="rtl">
             <div class="ar-line" dir="rtl">${escapeHtml(dimLines.ar)}</div>
           </div>
         `);
@@ -338,8 +332,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
       if (fields.color_code) {
         specBlocks.push(`
-          <div class="spec-pair">
-            <div class="en-line">-Color Code: ${escapeHtml(fields.color_code)}</div>
+          <div class="spec-pair" dir="rtl">
             <div class="ar-line" dir="rtl">-رمز اللون: ${escapeHtml(fields.color_code)}</div>
           </div>
         `);
@@ -347,8 +340,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
       if (fields.leather_code) {
         specBlocks.push(`
-          <div class="spec-pair">
-            <div class="en-line">-Leather Code: ${escapeHtml(fields.leather_code)}</div>
+          <div class="spec-pair" dir="rtl">
             <div class="ar-line" dir="rtl">-رمز الجلد: ${escapeHtml(fields.leather_code)}</div>
           </div>
         `);
@@ -358,21 +350,18 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       if (desc) {
         const descAr = translateTermToArabic(desc, serverTranslations);
         specBlocks.push(`
-          <div class="spec-pair desc-pair">
-            <div class="en-line">Description: "${escapeHtml(desc)}"</div>
+          <div class="spec-pair desc-pair" dir="rtl">
             <div class="ar-line" dir="rtl">الوصف: "${escapeHtml(descAr)}"</div>
           </div>
         `);
       }
 
       if (fields.accessories?.length) {
-        const accEn = fields.accessories.join(', ');
         const accAr = fields.accessories
           .map((a) => translateTermToArabic(a, serverTranslations))
           .join(' ، ');
         specBlocks.push(`
-          <div class="spec-pair acc-pair">
-            <div class="en-line">Included Accessories : ${escapeHtml(accEn)}</div>
+          <div class="spec-pair acc-pair" dir="rtl">
             <div class="ar-line" dir="rtl">الإكسسوارات المرفقة : ${escapeHtml(accAr)}</div>
           </div>
         `);
@@ -384,8 +373,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
       return `
         <tr>
-          <td class="col-product">
-            <div class="prod-name-en">${escapeHtml(nameEn)}</div>
+          <td class="col-product" dir="rtl">
             <div class="prod-name-ar" dir="rtl">${escapeHtml(nameAr)}</div>
             ${specBlocks.join('')}
           </td>
@@ -396,7 +384,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     .join('');
 
   const html = `<!DOCTYPE html>
-<html lang="en">
+<html lang="ar">
 <head>
   <meta charset="utf-8" />
   <style>
@@ -434,15 +422,9 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     }
     .title-center h1 {
       margin: 0;
-      font-size: 22px;
+      font-size: 24px;
       font-weight: 800;
       color: #0f172a;
-    }
-    .title-center h2 {
-      margin: 4px 0 0;
-      font-size: 15px;
-      font-weight: 700;
-      color: #1e293b;
     }
     .meta-row {
       display: flex;
@@ -452,9 +434,6 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       font-size: 13px;
       line-height: 1.55;
     }
-    .meta-right {
-      text-align: right;
-    }
     table.order-table {
       width: 100%;
       border-collapse: collapse;
@@ -463,14 +442,15 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     table.order-table thead th {
       background: #0d6efd;
       color: #ffffff;
-      font-size: 13px;
+      font-size: 13.5px;
       font-weight: 700;
-      padding: 8px 10px;
+      padding: 9px 10px;
       border: 1px solid #0d6efd;
+      text-align: center;
     }
     table.order-table thead th.col-product {
       width: 78%;
-      text-align: left;
+      text-align: center;
     }
     table.order-table thead th.col-qty {
       width: 22%;
@@ -478,9 +458,13 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     }
     table.order-table tbody td {
       border-bottom: 1px solid #cbd5e1;
-      padding: 10px;
+      padding: 12px 14px;
       vertical-align: top;
-      font-size: 12.5px;
+      font-size: 13px;
+    }
+    td.col-product {
+      text-align: right;
+      direction: rtl;
     }
     td.col-qty {
       text-align: center;
@@ -488,34 +472,25 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       font-size: 14px;
       vertical-align: middle !important;
     }
-    .prod-name-en {
-      font-weight: 700;
-      font-size: 13.5px;
-      color: #0f172a;
-    }
     .prod-name-ar {
-      font-weight: 700;
-      font-size: 13.5px;
-      color: #1e3a8a;
-      margin-top: 2px;
+      font-weight: 800;
+      font-size: 15px;
+      color: #0f172a;
       margin-bottom: 4px;
+      text-align: right;
     }
     .spec-pair {
       margin-top: 4px;
-      padding-left: 4px;
+      text-align: right;
     }
     .desc-pair, .acc-pair {
       margin-top: 8px;
     }
-    .en-line {
-      color: #1e293b;
-      font-size: 12px;
-    }
     .ar-line {
       color: #0f172a;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 600;
-      margin-top: 1px;
+      text-align: right;
     }
   </style>
 </head>
@@ -526,8 +501,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" crossorigin="anonymous" alt="" />` : ''}
       </div>
       <div class="title-center">
-        <h1>Quotation / طلب إنتاج</h1>
-        <h2>${escapeHtml(companyName)}</h2>
+        <h1>Order / طلب إنتاج</h1>
       </div>
       <div style="width:90px"></div>
     </div>
@@ -540,18 +514,12 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         <div><strong>Quote Date:</strong> ${escapeHtml(quoteDate)}</div>
         <div><strong>Quote Time:</strong> ${escapeHtml(quoteTime)}</div>
       </div>
-      <div class="meta-right">
-        <div><strong>${escapeHtml(companyName)}</strong></div>
-        ${companyAddress ? `<div>${escapeHtml(companyAddress)}</div>` : ''}
-        ${companyPhone ? `<div>Phone: ${escapeHtml(companyPhone)}</div>` : ''}
-        ${companyEmail ? `<div>Email: ${escapeHtml(companyEmail)}</div>` : ''}
-      </div>
     </div>
     <table class="order-table">
       <thead>
         <tr>
-          <th class="col-product">Product &amp; Specifications / المنتج والمواصفات</th>
-          <th class="col-qty">Qty / الكمية</th>
+          <th class="col-product">المنتج والمواصفات / Product &amp; Specifications</th>
+          <th class="col-qty">الكمية / Qty</th>
         </tr>
       </thead>
       <tbody>
