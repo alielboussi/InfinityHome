@@ -7,6 +7,7 @@ import { kioskFooterBottomPad } from '../deliveryKit/lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../deliveryKit/lib/productionDashLayout';
 import { useProductionKioskLocale } from '../deliveryKit/hooks/useProductionKioskLocale';
 import { tUi } from '../deliveryKit/lib/productionKioskI18n';
+import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifest';
 import { theme } from '../shared/theme';
 
 function DashboardTile({ icon, title, width, height, onPress }) {
@@ -42,6 +43,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
 
 export default function DashboardScreen({
   navigation,
+  grant,
   userDisplayName,
   userEmail,
   allowed,
@@ -50,25 +52,31 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
-  const tileCount = 2;
-  const {
-    tileWidth, tileHeight, gap, contentWidth,
-  } = useProductionDashboardTileLayout(tileCount);
 
-  const tiles = [
+  const allTiles = [
     {
       key: 'send',
+      screenId: 'delivery_send_kitwe',
       icon: 'truck-delivery-outline',
       title: tUi('dashDelivery', locale),
       onPress: () => navigation.navigate('KitweSendHome'),
     },
     {
       key: 'sent',
+      screenId: 'delivery_sent_list',
       icon: 'clipboard-text-clock-outline',
       title: tUi('dashSentDeliveries', locale),
       onPress: () => navigation.navigate('KitweSentDeliveries'),
     },
   ];
+
+  const tiles = grant
+    ? allTiles.filter((t) => isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'warehouse_delivery_app'))
+    : allTiles;
+  const tileCount = Math.max(1, tiles.length);
+  const {
+    tileWidth, tileHeight, gap, contentWidth,
+  } = useProductionDashboardTileLayout(tileCount);
 
   if (!allowed) {
     return (

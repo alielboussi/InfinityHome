@@ -6,6 +6,7 @@ import { kiosk } from '../components/kioskStyles';
 import { kioskFooterBottomPad } from '../lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../lib/productionDashLayout';
 import { theme } from '../shared/theme';
+import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifest';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 
@@ -42,6 +43,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
 
 export default function DashboardScreen({
   navigation,
+  grant,
   userDisplayName,
   userEmail,
   allowed,
@@ -50,43 +52,52 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
-  const tileCount = 5;
-  const {
-    tileWidth, tileHeight, gap, contentWidth,
-  } = useProductionDashboardTileLayout(tileCount);
 
-  const tiles = [
+  const allTiles = [
     {
       key: 'create',
+      screenId: 'upholstery_create',
       icon: 'sofa-outline',
       title: tUi('dashCreate', locale),
       onPress: () => navigation.navigate('Create'),
     },
     {
       key: 'manufacture',
+      screenId: 'upholstery_manufacture',
       icon: 'factory',
       title: tUi('dashManufacture', locale),
       onPress: () => navigation.navigate('Manufacture'),
     },
     {
       key: 'jobs',
+      screenId: 'upholstery_jobs',
       icon: 'progress-clock',
       title: tUi('upholsteryJobsTitle', locale),
       onPress: () => navigation.navigate('Jobs'),
     },
     {
       key: 'quotes',
+      screenId: 'upholstery_quotes',
       icon: 'clipboard-text-outline',
       title: tUi('dashUpholsteryQuoteOrders', locale),
       onPress: () => navigation.navigate('UpholsteryQuotes'),
     },
     {
       key: 'repairs',
+      screenId: 'upholstery_repairs',
       icon: 'wrench-clock',
       title: tUi('dashRepairs', locale),
       onPress: () => navigation.navigate('Repairs'),
     },
   ];
+
+  const tiles = grant
+    ? allTiles.filter((t) => isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'warehouse_production_app'))
+    : allTiles;
+  const tileCount = Math.max(1, tiles.length);
+  const {
+    tileWidth, tileHeight, gap, contentWidth,
+  } = useProductionDashboardTileLayout(tileCount);
 
   if (!allowed) {
     return (

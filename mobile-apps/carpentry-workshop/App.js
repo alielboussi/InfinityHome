@@ -23,6 +23,7 @@ const Stack = createNativeStackNavigator();
 
 function MainStack({ navigationRef }) {
   const {
+    grant,
     loading,
     bootstrapped,
     userEmail,
@@ -48,6 +49,7 @@ function MainStack({ navigationRef }) {
         {(props) => (
           <DashboardScreen
             {...props}
+            grant={grant}
             userEmail={userEmail}
             userDisplayName={userDisplayName}
             allowed={allowed}

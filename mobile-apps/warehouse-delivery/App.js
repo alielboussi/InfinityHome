@@ -43,6 +43,7 @@ function MainStack() {
         {(props) => (
           <DashboardScreen
             {...props}
+            grant={grant}
             userEmail={userEmail}
             userDisplayName={userDisplayName}
             allowed={allowed}

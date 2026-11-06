@@ -6,6 +6,7 @@ import { kiosk } from '../components/kioskStyles';
 import { kioskFooterBottomPad } from '../lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../lib/productionDashLayout';
 import { theme } from '../shared/theme';
+import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifest';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 
@@ -48,6 +49,7 @@ function DashboardTile({
 
 export default function DashboardScreen({
   navigation,
+  grant,
   userDisplayName,
   userEmail,
   allowed,
@@ -56,7 +58,9 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready, textAlign } = useProductionKioskLocale();
-  const tileCount = 2;
+  const showJobs = !grant || isWorkshopOrDeliveryScreenAllowed(grant, 'painting_jobs', 'painting_workshop_app');
+  const showRepairs = !grant || isWorkshopOrDeliveryScreenAllowed(grant, 'painting_repairs', 'painting_workshop_app');
+  const tileCount = Math.max(1, (showJobs ? 1 : 0) + (showRepairs ? 1 : 0));
   const { tileWidth, tileHeight, gap, contentWidth } = useProductionDashboardTileLayout(tileCount);
 
   if (!allowed) {
@@ -119,26 +123,30 @@ export default function DashboardScreen({
             { gap, width: contentWidth, paddingHorizontal: 0, marginTop: 12 },
           ]}
         >
-          <DashboardTile
-            icon="format-paint"
-            title={tUi('paintingJobsTitle', locale)}
-            hintKey="dashTileHint_paintingJobs"
-            locale={locale}
-            textAlign={textAlign}
-            width={tileWidth}
-            height={tileHeight}
-            onPress={() => navigation.navigate('Jobs')}
-          />
-          <DashboardTile
-            icon="wrench-clock"
-            title={tUi('dashRepairs', locale)}
-            hintKey="dashTileHint_repairs"
-            locale={locale}
-            textAlign={textAlign}
-            width={tileWidth}
-            height={tileHeight}
-            onPress={() => navigation.navigate('Repairs')}
-          />
+          {showJobs ? (
+            <DashboardTile
+              icon="format-paint"
+              title={tUi('paintingJobsTitle', locale)}
+              hintKey="dashTileHint_paintingJobs"
+              locale={locale}
+              textAlign={textAlign}
+              width={tileWidth}
+              height={tileHeight}
+              onPress={() => navigation.navigate('Jobs')}
+            />
+          ) : null}
+          {showRepairs ? (
+            <DashboardTile
+              icon="wrench-clock"
+              title={tUi('dashRepairs', locale)}
+              hintKey="dashTileHint_repairs"
+              locale={locale}
+              textAlign={textAlign}
+              width={tileWidth}
+              height={tileHeight}
+              onPress={() => navigation.navigate('Repairs')}
+            />
+          ) : null}
         </View>
       </ScrollView>
     </View>

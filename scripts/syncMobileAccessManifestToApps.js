@@ -20,6 +20,8 @@ const targets = [
   path.join(root, 'mobile-apps/warehouse-delivery/shared/mobileAccessManifest.js'),
   path.join(root, 'mobile-apps/warehouse-upholstery/shared/mobileAccessManifest.js'),
   path.join(root, 'mobile-apps/carpentry-workshop/shared/mobileAccessManifest.js'),
+  path.join(root, 'mobile-apps/carpentry-workshop/productionKiosk/shared/mobileAccessManifest.js'),
+  path.join(root, 'mobile-apps/painting-workshop/shared/mobileAccessManifest.js'),
 ];
 
 targets.forEach((filePath) => {

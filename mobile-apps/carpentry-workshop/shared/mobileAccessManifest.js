@@ -94,6 +94,11 @@ export function isCarpentryWorkshopAppAllowed(grant) {
   return grant?.carpentry_workshop_app === 'allow';
 }
 
+/** /user-access — Painting workshop Android app (timed painting jobs → Floor 1 stock). */
+export function isPaintingWorkshopAppAllowed(grant) {
+  return grant?.painting_workshop_app === 'allow';
+}
+
 /** /user-access — Warehouse Delivery Android app (factory truck → Kitwe). */
 export function isWarehouseDeliveryAppAllowed(grant) {
   return grant?.warehouse_delivery_app === 'allow';
@@ -126,6 +131,12 @@ export function evaluateWarehouseProductionAppAccess(grant, email) {
 export function evaluateCarpentryWorkshopAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
   return isCarpentryWorkshopAppAllowed(grant);
+}
+
+/** Same rule as warehouse-mobile `painting-access-self` and painting mobile ops. */
+export function evaluatePaintingWorkshopAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  return isPaintingWorkshopAppAllowed(grant);
 }
 
 /** Driver delivery Android app — User Access → Delivery (`warehouse_delivery_app` only). */
@@ -248,6 +259,110 @@ export function getMobilePermissionMatrixScreens(_userEmail) {
   return MOBILE_SCREENS.filter((screen) => screen.permissionMatrix);
 }
 
+/** Per-app screens shown in /user-access for Upholstery, Carpentry, Painting, and Delivery. */
+export const UPHOLSTERY_APP_SCREENS = Object.freeze([
+  {
+    id: 'upholstery_create',
+    label: 'Create / Stock-in',
+    description: 'Create seating items and add warehouse stock (Zebra labels)',
+  },
+  {
+    id: 'upholstery_manufacture',
+    label: 'Manufacture',
+    description: 'Start upholstery manufacture and variant inlay',
+  },
+  {
+    id: 'upholstery_jobs',
+    label: 'Jobs',
+    description: 'Active upholstery production jobs',
+  },
+  {
+    id: 'upholstery_quotes',
+    label: 'Quote Orders',
+    description: 'Hassan quotation orders routed to upholstery',
+  },
+  {
+    id: 'upholstery_repairs',
+    label: 'Repairs',
+    description: 'Upholstery return & repair queue',
+  },
+]);
+
+export const CARPENTRY_APP_SCREENS = Object.freeze([
+  {
+    id: 'carpentry_create',
+    label: 'Create / Stock-in',
+    description: 'Create carpentry products and add stock',
+  },
+  {
+    id: 'carpentry_manufacture',
+    label: 'Manufacture',
+    description: 'Floor manufacture and BOM deduction',
+  },
+  {
+    id: 'carpentry_jobs',
+    label: 'Jobs',
+    description: 'Active carpentry production jobs',
+  },
+  {
+    id: 'carpentry_painting',
+    label: 'Send to Painting',
+    description: 'Send finished carpentry units to painting',
+  },
+  {
+    id: 'carpentry_quotes',
+    label: 'Quote Orders',
+    description: 'Hassan quotation orders routed to carpentry',
+  },
+  {
+    id: 'carpentry_repairs',
+    label: 'Repairs',
+    description: 'Carpentry return & repair queue',
+  },
+]);
+
+export const PAINTING_APP_SCREENS = Object.freeze([
+  {
+    id: 'painting_jobs',
+    label: 'Painting Jobs',
+    description: 'Timed painting jobs; finishing credits Floor 1 stock',
+  },
+  {
+    id: 'painting_repairs',
+    label: 'Repairs',
+    description: 'Color / painting return & repair queue',
+  },
+]);
+
+export const DELIVERY_APP_SCREENS = Object.freeze([
+  {
+    id: 'delivery_send_kitwe',
+    label: 'Send Delivery',
+    description: 'Scan products, driver signature, and send truck delivery to Kitwe',
+  },
+  {
+    id: 'delivery_sent_list',
+    label: 'Sent Deliveries',
+    description: 'View sent deliveries and print delivery notes',
+  },
+]);
+
+const WORKSHOP_AND_DELIVERY_SCREEN_GROUPS = Object.freeze([
+  { flag: 'warehouse_production_app', screens: UPHOLSTERY_APP_SCREENS },
+  { flag: 'carpentry_workshop_app', screens: CARPENTRY_APP_SCREENS },
+  { flag: 'painting_workshop_app', screens: PAINTING_APP_SCREENS },
+  { flag: 'warehouse_delivery_app', screens: DELIVERY_APP_SCREENS },
+]);
+
+export function isWorkshopOrDeliveryScreenAllowed(grant, screenId, appFlag) {
+  if (!grant) return false;
+  const row = grant.screens?.[screenId];
+  if (row && (row.view === 'allow' || row.view === 'deny')) {
+    return row.view === 'allow';
+  }
+  return Boolean(appFlag && grant[appFlag] === 'allow');
+}
+
 export function defaultMobileAccessGrant() {
   const screens = {};
   MOBILE_SCREENS.forEach((screen) => {
@@ -258,6 +373,11 @@ export function defaultMobileAccessGrant() {
       edit: 'deny',
       delete: 'deny',
     };
+  });
+  WORKSHOP_AND_DELIVERY_SCREEN_GROUPS.forEach(({ screens: groupScreens }) => {
+    groupScreens.forEach((screen) => {
+      screens[screen.id] = buildMobileScreenAccessRow(false);
+    });
   });
   return {
     app: 'warehouse-catalog',
@@ -272,6 +392,7 @@ export function defaultMobileAccessGrant() {
     warehouse_production_kitwe: 'deny',
     warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
+    painting_workshop_app: 'deny',
     screens,
   };
 }
@@ -447,11 +568,38 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     ? 'allow'
     : 'deny';
 
+  merged.painting_workshop_app = (
+    merged.painting_workshop_app === 'allow' || merged.painting_workshop_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
   merged.warehouse_delivery_app = (
     merged.warehouse_delivery_app === 'allow' || merged.warehouse_delivery_app === true
   )
     ? 'allow'
     : 'deny';
+
+  WORKSHOP_AND_DELIVERY_SCREEN_GROUPS.forEach(({ flag, screens: groupScreens }) => {
+    const rawScreens = grant?.screens || {};
+    const hasExplicitGroupScreen = groupScreens.some(
+      (s) => rawScreens[s.id]?.view === 'allow' || rawScreens[s.id]?.view === 'deny',
+    );
+    const fallbackAllowed = merged[flag] === 'allow';
+    groupScreens.forEach((s) => {
+      const explicitView = rawScreens[s.id]?.view;
+      const allowed = explicitView === 'allow'
+        ? true
+        : explicitView === 'deny'
+          ? false
+          : fallbackAllowed;
+      merged.screens[s.id] = buildMobileScreenAccessRow(allowed);
+    });
+    if (hasExplicitGroupScreen) {
+      const anyAllowed = groupScreens.some((s) => merged.screens[s.id]?.view === 'allow');
+      merged[flag] = anyAllowed ? 'allow' : 'deny';
+    }
+  });
 
   merged.warehouse_production_kitwe = kitweDeliveryAllowed ? 'allow' : 'deny';
   merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweDeliveryAllowed);

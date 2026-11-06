@@ -4,6 +4,8 @@ import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import {
   buildMobileScreenAccessRow,
   defaultMobileAccessGrant,
+  DELIVERY_APP_SCREENS,
+  isWorkshopOrDeliveryScreenAllowed,
   sanitizeMobileAccessGrantForUser,
 } from '../mobile/mobileAccessManifest';
 
@@ -33,19 +35,15 @@ async function saveDeliveryAppAccess(uid, mobile_access, mobile_display_name) {
 }
 
 function normalizeGrant(raw) {
-  const base = defaultMobileAccessGrant();
-  if (!raw) return base;
-  return {
-    ...base,
-    ...raw,
-    warehouse_delivery_app: raw.warehouse_delivery_app === 'allow' ? 'allow' : 'deny',
-  };
+  return sanitizeMobileAccessGrantForUser(raw || defaultMobileAccessGrant(), '');
 }
 
-/** Delivery app uses warehouse_delivery_app only — clear legacy Kitwe flags on save. */
+/** Delivery app uses warehouse_delivery_app + delivery_* screens — clear legacy Kitwe flags on save. */
 function grantForDeliverySave(grant) {
+  const anyAllowed = DELIVERY_APP_SCREENS.some((s) => grant.screens?.[s.id]?.view === 'allow');
   return {
     ...grant,
+    warehouse_delivery_app: anyAllowed ? 'allow' : 'deny',
     warehouse_production_kitwe: 'deny',
     screens: {
       ...(grant.screens || {}),
@@ -74,6 +72,21 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
     return () => clearTimeout(timer);
   }, [toast]);
 
+  const setScreenAccess = (screenId, allowed) => {
+    setGrant((prev) => {
+      const nextScreens = {
+        ...(prev.screens || {}),
+        [screenId]: buildMobileScreenAccessRow(allowed),
+      };
+      const anyAllowed = DELIVERY_APP_SCREENS.some((s) => nextScreens[s.id]?.view === 'allow');
+      return {
+        ...prev,
+        warehouse_delivery_app: anyAllowed ? 'allow' : 'deny',
+        screens: nextScreens,
+      };
+    });
+  };
+
   const handleSave = async () => {
     setBusy(true);
     setError('');
@@ -100,19 +113,17 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
   if (!userRow) return null;
 
   const displayName = userRow.display_name || userRow.email || 'User';
-  const deliveryChecked = grant.warehouse_delivery_app === 'allow';
 
   return (
     <div className="mobile-access-panel" role="dialog" aria-labelledby="delivery-access-title">
       <div className="mobile-access-panel__head">
         <div>
           <h3 id="delivery-access-title" className="mobile-access-panel__title">
-            {DELIVERY_APP_NAME} app — {displayName}
+            {DELIVERY_APP_NAME} — {displayName}
           </h3>
           <p className="mobile-access-panel__hint">
-            Allows the <strong>Warehouse Delivery</strong> Android app: scan products, driver signature, and submit
-            factory truck deliveries. User must sign in with <strong>Google on the app</strong> first; then enable
-            login (Users table) and turn on delivery access here.
+            Users always open the <strong>Delivery</strong> dashboard first. <strong>Yes</strong> enables that page on
+            the app; <strong>No</strong> hides it.
           </p>
         </div>
         <div className="mobile-access-panel__head-actions">
@@ -133,33 +144,6 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
       {error ? <div className="report-error mobile-access-panel__error">{error}</div> : null}
       {toast ? <div className="report-success mobile-access-panel__error">{toast}</div> : null}
 
-      <div className="mobile-access-panel__section mobile-access-panel__section--permissions">
-        <h4 className="mobile-access-panel__section-label">Delivery app</h4>
-        <div className="mobile-access-permission-list">
-          <div className="mobile-access-permission-item">
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-delivery-app">
-              <span className="mobile-access-permission-item__title">Warehouse Delivery (Android)</span>
-              <span className="mobile-access-permission-item__desc">
-                Kitwe truck send, sent deliveries list, and delivery note print. Off by default until enabled here.
-              </span>
-            </label>
-            <select
-              id="mobile-access-delivery-app"
-              className="mobile-access-yesno"
-              value={deliveryChecked ? 'yes' : 'no'}
-              onChange={(e) => setGrant((prev) => ({
-                ...prev,
-                warehouse_delivery_app: e.target.value === 'yes' ? 'allow' : 'deny',
-              }))}
-              aria-label="Warehouse Delivery (Android)"
-            >
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
       <div className="mobile-access-panel__section">
         <label className="mobile-access-name-label" htmlFor="delivery-app-display-name">
           Name in app
@@ -172,6 +156,44 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
           value={appDisplayName}
           onChange={(e) => setAppDisplayName(e.target.value)}
         />
+      </div>
+
+      <div className="mobile-access-panel__section">
+        <table className="mobile-access-matrix mobile-access-matrix--yesno">
+          <thead>
+            <tr>
+              <th className="mobile-access-matrix__screen-col">Screen</th>
+              <th className="mobile-access-matrix__access-col">Access</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DELIVERY_APP_SCREENS.map((screen) => {
+              const allowed = isWorkshopOrDeliveryScreenAllowed(
+                grant,
+                screen.id,
+                'warehouse_delivery_app',
+              );
+              return (
+                <tr key={screen.id}>
+                  <td className="mobile-access-matrix__screen-col" title={screen.description}>
+                    {screen.label}
+                  </td>
+                  <td className="mobile-access-matrix__access-col">
+                    <select
+                      className="mobile-access-yesno"
+                      value={allowed ? 'yes' : 'no'}
+                      onChange={(e) => setScreenAccess(screen.id, e.target.value === 'yes')}
+                      aria-label={`${screen.label} access`}
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

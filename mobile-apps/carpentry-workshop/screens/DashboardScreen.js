@@ -6,6 +6,7 @@ import { kiosk } from '../productionKiosk/components/kioskStyles';
 import { kioskFooterBottomPad } from '../productionKiosk/lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../productionKiosk/lib/productionDashLayout';
 import { theme } from '../shared/theme';
+import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifest';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi } from '../productionKiosk/lib/productionKioskI18n';
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
@@ -47,6 +48,7 @@ function DashboardTile({
 
 export default function DashboardScreen({
   navigation,
+  grant,
   userDisplayName,
   userEmail,
   allowed,
@@ -55,14 +57,11 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready, textAlign } = useProductionKioskLocale();
-  const tileCount = 6;
-  const {
-    tileWidth, tileHeight, gap, contentWidth,
-  } = useProductionDashboardTileLayout(tileCount);
 
-  const tiles = [
+  const allTiles = [
     {
       key: 'create',
+      screenId: 'carpentry_create',
       icon: 'hammer-wrench',
       title: tUi('dashCreate', locale),
       hintKey: 'dashTileHint_create',
@@ -70,6 +69,7 @@ export default function DashboardScreen({
     },
     {
       key: 'manufacture',
+      screenId: 'carpentry_manufacture',
       icon: 'factory',
       title: tUi('dashManufacture', locale),
       hintKey: 'dashTileHint_manufacture',
@@ -77,6 +77,7 @@ export default function DashboardScreen({
     },
     {
       key: 'jobs',
+      screenId: 'carpentry_jobs',
       icon: 'progress-clock',
       title: tUi('carpentryJobsTitle', locale),
       hintKey: 'dashTileHint_jobs',
@@ -84,6 +85,7 @@ export default function DashboardScreen({
     },
     {
       key: 'painting',
+      screenId: 'carpentry_painting',
       icon: 'format-paint',
       title: tUi('dashPainting', locale),
       hintKey: 'dashTileHint_painting',
@@ -91,6 +93,7 @@ export default function DashboardScreen({
     },
     {
       key: 'quotes',
+      screenId: 'carpentry_quotes',
       icon: 'clipboard-text-outline',
       title: tUi('dashCarpentryQuoteOrders', locale),
       hintKey: 'dashTileHint_quotes',
@@ -98,12 +101,21 @@ export default function DashboardScreen({
     },
     {
       key: 'repairs',
+      screenId: 'carpentry_repairs',
       icon: 'wrench-clock',
       title: tUi('dashRepairs', locale),
       hintKey: 'dashTileHint_repairs',
       onPress: () => navigation.navigate('Repairs'),
     },
   ];
+
+  const tiles = grant
+    ? allTiles.filter((t) => isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'carpentry_workshop_app'))
+    : allTiles;
+  const tileCount = Math.max(1, tiles.length);
+  const {
+    tileWidth, tileHeight, gap, contentWidth,
+  } = useProductionDashboardTileLayout(tileCount);
 
   if (!allowed) {
     return (
