@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -8,7 +8,6 @@ import {
   Modal,
   PixelRatio,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -28,61 +27,60 @@ import {
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
-import { extractProductionBaseName } from '../productionKiosk/lib/productionItemName';
 
 const CARD_MIN_SIZE = PixelRatio.roundToNearestPixel((8 * 160) / 2.54 / PixelRatio.get());
 const CARD_GAP = 12;
 
 function floor2Qty(item) {
-  return Math.max(0, Math.floor(Number(item?.floor2_qty) || 0));
+  return Math.max(0, Math.floor(Number(item?.floor2_qty ?? item?.quantity) || 0));
 }
 
-function groupFloor2Products(products) {
-  const map = new Map();
-  (products || []).forEach((item) => {
-    const rawName = String(item?.name || '').trim();
-    const familyBase = extractProductionBaseName(rawName) || rawName || String(item.id);
-    const key = familyBase.toLowerCase();
-    if (!map.has(key)) map.set(key, { familyBase, items: [] });
-    map.get(key).items.push(item);
-  });
-  return [...map.entries()].map(([key, { familyBase, items }]) => {
-    const sorted = [...items].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-    const totalFloor2 = sorted.reduce((sum, row) => sum + floor2Qty(row), 0);
-    const imageUrl = resolveProductImageUrl(sorted.find((r) => r.image_url)?.image_url || '');
-    return { key, displayName: familyBase, items: sorted, totalFloor2, imageUrl };
-  }).sort((a, b) => a.displayName.localeCompare(b.displayName));
+function resolveFloor2ProductImage(item) {
+  return (
+    resolveProductImageUrl(item?.floor2_image_url)
+    || resolveProductImageUrl(item?.image_url)
+    || resolveProductImageUrl(item?.family_image_url)
+    || ''
+  );
 }
 
 export default function PaintingScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [products, setProducts] = useState([]);
+  const productsRef = useRef([]);
+  productsRef.current = products;
+  const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [inlayGroup, setInlayGroup] = useState(null);
   const [qtyModal, setQtyModal] = useState(null);
   const [qtyDraft, setQtyDraft] = useState('1');
 
-  const groups = useMemo(() => groupFloor2Products(products), [products]);
-
-  const loadList = useCallback(async () => {
+  const loadList = useCallback(async ({ fromPull = false } = {}) => {
     if (!allowed) {
       setProducts([]);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
-    setLoading(true);
+    const hasCached = productsRef.current.length > 0;
+    if (!hasCached) setLoading(true);
+    else if (fromPull) setRefreshing(true);
     setError('');
     try {
       const list = await fetchCarpentryFinishingProducts();
-      setProducts(Array.isArray(list) ? list : []);
+      const sorted = (Array.isArray(list) ? list : [])
+        .slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+      setProducts(sorted);
     } catch (e) {
       setError(e?.message || tUi('finishingLoadFailed', locale));
-      setProducts([]);
+      if (!hasCached) setProducts([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [allowed, locale]);
 
@@ -92,7 +90,19 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
     }, [loadList]),
   );
 
+  const filteredProducts = useMemo(() => {
+    const q = String(search || '').trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (item) => String(item.name || '').toLowerCase().includes(q)
+        || String(item.family_sku || '').toLowerCase().includes(q),
+    );
+  }, [products, search]);
+
+  const hasSearch = Boolean(String(search || '').trim());
+
   const openQtySend = (item) => {
+    if (busyId) return;
     const max = floor2Qty(item);
     if (max < 1) {
       Alert.alert(tUi('paintingConfirmTitle', locale), tUi('finishingNoStock', locale));
@@ -102,20 +112,50 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
     setQtyModal({ item, max });
   };
 
+  const handleQtyTextChange = (txt) => {
+    const cleaned = String(txt || '').replace(/[^0-9]/g, '');
+    if (!cleaned) {
+      setQtyDraft('');
+      return;
+    }
+    const max = qtyModal?.max ?? 1;
+    const n = Math.floor(Number(cleaned) || 0);
+    if (n > max) {
+      setQtyDraft(String(max));
+      return;
+    }
+    setQtyDraft(String(n));
+  };
+
   const confirmSend = async () => {
     if (!qtyModal?.item) return;
     const max = qtyModal.max;
-    const qty = Math.max(1, Math.floor(Number(qtyDraft) || 1));
-    if (qty > max) {
-      Alert.alert(tUi('paintingConfirmTitle', locale), tUi('finishingNoStock', locale));
+    const rawNum = Math.floor(Number(qtyDraft) || 0);
+    if (!Number.isFinite(rawNum) || rawNum < 1) {
+      Alert.alert(tUi('paintingConfirmTitle', locale), tUi('needQty', locale));
+      return;
+    }
+    if (rawNum > max) {
+      Alert.alert(
+        tUi('paintingConfirmTitle', locale),
+        tUi('paintingQtyExceedsStock', locale).replace('{max}', String(max)),
+      );
       return;
     }
     const item = qtyModal.item;
-    const assemblyId = String(item.id);
+    const assemblyId = String(item.id || item.assembly_id || '');
     setQtyModal(null);
     setBusyId(assemblyId);
     try {
-      await sendCarpentryProductToPainting({ assemblyId, productQty: qty });
+      await sendCarpentryProductToPainting({ assemblyId, productQty: rawNum });
+      setProducts((prev) =>
+        prev.map((row) => {
+          const rid = String(row.id || row.assembly_id || '');
+          if (rid !== assemblyId) return row;
+          const nextQty = Math.max(0, floor2Qty(row) - rawNum);
+          return { ...row, floor2_qty: nextQty, quantity: nextQty };
+        }),
+      );
       Alert.alert(tUi('paintingConfirmTitle', locale), tUi('paintingDone', locale));
       await loadList();
     } catch (e) {
@@ -125,12 +165,53 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
     }
   };
 
-  const onCardPress = (group) => {
-    if (group.items.length === 1) {
-      openQtySend(group.items[0]);
-    } else {
-      setInlayGroup(group);
-    }
+  const renderProductCard = ({ item }) => {
+    const id = String(item.id || item.assembly_id || '');
+    const qty = floor2Qty(item);
+    const cardImage = resolveFloor2ProductImage(item);
+    const cardBusy = busyId === id;
+
+    return (
+      <ProductionPressableHint
+        hintKey="dashTileHint_painting"
+        locale={locale}
+        textAlign={textAlign}
+        disabled={Boolean(busyId)}
+        onPress={() => openQtySend(item)}
+        style={({ pressed }) => [
+          styles.tile,
+          pressed && styles.tilePressed,
+          cardBusy && styles.tileBusy,
+        ]}
+      >
+        {cardImage ? (
+          <Image source={{ uri: cardImage }} style={styles.tileImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.tileImagePlaceholder} />
+        )}
+        <View style={styles.tileOverlay} />
+        {!cardImage ? (
+          <View style={styles.tileNoImageCenter} pointerEvents="none">
+            <MaterialCommunityIcons name="image-off-outline" size={48} color={theme.textMuted} />
+          </View>
+        ) : null}
+        <View style={styles.qtyBadge} pointerEvents="none">
+          <MaterialCommunityIcons name="format-paint" size={20} color="#fff" />
+          <Text style={styles.qtyBadgeText}>{String(qty)}</Text>
+        </View>
+        <View style={styles.tileNameBar}>
+          <Text style={styles.tileName}>
+            {item.name}
+          </Text>
+          <Text style={styles.tileQty}>
+            {tUi('paintingAvailableQty', locale).replace('{qty}', String(qty))}
+          </Text>
+        </View>
+        {cardBusy ? (
+          <ActivityIndicator color={theme.primary} size="small" style={styles.tileSpinner} />
+        ) : null}
+      </ProductionPressableHint>
+    );
   };
 
   if (!allowed) {
@@ -146,6 +227,11 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
         </Pressable>
         <Text style={kiosk.noticeErr}>{tUi('accessDenied', locale)}</Text>
         {accessHint ? <Text style={[kiosk.hint, { textAlign }]}>{accessHint}</Text> : null}
+        {typeof onRefreshAccess === 'function' ? (
+          <Pressable style={[kiosk.btn, { marginTop: 16 }]} onPress={() => onRefreshAccess({ background: false })}>
+            <Text style={kiosk.btnText}>{tUi('retryAccess', locale)}</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }
@@ -161,62 +247,34 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('paintingIntro', locale)}</Text>
+      <TextInput
+        style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
+        placeholder={tUi('paintingSearch', locale)}
+        placeholderTextColor={theme.textMuted}
+        value={search}
+        onChangeText={setSearch}
+        autoCorrect={false}
+        autoCapitalize="none"
+        clearButtonMode="while-editing"
+      />
+      {hasSearch && !loading && filteredProducts.length === 0 && !error ? (
+        <Text style={[kiosk.searchHint, { textAlign }]}>{tUi('paintingSearchNoMatch', locale)}</Text>
+      ) : null}
       {loading && products.length === 0 ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 16 }} />
       ) : null}
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
       <FlatList
         style={styles.list}
-        data={groups}
-        keyExtractor={(g) => g.key}
-        refreshing={loading}
-        onRefresh={loadList}
-        contentContainerStyle={groups.length === 0 ? styles.listEmpty : styles.gridContent}
-        renderItem={({ item: group }) => {
-          const multi = group.items.length > 1;
-          const cardBusy = group.items.some((row) => busyId === String(row.id));
-          return (
-            <ProductionPressableHint
-              hintKey="dashTileHint_painting"
-              locale={locale}
-              textAlign={textAlign}
-              disabled={Boolean(busyId)}
-              onPress={() => onCardPress(group)}
-              style={({ pressed }) => [
-                styles.tile,
-                !multi && pressed && styles.tilePressed,
-                cardBusy && styles.tileBusy,
-              ]}
-            >
-              {group.imageUrl ? (
-                <Image source={{ uri: group.imageUrl }} style={styles.tileImage} resizeMode="cover" />
-              ) : (
-                <View style={styles.tileImagePlaceholder} />
-              )}
-              <View style={styles.tileOverlay} />
-              <View style={styles.tileNameBar}>
-                <Text style={styles.tileName} numberOfLines={2}>{group.displayName}</Text>
-                <Text style={styles.tileQty}>
-                  {tUi('finishingFloor2Qty', locale).replace('{qty}', String(group.totalFloor2))}
-                </Text>
-              </View>
-              {multi ? (
-                <Pressable
-                  style={styles.inlayBtn}
-                  onPress={() => setInlayGroup(group)}
-                  hitSlop={12}
-                >
-                  <MaterialCommunityIcons name="layers-triple" size={22} color="#fff" />
-                </Pressable>
-              ) : null}
-              {cardBusy ? (
-                <ActivityIndicator color={theme.primary} size="small" style={styles.tileSpinner} />
-              ) : null}
-            </ProductionPressableHint>
-          );
-        }}
+        data={filteredProducts}
+        keyExtractor={(item) => String(item.id || item.assembly_id)}
+        refreshing={refreshing}
+        onRefresh={() => loadList({ fromPull: true })}
+        contentContainerStyle={filteredProducts.length === 0 ? styles.listEmpty : styles.gridContent}
+        renderItem={renderProductCard}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          !loading && !error ? (
+          !loading && !error && !hasSearch ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>
               {tUi('finishingEmpty', locale)}
             </Text>
@@ -224,56 +282,53 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
         }
       />
 
-      <Modal visible={Boolean(inlayGroup)} transparent animationType="fade" onRequestClose={() => setInlayGroup(null)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setInlayGroup(null)}>
-          <Pressable style={styles.inlayCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>{inlayGroup?.displayName}</Text>
-            <ScrollView style={styles.inlayScroll}>
-              {(inlayGroup?.items || []).map((item) => (
-                <Pressable
-                  key={String(item.id)}
-                  style={styles.inlayRow}
-                  onPress={() => {
-                    setInlayGroup(null);
-                    openQtySend(item);
-                  }}
-                >
-                  <Text style={styles.inlayProductName} numberOfLines={2}>{item.name}</Text>
-                  <Text style={styles.inlayQtyRight}>
-                    {tUi('finishingFloor2Qty', locale).replace('{qty}', String(floor2Qty(item)))}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <Pressable style={[kiosk.btn, { marginTop: 12 }]} onPress={() => setInlayGroup(null)}>
-              <Text style={kiosk.btnText}>{tUi('cancel', locale)}</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
       <Modal visible={Boolean(qtyModal)} transparent animationType="fade" onRequestClose={() => setQtyModal(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setQtyModal(null)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>{tUi('paintingConfirmTitle', locale)}</Text>
+            <Text style={styles.modalProductName}>{qtyModal?.item?.name || ''}</Text>
             <Text style={styles.modalSub}>
               {tUi('paintingConfirmBody', locale)
                 .replace('{name}', qtyModal?.item?.name || '')
-                .replace('{qty}', qtyDraft)}
+                .replace('{qty}', qtyDraft || '0')
+                .replace('{max}', String(qtyModal?.max ?? 0))}
             </Text>
-            <Text style={styles.modalSub}>{tUi('paintingQtyLabel', locale)}</Text>
-            <TextInput
-              style={[kiosk.input, { textAlign: 'center' }]}
-              keyboardType="number-pad"
-              value={qtyDraft}
-              onChangeText={setQtyDraft}
-            />
+            <Text style={styles.modalLabel}>
+              {tUi('paintingQtyLabel', locale).replace('{max}', String(qtyModal?.max ?? 0))}
+            </Text>
+            <View style={styles.qtyStepperRow}>
+              <Pressable
+                style={styles.stepBtn}
+                onPress={() => {
+                  const cur = Math.max(1, Math.floor(Number(qtyDraft) || 1));
+                  setQtyDraft(String(Math.max(1, cur - 1)));
+                }}
+              >
+                <Text style={styles.stepBtnText}>−</Text>
+              </Pressable>
+              <TextInput
+                style={[kiosk.input, styles.qtyInput]}
+                keyboardType="number-pad"
+                value={qtyDraft}
+                onChangeText={handleQtyTextChange}
+              />
+              <Pressable
+                style={styles.stepBtn}
+                onPress={() => {
+                  const max = qtyModal?.max ?? 1;
+                  const cur = Math.max(0, Math.floor(Number(qtyDraft) || 0));
+                  setQtyDraft(String(Math.min(max, cur + 1)));
+                }}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </Pressable>
+            </View>
             <View style={styles.modalActions}>
               <Pressable style={[kiosk.btn, styles.modalBtn]} onPress={() => setQtyModal(null)}>
                 <Text style={kiosk.btnText}>{tUi('cancel', locale)}</Text>
               </Pressable>
-              <Pressable style={[kiosk.btn, styles.modalBtn]} onPress={confirmSend}>
-                <Text style={kiosk.btnText}>{tUi('confirm', locale)}</Text>
+              <Pressable style={[kiosk.btn, kiosk.btnPrimary, styles.modalBtn]} onPress={confirmSend}>
+                <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('confirm', locale)}</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -286,6 +341,7 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   intro: { marginBottom: 8 },
+  searchInput: { marginBottom: 12 },
   list: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   gridContent: { paddingBottom: 24 },
@@ -301,24 +357,74 @@ const styles = StyleSheet.create({
     backgroundColor: theme.card,
     overflow: 'hidden',
   },
-  tileImage: { ...StyleSheet.absoluteFillObject },
-  tileImagePlaceholder: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.surface },
-  tileOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15, 23, 42, 0.45)' },
-  tilePressed: { opacity: 0.92, borderColor: theme.primary },
+  tileImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  tileImagePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.surface,
+  },
+  tileOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.38)',
+  },
+  tileNoImageCenter: {
+    ...StyleSheet.absoluteFillObject,
+    top: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tilePressed: {
+    opacity: 0.92,
+    borderColor: theme.primary,
+  },
   tileBusy: { opacity: 0.65 },
-  tileNameBar: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 14, zIndex: 1 },
-  tileName: { fontSize: 20, fontWeight: '700', color: '#fff', textAlign: 'center' },
-  tileQty: { fontSize: 14, fontWeight: '600', color: '#e2e8f0', textAlign: 'center', marginTop: 4 },
-  inlayBtn: {
+  tileNameBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.86)',
+    zIndex: 1,
+  },
+  tileName: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#ffffff',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  tileQty: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#38bdf8',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  qtyBadge: {
     position: 'absolute',
     top: 12,
     right: 12,
     zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: theme.primary,
     borderRadius: 14,
-    padding: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
-  tileSpinner: { position: 'absolute', bottom: 12, alignSelf: 'center' },
+  qtyBadgeText: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  tileSpinner: { position: 'absolute', bottom: 12, alignSelf: 'center', zIndex: 3 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.85)',
@@ -332,27 +438,38 @@ const styles = StyleSheet.create({
     borderColor: theme.border,
     padding: 20,
   },
-  inlayCard: {
-    backgroundColor: theme.surfaceElevated,
-    borderRadius: theme.radius,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 20,
-    maxHeight: '80%',
-  },
-  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 8, color: theme.text },
-  modalSub: { fontSize: 14, color: theme.textMuted, marginBottom: 8 },
-  inlayScroll: { maxHeight: 360 },
-  inlayRow: {
+  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 6, color: theme.text },
+  modalProductName: { fontSize: 17, fontWeight: '700', marginBottom: 6, color: theme.primary },
+  modalSub: { fontSize: 14, color: theme.textMuted, marginBottom: 10 },
+  modalLabel: { fontSize: 14, fontWeight: '600', color: theme.textSecondary, marginBottom: 8 },
+  qtyStepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 4,
   },
-  inlayProductName: { flex: 1, fontSize: 16, fontWeight: '600', color: theme.text },
-  inlayQtyRight: { fontSize: 15, fontWeight: '700', color: theme.textSecondary },
+  stepBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBtnText: {
+    color: theme.text,
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  qtyInput: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '800',
+  },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 16 },
   modalBtn: { flex: 1 },
 });

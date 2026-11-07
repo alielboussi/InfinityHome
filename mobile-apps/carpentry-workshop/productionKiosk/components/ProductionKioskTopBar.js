@@ -7,7 +7,12 @@ export default function ProductionKioskTopBar({ title, locale, onToggleLocale, h
   return (
     <View style={[styles.header, compact && styles.headerCompact]}>
       <View style={styles.headerSide} />
-      <Text style={[kiosk.title, styles.titleCenter]} numberOfLines={2}>
+      <Text
+        style={[kiosk.title, styles.titleCenter]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
         {title}
       </Text>
       <View style={styles.headerSide}>

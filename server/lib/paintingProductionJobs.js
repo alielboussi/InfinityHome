@@ -105,9 +105,6 @@ async function loadPaintingProductContext(sb, assemblyId) {
   if (aErr) throw new Error(aErr.message || 'Failed to load product');
   if (!assembly?.id) throw new Error('Product not found');
 
-  const catalog = listCarpentryCatalogProducts([assembly]);
-  if (!catalog[0]) throw new Error('Product is not on the Carpentry catalog');
-
   return { productId, assembly };
 }
 

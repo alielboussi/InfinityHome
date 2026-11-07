@@ -355,6 +355,55 @@ const UI_STRINGS = {
   upholsteryJobStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتًا' },
   upholsteryJobStatus_completed: { en: 'Completed', ar: 'مكتمل' },
   dashPaintingTitle: { en: 'Painting', ar: 'دهان' },
+  dashPainting: { en: 'Painting', ar: 'دهان' },
+  paintingTitle: { en: 'Painting', ar: 'دهان' },
+  paintingIntro: {
+    en: 'Floor 2 products. Tap a product to enter the quantity to send to Painting.',
+    ar: 'منتجات الطابق 2. اضغط على المنتج لإدخال الكمية المراد إرسالها للدهان.',
+  },
+  paintingSearch: { en: 'Search Floor 2 product or SKU…', ar: 'ابحث عن منتج الطابق 2 أو SKU…' },
+  paintingSearchNoMatch: { en: 'No Floor 2 products match your search.', ar: 'لا توجد منتجات مطابقة للبحث في الطابق 2.' },
+  paintingAvailableQty: { en: 'Available on Floor 2: {qty}', ar: 'المتوفر في الطابق 2: {qty}' },
+  paintingConfirmTitle: { en: 'Send to Painting', ar: 'إرسال للدهان' },
+  paintingConfirmBody: {
+    en: 'Send {qty} × {name} from Floor 2 to Painting? (Available: {max})',
+    ar: 'إرسال {qty} × {name} من الطابق 2 إلى الدهان؟ (المتوفر: {max})',
+  },
+  paintingQtyLabel: { en: 'Quantity to send (max {max})', ar: 'الكمية المرسلة (حد أقصى {max})' },
+  paintingQtyExceedsStock: {
+    en: 'Cannot send more than available Floor 2 stock ({max}).',
+    ar: 'لا يمكن إرسال كمية أكبر من المتوفر في الطابق 2 ({max}).',
+  },
+  paintingDone: {
+    en: 'Sent to Painting — Floor 2 stock deducted and painting job queued.',
+    ar: 'تم الإرسال إلى الدهان — خُصم مخزون الطابق 2 وأُضيفت مهمة الدهان.',
+  },
+  paintingFailed: { en: 'Could not send to Painting', ar: 'تعذر الإرسال إلى الدهان' },
+  carpentryJobsTitle: { en: 'Jobs', ar: 'المهام' },
+  dashTileHint_create: {
+    en: 'Create new carpentry items and add stock.',
+    ar: 'إنشاء عناصر نجارة جديدة وإضافة المخزون.',
+  },
+  dashTileHint_manufacture: {
+    en: 'Manufacture carpentry items and deduct storeroom BOM materials.',
+    ar: 'تصنيع عناصر النجارة وخصم مواد المستودع.',
+  },
+  dashTileHint_jobs: {
+    en: 'Active carpentry production jobs.',
+    ar: 'مهام إنتاج النجارة النشطة.',
+  },
+  dashTileHint_painting: {
+    en: 'Send Floor 2 products to the Painting department.',
+    ar: 'إرسال منتجات الطابق 2 إلى قسم الدهان.',
+  },
+  dashTileHint_quotes: {
+    en: 'Hassan quotation orders routed to Carpentry.',
+    ar: 'طلبات عروض أسعار حسن الموجهة للنجارة.',
+  },
+  dashTileHint_repairs: {
+    en: 'Carpentry return and repair queue.',
+    ar: 'قائمة مرتجعات وإصلاحات النجارة.',
+  },
   dashHintDismiss: { en: 'Tap outside to close', ar: 'اضغط خارج النافذة للإغلاق' },
   dashTileHint_paintingJobs: {
     en: 'Your painting queue — play/pause timer, stop when done to credit Warehouse Floor 1.',
