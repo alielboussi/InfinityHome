@@ -163,6 +163,15 @@ function main() {
     fs.writeFileSync(pushNotifPath, pushText, 'utf8');
   }
 
+  const prodApiPath = path.join(kioskPath, 'services', 'productionApi.js');
+  if (fs.existsSync(prodApiPath)) {
+    let apiText = fs.readFileSync(prodApiPath, 'utf8');
+    apiText = apiText
+      .replace("const CLIENT_SOURCE = 'warehouse_production_app';", "const CLIENT_SOURCE = 'carpentry_workshop_app';")
+      .replace(/portal_catalog:\s*'upholstery'/g, "portal_catalog: 'carpentry'");
+    fs.writeFileSync(prodApiPath, apiText, 'utf8');
+  }
+
   const screensDest = path.join(kioskPath, 'screens');
   fs.mkdirSync(screensDest, { recursive: true });
   copyDir(path.join(upholsteryRoot, 'screens'), screensDest, {

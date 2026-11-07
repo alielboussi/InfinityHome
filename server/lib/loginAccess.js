@@ -25,12 +25,22 @@ export function isLoginAccessAdmin(email) {
   return normalizeEmail(email) === PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL;
 }
 
-export async function getLoginAccessRecord(uid) {
+export async function getLoginAccessRecord(uid, emailFallback = '') {
   const db = getFirestore();
-  if (!db || !uid) return null;
-  const snap = await db.collection(COLLECTION).doc(String(uid)).get();
-  if (!snap.exists) return null;
-  return { id: snap.id, ...snap.data() };
+  if (!db) return null;
+  if (uid) {
+    const snap = await db.collection(COLLECTION).doc(String(uid)).get();
+    if (snap.exists) return { id: snap.id, ...snap.data() };
+  }
+  const normEmail = normalizeEmail(emailFallback);
+  if (normEmail) {
+    const qSnap = await db.collection(COLLECTION).where('email', '==', normEmail).limit(1).get();
+    if (!qSnap.empty) {
+      const docSnap = qSnap.docs[0];
+      return { id: docSnap.id, ...docSnap.data() };
+    }
+  }
+  return null;
 }
 
 export async function listLoginAccessRecords() {

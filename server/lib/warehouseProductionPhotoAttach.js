@@ -66,7 +66,7 @@ function getService() {
 }
 
 async function assertProductionKioskUser(user) {
-  const record = await getLoginAccessRecord(user?.id);
+  const record = await getLoginAccessRecord(user?.id, user?.email);
   const grant = normalizeMobileAccessGrant(record?.mobile_access || {}, user?.email);
   if (evaluateWarehouseProductionAppAccess(grant, user?.email)) {
     return grant;
@@ -104,9 +104,31 @@ async function runPendingPortalSetup(sb, body, user, assembly) {
     .select('id, metadata')
     .eq('id', assemblyId)
     .maybeSingle();
-  const upholsteryMeta = parseUpholsteryMeta(freshRow || assembly);
-  if (upholsteryMeta?.selected) {
-    return { applied: 'upholstery', skipped: true };
+
+  const record = await getLoginAccessRecord(user?.id, user?.email);
+  const grant = normalizeMobileAccessGrant(record?.mobile_access || {}, user?.email);
+  const isCarpentryOnlyUser = evaluateCarpentryWorkshopAppAccess(grant, user?.email)
+    && !evaluateWarehouseProductionAppAccess(grant, user?.email);
+  const presetLabel = String(body.preset || body.product_preset || '').trim();
+  const { PRODUCTION_CARPENTRY_PRESETS } = await import('../../src/utils/productionItemName.js');
+  const isCarpentryPreset = Boolean(
+    presetLabel
+    && PRODUCTION_CARPENTRY_PRESETS.some((p) => p.toLowerCase() === presetLabel.toLowerCase()),
+  );
+  const resolvedPortalCatalog = (isCarpentryOnlyUser || isCarpentryPreset)
+    ? 'carpentry'
+    : (pending.portal_catalog || pending.portalCatalog || 'upholstery');
+
+  if (resolvedPortalCatalog === 'carpentry') {
+    const { parseCarpentryMeta } = await import('../../src/utils/carpentryCatalogView.js');
+    if (parseCarpentryMeta(freshRow || assembly)?.selected) {
+      return { applied: 'carpentry', skipped: true };
+    }
+  } else {
+    const upholsteryMeta = parseUpholsteryMeta(freshRow || assembly);
+    if (upholsteryMeta?.selected) {
+      return { applied: 'upholstery', skipped: true };
+    }
   }
 
   const warehouseLocationId = String(
@@ -130,8 +152,10 @@ async function runPendingPortalSetup(sb, body, user, assembly) {
 
   const { autoSelectProductionPortalCatalog } = await import('./productionPortalAutoSelect.js');
   return autoSelectProductionPortalCatalog(sb, assemblyId, {
-    clientSource: pending.client_source || body.client_source || '',
-    portal_catalog: pending.portal_catalog || pending.portalCatalog || 'upholstery',
+    clientSource: resolvedPortalCatalog === 'carpentry'
+      ? 'carpentry_workshop_app'
+      : (pending.client_source || body.client_source || ''),
+    portal_catalog: resolvedPortalCatalog,
     auto_portal_catalog: pending.auto_portal_catalog,
     initialQuantity: floor2SeedQty,
     floor2_product_qty: floor2SeedQty,

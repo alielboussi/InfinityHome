@@ -212,7 +212,7 @@ async function requireUser(req) {
 }
 
 async function mobileAccessGrantForUser(user) {
-  const record = await getLoginAccessRecord(user?.id);
+  const record = await getLoginAccessRecord(user?.id, user?.email);
   return normalizeMobileAccessGrant(record?.mobile_access || {}, user?.email);
 }
 
@@ -1521,7 +1521,7 @@ async function removeProductionAssemblyDraft(sb, assemblyId) {
 }
 
 async function opProductionPacketCreate(body, user) {
-  await assertProductionKioskUser(user);
+  const grant = await assertProductionKioskUser(user);
   const sb = getService();
   let familySku = normalizeWarehouseProductSku(body.sku || body.family_sku);
   if (!familySku) {
@@ -1545,10 +1545,22 @@ async function opProductionPacketCreate(body, user) {
     ? await ensureCategoryIdForProductionPreset(sb, presetLabel)
     : null;
 
-  const clientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const isCarpentryOnlyUser = evaluateCarpentryWorkshopAppAccess(grant, user?.email)
+    && !evaluateWarehouseProductionAppAccess(grant, user?.email);
+  const { PRODUCTION_CARPENTRY_PRESETS } = await import('../../src/utils/productionItemName.js');
+  const isCarpentryPreset = Boolean(
+    presetLabel
+    && PRODUCTION_CARPENTRY_PRESETS.some((p) => p.toLowerCase() === presetLabel.toLowerCase()),
+  );
+  const rawClientSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const clientSource = (isCarpentryOnlyUser || isCarpentryPreset) && rawClientSource === 'warehouse_production_app'
+    ? 'carpentry_workshop_app'
+    : rawClientSource;
   const deferProductPhoto = body.defer_product_photo === true
     || body.deferProductPhoto === true;
-  const portalExplicit = body.portal_catalog || body.auto_portal_catalog;
+  const portalExplicit = (isCarpentryOnlyUser || isCarpentryPreset) && String(body.portal_catalog || '').toLowerCase() === 'upholstery'
+    ? 'carpentry'
+    : (body.portal_catalog || body.auto_portal_catalog);
   const {
     resolveProductionPortalChannel,
     resolveFloor2SeedQuantity,
@@ -1556,9 +1568,8 @@ async function opProductionPacketCreate(body, user) {
   const portalChannel = resolveProductionPortalChannel(clientSource, portalExplicit);
   const floor2SeedQty = resolveFloor2SeedQuantity(body, initialQty);
   const deferPortalCatalog = deferProductPhoto === true
-    && portalChannel === 'upholstery'
-    && clientSource === 'warehouse_production_app';
-  /** Upholstery app: finished qty on Floor 1; raw WIP seed on Floor 2 after portal (deferred until AI photo). */
+    && (portalChannel === 'upholstery' || portalChannel === 'carpentry');
+  /** Upholstery & Carpentry deferred photo: finished qty on Floor 1 & Floor 2 seed applied after AI photo succeeds. */
   const openingFloor1Qty = deferPortalCatalog ? 0 : (portalChannel === 'upholstery' ? 0 : initialQty);
   let assemblyInserted = false;
   let assemblyId = '';
@@ -1743,7 +1754,7 @@ async function opProductionPacketCreate(body, user) {
         ? {
           initial_quantity: initialQty,
           floor2_product_qty: floor2SeedQty,
-          portal_catalog: body.portal_catalog || portalChannel || 'upholstery',
+          portal_catalog: portalChannel || body.portal_catalog || 'upholstery',
           client_source: clientSource,
           warehouse_location_id: warehouseLocationId,
         }
@@ -1783,7 +1794,7 @@ async function opProductionAssemblyPhoto(body, user) {
 }
 
 async function opProductionStockIncrease(body, user) {
-  await assertProductionKioskUser(user);
+  const grant = await assertProductionKioskUser(user);
   const sb = getService();
   const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
   const packetId = String(body.packet_id || '').trim();
@@ -1793,7 +1804,12 @@ async function opProductionStockIncrease(body, user) {
   if (!warehouseLocationId) throw new Error('warehouse_location_id is required.');
   if (delta < 1) throw new Error('Increase quantity must be at least 1.');
 
-  const printSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const isCarpentryOnlyUser = evaluateCarpentryWorkshopAppAccess(grant, user?.email)
+    && !evaluateWarehouseProductionAppAccess(grant, user?.email);
+  const rawPrintSource = String(body.client_source || '').trim() || 'warehouse_production_kiosk';
+  const printSource = isCarpentryOnlyUser && rawPrintSource === 'warehouse_production_app'
+    ? 'carpentry_workshop_app'
+    : rawPrintSource;
   let labelName = '';
   let labelSku = '';
   let qtyBefore = 0;
@@ -2460,9 +2476,12 @@ async function opBomValidate(body) {
 }
 
 async function assertMobileDeliverySubmitAccess(user) {
-  if (canManageCatalog(user)) return;
+  if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) return;
   const grant = await mobileAccessGrantForUser(user);
   if (evaluateWarehouseDeliveryDriverAppAccess(grant, user?.email)) return;
+  if (evaluateWarehouseProductionAppAccess(grant, user?.email)) return;
+  if (evaluateCarpentryWorkshopAppAccess(grant, user?.email)) return;
+  if (evaluatePaintingWorkshopAppAccess(grant, user?.email)) return;
   const err = new Error('Warehouse delivery app access is not enabled for your account.');
   err.status = 403;
   throw err;
