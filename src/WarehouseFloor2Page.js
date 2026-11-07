@@ -5,7 +5,7 @@ import db from './dataClient';
 import './kitwe-catalog-page.css';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import WarehouseFloor2WipThumbnail from './components/WarehouseFloor2WipThumbnail';
-import { uploadWarehouseFloor2WipFamilyImage } from './services/warehouseCatalog';
+import { deleteWarehouseAssembly, uploadWarehouseFloor2WipFamilyImage } from './services/warehouseCatalog';
 import { fileToSquareCatalogImage } from './utils/squareCatalogImage';
 import {
   mergeWarehouseFloor2WipFamilyImageMetadata,
@@ -273,6 +273,31 @@ export default function WarehouseFloor2Page({
       await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to update Floor 2 stock on hand');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const handleDeleteFloor2Product = async (assemblyId) => {
+    if (!canManage) return;
+    const id = String(assemblyId || '').trim();
+    if (!id) return;
+    const asm = assemblyById.get(id);
+    const name = asm?.name || id;
+    if (!window.confirm(`Delete product "${name}" from Floor 2 and catalog?`)) return;
+    const prevFloor2Stock = floor2Stock;
+    const prevRuns = runs;
+    setError('');
+    setFloor2Stock((prev) => prev.filter((r) => String(r.assembly_id) !== id));
+    setRuns((prev) => prev.filter((r) => String(r.assembly_id) !== id));
+    setBusyId(`del-${id}`);
+    try {
+      await deleteWarehouseAssembly(id);
+      load({ forceFresh: true });
+    } catch (err) {
+      setFloor2Stock(prevFloor2Stock);
+      setRuns(prevRuns);
+      setError(err?.message || 'Failed to delete Floor 2 product');
     } finally {
       setBusyId('');
     }
@@ -766,6 +791,7 @@ export default function WarehouseFloor2Page({
                       <th>Product</th>
                       <th className="floor2-inlay-col-sku">SKU</th>
                       <th className="floor2-inlay-col-stock">Stock on hand</th>
+                      {canManage ? <th style={{ width: 92 }}>Actions</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -789,6 +815,18 @@ export default function WarehouseFloor2Page({
                           <td><strong>{asm?.name || aid}</strong></td>
                           <td className="floor2-inlay-col-sku">{asm?.family_sku || '—'}</td>
                           <td className="floor2-inlay-col-stock">{renderStockEditor(aid, row.quantity)}</td>
+                          {canManage ? (
+                            <td>
+                              <button
+                                type="button"
+                                className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
+                                disabled={busyId === `del-${aid}`}
+                                onClick={() => handleDeleteFloor2Product(aid)}
+                              >
+                                {busyId === `del-${aid}` ? '…' : 'Delete'}
+                              </button>
+                            </td>
+                          ) : null}
                         </tr>
                       );
                     })}

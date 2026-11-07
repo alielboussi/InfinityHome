@@ -841,24 +841,24 @@ export async function deleteWarehouseAssembly(assemblyId) {
   }
 
   const { purgeWarehouseAssemblyInventoryAndFloorRuns } = await import('../utils/warehouseAssemblyDelete.js');
-  await purgeWarehouseAssemblyInventoryAndFloorRuns(db, id, { skipRecompute: true });
-  await db.from(SET_ITEMS).delete().eq('set_assembly_id', id);
-  await db.from(SET_ITEMS).delete().eq('component_assembly_id', id);
-  const { data: links } = await db.from(ASSEMBLY_PACKETS).select('packet_id').eq('assembly_id', id);
-  await db.from(ASSEMBLY_PACKETS).delete().eq('assembly_id', id);
-  for (const row of links || []) {
-    await refreshPacketPrimaryAssemblyId(row.packet_id);
-  }
   const now = new Date().toISOString();
-  await db.from(PACKETS).update({ assembly_id: null, updated_at: now }).eq('assembly_id', id);
-  await db.from(ASSEMBLY_LOCATIONS).delete().eq('assembly_id', id);
-  await db.from(ASSEMBLY_COLORS).delete().eq('assembly_id', id);
-  const { error } = await db.from(ASSEMBLIES).delete().eq('id', id);
+  const [, , , { data: links }, , , , , { error }] = await Promise.all([
+    purgeWarehouseAssemblyInventoryAndFloorRuns(db, id, { skipRecompute: true }),
+    db.from(SET_ITEMS).delete().eq('set_assembly_id', id),
+    db.from(SET_ITEMS).delete().eq('component_assembly_id', id),
+    db.from(ASSEMBLY_PACKETS).select('packet_id').eq('assembly_id', id),
+    db.from(ASSEMBLY_PACKETS).delete().eq('assembly_id', id),
+    db.from(PACKETS).update({ assembly_id: null, updated_at: now }).eq('assembly_id', id),
+    db.from(ASSEMBLY_LOCATIONS).delete().eq('assembly_id', id),
+    db.from(ASSEMBLY_COLORS).delete().eq('assembly_id', id),
+    db.from(ASSEMBLIES).delete().eq('id', id),
+  ]);
   if (error) throw new Error(error.message || 'Failed to delete product');
   invalidateWarehouseCatalogCache();
   const { invalidateProductionPortalSnapshotCache } = await import('../utils/loadProductionPortalCatalogInputs.js');
   invalidateProductionPortalSnapshotCache();
   Promise.allSettled([
+    ...(links || []).map((row) => refreshPacketPrimaryAssemblyId(row.packet_id)),
     purgeWarehouseAssemblyImages(id),
     purgeWarehouseFloor2WipImages(id),
   ]).catch(() => {});

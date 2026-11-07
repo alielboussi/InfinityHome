@@ -2378,34 +2378,28 @@ async function opAssemblyDelete(body, user) {
 
   const sb = getService();
 
-  await purgeWarehouseAssemblyInventoryAndFloorRuns(sb, id, { skipRecompute: true });
-
-  await Promise.all([
+  const [, , , , , , , { error }] = await Promise.all([
+    purgeWarehouseAssemblyInventoryAndFloorRuns(sb, id, { skipRecompute: true }),
     sb.from('warehouse_set_items').delete().eq('set_assembly_id', id),
     sb.from('warehouse_set_items').delete().eq('component_assembly_id', id),
     sb.from('warehouse_assembly_packets').delete().eq('assembly_id', id),
     sb.from('warehouse_assembly_locations').delete().eq('assembly_id', id),
     sb.from('warehouse_assembly_colors').delete().eq('assembly_id', id),
     sb.from('warehouse_packets').update({ assembly_id: null }).eq('assembly_id', id),
+    sb.from('warehouse_assemblies').delete().eq('id', id),
   ]);
-
-  const { error } = await sb.from('warehouse_assemblies').delete().eq('id', id);
   if (error) throw new Error(error.message || 'Failed to delete warehouse product.');
 
-  try {
-    await sb.storage.from('warehouse-packet-images').remove([
-      `assemblies/${id}/product.jpg`,
-      `assemblies/${id}/product.jpeg`,
-      `assemblies/${id}/product.png`,
-      `assemblies/${id}/product.webp`,
-      `floor2-wip/${id}/wip.jpg`,
-      `floor2-wip/${id}/wip.jpeg`,
-      `floor2-wip/${id}/wip.png`,
-      `floor2-wip/${id}/wip.webp`,
-    ]);
-  } catch {
-    /* ignore storage cleanup errors */
-  }
+  sb.storage.from('warehouse-packet-images').remove([
+    `assemblies/${id}/product.jpg`,
+    `assemblies/${id}/product.jpeg`,
+    `assemblies/${id}/product.png`,
+    `assemblies/${id}/product.webp`,
+    `floor2-wip/${id}/wip.jpg`,
+    `floor2-wip/${id}/wip.jpeg`,
+    `floor2-wip/${id}/wip.png`,
+    `floor2-wip/${id}/wip.webp`,
+  ]).catch(() => {});
 
   return { deleted: true, id, deleted_by: user?.email || null };
 }

@@ -175,12 +175,16 @@ export default function CarpentryPage() {
   };
 
   const removeProduct = async (assemblyId) => {
-    setBusyId(assemblyId);
+    const targetId = String(assemblyId);
+    const prevCarpentry = carpentryProducts;
     setError('');
+    setCarpentryProducts((prev) => prev.filter((p) => String(p.id) !== targetId));
+    setBusyId(targetId);
     try {
-      await postCarpentryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: false });
-      await load({ forceFresh: true });
+      await postCarpentryCatalog({ op: 'save-product', assembly_id: targetId, selected: false });
+      load({ forceFresh: true });
     } catch (err) {
+      setCarpentryProducts(prevCarpentry);
       setError(err?.message || 'Failed to remove product');
     } finally {
       setBusyId('');

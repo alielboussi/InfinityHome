@@ -479,13 +479,16 @@ export default function WarehouseProductsPage() {
   const handleDeleteProduct = async (row) => {
     if (!canManage) return;
     if (!window.confirm(`Delete product "${row.name}"? This removes all warehouse stock (Floor 1 and Floor 2 WIP) and unlinks packets.`)) return;
-    setSaving(true);
+    const targetId = String(row.id);
+    const prevAssemblies = assemblies;
     setError('');
+    setAssemblies((prev) => prev.filter((a) => String(a.id) !== targetId));
+    setSaving(true);
     try {
-      await deleteWarehouseAssembly(row.id);
-      setAssemblies((prev) => prev.filter((a) => String(a.id) !== String(row.id)));
-      await load();
+      await deleteWarehouseAssembly(targetId);
+      load();
     } catch (err) {
+      setAssemblies(prevAssemblies);
       setError(err?.message || 'Delete failed');
     } finally {
       setSaving(false);

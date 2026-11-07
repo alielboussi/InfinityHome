@@ -172,12 +172,16 @@ export default function UpholsteryPage() {
   };
 
   const removeProduct = async (assemblyId) => {
-    setBusyId(assemblyId);
+    const targetId = String(assemblyId);
+    const prevUpholstery = upholsteryProducts;
     setError('');
+    setUpholsteryProducts((prev) => prev.filter((p) => String(p.id) !== targetId));
+    setBusyId(targetId);
     try {
-      await postUpholsteryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: false });
-      await load({ forceFresh: true });
+      await postUpholsteryCatalog({ op: 'save-product', assembly_id: targetId, selected: false });
+      load({ forceFresh: true });
     } catch (err) {
+      setUpholsteryProducts(prevUpholstery);
       setError(err?.message || 'Failed to remove product');
     } finally {
       setBusyId('');
