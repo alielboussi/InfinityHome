@@ -183,8 +183,29 @@ export async function fetchCarpentryProductionJobs({ activeOnly = false, limit =
       limit,
     });
   } catch {
-    return { ok: true, jobs: [] };
+    return { ok: true, jobs: [], quote_orders: [] };
   }
+}
+
+export async function fetchProductionQuoteOrdersForRoute(route) {
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(await staffAuthHeaders()),
+    };
+    const resp = await fetch(apiUrl('/api/warehouse-mobile'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ op: 'production-quotes-list', route }),
+    });
+    const { payload } = await parseResponse(resp);
+    if (resp.ok && payload?.ok !== false) {
+      return Array.isArray(payload?.rows) ? payload.rows : [];
+    }
+  } catch {
+    // ignore
+  }
+  return [];
 }
 
 export async function fetchPaintingProductionJobs({ activeOnly = false, limit = 150 } = {}) {

@@ -35,9 +35,33 @@ function rmDeep(p) {
   if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
 }
 
+function safeWriteFileSync(filePath, contents) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  try {
+    fs.writeFileSync(filePath, contents, 'utf8');
+  } catch {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {
+      /* ignore */
+    }
+    fs.writeFileSync(filePath, contents, 'utf8');
+  }
+}
+
 function copyFile(src, dest) {
+  const buf = fs.readFileSync(src);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(src, dest);
+  try {
+    fs.writeFileSync(dest, buf);
+  } catch {
+    try {
+      if (fs.existsSync(dest)) fs.unlinkSync(dest);
+    } catch {
+      /* ignore */
+    }
+    fs.writeFileSync(dest, buf);
+  }
 }
 
 function copyDir(srcDir, destDir, { fileFilter } = {}) {
@@ -63,13 +87,13 @@ function patchRepoImports(root) {
       if (!fs.statSync(filePath).isFile()) continue;
       let text = fs.readFileSync(filePath, 'utf8');
       const next = text.replace(/(['"])(\.\.\/){3}src\//g, '$1../../../../src/');
-      if (next !== text) fs.writeFileSync(filePath, next);
+      if (next !== text) safeWriteFileSync(filePath, next);
     }
   }
   const zambiaSrc = path.join(repoRoot, 'src', 'utils', 'zambiaDateTime.js');
   const zambiaDest = path.join(root, 'lib', 'zambiaDateTime.js');
   if (fs.existsSync(zambiaSrc)) {
-    fs.writeFileSync(
+    safeWriteFileSync(
       zambiaDest,
       '/** Standalone for carpentry-workshop. */\n' + fs.readFileSync(zambiaSrc, 'utf8'),
     );
@@ -92,7 +116,7 @@ function vendorRepoUtils(root) {
       const p = path.join(vendorDir, name);
       let text = fs.readFileSync(p, 'utf8');
       const next = text.replace(/\.\.\/constants\//g, '../_repoConstants/');
-      if (next !== text) fs.writeFileSync(p, next);
+      if (next !== text) safeWriteFileSync(p, next);
     }
   }
   function rewriteFile(filePath) {
@@ -100,7 +124,7 @@ function vendorRepoUtils(root) {
     const relToLib = path.relative(path.dirname(filePath), path.join(root, 'lib', '_repoUtils')).replace(/\\/g, '/');
     const prefix = relToLib.startsWith('.') ? relToLib : `./${relToLib}`;
     const next = text.replace(/\.\.\/\.\.\/\.\.\/\.\.\/src\/utils\//g, `${prefix}/`);
-    if (next !== text) fs.writeFileSync(filePath, next);
+    if (next !== text) safeWriteFileSync(filePath, next);
   }
   function walk(dir) {
     if (!fs.existsSync(dir)) return;
@@ -128,7 +152,7 @@ function materializeShared() {
     return;
   }
   copyDir(templateShared, appShared);
-  fs.writeFileSync(
+  safeWriteFileSync(
     path.join(appShared, '.standalone-shared'),
     `Materialized for carpentry-workshop at ${new Date().toISOString()}\n`,
   );
@@ -160,7 +184,7 @@ function main() {
       .replace("screen === 'UpholsteryQuotes' || screen === 'UpholsteryQuoteDetail'", "screen === 'Quotes' || screen === 'QuoteDetail'")
       .replace("nav.navigate('UpholsteryQuotes')", "nav.navigate('Quotes')")
       .replace("nav.navigate('UpholsteryQuoteDetail'", "nav.navigate('QuoteDetail'");
-    fs.writeFileSync(pushNotifPath, pushText, 'utf8');
+    safeWriteFileSync(pushNotifPath, pushText);
   }
 
   const prodApiPath = path.join(kioskPath, 'services', 'productionApi.js');
@@ -169,7 +193,7 @@ function main() {
     apiText = apiText
       .replace("const CLIENT_SOURCE = 'warehouse_production_app';", "const CLIENT_SOURCE = 'carpentry_workshop_app';")
       .replace(/portal_catalog:\s*'upholstery'/g, "portal_catalog: 'carpentry'");
-    fs.writeFileSync(prodApiPath, apiText, 'utf8');
+    safeWriteFileSync(prodApiPath, apiText);
   }
 
   const screensDest = path.join(kioskPath, 'screens');
@@ -188,7 +212,7 @@ function main() {
     process.exit(1);
   }
 
-  fs.writeFileSync(
+  safeWriteFileSync(
     path.join(kioskPath, '.standalone-materialized'),
     `Materialized from warehouse-upholstery at ${new Date().toISOString()}\n`,
   );

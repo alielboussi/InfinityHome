@@ -203,6 +203,19 @@ export async function fetchUpholsteryProductionJobs({ activeOnly = true } = {}) 
   }
 }
 
+export async function fetchUpholsteryQuoteOrders({ limit = 150 } = {}) {
+  try {
+    const payload = await productionOp('production-quotes-list', {
+      route: 'upholstery',
+      limit,
+    });
+    return payload?.rows || payload?.quotes || [];
+  } catch (err) {
+    if (isUnknownWarehouseOpError(err?.message)) return [];
+    return [];
+  }
+}
+
 export async function fetchProductionEventsLog(options = {}) {
   const body = { limit: options.limit ?? 800 };
   if (options.startDate) body.start_date = options.startDate;

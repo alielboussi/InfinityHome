@@ -1503,10 +1503,22 @@ async function opCarpentryFinishing(body, user) {
 async function assertQuoteRouteUser(user, route) {
   const normalized = String(route || '').trim().toLowerCase();
   if (normalized === 'carpentry') {
-    await assertCarpentryWorkshopUser(user);
+    try {
+      await assertCarpentryWorkshopUser(user);
+    } catch (workshopErr) {
+      if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
+        throw workshopErr;
+      }
+    }
     return 'carpentry';
   }
-  await assertProductionKioskUser(user);
+  try {
+    await assertProductionKioskUser(user);
+  } catch (prodErr) {
+    if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
+      throw prodErr;
+    }
+  }
   return 'upholstery';
 }
 

@@ -112,12 +112,20 @@ export default async function handler(req, res) {
 
     if (op === 'list-carpentry-jobs') {
       const { listCarpentryProductionJobs } = await import('../lib/carpentryProductionJobs.js');
+      const { listProductionQuotesForRoute } = await import('../lib/quoteProductionRouting.js');
       const activeOnly = body.active_only === true || body.activeOnly === true;
-      const result = await listCarpentryProductionJobs(db, {
-        activeOnly,
-        limit: body.limit ?? 150,
+      const [result, quoteResult] = await Promise.all([
+        listCarpentryProductionJobs(db, {
+          activeOnly,
+          limit: body.limit ?? 150,
+        }),
+        listProductionQuotesForRoute(db, 'carpentry', { limit: 150 }).catch(() => ({ rows: [] })),
+      ]);
+      res.status(200).json({
+        ok: true,
+        ...result,
+        quote_orders: quoteResult?.rows || [],
       });
-      res.status(200).json({ ok: true, ...result });
       return;
     }
 
