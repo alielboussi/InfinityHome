@@ -162,7 +162,7 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
         <table className="mobile-access-matrix mobile-access-matrix--yesno">
           <thead>
             <tr>
-              <th className="mobile-access-matrix__screen-col">Screen</th>
+              <th className="mobile-access-matrix__screen-col">Page</th>
               <th className="mobile-access-matrix__access-col">Access</th>
             </tr>
           </thead>

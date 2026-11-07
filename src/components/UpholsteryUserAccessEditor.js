@@ -170,35 +170,6 @@ export default function UpholsteryUserAccessEditor({ userRow, focusApp = 'uphols
       {error ? <div className="report-error mobile-access-panel__error">{error}</div> : null}
       {toast ? <div className="report-success mobile-access-panel__error">{toast}</div> : null}
 
-      {cfg.showPhotoUpload ? (
-        <div className="mobile-access-panel__section mobile-access-panel__section--permissions">
-          <h4 className="mobile-access-panel__section-label">Upholstery permissions</h4>
-          <div className="mobile-access-permission-list">
-            <div className="mobile-access-permission-item">
-              <label className="mobile-access-permission-item__body" htmlFor="mobile-access-upholstery-photo-upload">
-                <span className="mobile-access-permission-item__title">Picture upload (Floor 2 WIP)</span>
-                <span className="mobile-access-permission-item__desc">
-                  Gallery import on Manufacture inlay photos (Upholstery app).
-                </span>
-              </label>
-              <select
-                id="mobile-access-upholstery-photo-upload"
-                className="mobile-access-yesno"
-                value={grant.warehouse_production_photo_upload === 'allow' ? 'yes' : 'no'}
-                onChange={(e) => setGrant((prev) => ({
-                  ...prev,
-                  warehouse_production_photo_upload: e.target.value === 'yes' ? 'allow' : 'deny',
-                }))}
-                aria-label="Picture upload (Floor 2 WIP)"
-              >
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <div className="mobile-access-panel__section">
         <label className="mobile-access-name-label" htmlFor="upholstery-app-display-name">
           Name in app
@@ -217,13 +188,18 @@ export default function UpholsteryUserAccessEditor({ userRow, focusApp = 'uphols
         <table className="mobile-access-matrix mobile-access-matrix--yesno">
           <thead>
             <tr>
-              <th className="mobile-access-matrix__screen-col">Screen</th>
+              <th className="mobile-access-matrix__screen-col">Page</th>
               <th className="mobile-access-matrix__access-col">Access</th>
+              {cfg.showPhotoUpload ? (
+                <th className="mobile-access-matrix__access-col">Image Upload</th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {cfg.screens.map((screen) => {
               const allowed = isWorkshopOrDeliveryScreenAllowed(grant, screen.id, cfg.flag);
+              const isManufactureRow = screen.id === 'upholstery_manufacture';
+              const photoAllowed = grant.warehouse_production_photo_upload === 'allow';
               return (
                 <tr key={screen.id}>
                   <td className="mobile-access-matrix__screen-col" title={screen.description}>
@@ -240,6 +216,26 @@ export default function UpholsteryUserAccessEditor({ userRow, focusApp = 'uphols
                       <option value="no">No</option>
                     </select>
                   </td>
+                  {cfg.showPhotoUpload ? (
+                    <td className="mobile-access-matrix__access-col">
+                      {isManufactureRow ? (
+                        <select
+                          className="mobile-access-yesno"
+                          value={photoAllowed ? 'yes' : 'no'}
+                          onChange={(e) => setGrant((prev) => ({
+                            ...prev,
+                            warehouse_production_photo_upload: e.target.value === 'yes' ? 'allow' : 'deny',
+                          }))}
+                          aria-label="Manufacture image upload (Floor 2 WIP)"
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : (
+                        <span style={{ color: 'var(--br-subtle, #64748b)' }}>—</span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}

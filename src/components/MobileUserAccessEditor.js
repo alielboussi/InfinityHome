@@ -164,96 +164,6 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
 
       {error ? <div className="report-error mobile-access-panel__error">{error}</div> : null}
 
-      <div className="mobile-access-panel__section mobile-access-panel__section--permissions">
-        <h4 className="mobile-access-panel__section-label">Floor 1, Floor 2 &amp; web permissions</h4>
-        <div className="mobile-access-permission-list">
-          <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-catalog-add-product"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={grant.warehouse_catalog_add_product === 'allow'}
-              onChange={(e) => setGrant((prev) => ({
-                ...prev,
-                warehouse_catalog_add_product: e.target.checked ? 'allow' : 'deny',
-              }))}
-            />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-add-product">
-              <span className="mobile-access-permission-item__title">Add new product (Floor 1 &amp; Web)</span>
-              <span className="mobile-access-permission-item__desc">
-                Web warehouse catalog and Floor 1 app — shows the + button and allows creating a new product.
-              </span>
-            </label>
-          </div>
-          <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-floor2-create-product"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={grant.warehouse_floor2_create_product === 'allow'}
-              onChange={(e) => setFloor2CreateProduct(e.target.checked)}
-            />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-floor2-create-product">
-              <span className="mobile-access-permission-item__title">+ Prod on Floor 2</span>
-              <span className="mobile-access-permission-item__desc">
-                Shows the + Prod button on the Floor 2 page in the mobile catalog app.
-              </span>
-            </label>
-          </div>
-          <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-floor2-create-set"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={grant.warehouse_floor2_create_set === 'allow'}
-              onChange={(e) => setFloor2CreateSet(e.target.checked)}
-            />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-floor2-create-set">
-              <span className="mobile-access-permission-item__title">+ Set on Floor 2</span>
-              <span className="mobile-access-permission-item__desc">
-                Shows the + Set button on the Floor 2 page in the mobile catalog app.
-              </span>
-            </label>
-          </div>
-          <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-catalog-label-print"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={grant.warehouse_catalog_label_print === 'allow'}
-              onChange={(e) => setGrant((prev) => ({
-                ...prev,
-                warehouse_catalog_label_print: e.target.checked ? 'allow' : 'deny',
-              }))}
-            />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-label-print">
-              <span className="mobile-access-permission-item__title">Print Zebra labels (Floor 1)</span>
-              <span className="mobile-access-permission-item__desc">
-                Label icon on product and packet cards; sends ZPL to the warehouse Zebra printer via the server.
-              </span>
-            </label>
-          </div>
-          <div className="mobile-access-permission-item">
-            <input
-              id="mobile-access-catalog-photo-import"
-              type="checkbox"
-              className="mobile-access-permission-item__check"
-              checked={grant.warehouse_catalog_photo_import === 'allow'}
-              onChange={(e) => setGrant((prev) => ({
-                ...prev,
-                warehouse_catalog_photo_import: e.target.checked ? 'allow' : 'deny',
-              }))}
-            />
-            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-photo-import">
-              <span className="mobile-access-permission-item__title">Import product photos (Floor 1)</span>
-              <span className="mobile-access-permission-item__desc">
-                Gallery import icon on product and set cards; uploads the image to catalog storage (no in-app AI).
-              </span>
-            </label>
-          </div>
-        </div>
-      </div>
-
       <div className="mobile-access-panel__section">
         <label className="mobile-access-name-label" htmlFor="mobile-app-display-name">
           Name in app
@@ -276,21 +186,26 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
           <table className="mobile-access-matrix mobile-access-matrix--yesno">
             <thead>
               <tr>
-                <th className="mobile-access-matrix__screen-col">Screen</th>
+                <th className="mobile-access-matrix__screen-col">Page</th>
                 <th className="mobile-access-matrix__access-col">Access</th>
                 <th className="mobile-access-matrix__access-col">Qty Increase</th>
                 <th className="mobile-access-matrix__access-col">Image Upload</th>
                 <th className="mobile-access-matrix__access-col">+ Prod</th>
                 <th className="mobile-access-matrix__access-col">+ Set</th>
+                <th className="mobile-access-matrix__access-col">Print Labels</th>
               </tr>
             </thead>
             <tbody>
               {matrixScreens.map((screen) => {
                 const allowed = isMobileScreenAccessAllowed(grant, screen.id);
                 const hasLocationRights = LOCATION_RIGHTS_SET.has(screen.id);
+                const isFloor1Screen = screen.id === 'warehouse_products';
                 const isFloor2Screen = screen.id === 'warehouse_floor_2';
                 const stockIncAllowed = isCatalogLocationStockIncreaseAllowed(grant, screen.id, '');
                 const photoUpAllowed = isCatalogLocationPhotoUploadAllowed(grant, screen.id, '');
+                const floor1AddAllowed = grant.warehouse_catalog_add_product === 'allow';
+                const floor1PhotoAllowed = grant.warehouse_catalog_photo_import === 'allow';
+                const floor1LabelAllowed = grant.warehouse_catalog_label_print === 'allow';
                 const floor2ProdAllowed = isWarehouseFloor2CreateProductAllowed(grant, '');
                 const floor2SetAllowed = isWarehouseFloor2CreateSetAllowed(grant, '');
                 return (
@@ -325,7 +240,20 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                       )}
                     </td>
                     <td className="mobile-access-matrix__access-col">
-                      {hasLocationRights ? (
+                      {isFloor1Screen ? (
+                        <select
+                          className="mobile-access-yesno"
+                          value={floor1PhotoAllowed ? 'yes' : 'no'}
+                          onChange={(e) => setGrant((prev) => ({
+                            ...prev,
+                            warehouse_catalog_photo_import: e.target.value === 'yes' ? 'allow' : 'deny',
+                          }))}
+                          aria-label="Floor 1 image upload"
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : hasLocationRights ? (
                         <select
                           className="mobile-access-yesno"
                           value={photoUpAllowed ? 'yes' : 'no'}
@@ -340,7 +268,20 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                       )}
                     </td>
                     <td className="mobile-access-matrix__access-col">
-                      {isFloor2Screen ? (
+                      {isFloor1Screen ? (
+                        <select
+                          className="mobile-access-yesno"
+                          value={floor1AddAllowed ? 'yes' : 'no'}
+                          onChange={(e) => setGrant((prev) => ({
+                            ...prev,
+                            warehouse_catalog_add_product: e.target.value === 'yes' ? 'allow' : 'deny',
+                          }))}
+                          aria-label="Floor 1 + Prod access"
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : isFloor2Screen ? (
                         <select
                           className="mobile-access-yesno"
                           value={floor2ProdAllowed ? 'yes' : 'no'}
@@ -361,6 +302,24 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                           value={floor2SetAllowed ? 'yes' : 'no'}
                           onChange={(e) => setFloor2CreateSet(e.target.value === 'yes')}
                           aria-label="Floor 2 + Set access"
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : (
+                        <span style={{ color: 'var(--br-subtle, #64748b)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="mobile-access-matrix__access-col">
+                      {isFloor1Screen ? (
+                        <select
+                          className="mobile-access-yesno"
+                          value={floor1LabelAllowed ? 'yes' : 'no'}
+                          onChange={(e) => setGrant((prev) => ({
+                            ...prev,
+                            warehouse_catalog_label_print: e.target.value === 'yes' ? 'allow' : 'deny',
+                          }))}
+                          aria-label="Floor 1 print Zebra labels"
                         >
                           <option value="yes">Yes</option>
                           <option value="no">No</option>
