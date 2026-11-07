@@ -16,6 +16,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../productionKiosk/components/ProductionKioskTopBar';
+import ProductionQrScanModal from '../productionKiosk/components/ProductionQrScanModal';
 import { kiosk } from '../productionKiosk/components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
@@ -27,6 +28,11 @@ import {
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
+import {
+  expandWarehouseSkuMatchKeys,
+  normalizeWarehouseProductSku,
+  sanitizeWarehouseScannerInput,
+} from '../shared/warehouseScanResolver';
 
 const CARD_MIN_SIZE = PixelRatio.roundToNearestPixel((8 * 160) / 2.54 / PixelRatio.get());
 const CARD_GAP = 12;
@@ -44,6 +50,43 @@ function resolveFloor2ProductImage(item) {
   );
 }
 
+function extractPhotoQrSku(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/[?&]sku=([^&\s#]+)/i);
+  if (match) {
+    try {
+      return decodeURIComponent(match[1]).trim();
+    } catch {
+      return String(match[1]).trim();
+    }
+  }
+  return '';
+}
+
+function findMatchingFloor2ProductByScan(products, rawScan) {
+  const cleaned = sanitizeWarehouseScannerInput(rawScan);
+  if (!cleaned) return null;
+  const photoSku = extractPhotoQrSku(cleaned);
+  const probe = photoSku || cleaned;
+  const probeKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(probe));
+  const probeLower = probe.toLowerCase();
+
+  for (const item of products || []) {
+    const sku = String(item?.family_sku || '').trim();
+    if (sku) {
+      if (sku.toLowerCase() === probeLower) return item;
+      const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
+      for (const k of probeKeys) {
+        if (k && storedKeys.has(k)) return item;
+      }
+    }
+    const name = String(item?.name || '').trim();
+    if (name && name.toLowerCase() === probeLower) return item;
+  }
+  return null;
+}
+
 export default function PaintingScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
@@ -53,6 +96,7 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
   const productsRef = useRef([]);
   productsRef.current = products;
   const [search, setSearch] = useState('');
+  const [scanOpen, setScanOpen] = useState(false);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [qtyModal, setQtyModal] = useState(null);
@@ -91,17 +135,25 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
   );
 
   const filteredProducts = useMemo(() => {
-    const q = String(search || '').trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (item) => String(item.name || '').toLowerCase().includes(q)
-        || String(item.family_sku || '').toLowerCase().includes(q),
-    );
+    const raw = String(search || '').trim();
+    if (!raw) return products;
+    const q = raw.toLowerCase();
+    const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
+    return products.filter((item) => {
+      if (String(item.name || '').toLowerCase().includes(q)) return true;
+      const sku = String(item.family_sku || '');
+      if (sku.toLowerCase().includes(q)) return true;
+      const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
+      for (const k of qKeys) {
+        if (k && storedKeys.has(k)) return true;
+      }
+      return false;
+    });
   }, [products, search]);
 
   const hasSearch = Boolean(String(search || '').trim());
 
-  const openQtySend = (item) => {
+  const openQtySend = useCallback((item) => {
     if (busyId) return;
     const max = floor2Qty(item);
     if (max < 1) {
@@ -110,7 +162,21 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
     }
     setQtyDraft('1');
     setQtyModal({ item, max });
-  };
+  }, [busyId, locale]);
+
+  const handleBarcodeScanned = useCallback((scannedValue) => {
+    setScanOpen(false);
+    const cleaned = sanitizeWarehouseScannerInput(scannedValue);
+    if (!cleaned) return;
+    const photoSku = extractPhotoQrSku(cleaned);
+    const queryValue = photoSku || cleaned;
+    setSearch(queryValue);
+
+    const matched = findMatchingFloor2ProductByScan(productsRef.current, scannedValue);
+    if (matched) {
+      openQtySend(matched);
+    }
+  }, [openQtySend]);
 
   const handleQtyTextChange = (txt) => {
     const cleaned = String(txt || '').replace(/[^0-9]/g, '');
@@ -247,16 +313,27 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('paintingIntro', locale)}</Text>
-      <TextInput
-        style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
-        placeholder={tUi('paintingSearch', locale)}
-        placeholderTextColor={theme.textMuted}
-        value={search}
-        onChangeText={setSearch}
-        autoCorrect={false}
-        autoCapitalize="none"
-        clearButtonMode="while-editing"
-      />
+      <View style={styles.searchRow}>
+        <TextInput
+          style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
+          placeholder={tUi('paintingSearch', locale)}
+          placeholderTextColor={theme.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+        />
+        <Pressable
+          style={({ pressed }) => [styles.scanBtn, pressed && styles.scanBtnPressed]}
+          onPress={() => setScanOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={tUi('stockQrTitle', locale)}
+        >
+          <MaterialCommunityIcons name="barcode-scan" size={22} color="#ffffff" />
+          <Text style={styles.scanBtnText}>{tUi('paintingScanBtn', locale)}</Text>
+        </Pressable>
+      </View>
       {hasSearch && !loading && filteredProducts.length === 0 && !error ? (
         <Text style={[kiosk.searchHint, { textAlign }]}>{tUi('paintingSearchNoMatch', locale)}</Text>
       ) : null}
@@ -334,6 +411,13 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ProductionQrScanModal
+        visible={scanOpen}
+        locale={locale}
+        onClose={() => setScanOpen(false)}
+        onScan={handleBarcodeScanned}
+      />
     </View>
   );
 }
@@ -341,7 +425,34 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   intro: { marginBottom: 8 },
-  searchInput: { marginBottom: 12 },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  scanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: theme.primary,
+    borderRadius: theme.radiusSm,
+    paddingHorizontal: 14,
+    minHeight: 48,
+  },
+  scanBtnPressed: {
+    opacity: 0.85,
+  },
+  scanBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
   list: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   gridContent: { paddingBottom: 24 },

@@ -362,6 +362,7 @@ const UI_STRINGS = {
     ar: 'منتجات الطابق 2. اضغط على المنتج لإدخال الكمية المراد إرسالها للدهان.',
   },
   paintingSearch: { en: 'Search Floor 2 product or SKU…', ar: 'ابحث عن منتج الطابق 2 أو SKU…' },
+  paintingScanBtn: { en: 'Scan', ar: 'مسح' },
   paintingSearchNoMatch: { en: 'No Floor 2 products match your search.', ar: 'لا توجد منتجات مطابقة للبحث في الطابق 2.' },
   paintingAvailableQty: { en: 'Available on Floor 2: {qty}', ar: 'المتوفر في الطابق 2: {qty}' },
   paintingConfirmTitle: { en: 'Send to Painting', ar: 'إرسال للدهان' },
