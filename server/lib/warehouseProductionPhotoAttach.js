@@ -1,6 +1,9 @@
 import { createFirestoreServerClient } from './firestoreServerClient.js';
 import { attachProductionAssemblyCatalogPhoto } from './productionPacketCatalogPhoto.js';
-import { evaluateWarehouseProductionAppAccess } from '../../src/mobile/mobileAccessManifest.js';
+import {
+  evaluateCarpentryWorkshopAppAccess,
+  evaluateWarehouseProductionAppAccess,
+} from '../../src/mobile/mobileAccessManifest.js';
 import { getLoginAccessRecord } from './loginAccess.js';
 import { resolveWarehouseProductionWhatsAppProducerName } from './warehouseProductionWhatsAppProducer.js';
 import { normalizeMobileAccessGrant } from './mobileAccessDefaults.js';
@@ -66,6 +69,9 @@ async function assertProductionKioskUser(user) {
   const record = await getLoginAccessRecord(user?.id);
   const grant = normalizeMobileAccessGrant(record?.mobile_access || {}, user?.email);
   if (evaluateWarehouseProductionAppAccess(grant, user?.email)) {
+    return grant;
+  }
+  if (evaluateCarpentryWorkshopAppAccess(grant, user?.email)) {
     return grant;
   }
   const err = new Error('You do not have access to warehouse production.');
