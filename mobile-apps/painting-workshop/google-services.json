@@ -244,6 +244,14 @@
           }
         },
         {
+          "client_id": "876299148810-n39v8ufe02a1kqmqfjgel1m0dv81n5g8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "online.infinityhome.painting",
+            "certificate_hash": "d12829371a68128775fef384205f3915e1a2913f"
+          }
+        },
+        {
           "client_id": "876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4.apps.googleusercontent.com",
           "client_type": 3
         }
