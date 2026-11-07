@@ -417,16 +417,11 @@ body.enterprise-theme .customers-page-container .customers-more-fields {
   border-color: var(--ent-border, #e2e8f0) !important;
 }
 
-body.enterprise-theme .customers-page-container .customers-primary-btn.save-btn {
-  background: var(--ent-blue, #1565c0) !important;
-  border-color: var(--ent-blue, #1565c0) !important;
-  color: #ffffff !important;
-}
-
+body.enterprise-theme .customers-page-container .customers-primary-btn.save-btn,
 body.enterprise-theme .customers-page-container .edit-btn {
-  background: var(--ent-blue, #1565c0) !important;
-  border-color: var(--ent-blue, #1565c0) !important;
-  color: #ffffff !important;
+  background: var(--brand-primary) !important;
+  border-color: var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
 }
 
 body.enterprise-theme .customers-page-container .delete-btn {

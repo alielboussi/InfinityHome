@@ -269,20 +269,21 @@ const PriceLabels = () => {
   useEffect(() => {
     if (kitweQueueAppliedRef.current) return;
     const queue = consumeKitwePriceLabelsQueue();
-    if (!queue?.productIds?.length) return;
+    if (!queue?.items?.length) return;
     kitweQueueAppliedRef.current = true;
     if (queue.locationId) setLabelLocationId(String(queue.locationId));
     setSelected((prev) => {
       const next = [...prev];
-      queue.productIds.forEach((id) => {
-        const sid = String(id);
+      (queue.items || []).forEach((entry) => {
+        const sid = String(entry.productId || '');
+        if (!sid) return;
         if (next.some((s) => s.type === 'product' && String(s.id) === sid)) return;
         next.push({
           type: 'product',
           id: sid,
-          qty: 1,
+          qty: Math.max(1, Math.floor(Number(entry.qty) || 1)),
           addedOrder: addedOrderRef.current++,
-          printStandardOnly: false,
+          printStandardOnly: Boolean(entry.printStandardOnly),
         });
       });
       return next;

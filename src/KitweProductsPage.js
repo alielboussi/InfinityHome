@@ -7,16 +7,17 @@ import { saveWarehouseAssembly, WAREHOUSE_INVENTORY_MODE } from './services/ware
 import { useWarehouseCatalogQuery } from './hooks/useWarehouseCatalogQuery';
 import { KITWE_LOCATION_ID } from './constants/warehouseShowroomLocations';
 import { fetchProductLocationPricesForLocation } from './services/locationPricing';
-import { buildProductLocationPriceMap, resolveProductLocationPricing } from './utils/locationPricing';
+import { buildProductLocationPriceMap } from './utils/locationPricing';
 import {
   ensureRetailProductForKitweAssembly,
   indexRetailProducts,
   loadRetailProductsForAssemblies,
+  resolveKitweAssemblyCatalogPricing,
   resolveRetailProductForAssembly,
   saveKitweAssemblyLocationPrice,
 } from './utils/kitweAssemblyRetailPricing';
+import KitweCatalogBulkLabelDialog from './components/KitweCatalogBulkLabelDialog';
 import { queueKitwePriceLabels } from './utils/kitwePriceLabels';
-import { isWarehouseSetAssembly } from './utils/warehouseSetMath';
 import {
   filterKitweCatalogProducts,
   kitweProductAssemblyOptions,
@@ -24,12 +25,12 @@ import {
 } from './utils/kitweSetStock';
 import {
   createKitwePortalProduct,
+  markKitwePortalSet,
   setKitwePortalProductStock,
 } from './utils/kitweProductPortal';
 import { generateRandomWarehouseSku16 } from './utils/warehouseRandomSku';
 import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { recomputeWarehouseLocationStock } from './services/warehouseTransfer';
-import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
 import useDebouncedValue from './hooks/useDebouncedValue';
 
 const emptyLine = () => ({ component_assembly_id: '', quantity: 1 });
@@ -37,8 +38,7 @@ const emptyLine = () => ({ component_assembly_id: '', quantity: 1 });
 export default function KitweProductsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const view = searchParams.get('view') === 'sets' ? 'sets' : 'products';
-  const showCreateSet = searchParams.get('create') === '1' && view === 'sets';
+  const showCreateSet = searchParams.get('create') === '1';
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -70,11 +70,12 @@ export default function KitweProductsPage() {
   const [productSaving, setProductSaving] = useState(false);
   const [stockDraft, setStockDraft] = useState({});
   const [stockSavingId, setStockSavingId] = useState('');
-  const [packets, setPackets] = useState([]);
-  const [assemblyPacketRows, setAssemblyPacketRows] = useState([]);
-  const [packetInventory, setPacketInventory] = useState([]);
-  const [expandedAssemblyIds, setExpandedAssemblyIds] = useState(() => new Set());
+  const [expandedSetIds, setExpandedSetIds] = useState(() => new Set());
+  const [bulkSelected, setBulkSelected] = useState(() => new Set());
+  const [bulkLabelDialogOpen, setBulkLabelDialogOpen] = useState(false);
+  const [bulkLabelBusy, setBulkLabelBusy] = useState(false);
   const hasCatalogRef = useRef(false);
+  const retailLoadSeqRef = useRef(0);
   const { data: catalogData, error: catalogError, isLoading: catalogLoading } = useWarehouseCatalogQuery();
 
   const load = useCallback(async () => {
@@ -87,26 +88,19 @@ export default function KitweProductsPage() {
         if (!catalogLoading) setLoading(false);
         return;
       }
+      const inv = data.assemblyInventory || [];
+      const items = data.setItems || [];
+      const allAssemblies = data.assemblies || [];
       const [locPrices, catRes] = await Promise.all([
         fetchProductLocationPricesForLocation(db, KITWE_LOCATION_ID),
         db.from('categories').select('id, name').order('name'),
       ]);
-      const allAssemblies = data.assemblies || [];
       setAssemblies(allAssemblies);
-      setAssemblyInventory(data.assemblyInventory || []);
+      setAssemblyInventory(inv);
       setWarehouseLocationId(data.warehouseLocationId || null);
-      setSetItems(data.setItems || []);
-      setPackets(data.packets || []);
-      setAssemblyPacketRows(data.assemblyPackets || []);
-      setPacketInventory(data.inventory || []);
+      setSetItems(items);
       setCategories(catRes?.data || []);
       setPriceMap(buildProductLocationPriceMap(locPrices || []));
-      const deliveredProducts = filterKitweCatalogProducts(
-        allAssemblies,
-        data.assemblyInventory || [],
-      );
-      const setAsm = allAssemblies.filter((a) => isWarehouseSetAssembly(a));
-      setRetailIndex(await loadRetailProductsForAssemblies([...deliveredProducts, ...setAsm], []));
       hasCatalogRef.current = true;
     } catch (err) {
       setError(err?.message || 'Failed to load Kitwe catalog');
@@ -114,6 +108,31 @@ export default function KitweProductsPage() {
       setLoading(false);
     }
   }, [catalogData, catalogLoading]);
+
+  const kitweRetailAssemblies = useMemo(() => {
+    if (!assemblies.length) return [];
+    const products = filterKitweCatalogProducts(assemblies, assemblyInventory, setItems);
+    const sets = listKitweWarehouseSets(assemblies, setItems, assemblyInventory);
+    return [...products, ...sets];
+  }, [assemblies, assemblyInventory, setItems]);
+
+  useEffect(() => {
+    if (!kitweRetailAssemblies.length) return undefined;
+    const seq = retailLoadSeqRef.current + 1;
+    retailLoadSeqRef.current = seq;
+    let cancelled = false;
+    (async () => {
+      try {
+        const index = await loadRetailProductsForAssemblies(kitweRetailAssemblies, []);
+        if (!cancelled && retailLoadSeqRef.current === seq) {
+          setRetailIndex(index);
+        }
+      } catch {
+        /* table still shows location prices via retail_product_id */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [kitweRetailAssemblies]);
 
   useEffect(() => {
     if (catalogError) {
@@ -136,20 +155,16 @@ export default function KitweProductsPage() {
     setProductSku(generateRandomWarehouseSku16());
   }, [showCreateProduct, productSku]);
 
-  const setView = (next) => {
-    const params = new URLSearchParams(searchParams);
-    if (next === 'sets') params.set('view', 'sets');
-    else {
-      params.delete('view');
-      params.delete('create');
-    }
-    setSearchParams(params, { replace: true });
+  const openEditSet = (assemblyId) => {
+    const id = String(assemblyId || '').trim();
+    if (!id) return;
+    navigate(`/warehouse-products/${id}/edit`);
   };
 
   const openCreateSet = () => {
     const params = new URLSearchParams(searchParams);
-    params.set('view', 'sets');
     params.set('create', '1');
+    params.delete('view');
     setSearchParams(params, { replace: true });
   };
 
@@ -168,23 +183,9 @@ export default function KitweProductsPage() {
     return map;
   }, [assemblyInventory]);
 
-  const inventoryByPacketId = useMemo(() => {
-    const map = new Map();
-    (packetInventory || []).forEach((row) => {
-      if (String(row.location_id) !== KITWE_LOCATION_ID) return;
-      map.set(String(row.packet_id), Number(row.quantity) || 0);
-    });
-    return map;
-  }, [packetInventory]);
-
-  const packetsByAssembly = useMemo(
-    () => buildPacketsByAssembly(assemblyPacketRows, packets),
-    [assemblyPacketRows, packets],
-  );
-
-  const toggleAssemblyExpanded = (assemblyId) => {
+  const toggleSetExpanded = (assemblyId) => {
     const key = String(assemblyId);
-    setExpandedAssemblyIds((prev) => {
+    setExpandedSetIds((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -198,13 +199,13 @@ export default function KitweProductsPage() {
   );
 
   const componentOptions = useMemo(
-    () => kitweProductAssemblyOptions(assemblies, assemblyInventory),
-    [assemblies, assemblyInventory],
+    () => kitweProductAssemblyOptions(assemblies, assemblyInventory, setItems),
+    [assemblies, assemblyInventory, setItems],
   );
 
   const productRows = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
-    return filterKitweCatalogProducts(assemblies, assemblyInventory)
+    return filterKitweCatalogProducts(assemblies, assemblyInventory, setItems)
       .filter((a) => {
         if (categoryFilter && String(a.category_id || '') !== String(categoryFilter)) return false;
         if (!q) return true;
@@ -214,10 +215,7 @@ export default function KitweProductsPage() {
           || cat.toLowerCase().includes(q);
       })
       .map((a) => {
-        const retail = resolveRetailProductForAssembly(a, retailIndex);
-        const pricing = retail
-          ? resolveProductLocationPricing(retail, KITWE_LOCATION_ID, priceMap)
-          : { price: null, promotional_price: null };
+        const pricing = resolveKitweAssemblyCatalogPricing(a, retailIndex, priceMap, KITWE_LOCATION_ID);
         return {
           ...a,
           kitweQty: qtyByAssembly.get(String(a.id)) || 0,
@@ -227,7 +225,7 @@ export default function KitweProductsPage() {
         };
       })
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  }, [assemblies, assemblyInventory, qtyByAssembly, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap]);
+  }, [assemblies, assemblyInventory, setItems, qtyByAssembly, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap]);
 
   const setRows = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
@@ -241,10 +239,7 @@ export default function KitweProductsPage() {
           || cat.toLowerCase().includes(q);
       })
       .map((row) => {
-        const retail = resolveRetailProductForAssembly(row, retailIndex);
-        const pricing = retail
-          ? resolveProductLocationPricing(retail, KITWE_LOCATION_ID, priceMap)
-          : { price: null, promotional_price: null };
+        const pricing = resolveKitweAssemblyCatalogPricing(row, retailIndex, priceMap, KITWE_LOCATION_ID);
         return {
           ...row,
           categoryName: categoriesById.get(String(row.category_id || '')) || '—',
@@ -253,6 +248,93 @@ export default function KitweProductsPage() {
         };
       });
   }, [assemblies, setItems, assemblyInventory, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap]);
+
+  const catalogRows = useMemo(() => {
+    const products = productRows.map((row) => ({ kind: 'product', ...row }));
+    const sets = setRows.map((row) => ({ kind: 'set', ...row }));
+    return [...products, ...sets].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }, [productRows, setRows]);
+
+  const rowBulkKey = (row) => `${row.kind}:${row.id}`;
+
+  const allBulkKeys = useMemo(
+    () => catalogRows.map((row) => rowBulkKey(row)),
+    [catalogRows],
+  );
+
+  const bulkAllSelected = useMemo(
+    () => allBulkKeys.length > 0 && allBulkKeys.every((key) => bulkSelected.has(key)),
+    [allBulkKeys, bulkSelected],
+  );
+
+  const bulkSomeSelected = useMemo(
+    () => !bulkAllSelected && allBulkKeys.some((key) => bulkSelected.has(key)),
+    [allBulkKeys, bulkSelected, bulkAllSelected],
+  );
+
+  const bulkLabelDialogRows = useMemo(() => (
+    catalogRows
+      .filter((row) => bulkSelected.has(rowBulkKey(row)))
+      .map((row) => {
+        const retail = resolveRetailProductForAssembly(row, retailIndex);
+        const defaultQty = row.kind === 'set'
+          ? Math.max(1, Number(row.kitweBuildableQty) || 1)
+          : Math.max(1, Number(row.kitweQty) || 1);
+        return {
+          key: rowBulkKey(row),
+          kind: row.kind,
+          name: row.name,
+          sku: row.family_sku,
+          retailProductId: retail?.id || '',
+          defaultQty,
+          printStandardOnly: false,
+        };
+      })
+  ), [catalogRows, bulkSelected, retailIndex]);
+
+  const handleBulkSelectAll = (checked) => {
+    setBulkSelected(checked ? new Set(allBulkKeys) : new Set());
+  };
+
+  const handleBulkToggle = (row, checked) => {
+    const key = rowBulkKey(row);
+    setBulkSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
+
+  const handleBulkQueueLabels = async (jobs) => {
+    setBulkLabelBusy(true);
+    setError('');
+    try {
+      const items = [];
+      for (const job of jobs) {
+        const catalogRow = catalogRows.find((r) => rowBulkKey(r) === String(job.key));
+        let productId = String(job.retailProductId || '').trim();
+        if (!productId && catalogRow) {
+          const retail = await ensureRetailProductForKitweAssembly(catalogRow);
+          productId = String(retail?.id || '').trim();
+        }
+        if (!productId) continue;
+        items.push({
+          productId,
+          qty: job.qty,
+          printStandardOnly: job.printStandardOnly,
+        });
+      }
+      if (!items.length) throw new Error('Could not link retail products for labels.');
+      queueKitwePriceLabels({ items, locationId: KITWE_LOCATION_ID });
+      setBulkLabelDialogOpen(false);
+      navigate('/price-labels');
+    } catch (err) {
+      setError(err?.message || 'Failed to open labels');
+    } finally {
+      setBulkLabelBusy(false);
+    }
+  };
 
   const draftKey = (assemblyId, field) => `${assemblyId}:${field}`;
 
@@ -388,7 +470,7 @@ export default function KitweProductsPage() {
         }
       }
 
-      await saveWarehouseAssembly({
+      const saved = await saveWarehouseAssembly({
         name: trimmedName,
         family_sku: familySku,
         catalog_kind: 'set',
@@ -399,6 +481,7 @@ export default function KitweProductsPage() {
         inventory_mode: WAREHOUSE_INVENTORY_MODE.FINISHED,
         create_portal: 'kitwe-products',
       });
+      await markKitwePortalSet(saved.id);
       await recomputeWarehouseLocationStock(KITWE_LOCATION_ID);
       setSetName('');
       setSetSku(generateRandomWarehouseSku16());
@@ -412,32 +495,55 @@ export default function KitweProductsPage() {
     }
   };
 
-  const renderPriceRow = (row, { qtyValue, productExtra = null, editableStock = false, showPacketExpand = false }) => {
-    const pktList = packetsByAssembly.get(String(row.id)) || [];
-    const isOpen = expandedAssemblyIds.has(String(row.id));
-    const canExpand = showPacketExpand && pktList.length > 0;
+  const renderCatalogRow = (row) => {
+    const isSet = row.kind === 'set';
+    const components = isSet ? (row.components || []) : [];
+    const isOpen = isSet && expandedSetIds.has(String(row.id));
+    const canExpandSet = isSet && components.length > 0;
+    const bulkKey = rowBulkKey(row);
 
     return (
-      <React.Fragment key={row.id}>
-        <tr className="kitwe-catalog-row">
-          <td className="col-expand">
-            {canExpand ? (
-              <button
-                type="button"
-                className="kitwe-expand-btn"
-                onClick={() => toggleAssemblyExpanded(row.id)}
-                aria-expanded={isOpen}
-                aria-label={isOpen ? 'Hide packets' : 'Show packets'}
-              >
-                <span className="kitwe-expand-btn__icon" aria-hidden />
-              </button>
-            ) : null}
+      <React.Fragment key={bulkKey}>
+        <tr className={`kitwe-catalog-row${isSet ? ' kitwe-catalog-row--set' : ''}`}>
+          <td className="col-bulk">
+            <input
+              type="checkbox"
+              className="products-bulk-checkbox"
+              checked={bulkSelected.has(bulkKey)}
+              disabled={bulkLabelBusy}
+              onChange={(e) => handleBulkToggle(row, e.target.checked)}
+              aria-label={`Select ${row.name}`}
+            />
           </td>
           <td className="col-sku" title={row.family_sku || ''}>{row.family_sku || '—'}</td>
           <td className="col-product">
             <div className="kitwe-product-cell">
-              <strong className="kitwe-product-cell__name">{row.name}</strong>
-              {productExtra}
+              <div className="kitwe-product-cell__head">
+                {canExpandSet ? (
+                  <button
+                    type="button"
+                    className="kitwe-expand-btn kitwe-expand-btn--inline"
+                    onClick={() => toggleSetExpanded(row.id)}
+                    aria-expanded={isOpen}
+                    aria-label={isOpen ? 'Hide set components' : 'Show set components'}
+                  >
+                    <span className="kitwe-expand-btn__icon" aria-hidden />
+                  </button>
+                ) : null}
+                <strong className="kitwe-product-cell__name">
+                  {row.name}
+                  {isSet ? <span className="kitwe-product-cell__badge">Set</span> : null}
+                </strong>
+                {isSet ? (
+                  <button
+                    type="button"
+                    className="kitwe-set-component-link kitwe-set-edit-btn"
+                    onClick={() => openEditSet(row.id)}
+                  >
+                    Edit set
+                  </button>
+                ) : null}
+              </div>
             </div>
           </td>
           <td className="col-category">
@@ -453,7 +559,7 @@ export default function KitweProductsPage() {
             </select>
           </td>
           <td className="col-qty">
-            {editableStock ? (
+            {!isSet ? (
               <div className="kitwe-qty-edit">
                 <input
                   type="number"
@@ -476,7 +582,9 @@ export default function KitweProductsPage() {
                 </button>
               </div>
             ) : (
-              <span className="kitwe-qty-readonly">{qtyValue ?? row.kitweQty}</span>
+              <span className="kitwe-qty-readonly" title="Buildable from components at Kitwe">
+                {row.kitweBuildableQty ?? 0}
+              </span>
             )}
           </td>
           <td className="col-price">
@@ -520,36 +628,28 @@ export default function KitweProductsPage() {
             </div>
           </td>
         </tr>
-        {canExpand && isOpen ? (
-          <tr className="kitwe-packet-detail-row">
+        {canExpandSet && isOpen ? (
+          <tr className="kitwe-set-detail-row">
             <td colSpan={8}>
-              <div className="kitwe-packet-panel">
-                <div className="kitwe-packet-panel__title">Packets at Kitwe</div>
-                <table className="kitwe-packet-nested-table">
-                  <thead>
-                    <tr>
-                      <th>Packet</th>
-                      <th>SKU</th>
-                      <th className="kitwe-packet-nested-table__qty">Qty @ Kitwe</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pktList.map((packet) => (
-                      <tr key={packet.id}>
-                        <td>
-                          {packet.name || 'Packet'}
-                          {packet.packet_number != null && packet.packet_number !== ''
-                            ? ` · #${packet.packet_number}`
-                            : ''}
-                        </td>
-                        <td><code className="kitwe-packet-sku">{packet.sku || '—'}</code></td>
-                        <td className="kitwe-packet-nested-table__qty">
-                          {inventoryByPacketId.get(String(packet.id)) ?? 0}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="kitwe-set-panel">
+                <div className="kitwe-set-panel__title">Products in this set</div>
+                <ul className="kitwe-set-panel__list">
+                  {components.map((c) => (
+                    <li key={c.component_assembly_id}>
+                      <span className="kitwe-set-panel__qty">{c.per_set}×</span>
+                      <button
+                        type="button"
+                        className="kitwe-set-component-link"
+                        onClick={() => openEditSet(c.component_assembly_id)}
+                      >
+                        {c.name}
+                      </button>
+                      <span className="kitwe-set-panel__stock">
+                        ({c.kitwe_qty ?? 0} at Kitwe)
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </td>
           </tr>
@@ -563,9 +663,8 @@ export default function KitweProductsPage() {
       <BackToDashboard />
       <h1 style={{ marginTop: 16 }}>Kitwe catalog</h1>
       <p style={{ color: 'var(--kitwe-muted, #94a3b8)', marginBottom: 16 }}>
-        Products from Factory→Kitwe deliveries (production app send + Hassan accept) and products you create here appear in this list.
-        New SKUs are mirrored in central Warehouse at 0; only Kitwe qty is set from this page until stock arrives by delivery.
-        Stock edits on listed rows remain available until stocktake-only migration.
+        Listed products are Factory→Kitwe deliveries accepted by Hassan, plus any product you create here.
+        Components used in a Kitwe set are hidden; sets show on this list with their products expandable below each set row.
       </p>
 
       <div className="kitwe-catalog-toolbar">
@@ -595,28 +694,41 @@ export default function KitweProductsPage() {
         <button type="button" className="kitwe-btn-create-set" onClick={openCreateSet}>
           Create set
         </button>
-        <div className="kitwe-view-toggle" role="group" aria-label="Products or sets">
+      </div>
+
+      {bulkSelected.size > 0 ? (
+        <div className="warehouse-catalog-bulk-label-bar kitwe-catalog-bulk-label-bar">
+          <label className="warehouse-catalog-bulk-label-bar__select-all">
+            <input
+              type="checkbox"
+              className="products-bulk-checkbox"
+              checked={bulkAllSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = bulkSomeSelected;
+              }}
+              disabled={bulkLabelBusy}
+              onChange={(e) => handleBulkSelectAll(e.target.checked)}
+            />
+            <span>Select all ({catalogRows.length})</span>
+          </label>
+          <span className="warehouse-catalog-bulk-label-bar__meta">
+            {bulkSelected.size} selected
+          </span>
           <button
             type="button"
-            className={view === 'products' ? 'active' : ''}
-            onClick={() => setView('products')}
+            className="warehouse-catalog-bulk-label-bar__print kitwe-btn-create-set"
+            disabled={bulkLabelBusy}
+            onClick={() => setBulkLabelDialogOpen(true)}
           >
-            Products
-          </button>
-          <button
-            type="button"
-            className={view === 'sets' ? 'active' : ''}
-            onClick={() => setView('sets')}
-          >
-            Sets
+            Bulk labels
           </button>
         </div>
-      </div>
+      ) : null}
 
       {loading ? <p>Loading…</p> : null}
       {error ? <p style={{ color: '#f87171' }}>{error}</p> : null}
 
-      {showCreateProduct && view === 'products' ? (
+      {showCreateProduct ? (
         <div className="kitwe-create-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Create product</h2>
@@ -727,7 +839,7 @@ export default function KitweProductsPage() {
       <div className="kitwe-catalog-table-wrap">
       <table className="kitwe-catalog-table">
         <colgroup>
-          <col className="kitwe-col-expand" />
+          <col className="kitwe-col-bulk" />
           <col className="kitwe-col-sku" />
           <col className="kitwe-col-product" />
           <col className="kitwe-col-category" />
@@ -738,7 +850,19 @@ export default function KitweProductsPage() {
         </colgroup>
         <thead>
           <tr>
-            <th className="col-expand" aria-label="Expand" />
+            <th className="col-bulk" aria-label="Select">
+              <input
+                type="checkbox"
+                className="products-bulk-checkbox"
+                checked={bulkAllSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = bulkSomeSelected;
+                }}
+                disabled={bulkLabelBusy || catalogRows.length === 0}
+                onChange={(e) => handleBulkSelectAll(e.target.checked)}
+                aria-label="Select all rows"
+              />
+            </th>
             <th className="col-sku">SKU</th>
             <th className="col-product">Product</th>
             <th className="col-category">Category</th>
@@ -749,34 +873,26 @@ export default function KitweProductsPage() {
           </tr>
         </thead>
         <tbody>
-          {view === 'products' ? (
-            productRows.length ? (
-              productRows.map((row) => renderPriceRow(row, {
-                editableStock: true,
-                showPacketExpand: true,
-              }))
-            ) : (
-              <tr>
-                <td colSpan={8} className="kitwe-empty-hint">
-                  No Kitwe products yet. Create one above, or accept a factory delivery into Kitwe.
-                </td>
-              </tr>
-            )
+          {catalogRows.length ? (
+            catalogRows.map((row) => renderCatalogRow(row))
           ) : (
-            setRows.map((row) => renderPriceRow(row, {
-              qtyValue: row.kitweBuildableQty,
-              productExtra: (row.components || []).length ? (
-                <div className="kitwe-set-components">
-                  {(row.components || []).map((c) => (
-                    <div key={c.component_assembly_id}>{c.per_set}× {c.name}</div>
-                  ))}
-                </div>
-              ) : null,
-            }))
+            <tr>
+              <td colSpan={8} className="kitwe-empty-hint">
+                No Kitwe products or sets yet. Accept a factory delivery into Kitwe, create a product, or build a set.
+              </td>
+            </tr>
           )}
         </tbody>
       </table>
       </div>
+
+      <KitweCatalogBulkLabelDialog
+        open={bulkLabelDialogOpen}
+        rows={bulkLabelDialogRows}
+        busy={bulkLabelBusy}
+        onClose={() => setBulkLabelDialogOpen(false)}
+        onQueue={handleBulkQueueLabels}
+      />
     </div>
   );
 }

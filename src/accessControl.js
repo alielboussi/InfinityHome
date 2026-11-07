@@ -10,14 +10,18 @@ import {
 const USER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Hassan Awad — quotationer-only: quotes and warehouse delivery flows (no layby desk). */
+export const HASSAN_FACTORY_ORDERS_PATH = '/factory-orders';
+
+/** Hassan Awad — quotationer-only: quotes and warehouse delivery flows (no layby desk). */
 export const HASSAN_AWAD = Object.freeze({
   id: '6b992ac8-8e39-4f31-a323-2271a974da8c',
   emails: Object.freeze(['hassanawad18@gmail.com']),
   displayName: 'Hassan Awad',
   landingPath: '/quotationer',
+  factoryOrdersPath: HASSAN_FACTORY_ORDERS_PATH,
   allowedRoutes: Object.freeze([
     '/quotationer',
-    '/quotes-board',
+    HASSAN_FACTORY_ORDERS_PATH,
     '/warehouse-deliveries',
     '/warehouse-returns',
     '/warehouse-returns-trackage',
@@ -288,6 +292,11 @@ const STOCK_CONTROL_EMAIL = 'alielboussi00@gmail.com';
 /** Local dev only: this account may open /quotationer directly (not redirected to /dashboard after login). */
 export const LOCALHOST_QUOTATIONER_DEV_EMAIL = USER_ACTIVITY_EMAIL;
 
+/** Production preview: sign in as yourself, open `/quotationer?experience=hassan` (login-access admin). */
+export const HASSAN_QUOTATIONER_PREVIEW_QUERY = 'experience';
+export const HASSAN_QUOTATIONER_PREVIEW_VALUE = 'hassan';
+const HASSAN_PREVIEW_SESSION_KEY = 'bestrest:hassanQuotationerPreview:v1';
+
 export function isLocalhostDevHost(hostname) {
   const h = String(
     hostname ?? (typeof window !== 'undefined' ? window.location.hostname : ''),
@@ -300,6 +309,51 @@ export function canUseLocalhostQuotationerDirectLink(user) {
   return getUserEmail(user) === LOCALHOST_QUOTATIONER_DEV_EMAIL;
 }
 
+export function canPreviewHassanQuotationerExperience(user) {
+  if (!user) return false;
+  if (canManageLoginAccess(user)) return true;
+  return getUserEmail(user) === USER_ACTIVITY_EMAIL;
+}
+
+export function isHassanQuotationerPreviewRequested(search) {
+  const params = new URLSearchParams(String(search || '').replace(/^\?/, ''));
+  return params.get(HASSAN_QUOTATIONER_PREVIEW_QUERY) === HASSAN_QUOTATIONER_PREVIEW_VALUE;
+}
+
+export function persistHassanQuotationerPreviewFromSearch(search) {
+  if (typeof window === 'undefined') return;
+  if (!isHassanQuotationerPreviewRequested(search)) return;
+  try {
+    sessionStorage.setItem(HASSAN_PREVIEW_SESSION_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearHassanQuotationerPreviewSession() {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.removeItem(HASSAN_PREVIEW_SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isHassanQuotationerPreviewSessionActive() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(HASSAN_PREVIEW_SESSION_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function isHassanPreviewPathAllowed(user, path) {
+  if (!canPreviewHassanQuotationerExperience(user)) return false;
+  if (!isHassanQuotationerPreviewSessionActive()) return false;
+  return isHassanAllowedAppPath(path);
+}
+
 /** Paths Hassan Awad may use — also used for localhost dev UI mimic. */
 export function isHassanAllowedAppPath(path) {
   const p = normalizePath(path || '/');
@@ -309,15 +363,37 @@ export function isHassanAllowedAppPath(path) {
 }
 
 /**
- * Hassan’s sidebar + quotationer dashboard UX (localhost dev account on Hassan routes only).
+ * Hassan’s sidebar + quotationer dashboard UX (Hassan account, or admin preview on his routes).
  */
-export function isQuotationerOnlyExperience(user, pathname) {
-  if (isHassanAwadUser(user)) return true;
+export function isFactoryOrdersPath(path) {
+  const p = normalizePath(path || '/');
+  return p === HASSAN_FACTORY_ORDERS_PATH || p.startsWith(`${HASSAN_FACTORY_ORDERS_PATH}/`);
+}
+
+export function getFactoryOrdersPathForUser(user) {
+  return isHassanAwadUser(user) ? HASSAN_AWAD.factoryOrdersPath : '/quotes-board';
+}
+
+export function isQuotationerOnlyExperience(user, pathname, search = '') {
+  if (isHassanAwadUser(user)) {
+    if (pathname == null || pathname === '') return false;
+    return isHassanAllowedAppPath(pathname);
+  }
+  if (canPreviewHassanQuotationerExperience(user)) {
+    if (isHassanQuotationerPreviewRequested(search) || isHassanQuotationerPreviewSessionActive()) {
+      if (pathname == null || pathname === '') return false;
+      return isHassanAllowedAppPath(pathname);
+    }
+  }
   if (!canUseLocalhostQuotationerDirectLink(user)) return false;
-  const allow = allowedPathsForUser(user);
-  if (Array.isArray(allow) && allow.includes('*')) return false;
   if (pathname == null || pathname === '') return false;
   return isHassanAllowedAppPath(pathname);
+}
+
+export function isHassanQuotationerPreviewForDisplay(user, pathname, search = '') {
+  return isQuotationerOnlyExperience(user, pathname, search)
+    && !isHassanAwadUser(user)
+    && canPreviewHassanQuotationerExperience(user);
 }
 
 /**
@@ -534,6 +610,7 @@ export function isPathAllowed(user, path) {
     if (isHassanAwadUser(user)) return true;
     if (canManageCatalog(user)) return true;
     if (canManageLoginAccess(user)) return true;
+    if (isHassanPreviewPathAllowed(user, p)) return true;
     if (canUseLocalhostQuotationerDirectLink(user) && isHassanAllowedAppPath(p)) return true;
     return false;
   }

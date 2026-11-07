@@ -3402,6 +3402,19 @@ button:hover {
   color: #fff;
 }
 
+body.enterprise-theme .layby-mgmt-download-btn:not(.layby-mgmt-download-btn--whatsapp):not(.portal-btn-pdf):not(.portal-btn-excel) {
+  background: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .layby-mgmt-download-btn:not(.layby-mgmt-download-btn--whatsapp):not(.portal-btn-pdf):not(.portal-btn-excel):hover:not(:disabled) {
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
+  color: var(--brand-on-primary) !important;
+}
+
 /* Total Due banner (desktop) */
 .layby-total-due-banner-row {
   display: flex;
@@ -5842,7 +5855,7 @@ body {
   opacity: 0.85;
 }
 .warehouse-products-page .warehouse-assembly-thumb:not(:disabled):hover {
-  border-color: var(--ent-blue, #4a6fa5);
+  border-color: var(--ent-blue, #475569);
   box-shadow: 0 0 0 2px rgba(74, 111, 165, 0.12);
   background: #ffffff;
 }
@@ -8602,14 +8615,15 @@ body.enterprise-theme .products-toolbar-control-wrap,
 body.enterprise-theme .products-toolbar-btn,
 body.enterprise-theme .products-toolbar-icon-btn,
 body.enterprise-theme .products-toolbar-bulk-tick {
-  background: #fff !important;
-  border-color: var(--ent-blue) !important;
+  background: var(--brand-primary) !important;
+  border-color: var(--brand-primary-hover) !important;
 }
 
 body.enterprise-theme .products-toolbar-btn:not(.products-toolbar-btn--delete) {
-  color: #000000 !important;
-  font-family: Arial, Helvetica, sans-serif !important;
-  font-size: 12px !important;
+  color: var(--brand-on-primary) !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
 }
 
 body.enterprise-theme .products-toolbar-bulk-tick {
@@ -8621,9 +8635,9 @@ body.enterprise-theme .products-toolbar-bulk-tick:hover:not(:disabled) {
 }
 
 body.enterprise-theme .products-toolbar-btn--apply {
-  background: var(--ent-blue) !important;
-  border-color: var(--ent-blue) !important;
-  color: #ffffff !important;
+  background: var(--brand-primary) !important;
+  border-color: var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
 }
 
 body.enterprise-theme .products-toolbar-btn--apply:hover:not(:disabled) {
@@ -13398,7 +13412,7 @@ body.enterprise-theme .quotes-products-page h4,
 body.enterprise-theme .quotes-create-page .quotes-title,
 body.enterprise-theme .quotes-list-page .quotes-title,
 body.enterprise-theme .quotationer-home-card-title {
-  color: var(--brand-primary) !important;
+  color: var(--brand-accent) !important;
 }
 body.enterprise-theme .quotes-page {
   background: #ffffff !important;
@@ -13471,7 +13485,7 @@ body.enterprise-theme .quotationer-subpage > .quotes-list-page .quotes-title,
 body.enterprise-theme .quotationer-subpage > .quotes-create-page .quotes-title,
 body.enterprise-theme .quotationer-subpage .quotes-customers-page .quotes-title,
 body.enterprise-theme .quotationer-subpage .quotes-products-page .quotes-title {
-  color: var(--brand-primary) !important;
+  color: var(--brand-accent) !important;
 }
 
 body.enterprise-theme .quotationer-dashboard-intro .quotationer-dashboard-tagline {
@@ -13518,6 +13532,31 @@ body.enterprise-theme .quotationer-access-denied h3 {
 body.enterprise-theme .quotationer-access-denied p {
   margin: 0 0 14px;
   color: var(--ent-muted);
+}
+
+body.enterprise-theme .ent-hassan-preview-note {
+  margin: 0 0 10px 66px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--ent-text);
+  background: var(--ent-blue-soft, #e8f1fc);
+  border: 1px solid var(--ent-border);
+  border-radius: 8px;
+  max-width: 720px;
+}
+
+body.enterprise-theme .ent-hassan-preview-exit,
+body.enterprise-theme .ent-banner .ent-banner-logout {
+  flex-shrink: 0;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+  padding: 6px 12px !important;
+  min-height: 32px !important;
+}
+
+body.enterprise-theme .ent-banner .ent-banner-logout {
+  margin-left: 0;
 }
 
 body.enterprise-theme .quotationer-home-card,
@@ -14847,6 +14886,28 @@ body.enterprise-theme .dashboard-hero {
   border-radius: 12px !important;
 }
 
+body.enterprise-theme .dashboard-hero .logout-btn,
+body.enterprise-theme .dashboard-hero .dashboard-hero-logout {
+  background: var(--brand-primary) !important;
+  background-image: none !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+  box-shadow: none !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+  min-height: var(--brand-btn-height, 40px);
+  padding: 0 14px !important;
+  letter-spacing: normal !important;
+}
+
+body.enterprise-theme .dashboard-hero .logout-btn:hover,
+body.enterprise-theme .dashboard-hero .dashboard-hero-logout:hover {
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
+  color: var(--brand-on-primary) !important;
+}
+
 body.enterprise-theme .meta-card {
   height: auto !important;
   min-height: unset !important;
@@ -15252,65 +15313,7 @@ body.enterprise-theme tr:hover td {
   background: #f0f5fb !important;
 }
 
-/* ---- Buttons: unified portal control (same size + primary color) ---- */
-body.enterprise-theme button {
-  background: var(--ent-blue) !important;
-  background-image: none !important;
-  border: 1px solid var(--ent-blue-dark) !important;
-  color: #ffffff !important;
-  border-radius: var(--brand-radius, 8px) !important;
-  font-weight: 600 !important;
-  font-size: 0.875rem !important;
-  min-height: var(--brand-btn-height, 40px);
-  padding: 0 14px !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-body.enterprise-theme button:hover {
-  background: var(--ent-blue-dark) !important;
-  border-color: var(--brand-primary-dark) !important;
-  transform: none !important;
-}
-body.enterprise-theme button:disabled {
-  opacity: 0.55 !important;
-  cursor: not-allowed !important;
-}
-
-/* Icons inside portal action buttons */
-body.enterprise-theme button > svg,
-body.enterprise-theme button .svg-inline--fa {
-  width: var(--portal-btn-icon-size, 1.25rem) !important;
-  height: var(--portal-btn-icon-size, 1.25rem) !important;
-  flex-shrink: 0;
-  vertical-align: middle;
-}
-body.enterprise-theme button:has(> svg):not(.ent-drawer-link):not(.ent-drawer-toggle):not(.ent-back-btn) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-}
-body.enterprise-theme button.warehouse-label-print-btn,
-body.enterprise-theme button.warehouse-category-btn {
-  width: var(--portal-icon-btn-size, 42px) !important;
-  height: var(--portal-icon-btn-size, 42px) !important;
-  min-width: var(--portal-icon-btn-size, 42px) !important;
-  min-height: var(--portal-icon-btn-size, 42px) !important;
-  padding: 0 !important;
-  gap: 0 !important;
-}
-body.enterprise-theme button.warehouse-label-print-btn > svg,
-body.enterprise-theme button.warehouse-category-btn > svg,
-body.enterprise-theme button.warehouse-label-print-btn .svg-inline--fa,
-body.enterprise-theme button.warehouse-category-btn .svg-inline--fa {
-  width: var(--portal-icon-btn-svg, 22px) !important;
-  height: var(--portal-icon-btn-svg, 22px) !important;
-}
-body.enterprise-theme .ent-banner button.ent-back-btn > svg {
-  width: 1.125rem !important;
-  height: 1.125rem !important;
-}
+/* Portal buttons: src/portal-global-theme.css (loaded from index.js) */
 
 /* POS modals: light panel on enterprise theme */
 body.enterprise-theme .pos-modal-content {
@@ -15332,23 +15335,16 @@ body.enterprise-theme .pos-modal-content select:focus {
   border-color: var(--ent-blue) !important;
   box-shadow: 0 0 0 2px var(--ent-blue-soft) !important;
 }
-body.enterprise-theme .pos-modal-actions .pos-modal-btn-primary {
-  background: var(--ent-blue) !important;
-  border: 1px solid var(--ent-blue-dark) !important;
-  color: #ffffff !important;
-}
-body.enterprise-theme .pos-modal-actions .pos-modal-btn-primary:hover {
-  background: var(--ent-blue-dark) !important;
-}
+body.enterprise-theme .pos-modal-actions .pos-modal-btn-primary,
 body.enterprise-theme .pos-modal-actions .pos-modal-btn-secondary {
-  background: #f8fafc !important;
-  border: 1px solid #cbd5e1 !important;
-  color: #475569 !important;
+  background: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
 }
+body.enterprise-theme .pos-modal-actions .pos-modal-btn-primary:hover,
 body.enterprise-theme .pos-modal-actions .pos-modal-btn-secondary:hover {
-  background: var(--ent-blue-soft) !important;
-  border-color: var(--ent-blue) !important;
-  color: var(--ent-blue) !important;
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
 }
 
 /* Layby Add Payment modal: light panel on enterprise theme */
@@ -15377,102 +15373,16 @@ body.enterprise-theme .layby-form-field select:focus {
   border-color: var(--ent-blue) !important;
   box-shadow: 0 0 0 2px var(--ent-blue-soft) !important;
 }
-body.enterprise-theme .layby-modal-actions .pos-modal-btn-primary {
-  background: var(--ent-blue) !important;
-  border: 1px solid var(--ent-blue-dark) !important;
-  color: #ffffff !important;
-}
-body.enterprise-theme .layby-modal-actions .pos-modal-btn-primary:hover {
-  background: var(--ent-blue-dark) !important;
-}
+body.enterprise-theme .layby-modal-actions .pos-modal-btn-primary,
 body.enterprise-theme .layby-modal-actions .pos-modal-btn-secondary {
-  background: #f8fafc !important;
-  border: 1px solid #cbd5e1 !important;
-  color: #475569 !important;
+  background: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
 }
+body.enterprise-theme .layby-modal-actions .pos-modal-btn-primary:hover,
 body.enterprise-theme .layby-modal-actions .pos-modal-btn-secondary:hover {
-  background: var(--ent-blue-soft) !important;
-  border-color: var(--ent-blue) !important;
-  color: var(--ent-blue) !important;
-}
-
-/* Explicit primary (solid blue) */
-body.enterprise-theme .primary,
-body.enterprise-theme .btn-primary,
-body.enterprise-theme .action-button,
-body.enterprise-theme .allsales-edit-btn,
-body.enterprise-theme .stock-periods-btn-primary {
-  background: var(--ent-blue) !important;
-  border: 1px solid var(--ent-blue-dark) !important;
-  color: #ffffff !important;
-}
-body.enterprise-theme .primary:hover,
-body.enterprise-theme .btn-primary:hover,
-body.enterprise-theme .action-button:hover,
-body.enterprise-theme .allsales-edit-btn:hover,
-body.enterprise-theme .stock-periods-btn-primary:hover {
-  background: var(--ent-blue-dark) !important;
-}
-
-body.enterprise-theme .stock-periods-btn-secondary {
-  background: #ffffff !important;
-  border: 1px solid var(--ent-border-strong) !important;
-  color: var(--ent-text) !important;
-  background-image: none !important;
-  box-shadow: none !important;
-}
-body.enterprise-theme .stock-periods-btn-secondary:hover {
-  background: var(--ent-surface-2) !important;
-  border-color: var(--ent-border-strong) !important;
-  color: var(--ent-text) !important;
-}
-
-/* Secondary (outline) — explicit class only */
-body.enterprise-theme .btn-tier-secondary,
-body.enterprise-theme .btn-secondary,
-body.enterprise-theme button.btn-secondary {
-  background: #ffffff !important;
-  border: 1px solid var(--ent-border-strong) !important;
-  color: var(--ent-text) !important;
-}
-body.enterprise-theme .btn-tier-secondary:hover,
-body.enterprise-theme .btn-secondary:hover,
-body.enterprise-theme button.btn-secondary:hover {
-  background: var(--ent-surface-2) !important;
-  border-color: var(--ent-border-strong) !important;
-  color: var(--ent-text) !important;
-}
-
-/* Deduction / delete = solid RED */
-body.enterprise-theme .danger,
-body.enterprise-theme .danger-button,
-body.enterprise-theme .btn-danger,
-body.enterprise-theme .logout-btn,
-body.enterprise-theme button[class*="delete"],
-body.enterprise-theme button[class*="remove"],
-body.enterprise-theme button[class*="danger"],
-body.enterprise-theme button[class*="void"],
-body.enterprise-theme button[class*="minus"],
-body.enterprise-theme button[class*="deduct"],
-body.enterprise-theme button[class*="trash"] {
-  background: var(--ent-red) !important;
-  border: 1px solid var(--ent-red-dark) !important;
-  color: #ffffff !important;
-  background-image: none !important;
-  box-shadow: none !important;
-}
-body.enterprise-theme .danger:hover,
-body.enterprise-theme .danger-button:hover,
-body.enterprise-theme .btn-danger:hover,
-body.enterprise-theme .logout-btn:hover,
-body.enterprise-theme button[class*="delete"]:hover,
-body.enterprise-theme button[class*="remove"]:hover,
-body.enterprise-theme button[class*="danger"]:hover,
-body.enterprise-theme button[class*="void"]:hover,
-body.enterprise-theme button[class*="minus"]:hover,
-body.enterprise-theme button[class*="deduct"]:hover,
-body.enterprise-theme button[class*="trash"]:hover {
-  background: var(--ent-red-dark) !important;
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
 }
 
 /* =====================  GLOBAL CHROME  ===================== */
@@ -15501,7 +15411,22 @@ body.enterprise-theme .ent-banner-title {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-body.enterprise-theme .ent-banner-spacer { flex: 1; }
+body.enterprise-theme .ent-banner-spacer { flex: 1; min-width: 8px; }
+body.enterprise-theme .ent-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+body.enterprise-theme .ent-banner .ent-banner-logout,
+body.enterprise-theme .ent-banner .ent-hassan-preview-exit {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 12px !important;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 body.enterprise-theme .ent-banner button.ent-back-btn {
   width: 38px;
   height: 38px;
@@ -15653,8 +15578,9 @@ body.enterprise-theme .ent-drawer button.ent-drawer-link {
   border-left: 3px solid transparent !important;
   border-radius: 0 !important;
   color: var(--ent-text) !important;
-  font-size: 0.84rem;
-  font-weight: 600;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
   text-align: left;
   box-shadow: none !important;
   cursor: pointer;
@@ -15672,7 +15598,7 @@ body.enterprise-theme .ent-drawer button.ent-drawer-link.active {
 
 body.enterprise-theme.ent-sidebar-pinned .ent-drawer button.ent-drawer-link {
   padding: 7px 12px !important;
-  font-size: 0.82rem;
+  font-size: var(--portal-btn-font-size, 12px) !important;
 }
 
 body.enterprise-theme.ent-sidebar-pinned .ent-drawer-group-title {
@@ -16071,6 +15997,27 @@ body.enterprise-theme .user-activity-table td {
 
 body.enterprise-theme .user-activity-page {
   background: #f8fafc !important;
+}
+
+body.enterprise-theme .user-activity-refresh-btn {
+  background: var(--brand-primary) !important;
+  border-color: var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+}
+
+body.enterprise-theme .user-activity-refresh-btn:hover:not(:disabled) {
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
+}
+
+body.enterprise-theme .user-activity-clear-btn {
+  background: var(--ent-red) !important;
+  border-color: var(--ent-red-dark) !important;
+  color: #ffffff !important;
+}
+
+body.enterprise-theme .user-activity-clear-btn:hover:not(:disabled) {
+  background: var(--ent-red-dark) !important;
 }
 
 .db-backup-notes {
@@ -16509,12 +16456,13 @@ body.enterprise-theme .pos-control-panel .pos-toolbar-btn {
   min-height: 36px !important;
   padding: 0 10px !important;
   border-radius: 8px !important;
-  border: 1px solid var(--ent-blue) !important;
-  background: var(--ent-blue) !important;
-  color: #ffffff !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  background: var(--brand-primary) !important;
+  color: var(--brand-on-primary) !important;
   box-shadow: none !important;
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -16524,8 +16472,8 @@ body.enterprise-theme .pos-control-panel .pos-toolbar-btn {
 }
 
 body.enterprise-theme .pos-toolbar-btn:hover {
-  background: var(--ent-blue-dark) !important;
-  border-color: var(--ent-blue-dark) !important;
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
 }
 
 body.enterprise-theme .pos-select-customer option {
@@ -16675,10 +16623,10 @@ body.enterprise-theme .pos-date-picker-btn {
   max-height: none !important;
   padding: 0 !important;
   border: 0 !important;
-  border-left: 1px solid #e2e8f0 !important;
+  border-left: 1px solid var(--brand-primary-hover) !important;
   border-radius: 0 !important;
-  background: #ffffff !important;
-  color: #64748b !important;
+  background: var(--brand-primary) !important;
+  color: var(--brand-on-primary) !important;
   box-shadow: none !important;
   display: grid !important;
   place-items: center;
@@ -16701,8 +16649,8 @@ body.enterprise-theme .pos-date-picker-btn svg {
 }
 
 body.enterprise-theme .pos-date-picker-btn:hover {
-  color: var(--ent-blue) !important;
-  background: #f8fbff !important;
+  color: var(--brand-on-primary) !important;
+  background: var(--brand-primary-hover) !important;
 }
 
 body.enterprise-theme .pos-native-date-picker {
@@ -16727,9 +16675,9 @@ body.enterprise-theme .quotes-currency-switch {
   min-width: 0 !important;
   padding: 2px !important;
   gap: 0 !important;
-  border: 1px solid #cbd5e1 !important;
+  border: 1px solid var(--brand-primary-hover) !important;
   border-radius: 8px !important;
-  background: #ffffff !important;
+  background: var(--brand-primary-soft) !important;
   box-shadow: none !important;
   overflow: hidden;
   box-sizing: border-box;
@@ -16749,9 +16697,10 @@ body.enterprise-theme .quotes-currency-switch button {
   margin: 0 !important;
   border-radius: 6px !important;
   background: transparent !important;
-  color: #475569 !important;
-  font-size: 0.82rem !important;
-  font-weight: 700 !important;
+  color: var(--brand-on-primary) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
   line-height: 1 !important;
   border: 0 !important;
   box-shadow: none !important;
@@ -16764,14 +16713,48 @@ body.enterprise-theme .pos-currency-switch button.is-on,
 body.enterprise-theme .pos-currency-switch button.active,
 body.enterprise-theme .quotes-currency-switch button.is-on,
 body.enterprise-theme .quotes-currency-switch button.active {
-  background: #0d6efd !important;
-  color: #ffffff !important;
+  background: var(--brand-primary) !important;
+  color: var(--brand-on-primary) !important;
 }
 
 body.enterprise-theme .pos-currency-switch button:not(.is-on):not(.active):hover,
 body.enterprise-theme .quotes-currency-switch button:not(.is-on):not(.active):hover {
-  background: #eff6ff !important;
-  color: #0d6efd !important;
+  background: var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+}
+
+body.enterprise-theme .pos-currency-symbol {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  font-family: inherit !important;
+}
+
+body.enterprise-theme .dash-currency-toggle {
+  border: 1px solid var(--brand-primary-hover) !important;
+  border-radius: 8px !important;
+  background: var(--brand-primary-soft) !important;
+  overflow: hidden;
+}
+
+body.enterprise-theme .dash-currency-toggle button {
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+  background: transparent !important;
+  color: var(--brand-on-primary) !important;
+  border: none !important;
+  padding: 4px 0 !important;
+  height: 26px !important;
+}
+
+body.enterprise-theme .dash-currency-toggle button.active {
+  background: var(--brand-primary) !important;
+  color: var(--brand-on-primary) !important;
+}
+
+body.enterprise-theme .dash-currency-toggle button:not(.active):hover {
+  background: var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
 }
 
 body.enterprise-theme .pos-products {
@@ -16794,20 +16777,21 @@ body.enterprise-theme .pos-product-btn {
   max-width: none;
   margin: 0;
   padding: 12px 10px;
-  background: #eef5ff;
-  border: 1px solid #2563eb;
+  background: var(--brand-primary);
+  border: 1px solid var(--brand-primary-hover);
   border-radius: 8px;
-  color: #111827;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
-  font-size: 1.12rem;
-  font-weight: 800;
+  color: var(--brand-on-primary);
+  box-shadow: none;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
   line-height: 1.32;
 }
 
 body.enterprise-theme .pos-product-btn:hover {
-  background: #dfeeff;
-  border-color: #1d4ed8;
-  box-shadow: 0 2px 7px rgba(37, 99, 235, 0.16);
+  background: var(--brand-primary-hover);
+  border-color: var(--brand-primary-dark);
+  box-shadow: none;
 }
 
 body.enterprise-theme .pos-table {

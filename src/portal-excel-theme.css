@@ -1,0 +1,33 @@
+/**
+ * Portal Excel export — green icon buttons (single source).
+ */
+
+body.enterprise-theme .portal-btn-excel,
+body.enterprise-theme .layby-mgmt-download-btn.portal-btn-excel,
+body.enterprise-theme button.portal-btn-excel {
+  background: #217346 !important;
+  background-image: none !important;
+  border: 1px solid #1a5c38 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .portal-btn-excel:hover:not(:disabled),
+body.enterprise-theme .layby-mgmt-download-btn.portal-btn-excel:hover:not(:disabled),
+body.enterprise-theme button.portal-btn-excel:hover:not(:disabled) {
+  background: #1a5c38 !important;
+  border-color: #14532d !important;
+  color: #ffffff !important;
+}
+
+body.enterprise-theme .portal-btn-excel svg,
+body.enterprise-theme .layby-mgmt-download-btn.portal-btn-excel svg {
+  color: #ffffff !important;
+  fill: currentColor !important;
+}
+
+body.enterprise-theme .portal-btn-excel:disabled,
+body.enterprise-theme .layby-mgmt-download-btn.portal-btn-excel:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}

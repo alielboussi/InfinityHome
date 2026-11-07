@@ -7,7 +7,20 @@ import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import generateQuotePdf from './quotespdf';
 import { FaTrashAlt } from 'react-icons/fa';
 import { cacheGet, cacheSet, cacheClear } from './utils/staleCache';
-import { isPathAllowed, canDeleteQuotationData, canEditQuotation, isQuotationConverted, isQuotationerOnlyExperience, getUserDisplayName, isHassanAwadUser, canManageCatalog } from './accessControl';
+import {
+  isPathAllowed,
+  canDeleteQuotationData,
+  canEditQuotation,
+  isQuotationConverted,
+  isQuotationerOnlyExperience,
+  getUserDisplayName,
+  isHassanAwadUser,
+  canManageCatalog,
+  isHassanQuotationerPreviewSessionActive,
+  HASSAN_QUOTATIONER_PREVIEW_QUERY,
+  HASSAN_QUOTATIONER_PREVIEW_VALUE,
+  HASSAN_AWAD,
+} from './accessControl';
 import {
   fetchQuoteProductionRouting,
   fetchQuoteProductionRoutingsMap,
@@ -35,6 +48,7 @@ import {
   CARPENTRY_WOOD_OPTIONS,
   normalizeQuoteItemAccessories,
 } from './utils/quoteProductionItemFields';
+import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
 
 function htmlToPlainPreview(html) {
   if (!html) return '';
@@ -421,12 +435,19 @@ export default function Quotationer() {
 
   const setViewAndUrl = React.useCallback((nextView, opts = {}) => {
     const params = new URLSearchParams();
+    const cur = new URLSearchParams(location.search || '');
+    if (
+      cur.get(HASSAN_QUOTATIONER_PREVIEW_QUERY) === HASSAN_QUOTATIONER_PREVIEW_VALUE
+      || isHassanQuotationerPreviewSessionActive()
+    ) {
+      params.set(HASSAN_QUOTATIONER_PREVIEW_QUERY, HASSAN_QUOTATIONER_PREVIEW_VALUE);
+    }
     if (nextView === 'create' && opts.quoteId) params.set('quoteId', opts.quoteId);
     else if (nextView && nextView !== 'home') params.set('view', nextView);
     navigate({ pathname: '/quotationer', search: params.toString() ? `?${params.toString()}` : '' }, { replace: true });
     setView(nextView || 'home');
     setEditQuoteId(nextView === 'create' ? (opts.quoteId || '') : '');
-  }, [navigate]);
+  }, [navigate, location.search]);
 
   const goHome = React.useCallback(() => setViewAndUrl('home'), [setViewAndUrl]);
 
@@ -440,7 +461,7 @@ export default function Quotationer() {
   }, [setViewAndUrl]);
 
   const localUser = readLocalUser();
-  const isQuotationerOnly = isQuotationerOnlyExperience(localUser, location.pathname);
+  const isQuotationerOnly = isQuotationerOnlyExperience(localUser, location.pathname, location.search);
   const homeLabel = isQuotationerOnly ? 'Dashboard' : 'Quotationer';
 
   if (checking) return <div className="quotationer-muted-loading">Checking access…</div>;
@@ -533,23 +554,12 @@ export default function Quotationer() {
 }
 
 function QuotationerLaybyDashboard({ displayName, onNewQuote, onList, onCustomers, onProducts }) {
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    try { sessionStorage.removeItem('bestrest:tabAuthed:v1'); } catch {}
-    try { localStorage.removeItem('user'); } catch {}
-    navigate('/login', { replace: true });
-  };
-
   return (
     <>
       <section className="dashboard-hero dashboard-hero-single quotationer-dashboard-intro">
         <div className="dashboard-hero-left">
           <div className="dashboard-hero-heading">
             <p className="quotationer-dashboard-tagline">Layby overview and quotation tools.</p>
-            <button type="button" className={`${ENT_BTN_SECONDARY} dashboard-hero-logout`} onClick={handleLogout}>
-              Logout
-            </button>
           </div>
           <div className="dashboard-meta">
             <div className="meta-card">
@@ -812,35 +822,28 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
                     <td style={tableCellStyle}>{new Date(q.created_at).toLocaleString()}</td>
                     <td style={tableCellStyle}>{(q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote'}</td>
                     <td style={{ ...tableCellStyle, textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>
-                    <td style={{ ...tableCellStyle, minWidth: 200 }}>
-                      <div className="quotes-list-actions">
-                        {quoteIsEditable(q) && (
-                          <button
-                            type="button"
-                            className="quotes-list-action-btn"
-                            onClick={() => onOpenQuote(q.id)}
-                          >
-                            Edit Quote
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="quotes-list-action-btn"
-                          onClick={() => handleDownloadPdf(q)}
-                        >
-                          Download PDF
-                        </button>
-                        {canSendOrder && (
-                          <button
-                            type="button"
-                            className="quotes-list-action-btn"
-                            disabled={Boolean(sendBusyId)}
-                            onClick={() => handleSendOrder(q)}
-                          >
-                            {isSending ? 'Sending…' : alreadySent ? 'Send Order (Resend)' : 'Send Order'}
-                          </button>
-                        )}
-                      </div>
+                    <td style={{ ...tableCellStyle, minWidth: 120 }}>
+                      <QuoteRowActionsDropdown
+                        items={[
+                          quoteIsEditable(q) ? {
+                            key: 'edit',
+                            label: 'Edit Quote',
+                            onClick: () => onOpenQuote(q.id),
+                          } : null,
+                          {
+                            key: 'pdf',
+                            label: 'Download PDF',
+                            tone: 'pdf',
+                            onClick: () => handleDownloadPdf(q),
+                          },
+                          canSendOrder ? {
+                            key: 'send',
+                            label: isSending ? 'Sending…' : (alreadySent ? 'Send Order (Resend)' : 'Send Order'),
+                            disabled: Boolean(sendBusyId),
+                            onClick: () => handleSendOrder(q),
+                          } : null,
+                        ].filter(Boolean)}
+                      />
                     </td>
                   </tr>
                 );
@@ -1316,8 +1319,8 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
         navigate('/layby-management');
         return;
       }
-      if (isQuotationerOnlyExperience(quoteUser, location.pathname || '/quotationer')) {
-        navigate('/quotes-board');
+      if (isQuotationerOnlyExperience(quoteUser, location.pathname || '/quotationer', location.search)) {
+        navigate(HASSAN_AWAD.factoryOrdersPath);
         return;
       }
       // After successful save: if editing, return to quotes list; otherwise reset for new quote
@@ -2443,7 +2446,7 @@ function QuoteProductsView({ onBackHome }) {
                   <td style={tableCellStyle}>{normalizeUnitAbbreviation(u.abbreviation, u.name) || '-'}</td>
                   <td style={{ ...tableCellStyle, width: '5.5cm', textAlign: 'center' }}>
                     {canDelete && (
-                      <button type="button" className="danger-button quotes-action-btn-5cm" onClick={() => removeUnit(u.id)}>Delete</button>
+                      <button type="button" className="portal-btn-delete quotes-action-btn-5cm" onClick={() => removeUnit(u.id)}>Delete</button>
                     )}
                   </td>
                 </tr>
@@ -2567,7 +2570,7 @@ function QuoteProductsView({ onBackHome }) {
                           {p.active ? 'Deactivate' : 'Activate'}
                         </button>
                         {canDelete && (
-                          <button type="button" className="danger-button quotes-action-btn-5cm" onClick={() => deleteProduct(p.id)}>
+                          <button type="button" className="portal-btn-delete quotes-action-btn-5cm" onClick={() => deleteProduct(p.id)}>
                             Delete
                           </button>
                         )}

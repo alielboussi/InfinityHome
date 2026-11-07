@@ -192,6 +192,9 @@ body.enterprise-theme .pos-container .payment-row .remove-btn:not(:disabled) {
   min-height: 36px !important;
   max-height: 36px !important;
   box-shadow: none !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
 }
 
 body.enterprise-theme .pos-container .payment-row .remove-btn:not(:disabled):hover {
@@ -205,30 +208,28 @@ body.enterprise-theme .pos-container .payment-row .remove-btn:disabled {
   opacity: 1 !important;
 }
 
-body.enterprise-theme .pos-container button.add-payment-btn {
-  background: #ffffff !important;
-  color: var(--ent-blue, #1565c0) !important;
-  border: 1px solid var(--ent-blue, #1565c0) !important;
-  height: 36px !important;
-  min-height: 36px !important;
-  box-shadow: none !important;
-}
-
-body.enterprise-theme .pos-container button.add-payment-btn:hover {
-  background: var(--ent-blue-soft, #e3f2fd) !important;
-}
-
+body.enterprise-theme .pos-container button.add-payment-btn,
 body.enterprise-theme .pos-container button.checkout-btn:not(:disabled) {
-  background: var(--ent-blue, #1565c0) !important;
-  border: 1px solid var(--ent-blue-dark, #0d47a1) !important;
-  color: #ffffff !important;
+  background: var(--brand-primary) !important;
+  color: var(--brand-on-primary) !important;
+  border: 1px solid var(--brand-primary-hover) !important;
   height: 40px !important;
   min-height: 40px !important;
   box-shadow: none !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
 }
 
+body.enterprise-theme .pos-container button.add-payment-btn {
+  height: 36px !important;
+  min-height: 36px !important;
+}
+
+body.enterprise-theme .pos-container button.add-payment-btn:hover,
 body.enterprise-theme .pos-container button.checkout-btn:not(:disabled):hover {
-  background: var(--ent-blue-dark, #0d47a1) !important;
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
 }
 
 body.enterprise-theme .pos-container button.checkout-btn:disabled {
@@ -239,7 +240,8 @@ body.enterprise-theme .pos-container button.checkout-btn:disabled {
   opacity: 1 !important;
 }
 
-body.enterprise-theme .pos-due-edit-btn {
+body.enterprise-theme .pos-due-edit-btn,
+body.enterprise-theme .pos-container .pos-due-edit-btn {
   height: 36px !important;
   min-height: 36px !important;
 }
@@ -253,5 +255,5 @@ body.enterprise-theme .pos-due-edit-btn {
 body.enterprise-theme .pos-container .payments-actions-row .checkout-btn:not(:disabled) {
   min-height: 42px !important;
   height: 42px !important;
-  font-size: 1rem !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
 }

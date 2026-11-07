@@ -19,6 +19,7 @@ import { enrichQuotationListTotals } from './services/quotationListTotals';
 import { fetchQuoteProductionRoutingsMap } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 import WarehouseSkuWhereabouts from './components/WarehouseSkuWhereabouts';
+import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
 
 const readLocalUser = () => {
   try {
@@ -74,7 +75,7 @@ export default function QuotesBoard() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = React.useMemo(() => readLocalUser(), []);
-  const isQuotationerOnly = isQuotationerOnlyExperience(user, location.pathname);
+  const isQuotationerOnly = isQuotationerOnlyExperience(user, location.pathname, location.search);
   const canDelete = canDeleteQuotationData(user);
   const canSendOrder = React.useMemo(
     () => isHassanAwadUser(user) || canManageCatalog(user) || isQuotationerOnly,
@@ -93,17 +94,6 @@ export default function QuotesBoard() {
     const unitPrice = qtyInt ? (lineTotal / qtyInt) : rawPrice;
     return { quantity: qtyInt, unit_price: unitPrice };
   }, []);
-
-  const btn = React.useMemo(() => ({
-    background: 'var(--br-surface)',
-    border: '1px solid var(--br-border)',
-    color: 'var(--br-text)',
-    borderRadius: 8,
-    padding: '10px 14px',
-    fontWeight: 600,
-    boxShadow: 'var(--br-glow)',
-    cursor: 'pointer',
-  }), []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -361,46 +351,44 @@ export default function QuotesBoard() {
                     <td>{new Date(q.created_at).toLocaleString()}</td>
                     <td>{(q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote'}</td>
                     <td style={{ textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>
-                    <td style={{ minWidth: 200 }}>
-                      <div className="quotes-list-actions">
-                        {quoteIsEditable(q) && (
-                          <button
-                            type="button"
-                            className="quotes-list-action-btn"
-                            style={btn}
-                            onClick={() => handleEditQuote(q)}
-                          >
-                            Edit Quote
-                          </button>
-                        )}
-                        <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleDownloadPdf(q)}>
-                          Download PDF
-                        </button>
-                        {canSendOrder && (
-                          <button
-                            type="button"
-                            className="quotes-list-action-btn"
-                            style={btn}
-                            disabled={Boolean(sendBusyId)}
-                            onClick={() => handleSendOrder(q)}
-                          >
-                            {isSending ? 'Sending…' : alreadySent ? 'Send Order (Resend)' : 'Send Order'}
-                          </button>
-                        )}
-                        {!isQuotationerOnly && (
-                          <>
-                            {q.status !== 'converted' && (
-                              <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleConvert(q)}>Convert to Layby</button>
-                            )}
-                            {q.status === 'converted' && q.sale_id && (
-                              <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => navigate(`/layby-management?laybyId=${encodeURIComponent(q.layby_id || '')}&saleId=${encodeURIComponent(q.sale_id)}`)}>Go to Layby</button>
-                            )}
-                            {canDelete && (
-                              <button type="button" className="quotes-list-action-btn" style={btn} onClick={() => handleDeleteQuote(q)}>Delete Quote</button>
-                            )}
-                          </>
-                        )}
-                      </div>
+                    <td style={{ minWidth: 120 }}>
+                      <QuoteRowActionsDropdown
+                        items={[
+                          quoteIsEditable(q) ? {
+                            key: 'edit',
+                            label: 'Edit Quote',
+                            onClick: () => handleEditQuote(q),
+                          } : null,
+                          {
+                            key: 'pdf',
+                            label: 'Download PDF',
+                            tone: 'pdf',
+                            onClick: () => handleDownloadPdf(q),
+                          },
+                          canSendOrder ? {
+                            key: 'send',
+                            label: isSending ? 'Sending…' : (alreadySent ? 'Send Order (Resend)' : 'Send Order'),
+                            disabled: Boolean(sendBusyId),
+                            onClick: () => handleSendOrder(q),
+                          } : null,
+                          !isQuotationerOnly && q.status !== 'converted' ? {
+                            key: 'convert',
+                            label: 'Convert to Layby',
+                            onClick: () => handleConvert(q),
+                          } : null,
+                          !isQuotationerOnly && q.status === 'converted' && q.sale_id ? {
+                            key: 'layby',
+                            label: 'Go to Layby',
+                            onClick: () => navigate(`/layby-management?laybyId=${encodeURIComponent(q.layby_id || '')}&saleId=${encodeURIComponent(q.sale_id)}`),
+                          } : null,
+                          !isQuotationerOnly && canDelete ? {
+                            key: 'delete',
+                            label: 'Delete Quote',
+                            tone: 'delete',
+                            onClick: () => handleDeleteQuote(q),
+                          } : null,
+                        ].filter(Boolean)}
+                      />
                     </td>
                   </tr>
                 );

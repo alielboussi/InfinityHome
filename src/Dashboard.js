@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import db from './dataClient';
 import { useNavigate } from 'react-router-dom';
-import { cacheClear } from './utils/staleCache';
 import { getHomeDashboardPath, isPathAllowed, getUserDisplayName } from './accessControl';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import {
@@ -314,16 +313,6 @@ function Dashboard() {
     }
   }, [user, navigate]);
 
-  const handleLogout = async () => {
-    setUser(null);
-    try { sessionStorage.removeItem('bestrest:tabAuthed:v1'); } catch {}
-    try { localStorage.removeItem('user'); } catch {}
-    try { cacheClear('allsales:list:v3'); } catch {}
-    try { cacheClear('dash:recentQuotes:v1'); } catch {}
-    try { cacheClear('dash:recentConverted:v1'); } catch {}
-    navigate('/login', { replace: true });
-  };
-
   if (loading) {
     return <div style={{ textAlign: 'center', marginTop: 80, fontSize: 22 }}>Loading...</div>;
   }
@@ -351,7 +340,6 @@ function Dashboard() {
         <div className="dashboard-hero-left">
           <div className="dashboard-hero-heading">
             <h1>Dashboard</h1>
-            <button className="logout-btn dashboard-hero-logout" onClick={handleLogout}>Logout</button>
           </div>
           <p>One connected workspace for showroom and warehouse operations.</p>
           <div className="dashboard-meta">

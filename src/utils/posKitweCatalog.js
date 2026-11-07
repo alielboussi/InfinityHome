@@ -1,8 +1,12 @@
 import db from '../dataClient';
 import { KITWE_LOCATION_ID } from '../constants/warehouseShowroomLocations';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
+import { isKitweCatalogLooseAssembly } from './kitweCatalogComponentVisibility';
 import {
+  buildKitweCatalogSetComponentIds,
   computeKitweSetBuildableQty,
+  isKitweProductsPortalAssembly,
+  isKitweWarehouseSetAssembly,
   kitweQtyByAssembly,
 } from './kitweSetStock';
 import { expandWarehouseSetItemsRows } from './warehouseSetItems';
@@ -46,9 +50,11 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
   const sets = [];
 
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
+  const hiddenSetComponents = buildKitweCatalogSetComponentIds(setItems, assemblies);
 
   (assemblies || []).forEach((a) => {
     if (isWarehouseSetAssembly(a)) {
+      if (!isKitweWarehouseSetAssembly(a)) return;
       const stock = computeKitweSetBuildableQty(a.id, setItems, qtyByAssembly);
       if (stock <= 0) return;
       const kitweComponents = expandWarehouseSetItemsRows(setItems || [])
@@ -79,6 +85,7 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
       }));
       return;
     }
+    if (!shouldShowKitweCatalogProductRow(a, qtyByAssembly, hiddenSetComponents)) return;
     const stock = qtyByAssembly.get(String(a.id)) || 0;
     if (stock <= 0 && !a.family_sku) return;
     products.push(applyKitweAssemblyPosPricing({
@@ -93,6 +100,16 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
   });
 
   return { products, sets };
+}
+
+/** Kitwe POS product row — hide set recipe components unless marked loose. */
+export function shouldShowKitweCatalogProductRow(assembly, qtyByAssembly, hiddenComponentIds) {
+  if (!assembly?.id || isWarehouseSetAssembly(assembly)) return false;
+  const id = String(assembly.id);
+  if (hiddenComponentIds?.has(id) && !isKitweCatalogLooseAssembly(assembly)) return false;
+  if (!isKitweProductsPortalAssembly(assembly, qtyByAssembly)) return false;
+  const stock = qtyByAssembly.get(id) || 0;
+  return stock > 0 || isKitweCatalogLooseAssembly(assembly);
 }
 
 /** @deprecated use fetchKitweWarehousePosCatalog */

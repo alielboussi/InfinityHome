@@ -217,16 +217,11 @@ body.enterprise-theme .layby-mgmt-container {
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
 }
 
-body.enterprise-theme .layby-mgmt-container .layby-row-btn--pay:not(:disabled) {
-  background: var(--ent-blue, #1565c0) !important;
-  border: 1px solid var(--ent-blue-dark, #0d47a1) !important;
-  color: #ffffff !important;
-}
-
-body.enterprise-theme .layby-mgmt-container .layby-row-btn--edit {
-  background: #ffffff !important;
-  border: 1px solid var(--ent-blue, #1565c0) !important;
-  color: var(--ent-blue, #1565c0) !important;
+body.enterprise-theme .layby-mgmt-container .layby-row-btn--pay:not(:disabled),
+body.enterprise-theme .layby-mgmt-container .layby-row-btn--edit:not(:disabled) {
+  background: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
 }
 
 body.enterprise-theme .layby-mgmt-container .layby-row-btn--quote {
@@ -245,12 +240,10 @@ body.enterprise-theme .layby-mgmt-container .layby-row-btn:hover:not(:disabled) 
   transform: none !important;
 }
 
-body.enterprise-theme .layby-mgmt-container .layby-row-btn--pay:hover:not(:disabled) {
-  background: var(--ent-blue-dark, #0d47a1) !important;
-}
-
+body.enterprise-theme .layby-mgmt-container .layby-row-btn--pay:hover:not(:disabled),
 body.enterprise-theme .layby-mgmt-container .layby-row-btn--edit:hover:not(:disabled) {
-  background: var(--ent-blue-soft, #e3f2fd) !important;
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
 }
 
 body.enterprise-theme .layby-mgmt-container .layby-row-btn--quote:hover:not(:disabled) {
@@ -279,11 +272,7 @@ body.enterprise-theme .layby-mgmt-container .layby-export-btn--whatsapp {
   color: #fff !important;
 }
 
-body.enterprise-theme .layby-mgmt-container .layby-export-btn--pdf {
-  background: var(--ent-blue, #1565c0) !important;
-  border: none !important;
-  color: #fff !important;
-}
+/* PDF export red: portal-pdf-theme.css */
 
 body.enterprise-theme .layby-mgmt-container .layby-mgmt-table th,
 body.enterprise-theme .layby-mgmt-container .layby-mgmt-table td {

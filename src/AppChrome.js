@@ -12,8 +12,11 @@ import {
   isPublicAppRoute,
   canManageCatalog,
   isHassanAwadUser,
+  isHassanQuotationerPreviewForDisplay,
+  clearHassanQuotationerPreviewSession,
 } from './accessControl';
 import { preloadAppRoute, prefetchNavRoutesOnIdle } from './lazyPages';
+import { performPortalLogout } from './utils/portalLogout';
 
 const NAV_STORAGE_KEY = 'ent-nav-open';
 
@@ -107,7 +110,7 @@ const QUOTATIONER_ONLY_NAV_GROUPS = [
       { label: 'Manage Customers', route: '/quotationer', search: '?view=customers' },
       { label: 'Manage Products', route: '/quotationer', search: '?view=products' },
       { label: 'New Quote', route: '/quotationer', search: '?view=create' },
-      { label: 'Factory Orders', route: '/quotes-board' },
+      { label: 'Factory Orders', route: '/factory-orders' },
     ],
   },
   {
@@ -143,6 +146,7 @@ const TITLE_MAP = {
   '/pos-mobile': 'Point of Sale',
   '/all-sales': 'Point of Sale',
   '/quotes-board': 'Orders',
+  '/factory-orders': 'Factory Orders',
   '/quotationer': 'Create Quote',
   '/sales-report': 'Sales Report',
   '/sales-report-mobile': 'Sales Report',
@@ -222,7 +226,7 @@ function backTargetForPath(path, homePath) {
 
 function titleForPath(path, user, search = '') {
   if (!path) return 'Infinity Home';
-  if (isQuotationerOnlyExperience(user, path) && path === '/quotationer') {
+  if (isQuotationerOnlyExperience(user, path, search) && path === '/quotationer') {
     const params = new URLSearchParams(search || '');
     const view = params.get('view');
     if (view === 'customers') return 'Quote Customers';
@@ -268,8 +272,9 @@ export default function AppChrome() {
   const isPublicCount = isPublicAppRoute(path);
   const isKioskStock = path.toLowerCase() === '/lusaka-stock';
   const hasUser = Boolean(user);
-  const quotationerOnly = isQuotationerOnlyExperience(user, path);
+  const quotationerOnly = isQuotationerOnlyExperience(user, path, location.search);
   const homePath = quotationerOnly ? HASSAN_AWAD.landingPath : getHomeDashboardPath(user);
+  const hassanPreviewBanner = isHassanQuotationerPreviewForDisplay(user, path, location.search);
 
   const [navOpen, setNavOpen] = React.useState(readNavOpenDefault);
 
@@ -330,7 +335,12 @@ export default function AppChrome() {
 
   if (isLogin || isPublicCount || isKioskStock || !user) return null;
 
-  const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
+  const quotationerParams = new URLSearchParams(location.search || '');
+  const isQuotationerHome = path === '/quotationer'
+    && !quotationerParams.get('view')
+    && !quotationerParams.get('quoteId')
+    && !quotationerParams.get('id');
+  const isDashboard = path === homePath || (quotationerOnly && isQuotationerHome);
   const title = titleForPath(path, user, location.search);
   const backTarget = backTargetForPath(path, homePath);
   const backIsHome = backTarget === homePath;
@@ -362,6 +372,8 @@ export default function AppChrome() {
     }
   };
 
+  const handleLogout = () => performPortalLogout(navigate);
+
   return (
     <>
       {!navOpen ? (
@@ -390,8 +402,34 @@ export default function AppChrome() {
           </button>
         )}
         <h1 className="ent-banner-title">{title}</h1>
-        <span className="ent-banner-spacer" />
+        <span className="ent-banner-spacer" aria-hidden="true" />
+        <div className="ent-banner-actions">
+          {hassanPreviewBanner ? (
+            <button
+              type="button"
+              className="ent-hassan-preview-exit stock-periods-btn stock-periods-btn-secondary"
+              onClick={() => {
+                clearHassanQuotationerPreviewSession();
+                navigate(getHomeDashboardPath(user));
+              }}
+            >
+              Exit Hassan preview
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="ent-banner-logout stock-periods-btn stock-periods-btn-secondary"
+            onClick={handleLogout}
+          >
+            Log out
+          </button>
+        </div>
       </header>
+      {hassanPreviewBanner ? (
+        <p className="ent-hassan-preview-note" role="status">
+          Previewing Hassan Awad&apos;s dashboard while signed in as you.
+        </p>
+      ) : null}
 
       <div
         className={`ent-drawer-overlay${navOpen ? ' open' : ''}`}

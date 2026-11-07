@@ -66,11 +66,21 @@ assert(
 const factoryLines = factorySetRecipeComponentLines(factorySetId, setItems);
 assert(factoryLines.length === 2, 'factory lines export');
 
+const kitweStock = fs.readFileSync(path.join(root, 'src/utils/kitweSetStock.js'), 'utf8');
+assert(kitweStock.includes('isKitwePortalCreatedSet'), 'Kitwe sets must be portal-created only');
+assert(kitweStock.includes('kitwe_portal_set'), 'Kitwe portal set metadata flag required');
+
 const mobile = fs.readFileSync(path.join(root, 'server/handlers/warehouse-mobile.js'), 'utf8');
-assert(mobile.includes('ensureKitweSetRecipeFromFactory'), 'submit must mirror Kitwe set recipe');
+assert(
+  !mobile.includes('ensureKitweSetRecipeFromFactory(sb, setId'),
+  'delivery submit must not auto-mirror Kitwe set recipes',
+);
 
 const accept = fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAccept.js'), 'utf8');
-assert(accept.includes('ensureKitweSetRecipesForDeliverySession'), 'accept must ensure Kitwe set recipe');
+assert(
+  !accept.includes('ensureKitweSetRecipesForDeliverySession'),
+  'delivery accept must not auto-create Kitwe sets',
+);
 
 const setCartPath = [
   'mobile-apps/warehouse-upholstery/lib/deliverySetCart.js',

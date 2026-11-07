@@ -96,6 +96,29 @@ export async function setKitwePortalProductStock(assembly, quantity) {
   return qty;
 }
 
+/** Sets built on /kitwe-products — not auto-mirrored from factory deliveries. */
+export async function markKitwePortalSet(assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) return;
+  const { data: row, error: readErr } = await db
+    .from('warehouse_assemblies')
+    .select('metadata')
+    .eq('id', id)
+    .maybeSingle();
+  if (readErr) throw new Error(readErr.message || 'Failed to read set metadata');
+  const prevMeta = row?.metadata || {};
+  const now = new Date().toISOString();
+  const { error } = await db.from('warehouse_assemblies').update({
+    metadata: {
+      ...prevMeta,
+      kitwe_portal_set: true,
+      kitwe_portal_set_at: prevMeta.kitwe_portal_set_at || now,
+    },
+    updated_at: now,
+  }).eq('id', id);
+  if (error) throw new Error(error.message || 'Failed to mark Kitwe portal set');
+}
+
 async function markAssemblyKitwePortalListed(assemblyId) {
   const id = String(assemblyId || '').trim();
   if (!id) return;

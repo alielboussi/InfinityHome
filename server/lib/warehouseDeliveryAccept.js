@@ -11,7 +11,6 @@ import {
   readKitweAssemblyInventoryQtyMap,
   syncKitweCatalogForDeliveryAssemblies,
 } from './kitweDeliveryCatalogSync.js';
-import { ensureKitweSetRecipesForDeliverySession } from './ensureKitweSetRecipeFromFactory.js';
 import { newUuid } from './uuid.js';
 
 function entryReceiverChecked(entry) {
@@ -190,10 +189,6 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
   );
 
   const now = new Date().toISOString();
-
-  await ensureKitweSetRecipesForDeliverySession(sb, sid).catch((err) => {
-    console.warn('[delivery-accept] Kitwe set recipe mirror:', err?.message || err);
-  });
 
   const assemblyIdsTouchedThisAccept = () => [...new Set(
     toReceive

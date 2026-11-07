@@ -1467,7 +1467,7 @@ export default function LaybyManagement() {
         <div className="layby-mgmt-header-actions">
           <button
             type="button"
-            className="layby-mgmt-download-btn"
+            className="layby-mgmt-download-btn portal-btn-pdf"
             title={bulkExportBusy ? bulkExportLabel || 'Preparing download...' : 'Download all layby PDFs (ZIP)'}
             aria-label="Download all layby PDFs as ZIP"
             onClick={handleDownloadAllLaybyPdfs}
@@ -1490,7 +1490,7 @@ export default function LaybyManagement() {
           {!readOnly && (
             <button
               type="button"
-              className="layby-mgmt-download-btn"
+              className="layby-mgmt-download-btn portal-btn-excel"
               title="Download layby summary (Excel)"
               aria-label="Download layby summary Excel"
               onClick={handleDownloadLaybyExcel}

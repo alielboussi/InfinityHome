@@ -1,0 +1,44 @@
+/**
+ * Portal delete / destructive — matches warehouse catalog delete (#e74c3c).
+ */
+
+body.enterprise-theme .portal-btn-delete,
+body.enterprise-theme .products-toolbar-btn--delete,
+body.enterprise-theme .products-list-bulk-delete-btn,
+body.enterprise-theme .delete-btn,
+body.enterprise-theme .danger-button,
+body.enterprise-theme .customers-page-container .delete-btn,
+body.enterprise-theme button.delete-btn,
+body.enterprise-theme .sets-delete-btn,
+body.enterprise-theme .allsales-delete-btn {
+  background: #e74c3c !important;
+  background-image: none !important;
+  border: 1px solid #cf3f31 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .portal-btn-delete:hover:not(:disabled),
+body.enterprise-theme .products-toolbar-btn--delete:hover:not(:disabled),
+body.enterprise-theme .products-list-bulk-delete-btn:hover:not(:disabled),
+body.enterprise-theme .delete-btn:hover:not(:disabled),
+body.enterprise-theme .danger-button:hover:not(:disabled),
+body.enterprise-theme .customers-page-container .delete-btn:hover,
+body.enterprise-theme button.delete-btn:hover:not(:disabled),
+body.enterprise-theme .sets-delete-btn:hover:not(:disabled),
+body.enterprise-theme .allsales-delete-btn:hover:not(:disabled) {
+  background: #cf3f31 !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+/* Generic [class*="delete"] except POS payment remove */
+body.enterprise-theme button[class*="delete"]:not(.portal-actions-dropdown__trigger):not(.remove-btn) {
+  background: #e74c3c !important;
+  border: 1px solid #cf3f31 !important;
+  color: #ffffff !important;
+}
+
+body.enterprise-theme button[class*="delete"]:not(.portal-actions-dropdown__trigger):not(.remove-btn):hover:not(:disabled) {
+  background: #cf3f31 !important;
+}

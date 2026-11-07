@@ -740,7 +740,7 @@ export default function LusakaTransfers() {
                     </button>
                     <button
                       type="button"
-                      className="lusaka-transfer-icon-btn"
+                      className="lusaka-transfer-icon-btn portal-btn-pdf"
                       title="Download PDF"
                       aria-label="Download transfer items PDF"
                       disabled={pdfBusyId === row.id}

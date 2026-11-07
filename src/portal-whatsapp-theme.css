@@ -1,0 +1,46 @@
+/**
+ * Portal WhatsApp actions — green buttons (single source).
+ * Loaded from index.js after portal-global-theme.css.
+ */
+
+body.enterprise-theme .portal-btn-whatsapp,
+body.enterprise-theme .allsales-whatsapp-btn,
+body.enterprise-theme .layby-export-btn--whatsapp,
+body.enterprise-theme .label-whatsapp-btn,
+body.enterprise-theme .layby-mgmt-download-btn--whatsapp,
+body.enterprise-theme button[class*="whatsapp"]:not(.portal-actions-dropdown__trigger) {
+  background: #25d366 !important;
+  background-image: none !important;
+  border: 1px solid #1ebe5d !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .portal-btn-whatsapp:hover:not(:disabled),
+body.enterprise-theme .allsales-whatsapp-btn:hover:not(:disabled),
+body.enterprise-theme .layby-export-btn--whatsapp:hover:not(:disabled),
+body.enterprise-theme .label-whatsapp-btn:hover:not(:disabled),
+body.enterprise-theme .layby-mgmt-download-btn--whatsapp:hover:not(:disabled),
+body.enterprise-theme button[class*="whatsapp"]:not(.portal-actions-dropdown__trigger):hover:not(:disabled) {
+  background: #1ebe5d !important;
+  border-color: #17a34a !important;
+  color: #ffffff !important;
+}
+
+body.enterprise-theme .portal-btn-whatsapp:disabled,
+body.enterprise-theme .allsales-whatsapp-btn:disabled,
+body.enterprise-theme .layby-export-btn--whatsapp:disabled,
+body.enterprise-theme .label-whatsapp-btn:disabled,
+body.enterprise-theme .layby-mgmt-download-btn--whatsapp:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+
+body.enterprise-theme .portal-btn-whatsapp svg,
+body.enterprise-theme .allsales-whatsapp-btn svg,
+body.enterprise-theme .layby-export-btn--whatsapp svg,
+body.enterprise-theme .label-whatsapp-btn svg,
+body.enterprise-theme .layby-mgmt-download-btn--whatsapp svg {
+  color: #ffffff !important;
+  fill: currentColor !important;
+}

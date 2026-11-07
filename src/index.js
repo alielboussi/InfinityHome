@@ -6,8 +6,13 @@ import QueryProvider from './query/QueryProvider';
 import { isPublicAppRoute } from './accessControl';
 import 'font-awesome/css/font-awesome.min.css';
 import './design-tokens.css';
+import './portal-global-theme.css';
 import './global-theme.css';
 import './portal-form-layout.css';
+import './portal-whatsapp-theme.css';
+import './portal-pdf-theme.css';
+import './portal-excel-theme.css';
+import './portal-delete-theme.css';
 
 // Force a single canonical host so all users (including on other PCs/Macs)
 // hit the same deployment and API behavior without manual cache/cookie clearing.

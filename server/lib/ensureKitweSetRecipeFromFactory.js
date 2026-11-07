@@ -12,9 +12,8 @@ import { newUuid } from './uuid.js';
 const SET_ITEMS = 'warehouse_set_items';
 
 /**
- * When a warehouse-defined set is sent Factory → Kitwe, ensure the same component
- * recipe exists at Kitwe (once). Further deliveries only increase component stock;
- * set qty at Kitwe is derived from components via location recompute.
+ * @deprecated Kitwe sets are created manually on /kitwe-products — factory deliveries
+ * only restock component products at Kitwe using the Warehouse (factory) recipe.
  */
 export async function ensureKitweSetRecipeFromFactory(sb, setAssemblyId, {
   setItems,

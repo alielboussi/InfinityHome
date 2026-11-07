@@ -310,3 +310,58 @@ body.enterprise-theme textarea {
     flex: 1 1 auto;
   }
 }
+
+/* Portal button typography: portal-global-theme.css */
+
+/* Warehouse deliveries admin — search + status on one row */
+body.enterprise-theme .warehouse-deliveries-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+body.enterprise-theme .warehouse-deliveries-toolbar__search {
+  flex: 1 1 260px;
+  min-width: 200px;
+  height: var(--portal-control-height, 40px);
+  min-height: var(--portal-control-height, 40px);
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--ent-border, #e5e7eb);
+  background: #ffffff;
+  color: var(--ent-text);
+  box-sizing: border-box;
+}
+
+/* Ledger mobile (/ledger-mobile) */
+body.enterprise-theme .ledger-page-btn {
+  min-height: var(--portal-control-height, 40px);
+  padding: 0 14px !important;
+  border-radius: 8px !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+}
+
+body.enterprise-theme .ledger-page-btn--compact {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 10px !important;
+}
+
+body.enterprise-theme .warehouse-deliveries-toolbar__status {
+  flex: 0 1 220px;
+  min-width: 180px;
+  height: var(--portal-control-height, 40px);
+  min-height: var(--portal-control-height, 40px);
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--ent-border, #e5e7eb);
+  background: #ffffff;
+  color: var(--ent-text);
+  box-sizing: border-box;
+}

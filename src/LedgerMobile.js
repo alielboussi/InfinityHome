@@ -53,6 +53,10 @@ export default function LedgerMobile() {
     text: 'var(--dash-text)',
     muted: 'var(--dash-muted)',
     accent: 'var(--dash-accent)',
+    primary: 'var(--brand-primary)',
+    primaryHover: 'var(--brand-primary-hover)',
+    onPrimary: 'var(--brand-on-primary)',
+    fieldBorder: 'var(--ent-border-strong)',
   };
 
   const [direction, setDirection] = React.useState('credit');
@@ -436,7 +440,7 @@ export default function LedgerMobile() {
     setRefreshTick((t) => t + 1);
   };
 
-  const balanceColor = balance < 0 ? '#ff8a8a' : theme.border;
+  const balanceColor = balance < 0 ? '#ff8a8a' : theme.primary;
   const projectedColor = projectedBalance < 0 ? '#ff8a8a' : theme.muted;
 
   return (
@@ -452,7 +456,7 @@ export default function LedgerMobile() {
         <button
           type="button"
           onClick={() => setRefreshTick((t) => t + 1)}
-          style={{ background: theme.surface, color: theme.text, border: `1.5px solid ${theme.border}`, borderRadius: 8, padding: '8px 12px', fontWeight: 700 }}
+          className="ledger-page-btn stock-periods-btn stock-periods-btn-secondary"
         >
           {loadingBalances || loadingEntries ? 'Refreshing…' : 'Refresh'}
         </button>
@@ -481,7 +485,7 @@ export default function LedgerMobile() {
                 onChange={(e) => setCloseBalanceDate(e.target.value)}
                 placeholder="dd/m/yyyy"
                 disabled={closingBalance || Math.abs(balance) < 0.01}
-                style={{ width: '100%', maxWidth: 220, padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                style={{ width: '100%', maxWidth: 220, padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
               />
               <div style={{ fontSize: 11, color: theme.muted, marginTop: 4 }}>
                 Date for the closing entry. Leave blank to use {lastEntryDate ? `the last date (${lastEntryDate})` : 'today'}.
@@ -527,7 +531,8 @@ export default function LedgerMobile() {
           <button
             type="button"
             onClick={() => setShowStartingBalanceForm((open) => !open)}
-            style={{ background: theme.surfaceAlt, color: theme.text, border: `1.5px solid ${theme.border}`, borderRadius: 8, padding: '8px 12px', fontWeight: 700 }}
+            className="stock-periods-btn stock-periods-btn-secondary"
+            style={{ borderRadius: 8, padding: '8px 12px', fontWeight: 700 }}
           >
             {showStartingBalanceForm ? 'Close' : openingBalance ? 'Edit' : 'Set starting balance'}
           </button>
@@ -545,7 +550,7 @@ export default function LedgerMobile() {
                 onChange={(e) => setStartingBalanceAmount(e.target.value)}
                 onWheel={preventInputWheelScroll}
                 onWheelCapture={preventInputWheelScroll}
-                style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
               />
             </div>
             <div>
@@ -556,7 +561,7 @@ export default function LedgerMobile() {
                 value={startingBalanceDate}
                 onChange={(e) => setStartingBalanceDate(e.target.value)}
                 placeholder="dd/m/yyyy"
-                style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
               />
             </div>
             <div>
@@ -566,13 +571,14 @@ export default function LedgerMobile() {
                 value={startingBalanceNote}
                 onChange={(e) => setStartingBalanceNote(e.target.value)}
                 placeholder="e.g. Cash on hand when tracking started"
-                style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
               />
             </div>
             <button
               type="submit"
               disabled={savingStartingBalance}
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: 'none', fontWeight: 800, background: theme.border, color: '#0a0a08' }}
+              className="stock-periods-btn stock-periods-btn-primary"
+              style={{ width: '100%', padding: 10, borderRadius: 8, fontWeight: 800 }}
             >
               {savingStartingBalance ? 'Saving…' : 'Save starting balance'}
             </button>
@@ -601,7 +607,7 @@ export default function LedgerMobile() {
             style={{
               padding: 12,
               borderRadius: 10,
-              border: `2px solid ${direction === 'credit' ? '#16c784' : theme.border}`,
+              border: `2px solid ${direction === 'credit' ? '#16c784' : theme.fieldBorder}`,
               background: direction === 'credit' ? 'rgba(22, 199, 132, 0.15)' : theme.surfaceAlt,
               color: theme.text,
               fontWeight: 800,
@@ -615,7 +621,7 @@ export default function LedgerMobile() {
             style={{
               padding: 12,
               borderRadius: 10,
-              border: `2px solid ${direction === 'debit' ? '#e14b4b' : theme.border}`,
+              border: `2px solid ${direction === 'debit' ? '#e14b4b' : theme.fieldBorder}`,
               background: direction === 'debit' ? 'rgba(225, 75, 75, 0.15)' : theme.surfaceAlt,
               color: theme.text,
               fontWeight: 800,
@@ -635,7 +641,7 @@ export default function LedgerMobile() {
               value={personName}
               onChange={(e) => setPersonName(e.target.value)}
               placeholder="e.g. Mary, Lloyd"
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
             />
             <datalist id="ledger-contact-names">
               {contactNames.map((name) => (
@@ -658,7 +664,7 @@ export default function LedgerMobile() {
               onChange={(e) => setAmount(e.target.value)}
               onWheel={preventInputWheelScroll}
               onWheelCapture={preventInputWheelScroll}
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
             />
           </div>
 
@@ -670,7 +676,7 @@ export default function LedgerMobile() {
               value={entryDate}
               onChange={(e) => setEntryDate(e.target.value)}
               placeholder="dd/m/yyyy"
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
             />
             <div style={{ fontSize: 11, color: theme.muted, marginTop: 4 }}>
               Leave blank to reuse {lastEntryDate ? `the last date (${lastEntryDate})` : 'today'}.
@@ -684,7 +690,7 @@ export default function LedgerMobile() {
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
               placeholder={direction === 'credit' ? 'e.g. Cash handed over for deposit' : 'e.g. Transport payment'}
-              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, resize: 'vertical', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, resize: 'vertical', boxSizing: 'border-box' }}
             />
           </div>
 
@@ -696,7 +702,7 @@ export default function LedgerMobile() {
         </div>
 
         {error && <div style={{ color: '#ff6b6b', marginBottom: 8, fontWeight: 700 }}>{error}</div>}
-        {info && <div style={{ color: theme.border, marginBottom: 8, fontWeight: 700 }}>{info}</div>}
+        {info && <div style={{ color: theme.primary, marginBottom: 8, fontWeight: 700 }}>{info}</div>}
 
         <button
           type="submit"
@@ -741,7 +747,7 @@ export default function LedgerMobile() {
                 style={{
                   padding: '8px 10px',
                   borderRadius: 8,
-                  border: `1.5px solid ${theme.border}`,
+                  border: `1px solid ${theme.fieldBorder}`,
                   background: theme.surfaceAlt,
                   color: theme.text,
                   fontWeight: 600,
@@ -764,20 +770,8 @@ export default function LedgerMobile() {
               onClick={handleDownloadPdf}
               disabled={exportingPdf}
               title="Download PDF for selected period or date/person filters"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '8px 12px',
-                borderRadius: 8,
-                border: `1.5px solid ${theme.border}`,
-                background: theme.surface,
-                color: theme.text,
-                fontWeight: 700,
-                cursor: exportingPdf ? 'wait' : 'pointer',
-              }}
+              className="ledger-page-btn portal-btn-pdf stock-periods-btn"
             >
-              <span aria-hidden="true" style={{ fontSize: 16 }}>📄</span>
               {exportingPdf ? 'Generating PDF…' : 'Download PDF'}
             </button>
           </div>
@@ -853,7 +847,7 @@ export default function LedgerMobile() {
                       style={{
                         padding: 10,
                         borderRadius: 8,
-                        border: `2px solid ${editDirection === 'credit' ? '#16c784' : theme.border}`,
+                        border: `2px solid ${editDirection === 'credit' ? '#16c784' : theme.fieldBorder}`,
                         background: editDirection === 'credit' ? 'rgba(22, 199, 132, 0.15)' : theme.surfaceAlt,
                         color: theme.text,
                         fontWeight: 700,
@@ -867,7 +861,7 @@ export default function LedgerMobile() {
                       style={{
                         padding: 10,
                         borderRadius: 8,
-                        border: `2px solid ${editDirection === 'debit' ? '#e14b4b' : theme.border}`,
+                        border: `2px solid ${editDirection === 'debit' ? '#e14b4b' : theme.fieldBorder}`,
                         background: editDirection === 'debit' ? 'rgba(225, 75, 75, 0.15)' : theme.surfaceAlt,
                         color: theme.text,
                         fontWeight: 700,
@@ -885,7 +879,7 @@ export default function LedgerMobile() {
                     onWheel={preventInputWheelScroll}
                     onWheelCapture={preventInputWheelScroll}
                     placeholder="Amount (USD)"
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
                   />
                   <input
                     type="text"
@@ -893,7 +887,7 @@ export default function LedgerMobile() {
                     value={editPersonName}
                     onChange={(e) => setEditPersonName(e.target.value)}
                     placeholder="Person"
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
                   />
                   <input
                     type="text"
@@ -901,21 +895,22 @@ export default function LedgerMobile() {
                     value={editEntryDate}
                     onChange={(e) => setEditEntryDate(e.target.value)}
                     placeholder="dd/m/yyyy"
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, boxSizing: 'border-box' }}
                   />
                   <textarea
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
                     rows={2}
                     placeholder="Description (optional)"
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, resize: 'vertical', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, resize: 'vertical', boxSizing: 'border-box' }}
                   />
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       type="button"
                       onClick={handleSaveEditEntry}
                       disabled={savingEdit}
-                      style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', fontWeight: 800, background: theme.border, color: '#0a0a08' }}
+                      className="stock-periods-btn stock-periods-btn-primary"
+                      style={{ flex: 1, padding: 10, borderRadius: 8, fontWeight: 800 }}
                     >
                       {savingEdit ? 'Saving…' : 'Save'}
                     </button>
@@ -923,7 +918,7 @@ export default function LedgerMobile() {
                       type="button"
                       onClick={cancelEditEntry}
                       disabled={savingEdit}
-                      style={{ flex: 1, padding: 10, borderRadius: 8, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt, color: theme.text, fontWeight: 700 }}
+                      style={{ flex: 1, padding: 10, borderRadius: 8, border: `1px solid ${theme.fieldBorder}`, background: theme.surfaceAlt, color: theme.text, fontWeight: 700 }}
                     >
                       Cancel
                     </button>
@@ -946,7 +941,7 @@ export default function LedgerMobile() {
                         gap: 4,
                         padding: '4px 8px',
                         borderRadius: 8,
-                        border: `1.5px solid ${theme.border}`,
+                        border: `1px solid ${theme.fieldBorder}`,
                         background: theme.surfaceAlt,
                         color: theme.text,
                         fontWeight: 700,
@@ -961,14 +956,7 @@ export default function LedgerMobile() {
                     <button
                       type="button"
                       onClick={() => beginEditEntry(entry)}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: 8,
-                        border: `1.5px solid ${theme.border}`,
-                        background: theme.surfaceAlt,
-                        color: theme.text,
-                        fontWeight: 700,
-                      }}
+                      className="ledger-page-btn ledger-page-btn--compact stock-periods-btn stock-periods-btn-secondary"
                     >
                       Edit
                     </button>

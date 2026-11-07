@@ -32,7 +32,7 @@ On Vercel, `REACT_APP_API_BASE` is usually **unset**. The UI uses same-origin `/
 ## Notes
 
 - Local UI changes apply immediately; **API behavior** matches whatever is **deployed** at `REACT_APP_API_BASE` until you deploy your branch.
-- **Quotationer on localhost:** Sign in as `alielboussi00@gmail.com` and open [http://localhost:3000/quotationer](http://localhost:3000/quotationer). On localhost only, that account gets Hassan Awad’s sidebar and dashboard (layby overview + quotation nav) on his routes (`/quotationer`, `/quotes-board`, `/warehouse-deliveries`, `/warehouse-returns`, `/warehouse-storage`, `/layby-management`, `/transfers`). On **`/warehouse-deliveries`**, the same account can tick packets, accept deliveries, and **Save delivery note as PDF** like Hassan. Hard-refresh (`Ctrl+F5`) if the UI looks stale after pulls. Your full admin menu returns on other paths (e.g. `/dashboard`).
+- **Hassan Awad preview (production or localhost):** Sign in as `alielboussi00@gmail.com` (login-access admin), then open **`/quotationer?experience=hassan`** — e.g. [https://www.infinity-home.online/quotationer?experience=hassan](https://www.infinity-home.online/quotationer?experience=hassan). You keep your own session but see Hassan’s sidebar, layby dashboard, and allowed warehouse routes until you click **Exit Hassan preview** or sign out. Hassan’s factory orders live at **`/factory-orders`** (admin **Orders** stay at **`/quotes-board`**). On **localhost** you can also use `/quotationer` without the query param.
 - APIs send `Access-Control-Allow-Origin: *`, so browser calls from `localhost:3000` work without a dev proxy.
 
 ## Warehouse Production app (Expo)

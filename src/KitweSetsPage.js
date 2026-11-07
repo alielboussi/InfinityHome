@@ -4,7 +4,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 export default function KitweSetsPage({ mode }) {
   const [searchParams] = useSearchParams();
   const qs = new URLSearchParams(searchParams);
-  qs.set('view', 'sets');
+  qs.delete('view');
   if (mode === 'create') qs.set('create', '1');
   else qs.delete('create');
   return <Navigate to={`/kitwe-products?${qs.toString()}`} replace />;

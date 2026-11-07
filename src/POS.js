@@ -2304,7 +2304,7 @@ export default function POS({ isMobile = false }) {
           </button>
           <button
             type="button"
-            className="layby-mgmt-download-btn"
+            className="layby-mgmt-download-btn portal-btn-pdf"
             title={pdfPreviewBusy ? 'Opening preview...' : 'Preview sales receipt PDF (sample data)'}
             aria-label="Preview sales receipt PDF sample"
             onClick={handlePreviewPdf}

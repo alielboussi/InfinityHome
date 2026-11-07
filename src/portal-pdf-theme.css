@@ -1,0 +1,71 @@
+/**
+ * Portal PDF actions — red buttons with PDF icon (single source).
+ * Loaded from index.js after portal-whatsapp-theme.css.
+ */
+
+body.enterprise-theme .portal-btn-pdf,
+body.enterprise-theme .allsales-pdf-btn,
+body.enterprise-theme .layby-mgmt-container .layby-export-btn--pdf,
+body.enterprise-theme .layby-export-btn--pdf,
+body.enterprise-theme .lusaka-transfers-container .lusaka-transfer-icon-btn.portal-btn-pdf,
+body.enterprise-theme .lusaka-transfer-icon-btn.portal-btn-pdf,
+body.enterprise-theme .wt-history-pdf.portal-btn-pdf,
+body.enterprise-theme .stock-periods-pdf-btn,
+body.enterprise-theme .wt-history-pdf,
+body.enterprise-theme .wt-conv-pdf-icon,
+body.enterprise-theme .layby-mgmt-download-btn.portal-btn-pdf,
+body.enterprise-theme button.portal-btn-pdf,
+body.enterprise-theme a.portal-btn-pdf {
+  background: #e53935 !important;
+  background-image: none !important;
+  border: 1px solid #c62828 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .portal-btn-pdf:hover:not(:disabled),
+body.enterprise-theme .allsales-pdf-btn:hover:not(:disabled),
+body.enterprise-theme .layby-mgmt-container .layby-export-btn--pdf:hover:not(:disabled),
+body.enterprise-theme .layby-export-btn--pdf:hover:not(:disabled),
+body.enterprise-theme .lusaka-transfers-container .lusaka-transfer-icon-btn.portal-btn-pdf:hover:not(:disabled),
+body.enterprise-theme .lusaka-transfer-icon-btn.portal-btn-pdf:hover:not(:disabled),
+body.enterprise-theme .stock-periods-pdf-btn:hover:not(:disabled),
+body.enterprise-theme .wt-history-pdf:hover:not(:disabled),
+body.enterprise-theme .wt-conv-pdf-icon:hover:not(:disabled),
+body.enterprise-theme .layby-mgmt-download-btn.portal-btn-pdf:hover:not(:disabled),
+body.enterprise-theme button.portal-btn-pdf:hover:not(:disabled) {
+  background: #c62828 !important;
+  border-color: #b71c1c !important;
+  color: #ffffff !important;
+}
+
+body.enterprise-theme .portal-btn-pdf svg,
+body.enterprise-theme .portal-btn-pdf__icon,
+body.enterprise-theme .allsales-pdf-btn svg,
+body.enterprise-theme .layby-mgmt-container .layby-export-btn--pdf svg,
+body.enterprise-theme .layby-export-btn--pdf svg,
+body.enterprise-theme .layby-mgmt-download-btn.portal-btn-pdf svg,
+body.enterprise-theme .lusaka-transfer-icon-btn.portal-btn-pdf svg {
+  color: #ffffff !important;
+  fill: currentColor !important;
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
+}
+
+body.enterprise-theme .portal-btn-pdf:disabled,
+body.enterprise-theme .allsales-pdf-btn:disabled,
+body.enterprise-theme .layby-mgmt-container .layby-export-btn--pdf:disabled,
+body.enterprise-theme .layby-export-btn--pdf:disabled,
+body.enterprise-theme .stock-periods-pdf-btn:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+
+/* Icon-only PDF controls stay square */
+body.enterprise-theme .allsales-pdf-btn,
+body.enterprise-theme .layby-mgmt-download-btn.portal-btn-pdf:not(.layby-mgmt-download-btn--label) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}

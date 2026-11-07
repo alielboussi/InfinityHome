@@ -156,6 +156,7 @@ export const routePreloadByPath = {
   '/pos': () => POS.preload(),
   '/layby-management': () => LaybyManagement.preload(),
   '/quotes-board': () => QuotesBoard.preload(),
+  '/factory-orders': () => QuotesBoard.preload(),
   '/ledger-mobile': () => LedgerMobile.preload(),
   '/products-list': () => ProductsListPage.preload(),
   '/stock-history': () => StockHistoryPage.preload(),

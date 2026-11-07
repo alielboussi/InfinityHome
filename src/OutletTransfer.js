@@ -968,7 +968,7 @@ export default function OutletTransfer() {
                         <div className="wt-history-card-actions">
                           <button
                             type="button"
-                            className="wt-history-pdf"
+                            className="wt-history-pdf portal-btn-pdf"
                             aria-label="Download transfer PDF"
                             title={pdfBusy ? 'Preparing PDF...' : 'Download PDF'}
                             disabled={pdfBusy}

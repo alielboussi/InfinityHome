@@ -97,7 +97,6 @@ import {
 } from '../../src/utils/warehouseDeliverySetPrint.js';
 import { isWarehouseSetAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
 import { acceptWarehouseDeliveryServer } from '../lib/warehouseDeliveryAccept.js';
-import { ensureKitweSetRecipeFromFactory } from '../lib/ensureKitweSetRecipeFromFactory.js';
 import { cancelWarehouseDeliveryServer, deleteWarehouseDeliverySessionHard } from '../lib/cancelWarehouseDelivery.js';
 import { assertPacketStockAvailable, assertAssemblyStockAvailable } from '../lib/warehouseDeliveryStock.js';
 import {
@@ -3016,14 +3015,7 @@ async function processSetDeliveryGroup({
     throw new Error('Unknown set in shipment.');
   }
 
-  const mirror = await ensureKitweSetRecipeFromFactory(sb, setId, {
-    setItems,
-    assembliesById: assemblyById,
-    now,
-  });
-  const setItemsForRecipe = mirror.addedRows?.length
-    ? [...(setItems || []), ...mirror.addedRows]
-    : (setItems || []);
+  const setItemsForRecipe = setItems || [];
 
   const units = Math.max(1, Number(group.units) || 1);
   const groupId = String(group.group_id || newUuid());

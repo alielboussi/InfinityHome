@@ -1,6 +1,10 @@
 import db from '../dataClient';
 import { KITWE_LOCATION_ID } from '../constants/warehouseShowroomLocations';
-import { applyProductLocationPricing, buildProductLocationPriceUpsert } from './locationPricing';
+import {
+  applyProductLocationPricing,
+  buildProductLocationPriceUpsert,
+  resolveProductLocationPricing,
+} from './locationPricing';
 import { normalizeWarehouseProductSku } from './warehouseScanResolver';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
 import { resolveProductRecordImageUrl } from './productImageUrl';
@@ -28,26 +32,52 @@ export function resolveRetailProductForAssembly(assembly, index) {
   return null;
 }
 
+const PRODUCT_SELECT = 'id, name, sku, price, promotional_price, promo_start_date, promo_end_date, currency, category_id, image_url, product_images(image_url)';
+const IN_QUERY_CHUNK = 40;
+
+function chunkList(list, size) {
+  const chunks = [];
+  for (let i = 0; i < list.length; i += size) chunks.push(list.slice(i, i + size));
+  return chunks;
+}
+
 async function fetchProductsBySkus(skus) {
-  const list = [...skus].filter(Boolean);
+  const list = [...new Set([...skus].map((s) => String(s || '').trim()).filter(Boolean))];
   if (!list.length) return [];
   const rows = [];
-  for (const sku of list) {
-    const { data } = await db.from('products').select(
-      'id, name, sku, price, promotional_price, promo_start_date, promo_end_date, currency, category_id, image_url, product_images(image_url)',
-    ).eq('sku', sku).limit(1);
-    if (data?.[0]) rows.push(data[0]);
+  for (const chunk of chunkList(list, IN_QUERY_CHUNK)) {
+    const { data } = await db.from('products').select(PRODUCT_SELECT).in('sku', chunk);
+    if (data?.length) rows.push(...data);
   }
+  const found = new Set(rows.map((r) => String(r.sku || '').trim().toLowerCase()));
+  const missing = list.filter((sku) => !found.has(sku.toLowerCase()));
+  await Promise.all(missing.map(async (sku) => {
+    const { data } = await db.from('products').select(PRODUCT_SELECT).eq('sku', sku).limit(1);
+    if (data?.[0]) rows.push(data[0]);
+  }));
   return rows;
 }
 
 async function fetchProductsByIds(ids) {
-  const list = [...ids].filter(Boolean);
+  const list = [...new Set([...ids].map((id) => String(id || '').trim()).filter(Boolean))];
   if (!list.length) return [];
-  const { data } = await db.from('products').select(
-    'id, name, sku, price, promotional_price, promo_start_date, promo_end_date, currency, category_id, image_url, product_images(image_url)',
-  ).in('id', list);
-  return data || [];
+  const rows = [];
+  for (const chunk of chunkList(list, IN_QUERY_CHUNK)) {
+    const { data } = await db.from('products').select(PRODUCT_SELECT).in('id', chunk);
+    if (data?.length) rows.push(...data);
+  }
+  return rows;
+}
+
+/** Kitwe catalog price cells — uses location overrides even before full retail row is loaded. */
+export function resolveKitweAssemblyCatalogPricing(assembly, retailIndex, priceMap, locationId) {
+  const retail = resolveRetailProductForAssembly(assembly, retailIndex);
+  const pricingProduct = retail
+    || (assembly?.retail_product_id ? { id: assembly.retail_product_id } : null);
+  if (!pricingProduct?.id) {
+    return { price: null, promotional_price: null };
+  }
+  return resolveProductLocationPricing(pricingProduct, locationId, priceMap);
 }
 
 /**

@@ -1,4 +1,8 @@
 import { KITWE_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
+import {
+  KITWE_CATALOG_LOOSE_META,
+  mergeAssemblyMetadataPatch,
+} from '../../src/utils/kitweCatalogComponentVisibility.js';
 import { isWarehouseSetAssembly } from '../../src/utils/warehouseSetMath.js';
 import { expandWarehouseSetItemsRows } from '../../src/utils/warehouseSetItems.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
@@ -15,6 +19,16 @@ async function loadAssemblyInventory(sb, assemblyId, locationId) {
     .eq('location_id', locationId)
     .maybeSingle();
   return Number(row?.quantity) || 0;
+}
+
+export async function markKitweCatalogLooseServer(sb, assemblyIds) {
+  const ids = [...new Set((assemblyIds || []).map((x) => String(x || '').trim()).filter(Boolean))];
+  const now = new Date().toISOString();
+  for (const id of ids) {
+    const { data: row } = await sb.from(ASSEMBLIES).select('metadata').eq('id', id).maybeSingle();
+    const metadata = mergeAssemblyMetadataPatch(row?.metadata, { [KITWE_CATALOG_LOOSE_META]: true });
+    await sb.from(ASSEMBLIES).update({ metadata, updated_at: now }).eq('id', id);
+  }
 }
 
 async function adjustAssemblyInventory(sb, assemblyId, locationId, delta) {
@@ -63,6 +77,7 @@ export async function applyKitweWarehouseSaleDeduction(sb, { locationId, lines =
     const isSet = line.kind === 'set' || isWarehouseSetAssembly(assembly);
     if (line.kind === 'restock') {
       await adjustAssemblyInventory(sb, line.assembly_id, locId, line.quantity);
+      await markKitweCatalogLooseServer(sb, [line.assembly_id]);
       adjusted += 1;
       continue;
     }

@@ -1,0 +1,263 @@
+/**
+ * Portal global theme — enterprise buttons (typography + silver chrome).
+ *
+ * Single source of truth for portal + Hassan quotationer UI buttons.
+ * Design tokens (--portal-btn-*, --brand-primary*) live in design-tokens.css.
+ * Loaded from index.js after design-tokens.css and before global-theme.css
+ * so page-specific rules in global-theme.css can still override nav/chrome controls.
+ */
+
+/* —— Typography: Arial 12 bold on every portal action —— */
+body.enterprise-theme button,
+body.enterprise-theme input[type="button"],
+body.enterprise-theme input[type="submit"],
+body.enterprise-theme input[type="reset"],
+body.enterprise-theme .stock-periods-btn,
+body.enterprise-theme .btn-tier-primary,
+body.enterprise-theme .btn-tier-secondary,
+body.enterprise-theme .btn-tier-danger,
+body.enterprise-theme .action-button,
+body.enterprise-theme .kiosk-btn-primary,
+body.enterprise-theme .app-route-shell button:not(.ent-back-btn):not(.ent-drawer-toggle),
+body.enterprise-theme .search-form button,
+body.enterprise-theme .form-actions button,
+body.enterprise-theme .form-row button:not(.back-inline-btn),
+body.enterprise-theme .products-toolbar-btn,
+body.enterprise-theme .products-toolbar-icon-btn,
+body.enterprise-theme .products-toolbar-more-menu button,
+body.enterprise-theme .layby-row-btn,
+body.enterprise-theme .layby-export-btn,
+body.enterprise-theme .label-refresh-btn,
+body.enterprise-theme .label-category-bulk-btn,
+body.enterprise-theme .product-form-btn,
+body.enterprise-theme .warehouse-catalog-page button[type="button"],
+body.enterprise-theme .kitwe-catalog-page button[type="button"],
+body.enterprise-theme .allsales-edit-btn,
+body.enterprise-theme .allsales-cancel-btn,
+body.enterprise-theme .allsales-pdf-btn,
+body.enterprise-theme .allsales-whatsapp-btn,
+body.enterprise-theme .reversal-page button[type="button"],
+body.enterprise-theme .user-activity-refresh-btn,
+body.enterprise-theme .user-access-page button[type="button"],
+body.enterprise-theme .pos-toolbar-btn,
+body.enterprise-theme .pos-modal-actions .pos-modal-btn-primary,
+body.enterprise-theme .pos-modal-actions .pos-modal-btn-secondary,
+body.enterprise-theme .layby-modal-actions .pos-modal-btn-primary,
+body.enterprise-theme .layby-modal-actions .pos-modal-btn-secondary {
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+}
+
+/* —— Default button chrome (matches POS “+ Customer”) —— */
+body.enterprise-theme button {
+  background: var(--brand-primary) !important;
+  background-image: none !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+  border-radius: var(--brand-radius, 8px) !important;
+  min-height: var(--brand-btn-height, 40px);
+  padding: 0 14px !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+body.enterprise-theme button:hover {
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
+  color: var(--brand-on-primary) !important;
+  transform: none !important;
+}
+
+body.enterprise-theme button:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+
+/* Icons inside portal action buttons */
+body.enterprise-theme button > svg,
+body.enterprise-theme button .svg-inline--fa {
+  width: var(--portal-btn-icon-size, 1.25rem) !important;
+  height: var(--portal-btn-icon-size, 1.25rem) !important;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+body.enterprise-theme button:has(> svg):not(.ent-drawer-link):not(.ent-drawer-toggle):not(.ent-back-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+body.enterprise-theme button.warehouse-label-print-btn,
+body.enterprise-theme button.warehouse-category-btn {
+  width: var(--portal-icon-btn-size, 42px) !important;
+  height: var(--portal-icon-btn-size, 42px) !important;
+  min-width: var(--portal-icon-btn-size, 42px) !important;
+  min-height: var(--portal-icon-btn-size, 42px) !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+body.enterprise-theme button.warehouse-label-print-btn > svg,
+body.enterprise-theme button.warehouse-category-btn > svg,
+body.enterprise-theme button.warehouse-label-print-btn .svg-inline--fa,
+body.enterprise-theme button.warehouse-category-btn .svg-inline--fa {
+  width: var(--portal-icon-btn-svg, 22px) !important;
+  height: var(--portal-icon-btn-svg, 22px) !important;
+}
+
+body.enterprise-theme .ent-banner button.ent-back-btn > svg {
+  width: 1.125rem !important;
+  height: 1.125rem !important;
+}
+
+/* Named action classes — same silver fill */
+body.enterprise-theme .primary,
+body.enterprise-theme .btn-primary,
+body.enterprise-theme .action-button,
+body.enterprise-theme .allsales-edit-btn,
+body.enterprise-theme .stock-periods-btn,
+body.enterprise-theme .stock-periods-btn-primary,
+body.enterprise-theme .stock-periods-btn-secondary,
+body.enterprise-theme .btn-tier-secondary,
+body.enterprise-theme .btn-secondary,
+body.enterprise-theme button.btn-secondary,
+body.enterprise-theme .pos-modal-actions .pos-modal-btn-primary,
+body.enterprise-theme .pos-modal-actions .pos-modal-btn-secondary,
+body.enterprise-theme .layby-modal-actions .pos-modal-btn-primary,
+body.enterprise-theme .layby-modal-actions .pos-modal-btn-secondary {
+  background: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .primary:hover,
+body.enterprise-theme .btn-primary:hover,
+body.enterprise-theme .action-button:hover,
+body.enterprise-theme .allsales-edit-btn:hover,
+body.enterprise-theme .stock-periods-btn:hover:not(:disabled),
+body.enterprise-theme .stock-periods-btn-primary:hover:not(:disabled),
+body.enterprise-theme .stock-periods-btn-secondary:hover:not(:disabled),
+body.enterprise-theme .btn-tier-secondary:hover,
+body.enterprise-theme .btn-secondary:hover,
+body.enterprise-theme button.btn-secondary:hover,
+body.enterprise-theme .pos-modal-actions .pos-modal-btn-primary:hover,
+body.enterprise-theme .pos-modal-actions .pos-modal-btn-secondary:hover,
+body.enterprise-theme .layby-modal-actions .pos-modal-btn-primary:hover,
+body.enterprise-theme .layby-modal-actions .pos-modal-btn-secondary:hover {
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
+  color: var(--brand-on-primary) !important;
+}
+
+/* Delete buttons: portal-delete-theme.css */
+
+body.enterprise-theme .stock-periods-btn-danger,
+body.enterprise-theme .btn-danger,
+body.enterprise-theme button[class*="danger"]:not(.portal-btn-delete),
+body.enterprise-theme button[class*="void"],
+body.enterprise-theme button[class*="minus"],
+body.enterprise-theme button[class*="deduct"],
+body.enterprise-theme button[class*="trash"] {
+  background: var(--ent-red) !important;
+  border: 1px solid var(--ent-red-dark) !important;
+  color: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* “Remove” on POS payments stays outlined red (class contains remove) — override below */
+body.enterprise-theme .pos-container .payment-row .remove-btn:not(:disabled) {
+  background: #ffffff !important;
+  color: #dc2626 !important;
+  border: 1px solid #dc2626 !important;
+}
+
+body.enterprise-theme .pos-container .payment-row .remove-btn:not(:disabled):hover {
+  background: #fef2f2 !important;
+}
+
+/* Dashboard / hero Logout — same silver as other portal actions (not red) */
+body.enterprise-theme .logout-btn,
+body.enterprise-theme .dashboard-hero-logout {
+  background: var(--brand-primary) !important;
+  background-image: none !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+  box-shadow: none !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+}
+
+body.enterprise-theme .logout-btn:hover,
+body.enterprise-theme .dashboard-hero-logout:hover {
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
+  color: var(--brand-on-primary) !important;
+}
+
+/* Row action dropdown (quotes board / factory orders) */
+body.enterprise-theme .portal-actions-dropdown {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+body.enterprise-theme .portal-actions-dropdown__trigger {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  min-width: 6.5rem;
+}
+
+body.enterprise-theme .portal-actions-dropdown__chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+body.enterprise-theme .portal-actions-dropdown__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 80;
+  min-width: 13.5rem;
+  max-width: min(100vw - 24px, 18rem);
+  background: #ffffff !important;
+  border: 1px solid var(--ent-border, #e5e7eb) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14) !important;
+  padding: 6px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+body.enterprise-theme .portal-actions-dropdown__menu .portal-actions-dropdown__item {
+  width: 100% !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  gap: 8px !important;
+  min-height: 36px !important;
+  padding: 0 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  background: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+  font-family: var(--portal-btn-font-family, Arial, Helvetica, sans-serif) !important;
+  font-size: var(--portal-btn-font-size, 12px) !important;
+  font-weight: var(--portal-btn-font-weight, 700) !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .portal-actions-dropdown__menu .portal-actions-dropdown__item:hover:not(:disabled) {
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
+  color: var(--brand-on-primary) !important;
+}

@@ -391,31 +391,18 @@ export default function WarehouseDeliveriesAdmin() {
         .
       </div>
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div className="warehouse-deliveries-toolbar">
         <input
           type="search"
+          className="warehouse-deliveries-toolbar__search"
           placeholder="Search delivery #, email, status…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            minWidth: 260,
-            padding: '8px 10px',
-            borderRadius: 8,
-            border: `1px solid ${theme.border}`,
-            background: theme.surfaceAlt,
-            color: theme.text,
-          }}
         />
         <select
+          className="warehouse-deliveries-toolbar__status"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          style={{
-            padding: '8px 10px',
-            borderRadius: 8,
-            border: `1px solid ${theme.border}`,
-            background: theme.surfaceAlt,
-            color: theme.text,
-          }}
         >
           <option value="all">Active deliveries</option>
           <option value="pending">Pending</option>
@@ -531,39 +518,20 @@ export default function WarehouseDeliveriesAdmin() {
             <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
                 type="button"
+                className="portal-btn-pdf stock-periods-btn"
                 onClick={() => handlePdf(session)}
                 disabled={pdfBusyId === session.id}
-                style={{
-                  background: theme.surfaceAlt,
-                  color: theme.text,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 8,
-                  padding: '8px 16px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
               >
                 {pdfBusyId === session.id ? 'Building PDF…' : 'View PDF'}
               </button>
               {canWhatsApp && (
                 <button
                   type="button"
+                  className="portal-btn-whatsapp stock-periods-btn"
                   title="Resend to Automated Delivery Receipts WhatsApp group with A4 delivery note PDF"
                   aria-label="Resend delivery WhatsApp"
                   onClick={() => handleResendWhatsApp(session)}
                   disabled={whatsappBusyId === session.id}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    background: '#128C7E',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: '8px 14px',
-                    fontWeight: 700,
-                    cursor: whatsappBusyId === session.id ? 'not-allowed' : 'pointer',
-                  }}
                 >
                   <FaWhatsapp size={18} aria-hidden />
                   {whatsappBusyId === session.id ? 'Sending…' : 'WhatsApp'}

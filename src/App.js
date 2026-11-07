@@ -66,7 +66,7 @@ import {
 } from './lazyPages';
 import LegacyStoreroomRedirect from './hubs/LegacyStoreroomRedirect';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
-import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canManageLoginAccess, isPublicAppRoute, isAppAuthenticated, isWarehouseProductionKioskPath, canManageCatalog } from './accessControl';
+import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canManageLoginAccess, isPublicAppRoute, isAppAuthenticated, isWarehouseProductionKioskPath, canManageCatalog, canPreviewHassanQuotationerExperience, isHassanQuotationerPreviewRequested, persistHassanQuotationerPreviewFromSearch, isHassanAwadUser, HASSAN_FACTORY_ORDERS_PATH } from './accessControl';
 import { bootstrapAppAuth } from './utils/authSession';
 
 const SalesReportMobileScreen = SalesReportMobile;
@@ -229,6 +229,14 @@ function WarehouseProductionRetiredRedirect() {
       return <Navigate to={target} replace />;
 }
 
+function QuotesBoardAdminRoute() {
+  const user = getCurrentUser();
+  if (isHassanAwadUser(user)) {
+    return <Navigate to={HASSAN_FACTORY_ORDERS_PATH} replace />;
+  }
+  return <QuotesBoard />;
+}
+
 // Enforce per-user route access (e.g., Hassan quotationer routes; some users mobile-only layby)
 function AccessGuard() {
       const location = useLocation();
@@ -309,6 +317,15 @@ function App() {
             };
       }, [location.pathname]);
 
+      React.useEffect(() => {
+            if (typeof window === 'undefined') return;
+            const user = getCurrentUser();
+            if (!canPreviewHassanQuotationerExperience(user)) return;
+            if (isHassanQuotationerPreviewRequested(location.search)) {
+                  persistHassanQuotationerPreviewFromSearch(location.search);
+            }
+      }, [location.search]);
+
   return (
             <div className={`App${isDashboardTheme ? ' dashboard-theme' : ''}`}>
                                                                                                                                                                   {/* Global authentication gate: force login before any page access */}
@@ -345,7 +362,8 @@ function App() {
           <Route path="/quotations" element={<Navigate to="/quotationer" replace />} />
           <Route path="/quotation-create" element={<Navigate to="/quotationer" replace />} />
           <Route path="/quotations-list" element={<Navigate to="/quotes-board" replace />} />
-          <Route path="/quotes-board" element={<QuotesBoard />} />
+          <Route path="/quotes-board" element={<QuotesBoardAdminRoute />} />
+          <Route path="/factory-orders" element={<QuotesBoard />} />
           <Route path="/QuotationsList" element={<Navigate to="/quotes-board" replace />} />
           <Route path="/layby-management" element={<LaybyManagement />} />
           <Route path="/layby-management-mobile" element={<LaybyManagementMobile />} />
