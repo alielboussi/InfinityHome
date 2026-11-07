@@ -24,10 +24,19 @@ export default function SetFormScreen({ navigation }) {
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState([]);
 
+  const [setSearch, setSetSearch] = useState('');
   const products = useMemo(
     () => (catalog?.assemblies || []).filter((a) => !isSetAssembly(a)),
     [catalog],
   );
+  const filteredProducts = useMemo(() => {
+    const q = String(setSearch || '').trim().toLowerCase();
+    if (!q) return [];
+    return products.filter(
+      (a) => String(a.name || '').toLowerCase().includes(q)
+        || String(a.family_sku || '').toLowerCase().includes(q),
+    ).slice(0, 30);
+  }, [products, setSearch]);
 
   const toggleProduct = (assembly) => {
     const id = String(assembly.id);
@@ -93,24 +102,41 @@ export default function SetFormScreen({ navigation }) {
         <TextInput style={[styles.input, styles.skuInput]} value={familySku} onChangeText={setFamilySku} />
         <GenerateRandomSkuButton onGenerated={setFamilySku} />
       </View>
-      <Text style={styles.section}>Products in set</Text>
-      {products.map((a) => {
-        const sel = picked.find((p) => String(p.component_assembly_id) === String(a.id));
-        return (
-          <View key={a.id} style={styles.productRow}>
-            <Pressable style={styles.productPick} onPress={() => toggleProduct(a)}>
-              <Text>{sel ? '☑' : '☐'} {a.name}</Text>
-            </Pressable>
-            {sel ? (
-              <View style={styles.qtyRow}>
-                <Pressable onPress={() => setQty(a.id, -1)}><Text style={styles.qtyBtn}>−</Text></Pressable>
-                <Text style={styles.qtyVal}>{sel.quantity}</Text>
-                <Pressable onPress={() => setQty(a.id, 1)}><Text style={styles.qtyBtn}>+</Text></Pressable>
-              </View>
-            ) : null}
+      <Text style={styles.section}>Search created products</Text>
+      <TextInput
+        style={styles.input}
+        value={setSearch}
+        onChangeText={setSetSearch}
+        placeholder="Search product name or SKU…"
+      />
+      {setSearch.trim() ? (
+        filteredProducts.map((a) => {
+          const sel = picked.find((p) => String(p.component_assembly_id) === String(a.id));
+          return (
+            <View key={a.id} style={styles.productRow}>
+              <Pressable style={styles.productPick} onPress={() => toggleProduct(a)}>
+                <Text style={{ color: theme.text }}>{sel ? '☑' : '☐'} {a.name}</Text>
+              </Pressable>
+            </View>
+          );
+        })
+      ) : null}
+      <Text style={styles.section}>Selected products ({picked.length})</Text>
+      {picked.map((sel) => (
+        <View key={sel.component_assembly_id} style={styles.productRow}>
+          <Pressable
+            style={styles.productPick}
+            onPress={() => toggleProduct({ id: sel.component_assembly_id, name: sel.label })}
+          >
+            <Text style={{ color: theme.text }}>☑ {sel.label}</Text>
+          </Pressable>
+          <View style={styles.qtyRow}>
+            <Pressable onPress={() => setQty(sel.component_assembly_id, -1)}><Text style={styles.qtyBtn}>−</Text></Pressable>
+            <Text style={[styles.qtyVal, { color: theme.text }]}>{sel.quantity}</Text>
+            <Pressable onPress={() => setQty(sel.component_assembly_id, 1)}><Text style={styles.qtyBtn}>+</Text></Pressable>
           </View>
-        );
-      })}
+        </View>
+      ))}
       <Pressable
         style={[formButtonStyles.primaryBtn, busy && formButtonStyles.primaryBtnDisabled]}
         onPress={save}

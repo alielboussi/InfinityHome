@@ -57,24 +57,6 @@ const PRESET_SUFFIXES = [
   'L Shape',
 ];
 
-const SET_COMPONENT_PRESETS = [
-  '3 Seater',
-  '2 Seater',
-  'Single Seater',
-  'Lounge Chair',
-  '3 Seater Recliner',
-  '2 Seater Recliner',
-  'Single Seater Recliner',
-  'Dining Table',
-  'Dining Chair',
-  'Buffet',
-  'Buffet Mirror',
-  'Dresser Table',
-  'Dresser Mirror',
-  'Coffee Table',
-  'Side Table',
-];
-
 function extractBaseName(productName) {
   const n = String(productName || '').trim();
   if (!n) return '';
@@ -126,7 +108,8 @@ function groupFloor2Products(products) {
   const map = new Map();
   (products || []).forEach((item) => {
     const rawName = String(item?.raw_name || item?.name || '').trim();
-    const familyBase = extractBaseName(rawName) || rawName || String(item.assembly_id || item.id);
+    const explicitGroup = String(item?.floor2_set_name || '').trim();
+    const familyBase = explicitGroup || extractBaseName(rawName) || rawName || String(item.assembly_id || item.id);
     const key = familyBase.toLowerCase();
     if (!map.has(key)) map.set(key, { familyBase, items: [] });
     map.get(key).items.push(item);
@@ -176,12 +159,8 @@ export default function WarehouseFloor2Screen() {
   const [prodPhotoUri, setProdPhotoUri] = useState('');
 
   const [setBaseNameInput, setSetBaseNameInput] = useState('');
-  const [setSelectedPresets, setSetSelectedPresets] = useState(() => ({
-    '3 Seater': true,
-    '2 Seater': true,
-    'Single Seater': true,
-  }));
-  const [setComponentQtyMap, setSetComponentQtyMap] = useState({});
+  const [setCompSearch, setSetCompSearch] = useState('');
+  const [setSelectedProducts, setSetSelectedProducts] = useState([]);
   const [setPhotoUri, setSetPhotoUri] = useState('');
 
   const loadProducts = useCallback(async ({ fromPull = false } = {}) => {
@@ -344,12 +323,8 @@ export default function WarehouseFloor2Screen() {
       setProdPhotoUri('');
     } else if (mode === 'set') {
       setSetBaseNameInput('');
-      setSetSelectedPresets({
-        '3 Seater': true,
-        '2 Seater': true,
-        'Single Seater': true,
-      });
-      setSetComponentQtyMap({});
+      setSetCompSearch('');
+      setSetSelectedProducts([]);
       setSetPhotoUri('');
     }
     setCreateMode(mode);
@@ -358,6 +333,55 @@ export default function WarehouseFloor2Screen() {
   const closeCreateModal = () => {
     if (createBusy) return;
     setCreateMode('');
+  };
+
+  const selectedSetProductIdSet = useMemo(
+    () => new Set(setSelectedProducts.map((p) => String(p.assembly_id))),
+    [setSelectedProducts],
+  );
+
+  const searchableSetProducts = useMemo(() => {
+    const q = String(setCompSearch || '').trim().toLowerCase();
+    const list = (products || []).filter((item) => {
+      const aid = String(item.assembly_id || item.id || '');
+      if (!aid || selectedSetProductIdSet.has(aid)) return false;
+      if (!q) return true;
+      const name = String(item.raw_name || item.name || '').toLowerCase();
+      const sku = String(item.family_sku || '').toLowerCase();
+      return name.includes(q) || sku.includes(q);
+    });
+    return list.slice(0, 40);
+  }, [products, setCompSearch, selectedSetProductIdSet]);
+
+  const handleAddProductToSetDraft = (item) => {
+    const aid = String(item.assembly_id || item.id || '').trim();
+    if (!aid) return;
+    setSetSelectedProducts((prev) => {
+      if (prev.some((p) => String(p.assembly_id) === aid)) return prev;
+      return [
+        ...prev,
+        {
+          assembly_id: aid,
+          name: String(item.raw_name || item.name || aid).trim(),
+          family_sku: String(item.family_sku || '').trim(),
+          qtyDraft: String(floor2Qty(item) > 0 ? floor2Qty(item) : ''),
+        },
+      ];
+    });
+    setSetCompSearch('');
+  };
+
+  const handleRemoveProductFromSetDraft = (assemblyId) => {
+    const aid = String(assemblyId || '');
+    setSetSelectedProducts((prev) => prev.filter((p) => String(p.assembly_id) !== aid));
+  };
+
+  const handleSetDraftProductQtyChange = (assemblyId, text) => {
+    const aid = String(assemblyId || '');
+    const cleaned = String(text || '').replace(/[^0-9]/g, '');
+    setSetSelectedProducts((prev) =>
+      prev.map((p) => (String(p.assembly_id) === aid ? { ...p, qtyDraft: cleaned } : p)),
+    );
   };
 
   const handleSubmitCreateProd = async () => {
@@ -390,18 +414,21 @@ export default function WarehouseFloor2Screen() {
   const handleSubmitCreateSet = async () => {
     const baseName = String(setBaseNameInput || '').trim();
     if (!baseName) {
-      Alert.alert('Family base name required', 'Enter the family base name (e.g. Aria, Monic).');
+      Alert.alert('Set name required', 'Enter the set / family name (e.g. Aria, Monic).');
       return;
     }
-    const activePresets = SET_COMPONENT_PRESETS.filter((p) => setSelectedPresets[p]);
-    if (!activePresets.length) {
-      Alert.alert('Select components', 'Select at least one component for this set.');
+    if (!setSelectedProducts.length) {
+      Alert.alert('Select products', 'Search and add at least one created product for this set.');
       return;
     }
-    const components = activePresets.map((preset) => {
-      const raw = String(setComponentQtyMap[preset] ?? '').trim();
-      const quantity = raw === '' ? 0 : Math.max(0, Math.floor(Number(raw) || 0));
-      return { preset, quantity };
+    const components = setSelectedProducts.map((item) => {
+      const raw = String(item.qtyDraft ?? '').trim();
+      const quantity = raw === '' ? undefined : Math.max(0, Math.floor(Number(raw) || 0));
+      return {
+        assembly_id: item.assembly_id,
+        name: item.name,
+        quantity,
+      };
     });
 
     setCreateBusy(true);
@@ -730,10 +757,10 @@ export default function WarehouseFloor2Screen() {
               <ScrollView style={styles.inlayScroll} keyboardShouldPersistTaps="handled">
                 <Text style={styles.modalTitle}>Create Floor 2 Set (+ Set)</Text>
                 <Text style={styles.modalSub}>
-                  Creates a family base item and its components (e.g. 3 Seater, 2 Seater, Single Seater). The 3 Seater photo is used as the family cover image.
+                  Search and pick created products to group into a set on Floor 2. If a 3 Seater has a photo, it is used as the cover image first.
                 </Text>
 
-                <Text style={styles.fieldLabel}>Family Base Name</Text>
+                <Text style={styles.fieldLabel}>Set / Family Name</Text>
                 <TextInput
                   style={styles.formInput}
                   placeholder="e.g. Aria, Monic, Berlin…"
@@ -761,51 +788,99 @@ export default function WarehouseFloor2Screen() {
                   </View>
                 ) : null}
 
-                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Select Components &amp; Opening Qty</Text>
-                <View style={styles.presetList}>
-                  {SET_COMPONENT_PRESETS.map((preset) => {
-                    const selected = Boolean(setSelectedPresets[preset]);
-                    const compPreviewName = setBaseNameInput.trim()
-                      ? `${setBaseNameInput.trim()} ${preset}`
-                      : preset;
-                    return (
-                      <View key={preset} style={[styles.presetRow, selected && styles.presetRowSelected]}>
-                        <Pressable
-                          style={styles.presetCheckArea}
-                          disabled={createBusy}
-                          onPress={() =>
-                            setSetSelectedPresets((prev) => ({ ...prev, [preset]: !prev[preset] }))
-                          }
-                        >
-                          <MaterialCommunityIcons
-                            name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                            size={22}
-                            color={selected ? theme.primary : theme.textMuted}
-                          />
+                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Search Created Products</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Search created product name or SKU…"
+                  placeholderTextColor={theme.textMuted}
+                  value={setCompSearch}
+                  onChangeText={setSetCompSearch}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  editable={!createBusy}
+                />
+
+                {setCompSearch.trim() ? (
+                  <View style={[styles.presetList, { marginTop: 6, marginBottom: 8 }]}>
+                    {searchableSetProducts.length === 0 ? (
+                      <Text style={{ color: theme.textMuted, fontSize: 13, paddingVertical: 6 }}>
+                        No matching created products found.
+                      </Text>
+                    ) : (
+                      searchableSetProducts.slice(0, 12).map((item) => {
+                        const aid = String(item.assembly_id || item.id);
+                        return (
+                          <Pressable
+                            key={aid}
+                            style={styles.presetRow}
+                            disabled={createBusy}
+                            onPress={() => handleAddProductToSetDraft(item)}
+                          >
+                            <View style={styles.presetCheckArea}>
+                              <MaterialCommunityIcons
+                                name="plus-circle-outline"
+                                size={22}
+                                color={theme.primary}
+                              />
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.presetRowLabel} numberOfLines={1}>
+                                  {item.raw_name || item.name}
+                                </Text>
+                                {item.family_sku ? (
+                                  <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                                    {item.family_sku} · On hand: {floor2Qty(item)}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            </View>
+                            <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 13 }}>Add</Text>
+                          </Pressable>
+                        );
+                      })
+                    )}
+                  </View>
+                ) : null}
+
+                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>
+                  Selected Products ({setSelectedProducts.length}) &amp; Qty
+                </Text>
+                {setSelectedProducts.length === 0 ? (
+                  <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 8 }}>
+                    Use the search box above to find and add created products to this set.
+                  </Text>
+                ) : (
+                  <View style={styles.presetList}>
+                    {setSelectedProducts.map((comp) => (
+                      <View key={comp.assembly_id} style={[styles.presetRow, styles.presetRowSelected]}>
+                        <View style={styles.presetCheckArea}>
+                          <Pressable
+                            hitSlop={8}
+                            disabled={createBusy}
+                            onPress={() => handleRemoveProductFromSetDraft(comp.assembly_id)}
+                          >
+                            <MaterialCommunityIcons
+                              name="close-circle"
+                              size={22}
+                              color={theme.danger}
+                            />
+                          </Pressable>
                           <Text style={styles.presetRowLabel} numberOfLines={1}>
-                            {compPreviewName}
+                            {comp.name}
                           </Text>
-                        </Pressable>
-                        {selected ? (
-                          <TextInput
-                            style={styles.presetQtyInput}
-                            keyboardType="number-pad"
-                            placeholder=""
-                            placeholderTextColor={theme.textMuted}
-                            value={String(setComponentQtyMap[preset] ?? '')}
-                            onChangeText={(txt) =>
-                              setSetComponentQtyMap((prev) => ({
-                                ...prev,
-                                [preset]: txt.replace(/[^0-9]/g, ''),
-                              }))
-                            }
-                            editable={!createBusy}
-                          />
-                        ) : null}
+                        </View>
+                        <TextInput
+                          style={styles.presetQtyInput}
+                          keyboardType="number-pad"
+                          placeholder="Qty"
+                          placeholderTextColor={theme.textMuted}
+                          value={String(comp.qtyDraft ?? '')}
+                          onChangeText={(txt) => handleSetDraftProductQtyChange(comp.assembly_id, txt)}
+                          editable={!createBusy}
+                        />
                       </View>
-                    );
-                  })}
-                </View>
+                    ))}
+                  </View>
+                )}
 
                 <View style={styles.modalFooterBtns}>
                   <Pressable

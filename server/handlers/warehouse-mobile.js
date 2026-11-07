@@ -622,6 +622,7 @@ async function opCatalogFloor2List(user) {
     if (qty <= 0 && !inCarpentry && !linkedUpholstery) continue;
     const wipImage = readWarehouseFloor2WipImageUrl(row) || '';
     const familyImage = readWarehouseFloor2WipFamilyImageUrl(row) || '';
+    const floor2SetName = String(row?.metadata?.floor2_set_name || '').trim();
     products.push({
       id: aid,
       assembly_id: aid,
@@ -633,6 +634,7 @@ async function opCatalogFloor2List(user) {
       floor2_qty: qty,
       image_url: wipImage,
       family_image_url: familyImage,
+      floor2_set_name: floor2SetName || undefined,
     });
   }
   products.sort((a, b) => a.name.localeCompare(b.name));
@@ -817,22 +819,30 @@ async function opCatalogFloor2CreateSet(body, user) {
   const presetsFromBody = Array.isArray(body.presets) ? body.presets : [];
   const normalizedComponents = rawComponents.length
     ? rawComponents
-      .map((c) => ({
-        preset: String(c?.preset || '').trim(),
-        name: String(c?.name || '').trim(),
-        quantity: Math.max(0, Math.floor(Number(c?.quantity ?? c?.qty ?? 0) || 0)),
-      }))
-      .filter((c) => c.preset || c.name)
+      .map((c) => {
+        const hasQty = c?.quantity !== undefined && c?.quantity !== null && String(c?.quantity).trim() !== ''
+          || (c?.qty !== undefined && c?.qty !== null && String(c?.qty).trim() !== '');
+        return {
+          assembly_id: String(c?.assembly_id || c?.assemblyId || c?.id || '').trim(),
+          preset: String(c?.preset || '').trim(),
+          name: String(c?.name || '').trim(),
+          hasQty,
+          quantity: hasQty ? Math.max(0, Math.floor(Number(c?.quantity ?? c?.qty ?? 0) || 0)) : null,
+        };
+      })
+      .filter((c) => c.assembly_id || c.preset || c.name)
     : presetsFromBody
       .map((p) => ({
+        assembly_id: '',
         preset: String(p || '').trim(),
         name: '',
+        hasQty: true,
         quantity: Math.max(0, Math.floor(Number(body.quantity ?? 0) || 0)),
       }))
       .filter((c) => c.preset);
 
   if (!normalizedComponents.length) {
-    throw new Error('Select at least one component (e.g. 3 Seater, 2 Seater, Single Seater) for the set.');
+    throw new Error('Select at least one product for the set.');
   }
 
   const sb = getService();
@@ -840,6 +850,8 @@ async function opCatalogFloor2CreateSet(body, user) {
   const {
     mergeWarehouseFloor2WipFamilyImageMetadata,
     mergeWarehouseFloor2WipImageMetadata,
+    readWarehouseFloor2WipImageUrl,
+    readWarehouseFloor2WipFamilyImageUrl,
   } = await import('../../src/utils/warehouseFloor2WipImage.js');
   const { data: locRows } = await sb.from('locations').select('id, name');
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
@@ -865,6 +877,70 @@ async function opCatalogFloor2CreateSet(body, user) {
   const now = new Date().toISOString();
 
   for (const comp of normalizedComponents) {
+    if (comp.assembly_id) {
+      const { data: existingAsm } = await sb
+        .from('warehouse_assemblies')
+        .select('id, name, family_sku, metadata')
+        .eq('id', comp.assembly_id)
+        .maybeSingle();
+      if (!existingAsm?.id) continue;
+      const aid = String(existingAsm.id);
+      const compName = String(existingAsm.name || comp.name || aid).trim();
+      const isThreeSeater = /\b3\s*seater\b/i.test(compName);
+      let metadata = {
+        ...(existingAsm.metadata || {}),
+        floor2_set_name: baseName,
+        carpentry: {
+          ...(existingAsm.metadata?.carpentry || {}),
+          selected: true,
+        },
+      };
+      if (uploadedCoverUrl) {
+        metadata = mergeWarehouseFloor2WipFamilyImageMetadata(metadata, uploadedCoverUrl);
+        if (isThreeSeater || normalizedComponents.length === 1) {
+          metadata = mergeWarehouseFloor2WipImageMetadata(metadata, uploadedCoverUrl);
+        }
+      }
+      await sb
+        .from('warehouse_assemblies')
+        .update({ metadata, updated_at: now })
+        .eq('id', aid);
+
+      let finalQty = 0;
+      if (comp.hasQty && comp.quantity !== null) {
+        finalQty = comp.quantity;
+        await sb.from('warehouse_assembly_inventory').upsert({
+          assembly_id: aid,
+          location_id: floor2Id,
+          quantity: finalQty,
+          updated_at: now,
+        }, { onConflict: 'assembly_id,location_id' });
+      } else {
+        const { data: invRow } = await sb
+          .from('warehouse_assembly_inventory')
+          .select('quantity')
+          .eq('assembly_id', aid)
+          .eq('location_id', floor2Id)
+          .maybeSingle();
+        finalQty = Math.max(0, Math.floor(Number(invRow?.quantity) || 0));
+      }
+
+      createdProducts.push({
+        id: aid,
+        assembly_id: aid,
+        raw_assembly_id: aid,
+        name: compName,
+        raw_name: compName,
+        family_sku: String(existingAsm.family_sku || '').trim(),
+        quantity: finalQty,
+        floor2_qty: finalQty,
+        image_url: readWarehouseFloor2WipImageUrl({ metadata }) || '',
+        family_image_url: readWarehouseFloor2WipFamilyImageUrl({ metadata }) || uploadedCoverUrl,
+        floor2_set_name: baseName,
+      });
+      continue;
+    }
+
     const compName = titleCaseWords(comp.name || buildProductionItemName(baseName, comp.preset));
     if (!compName) continue;
     const generated = await opGenerateUniqueSku({});
@@ -887,6 +963,7 @@ async function opCatalogFloor2CreateSet(body, user) {
 
     let metadata = {
       ...(assembly.metadata || {}),
+      floor2_set_name: baseName,
       carpentry: {
         ...(assembly.metadata?.carpentry || {}),
         selected: true,
@@ -905,10 +982,11 @@ async function opCatalogFloor2CreateSet(body, user) {
       .update({ metadata, updated_at: now })
       .eq('id', assemblyId);
 
+    const compQty = Math.max(0, Number(comp.quantity) || 0);
     await sb.from('warehouse_assembly_inventory').upsert({
       assembly_id: assemblyId,
       location_id: floor2Id,
-      quantity: comp.quantity,
+      quantity: compQty,
       updated_at: now,
     }, { onConflict: 'assembly_id,location_id' });
 
@@ -919,10 +997,11 @@ async function opCatalogFloor2CreateSet(body, user) {
       name: compName,
       raw_name: compName,
       family_sku: familySku,
-      quantity: comp.quantity,
-      floor2_qty: comp.quantity,
+      quantity: compQty,
+      floor2_qty: compQty,
       image_url: (isThreeSeater || normalizedComponents.length === 1) ? uploadedCoverUrl : '',
       family_image_url: uploadedCoverUrl,
+      floor2_set_name: baseName,
     });
   }
 
