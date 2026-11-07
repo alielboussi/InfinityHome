@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { fromPublic } from './dbSchema';
 import BackToDashboard from './BackToDashboard';
+import { useSyncReportFiltersFromUrl } from './hooks/useReportHubFilters';
 
 const toYMD = (value) => {
   const d = value instanceof Date ? value : new Date(value);
@@ -33,7 +34,7 @@ const escapeCsv = (value) => {
   return raw;
 };
 
-export default function SalesReport() {
+export default function SalesReport({ embedInHub = false, userFilter = '' } = {}) {
   const today = useMemo(() => new Date(), []);
   const defaultEnd = useMemo(() => toYMD(today), [today]);
   const defaultStart = useMemo(() => {
@@ -47,6 +48,7 @@ export default function SalesReport() {
   const [selectedLocation, setSelectedLocation] = useState('');
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
+  useSyncReportFiltersFromUrl({ embedInHub, setStartDate, setEndDate });
   const [rows, setRows] = useState([]);
   const [itemsBySale, setItemsBySale] = useState(new Map());
   const [expanded, setExpanded] = useState(new Set());
@@ -256,10 +258,12 @@ export default function SalesReport() {
 
   return (
     <div className="report-page">
-      <div className="page-header-row">
-        <BackToDashboard />
-        <h2 style={{ margin: 0 }}>Sales Report</h2>
-      </div>
+      {!embedInHub ? (
+        <div className="page-header-row">
+          <BackToDashboard />
+          <h2 style={{ margin: 0 }}>Sales Report</h2>
+        </div>
+      ) : null}
 
       <div className="report-filters report-filters-sales">
         <div className="report-filter-location-row">
@@ -276,16 +280,18 @@ export default function SalesReport() {
             ))}
           </select>
         </div>
-        <div className="report-filter-dates-row">
-          <div className="report-filter-block">
-            <label htmlFor="sales-report-start">Start date</label>
-            <input id="sales-report-start" type="date" value={startDate} max={endDate} onChange={e => setStartDate(e.target.value)} />
+        {!embedInHub ? (
+          <div className="report-filter-dates-row">
+            <div className="report-filter-block">
+              <label htmlFor="sales-report-start">Start date</label>
+              <input id="sales-report-start" type="date" value={startDate} max={endDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="report-filter-block">
+              <label htmlFor="sales-report-end">End date</label>
+              <input id="sales-report-end" type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
           </div>
-          <div className="report-filter-block">
-            <label htmlFor="sales-report-end">End date</label>
-            <input id="sales-report-end" type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} />
-          </div>
-        </div>
+        ) : null}
       </div>
 
       <div className="report-actions">

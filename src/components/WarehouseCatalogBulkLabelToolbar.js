@@ -99,7 +99,7 @@ export function WarehouseBulkLabelSelectCheckbox({
         type="checkbox"
         className="products-bulk-checkbox"
         checked={checked}
-        disabled={disabled || copies < 1}
+        disabled={disabled}
         onChange={(e) => onChange(assemblyId, e.target.checked)}
         aria-label="Select for bulk label print"
       />

@@ -79,6 +79,10 @@ function serializeJob(job, assembliesById = null) {
     started_at: job.started_at || null,
     completed_at: job.completed_at || null,
     accepted_by: job.accepted_by || null,
+    manual_material_lines: Array.isArray(job.metadata?.manual_material_lines)
+      ? job.metadata.manual_material_lines
+      : [],
+    floor2_push: Boolean(job.metadata?.floor2_push),
   };
 }
 
@@ -260,12 +264,9 @@ export async function finishUpholsteryProductionJob(sb, {
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
-  if (qty !== 1) {
-    throw new Error('Legacy multi-unit jobs are not supported. Finish or cancel old jobs before starting new ones.');
-  }
 
   const ctx = await loadUpholsteryManufactureContext(sb, job.raw_assembly_id);
-  const output = await creditUpholsteryFinishedOutput(sb, ctx, 1);
+  const output = await creditUpholsteryFinishedOutput(sb, ctx, qty);
 
   const meta = job.metadata || {};
   const materialUsageRows = Array.isArray(meta.material_usage_rows) ? meta.material_usage_rows : [];

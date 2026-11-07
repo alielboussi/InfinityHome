@@ -15,9 +15,11 @@ const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
 
 const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4';
 
+const { finalizeExpoConfig } = require('../shared/expoAndroidLightweight');
+
 /** @type {import('@expo/config').ExpoConfig} */
 module.exports = {
-  expo: {
+  expo: finalizeExpoConfig({
     name: 'Ledger',
     slug: 'customer-ledger-tracking',
     scheme: 'customer-ledger-tracking',
@@ -67,5 +69,5 @@ module.exports = {
         projectId: '5cca5827-6bfa-4a7d-98a4-3a670542a0eb',
       },
     },
-  },
+  }),
 };

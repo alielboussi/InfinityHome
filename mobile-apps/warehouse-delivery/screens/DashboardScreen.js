@@ -26,7 +26,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
-        color={theme.primaryDark || '#0369a1'}
+        color={theme.primaryDark}
         style={kiosk.dashTileIcon}
       />
       <Text
@@ -67,6 +67,13 @@ export default function DashboardScreen({
       icon: 'clipboard-text-clock-outline',
       title: tUi('dashSentDeliveries', locale),
       onPress: () => navigation.navigate('KitweSentDeliveries'),
+    },
+    {
+      key: 'sold',
+      screenId: 'delivery_sold_orders',
+      icon: 'package-variant-closed',
+      title: tUi('dashSold', locale),
+      onPress: () => navigation.navigate('SoldOrders'),
     },
   ];
 

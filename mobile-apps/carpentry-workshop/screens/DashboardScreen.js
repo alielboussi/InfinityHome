@@ -31,7 +31,7 @@ function DashboardTile({
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
-        color={theme.primaryDark || '#0369a1'}
+        color={theme.primaryDark}
         style={kiosk.dashTileIcon}
       />
       <Text
@@ -68,12 +68,28 @@ export default function DashboardScreen({
       onPress: () => navigation.navigate('Create'),
     },
     {
+      key: 'scan',
+      screenId: 'carpentry_manufacture',
+      icon: 'barcode-scan',
+      title: tUi('dashScanFloor2', locale),
+      hintKey: 'dashTileHint_scan',
+      onPress: () => navigation.navigate('Manufacture', { openScan: true }),
+    },
+    {
       key: 'manufacture',
       screenId: 'carpentry_manufacture',
       icon: 'factory',
       title: tUi('dashManufacture', locale),
       hintKey: 'dashTileHint_manufacture',
       onPress: () => navigation.navigate('Manufacture'),
+    },
+    {
+      key: 'finishing',
+      screenId: 'carpentry_manufacture',
+      icon: 'check-decagram',
+      title: tUi('dashFinishing', locale),
+      hintKey: 'dashTileHint_finishing',
+      onPress: () => navigation.navigate('Finishing'),
     },
     {
       key: 'jobs',
@@ -106,6 +122,14 @@ export default function DashboardScreen({
       title: tUi('dashRepairs', locale),
       hintKey: 'dashTileHint_repairs',
       onPress: () => navigation.navigate('Repairs'),
+    },
+    {
+      key: 'push-settings',
+      screenId: 'carpentry_push_settings',
+      icon: 'bell-cog-outline',
+      title: 'Alert settings',
+      hintKey: 'dashTileHint_push',
+      onPress: () => navigation.navigate('PushSettings'),
     },
   ];
 

@@ -18,6 +18,7 @@ import { computeQuotationDisplayTotal, quotationHasOutstandingDue, sortQuotation
 import { enrichQuotationListTotals } from './services/quotationListTotals';
 import { fetchQuoteProductionRoutingsMap } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
+import WarehouseSkuWhereabouts from './components/WarehouseSkuWhereabouts';
 
 const readLocalUser = () => {
   try {
@@ -322,8 +323,10 @@ export default function QuotesBoard() {
             Back to Dashboard
           </button>
         )}
-        <h2 className="quotes-title" style={{ margin: 0 }}>Quotes</h2>
+        <h2 className="quotes-title" style={{ margin: 0 }}>Orders</h2>
       </div>
+
+      {isHassanAwadUser(user) ? <WarehouseSkuWhereabouts /> : null}
 
       <input
         className="quotes-input"

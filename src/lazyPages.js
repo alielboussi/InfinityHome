@@ -104,6 +104,13 @@ export const ProductionReport = lazyRoute(() => import('./ProductionReport'));
 export const CarpentryProductionReportPage = lazyRoute(() => import('./CarpentryProductionReportPage'));
 export const PaintingReportPage = lazyRoute(() => import('./PaintingReportPage'));
 export const RepairReportPage = lazyRoute(() => import('./RepairReportPage'));
+export const WarehouseFloorsHubPage = lazyRoute(() => import('./hubs/WarehouseFloorsHubPage'));
+export const WarehouseStoreroomsHubPage = lazyRoute(() => import('./hubs/WarehouseStoreroomsHubPage'));
+export const ProductionWorkspaceHubPage = lazyRoute(() => import('./hubs/ProductionWorkspaceHubPage'));
+export const ProductionCatalogsHubPage = lazyRoute(() => import('./hubs/ProductionCatalogsHubPage'));
+export const ProductionJobsHubPage = lazyRoute(() => import('./hubs/ProductionJobsHubPage'));
+export const ProductionIntakeHubPage = lazyRoute(() => import('./hubs/ProductionIntakeHubPage'));
+export const ReportsHubPage = lazyRoute(() => import('./hubs/ReportsHubPage'));
 export const StockHistoryPage = lazyRoute(() => import('./StockHistoryPage'));
 export const ZeroStockLocationReset = lazyRoute(() => import('./ZeroStockLocationReset'));
 export const AllSales = lazyRoute(() => import('./AllSales'));
@@ -112,17 +119,19 @@ export const IncompleteMobileLocked = lazyRoute(() => import('./IncompleteMobile
 export const QuotesBoard = lazyRoute(() => import('./QuotesBoard.js'));
 export const UserActivityLog = lazyRoute(() => import('./UserActivityLog'));
 export const UserAccessManagement = lazyRoute(() => import('./UserAccessManagement'));
-export const DatabaseBackupPage = lazyRoute(() => import('./DatabaseBackup.js'));
-export const EcommerceSetup = lazyRoute(() => import('./EcommerceSetup'));
-export const EcommerceSales = lazyRoute(() => import('./EcommerceSales'));
-export const ShopRoutes = lazyRoute(() => import('./shop/ShopRoutes'));
-
 /** Nav route → dynamic import (for prefetch on drawer hover). Uses each page's lazy preload for one shared chunk promise. */
 export const routePreloadByPath = {
   '/dashboard': () => Dashboard.preload(),
   '/production': () => ProductionAdminPage.preload(),
   '/kitwe-products': () => KitweProductsPage.preload(),
-  '/warehouse-products': () => WarehouseProductsPage.preload(),
+  '/warehouse-floors': () => WarehouseFloorsHubPage.preload(),
+  '/warehouse-storerooms': () => WarehouseStoreroomsHubPage.preload(),
+  '/production-workspace': () => ProductionWorkspaceHubPage.preload(),
+  '/production-catalogs': () => ProductionCatalogsHubPage.preload(),
+  '/production-jobs': () => ProductionJobsHubPage.preload(),
+  '/production-intake': () => ProductionIntakeHubPage.preload(),
+  '/reports': () => ReportsHubPage.preload(),
+  '/warehouse-products': () => WarehouseFloorsHubPage.preload(),
   '/upholstery': () => UpholsteryPage.preload(),
   '/carpentry-jobs': () => CarpentryJobsPage.preload(),
   '/painting-jobs': () => PaintingJobsPage.preload(),
@@ -138,6 +147,9 @@ export const routePreloadByPath = {
   '/warehouse-deliveries-admin': () => WarehouseDeliveriesAdmin.preload(),
   '/warehouse-repairs-admin': () => WarehouseRepairsAdmin.preload(),
   '/warehouse-products/sales-storage': () => WarehouseProductsPage.preload(),
+  '/warehouse-products/sets': () => WarehouseProductsPage.preload(),
+  '/warehouse-products/incomplete': () => WarehouseProductsPage.preload(),
+  '/warehouse-products/uncategorized': () => WarehouseProductsPage.preload(),
   '/warehouse-sales-storage-admin': () => WarehouseSalesStorageAdmin.preload(),
   '/customers': () => Customers.preload(),
   '/all-sales': () => AllSales.preload(),
@@ -148,10 +160,14 @@ export const routePreloadByPath = {
   '/products-list': () => ProductsListPage.preload(),
   '/stock-history': () => StockHistoryPage.preload(),
   '/price-labels': () => PriceLabels.preload(),
-  '/ecommerce-setup': () => EcommerceSetup.preload(),
-  '/ecommerce-sales': () => EcommerceSales.preload(),
-  '/stocktake': () => StocktakeControlPage.preload(),
-  '/stocktake/aggregation': () => StocktakeAggregationPage.preload(),
+  '/stocktake': () => Promise.all([
+    StocktakeControlPage.preload(),
+    StocktakeAggregationPage.preload(),
+  ]),
+  '/stocktake/aggregation': () => Promise.all([
+    StocktakeControlPage.preload(),
+    StocktakeAggregationPage.preload(),
+  ]),
   '/transfers': () => Promise.resolve({ default: LusakaTransfersPage }),
   '/All-Transfers': () => WarehouseTransfer.preload(),
   '/All-Transfers-summary': () => WarehouseTransferSummary.preload(),
@@ -163,7 +179,6 @@ export const routePreloadByPath = {
   '/repair-report': () => RepairReportPage.preload(),
   '/user-activity': () => UserActivityLog.preload(),
   '/user-access': () => UserAccessManagement.preload(),
-  '/database-backup': () => DatabaseBackupPage.preload(),
   '/products-list/locations': () => ProductLocationBulkPage.preload(),
   '/sets': () => Sets.preload(),
   '/products': () => Products.preload(),

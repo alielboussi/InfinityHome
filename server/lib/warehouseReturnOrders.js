@@ -116,6 +116,9 @@ function serializeReturnForClient(row) {
     accumulated_ms: timer.accumulated_ms,
     timer_started_at: timer.timer_started_at,
     lifecycle_badge: returnOrderLifecycleBadge(mapped),
+    manual_material_lines: Array.isArray(mapped.metadata?.manual_material_lines)
+      ? mapped.metadata.manual_material_lines
+      : [],
   };
 }
 

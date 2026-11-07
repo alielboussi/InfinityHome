@@ -13,9 +13,9 @@ function isStoreroomMaterialAssembly(assembly) {
   return assembly?.metadata?.storeroom?.is_storeroom_material === true;
 }
 
-export default function CarpentryWarehouseStockPage() {
+export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, embedInHub = false } = {}) {
   const { index } = useParams();
-  const warehouseIndex = Number(index);
+  const warehouseIndex = warehouseIndexOverride != null ? Number(warehouseIndexOverride) : Number(index);
   const indexValid = Number.isFinite(warehouseIndex) && warehouseIndex >= 1 && warehouseIndex <= 3;
   const locationName = indexValid ? CARPENTRY_WAREHOUSE_NAMES[warehouseIndex - 1] : '';
   const pageTitle = storeroomLabelForWarehouseIndex(warehouseIndex) || locationName;
@@ -222,13 +222,13 @@ export default function CarpentryWarehouseStockPage() {
   );
 
   if (!indexValid) {
-    return <Navigate to="/carpentry-warehouse/1" replace />;
+    return <Navigate to="/warehouse-storerooms?room=1" replace />;
   }
 
   return (
     <div className="kitwe-catalog-page">
-      <BackToDashboard />
-      <h1 style={{ marginTop: 16 }}>{pageTitle}</h1>
+      {!embedInHub ? <BackToDashboard /> : null}
+      {!embedInHub ? <h1 style={{ marginTop: 16 }}>{pageTitle}</h1> : null}
       <p style={{ color: 'var(--kitwe-muted, #64748b)', marginBottom: 16, maxWidth: 720 }}>
         Create raw materials here (name, SKU, qty, UOM). Define UOMs first under
         {' '}

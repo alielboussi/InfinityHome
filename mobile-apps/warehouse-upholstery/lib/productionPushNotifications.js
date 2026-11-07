@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { getFirebaseAuth } from '../shared/firebase';
+import { loadProductionPushPrefs } from './productionPushPrefs';
+import { navigateFromProductionPushData } from '../../shared/lib/productionPushNavigation';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -23,7 +25,7 @@ export async function ensureProductionAndroidChannel() {
   });
 }
 
-export async function registerProductionPushTokenWithServer() {
+export async function registerProductionPushTokenWithServer({ pushPrefs: pushPrefsOverride } = {}) {
   if (!Device.isDevice) return { ok: false, skipped: true, reason: 'simulator' };
   const authUser = getFirebaseAuth()?.currentUser;
   if (!authUser) return { ok: false, skipped: true, reason: 'auth' };
@@ -44,27 +46,21 @@ export async function registerProductionPushTokenWithServer() {
   );
   const token = tokenRes?.data;
   if (!token) return { ok: false, skipped: true, reason: 'no_token' };
+  const push_prefs = pushPrefsOverride || await loadProductionPushPrefs();
   await warehouseMobileRequest('production-push-register', {
     expo_push_token: token,
     platform: Platform.OS,
     app_target: 'upholstery',
+    push_prefs,
   });
   return { ok: true, token };
 }
 
 export function navigateFromProductionNotification(navigationRef, data) {
-  const nav = navigationRef?.current;
-  if (!nav?.navigate) return;
-  const screen = String(data?.screen || '').trim();
-  const quoteId = String(data?.quote_id || '').trim();
-  if (screen === 'UpholsteryQuotes' || screen === 'UpholsteryQuoteDetail') {
-    nav.navigate('UpholsteryQuotes');
-    if (quoteId) {
-      nav.navigate('UpholsteryQuoteDetail', { quote: { quote_id: quoteId } });
-    }
-    return;
-  }
-  if (screen === 'Repairs') {
-    nav.navigate('Repairs');
-  }
+  navigateFromProductionPushData(navigationRef, data, {
+    quotesList: 'UpholsteryQuotes',
+    quotesDetail: 'UpholsteryQuoteDetail',
+    jobs: 'Jobs',
+    repairs: 'Repairs',
+  });
 }

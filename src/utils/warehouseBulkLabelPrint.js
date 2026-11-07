@@ -94,3 +94,43 @@ export function warehouseBulkLabelPrintSummary(jobs) {
   const totalLabels = list.reduce((sum, j) => sum + j.copies, 0);
   return { productCount: list.length, totalLabels };
 }
+
+/** Dialog rows for selected assemblies (includes zero stock — user sets qty). */
+export function buildWarehouseBulkLabelDialogRows(assemblies, {
+  warehouseLocationId,
+  finishedStockByAssembly,
+  colorsByAssembly,
+  packetsByAssembly,
+  selectedIds,
+}) {
+  const rows = [];
+  (assemblies || []).forEach((assembly) => {
+    const id = String(assembly.id);
+    if (selectedIds && !selectedIds.has(id)) return;
+    const name = String(assembly.name || '').trim();
+    const sku = String(assembly.family_sku || '').trim();
+    if (!name || !sku) return;
+
+    const pktList = packetsByAssembly?.get(id) || [];
+    const plan = resolveWarehouseLabelPrintPlan(
+      assembly,
+      warehouseLocationId,
+      finishedStockByAssembly,
+      pktList,
+    );
+    const color = formatWarehouseProductionLabelColor(
+      assembly,
+      colorsByAssembly?.get(id) || [],
+    );
+    rows.push({
+      assemblyId: id,
+      name,
+      sku,
+      color,
+      defaultCopies: plan?.copies ?? 0,
+      boxUnitsPerCarton: plan?.usesBoxLabels ? plan.boxUnitsPerCarton : 0,
+    });
+  });
+  rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return rows;
+}

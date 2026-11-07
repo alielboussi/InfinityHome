@@ -1,0 +1,257 @@
+/* Point of Sale — checkout footer & payment controls (enterprise-aligned) */
+
+.pos-checkout-panel {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--br-border-soft, rgba(0, 180, 216, 0.2));
+  border-radius: 12px;
+  background: var(--br-surface, #1e293b);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.pos-container .pos-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 18px;
+  margin: 0 0 14px;
+  font-size: 0.95rem;
+}
+
+.pos-summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pos-summary-label {
+  color: var(--br-subtle, #94a3b8);
+  font-weight: 600;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pos-summary-total {
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
+.pos-summary-discount-input {
+  width: 76px;
+  height: 36px;
+  min-height: 36px;
+  padding: 4px 8px;
+  font-size: 0.95rem;
+  text-align: right;
+  border-radius: 8px;
+  border: 1px solid var(--br-border, #334155);
+  background: var(--br-bg, #0f172a);
+  color: var(--br-text, #f8fafc);
+  box-sizing: border-box;
+}
+
+.pos-summary-balance-days input {
+  width: 88px;
+  height: 36px;
+  min-height: 36px;
+  padding: 4px 8px;
+  font-size: 0.95rem;
+  border-radius: 8px;
+  border: 1px solid var(--br-border, #334155);
+  box-sizing: border-box;
+}
+
+.pos-container .pos-actions {
+  display: block;
+  margin: 0;
+  width: 100%;
+}
+
+.pos-due-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.pos-due-badge {
+  background: #2e7d32;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pos-due-edit-btn {
+  min-width: 72px;
+  height: 36px;
+  padding: 0 12px;
+}
+
+.pos-checkout-message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+}
+
+.pos-checkout-message--error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.pos-checkout-message--success {
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.pos-checkout-message--info {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+/* Payment rows — consistent control height */
+.pos-container .payment-row {
+  align-items: center;
+}
+
+.pos-container .payment-row .remove-btn {
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  padding: 0 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pos-container .add-payment-btn,
+.pos-container .checkout-btn {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.pos-container .payments-actions-row {
+  align-items: center;
+  margin-top: 4px;
+}
+
+.pos-container .paid-summary {
+  font-size: 0.95rem;
+  color: var(--br-text-secondary, #cbd5e1);
+}
+
+/* —— Enterprise theme —— */
+body.enterprise-theme .pos-checkout-panel {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .pos-container .pos-summary-label,
+body.enterprise-theme .pos-container .paid-summary {
+  color: #64748b !important;
+}
+
+body.enterprise-theme .pos-container .pos-summary-discount-input,
+body.enterprise-theme .pos-container .pos-summary-balance-days input,
+body.enterprise-theme .pos-container .payment-row input[type="text"],
+body.enterprise-theme .pos-container .payment-row select {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .pos-container .payment-row .remove-btn:not(:disabled) {
+  background: #ffffff !important;
+  color: #dc2626 !important;
+  border: 1px solid #dc2626 !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .pos-container .payment-row .remove-btn:not(:disabled):hover {
+  background: #fef2f2 !important;
+}
+
+body.enterprise-theme .pos-container .payment-row .remove-btn:disabled {
+  background: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+
+body.enterprise-theme .pos-container button.add-payment-btn {
+  background: #ffffff !important;
+  color: var(--ent-blue, #1565c0) !important;
+  border: 1px solid var(--ent-blue, #1565c0) !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .pos-container button.add-payment-btn:hover {
+  background: var(--ent-blue-soft, #e3f2fd) !important;
+}
+
+body.enterprise-theme .pos-container button.checkout-btn:not(:disabled) {
+  background: var(--ent-blue, #1565c0) !important;
+  border: 1px solid var(--ent-blue-dark, #0d47a1) !important;
+  color: #ffffff !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .pos-container button.checkout-btn:not(:disabled):hover {
+  background: var(--ent-blue-dark, #0d47a1) !important;
+}
+
+body.enterprise-theme .pos-container button.checkout-btn:disabled {
+  background: #e2e8f0 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #64748b !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+
+body.enterprise-theme .pos-due-edit-btn {
+  height: 36px !important;
+  min-height: 36px !important;
+}
+
+@media (max-width: 720px) {
+  .pos-container .pos-summary {
+    justify-content: flex-start;
+  }
+}
+
+body.enterprise-theme .pos-container .payments-actions-row .checkout-btn:not(:disabled) {
+  min-height: 42px !important;
+  height: 42px !important;
+  font-size: 1rem !important;
+}

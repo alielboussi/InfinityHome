@@ -14,6 +14,7 @@ There is **no** `warehouse-production` folder anymore — it was renamed to **`w
 
 - No junctions between apps; `npm run materialize` / postinstall copies real `shared/` and kiosk trees.
 - Business data from the **portal API** only (`EXPO_PUBLIC_API_BASE`).
+- **Release APK size / old phones:** see [`mobile-android-lightweight.md`](./mobile-android-lightweight.md) (`finalizeExpoConfig`, EAS `preview-legacy` for 32-bit-only builds).
 
 ## Commands
 

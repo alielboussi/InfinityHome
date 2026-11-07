@@ -409,6 +409,29 @@ export async function scanQuoteProductionMaterial(sb, {
     for (const loc of carpentryLocs) {
       await recomputeWarehouseLocationStockServer(sb, loc.id);
     }
+  } else if (normalized === 'upholstery') {
+    const { resolveCarpentryStoreroomLocations } = await import('./storeroomBomDeduction.js');
+    const storeroomLocs = await resolveCarpentryStoreroomLocations(sb);
+    if (!storeroomLocs.length) throw new Error('Storerooms not configured — run seedCarpentryWarehouseLocations.js');
+    const order = storeroomLocs.map((l) => String(l.id));
+    const byLoc = new Map();
+    for (const locId of order) {
+      byLoc.set(locId, await loadAssemblyInventoryQty(sb, materialAssemblyId, locId));
+    }
+    const moves = allocateAcrossWarehouses(qty, byLoc, order);
+    if (!moves.length) throw new Error('Insufficient storeroom stock for this material');
+    for (const move of moves) {
+      await adjustAssemblyInventory(sb, materialAssemblyId, move.warehouse_location_id, -move.quantity);
+      usageRows.push({
+        material_assembly_id: materialAssemblyId,
+        warehouse_location_id: move.warehouse_location_id,
+        quantity: move.quantity,
+        uom: normalizeCarpentryUom('ea'),
+      });
+    }
+    for (const loc of storeroomLocs) {
+      await recomputeWarehouseLocationStockServer(sb, loc.id);
+    }
   } else {
     const have = await loadAssemblyInventoryQty(sb, materialAssemblyId, WAREHOUSE_FACTORY_LOCATION_ID);
     if (have + 0.000001 < qty) throw new Error('Insufficient factory stock for this material');

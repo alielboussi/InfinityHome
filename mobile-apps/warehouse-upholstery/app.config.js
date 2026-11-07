@@ -62,8 +62,10 @@ const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
 
 const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4';
 
+const { finalizeExpoConfig } = require('../shared/expoAndroidLightweight');
+
 module.exports = {
-  expo: {
+  expo: finalizeExpoConfig({
     name: 'Upholstery',
     owner: 'alielboussi',
     slug: 'warehouse-upholstery',
@@ -136,5 +138,5 @@ module.exports = {
         projectId: '5ef60993-5974-4cc7-8d5a-283fbbf14d4b',
       },
     },
-  },
+  }),
 };

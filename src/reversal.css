@@ -1,3 +1,35 @@
+.pos-sale-adjustment-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.5);
+  overflow: auto;
+  padding: clamp(8px, 2vw, 20px);
+  box-sizing: border-box;
+}
+
+.reversal-container--embedded {
+  max-width: 980px;
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 16px 18px 24px;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+}
+
+.reversal-embedded-close {
+  margin-left: auto;
+  height: 36px;
+  padding: 0 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+}
+
 .reversal-container {
   padding: 16px 20px 32px;
   max-width: 960px;

@@ -1,5 +1,6 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useMemo } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate, Outlet } from 'react-router-dom';
+import { routeSuspenseKey } from './utils/routeSuspenseKey';
 import AppChrome from './AppChrome';
 import RouteLoadingFallback from './components/RouteLoadingFallback';
 import RouteErrorBoundary from './components/RouteErrorBoundary';
@@ -9,9 +10,6 @@ import {
   CompanySettings,
   Customers,
   Dashboard,
-  DatabaseBackupPage,
-  EcommerceSales,
-  EcommerceSetup,
   EditSet,
   IncompleteMobileLocked,
   LaybyManagement,
@@ -30,22 +28,13 @@ import {
   Quotationer,
   QuotesBoard,
   Reversal,
-  SalesReport,
   SalesReportMobile,
   Sets,
-  ShopRoutes,
   StockApp,
-  StockHistoryPage,
   StockReportMobile,
   StockReportMobileLocked,
-  StocktakeAggregationPage,
   StocktakeControlPage,
   StocktakeCountRoute,
-  TransfersReport,
-  ProductionReport,
-  CarpentryProductionReportPage,
-  PaintingReportPage,
-  RepairReportPage,
   UserAccessManagement,
   UserActivityLog,
   WarehouseDeliveries,
@@ -57,30 +46,31 @@ import {
   WarehouseSalesStorageAdmin,
   WarehouseDeliveryDriversPage,
   WarehouseProductionPresetsPage,
-  CarpentryPage,
-  CarpentryJobsPage,
-  PaintingJobsPage,
-  UpholsteryPage,
-  UpholsteryTimerPage,
-  WarehouseFloor2Page,
-  CarpentryWarehouseStockPage,
   MaterialsUomPage,
   KitweProductsPage,
   KitweSetsPage,
   WarehousePacketEditPage,
   WarehousePacketsPage,
-  ProductionAdminPage,
   WarehouseProductEditPage,
-  WarehouseProductsPage,
   WarehouseProductTransferPage,
   WarehouseTransfer,
   WarehouseTransferSummary,
   ZeroStockLocationReset,
+  WarehouseFloorsHubPage,
+  WarehouseStoreroomsHubPage,
+  ProductionWorkspaceHubPage,
+  ProductionCatalogsHubPage,
+  ProductionJobsHubPage,
+  ProductionIntakeHubPage,
+  ReportsHubPage,
 } from './lazyPages';
+import LegacyStoreroomRedirect from './hubs/LegacyStoreroomRedirect';
 import useRouteActivityLogger from './hooks/useRouteActivityLogger';
-import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canViewDatabaseBackup, canManageLoginAccess, canViewStocktakeAggregation, isPublicAppRoute, isAppAuthenticated, isWarehouseProductionKioskPath, canManageCatalog } from './accessControl';
-import { isShopPublicPath } from './utils/shopConstants';
+import { getCurrentUser, isPathAllowed, getFallbackPathForUser, getHomeDashboardPath, canViewUserActivity, canManageLoginAccess, isPublicAppRoute, isAppAuthenticated, isWarehouseProductionKioskPath, canManageCatalog } from './accessControl';
 import { bootstrapAppAuth } from './utils/authSession';
+
+const SalesReportMobileScreen = SalesReportMobile;
+const LedgerMobileScreen = LedgerMobile;
 
 function RouteActivityLogger() {
   useRouteActivityLogger();
@@ -117,6 +107,13 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/carpentry',
       '/carpentry-jobs',
       '/painting-jobs',
+      '/warehouse-floors',
+      '/warehouse-storerooms',
+      '/production-workspace',
+      '/production-catalogs',
+      '/production-jobs',
+      '/production-intake',
+      '/reports',
       '/warehouse-floor-2',
       '/carpentry-warehouse/1',
       '/carpentry-warehouse/2',
@@ -124,8 +121,6 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/materials-uom',
       '/sales-report',
       '/price-labels',
-      '/ecommerce-setup',
-      '/ecommerce-sales',
 ].map(path => path.toLowerCase()));
 
 // Quotation subpages already partially imported above; ensure routing covers /quotes and nested create path
@@ -166,7 +161,7 @@ function GlobalAuthGate() {
       React.useEffect(() => {
             if (checking) return;
             const path = location.pathname || '/';
-            if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) return;
+            if (path.startsWith('/login') || isPublicAppRoute(path)) return;
             if (!isAppAuthenticated()) {
                   const next = encodeURIComponent(path);
                   navigate(`/login?next=${next}`, { replace: true });
@@ -185,7 +180,7 @@ function SessionBootstrap({ children }) {
 
             (async () => {
                   const path = window.location.pathname || '/';
-                  if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) {
+                  if (path.startsWith('/login') || isPublicAppRoute(path)) {
                         if (active) setReady(true);
                         return;
                   }
@@ -230,11 +225,11 @@ function FallbackRedirect() {
 function WarehouseProductionRetiredRedirect() {
       const user = getCurrentUser();
       if (!user) return <Navigate to="/login" replace />;
-      const target = canManageCatalog(user) ? '/production-report' : getHomeDashboardPath(user);
+      const target = canManageCatalog(user) ? '/reports?report=upholstery' : getHomeDashboardPath(user);
       return <Navigate to={target} replace />;
 }
 
-// Enforce per-user route access (e.g., Hassan only sees quotes, layby-management-mobile, stock-report-mobile)
+// Enforce per-user route access (e.g., Hassan quotationer routes; some users mobile-only layby)
 function AccessGuard() {
       const location = useLocation();
       const navigate = useNavigate();
@@ -247,11 +242,11 @@ function AccessGuard() {
       React.useEffect(() => {
             // Always allow login and the public count page
             const path = location.pathname || '';
-            if (path.startsWith('/login') || isPublicAppRoute(path) || isShopPublicPath(path)) return;
+            if (path.startsWith('/login') || isPublicAppRoute(path)) return;
             if (isWarehouseProductionKioskPath(path)) {
                   if (!authUser) return;
                   const target = canManageCatalog(authUser)
-                        ? '/production-report'
+                        ? '/reports?report=upholstery'
                         : getHomeDashboardPath(authUser);
                   navigate(target, { replace: true });
                   return;
@@ -270,6 +265,10 @@ function AccessGuard() {
 // Minimal locked-down application exposing only the warehouse transfer flow
 function App() {
       const location = useLocation();
+      const suspenseKey = useMemo(
+        () => routeSuspenseKey(location.pathname),
+        [location.pathname],
+      );
       const isDashboardTheme = DASHBOARD_THEME_PATHS.has((location.pathname || '').toLowerCase());
 
       React.useEffect(() => {
@@ -294,15 +293,12 @@ function App() {
             const isCountRoute = isPublicAppRoute(location.pathname || '');
             const isLusakaStockRoute = (location.pathname || '').toLowerCase() === '/lusaka-stock';
             const isQuotationerRoute = (location.pathname || '').toLowerCase() === '/quotationer';
-            const isShopRoute = isShopPublicPath(location.pathname || '');
             document.documentElement.classList.toggle('stocktake-count-route', isCountRoute);
             document.body.classList.toggle('stocktake-count-route', isCountRoute);
             document.documentElement.classList.toggle('lusaka-stock-route', isLusakaStockRoute);
             document.body.classList.toggle('lusaka-stock-route', isLusakaStockRoute);
             document.documentElement.classList.toggle('quotationer-route', isQuotationerRoute);
             document.body.classList.toggle('quotationer-route', isQuotationerRoute);
-            document.documentElement.classList.toggle('shop-route', isShopRoute);
-            document.body.classList.toggle('shop-route', isShopRoute);
             return () => {
                   document.documentElement.classList.remove('stocktake-count-route');
                   document.body.classList.remove('stocktake-count-route');
@@ -324,14 +320,14 @@ function App() {
                                                                                                                                                                   <AppChrome />
                                                                                                                                                                   <RouteActivityLogger />
       <RouteErrorBoundary resetKey={location.pathname}>
-      <Suspense fallback={<RouteLoadingFallback />} key={location.pathname}>
+      <Suspense fallback={<RouteLoadingFallback />} key={suspenseKey}>
       <div className="app-route-shell">
       <Routes location={location}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/stocktake/count/:locationSlug" element={<StocktakeCountRoute />} />
         <Route path="/stocktake/count" element={<Navigate to="/login" replace />} />
         <Route path="/count" element={<Navigate to="/login" replace />} />
-        <Route path="/shop/*" element={<ShopRoutes />} />
+        <Route path="/shop/*" element={<Navigate to="/login" replace />} />
         <Route path="/warehouse-production/*" element={<WarehouseProductionRetiredRedirect />} />
 
         <Route element={<RequireAuthLayout />}>
@@ -339,10 +335,8 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/products" element={<Products />} />
           <Route path="/customers" element={<Customers />} />
-          <Route path="/sales-report-mobile" element={<SalesReportMobile />} />
-          <Route path="/sales-report" element={<SalesReport />} />
-          <Route path="/transfers-report" element={<TransfersReport />} />
-          <Route path="/ledger-mobile" element={<LedgerMobile />} />
+          <Route path="/sales-report-mobile" element={<SalesReportMobileScreen />} />
+          <Route path="/ledger-mobile" element={<LedgerMobileScreen />} />
           <Route path="/quotationer" element={<Quotationer />} />
           <Route path="/QuotesDashboard" element={<Navigate to="/quotationer" replace />} />
           <Route path="/QuotesCustomers" element={<Navigate to="/quotationer" replace />} />
@@ -376,47 +370,56 @@ function App() {
           <Route path="/categories" element={<Categories />} />
           <Route path="/stock-periods" element={<Navigate to="/stocktake" replace />} />
           <Route path="/stocktake" element={<StocktakeControlPage />} />
-          <Route path="/stocktake/aggregation" element={<RequireAdminPage check={canViewStocktakeAggregation}><StocktakeAggregationPage /></RequireAdminPage>} />
+          <Route path="/stocktake/aggregation" element={<Navigate to="/stocktake#aggregation" replace />} />
           <Route path="/stocktake-periods" element={<Navigate to="/stocktake" replace />} />
           <Route path="/stocktake-count" element={<Navigate to="/stocktake" replace />} />
           <Route path="/KitweStocktake" element={<Navigate to="/stocktake" replace />} />
           <Route path="/stocktake-entry" element={<Navigate to="/stocktake" replace />} />
           <Route path="/products-list/locations" element={<ProductLocationBulkPage />} />
           <Route path="/products-list" element={<ProductsListPage />} />
-          <Route path="/production" element={<ProductionAdminPage />} />
-          <Route path="/production-report" element={<ProductionReport />} />
-          <Route path="/carpentry-production-report" element={<CarpentryProductionReportPage />} />
-          <Route path="/painting-report" element={<PaintingReportPage />} />
-          <Route path="/repair-report" element={<RepairReportPage />} />
+          <Route path="/reports" element={<ReportsHubPage />} />
+          <Route path="/sales-report" element={<Navigate to="/reports?report=sales" replace />} />
+          <Route path="/transfers-report" element={<Navigate to="/reports?report=transfers" replace />} />
+          <Route path="/production-report" element={<Navigate to="/reports?report=upholstery" replace />} />
+          <Route path="/carpentry-production-report" element={<Navigate to="/reports?report=carpentry" replace />} />
+          <Route path="/painting-report" element={<Navigate to="/reports?report=painting" replace />} />
+          <Route path="/repair-report" element={<Navigate to="/reports?report=repair" replace />} />
           <Route path="/warehouse-products/packets/new" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets/:packetId/edit" element={<WarehousePacketEditPage />} />
           <Route path="/warehouse-products/packets" element={<WarehousePacketsPage />} />
-          <Route path="/warehouse-products/sales-storage" element={<WarehouseProductsPage />} />
-          <Route path="/warehouse-products/incomplete" element={<WarehouseProductsPage />} />
-          <Route path="/warehouse-products/uncategorized" element={<WarehouseProductsPage />} />
-          <Route path="/warehouse-products/sets" element={<WarehouseProductsPage />} />
+          <Route path="/warehouse-products/sales-storage" element={<Navigate to="/warehouse-floors?floor=1&view=sales-storage" replace />} />
+          <Route path="/warehouse-products/incomplete" element={<Navigate to="/warehouse-floors?floor=1&view=incomplete" replace />} />
+          <Route path="/warehouse-products/uncategorized" element={<Navigate to="/warehouse-floors?floor=1&view=uncategorized" replace />} />
+          <Route path="/warehouse-products/sets" element={<Navigate to="/warehouse-floors?floor=1&view=sets" replace />} />
           <Route path="/warehouse-products/new" element={<WarehouseProductEditPage />} />
           <Route path="/warehouse-products/:productId/transfer" element={<WarehouseProductTransferPage />} />
           <Route path="/warehouse-products/:productId/edit" element={<WarehouseProductEditPage />} />
-          <Route path="/warehouse-products" element={<WarehouseProductsPage />} />
-          <Route path="/upholstery" element={<UpholsteryPage />} />
-          <Route path="/upholstery-timer" element={<UpholsteryTimerPage />} />
-          <Route path="/carpentry" element={<CarpentryPage />} />
-          <Route path="/carpentry-jobs" element={<CarpentryJobsPage />} />
-          <Route path="/painting-jobs" element={<PaintingJobsPage />} />
-          <Route path="/warehouse-floor-2" element={<WarehouseFloor2Page />} />
-          <Route path="/carpentry-warehouse/:index" element={<CarpentryWarehouseStockPage />} />
+          <Route path="/warehouse-floors" element={<WarehouseFloorsHubPage />} />
+          <Route path="/warehouse-products" element={<Navigate to="/warehouse-floors?floor=1" replace />} />
+          <Route path="/warehouse-floor-2" element={<Navigate to="/warehouse-floors?floor=2" replace />} />
+          <Route path="/warehouse-storerooms" element={<WarehouseStoreroomsHubPage />} />
+          <Route path="/carpentry-warehouse/:index" element={<LegacyStoreroomRedirect />} />
+          <Route path="/production-catalogs" element={<ProductionCatalogsHubPage />} />
+          <Route path="/production-jobs" element={<ProductionJobsHubPage />} />
+          <Route path="/production-intake" element={<ProductionIntakeHubPage />} />
+          <Route path="/production-workspace" element={<ProductionWorkspaceHubPage />} />
+          <Route path="/upholstery" element={<Navigate to="/production-catalogs?view=upholstery-catalog" replace />} />
+          <Route path="/carpentry" element={<Navigate to="/production-catalogs?view=carpentry-catalog" replace />} />
+          <Route path="/upholstery-timer" element={<Navigate to="/production-jobs?view=upholstery-jobs" replace />} />
+          <Route path="/carpentry-jobs" element={<Navigate to="/production-jobs?view=carpentry-jobs" replace />} />
+          <Route path="/painting-jobs" element={<Navigate to="/production-jobs?view=painting-jobs" replace />} />
+          <Route path="/production" element={<Navigate to="/production-intake" replace />} />
           <Route path="/materials-uom" element={<MaterialsUomPage />} />
-          <Route path="/ecommerce-setup" element={<EcommerceSetup />} />
-          <Route path="/ecommerce-sales" element={<EcommerceSales />} />
-          <Route path="/stock-history" element={<StockHistoryPage />} />
+          <Route path="/ecommerce-setup" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/ecommerce-sales" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/stock-history" element={<Navigate to="/reports?report=stock-history" replace />} />
           <Route path="/zero-stock-location" element={<ZeroStockLocationReset />} />
           <Route path="/stock-count" element={<Navigate to="/stocktake" replace />} />
           <Route path="/all-sales" element={<POS />} />
           <Route path="/reversal" element={<Reversal />} />
           <Route path="/user-activity" element={<RequireAdminPage check={canViewUserActivity}><UserActivityLog /></RequireAdminPage>} />
           <Route path="/user-access" element={<RequireAdminPage check={canManageLoginAccess}><UserAccessManagement /></RequireAdminPage>} />
-          <Route path="/database-backup" element={<RequireAdminPage check={canViewDatabaseBackup}><DatabaseBackupPage /></RequireAdminPage>} />
+          <Route path="/database-backup" element={<Navigate to="/dashboard" replace />} />
           <Route path="/quotes" element={<Navigate to="/quotes-board" replace />} />
           <Route path="/quotes/create" element={<Navigate to="/quotationer" replace />} />
           <Route path="/quotes/customers" element={<Navigate to="/quotationer" replace />} />

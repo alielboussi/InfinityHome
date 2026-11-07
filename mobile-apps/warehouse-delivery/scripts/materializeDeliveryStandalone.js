@@ -9,9 +9,9 @@ const appRoot = path.resolve(__dirname, '..');
 const upholsteryRoot = path.resolve(appRoot, '..', 'warehouse-upholstery');
 const kitPath = path.join(appRoot, 'deliveryKit');
 const mobileSharedRoot = path.resolve(appRoot, '..', 'shared');
-const deliveryScreensRoot = path.join(appRoot, 'delivery-screens');
+const deliveryKitScreensRoot = path.join(appRoot, 'deliveryKit', 'screens');
 
-/** Delivery-only screens live in delivery-screens/ (not in Upholstery / warehouse-production). */
+/** Delivery-only screens live in deliveryKit/screens/ (committed source, not Upholstery). */
 const COPY_DIRS = ['components', 'hooks', 'lib', 'services'];
 
 function rmDeep(target) {
@@ -150,6 +150,13 @@ function main() {
 
   removeKitIfLink();
 
+  const screensBackup = path.join(appRoot, '.delivery-kit-screens-backup');
+  const committedScreens = path.join(appRoot, 'deliveryKit', 'screens');
+  if (fs.existsSync(committedScreens)) {
+    rmDeep(screensBackup);
+    copyDir(committedScreens, screensBackup);
+  }
+
   rmDeep(kitPath);
   fs.mkdirSync(kitPath, { recursive: true });
 
@@ -168,11 +175,15 @@ function main() {
   }
 
   const screensDest = path.join(kitPath, 'screens');
-  if (!fs.existsSync(deliveryScreensRoot)) {
-    console.error('[materializeDeliveryStandalone] missing', deliveryScreensRoot);
+  if (fs.existsSync(screensBackup)) {
+    copyDir(screensBackup, screensDest);
+    rmDeep(screensBackup);
+  } else if (fs.existsSync(deliveryKitScreensRoot)) {
+    copyDir(deliveryKitScreensRoot, screensDest);
+  } else {
+    console.error('[materializeDeliveryStandalone] missing deliveryKit/screens source');
     process.exit(1);
   }
-  copyDir(deliveryScreensRoot, screensDest);
 
   const deliveryUiSrc = path.join(appRoot, 'config', 'deliveryAppUi.js');
   if (fs.existsSync(deliveryUiSrc)) {

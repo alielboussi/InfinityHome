@@ -77,21 +77,51 @@ export function openDeliveryNoteHtmlInBrowser(html, title = 'Delivery note') {
   }
 }
 
+/** 1-minute timeout for printing before prompting the user to retry. */
+export const DELIVERY_PRINT_TIMEOUT_MS = 60_000;
+export const PRINT_TIMEOUT_CODE = 'print_timeout';
+export const PRINT_TIMEOUT_MESSAGE = 'Print timed out after 1 minute due to connectivity. Please check your printer connection and tap Retry.';
+
+export function isPrintConnectivityFailure(err) {
+  const code = String(err?.code || '').toLowerCase();
+  if (code === PRINT_TIMEOUT_CODE) return true;
+  const msg = String(err?.message || err || '').toLowerCase();
+  return /timed out|timeout|network|connectivity|econnreset|enotfound|ehostunreach|failed to connect|socket|unreachable|connection refused/i.test(msg);
+}
+
+export function withPrintTimeout(promise, timeoutMs = DELIVERY_PRINT_TIMEOUT_MS) {
+  let timer = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(PRINT_TIMEOUT_MESSAGE);
+      err.code = PRINT_TIMEOUT_CODE;
+      reject(err);
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 /**
  * Print delivery note HTML — Android/iOS system print, or browser print dialog on web.
+ * Enforces a 1-minute timeout on connectivity/spooler hangs.
  */
-export async function printDeliveryNoteFromHtml(html) {
-  if (Platform.OS === 'web') {
-    await printHtmlInBrowser(html);
-    return;
-  }
-  const file = await Print.printToFileAsync({
-    html,
-    width: 595,
-    height: 842,
-  });
-  if (!file?.uri) {
-    throw new Error('Could not build print file.');
-  }
-  await Print.printAsync({ uri: file.uri });
+export async function printDeliveryNoteFromHtml(html, { timeoutMs = DELIVERY_PRINT_TIMEOUT_MS } = {}) {
+  const run = async () => {
+    if (Platform.OS === 'web') {
+      await printHtmlInBrowser(html);
+      return;
+    }
+    const file = await Print.printToFileAsync({
+      html,
+      width: 595,
+      height: 842,
+    });
+    if (!file?.uri) {
+      throw new Error('Could not build print file.');
+    }
+    await Print.printAsync({ uri: file.uri });
+  };
+  await withPrintTimeout(run(), timeoutMs);
 }

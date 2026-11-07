@@ -1,3 +1,4 @@
+import '../shared/lightweightRuntime.js';
 import { StatusBar } from 'expo-status-bar';
 import FirebaseAuthGate from '../shared/AuthGate';
 import StockScreen from './screens/StockScreen';

@@ -100,12 +100,35 @@ function patchRepoImports(root) {
   }
 }
 
+const VENDORED_REPO_UTIL_FILES = [
+  'productionNameClashUi.js',
+  'warehouseSetMath.js',
+  'isMattressCatalogProductName.js',
+  'warehouseSetDeliveryRecipe.js',
+  'warehouseDeliverySetPrint.js',
+  'warehouseDeliveryNotePrint.js',
+  'buildDeliveryNotePrintHtml.js',
+  'warehouseScanResolver.js',
+  'warehouseAssemblyMath.js',
+  'warehouseSetItems.js',
+  'warehouseUnitsPerCarton.js',
+];
+
+function copyRepoUtilFile(name, repoUtils, vendorDir) {
+  const src = path.join(repoUtils, name);
+  if (!fs.existsSync(src)) return;
+  copyFile(src, path.join(vendorDir, name));
+}
+
 function vendorRepoUtils(root) {
   const repoUtils = path.join(repoRoot, 'src', 'utils');
   const vendorDir = path.join(root, 'lib', '_repoUtils');
   if (!fs.existsSync(repoUtils)) return;
   rmDeep(vendorDir);
-  copyDir(repoUtils, vendorDir);
+  fs.mkdirSync(vendorDir, { recursive: true });
+  for (const name of VENDORED_REPO_UTIL_FILES) {
+    copyRepoUtilFile(name, repoUtils, vendorDir);
+  }
   const repoConstants = path.join(repoRoot, 'src', 'constants');
   const constVendor = path.join(root, 'lib', '_repoConstants');
   if (fs.existsSync(repoConstants)) {
@@ -139,6 +162,45 @@ function vendorRepoUtils(root) {
     }
   }
   walk(root);
+  ensureProductionNameClashUiShim(root);
+}
+
+function ensureProductionNameClashUiShim(root) {
+  const vendorDir = path.join(root, 'lib', '_repoUtils');
+  const vendored = path.join(vendorDir, 'productionNameClashUi.js');
+  const shim = path.join(root, 'lib', 'productionNameClashUi.js');
+  const repoUtil = path.join(repoRoot, 'src', 'utils', 'productionNameClashUi.js');
+  if (!fs.existsSync(vendored) && fs.existsSync(repoUtil)) {
+    fs.mkdirSync(vendorDir, { recursive: true });
+    safeWriteFileSync(vendored, fs.readFileSync(repoUtil, 'utf8'));
+  }
+  if (!fs.existsSync(vendored)) return;
+  safeWriteFileSync(
+    shim,
+    "export { formatProductionNameClashMessage } from './_repoUtils/productionNameClashUi.js';\n",
+  );
+}
+
+function materializeSharedKioskHelpers() {
+  const sharedRoot = path.resolve(appRoot, '..', 'shared');
+  const componentNames = [
+    'RunningJobElapsed.js',
+    'RunningRepairElapsed.js',
+  ];
+  const libNames = [
+    'productionRefreshBus.js',
+    'productionPushNavigation.js',
+  ];
+  const destComponents = path.join(kioskPath, 'components');
+  const destLib = path.join(kioskPath, 'lib');
+  for (const name of componentNames) {
+    const src = path.join(sharedRoot, 'components', name);
+    if (fs.existsSync(src)) copyFile(src, path.join(destComponents, name));
+  }
+  for (const name of libNames) {
+    const src = path.join(sharedRoot, 'lib', name);
+    if (fs.existsSync(src)) copyFile(src, path.join(destLib, name));
+  }
 }
 
 function materializeShared() {
@@ -202,6 +264,7 @@ function main() {
     fileFilter: (name) => KIOSK_SCREENS.has(name),
   });
 
+  materializeSharedKioskHelpers();
   materializeShared();
   copyDir(path.join(appRoot, 'shared'), path.join(kioskPath, 'shared'));
   patchRepoImports(kioskPath);

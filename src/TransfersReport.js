@@ -6,6 +6,7 @@ import db from './dataClient';
 import { applyInventoryBulk } from './utils/inventoryApi';
 import { syncProductLocations } from './services/productLocations';
 import BackToDashboard from './BackToDashboard';
+import { useSyncReportFiltersFromUrl } from './hooks/useReportHubFilters';
 import { loadFloor1KitweDeliveryReportSessions } from './utils/workshopReportData';
 
 const toYMD = (value) => {
@@ -31,7 +32,7 @@ const formatNumber = (value) => {
   return num.toLocaleString(undefined, hasDecimals ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : undefined);
 };
 
-export default function TransfersReport() {
+export default function TransfersReport({ embedInHub = false, userFilter: _userFilter = '' } = {}) {
   const today = useMemo(() => new Date(), []);
   const defaultEnd = useMemo(() => toYMD(today), [today]);
   const defaultStart = useMemo(() => {
@@ -46,6 +47,7 @@ export default function TransfersReport() {
   const [toLocation, setToLocation] = useState('');
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
+  useSyncReportFiltersFromUrl({ embedInHub, setStartDate, setEndDate });
   const [rows, setRows] = useState([]);
   const [itemsBySession, setItemsBySession] = useState(new Map());
   const [expanded, setExpanded] = useState(new Set());
@@ -408,20 +410,26 @@ export default function TransfersReport() {
 
   return (
     <div className="report-page">
-      <div className="page-header-row">
-        <BackToDashboard />
-        <h2 style={{ margin: 0 }}>Transfers Report</h2>
-      </div>
+      {!embedInHub ? (
+        <div className="page-header-row">
+          <BackToDashboard />
+          <h2 style={{ margin: 0 }}>Transfers Report</h2>
+        </div>
+      ) : null}
 
       <div className="report-filters">
-        <div className="report-filter-block">
-          <label>Start date</label>
-          <input type="date" value={startDate} max={endDate} onChange={e => setStartDate(e.target.value)} />
-        </div>
-        <div className="report-filter-block">
-          <label>End date</label>
-          <input type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} />
-        </div>
+        {!embedInHub ? (
+          <>
+            <div className="report-filter-block">
+              <label>Start date</label>
+              <input type="date" value={startDate} max={endDate} onChange={e => setStartDate(e.target.value)} />
+            </div>
+            <div className="report-filter-block">
+              <label>End date</label>
+              <input type="date" value={endDate} min={startDate} onChange={e => setEndDate(e.target.value)} />
+            </div>
+          </>
+        ) : null}
         <div className="report-filter-block">
           <label>From location</label>
           <select value={fromLocation} onChange={e => setFromLocation(e.target.value)}>

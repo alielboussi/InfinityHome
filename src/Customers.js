@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import './Customers.css';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
 import { cacheGet, cacheSet } from './utils/staleCache';
@@ -290,183 +291,250 @@ const Customers = () => {
   }, [customers]);
 
 
+  const moreFieldsOpen = Boolean(
+    editingId
+    || (form.address || '').trim()
+    || (form.tpin || '').trim()
+    || (form.starting_due_balance || '').trim()
+    || (form.starting_due_balance_date || '').trim(),
+  );
+
   return (
     <div className="customers-page-container">
-      <div className="page-header-row">
+      <header className="customers-page-header page-header-row">
         <BackToDashboard />
-        <h1 className="customers-title" style={{ margin: 0 }}>Customers</h1>
-        <button type="button" onClick={handleExportCsv} disabled={customers.length === 0}>
-          Export CSV
-        </button>
-      </div>
-      <div style={{ color: '#8ab', margin: '4px 0 12px' }}>{customerMeta}</div>
-      {canAdd && (
-        <form className="customer-form" onSubmit={handleSubmit}>
-          <div className="form-row">
-            <input
-              name="name"
-              type="text"
-              placeholder="Name or Business Name"
-              value={form.name}
-              onChange={handleChange}
-              required
-            />
-            <div className="phone-row">
-              <select
-                name="phonePrefix"
-                value={form.phonePrefix}
-                onChange={handleChange}
-                title="Phone country code"
-              >
-                <option value="+260">+260</option>
-                <option value="+243">+243</option>
-                <option value="+44">+44</option>
-              </select>
+        <div className="customers-page-header__lead">
+          <h1>Customers</h1>
+          <p className="customers-page-meta">{customerMeta}</p>
+        </div>
+        <div className="customers-page-header__actions">
+          <button type="button" onClick={handleExportCsv} disabled={customers.length === 0}>
+            Export CSV
+          </button>
+        </div>
+      </header>
+
+      {error && <div className="customers-error" role="alert">{error}</div>}
+
+      <div className="customers-layout">
+        <main className="customers-main">
+          <section className="customers-panel customers-panel--search" aria-labelledby="customers-search-heading">
+            <h2 id="customers-search-heading" className="customers-panel__title">Find a customer</h2>
+            <p className="customers-panel__hint">Search by name or phone — results update as you type.</p>
+            <form onSubmit={handleSearch} className="customers-search-form search-form">
               <input
-                name="phone"
-                type="text"
-                placeholder="Phone Number (optional)"
-                value={form.phone}
-                onChange={handleChange}
+                type="search"
+                className="customers-search-input"
+                placeholder="Name or phone number"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                autoComplete="off"
               />
-            </div>
-            <input
-              name="address"
-              type="text"
-              placeholder="Address (optional)"
-              value={form.address}
-              onChange={handleChange}
-            />
-            <input
-              name="city"
-              type="text"
-              placeholder="City (optional)"
-              value={form.city}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="form-row">
-            <input
-              name="tpin"
-              type="text"
-              placeholder="TPIN (optional)"
-              value={form.tpin}
-              onChange={handleChange}
-            />
-            <select
-              name="currency"
-              value={form.currency}
-              onChange={handleChange}
-              title="Currency for starting due balance"
-            >
-              <option value="K">Kwacha (K)</option>
-              <option value="USD">US Dollar ($)</option>
-            </select>
-            <input
-              name="starting_due_balance"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Starting due balance (optional)"
-              value={form.starting_due_balance}
-              onChange={handleChange}
-            />
-            <input
-              name="starting_due_balance_date"
-              type="date"
-              title="Date for starting due balance"
-              value={form.starting_due_balance_date}
-              onChange={handleChange}
-            />
-            <div className="form-actions">
-              <button type="submit" disabled={saving} className="save-btn">
-                {editingId ? 'Update' : 'Add'}
-              </button>
-              {editingId && (
-                <button type="button" onClick={handleCancelEdit} className="cancel-btn">Cancel</button>
+            </form>
+            <div className="customers-search-results customers-table-wrapper">
+              {!searchTerm.trim() && !searching && searchResults.length === 0 && (
+                <div className="customers-hint">Start typing to search your customer list.</div>
+              )}
+              {searching && <div className="customers-hint">Searching…</div>}
+              {!searching && searchTerm.trim() && searchResults.length === 0 && (
+                <div className="customers-hint">No customers found.</div>
+              )}
+              {!searching && searchResults.length > 0 && (
+                <table className="customers-table">
+                  <thead>
+                    <tr>
+                      <th>Name / business</th>
+                      <th>Phone</th>
+                      <th>City</th>
+                      <th>Address</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchResults.map((customer) => (
+                      <tr key={customer.id} className={editingId === customer.id ? 'editing-row' : ''}>
+                        <td>{customer.name}</td>
+                        <td>{customer.phone}</td>
+                        <td>{customer.city}</td>
+                        <td>{customer.address}</td>
+                        <td className="actions-cell">
+                          {canEdit && (
+                            <button type="button" className="edit-btn" onClick={() => handleEdit(customer)} disabled={saving}>
+                              Edit
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button type="button" className="delete-btn" onClick={() => handleDelete(customer.id)} disabled={saving}>
+                              Delete
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </div>
-          </div>
-        </form>
-      )}
-      {canAdd && (
-        <div style={{ color: '#8ab', fontSize: '0.9rem', margin: '0 0 12px' }}>
-          Starting due balance is added to layby/POS customer dues. Set the date when the balance started. Down payments reduce it like any other balance.
-        </div>
-      )}
-      {error && <div className="customers-error">{error}</div>}
+          </section>
 
-      <div className="customer-search">
-        <h3>Find a customer</h3>
-        <form onSubmit={handleSearch} className="search-form">
-          <input
-            type="text"
-            placeholder="Search by name or phone number"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </form>
-      </div>
+          {canAdd && (
+            <section className="customers-panel customers-panel--form" aria-labelledby="customers-form-heading">
+              <h2 id="customers-form-heading" className="customers-panel__title">
+                {editingId ? 'Edit customer' : 'Add customer'}
+              </h2>
+              <p className="customers-panel__hint">
+                {editingId ? 'Update details and save, or cancel to clear the form.' : 'Name is required; other fields are optional.'}
+              </p>
+              <form className="customer-form" onSubmit={handleSubmit}>
+                <div className="customers-field-grid customers-field-grid--primary">
+                  <label className="customers-field">
+                    <span className="customers-field__label">Name or business</span>
+                    <input
+                      name="name"
+                      type="text"
+                      placeholder="e.g. Acme Furnishings"
+                      value={form.name}
+                      onChange={handleChange}
+                      required
+                    />
+                  </label>
+                  <label className="customers-field customers-field--phone">
+                    <span className="customers-field__label">Phone</span>
+                    <div className="phone-row">
+                      <select
+                        name="phonePrefix"
+                        value={form.phonePrefix}
+                        onChange={handleChange}
+                        title="Phone country code"
+                        aria-label="Country code"
+                      >
+                        <option value="+260">+260</option>
+                        <option value="+243">+243</option>
+                        <option value="+44">+44</option>
+                      </select>
+                      <input
+                        name="phone"
+                        type="tel"
+                        placeholder="Optional"
+                        value={form.phone}
+                        onChange={handleChange}
+                      />
+                    </div>
+                  </label>
+                  <label className="customers-field">
+                    <span className="customers-field__label">City</span>
+                    <input
+                      name="city"
+                      type="text"
+                      placeholder="Optional"
+                      value={form.city}
+                      onChange={handleChange}
+                    />
+                  </label>
+                </div>
 
-      <div className="customers-latest">
-        <h3>Latest added customers</h3>
-        {latestCustomers.length === 0 ? (
-          <div className="customers-hint">No customers added yet.</div>
-        ) : (
-          <table className="customers-table">
-            <thead>
-              <tr>
-                <th>Name/Business</th>
-                <th>Phone</th>
-              </tr>
-            </thead>
-            <tbody>
-              {latestCustomers.map((customer) => (
-                <tr key={customer.id}>
-                  <td>{customer.name}</td>
-                  <td>{customer.phone}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                <details
+                  className="customers-more-fields"
+                  key={editingId || 'new-customer'}
+                  defaultOpen={moreFieldsOpen}
+                >
+                  <summary>Address, TPIN &amp; opening balance</summary>
+                  <div className="customers-field-grid">
+                    <label className="customers-field">
+                      <span className="customers-field__label">Address</span>
+                      <input
+                        name="address"
+                        type="text"
+                        placeholder="Optional"
+                        value={form.address}
+                        onChange={handleChange}
+                      />
+                    </label>
+                    <label className="customers-field">
+                      <span className="customers-field__label">TPIN</span>
+                      <input
+                        name="tpin"
+                        type="text"
+                        placeholder="Optional"
+                        value={form.tpin}
+                        onChange={handleChange}
+                      />
+                    </label>
+                    <div className="customers-opening-row">
+                      <label className="customers-field">
+                        <span className="customers-field__label">Currency</span>
+                        <select
+                          name="currency"
+                          value={form.currency}
+                          onChange={handleChange}
+                          title="Currency for starting due balance"
+                        >
+                          <option value="K">Kwacha (K)</option>
+                          <option value="USD">US Dollar ($)</option>
+                        </select>
+                      </label>
+                      <label className="customers-field">
+                        <span className="customers-field__label">Starting due</span>
+                        <input
+                          name="starting_due_balance"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={form.starting_due_balance}
+                          onChange={handleChange}
+                        />
+                      </label>
+                      <label className="customers-field">
+                        <span className="customers-field__label">As of date</span>
+                        <input
+                          name="starting_due_balance_date"
+                          type="date"
+                          title="Date for starting due balance"
+                          value={form.starting_due_balance_date}
+                          onChange={handleChange}
+                        />
+                      </label>
+                    </div>
+                    <p className="customers-field-note">
+                      Opening balance flows into layby and POS customer dues. Down payments reduce it like any other balance.
+                    </p>
+                  </div>
+                </details>
 
-      <div className="customers-table-wrapper">
-        {!searchTerm.trim() && !searching && searchResults.length === 0 && (
-          <div className="customers-hint">Enter a name or phone to search customers.</div>
-        )}
-        {searching && <div className="customers-hint">Searching...</div>}
-        {!searching && searchTerm.trim() && searchResults.length === 0 && (
-          <div className="customers-hint">No customers found.</div>
-        )}
-        {!searching && searchResults.length > 0 && (
-          <table className="customers-table">
-            <thead>
-              <tr>
-                <th>Name/Business</th>
-                <th>Phone</th>
-                <th>City</th>
-                <th>Address</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {searchResults.map((customer) => (
-                <tr key={customer.id} className={editingId === customer.id ? 'editing-row' : ''}>
-                  <td>{customer.name}</td>
-                  <td>{customer.phone}</td>
-                  <td>{customer.city}</td>
-                  <td>{customer.address}</td>
-                  <td className="actions-cell">
-                    {canEdit && <button className="edit-btn" onClick={() => handleEdit(customer)} disabled={saving}>Edit</button>}
-                    {canDelete && <button className="delete-btn" onClick={() => handleDelete(customer.id)} disabled={saving}>Delete</button>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                <div className="customers-form-footer form-actions">
+                  <button type="submit" disabled={saving} className="save-btn customers-primary-btn">
+                    {editingId ? 'Save changes' : 'Add customer'}
+                  </button>
+                  {editingId && (
+                    <button type="button" onClick={handleCancelEdit} className="cancel-btn">
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            </section>
+          )}
+        </main>
+
+        <aside className="customers-aside" aria-labelledby="customers-latest-heading">
+          <section className="customers-panel customers-panel--latest">
+            <h2 id="customers-latest-heading" className="customers-panel__title">Recently added</h2>
+            <p className="customers-panel__hint">Last five customers in the system.</p>
+            {latestCustomers.length === 0 ? (
+              <div className="customers-hint">No customers yet.</div>
+            ) : (
+              <ul className="customers-latest-list">
+                {latestCustomers.map((customer) => (
+                  <li key={customer.id}>
+                    <span className="customers-latest-name">{customer.name}</span>
+                    <span className="customers-latest-phone">{customer.phone || '—'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </aside>
       </div>
     </div>
   );

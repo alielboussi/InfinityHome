@@ -32,14 +32,16 @@ export function formatWarehouseMobileApiError(value, fallback = 'Request failed'
   return fallback;
 }
 
-export async function warehouseMobileRequest(op, body = {}) {
-  const token = await getFirebaseIdToken();
-  if (!token) {
-    const err = new Error('You must be signed in.');
-    err.code = 'auth';
-    throw err;
-  }
+const OFFLINE_RETRY_OPS = new Set([
+  'production-job-materials-save',
+  'production-floor2-manufacture-push',
+  'return-order-accept',
+  'return-order-pause',
+  'return-order-resume',
+  'return-order-complete',
+]);
 
+async function dispatchWarehouseMobile(op, body, token) {
   const url = `${resolveApiBase()}/api/warehouse-mobile`;
   const response = await fetch(url, {
     method: 'POST',
@@ -89,6 +91,47 @@ export async function warehouseMobileRequest(op, body = {}) {
     throw err;
   }
   return payload;
+}
+
+export async function warehouseMobileRequest(op, body = {}) {
+  const token = await getFirebaseIdToken();
+  if (!token) {
+    const err = new Error('You must be signed in.');
+    err.code = 'auth';
+    throw err;
+  }
+  try {
+    return await dispatchWarehouseMobile(op, body, token);
+  } catch (err) {
+    if (OFFLINE_RETRY_OPS.has(String(op || '')) && isLikelyNetworkError(err)) {
+      try {
+        const { enqueueOfflineOp } = await import('./offlineScanQueue.js');
+        await enqueueOfflineOp(op, body);
+      } catch {
+        /* ignore queue write failure */
+      }
+      const queued = new Error('Saved offline — will retry when connection returns.');
+      queued.code = 'offline_queued';
+      queued.queued = true;
+      throw queued;
+    }
+    throw err;
+  }
+}
+
+export async function flushWarehouseMobileOfflineQueue() {
+  const token = await getFirebaseIdToken();
+  if (!token) return { flushed: 0, remaining: 0 };
+  const { flushOfflineQueue } = await import('./offlineScanQueue.js');
+  return flushOfflineQueue(async (item) => {
+    if (!item?.op) return false;
+    try {
+      await dispatchWarehouseMobile(item.op, item.body || {}, token);
+      return true;
+    } catch (e) {
+      return !isLikelyNetworkError(e);
+    }
+  });
 }
 
 export function isLikelyNetworkError(err) {

@@ -8,6 +8,7 @@ import { isLoginAccessAdmin } from './loginAccess.js';
 import { KITWE_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 import { WAREHOUSE_FROM_LOCATION_ID } from '../../src/utils/warehouseDelivery.js';
 import {
+  isWarehouseDeliveryAppAllowed,
   isWarehouseProductionKitweDeliveryAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
 import { WAREHOUSE_STORAGE_SEND_STATUSES } from '../../src/utils/warehouseStorageSend.js';
@@ -49,6 +50,7 @@ export async function assertWarehouseStorageCreator(user) {
 
 export async function assertWarehouseStorageProductionAccess(user, grant) {
   if (isWarehouseProductionKitweDeliveryAllowed(grant)) return;
+  if (isWarehouseDeliveryAppAllowed(grant)) return;
   const err = new Error('Warehouse production access required.');
   err.status = 403;
   throw err;

@@ -1,0 +1,161 @@
+/**
+ * Infinity Home — single source of truth for brand colors (web + mobile).
+ * Mobile: mobile-apps/shared/theme.js (keep in sync via `node scripts/syncBrandTheme.js`).
+ */
+:root {
+  /* Primary — muted steel (calm, professional; web portal v2) */
+  --brand-primary: #4a6fa5;
+  --brand-primary-hover: #3d5d8a;
+  --brand-primary-dark: #314d72;
+  --brand-primary-soft: #eef2f7;
+  --brand-on-primary: #ffffff;
+
+  /* Top chrome (banner / optional accents) */
+  --ent-chrome-bg: #1f2937;
+  --ent-chrome-fg: #f9fafb;
+
+  /* Dark chrome (dashboard, legacy full-screen pages) */
+  --brand-bg: #0f172a;
+  --brand-surface: #1e293b;
+  --brand-surface-2: #243044;
+  --brand-border: rgba(148, 163, 184, 0.22);
+  --brand-border-strong: rgba(74, 111, 165, 0.45);
+  --brand-text: #f8fafc;
+  --brand-muted: #94a3b8;
+  --brand-wood: #ca8a04;
+  --brand-success: #4a6fa5;
+  --brand-success-dark: #3d5d8a;
+  --brand-danger: #b91c1c;
+  --brand-danger-dark: #991b1b;
+  --brand-radius: 8px;
+  --brand-btn-height: 40px;
+  --brand-font: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  --brand-display-font: 'Playfair Display', Georgia, serif;
+
+  /* Enterprise / POS light shell (values used inside body.enterprise-theme) */
+  --ent-blue: var(--brand-primary);
+  --ent-blue-dark: var(--brand-primary-hover);
+  --ent-blue-soft: var(--brand-primary-soft);
+  --ent-green: var(--brand-primary);
+  --ent-green-dark: var(--brand-primary-hover);
+  --ent-red: var(--brand-danger);
+  --ent-red-dark: var(--brand-danger-dark);
+
+  /* Legacy aliases — dark app chrome */
+  --br-bg: var(--brand-bg);
+  --br-surface: var(--brand-surface);
+  --br-border: var(--brand-primary);
+  --br-border-soft: var(--brand-border);
+  --br-glow: none;
+  --br-text: var(--brand-text);
+  --br-subtle: var(--brand-muted);
+
+  /* Dashboard dark */
+  --dash-bg: var(--brand-bg);
+  --dash-surface: var(--brand-surface);
+  --dash-surface-2: var(--brand-surface-2);
+  --dash-border: var(--brand-primary);
+  --dash-border-soft: var(--brand-border);
+  --dash-accent: #93b4d9;
+  --dash-wood: var(--brand-wood);
+  --dash-text: var(--brand-text);
+  --dash-muted: var(--brand-muted);
+  --dash-primary: var(--brand-primary);
+}
+
+/* Light enterprise content (tables / long shifts) */
+body.enterprise-theme {
+  /* Icons inside action buttons (text + icon, or icon-only) */
+  --portal-btn-icon-size: 1.25rem;
+  --portal-icon-btn-size: 42px;
+  --portal-icon-btn-svg: 22px;
+
+  --ent-content-bg: #f4f6f8;
+  --ent-content-text: #111827;
+  --ent-content-muted: #6b7280;
+  --ent-sidebar-bg: #ffffff;
+  --ent-bg: #ffffff;
+  --ent-surface: #ffffff;
+  --ent-surface-2: #f3f4f6;
+  --ent-border: #e5e7eb;
+  --ent-border-strong: #d1d5db;
+  --ent-text: #111827;
+  --ent-muted: #6b7280;
+  --ent-text-muted: #6b7280;
+
+  --dash-bg: var(--ent-content-bg);
+  --dash-surface: #ffffff;
+  --dash-surface-2: var(--ent-surface-2);
+  --dash-border: var(--brand-primary);
+  --dash-border-soft: var(--ent-border);
+  --dash-accent: var(--brand-primary);
+  --dash-wood: var(--brand-primary);
+  --dash-text: var(--ent-text);
+  --dash-muted: var(--ent-muted);
+  --br-bg: #ffffff;
+  --br-surface: #ffffff;
+  --br-border: var(--brand-primary);
+  --br-border-soft: var(--ent-border);
+  --br-glow: none;
+  --br-text: var(--ent-text);
+  --br-subtle: var(--ent-muted);
+}
+
+body.enterprise-theme .app-route-shell {
+  background: var(--ent-content-bg);
+  color: var(--ent-content-text);
+}
+
+/* Button tiers — web + warehouse kiosk pages */
+.btn-tier-primary,
+.kiosk-btn-primary {
+  background: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  color: var(--brand-on-primary) !important;
+  border-radius: var(--brand-radius) !important;
+  min-height: var(--brand-btn-height);
+  font-weight: 600;
+  box-shadow: none !important;
+}
+
+.btn-tier-primary:hover,
+.kiosk-btn-primary:hover {
+  background: var(--brand-primary-hover) !important;
+  border-color: var(--brand-primary-dark) !important;
+}
+
+.btn-tier-secondary {
+  background: #ffffff !important;
+  color: var(--ent-text) !important;
+  border: 1px solid var(--ent-border-strong) !important;
+  border-radius: var(--brand-radius) !important;
+  min-height: var(--brand-btn-height);
+  font-weight: 600;
+}
+
+.btn-tier-secondary:hover {
+  background: var(--ent-surface-2) !important;
+}
+
+.btn-tier-danger {
+  background: var(--brand-danger) !important;
+  border: 1px solid var(--brand-danger-dark) !important;
+  color: var(--brand-on-primary) !important;
+  border-radius: var(--brand-radius) !important;
+  min-height: var(--brand-btn-height);
+  font-weight: 600;
+}
+
+/* Data tables */
+.data-table-sticky thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ent-content-bg, #fff);
+}
+
+.data-table-pro td,
+.data-table-pro th {
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}

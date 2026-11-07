@@ -42,7 +42,8 @@ function buildAssemblyMapFromCatalog(catalog) {
 export default function WarehouseFloor2Page({
   pageTitle = 'Warehouse Floor 2',
   pageSubtitle = 'Unfinished carpentry WIP (after workshop Manufacture or manual add from Floor 1). Finish in the carpentry app → Floor 1; or send to upholstery from Floor 2.',
-}) {
+  embedInHub = false,
+} = {}) {
   const initialCatalog = useMemo(() => getCachedCarpentryCatalog(), []);
   const initialRuns = useMemo(() => getCachedCarpentryFloorRuns(), []);
   const [loading, setLoading] = useState(!(initialCatalog && initialRuns));
@@ -56,9 +57,7 @@ export default function WarehouseFloor2Page({
   const [warehouseSetCandidates, setWarehouseSetCandidates] = useState(() => initialCatalog?.setCandidates || []);
   const [categories, setCategories] = useState(() => initialCatalog?.categories || []);
   const [search, setSearch] = useState('');
-  const [qtyDraftById, setQtyDraftById] = useState({});
   const [stockEditById, setStockEditById] = useState({});
-  const [expandedSetId, setExpandedSetId] = useState('');
   const [busyId, setBusyId] = useState('');
   const [inlayFamilyKey, setInlayFamilyKey] = useState('');
   const [cardPhotoBusyKey, setCardPhotoBusyKey] = useState('');
@@ -195,6 +194,21 @@ export default function WarehouseFloor2Page({
     () => groupFloor2StockByFamily(floor2Stock, assemblyById),
     [floor2Stock, assemblyById],
   );
+
+  const filteredStockFamilyGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return stockFamilyGroups;
+    return stockFamilyGroups.filter((group) => {
+      if (String(group.familyBase || '').toLowerCase().includes(q)) return true;
+      return (group.rows || []).some((row) => {
+        const aid = String(row.assembly_id || '');
+        const asm = assemblyById.get(aid);
+        const name = String(asm?.name || '').toLowerCase();
+        const sku = String(asm?.family_sku || '').toLowerCase();
+        return name.includes(q) || sku.includes(q);
+      });
+    });
+  }, [stockFamilyGroups, search, assemblyById]);
 
   const inlayGroup = useMemo(
     () => stockFamilyGroups.find((g) => g.key === inlayFamilyKey) || null,
@@ -335,119 +349,10 @@ export default function WarehouseFloor2Page({
     }
   };
 
-  const candidateRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return (candidates || []).filter(
-      (c) => String(c.name || '').toLowerCase().includes(q)
-        || String(c.family_sku || '').toLowerCase().includes(q),
-    );
-  }, [candidates, search]);
-
-  const matchingSets = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return (warehouseSetCandidates || []).filter((set) => {
-      const setHay = `${set.family_sku || ''} ${set.name || ''}`.toLowerCase();
-      if (setHay.includes(q)) return true;
-      return (set.components || []).some(
-        (c) => String(c.name || '').toLowerCase().includes(q)
-          || String(c.family_sku || '').toLowerCase().includes(q),
-      );
-    });
-  }, [warehouseSetCandidates, search]);
-
-  const resolveQtyForId = (id, currentOnFloor2 = 0) => {
-    const raw = qtyDraftById[String(id)];
-    if (raw !== undefined && raw !== '') {
-      const n = Math.floor(Number(raw));
-      if (Number.isFinite(n)) {
-        if (currentOnFloor2 > 0) return Math.max(0, n);
-        return n >= 1 ? n : 1;
-      }
-    }
-    return currentOnFloor2 > 0 ? currentOnFloor2 : 1;
-  };
-
-  const qtyDraftDisplay = (id, currentOnFloor2, fallback = 1) => {
-    const key = String(id);
-    if (qtyDraftById[key] !== undefined) return qtyDraftById[key];
-    return currentOnFloor2 > 0 ? currentOnFloor2 : fallback;
-  };
-
-  const floor2SearchActionLabel = (currentOnFloor2, isBusy) => {
-    if (isBusy) return currentOnFloor2 > 0 ? 'Saving…' : 'Adding…';
-    return currentOnFloor2 > 0 ? 'Save' : 'Add to Floor 2';
-  };
-
-  const setQtyDraft = (id, val) => {
-    setQtyDraftById((prev) => ({
-      ...prev,
-      [String(id)]: val,
-    }));
-  };
-
-  const handleAddProduct = async (assemblyId, overrideQty = null) => {
-    const id = String(assemblyId || '').trim();
-    if (!id) return;
-    const currentFloor2 = floor2QtyByAssembly.get(id) || 0;
-    const qty = overrideQty !== null
-      ? Math.floor(Number(overrideQty) || 0)
-      : resolveQtyForId(id, currentFloor2);
-    setBusyId(id);
-    setError('');
-    try {
-      if (currentFloor2 > 0) {
-        await postSetFloor2ProductStock(id, Math.max(0, qty));
-      } else {
-        await postAddFloor2Product(id, Math.max(1, qty));
-      }
-      setQtyDraftById((prev) => {
-        const copy = { ...prev };
-        delete copy[id];
-        return copy;
-      });
-      setSearch('');
-      setExpandedSetId('');
-      await load({ forceFresh: true });
-    } catch (err) {
-      setError(err?.message || 'Failed to update Warehouse Floor 2 stock');
-    } finally {
-      setBusyId('');
-    }
-  };
-
-  const handleAddSetComponents = async (set) => {
-    const comps = Array.isArray(set?.components) ? set.components : [];
-    if (!comps.length) return;
-    const setId = String(set.id);
-    const setMultiplier = resolveQtyForId(`set-${setId}`);
-    setBusyId(`batch-${setId}`);
-    setError('');
-    try {
-      await Promise.all(
-        comps
-          .filter((comp) => String(comp.id || '').trim())
-          .map((comp) => {
-            const compId = String(comp.id).trim();
-            const perSet = Math.max(1, Math.floor(Number(comp.quantity) || 1));
-            return postAddFloor2Product(compId, perSet * setMultiplier);
-          }),
-      );
-      setSearch('');
-      setExpandedSetId('');
-      await load({ forceFresh: true });
-    } catch (err) {
-      setError(err?.message || 'Failed to add set components to Warehouse Floor 2');
-    } finally {
-      setBusyId('');
-    }
-  };
-
   return (
     <div className="kitwe-catalog-page">
-      <BackToDashboard />
-      <h1 style={{ marginTop: 16 }}>{pageTitle}</h1>
+      {!embedInHub ? <BackToDashboard /> : null}
+      {!embedInHub ? <h1 style={{ marginTop: 16 }}>{pageTitle}</h1> : null}
       <p style={{ color: 'var(--kitwe-muted, #64748b)', marginBottom: 16, maxWidth: 720 }}>
         {pageSubtitle}
       </p>
@@ -465,7 +370,7 @@ export default function WarehouseFloor2Page({
             type="search"
             className="kitwe-search-input carpentry-add-search-input kitwe-catalog-search"
             style={{ width: '100%' }}
-            placeholder="Search Warehouse Floor 1 product or set to add to Floor 2…"
+            placeholder="Search Floor 2 products by name or SKU…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -483,187 +388,22 @@ export default function WarehouseFloor2Page({
         />
       </div>
 
-      {search.trim() ? (
-        <div className="kitwe-catalog-card" style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 16, marginBottom: 8 }}>Add from Warehouse Floor 1</h2>
-          {candidateRows.length === 0 && matchingSets.length === 0 ? (
-            <p className="kitwe-empty-hint">No matching Warehouse Floor 1 products or sets.</p>
-          ) : (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {matchingSets.map((set) => {
-                const setOpen = expandedSetId === set.id;
-                const compIds = (set.components || []).map((c) => c.id);
-                const setDraftKey = `set-${set.id}`;
-                return (
-                  <li
-                    key={`set-${set.id}`}
-                    style={{
-                      padding: '10px 0',
-                      borderBottom: '1px solid var(--br-border, #e2e8f0)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: 12,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <span>
-                        <strong>{set.name}</strong>{' '}
-                        <span style={{ color: '#64748b' }}>({set.family_sku})</span>{' '}
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: '#0369a1',
-                            marginLeft: 6,
-                          }}
-                        >
-                          Set · {(set.components || []).length} component(s)
-                        </span>
-                      </span>
-                      <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={qtyDraftById[setDraftKey] ?? 1}
-                          onChange={(e) => setQtyDraft(setDraftKey, e.target.value)}
-                          style={{ width: 72, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                          aria-label={`Quantity for ${set.name}`}
-                        />
-                        <button
-                          type="button"
-                          className="kitwe-btn"
-                          onClick={() => setExpandedSetId(setOpen ? '' : set.id)}
-                        >
-                          {setOpen ? 'Hide components' : 'Components'}
-                        </button>
-                        <button
-                          type="button"
-                          className="kitwe-btn kitwe-btn-primary"
-                          disabled={busyId === `batch-${set.id}` || compIds.length === 0}
-                          onClick={() => handleAddSetComponents(set)}
-                        >
-                          Add all components to Floor 2
-                        </button>
-                      </span>
-                    </div>
-                    {setOpen ? (
-                      <ul style={{ listStyle: 'none', padding: '10px 0 0 12px', margin: 0 }}>
-                        {(set.components || []).map((comp) => {
-                          const currentFloor2 = floor2QtyByAssembly.get(String(comp.id)) || 0;
-                          return (
-                            <li
-                              key={`${set.id}-${comp.id}`}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '6px 0',
-                                gap: 8,
-                                flexWrap: 'wrap',
-                              }}
-                            >
-                              <span>
-                                {comp.name}{' '}
-                                <span style={{ color: '#64748b' }}>({comp.family_sku})</span>
-                                {comp.quantity > 1 ? (
-                                  <span style={{ color: '#64748b', fontSize: 13 }}> ×{comp.quantity} in set</span>
-                                ) : null}
-                                {currentFloor2 > 0 ? (
-                                  <span style={{ color: '#0369a1', fontSize: 13, marginLeft: 8 }}>
-                                    (On Floor 2: {currentFloor2})
-                                  </span>
-                                ) : null}
-                              </span>
-                              <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                <input
-                                  type="number"
-                                  min={currentFloor2 > 0 ? 0 : 1}
-                                  step="1"
-                                  value={qtyDraftDisplay(comp.id, currentFloor2, comp.quantity || 1)}
-                                  onChange={(e) => setQtyDraft(comp.id, e.target.value)}
-                                  style={{ width: 72, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                                  aria-label={`Quantity for ${comp.name}`}
-                                />
-                                <button
-                                  type="button"
-                                  className="kitwe-btn kitwe-btn-primary"
-                                  disabled={busyId === String(comp.id)}
-                                  onClick={() => handleAddProduct(
-                                    comp.id,
-                                    resolveQtyForId(comp.id, currentFloor2),
-                                  )}
-                                >
-                                  {floor2SearchActionLabel(currentFloor2, busyId === String(comp.id))}
-                                </button>
-                              </span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : null}
-                  </li>
-                );
-              })}
-              {candidateRows.map((c) => {
-                const currentFloor2 = floor2QtyByAssembly.get(String(c.id)) || 0;
-                return (
-                  <li
-                    key={c.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '8px 0',
-                      borderBottom: '1px solid var(--br-border, #e2e8f0)',
-                      gap: 12,
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <span>
-                      <strong>{c.name}</strong>{' '}
-                      <span style={{ color: '#64748b' }}>({c.family_sku})</span>
-                      {currentFloor2 > 0 ? (
-                        <span style={{ color: '#0369a1', fontSize: 13, marginLeft: 8 }}>
-                          (On Floor 2: {currentFloor2})
-                        </span>
-                      ) : null}
-                    </span>
-                    <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input
-                        type="number"
-                        min={currentFloor2 > 0 ? 0 : 1}
-                        step="1"
-                        value={qtyDraftDisplay(c.id, currentFloor2, 1)}
-                        onChange={(e) => setQtyDraft(c.id, e.target.value)}
-                        style={{ width: 72, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                        aria-label={`Quantity for ${c.name}`}
-                      />
-                      <button
-                        type="button"
-                        className="kitwe-btn kitwe-btn-primary"
-                        disabled={busyId === String(c.id)}
-                        onClick={() => handleAddProduct(c.id)}
-                      >
-                        {floor2SearchActionLabel(currentFloor2, busyId === String(c.id))}
-                      </button>
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      ) : null}
-
       {loading ? <p>Loading…</p> : null}
 
-      {floor2Stock.length > 0 ? (
+      {!loading && search.trim() && filteredStockFamilyGroups.length === 0 && stockFamilyGroups.length > 0 ? (
+        <p className="kitwe-empty-hint" style={{ marginTop: 8 }}>
+          No Floor 2 products match your search.
+        </p>
+      ) : null}
+
+      {!loading && !search.trim() && stockFamilyGroups.length === 0 ? (
+        <p className="kitwe-empty-hint" style={{ marginTop: 8 }}>
+          No unfinished products on Floor 2 yet. Add from Floor 1 above, create in the carpentry app, or set stock on
+          a carpentry-catalog product.
+        </p>
+      ) : null}
+
+      {filteredStockFamilyGroups.length > 0 ? (
         <div className="kitwe-catalog-table-wrap" style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 16, margin: '8px 0 12px', padding: '0 10px' }}>
             Current Unfinished Stock on Floor 2
@@ -682,7 +422,7 @@ export default function WarehouseFloor2Page({
             disabled={!canManage || Boolean(cardPhotoBusyKey)}
           />
           <div className="floor2-manufacture-grid">
-            {stockFamilyGroups.map((group) => {
+            {filteredStockFamilyGroups.map((group) => {
               const variantCount = group.rows.length;
               const imageUrl = pickFamilyCardImageUrl(group);
               const inlayLabel = variantCount === 1 ? '1 product' : `${variantCount} variants`;

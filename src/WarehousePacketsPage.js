@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FaPlus } from 'react-icons/fa';
+import { useLocation, useNavigate } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
+import WarehouseCatalogCreateActions from './components/WarehouseCatalogCreateActions';
+import WarehouseCatalogFunnelFilter from './components/WarehouseCatalogFunnelFilter';
+import WarehouseCatalogListPager, {
+  WAREHOUSE_CATALOG_PAGE_SIZE,
+  paginateList,
+} from './components/WarehouseCatalogListPager';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 import useDebouncedValue from './hooks/useDebouncedValue';
@@ -18,12 +23,12 @@ import WarehouseProductionLabelPrintDialog, {
 
 const PACKET_FILTER = {
   ALL: 'all',
-  ASSIGNED: 'assigned',
   UNASSIGNED: 'unassigned',
 };
 
 export default function WarehousePacketsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const canManage = useMemo(() => canManageCatalog(getCurrentUser()), []);
   const rtTick = useRealtimeRefresh([
     'warehouse_assemblies',
@@ -42,8 +47,14 @@ export default function WarehousePacketsPage() {
   const [warehouseLocationId, setWarehouseLocationId] = useState(null);
   const [warehouseLocationName, setWarehouseLocationName] = useState('Warehouse');
   const [search, setSearch] = useState('');
+  const [listPage, setListPage] = useState(1);
   const debouncedSearch = useDebouncedValue(search, 160);
-  const [assignmentFilter, setAssignmentFilter] = useState(PACKET_FILTER.ALL);
+  const assignmentFilter = useMemo(() => {
+    const params = new URLSearchParams(location.search || '');
+    return params.get('assignment') === 'unassigned'
+      ? PACKET_FILTER.UNASSIGNED
+      : PACKET_FILTER.ALL;
+  }, [location.search]);
   const [, setSaving] = useState(false);
   const [labelPrintItem, setLabelPrintItem] = useState(null);
   const hasCatalogRef = useRef(false);
@@ -115,7 +126,6 @@ export default function WarehousePacketsPage() {
     return (packets || [])
       .filter((p) => {
         const assigned = packetIsAssigned(p.id);
-        if (assignmentFilter === PACKET_FILTER.ASSIGNED && !assigned) return false;
         if (assignmentFilter === PACKET_FILTER.UNASSIGNED && assigned) return false;
         if (!q) return true;
         const products = packetAssignmentsByPacketId.get(String(p.id)) || [];
@@ -132,11 +142,14 @@ export default function WarehousePacketsPage() {
       });
   }, [packets, debouncedSearch, assignmentFilter, packetAssignmentsByPacketId, packetIsAssigned]);
 
-  const counts = useMemo(() => {
-    const all = packets || [];
-    const assigned = all.filter((p) => packetIsAssigned(p.id)).length;
-    return { all: all.length, assigned, unassigned: all.length - assigned };
-  }, [packets, packetIsAssigned]);
+  useEffect(() => {
+    setListPage(1);
+  }, [debouncedSearch, assignmentFilter, location.search]);
+
+  const packetPagination = useMemo(
+    () => paginateList(filteredPackets, listPage, WAREHOUSE_CATALOG_PAGE_SIZE),
+    [filteredPackets, listPage],
+  );
 
   const handleDeletePacket = async (row) => {
     if (!canManage) return;
@@ -176,91 +189,48 @@ export default function WarehousePacketsPage() {
   return (
     <>
     <div className="products-container warehouse-products-page warehouse-packets-page" style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
-      <div className="page-header-row">
+      <div className="page-header-row warehouse-page-header-row">
         <BackToDashboard />
         <h1 className="products-title" style={{ margin: 0 }}>Packets (Warehouse)</h1>
+        <div className="warehouse-page-header-row__tools">
+          <label className="portal-hub-bar__select-wrap warehouse-page-header-row__view">
+            <span className="portal-hub-bar__select-label">View</span>
+            <WarehouseCatalogViewToggle />
+          </label>
+          <WarehouseCatalogCreateActions
+            canManage={canManage}
+            canAddProduct={canManage}
+          />
+        </div>
       </div>
-
-      <p className="stc-note" style={{ margin: '8px 0 16px', opacity: 0.85 }}>
-        Warehouse cartons — assigned or unassigned. On-hand qty is per packet at {warehouseLocationName}.
-      </p>
 
       {error ? (
         <div role="alert" style={{ color: '#f87171', marginBottom: 12 }}>{error}</div>
       ) : null}
 
-      <div className="warehouse-catalog-toolbar">
-        <div className="warehouse-catalog-toolbar__main">
-          <span className="warehouse-catalog-toolbar__label" id="wh-packets-view-label">View</span>
-          <WarehouseCatalogViewToggle aria-labelledby="wh-packets-view-label" />
-        </div>
-        {canManage && (
-          <div className="warehouse-catalog-toolbar__create">
-            <span className="warehouse-catalog-toolbar__label" id="wh-packets-create-label">Create</span>
-            <div className="warehouse-catalog-toolbar__actions" aria-labelledby="wh-packets-create-label">
-              <button
-                type="button"
-                className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
-                onClick={() => navigate('/warehouse-products/new')}
-              >
-                <FaPlus aria-hidden />
-                <span>Product</span>
-              </button>
-              <button
-                type="button"
-                className="warehouse-catalog-action-btn"
-                onClick={() => navigate('/warehouse-products/packets/new')}
-              >
-                <FaPlus aria-hidden />
-                <span>Packet</span>
-              </button>
-            </div>
-          </div>
-        )}
+      <div className="warehouse-catalog-filter-row warehouse-catalog-filter-row--flat">
+        <input
+          className="warehouse-catalog-filter-control warehouse-catalog-search products-search-bar"
+          placeholder="Search SKU, packet name, or product SKU / name…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <WarehouseCatalogFunnelFilter />
       </div>
-      <div className="warehouse-packets-filter-row">
-        <div className="warehouse-packets-filter" role="tablist" aria-label="Packet assignment filter">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={assignmentFilter === PACKET_FILTER.ALL}
-            className={`warehouse-packets-filter-btn${assignmentFilter === PACKET_FILTER.ALL ? ' is-active' : ''}`}
-            onClick={() => setAssignmentFilter(PACKET_FILTER.ALL)}
-          >
-            All ({counts.all})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={assignmentFilter === PACKET_FILTER.ASSIGNED}
-            className={`warehouse-packets-filter-btn${assignmentFilter === PACKET_FILTER.ASSIGNED ? ' is-active' : ''}`}
-            onClick={() => setAssignmentFilter(PACKET_FILTER.ASSIGNED)}
-          >
-            Assigned ({counts.assigned})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={assignmentFilter === PACKET_FILTER.UNASSIGNED}
-            className={`warehouse-packets-filter-btn${assignmentFilter === PACKET_FILTER.UNASSIGNED ? ' is-active' : ''}`}
-            onClick={() => setAssignmentFilter(PACKET_FILTER.UNASSIGNED)}
-          >
-            Unassigned ({counts.unassigned})
-          </button>
-        </div>
-      </div>
-      <input
-        className="products-search-bar warehouse-catalog-search"
-        placeholder="Search SKU, packet name, or product SKU / name…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
 
       {loading ? (
         <p>Loading…</p>
       ) : filteredPackets.length === 0 ? (
         <p>No packets match this filter.</p>
       ) : (
+        <>
+          <WarehouseCatalogListPager
+            page={packetPagination.page}
+            pageCount={packetPagination.pageCount}
+            total={packetPagination.total}
+            onPageChange={setListPage}
+            itemLabel="packets"
+          />
         <div className="warehouse-packets-table-wrap">
           <table className="warehouse-packets-table">
             <thead>
@@ -276,7 +246,7 @@ export default function WarehousePacketsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredPackets.map((packet) => {
+              {packetPagination.items.map((packet) => {
                 const onHand = inventoryByPacketId.get(String(packet.id)) ?? 0;
                 const products = packetAssignmentsByPacketId.get(String(packet.id)) || [];
                 const primaryProduct = products[0] || null;
@@ -350,6 +320,14 @@ export default function WarehousePacketsPage() {
             </tbody>
           </table>
         </div>
+          <WarehouseCatalogListPager
+            page={packetPagination.page}
+            pageCount={packetPagination.pageCount}
+            total={packetPagination.total}
+            onPageChange={setListPage}
+            itemLabel="packets"
+          />
+        </>
       )}
     </div>
     <WarehouseProductionLabelPrintDialog

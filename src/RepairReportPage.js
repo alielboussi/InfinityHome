@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
+import { useSyncReportFiltersFromUrl } from './hooks/useReportHubFilters';
+import { matchesReportUserFilter } from './utils/reportHubUserFilter';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import { listReturnOrders } from './services/warehouseDeliveryMobileApi';
 import { defaultReportDateRange, formatReportDateTime } from './utils/reportDateRange';
@@ -10,7 +12,7 @@ import {
 } from './utils/workshopReportData';
 import { repairDepartmentLabel } from './utils/warehouseReturnRepairDepartment';
 
-export default function RepairReportPage() {
+export default function RepairReportPage({ embedInHub = false, userFilter = '' } = {}) {
   const canView = canManageCatalog(getCurrentUser());
   const { startDate: defaultStart, endDate: defaultEnd } = useMemo(
     () => defaultReportDateRange(),
@@ -18,6 +20,7 @@ export default function RepairReportPage() {
   );
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
+  useSyncReportFiltersFromUrl({ embedInHub, setStartDate, setEndDate });
   const [allOrders, setAllOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -42,8 +45,12 @@ export default function RepairReportPage() {
   }, [canView, load]);
 
   const rows = useMemo(
-    () => filterRepairOrdersForReport(allOrders, startDate, endDate),
-    [allOrders, startDate, endDate],
+    () => filterRepairOrdersForReport(allOrders, startDate, endDate)
+      .filter((row) => matchesReportUserFilter(
+        row?.created_by_name || row?.created_by || row?.customer_name,
+        userFilter,
+      )),
+    [allOrders, startDate, endDate, userFilter],
   );
 
   if (!canView) {
@@ -52,25 +59,29 @@ export default function RepairReportPage() {
 
   return (
     <div className="report-page">
-      <div className="page-header-row">
-        <BackToDashboard />
-        <h2 style={{ margin: 0 }}>Repair Report</h2>
-      </div>
+      {!embedInHub ? (
+        <div className="page-header-row">
+          <BackToDashboard />
+          <h2 style={{ margin: 0 }}>Repair Report</h2>
+        </div>
+      ) : null}
       <p className="user-access-intro">
         All warehouse return / repair orders (Kitwe catalog returns and customer sale returns),
         filtered by created date.
       </p>
 
-      <div className="report-filters">
-        <div className="report-filter-block">
-          <label>Start date</label>
-          <input type="date" value={startDate} max={endDate} onChange={(e) => setStartDate(e.target.value)} />
+      {!embedInHub ? (
+        <div className="report-filters">
+          <div className="report-filter-block">
+            <label>Start date</label>
+            <input type="date" value={startDate} max={endDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div className="report-filter-block">
+            <label>End date</label>
+            <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
         </div>
-        <div className="report-filter-block">
-          <label>End date</label>
-          <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} />
-        </div>
-      </div>
+      ) : null}
 
       <div className="report-actions">
         <button type="button" onClick={load} disabled={loading}>

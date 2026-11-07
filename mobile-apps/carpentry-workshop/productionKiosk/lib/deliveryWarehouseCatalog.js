@@ -1,8 +1,9 @@
 /**
  * Send Delivery — Warehouse Floor 1 only (`/warehouse-products` + warehouse packets).
- * Floor 2 WIP is consumed by upholstery/painting and credited to Floor 1 before truck delivery.
+ * Floor 2 WIP (including items sent to painting) is not deliverable until credited to Floor 1.
  * See docs/factory-warehouse-flow.md
  */
+import { FACTORY_LOCATION_ID } from '../shared/locationIds.js';
 import { catalogStockMaps } from '../shared/warehouseCatalogStockMaps.js';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping.js';
 import {
@@ -13,6 +14,20 @@ import {
 
 function isWarehouseProductKind(assembly) {
   return String(assembly?.item_kind || 'product').toLowerCase() === 'product';
+}
+
+function isStoreroomMaterial(assembly) {
+  return assembly?.metadata?.storeroom?.is_storeroom_material === true;
+}
+
+/** True when catalog-list stock maps were bound to Floor 2 WIP instead of Floor 1. */
+export function isDeliveryCatalogBoundToFloor2(catalog) {
+  const floor2Id = String(catalog?.floor2LocationId || '').trim();
+  const locId = String(catalog?.warehouseLocationId || '').trim();
+  if (locId && locId === String(FACTORY_LOCATION_ID)) return false;
+  if (floor2Id && locId && locId === floor2Id) return true;
+  const name = String(catalog?.warehouseLocationName || '').trim().toLowerCase();
+  return name === 'warehouse floor 2' || name.includes('floor 2');
 }
 
 function warehouseProductsCatalogContext(catalog) {
@@ -29,16 +44,31 @@ function warehouseProductsCatalogContext(catalog) {
   };
 }
 
-function isWarehouseFloor1DeliveryProduct(assembly, pktList, ctx) {
+function isWarehouseFloor1DeliveryProduct(assembly, pktList, ctx, catalog) {
+  if (!assembly?.id) return false;
+  if (isStoreroomMaterial(assembly)) return false;
+  if (isDeliveryCatalogBoundToFloor2(catalog)) return false;
+
+  const locId = String(catalog?.warehouseLocationId || '').trim();
+  if (locId && locId !== String(FACTORY_LOCATION_ID)) {
+    const name = String(catalog?.warehouseLocationName || '').trim().toLowerCase();
+    if (name.startsWith('carpentry warehouse') || /^storeroom\s*[123]$/.test(name)) {
+      return false;
+    }
+  }
+
   const id = String(assembly.id);
+  const floor1Qty = Math.max(0, Number(ctx.assemblyWarehouseQty?.[id] ?? 0) || 0);
 
   if (isSetAssembly(assembly)) {
-    return true;
+    return floor1Qty > 0;
   }
 
   if (ctx.setComponentIds.has(id)) {
     const leftover = Math.max(0, Number(ctx.leftoverById[id] ?? 0) || 0);
     if (leftover <= 0) return false;
+  } else if (floor1Qty <= 0) {
+    return false;
   }
 
   if (isCompleteCatalogProduct(assembly, pktList)) {
@@ -69,7 +99,7 @@ export function filterAssembliesForDeliveryWarehouse(catalog) {
   return list.filter((assembly) => {
     if (!assembly?.id) return false;
     const pktList = byAssembly.get(String(assembly.id)) || [];
-    return isWarehouseFloor1DeliveryProduct(assembly, pktList, ctx);
+    return isWarehouseFloor1DeliveryProduct(assembly, pktList, ctx, catalog);
   });
 }
 

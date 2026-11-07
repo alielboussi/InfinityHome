@@ -25,3 +25,22 @@ export async function resumePaintingProductionJob(jobId) {
 export async function finishPaintingProductionJob(jobId) {
   return warehouseMobileRequest('painting-job-finish', { job_id: jobId });
 }
+
+export async function fetchProductionStoreroomMaterials() {
+  const payload = await warehouseMobileRequest('production-storeroom-materials-list');
+  return payload?.materials || [];
+}
+
+export async function saveProductionJobMaterials({
+  jobKind,
+  jobId,
+  returnOrderId,
+  materialLines,
+} = {}) {
+  return warehouseMobileRequest('production-job-materials-save', {
+    job_kind: jobKind,
+    job_id: jobId,
+    return_order_id: returnOrderId,
+    material_lines: materialLines,
+  });
+}

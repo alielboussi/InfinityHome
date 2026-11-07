@@ -7,7 +7,6 @@ import {
   normalizeWarehouseSkuKey,
   WAREHOUSE_INVENTORY_MODE,
 } from '../../src/utils/warehouseAssemblyMath.js';
-import { resolveWarehouseLocation } from '../../src/utils/resolveWarehouseLocation.js';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,
@@ -19,6 +18,7 @@ import {
   isWarehouseSetRecipeLocation,
   warehouseCatalogAllowsSetCreate,
 } from '../../src/constants/warehouseShowroomLocations.js';
+import { resolveWarehouseFloor2Location } from '../../src/constants/warehouseFloorLocations.js';
 import {
   validateSetComponentAssembly,
   isWarehouseSetAssembly,
@@ -194,15 +194,23 @@ export async function fetchCatalogForMobile(sb, options = {}) {
     .order('name', { ascending: true });
   throwIfDatastoreError(locationsErr, 'Failed to load locations');
 
-  const warehouseLocation = resolveWarehouseLocation(locations, { packets: [] });
-  const warehouseLocationId = warehouseLocation?.id ?? null;
+  const floor2Location = resolveWarehouseFloor2Location(locations || []);
+  const floor2LocationId = floor2Location?.id ? String(floor2Location.id) : '';
+  // Floor 1 finished-goods only. Do not fuzzy-match "Warehouse Floor 2" or
+  // "Carpentry Warehouse *" — those names also contain "warehouse".
+  const factoryRow = (locations || []).find(
+    (l) => String(l.id) === String(WAREHOUSE_FACTORY_LOCATION_ID),
+  );
+  const warehouseLocationId = String(WAREHOUSE_FACTORY_LOCATION_ID);
+  const warehouseLocation = factoryRow || {
+    id: warehouseLocationId,
+    name: 'Factory Warehouse',
+  };
 
   let inventoryQuery = sb.from(PACKET_INVENTORY).select(MOBILE_INVENTORY_FIELDS);
   let assemblyInvQuery = sb.from(ASSEMBLY_INVENTORY).select(MOBILE_ASSEMBLY_INVENTORY_FIELDS);
-  if (warehouseLocationId) {
-    inventoryQuery = inventoryQuery.eq('location_id', warehouseLocationId);
-    assemblyInvQuery = assemblyInvQuery.eq('location_id', warehouseLocationId);
-  }
+  inventoryQuery = inventoryQuery.eq('location_id', warehouseLocationId);
+  assemblyInvQuery = assemblyInvQuery.eq('location_id', warehouseLocationId);
 
   const catalogQueries = [
     sb.from(ASSEMBLIES).select(MOBILE_ASSEMBLY_FIELDS).order('name', { ascending: true }),
@@ -256,7 +264,8 @@ export async function fetchCatalogForMobile(sb, options = {}) {
     categories: categories || [],
     locations: locations || [],
     warehouseLocationId,
-    warehouseLocationName: warehouseLocation?.name ?? 'Warehouse',
+    warehouseLocationName: warehouseLocation?.name ?? 'Factory Warehouse',
+    floor2LocationId: floor2LocationId || null,
     catalog_meta: { packet_load: packetLoad },
     production_presets: presetGroups.production_presets,
     seater_presets: presetGroups.seater,

@@ -346,6 +346,10 @@ const UI_STRINGS = {
     en: 'Stop and complete — credits finished qty to Warehouse Floor 1 when you confirm.',
     ar: 'إنهاء المهمة — يُضاف المخزون الجاهز إلى Floor 1 بعد التأكيد.',
   },
+  jobFinishNoMaterialsHint: {
+    en: 'No storeroom materials were recorded for this job.',
+    ar: 'لم تُسجَّل مواد من المخزن لهذه المهمة.',
+  },
   hintJobCard: {
     en: 'Job in your queue. Long-press each button below for help; tap play, pause, or stop.',
     ar: 'مهمة في قائمتك. اضغط مطولًا على الأزرار للمساعدة؛ تشغيل، إيقاف، أو Stop.',

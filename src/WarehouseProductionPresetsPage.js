@@ -251,7 +251,7 @@ export default function WarehouseProductionPresetsPage() {
     <div className="product-form" style={{ maxWidth: 720, margin: '0 auto', padding: '24px 20px 40px' }}>
       <div className="page-header-row">
         <BackToDashboard />
-        <h1 style={{ margin: 0 }}>Production app presets</h1>
+        <h1 style={{ margin: 0 }}>Presets</h1>
       </div>
       <p style={{ color: 'var(--dash-muted)', marginTop: 8, lineHeight: 1.5 }}>
         Lists feed the Production app Create screen. Add, remove, or drag to reorder — each change saves to the server

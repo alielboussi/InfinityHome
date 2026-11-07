@@ -6,7 +6,7 @@ import {
   prepareShareableDeliveryNotePdfUri,
   previewOrSharePdfFile,
 } from './deliveryNotePdfShare';
-import { openDeliveryNoteHtmlInBrowser } from './printDeliveryNoteHtml';
+import { openDeliveryNoteHtmlInBrowser, withPrintTimeout } from './printDeliveryNoteHtml';
 import { resolveDeliveryDriverSignatureDataUri, coerceInlineSignatureForPrint } from './resolveDeliveryDriverSignatureDataUri';
 
 /** Build A4 PDF from note fields and open the system share / viewer sheet. */
@@ -40,11 +40,11 @@ export async function openDeliveryNotePdf({
     openDeliveryNoteHtmlInBrowser(html, deliveryNumber || 'Delivery note');
     return;
   }
-  const file = await Print.printToFileAsync({
+  const file = await withPrintTimeout(Print.printToFileAsync({
     html,
     width: 595,
     height: 842,
-  });
+  }));
   if (!file?.uri) {
     throw new Error('Could not build delivery note PDF.');
   }

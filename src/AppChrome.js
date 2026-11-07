@@ -1,115 +1,93 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { FaArrowLeft, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import {
-  FaArrowLeft,
-  FaCashRegister, FaQuoteRight, FaChartLine,
-  FaUsers, FaWallet, FaClipboardList, FaTags,
-  FaThLarge, FaPrint, FaBoxes, FaExchangeAlt,
-  FaTruckLoading, FaHistory, FaTachometerAlt, FaBoxOpen, FaPlus, FaDatabase, FaUndo, FaUserShield, FaStore, FaShoppingBag,   FaToolbox, FaRuler, FaClock, FaFillDrip,
-} from 'react-icons/fa';
-import { FaStairs } from 'react-icons/fa6';
-import { getCurrentUser, getHomeDashboardPath, HASSAN_AWAD, isPathAllowed, canViewStocktakeFlow, canViewStocktakeAggregation, isQuotationerOnlyExperience, isPublicAppRoute, canManageCatalog } from './accessControl';
+  getCurrentUser,
+  getHomeDashboardPath,
+  HASSAN_AWAD,
+  isPathAllowed,
+  canViewStocktakeFlow,
+  canViewStocktakeAggregation,
+  isQuotationerOnlyExperience,
+  isPublicAppRoute,
+  canManageCatalog,
+  isHassanAwadUser,
+} from './accessControl';
 import { preloadAppRoute, prefetchNavRoutesOnIdle } from './lazyPages';
-import { isShopPublicPath } from './utils/shopConstants';
 
-// Functional groupings for the slide-out navigation drawer.
+const NAV_STORAGE_KEY = 'ent-nav-open';
+
+/** Business-flow order: overview → sales → fulfillment → warehouse → production → inventory → stocktake → admin */
 const NAV_GROUPS = [
   {
+    id: 'overview',
     title: 'Overview',
+    items: [{ label: 'Dashboard', route: '/dashboard' }],
+  },
+  {
+    id: 'commercial',
+    title: 'Sales & customers',
     items: [
-      { label: 'Dashboard', route: '/dashboard', icon: FaTachometerAlt },
+      { label: 'Customers', route: '/customers' },
+      { label: 'POS', route: '/all-sales' },
+      { label: 'Laybys', route: '/layby-management' },
+      { label: 'Orders', route: '/quotes-board' },
+      { label: 'Ledger', route: '/ledger-mobile' },
     ],
   },
   {
-    title: 'Daily',
+    id: 'fulfillment',
+    title: 'Fulfillment',
     items: [
-      { label: 'Customers', route: '/customers', icon: FaUsers },
-      { label: 'POS', route: '/all-sales', icon: FaCashRegister },
-      { label: 'Laybys', route: '/layby-management', icon: FaClipboardList },
-      { label: 'Factory Orders', route: '/quotes-board', icon: FaQuoteRight },
-      { label: 'Reversal', route: '/reversal', icon: FaUndo },
-      { label: 'Deliveries', route: '/warehouse-deliveries-admin', icon: FaTruckLoading, catalogOnly: true },
-      { label: 'Repairs', route: '/warehouse-repairs-admin', icon: FaUndo, catalogOnly: true },
+      { label: 'Deliveries', route: '/warehouse-deliveries-admin', catalogOnly: true },
+      { label: 'Repairs', route: '/warehouse-repairs-admin', catalogOnly: true },
+      { label: 'Transfers', route: '/transfers' },
     ],
   },
   {
-    title: 'Ledger',
+    id: 'warehouse',
+    title: 'Warehouse',
     items: [
-      { label: 'Ledger', route: '/ledger-mobile', icon: FaWallet },
+      { label: 'Warehouses', route: '/warehouse-floors?floor=1' },
+      { label: 'Storerooms', route: '/warehouse-storerooms?room=1', catalogOnly: true },
+      { label: 'Units of measure', route: '/materials-uom', catalogOnly: true },
     ],
   },
   {
+    id: 'production',
     title: 'Production',
     items: [
-      { label: 'Upholstery Products', route: '/upholstery', icon: FaPlus, catalogOnly: true },
-      { label: 'Carpentry Products', route: '/carpentry', icon: FaToolbox, catalogOnly: true },
-      { label: 'Upholstery Jobs', route: '/upholstery-timer', icon: FaClock, catalogOnly: true },
-      { label: 'Carpentry Jobs', route: '/carpentry-jobs', icon: FaClock, catalogOnly: true },
-      { label: 'Painting Jobs', route: '/painting-jobs', icon: FaFillDrip, catalogOnly: true },
-      { label: 'New Products', route: '/production', icon: FaPlus, catalogOnly: true },
+      { label: 'Catalogs', route: '/production-catalogs?view=upholstery-catalog', catalogOnly: true },
+      { label: 'Jobs', route: '/production-jobs?view=upholstery-jobs', catalogOnly: true },
+      { label: 'Production intake', route: '/production-intake', catalogOnly: true },
     ],
   },
   {
-    title: 'Warehouses & Storerooms',
-    subtitle: 'Floor 1–2 · Storerooms 1–3 · BOM stock for carpentry & upholstery',
+    id: 'inventory',
+    title: 'Products & inventory',
     items: [
-      { label: 'Floor 2', route: '/warehouse-floor-2', icon: FaStairs, catalogOnly: true },
-      { label: 'Floor 1', route: '/warehouse-products', icon: FaStairs },
-      { label: 'Storeroom 1', route: '/carpentry-warehouse/1', icon: FaBoxOpen, catalogOnly: true },
-      { label: 'Storeroom 2', route: '/carpentry-warehouse/2', icon: FaBoxOpen, catalogOnly: true },
-      { label: 'Storeroom 3', route: '/carpentry-warehouse/3', icon: FaBoxOpen, catalogOnly: true },
-      { label: 'Units of measure', route: '/materials-uom', icon: FaRuler, catalogOnly: true },
+      { label: 'Categories', route: '/categories' },
+      { label: 'Kitwe', route: '/kitwe-products' },
+      { label: 'Product master', route: '/products-list' },
+      { label: 'Labels', route: '/price-labels' },
     ],
   },
   {
-    title: 'Inventory',
+    id: 'stocktake',
+    title: 'Stocktake',
     items: [
-      { label: 'Categories', route: '/categories', icon: FaThLarge },
-      { label: 'Products', route: '/products-list', icon: FaTags },
-      { label: 'Kitwe', route: '/kitwe-products', icon: FaTags },
-      { label: 'Stock History', route: '/stock-history', icon: FaClipboardList },
-      { label: 'Print Labels', route: '/price-labels', icon: FaPrint },
+      { label: 'Stocktake', route: '/stocktake' },
     ],
   },
   {
-    title: 'Ecommerce',
+    id: 'admin',
+    title: 'Reports & admin',
     items: [
-      { label: 'E-commerce Setup', route: '/ecommerce-setup', icon: FaStore },
-      { label: 'E-commerce Sales', route: '/ecommerce-sales', icon: FaShoppingBag },
-    ],
-  },
-  {
-    title: 'Stocktake Flow',
-    items: [
-      { label: 'Stocktake', route: '/stocktake', icon: FaBoxes },
-      { label: 'Stocktake Aggregation', route: '/stocktake/aggregation', icon: FaClipboardList, adminOnly: true },
-    ],
-  },
-  {
-    title: 'Transfers',
-    items: [
-      { label: 'Transfers', route: '/transfers', icon: FaExchangeAlt },
-    ],
-  },
-  {
-    title: 'Reports',
-    items: [
-      { label: 'Sales Report', route: '/sales-report', icon: FaChartLine },
-      { label: 'Transfers Report', route: '/transfers-report', icon: FaExchangeAlt },
-      { label: 'Upholstery Report', route: '/production-report', icon: FaPlus, catalogOnly: true },
-      { label: 'Carpentry Production', route: '/carpentry-production-report', icon: FaToolbox, catalogOnly: true },
-      { label: 'Painting Report', route: '/painting-report', icon: FaFillDrip, catalogOnly: true },
-      { label: 'Repair Report', route: '/repair-report', icon: FaUndo, catalogOnly: true },
-    ],
-  },
-  {
-    title: 'Administration',
-    items: [
-      { label: 'User Activity', route: '/user-activity', icon: FaHistory },
-      { label: 'Delivery drivers', route: '/warehouse-delivery-drivers', icon: FaTruckLoading, catalogOnly: true },
-      { label: 'Production presets', route: '/warehouse-production-presets', icon: FaClipboardList, catalogOnly: true },
-      { label: 'User Login Access', route: '/user-access', icon: FaUserShield },
-      { label: 'Database Backup', route: '/database-backup', icon: FaDatabase },
+      { label: 'Reports', route: '/reports?report=sales' },
+      { label: 'Drivers', route: '/warehouse-delivery-drivers', catalogOnly: true },
+      { label: 'Presets', route: '/warehouse-production-presets', catalogOnly: true },
+      { label: 'User activity', route: '/user-activity' },
+      { label: 'User access', route: '/user-access' },
     ],
   },
 ];
@@ -119,34 +97,27 @@ const QUOTATIONER_ONLY_NAV_GROUPS = [
     id: 'dashboard',
     title: 'Dashboard',
     items: [
-      { label: 'Layby Dashboard', route: '/quotationer', icon: FaTachometerAlt, exact: true },
+      { label: 'Layby Dashboard', route: '/quotationer', exact: true },
     ],
   },
   {
     id: 'quotationer',
     title: 'Quotationer',
     items: [
-      { label: 'Manage Customers', route: '/quotationer', search: '?view=customers', icon: FaUsers },
-      { label: 'Manage Products', route: '/quotationer', search: '?view=products', icon: FaTags },
-      { label: 'New Quote', route: '/quotationer', search: '?view=create', icon: FaPlus },
-      { label: 'Factory Orders', route: '/quotes-board', icon: FaClipboardList },
+      { label: 'Manage Customers', route: '/quotationer', search: '?view=customers' },
+      { label: 'Manage Products', route: '/quotationer', search: '?view=products' },
+      { label: 'New Quote', route: '/quotationer', search: '?view=create' },
+      { label: 'Factory Orders', route: '/quotes-board' },
     ],
   },
   {
     id: 'warehouse',
     title: 'Warehouse',
     items: [
-      { label: 'Warehouse Deliveries', route: '/warehouse-deliveries', icon: FaTruckLoading },
-      { label: 'Returns', route: '/warehouse-returns', icon: FaUndo },
-      { label: 'Returns Trackage', route: '/warehouse-returns-trackage', icon: FaHistory },
-      { label: 'Warehouse Storage', route: '/warehouse-storage', icon: FaBoxOpen },
-    ],
-  },
-  {
-    id: 'layby',
-    title: 'Layby',
-    items: [
-      { label: 'Laybys', route: '/layby-management', icon: FaClipboardList },
+      { label: 'Warehouse Deliveries', route: '/warehouse-deliveries' },
+      { label: 'Returns', route: '/warehouse-returns' },
+      { label: 'Returns Trackage', route: '/warehouse-returns-trackage' },
+      { label: 'Warehouse Storage', route: '/warehouse-storage' },
     ],
   },
 ];
@@ -166,14 +137,12 @@ function dedupeNavGroups(groups) {
     .filter((group) => group.items.length > 0);
 }
 
-// Map a pathname to a human-friendly page title for the banner.
 const TITLE_MAP = {
   '/dashboard': 'Dashboard',
   '/pos': 'All Sales',
   '/pos-mobile': 'Point of Sale',
   '/all-sales': 'Point of Sale',
-  '/reversal': 'Reversal',
-  '/quotes-board': 'Factory Orders',
+  '/quotes-board': 'Orders',
   '/quotationer': 'Create Quote',
   '/sales-report': 'Sales Report',
   '/sales-report-mobile': 'Sales Report',
@@ -184,6 +153,13 @@ const TITLE_MAP = {
   '/products': 'Products',
   '/products-list': 'Products',
   '/products-list/locations': 'Product locations',
+  '/warehouse-floors': 'Warehouses',
+  '/warehouse-storerooms': 'Storerooms',
+  '/production-workspace': 'Production',
+  '/production-catalogs': 'Catalogs',
+  '/production-jobs': 'Jobs',
+  '/production-intake': 'Production intake',
+  '/reports': 'Reports',
   '/warehouse-products': 'Floor 1',
   '/upholstery': 'Upholstery Products',
   '/upholstery-timer': 'Upholstery Jobs',
@@ -204,12 +180,9 @@ const TITLE_MAP = {
   '/stock-history': 'Stock History',
   '/categories': 'Categories',
   '/sets': 'Sets',
-  '/price-labels': 'Print Labels',
+  '/price-labels': 'Labels',
   '/price-label-mobile': 'Print Labels',
-  '/ecommerce-setup': 'E-commerce Setup',
-  '/ecommerce-sales': 'E-commerce Sales',
   '/stocktake': 'Stocktake',
-  '/stocktake/aggregation': 'Stocktake Aggregation',
   '/stocktake-periods': 'Stocktake',
   '/stock-periods': 'Stock Periods',
   '/stock-count': 'Stock Count',
@@ -225,8 +198,8 @@ const TITLE_MAP = {
   '/warehouse-returns-trackage': 'Returns Trackage',
   '/warehouse-storage': 'Warehouse Storage',
   '/kitwe-products': 'Kitwe',
-  '/warehouse-delivery-drivers': 'Delivery drivers',
-  '/warehouse-production-presets': 'Production presets',
+  '/warehouse-delivery-drivers': 'Drivers',
+  '/warehouse-production-presets': 'Presets',
   '/warehouse-deliveries-admin': 'Deliveries',
   '/warehouse-repairs-admin': 'Repairs',
   '/warehouse-products/sales-storage': 'Sales Storage',
@@ -235,10 +208,8 @@ const TITLE_MAP = {
   '/company-settings': 'Company Settings',
   '/user-activity': 'User Activity',
   '/user-access': 'User Login Access',
-  '/database-backup': 'Database Backup',
 };
 
-/** Banner back: nested routes return to their list parent; top-level pages go home. */
 function backTargetForPath(path, homePath) {
   const p = String(path || '');
   const keys = Object.keys(TITLE_MAP).sort((a, b) => b.length - a.length);
@@ -260,10 +231,31 @@ function titleForPath(path, user, search = '') {
     if (view === 'list') return 'Factory Orders';
     return 'Dashboard';
   }
+  if (path === '/reports') {
+    const report = new URLSearchParams(search || '').get('report');
+    if (report === 'stock-history') return 'Stock history';
+    if (report === 'transfers') return 'Transfers report';
+    if (report === 'upholstery') return 'Upholstery production';
+    if (report === 'carpentry') return 'Carpentry production';
+    if (report === 'painting') return 'Painting jobs';
+    if (report === 'repair') return 'Repair / returns';
+  }
   if (TITLE_MAP[path]) return TITLE_MAP[path];
   const match = Object.keys(TITLE_MAP).find(key => path.toLowerCase().startsWith(key.toLowerCase()));
   if (match) return TITLE_MAP[match];
   return 'Infinity Home';
+}
+
+function readNavOpenDefault() {
+  if (typeof window === 'undefined') return true;
+  try {
+    const v = window.localStorage.getItem(NAV_STORAGE_KEY);
+    if (v === '0') return false;
+    if (v === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  return window.matchMedia('(min-width: 920px)').matches;
 }
 
 export default function AppChrome() {
@@ -274,23 +266,45 @@ export default function AppChrome() {
   const user = getCurrentUser();
   const isLogin = /^\/login(\b|\/|\?|#)/i.test(path);
   const isPublicCount = isPublicAppRoute(path);
-  const isShopRoute = isShopPublicPath(path);
   const isKioskStock = path.toLowerCase() === '/lusaka-stock';
   const hasUser = Boolean(user);
   const quotationerOnly = isQuotationerOnlyExperience(user, path);
   const homePath = quotationerOnly ? HASSAN_AWAD.landingPath : getHomeDashboardPath(user);
 
+  const [navOpen, setNavOpen] = React.useState(readNavOpenDefault);
+
+  const setNavOpenPersisted = React.useCallback((next) => {
+    setNavOpen(next);
+    try {
+      window.localStorage.setItem(NAV_STORAGE_KEY, next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   React.useEffect(() => {
     if (typeof document === 'undefined') return undefined;
-    // Count page is a standalone mobile surface — no pinned sidebar.
-    const pinned = hasUser && !isLogin && !isPublicCount && !isKioskStock && !isShopRoute;
-    document.body.classList.toggle('ent-sidebar-pinned', pinned);
+    const chrome = hasUser && !isLogin && !isPublicCount && !isKioskStock;
+    document.body.classList.toggle('ent-sidebar-pinned', chrome && navOpen);
+    document.body.classList.toggle('ent-sidebar-collapsed', chrome && !navOpen);
     return () => {
-      try { document.body.classList.remove('ent-sidebar-pinned'); } catch {}
+      try {
+        document.body.classList.remove('ent-sidebar-pinned', 'ent-sidebar-collapsed');
+      } catch {
+        /* ignore */
+      }
     };
-  }, [isLogin, isPublicCount, isKioskStock, isShopRoute, hasUser, user]);
+  }, [isLogin, isPublicCount, isKioskStock, hasUser, user, navOpen]);
 
-  const visibleGroups = React.useMemo(() => dedupeNavGroups((quotationerOnly ? QUOTATIONER_ONLY_NAV_GROUPS : NAV_GROUPS)
+  const visibleGroups = React.useMemo(() => {
+    const warehouseStaffNav = !canManageCatalog(user) && !isHassanAwadUser(user);
+    const staffGroupIds = ['overview', 'fulfillment', 'warehouse', 'inventory', 'stocktake'];
+    const baseGroups = quotationerOnly
+      ? QUOTATIONER_ONLY_NAV_GROUPS
+      : (warehouseStaffNav
+        ? NAV_GROUPS.filter((g) => staffGroupIds.includes(g.id))
+        : NAV_GROUPS);
+    return dedupeNavGroups(baseGroups
     .map(group => {
       if (group.title === 'Stocktake Flow' && !canViewStocktakeFlow(user)) {
         return { ...group, items: [] };
@@ -305,7 +319,8 @@ export default function AppChrome() {
         return isPathAllowed(user, item.route);
       }),
     }))
-    .filter(group => group.items.length > 0)), [quotationerOnly, user]);
+    .filter(group => group.items.length > 0));
+  }, [quotationerOnly, user]);
 
   React.useEffect(() => {
     const routes = visibleGroups.flatMap((group) => group.items.map((item) => item.route));
@@ -313,7 +328,7 @@ export default function AppChrome() {
     prefetchNavRoutesOnIdle(routes);
   }, [visibleGroups, homePath]);
 
-  if (isLogin || isPublicCount || isKioskStock || isShopRoute || !user) return null;
+  if (isLogin || isPublicCount || isKioskStock || !user) return null;
 
   const isDashboard = path === homePath || (quotationerOnly && path === '/quotationer' && !location.search);
   const title = titleForPath(path, user, location.search);
@@ -326,15 +341,42 @@ export default function AppChrome() {
   };
 
   const isItemActive = (item) => {
-    const routeMatch = path.toLowerCase() === String(item.route || '').toLowerCase();
-    if (!routeMatch) return false;
+    const routeSpec = String(item.route || '');
+    const [itemPath, itemQs] = routeSpec.split('?');
+    if (path.toLowerCase() !== itemPath.toLowerCase()) return false;
     if (item.search) return location.search === item.search;
+    if (itemQs) {
+      const params = new URLSearchParams(location.search || '');
+      const required = new URLSearchParams(itemQs);
+      for (const [key, value] of required.entries()) {
+        if (params.get(key) !== value) return false;
+      }
+    }
     if (item.exact) return !location.search;
     return true;
   };
 
+  const closeNavAfterNav = () => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 919px)').matches) {
+      setNavOpenPersisted(false);
+    }
+  };
+
   return (
     <>
+      {!navOpen ? (
+        <button
+          type="button"
+          className="ent-drawer-toggle ent-drawer-toggle--peek"
+          onClick={() => setNavOpenPersisted(true)}
+          aria-expanded={false}
+          aria-controls="ent-main-nav"
+          aria-label="Show navigation menu"
+          title="Show menu"
+        >
+          <FaChevronDown aria-hidden />
+        </button>
+      ) : null}
       <header className="ent-banner">
         {!isDashboard && (
           <button
@@ -352,23 +394,34 @@ export default function AppChrome() {
       </header>
 
       <div
-        className="ent-drawer-overlay"
-        aria-hidden="true"
+        className={`ent-drawer-overlay${navOpen ? ' open' : ''}`}
+        aria-hidden={!navOpen}
+        onClick={() => setNavOpenPersisted(false)}
+        onKeyDown={() => {}}
+        role="presentation"
       />
-      <nav className="ent-drawer open permanent" aria-label="Main navigation">
+      <nav
+        id="ent-main-nav"
+        className={`ent-drawer${navOpen ? ' open' : ''}`}
+        aria-label="Main navigation"
+      >
         <div className="ent-drawer-head">
-          <span className="ent-drawer-brand">Infinity Home</span>
+          <button
+            type="button"
+            className="ent-drawer-toggle ent-drawer-toggle--collapse"
+            onClick={() => setNavOpenPersisted(false)}
+            aria-expanded={navOpen}
+            aria-controls="ent-main-nav"
+            aria-label="Hide navigation menu"
+            title="Hide menu"
+          >
+            <FaChevronUp aria-hidden />
+          </button>
         </div>
         {visibleGroups.map((group, groupIndex) => (
           <div className="ent-drawer-group" key={group.id || `${group.title}-${groupIndex}`}>
             <div className="ent-drawer-group-title">{group.title}</div>
-            {group.subtitle ? (
-              <div className="ent-drawer-group-subtitle" style={{ fontSize: 11, opacity: 0.72, padding: '0 12px 6px', lineHeight: 1.35 }}>
-                {group.subtitle}
-              </div>
-            ) : null}
             {group.items.map(item => {
-              const Icon = item.icon;
               const active = isItemActive(item);
               return (
                 <button
@@ -380,9 +433,9 @@ export default function AppChrome() {
                   onClick={() => {
                     preloadAppRoute(item.route);
                     go(item.route, item.search || '');
+                    closeNavAfterNav();
                   }}
                 >
-                  <span className="ent-drawer-ico"><Icon /></span>
                   <span>{item.label}</span>
                 </button>
               );

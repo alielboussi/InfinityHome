@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaPlus } from 'react-icons/fa';
 import BackToDashboard from './BackToDashboard';
 import WarehouseAssemblyInlineName from './components/WarehouseAssemblyInlineName';
 import WarehouseAssemblyInlineSku from './components/WarehouseAssemblyInlineSku';
 import WarehouseAssemblyInlineSpecs from './components/WarehouseAssemblyInlineSpecs';
 import WarehouseAssemblyThumbnail from './components/WarehouseAssemblyThumbnail';
 import WarehouseCatalogViewToggle from './components/WarehouseCatalogViewToggle';
+import WarehouseCatalogCreateActions from './components/WarehouseCatalogCreateActions';
+import WarehouseCatalogListPager, {
+  WAREHOUSE_CATALOG_PAGE_SIZE,
+  paginateList,
+} from './components/WarehouseCatalogListPager';
 import WarehouseColorChip from './components/WarehouseColorChip';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
@@ -14,9 +19,11 @@ import useDebouncedValue from './hooks/useDebouncedValue';
 import {
   deleteWarehouseAssembly,
   deleteWarehousePacket,
-  fetchWarehouseCatalog,
+  invalidateWarehouseCatalogCache,
+  setWarehouseAssemblyQuantity,
   setWarehousePacketQuantity,
 } from './services/warehouseCatalog';
+import { useWarehouseCatalogQuery, WAREHOUSE_CATALOG_QUERY_KEY } from './hooks/useWarehouseCatalogQuery';
 import { completeUnitsAtLocation } from './services/warehouseTransfer';
 import {
   analyzeAssemblyPacketBom,
@@ -48,26 +55,28 @@ import {
 import WarehouseProductionLabelPrintDialog, {
   WarehouseLabelPrintIconButton,
 } from './components/WarehouseProductionLabelPrintDialog';
-import WarehouseAssemblyCategoryDialog, {
-  WarehouseCategoryIconButton,
-} from './components/WarehouseAssemblyCategoryDialog';
+import WarehouseAssemblyCategoryDialog from './components/WarehouseAssemblyCategoryDialog';
 import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
 import { isWarehouseCatalogAddProductAllowed, isWarehouseCatalogLabelPrintAllowed } from './mobile/mobileAccessManifest';
 import { formatWarehouseProductionLabelColor } from './utils/warehouseProductionLabelColor';
 import { printWarehouseProductionLabel } from './services/warehouseProductionApi';
-import { warehouseBulkLabelPrintSummary, resolveWarehouseLabelPrintPlan, assemblyUsesWarehouseBoxLabels } from './utils/warehouseBulkLabelPrint';
-import WarehouseCatalogBulkLabelToolbar, {
-  WarehouseBulkLabelSelectCheckbox,
-} from './components/WarehouseCatalogBulkLabelToolbar';
+import { resolveWarehouseLabelPrintPlan, assemblyUsesWarehouseBoxLabels } from './utils/warehouseBulkLabelPrint';
+import { WarehouseBulkLabelSelectCheckbox } from './components/WarehouseCatalogBulkLabelToolbar';
+import WarehouseCatalogListChrome from './components/WarehouseCatalogListChrome';
+import WarehouseCatalogBulkLabelDialog from './components/WarehouseCatalogBulkLabelDialog';
+import { buildWarehouseBulkLabelDialogRows } from './utils/warehouseBulkLabelPrint';
 import WarehouseSalesStoragePanel from './components/WarehouseSalesStoragePanel';
+import { warehouseCatalogViewFromPath } from './utils/routeSuspenseKey';
 
-export default function WarehouseProductsPage() {
+export default function WarehouseProductsPage({ embedInHub = false } = {}) {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const isIncompleteView = location.pathname.startsWith('/warehouse-products/incomplete');
-  const isUncategorizedView = location.pathname.startsWith('/warehouse-products/uncategorized');
-  const isSetsView = location.pathname.startsWith('/warehouse-products/sets');
-  const isSalesStorageView = location.pathname.startsWith('/warehouse-products/sales-storage');
+  const catalogView = warehouseCatalogViewFromPath(location.pathname, location.search);
+  const isIncompleteView = catalogView === 'incomplete';
+  const isUncategorizedView = catalogView === 'uncategorized';
+  const isSetsView = catalogView === 'sets';
+  const isSalesStorageView = catalogView === 'sales-storage';
   const sessionUser = useMemo(() => getCurrentUser(), []);
   const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
   const { grant } = useAuthProfileMobileGrant();
@@ -100,11 +109,15 @@ export default function WarehouseProductsPage() {
   const debouncedSearch = useDebouncedValue(search, 160);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
-  const [, setSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [labelPrintItem, setLabelPrintItem] = useState(null);
   const [categoryDialogAssembly, setCategoryDialogAssembly] = useState(null);
   const [bulkLabelSelected, setBulkLabelSelected] = useState(() => new Set());
   const [bulkLabelBusy, setBulkLabelBusy] = useState(false);
+  const [bulkLabelDialogOpen, setBulkLabelDialogOpen] = useState(false);
+  const [listPage, setListPage] = useState(1);
+  const [stockEditAssemblyId, setStockEditAssemblyId] = useState('');
+  const [stockQtyDraftById, setStockQtyDraftById] = useState({});
   const [setItems, setSetItems] = useState([]);
   const hasCatalogRef = useRef(false);
 
@@ -125,30 +138,43 @@ export default function WarehouseProductsPage() {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    const background = hasCatalogRef.current;
-    if (!background) setLoading(true);
-    setError('');
-    try {
-      const data = await fetchWarehouseCatalog({
-        onCachedSnapshot: (snap) => {
-          applyCatalog(snap);
-          hasCatalogRef.current = true;
-          setLoading(false);
-        },
-      });
-      applyCatalog(data);
-      hasCatalogRef.current = true;
-    } catch (err) {
-      setError(err?.message || 'Failed to load warehouse catalog');
-    } finally {
-      setLoading(false);
-    }
-  }, [applyCatalog]);
+  const {
+    data: catalogData,
+    error: catalogError,
+    isLoading: catalogLoading,
+    dataUpdatedAt,
+  } = useWarehouseCatalogQuery();
 
   useEffect(() => {
-    load();
-  }, [load, rtTick]);
+    if (!catalogData) return;
+    applyCatalog(catalogData);
+    hasCatalogRef.current = true;
+    setLoading(false);
+  }, [catalogData, applyCatalog, dataUpdatedAt]);
+
+  useEffect(() => {
+    if (catalogError) {
+      setError(catalogError?.message || 'Failed to load warehouse catalog');
+      setLoading(false);
+    }
+  }, [catalogError]);
+
+  useEffect(() => {
+    if (!hasCatalogRef.current && catalogLoading) {
+      setLoading(true);
+    }
+  }, [catalogLoading]);
+
+  useEffect(() => {
+    if (!rtTick) return;
+    invalidateWarehouseCatalogCache();
+    queryClient.invalidateQueries({ queryKey: WAREHOUSE_CATALOG_QUERY_KEY });
+  }, [rtTick, queryClient]);
+
+  const refreshCatalog = useCallback(async () => {
+    invalidateWarehouseCatalogCache();
+    await queryClient.invalidateQueries({ queryKey: WAREHOUSE_CATALOG_QUERY_KEY });
+  }, [queryClient]);
 
   const categoryName = useMemo(() => {
     const map = new Map((categories || []).map((c) => [String(c.id), c.name]));
@@ -375,6 +401,23 @@ export default function WarehouseProductsPage() {
     });
   }, [warehouseCatalogProducts, packetsByAssembly, debouncedSearch, categoryFilter, categoryName]);
 
+  useEffect(() => {
+    setListPage(1);
+  }, [
+    debouncedSearch,
+    categoryFilter,
+    catalogView,
+    isSetsView,
+    isIncompleteView,
+    isUncategorizedView,
+    isSalesStorageView,
+  ]);
+
+  const catalogPagination = useMemo(
+    () => paginateList(filteredAssemblies, listPage, WAREHOUSE_CATALOG_PAGE_SIZE),
+    [filteredAssemblies, listPage],
+  );
+
   const toggleExpanded = (assemblyId) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -411,8 +454,23 @@ export default function WarehouseProductsPage() {
     });
   };
 
-  const handleBulkLabelToggleAll = (checked, selectableIds) => {
-    setBulkLabelSelected(checked ? new Set(selectableIds) : new Set());
+  const allFilteredAssemblyIds = useMemo(
+    () => new Set(filteredAssemblies.map((a) => String(a.id))),
+    [filteredAssemblies],
+  );
+
+  const bulkLabelAllPagesSelected = useMemo(() => {
+    if (allFilteredAssemblyIds.size === 0) return false;
+    return [...allFilteredAssemblyIds].every((id) => bulkLabelSelected.has(id));
+  }, [allFilteredAssemblyIds, bulkLabelSelected]);
+
+  const bulkLabelSomePagesSelected = useMemo(() => {
+    if (bulkLabelAllPagesSelected) return false;
+    return [...allFilteredAssemblyIds].some((id) => bulkLabelSelected.has(id));
+  }, [allFilteredAssemblyIds, bulkLabelSelected, bulkLabelAllPagesSelected]);
+
+  const handleBulkLabelSelectAllPages = (checked) => {
+    setBulkLabelSelected(checked ? new Set(allFilteredAssemblyIds) : new Set());
   };
 
   const handleBulkLabelToggleOne = (assemblyId, checked) => {
@@ -425,13 +483,8 @@ export default function WarehouseProductsPage() {
     });
   };
 
-  const handleBulkLabelPrint = async (jobs) => {
+  const handleBulkLabelPrintJobs = async (jobs) => {
     if (!jobs?.length || bulkLabelBusy) return;
-    const { totalLabels } = warehouseBulkLabelPrintSummary(jobs);
-    const ok = window.confirm(
-      `Print ${totalLabels} label${totalLabels === 1 ? '' : 's'} for ${jobs.length} product${jobs.length === 1 ? '' : 's'}?\n\nBox products (e.g. 2 units per box): one label per box showing "Pack: 1 Box = N Units". Other products: one label per finished unit.`,
-    );
-    if (!ok) return;
     setBulkLabelBusy(true);
     setError('');
     const warnings = [];
@@ -450,6 +503,8 @@ export default function WarehouseProductsPage() {
       }
       if (warnings.length) {
         setError(warnings.join(' · '));
+      } else {
+        setBulkLabelDialogOpen(false);
       }
     } catch (err) {
       setError(err?.message || 'Bulk label print failed.');
@@ -476,6 +531,24 @@ export default function WarehouseProductsPage() {
     return out;
   }, [assemblyColors, colorCatalogById]);
 
+  const bulkLabelDialogRows = useMemo(
+    () => buildWarehouseBulkLabelDialogRows(assemblies, {
+      warehouseLocationId,
+      finishedStockByAssembly,
+      colorsByAssembly,
+      packetsByAssembly,
+      selectedIds: bulkLabelSelected,
+    }),
+    [
+      assemblies,
+      warehouseLocationId,
+      finishedStockByAssembly,
+      colorsByAssembly,
+      packetsByAssembly,
+      bulkLabelSelected,
+    ],
+  );
+
   const handleDeleteProduct = async (row) => {
     if (!canManage) return;
     if (!window.confirm(`Delete product "${row.name}"? This removes all warehouse stock (Floor 1 and Floor 2 WIP) and unlinks packets.`)) return;
@@ -486,7 +559,7 @@ export default function WarehouseProductsPage() {
     setSaving(true);
     try {
       await deleteWarehouseAssembly(targetId);
-      load();
+      await refreshCatalog();
     } catch (err) {
       setAssemblies(prevAssemblies);
       setError(err?.message || 'Delete failed');
@@ -501,7 +574,7 @@ export default function WarehouseProductsPage() {
     setSaving(true);
     try {
       await deleteWarehousePacket(row.id);
-      await load();
+      await refreshCatalog();
     } catch (err) {
       setError(err?.message || 'Delete failed');
     } finally {
@@ -514,9 +587,41 @@ export default function WarehouseProductsPage() {
     const qty = Math.max(0, Number(rawValue) || 0);
     try {
       await setWarehousePacketQuantity(packet.id, warehouseLocationId, qty);
-      await load();
+      await refreshCatalog();
     } catch (err) {
       setError(err?.message || 'Quantity update failed');
+    }
+  };
+
+  const openFinishedStockEditor = useCallback((assembly, displayQty) => {
+    const id = String(assembly?.id || '');
+    if (!id) return;
+    setStockEditAssemblyId(id);
+    setStockQtyDraftById((prev) => ({ ...prev, [id]: String(Math.max(0, Math.floor(Number(displayQty) || 0))) }));
+  }, []);
+
+  const handleSaveFinishedAssemblyQty = async (assembly, { warehouseBoxEntry: boxEntry, unitsPerBox: upb }) => {
+    if (!canManage || !warehouseLocationId) return;
+    const id = String(assembly?.id || '').trim();
+    if (!id) return;
+    const raw = stockQtyDraftById[id];
+    const displayQty = Math.max(0, Math.floor(Number(raw) || 0));
+    const finishedUnits = boxEntry ? finishedUnitsFromBoxCount(displayQty, upb) : displayQty;
+    setSaving(true);
+    setError('');
+    try {
+      await setWarehouseAssemblyQuantity(id, warehouseLocationId, finishedUnits);
+      setStockEditAssemblyId('');
+      setStockQtyDraftById((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      await refreshCatalog();
+    } catch (err) {
+      setError(err?.message || 'Quantity update failed');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -534,87 +639,47 @@ export default function WarehouseProductsPage() {
 
   return (
     <>
-    <div className="products-container warehouse-products-page" style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
-      <div className="page-header-row">
-        <BackToDashboard />
-        <h1 className="products-title" style={{ margin: 0 }}>
-          {isSalesStorageView
-            ? 'Sales Storage (Warehouse)'
-            : isIncompleteView
-            ? 'Incomplete products (Warehouse)'
-            : isUncategorizedView
-              ? 'Uncategorized products (Warehouse)'
-              : isSetsView
-                ? 'Sets (Warehouse)'
-                : 'Warehouse'}
-        </h1>
-      </div>
-
-      <p className="stc-note" style={{ margin: '8px 0 16px', opacity: 0.85 }}>
-        {isSalesStorageView ? (
-          <>
-            <strong>Floor 1 — sales storage registry</strong> — POS lines sent to factory warehouse storage (not the main product grid).
-          </>
-        ) : (
-          <>
-            <strong>{warehouseLocationName} stock only</strong> — factory Floor 1 catalog for Send Delivery (finished goods, sets, warehouse packets). Not Floor 2 WIP.
-            Showroom stock (Kitwe / Lusaka) is not managed on this page.
-          </>
-        )}
-      </p>
-
+    <div
+      className={`products-container warehouse-products-page${embedInHub ? ' warehouse-products-page--hub' : ''}`}
+      style={{ maxWidth: embedInHub ? 1180 : 1100, margin: '0 auto', padding: embedInHub ? '0 16px 20px' : 16 }}
+    >
       {error ? (
-        <div role="alert" style={{ color: '#f87171', marginBottom: 12 }}>{error}</div>
+        <div className="warehouse-catalog-error" role="alert">{error}</div>
       ) : null}
 
-      <div className="warehouse-catalog-toolbar">
-        <div className="warehouse-catalog-toolbar__main">
-          <span className="warehouse-catalog-toolbar__label" id="wh-catalog-view-label">View</span>
-          <WarehouseCatalogViewToggle aria-labelledby="wh-catalog-view-label" />
-        </div>
-        {(canManage || canAddProduct) && !isSalesStorageView && (
-          <div className="warehouse-catalog-toolbar__create">
-            <span className="warehouse-catalog-toolbar__label" id="wh-catalog-create-label">Create</span>
-            <div className="warehouse-catalog-toolbar__actions" aria-labelledby="wh-catalog-create-label">
-              {canAddProduct ? (
-                <button
-                  type="button"
-                  className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
-                  onClick={() => navigate('/warehouse-products/new')}
-                >
-                  <FaPlus aria-hidden />
-                  <span>Product</span>
-                </button>
-              ) : null}
-              {canAddProduct ? (
-                <button
-                  type="button"
-                  className="warehouse-catalog-action-btn"
-                  onClick={() => navigate('/warehouse-products/new?kind=set')}
-                >
-                  <FaPlus aria-hidden />
-                  <span>Set</span>
-                </button>
-              ) : null}
-              {canManage ? (
-                <button
-                  type="button"
-                  className="warehouse-catalog-action-btn"
-                  onClick={() => navigate('/warehouse-products/packets/new')}
-                >
-                  <FaPlus aria-hidden />
-                  <span>Packet</span>
-                </button>
-              ) : null}
-            </div>
+      {!embedInHub ? (
+        <div className="page-header-row warehouse-page-header-row">
+          <BackToDashboard />
+          <h1 className="products-title" style={{ margin: 0 }}>
+            {isSalesStorageView
+              ? 'Sales Storage (Warehouse)'
+              : isIncompleteView
+                ? 'Incomplete products (Warehouse)'
+                : isUncategorizedView
+                  ? 'Uncategorized products (Warehouse)'
+                  : isSetsView
+                    ? 'Sets (Warehouse)'
+                    : 'Warehouse'}
+          </h1>
+          <div className="warehouse-page-header-row__tools">
+            <label className="portal-hub-bar__select-wrap warehouse-page-header-row__view">
+              <span className="portal-hub-bar__select-label">View</span>
+              <WarehouseCatalogViewToggle />
+            </label>
+            <WarehouseCatalogCreateActions
+              canManage={canManage}
+              canAddProduct={canAddProduct}
+              hidden={isSalesStorageView}
+            />
           </div>
-        )}
-      </div>
+        </div>
+      ) : null}
+
       {isSalesStorageView ? (
-        <WarehouseSalesStoragePanel onStockChanged={() => load({ forceFresh: true })} />
+        <WarehouseSalesStoragePanel onStockChanged={() => refreshCatalog()} />
       ) : (
         <>
-      <div className="warehouse-catalog-filter-row">
+      <div className={`warehouse-catalog-filter-row${embedInHub ? ' warehouse-catalog-filter-row--flat' : ''}`}>
         <input
           className="warehouse-catalog-filter-control warehouse-catalog-search products-search-bar"
           placeholder="Search product SKU, packet SKU, name…"
@@ -639,21 +704,6 @@ export default function WarehouseProductsPage() {
           ))}
         </select>
       </div>
-
-      {canPrintLabels && !loading ? (
-        <WarehouseCatalogBulkLabelToolbar
-          assemblies={filteredAssemblies}
-          warehouseLocationId={warehouseLocationId}
-          finishedStockByAssembly={finishedStockByAssembly}
-          colorsByAssembly={colorsByAssembly}
-          packetsByAssembly={packetsByAssembly}
-          selectedIds={bulkLabelSelected}
-          onToggleAll={handleBulkLabelToggleAll}
-          onPrint={handleBulkLabelPrint}
-          busy={bulkLabelBusy}
-          disabled={!warehouseLocationId}
-        />
-      ) : null}
 
       {loading ? (
         <p>Loading…</p>
@@ -686,8 +736,29 @@ export default function WarehouseProductsPage() {
             </p>
           ) : null}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {filteredAssemblies.map((assembly) => {
+          <WarehouseCatalogListPager
+            page={catalogPagination.page}
+            pageCount={catalogPagination.pageCount}
+            total={catalogPagination.total}
+            onPageChange={setListPage}
+            itemLabel="products"
+          />
+
+          {canPrintLabels && filteredAssemblies.length > 0 ? (
+            <WarehouseCatalogListChrome
+              selectAllChecked={bulkLabelAllPagesSelected}
+              selectAllIndeterminate={bulkLabelSomePagesSelected}
+              onSelectAll={handleBulkLabelSelectAllPages}
+              selectedCount={bulkLabelSelected.size}
+              onBulkPrintClick={() => setBulkLabelDialogOpen(true)}
+              bulkBusy={bulkLabelBusy}
+              disabled={!warehouseLocationId}
+              showFunnel={!isSalesStorageView}
+            />
+          ) : null}
+
+          <div className="warehouse-assembly-card-list">
+            {catalogPagination.items.map((assembly) => {
               const pktList = packetsByAssembly.get(String(assembly.id)) || [];
               const stockByLoc = catalogDisplayStockByAssembly.get(String(assembly.id)) || new Map();
               const complete = stockByLoc.get(String(warehouseLocationId)) ?? 0;
@@ -834,6 +905,72 @@ export default function WarehouseProductsPage() {
                       >
                         {stockDisplay}
                       </strong>
+                      {canManage && !usePacketStock && !useFinishedBoxReceiving && warehouseLocationId ? (
+                        stockEditAssemblyId === String(assembly.id) ? (
+                          <div className="floor2-stock-editor" style={{ marginTop: 10, justifyContent: 'flex-end' }}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              className="kitwe-cell-input"
+                              style={{ width: 84, textAlign: 'center' }}
+                              value={stockQtyDraftById[String(assembly.id)] ?? ''}
+                              disabled={saving}
+                              onChange={(e) => setStockQtyDraftById((prev) => ({
+                                ...prev,
+                                [String(assembly.id)]: e.target.value,
+                              }))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveFinishedAssemblyQty(assembly, {
+                                    warehouseBoxEntry,
+                                    unitsPerBox,
+                                  });
+                                }
+                              }}
+                              aria-label={`Set qty for ${assembly.name}`}
+                            />
+                            <button
+                              type="button"
+                              className="kitwe-btn kitwe-btn-primary kitwe-btn-compact"
+                              disabled={saving}
+                              onClick={() => handleSaveFinishedAssemblyQty(assembly, {
+                                warehouseBoxEntry,
+                                unitsPerBox,
+                              })}
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              className="kitwe-btn kitwe-btn-secondary kitwe-btn-compact"
+                              disabled={saving}
+                              onClick={() => {
+                                setStockEditAssemblyId('');
+                                setStockQtyDraftById((prev) => {
+                                  const next = { ...prev };
+                                  delete next[String(assembly.id)];
+                                  return next;
+                                });
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="kitwe-btn kitwe-btn-primary kitwe-btn-compact"
+                            style={{ marginTop: 10 }}
+                            onClick={() => openFinishedStockEditor(
+                              assembly,
+                              warehouseBoxEntry ? warehouseDisplayQty : warehouseOnHand,
+                            )}
+                          >
+                            Change qty
+                          </button>
+                        )
+                      ) : null}
                       {usePacketStock && complete === 0 ? (
                         <p className="warehouse-assembly-card__stock-hint">
                           {warehousePacketOnHand === 0
@@ -858,19 +995,14 @@ export default function WarehouseProductsPage() {
                             )}
                           />
                           {canManage ? (
-                            <>
-                              <WarehouseCategoryIconButton
-                                onClick={() => setCategoryDialogAssembly(assembly)}
-                              />
-                              <button
-                                type="button"
-                                className="warehouse-card-btn"
-                                style={{ flex: 1 }}
-                                onClick={() => navigate(`/warehouse-products/${assembly.id}/edit`)}
-                              >
-                                Edit
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              className="warehouse-card-btn"
+                              style={{ flex: 1 }}
+                              onClick={() => navigate(`/warehouse-products/${assembly.id}/edit`)}
+                            >
+                              Edit
+                            </button>
                           ) : null}
                         </div>
                         {canManage ? (
@@ -886,9 +1018,6 @@ export default function WarehouseProductsPage() {
                     ) : canManage ? (
                       <div className="warehouse-assembly-card__actions">
                         <div className="warehouse-assembly-card__actions-row">
-                          <WarehouseCategoryIconButton
-                            onClick={() => setCategoryDialogAssembly(assembly)}
-                          />
                           <button
                             type="button"
                             className="warehouse-card-btn"
@@ -976,17 +1105,58 @@ export default function WarehouseProductsPage() {
                             )}
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            <strong
-                              className={`warehouse-assembly-card__stock-qty${
-                                warehouseOnHand > 0 ? ' warehouse-assembly-card__stock-qty--positive' : ''
-                              }`}
-                            >
-                              {warehouseBoxEntry
-                                ? `${warehouseDisplayQty} boxes (${warehouseOnHand} units)`
-                                : isWarehouseSetAssembly(assembly)
-                                  ? formatWarehouseSetStockCount(warehouseOnHand)
-                                  : warehouseOnHand}
-                            </strong>
+                            {canManage ? (
+                              <div className="floor2-stock-editor" style={{ justifyContent: 'flex-end' }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  className="kitwe-cell-input"
+                                  style={{ width: 84, textAlign: 'center' }}
+                                  value={
+                                    stockQtyDraftById[String(assembly.id)]
+                                    ?? String(warehouseBoxEntry ? warehouseDisplayQty : warehouseOnHand)
+                                  }
+                                  disabled={saving}
+                                  onChange={(e) => setStockQtyDraftById((prev) => ({
+                                    ...prev,
+                                    [String(assembly.id)]: e.target.value,
+                                  }))}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleSaveFinishedAssemblyQty(assembly, {
+                                        warehouseBoxEntry,
+                                        unitsPerBox,
+                                      });
+                                    }
+                                  }}
+                                  aria-label={`Finished on hand for ${assembly.name}`}
+                                />
+                                <button
+                                  type="button"
+                                  className="kitwe-btn kitwe-btn-primary kitwe-btn-compact"
+                                  disabled={saving}
+                                  onClick={() => handleSaveFinishedAssemblyQty(assembly, {
+                                    warehouseBoxEntry,
+                                    unitsPerBox,
+                                  })}
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            ) : (
+                              <strong
+                                className={`warehouse-assembly-card__stock-qty${
+                                  warehouseOnHand > 0 ? ' warehouse-assembly-card__stock-qty--positive' : ''
+                                }`}
+                              >
+                                {warehouseBoxEntry
+                                  ? `${warehouseDisplayQty} boxes (${warehouseOnHand} units)`
+                                  : isWarehouseSetAssembly(assembly)
+                                    ? formatWarehouseSetStockCount(warehouseOnHand)
+                                    : warehouseOnHand}
+                              </strong>
+                            )}
                           </td>
                         </tr>
                       </tbody>
@@ -1076,6 +1246,13 @@ export default function WarehouseProductsPage() {
             })}
           </div>
 
+          <WarehouseCatalogListPager
+            page={catalogPagination.page}
+            pageCount={catalogPagination.pageCount}
+            total={catalogPagination.total}
+            onPageChange={setListPage}
+            itemLabel="products"
+          />
         </>
       )}
         </>
@@ -1086,6 +1263,13 @@ export default function WarehouseProductsPage() {
       open={Boolean(labelPrintItem)}
       item={labelPrintItem}
       onClose={() => setLabelPrintItem(null)}
+    />
+    <WarehouseCatalogBulkLabelDialog
+      open={bulkLabelDialogOpen}
+      rows={bulkLabelDialogRows}
+      busy={bulkLabelBusy}
+      onClose={() => setBulkLabelDialogOpen(false)}
+      onPrint={handleBulkLabelPrintJobs}
     />
     <WarehouseAssemblyCategoryDialog
       open={Boolean(categoryDialogAssembly)}

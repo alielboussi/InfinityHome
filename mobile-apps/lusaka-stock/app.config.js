@@ -17,9 +17,11 @@ const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r
 
 const appUrl = (process.env.EXPO_PUBLIC_APP_URL || 'https://www.infinity-home.online/lusaka-stock').replace(/\/+$/, '');
 
+const { finalizeExpoConfig } = require('../shared/expoAndroidLightweight');
+
 /** @type {import('@expo/config').ExpoConfig} */
 module.exports = {
-  expo: {
+  expo: finalizeExpoConfig({
     name: 'Lusaka Stock',
     slug: 'lusaka-stock',
     scheme: 'lusaka-stock',
@@ -66,5 +68,5 @@ module.exports = {
         projectId: '6567a3a5-6145-489d-8cb4-600dcdaa9984',
       },
     },
-  },
+  }),
 };

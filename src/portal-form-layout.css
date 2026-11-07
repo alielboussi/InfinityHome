@@ -1,0 +1,312 @@
+/**
+ * Cross-page form / toolbar alignment (enterprise portal).
+ * Keeps inputs, selects, and inline buttons on one baseline and prevents row overflow.
+ */
+body.enterprise-theme {
+  --portal-control-height: var(--brand-btn-height, 40px);
+}
+
+body.enterprise-theme .app-route-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+body.enterprise-theme .form-row,
+body.enterprise-theme .search-form,
+body.enterprise-theme .form-actions,
+body.enterprise-theme .customer-form,
+body.enterprise-theme .pos-grid,
+body.enterprise-theme .pos-grid-top,
+body.enterprise-theme .pos-grid-bottom,
+body.enterprise-theme .stock-periods-filters,
+body.enterprise-theme .stock-periods-actions,
+body.enterprise-theme .stock-periods-pdf-actions,
+body.enterprise-theme .warehouse-catalog-filter-row,
+body.enterprise-theme .warehouse-catalog-bulk-label-bar,
+body.enterprise-theme .products-list-toolbar,
+body.enterprise-theme .products-list-toolbar-grid,
+body.enterprise-theme .products-list-toolbar-row,
+body.enterprise-theme .allsales-header,
+body.enterprise-theme .page-header-row,
+body.enterprise-theme .warehouse-page-context,
+body.enterprise-theme .warehouse-sku-whereabouts__row,
+body.enterprise-theme .label-toolbar,
+body.enterprise-theme .factory-storage-edit-actions,
+body.enterprise-theme .product-form-actions-row,
+body.enterprise-theme .warehouse-products-page .warehouse-form-grid {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+body.enterprise-theme .product-form-actions-row {
+  flex-wrap: wrap;
+  row-gap: 8px;
+  overflow-x: visible;
+  align-items: center;
+}
+
+body.enterprise-theme .product-form-actions-row .product-form-btn {
+  height: var(--portal-control-height) !important;
+  min-height: var(--portal-control-height) !important;
+  max-height: var(--portal-control-height) !important;
+}
+
+body.enterprise-theme .warehouse-products-page .warehouse-form-grid .warehouse-field input,
+body.enterprise-theme .warehouse-products-page .warehouse-form-grid .warehouse-field select,
+body.enterprise-theme .warehouse-products-page .warehouse-field input,
+body.enterprise-theme .warehouse-products-page .warehouse-field select {
+  min-height: var(--portal-control-height);
+  height: auto;
+  max-height: none;
+  box-sizing: border-box;
+}
+
+body.enterprise-theme .form-row > *,
+body.enterprise-theme .search-form > *,
+body.enterprise-theme .form-actions > *,
+body.enterprise-theme .pos-grid > *,
+body.enterprise-theme .pos-grid-top > *,
+body.enterprise-theme .pos-grid-bottom > *,
+body.enterprise-theme .warehouse-catalog-filter-row > *,
+body.enterprise-theme .warehouse-catalog-bulk-label-bar > *,
+body.enterprise-theme .products-list-toolbar-grid > *,
+body.enterprise-theme .stock-periods-filters > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+body.enterprise-theme .search-form,
+body.enterprise-theme .form-actions,
+body.enterprise-theme .warehouse-catalog-filter-row,
+body.enterprise-theme .products-list-toolbar-row,
+body.enterprise-theme .warehouse-sku-whereabouts__row,
+body.enterprise-theme .label-toolbar {
+  align-items: center;
+}
+
+body.enterprise-theme .products-list-toolbar-row {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+body.enterprise-theme .page-header-row {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Single control height for fields */
+body.enterprise-theme .pos-control,
+body.enterprise-theme input.pos-control[type='text'],
+body.enterprise-theme input.pos-control[type='search'],
+body.enterprise-theme input.pos-control[type='email'],
+body.enterprise-theme input.pos-control[type='number'],
+body.enterprise-theme input.pos-control[type='date'],
+body.enterprise-theme select.pos-control {
+  height: var(--portal-control-height) !important;
+  min-height: var(--portal-control-height) !important;
+  max-height: var(--portal-control-height) !important;
+  margin-top: 0 !important;
+  box-shadow: none !important;
+  line-height: normal !important;
+}
+
+body.enterprise-theme .search-form input,
+body.enterprise-theme .search-form select,
+body.enterprise-theme .customer-form input:not([type='checkbox']),
+body.enterprise-theme .customer-form select {
+  height: var(--portal-control-height);
+  min-height: var(--portal-control-height);
+  max-height: var(--portal-control-height);
+  box-sizing: border-box;
+  box-shadow: none !important;
+}
+
+body.enterprise-theme .search-form button,
+body.enterprise-theme .form-actions button,
+body.enterprise-theme .form-row button:not(.back-inline-btn) {
+  min-height: var(--portal-control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Products list toolbar — same row height as POS controls */
+body.enterprise-theme .products-toolbar-control-wrap,
+body.enterprise-theme .products-toolbar-btn,
+body.enterprise-theme .products-toolbar-icon-group,
+body.enterprise-theme .products-toolbar-more-wrap,
+body.enterprise-theme .products-toolbar-control-wrap.products-toolbar-bulk-locations-wrap {
+  height: var(--portal-control-height) !important;
+  min-height: var(--portal-control-height) !important;
+  max-height: var(--portal-control-height) !important;
+}
+
+body.enterprise-theme .products-toolbar-icon-group .products-toolbar-icon-btn {
+  height: calc(var(--portal-control-height) - 8px) !important;
+  min-height: calc(var(--portal-control-height) - 8px) !important;
+}
+
+body.enterprise-theme .products-list-toolbar-grid .products-toolbar-btn {
+  height: var(--portal-control-height) !important;
+  min-height: var(--portal-control-height) !important;
+}
+
+body.enterprise-theme .products-toolbar-select {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+/* Stock period filter labels: label text + control stack */
+body.enterprise-theme .stock-periods-filters label.stock-periods-label {
+  grid-template-rows: minmax(1.25rem, auto) var(--portal-control-height);
+  gap: 6px;
+  align-content: start;
+}
+
+body.enterprise-theme .stock-periods-filters .stock-periods-label-text {
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* Price labels toolbar */
+body.enterprise-theme .label-toolbar--headed .label-toolbar-control,
+body.enterprise-theme .label-toolbar .label-toolbar-search,
+body.enterprise-theme .label-toolbar .label-refresh-btn,
+body.enterprise-theme .label-toolbar .label-category-bulk-btn,
+body.enterprise-theme .label-toolbar .label-category-bulk-control,
+body.enterprise-theme .label-toolbar .label-toolbar-category {
+  height: var(--portal-control-height) !important;
+  min-height: var(--portal-control-height) !important;
+  max-height: var(--portal-control-height) !important;
+}
+
+body.enterprise-theme .label-toolbar {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+/* Warehouse catalog filters */
+body.enterprise-theme .warehouse-products-page .warehouse-catalog-filter-row .warehouse-catalog-filter-control,
+body.enterprise-theme .warehouse-catalog-filter-row button {
+  height: var(--portal-control-height) !important;
+  min-height: var(--portal-control-height) !important;
+  max-height: var(--portal-control-height) !important;
+}
+
+/* Flex rows: don't let children blow out horizontally */
+body.enterprise-theme button,
+body.enterprise-theme input:not([type='checkbox']):not([type='radio']),
+body.enterprise-theme select,
+body.enterprise-theme textarea {
+  max-width: 100%;
+}
+
+.portal-hub-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.portal-hub-bar__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.portal-hub-bar__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.portal-hub-bar__select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: min(100%, 280px);
+}
+
+.portal-hub-bar__select-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ent-content-muted, #64748b);
+}
+
+.portal-hub-bar__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.portal-hub-page__chrome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px 16px;
+  margin-bottom: 12px;
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.portal-hub-page {
+  padding-top: 4px;
+}
+
+.portal-hub-bar__main {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.portal-hub-bar__select-wrap {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.portal-hub-bar__select-label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.portal-hub-bar__select {
+  min-width: 200px;
+}
+
+.portal-hub-report-filters .report-filter-block {
+  min-width: 140px;
+}
+
+@media (max-width: 640px) {
+  body.enterprise-theme .search-form input,
+  body.enterprise-theme .search-form select,
+  body.enterprise-theme .search-form button {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  body.enterprise-theme .form-actions {
+    flex-wrap: wrap;
+  }
+
+  body.enterprise-theme .form-actions button {
+    flex: 1 1 auto;
+  }
+}

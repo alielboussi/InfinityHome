@@ -32,7 +32,31 @@ function parseCatalogKey(value) {
  * Current Stock = opening stock + inventory changes − sales (after stock period start).
  * This page never writes inventory.
  */
-export default function StockHistoryPage() {
+function parseFilterDate(value, endOfDay = false) {
+  if (!value) return null;
+  const d = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  if (endOfDay) d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function rowInDateRange(row, startDate, endDate) {
+  if (!row?.adjustedAt) return true;
+  const at = new Date(row.adjustedAt);
+  if (Number.isNaN(at.getTime())) return true;
+  const start = parseFilterDate(startDate);
+  const end = parseFilterDate(endDate, true);
+  if (start && at < start) return false;
+  if (end && at > end) return false;
+  return true;
+}
+
+export default function StockHistoryPage({
+  embedInHub = false,
+  startDate = '',
+  endDate = '',
+  customerFilter = '',
+} = {}) {
   const [locations, setLocations] = useState([]);
   const [products, setProducts] = useState([]);
   const [combos, setCombos] = useState([]);
@@ -211,6 +235,18 @@ export default function StockHistoryPage() {
     loadHistory();
   }, [loadHistory]);
 
+  const displayRows = useMemo(() => {
+    let list = rows || [];
+    if (startDate || endDate) {
+      list = list.filter((row) => rowInDateRange(row, startDate, endDate));
+    }
+    const cust = String(customerFilter || '').trim().toLowerCase();
+    if (cust) {
+      list = list.filter((row) => String(row.detail || '').toLowerCase().includes(cust));
+    }
+    return list;
+  }, [rows, startDate, endDate, customerFilter]);
+
   const selectedLabel = selectedCombo
     ? `${selectedCombo.combo_name} (Set)${selectedCombo.sku ? ` (${selectedCombo.sku})` : ''}`
     : selectedProduct
@@ -218,10 +254,10 @@ export default function StockHistoryPage() {
       : '';
 
   return (
-    <div className="stock-periods-page" style={{ padding: 16 }}>
-      <BackToDashboard />
-      <div className="stock-periods-card" style={{ marginTop: 12 }}>
-        <div className="stock-periods-section-title">Stock History</div>
+    <div className={`stock-periods-page${embedInHub ? ' stock-periods-page--hub' : ''}`} style={{ padding: embedInHub ? '0 16px 20px' : 16 }}>
+      {!embedInHub ? <BackToDashboard /> : null}
+      <div className="stock-periods-card" style={{ marginTop: embedInHub ? 0 : 12 }}>
+        {!embedInHub ? <div className="stock-periods-section-title">Stock History</div> : null}
         <div className="stock-periods-note">
           Read-only. Products use live Locations qty. Sets use buildable set count from component stock (same as Products list / POS).
         </div>
@@ -341,11 +377,13 @@ export default function StockHistoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 ? (
+                  {displayRows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', padding: 16 }}>No history rows.</td>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: 16 }}>
+                        {rows.length === 0 ? 'No history rows.' : 'No rows match the date or customer filters.'}
+                      </td>
                     </tr>
-                  ) : rows.map((row) => {
+                  ) : displayRows.map((row) => {
                     const isLocked = Boolean(row.locked);
                     const isOpening = row.type === 'Opening Stock';
                     const isCurrent = row.type === 'Current Stock';

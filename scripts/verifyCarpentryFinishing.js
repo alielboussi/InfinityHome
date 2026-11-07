@@ -12,7 +12,7 @@ const products = buildCarpentryFinishingCandidates(
   ],
   [
     { assembly_id: 'a1', location_id: floor2, quantity: 3 },
-    { assembly_id: 'a2', location_id: floor2, quantity: 5 },
+    { assembly_id: 'a2', location_id: floor2, quantity: 0 },
   ],
   floor2,
 );

@@ -1,9 +1,8 @@
 # Full Firebase project backup (Firestore + Storage + Auth)
-# Automated: Vercel cron runs every 5 days at 04:00 UTC via /api/full-firebase-backup
-# Requires FIREBASE_BACKUP_BUCKET + CRON_SECRET in Vercel env.
+# Operator-only script (portal Database Backup UI and /api/full-firebase-backup removed).
+# Requires FIREBASE_BACKUP_BUCKET in env (and gcloud/firebase CLI logged in).
 #
-# Manual run (same logic as the automated job):
-# Safer than /database-backup — exports EVERY Firestore collection via Google Cloud.
+# Exports every Firestore collection via Google Cloud.
 #
 # Prerequisites (one-time):
 #   1. Blaze billing enabled on the Firebase project

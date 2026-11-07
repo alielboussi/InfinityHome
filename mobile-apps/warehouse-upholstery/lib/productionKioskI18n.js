@@ -255,7 +255,33 @@ const UI_STRINGS = {
     en: 'Tap catalog product → deduct materials',
     ar: 'اختر منتجًا → خصم المواد',
   },
+  floor2CreateSaved: {
+    en: 'Saved on Warehouse Floor 2 with photo.',
+    ar: 'تم الحفظ في Warehouse Floor 2 مع الصورة.',
+  },
   manufactureTitle: { en: 'Manufacture', ar: 'تصنيع' },
+  manufactureIntroFloor2: {
+    en: 'Scan or pick a Floor 2 product, set qty to deduct from Floor 2, then start a job.',
+    ar: 'امسح أو اختر منتجًا من Floor 2، حدد الكمية للخصم، ثم ابدأ مهمة.',
+  },
+  manufactureDeductTitle: { en: 'Deduct from Floor 2', ar: 'خصم من Floor 2' },
+  manufactureTabAll: { en: 'All', ar: 'الكل' },
+  manufactureTabInStock: { en: 'In stock', ar: 'متوفر' },
+  dashScanFloor2: { en: 'Scan Floor 2', ar: 'مسح Floor 2' },
+  jobsFilter_all: { en: 'All', ar: 'الكل' },
+  jobsFilter_quotes: { en: 'Hassan quotes', ar: 'عروض حسن' },
+  jobsFilter_floor2: { en: 'Floor 2', ar: 'Floor 2' },
+  jobsFilter_active: { en: 'In progress', ar: 'قيد التنفيذ' },
+  jobFinishNoMaterialsHint: {
+    en: 'No storeroom materials were recorded for this job.',
+    ar: 'لم تُسجَّل مواد من المخزن لهذه المهمة.',
+  },
+  manufactureAddStockTitle: { en: 'Add to Floor 2 stock', ar: 'إضافة إلى مخزون Floor 2' },
+  manufactureAddStockDone: {
+    en: 'Floor 2 stock updated.',
+    ar: 'تم تحديث مخزون Floor 2.',
+  },
+  manufactureScanBtn: { en: 'Scan', ar: 'مسح' },
   manufactureIntro: {
     en: 'Products from the web Carpentry catalog. Tap one to produce ×1 — BOM deducts from Storerooms 1–3; unfinished units store on Warehouse Floor 2.',
     ar: 'منتجات من كتالوج النجارة. اضغط ×1 — تُخصم المواد من المستودعات 1–3 وتُخزَّن الوحدات غير المنتهية في Warehouse Floor 2.',
@@ -625,8 +651,8 @@ const UI_STRINGS = {
   deliveryPrintSystemPicker: { en: 'Choose printer (system list)', ar: 'اختر الطابعة (قائمة النظام)' },
   deliveryPrintRetry: { en: 'Retry print', ar: 'إعادة الطباعة' },
   deliveryPrintRetryHint: {
-    en: 'Nothing came out of the printer? Tap Retry to open the print dialog again with the same delivery note.',
-    ar: 'لم تطبع الصفحة؟ اضغط إعادة الطباعة لفتح حوار الطباعة مرة أخرى بنفس المذكرة.',
+    en: 'If printing timed out (1 minute) or nothing came out, check printer Wi‑Fi/Ethernet then tap Retry.',
+    ar: 'إذا انتهت مهلة الطباعة (دقيقة واحدة) أو لم تخرج نسخة، تحقق من اتصال الطابعة ثم اضغط إعادة المحاولة.',
   },
   deliveryPrintSkip: { en: 'Skip printing', ar: 'تخطي الطباعة' },
   deliveryPrintNoPrinters: {
@@ -638,7 +664,11 @@ const UI_STRINGS = {
     ar: 'بحث الطابعات يتطلب تطبيق Production (ليس Expo Go). يمكنك استخدام قائمة النظام.',
   },
   deliveryPrintScanFailed: { en: 'Printer search failed.', ar: 'فشل البحث عن الطابعات.' },
-  deliveryPrintFailed: { en: 'Print failed.', ar: 'فشلت الطباعة.' },
+  deliveryPrintTimeoutError: {
+    en: 'Print timed out after 1 minute due to connectivity. Please check your printer connection and tap Retry.',
+    ar: 'انتهت مهلة الطباعة بعد دقيقة واحدة بسبب الاتصال. يرجى التحقق من اتصال الطابعة والضغط على إعادة المحاولة.',
+  },
+  deliveryPrintFailed: { en: 'Print failed. Please check printer connectivity and tap Retry.', ar: 'فشلت الطباعة. يرجى التحقق من اتصال الطابعة والضغط على إعادة المحاولة.' },
   deliveryScanBtn: { en: 'Scan packet', ar: 'مسح الطرد' },
   deliveryScanPickTitle: { en: 'Which product?', ar: 'أي منتج؟' },
   deliveryScanPickHint: {

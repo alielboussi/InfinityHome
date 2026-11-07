@@ -15,29 +15,38 @@ function arrayBufferToBase64(buffer) {
 }
 
 async function remoteUrlToDataUri(remote) {
-  try {
-    const cachePath = `${FileSystem.cacheDirectory}delivery-sig-${Date.now()}.png`;
-    const { uri, status } = await FileSystem.downloadAsync(remote, cachePath);
-    if (status >= 200 && status < 300) {
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      if (base64) return `data:image/png;base64,${base64}`;
+  let timeoutId = null;
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutId = setTimeout(() => resolve(''), 12000);
+  });
+  const work = async () => {
+    try {
+      const cachePath = `${FileSystem.cacheDirectory}delivery-sig-${Date.now()}.png`;
+      const { uri, status } = await FileSystem.downloadAsync(remote, cachePath);
+      if (status >= 200 && status < 300) {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        if (base64) return `data:image/png;base64,${base64}`;
+      }
+    } catch {
+      /* try fetch below */
     }
-  } catch {
-    /* try fetch below */
-  }
 
-  try {
-    const res = await fetch(remote);
-    if (!res.ok) return '';
-    const contentType = String(res.headers.get('content-type') || 'image/png').split(';')[0].trim()
-      || 'image/png';
-    const base64 = arrayBufferToBase64(await res.arrayBuffer());
-    return base64 ? `data:${contentType};base64,${base64}` : '';
-  } catch {
-    return '';
-  }
+    try {
+      const res = await fetch(remote);
+      if (!res.ok) return '';
+      const contentType = String(res.headers.get('content-type') || 'image/png').split(';')[0].trim()
+        || 'image/png';
+      const base64 = arrayBufferToBase64(await res.arrayBuffer());
+      return base64 ? `data:${contentType};base64,${base64}` : '';
+    } catch {
+      return '';
+    }
+  };
+  return Promise.race([work(), timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
 }
 
 /** Prefer inline data URI; never return https (broken in expo-print PDF). */

@@ -64,9 +64,19 @@ function getUserQtyLines(row) {
     }));
 }
 
-export default function StocktakeAggregationPage() {
+export default function StocktakeAggregationPage({
+  embedInHub = false,
+  locationId: controlledLocationId,
+  onLocationIdChange,
+  onSubmitSuccess,
+} = {}) {
   const [locations, setLocations] = useState([]);
-  const [locationId, setLocationId] = useState('');
+  const [internalLocationId, setInternalLocationId] = useState('');
+  const locationControlled = controlledLocationId !== undefined;
+  const locationId = locationControlled ? controlledLocationId : internalLocationId;
+  const setLocationId = locationControlled
+    ? (onLocationIdChange || (() => {}))
+    : setInternalLocationId;
   const [eventId, setEventId] = useState('');
   const [event, setEvent] = useState(null);
   const [consolidated, setConsolidated] = useState([]);
@@ -314,13 +324,18 @@ export default function StocktakeAggregationPage() {
       }
 
       await refreshSession(locationId, '');
+      if (typeof onSubmitSuccess === 'function') {
+        await onSubmitSuccess();
+      }
       setToast(`Submitted. Inventory and stock periods updated.${pdfNote}`);
     });
   };
 
   const handleAddManualProduct = () => {
     if (!event?.id) {
-      setError('No open counting session — start stocktake on the Stocktake page first.');
+      setError(embedInHub
+        ? 'No open counting session — start counting in the section above first.'
+        : 'No open counting session — start stocktake on the Stocktake page first.');
       return;
     }
     const qty = Number(manualQty);
@@ -374,28 +389,8 @@ export default function StocktakeAggregationPage() {
     });
   };
 
-  return (
-    <div className="stock-periods-page">
-      <div className="stock-periods-card">
-        <div className="stock-periods-section-title">Stocktake Aggregation</div>
-        <div className="stock-periods-note">
-          Admin review of aggregated counter totals. Add missing products from the location catalog, adjust component
-          quantities if needed, download the full PDF, then submit to apply opening stock or close the period.
-        </div>
-
-        <label className="stock-periods-label">Location</label>
-        <select
-          className="pos-control"
-          value={locationId}
-          disabled={busy}
-          onChange={(e) => setLocationId(e.target.value)}
-        >
-          <option value="">Select location…</option>
-          {locations.map((loc) => (
-            <option key={loc.id} value={loc.id}>{loc.name}</option>
-          ))}
-        </select>
-      </div>
+  const sectionBody = (
+    <>
 
       {error && <div className="stock-periods-error">{error}</div>}
       {toast && <div className="stock-periods-toast">{toast}</div>}
@@ -405,7 +400,9 @@ export default function StocktakeAggregationPage() {
           {!activeCounting ? (
             <div className="stock-periods-note">
               No counting session is open for {locationName || 'this location'}.
-              Start counting on the Stocktake page, then return here to review aggregated totals.
+              {embedInHub
+                ? ' Start counting above, then review aggregated totals here.'
+                : ' Start counting on the Stocktake page, then return here to review aggregated totals.'}
             </div>
           ) : (
             <>
@@ -641,6 +638,36 @@ export default function StocktakeAggregationPage() {
           )}
         </div>
       )}
+    </>
+  );
+
+  if (embedInHub) {
+    return sectionBody;
+  }
+
+  return (
+    <div className="stock-periods-page">
+      <div className="stock-periods-card">
+        <div className="stock-periods-section-title">Stocktake Aggregation</div>
+        <div className="stock-periods-note">
+          Admin review of aggregated counter totals. Add missing products from the location catalog, adjust component
+          quantities if needed, download the full PDF, then submit to apply opening stock or close the period.
+        </div>
+
+        <label className="stock-periods-label">Location</label>
+        <select
+          className="pos-control"
+          value={locationId}
+          disabled={busy}
+          onChange={(e) => setLocationId(e.target.value)}
+        >
+          <option value="">Select location…</option>
+          {locations.map((loc) => (
+            <option key={loc.id} value={loc.id}>{loc.name}</option>
+          ))}
+        </select>
+      </div>
+      {sectionBody}
     </div>
   );
 }

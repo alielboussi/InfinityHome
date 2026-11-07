@@ -4,6 +4,7 @@ import { resolveWarehouseFloor2Location } from '../_repoConstants/warehouseFloor
 import { loadMaterialUomAllowedSet } from './materialUomMutations';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
 import { parseCarpentryMeta } from './carpentryCatalogView';
+import { buildFloor2StockRows } from './carpentryFinishingView';
 import { newUuid } from './uuid';
 
 const ASSEMBLIES = 'warehouse_assemblies';
@@ -72,7 +73,7 @@ export async function listCarpentryFloorRuns(sb, { limit = 200 } = {}) {
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
   const floor2LocationId = floor2Loc?.id ? String(floor2Loc.id) : '';
 
-  const [{ data, error }, { data: floor2InvRows }] = await Promise.all([
+  const [{ data, error }, { data: floor2InvRows }, { data: assemblies, error: asmErr }] = await Promise.all([
     sb
       .from(RUNS)
       .select('id, assembly_id, product_qty, started_at, completed_at, source, metadata, created_at')
@@ -81,6 +82,7 @@ export async function listCarpentryFloorRuns(sb, { limit = 200 } = {}) {
     floor2LocationId
       ? sb.from(ASSEMBLY_INVENTORY).select('assembly_id, location_id, quantity').eq('location_id', floor2LocationId)
       : Promise.resolve({ data: [] }),
+    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata'),
   ]);
   if (error) {
     if (/relation .* does not exist|not found/i.test(String(error.message || ''))) {
@@ -88,12 +90,10 @@ export async function listCarpentryFloorRuns(sb, { limit = 200 } = {}) {
     }
     throw new Error(error.message || 'Failed to load floor runs');
   }
-  const floor2Stock = (floor2InvRows || [])
-    .filter((r) => Number(r.quantity) > 0)
-    .map((r) => ({
-      assembly_id: String(r.assembly_id),
-      quantity: Number(r.quantity) || 0,
-    }));
+  if (asmErr) throw new Error(asmErr.message || 'Failed to load assemblies');
+  const floor2Stock = floor2LocationId
+    ? buildFloor2StockRows(assemblies || [], floor2InvRows || [], floor2LocationId)
+    : [];
   return {
     rows: data || [],
     floor2_location_id: floor2LocationId || null,

@@ -61,8 +61,8 @@ try {
   assert(appJs.includes('./shared/MobileScreenGate'), 'App.js must import MobileScreenGate from ./shared');
   assert(!appJs.includes('ReturnOrders'), 'Delivery app must not register return/repair routes — use workshop apps');
   assert(
-    !fs.existsSync(path.join(appRoot, 'delivery-screens', 'ReturnOrdersScreen.js')),
-    'delivery-screens must not include ReturnOrdersScreen — repairs belong in upholstery/carpentry/painting apps',
+    !fs.existsSync(path.join(appRoot, 'deliveryKit', 'screens', 'ReturnOrdersScreen.js')),
+    'deliveryKit/screens must not include ReturnOrdersScreen — repairs belong in upholstery/carpentry/painting apps',
   );
 
   const appConfig = fs.readFileSync(path.join(appRoot, 'app.config.js'), 'utf8');
@@ -94,11 +94,11 @@ try {
 
   assert(fs.existsSync(path.join(appRoot, 'lib', 'deliveryDriversStore.js')), 'lib/deliveryDriversStore.js required (outside deliveryKit)');
 
-  const deliveryScreensHome = path.join(appRoot, 'delivery-screens', 'KitweSendHomeScreen.js');
+  const deliveryScreensHome = path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendHomeScreen.js');
   const kitScreensHome = path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendHomeScreen.js');
   assert(
     fs.existsSync(deliveryScreensHome) || fs.existsSync(kitScreensHome),
-    'KitweSendHomeScreen.js required under delivery-screens/ or deliveryKit/screens/',
+    'KitweSendHomeScreen.js required under deliveryKit/screens/',
   );
 
   const sig = fs.readFileSync(

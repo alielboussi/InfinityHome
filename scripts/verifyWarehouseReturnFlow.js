@@ -81,7 +81,7 @@ assert(
 );
 
 assert(
-  !fs.existsSync(path.join(root, 'mobile-apps/warehouse-delivery/delivery-screens/ReturnOrdersScreen.js')),
+  !fs.existsSync(path.join(root, 'mobile-apps/warehouse-delivery/deliveryKit/screens/ReturnOrdersScreen.js')),
   'warehouse-delivery must not ship ReturnOrdersScreen — repairs use workshop apps only',
 );
 assert(

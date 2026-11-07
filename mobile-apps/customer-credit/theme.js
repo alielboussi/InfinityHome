@@ -1,17 +1,18 @@
+/** Align with src/design-tokens.css */
 export const colors = {
-  bg: '#f4f6f9',
+  bg: '#f8fafc',
   surface: '#ffffff',
-  primary: '#1565c0',
-  primarySoft: '#e8f0fb',
-  danger: '#c62828',
-  dangerSoft: '#ffebee',
-  warning: '#ef6c00',
-  warningSoft: '#fff3e0',
-  success: '#2e7d32',
-  successSoft: '#e8f5e9',
-  text: '#1f2733',
-  muted: '#5b6675',
-  border: '#d5dbe2',
+  primary: '#0d9488',
+  primarySoft: '#f0fdfa',
+  danger: '#dc2626',
+  dangerSoft: '#fef2f2',
+  warning: '#d97706',
+  warningSoft: '#fffbeb',
+  success: '#16a34a',
+  successSoft: '#f0fdf4',
+  text: '#0f172a',
+  muted: '#64748b',
+  border: '#e2e8f0',
 };
 
 export const styles = {

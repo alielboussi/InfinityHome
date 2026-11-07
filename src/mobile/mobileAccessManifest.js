@@ -355,6 +355,11 @@ export const UPHOLSTERY_APP_SCREENS = Object.freeze([
     label: 'Repairs',
     description: 'Upholstery return & repair queue',
   },
+  {
+    id: 'upholstery_push_settings',
+    label: 'Alert settings',
+    description: 'Production push notification preferences',
+  },
 ]);
 
 export const CARPENTRY_APP_SCREENS = Object.freeze([
@@ -388,6 +393,11 @@ export const CARPENTRY_APP_SCREENS = Object.freeze([
     label: 'Repairs',
     description: 'Carpentry return & repair queue',
   },
+  {
+    id: 'carpentry_push_settings',
+    label: 'Alert settings',
+    description: 'Production push notification preferences',
+  },
 ]);
 
 export const PAINTING_APP_SCREENS = Object.freeze([
@@ -401,6 +411,11 @@ export const PAINTING_APP_SCREENS = Object.freeze([
     label: 'Repairs',
     description: 'Color / painting return & repair queue',
   },
+  {
+    id: 'painting_push_settings',
+    label: 'Alert settings',
+    description: 'Production push notification preferences',
+  },
 ]);
 
 export const DELIVERY_APP_SCREENS = Object.freeze([
@@ -413,6 +428,11 @@ export const DELIVERY_APP_SCREENS = Object.freeze([
     id: 'delivery_sent_list',
     label: 'Sent Deliveries',
     description: 'View sent deliveries and print delivery notes',
+  },
+  {
+    id: 'delivery_sold_orders',
+    label: 'Sold — warehouse storage',
+    description: 'Deliver customer items held in warehouse storage (signature + delivery note)',
   },
 ]);
 

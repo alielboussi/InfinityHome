@@ -62,6 +62,10 @@ function serializeJob(job) {
     started_at: job.started_at || null,
     completed_at: job.completed_at || null,
     accepted_by: job.accepted_by || null,
+    manual_material_lines: Array.isArray(job.metadata?.manual_material_lines)
+      ? job.metadata.manual_material_lines
+      : [],
+    floor2_push: Boolean(job.metadata?.floor2_push),
   };
 }
 

@@ -18,6 +18,8 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { theme } from '../shared/theme';
+import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
+import RunningRepairElapsed from '../components/RunningRepairElapsed';
 
 function formatElapsed(ms) {
   const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
@@ -45,6 +47,7 @@ function RepairCard({
   onPlay,
   onPause,
   onStop,
+  onMaterials,
 }) {
   const status = row.status;
   const timerStatus = row.timer_status || 'ready';
@@ -53,6 +56,7 @@ function RepairCard({
   const isPaused = timerStatus === 'paused';
   const canPlay = isSubmitted || isPaused;
   const inRepair = status === 'in_progress';
+  const canMaterials = isSubmitted || inRepair;
 
   return (
     <View style={[kiosk.card, styles.card]}>
@@ -81,7 +85,7 @@ function RepairCard({
       {(inRepair || row.elapsed_ms > 0) ? (
         <View style={styles.timerRow}>
           <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
-          <Text style={styles.timerValue}>{formatElapsed(row.elapsed_ms)}</Text>
+          <RunningRepairElapsed row={row} style={styles.timerValue} />
           {inRepair ? (
             <Text style={styles.statusChip}>
               {tUi(`repairTimerStatus_${timerStatus}`, locale)}
@@ -108,6 +112,16 @@ function RepairCard({
             accessibilityLabel={tUi('upholsteryJobPause', locale)}
           >
             <MaterialCommunityIcons name="pause-circle" size={52} color={theme.primary} />
+          </Pressable>
+        ) : null}
+        {canMaterials ? (
+          <Pressable
+            style={styles.iconBtn}
+            disabled={busy}
+            onPress={() => onMaterials?.(row)}
+            accessibilityLabel={tUi('quoteOrderMaterials', locale)}
+          >
+            <MaterialCommunityIcons name="wrench" size={48} color={theme.primary} />
           </Pressable>
         ) : null}
         {inRepair ? (
@@ -139,16 +153,7 @@ export default function WarehouseRepairsScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [tick, setTick] = useState(0);
-
-  const liveElapsedMs = useCallback((row) => {
-    let ms = Number(row.elapsed_ms) || 0;
-    if (row.timer_status === 'running' && row.timer_started_at) {
-      const started = new Date(row.timer_started_at).getTime();
-      if (Number.isFinite(started)) ms += Math.max(0, Date.now() - started);
-    }
-    return ms;
-  }, []);
+  const [repairMaterials, setRepairMaterials] = useState(null);
 
   const load = useCallback(async () => {
     if (!allowed) {
@@ -173,12 +178,7 @@ export default function WarehouseRepairsScreen({
     }
   }, [allowed, repairDepartment, locale]);
 
-  useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
-  useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
 
   const runOp = async (row, op, body) => {
     setBusyId(row.id);
@@ -299,18 +299,34 @@ export default function WarehouseRepairsScreen({
           )}
           renderItem={({ item }) => (
             <RepairCard
-              row={{ ...item, elapsed_ms: liveElapsedMs(item) }}
+              row={item}
               locale={locale}
               textAlign={textAlign}
               busy={busyId === item.id}
               onPlay={onPlay}
               onPause={onPause}
               onStop={onStop}
+              onMaterials={(row) => setRepairMaterials(row)}
             />
           )}
-          extraData={tick}
         />
       )}
+      <ProductionJobMaterialsModal
+        visible={!!repairMaterials}
+        locale={locale}
+        textAlign={textAlign}
+        jobKind="repair"
+        jobId={repairMaterials?.id || ''}
+        returnOrderId={repairMaterials?.id || ''}
+        initialLines={repairMaterials?.manual_material_lines
+          || repairMaterials?.metadata?.manual_material_lines
+          || []}
+        onClose={() => setRepairMaterials(null)}
+        onSaved={() => {
+          setRepairMaterials(null);
+          load();
+        }}
+      />
     </View>
   );
 }

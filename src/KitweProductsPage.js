@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 import db from './dataClient';
 import './kitwe-catalog-page.css';
-import { fetchWarehouseCatalog, saveWarehouseAssembly, WAREHOUSE_INVENTORY_MODE } from './services/warehouseCatalog';
+import { saveWarehouseAssembly, WAREHOUSE_INVENTORY_MODE } from './services/warehouseCatalog';
+import { useWarehouseCatalogQuery } from './hooks/useWarehouseCatalogQuery';
 import { KITWE_LOCATION_ID } from './constants/warehouseShowroomLocations';
 import { fetchProductLocationPricesForLocation } from './services/locationPricing';
 import { buildProductLocationPriceMap, resolveProductLocationPricing } from './utils/locationPricing';
@@ -74,27 +75,19 @@ export default function KitweProductsPage() {
   const [packetInventory, setPacketInventory] = useState([]);
   const [expandedAssemblyIds, setExpandedAssemblyIds] = useState(() => new Set());
   const hasCatalogRef = useRef(false);
+  const { data: catalogData, error: catalogError, isLoading: catalogLoading } = useWarehouseCatalogQuery();
 
   const load = useCallback(async () => {
     const background = hasCatalogRef.current;
     if (!background) setLoading(true);
     setError('');
     try {
-      const [data, locPrices, catRes] = await Promise.all([
-        fetchWarehouseCatalog({
-          onCachedSnapshot: (snap) => {
-            const allAssemblies = snap.assemblies || [];
-            setAssemblies(allAssemblies);
-            setAssemblyInventory(snap.assemblyInventory || []);
-            setWarehouseLocationId(snap.warehouseLocationId || null);
-            setSetItems(snap.setItems || []);
-            setPackets(snap.packets || []);
-            setAssemblyPacketRows(snap.assemblyPackets || []);
-            setPacketInventory(snap.inventory || []);
-            hasCatalogRef.current = true;
-            setLoading(false);
-          },
-        }),
+      const data = catalogData;
+      if (!data) {
+        if (!catalogLoading) setLoading(false);
+        return;
+      }
+      const [locPrices, catRes] = await Promise.all([
         fetchProductLocationPricesForLocation(db, KITWE_LOCATION_ID),
         db.from('categories').select('id, name').order('name'),
       ]);
@@ -120,7 +113,14 @@ export default function KitweProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [catalogData, catalogLoading]);
+
+  useEffect(() => {
+    if (catalogError) {
+      setError(catalogError?.message || 'Failed to load Kitwe catalog');
+      setLoading(false);
+    }
+  }, [catalogError]);
 
   useEffect(() => {
     load();

@@ -103,6 +103,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyMobileAndroidLightweight.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[mobile-android-light:fail] verifyMobileAndroidLightweight.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyProductionAppAccess.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

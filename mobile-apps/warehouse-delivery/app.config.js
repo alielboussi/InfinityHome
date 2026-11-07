@@ -47,8 +47,10 @@ const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r
 
 const googleServicesPath = path.join(__dirname, 'google-services.json');
 
+const { finalizeExpoConfig } = require('../shared/expoAndroidLightweight');
+
 module.exports = {
-  expo: {
+  expo: finalizeExpoConfig({
     name: 'Delivery',
     owner: 'alielboussi',
     slug: 'warehouse-delivery',
@@ -111,5 +113,5 @@ module.exports = {
         projectId: 'd72e9b6e-4f3d-40cf-bdaa-840558e3d221',
       },
     },
-  },
+  }),
 };

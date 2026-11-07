@@ -4,6 +4,8 @@ import { canManageCatalog, getCurrentUser } from './accessControl';
 import { fetchProductionEventsLog } from './services/warehouseProductionApi';
 import { WAREHOUSE_FROM_LOCATION_ID } from './utils/warehouseDelivery';
 import BackToDashboard from './BackToDashboard';
+import { useSyncReportFiltersFromUrl } from './hooks/useReportHubFilters';
+import { matchesReportUserFilter } from './utils/reportHubUserFilter';
 import {
   defaultReportDateRange,
   filterRowsByLocalDate as filterByDateRange,
@@ -29,7 +31,7 @@ function isFloor1ProductionRow(row) {
   return loc === WAREHOUSE_FROM_LOCATION_ID;
 }
 
-export default function ProductionReport() {
+export default function ProductionReport({ embedInHub = false, userFilter = '' } = {}) {
   const canView = canManageCatalog(getCurrentUser());
   const { startDate: defaultStart, endDate: defaultEnd } = useMemo(
     () => defaultReportDateRange(),
@@ -39,6 +41,7 @@ export default function ProductionReport() {
   const [reportType, setReportType] = useState('creates');
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
+  useSyncReportFiltersFromUrl({ embedInHub, setStartDate, setEndDate });
   const [creates, setCreates] = useState([]);
   const [increases, setIncreases] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -88,43 +91,51 @@ export default function ProductionReport() {
     load();
   }, [canView, load]);
 
+  const filteredCreates = useMemo(
+    () => creates.filter((row) => matchesReportUserFilter(productionLogUserLabel(row), userFilter)),
+    [creates, userFilter],
+  );
+  const filteredIncreases = useMemo(
+    () => increases.filter((row) => matchesReportUserFilter(productionLogUserLabel(row), userFilter)),
+    [increases, userFilter],
+  );
   const increaseGroups = useMemo(
-    () => groupStockIncreasesByDateUser(increases),
-    [increases],
+    () => groupStockIncreasesByDateUser(filteredIncreases),
+    [filteredIncreases],
   );
 
   const summary = useMemo(() => {
     if (reportType === 'creates') {
-      const totalQty = creates.reduce(
+      const totalQty = filteredCreates.reduce(
         (sum, row) => sum + Math.max(0, Number(row.qty_added ?? row.qty_after) || 0),
         0,
       );
       return {
-        count: creates.length,
+        count: filteredCreates.length,
         totalQty,
         label: 'New items',
       };
     }
-    const totalQty = increases.reduce(
+    const totalQty = filteredIncreases.reduce(
       (sum, row) => sum + Math.max(0, Number(row.qty_added) || 0),
       0,
     );
     return {
-      count: increases.length,
+      count: filteredIncreases.length,
       totalQty,
       groupCount: increaseGroups.length,
       label: 'Stock increases',
     };
-  }, [reportType, creates, increases, increaseGroups.length]);
+  }, [reportType, filteredCreates, filteredIncreases, increaseGroups.length]);
 
   const handleExportPdf = () => {
     if (reportType === 'creates') {
-      if (!creates.length) return;
-      downloadProductionCreationsPdf({ rows: creates, startDate, endDate });
+      if (!filteredCreates.length) return;
+      downloadProductionCreationsPdf({ rows: filteredCreates, startDate, endDate });
       return;
     }
-    if (!increases.length) return;
-    downloadProductionStockIncreasesPdf({ rows: increases, startDate, endDate });
+    if (!filteredIncreases.length) return;
+    downloadProductionStockIncreasesPdf({ rows: filteredIncreases, startDate, endDate });
   };
 
   if (!canView) {
@@ -133,24 +144,30 @@ export default function ProductionReport() {
 
   return (
     <div className="report-page production-report-page">
-      <div className="page-header-row">
-        <BackToDashboard />
-        <h2 style={{ margin: 0 }}>Upholstery Report</h2>
-      </div>
+      {!embedInHub ? (
+        <div className="page-header-row">
+          <BackToDashboard />
+          <h2 style={{ margin: 0 }}>Upholstery Report</h2>
+        </div>
+      ) : null}
       <p className="user-access-intro production-report-page__intro">
         Upholstery production from the Production Android app: new seating created and stock
         increases credited to Warehouse Floor 1, filtered by the date range you choose.
       </p>
 
       <div className="report-filters">
-        <div className="report-filter-block">
-          <label>Start date</label>
-          <input type="date" value={startDate} max={endDate} onChange={(e) => setStartDate(e.target.value)} />
-        </div>
-        <div className="report-filter-block">
-          <label>End date</label>
-          <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} />
-        </div>
+        {!embedInHub ? (
+          <>
+            <div className="report-filter-block">
+              <label>Start date</label>
+              <input type="date" value={startDate} max={endDate} onChange={(e) => setStartDate(e.target.value)} />
+            </div>
+            <div className="report-filter-block">
+              <label>End date</label>
+              <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+          </>
+        ) : null}
         <div className="report-filter-block">
           <label>Report type</label>
           <select value={reportType} onChange={(e) => setReportType(e.target.value)}>
@@ -167,7 +184,7 @@ export default function ProductionReport() {
         <button
           type="button"
           onClick={handleExportPdf}
-          disabled={loading || (reportType === 'creates' ? !creates.length : !increases.length)}
+          disabled={loading || (reportType === 'creates' ? !filteredCreates.length : !filteredIncreases.length)}
         >
           {reportType === 'creates' ? 'Export new items PDF' : 'Export stock increases PDF'}
         </button>
@@ -175,7 +192,7 @@ export default function ProductionReport() {
 
       {error ? <div className="report-error">{error}</div> : null}
 
-      {!loading && (creates.length > 0 || increases.length > 0) ? (
+      {!loading && (filteredCreates.length > 0 || filteredIncreases.length > 0) ? (
         <div className="report-summary">
           <div className="report-summary-card">
             <div className="report-summary-title">{summary.label}</div>
@@ -196,15 +213,15 @@ export default function ProductionReport() {
 
       {loading ? <div className="report-blank">Loading upholstery activity…</div> : null}
 
-      {!loading && reportType === 'creates' && !creates.length && !error ? (
+      {!loading && reportType === 'creates' && !filteredCreates.length && !error ? (
         <div className="report-blank">No new production items in this date range.</div>
       ) : null}
 
-      {!loading && reportType === 'increases' && !increases.length && !error ? (
+      {!loading && reportType === 'increases' && !filteredIncreases.length && !error ? (
         <div className="report-blank">No stock increases in this date range.</div>
       ) : null}
 
-      {!loading && reportType === 'creates' && creates.length > 0 ? (
+      {!loading && reportType === 'creates' && filteredCreates.length > 0 ? (
         <div className="report-section">
           <div className="report-section-title">New items created</div>
           <table className="report-table">
@@ -219,7 +236,7 @@ export default function ProductionReport() {
               </tr>
             </thead>
             <tbody>
-              {creates.map((row) => (
+              {filteredCreates.map((row) => (
                 <tr key={row.id}>
                   <td>{formatProductionReportDateTime(row.created_at)}</td>
                   <td>{row.name || '—'}</td>
@@ -234,7 +251,7 @@ export default function ProductionReport() {
         </div>
       ) : null}
 
-      {!loading && reportType === 'increases' && increases.length > 0 ? (
+      {!loading && reportType === 'increases' && filteredIncreases.length > 0 ? (
         <div className="report-section">
           <div className="report-section-title">Stock increases by user and date</div>
           <table className="report-table">

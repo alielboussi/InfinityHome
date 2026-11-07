@@ -19,7 +19,7 @@ function firstExistingPath(relativePaths) {
 
 function readKitweSendHomeScreenSource() {
   const filePath = firstExistingPath([
-    'mobile-apps/warehouse-delivery/delivery-screens/KitweSendHomeScreen.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendHomeScreen.js',
     'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendHomeScreen.js',
   ]);
   assert(filePath, 'KitweSendHomeScreen.js missing under warehouse-delivery');
@@ -131,7 +131,7 @@ assert(
 assert(chrome.includes('/warehouse-repairs-admin'), 'inventory nav must include Repairs');
 assert(
   chrome.includes('/warehouse-products/sales-storage')
-  || read('src/components/WarehouseCatalogViewToggle.js').includes('Sales Storage'),
+  || read('src/components/WarehouseCatalogViewToggle.js').includes('Sales storage'),
   'Sales Storage must live under warehouse-products',
 );
 assert(!chrome.includes("route: '/warehouse-sales-storage-admin'"), 'Sales Storage sidebar link must be removed');
@@ -152,7 +152,7 @@ assert(mobile.includes('delivery-sent-list'), 'warehouse-mobile must support del
 assert(mobile.includes('delivery-sent-detail'), 'warehouse-mobile must support delivery-sent-detail');
 assert(mobile.includes('evaluateWarehouseDeliveryDriverAppAccess'), 'delivery API must use evaluateWarehouseDeliveryDriverAppAccess');
 assert(
-  fs.existsSync(path.join(root, 'mobile-apps/warehouse-delivery/delivery-screens/KitweSentDeliveriesScreen.js'))
+  fs.existsSync(path.join(root, 'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSentDeliveriesScreen.js'))
     || fs.existsSync(path.join(root, 'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSentDeliveriesScreen.js')),
   'Delivery app must include sent deliveries list screen',
 );

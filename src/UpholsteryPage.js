@@ -32,7 +32,7 @@ function buildDraftsForProducts(products) {
   return drafts;
 }
 
-export default function UpholsteryPage() {
+export default function UpholsteryPage({ embedInHub = false } = {}) {
   const initialCached = useMemo(() => getCachedUpholsteryCatalog(), []);
   const [loading, setLoading] = useState(!initialCached);
   const [error, setError] = useState('');
@@ -342,8 +342,8 @@ export default function UpholsteryPage() {
 
   return (
     <div className="kitwe-catalog-page">
-      <BackToDashboard />
-      <h1 style={{ marginTop: 16 }}>Upholstery</h1>
+      {!embedInHub ? <BackToDashboard /> : null}
+      {!embedInHub ? <h1 style={{ marginTop: 16 }}>Upholstery</h1> : null}
       {carpentryLocations.length < 3 ? (
         <p style={{ color: '#b45309', marginBottom: 12 }}>
           Run <code>node scripts/seedCarpentryWarehouseLocations.js</code> for Storeroom 1–3 locations.

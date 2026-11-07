@@ -22,7 +22,7 @@ import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi } from '../productionKiosk/lib/productionKioskI18n';
 import {
-  fetchCarpentryFinishingProducts,
+  fetchCarpentryFloor2Products,
   sendCarpentryProductToPainting,
 } from '../services/carpentryApi';
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
@@ -114,7 +114,7 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
     else if (fromPull) setRefreshing(true);
     setError('');
     try {
-      const list = await fetchCarpentryFinishingProducts();
+      const list = await fetchCarpentryFloor2Products();
       const sorted = (Array.isArray(list) ? list : [])
         .slice()
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));

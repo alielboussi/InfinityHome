@@ -125,7 +125,7 @@ export const kiosk = StyleSheet.create({
     marginTop: 8,
   },
   btnPrimaryText: {
-    color: '#0f172a',
+    color: theme.primaryOnPrimary,
     fontWeight: '800',
   },
   dropdownFull: {
@@ -197,7 +197,7 @@ export const kiosk = StyleSheet.create({
     width: '100%',
   },
   btnPrimaryBlockText: {
-    color: '#0f172a',
+    color: theme.primaryOnPrimary,
     fontWeight: '800',
     fontSize: 16,
     textAlign: 'center',

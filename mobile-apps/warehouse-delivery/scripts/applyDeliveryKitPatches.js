@@ -105,8 +105,22 @@ function patchKitweSendHome(filePath) {
   fs.writeFileSync(filePath, s);
 }
 
+function patchProductionNameClashUi(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const s = fs.readFileSync(filePath, 'utf8');
+  if (!/\.\.\/\.\.\/\.\.\/\.\.\/src\/utils\/productionNameClashUi/.test(s)) return;
+  const repoUtil = path.resolve(appRoot, '..', '..', 'src', 'utils', 'productionNameClashUi.js');
+  if (!fs.existsSync(repoUtil)) {
+    console.warn('[applyDeliveryKitPatches] productionNameClashUi: repo util missing — keeping shim');
+    return;
+  }
+  const header = '/** Standalone for warehouse-delivery (no ../../../../src). */\n';
+  fs.writeFileSync(filePath, header + fs.readFileSync(repoUtil, 'utf8'));
+}
+
 function main() {
   copyDirMerge(overlaysRoot, kitRoot);
+  patchProductionNameClashUi(path.join(kitRoot, 'lib', 'productionNameClashUi.js'));
 
   patchSignatureScreen(
     path.join(kitRoot, 'screens', 'KitweSendSignatureScreen.js'),

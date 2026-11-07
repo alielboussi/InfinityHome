@@ -38,6 +38,8 @@ import {
   cancelProductionPacketDraft,
   createProductionPacket,
   createProductionProductOnly,
+  createCarpentryFloor2Product,
+  uploadCarpentryFloor2ProductPhoto,
   fetchProductionCatalog,
   fetchProductionPresets,
   fetchProductionSuggestedBaseName,
@@ -45,8 +47,9 @@ import {
 import { isMattressCatalogProductName } from '../lib/isMattressCatalogProductName';
 import { formatProductionNameClashMessage } from '../lib/productionNameClashUi';
 /** @param {'upholstery'|'carpentry'} presetGroup — upholstery = seater presets only; carpentry = carpentry presets only */
-export default function CreateScreen({ navigation, presetGroup = 'upholstery' }) {
+export default function CreateScreen({ navigation, presetGroup = 'upholstery', inventoryTarget }) {
   const carpentryOnly = presetGroup === 'carpentry';
+  const floor2Create = inventoryTarget === 'floor2' || carpentryOnly;
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
 
@@ -126,15 +129,21 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     setLoading(true);
     setError('');
     try {
-      const [data] = await Promise.all([
-        fetchProductionCatalog(),
-        reloadPresetsFromServer(),
-      ]);
-      setWarehouseLocationId(data.warehouseLocationId);
-      setWarehouseLocationName(data.warehouseLocationName || 'Warehouse');
-      applyRemotePresets(data);
-      if (!data.warehouseLocationId) {
-        setError(tUi('noWarehouse', locale));
+      if (floor2Create) {
+        setWarehouseLocationId('floor2');
+        setWarehouseLocationName('Warehouse Floor 2');
+        await reloadPresetsFromServer();
+      } else {
+        const [data] = await Promise.all([
+          fetchProductionCatalog(),
+          reloadPresetsFromServer(),
+        ]);
+        setWarehouseLocationId(data.warehouseLocationId);
+        setWarehouseLocationName(data.warehouseLocationName || 'Warehouse');
+        applyRemotePresets(data);
+        if (!data.warehouseLocationId) {
+          setError(tUi('noWarehouse', locale));
+        }
       }
     } catch (err) {
       setError(err?.message || 'Failed to load warehouse');
@@ -142,7 +151,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     } finally {
       setLoading(false);
     }
-  }, [applyRemotePresets, locale, reloadPresetsFromServer]);
+  }, [applyRemotePresets, floor2Create, locale, reloadPresetsFromServer]);
 
   useEffect(() => {
     load();
@@ -314,6 +323,21 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     try {
       const available = await ensureProductNameAvailable(pending.name);
       if (!available) return;
+      if (floor2Create) {
+        await createCarpentryFloor2Product({
+          name: pending.name,
+          baseName: baseNameEn,
+          preset: pending.preset,
+          quantity: pending.qtyNum,
+          dimLength: pending.dimLength,
+          dimWidth: pending.dimWidth,
+          dimHeight: pending.dimHeight,
+        });
+        pendingSaveRef.current = null;
+        setSuccess(tUi('floor2CreateSaved', locale));
+        resetForm();
+        return;
+      }
       const result = await createProductionPacket({
         name: pending.name,
         warehouseLocationId: pending.warehouseLocationId,
@@ -371,6 +395,42 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
     setSuccess('');
 
     try {
+      setAiPhotoStatus(tUi('savePhasePreparingPhoto', locale));
+      const uploadPhoto = await prepareProductionPhotoForUpload(photoSource);
+
+      if (floor2Create) {
+        let assemblyId = String(pending.resumeAssemblyId || '').trim();
+        if (!assemblyId) {
+          const available = await ensureProductNameAvailable(pending.name);
+          if (!available) return;
+          setAiPhotoStatus(tUi('savePhaseCreatingProduct', locale));
+          const created = await createCarpentryFloor2Product({
+            name: pending.name,
+            baseName: baseNameEn,
+            preset: pending.preset,
+            quantity: pending.qtyNum,
+            imageBase64: uploadPhoto,
+            dimLength: pending.dimLength,
+            dimWidth: pending.dimWidth,
+            dimHeight: pending.dimHeight,
+          });
+          assemblyId = String(created?.product?.assembly_id || created?.product?.id || '').trim();
+          if (!assemblyId) throw new Error('Product save failed — server did not return a product id.');
+          pendingSaveRef.current = { ...pending, resumeAssemblyId: assemblyId };
+        } else {
+          setAiPhotoStatus(tUi('photoProcessing', locale));
+          await uploadCarpentryFloor2ProductPhoto({
+            assemblyId,
+            imageBase64: uploadPhoto,
+          });
+        }
+        pendingSaveRef.current = null;
+        pendingPhotoRef.current = null;
+        setSuccess(tUi('floor2CreateSaved', locale));
+        resetForm();
+        return;
+      }
+
       let parsed;
       if (pending.resumeAssemblyId) {
         parsed = {
@@ -399,9 +459,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery' })
           pendingPortalSetup: parsed.pendingPortalSetup || null,
         };
       }
-
-      setAiPhotoStatus(tUi('savePhasePreparingPhoto', locale));
-      const uploadPhoto = await prepareProductionPhotoForUpload(photoSource);
 
       setAiPhotoStatus(tUi('photoProcessing', locale));
       const photoPayload = await attachProductionProductPhoto({

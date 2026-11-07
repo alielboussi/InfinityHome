@@ -25,7 +25,7 @@ const searchJs = fs.readFileSync(
 );
 const kitweHome = fs.readFileSync(
   firstExisting([
-    'mobile-apps/warehouse-delivery/delivery-screens/KitweSendHomeScreen.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendHomeScreen.js',
     'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendHomeScreen.js',
     'mobile-apps/warehouse-production/screens/KitweSendHomeScreen.js',
   ]),

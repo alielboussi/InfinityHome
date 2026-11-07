@@ -32,4 +32,5 @@ config.resolver.extraNodeModules = {
   'expo-web-browser': path.resolve(appNodeModules, 'expo-web-browser'),
 };
 
-module.exports = config;
+const { applyMetroLightweightBundle } = require('../shared/metroInlineRequires');
+module.exports = applyMetroLightweightBundle(config);

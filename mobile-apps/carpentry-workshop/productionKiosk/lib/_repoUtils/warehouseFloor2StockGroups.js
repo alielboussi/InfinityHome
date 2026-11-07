@@ -10,7 +10,8 @@ export function groupFloor2StockByFamily(stockRows, assemblyById) {
     if (!aid) return;
     const asm = assemblyById?.get?.(aid);
     const rawName = String(asm?.name || aid).trim();
-    const familyBase = extractProductionBaseName(rawName) || rawName || aid;
+    const explicitSetName = String(asm?.metadata?.floor2_set_name || '').trim();
+    const familyBase = explicitSetName || extractProductionBaseName(rawName) || rawName || aid;
     const key = familyBase.toLowerCase();
     if (!map.has(key)) {
       map.set(key, {

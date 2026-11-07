@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from "react";
 import { useNavigate } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
@@ -36,6 +36,13 @@ import { filterRowsByComboId } from './utils/comboId';
 import {
   filterProductsListCatalogProducts,
 } from './utils/productsListKitweExclusion';
+import ProductsListTableRow from './components/productsList/ProductsListTableRow';
+import ProductsListVirtualTbody from './components/productsList/ProductsListVirtualTbody';
+import { buildProductsListRowMeta } from './components/productsList/productsListRowMeta';
+import { PRODUCTS_LIST_VIRTUAL_THRESHOLD } from './components/productsList/productsListConstants';
+import { getListItemImageUrl } from './components/productsList/productsListImage';
+
+const ProductsListHeavyModals = lazy(() => import('./components/productsList/ProductsListHeavyModals'));
 
 const toolbarWrapperStyle = Object.freeze({
   width: '100%',
@@ -119,13 +126,6 @@ const mapCatalogProducts = (products, unitsData) => {
       : (unitFromMap ? (unitFromMap.abbreviation || unitFromMap.name) : undefined);
     return { ...product, image_url: finalUrl, unitLabel };
   });
-};
-
-const getListItemImageUrl = (item) => {
-  if (item?.__isCombo) {
-    return resolveProductImageUrl(item.picture_url || '');
-  }
-  return resolveProductImageUrl(item?.image_url || '');
 };
 
 const PRODUCT_IMAGE_BUCKET = 'productimages';
@@ -242,28 +242,6 @@ const FACTORY_STORAGE_RELEASE_TEMPLATE = Object.freeze({
 
 const createFactoryStorageFormDefaults = () => ({ ...FACTORY_STORAGE_FORM_TEMPLATE });
 const createFactoryStorageReleaseDefaults = () => ({ ...FACTORY_STORAGE_RELEASE_TEMPLATE });
-
-const formatDateTime = (value) => {
-  if (!value) return '-';
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString();
-  } catch {
-    return value;
-  }
-};
-
-const formatDateOnly = (value) => {
-  if (!value) return '-';
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString();
-  } catch {
-    return value;
-  }
-};
 
 const toDateInputValue = (value) => {
   if (!value) return '';
@@ -1502,7 +1480,7 @@ function ProductsListPage() {
     setNameEdit(null);
   }, []);
 
-  const saveInlineName = async (item, isCombo, draftValue) => {
+  const saveInlineName = useCallback(async (item, isCombo, draftValue) => {
     if (inlineNameSaveLockRef.current) return false;
     inlineNameSaveLockRef.current = true;
 
@@ -1560,7 +1538,7 @@ function ProductsListPage() {
       inlineNameSaveLockRef.current = false;
       return false;
     }
-  };
+  }, [cancelInlineName, search]);
 
   const saveCategoryForItem = async (item, isCombo, categoryId) => {
     try {
@@ -1867,6 +1845,168 @@ function ProductsListPage() {
     comboLocationPriceMap,
   ]);
 
+  const useVirtualTableRows = displayedProducts.length >= PRODUCTS_LIST_VIRTUAL_THRESHOLD;
+
+  const [virtualListHeight, setVirtualListHeight] = useState(560);
+  useEffect(() => {
+    const update = () => {
+      const next = Math.min(720, Math.max(360, window.innerHeight - 260));
+      setVirtualListHeight(next);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  const productsListHeavyModalOpen = Boolean(
+    factoryStorageModalOpen || imageEditModalOpen || adjustModalOpen,
+  );
+
+  /* eslint-disable react-hooks/exhaustive-deps -- heavy modal prop bundle */
+  const productsListHeavyModalProps = useMemo(() => ({
+    factoryStorageModalOpen,
+    factoryStorageModalProduct,
+    factoryStorageModalRows,
+    factoryStorageRowsLoading,
+    factoryStorageModalError,
+    factoryStorageForm,
+    factoryStorageSubmitting,
+    factoryStorageReleaseDraft,
+    factoryStorageReleaseBusy,
+    factoryStorageEditDraft,
+    factoryStorageEditBusy,
+    factoryStorageModalLabel,
+    factoryStorageModalIsCombo,
+    factoryStorageComboHoldSets,
+    modalFactoryHoldQty,
+    factoryStorageComboPreview,
+    factoryStorageModalItemHeader,
+    factoryStorageComboComponentMap,
+    factoryStorageComboComponents,
+    closeFactoryStorageModal,
+    handleFactoryStorageFormChange,
+    handleCreateFactoryStorageEntry,
+    startFactoryStorageRelease,
+    cancelFactoryStorageRelease,
+    submitFactoryStorageRelease,
+    startFactoryStorageEdit,
+    handleFactoryStorageEditChange,
+    cancelFactoryStorageEdit,
+    submitFactoryStorageEdit,
+    factoryModalInputStyle,
+    canEditFactoryHolds,
+    loadFactoryStorageRows,
+    refreshFactoryStorageSummary,
+    resolveFactoryStorageActor,
+    imageEditModalOpen,
+    imageEditProduct,
+    imageEditBulkProducts,
+    imageEditFile,
+    imageEditLoading,
+    setImageEditModalOpen,
+    setImageEditProduct,
+    setImageEditBulkProducts,
+    setImageEditFile,
+    setImageEditLoading,
+    applyImageFileToItem,
+    fetchAll,
+    purgeExistingStorageImages,
+    setToolbarNotice,
+    setBulkSelectionMap,
+    adjustModalOpen,
+    adjustProduct,
+    adjustSetMode,
+    transferMode,
+    selectedLocation,
+    setSelectedLocation,
+    adjustQty,
+    setAdjustQty,
+    adjustLoading,
+    locations,
+    setAdjustSetMode,
+    setTransferMode,
+    handleAdjustInventory,
+    setAdjustModalOpen,
+    canAdjustInventory,
+    computeComboMaxQty,
+    getStockForProduct,
+    comboItems,
+    transferFrom,
+    setTransferFrom,
+    transferTo,
+    setTransferTo,
+    transferQty,
+    setTransferQty,
+    transferBusy,
+    setTransferBusy,
+    manualTransferDate,
+    setManualTransferDate,
+    resolveLocationUuid,
+    inventory,
+    applyInventoryBulk,
+    syncProductLocations,
+    refreshInventoryForLocations,
+  }), [
+    factoryStorageModalOpen,
+    factoryStorageModalProduct,
+    factoryStorageModalRows,
+    factoryStorageRowsLoading,
+    factoryStorageModalError,
+    factoryStorageForm,
+    factoryStorageSubmitting,
+    factoryStorageReleaseDraft,
+    factoryStorageReleaseBusy,
+    factoryStorageEditDraft,
+    factoryStorageEditBusy,
+    factoryStorageModalLabel,
+    factoryStorageModalIsCombo,
+    factoryStorageComboHoldSets,
+    modalFactoryHoldQty,
+    factoryStorageComboPreview,
+    factoryStorageModalItemHeader,
+    factoryStorageComboComponentMap,
+    factoryStorageComboComponents,
+    closeFactoryStorageModal,
+    handleFactoryStorageFormChange,
+    handleCreateFactoryStorageEntry,
+    startFactoryStorageRelease,
+    cancelFactoryStorageRelease,
+    submitFactoryStorageRelease,
+    startFactoryStorageEdit,
+    handleFactoryStorageEditChange,
+    cancelFactoryStorageEdit,
+    submitFactoryStorageEdit,
+    canEditFactoryHolds,
+    loadFactoryStorageRows,
+    refreshFactoryStorageSummary,
+    resolveFactoryStorageActor,
+    imageEditModalOpen,
+    imageEditProduct,
+    imageEditBulkProducts,
+    imageEditFile,
+    imageEditLoading,
+    adjustModalOpen,
+    adjustProduct,
+    adjustSetMode,
+    transferMode,
+    selectedLocation,
+    adjustQty,
+    adjustLoading,
+    locations,
+    canAdjustInventory,
+    computeComboMaxQty,
+    getStockForProduct,
+    comboItems,
+    transferFrom,
+    transferTo,
+    transferQty,
+    transferBusy,
+    manualTransferDate,
+    resolveLocationUuid,
+    inventory,
+  ]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+
   const bulkSelectableItems = useMemo(() => (
     displayedProducts.map(item => ({
       key: `${item.__isCombo ? 'combo' : 'prod'}:${item.id}`,
@@ -2018,13 +2158,13 @@ function ProductsListPage() {
     return sym ? `${sym} ${formatted}` : formatted;
   }
 
-  const getEditablePriceRaw = (item, field, isCombo) => {
+  const getEditablePriceRaw = useCallback((item, field, isCombo) => {
     if (field === 'price') {
       if (isCombo) return item.combo_price ?? item.standard_price ?? '';
       return item.price ?? '';
     }
     return item.promotional_price ?? '';
-  };
+  }, []);
 
   const parseInlinePriceDraft = (draft, allowEmpty) => {
     // Strip currency symbols/labels users may type (K, $, ZMW, etc.)
@@ -2039,7 +2179,7 @@ function ProductsListPage() {
     return Number.isFinite(parsed) ? parsed : NaN;
   };
 
-  const saveInlinePrice = async (item, isCombo, field, draft) => {
+  const saveInlinePrice = useCallback(async (item, isCombo, field, draft) => {
     // Prevent Enter+blur (or double-blur) from saving twice. The second save
     // often had an empty draft and cleared promotional_price back to null.
     if (inlinePriceSaveLockRef.current) return false;
@@ -2152,9 +2292,9 @@ function ProductsListPage() {
     } finally {
       inlinePriceSaveLockRef.current = false;
     }
-  };
+  }, [pricingEditLocationId, pricingLocationLabel, products, combos, isSameLocation, getEditablePriceRaw]);
 
-  const renderEditablePriceCell = (item, field, isCombo, rowKey, className) => {
+  const renderEditablePriceCell = useCallback((item, field, isCombo, rowKey, className) => {
     const isEditing = inlinePriceEdit?.rowKey === rowKey && inlinePriceEdit?.field === field;
     const displayValue = field === 'price'
       ? (isCombo
@@ -2223,7 +2363,83 @@ function ProductsListPage() {
         {displayValue}
       </td>
     );
-  };
+  }, [
+    inlinePriceEdit,
+    pricingEditLocationId,
+    getEditablePriceRaw,
+    saveInlinePrice,
+  ]);
+
+  const productsListRowCtx = useMemo(() => ({
+    showDuplicateNamesOnly,
+    bulkSelectionMap,
+    setBulkSelectionMap,
+    canManageCatalogPage,
+    handleImageCellClick,
+    nameEdit,
+    nameInputRef,
+    inlineNameDraftRef,
+    inlineNameSaveLockRef,
+    setNameEdit,
+    cancelInlineName,
+    saveInlineName,
+    setCategoryEditItem,
+    setCategorySearch,
+    canAdjustInventory,
+    openLocationStockCorrection,
+    productsListStockMoveDisabledMessage,
+    renderEditablePriceCell,
+    openItemEditor,
+    getStockForProductAcrossSelected,
+    inventory,
+    selectedLocationIds,
+    isLocationSelected,
+    getAssignedLocationIdsForItem,
+    normalizeLocationId,
+    locations,
+    computeComboMaxQty,
+    getStockForProduct,
+    categories,
+  }), [
+    showDuplicateNamesOnly,
+    bulkSelectionMap,
+    canManageCatalogPage,
+    handleImageCellClick,
+    nameEdit,
+    cancelInlineName,
+    saveInlineName,
+    canAdjustInventory,
+    openLocationStockCorrection,
+    openItemEditor,
+    getStockForProductAcrossSelected,
+    inventory,
+    selectedLocationIds,
+    isLocationSelected,
+    getAssignedLocationIdsForItem,
+    normalizeLocationId,
+    locations,
+    computeComboMaxQty,
+    getStockForProduct,
+    categories,
+    renderEditablePriceCell,
+  ]);
+
+  const productsListVirtualKey = useMemo(
+    () => `${displayedProducts.length}:${listSortMode}:${showDuplicateNamesOnly ? 1 : 0}:${selectedLocationIds.join(',')}`,
+    [displayedProducts.length, listSortMode, showDuplicateNamesOnly, selectedLocationIds],
+  );
+
+  const renderProductsListRow = useCallback((item) => {
+    const meta = buildProductsListRowMeta(item, productsListRowCtx);
+    return (
+      <ProductsListTableRow
+        key={meta.isCombo ? `combo-${item.id}` : item.id}
+        item={item}
+        meta={meta}
+        ctx={productsListRowCtx}
+      />
+    );
+  }, [productsListRowCtx]);
 
   useEffect(() => {
     if (!inlinePriceEdit || !inlinePriceInputRef.current) return;
@@ -2459,298 +2675,21 @@ function ProductsListPage() {
                 </tr>
               </thead>
               <tbody>
-                {displayedProducts.map((item) => {
-                  const isCombo = !!item.__isCombo;
-                  const aggregateQty = (!isCombo)
-                    ? getStockForProductAcrossSelected(item.id)
-                    : null;
-                  let hasNegativeEntry = false;
-                  if (!isCombo) {
-                    if (selectedLocationIds.length > 0) {
-                      hasNegativeEntry = (inventory || []).some(inv =>
-                        String(inv.product_id) === String(item.id)
-                        && Number(inv.quantity) < 0
-                        && isLocationSelected(inv.location)
-                      );
-                    } else {
-                      hasNegativeEntry = (inventory || []).some(inv => String(inv.product_id) === String(item.id) && Number(inv.quantity) < 0);
-                    }
-                  }
-                  const highlightRow = !isCombo && (
-                    showDuplicateNamesOnly
-                    || (selectedLocationIds.length > 0
-                      ? Number(aggregateQty) < 0
-                      : hasNegativeEntry)
-                  );
-                  const rowKey = `${isCombo ? 'combo' : 'prod'}-${item.id}`;
-                  const bulkKey = `${isCombo ? 'combo' : 'prod'}:${item.id}`;
-                  const categoryName = categories.find((c) => String(c.id) === String(item.category_id))?.name;
-                  const hasCategoryId = item.category_id !== null && item.category_id !== undefined && String(item.category_id) !== '';
-                  const categoryMissing = hasCategoryId && !categoryName;
-                  // Show only locations assigned to this item (product_locations / combo_locations),
-                  // not every location in the system — so bulk add/remove is visible in this column.
-                  const HIDDEN_LOCATION_ID = '20abb7a3-9df9-45bd-885e-6440503ea728';
-                  const assignedIdSet = new Set(
-                    getAssignedLocationIdsForItem(item)
-                      .map((id) => normalizeLocationId(id))
-                      .filter(Boolean)
-                  );
-                  const locationQtyRows = (locations || [])
-                    .filter((loc) => String(loc.id) !== HIDDEN_LOCATION_ID)
-                    .filter((loc) => assignedIdSet.has(normalizeLocationId(loc.id)))
-                    .map((loc) => {
-                      const qty = isCombo
-                        ? computeComboMaxQty(item.id, loc.id)
-                        : getStockForProduct(item.id, loc.id);
-                      return {
-                        id: loc.id,
-                        name: loc.name,
-                        qty: Number(qty || 0),
-                      };
-                    });
-                  return (
-                    <tr
-                      key={isCombo ? `combo-${item.id}` : item.id}
-                      className={highlightRow ? (showDuplicateNamesOnly ? 'products-list-row--duplicate' : 'products-list-row--negative') : undefined}
-                      style={!showDuplicateNamesOnly && highlightRow ? { background: '#4d1f1f' } : undefined}
-                    >
-                      <td className="products-list-cell-bulk">
-                        <input
-                          type="checkbox"
-                          className="products-bulk-checkbox"
-                          checked={Object.prototype.hasOwnProperty.call(bulkSelectionMap, bulkKey) ? bulkSelectionMap[bulkKey] : false}
-                          onChange={e => {
-                            const checked = e.target.checked;
-                            setBulkSelectionMap(prev => {
-                              const next = { ...prev };
-                              if (checked) next[bulkKey] = true;
-                              else delete next[bulkKey];
-                              return next;
-                            });
-                          }}
-                          aria-label={`Select ${isCombo ? item.combo_name : item.name}`}
-                        />
-                      </td>
-                      <td className="products-list-cell-image">
-                        {(() => {
-                          const imageUrl = getListItemImageUrl(item);
-                          const imageAlt = isCombo ? item.combo_name : item.name;
-                          if (!imageUrl) {
-                            return (
-                              <span
-                                role="button"
-                                tabIndex={canManageCatalogPage ? 0 : -1}
-                                className={`products-list-thumb-empty products-list-thumb-empty--clickable${!canManageCatalogPage ? ' is-disabled' : ''}`}
-                                onClick={() => canManageCatalogPage && handleImageCellClick(item)}
-                                onKeyDown={(e) => {
-                                  if (!canManageCatalogPage) return;
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    handleImageCellClick(item);
-                                  }
-                                }}
-                                aria-label={`Set image for ${imageAlt}`}
-                              >
-                                —
-                              </span>
-                            );
-                          }
-                          return (
-                            <div
-                              className="products-list-thumb-wrap products-list-thumb-wrap--editable"
-                              role="button"
-                              tabIndex={0}
-                              onClick={() => handleImageCellClick(item)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  handleImageCellClick(item);
-                                }
-                              }}
-                              aria-label={`Edit image for ${imageAlt}`}
-                            >
-                              <img
-                                src={imageUrl}
-                                alt={imageAlt}
-                                className="products-list-thumb"
-                                loading="lazy"
-                              />
-                              <div className="products-list-thumb-zoom" aria-hidden="true">
-                                <img src={imageUrl} alt="" className="products-list-thumb-zoom__img" />
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="products-list-cell-name">
-                        {nameEdit?.rowKey === rowKey ? (
-                          <input
-                            ref={nameInputRef}
-                            type="text"
-                            className="products-list-inline-name-input"
-                            value={nameEdit.draft}
-                            size={Math.max(24, Math.min((nameEdit.draft || '').length + 2, 72))}
-                            onChange={(e) => {
-                              inlineNameDraftRef.current = e.target.value;
-                              setNameEdit((prev) => (prev ? { ...prev, draft: e.target.value } : prev));
-                            }}
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Escape') {
-                                e.preventDefault();
-                                cancelInlineName();
-                              } else if (e.key === 'Enter') {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                await saveInlineName(item, isCombo, inlineNameDraftRef.current);
-                              }
-                            }}
-                            onBlur={() => {
-                              if (inlineNameSaveLockRef.current) return;
-                              if (!nameEdit || nameEdit.rowKey !== rowKey) return;
-                              cancelInlineName();
-                            }}
-                            title="Press Enter to save, Escape to cancel"
-                            aria-label={`Edit name for ${isCombo ? item.combo_name : item.name}`}
-                          />
-                        ) : (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => {
-                              if (isCombo) {
-                                window.location.href = `/edit-set/${item.id}`;
-                                return;
-                              }
-                              if (!canManageCatalogPage) {
-                                alert('You do not have permission to edit product names.');
-                                return;
-                              }
-                              const draft = item.name || '';
-                              inlineNameDraftRef.current = draft;
-                              setNameEdit({
-                                rowKey,
-                                draft,
-                              });
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                if (isCombo) {
-                                  window.location.href = `/edit-set/${item.id}`;
-                                  return;
-                                }
-                                if (!canManageCatalogPage) return;
-                                const draft = item.name || '';
-                                inlineNameDraftRef.current = draft;
-                                setNameEdit({
-                                  rowKey,
-                                  draft,
-                                });
-                              }
-                            }}
-                            className="products-list-name-link"
-                            title={isCombo ? 'Open set editor' : 'Click to edit name'}
-                          >
-                            {isCombo ? item.combo_name : item.name}
-                          </span>
-                        )}
-                      </td>
-                      <td className="products-list-cell-sku">{isCombo ? item.sku : (item.sku || '(auto)')}</td>
-                      <td className="products-list-cell-category">
-                        <span
-                          role="button"
-                          tabIndex={canManageCatalogPage ? 0 : -1}
-                          className={`products-list-category-link${!canManageCatalogPage ? ' is-disabled' : ''}`}
-                          onClick={() => {
-                            if (!canManageCatalogPage) {
-                              alert('You do not have permission to edit categories.');
-                              return;
-                            }
-                            setCategoryEditItem({ item, isCombo });
-                            setCategorySearch('');
-                          }}
-                          onKeyDown={(e) => {
-                            if (!canManageCatalogPage) return;
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              setCategoryEditItem({ item, isCombo });
-                              setCategorySearch('');
-                            }
-                          }}
-                        >
-                          {categoryName || (isCombo ? 'Set' : '-')}
-                        </span>
-                        {categoryMissing && (
-                          <span
-                            style={{
-                              marginLeft: '8px',
-                              padding: '2px 8px',
-                              borderRadius: '999px',
-                              background: '#3a1f1f',
-                              color: '#ffb3b3',
-                              border: '1px solid #ff6b6b',
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.4px'
-                            }}
-                          >
-                            Missing category
-                          </span>
-                        )}
-                      </td>
-                      <td className="products-list-cell-locations">
-                        {locationQtyRows.length === 0 ? (
-                          <span className="products-list-location-empty">No locations</span>
-                        ) : (
-                          <ul className="products-list-location-qty-list" aria-label={`Stock by location for ${isCombo ? item.combo_name : item.name}`}>
-                            {locationQtyRows.map((row) => (
-                              <li key={row.id}>
-                                {isCombo && canAdjustInventory ? (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className="products-list-location-qty-link"
-                                    onClick={() => openLocationStockCorrection(item, row)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        openLocationStockCorrection(item, row);
-                                      }
-                                    }}
-                                    title={`Adjust set stock at ${row.name}`}
-                                  >
-                                    {row.name}: {row.qty.toLocaleString()}
-                                  </span>
-                                ) : (
-                                  <span
-                                    className="products-list-location-qty-plain"
-                                    title={!isCombo ? productsListStockMoveDisabledMessage() : undefined}
-                                  >
-                                    {row.name}: {row.qty.toLocaleString()}
-                                  </span>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
-                      {renderEditablePriceCell(item, 'price', isCombo, rowKey, 'products-list-cell-price')}
-                      {renderEditablePriceCell(item, 'promotional_price', isCombo, rowKey, 'products-list-cell-promo')}
-                      <td className="products-list-cell-action">
-                        <button
-                          type="button"
-                          className="products-list-action-btn products-list-action-btn--edit"
-                          onClick={() => openItemEditor(item, isCombo)}
-                          title={isCombo ? `Edit set ${item.combo_name}` : `Edit product ${item.name}`}
-                          aria-label={isCombo ? `Edit set ${item.combo_name}` : `Edit product ${item.name}`}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {useVirtualTableRows ? (
+                  <tr className="products-list-virtual-host">
+                    <td colSpan={9} style={{ padding: 0, border: 'none', verticalAlign: 'top' }}>
+                      <ProductsListVirtualTbody
+                        items={displayedProducts}
+                        rowCtx={productsListRowCtx}
+                        RowComponent={ProductsListTableRow}
+                        height={virtualListHeight}
+                        listKey={productsListVirtualKey}
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  displayedProducts.map((item) => renderProductsListRow(item))
+                )}
               </tbody>
             </table>
           </div>
@@ -3001,775 +2940,12 @@ function ProductsListPage() {
         </div>
       )}
 
-      {factoryStorageModalOpen && factoryStorageModalProduct && (
-        <div className="factory-storage-overlay">
-          <div className="factory-storage-modal">
-            <div className="factory-storage-modal__header">
-              <div>
-                <h3 style={{margin:'0 0 4px'}}>Sold Products — {factoryStorageModalLabel}</h3>
-                {factoryStorageModalIsCombo ? (
-                  <div className="factory-storage-modal__subtitle">
-                    Approx. holds: <b style={{color:'#e0e6ed'}}>{Number(factoryStorageComboHoldSets || 0).toLocaleString()}</b> set(s) (components tracked individually)
-                  </div>
-                ) : (
-                  <div className="factory-storage-modal__subtitle">
-                    Holds at warehouse: <b style={{color:'#e0e6ed'}}>{Number(modalFactoryHoldQty || 0).toLocaleString()}</b> units
-                  </div>
-                )}
-              </div>
-              <button onClick={closeFactoryStorageModal} className="factory-storage-close">Close</button>
-            </div>
-            {factoryStorageModalError && (
-              <div className="factory-storage-modal__error">
-                {factoryStorageModalError}
-              </div>
-            )}
-            <div className="factory-storage-card">
-              <h4 className="factory-storage-card__title">Record New Hold</h4>
-              {!canEditFactoryHolds && (
-                <div className="factory-storage-modal__subtitle" style={{ color: '#f4d35e', marginBottom: 8 }}>
-                  Factory holds are view-only for your account.
-                </div>
-              )}
-              <div className="factory-storage-form-grid">
-                <div className="factory-storage-field">
-                  <label className="factory-storage-field__label">{factoryStorageModalIsCombo ? 'Sets to Hold' : 'Quantity'}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={factoryStorageForm.quantity}
-                    onChange={e => handleFactoryStorageFormChange('quantity', e.target.value)}
-                    style={factoryModalInputStyle}
-                    className="factory-storage-input"
-                    disabled={!canEditFactoryHolds}
-                  />
-                </div>
-                <div className="factory-storage-field">
-                  <label className="factory-storage-field__label">Expected Release</label>
-                  <input
-                    type="date"
-                    value={factoryStorageForm.expectedReleaseDate}
-                    onChange={e => handleFactoryStorageFormChange('expectedReleaseDate', e.target.value)}
-                    style={factoryModalInputStyle}
-                    className="factory-storage-input"
-                    disabled={!canEditFactoryHolds}
-                  />
-                </div>
-                <div className="factory-storage-field">
-                  <label className="factory-storage-field__label">Sale ID (optional)</label>
-                  <input
-                    value={factoryStorageForm.saleId}
-                    onChange={e => handleFactoryStorageFormChange('saleId', e.target.value)}
-                    style={factoryModalInputStyle}
-                    className="factory-storage-input"
-                    disabled={!canEditFactoryHolds}
-                  />
-                </div>
-                <div className="factory-storage-field">
-                  <label className="factory-storage-field__label">Sale Item ID</label>
-                  <input
-                    value={factoryStorageForm.saleItemId}
-                    onChange={e => handleFactoryStorageFormChange('saleItemId', e.target.value)}
-                    style={factoryModalInputStyle}
-                    className="factory-storage-input"
-                    disabled={!canEditFactoryHolds}
-                  />
-                </div>
-                <div className="factory-storage-field">
-                  <label className="factory-storage-field__label">Customer Name</label>
-                  <input
-                    value={factoryStorageForm.customerName}
-                    onChange={e => handleFactoryStorageFormChange('customerName', e.target.value)}
-                    style={factoryModalInputStyle}
-                    className="factory-storage-input"
-                    disabled={!canEditFactoryHolds}
-                  />
-                </div>
-                <div className="factory-storage-field">
-                  <label className="factory-storage-field__label">Customer Phone</label>
-                  <input
-                    value={factoryStorageForm.customerPhone}
-                    onChange={e => handleFactoryStorageFormChange('customerPhone', e.target.value)}
-                    style={factoryModalInputStyle}
-                    className="factory-storage-input"
-                    disabled={!canEditFactoryHolds}
-                  />
-                </div>
-              </div>
-              {factoryStorageModalIsCombo && (
-                <div className="factory-storage-combo-preview">
-                  <div style={{color:'#9aa4b2',fontSize:'0.9rem',marginBottom:8}}>Each set adds holds for every component:</div>
-                  {!factoryStorageComboComponents.length ? (
-                    <div style={{color:'#f4a261'}}>No components are linked to this set yet.</div>
-                  ) : (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Component</th>
-                          <th style={{textAlign:'center'}}>Qty / Set</th>
-                          <th style={{textAlign:'center'}}>Hold Qty</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {factoryStorageComboPreview.map(component => (
-                          <tr key={component.product_id}>
-                            <td>
-                              <div style={{fontWeight:600}}>{component.productName}</div>
-                              {component.sku && <div style={{color:'#9aa4b2',fontSize:'0.8rem'}}>SKU: {component.sku}</div>}
-                            </td>
-                            <td style={{textAlign:'center'}}>{Number(component.perSetQty || 0).toLocaleString()}</td>
-                            <td style={{textAlign:'center'}}>{Number(component.holdQty || 0).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              )}
-              <div className="factory-storage-field" style={{marginTop:12}}>
-                <label className="factory-storage-field__label">Notes</label>
-                <textarea
-                  value={factoryStorageForm.notes}
-                  onChange={e => handleFactoryStorageFormChange('notes', e.target.value)}
-                  style={{...factoryModalInputStyle, minHeight:'70px'}}
-                  className="factory-storage-input factory-storage-note"
-                  placeholder="Optional remarks (e.g., who dropped the item off)"
-                  disabled={!canEditFactoryHolds}
-                />
-              </div>
-              <div className="factory-storage-actions">
-                <button
-                  onClick={handleCreateFactoryStorageEntry}
-                  disabled={!canEditFactoryHolds || factoryStorageSubmitting}
-                  style={{
-                    background:'#2a9d8f',
-                    color:'#fff',
-                    border:'none',
-                    borderRadius:'6px',
-                    padding:'10px 18px',
-                    fontWeight:'bold',
-                    cursor: (!canEditFactoryHolds || factoryStorageSubmitting) ? 'not-allowed' : 'pointer',
-                    opacity: canEditFactoryHolds ? 1 : 0.6
-                  }}
-                >{factoryStorageSubmitting ? 'Saving…' : 'Save Hold'}</button>
-              </div>
-            </div>
-            <div className="factory-storage-active">
-              <h4 style={{margin:'0 0 12px'}}>Active Holds</h4>
-              {factoryStorageRowsLoading ? (
-                <div>Loading storage rows…</div>
-              ) : factoryStorageModalRows.length === 0 ? (
-                <div style={{color:'#9aa4b2'}}>No active holds recorded for this item.</div>
-              ) : (
-                <div className="factory-storage-active__table-wrapper">
-                  <table className="factory-storage-active__table">
-                    <thead>
-                      <tr style={{background:'#223040'}}>
-                        <th style={{padding:8,textAlign:'left',borderBottom:'1px solid #2b3a4f'}}>Status</th>
-                        <th style={{padding:8,textAlign:'left',borderBottom:'1px solid #2b3a4f'}}>{factoryStorageModalItemHeader}</th>
-                        <th style={{padding:8,borderBottom:'1px solid #2b3a4f'}}>Stored</th>
-                        <th style={{padding:8,borderBottom:'1px solid #2b3a4f'}}>Released</th>
-                        <th style={{padding:8,borderBottom:'1px solid #2b3a4f'}}>Remaining</th>
-                        <th style={{padding:8,textAlign:'left',borderBottom:'1px solid #2b3a4f'}}>Stored At</th>
-                        <th style={{padding:8,textAlign:'left',borderBottom:'1px solid #2b3a4f'}}>Expected Release</th>
-                        <th style={{padding:8,textAlign:'left',borderBottom:'1px solid #2b3a4f'}}>Customer</th>
-                        <th style={{padding:8,textAlign:'left',borderBottom:'1px solid #2b3a4f'}}>Reference</th>
-                        <th style={{padding:8,textAlign:'left',borderBottom:'1px solid #2b3a4f'}}>Notes</th>
-                        <th style={{padding:8,textAlign:'center',borderBottom:'1px solid #2b3a4f'}}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {factoryStorageModalRows.map((row) => {
-                        const storedQty = Number(row.quantity || 0);
-                        const releasedQty = Number(row.quantity_released || 0);
-                        const remainingQty = Math.max(0, storedQty - releasedQty);
-                        const itemLabel = factoryStorageModalIsCombo
-                          ? (factoryStorageComboComponentMap.get(String(row.product_id))?.productName || `Product ${row.product_id}`)
-                          : 'Base product';
-                        const componentMeta = factoryStorageModalIsCombo
-                          ? factoryStorageComboComponentMap.get(String(row.product_id))
-                          : null;
-                        const isDraft = factoryStorageReleaseDraft.storageId === row.id;
-                        const isEditingRow = factoryStorageEditDraft?.storageId === row.id;
-                        return (
-                          <tr key={row.id} style={{background:'#121a27'}}>
-                            <td style={{padding:8,textTransform:'capitalize'}}>{row.status}</td>
-                            <td style={{padding:8}}>
-                              {itemLabel}
-                              {componentMeta?.sku && (
-                                <div style={{color:'#9aa4b2',fontSize:'0.8rem'}}>SKU: {componentMeta.sku}</div>
-                              )}
-                            </td>
-                            <td style={{padding:8,textAlign:'center'}}>{storedQty.toLocaleString()}</td>
-                            <td style={{padding:8,textAlign:'center'}}>{releasedQty.toLocaleString()}</td>
-                            <td style={{padding:8,textAlign:'center',color: remainingQty > 0 ? '#f4d35e' : '#9aa4b2'}}>{remainingQty.toLocaleString()}</td>
-                            <td style={{padding:8}}>{formatDateTime(row.stored_at)}</td>
-                            <td style={{padding:8}}>{formatDateOnly(row.expected_release_date)}</td>
-                            <td style={{padding:8}}>{row.customer_name || '-'}</td>
-                            <td style={{padding:8}}>{row.release_reference || '-'}</td>
-                            <td style={{padding:8}}>{row.notes || '-'}</td>
-                            <td style={{padding:8,width:'190px'}}>
-                              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                                <button
-                                  style={{background:'#ffb703',color:'#1b1b1b',border:'none',borderRadius:'6px',padding:'6px 10px',fontWeight:'bold',cursor: remainingQty > 0 && !factoryStorageReleaseBusy ? 'pointer' : 'not-allowed'}}
-                                  disabled={!canEditFactoryHolds || remainingQty <= 0 || factoryStorageReleaseBusy}
-                                  onClick={() => startFactoryStorageRelease(row)}
-                                >Release</button>
-                                <button
-                                  style={{background:'#457b9d',color:'#fff',border:'none',borderRadius:'6px',padding:'6px 10px',fontWeight:'bold',cursor: factoryStorageEditBusy && isEditingRow ? 'wait' : 'pointer'}}
-                                  disabled={!canEditFactoryHolds || (factoryStorageEditBusy && isEditingRow)}
-                                  onClick={() => startFactoryStorageEdit(row)}
-                                >Edit</button>
-                                {isDraft && (
-                                  <div className="factory-storage-release-draft">
-                                    <div style={{fontSize:'0.85rem',color:'#9aa4b2'}}>Available: {remainingQty.toLocaleString()}</div>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      value={factoryStorageReleaseDraft.qty}
-                                      onChange={e => setFactoryStorageReleaseDraft(prev => ({ ...prev, qty: e.target.value }))}
-                                      style={{...factoryModalInputStyle}}
-                                      className="factory-storage-input"
-                                      disabled={!canEditFactoryHolds}
-                                    />
-                                    <input
-                                      value={factoryStorageReleaseDraft.reference}
-                                      onChange={e => setFactoryStorageReleaseDraft(prev => ({ ...prev, reference: e.target.value }))}
-                                      placeholder="Release reference"
-                                      style={{...factoryModalInputStyle}}
-                                      className="factory-storage-input"
-                                      disabled={!canEditFactoryHolds}
-                                    />
-                                    <textarea
-                                      value={factoryStorageReleaseDraft.note}
-                                      onChange={e => setFactoryStorageReleaseDraft(prev => ({ ...prev, note: e.target.value }))}
-                                      placeholder="Notes"
-                                      style={{...factoryModalInputStyle, minHeight:'60px'}}
-                                      className="factory-storage-input"
-                                      disabled={!canEditFactoryHolds}
-                                    />
-                                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                                      <button
-                                        onClick={submitFactoryStorageRelease}
-                                        disabled={!canEditFactoryHolds || factoryStorageReleaseBusy}
-                                        style={{
-                                          background:'#2a9d8f',
-                                          color:'#fff',
-                                          border:'none',
-                                          borderRadius:'6px',
-                                          padding:'6px 12px',
-                                          fontWeight:'bold',
-                                          cursor: (!canEditFactoryHolds || factoryStorageReleaseBusy) ? 'not-allowed' : 'pointer',
-                                          opacity: canEditFactoryHolds ? 1 : 0.6
-                                        }}
-                                      >{factoryStorageReleaseBusy ? 'Saving…' : 'Confirm'}</button>
-                                      <button
-                                        onClick={cancelFactoryStorageRelease}
-                                        style={{background:'#e63946',color:'#fff',border:'none',borderRadius:'6px',padding:'6px 12px',fontWeight:'bold',cursor:'pointer'}}
-                                      >Cancel</button>
-                                    </div>
-                                  </div>
-                                )}
-                                {isEditingRow && (
-                                  <div className="factory-storage-edit-draft">
-                                    <div className="factory-storage-edit-grid">
-                                      <div className="factory-storage-field">
-                                        <label className="factory-storage-field__label">Expected Release</label>
-                                        <input
-                                          type="date"
-                                          value={factoryStorageEditDraft.expectedReleaseDate}
-                                          onChange={e => handleFactoryStorageEditChange('expectedReleaseDate', e.target.value)}
-                                          style={factoryModalInputStyle}
-                                          className="factory-storage-input"
-                                          disabled={!canEditFactoryHolds}
-                                        />
-                                      </div>
-                                      <div className="factory-storage-field">
-                                        <label className="factory-storage-field__label">Sale ID</label>
-                                        <input
-                                          value={factoryStorageEditDraft.saleId}
-                                          onChange={e => handleFactoryStorageEditChange('saleId', e.target.value)}
-                                          style={factoryModalInputStyle}
-                                          className="factory-storage-input"
-                                          disabled={!canEditFactoryHolds}
-                                        />
-                                      </div>
-                                      <div className="factory-storage-field">
-                                        <label className="factory-storage-field__label">Sale Item ID</label>
-                                        <input
-                                          value={factoryStorageEditDraft.saleItemId}
-                                          onChange={e => handleFactoryStorageEditChange('saleItemId', e.target.value)}
-                                          style={factoryModalInputStyle}
-                                          className="factory-storage-input"
-                                          disabled={!canEditFactoryHolds}
-                                        />
-                                      </div>
-                                      <div className="factory-storage-field">
-                                        <label className="factory-storage-field__label">Customer Name</label>
-                                        <input
-                                          value={factoryStorageEditDraft.customerName}
-                                          onChange={e => handleFactoryStorageEditChange('customerName', e.target.value)}
-                                          style={factoryModalInputStyle}
-                                          className="factory-storage-input"
-                                          disabled={!canEditFactoryHolds}
-                                        />
-                                      </div>
-                                      <div className="factory-storage-field">
-                                        <label className="factory-storage-field__label">Customer Phone</label>
-                                        <input
-                                          value={factoryStorageEditDraft.customerPhone}
-                                          onChange={e => handleFactoryStorageEditChange('customerPhone', e.target.value)}
-                                          style={factoryModalInputStyle}
-                                          className="factory-storage-input"
-                                          disabled={!canEditFactoryHolds}
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="factory-storage-field">
-                                      <label className="factory-storage-field__label">Notes</label>
-                                      <textarea
-                                        value={factoryStorageEditDraft.notes}
-                                        onChange={e => handleFactoryStorageEditChange('notes', e.target.value)}
-                                        style={{...factoryModalInputStyle, minHeight:'60px'}}
-                                        className="factory-storage-input"
-                                        disabled={!canEditFactoryHolds}
-                                      />
-                                    </div>
-                                    <div className="factory-storage-edit-actions">
-                                      <button
-                                        onClick={submitFactoryStorageEdit}
-                                        disabled={!canEditFactoryHolds || factoryStorageEditBusy}
-                                        style={{
-                                          background:'#2a9d8f',
-                                          color:'#fff',
-                                          border:'none',
-                                          borderRadius:'6px',
-                                          padding:'6px 12px',
-                                          fontWeight:'bold',
-                                          cursor: (!canEditFactoryHolds || factoryStorageEditBusy) ? 'not-allowed' : 'pointer',
-                                          opacity: canEditFactoryHolds ? 1 : 0.6
-                                        }}
-                                      >{factoryStorageEditBusy ? 'Saving…' : 'Save Changes'}</button>
-                                      <button
-                                        onClick={cancelFactoryStorageEdit}
-                                        style={{background:'#e63946',color:'#fff',border:'none',borderRadius:'6px',padding:'6px 12px',fontWeight:'bold',cursor:'pointer'}}
-                                      >Cancel</button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {productsListHeavyModalOpen && (
+        <Suspense fallback={null}>
+          <ProductsListHeavyModals {...productsListHeavyModalProps} />
+        </Suspense>
       )}
-
-      {/* Image Edit Modal (Product, Set, or bulk products) */}
-      {imageEditModalOpen && (imageEditProduct || (imageEditBulkProducts && imageEditBulkProducts.length > 0)) && (
-        <div className="products-image-modal-overlay">
-          <div className="products-image-modal">
-            <h3 className="products-image-modal__title">
-              {imageEditBulkProducts?.length > 1
-                ? `Apply Image to ${imageEditBulkProducts.length} Products`
-                : (imageEditProduct?.__isCombo ? 'Edit Set Image' : 'Edit Product Image')}
-            </h3>
-            <div className="products-image-modal__meta">
-              {imageEditBulkProducts?.length > 1 ? (
-                <>
-                  <div>Selected products:</div>
-                  <ul className="products-image-modal__bulk-list">
-                    {imageEditBulkProducts.map((row) => (
-                      <li key={row.id}>
-                        <b>{row.name}</b>
-                        {row.sku ? ` (${row.sku})` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : imageEditProduct?.__isCombo ? (
-                <>Set: <b>{imageEditProduct.combo_name}</b></>
-              ) : (
-                <>Product: <b>{imageEditProduct?.name || imageEditBulkProducts?.[0]?.name}</b></>
-              )}
-            </div>
-            <input type="file" accept="image/*" onChange={e => setImageEditFile(e.target.files[0])} className="products-image-modal__file" />
-            {!imageEditBulkProducts?.length && (imageEditProduct?.__isCombo ? imageEditProduct.picture_url : imageEditProduct?.image_url) && (
-              <div className="products-image-modal__preview-row">
-                <img src={imageEditProduct.__isCombo ? imageEditProduct.picture_url : imageEditProduct.image_url} alt="Current" className="products-image-modal__preview" />
-                <button
-                  onClick={async () => {
-                    setImageEditLoading(true);
-                    try {
-                      if (imageEditProduct.__isCombo) {
-                        await db.from('combos').update({ picture_url: '' }).eq('id', imageEditProduct.id);
-                      } else {
-                        await db.from('product_images').delete().eq('product_id', imageEditProduct.id);
-                        await db.from('products').update({ image_url: '' }).eq('id', imageEditProduct.id);
-                      }
-                      await purgeExistingStorageImages(imageEditProduct.id, Boolean(imageEditProduct.__isCombo));
-                      setImageEditModalOpen(false);
-                      setImageEditProduct(null);
-                      setImageEditBulkProducts(null);
-                      setImageEditFile(null);
-                      await fetchAll();
-                    } catch (err) {
-                      alert('Failed to remove image: ' + (err.message || err));
-                    } finally {
-                      setImageEditLoading(false);
-                    }
-                  }}
-                  className="products-image-modal__btn products-image-modal__btn--danger"
-                  disabled={imageEditLoading}
-                >Remove Image</button>
-              </div>
-            )}
-            <div className="products-image-modal__actions">
-              <button
-                disabled={!imageEditFile || imageEditLoading}
-                onClick={async () => {
-                  if (!imageEditFile) return;
-                  setImageEditLoading(true);
-                  try {
-                    const file = imageEditFile;
-                    if (imageEditBulkProducts?.length > 1) {
-                      for (let i = 0; i < imageEditBulkProducts.length; i += 1) {
-                        const row = imageEditBulkProducts[i];
-                        await applyImageFileToItem({
-                          itemId: row.id,
-                          isCombo: false,
-                          file,
-                          fileNonce: `${Date.now()}-${i}`,
-                        });
-                      }
-                      const appliedIds = imageEditBulkProducts.map((row) => String(row.id));
-                      setBulkSelectionMap((prev) => {
-                        const next = { ...prev };
-                        appliedIds.forEach((id) => {
-                          delete next[`prod:${id}`];
-                        });
-                        return next;
-                      });
-                      setToolbarNotice(`Image applied to ${imageEditBulkProducts.length} products.`);
-                    } else {
-                      const target = imageEditProduct || {
-                        id: imageEditBulkProducts[0].id,
-                        __isCombo: false,
-                      };
-                      const isCombo = Boolean(target.__isCombo);
-                      await applyImageFileToItem({
-                        itemId: target.id,
-                        isCombo,
-                        file,
-                      });
-                    }
-                    setImageEditModalOpen(false);
-                    setImageEditProduct(null);
-                    setImageEditBulkProducts(null);
-                    setImageEditFile(null);
-                    await fetchAll();
-                  } catch (err) {
-                    alert('Failed to upload image: ' + (err.message || err));
-                  } finally {
-                    setImageEditLoading(false);
-                  }
-                }}
-                className="products-image-modal__btn products-image-modal__btn--primary"
-              >{imageEditBulkProducts?.length > 1 ? 'Apply to All' : 'Save'}</button>
-              <button
-                onClick={() => {
-                  setImageEditModalOpen(false);
-                  setImageEditProduct(null);
-                  setImageEditBulkProducts(null);
-                  setImageEditFile(null);
-                }}
-                className="products-image-modal__btn products-image-modal__btn--secondary"
-              >Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Planner UI removed */}
-
-      {/* Manual Inventory Adjust / Set Assembly Modal */}
-      {adjustModalOpen && adjustProduct && (
-        <div className="products-adjust-modal-overlay">
-          <div className="products-adjust-modal">
-            <h3 className="products-adjust-modal__title">{adjustProduct.__isCombo ? (adjustSetMode === 'assemble' ? 'Assemble Set' : 'Receive Sets') : (transferMode==='transfer' ? 'Transfer Between Locations' : 'Adjust Inventory')}</h3>
-            <div className="products-adjust-modal__meta">
-              {adjustProduct.__isCombo ? (
-                <>Set: <b>{adjustProduct.combo_name}</b> (SKU: {adjustProduct.sku})</>
-              ) : (
-                <>Product: <b>{adjustProduct.name}</b> (SKU: {adjustProduct.sku})</>
-              )}
-            </div>
-            <div className="products-adjust-modal__row">
-              <label className="products-adjust-modal__label">Location:</label>
-              <select
-                value={selectedLocation}
-                onChange={(e) => {
-                  const lid = e.target.value;
-                  setSelectedLocation(lid);
-                  if (adjustProduct) {
-                    if (adjustProduct.__isCombo) {
-                      if (adjustSetMode === 'assemble') {
-                        const b = computeComboMaxQty(adjustProduct.id, lid);
-                        setAdjustQty(b > 0 ? 1 : 0);
-                      } else {
-                        setAdjustQty(1);
-                      }
-                    } else {
-                      setAdjustQty(getStockForProduct(adjustProduct.id, lid));
-                    }
-                  }
-                }}
-                className="products-adjust-modal__control"
-              >
-                {locations.map(loc => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-              </select>
-            </div>
-            {false && !adjustProduct.__isCombo && transferMode === 'transfer' && (
-              <div className="products-adjust-modal__transfer-block">
-                <div className="products-adjust-modal__hint">Move stock between locations</div>
-                <div className="products-adjust-modal__transfer-row">
-                  <label className="products-adjust-modal__label">From:</label>
-                  <select value={transferFrom} onChange={e=>setTransferFrom(e.target.value)} className="products-adjust-modal__control">
-                    <option value="">-- From --</option>
-                    {locations.map(l=> <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                  <span className="products-adjust-modal__hint">
-                    {(() => {
-                      if (!transferFrom) return 'Select from';
-                      const fromUuid = resolveLocationUuid(transferFrom);
-                      const inv = inventory.find(r => String(r.location)===String(fromUuid) && String(r.product_id)===String(adjustProduct.id));
-                      const q = inv ? Number(inv.quantity)||0 : 0;
-                      return `Qty: ${q}`;
-                    })()}
-                  </span>
-                </div>
-                <div className="products-adjust-modal__transfer-row">
-                  <label className="products-adjust-modal__label">To:</label>
-                  <select value={transferTo} onChange={e=>setTransferTo(e.target.value)} className="products-adjust-modal__control">
-                    <option value="">-- To --</option>
-                    {locations.map(l=> <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                  <span className="products-adjust-modal__hint">
-                    {(() => {
-                      if (!transferTo) return 'Select to';
-                      const toUuid = resolveLocationUuid(transferTo);
-                      const inv = inventory.find(r => String(r.location)===String(toUuid) && String(r.product_id)===String(adjustProduct.id));
-                      const q = inv ? Number(inv.quantity)||0 : 0;
-                      return `Qty: ${q}`;
-                    })()}
-                  </span>
-                </div>
-                {/* Date selection only (no time) */}
-                <div className="products-adjust-modal__date-group">
-                  <div className="products-adjust-modal__transfer-row products-adjust-modal__transfer-row--wrap">
-                    <label className="products-adjust-modal__label">Transfer time:</label>
-                    <div className="products-adjust-modal__transfer-row">
-                      <label className="products-adjust-modal__label">Date:</label>
-                      <input
-                        type="date"
-                        required
-                        value={manualTransferDate}
-                        onChange={e=>setManualTransferDate(e.target.value)}
-                        className="products-adjust-modal__control products-adjust-modal__date-input"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="products-adjust-modal__transfer-row">
-                  <label className="products-adjust-modal__label">Amount:</label>
-                  <input type="number" min={0} className="products-adjust-modal__control products-adjust-modal__qty-input" value={transferQty} onChange={e=>setTransferQty(e.target.value)} />
-                  <button disabled={transferBusy || !transferFrom || !transferTo || !transferQty || Number(transferQty)<=0 || transferFrom===transferTo}
-                    onClick={async ()=>{
-                      if (!adjustProduct) return;
-                      setTransferBusy(true);
-                      try {
-                        const qty = Number(transferQty);
-                        if (!Number.isFinite(qty) || qty<=0) throw new Error('Enter a valid amount');
-                        if (transferFrom===transferTo) throw new Error('Select different locations');
-                        // Resolve UUIDs for session/product_locations tables
-                        const fromUuid = resolveLocationUuid(transferFrom);
-                        const toUuid = resolveLocationUuid(transferTo);
-                        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-                        if (!UUID_RE.test(fromUuid) || !UUID_RE.test(toUuid)) {
-                          throw new Error('Location IDs are not UUIDs. Please ensure locations use UUID IDs.');
-                        }
-                        // Create a minimal transfer session and entry for one product
-                        // Read current app user from localStorage
-                        let userId = null; // Firebase Auth UID
-                        let legacyUserIntId = null; // optional legacy int id for compatibility
-                        try {
-                          const raw = localStorage.getItem('user');
-                          const u = raw ? JSON.parse(raw) : null;
-                          userId = u?.id ?? null;
-                          const email = u?.email || '';
-                          if (email) {
-                            try {
-                              const { data: legacyUser } = await db
-                                .from('users')
-                                .select('id')
-                                .eq('email', email)
-                                .maybeSingle();
-                              if (legacyUser && legacyUser.id != null) legacyUserIntId = legacyUser.id;
-                            } catch {}
-                          }
-                        } catch {}
-                        // Determine transfer date (no time component)
-                        let sessionCreatedAtIso = new Date().toISOString();
-                        let sessionTransferDate = new Date().toISOString().slice(0,10);
-                        if (manualTransferDate) {
-                          const dtLocal = new Date(`${manualTransferDate}T00:00:00`);
-                          if (!isNaN(dtLocal.getTime())) {
-                            sessionCreatedAtIso = dtLocal.toISOString();
-                            sessionTransferDate = manualTransferDate;
-                          }
-                        }
-                        const payload = {
-                          from_location: fromUuid,
-                          to_location: toUuid,
-                          // write UUID into new column; avoid integer user_id mismatch
-                          user_uid: userId,
-                          transfer_date: sessionTransferDate,
-                          created_at: sessionCreatedAtIso,
-                          transfer_datetime: sessionCreatedAtIso
-                        };
-                        // Add legacy user_id if required by the schema (best-effort)
-                        if (legacyUserIntId != null) payload.user_id = legacyUserIntId;
-                        const { data: session, error: sessErr } = await db
-                          .from('stock_transfer_sessions')
-                          .insert(payload)
-                          .select()
-                          .single();
-                        if (sessErr) throw sessErr;
-                        const sessionId = session.id;
-                        const { error: entryErr } = await db.from('stock_transfer_entries').insert({
-                          session_id: sessionId,
-                          product_id: adjustProduct.id,
-                          quantity: qty
-                        });
-                        if (entryErr) throw entryErr;
-                        // Apply inventory changes
-                        const nowIso = new Date().toISOString();
-                        const { data: invFrom } = await db.from('inventory').select('id, quantity').eq('product_id', adjustProduct.id).eq('location', fromUuid).maybeSingle();
-                        if (invFrom) {
-                          await applyInventoryBulk({
-                            updates: [{ id: invFrom.id, quantity: Math.max(0, Number(invFrom.quantity || 0) - qty), updated_at: nowIso }],
-                          }, db);
-                        }
-                        const { data: invTo } = await db.from('inventory').select('id, quantity').eq('product_id', adjustProduct.id).eq('location', toUuid).maybeSingle();
-                        if (invTo) {
-                          await applyInventoryBulk({
-                            updates: [{ id: invTo.id, quantity: Number(invTo.quantity || 0) + qty, updated_at: nowIso }],
-                          }, db);
-                        } else {
-                          await applyInventoryBulk({
-                            inserts: [{ product_id: adjustProduct.id, location: toUuid, quantity: qty, updated_at: nowIso }],
-                          }, db);
-                        }
-                        // Ensure product_locations link exists for the destination
-                        await syncProductLocations({ rows: [{ product_id: adjustProduct.id, location_id: toUuid }] }, db);
-                        await refreshInventoryForLocations([fromUuid, toUuid]);
-                        setAdjustModalOpen(false);
-                      } catch (err) {
-                        try {
-                          const msg = (err && (err.message || err.error_description)) ? String(err.message || err.error_description) : 'Failed to transfer';
-                          const details = (err && (err.details || err.hint)) ? `\n${err.details || err.hint}` : '';
-                          const debug = (err && typeof err === 'object') ? `\n${JSON.stringify(err, null, 2)}` : '';
-                          alert(`${msg}${details}${debug}`);
-                        } catch {
-                          alert('Failed to transfer');
-                        }
-                      } finally {
-                        setTransferBusy(false);
-                      }
-                    }}
-                    className="products-adjust-modal__btn products-adjust-modal__btn--primary"
-                  >Transfer</button>
-                </div>
-              </div>
-            )}
-            {adjustProduct.__isCombo ? (
-              <div className="products-adjust-modal__hint products-adjust-modal__hint--bottom">
-                {selectedLocation ? (
-                  (() => {
-                    const b = computeComboMaxQty(adjustProduct.id, selectedLocation);
-                    const locName = locations.find(l => String(l.id) === String(selectedLocation))?.name || '';
-                    return <span>Buildable Sets at {locName}: <b style={{color:'#e0e6ed'}}>{b}</b></span>;
-                  })()
-                ) : (
-                  <span>Select a location to view buildable sets</span>
-                )}
-              </div>
-            ) : (
-              <div className="products-adjust-modal__hint products-adjust-modal__hint--bottom">
-                {selectedLocation
-                  ? (
-                    (() => {
-                      const qty = getStockForProduct(adjustProduct.id, selectedLocation);
-                      const locName = locations.find(l => String(l.id) === String(selectedLocation))?.name || '';
-                      return <span>Current Qty at {locName}: <b style={{color:'#e0e6ed'}}>{qty}</b></span>;
-                    })()
-                  )
-                  : (<span>Select a location to view current quantity</span>)}
-              </div>
-            )}
-            {adjustProduct.__isCombo && (
-              <div className="products-adjust-modal__row">
-                <label className="products-adjust-modal__label">Mode:</label>
-                <select value={adjustSetMode} onChange={e => {
-                  const mode = e.target.value;
-                  setAdjustSetMode(mode);
-                  if (mode === 'assemble') {
-                    const b = computeComboMaxQty(adjustProduct.id, selectedLocation || '');
-                    setAdjustQty(b > 0 ? 1 : 0);
-                  } else {
-                    setAdjustQty(1);
-                  }
-                }} className="products-adjust-modal__control">
-                  <option value="receive">Receive (increase components)</option>
-                  <option value="assemble">Assemble (consume components)</option>
-                </select>
-              </div>
-            )}
-            <div className="products-adjust-modal__row">
-              {adjustProduct.__isCombo ? (
-                <>
-                  <label className="products-adjust-modal__label">{adjustSetMode === 'assemble' ? 'Assemble Sets:' : 'Receive Sets:'}</label>
-                  <input type="number" min={1} value={adjustQty} onChange={e => setAdjustQty(e.target.value)} className="products-adjust-modal__control products-adjust-modal__qty-input" />
-                </>
-              ) : (
-                <>
-                  <label className="products-adjust-modal__label">Quantity:</label>
-                  <input type="number" value={adjustQty} onChange={e => setAdjustQty(e.target.value)} className="products-adjust-modal__control products-adjust-modal__qty-input" />
-                </>
-              )}
-            </div>
-            <div className="products-adjust-modal__actions">
-              {transferMode!=='transfer' && (
-                <button onClick={handleAdjustInventory} disabled={adjustLoading || !adjustQty} className="products-adjust-modal__btn products-adjust-modal__btn--primary">
-                  {adjustLoading ? 'Saving...' : 'Save'}
-                </button>
-              )}
-              <button onClick={()=>setAdjustModalOpen(false)} className="products-adjust-modal__btn products-adjust-modal__btn--secondary">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* ======== End fixed modals ======== */}
+      {/* ======== End fixed modals ======== */}{/* ======== End fixed modals ======== */}
     </div>
   );
 }

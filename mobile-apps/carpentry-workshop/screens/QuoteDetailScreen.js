@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../productionKiosk/components/ProductionKioskTopBar';
+import ProductionQrScanModal from '../productionKiosk/components/ProductionQrScanModal';
 import { kiosk } from '../productionKiosk/components/kioskStyles';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
@@ -47,6 +48,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
   const [completed, setCompleted] = useState(Boolean(quote.completed_at));
   const [tick, setTick] = useState(Date.now());
   const [scan, setScan] = useState('');
+  const [scanOpen, setScanOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -128,8 +130,8 @@ export default function QuoteDetailScreen({ route, navigation }) {
     );
   };
 
-  const onScanSubmit = async () => {
-    const value = scan.trim();
+  const onScanSubmit = async (rawValue) => {
+    const value = String(rawValue ?? scan).trim();
     if (!value) return;
     setBusy(true);
     try {
@@ -196,12 +198,30 @@ export default function QuoteDetailScreen({ route, navigation }) {
         placeholderTextColor="#94a3b8"
         value={scan}
         onChangeText={setScan}
-        onSubmitEditing={onScanSubmit}
+        onSubmitEditing={() => onScanSubmit()}
         editable={!completed && !busy}
       />
-      <Pressable style={[kiosk.btn, styles.actionBtn]} disabled={busy || completed} onPress={onScanSubmit}>
-        <Text style={kiosk.btnText}>{tUi('quoteOrderDeductScan', locale)}</Text>
-      </Pressable>
+      <View style={styles.scanRow}>
+        <Pressable style={[kiosk.btn, styles.actionBtn, styles.scanBtnFlex]} disabled={busy || completed} onPress={() => onScanSubmit()}>
+          <Text style={kiosk.btnText}>{tUi('quoteOrderDeductScan', locale)}</Text>
+        </Pressable>
+        <Pressable
+          style={[kiosk.btn, kiosk.btnPrimary, styles.actionBtn]}
+          disabled={busy || completed}
+          onPress={() => setScanOpen(true)}
+        >
+          <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('manufactureScanBtn', locale)}</Text>
+        </Pressable>
+      </View>
+      <ProductionQrScanModal
+        visible={scanOpen}
+        locale={locale}
+        onClose={() => setScanOpen(false)}
+        onScan={(value) => {
+          setScanOpen(false);
+          onScanSubmit(value);
+        }}
+      />
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
       <QuoteProductionLineRows
         lines={lines}
@@ -223,6 +243,8 @@ const styles = StyleSheet.create({
   timerLabel: { color: theme.textMuted },
   timer: { color: theme.primary, fontSize: 28, fontWeight: '700', marginTop: 8, textAlign: 'center' },
   actionBtn: { alignSelf: 'stretch', marginBottom: 8 },
+  scanRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  scanBtnFlex: { flex: 1 },
   danger: { backgroundColor: '#7f1d1d' },
   section: { marginTop: 16, marginBottom: 8 },
   line: { color: theme.textSecondary, marginBottom: 4 },

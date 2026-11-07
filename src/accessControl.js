@@ -9,7 +9,7 @@ import {
 
 const USER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** Hassan Awad — quotationer-only: quotes, warehouse deliveries, read-only laybys. */
+/** Hassan Awad — quotationer-only: quotes and warehouse delivery flows (no layby desk). */
 export const HASSAN_AWAD = Object.freeze({
   id: '6b992ac8-8e39-4f31-a323-2271a974da8c',
   emails: Object.freeze(['hassanawad18@gmail.com']),
@@ -22,7 +22,6 @@ export const HASSAN_AWAD = Object.freeze({
     '/warehouse-returns',
     '/warehouse-returns-trackage',
     '/warehouse-storage',
-    '/layby-management',
   ]),
   quotationerOnly: true,
   canManageLaybys: false,
@@ -188,6 +187,7 @@ const ROUTE_ALIASES = new Map([
   ['/stocktake-periods', '/stocktake-periods'],
   ['/KitweStocktake', '/stocktake'],
   ['/LusakaStocktake', '/stocktake'],
+  ['/stocktake/aggregation', '/stocktake'],
   ['/outlet-transfer', '/Kitwe-Lusaka'],
   ['/outlet-transfer-summary', '/Kitwe-Lusaka-summary'],
   ['/warehouse-transfer', '/All-Transfers'],
@@ -280,7 +280,6 @@ export function canManageCatalog(user) {
 const ZERO_STOCK_RESET_ROUTE = '/zero-stock-location';
 const ZERO_STOCK_RESET_USER = '1b5e098e-1206-447e-b4bc-6d009b85b5d3';
 const USER_ACTIVITY_ROUTE = '/user-activity';
-const DATABASE_BACKUP_ROUTE = '/database-backup';
 const USER_ACCESS_ROUTE = '/user-access';
 const CUSTOMER_PRIVATE_BALANCES_ROUTE = '/customer-private-balances';
 const USER_ACTIVITY_EMAIL = 'alielboussi00@gmail.com';
@@ -315,6 +314,8 @@ export function isHassanAllowedAppPath(path) {
 export function isQuotationerOnlyExperience(user, pathname) {
   if (isHassanAwadUser(user)) return true;
   if (!canUseLocalhostQuotationerDirectLink(user)) return false;
+  const allow = allowedPathsForUser(user);
+  if (Array.isArray(allow) && allow.includes('*')) return false;
   if (pathname == null || pathname === '') return false;
   return isHassanAllowedAppPath(pathname);
 }
@@ -425,10 +426,6 @@ export function canViewUserActivity(user) {
   return getUserEmail(user) === USER_ACTIVITY_EMAIL;
 }
 
-export function canViewDatabaseBackup(user) {
-  return getUserEmail(user) === USER_ACTIVITY_EMAIL;
-}
-
 export function canManageLoginAccess(user) {
   return getUserEmail(user) === USER_ACTIVITY_EMAIL;
 }
@@ -466,9 +463,6 @@ export function isPathAllowed(user, path) {
   if (p === COMPANY_SETTINGS_ROUTE || p.startsWith(`${COMPANY_SETTINGS_ROUTE}/`)) return false;
   if (p === USER_ACTIVITY_ROUTE || p.startsWith(`${USER_ACTIVITY_ROUTE}/`)) {
     return canViewUserActivity(user);
-  }
-  if (p === DATABASE_BACKUP_ROUTE || p.startsWith(`${DATABASE_BACKUP_ROUTE}/`)) {
-    return canViewDatabaseBackup(user);
   }
   if (p === USER_ACCESS_ROUTE || p.startsWith(`${USER_ACCESS_ROUTE}/`)) {
     return canManageLoginAccess(user);
@@ -551,6 +545,24 @@ export function isPathAllowed(user, path) {
   }
   if ((STOCKTAKE_FLOW_ROUTES.has(p) || p.startsWith('/stocktake/')) && !canViewStocktakeFlow(user)) {
     return false;
+  }
+  const pathInAllow = (path) => allow.some((base) => path === base || path.startsWith(`${base}/`));
+  if (p === '/warehouse-floors' || p.startsWith('/warehouse-floors/')) {
+    return pathInAllow('/warehouse-products') || canManageCatalog(user);
+  }
+  if (p === '/warehouse-storerooms' || p.startsWith('/warehouse-storerooms/')) {
+    return canManageCatalog(user);
+  }
+  if (p === '/production-workspace' || p.startsWith('/production-workspace/')
+    || p === '/production-catalogs' || p.startsWith('/production-catalogs/')
+    || p === '/production-jobs' || p.startsWith('/production-jobs/')
+    || p === '/production-intake' || p.startsWith('/production-intake/')) {
+    return canManageCatalog(user) || pathInAllow('/production');
+  }
+  if (p === '/reports' || p.startsWith('/reports/')) {
+    return pathInAllow('/sales-report')
+      || pathInAllow('/transfers-report')
+      || canManageCatalog(user);
   }
   if (allow.includes('*')) return true;
   return allow.some(base => p === base || p.startsWith(base + '/') );

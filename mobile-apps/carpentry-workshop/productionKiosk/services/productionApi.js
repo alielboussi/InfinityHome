@@ -265,6 +265,37 @@ export async function attachProductionProductPhoto({
   });
 }
 
+/** Carpentry workshop — new SKU on Warehouse Floor 2 WIP (optional photo on create). */
+export async function createCarpentryFloor2Product({
+  name,
+  baseName,
+  preset,
+  quantity,
+  imageBase64,
+  dimLength,
+  dimWidth,
+  dimHeight,
+} = {}) {
+  return productionOp('carpentry-floor2-create-product', {
+    name,
+    base_name: baseName,
+    preset: preset ? String(preset).trim() : undefined,
+    quantity,
+    initial_quantity: quantity,
+    image_base64: imageBase64,
+    dim_length: dimLength,
+    dim_width: dimWidth,
+    dim_height: dimHeight,
+  });
+}
+
+export async function uploadCarpentryFloor2ProductPhoto({ assemblyId, imageBase64 }) {
+  return productionOp('carpentry-floor2-photo-upload', {
+    assembly_id: assemblyId,
+    image_base64: imageBase64,
+  });
+}
+
 /** Create finished product + stock only (photo deferred — attach with attachProductionProductPhoto). */
 export async function createProductionProductOnly({
   name,

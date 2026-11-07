@@ -26,7 +26,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
-        color={theme.primaryDark || '#0369a1'}
+        color={theme.primaryDark}
         style={kiosk.dashTileIcon}
       />
       <Text
@@ -62,6 +62,13 @@ export default function DashboardScreen({
       onPress: () => navigation.navigate('Create'),
     },
     {
+      key: 'scan',
+      screenId: 'upholstery_manufacture',
+      icon: 'barcode-scan',
+      title: tUi('dashScanFloor2', locale),
+      onPress: () => navigation.navigate('Manufacture', { openScan: true }),
+    },
+    {
       key: 'manufacture',
       screenId: 'upholstery_manufacture',
       icon: 'factory',
@@ -88,6 +95,13 @@ export default function DashboardScreen({
       icon: 'wrench-clock',
       title: tUi('dashRepairs', locale),
       onPress: () => navigation.navigate('Repairs'),
+    },
+    {
+      key: 'push-settings',
+      screenId: 'upholstery_push_settings',
+      icon: 'bell-cog-outline',
+      title: 'Alert settings',
+      onPress: () => navigation.navigate('PushSettings'),
     },
   ];
 

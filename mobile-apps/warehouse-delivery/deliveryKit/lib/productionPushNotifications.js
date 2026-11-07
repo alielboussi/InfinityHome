@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { getFirebaseAuth } from '../shared/firebase';
+import { navigateFromProductionPushData } from '../../../shared/lib/productionPushNavigation';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -52,14 +53,8 @@ export async function registerProductionPushTokenWithServer() {
 }
 
 export function navigateFromProductionNotification(navigationRef, data) {
-  const nav = navigationRef?.current;
-  if (!nav?.navigate) return;
-  const screen = String(data?.screen || '').trim();
-  const quoteId = String(data?.quote_id || '').trim();
-  if (screen === 'UpholsteryQuotes' || screen === 'UpholsteryQuoteDetail') {
-    nav.navigate('UpholsteryQuotes');
-    if (quoteId) {
-      nav.navigate('UpholsteryQuoteDetail', { quote: { quote_id: quoteId } });
-    }
-  }
+  navigateFromProductionPushData(navigationRef, data, {
+    soldOrders: 'SoldOrders',
+    soldOrderDetail: 'SoldOrderDetail',
+  });
 }

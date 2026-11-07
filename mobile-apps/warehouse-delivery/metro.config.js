@@ -156,4 +156,5 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return finishResolve(metroResolve(context, moduleName, platform));
 };
 
-module.exports = config;
+const { applyMetroLightweightBundle } = require('../shared/metroInlineRequires');
+module.exports = applyMetroLightweightBundle(config);

@@ -44,7 +44,8 @@ function htmlToPlainPreview(html) {
   return (el.textContent || el.innerText || '').replace(/\s+/g, ' ').trim();
 }
 
-const NAV_BUTTON_STYLE = { padding: '8px 12px', fontSize: 13, background: '#0f7fff', color: '#fff', border: '1px solid #0c6ed8', borderRadius: 6, minHeight: 32 };
+const ENT_BTN_PRIMARY = 'stock-periods-btn stock-periods-btn-primary';
+const ENT_BTN_SECONDARY = 'stock-periods-btn stock-periods-btn-secondary';
 const QUOTATION_LIST_CACHE_KEY = 'quotationer:list:v6';
 const QUOTATION_LIST_CUSTOMER_MAP_CACHE_KEY = 'quotationer:list:customer-map:v2';
 const QUOTE_CUSTOMER_CATALOG_CACHE_KEY = 'quotationer:quote-customers:v1';
@@ -442,14 +443,15 @@ export default function Quotationer() {
   const isQuotationerOnly = isQuotationerOnlyExperience(localUser, location.pathname);
   const homeLabel = isQuotationerOnly ? 'Dashboard' : 'Quotationer';
 
-  if (checking) return <div style={{ padding: 20, color: '#8ab' }}>Checking access…</div>;
+  if (checking) return <div className="quotationer-muted-loading">Checking access…</div>;
   if (!allowed) {
     return (
-      <div style={{ maxWidth: 520, margin: '80px auto', background: '#111', padding: 18, borderRadius: 10, border: '1px solid #ff5252', color: '#ffb4b4', textAlign: 'center' }}>
-        <h3 style={{ marginTop: 0, color: '#ff7676' }}>Access Restricted</h3>
-        <p style={{ marginBottom: 12 }}>{error || 'You do not have permission to view this area.'}</p>
+      <div className="quotationer-access-denied">
+        <h3>Access Restricted</h3>
+        <p>{error || 'You do not have permission to view this area.'}</p>
         <button
-          style={{ background: '#00b4d8', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 18px', fontWeight: 600, cursor: 'pointer' }}
+          type="button"
+          className={ENT_BTN_PRIMARY}
           onClick={() => navigate('/login')}
         >
           Back to Login
@@ -459,13 +461,23 @@ export default function Quotationer() {
   }
 
   return (
-    <div className={isQuotationerOnly && view === 'home' ? 'dashboard-container' : 'quotes-page'} style={isQuotationerOnly && view === 'home' ? undefined : { padding: 12 }}>
+    <div
+      className={
+        isQuotationerOnly && view === 'home'
+          ? 'dashboard-container quotationer-dashboard-page'
+          : 'quotes-page quotationer-subpage'
+      }
+    >
       {!(isQuotationerOnly && view === 'home') && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <h2 className="quotes-title" style={{ margin: 0 }}>{view === 'home' ? homeLabel : 'Quotationer'}</h2>
+        <div className="page-header-row quotationer-subpage-header">
+          <h2 className="quotes-title products-title" style={{ margin: 0 }}>
+            {view === 'home' ? homeLabel : 'Quotationer'}
+          </h2>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {view !== 'home' && (
-              <button className="action-button" style={NAV_BUTTON_STYLE} onClick={goHome}>Back to {homeLabel}</button>
+              <button type="button" className={ENT_BTN_SECONDARY} onClick={goHome}>
+                Back to {homeLabel}
+              </button>
             )}
           </div>
         </div>
@@ -531,13 +543,14 @@ function QuotationerLaybyDashboard({ displayName, onNewQuote, onList, onCustomer
 
   return (
     <>
-      <section className="dashboard-hero dashboard-hero-single">
+      <section className="dashboard-hero dashboard-hero-single quotationer-dashboard-intro">
         <div className="dashboard-hero-left">
           <div className="dashboard-hero-heading">
-            <h1>Dashboard</h1>
-            <button type="button" className="logout-btn dashboard-hero-logout" onClick={handleLogout}>Logout</button>
+            <p className="quotationer-dashboard-tagline">Layby overview and quotation tools.</p>
+            <button type="button" className={`${ENT_BTN_SECONDARY} dashboard-hero-logout`} onClick={handleLogout}>
+              Logout
+            </button>
           </div>
-          <p>Layby overview and quotation tools.</p>
           <div className="dashboard-meta">
             <div className="meta-card">
               <span className="meta-label">Signed in</span>
@@ -566,19 +579,19 @@ function QuotationerHome({ onNewQuote, onList, onCustomers, onProducts }) {
     <div className="quotationer-home-grid">
       <div className="quotationer-home-card">
         <div className="quotationer-home-card-title">Quote Customers</div>
-        <button type="button" className="quotationer-home-card-btn" onClick={onCustomers}>Manage Customers</button>
+        <button type="button" className={`quotationer-home-card-btn ${ENT_BTN_PRIMARY}`} onClick={onCustomers}>Manage Customers</button>
       </div>
       <div className="quotationer-home-card">
         <div className="quotationer-home-card-title">Quote Products</div>
-        <button type="button" className="quotationer-home-card-btn" onClick={onProducts}>Manage Products</button>
+        <button type="button" className={`quotationer-home-card-btn ${ENT_BTN_PRIMARY}`} onClick={onProducts}>Manage Products</button>
       </div>
       <div className="quotationer-home-card">
         <div className="quotationer-home-card-title">Create Quote</div>
-        <button type="button" className="quotationer-home-card-btn" onClick={onNewQuote}>New Quote</button>
+        <button type="button" className={`quotationer-home-card-btn ${ENT_BTN_PRIMARY}`} onClick={onNewQuote}>New Quote</button>
       </div>
       <div className="quotationer-home-card">
         <div className="quotationer-home-card-title">View Quotes</div>
-        <button type="button" className="quotationer-home-card-btn" onClick={onList}>View Quotes</button>
+        <button type="button" className={`quotationer-home-card-btn ${ENT_BTN_PRIMARY}`} onClick={onList}>View Quotes</button>
       </div>
     </div>
   );
@@ -841,7 +854,6 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
 }
 
 function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
-  const compactButton = { padding: '8px 12px', fontSize: 13, background: '#0f7fff', color: '#fff', border: '1px solid #0c6ed8', borderRadius: 6, minHeight: 32 };
   const tableCellStyle = { border: '1px solid #c9d3df', padding: '8px 10px' };
   const navigate = useNavigate();
   const location = useLocation();
@@ -1401,8 +1413,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                   />
                   <button
                     type="button"
-                    className="action-button quotes-production-drawing-btn"
-                    style={compactButton}
+                    className={`action-button quotes-production-drawing-btn ${ENT_BTN_SECONDARY}`}
                     disabled={locked || productionDrawingUploadBusy}
                     onClick={() => productionDrawingInputRef.current?.click()}
                   >
@@ -1450,7 +1461,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
               <option value="">Select Customer</option>
               {(quoteCustomers||[]).map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
             </select>
-            <button className="action-button" type="button" style={compactButton} onClick={() => setShowCustomerManager(v => !v)}>
+            <button className={`action-button ${ENT_BTN_PRIMARY}`} type="button" onClick={() => setShowCustomerManager(v => !v)}>
               {showCustomerManager ? 'Hide Customers' : 'Manage Customers'}
             </button>
           </div>
@@ -1503,7 +1514,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                   <input className="phone-input" placeholder="Phone" value={custPhone} onChange={e => setCustPhone(e.target.value)} />
                 </div>
                 <input className="quotes-input" placeholder="Customer name" value={custName} onChange={e => setCustName(e.target.value)} />
-                <button className="action-button" type="button" style={compactButton} onClick={async () => {
+                <button className={`action-button ${ENT_BTN_PRIMARY}`} type="button" onClick={async () => {
                   if (!custName.trim()) return;
                   const clean = String(custPhone||'').replace(/\s+/g, '');
                   const fullPhone = clean ? `${custPrefix}${clean.replace(/^\+?(260|243)/, '')}` : null;
@@ -1544,7 +1555,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                     if (!s) return true; return (c.name||'').toLowerCase().includes(s) || (c.phone||'').toLowerCase().includes(s);
                   })
                   .map(c => (
-                    <button key={c.id} className="action-button" style={{ marginRight:6, marginBottom:6 }} onClick={() => setQuote(q => ({ ...q, customer_id: c.id, currency: c.currency || q.currency }))}>{c.name}</button>
+                    <button key={c.id} className={`action-button ${ENT_BTN_PRIMARY}`} style={{ marginRight:6, marginBottom:6 }} onClick={() => setQuote(q => ({ ...q, customer_id: c.id, currency: c.currency || q.currency }))}>{c.name}</button>
                   ))}
               </div>
             </div>
@@ -1577,7 +1588,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                         <span style={{ color:'#8ab' }}>{p.unit_id ? normalizeUnitAbbreviation(units.find(u => u.id === p.unit_id)?.abbreviation, units.find(u => u.id === p.unit_id)?.name) : ''}</span>
                       </div>
                       <div style={{ color:'#8ab', minWidth:80, textAlign:'right' }}>{Number(p.price||0).toFixed(2)}</div>
-                      <button className="action-button" style={compactButton} disabled={locked || productionRouteMissing} onClick={() => addItemFromQuoteProduct(p)}>Add</button>
+                      <button className={`action-button ${ENT_BTN_PRIMARY}`} disabled={locked || productionRouteMissing} onClick={() => addItemFromQuoteProduct(p)}>Add</button>
                     </div>
                   ))}
                 {!((quoteProducts||[]).some(p => {
@@ -1908,8 +1919,8 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap:'wrap' }}>
             {!locked && (
               <button
-                className="action-button"
-                style={{ ...compactButton, minWidth: 140 }}
+                className={`action-button ${ENT_BTN_PRIMARY}`}
+                style={{ minWidth: 140 }}
                 disabled={saving || productionRouteMissing}
                 title={productionRouteMissing ? 'Select Upholstery or Carpentry first' : undefined}
                 onClick={saveQuote}
@@ -1972,8 +1983,6 @@ function QuoteDescriptionDialog({ open, value, onClose, onSave }) {
 }
 
 function QuotesCustomersView({ onBackHome }) {
-  const compactButton = { padding: '8px 12px', fontSize: 13, background: '#0f7fff', color: '#fff', border: '1px solid #0c6ed8', borderRadius: 6, minHeight: 32 };
-  const compactDanger = { padding: '8px 12px', fontSize: 13, background: '#d64545', color: '#fff', border: '1px solid #b53434', borderRadius: 6, minHeight: 32 };
   const tableCellStyle = { border: '1px solid #c9d3df', padding: '8px 10px' };
   const canDelete = canDeleteQuotationData(readLocalUser());
   const [list, setList] = React.useState([]);
@@ -2159,11 +2168,11 @@ function QuotesCustomersView({ onBackHome }) {
         <div className="quotes-customers-actions">
           {editingId ? (
             <>
-              <button className="action-button" style={compactButton} disabled={saving} type="submit">Save Changes</button>
-              <button type="button" className="danger-button" style={compactDanger} onClick={cancelEdit}>Cancel Edit</button>
+              <button className={`action-button ${ENT_BTN_PRIMARY}`} disabled={saving} type="submit">Save Changes</button>
+              <button type="button" className="danger-button" onClick={cancelEdit}>Cancel Edit</button>
             </>
           ) : (
-            <button className="action-button" style={compactButton} disabled={saving} type="submit">Add</button>
+            <button className={`action-button ${ENT_BTN_PRIMARY}`} disabled={saving} type="submit">Add</button>
           )}
         </div>
       </form>
@@ -2205,9 +2214,9 @@ function QuotesCustomersView({ onBackHome }) {
                 <td style={tableCellStyle}>{new Date(r.created_at).toLocaleString()}</td>
                 <td style={{ ...tableCellStyle, width: '5.5cm' }}>
                   <div className="quotes-table-actions">
-                    <button className="action-button" style={compactButton} onClick={(e) => { e.stopPropagation(); startEditSelected(r.id); }}>Edit</button>
+                    <button className={`action-button ${ENT_BTN_PRIMARY}`} onClick={(e) => { e.stopPropagation(); startEditSelected(r.id); }}>Edit</button>
                     {canDelete && (
-                      <button className="danger-button" style={compactDanger} onClick={(e) => { e.stopPropagation(); deleteSelected(r.id); }}>Delete</button>
+                      <button className="danger-button" onClick={(e) => { e.stopPropagation(); deleteSelected(r.id); }}>Delete</button>
                     )}
                   </div>
                 </td>
@@ -2221,8 +2230,6 @@ function QuotesCustomersView({ onBackHome }) {
 }
 
 function QuoteProductsView({ onBackHome }) {
-  const compactButton = { padding: '8px 12px', fontSize: 13, background: '#0f7fff', color: '#fff', border: '1px solid #0c6ed8', borderRadius: 6, minHeight: 32 };
-  const compactDanger = { padding: '8px 12px', fontSize: 13, background: '#d64545', color: '#fff', border: '1px solid #b53434', borderRadius: 6, minHeight: 32 };
   const tableCellStyle = { border: '1px solid #c9d3df', padding: '8px 10px' };
   const canDelete = canDeleteQuotationData(readLocalUser());
   const [units, setUnits] = React.useState([]);
@@ -2418,7 +2425,7 @@ function QuoteProductsView({ onBackHome }) {
           <h4 style={{ margin: 0 }}>Manage Units</h4>
           <input className="quotes-input" placeholder="Unit name" value={unitName} onChange={e => setUnitName(e.target.value)} style={{ width: 180, maxWidth: '100%' }} />
           <input className="quotes-input" placeholder="Abbreviation (optional)" value={unitAbbr} onChange={e => setUnitAbbr(e.target.value)} style={{ width: 180, maxWidth: '100%' }} />
-          <button className="action-button" type="button" style={compactButton} onClick={addUnit}>Add Unit</button>
+          <button className={`action-button ${ENT_BTN_PRIMARY}`} type="button" onClick={addUnit}>Add Unit</button>
         </div>
         <div className="table-container quotes-table-wrap" style={{ marginTop: 8 }}>
           <table className="table quotes-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
@@ -2436,7 +2443,7 @@ function QuoteProductsView({ onBackHome }) {
                   <td style={tableCellStyle}>{normalizeUnitAbbreviation(u.abbreviation, u.name) || '-'}</td>
                   <td style={{ ...tableCellStyle, width: '5.5cm', textAlign: 'center' }}>
                     {canDelete && (
-                      <button type="button" className="danger-button quotes-action-btn-5cm" style={compactDanger} onClick={() => removeUnit(u.id)}>Delete</button>
+                      <button type="button" className="danger-button quotes-action-btn-5cm" onClick={() => removeUnit(u.id)}>Delete</button>
                     )}
                   </td>
                 </tr>
@@ -2500,11 +2507,11 @@ function QuoteProductsView({ onBackHome }) {
             </option>
           ))}
         </select>
-        <button className="action-button quotes-submit-5cm" style={compactButton} type="submit">
+        <button className={`action-button quotes-submit-5cm ${ENT_BTN_PRIMARY}`} type="submit">
           {editingId ? 'Save Changes' : 'Add'}
         </button>
         {editingId ? (
-          <button type="button" className="danger-button quotes-submit-5cm" style={compactDanger} onClick={cancelEdit}>
+          <button type="button" className="danger-button quotes-submit-5cm" onClick={cancelEdit}>
             Cancel Edit
           </button>
         ) : null}
@@ -2553,14 +2560,14 @@ function QuoteProductsView({ onBackHome }) {
                     <td style={tableCellStyle}>{p.active ? 'Yes' : 'No'}</td>
                     <td style={{ ...tableCellStyle, width: '5.5cm' }}>
                       <div className="quotes-table-actions">
-                        <button type="button" className="action-button quotes-action-btn-5cm" style={compactButton} onClick={() => startEdit(p)}>
+                        <button type="button" className={`action-button quotes-action-btn-5cm ${ENT_BTN_PRIMARY}`} onClick={() => startEdit(p)}>
                           Edit
                         </button>
-                        <button type="button" className="action-button quotes-action-btn-5cm" style={compactButton} onClick={() => toggleActive(p.id, p.active)}>
+                        <button type="button" className={`action-button quotes-action-btn-5cm ${ENT_BTN_PRIMARY}`} onClick={() => toggleActive(p.id, p.active)}>
                           {p.active ? 'Deactivate' : 'Activate'}
                         </button>
                         {canDelete && (
-                          <button type="button" className="danger-button quotes-action-btn-5cm" style={compactDanger} onClick={() => deleteProduct(p.id)}>
+                          <button type="button" className="danger-button quotes-action-btn-5cm" onClick={() => deleteProduct(p.id)}>
                             Delete
                           </button>
                         )}

@@ -24,7 +24,7 @@ const pad = fs.readFileSync(
 );
 const sigScreen = fs.readFileSync(
   firstExisting([
-    'mobile-apps/warehouse-delivery/delivery-screens/KitweSendSignatureScreen.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendSignatureScreen.js',
     'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendSignatureScreen.js',
     'mobile-apps/warehouse-production/screens/KitweSendSignatureScreen.js',
   ]),
@@ -32,7 +32,7 @@ const sigScreen = fs.readFileSync(
 );
 const doneScreen = fs.readFileSync(
   firstExisting([
-    'mobile-apps/warehouse-delivery/delivery-screens/KitweSendDoneScreen.js',
+    'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendDoneScreen.js',
     'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendDoneScreen.js',
     'mobile-apps/warehouse-production/screens/KitweSendDoneScreen.js',
   ]),

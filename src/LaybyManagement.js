@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useState } from 'react';
+import './LaybyManagement.css';
 import { FaFileExcel, FaFilePdf, FaWhatsapp } from 'react-icons/fa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import db from './dataClient';
@@ -1459,10 +1460,10 @@ export default function LaybyManagement() {
   }
 
   return (
-    <div className="layby-mgmt-container" style={{ maxWidth: 1100, margin: '32px auto', background: '#181c20', borderRadius: 12, padding: '24px 16px', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
-      <div className="page-header-row layby-mgmt-header" style={{ marginBottom: 16 }}>
+    <div className="layby-mgmt-container">
+      <div className="page-header-row layby-mgmt-header">
         <BackToDashboard />
-        <h2 style={{ fontSize: '1.6rem', color: 'var(--dash-border, #4caf50)', margin: 0 }}>Layby Management</h2>
+        <h2>Layby Management</h2>
         <div className="layby-mgmt-header-actions">
           <button
             type="button"
@@ -1501,38 +1502,50 @@ export default function LaybyManagement() {
         </div>
       </div>
       {bulkExportBusy && bulkExportLabel && (
-        <div style={{ color: '#9aa4b2', fontSize: 12, marginBottom: 10 }}>{bulkExportLabel}</div>
+        <div className="layby-mgmt-status" role="status">{bulkExportLabel}</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: readOnly ? 'repeat(3, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
-        <div className="layby-total-box k">Total Sale: {formatTotalsLine('total')}</div>
-        <div className="layby-total-box usd">Total Deposit: {formatTotalsLine('paid')}</div>
+      <div className={`layby-summary-grid${readOnly ? ' layby-summary-grid--readonly' : ''}`}>
+        <div className="layby-stat-card">
+          <div className="layby-stat-label">Total sale</div>
+          <div className="layby-stat-value">{formatTotalsLine('total')}</div>
+        </div>
+        <div className="layby-stat-card">
+          <div className="layby-stat-label">Total deposit</div>
+          <div className="layby-stat-value">{formatTotalsLine('paid')}</div>
+        </div>
         {!readOnly && (
-          <div className="layby-total-box k">Total Discount: {formatTotalsLine('discount')}</div>
+          <div className="layby-stat-card">
+            <div className="layby-stat-label">Total discount</div>
+            <div className="layby-stat-value">{formatTotalsLine('discount')}</div>
+          </div>
         )}
-        <div className="layby-total-box usd">Total Due: {formatTotalsLine('due')}</div>
+        <div className="layby-stat-card">
+          <div className="layby-stat-label">Total due</div>
+          <div className="layby-stat-value">{formatTotalsLine('due')}</div>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+      <div className="layby-toolbar">
         <input
-          type="text"
-          placeholder="Search customer name or phone..."
+          type="search"
+          placeholder="Search customer name or phone…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="pos-control pos-search-wide"
-          style={{ flex: 1, minWidth: 280 }}
+          className="pos-control pos-search-wide layby-search-input"
+          aria-label="Search layby customers"
         />
-        <div style={{ color: '#9aa4b2', fontSize: 12 }}>Rows: {filteredRows.length}</div>
+        <div className="layby-row-count">{filteredRows.length} customer{filteredRows.length === 1 ? '' : 's'}</div>
       </div>
 
-      {error && <div style={{ color: '#ff5252', marginBottom: 10 }}>{error}</div>}
-      {success && <div style={{ color: '#4caf50', marginBottom: 10 }}>{success}</div>}
+      {error && <div className="layby-flash layby-flash--error" role="alert">{error}</div>}
+      {success && <div className="layby-flash layby-flash--success" role="status">{success}</div>}
 
       {(loading && rows.length === 0) ? (
-        <div style={{ color: '#9aa4b2', textAlign: 'center', padding: 18 }}>Loading laybys...</div>
+        <div className="layby-mgmt-loading">Loading laybys…</div>
       ) : (
-        <div style={{ width: '100%', background: 'transparent', borderRadius: 8, overflowX: 'auto' }}>
-          <table className="pos-table" style={{ width: '100%', minWidth: 980, background: '#23272f', borderRadius: 8, fontSize: '0.78rem', tableLayout: 'fixed' }}>
+        <div className="layby-mgmt-table-wrap">
+          <table className="pos-table layby-mgmt-table">
             <thead>
               <tr>
                 <th className="text-col">Customer</th>
@@ -1541,7 +1554,7 @@ export default function LaybyManagement() {
                 <th className="num-col">Total Deposit</th>
                 {!readOnly && <th className="num-col">Total Discount</th>}
                 <th className="num-col">Total Due</th>
-                {!readOnly && <th className="actions-col" style={{ minWidth: 220, width: 220 }}>Actions</th>}
+                {!readOnly && <th className="actions-col">Actions</th>}
                 <th className="export-col">Export</th>
               </tr>
             </thead>
@@ -1571,64 +1584,58 @@ export default function LaybyManagement() {
                   laybys: row.laybys || [],
                   primaryLayby,
                 };
-                const editQuoteId = resolveRowQuoteId(row, quoteLinkIndex);
-                const showEditQuote = canOfferEditQuote(row);
                 return (
-                  <tr key={`row-${row.customerId}`} style={{ background: '#1a1f27' }}>
-                    <td className="text-col" style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>
-                      <div style={{ fontWeight: 700 }}>{row.customer?.name || row.customerId}</div>
+                  <tr key={`row-${row.customerId}`}>
+                    <td className="text-col">
+                      <div className="layby-customer-name">{row.customer?.name || row.customerId}</div>
                       {row.placeholderHold && (
-                        <div style={{ fontSize: '0.75rem', color: '#9aa4b2', marginTop: 4 }}>
+                        <div className="layby-customer-note">
                           Pending reconciliation — totals hidden while Acc(2) is being fixed
                         </div>
                       )}
                     </td>
-                    <td className="text-col" style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{row.customer?.phone || '—'}</td>
-                    <td className="num-col" style={{ whiteSpace: 'nowrap', overflow: 'visible' }}>{formatGroupCell('total')}</td>
-                    <td className="num-col" style={{ whiteSpace: 'nowrap', overflow: 'visible' }}>{formatGroupCell('paid')}</td>
-                    {!readOnly && <td className="num-col" style={{ whiteSpace: 'nowrap', overflow: 'visible' }}>{formatGroupCell('discount')}</td>}
-                    <td className="num-col" style={{ whiteSpace: 'nowrap', overflow: 'visible' }}>{formatGroupCell('due')}</td>
+                    <td className="text-col">{row.customer?.phone || '—'}</td>
+                    <td className="num-col">{formatGroupCell('total')}</td>
+                    <td className="num-col">{formatGroupCell('paid')}</td>
+                    {!readOnly && <td className="num-col">{formatGroupCell('discount')}</td>}
+                    <td className="num-col">{formatGroupCell('due')}</td>
                     {!readOnly && (
-                    <td className="actions-col" style={{ minWidth: 220, width: 220, display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-                      <button
-                        style={{ width: '100%', background: '#00bfff', color: '#fff', borderRadius: 6, padding: '6px 10px', fontWeight: 600, fontSize: '0.82rem' }}
-                        onClick={() => {
-                          try {
-                            setPaymentDate(getTodayInputValue());
-                          } catch {}
-                          setPaymentEntryLines([defaultPaymentEntryLine()]);
-                          const target = buildSelectedLaybyTarget(row, primaryLayby || row.primaryLayby);
-                          if (target) setSelectedLayby(target);
-                        }}
-                        disabled={sumRowDue(row) <= 0.009}
-                      >
-                        Add Payment
-                      </button>
-                      <button
-                        style={{ width: '100%', background: '#6c5ce7', color: '#fff', borderRadius: 6, padding: '6px 10px', fontWeight: 600, fontSize: '0.82rem' }}
-                        title="View and edit payments for this customer"
-                        onClick={() => openPaymentsEditor(customerTarget)}
-                      >
-                        Edit Payments
-                      </button>
-                      {showEditQuote && (
+                    <td className="actions-col layby-actions-cell">
+                      <div className="layby-actions-grid">
                         <button
-                          style={{ width: '100%', background: '#2ecc71', color: '#fff', borderRadius: 6, padding: '6px 10px', fontWeight: 600, fontSize: '0.82rem' }}
-                          title={editQuoteId ? 'Edit linked quotation (down payments are kept)' : 'Find and edit linked quotation'}
-                          onClick={() => { void handleEditQuote(row); }}
+                          type="button"
+                          className="layby-row-btn layby-row-btn--pay"
+                          onClick={() => {
+                            try {
+                              setPaymentDate(getTodayInputValue());
+                            } catch {}
+                            setPaymentEntryLines([defaultPaymentEntryLine()]);
+                            const target = buildSelectedLaybyTarget(row, primaryLayby || row.primaryLayby);
+                            if (target) setSelectedLayby(target);
+                          }}
+                          disabled={sumRowDue(row) <= 0.009}
                         >
-                          Edit Quote
+                          Add payment
                         </button>
-                      )}
-                      {canDeleteLaybyCustomer && (
                         <button
-                          style={{ width: '100%', background: '#ff5252', color: '#fff', borderRadius: 6, padding: '6px 10px', fontWeight: 700, fontSize: '0.82rem' }}
-                          title="Delete layby customer (admin only)"
-                          onClick={() => deleteLaybyCustomer(row)}
+                          type="button"
+                          className="layby-row-btn layby-row-btn--edit"
+                          title="View and edit payments for this customer"
+                          onClick={() => openPaymentsEditor(customerTarget)}
                         >
-                          Delete Layby Customer
+                          Edit payments
                         </button>
-                      )}
+                        {canDeleteLaybyCustomer && (
+                          <button
+                            type="button"
+                            className="layby-row-btn layby-row-btn--delete layby-row-btn--wide"
+                            title="Delete layby customer (admin only)"
+                            onClick={() => deleteLaybyCustomer(row)}
+                          >
+                            Delete customer
+                          </button>
+                        )}
+                      </div>
                     </td>
                     )}
                     <td className="export-col">

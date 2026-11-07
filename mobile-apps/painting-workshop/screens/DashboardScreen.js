@@ -32,7 +32,7 @@ function DashboardTile({
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
-        color={theme.primaryDark || '#0369a1'}
+        color={theme.primaryDark}
         style={kiosk.dashTileIcon}
       />
       <Text
@@ -60,7 +60,8 @@ export default function DashboardScreen({
   const { locale, toggleLocale, ready, textAlign } = useProductionKioskLocale();
   const showJobs = !grant || isWorkshopOrDeliveryScreenAllowed(grant, 'painting_jobs', 'painting_workshop_app');
   const showRepairs = !grant || isWorkshopOrDeliveryScreenAllowed(grant, 'painting_repairs', 'painting_workshop_app');
-  const tileCount = Math.max(1, (showJobs ? 1 : 0) + (showRepairs ? 1 : 0));
+  const showPushSettings = !grant || isWorkshopOrDeliveryScreenAllowed(grant, 'painting_push_settings', 'painting_workshop_app');
+  const tileCount = Math.max(1, (showJobs ? 1 : 0) + (showRepairs ? 1 : 0) + (showPushSettings ? 1 : 0));
   const { tileWidth, tileHeight, gap, contentWidth } = useProductionDashboardTileLayout(tileCount);
 
   if (!allowed) {
@@ -145,6 +146,18 @@ export default function DashboardScreen({
               width={tileWidth}
               height={tileHeight}
               onPress={() => navigation.navigate('Repairs')}
+            />
+          ) : null}
+          {showPushSettings ? (
+            <DashboardTile
+              icon="bell-cog-outline"
+              title="Alert settings"
+              hintKey="dashTileHint_push"
+              locale={locale}
+              textAlign={textAlign}
+              width={tileWidth}
+              height={tileHeight}
+              onPress={() => navigation.navigate('PushSettings')}
             />
           ) : null}
         </View>

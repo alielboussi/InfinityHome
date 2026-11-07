@@ -14,6 +14,7 @@ import { buildDeliveryNotePrintHtml } from '../lib/buildDeliveryNotePrintHtml';
 import { discoverNetworkPrinters, isPrinterDiscoveryAvailable } from '../lib/discoverNetworkPrinters';
 import { getDeliveryNoteCompanyLogoDataUri } from '../lib/deliveryNoteCompanyLogo';
 import {
+  isPrintConnectivityFailure,
   openDeliveryNoteHtmlInBrowser,
   printDeliveryNoteFromHtml,
 } from '../lib/printDeliveryNoteHtml';
@@ -127,11 +128,16 @@ export default function DeliveryPrintModal({
       }
     } catch (err) {
       const msg = String(err?.message || '');
-      if (/cancel/i.test(msg) || /did not complete/i.test(msg)) {
+      const connectivity = isPrintConnectivityFailure(err);
+      if (!connectivity && (/cancel/i.test(msg) || /did not complete/i.test(msg))) {
         setPrintAttemptDone(true);
         return;
       }
-      setError(msg || tUi('deliveryPrintFailed', locale));
+      setError(
+        connectivity
+          ? tUi('deliveryPrintTimeoutError', locale)
+          : (msg || tUi('deliveryPrintFailed', locale)),
+      );
       setPrintAttemptDone(true);
     } finally {
       setPrinting(false);
@@ -175,7 +181,11 @@ export default function DeliveryPrintModal({
         });
       }
     } catch (err) {
-      setError(err?.message || tUi('sentDeliveryOpenFailed', locale));
+      setError(
+        isPrintConnectivityFailure(err)
+          ? tUi('deliveryPrintTimeoutError', locale)
+          : (err?.message || tUi('sentDeliveryOpenFailed', locale)),
+      );
     } finally {
       setPrinting(false);
     }

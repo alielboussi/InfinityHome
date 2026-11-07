@@ -1,4 +1,4 @@
-// @refresh reset — Manufacture had grid/qty/camera code removed; avoid partial Fast Refresh.
+// @refresh reset — Floor 2 → production job (deduct WIP, cap at on-hand).
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -9,7 +9,6 @@ import {
   Modal,
   PixelRatio,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,81 +17,82 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../productionKiosk/components/ProductionKioskTopBar';
+import ProductionQrScanModal from '../productionKiosk/components/ProductionQrScanModal';
 import { kiosk } from '../productionKiosk/components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi } from '../productionKiosk/lib/productionKioskI18n';
 import {
-  fetchCarpentryManufactureProducts,
-  startCarpentryProductionJob,
+  fetchProductionFloor2Products,
+  pushProductionFloor2Manufacture,
 } from '../services/carpentryApi';
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
-import { extractProductionBaseName } from '../productionKiosk/lib/productionItemName';
+import {
+  expandWarehouseSkuMatchKeys,
+  normalizeWarehouseProductSku,
+  sanitizeWarehouseScannerInput,
+} from '../shared/warehouseScanResolver';
 
-/** Minimum tile height ~8 cm; width fills the list row. */
 const CARD_MIN_SIZE = PixelRatio.roundToNearestPixel((8 * 160) / 2.54 / PixelRatio.get());
 const CARD_GAP = 12;
 
 function floor2Qty(item) {
-  return Math.max(0, Math.floor(Number(item?.floor2_qty ?? item?.carpentry_qty) || 0));
+  return Math.max(0, Math.floor(Number(item?.floor2_qty ?? item?.quantity) || 0));
 }
 
-function familyCoverSeaterRank(name) {
-  const n = String(name || '').trim().toLowerCase();
-  if (/\b3\s*seater\b/.test(n)) return 0;
-  if (/\b2\s*seater\b/.test(n)) return 1;
-  if (/\b(single|1)\s*seater\b/.test(n)) return 2;
-  return 3;
+function resolveFloor2ProductImage(item) {
+  return (
+    resolveProductImageUrl(item?.floor2_image_url)
+    || resolveProductImageUrl(item?.image_url)
+    || resolveProductImageUrl(item?.family_image_url)
+    || ''
+  );
 }
 
-function pickGroupImageUrl(items) {
-  const list = items || [];
-  const ranked = [...list].sort((a, b) => {
-    const na = a?.raw_name || a?.name || '';
-    const nb = b?.raw_name || b?.name || '';
-    return familyCoverSeaterRank(na) - familyCoverSeaterRank(nb);
-  });
-  for (const item of ranked) {
-    const url = resolveProductImageUrl(item?.image_url);
-    if (url) return url;
-  }
-  for (const item of list) {
-    const url = resolveProductImageUrl(item?.family_image_url);
-    if (url) return url;
+function extractPhotoQrSku(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/[?&]sku=([^&\s#]+)/i);
+  if (match) {
+    try {
+      return decodeURIComponent(match[1]).trim();
+    } catch {
+      return String(match[1]).trim();
+    }
   }
   return '';
 }
 
-function groupManufactureProducts(products) {
-  const map = new Map();
-  (products || []).forEach((item) => {
-    const rawName = String(item?.raw_name || item?.name || '').trim();
-    const familyBase = extractProductionBaseName(rawName) || rawName || String(item.raw_assembly_id || item.id);
-    const key = familyBase.toLowerCase();
-    if (!map.has(key)) map.set(key, { familyBase, items: [] });
-    map.get(key).items.push(item);
-  });
-  return [...map.entries()].map(([key, { familyBase, items }]) => {
-    const sorted = [...items].sort((a, b) =>
-      String(a.raw_name || '').localeCompare(String(b.raw_name || '')),
-    );
-    const totalFloor2 = sorted.reduce((sum, row) => sum + floor2Qty(row), 0);
-    return {
-      key,
-      displayName: familyBase,
-      items: sorted,
-      totalFloor2,
-      imageUrl: pickGroupImageUrl(sorted),
-    };
-  }).sort((a, b) => a.displayName.localeCompare(b.displayName));
+function findMatchingFloor2ProductByScan(products, rawScan) {
+  const cleaned = sanitizeWarehouseScannerInput(rawScan);
+  if (!cleaned) return null;
+  const photoSku = extractPhotoQrSku(cleaned);
+  const probe = photoSku || cleaned;
+  const probeKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(probe));
+  const probeLower = probe.toLowerCase();
+
+  for (const item of products || []) {
+    const sku = String(item?.family_sku || '').trim();
+    if (sku) {
+      if (sku.toLowerCase() === probeLower) return item;
+      const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
+      for (const k of probeKeys) {
+        if (k && storedKeys.has(k)) return item;
+      }
+    }
+    const name = String(item?.name || '').trim();
+    if (name && name.toLowerCase() === probeLower) return item;
+    if (name && name.toLowerCase().includes(probeLower)) return item;
+  }
+  return null;
 }
 
 export default function ManufactureScreen({
+  route,
   navigation,
   allowed,
-  photoUploadAllowed = false,
   accessHint,
   onRefreshAccess,
 }) {
@@ -104,31 +104,33 @@ export default function ManufactureScreen({
   const productsRef = useRef([]);
   productsRef.current = products;
   const [search, setSearch] = useState('');
+  const [scanOpen, setScanOpen] = useState(false);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [inlayGroupKey, setInlayGroupKey] = useState('');
-  const [photoBusyId, setPhotoBusyId] = useState('');
+  const [qtyModal, setQtyModal] = useState(null);
+  const [qtyDraft, setQtyDraft] = useState('1');
+  const [stockTab, setStockTab] = useState('all');
 
-  const loadCatalog = useCallback(async ({ force = false, fromPull = false } = {}) => {
+  const loadList = useCallback(async ({ fromPull = false } = {}) => {
     if (!allowed) {
       setProducts([]);
       setLoading(false);
       setRefreshing(false);
       return;
     }
-    const hasCachedRows = productsRef.current.length > 0;
-    if (!hasCachedRows) {
-      setLoading(true);
-    } else if (fromPull) {
-      setRefreshing(true);
-    }
+    const hasCached = productsRef.current.length > 0;
+    if (!hasCached) setLoading(true);
+    else if (fromPull) setRefreshing(true);
     setError('');
     try {
-      const list = await fetchCarpentryManufactureProducts({ force: force || fromPull });
-      setProducts(Array.isArray(list) ? list : []);
+      const list = await fetchProductionFloor2Products();
+      const sorted = (Array.isArray(list) ? list : [])
+        .slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+      setProducts(sorted);
     } catch (e) {
       setError(e?.message || tUi('manufactureLoadFailed', locale));
-      if (!hasCachedRows) setProducts([]);
+      if (!hasCached) setProducts([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -137,40 +139,102 @@ export default function ManufactureScreen({
 
   useFocusEffect(
     useCallback(() => {
-      loadCatalog();
-    }, [loadCatalog]),
+      loadList();
+      if (route?.params?.openScan) {
+        setScanOpen(true);
+        navigation.setParams({ openScan: false });
+      }
+    }, [loadList, route?.params?.openScan, navigation]),
   );
 
-  const allGroups = useMemo(() => groupManufactureProducts(products), [products]);
-
-  const inlayGroup = useMemo(
-    () => allGroups.find((g) => g.key === inlayGroupKey) || null,
-    [allGroups, inlayGroupKey],
-  );
-
-  const groups = useMemo(() => {
-    const q = String(search || '').trim().toLowerCase();
-    if (!q) return allGroups;
-    return allGroups.filter((group) => group.displayName.toLowerCase().includes(q));
-  }, [allGroups, search]);
+  const filteredProducts = useMemo(() => {
+    const raw = String(search || '').trim();
+    let base = products;
+    if (stockTab === 'stock') {
+      base = base.filter((item) => floor2Qty(item) > 0);
+    }
+    if (!raw) return base;
+    const q = raw.toLowerCase();
+    const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
+    return base.filter((item) => {
+      if (String(item.name || '').toLowerCase().includes(q)) return true;
+      const sku = String(item.family_sku || '');
+      if (sku.toLowerCase().includes(q)) return true;
+      const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
+      for (const k of qKeys) {
+        if (k && storedKeys.has(k)) return true;
+      }
+      return false;
+    });
+  }, [products, search, stockTab]);
 
   const hasSearch = Boolean(String(search || '').trim());
 
-  const startJobForItem = async (item) => {
-    if (!allowed || busyId) return;
-    const rawId = String(item.raw_assembly_id || item.id || '');
-    if (!rawId) return;
-    const materialCount = Number(item.material_count ?? item.materials?.length ?? 0);
-    if (materialCount < 1) {
-      Alert.alert(tUi('manufactureConfirmTitle', locale), tUi('manufactureNoMaterials', locale));
+  const openQtyAdd = useCallback((item) => {
+    if (busyId) return;
+    const max = floor2Qty(item);
+    if (max < 1) {
+      Alert.alert(tUi('manufactureTitle', locale), tUi('paintingNoneAvailable', locale));
       return;
     }
-    setBusyId(rawId);
-    setError('');
+    setQtyDraft('1');
+    setQtyModal({ item });
+  }, [busyId, locale]);
+
+  const handleBarcodeScanned = useCallback((scannedValue) => {
+    setScanOpen(false);
+    const cleaned = sanitizeWarehouseScannerInput(scannedValue);
+    if (!cleaned) return;
+    const photoSku = extractPhotoQrSku(cleaned);
+    const queryValue = photoSku || cleaned;
+    setSearch(queryValue);
+
+    const matched = findMatchingFloor2ProductByScan(productsRef.current, scannedValue);
+    if (matched) {
+      openQtyAdd(matched);
+    } else {
+      Alert.alert(tUi('manufactureTitle', locale), tUi('manufactureSearchNoMatch', locale));
+    }
+  }, [locale, openQtyAdd]);
+
+  const handleQtyTextChange = (txt) => {
+    const cleaned = String(txt || '').replace(/[^0-9]/g, '');
+    const max = qtyModal?.item ? floor2Qty(qtyModal.item) : 999;
+    if (!cleaned) {
+      setQtyDraft('');
+      return;
+    }
+    const n = Math.floor(Number(cleaned) || 0);
+    setQtyDraft(String(Math.max(1, Math.min(max, n))));
+  };
+
+  const confirmAdd = async () => {
+    if (!qtyModal?.item) return;
+    const item = qtyModal.item;
+    const assemblyId = String(item.id || item.assembly_id || '');
+    const max = floor2Qty(item);
+    const rawNum = Math.floor(Number(qtyDraft) || 0);
+    if (!Number.isFinite(rawNum) || rawNum < 1) {
+      Alert.alert(tUi('manufactureAddStockTitle', locale), tUi('needQty', locale));
+      return;
+    }
+    if (rawNum > max) {
+      Alert.alert(
+        tUi('manufactureAddStockTitle', locale),
+        tUi('paintingQtyExceedsAvailable', locale).replace('{max}', String(max)),
+      );
+      return;
+    }
+    setQtyModal(null);
+    setBusyId(assemblyId);
     try {
-      const created = await startCarpentryProductionJob({ assemblyId: rawId, productQty: 1 });
-      setInlayGroupKey('');
-      navigation.navigate('Jobs', { initialJob: created?.job || created });
+      const res = await pushProductionFloor2Manufacture({
+        assemblyId,
+        productQty: rawNum,
+        channel: 'carpentry',
+      });
+      await loadList();
+      navigation.navigate('Jobs', { initialJob: res?.job || res });
     } catch (e) {
       Alert.alert(tUi('manufactureFailed', locale), e?.message || tUi('manufactureFailed', locale));
     } finally {
@@ -178,50 +242,23 @@ export default function ManufactureScreen({
     }
   };
 
-  const closeInlay = () => {
-    if (busyId || photoBusyId) return;
-    setInlayGroupKey('');
-  };
+  const renderProductCard = ({ item }) => {
+    const id = String(item.id || item.assembly_id || '');
+    const qty = floor2Qty(item);
+    const cardImage = resolveFloor2ProductImage(item);
+    const cardBusy = busyId === id;
 
-  const onCardPress = (group) => {
-    if (group.items.length !== 1) return;
-    startJobForItem(group.items[0]);
-  };
-
-  const openInlay = (group) => {
-    if (busyId || photoBusyId || !group || !group.items.length) return;
-    if (group.items.length < 2 && !photoUploadAllowed) return;
-    setInlayGroupKey(group.key);
-  };
-
-  const onInlayPick = (item) => {
-    startJobForItem(item);
-  };
-
-  const uploadVariantPhotoFromSource = async () => {};
-
-  const pickVariantPhotoFromLibrary = async () => {};
-
-  const onInlayThumbPress = () => {};
-
-  const renderGroupCard = ({ item: group }) => {
-    const multi = group.items.length > 1;
-    const cardImage = group.imageUrl || pickGroupImageUrl(group.items);
-    const cardBusy = group.items.some(
-      (row) => busyId === String(row.raw_assembly_id || row.id),
-    );
     return (
       <ProductionPressableHint
         hintKey="dashTileHint_manufacture"
         locale={locale}
         textAlign={textAlign}
         disabled={Boolean(busyId)}
-        onPress={() => onCardPress(group)}
+        onPress={() => openQtyAdd(item)}
         style={({ pressed }) => [
           styles.tile,
-          !multi && pressed && styles.tilePressed,
+          pressed && styles.tilePressed,
           cardBusy && styles.tileBusy,
-          multi && styles.tileInlayOnly,
         ]}
       >
         {cardImage ? (
@@ -230,38 +267,21 @@ export default function ManufactureScreen({
           <View style={styles.tileImagePlaceholder} />
         )}
         <View style={styles.tileOverlay} />
-        <View style={styles.tileNameBar}>
-          <Text style={styles.tileName} numberOfLines={2}>
-            {group.displayName}
-          </Text>
-        </View>
         {!cardImage ? (
           <View style={styles.tileNoImageCenter} pointerEvents="none">
             <MaterialCommunityIcons name="image-off-outline" size={48} color={theme.textMuted} />
           </View>
         ) : null}
-        {multi ? (
-          <Pressable
-            style={styles.inlayBtn}
-            hitSlop={12}
-            disabled={Boolean(busyId || photoBusyId)}
-            onPress={() => openInlay(group)}
-          >
-            <MaterialCommunityIcons name="layers-triple" size={22} color="#fff" />
-            <Text style={styles.inlayBtnText}>
-              {tUi('manufactureSameNameInlay', locale).replace('{count}', String(group.items.length))}
-            </Text>
-          </Pressable>
-        ) : photoUploadAllowed ? (
-          <Pressable
-            style={styles.inlayBtn}
-            hitSlop={12}
-            disabled={Boolean(busyId || photoBusyId)}
-            onPress={() => openInlay(group)}
-          >
-            <MaterialCommunityIcons name="image-plus-outline" size={22} color="#fff" />
-          </Pressable>
-        ) : null}
+        <View style={styles.qtyBadge} pointerEvents="none">
+          <MaterialCommunityIcons name="package-variant-closed" size={20} color="#fff" />
+          <Text style={styles.qtyBadgeText}>{String(qty)}</Text>
+        </View>
+        <View style={styles.tileNameBar}>
+          <Text style={styles.tileName}>{item.name}</Text>
+          <Text style={styles.tileQty}>
+            {tUi('manufactureQtyLabel', locale).replace('{qty}', String(qty))}
+          </Text>
+        </View>
         {cardBusy ? (
           <ActivityIndicator color={theme.primary} size="small" style={styles.tileSpinner} />
         ) : null}
@@ -301,20 +321,47 @@ export default function ManufactureScreen({
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
-      <Pressable style={styles.jobsLink} onPress={() => navigation.navigate('Jobs')}>
-        <Text style={styles.jobsLinkText}>{tUi('carpentryJobsTitle', locale)}</Text>
-      </Pressable>
-      <TextInput
-        style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
-        placeholder={tUi('manufactureSearch', locale)}
-        placeholderTextColor={theme.textMuted}
-        value={search}
-        onChangeText={setSearch}
-        autoCorrect={false}
-        autoCapitalize="none"
-        clearButtonMode="while-editing"
-      />
-      {hasSearch && !loading && groups.length === 0 && !error ? (
+      <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntroFloor2', locale)}</Text>
+      <View style={styles.tabRow}>
+        <Pressable
+          style={[styles.tabChip, stockTab === 'all' && styles.tabChipActive]}
+          onPress={() => setStockTab('all')}
+        >
+          <Text style={[styles.tabChipText, stockTab === 'all' && styles.tabChipTextActive]}>
+            {tUi('manufactureTabAll', locale)}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabChip, stockTab === 'stock' && styles.tabChipActive]}
+          onPress={() => setStockTab('stock')}
+        >
+          <Text style={[styles.tabChipText, stockTab === 'stock' && styles.tabChipTextActive]}>
+            {tUi('manufactureTabInStock', locale)}
+          </Text>
+        </Pressable>
+      </View>
+      <View style={styles.searchRow}>
+        <TextInput
+          style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
+          placeholder={tUi('manufactureSearch', locale)}
+          placeholderTextColor={theme.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+        />
+        <Pressable
+          style={({ pressed }) => [styles.scanBtn, pressed && styles.scanBtnPressed]}
+          onPress={() => setScanOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={tUi('stockQrTitle', locale)}
+        >
+          <MaterialCommunityIcons name="barcode-scan" size={22} color="#ffffff" />
+          <Text style={styles.scanBtnText}>{tUi('manufactureScanBtn', locale)}</Text>
+        </Pressable>
+      </View>
+      {hasSearch && !loading && filteredProducts.length === 0 && !error ? (
         <Text style={[kiosk.searchHint, { textAlign }]}>{tUi('manufactureSearchNoMatch', locale)}</Text>
       ) : null}
       {loading && products.length === 0 ? (
@@ -323,12 +370,12 @@ export default function ManufactureScreen({
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
       <FlatList
         style={styles.list}
-        data={groups}
-        keyExtractor={(group) => group.key}
+        data={filteredProducts}
+        keyExtractor={(item) => String(item.id || item.assembly_id)}
         refreshing={refreshing}
-        onRefresh={() => loadCatalog({ force: true, fromPull: true })}
-        contentContainerStyle={groups.length === 0 ? styles.listEmpty : styles.gridContent}
-        renderItem={renderGroupCard}
+        onRefresh={() => loadList({ fromPull: true })}
+        contentContainerStyle={filteredProducts.length === 0 ? styles.listEmpty : styles.gridContent}
+        renderItem={renderProductCard}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           !loading && !error && !hasSearch ? (
@@ -339,83 +386,105 @@ export default function ManufactureScreen({
         }
       />
 
-      <Modal visible={Boolean(inlayGroup)} transparent animationType="fade" onRequestClose={closeInlay}>
-        <Pressable style={styles.modalBackdrop} onPress={closeInlay}>
-          <Pressable style={styles.inlayCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>{inlayGroup?.displayName || tUi('manufactureInlayTitle', locale)}</Text>
-            <Text style={styles.modalSub}>{tUi('manufactureInlayHint', locale)}</Text>
-            <ScrollView style={styles.inlayScroll} keyboardShouldPersistTaps="handled">
-              {(inlayGroup?.items || []).map((item) => {
-                const id = String(item.raw_assembly_id || item.id);
-                const qty = floor2Qty(item);
-                const rowImage = resolveProductImageUrl(item?.image_url);
-                const isPhotoBusy = photoBusyId === id;
-                const thumbContent = isPhotoBusy ? (
-                  <View style={styles.inlayThumbPlaceholder}>
-                    <ActivityIndicator size="small" color={theme.primary} />
-                  </View>
-                ) : rowImage ? (
-                  <Image source={{ uri: rowImage }} style={styles.inlayThumb} resizeMode="cover" />
-                ) : (
-                  <View style={styles.inlayThumbPlaceholder}>
-                    <MaterialCommunityIcons
-                      name={photoUploadAllowed ? 'image-plus-outline' : 'sofa-outline'}
-                      size={22}
-                      color={photoUploadAllowed ? theme.primary : theme.textMuted}
-                    />
-                  </View>
-                );
-                return (
-                  <Pressable
-                    key={id}
-                    style={({ pressed }) => [styles.inlayRow, pressed && styles.inlayRowPressed]}
-                    disabled={Boolean(busyId || photoBusyId)}
-                    onPress={() => onInlayPick(item)}
-                  >
-                    {photoUploadAllowed ? (
-                      <Pressable
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          onInlayThumbPress(item);
-                        }}
-                        disabled={Boolean(busyId || photoBusyId)}
-                        hitSlop={8}
-                        style={styles.inlayThumbBtn}
-                      >
-                        {thumbContent}
-                      </Pressable>
-                    ) : (
-                      thumbContent
-                    )}
-                    <Text style={styles.inlayProductName} numberOfLines={2}>
-                      {item.raw_name || item.name || '—'}
-                    </Text>
-                    <Text style={styles.inlayQtyRight}>
-                      {tUi('manufactureQtyLabel', locale).replace('{qty}', String(qty))}
-                    </Text>
-                    <MaterialCommunityIcons name="chevron-right" size={22} color={theme.primary} />
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <Pressable style={[kiosk.btn, { marginTop: 12 }]} onPress={closeInlay} disabled={Boolean(busyId || photoBusyId)}>
-              <Text style={kiosk.btnText}>{tUi('cancel', locale)}</Text>
-            </Pressable>
+      <Modal visible={Boolean(qtyModal)} transparent animationType="fade" onRequestClose={() => setQtyModal(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setQtyModal(null)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>{tUi('manufactureDeductTitle', locale)}</Text>
+            <Text style={styles.modalProductName}>{qtyModal?.item?.name || ''}</Text>
+            <Text style={styles.modalSub}>
+              {tUi('manufactureQtyLabel', locale).replace('{qty}', String(floor2Qty(qtyModal?.item)))}
+            </Text>
+            <Text style={styles.modalLabel}>{tUi('needQty', locale)}</Text>
+            <View style={styles.qtyStepperRow}>
+              <Pressable
+                style={styles.stepBtn}
+                onPress={() => {
+                  const cur = Math.max(1, Math.floor(Number(qtyDraft) || 1));
+                  setQtyDraft(String(Math.max(1, cur - 1)));
+                }}
+              >
+                <Text style={styles.stepBtnText}>−</Text>
+              </Pressable>
+              <TextInput
+                style={[kiosk.input, styles.qtyInput]}
+                value={qtyDraft}
+                onChangeText={handleQtyTextChange}
+                keyboardType="number-pad"
+                maxLength={3}
+              />
+              <Pressable
+                style={styles.stepBtn}
+                onPress={() => {
+                  const cur = Math.max(1, Math.floor(Number(qtyDraft) || 1));
+                  setQtyDraft(String(Math.min(999, cur + 1)));
+                }}
+              >
+                <Text style={styles.stepBtnText}>+</Text>
+              </Pressable>
+            </View>
+            <View style={styles.modalActions}>
+              <Pressable style={[kiosk.btn, styles.modalBtn]} onPress={() => setQtyModal(null)}>
+                <Text style={kiosk.btnText}>{tUi('cancel', locale)}</Text>
+              </Pressable>
+              <Pressable style={[kiosk.btn, kiosk.btnPrimary, styles.modalBtn]} onPress={confirmAdd}>
+                <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('confirm', locale)}</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ProductionQrScanModal
+        visible={scanOpen}
+        locale={locale}
+        onClose={() => setScanOpen(false)}
+        onScan={handleBarcodeScanned}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  searchInput: { marginBottom: 12 },
-  jobsLink: { alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 4, marginBottom: 8 },
-  jobsLinkText: { color: theme.primary, fontSize: 15, fontWeight: '700' },
+  intro: { marginBottom: 8 },
+  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  tabChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.card,
+  },
+  tabChipActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft || '#e0f2fe' },
+  tabChipText: { fontWeight: '700', color: theme.textMuted },
+  tabChipTextActive: { color: theme.primary },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  searchInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  scanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: theme.primary,
+    borderRadius: theme.radiusSm,
+    paddingHorizontal: 14,
+    minHeight: 48,
+  },
+  scanBtnPressed: { opacity: 0.85 },
+  scanBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
   list: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   gridContent: { paddingBottom: 24 },
+  empty: { marginTop: 24 },
   tile: {
     width: '100%',
     aspectRatio: 1,
@@ -427,49 +496,26 @@ const styles = StyleSheet.create({
     backgroundColor: theme.card,
     overflow: 'hidden',
   },
-  tileImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-  },
-  tileImagePlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.surface,
-  },
-  tileNoImageCenter: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 56,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  tileOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
-  },
+  tileImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  tileImagePlaceholder: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.surface },
+  tileOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15, 23, 42, 0.38)' },
+  tileNoImageCenter: { ...StyleSheet.absoluteFillObject, top: 56, justifyContent: 'center', alignItems: 'center' },
   tilePressed: { opacity: 0.92, borderColor: theme.primary },
-  tileInlayOnly: { opacity: 1 },
   tileBusy: { opacity: 0.65 },
   tileNameBar: {
     position: 'absolute',
-    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
-    paddingTop: 14,
-    paddingHorizontal: 52,
+    paddingTop: 12,
+    paddingBottom: 12,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(15, 23, 42, 0.86)',
     zIndex: 1,
   },
-  tileName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: theme.text,
-    lineHeight: 26,
-    textAlign: 'center',
-  },
-  inlayBtn: {
+  tileName: { fontSize: 19, fontWeight: '800', color: '#ffffff', textAlign: 'center', lineHeight: 24 },
+  tileQty: { fontSize: 15, fontWeight: '700', color: '#38bdf8', textAlign: 'center', marginTop: 4 },
+  qtyBadge: {
     position: 'absolute',
     top: 12,
     right: 12,
@@ -479,21 +525,11 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: theme.primary,
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minHeight: 44,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
-  inlayBtnText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  tileSpinner: {
-    position: 'absolute',
-    bottom: 12,
-    alignSelf: 'center',
-  },
-  empty: { marginTop: 24 },
+  qtyBadgeText: { color: '#ffffff', fontSize: 17, fontWeight: '800' },
+  tileSpinner: { position: 'absolute', bottom: 12, alignSelf: 'center', zIndex: 3 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.85)',
@@ -507,54 +543,29 @@ const styles = StyleSheet.create({
     borderColor: theme.border,
     padding: 20,
   },
-  inlayCard: {
-    backgroundColor: theme.surfaceElevated,
-    borderRadius: theme.radius,
-    borderWidth: 1,
-    borderColor: theme.border,
-    padding: 20,
-    maxHeight: '80%',
-  },
-  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 8, color: theme.text },
-  modalSub: { fontSize: 14, color: theme.textMuted, marginBottom: 12 },
-  inlayScroll: { maxHeight: 360 },
-  inlayRow: {
+  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 6, color: theme.text },
+  modalProductName: { fontSize: 17, fontWeight: '700', marginBottom: 6, color: theme.primary },
+  modalSub: { fontSize: 14, color: theme.textMuted, marginBottom: 10 },
+  modalLabel: { fontSize: 14, fontWeight: '600', color: theme.textSecondary, marginBottom: 8 },
+  qtyStepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 4,
   },
-  inlayRowPressed: { backgroundColor: theme.surface },
-  inlayProductName: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.text,
-  },
-  inlayThumbBtn: {
-    borderRadius: 8,
-  },
-  inlayThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+  stepBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
     backgroundColor: theme.surface,
-  },
-  inlayThumbPlaceholder: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  inlayQtyRight: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: theme.textSecondary,
-  },
+  stepBtnText: { color: theme.text, fontSize: 24, fontWeight: '800' },
+  qtyInput: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '800' },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  modalBtn: { flex: 1 },
 });

@@ -28,4 +28,5 @@ config.resolver.extraNodeModules = {
   'react-native-gesture-handler': path.resolve(appNodeModules, 'react-native-gesture-handler'),
 };
 
-module.exports = config;
+const { applyMetroLightweightBundle } = require('../shared/metroInlineRequires');
+module.exports = applyMetroLightweightBundle(config);

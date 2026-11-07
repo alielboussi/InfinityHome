@@ -1,3 +1,4 @@
+import './shared/lightweightRuntime.js';
 import './shared/suppressBridgelessCodegenWarnings.js';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -13,6 +14,10 @@ import KitweSendDoneScreen from './deliveryKit/screens/KitweSendDoneScreen';
 import KitweSendProductScreen from './deliveryKit/screens/KitweSendProductScreen';
 import KitweSentDeliveriesScreen from './deliveryKit/screens/KitweSentDeliveriesScreen';
 import KitweSentDeliveryDetailScreen from './deliveryKit/screens/KitweSentDeliveryDetailScreen';
+import SoldOrdersScreen from './deliveryKit/screens/SoldOrdersScreen';
+import SoldOrderDetailScreen from './deliveryKit/screens/SoldOrderDetailScreen';
+import SoldDeliverSignatureScreen from './deliveryKit/screens/SoldDeliverSignatureScreen';
+import SoldDeliverDoneScreen from './deliveryKit/screens/SoldDeliverDoneScreen';
 import { stackScreenOptions, theme } from './shared/theme';
 
 const Stack = createNativeStackNavigator();
@@ -91,6 +96,34 @@ function MainStack() {
         {(props) => (
           <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
             <KitweSentDeliveryDetailScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="SoldOrders" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="delivery_sold_orders" grant={grant} navigation={props.navigation}>
+            <SoldOrdersScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="SoldOrderDetail" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="delivery_sold_orders" grant={grant} navigation={props.navigation}>
+            <SoldOrderDetailScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="SoldDeliverSignature" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="delivery_sold_orders" grant={grant} navigation={props.navigation}>
+            <SoldDeliverSignatureScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="SoldDeliverDone" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="delivery_sold_orders" grant={grant} navigation={props.navigation}>
+            <SoldDeliverDoneScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

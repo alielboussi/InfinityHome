@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -24,8 +24,13 @@ import {
   pauseCarpentryProductionJob,
   resumeCarpentryProductionJob,
 } from '../services/carpentryApi';
+import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
 import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
 import { theme } from '../shared/theme';
+import RunningJobElapsed from '../productionKiosk/components/RunningJobElapsed';
+import { subscribeProductionRefresh } from '../productionKiosk/lib/productionRefreshBus';
+import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
+import { Image } from 'react-native';
 
 function formatElapsed(ms) {
   const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
@@ -71,9 +76,10 @@ function QuoteOrderJobCard({ quote, locale, textAlign, onPress }) {
   );
 }
 
-function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish }) {
-  const elapsed = formatElapsed(job.elapsed_ms);
+function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMaterials }) {
+  const isCompleted = job.status === 'completed';
   const isRunning = job.status === 'running';
+  const thumb = resolveProductImageUrl(job.floor2_image_url || job.product_image_url || job.image_url);
   const canPlay = job.status === 'ready' || job.status === 'paused';
 
   return (
@@ -83,13 +89,16 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish }) {
       textAlign={textAlign}
       style={[kiosk.card, styles.jobCard]}
     >
+      {thumb ? (
+        <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="cover" />
+      ) : null}
       <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.product_name || job.raw_name, '—')}</Text>
       <Text style={[styles.jobMeta, { textAlign }]}>
         {textForDisplay(job.product_sku || job.raw_name || '', '')}
       </Text>
       <View style={styles.timerRow}>
         <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
-        <Text style={styles.timerValue}>{elapsed}</Text>
+        <RunningJobElapsed job={job} style={styles.timerValue} />
         <Text style={styles.statusChip}>{tUi(`upholsteryJobStatus_${job.status}`, locale)}</Text>
       </View>
 
@@ -120,6 +129,19 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish }) {
             <MaterialCommunityIcons name="pause-circle" size={52} color={theme.primary} />
           </ProductionPressableHint>
         ) : null}
+        {!isCompleted ? (
+          <ProductionPressableHint
+            hintKey="hintJobMaterials"
+            locale={locale}
+            textAlign={textAlign}
+            disabled={busy}
+            onPress={() => onMaterials?.(job)}
+            style={styles.iconBtn}
+            accessibilityLabel={tUi('quoteOrderMaterials', locale)}
+          >
+            <MaterialCommunityIcons name="wrench" size={48} color={theme.primary} />
+          </ProductionPressableHint>
+        ) : null}
         <ProductionPressableHint
           hintKey="hintJobFinish"
           locale={locale}
@@ -148,15 +170,17 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [quoteOrders, setQuoteOrders] = useState([]);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [tick, setTick] = useState(0);
+  const [materialsJob, setMaterialsJob] = useState(null);
+  const [jobFilter, setJobFilter] = useState('all');
 
-  const loadJobs = useCallback(async () => {
+  const loadJobs = useCallback(async ({ showLoading = true } = {}) => {
     if (!allowed) {
       setJobs([]);
       setQuoteOrders([]);
       setLoading(false);
       return;
     }
+    if (showLoading) setLoading(true);
     setError('');
     try {
       const [list, quotes] = await Promise.all([
@@ -181,23 +205,12 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      loadJobs();
-    }, [loadJobs]),
+      const hasCached = jobs.length > 0 || quoteOrders.length > 0;
+      loadJobs({ showLoading: !hasCached });
+    }, [loadJobs, jobs.length, quoteOrders.length]),
   );
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      setTick((n) => n + 1);
-      setJobs((prev) => prev.map((j) => {
-        if (j.status !== 'running' || !j.timer_started_at) return j;
-        const base = Number(j.accumulated_ms) || 0;
-        const extra = Date.now() - new Date(j.timer_started_at).getTime();
-        return { ...j, elapsed_ms: base + Math.max(0, extra) };
-      }));
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
+  useEffect(() => subscribeProductionRefresh(() => loadJobs({ showLoading: false })), [loadJobs]);
 
   const wrapBusy = async (jobId, fn) => {
     setBusyId(jobId);
@@ -221,9 +234,12 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
 
   const onFinish = (job) => {
     const jobId = job.job_id || job.id;
+    const matCount = (job.manual_material_lines || []).length;
+    let body = tUi('upholsteryJobFinishBody', locale).replace('{name}', job.product_name || job.raw_name || '');
+    if (matCount === 0) body = `${body}\n\n${tUi('jobFinishNoMaterialsHint', locale)}`;
     Alert.alert(
       tUi('upholsteryJobFinishTitle', locale),
-      tUi('upholsteryJobFinishBody', locale).replace('{name}', job.product_name || job.raw_name || ''),
+      body,
       [
         { text: tUi('cancel', locale), style: 'cancel' },
         {
@@ -242,6 +258,19 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
       ],
     );
   };
+
+  const combinedItems = useMemo(() => {
+    const quoteRows = quoteOrders.map((q) => ({ _kind: 'quote', _key: `quote-${q.quote_id}`, quote: q }));
+    const jobRows = jobs.map((j) => ({ _kind: 'job', _key: `job-${j.job_id || j.id}`, job: j }));
+    if (jobFilter === 'quotes') return quoteRows;
+    if (jobFilter === 'floor2') {
+      return jobRows.filter((row) => row.job?.floor2_push || row.job?.metadata?.floor2_push);
+    }
+    if (jobFilter === 'active') {
+      return jobRows.filter((row) => ['ready', 'running', 'paused'].includes(row.job?.status));
+    }
+    return [...quoteRows, ...jobRows];
+  }, [quoteOrders, jobs, jobFilter]);
 
   if (!allowed) {
     return (
@@ -265,11 +294,6 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     );
   }
 
-  const combinedItems = [
-    ...quoteOrders.map((q) => ({ _kind: 'quote', _key: `quote-${q.quote_id}`, quote: q })),
-    ...jobs.map((j) => ({ _kind: 'job', _key: `job-${j.job_id || j.id}`, job: j })),
-  ];
-
   return (
     <View style={[kiosk.screen, styles.flex, kioskScreenEdgesSafe(insets, 16)]}>
       <ProductionKioskTopBar
@@ -281,6 +305,19 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('upholsteryJobIntro', locale)}</Text>
+      <View style={styles.filterRow}>
+        {['all', 'quotes', 'floor2', 'active'].map((key) => (
+          <Pressable
+            key={key}
+            style={[styles.filterChip, jobFilter === key && styles.filterChipOn]}
+            onPress={() => setJobFilter(key)}
+          >
+            <Text style={[styles.filterChipText, jobFilter === key && styles.filterChipTextOn]}>
+              {tUi(`jobsFilter_${key}`, locale)}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       {loading && combinedItems.length === 0 ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 16 }} />
       ) : null}
@@ -289,11 +326,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         data={combinedItems}
         keyExtractor={(item) => item._key}
         refreshing={loading}
-        onRefresh={() => {
-          setLoading(true);
-          loadJobs();
-        }}
-        extraData={tick}
+        onRefresh={() => loadJobs({ showLoading: true })}
         contentContainerStyle={combinedItems.length === 0 ? styles.listEmpty : { paddingBottom: 24 }}
         renderItem={({ item }) => (
           item._kind === 'quote' ? (
@@ -312,6 +345,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               onPlay={onPlay}
               onPause={onPause}
               onFinish={onFinish}
+              onMaterials={(jobRow) => setMaterialsJob(jobRow)}
             />
           )
         )}
@@ -323,6 +357,19 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
           ) : null
         }
       />
+      <ProductionJobMaterialsModal
+        visible={!!materialsJob}
+        locale={locale}
+        textAlign={textAlign}
+        jobKind="carpentry"
+        jobId={materialsJob?.job_id || materialsJob?.id || ''}
+        initialLines={materialsJob?.manual_material_lines || []}
+        onClose={() => setMaterialsJob(null)}
+        onSaved={() => {
+          setMaterialsJob(null);
+          loadJobs();
+        }}
+      />
     </View>
   );
 }
@@ -333,6 +380,12 @@ const styles = StyleSheet.create({
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   empty: { marginTop: 24 },
   jobCard: { marginBottom: 12 },
+  jobThumb: { width: '100%', height: 120, borderRadius: 10, marginBottom: 8, backgroundColor: theme.surfaceElevated },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: theme.border },
+  filterChipOn: { borderColor: theme.primary, backgroundColor: theme.primaryBg },
+  filterChipText: { fontSize: 13, fontWeight: '600', color: theme.muted },
+  filterChipTextOn: { color: theme.primary },
   quoteBadge: { fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 4 },
   jobTitle: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4 },
   jobMeta: { fontSize: 13, color: theme.muted, marginBottom: 10 },

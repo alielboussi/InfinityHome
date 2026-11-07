@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   cancelEvent,
   clearCounts,
@@ -20,6 +20,8 @@ import { downloadStocktakeCountSheetPdf } from './utils/stocktakeVariancePdf';
 import { formatStockPeriodDateTime, formatStockPeriodRange } from './utils/stocktakePeriodDisplay';
 import { stocktakeCountUrlForLocation } from './utils/stocktakeLocationSlug';
 import { logUserActivity } from './utils/userActivityLog';
+import { canViewStocktakeAggregation, getCurrentUser } from './accessControl';
+import StocktakeAggregationPage from './StocktakeAggregationPage';
 import './stocktake-count.css';
 
 export default function StocktakeControlPage() {
@@ -38,6 +40,10 @@ export default function StocktakeControlPage() {
   const [importSummary, setImportSummary] = useState('');
   const [countSheetProgress, setCountSheetProgress] = useState(null);
   const fileRef = useRef(null);
+  const showAggregation = useMemo(
+    () => canViewStocktakeAggregation(getCurrentUser()),
+    [],
+  );
 
   const activeCounting = event?.status === 'counting';
   const hasCounts = consolidated.length > 0;
@@ -108,6 +114,7 @@ export default function StocktakeControlPage() {
     })();
     const timer = setInterval(() => {
       if (!eventId) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       getEvent(eventId)
         .then((detail) => {
           if (!alive) return;
@@ -139,6 +146,15 @@ export default function StocktakeControlPage() {
     const t = setTimeout(() => setToast(''), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (window.location.hash !== '#aggregation') return undefined;
+    const timer = setTimeout(() => {
+      document.getElementById('stocktake-aggregation')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [locationId, showAggregation]);
 
   const run = async (fn, msg) => {
     setBusy(true);
@@ -289,8 +305,9 @@ export default function StocktakeControlPage() {
         <div className="stock-periods-section-title">Stocktake</div>
         <div className="stock-periods-note">
           Pick a location, start counting, then import Excel and/or share that location&apos;s count link with counters.
-          When counting is finished, an admin reviews aggregated totals on
-          {' '}<strong>Stocktake Aggregation</strong> before submit.
+          {showAggregation
+            ? ' When counting is finished, review aggregated totals in the admin section below and submit.'
+            : ' When counting is finished, an admin reviews aggregated totals and submits to update periods and inventory.'}
         </div>
 
         <label className="stock-periods-label">Location</label>
@@ -316,7 +333,7 @@ export default function StocktakeControlPage() {
         {locationId && (
           <div className="stock-periods-note" style={{ marginTop: 8 }}>
             {initialCompleted
-              ? 'Next admin submit on Stocktake Aggregation closes the open period and opens a new one.'
+              ? 'Admin submit in the aggregation section closes the open period and opens a new one.'
               : 'First stocktake here — admin submit creates opening stock and starts the first period.'}
           </div>
         )}
@@ -368,7 +385,7 @@ export default function StocktakeControlPage() {
                 </div>
                 {hasCounts ? (
                   <div className="stock-periods-note" style={{ marginTop: 6 }}>
-                    Counts are ready for admin review on <strong>Stocktake Aggregation</strong>.
+                    Counts are ready for admin review{showAggregation ? ' in the section below' : ''}.
                     Use Clear counts to restart counting, or Force close session to cancel entirely (counts discarded).
                   </div>
                 ) : (
@@ -536,6 +553,24 @@ export default function StocktakeControlPage() {
 
             </div>
           )}
+
+          {showAggregation && locationId ? (
+            <div className="stock-periods-card" id="stocktake-aggregation">
+              <div className="stock-periods-section-title">Aggregation &amp; submit</div>
+              <div className="stock-periods-note" style={{ marginBottom: 12 }}>
+                Admin review of counter totals, manual catalog adds, PDF export, and period submit. Uses the same location as above.
+              </div>
+              <StocktakeAggregationPage
+                embedInHub
+                locationId={locationId}
+                onLocationIdChange={setLocationId}
+                onSubmitSuccess={async () => {
+                  await refreshSession(locationId, '');
+                  await refreshPeriods(locationId);
+                }}
+              />
+            </div>
+          ) : null}
         </>
       )}
     </div>

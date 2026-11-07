@@ -23,7 +23,10 @@ import {
   pausePaintingProductionJob,
   resumePaintingProductionJob,
 } from '../services/paintingApi';
+import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { theme } from '../shared/theme';
+import RunningJobElapsed from '../components/RunningJobElapsed';
+import { subscribeProductionRefresh } from '../lib/productionRefreshBus';
 
 function formatElapsed(ms) {
   const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
@@ -33,10 +36,10 @@ function formatElapsed(ms) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish }) {
-  const elapsed = formatElapsed(job.elapsed_ms);
+function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMaterials }) {
   const isRunning = job.status === 'running';
   const canPlay = job.status === 'ready' || job.status === 'paused';
+  const isCompleted = job.status === 'completed';
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
 
   return (
@@ -53,7 +56,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish }) {
       </Text>
       <View style={styles.timerRow}>
         <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
-        <Text style={styles.timerValue}>{elapsed}</Text>
+        <RunningJobElapsed job={job} style={styles.timerValue} />
         <Text style={styles.statusChip}>{tUi(`upholsteryJobStatus_${job.status}`, locale)}</Text>
       </View>
 
@@ -82,6 +85,18 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish }) {
             <MaterialCommunityIcons name="pause-circle" size={52} color={theme.primary} />
           </ProductionPressableHint>
         ) : null}
+        {!isCompleted ? (
+          <ProductionPressableHint
+            hintKey="hintJobMaterials"
+            locale={locale}
+            textAlign={textAlign}
+            disabled={busy}
+            onPress={() => onMaterials?.(job)}
+            style={styles.iconBtn}
+          >
+            <MaterialCommunityIcons name="wrench" size={48} color={theme.primary} />
+          </ProductionPressableHint>
+        ) : null}
         <ProductionPressableHint
           hintKey="hintJobFinish"
           locale={locale}
@@ -105,14 +120,15 @@ export default function JobsScreen({ navigation, allowed, accessHint, onRefreshA
   const [jobs, setJobs] = useState([]);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [tick, setTick] = useState(0);
+  const [materialsJob, setMaterialsJob] = useState(null);
 
-  const loadJobs = useCallback(async () => {
+  const loadJobs = useCallback(async ({ showLoading = true } = {}) => {
     if (!allowed) {
       setJobs([]);
       setLoading(false);
       return;
     }
+    if (showLoading) setLoading(true);
     setError('');
     try {
       const list = await fetchPaintingProductionJobs({ activeOnly: true });
@@ -127,23 +143,12 @@ export default function JobsScreen({ navigation, allowed, accessHint, onRefreshA
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      loadJobs();
-    }, [loadJobs]),
+      const hasCached = jobs.length > 0;
+      loadJobs({ showLoading: !hasCached });
+    }, [loadJobs, jobs.length]),
   );
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      setTick((n) => n + 1);
-      setJobs((prev) => prev.map((j) => {
-        if (j.status !== 'running' || !j.timer_started_at) return j;
-        const base = Number(j.accumulated_ms) || 0;
-        const extra = Date.now() - new Date(j.timer_started_at).getTime();
-        return { ...j, elapsed_ms: base + Math.max(0, extra) };
-      }));
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
+  useEffect(() => subscribeProductionRefresh(() => loadJobs({ showLoading: false })), [loadJobs]);
 
   const wrapBusy = async (jobId, fn) => {
     setBusyId(jobId);
@@ -169,11 +174,14 @@ export default function JobsScreen({ navigation, allowed, accessHint, onRefreshA
     const jobId = job.job_id || job.id;
     const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
     const name = job.product_name || 'product';
+    const matCount = (job.manual_material_lines || []).length;
+    let body = tUi('paintingJobFinishBody', locale)
+      .replace('{name}', name)
+      .replace('{qty}', String(qty));
+    if (matCount === 0) body = `${body}\n\n${tUi('jobFinishNoMaterialsHint', locale)}`;
     Alert.alert(
       tUi('upholsteryJobFinishTitle', locale),
-      tUi('paintingJobFinishBody', locale)
-        .replace('{name}', name)
-        .replace('{qty}', String(qty)),
+      body,
       [
         { text: tUi('cancel', locale), style: 'cancel' },
         {
@@ -232,7 +240,6 @@ export default function JobsScreen({ navigation, allowed, accessHint, onRefreshA
           setLoading(true);
           loadJobs();
         }}
-        extraData={tick}
         contentContainerStyle={jobs.length === 0 ? styles.listEmpty : { paddingBottom: 24 }}
         renderItem={({ item }) => (
           <JobCard
@@ -243,6 +250,7 @@ export default function JobsScreen({ navigation, allowed, accessHint, onRefreshA
             onPlay={onPlay}
             onPause={onPause}
             onFinish={onFinish}
+            onMaterials={(jobRow) => setMaterialsJob(jobRow)}
           />
         )}
         ListEmptyComponent={
@@ -252,6 +260,19 @@ export default function JobsScreen({ navigation, allowed, accessHint, onRefreshA
             </Text>
           ) : null
         }
+      />
+      <ProductionJobMaterialsModal
+        visible={!!materialsJob}
+        locale={locale}
+        textAlign={textAlign}
+        jobKind="painting"
+        jobId={materialsJob?.job_id || materialsJob?.id || ''}
+        initialLines={materialsJob?.manual_material_lines || []}
+        onClose={() => setMaterialsJob(null)}
+        onSaved={() => {
+          setMaterialsJob(null);
+          loadJobs();
+        }}
       />
     </View>
   );

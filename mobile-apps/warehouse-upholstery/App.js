@@ -1,3 +1,4 @@
+import './shared/lightweightRuntime.js';
 import './shared/suppressBridgelessCodegenWarnings.js';
 import { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -16,6 +17,7 @@ import UpholsteryQuoteDetailScreen from './screens/UpholsteryQuoteDetailScreen';
 import WarehouseRepairsScreen from './screens/WarehouseRepairsScreen';
 import RepairReturnSignatureScreen from './screens/RepairReturnSignatureScreen';
 import RepairReturnDoneScreen from './screens/RepairReturnDoneScreen';
+import ProductionPushSettingsScreen from './screens/ProductionPushSettingsScreen';
 import { stackScreenOptions, theme } from './shared/theme';
 
 const Stack = createNativeStackNavigator();
@@ -107,6 +109,7 @@ function MainStack({ navigationRef }) {
       </Stack.Screen>
       <Stack.Screen name="RepairReturnSignature" options={{ headerShown: false }} component={RepairReturnSignatureScreen} />
       <Stack.Screen name="RepairReturnDone" options={{ headerShown: false }} component={RepairReturnDoneScreen} />
+      <Stack.Screen name="PushSettings" options={{ headerShown: false }} component={ProductionPushSettingsScreen} />
     </Stack.Navigator>
   );
 }

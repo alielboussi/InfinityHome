@@ -103,7 +103,8 @@ export async function listCarpentryFloorRunsEnriched(sb, { limit = 200 } = {}) {
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
   const floor2LocationId = floor2Loc?.id ? String(floor2Loc.id) : '';
 
-  const [{ data: runs, error }, { data: floor2InvRows }] = await Promise.all([
+  const { buildFloor2StockRows } = await import('../../src/utils/carpentryFinishingView.js');
+  const [{ data: runs, error }, { data: floor2InvRows }, { data: assemblies, error: asmErr }] = await Promise.all([
     sb
       .from(RUNS)
       .select('*')
@@ -112,6 +113,7 @@ export async function listCarpentryFloorRunsEnriched(sb, { limit = 200 } = {}) {
     floor2LocationId
       ? sb.from('warehouse_assembly_inventory').select('assembly_id, location_id, quantity').eq('location_id', floor2LocationId)
       : Promise.resolve({ data: [] }),
+    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata'),
   ]);
   if (error) {
     if (/not found|does not exist/i.test(String(error.message || ''))) {
@@ -119,6 +121,7 @@ export async function listCarpentryFloorRunsEnriched(sb, { limit = 200 } = {}) {
     }
     throw new Error(error.message || 'Failed to load runs');
   }
+  if (asmErr) throw new Error(asmErr.message || 'Failed to load assemblies');
   const runIds = (runs || []).map((r) => r.id).filter(Boolean);
   let usage = [];
   if (runIds.length) {
@@ -131,12 +134,9 @@ export async function listCarpentryFloorRunsEnriched(sb, { limit = 200 } = {}) {
     if (!usageByRun.has(key)) usageByRun.set(key, []);
     usageByRun.get(key).push(row);
   });
-  const floor2Stock = (floor2InvRows || [])
-    .filter((r) => Number(r.quantity) > 0)
-    .map((r) => ({
-      assembly_id: String(r.assembly_id),
-      quantity: Number(r.quantity) || 0,
-    }));
+  const floor2Stock = floor2LocationId
+    ? buildFloor2StockRows(assemblies || [], floor2InvRows || [], floor2LocationId)
+    : [];
   return {
     tableMissing: false,
     floor2_location_id: floor2LocationId || null,

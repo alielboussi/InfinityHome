@@ -1,3 +1,4 @@
+/** @deprecated Legacy screen — not registered in App.js; use Manufacture / Jobs. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,

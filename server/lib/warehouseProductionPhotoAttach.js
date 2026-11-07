@@ -139,7 +139,12 @@ async function runPendingPortalSetup(sb, body, user, assembly) {
     Number(pending.floor2_product_qty ?? pending.initial_quantity) || 0,
   ));
 
-  if (warehouseLocationId && initialQty > 0) {
+  if (
+    warehouseLocationId
+    && initialQty > 0
+    && resolvedPortalCatalog !== 'carpentry'
+    && resolvedPortalCatalog !== 'upholstery'
+  ) {
     await upsertFinishedAssemblyInventoryQuantity(sb, {
       assemblyId,
       locationId: warehouseLocationId,

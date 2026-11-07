@@ -47,3 +47,11 @@ export function buildCarpentryFinishingCandidates(assemblies, inventoryRows, flo
   }
   return results.sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
+
+/** Stock rows for Floor 2 portal grid (includes qty 0 when WIP is visible in catalog). */
+export function buildFloor2StockRows(assemblies, inventoryRows, floor2LocationId) {
+  return buildCarpentryFinishingCandidates(assemblies, inventoryRows, floor2LocationId).map((row) => ({
+    assembly_id: String(row.assembly_id || row.id),
+    quantity: Math.max(0, Math.floor(Number(row.floor2_qty) || 0)),
+  }));
+}

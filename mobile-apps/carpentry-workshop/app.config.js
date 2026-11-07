@@ -12,8 +12,10 @@ const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 
 const googleIosUrlScheme = 'com.googleusercontent.apps.876299148810-s0rclhhohp8r7i6kh4c682b7erufhen4';
 
+const { finalizeExpoConfig } = require('../shared/expoAndroidLightweight');
+
 module.exports = {
-  expo: {
+  expo: finalizeExpoConfig({
     name: 'Carpentry',
     owner: 'alielboussi',
     slug: 'infinity-carpentry-workshop',
@@ -69,5 +71,5 @@ module.exports = {
       googleAndroidClientId: googleWebClientId,
       appScheme: 'infinity-carpentry',
     },
-  },
+  }),
 };

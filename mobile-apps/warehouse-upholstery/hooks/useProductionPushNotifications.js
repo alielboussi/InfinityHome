@@ -4,6 +4,7 @@ import {
   navigateFromProductionNotification,
   registerProductionPushTokenWithServer,
 } from '../lib/productionPushNotifications';
+import { emitProductionRefresh } from '../lib/productionRefreshBus';
 
 /**
  * Register Expo push for upholstery production alerts (quote orders, etc.).
@@ -26,7 +27,7 @@ export function useProductionPushNotifications(navigationRef, { allowed } = {}) 
       navigateFromProductionNotification(navigationRef, data);
     });
     const subReceived = Notifications.addNotificationReceivedListener(() => {
-      // Foreground: list screens refresh on focus via useFocusEffect.
+      emitProductionRefresh('push');
     });
     return () => {
       subResponse.remove();

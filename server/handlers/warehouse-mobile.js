@@ -412,6 +412,7 @@ async function opProductionPushRegister(body, user) {
     email: user?.email,
     expoPushToken: body.expo_push_token,
     appTarget,
+    pushPrefs: body.push_prefs || body.pushPrefs || null,
   });
 }
 
@@ -578,8 +579,14 @@ async function assertCatalogScreenViewUser(user, screenId) {
   throw err;
 }
 
-async function opCatalogFloor2List(user) {
-  await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+async function opCatalogFloor2List(user, { carpentryWorkshop = false, productionKiosk = false } = {}) {
+  if (carpentryWorkshop) {
+    await assertCarpentryWorkshopUser(user);
+  } else if (productionKiosk) {
+    await assertProductionKioskUser(user);
+  } else {
+    await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+  }
   const sb = getService();
   const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
   const { parseCarpentryMeta } = await import('../../src/utils/carpentryCatalogView.js');
@@ -619,7 +626,10 @@ async function opCatalogFloor2List(user) {
     const qty = qtyByAssembly.get(aid) || 0;
     const inCarpentry = parseCarpentryMeta(row).selected;
     const linkedUpholstery = Boolean(findUpholsteryFinishedForRawAssembly(allRows, aid));
-    if (qty <= 0 && !inCarpentry && !linkedUpholstery) continue;
+    const hasFloor2WipPhoto = Boolean(
+      readWarehouseFloor2WipImageUrl(row) || readWarehouseFloor2WipFamilyImageUrl(row),
+    );
+    if (qty <= 0 && !inCarpentry && !linkedUpholstery && !hasFloor2WipPhoto) continue;
     const wipImage = readWarehouseFloor2WipImageUrl(row) || '';
     const familyImage = readWarehouseFloor2WipFamilyImageUrl(row) || '';
     const floor2SetName = String(row?.metadata?.floor2_set_name || '').trim();
@@ -641,16 +651,20 @@ async function opCatalogFloor2List(user) {
   return { products, floor2_location_id: floor2Id };
 }
 
-async function opCatalogFloor2StockIncrease(body, user) {
-  const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
-  if (
-    !isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', user?.email)
-    && !canManageCatalog(user)
-    && !isLoginAccessAdmin(user?.email)
-  ) {
-    const err = new Error('Floor 2 stock qty adjustment is disabled for your account in User Access.');
-    err.status = 403;
-    throw err;
+async function opCatalogFloor2StockIncrease(body, user, { carpentryWorkshop = false } = {}) {
+  if (carpentryWorkshop) {
+    await assertCarpentryWorkshopUser(user);
+  } else {
+    const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+    if (
+      !isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', user?.email)
+      && !canManageCatalog(user)
+      && !isLoginAccessAdmin(user?.email)
+    ) {
+      const err = new Error('Floor 2 stock qty adjustment is disabled for your account in User Access.');
+      err.status = 403;
+      throw err;
+    }
   }
   const assemblyId = String(
     body.assembly_id || body.assemblyId || body.raw_assembly_id || body.rawAssemblyId || '',
@@ -698,16 +712,20 @@ async function opCatalogFloor2StockIncrease(body, user) {
   });
 }
 
-async function opCatalogFloor2CreateProduct(body, user) {
-  const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
-  if (
-    !isWarehouseFloor2CreateProductAllowed(grant, user?.email)
-    && !canManageCatalog(user)
-    && !isLoginAccessAdmin(user?.email)
-  ) {
-    const err = new Error('Creating Floor 2 products (+ Prod) is disabled for your account in User Access.');
-    err.status = 403;
-    throw err;
+async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = false } = {}) {
+  if (carpentryWorkshop) {
+    await assertCarpentryWorkshopUser(user);
+  } else {
+    const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+    if (
+      !isWarehouseFloor2CreateProductAllowed(grant, user?.email)
+      && !canManageCatalog(user)
+      && !isLoginAccessAdmin(user?.email)
+    ) {
+      const err = new Error('Creating Floor 2 products (+ Prod) is disabled for your account in User Access.');
+      err.status = 403;
+      throw err;
+    }
   }
 
   const rawName = String(body.name || '').trim();
@@ -1014,16 +1032,20 @@ async function opCatalogFloor2CreateSet(body, user) {
   };
 }
 
-async function opCatalogFloor2PhotoUpload(body, user) {
-  const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
-  if (
-    !isCatalogLocationPhotoUploadAllowed(grant, 'warehouse_floor_2', user?.email)
-    && !canManageCatalog(user)
-    && !isLoginAccessAdmin(user?.email)
-  ) {
-    const err = new Error('Floor 2 image upload is disabled for your account in User Access.');
-    err.status = 403;
-    throw err;
+async function opCatalogFloor2PhotoUpload(body, user, { carpentryWorkshop = false } = {}) {
+  if (carpentryWorkshop) {
+    await assertCarpentryWorkshopUser(user);
+  } else {
+    const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+    if (
+      !isCatalogLocationPhotoUploadAllowed(grant, 'warehouse_floor_2', user?.email)
+      && !canManageCatalog(user)
+      && !isLoginAccessAdmin(user?.email)
+    ) {
+      const err = new Error('Floor 2 image upload is disabled for your account in User Access.');
+      err.status = 403;
+      throw err;
+    }
   }
   const assemblyId = String(
     body.assembly_id || body.assemblyId || body.raw_assembly_id || body.rawAssemblyId || '',
@@ -1572,6 +1594,62 @@ async function opProductionQuoteMaterialScan(body, user) {
   });
 }
 
+async function opProductionFloor2List(user) {
+  await assertProductionKioskUser(user);
+  return opCatalogFloor2List(user, { productionKiosk: true });
+}
+
+async function opProductionFloor2ManufacturePush(body, user) {
+  await assertProductionKioskUser(user);
+  const assemblyId = String(
+    body.assembly_id || body.assemblyId || body.raw_assembly_id || body.rawAssemblyId || '',
+  ).trim();
+  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty ?? body.quantity) || 1));
+  const channel = String(body.channel || body.route || 'upholstery').trim().toLowerCase();
+  if (!assemblyId) throw new Error('assembly_id required');
+  const sb = getService();
+  const { pushFloor2ToProductionJob } = await import('../lib/productionManufactureFloor2.js');
+  const result = await pushFloor2ToProductionJob(sb, {
+    assemblyId,
+    productQty,
+    channel,
+    userId: user?.id || user?.uid,
+  });
+  try {
+    const { notifyProductionManufactureJob } = await import('../lib/productionExpoPush.js');
+    await notifyProductionManufactureJob({ channel, job: result?.job });
+  } catch (pushErr) {
+    console.warn('[warehouse-mobile] manufacture job push notify failed:', pushErr?.message || pushErr);
+  }
+  return result;
+}
+
+async function opProductionStoreroomMaterialsList(user) {
+  await assertProductionKioskUser(user);
+  const sb = getService();
+  const { listProductionStoreroomMaterials } = await import('../lib/productionJobMaterials.js');
+  return listProductionStoreroomMaterials(sb);
+}
+
+async function opProductionJobMaterialsSave(body, user) {
+  await assertProductionKioskUser(user);
+  const jobKind = String(body.job_kind || body.jobKind || body.route || '').trim().toLowerCase();
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  const returnOrderId = String(body.return_order_id || body.returnOrderId || '').trim();
+  const materialLines = Array.isArray(body.material_lines)
+    ? body.material_lines
+    : (Array.isArray(body.materials) ? body.materials : []);
+  if (!jobKind) throw new Error('job_kind required (upholstery|carpentry|painting|repair)');
+  const sb = getService();
+  const { saveProductionJobMaterials } = await import('../lib/productionJobMaterials.js');
+  return saveProductionJobMaterials(sb, {
+    jobKind,
+    jobId: jobId || returnOrderId,
+    returnOrderId: jobKind === 'repair' ? (returnOrderId || jobId) : null,
+    materialLines,
+  });
+}
+
 async function removeProductionPacketDraft(sb, packetId) {
   const id = String(packetId || '').trim();
   if (!id) return;
@@ -1660,8 +1738,10 @@ async function opProductionPacketCreate(body, user) {
   const floor2SeedQty = resolveFloor2SeedQuantity(body, initialQty);
   const deferPortalCatalog = deferProductPhoto === true
     && (portalChannel === 'upholstery' || portalChannel === 'carpentry');
-  /** Upholstery & Carpentry deferred photo: finished qty on Floor 1 & Floor 2 seed applied after AI photo succeeds. */
-  const openingFloor1Qty = deferPortalCatalog ? 0 : (portalChannel === 'upholstery' ? 0 : initialQty);
+  /** Upholstery & Carpentry: raw WIP seed goes on Floor 2; Floor 1 finished qty stays 0 until finished in Upholstery/Painting/Finishing. */
+  const openingFloor1Qty = deferPortalCatalog
+    ? 0
+    : ((portalChannel === 'upholstery' || portalChannel === 'carpentry') ? 0 : initialQty);
   let assemblyInserted = false;
   let assemblyId = '';
   try {
@@ -4081,6 +4161,18 @@ export default async function handler(req, res) {
       case 'carpentry-manufacture-list':
         result = await opCarpentryManufactureList(user);
         break;
+      case 'carpentry-floor2-list':
+        result = await opCatalogFloor2List(user, { carpentryWorkshop: true });
+        break;
+      case 'carpentry-floor2-stock-increase':
+        result = await opCatalogFloor2StockIncrease(body, user, { carpentryWorkshop: true });
+        break;
+      case 'carpentry-floor2-create-product':
+        result = await opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop: true });
+        break;
+      case 'carpentry-floor2-photo-upload':
+        result = await opCatalogFloor2PhotoUpload(body, user, { carpentryWorkshop: true });
+        break;
       case 'carpentry-job-start':
         result = await opCarpentryJobStart(body, user);
         break;
@@ -4128,6 +4220,18 @@ export default async function handler(req, res) {
         break;
       case 'production-quote-material-scan':
         result = await opProductionQuoteMaterialScan(body, user);
+        break;
+      case 'production-floor2-list':
+        result = await opProductionFloor2List(user);
+        break;
+      case 'production-floor2-manufacture-push':
+        result = await opProductionFloor2ManufacturePush(body, user);
+        break;
+      case 'production-storeroom-materials-list':
+        result = await opProductionStoreroomMaterialsList(user);
+        break;
+      case 'production-job-materials-save':
+        result = await opProductionJobMaterialsSave(body, user);
         break;
       case 'packet-name-check':
         result = await opPacketNameCheck(body);

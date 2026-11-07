@@ -1,8 +1,11 @@
 /* eslint-disable no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from "react";
+import './POS.css';
+import './reversal.css';
+import SaleAdjustmentWorkflow from './components/SaleAdjustmentWorkflow';
 import { getMaxSetQty, selectPrice, formatAmount } from './utils/setInventoryUtils';
-import { FaCalendarAlt, FaCashRegister, FaFilePdf, FaReceipt } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
+import { FaCalendarAlt, FaCashRegister, FaFilePdf, FaReceipt, FaUndo } from "react-icons/fa";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import db from './dataClient';
 import { isFahme, computeFahmeOverrides, computePosBadgeDue, FAHME_ID, computeLaybyRollups } from './laybyRules';
 import { checkout as checkoutApi } from './services/checkout';
@@ -290,6 +293,21 @@ const comboIsAvailableAtLocation = (combo, locationId, comboLocationsByCombo = {
 export default function POS({ isMobile = false }) {
   // Place ALL hooks here, inside the function!
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [saleAdjustOpen, setSaleAdjustOpen] = useState(() => searchParams.get('adjust') === 'sale');
+
+  useEffect(() => {
+    if (searchParams.get('adjust') === 'sale') setSaleAdjustOpen(true);
+  }, [searchParams]);
+
+  const closeSaleAdjust = React.useCallback(() => {
+    setSaleAdjustOpen(false);
+    if (searchParams.get('adjust')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('adjust');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [saleTypeFilter, setSaleTypeFilter] = useState('all');
   // Removed per request: history uses the selected customer at top
   const [amountFilter, setAmountFilter] = useState('');
@@ -2271,9 +2289,9 @@ export default function POS({ isMobile = false }) {
 
   return (
     <div className="pos-container" ref={posContainerRef}>
-      <div className="page-header-row" style={{ marginBottom: 10 }}>
+      <div className="page-header-row">
         <BackToDashboard />
-        <h2 style={{ margin: 0, fontSize: '1.2rem' }}><FaCashRegister style={{ marginRight: 6, fontSize: '1.1rem' }} /> Point of Sale</h2>
+        <h2><FaCashRegister style={{ marginRight: 6, fontSize: '1.1rem', verticalAlign: '-0.1em' }} aria-hidden /> Point of Sale</h2>
         <div className="layby-mgmt-header-actions">
           <button
             type="button"
@@ -2293,6 +2311,15 @@ export default function POS({ isMobile = false }) {
             disabled={pdfPreviewBusy}
           >
             <FaFilePdf aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="layby-mgmt-download-btn"
+            title="Reverse sale lines (restock at sale location)"
+            aria-label="Reverse or adjust a completed sale"
+            onClick={() => setSaleAdjustOpen(true)}
+          >
+            <FaUndo aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -2439,22 +2466,13 @@ export default function POS({ isMobile = false }) {
       </div>
 
       {selectedCustomer && remainingDue > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '6px 0 0 0' }}>
-          <span style={{
-            background: '#2e7d32',
-            color: '#fff',
-            padding: '4px 10px',
-            borderRadius: 8,
-            fontSize: '0.92rem',
-            fontWeight: 700,
-            whiteSpace: 'nowrap',
-            boxShadow: '0 0 0 1px rgba(255,255,255,0.08) inset'
-          }}>
+        <div className="pos-due-banner">
+          <span className="pos-due-badge">
             Due balance: {Number(remainingDue).toLocaleString()}
           </span>
           <button
             type="button"
-            style={{ width: 90, minWidth: 90, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            className="pos-due-edit-btn"
             onClick={() => {
               const cust = customers.find(c => String(c.id) === String(selectedCustomer));
               if (cust) openEditCustomerModal(cust);
@@ -2829,46 +2847,61 @@ export default function POS({ isMobile = false }) {
           </div>
         </div>
       )}
-      <div className="pos-summary" style={{ fontSize: '1rem', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap', marginTop: 8, marginBottom: 8 }}>
-        <div>Subtotal: {subtotal.toFixed(2)}</div>
-        <div>VAT @16%: Inclusive</div>
-        <div>
-          Discount: <input
-            type="number"
-            min="0"
-            max={subtotal}
-            value={discountAll}
-            onChange={e => {
-              const v = e.target.value;
-              setDiscountAll(v);
-              setCheckoutError('');
-            }}
-            style={{ width: 60, marginLeft: 4, marginRight: 4, fontSize: '0.95rem', height: 24 }}
-          />
-        </div>
-        <div><b>Total: {total.toFixed(2)} {currencyLabel}</b></div>
-        {willCreateNewLayby && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <label htmlFor="pos-balance-due-days" style={{ fontSize: '0.95rem' }}>
-              Days to complete balance (optional)
-            </label>
+      <section className="pos-checkout-panel" aria-label="Totals and payment">
+        <div className="pos-summary">
+          <div className="pos-summary-item">
+            <span className="pos-summary-label">Subtotal</span>
+            <span>{subtotal.toFixed(2)}</span>
+          </div>
+          <div className="pos-summary-item">
+            <span className="pos-summary-label">VAT</span>
+            <span>16% inclusive</span>
+          </div>
+          <div className="pos-summary-item pos-summary-discount">
+            <span className="pos-summary-label">Discount</span>
             <input
-              id="pos-balance-due-days"
               type="number"
-              min="1"
-              step="1"
-              value={balanceDueDays}
-              onChange={(e) => setBalanceDueDays(e.target.value)}
-              placeholder="e.g. 30"
-              style={{ width: 90, fontSize: '0.95rem', height: 28 }}
+              min="0"
+              max={subtotal}
+              className="pos-summary-discount-input"
+              value={discountAll}
+              onChange={e => {
+                const v = e.target.value;
+                setDiscountAll(v);
+                setCheckoutError('');
+              }}
+              aria-label="Sale discount"
             />
           </div>
-        )}
-        {selectedCustomer && (
-          <div><b>Amount due: {paymentDueNow.toFixed(2)} {currencyLabel}</b></div>
-        )}
-      </div>
-      <div className="pos-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+          <div className="pos-summary-item pos-summary-total">
+            <span className="pos-summary-label">Total</span>
+            <span>{total.toFixed(2)} {currencyLabel}</span>
+          </div>
+          {willCreateNewLayby && (
+            <div className="pos-summary-item pos-summary-balance-days">
+              <label htmlFor="pos-balance-due-days" className="pos-summary-label">
+                Days for balance
+              </label>
+              <input
+                id="pos-balance-due-days"
+                type="number"
+                min="1"
+                step="1"
+                value={balanceDueDays}
+                onChange={(e) => setBalanceDueDays(e.target.value)}
+                placeholder="30"
+                aria-label="Days to complete balance optional"
+              />
+            </div>
+          )}
+          {selectedCustomer && (
+            <div className="pos-summary-item pos-summary-total">
+              <span className="pos-summary-label">Amount due</span>
+              <span>{paymentDueNow.toFixed(2)} {currencyLabel}</span>
+            </div>
+          )}
+        </div>
+        <div className="pos-actions">
         <div className="payments-section">
           {(paymentLines || []).map((p, idx) => (
             <div key={idx} className="payment-row">
@@ -2934,11 +2967,18 @@ export default function POS({ isMobile = false }) {
         </div>
         {/** Moved 'Manage All Sales' button next to receipt field; removed duplicate here */}
       </div>
+        {checkoutError && (
+          <div className="pos-checkout-message pos-checkout-message--error" role="alert">{checkoutError}</div>
+        )}
+        {checkoutSuccess && (
+          <div className="pos-checkout-message pos-checkout-message--success" role="status">{checkoutSuccess}</div>
+        )}
+        {inventoryDeductedMsg && (
+          <div className="pos-checkout-message pos-checkout-message--info" role="status">{inventoryDeductedMsg}</div>
+        )}
+      </section>
       {/* Layby / Partial Payment History section removed per request */}
   {/* Credit Ledger removed */}
-      {checkoutError && <div style={{ color: "#ff5252", marginBottom: 10 }}>{checkoutError}</div>}
-      {checkoutSuccess && <div style={{ color: "#4caf50", marginBottom: 10 }}>{checkoutSuccess}</div>}
-      {inventoryDeductedMsg && <div style={{ color: "#2196f3", marginBottom: 10 }}>{inventoryDeductedMsg}</div>}
 
       {/* Customer Modal */}
       {showCustomerModal && (
@@ -3059,6 +3099,11 @@ export default function POS({ isMobile = false }) {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {saleAdjustOpen && (
+        <div className="pos-sale-adjustment-layer">
+          <SaleAdjustmentWorkflow embedded onClose={closeSaleAdjust} />
         </div>
       )}
     </div>

@@ -510,8 +510,8 @@ const UI_STRINGS = {
   deliveryPrintSystemPicker: { en: 'Choose printer (system list)', ar: 'اختر الطابعة (قائمة النظام)' },
   deliveryPrintRetry: { en: 'Retry print', ar: 'إعادة الطباعة' },
   deliveryPrintRetryHint: {
-    en: 'Nothing came out of the printer? Tap Retry to open the print dialog again with the same delivery note.',
-    ar: 'لم تطبع الصفحة؟ اضغط إعادة الطباعة لفتح حوار الطباعة مرة أخرى بنفس المذكرة.',
+    en: 'If printing timed out (1 minute) or nothing came out, check printer Wi‑Fi/Ethernet then tap Retry.',
+    ar: 'إذا انتهت مهلة الطباعة (دقيقة واحدة) أو لم تخرج نسخة، تحقق من اتصال الطابعة ثم اضغط إعادة المحاولة.',
   },
   deliveryPrintSkip: { en: 'Skip printing', ar: 'تخطي الطباعة' },
   deliveryPrintNoPrinters: {
@@ -523,7 +523,11 @@ const UI_STRINGS = {
     ar: 'بحث الطابعات يتطلب تطبيق Production (ليس Expo Go). يمكنك استخدام قائمة النظام.',
   },
   deliveryPrintScanFailed: { en: 'Printer search failed.', ar: 'فشل البحث عن الطابعات.' },
-  deliveryPrintFailed: { en: 'Print failed.', ar: 'فشلت الطباعة.' },
+  deliveryPrintTimeoutError: {
+    en: 'Print timed out after 1 minute due to connectivity. Please check your printer connection and tap Retry.',
+    ar: 'انتهت مهلة الطباعة بعد دقيقة واحدة بسبب الاتصال. يرجى التحقق من اتصال الطابعة والضغط على إعادة المحاولة.',
+  },
+  deliveryPrintFailed: { en: 'Print failed. Please check printer connectivity and tap Retry.', ar: 'فشلت الطباعة. يرجى التحقق من اتصال الطابعة والضغط على إعادة المحاولة.' },
   deliveryScanBtn: { en: 'Scan packet', ar: 'مسح الطرد' },
   deliveryScanPickTitle: { en: 'Which product?', ar: 'أي منتج؟' },
   deliveryScanPickHint: {
@@ -615,6 +619,8 @@ const UI_STRINGS = {
   soldReceipt: { en: 'Receipt', ar: 'الإيصال' },
   soldDetailTitle: { en: 'Sold item', ar: 'عنصر مباع' },
   soldQty: { en: 'Qty in warehouse', ar: 'الكمية في المخزن' },
+  soldStatus: { en: 'Status', ar: 'الحالة' },
+  soldAlreadyDelivered: { en: 'This item was already delivered or is no longer in storage.', ar: 'تم تسليم هذا العنصر أو لم يعد في المخزن.' },
   soldDeliver: { en: 'Deliver', ar: 'تسليم' },
   soldDeliverFailed: { en: 'Delivery failed.', ar: 'فشل التسليم.' },
   soldDeliverTitle: { en: 'Sold delivery — sign', ar: 'تسليم مباع — التوقيع' },
