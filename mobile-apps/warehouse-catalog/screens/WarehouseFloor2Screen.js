@@ -20,7 +20,8 @@ import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../s
 import {
   isCatalogLocationPhotoUploadAllowed,
   isCatalogLocationStockIncreaseAllowed,
-  isWarehouseCatalogAddProductAllowed,
+  isWarehouseFloor2CreateProductAllowed,
+  isWarehouseFloor2CreateSetAllowed,
 } from '../shared/mobileAccessManifest';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
@@ -152,7 +153,8 @@ export default function WarehouseFloor2Screen() {
   const userEmail = useSharedMobileAccessUserEmail();
   const canIncreaseStock = isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', userEmail);
   const canUploadPhoto = isCatalogLocationPhotoUploadAllowed(grant, 'warehouse_floor_2', userEmail);
-  const canCreateFloor2 = isWarehouseCatalogAddProductAllowed(grant, userEmail) || canIncreaseStock;
+  const canCreateFloor2Prod = isWarehouseFloor2CreateProductAllowed(grant, userEmail);
+  const canCreateFloor2Set = isWarehouseFloor2CreateSetAllowed(grant, userEmail);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -484,6 +486,34 @@ export default function WarehouseFloor2Screen() {
   return (
     <View style={styles.root}>
       <View style={styles.topToolbar}>
+        {canCreateFloor2Prod || canCreateFloor2Set ? (
+          <View style={styles.createBtnRow}>
+            {canCreateFloor2Prod ? (
+              <Pressable
+                style={({ pressed }) => [styles.plusCreateBtn, pressed && styles.plusCreateBtnPressed]}
+                onPress={() => openCreateModal('prod')}
+                accessibilityRole="button"
+                accessibilityLabel="Create product on Floor 2"
+              >
+                <Text style={styles.plusCreateBtnText}>+ Prod</Text>
+              </Pressable>
+            ) : null}
+            {canCreateFloor2Set ? (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.plusCreateBtn,
+                  styles.plusCreateBtnSet,
+                  pressed && styles.plusCreateBtnPressed,
+                ]}
+                onPress={() => openCreateModal('set')}
+                accessibilityRole="button"
+                accessibilityLabel="Create set on Floor 2"
+              >
+                <Text style={styles.plusCreateBtnText}>+ Set</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         <TextInput
           style={styles.searchInput}
           placeholder="Search Floor 2 product or SKU…"
@@ -494,30 +524,6 @@ export default function WarehouseFloor2Screen() {
           autoCapitalize="none"
           clearButtonMode="while-editing"
         />
-        {canCreateFloor2 ? (
-          <View style={styles.createBtnRow}>
-            <Pressable
-              style={({ pressed }) => [styles.plusCreateBtn, pressed && styles.plusCreateBtnPressed]}
-              onPress={() => openCreateModal('prod')}
-              accessibilityRole="button"
-              accessibilityLabel="Create product on Floor 2"
-            >
-              <Text style={styles.plusCreateBtnText}>+ Prod</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [
-                styles.plusCreateBtn,
-                styles.plusCreateBtnSet,
-                pressed && styles.plusCreateBtnPressed,
-              ]}
-              onPress={() => openCreateModal('set')}
-              accessibilityRole="button"
-              accessibilityLabel="Create set on Floor 2"
-            >
-              <Text style={styles.plusCreateBtnText}>+ Set</Text>
-            </Pressable>
-          </View>
-        ) : null}
       </View>
 
       {loading && products.length === 0 ? (

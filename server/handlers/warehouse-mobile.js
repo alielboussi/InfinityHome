@@ -50,6 +50,8 @@ import {
   isMobileScreenAccessAllowed,
   isWarehouseCatalogAddProductAllowed,
   isWarehouseCatalogLabelPrintAllowed,
+  isWarehouseFloor2CreateProductAllowed,
+  isWarehouseFloor2CreateSetAllowed,
   isWarehouseProductionAppAllowed,
   isWarehouseProductionKitweDeliveryAllowed,
   isWarehouseProductionOperatorAllowed,
@@ -697,12 +699,11 @@ async function opCatalogFloor2StockIncrease(body, user) {
 async function opCatalogFloor2CreateProduct(body, user) {
   const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
   if (
-    !isWarehouseCatalogAddProductAllowed(grant, user?.email)
-    && !isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', user?.email)
+    !isWarehouseFloor2CreateProductAllowed(grant, user?.email)
     && !canManageCatalog(user)
     && !isLoginAccessAdmin(user?.email)
   ) {
-    const err = new Error('Creating Floor 2 products is disabled for your account in User Access.');
+    const err = new Error('Creating Floor 2 products (+ Prod) is disabled for your account in User Access.');
     err.status = 403;
     throw err;
   }
@@ -800,12 +801,11 @@ async function opCatalogFloor2CreateProduct(body, user) {
 async function opCatalogFloor2CreateSet(body, user) {
   const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
   if (
-    !isWarehouseCatalogAddProductAllowed(grant, user?.email)
-    && !isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', user?.email)
+    !isWarehouseFloor2CreateSetAllowed(grant, user?.email)
     && !canManageCatalog(user)
     && !isLoginAccessAdmin(user?.email)
   ) {
-    const err = new Error('Creating Floor 2 sets is disabled for your account in User Access.');
+    const err = new Error('Creating Floor 2 sets (+ Set) is disabled for your account in User Access.');
     err.status = 403;
     throw err;
   }

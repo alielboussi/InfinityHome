@@ -9,6 +9,8 @@ import {
   isCatalogLocationPhotoUploadAllowed,
   isCatalogLocationStockIncreaseAllowed,
   isMobileScreenAccessAllowed,
+  isWarehouseFloor2CreateProductAllowed,
+  isWarehouseFloor2CreateSetAllowed,
   sanitizeMobileAccessGrantForUser,
   USER_ACCESS_CATALOG_APP_LABEL,
 } from '../mobile/mobileAccessManifest';
@@ -93,6 +95,20 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
     }));
   };
 
+  const setFloor2CreateProduct = (allowed) => {
+    setGrant((prev) => ({
+      ...prev,
+      warehouse_floor2_create_product: allowed ? 'allow' : 'deny',
+    }));
+  };
+
+  const setFloor2CreateSet = (allowed) => {
+    setGrant((prev) => ({
+      ...prev,
+      warehouse_floor2_create_set: allowed ? 'allow' : 'deny',
+    }));
+  };
+
   const handleSave = async () => {
     setBusy(true);
     setError('');
@@ -149,7 +165,7 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
       {error ? <div className="report-error mobile-access-panel__error">{error}</div> : null}
 
       <div className="mobile-access-panel__section mobile-access-panel__section--permissions">
-        <h4 className="mobile-access-panel__section-label">Floor 1 &amp; web permissions</h4>
+        <h4 className="mobile-access-panel__section-label">Floor 1, Floor 2 &amp; web permissions</h4>
         <div className="mobile-access-permission-list">
           <div className="mobile-access-permission-item">
             <input
@@ -163,9 +179,39 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
               }))}
             />
             <label className="mobile-access-permission-item__body" htmlFor="mobile-access-catalog-add-product">
-              <span className="mobile-access-permission-item__title">Add new product</span>
+              <span className="mobile-access-permission-item__title">Add new product (Floor 1 &amp; Web)</span>
               <span className="mobile-access-permission-item__desc">
                 Web warehouse catalog and Floor 1 app — shows the + button and allows creating a new product.
+              </span>
+            </label>
+          </div>
+          <div className="mobile-access-permission-item">
+            <input
+              id="mobile-access-floor2-create-product"
+              type="checkbox"
+              className="mobile-access-permission-item__check"
+              checked={grant.warehouse_floor2_create_product === 'allow'}
+              onChange={(e) => setFloor2CreateProduct(e.target.checked)}
+            />
+            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-floor2-create-product">
+              <span className="mobile-access-permission-item__title">+ Prod on Floor 2</span>
+              <span className="mobile-access-permission-item__desc">
+                Shows the + Prod button on the Floor 2 page in the mobile catalog app.
+              </span>
+            </label>
+          </div>
+          <div className="mobile-access-permission-item">
+            <input
+              id="mobile-access-floor2-create-set"
+              type="checkbox"
+              className="mobile-access-permission-item__check"
+              checked={grant.warehouse_floor2_create_set === 'allow'}
+              onChange={(e) => setFloor2CreateSet(e.target.checked)}
+            />
+            <label className="mobile-access-permission-item__body" htmlFor="mobile-access-floor2-create-set">
+              <span className="mobile-access-permission-item__title">+ Set on Floor 2</span>
+              <span className="mobile-access-permission-item__desc">
+                Shows the + Set button on the Floor 2 page in the mobile catalog app.
               </span>
             </label>
           </div>
@@ -234,14 +280,19 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                 <th className="mobile-access-matrix__access-col">Access</th>
                 <th className="mobile-access-matrix__access-col">Qty Increase</th>
                 <th className="mobile-access-matrix__access-col">Image Upload</th>
+                <th className="mobile-access-matrix__access-col">+ Prod</th>
+                <th className="mobile-access-matrix__access-col">+ Set</th>
               </tr>
             </thead>
             <tbody>
               {matrixScreens.map((screen) => {
                 const allowed = isMobileScreenAccessAllowed(grant, screen.id);
                 const hasLocationRights = LOCATION_RIGHTS_SET.has(screen.id);
+                const isFloor2Screen = screen.id === 'warehouse_floor_2';
                 const stockIncAllowed = isCatalogLocationStockIncreaseAllowed(grant, screen.id, '');
                 const photoUpAllowed = isCatalogLocationPhotoUploadAllowed(grant, screen.id, '');
+                const floor2ProdAllowed = isWarehouseFloor2CreateProductAllowed(grant, '');
+                const floor2SetAllowed = isWarehouseFloor2CreateSetAllowed(grant, '');
                 return (
                   <tr key={screen.id}>
                     <td className="mobile-access-matrix__screen-col" title={screen.description}>
@@ -280,6 +331,36 @@ export default function MobileUserAccessEditor({ userRow, onClose, onSaved }) {
                           value={photoUpAllowed ? 'yes' : 'no'}
                           onChange={(e) => setLocationPhotoUpload(screen.id, e.target.value === 'yes')}
                           aria-label={`${screen.label} image upload`}
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : (
+                        <span style={{ color: 'var(--br-subtle, #64748b)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="mobile-access-matrix__access-col">
+                      {isFloor2Screen ? (
+                        <select
+                          className="mobile-access-yesno"
+                          value={floor2ProdAllowed ? 'yes' : 'no'}
+                          onChange={(e) => setFloor2CreateProduct(e.target.value === 'yes')}
+                          aria-label="Floor 2 + Prod access"
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : (
+                        <span style={{ color: 'var(--br-subtle, #64748b)' }}>—</span>
+                      )}
+                    </td>
+                    <td className="mobile-access-matrix__access-col">
+                      {isFloor2Screen ? (
+                        <select
+                          className="mobile-access-yesno"
+                          value={floor2SetAllowed ? 'yes' : 'no'}
+                          onChange={(e) => setFloor2CreateSet(e.target.value === 'yes')}
+                          aria-label="Floor 2 + Set access"
                         >
                           <option value="yes">Yes</option>
                           <option value="no">No</option>

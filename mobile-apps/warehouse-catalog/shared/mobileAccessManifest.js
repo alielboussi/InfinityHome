@@ -173,6 +173,20 @@ export function isCatalogLocationPhotoUploadAllowed(grant, screenId, email) {
   return grant.location_photo_upload?.[screenId] === 'allow';
 }
 
+/** /user-access — Floor 2 `+ Prod` button on Warehouse Catalog mobile app. */
+export function isWarehouseFloor2CreateProductAllowed(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (!grant) return false;
+  return grant.warehouse_floor2_create_product === 'allow';
+}
+
+/** /user-access — Floor 2 `+ Set` button on Warehouse Catalog mobile app. */
+export function isWarehouseFloor2CreateSetAllowed(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (!grant) return false;
+  return grant.warehouse_floor2_create_set === 'allow';
+}
+
 /** Screens that can appear as buttons on the mobile dashboard. */
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
@@ -447,6 +461,8 @@ export function defaultMobileAccessGrant() {
     warehouse_catalog_add_product: 'deny',
     warehouse_catalog_label_print: 'deny',
     warehouse_catalog_photo_import: 'deny',
+    warehouse_floor2_create_product: 'deny',
+    warehouse_floor2_create_set: 'deny',
     warehouse_production_kiosk: 'deny',
     warehouse_production_app: 'deny',
     warehouse_production_photo_upload: 'deny',
@@ -596,6 +612,20 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     : 'deny';
 
   merged.warehouse_catalog_photo_import = merged.warehouse_catalog_photo_import === 'allow'
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_floor2_create_product = (
+    merged.warehouse_floor2_create_product === 'allow'
+    || merged.warehouse_floor2_create_product === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.warehouse_floor2_create_set = (
+    merged.warehouse_floor2_create_set === 'allow'
+    || merged.warehouse_floor2_create_set === true
+  )
     ? 'allow'
     : 'deny';
 
