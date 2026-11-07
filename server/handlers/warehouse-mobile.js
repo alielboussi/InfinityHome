@@ -585,10 +585,9 @@ async function opCatalogFloor2List(user) {
     readWarehouseFloor2WipFamilyImageUrl,
     readWarehouseFloor2WipImageUrl,
   } = await import('../../src/utils/warehouseFloor2WipImage.js');
-  const { assemblyImageUrlFromRow } = await import('../../src/utils/warehouseSeaterSetCoverImage.js');
 
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
-    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata, category_id, image_url, thumbnail_url, cover_image_url, photo_url'),
+    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata, category_id'),
     sb.from('locations').select('id, name'),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
@@ -618,7 +617,7 @@ async function opCatalogFloor2List(user) {
     const inCarpentry = parseCarpentryMeta(row).selected;
     const linkedUpholstery = Boolean(findUpholsteryFinishedForRawAssembly(allRows, aid));
     if (qty <= 0 && !inCarpentry && !linkedUpholstery) continue;
-    const wipImage = readWarehouseFloor2WipImageUrl(row) || assemblyImageUrlFromRow(row) || '';
+    const wipImage = readWarehouseFloor2WipImageUrl(row) || '';
     const familyImage = readWarehouseFloor2WipFamilyImageUrl(row) || '';
     products.push({
       id: aid,
