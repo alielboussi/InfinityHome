@@ -20,6 +20,7 @@ import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../s
 import {
   isCatalogLocationPhotoUploadAllowed,
   isCatalogLocationStockIncreaseAllowed,
+  isWarehouseCatalogAddProductAllowed,
 } from '../shared/mobileAccessManifest';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
@@ -55,6 +56,24 @@ const PRESET_SUFFIXES = [
   'L Shape',
 ];
 
+const SET_COMPONENT_PRESETS = [
+  '3 Seater',
+  '2 Seater',
+  'Single Seater',
+  'Lounge Chair',
+  '3 Seater Recliner',
+  '2 Seater Recliner',
+  'Single Seater Recliner',
+  'Dining Table',
+  'Dining Chair',
+  'Buffet',
+  'Buffet Mirror',
+  'Dresser Table',
+  'Dresser Mirror',
+  'Coffee Table',
+  'Side Table',
+];
+
 function extractBaseName(productName) {
   const n = String(productName || '').trim();
   if (!n) return '';
@@ -79,6 +98,11 @@ function floor2Qty(item) {
   return Math.max(0, Math.floor(Number(item?.floor2_qty ?? item?.quantity) || 0));
 }
 
+/**
+ * Family card cover photo rule:
+ * 1) If the family has a 3 Seater with a photo, use the 3 Seater photo first (then 2 Seater, Single Seater, or any single product photo).
+ * 2) Otherwise fall back to `family_image_url`.
+ */
 function pickGroupImageUrl(items) {
   const list = items || [];
   const ranked = [...list].sort((a, b) => {
@@ -128,6 +152,7 @@ export default function WarehouseFloor2Screen() {
   const userEmail = useSharedMobileAccessUserEmail();
   const canIncreaseStock = isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', userEmail);
   const canUploadPhoto = isCatalogLocationPhotoUploadAllowed(grant, 'warehouse_floor_2', userEmail);
+  const canCreateFloor2 = isWarehouseCatalogAddProductAllowed(grant, userEmail) || canIncreaseStock;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,6 +165,22 @@ export default function WarehouseFloor2Screen() {
   const [photoBusyId, setPhotoBusyId] = useState('');
   const [inlayGroupKey, setInlayGroupKey] = useState('');
   const [qtyDraftById, setQtyDraftById] = useState({});
+
+  // Create Product / Create Set modal state ('prod' | 'set' | '')
+  const [createMode, setCreateMode] = useState('');
+  const [createBusy, setCreateBusy] = useState(false);
+  const [prodNameInput, setProdNameInput] = useState('');
+  const [prodQtyInput, setProdQtyInput] = useState('');
+  const [prodPhotoUri, setProdPhotoUri] = useState('');
+
+  const [setBaseNameInput, setSetBaseNameInput] = useState('');
+  const [setSelectedPresets, setSetSelectedPresets] = useState(() => ({
+    '3 Seater': true,
+    '2 Seater': true,
+    'Single Seater': true,
+  }));
+  const [setComponentQtyMap, setSetComponentQtyMap] = useState({});
+  const [setPhotoUri, setSetPhotoUri] = useState('');
 
   const loadProducts = useCallback(async ({ fromPull = false } = {}) => {
     const hasCached = productsRef.current.length > 0;
@@ -192,12 +233,18 @@ export default function WarehouseFloor2Screen() {
     setInlayGroupKey('');
   };
 
-  const handleIncreaseQty = async (item) => {
+  const handleAdjustQty = async (item, direction) => {
     if (!canIncreaseStock || busyId) return;
     const aid = String(item.assembly_id || item.id || '').trim();
     if (!aid) return;
-    const rawDraft = qtyDraftById[aid];
-    const delta = Math.max(1, Math.floor(Number(rawDraft !== undefined && rawDraft !== '' ? rawDraft : 1) || 1));
+    const rawDraft = String(qtyDraftById[aid] ?? '').trim();
+    const amount = rawDraft === '' ? 1 : Math.floor(Number(rawDraft) || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert('Enter quantity', 'Enter a positive quantity or leave empty to adjust by 1.');
+      return;
+    }
+    const sign = direction < 0 ? -1 : 1;
+    const delta = sign * amount;
     setBusyId(aid);
     setError('');
     try {
@@ -221,7 +268,7 @@ export default function WarehouseFloor2Screen() {
       });
       await loadProducts();
     } catch (e) {
-      Alert.alert('Stock increase failed', e?.message || 'Could not increase Floor 2 stock.');
+      Alert.alert('Stock update failed', e?.message || 'Could not update Floor 2 stock.');
     } finally {
       setBusyId('');
     }
@@ -264,6 +311,114 @@ export default function WarehouseFloor2Screen() {
       Alert.alert('Image upload failed', e?.message || 'Could not upload Floor 2 image.');
     } finally {
       setPhotoBusyId('');
+    }
+  };
+
+  const pickLocalPhotoUri = async (onPicked) => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Photo permission', 'Photo library permission is required to select an image.');
+        return;
+      }
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.9,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
+      if (picked.canceled || !picked.assets?.[0]?.uri) return;
+      onPicked(picked.assets[0].uri);
+    } catch (e) {
+      Alert.alert('Photo error', e?.message || 'Could not select photo.');
+    }
+  };
+
+  const openCreateModal = (mode) => {
+    if (createBusy) return;
+    if (mode === 'prod') {
+      setProdNameInput('');
+      setProdQtyInput('');
+      setProdPhotoUri('');
+    } else if (mode === 'set') {
+      setSetBaseNameInput('');
+      setSetSelectedPresets({
+        '3 Seater': true,
+        '2 Seater': true,
+        'Single Seater': true,
+      });
+      setSetComponentQtyMap({});
+      setSetPhotoUri('');
+    }
+    setCreateMode(mode);
+  };
+
+  const closeCreateModal = () => {
+    if (createBusy) return;
+    setCreateMode('');
+  };
+
+  const handleSubmitCreateProd = async () => {
+    const name = String(prodNameInput || '').trim();
+    if (!name) {
+      Alert.alert('Product name required', 'Enter the product name.');
+      return;
+    }
+    const qty = prodQtyInput.trim() === '' ? 0 : Math.max(0, Math.floor(Number(prodQtyInput) || 0));
+    setCreateBusy(true);
+    try {
+      let imageBase64 = '';
+      if (prodPhotoUri) {
+        imageBase64 = await prepareCatalogPhotoForUpload({ uri: prodPhotoUri });
+      }
+      await warehouseMobileRequest('catalog-floor2-create-product', {
+        name,
+        quantity: qty,
+        image_base64: imageBase64 || undefined,
+      });
+      setCreateMode('');
+      await loadProducts();
+    } catch (e) {
+      Alert.alert('Create product failed', e?.message || 'Could not create product on Floor 2.');
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const handleSubmitCreateSet = async () => {
+    const baseName = String(setBaseNameInput || '').trim();
+    if (!baseName) {
+      Alert.alert('Family base name required', 'Enter the family base name (e.g. Aria, Monic).');
+      return;
+    }
+    const activePresets = SET_COMPONENT_PRESETS.filter((p) => setSelectedPresets[p]);
+    if (!activePresets.length) {
+      Alert.alert('Select components', 'Select at least one component for this set.');
+      return;
+    }
+    const components = activePresets.map((preset) => {
+      const raw = String(setComponentQtyMap[preset] ?? '').trim();
+      const quantity = raw === '' ? 0 : Math.max(0, Math.floor(Number(raw) || 0));
+      return { preset, quantity };
+    });
+
+    setCreateBusy(true);
+    try {
+      let imageBase64 = '';
+      if (setPhotoUri) {
+        imageBase64 = await prepareCatalogPhotoForUpload({ uri: setPhotoUri });
+      }
+      await warehouseMobileRequest('catalog-floor2-create-set', {
+        base_name: baseName,
+        components,
+        image_base64: imageBase64 || undefined,
+      });
+      setCreateMode('');
+      await loadProducts();
+    } catch (e) {
+      Alert.alert('Create set failed', e?.message || 'Could not create set on Floor 2.');
+    } finally {
+      setCreateBusy(false);
     }
   };
 
@@ -328,16 +483,43 @@ export default function WarehouseFloor2Screen() {
 
   return (
     <View style={styles.root}>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search Floor 2 product or SKU…"
-        placeholderTextColor={theme.textMuted}
-        value={search}
-        onChangeText={setSearch}
-        autoCorrect={false}
-        autoCapitalize="none"
-        clearButtonMode="while-editing"
-      />
+      <View style={styles.topToolbar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search Floor 2 product or SKU…"
+          placeholderTextColor={theme.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          autoCapitalize="none"
+          clearButtonMode="while-editing"
+        />
+        {canCreateFloor2 ? (
+          <View style={styles.createBtnRow}>
+            <Pressable
+              style={({ pressed }) => [styles.plusCreateBtn, pressed && styles.plusCreateBtnPressed]}
+              onPress={() => openCreateModal('prod')}
+              accessibilityRole="button"
+              accessibilityLabel="Create product on Floor 2"
+            >
+              <Text style={styles.plusCreateBtnText}>+ Prod</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.plusCreateBtn,
+                styles.plusCreateBtnSet,
+                pressed && styles.plusCreateBtnPressed,
+              ]}
+              onPress={() => openCreateModal('set')}
+              accessibilityRole="button"
+              accessibilityLabel="Create set on Floor 2"
+            >
+              <Text style={styles.plusCreateBtnText}>+ Set</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+
       {loading && products.length === 0 ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 16 }} />
       ) : null}
@@ -360,15 +542,16 @@ export default function WarehouseFloor2Screen() {
         }
       />
 
+      {/* Variant / Stock Inlay Modal */}
       <Modal visible={Boolean(inlayGroup)} transparent animationType="fade" onRequestClose={closeInlay}>
         <Pressable style={styles.modalBackdrop} onPress={closeInlay}>
           <Pressable style={styles.inlayCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>{inlayGroup?.displayName || 'Floor 2 Product'}</Text>
             <Text style={styles.modalSub}>
               {canIncreaseStock && canUploadPhoto
-                ? 'Tap thumbnail to import photo · enter qty to add to Floor 2 stock on hand.'
+                ? 'Tap thumbnail to import photo · use − / + to decrease or add Floor 2 stock.'
                 : canIncreaseStock
-                  ? 'Enter qty to add to Floor 2 stock on hand.'
+                  ? 'Use − / + to decrease or add Floor 2 stock.'
                   : canUploadPhoto
                     ? 'Tap thumbnail to import photo.'
                     : 'View Floor 2 stock on hand.'}
@@ -380,7 +563,7 @@ export default function WarehouseFloor2Screen() {
                 const rowImage = resolveProductImageUrl(item?.image_url);
                 const isPhotoBusy = photoBusyId === id;
                 const isStockBusy = busyId === id;
-                const draftVal = qtyDraftById[id] !== undefined ? String(qtyDraftById[id]) : '1';
+                const draftVal = qtyDraftById[id] !== undefined ? String(qtyDraftById[id]) : '';
                 const thumbContent = isPhotoBusy ? (
                   <View style={styles.inlayThumbPlaceholder}>
                     <ActivityIndicator size="small" color={theme.primary} />
@@ -424,6 +607,14 @@ export default function WarehouseFloor2Screen() {
                     </View>
                     {canIncreaseStock ? (
                       <View style={styles.stockActionRow}>
+                        <Pressable
+                          style={[styles.stepBtn, styles.stepBtnMinus, (isStockBusy || qty <= 0) && styles.btnDisabled]}
+                          disabled={Boolean(busyId || photoBusyId || qty <= 0)}
+                          onPress={() => handleAdjustQty(item, -1)}
+                          accessibilityLabel={`Decrease stock for ${item.name}`}
+                        >
+                          <Text style={styles.stepBtnMinusText}>−</Text>
+                        </Pressable>
                         <TextInput
                           style={styles.qtyInput}
                           keyboardType="number-pad"
@@ -432,17 +623,16 @@ export default function WarehouseFloor2Screen() {
                           onChangeText={(txt) =>
                             setQtyDraftById((prev) => ({ ...prev, [id]: txt.replace(/[^0-9]/g, '') }))
                           }
-                          placeholder="1"
+                          placeholder=""
                           placeholderTextColor={theme.textMuted}
                         />
                         <Pressable
-                          style={[styles.addStockBtn, isStockBusy && styles.btnDisabled]}
+                          style={[styles.stepBtn, styles.stepBtnPlus, isStockBusy && styles.btnDisabled]}
                           disabled={Boolean(busyId || photoBusyId)}
-                          onPress={() => handleIncreaseQty(item)}
+                          onPress={() => handleAdjustQty(item, 1)}
+                          accessibilityLabel={`Increase stock for ${item.name}`}
                         >
-                          <Text style={styles.addStockBtnText}>
-                            {isStockBusy ? 'Adding…' : '+ Add Qty'}
-                          </Text>
+                          <Text style={styles.stepBtnPlusText}>+</Text>
                         </Pressable>
                       </View>
                     ) : null}
@@ -460,6 +650,180 @@ export default function WarehouseFloor2Screen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Create Product (+ Prod) / Create Set (+ Set) Modal */}
+      <Modal visible={Boolean(createMode)} transparent animationType="fade" onRequestClose={closeCreateModal}>
+        <Pressable style={styles.modalBackdrop} onPress={closeCreateModal}>
+          <Pressable style={styles.inlayCard} onPress={(e) => e.stopPropagation()}>
+            {createMode === 'prod' ? (
+              <ScrollView style={styles.inlayScroll} keyboardShouldPersistTaps="handled">
+                <Text style={styles.modalTitle}>Create Floor 2 Product (+ Prod)</Text>
+                <Text style={styles.modalSub}>
+                  Creates a standalone product on Floor 2. Its photo is used directly as the card cover image.
+                </Text>
+
+                <Text style={styles.fieldLabel}>Product Name</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="e.g. Dining Table, Buffet, Coffee Table…"
+                  placeholderTextColor={theme.textMuted}
+                  value={prodNameInput}
+                  onChangeText={setProdNameInput}
+                  editable={!createBusy}
+                />
+
+                <Text style={styles.fieldLabel}>Opening Qty (optional)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  keyboardType="number-pad"
+                  placeholder=""
+                  placeholderTextColor={theme.textMuted}
+                  value={prodQtyInput}
+                  onChangeText={(txt) => setProdQtyInput(txt.replace(/[^0-9]/g, ''))}
+                  editable={!createBusy}
+                />
+
+                {canUploadPhoto ? (
+                  <View style={styles.photoPickerRow}>
+                    <Pressable
+                      style={styles.photoPickBtn}
+                      disabled={createBusy}
+                      onPress={() => pickLocalPhotoUri(setProdPhotoUri)}
+                    >
+                      <MaterialCommunityIcons name="image-plus-outline" size={20} color={theme.primary} />
+                      <Text style={styles.photoPickBtnText}>
+                        {prodPhotoUri ? 'Change Product Photo' : 'Import Product Photo'}
+                      </Text>
+                    </Pressable>
+                    {prodPhotoUri ? (
+                      <Image source={{ uri: prodPhotoUri }} style={styles.photoPreviewThumb} />
+                    ) : null}
+                  </View>
+                ) : null}
+
+                <View style={styles.modalFooterBtns}>
+                  <Pressable
+                    style={[styles.closeBtn, { flex: 1, marginTop: 0 }]}
+                    disabled={createBusy}
+                    onPress={closeCreateModal}
+                  >
+                    <Text style={styles.closeBtnText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.primarySaveBtn, { flex: 1 }, createBusy && styles.btnDisabled]}
+                    disabled={createBusy}
+                    onPress={handleSubmitCreateProd}
+                  >
+                    <Text style={styles.primarySaveBtnText}>
+                      {createBusy ? 'Saving…' : 'Create Product'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
+            ) : createMode === 'set' ? (
+              <ScrollView style={styles.inlayScroll} keyboardShouldPersistTaps="handled">
+                <Text style={styles.modalTitle}>Create Floor 2 Set (+ Set)</Text>
+                <Text style={styles.modalSub}>
+                  Creates a family base item and its components (e.g. 3 Seater, 2 Seater, Single Seater). The 3 Seater photo is used as the family cover image.
+                </Text>
+
+                <Text style={styles.fieldLabel}>Family Base Name</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="e.g. Aria, Monic, Berlin…"
+                  placeholderTextColor={theme.textMuted}
+                  value={setBaseNameInput}
+                  onChangeText={setSetBaseNameInput}
+                  editable={!createBusy}
+                />
+
+                {canUploadPhoto ? (
+                  <View style={styles.photoPickerRow}>
+                    <Pressable
+                      style={styles.photoPickBtn}
+                      disabled={createBusy}
+                      onPress={() => pickLocalPhotoUri(setSetPhotoUri)}
+                    >
+                      <MaterialCommunityIcons name="image-plus-outline" size={20} color={theme.primary} />
+                      <Text style={styles.photoPickBtnText}>
+                        {setPhotoUri ? 'Change 3 Seater / Family Photo' : 'Import 3 Seater / Family Photo'}
+                      </Text>
+                    </Pressable>
+                    {setPhotoUri ? (
+                      <Image source={{ uri: setPhotoUri }} style={styles.photoPreviewThumb} />
+                    ) : null}
+                  </View>
+                ) : null}
+
+                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Select Components &amp; Opening Qty</Text>
+                <View style={styles.presetList}>
+                  {SET_COMPONENT_PRESETS.map((preset) => {
+                    const selected = Boolean(setSelectedPresets[preset]);
+                    const compPreviewName = setBaseNameInput.trim()
+                      ? `${setBaseNameInput.trim()} ${preset}`
+                      : preset;
+                    return (
+                      <View key={preset} style={[styles.presetRow, selected && styles.presetRowSelected]}>
+                        <Pressable
+                          style={styles.presetCheckArea}
+                          disabled={createBusy}
+                          onPress={() =>
+                            setSetSelectedPresets((prev) => ({ ...prev, [preset]: !prev[preset] }))
+                          }
+                        >
+                          <MaterialCommunityIcons
+                            name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'}
+                            size={22}
+                            color={selected ? theme.primary : theme.textMuted}
+                          />
+                          <Text style={styles.presetRowLabel} numberOfLines={1}>
+                            {compPreviewName}
+                          </Text>
+                        </Pressable>
+                        {selected ? (
+                          <TextInput
+                            style={styles.presetQtyInput}
+                            keyboardType="number-pad"
+                            placeholder=""
+                            placeholderTextColor={theme.textMuted}
+                            value={String(setComponentQtyMap[preset] ?? '')}
+                            onChangeText={(txt) =>
+                              setSetComponentQtyMap((prev) => ({
+                                ...prev,
+                                [preset]: txt.replace(/[^0-9]/g, ''),
+                              }))
+                            }
+                            editable={!createBusy}
+                          />
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.modalFooterBtns}>
+                  <Pressable
+                    style={[styles.closeBtn, { flex: 1, marginTop: 0 }]}
+                    disabled={createBusy}
+                    onPress={closeCreateModal}
+                  >
+                    <Text style={styles.closeBtnText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.primarySaveBtn, { flex: 1 }, createBusy && styles.btnDisabled]}
+                    disabled={createBusy}
+                    onPress={handleSubmitCreateSet}
+                  >
+                    <Text style={styles.primarySaveBtnText}>
+                      {createBusy ? 'Saving…' : 'Create Set'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -471,6 +835,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
   },
+  topToolbar: {
+    marginBottom: 12,
+    gap: 10,
+  },
   searchInput: {
     backgroundColor: theme.surface,
     borderColor: theme.border,
@@ -480,7 +848,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    marginBottom: 12,
+  },
+  createBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  plusCreateBtn: {
+    backgroundColor: theme.primary,
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    minWidth: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusCreateBtnSet: {
+    backgroundColor: '#7c3aed',
+  },
+  plusCreateBtnPressed: {
+    opacity: 0.85,
+  },
+  plusCreateBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
   },
   errorText: {
     color: theme.danger,
@@ -591,11 +984,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.border,
     padding: 20,
-    maxHeight: '85%',
+    maxHeight: '88%',
   },
   modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 6, color: theme.text },
   modalSub: { fontSize: 13, color: theme.textMuted, marginBottom: 12 },
-  inlayScroll: { maxHeight: 400 },
+  inlayScroll: { maxHeight: 460 },
   inlayRow: {
     paddingVertical: 12,
     paddingHorizontal: 4,
@@ -663,19 +1056,35 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
-  addStockBtn: {
-    backgroundColor: theme.primary,
+  stepBtn: {
+    width: 46,
+    height: 42,
     borderRadius: 8,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  addStockBtnText: {
-    color: '#0f172a',
+  stepBtnMinus: {
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  stepBtnMinusText: {
+    color: theme.text,
+    fontSize: 22,
     fontWeight: '800',
-    fontSize: 15,
+    lineHeight: 24,
+  },
+  stepBtnPlus: {
+    backgroundColor: theme.primary,
+  },
+  stepBtnPlusText: {
+    color: '#0f172a',
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 24,
   },
   btnDisabled: {
-    opacity: 0.6,
+    opacity: 0.45,
   },
   closeBtn: {
     marginTop: 14,
@@ -690,5 +1099,113 @@ const styles = StyleSheet.create({
     color: theme.text,
     fontSize: 16,
     fontWeight: '700',
+  },
+  fieldLabel: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  formInput: {
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    color: theme.text,
+    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  photoPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
+  },
+  photoPickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  photoPickBtnText: {
+    color: theme.primary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  photoPreviewThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: theme.surface,
+  },
+  presetList: {
+    gap: 6,
+    marginTop: 4,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  presetRowSelected: {
+    borderColor: theme.primary,
+  },
+  presetCheckArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  presetRowLabel: {
+    color: theme.text,
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  presetQtyInput: {
+    width: 68,
+    backgroundColor: theme.bg,
+    borderColor: theme.border,
+    borderWidth: 1,
+    borderRadius: 6,
+    color: theme.text,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  modalFooterBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 18,
+  },
+  primarySaveBtn: {
+    backgroundColor: theme.primary,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primarySaveBtnText: {
+    color: '#0f172a',
+    fontSize: 16,
+    fontWeight: '800',
   },
 });

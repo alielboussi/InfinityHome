@@ -643,7 +643,7 @@ async function opCatalogFloor2StockIncrease(body, user) {
     && !canManageCatalog(user)
     && !isLoginAccessAdmin(user?.email)
   ) {
-    const err = new Error('Floor 2 stock qty increase is disabled for your account in User Access.');
+    const err = new Error('Floor 2 stock qty adjustment is disabled for your account in User Access.');
     err.status = 403;
     throw err;
   }
@@ -652,25 +652,285 @@ async function opCatalogFloor2StockIncrease(body, user) {
   ).trim();
   const delta = Math.floor(Number(body.delta ?? body.quantity ?? body.product_qty ?? 0));
   if (!assemblyId) throw new Error('assembly_id is required.');
-  if (!Number.isFinite(delta) || delta <= 0) {
-    throw new Error('Quantity increase must be at least 1.');
+  if (!Number.isFinite(delta) || delta === 0) {
+    throw new Error('Enter a non-zero quantity to add or decrease.');
   }
   const sb = getService();
-  const { addFloor1ProductToFloor2 } = await import('../lib/carpentryManufacture.js');
-  const res = await addFloor1ProductToFloor2(sb, {
-    assemblyId,
-    productQty: delta,
-    userId: user?.id || user?.uid || null,
-  });
+  if (delta > 0) {
+    const { addFloor1ProductToFloor2 } = await import('../lib/carpentryManufacture.js');
+    const res = await addFloor1ProductToFloor2(sb, {
+      assemblyId,
+      productQty: delta,
+      userId: user?.id || user?.uid || null,
+    });
+    const { data: inv } = await sb
+      .from('warehouse_assembly_inventory')
+      .select('quantity')
+      .eq('assembly_id', assemblyId)
+      .eq('location_id', res.floor2_location_id)
+      .maybeSingle();
+    return {
+      ...res,
+      quantity: Math.max(0, Math.floor(Number(inv?.quantity) || 0)),
+    };
+  }
+  const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
+  const { setFloor2ProductStockQty } = await import('../lib/carpentryManufacture.js');
+  const { data: locRows } = await sb.from('locations').select('id, name');
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  const floor2Id = floor2Loc?.id ? String(floor2Loc.id) : WAREHOUSE_FROM_LOCATION_ID;
   const { data: inv } = await sb
     .from('warehouse_assembly_inventory')
     .select('quantity')
     .eq('assembly_id', assemblyId)
-    .eq('location_id', res.floor2_location_id)
+    .eq('location_id', floor2Id)
     .maybeSingle();
+  const currentQty = Math.max(0, Math.floor(Number(inv?.quantity) || 0));
+  const nextQty = Math.max(0, currentQty + delta);
+  return setFloor2ProductStockQty(sb, {
+    assemblyId,
+    quantity: nextQty,
+  });
+}
+
+async function opCatalogFloor2CreateProduct(body, user) {
+  const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+  if (
+    !isWarehouseCatalogAddProductAllowed(grant, user?.email)
+    && !isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', user?.email)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Creating Floor 2 products is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+
+  const rawName = String(body.name || '').trim();
+  const baseName = String(body.base_name || body.baseName || '').trim();
+  const preset = String(body.preset || '').trim();
+  const finalName = titleCaseWords(rawName || buildProductionItemName(baseName, preset));
+  if (!finalName) throw new Error('Product name is required.');
+
+  const initialQty = Math.max(0, Math.floor(Number(body.quantity ?? body.initial_quantity ?? 0) || 0));
+  const sb = getService();
+
+  const generated = await opGenerateUniqueSku({});
+  const familySku = normalizeWarehouseProductSku(generated.sku);
+  const categoryId = preset ? await ensureCategoryIdForProductionPreset(sb, preset) : null;
+
+  const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
+  const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const { data: locRows } = await sb.from('locations').select('id, name');
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  const floor2Id = floor2Loc?.id ? String(floor2Loc.id) : WAREHOUSE_FROM_LOCATION_ID;
+
+  const assembly = await saveAssemblyForMobile(sb, {
+    name: finalName,
+    family_sku: familySku,
+    category_id: categoryId,
+    warehouse_location_id: WAREHOUSE_FROM_LOCATION_ID,
+    inventory_mode: 'finished',
+    packet_count: null,
+    packet_links: [],
+    location_ids: [],
+    units_per_carton: 1,
+  });
+  const assemblyId = String(assembly.id || '');
+  if (!assemblyId) throw new Error('Failed to create product.');
+
+  let imageUrl = '';
+  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+  if (imageBase64) {
+    const { jpegBufferFromCatalogDirectUpload } = await import('../lib/catalogDirectPhotoUpload.js');
+    const jpeg = await jpegBufferFromCatalogDirectUpload(imageBase64);
+    const objectPath = `warehouse-assemblies/${assemblyId}/floor2-wip/main-${Date.now()}.jpg`;
+    await uploadBufferToFirebaseStorage({
+      bucketFolder: 'productimages',
+      objectPath,
+      buffer: jpeg,
+      contentType: 'image/jpeg',
+      cacheControl: '86400',
+    });
+    imageUrl = firebaseStoragePublicUrl('productimages', objectPath) || '';
+  }
+
+  const now = new Date().toISOString();
+  let metadata = {
+    ...(assembly.metadata || {}),
+    carpentry: {
+      ...(assembly.metadata?.carpentry || {}),
+      selected: true,
+    },
+  };
+  if (imageUrl) {
+    metadata = mergeWarehouseFloor2WipImageMetadata(metadata, imageUrl);
+  }
+  await sb
+    .from('warehouse_assemblies')
+    .update({ metadata, updated_at: now })
+    .eq('id', assemblyId);
+
+  await sb.from('warehouse_assembly_inventory').upsert({
+    assembly_id: assemblyId,
+    location_id: floor2Id,
+    quantity: initialQty,
+    updated_at: now,
+  }, { onConflict: 'assembly_id,location_id' });
+
+  await recomputeWarehouseLocationStockServer(sb, floor2Id);
+
   return {
-    ...res,
-    quantity: Math.max(0, Math.floor(Number(inv?.quantity) || 0)),
+    product: {
+      id: assemblyId,
+      assembly_id: assemblyId,
+      raw_assembly_id: assemblyId,
+      name: finalName,
+      raw_name: finalName,
+      family_sku: familySku,
+      quantity: initialQty,
+      floor2_qty: initialQty,
+      image_url: imageUrl,
+      family_image_url: '',
+    },
+  };
+}
+
+async function opCatalogFloor2CreateSet(body, user) {
+  const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+  if (
+    !isWarehouseCatalogAddProductAllowed(grant, user?.email)
+    && !isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', user?.email)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Creating Floor 2 sets is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+
+  const baseName = titleCaseWords(String(body.base_name || body.baseName || body.name || '').trim());
+  if (!baseName) throw new Error('Family base name is required.');
+
+  const rawComponents = Array.isArray(body.components) ? body.components : [];
+  const presetsFromBody = Array.isArray(body.presets) ? body.presets : [];
+  const normalizedComponents = rawComponents.length
+    ? rawComponents
+      .map((c) => ({
+        preset: String(c?.preset || '').trim(),
+        name: String(c?.name || '').trim(),
+        quantity: Math.max(0, Math.floor(Number(c?.quantity ?? c?.qty ?? 0) || 0)),
+      }))
+      .filter((c) => c.preset || c.name)
+    : presetsFromBody
+      .map((p) => ({
+        preset: String(p || '').trim(),
+        name: '',
+        quantity: Math.max(0, Math.floor(Number(body.quantity ?? 0) || 0)),
+      }))
+      .filter((c) => c.preset);
+
+  if (!normalizedComponents.length) {
+    throw new Error('Select at least one component (e.g. 3 Seater, 2 Seater, Single Seater) for the set.');
+  }
+
+  const sb = getService();
+  const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
+  const {
+    mergeWarehouseFloor2WipFamilyImageMetadata,
+    mergeWarehouseFloor2WipImageMetadata,
+  } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const { data: locRows } = await sb.from('locations').select('id, name');
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  const floor2Id = floor2Loc?.id ? String(floor2Loc.id) : WAREHOUSE_FROM_LOCATION_ID;
+
+  let uploadedCoverUrl = '';
+  const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+  if (imageBase64) {
+    const { jpegBufferFromCatalogDirectUpload } = await import('../lib/catalogDirectPhotoUpload.js');
+    const jpeg = await jpegBufferFromCatalogDirectUpload(imageBase64);
+    const objectPath = `warehouse-assemblies/floor2-family/${Date.now()}-${baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`;
+    await uploadBufferToFirebaseStorage({
+      bucketFolder: 'productimages',
+      objectPath,
+      buffer: jpeg,
+      contentType: 'image/jpeg',
+      cacheControl: '86400',
+    });
+    uploadedCoverUrl = firebaseStoragePublicUrl('productimages', objectPath) || '';
+  }
+
+  const createdProducts = [];
+  const now = new Date().toISOString();
+
+  for (const comp of normalizedComponents) {
+    const compName = titleCaseWords(comp.name || buildProductionItemName(baseName, comp.preset));
+    if (!compName) continue;
+    const generated = await opGenerateUniqueSku({});
+    const familySku = normalizeWarehouseProductSku(generated.sku);
+    const categoryId = comp.preset ? await ensureCategoryIdForProductionPreset(sb, comp.preset) : null;
+
+    const assembly = await saveAssemblyForMobile(sb, {
+      name: compName,
+      family_sku: familySku,
+      category_id: categoryId,
+      warehouse_location_id: WAREHOUSE_FROM_LOCATION_ID,
+      inventory_mode: 'finished',
+      packet_count: null,
+      packet_links: [],
+      location_ids: [],
+      units_per_carton: 1,
+    });
+    const assemblyId = String(assembly.id || '');
+    if (!assemblyId) continue;
+
+    let metadata = {
+      ...(assembly.metadata || {}),
+      carpentry: {
+        ...(assembly.metadata?.carpentry || {}),
+        selected: true,
+      },
+    };
+    const isThreeSeater = /\b3\s*seater\b/i.test(compName) || /\b3\s*seater\b/i.test(comp.preset);
+    if (uploadedCoverUrl) {
+      metadata = mergeWarehouseFloor2WipFamilyImageMetadata(metadata, uploadedCoverUrl);
+      if (isThreeSeater || normalizedComponents.length === 1) {
+        metadata = mergeWarehouseFloor2WipImageMetadata(metadata, uploadedCoverUrl);
+      }
+    }
+
+    await sb
+      .from('warehouse_assemblies')
+      .update({ metadata, updated_at: now })
+      .eq('id', assemblyId);
+
+    await sb.from('warehouse_assembly_inventory').upsert({
+      assembly_id: assemblyId,
+      location_id: floor2Id,
+      quantity: comp.quantity,
+      updated_at: now,
+    }, { onConflict: 'assembly_id,location_id' });
+
+    createdProducts.push({
+      id: assemblyId,
+      assembly_id: assemblyId,
+      raw_assembly_id: assemblyId,
+      name: compName,
+      raw_name: compName,
+      family_sku: familySku,
+      quantity: comp.quantity,
+      floor2_qty: comp.quantity,
+      image_url: (isThreeSeater || normalizedComponents.length === 1) ? uploadedCoverUrl : '',
+      family_image_url: uploadedCoverUrl,
+    });
+  }
+
+  await recomputeWarehouseLocationStockServer(sb, floor2Id);
+
+  return {
+    products: createdProducts,
+    family_base: baseName,
+    image_url: uploadedCoverUrl,
   };
 }
 
@@ -813,7 +1073,7 @@ async function opCatalogStoreroomStockIncrease(body, user) {
     && !canManageCatalog(user)
     && !isLoginAccessAdmin(user?.email)
   ) {
-    const err = new Error('Storeroom stock qty increase is disabled for your account in User Access.');
+    const err = new Error('Storeroom stock qty adjustment is disabled for your account in User Access.');
     err.status = 403;
     throw err;
   }
@@ -821,23 +1081,40 @@ async function opCatalogStoreroomStockIncrease(body, user) {
   const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
   const delta = Number(body.delta ?? body.quantity ?? 0);
   if (!assemblyId) throw new Error('assembly_id is required.');
-  if (!Number.isFinite(delta) || delta <= 0) {
-    throw new Error('Quantity increase must be greater than zero.');
+  if (!Number.isFinite(delta) || delta === 0) {
+    throw new Error('Enter a non-zero quantity to add or decrease.');
   }
 
   const { CARPENTRY_WAREHOUSE_NAMES } = await import('../../src/constants/carpentryWarehouses.js');
-  const { receiveStoreroomMaterial } = await import('../../src/utils/storeroomStockMutations.js');
+  const { receiveStoreroomMaterial, setStoreroomMaterialStockQty } = await import('../../src/utils/storeroomStockMutations.js');
   const locationName = CARPENTRY_WAREHOUSE_NAMES[storeroomIndex - 1];
   const sb = getService();
   const { data: locs, error: locErr } = await sb.from('locations').select('id, name');
   if (locErr) throw new Error(locErr.message || 'Failed to load locations');
   const loc = (locs || []).find((l) => String(l.name || '').trim() === locationName);
   if (!loc?.id) throw new Error(`Location "${locationName}" not found.`);
+  const locId = String(loc.id);
 
-  return receiveStoreroomMaterial(sb, {
+  if (delta > 0) {
+    return receiveStoreroomMaterial(sb, {
+      assembly_id: assemblyId,
+      location_id: locId,
+      quantity: delta,
+    });
+  }
+
+  const { data: existing } = await sb
+    .from('warehouse_assembly_inventory')
+    .select('quantity')
+    .eq('assembly_id', assemblyId)
+    .eq('location_id', locId)
+    .maybeSingle();
+  const currentQty = Math.max(0, Number(existing?.quantity) || 0);
+  const nextQty = Math.max(0, currentQty + delta);
+  return setStoreroomMaterialStockQty(sb, {
     assembly_id: assemblyId,
-    location_id: String(loc.id),
-    quantity: delta,
+    location_id: locId,
+    quantity: nextQty,
   });
 }
 
@@ -3609,6 +3886,12 @@ export default async function handler(req, res) {
         break;
       case 'catalog-floor2-stock-increase':
         result = await opCatalogFloor2StockIncrease(body, user);
+        break;
+      case 'catalog-floor2-create-product':
+        result = await opCatalogFloor2CreateProduct(body, user);
+        break;
+      case 'catalog-floor2-create-set':
+        result = await opCatalogFloor2CreateSet(body, user);
         break;
       case 'catalog-floor2-photo-upload':
         result = await opCatalogFloor2PhotoUpload(body, user);

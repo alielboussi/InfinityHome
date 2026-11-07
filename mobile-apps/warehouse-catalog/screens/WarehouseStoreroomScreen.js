@@ -105,16 +105,18 @@ export default function WarehouseStoreroomScreen({ route }) {
     setSelectedId('');
   };
 
-  const handleIncreaseQty = async (item) => {
+  const handleAdjustQty = async (item, direction) => {
     if (!canIncreaseStock || busyId) return;
     const aid = String(item.assembly_id || item.id || '').trim();
     if (!aid) return;
-    const rawDraft = qtyDraftById[aid];
-    const delta = Number(rawDraft !== undefined && rawDraft !== '' ? rawDraft : 1);
-    if (!Number.isFinite(delta) || delta <= 0) {
-      Alert.alert('Invalid quantity', 'Enter a positive quantity to add.');
+    const rawDraft = String(qtyDraftById[aid] ?? '').trim();
+    const amount = rawDraft === '' ? 1 : Number(rawDraft);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert('Invalid quantity', 'Enter a positive quantity or leave empty to adjust by 1.');
       return;
     }
+    const sign = direction < 0 ? -1 : 1;
+    const delta = sign * amount;
     setBusyId(aid);
     setError('');
     try {
@@ -139,7 +141,7 @@ export default function WarehouseStoreroomScreen({ route }) {
       });
       await loadMaterials();
     } catch (e) {
-      Alert.alert('Stock increase failed', e?.message || 'Could not increase storeroom stock.');
+      Alert.alert('Stock update failed', e?.message || 'Could not update storeroom stock.');
     } finally {
       setBusyId('');
     }
@@ -291,7 +293,7 @@ export default function WarehouseStoreroomScreen({ route }) {
               const rowImage = resolveProductImageUrl(selectedMaterial.image_url);
               const isPhotoBusy = photoBusyId === id;
               const isStockBusy = busyId === id;
-              const draftVal = qtyDraftById[id] !== undefined ? String(qtyDraftById[id]) : '1';
+              const draftVal = qtyDraftById[id] !== undefined ? String(qtyDraftById[id]) : '';
               const thumbContent = isPhotoBusy ? (
                 <View style={styles.inlayThumbPlaceholder}>
                   <ActivityIndicator size="small" color={theme.primary} />
@@ -353,6 +355,14 @@ export default function WarehouseStoreroomScreen({ route }) {
                     </View>
                     {canIncreaseStock ? (
                       <View style={styles.stockActionRow}>
+                        <Pressable
+                          style={[styles.stepBtn, styles.stepBtnMinus, (isStockBusy || qty <= 0) && styles.btnDisabled]}
+                          disabled={Boolean(busyId || photoBusyId || qty <= 0)}
+                          onPress={() => handleAdjustQty(selectedMaterial, -1)}
+                          accessibilityLabel={`Decrease stock for ${selectedMaterial.name}`}
+                        >
+                          <Text style={styles.stepBtnMinusText}>−</Text>
+                        </Pressable>
                         <TextInput
                           style={styles.qtyInput}
                           keyboardType="decimal-pad"
@@ -361,17 +371,16 @@ export default function WarehouseStoreroomScreen({ route }) {
                           onChangeText={(txt) =>
                             setQtyDraftById((prev) => ({ ...prev, [id]: txt.replace(/[^0-9.]/g, '') }))
                           }
-                          placeholder="1"
+                          placeholder=""
                           placeholderTextColor={theme.textMuted}
                         />
                         <Pressable
-                          style={[styles.addStockBtn, isStockBusy && styles.btnDisabled]}
+                          style={[styles.stepBtn, styles.stepBtnPlus, isStockBusy && styles.btnDisabled]}
                           disabled={Boolean(busyId || photoBusyId)}
-                          onPress={() => handleIncreaseQty(selectedMaterial)}
+                          onPress={() => handleAdjustQty(selectedMaterial, 1)}
+                          accessibilityLabel={`Increase stock for ${selectedMaterial.name}`}
                         >
-                          <Text style={styles.addStockBtnText}>
-                            {isStockBusy ? 'Adding…' : `+ Add ${uomLabel || 'Qty'}`}
-                          </Text>
+                          <Text style={styles.stepBtnPlusText}>+</Text>
                         </Pressable>
                       </View>
                     ) : null}
@@ -590,19 +599,35 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
-  addStockBtn: {
-    backgroundColor: theme.primary,
+  stepBtn: {
+    width: 46,
+    height: 42,
     borderRadius: 8,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  addStockBtnText: {
-    color: '#0f172a',
+  stepBtnMinus: {
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  stepBtnMinusText: {
+    color: theme.text,
+    fontSize: 22,
     fontWeight: '800',
-    fontSize: 15,
+    lineHeight: 24,
+  },
+  stepBtnPlus: {
+    backgroundColor: theme.primary,
+  },
+  stepBtnPlusText: {
+    color: '#0f172a',
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 24,
   },
   btnDisabled: {
-    opacity: 0.6,
+    opacity: 0.45,
   },
   closeBtn: {
     marginTop: 14,
