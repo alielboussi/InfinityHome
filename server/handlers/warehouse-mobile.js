@@ -32,6 +32,7 @@ import {
   setPacketQuantityForMobile,
   upsertFinishedAssemblyInventoryQuantity,
 } from '../lib/warehouseCatalogMobile.js';
+import { purgeWarehouseAssemblyInventoryAndFloorRuns } from '../../src/utils/warehouseAssemblyDelete.js';
 import { getLoginAccessRecord, isLoginAccessAdmin } from '../lib/loginAccess.js';
 import { buildWarehouseDeliveryWhatsAppMessage } from '../lib/buildWarehouseDeliveryWhatsAppMessage.js';
 import { buildWarehouseDeliveryWhatsAppProductGroups } from '../../src/utils/kitweDeliveryWhatsAppAdmin.js';
@@ -2365,6 +2366,50 @@ async function opAssemblySave(body, user) {
   return { assembly, created_by: user?.email || null };
 }
 
+async function opAssemblyDelete(body, user) {
+  const allowed = canManageCatalog(user) || isLoginAccessAdmin(user?.email);
+  if (!allowed) {
+    const err = new Error('You do not have permission to delete warehouse products.');
+    err.status = 403;
+    throw err;
+  }
+  const id = String(body?.id || body?.assembly_id || '').trim();
+  if (!id) throw new Error('Assembly ID is required.');
+
+  const sb = getService();
+
+  await purgeWarehouseAssemblyInventoryAndFloorRuns(sb, id, { skipRecompute: true });
+
+  await Promise.all([
+    sb.from('warehouse_set_items').delete().eq('set_assembly_id', id),
+    sb.from('warehouse_set_items').delete().eq('component_assembly_id', id),
+    sb.from('warehouse_assembly_packets').delete().eq('assembly_id', id),
+    sb.from('warehouse_assembly_locations').delete().eq('assembly_id', id),
+    sb.from('warehouse_assembly_colors').delete().eq('assembly_id', id),
+    sb.from('warehouse_packets').update({ assembly_id: null }).eq('assembly_id', id),
+  ]);
+
+  const { error } = await sb.from('warehouse_assemblies').delete().eq('id', id);
+  if (error) throw new Error(error.message || 'Failed to delete warehouse product.');
+
+  try {
+    await sb.storage.from('warehouse-packet-images').remove([
+      `assemblies/${id}/product.jpg`,
+      `assemblies/${id}/product.jpeg`,
+      `assemblies/${id}/product.png`,
+      `assemblies/${id}/product.webp`,
+      `floor2-wip/${id}/wip.jpg`,
+      `floor2-wip/${id}/wip.jpeg`,
+      `floor2-wip/${id}/wip.png`,
+      `floor2-wip/${id}/wip.webp`,
+    ]);
+  } catch {
+    /* ignore storage cleanup errors */
+  }
+
+  return { deleted: true, id, deleted_by: user?.email || null };
+}
+
 async function opProductTurkishNamesSync(body, user) {
   const grant = await mobileAccessGrantForUser(user);
   const allowed = isLoginAccessAdmin(user?.email)
@@ -3733,6 +3778,9 @@ export default async function handler(req, res) {
         break;
       case 'assembly-save':
         result = await opAssemblySave(body, user);
+        break;
+      case 'assembly-delete':
+        result = await opAssemblyDelete(body, user);
         break;
       case 'assembly-product-quantity-set':
         result = await opAssemblyProductQuantitySet(body, user);

@@ -39,6 +39,7 @@ const WAREHOUSE_CATALOG_CACHE_KEY = 'warehouse:catalog:v2';
 
 export function invalidateWarehouseCatalogCache() {
   cacheClear(WAREHOUSE_CATALOG_CACHE_KEY);
+  fetchWarehouseCatalog._inFlight = null;
 }
 
 const ASSEMBLIES = 'warehouse_assemblies';
@@ -804,10 +805,43 @@ export async function setWarehouseAssemblyProductQuantity(
 }
 
 export async function deleteWarehouseAssembly(assemblyId) {
-  const id = String(assemblyId || '');
+  const id = String(assemblyId || '').trim();
   if (!id) return;
+
+  try {
+    const { firebaseGetAccessToken } = await import('../utils/firebaseAuthApi');
+    const { apiUrl, withApiHeaders } = await import('../utils/apiUrl');
+    const token = await firebaseGetAccessToken();
+    if (token) {
+      const response = await fetch(apiUrl('/api/warehouse-mobile'), {
+        method: 'POST',
+        headers: withApiHeaders({
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({ op: 'assembly-delete', id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload?.deleted) {
+        invalidateWarehouseCatalogCache();
+        const { invalidateProductionPortalSnapshotCache } = await import('../utils/loadProductionPortalCatalogInputs.js');
+        invalidateProductionPortalSnapshotCache();
+        return;
+      }
+      if (response.status === 403) {
+        throw new Error(payload?.error || 'You do not have permission to delete products.');
+      }
+    }
+  } catch (err) {
+    if (String(err?.message || '').toLowerCase().includes('permission')) {
+      throw err;
+    }
+    /* fall through to direct client deletion */
+  }
+
   const { purgeWarehouseAssemblyInventoryAndFloorRuns } = await import('../utils/warehouseAssemblyDelete.js');
-  await purgeWarehouseAssemblyInventoryAndFloorRuns(db, id);
+  await purgeWarehouseAssemblyInventoryAndFloorRuns(db, id, { skipRecompute: true });
   await db.from(SET_ITEMS).delete().eq('set_assembly_id', id);
   await db.from(SET_ITEMS).delete().eq('component_assembly_id', id);
   const { data: links } = await db.from(ASSEMBLY_PACKETS).select('packet_id').eq('assembly_id', id);
@@ -819,13 +853,15 @@ export async function deleteWarehouseAssembly(assemblyId) {
   await db.from(PACKETS).update({ assembly_id: null, updated_at: now }).eq('assembly_id', id);
   await db.from(ASSEMBLY_LOCATIONS).delete().eq('assembly_id', id);
   await db.from(ASSEMBLY_COLORS).delete().eq('assembly_id', id);
-  await purgeWarehouseAssemblyImages(id);
-  await purgeWarehouseFloor2WipImages(id);
   const { error } = await db.from(ASSEMBLIES).delete().eq('id', id);
   if (error) throw new Error(error.message || 'Failed to delete product');
   invalidateWarehouseCatalogCache();
   const { invalidateProductionPortalSnapshotCache } = await import('../utils/loadProductionPortalCatalogInputs.js');
   invalidateProductionPortalSnapshotCache();
+  Promise.allSettled([
+    purgeWarehouseAssemblyImages(id),
+    purgeWarehouseFloor2WipImages(id),
+  ]).catch(() => {});
 }
 
 export async function saveWarehousePacket(payload, { id } = {}) {

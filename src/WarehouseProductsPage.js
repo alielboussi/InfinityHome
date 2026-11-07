@@ -480,8 +480,10 @@ export default function WarehouseProductsPage() {
     if (!canManage) return;
     if (!window.confirm(`Delete product "${row.name}"? This removes all warehouse stock (Floor 1 and Floor 2 WIP) and unlinks packets.`)) return;
     setSaving(true);
+    setError('');
     try {
       await deleteWarehouseAssembly(row.id);
+      setAssemblies((prev) => prev.filter((a) => String(a.id) !== String(row.id)));
       await load();
     } catch (err) {
       setError(err?.message || 'Delete failed');

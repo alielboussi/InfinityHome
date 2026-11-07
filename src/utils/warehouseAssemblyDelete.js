@@ -1,10 +1,12 @@
-import { resolveWarehouseFloor2Location } from '../constants/warehouseFloorLocations';
-import { WAREHOUSE_FACTORY_LOCATION_ID } from '../constants/warehouseShowroomLocations';
+import { resolveWarehouseFloor2Location } from '../constants/warehouseFloorLocations.js';
+import { WAREHOUSE_FACTORY_LOCATION_ID } from '../constants/warehouseShowroomLocations.js';
 
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
 const RUNS = 'carpentry_production_runs';
 const USAGE = 'carpentry_production_material_usage';
 const JOBS = 'upholstery_production_jobs';
+const CARPENTRY_JOBS = 'carpentry_production_jobs';
+const PAINTING_JOBS = 'painting_production_jobs';
 const LOCATIONS = 'locations';
 
 function isMissingTableError(err) {
@@ -49,13 +51,20 @@ async function deleteUpholsteryJobsForAssembly(sb, assemblyId) {
       throw new Error(error.message || 'Failed to clear upholstery production jobs');
     }
   }
+
+  for (const table of [CARPENTRY_JOBS, PAINTING_JOBS]) {
+    const { error } = await sb.from(table).delete().eq('assembly_id', id);
+    if (error && !isMissingTableError(error)) {
+      throw new Error(error.message || `Failed to clear ${table}`);
+    }
+  }
 }
 
 /**
  * Remove Floor 2 WIP stock, all location inventory rows, carpentry runs/usage, and related jobs
  * before deleting a warehouse product (Floor 1 catalog delete).
  */
-export async function purgeWarehouseAssemblyInventoryAndFloorRuns(sb, assemblyId) {
+export async function purgeWarehouseAssemblyInventoryAndFloorRuns(sb, assemblyId, { skipRecompute = false } = {}) {
   const id = String(assemblyId || '').trim();
   if (!id) return { assembly_id: id, purged: false };
 
@@ -69,10 +78,12 @@ export async function purgeWarehouseAssemblyInventoryAndFloorRuns(sb, assemblyId
   const { error: invErr } = await sb.from(ASSEMBLY_INVENTORY).delete().eq('assembly_id', id);
   if (invErr) throw new Error(invErr.message || 'Failed to clear warehouse inventory');
 
-  const { recomputeWarehouseLocationStock } = await import('../services/warehouseTransfer');
-  await recomputeWarehouseLocationStock(WAREHOUSE_FACTORY_LOCATION_ID);
-  if (floor2Id) {
-    await recomputeWarehouseLocationStock(floor2Id);
+  if (!skipRecompute) {
+    const { recomputeWarehouseLocationStock } = await import('../services/warehouseTransfer.js');
+    await recomputeWarehouseLocationStock(WAREHOUSE_FACTORY_LOCATION_ID);
+    if (floor2Id) {
+      await recomputeWarehouseLocationStock(floor2Id);
+    }
   }
 
   return {
