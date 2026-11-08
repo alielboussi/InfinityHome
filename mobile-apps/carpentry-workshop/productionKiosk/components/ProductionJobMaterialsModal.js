@@ -17,8 +17,8 @@ import { tUi } from '../lib/productionKioskI18n';
 import {
   fetchProductionStoreroomMaterials,
   saveProductionJobMaterials,
-} from '../../services/carpentryApi';
-import { theme } from '../../shared/theme';
+} from '../services/productionApi';
+import { theme } from '../shared/theme';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,

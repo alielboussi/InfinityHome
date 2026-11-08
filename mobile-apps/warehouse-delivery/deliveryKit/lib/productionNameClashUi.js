@@ -1,6 +1,6 @@
 /**
  * User-facing copy when production name check finds a clash (warehouse, packet, or shop catalog).
- * Standalone copy for mobile apps (no ../../../../src imports).
+ * Standalone copy for mobile apps (no ../../../src imports).
  */
 
 export function formatProductionNameClashMessage(check, duplicateLabel = 'This product name already exists.') {

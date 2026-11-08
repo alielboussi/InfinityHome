@@ -99,47 +99,60 @@ export default function ProductionQrScanModal({
               }}
               onBarcodeScanned={handleBarcode}
             />
-            {cameraBoxLayout.width > 0 && cameraBoxLayout.height > 0 ? (
-              <Svg
-                width={cameraBoxLayout.width}
-                height={cameraBoxLayout.height}
-                style={styles.scanSvg}
-                pointerEvents="none"
-              >
-                <Rect
-                  x={0}
-                  y={0}
-                  width={cameraBoxLayout.width}
-                  height={cameraBoxLayout.height / 2 - 6}
-                  fill="rgba(0,0,0,0.25)"
-                />
-                <Rect
-                  x={0}
-                  y={cameraBoxLayout.height / 2 + 6}
-                  width={cameraBoxLayout.width}
-                  height={cameraBoxLayout.height / 2 - 6}
-                  fill="rgba(0,0,0,0.25)"
-                />
-                <Line
-                  x1={16}
-                  y1={cameraBoxLayout.height / 2}
-                  x2={cameraBoxLayout.width - 16}
-                  y2={cameraBoxLayout.height / 2}
-                  stroke="#ffffff"
-                  strokeWidth={12}
-                  strokeLinecap="round"
-                />
-                <Line
-                  x1={16}
-                  y1={cameraBoxLayout.height / 2}
-                  x2={cameraBoxLayout.width - 16}
-                  y2={cameraBoxLayout.height / 2}
-                  stroke="#ff2d2d"
-                  strokeWidth={6}
-                  strokeLinecap="round"
-                />
-              </Svg>
-            ) : null}
+            {cameraBoxLayout.width > 0 && cameraBoxLayout.height > 0 ? (() => {
+              const W = cameraBoxLayout.width;
+              const H = cameraBoxLayout.height;
+              const boxW = Math.min(W - 32, 320);
+              const boxH = Math.min(Math.max(120, Math.round(H * 0.34)), 176);
+              const boxX = Math.round((W - boxW) / 2);
+              const boxY = Math.round((H - boxH) / 2);
+              const midY = Math.round(H / 2);
+              return (
+                <Svg
+                  width={W}
+                  height={H}
+                  style={styles.scanSvg}
+                  pointerEvents="none"
+                >
+                  {/* Darkened mask outside the scan box */}
+                  <Rect x={0} y={0} width={W} height={boxY} fill="rgba(0,0,0,0.52)" />
+                  <Rect x={0} y={boxY + boxH} width={W} height={Math.max(0, H - (boxY + boxH))} fill="rgba(0,0,0,0.52)" />
+                  <Rect x={0} y={boxY} width={boxX} height={boxH} fill="rgba(0,0,0,0.52)" />
+                  <Rect x={boxX + boxW} y={boxY} width={Math.max(0, W - (boxX + boxW))} height={boxH} fill="rgba(0,0,0,0.52)" />
+                  {/* Barcode placement box frame */}
+                  <Rect
+                    x={boxX}
+                    y={boxY}
+                    width={boxW}
+                    height={boxH}
+                    rx={12}
+                    ry={12}
+                    fill="none"
+                    stroke="#38bdf8"
+                    strokeWidth={3}
+                  />
+                  {/* Center laser alignment line inside the box */}
+                  <Line
+                    x1={boxX + 12}
+                    y1={midY}
+                    x2={boxX + boxW - 12}
+                    y2={midY}
+                    stroke="#ffffff"
+                    strokeWidth={6}
+                    strokeLinecap="round"
+                  />
+                  <Line
+                    x1={boxX + 12}
+                    y1={midY}
+                    x2={boxX + boxW - 12}
+                    y2={midY}
+                    stroke="#ff2d2d"
+                    strokeWidth={3}
+                    strokeLinecap="round"
+                  />
+                </Svg>
+              );
+            })() : null}
           </View>
         ) : (
           <View style={styles.permissionBox}>

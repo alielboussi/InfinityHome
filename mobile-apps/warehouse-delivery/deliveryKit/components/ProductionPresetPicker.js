@@ -1,7 +1,7 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { theme } from '../shared/theme';
 import { kiosk } from './kioskStyles';
-import { presetLabel, textForDisplay, tUi } from '../lib/productionKioskI18n';
+import { presetLabel, tUi, textForDisplay } from '../lib/productionKioskI18n';
 
 export default function ProductionPresetPicker({
   visible,

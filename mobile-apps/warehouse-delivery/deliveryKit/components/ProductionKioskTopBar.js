@@ -1,14 +1,20 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { tUi, textForDisplay } from '../lib/productionKioskI18n';
+import { theme } from '../shared/theme';
+import { tUi } from '../lib/productionKioskI18n';
 import { kiosk } from './kioskStyles';
 
 export default function ProductionKioskTopBar({ title, locale, onToggleLocale, hideLocaleToggle, compact }) {
   const showLang = !hideLocaleToggle && typeof onToggleLocale === 'function';
   return (
-    <View style={[styles.header, compact && styles.headerCompact]}>
+    <View style={[styles.header, kiosk.chromeHeader, compact && styles.headerCompact]}>
       <View style={styles.headerSide} />
-      <Text style={[kiosk.title, styles.titleCenter]} numberOfLines={2}>
-        {textForDisplay(title, '')}
+      <Text
+        style={[kiosk.title, styles.titleCenter]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
+        {title}
       </Text>
       <View style={styles.headerSide}>
         {showLang ? (
@@ -30,8 +36,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    minHeight: 48,
+    minHeight: theme.portalBtnHeight + 16,
   },
   headerCompact: {
     marginBottom: 4,

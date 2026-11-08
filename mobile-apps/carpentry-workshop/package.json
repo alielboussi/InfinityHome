@@ -9,7 +9,8 @@
     "postinstall": "node scripts/materializeCarpentryStandalone.js && node scripts/ensureCarpentryIcons.js && node scripts/assertCarpentryKioskStandalone.js && node scripts/assertCarpentrySharedStandalone.js",
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
-    "android": "expo start --android"
+    "android": "expo start --android",
+    "eas:build:android": "node scripts/materializeCarpentryStandalone.js && eas build --platform android --profile preview --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

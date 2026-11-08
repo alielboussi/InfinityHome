@@ -549,3 +549,52 @@ export async function scanUpholsteryQuoteMaterial(quoteId, scan, quantity = 1) {
     quantity,
   });
 }
+
+let floor2ListCache = { at: 0, rows: [] };
+const FLOOR2_LIST_TTL_MS = 90_000;
+
+export async function fetchProductionFloor2Products({ forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (
+    !forceRefresh
+    && floor2ListCache.rows.length
+    && now - floor2ListCache.at < FLOOR2_LIST_TTL_MS
+  ) {
+    return floor2ListCache.rows;
+  }
+  const payload = await productionOp('production-floor2-list', {});
+  const rows = payload?.products || [];
+  floor2ListCache = { at: now, rows };
+  return rows;
+}
+
+export async function pushProductionFloor2Manufacture({
+  assemblyId,
+  productQty = 1,
+  channel = 'upholstery',
+} = {}) {
+  return productionOp('production-floor2-manufacture-push', {
+    assembly_id: assemblyId,
+    product_qty: productQty,
+    channel,
+  });
+}
+
+export async function fetchProductionStoreroomMaterials() {
+  const payload = await productionOp('production-storeroom-materials-list', {});
+  return payload?.materials || [];
+}
+
+export async function saveProductionJobMaterials({
+  jobKind,
+  jobId,
+  returnOrderId,
+  materialLines,
+} = {}) {
+  return productionOp('production-job-materials-save', {
+    job_kind: jobKind,
+    job_id: jobId,
+    return_order_id: returnOrderId,
+    material_lines: materialLines,
+  });
+}

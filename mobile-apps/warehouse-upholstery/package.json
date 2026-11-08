@@ -9,7 +9,8 @@
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
     "android": "expo start --android",
-    "eas:build:android": "node scripts/materializeSharedForEas.js && eas build --platform android --profile preview --non-interactive"
+    "eas:build:android": "node scripts/materializeSharedForEas.js && eas build --platform android --profile preview --non-interactive",
+    "verify:ui": "node ../../scripts/verifyMobileAndroidLightweight.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

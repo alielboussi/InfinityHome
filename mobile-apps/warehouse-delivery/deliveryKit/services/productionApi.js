@@ -265,6 +265,37 @@ export async function attachProductionProductPhoto({
   });
 }
 
+/** Carpentry workshop — new SKU on Warehouse Floor 2 WIP (optional photo on create). */
+export async function createCarpentryFloor2Product({
+  name,
+  baseName,
+  preset,
+  quantity,
+  imageBase64,
+  dimLength,
+  dimWidth,
+  dimHeight,
+} = {}) {
+  return productionOp('carpentry-floor2-create-product', {
+    name,
+    base_name: baseName,
+    preset: preset ? String(preset).trim() : undefined,
+    quantity,
+    initial_quantity: quantity,
+    image_base64: imageBase64,
+    dim_length: dimLength,
+    dim_width: dimWidth,
+    dim_height: dimHeight,
+  });
+}
+
+export async function uploadCarpentryFloor2ProductPhoto({ assemblyId, imageBase64 }) {
+  return productionOp('carpentry-floor2-photo-upload', {
+    assembly_id: assemblyId,
+    image_base64: imageBase64,
+  });
+}
+
 /** Create finished product + stock only (photo deferred — attach with attachProductionProductPhoto). */
 export async function createProductionProductOnly({
   name,
@@ -516,5 +547,54 @@ export async function scanUpholsteryQuoteMaterial(quoteId, scan, quantity = 1) {
     quote_id: quoteId,
     scan,
     quantity,
+  });
+}
+
+let floor2ListCache = { at: 0, rows: [] };
+const FLOOR2_LIST_TTL_MS = 90_000;
+
+export async function fetchProductionFloor2Products({ forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (
+    !forceRefresh
+    && floor2ListCache.rows.length
+    && now - floor2ListCache.at < FLOOR2_LIST_TTL_MS
+  ) {
+    return floor2ListCache.rows;
+  }
+  const payload = await productionOp('production-floor2-list', {});
+  const rows = payload?.products || [];
+  floor2ListCache = { at: now, rows };
+  return rows;
+}
+
+export async function pushProductionFloor2Manufacture({
+  assemblyId,
+  productQty = 1,
+  channel = 'upholstery',
+} = {}) {
+  return productionOp('production-floor2-manufacture-push', {
+    assembly_id: assemblyId,
+    product_qty: productQty,
+    channel,
+  });
+}
+
+export async function fetchProductionStoreroomMaterials() {
+  const payload = await productionOp('production-storeroom-materials-list', {});
+  return payload?.materials || [];
+}
+
+export async function saveProductionJobMaterials({
+  jobKind,
+  jobId,
+  returnOrderId,
+  materialLines,
+} = {}) {
+  return productionOp('production-job-materials-save', {
+    job_kind: jobKind,
+    job_id: jobId,
+    return_order_id: returnOrderId,
+    material_lines: materialLines,
   });
 }

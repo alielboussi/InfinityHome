@@ -3,9 +3,9 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
-import { loadProductionPushPrefs } from '../../../shared/productionPushPrefs';
-import { navigateFromProductionPushData } from '../../../shared/lib/productionPushNavigation';
 import { getFirebaseAuth } from '../shared/firebase';
+import { loadProductionPushPrefs } from './productionPushPrefs';
+import { navigateFromProductionPushData } from '../../shared/lib/productionPushNavigation';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -58,8 +58,8 @@ export async function registerProductionPushTokenWithServer({ pushPrefs: pushPre
 
 export function navigateFromProductionNotification(navigationRef, data) {
   navigateFromProductionPushData(navigationRef, data, {
-    quotesList: 'Quotes',
-    quotesDetail: 'QuoteDetail',
+    quotesList: 'UpholsteryQuotes',
+    quotesDetail: 'UpholsteryQuoteDetail',
     jobs: 'Jobs',
     repairs: 'Repairs',
   });

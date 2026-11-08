@@ -34,6 +34,7 @@ function buildPropertiesPluginEntry() {
       android: {
         minSdkVersion: 24,
         enableMinifyInReleaseBuilds: true,
+        enableProguardInReleaseBuilds: true,
         enableShrinkResourcesInReleaseBuilds: true,
         newArchEnabled: false,
         gradleProperties: {

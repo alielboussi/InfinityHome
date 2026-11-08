@@ -9,7 +9,8 @@
     "prestart": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingIcons.js",
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
-    "android": "expo start --android"
+    "android": "expo start --android",
+    "eas:build:android": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && eas build --platform android --profile preview --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
