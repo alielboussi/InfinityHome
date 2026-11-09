@@ -1,9 +1,9 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { pickKitweCatalogFamilyImageUrl } from '../utils/kitweCatalogFamilyCardImage';
+import { pickKitweCatalogProductImageUrl } from '../utils/kitweCatalogFamilyCardImage';
 
 /**
- * Manufacture-style family cards + inlay dialog (same pattern as Warehouse Floor 2 grid).
+ * Production catalog — one horizontal row per product (photo + SKU + name + meta + actions).
  */
 export default function KitweCatalogFamilyGrid({
   groups,
@@ -14,6 +14,9 @@ export default function KitweCatalogFamilyGrid({
   renderInlayContent,
   imageLookup = null,
   title = 'Catalog',
+  detailColumnLabel = 'Details',
+  renderRowMeta,
+  rowActionLabel = 'Open',
 }) {
   const inlayGroup = (groups || []).find((g) => g.key === inlayFamilyKey) || null;
 
@@ -27,52 +30,57 @@ export default function KitweCatalogFamilyGrid({
       {(groups || []).length ? (
         <div className="kitwe-catalog-table-wrap" style={{ marginBottom: 24 }}>
           <p style={{ fontSize: 13, color: 'var(--kitwe-muted, #64748b)', margin: '0 0 12px', padding: '0 10px' }}>
-            Click a family card or the Products badge to open lines, BOM, and links.
+            Search filters this list. Use {rowActionLabel} to edit BOM and catalog links.
           </p>
-          <div className="floor2-manufacture-grid">
+          <div className="kitwe-catalog-product-rows" role="list">
+            <div className="kitwe-catalog-product-rows__header" aria-hidden>
+              <span>Photo</span>
+              <span>SKU</span>
+              <span>Product</span>
+              <span>{detailColumnLabel}</span>
+              <span>Actions</span>
+            </div>
             {(groups || []).map((group) => {
-              const imageUrl = pickKitweCatalogFamilyImageUrl(group.items, imageLookup);
-              const variantCount = (group.items || []).length;
-              const inlayLabel = variantCount === 1 ? '1 Product' : `${variantCount} Products`;
+              const row = (group.items || [])[0];
+              if (!row) return null;
+              const imageUrl = pickKitweCatalogProductImageUrl(row, imageLookup);
+              const name = group.familyBase || row.name || '—';
+              const sku = row.family_sku || '—';
               return (
-                <div
+                <article
                   key={group.key}
-                  className={`floor2-manufacture-tile${imageUrl ? ' has-photo' : ''}`}
+                  className="kitwe-catalog-product-row"
+                  role="listitem"
                 >
                   <button
                     type="button"
-                    className="floor2-manufacture-tile__photo-hit"
+                    className="kitwe-catalog-product-row__thumb"
                     onClick={() => openInlay(group)}
-                    aria-label={`Open ${group.familyBase}`}
+                    aria-label={`${rowActionLabel} ${name}`}
                   >
                     {imageUrl ? (
-                      <img className="floor2-manufacture-tile__photo" src={imageUrl} alt="" />
+                      <img src={imageUrl} alt="" />
                     ) : (
-                      <div className="floor2-manufacture-tile__photo-placeholder" aria-hidden />
+                      <span className="kitwe-catalog-product-row__thumb-placeholder" aria-hidden>▦</span>
                     )}
-                    <div className="floor2-manufacture-tile__overlay" aria-hidden />
-                    <h3 className="floor2-manufacture-tile__title">{group.familyBase}</h3>
-                    {!imageUrl ? (
-                      <div className="floor2-manufacture-tile__no-image-center">
-                        <span className="floor2-manufacture-tile__no-image-icon" aria-hidden>
-                          ▦
-                        </span>
-                      </div>
-                    ) : null}
                   </button>
-                  <button
-                    type="button"
-                    className="floor2-manufacture-tile__inlay"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openInlay(group);
-                    }}
-                    aria-label={`${inlayLabel} — ${group.familyBase}`}
-                  >
-                    <span className="floor2-manufacture-tile__inlay-icon" aria-hidden>☰</span>
-                    {inlayLabel}
-                  </button>
-                </div>
+                  <div className="kitwe-catalog-product-row__sku">{sku}</div>
+                  <div className="kitwe-catalog-product-row__name">
+                    <strong>{name}</strong>
+                  </div>
+                  <div className="kitwe-catalog-product-row__meta">
+                    {typeof renderRowMeta === 'function' ? renderRowMeta(row) : '—'}
+                  </div>
+                  <div className="kitwe-catalog-product-row__actions">
+                    <button
+                      type="button"
+                      className="kitwe-btn-secondary kitwe-btn-compact"
+                      onClick={() => openInlay(group)}
+                    >
+                      {rowActionLabel}
+                    </button>
+                  </div>
+                </article>
               );
             })}
           </div>

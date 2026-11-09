@@ -6,10 +6,7 @@ import {
   buildProductionPortalCatalogContext,
   filterSetCandidatesToPortalProducts,
 } from './productionPortalCatalog.js';
-import {
-  readWarehouseFloor2WipFamilyImageUrl,
-  readWarehouseFloor2WipImageUrl,
-} from './warehouseFloor2WipImage.js';
+import { readWarehouseFloor2WipImageUrl } from './warehouseFloor2WipImage.js';
 
 export function parseUpholsteryMeta(assembly) {
   const meta = assembly?.metadata || {};
@@ -41,7 +38,6 @@ export function listUpholsteryCatalogProducts(assemblies) {
         material_count: meta.materials.length,
         floor2_image_url: readWarehouseFloor2WipImageUrl(a),
         image_url: readWarehouseFloor2WipImageUrl(a),
-        family_image_url: readWarehouseFloor2WipFamilyImageUrl(a),
         materials: meta.materials.map((m) => ({
           material_assembly_id: m.material_assembly_id,
           quantity: Number(m.quantity) || 0,

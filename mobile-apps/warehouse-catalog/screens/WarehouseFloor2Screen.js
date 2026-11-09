@@ -27,9 +27,10 @@ import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUploa
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { theme } from '../shared/theme';
+import ProductionProductListRow, { productionProductRowPressableStyle } from '../shared/components/ProductionProductListRow';
 
-const CARD_MIN_SIZE = PixelRatio.roundToNearestPixel((8 * 160) / 2.54 / PixelRatio.get());
 const CARD_GAP = 12;
+const productRowPressable = productionProductRowPressableStyle(CARD_GAP);
 
 const PRESET_SUFFIXES = [
   '3 Seater Recliner',
@@ -69,65 +70,30 @@ function extractBaseName(productName) {
   return n;
 }
 
-function familyCoverSeaterRank(name) {
-  const n = String(name || '').trim().toLowerCase();
-  if (/\b3\s*seater\b/.test(n)) return 0;
-  if (/\b2\s*seater\b/.test(n)) return 1;
-  if (/\b(single|1)\s*seater\b/.test(n)) return 2;
-  return 3;
-}
-
 function floor2Qty(item) {
   return Math.max(0, Math.floor(Number(item?.floor2_qty ?? item?.quantity) || 0));
 }
 
-/**
- * Family card cover photo rule:
- * 1) If the family has a 3 Seater with a photo, use the 3 Seater photo first (then 2 Seater, Single Seater, or any single product photo).
- * 2) Otherwise fall back to `family_image_url`.
- */
-function pickGroupImageUrl(items) {
-  const list = items || [];
-  const ranked = [...list].sort((a, b) => {
-    const na = a?.raw_name || a?.name || '';
-    const nb = b?.raw_name || b?.name || '';
-    return familyCoverSeaterRank(na) - familyCoverSeaterRank(nb);
-  });
-  for (const item of ranked) {
-    const url = resolveProductImageUrl(item?.image_url);
-    if (url) return url;
-  }
-  for (const item of list) {
-    const url = resolveProductImageUrl(item?.family_image_url);
-    if (url) return url;
-  }
-  return '';
+function productCardImageUrl(item) {
+  return resolveProductImageUrl(item?.image_url) || '';
 }
 
-function groupFloor2Products(products) {
-  const map = new Map();
-  (products || []).forEach((item) => {
-    const rawName = String(item?.raw_name || item?.name || '').trim();
-    const explicitGroup = String(item?.floor2_set_name || '').trim();
-    const familyBase = explicitGroup || extractBaseName(rawName) || rawName || String(item.assembly_id || item.id);
-    const key = familyBase.toLowerCase();
-    if (!map.has(key)) map.set(key, { familyBase, items: [] });
-    map.get(key).items.push(item);
-  });
-  return [...map.entries()]
-    .map(([key, { familyBase, items }]) => {
-      const sorted = [...items].sort((a, b) =>
-        String(a.raw_name || a.name || '').localeCompare(String(b.raw_name || b.name || '')),
-      );
-      const totalFloor2 = sorted.reduce((sum, row) => sum + floor2Qty(row), 0);
+/** One Floor 2 card per product (no family merge or shared cover). */
+function floor2ProductsAsFlatCards(products) {
+  return (products || [])
+    .map((item) => {
+      const id = String(item.assembly_id || item.id || '').trim();
+      if (!id) return null;
+      const name = String(item.raw_name || item.name || id).trim();
       return {
-        key,
-        displayName: familyBase,
-        items: sorted,
-        totalFloor2,
-        imageUrl: pickGroupImageUrl(sorted),
+        key: id,
+        displayName: name,
+        items: [item],
+        totalFloor2: floor2Qty(item),
+        imageUrl: productCardImageUrl(item),
       };
     })
+    .filter(Boolean)
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
@@ -186,7 +152,7 @@ export default function WarehouseFloor2Screen() {
     }, [loadProducts]),
   );
 
-  const allGroups = useMemo(() => groupFloor2Products(products), [products]);
+  const allGroups = useMemo(() => floor2ProductsAsFlatCards(products), [products]);
   const inlayGroup = useMemo(
     () => allGroups.find((g) => g.key === inlayGroupKey) || null,
     [allGroups, inlayGroupKey],
@@ -452,58 +418,29 @@ export default function WarehouseFloor2Screen() {
   };
 
   const renderGroupCard = ({ item: group }) => {
-    const multi = group.items.length > 1;
-    const cardImage = group.imageUrl || pickGroupImageUrl(group.items);
+    const product = group.items?.[0];
+    const cardImage = group.imageUrl || productCardImageUrl(product);
     const cardBusy = group.items.some(
       (row) => busyId === String(row.assembly_id || row.id) || photoBusyId === String(row.assembly_id || row.id),
     );
+    const sku = String(product?.family_sku || '').trim();
     return (
       <Pressable
         style={({ pressed }) => [
-          styles.tile,
-          pressed && styles.tilePressed,
-          cardBusy && styles.tileBusy,
+          productRowPressable.row,
+          pressed && productRowPressable.rowPressed,
+          cardBusy && productRowPressable.rowBusy,
         ]}
         disabled={Boolean(busyId || photoBusyId)}
         onPress={() => openInlay(group)}
       >
-        {cardImage ? (
-          <Image source={{ uri: cardImage }} style={styles.tileImage} resizeMode="cover" />
-        ) : (
-          <View style={styles.tileImagePlaceholder} />
-        )}
-        <View style={styles.tileOverlay} />
-        <View style={styles.tileNameBar}>
-          <Text style={styles.tileName} numberOfLines={2}>
-            {group.displayName}
-          </Text>
-          <Text style={styles.tileStockSub}>
-            On hand: {group.totalFloor2}
-          </Text>
-        </View>
-        {!cardImage ? (
-          <View style={styles.tileNoImageCenter} pointerEvents="none">
-            <MaterialCommunityIcons name="image-off-outline" size={48} color={theme.textMuted} />
-          </View>
-        ) : null}
-        <Pressable
-          style={styles.inlayBtn}
-          hitSlop={12}
-          disabled={Boolean(busyId || photoBusyId)}
-          onPress={() => openInlay(group)}
-        >
-          <MaterialCommunityIcons
-            name={multi ? 'layers-triple' : 'plus-box-outline'}
-            size={22}
-            color="#fff"
-          />
-          <Text style={styles.inlayBtnText}>
-            {multi ? String(group.items.length) : String(group.totalFloor2)}
-          </Text>
-        </Pressable>
-        {cardBusy ? (
-          <ActivityIndicator color={theme.primary} size="small" style={styles.tileSpinner} />
-        ) : null}
+        <ProductionProductListRow
+          imageUrl={cardImage || undefined}
+          name={group.displayName}
+          sku={sku}
+          subtitle={`On hand: ${group.totalFloor2}`}
+          busy={cardBusy}
+        />
       </Pressable>
     );
   };
@@ -963,7 +900,7 @@ const styles = StyleSheet.create({
   },
   list: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
-  gridContent: { paddingBottom: 24 },
+  gridContent: { paddingBottom: 24, gap: CARD_GAP },
   emptyText: {
     color: theme.textMuted,
     textAlign: 'center',

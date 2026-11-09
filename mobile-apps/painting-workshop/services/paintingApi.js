@@ -36,8 +36,16 @@ export async function finishPaintingProductionJob(jobId) {
 }
 
 export async function fetchProductionStoreroomMaterials() {
-  const payload = await warehouseMobileRequest('production-storeroom-materials-list');
-  return payload?.materials || [];
+  const payload = await warehouseMobileRequest('production-storeroom-materials-list', {});
+  if (Array.isArray(payload)) {
+    return { materials: payload, storerooms: [], storeroom_labels: [], uom_options: [] };
+  }
+  return {
+    materials: payload?.materials || [],
+    storerooms: payload?.storerooms || [],
+    storeroom_labels: payload?.storeroom_labels || [],
+    uom_options: payload?.uom_options || [],
+  };
 }
 
 export async function saveProductionJobMaterials({
@@ -46,6 +54,7 @@ export async function saveProductionJobMaterials({
   returnOrderId,
   productionRoute,
   materialLines,
+  preferredStoreroomLocationId,
 } = {}) {
   return warehouseMobileRequest('production-job-materials-save', {
     job_kind: jobKind,
@@ -53,5 +62,6 @@ export async function saveProductionJobMaterials({
     return_order_id: returnOrderId,
     production_route: productionRoute,
     material_lines: materialLines,
+    preferred_storeroom_location_id: preferredStoreroomLocationId || undefined,
   });
 }

@@ -40,7 +40,9 @@ async function resolveFloor2Id(sb) {
 }
 
 /**
- * Deduct Floor 2 WIP and open a production job (no automatic storeroom BOM).
+ * Open a production job from Floor 2 WIP (no automatic storeroom BOM).
+ * Neither channel touches Warehouse Floor 1 on job open (see productionFloor1StockPolicy.js).
+ * Carpentry: may deduct Floor 2 when the job opens (floor2_push). Upholstery: Floor 2 unchanged until job finish.
  */
 export async function pushFloor2ToProductionJob(sb, {
   assemblyId,
@@ -68,8 +70,12 @@ export async function pushFloor2ToProductionJob(sb, {
   if (aErr) throw new Error(aErr.message || 'Failed to load product');
   if (!assembly?.id) throw new Error('Product not found');
 
-  await adjustAssemblyInventory(sb, aid, floor2Id, -qty);
-  await recomputeWarehouseLocationStockServer(sb, floor2Id);
+  // Carpentry: WIP leaves Floor 2 when the job opens. Upholstery: raw stays on Floor 2 in the
+  // portal until the job is finished (deduct raw + credit finished on finishUpholsteryProductionJob).
+  if (route === 'carpentry') {
+    await adjustAssemblyInventory(sb, aid, floor2Id, -qty);
+    await recomputeWarehouseLocationStockServer(sb, floor2Id);
+  }
 
   const now = new Date().toISOString();
   const jobId = newUuid();
@@ -137,6 +143,7 @@ export async function pushFloor2ToProductionJob(sb, {
     metadata: {
       channel: 'warehouse_production_app',
       floor2_push: true,
+      floor2_deduct_on_finish: true,
       material_usage_rows: [],
       manual_material_lines: [],
       storeroom_location_ids: [],

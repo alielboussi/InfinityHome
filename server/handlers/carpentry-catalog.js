@@ -7,7 +7,12 @@ import {
 } from '../lib/carpentryCatalog.js';
 import { buildCarpentryCatalogPayload } from '../../src/utils/carpentryCatalogView.js';
 import { loadProductionPortalCatalogInputs } from '../lib/loadProductionPortalCatalogInputs.js';
-import { receiveStoreroomMaterial, createStoreroomMaterial, setStoreroomMaterialStockQty } from '../../src/utils/storeroomStockMutations.js';
+import {
+  receiveStoreroomMaterial,
+  createStoreroomMaterial,
+  setStoreroomMaterialStockQty,
+  removeStoreroomMaterialStockAtLocation,
+} from '../../src/utils/storeroomStockMutations.js';
 import {
   createMaterialUom,
   listMaterialUoms,
@@ -73,6 +78,12 @@ export default async function handler(req, res) {
 
     if (op === 'set-storeroom-stock') {
       const result = await setStoreroomMaterialStockQty(db, body);
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
+    if (op === 'delete-storeroom-stock') {
+      const result = await removeStoreroomMaterialStockAtLocation(db, body);
       res.status(200).json({ ok: true, ...result });
       return;
     }

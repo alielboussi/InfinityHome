@@ -1,5 +1,5 @@
-import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 import { resolveWarehouseFloor2Location } from '../../src/constants/warehouseFloorLocations.js';
+import { requireWarehouseFloor2Location } from './productionFloor1StockPolicy.js';
 import { newUuid } from './uuid.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import {
@@ -149,6 +149,56 @@ export async function startCarpentryProductionJob(sb, {
   return { job: serializeJob(inserted) };
 }
 
+/** Carpentry app Manufacture — job only; BOM + Floor 2 WIP on finish (Floor 1 unchanged). */
+export async function startCarpentryCatalogManufactureJob(sb, {
+  assemblyId,
+  productQty = 1,
+  userId = null,
+}) {
+  const qty = Math.max(1, Math.floor(Number(productQty) || 1));
+  const ctx = await loadCarpentryProductContext(sb, assemblyId);
+
+  const { data: locRows, error: locErr } = await sb.from(LOCATIONS).select('id, name');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+  requireWarehouseFloor2Location(locRows);
+
+  const now = new Date().toISOString();
+  const jobId = newUuid();
+  const row = stripUndefinedDeep({
+    id: jobId,
+    assembly_id: ctx.productId,
+    product_name: String(ctx.assembly.name || '').trim(),
+    product_sku: String(ctx.assembly.family_sku || '').trim(),
+    product_qty: qty,
+    status: 'ready',
+    accumulated_ms: 0,
+    timer_started_at: null,
+    started_at: now,
+    completed_at: null,
+    accepted_by: userId || null,
+    metadata: {
+      channel: 'carpentry_workshop_app',
+      catalog_manufacture: true,
+      material_usage_rows: [],
+      manual_material_lines: [],
+      storeroom_location_ids: ctx.carpentryLocs.map((l) => l.id).filter(Boolean),
+    },
+    created_at: now,
+    updated_at: now,
+  });
+
+  const { data: inserted, error: insErr } = await sb.from(JOBS).insert(row).select('*').single();
+  if (insErr) throw new Error(insErr.message || 'Failed to create carpentry manufacture job');
+  if (!inserted?.id) throw new Error('Failed to create carpentry manufacture job (no row returned)');
+
+  return {
+    job: serializeJob(inserted),
+    job_id: inserted.id,
+    assembly_id: ctx.productId,
+    product_qty: qty,
+  };
+}
+
 export async function listCarpentryProductionJobs(sb, { activeOnly = true, limit = 200 } = {}) {
   const { data, error } = await sb.from(JOBS).select('*');
   if (error) {
@@ -198,67 +248,85 @@ export async function resumeCarpentryProductionJob(sb, { jobId, userId }) {
 export async function finishCarpentryProductionJob(sb, {
   jobId,
   userId = null,
+  preferredStoreroomLocationId = null,
 }) {
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
 
   const productId = String(job.assembly_id || '').trim();
   const meta = job.metadata || {};
-  const materialUsageRows = Array.isArray(meta.material_usage_rows) ? meta.material_usage_rows : [];
+  const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  let materialUsageRows = Array.isArray(meta.material_usage_rows) ? meta.material_usage_rows : [];
   const storeroomIds = Array.isArray(meta.storeroom_location_ids) ? meta.storeroom_location_ids : [];
 
   const { data: locRows, error: locErr } = await sb.from(LOCATIONS).select('id, name');
   if (locErr) throw new Error(locErr.message || 'Failed to load locations');
-  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
-  const outputLocationId = floor2Loc?.id ? String(floor2Loc.id) : WAREHOUSE_FACTORY_LOCATION_ID;
+  const outputLocationId = requireWarehouseFloor2Location(locRows);
 
-  // Floor 2 WIP is added on Manufacture. Jobs only return WIP taken via floor2_push.
-  if (meta.floor2_push) {
-    await adjustAssemblyInventory(sb, productId, outputLocationId, 1);
+  let runId = null;
+  let manufactureResult = null;
+  if (meta.catalog_manufacture) {
+    const { completeCarpentryCatalogManufacture } = await import('./carpentryManufacture.js');
+    manufactureResult = await completeCarpentryCatalogManufacture(sb, {
+      assemblyId: productId,
+      productQty: qty,
+      userId,
+      carpentryJobId: job.id,
+      preferredStoreroomLocationId,
+    });
+    runId = manufactureResult.run_id;
+  } else {
+    // floor2_push: WIP was deducted when the job opened — return completed qty to Floor 2 (never Floor 1).
+    if (meta.floor2_push) {
+      await adjustAssemblyInventory(sb, productId, outputLocationId, qty);
+    }
+
+    const now = new Date().toISOString();
+    const finalElapsed = computeElapsedMs(job);
+    runId = newUuid();
+    const { error: runErr } = await sb.from(RUNS).insert({
+      id: runId,
+      source: 'carpentry_floor',
+      quote_id: null,
+      assembly_id: productId,
+      product_qty: qty,
+      started_at: job.started_at || now,
+      completed_at: now,
+      accepted_by: userId,
+      metadata: {
+        channel: 'carpentry_workshop_app',
+        carpentry_job_id: job.id,
+        elapsed_ms: finalElapsed,
+      },
+      created_at: now,
+    });
+    if (runErr && !/not found|does not exist/i.test(String(runErr.message || ''))) {
+      throw new Error(runErr.message || 'Failed to save production run');
+    }
+    if (!runErr && materialUsageRows.length) {
+      for (const row of materialUsageRows) {
+        await sb.from(USAGE).insert({
+          id: newUuid(),
+          run_id: runId,
+          material_assembly_id: row.material_assembly_id,
+          warehouse_location_id: row.warehouse_location_id,
+          quantity: row.quantity,
+          uom: row.uom,
+          created_at: now,
+        });
+      }
+    }
+
+    for (const locId of storeroomIds) {
+      if (locId) await recomputeWarehouseLocationStockServer(sb, locId);
+    }
+    if (meta.floor2_push && outputLocationId) {
+      await recomputeWarehouseLocationStockServer(sb, outputLocationId);
+    }
   }
 
   const now = new Date().toISOString();
   const finalElapsed = computeElapsedMs(job);
-  const runId = newUuid();
-  const { error: runErr } = await sb.from(RUNS).insert({
-    id: runId,
-    source: 'carpentry_floor',
-    quote_id: null,
-    assembly_id: productId,
-    product_qty: 1,
-    started_at: job.started_at || now,
-    completed_at: now,
-    accepted_by: userId,
-    metadata: {
-      channel: 'carpentry_workshop_app',
-      carpentry_job_id: job.id,
-      elapsed_ms: finalElapsed,
-    },
-    created_at: now,
-  });
-  if (runErr && !/not found|does not exist/i.test(String(runErr.message || ''))) {
-    throw new Error(runErr.message || 'Failed to save production run');
-  }
-  if (!runErr && materialUsageRows.length) {
-    for (const row of materialUsageRows) {
-      await sb.from(USAGE).insert({
-        id: newUuid(),
-        run_id: runId,
-        material_assembly_id: row.material_assembly_id,
-        warehouse_location_id: row.warehouse_location_id,
-        quantity: row.quantity,
-        uom: row.uom,
-        created_at: now,
-      });
-    }
-  }
-
-  for (const locId of storeroomIds) {
-    if (locId) await recomputeWarehouseLocationStockServer(sb, locId);
-  }
-  if (meta.floor2_push && outputLocationId) {
-    await recomputeWarehouseLocationStockServer(sb, outputLocationId);
-  }
 
   const updated = await saveJobPatch(sb, job.id, {
     status: 'completed',
@@ -267,14 +335,15 @@ export async function finishCarpentryProductionJob(sb, {
     timer_started_at: null,
     metadata: {
       ...meta,
-      production_run_id: runErr ? null : runId,
+      production_run_id: runId || null,
     },
   });
 
   return {
     job: serializeJob(updated),
-    run_id: runErr ? null : runId,
+    run_id: runId || null,
     assembly_id: productId,
+    ...(manufactureResult ? { product_qty: manufactureResult.product_qty } : {}),
   };
 }
 

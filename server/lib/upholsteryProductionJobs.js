@@ -5,6 +5,7 @@ import { enqueueWarehouseProductionLabelJob } from './productionLabelPrint.js';
 import { logWarehouseProductionStockIncrease } from './warehouseProductionLog.js';
 import { resolveCarpentryStoreroomLocations } from './storeroomBomDeduction.js';
 import {
+  consumeUpholsteryRawAndMaterials,
   creditUpholsteryFinishedOutput,
   loadUpholsteryManufactureContext,
   recomputeUpholsteryManufactureLocations,
@@ -259,9 +260,20 @@ export async function finishUpholsteryProductionJob(sb, {
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
 
   const ctx = await loadUpholsteryManufactureContext(sb, job.raw_assembly_id);
-  const output = await creditUpholsteryFinishedOutput(sb, ctx, qty);
-
   const meta = job.metadata || {};
+  const deductRawOnFinish = meta.floor2_deduct_on_finish === true;
+  let storeroomLocsForRecompute = [];
+  if (deductRawOnFinish) {
+    const { storeroomLocsForRecompute: storeroomLocs } = await consumeUpholsteryRawAndMaterials(
+      sb,
+      ctx,
+      qty,
+      { deductStoreroomBom: false },
+    );
+    storeroomLocsForRecompute = storeroomLocs || [];
+  }
+
+  const output = await creditUpholsteryFinishedOutput(sb, ctx, qty);
   const materialUsageRows = Array.isArray(meta.material_usage_rows) ? meta.material_usage_rows : [];
   const storeroomIds = Array.isArray(meta.storeroom_location_ids) ? meta.storeroom_location_ids : [];
 
@@ -333,7 +345,7 @@ export async function finishUpholsteryProductionJob(sb, {
     source: 'warehouse_production_app',
   });
 
-  const storeroomLocs = storeroomIds.map((id) => ({ id }));
+  const storeroomLocs = [...storeroomIds.map((id) => ({ id })), ...storeroomLocsForRecompute];
   await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocs);
 
   const updated = await saveJobPatch(sb, job.id, {
@@ -346,6 +358,7 @@ export async function finishUpholsteryProductionJob(sb, {
       production_run_id: runErr ? null : runId,
       label_job_id: labelJobId,
       label_print_warning: labelPrintWarning,
+      floor2_raw_deducted: deductRawOnFinish ? true : meta.floor2_raw_deducted,
     },
   });
 

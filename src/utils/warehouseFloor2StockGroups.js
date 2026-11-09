@@ -39,3 +39,24 @@ export function groupFloor2StockByFamily(stockRows, assemblyById) {
     }))
     .sort((a, b) => a.familyBase.localeCompare(b.familyBase));
 }
+
+/** One Floor 2 card per product (no family-base merge). */
+export function floor2StockAsFlatGroups(stockRows, assemblyById) {
+  return (stockRows || [])
+    .map((row) => {
+      const aid = String(row.assembly_id || '').trim();
+      if (!aid) return null;
+      const asm = assemblyById?.get?.(aid);
+      const name = String(asm?.name || aid).trim();
+      const qty = Math.max(0, Number(row.quantity) || 0);
+      return {
+        key: aid,
+        familyBase: name,
+        assemblyIds: [aid],
+        rows: [{ ...row, assembly_id: aid }],
+        totalQty: qty,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.familyBase.localeCompare(b.familyBase));
+}

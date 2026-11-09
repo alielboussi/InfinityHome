@@ -115,7 +115,7 @@ async function loadPaintingProductContext(sb, assemblyId) {
 }
 
 /**
- * Carpentry app: send Floor 2 WIP to painting — deduct Floor 2 and create a timed painting job.
+ * Carpentry app: send Floor 2 WIP to painting — deduct Floor 2 (WIP leaves the floor) + queue painting job.
  */
 export async function sendAssemblyToPaintingDepartment(sb, {
   assemblyId,
@@ -151,6 +151,7 @@ export async function sendAssemblyToPaintingDepartment(sb, {
     accepted_by: userId || null,
     metadata: {
       channel,
+      inventory_source: 'floor2',
       floor2_deducted_qty: qty,
       floor2_location_id: floor2LocationId,
     },
@@ -323,7 +324,8 @@ export async function resumePaintingProductionJob(sb, { jobId, userId }) {
 }
 
 /**
- * Painting app: finish job — credit finished qty on Warehouse Floor 1 (/warehouse-products).
+ * Painting app: finish job — credit finished qty on Warehouse Floor 1 (Send Delivery).
+ * Floor 2 was already deducted when carpentry sent WIP to painting.
  */
 export async function finishPaintingProductionJob(sb, {
   jobId,

@@ -700,6 +700,23 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     }
   }
 
+  if (!id && !isSet && createPortal === 'warehouse-products') {
+    try {
+      const { addFloor1ProductToFloor2Local } = await import('../utils/carpentryCatalogMutations');
+      const seedQty = Math.max(
+        1,
+        Math.floor(Number(payload?.floor2_wip_qty ?? payload?.floor2_product_qty) || 1),
+      );
+      await addFloor1ProductToFloor2Local(db, {
+        assemblyId,
+        productQty: seedQty,
+        userId: null,
+      });
+    } catch (floor2Err) {
+      console.warn('[saveWarehouseAssembly] Floor 2 WIP seed failed:', floor2Err?.message || floor2Err);
+    }
+  }
+
   invalidateWarehouseCatalogCache();
   return { ...row, id: assemblyId };
 }

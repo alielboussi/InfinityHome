@@ -21,9 +21,16 @@ import {
   fetchCarpentryProductionJobs,
   fetchCarpentryProductionQuotes,
   finishCarpentryProductionJob,
+  fetchProductionStoreroomMaterials,
   pauseCarpentryProductionJob,
   resumeCarpentryProductionJob,
 } from '../services/carpentryApi';
+import StoreroomDeductionPromptModal from '../productionKiosk/shared/components/StoreroomDeductionPromptModal';
+import {
+  carpentryFinishNeedsStoreroomPick,
+  parseStoreroomsFromMaterialsApi,
+  storeroomDeductionStrings,
+} from '../productionKiosk/shared/lib/storeroomDeductionFlow';
 import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
 import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
 import { theme } from '../shared/theme';
@@ -186,6 +193,11 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [busyId, setBusyId] = useState('');
   const [materialsTarget, setMaterialsTarget] = useState(null);
   const [jobFilter, setJobFilter] = useState('all');
+  const [storerooms, setStorerooms] = useState([]);
+  const [storeroomFinishJobId, setStoreroomFinishJobId] = useState('');
+  const [storeroomPromptVisible, setStoreroomPromptVisible] = useState(false);
+
+  const storeroomCopy = useMemo(() => storeroomDeductionStrings(tUi, locale), [locale]);
 
   const loadJobs = useCallback(async ({ showLoading = true } = {}) => {
     if (!allowed) {
@@ -246,11 +258,22 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     wrapBusy(jobId, () => pauseCarpentryProductionJob(jobId));
   };
 
+  const completeFinishJob = async (jobId, preferredStoreroomLocationId) => {
+    const result = await finishCarpentryProductionJob(jobId, { preferredStoreroomLocationId });
+    const warn = String(result?.label_print_warning || '').trim();
+    if (warn) {
+      Alert.alert(tUi('upholsteryJobFinish', locale), warn);
+    } else {
+      Alert.alert(tUi('upholsteryJobFinish', locale), tUi('upholsteryJobFinishDone', locale));
+    }
+  };
+
   const onFinish = (job) => {
     const jobId = job.job_id || job.id;
     const matCount = (job.manual_material_lines || []).length;
     let body = tUi('upholsteryJobFinishBody', locale).replace('{name}', job.product_name || job.raw_name || '');
     if (matCount === 0) body = `${body}\n\n${tUi('jobFinishNoMaterialsHint', locale)}`;
+    const needsStoreroom = carpentryFinishNeedsStoreroomPick(job);
     Alert.alert(
       tUi('upholsteryJobFinishTitle', locale),
       body,
@@ -259,15 +282,20 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         {
           text: tUi('upholsteryJobFinish', locale),
           style: 'destructive',
-          onPress: () => wrapBusy(jobId, async () => {
-            const result = await finishCarpentryProductionJob(jobId);
-            const warn = String(result?.label_print_warning || '').trim();
-            if (warn) {
-              Alert.alert(tUi('upholsteryJobFinish', locale), warn);
-            } else {
-              Alert.alert(tUi('upholsteryJobFinish', locale), tUi('upholsteryJobFinishDone', locale));
+          onPress: async () => {
+            if (needsStoreroom) {
+              try {
+                const payload = await fetchProductionStoreroomMaterials();
+                setStorerooms(parseStoreroomsFromMaterialsApi(payload));
+              } catch {
+                setStorerooms([]);
+              }
+              setStoreroomFinishJobId(String(jobId));
+              setStoreroomPromptVisible(true);
+              return;
             }
-          }),
+            wrapBusy(jobId, () => completeFinishJob(jobId, null));
+          },
         },
       ],
     );
@@ -398,6 +426,23 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         onSaved={() => {
           setMaterialsTarget(null);
           loadJobs();
+        }}
+      />
+      <StoreroomDeductionPromptModal
+        visible={storeroomPromptVisible}
+        locale={locale}
+        textAlign={textAlign}
+        storerooms={storerooms}
+        {...storeroomCopy}
+        onCancel={() => {
+          setStoreroomPromptVisible(false);
+          setStoreroomFinishJobId('');
+        }}
+        onConfirm={(preferredId) => {
+          const jobId = storeroomFinishJobId;
+          setStoreroomPromptVisible(false);
+          setStoreroomFinishJobId('');
+          if (jobId) wrapBusy(jobId, () => completeFinishJob(jobId, preferredId));
         }}
       />
     </View>

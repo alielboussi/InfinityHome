@@ -582,7 +582,15 @@ export async function pushProductionFloor2Manufacture({
 
 export async function fetchProductionStoreroomMaterials() {
   const payload = await productionOp('production-storeroom-materials-list', {});
-  return payload?.materials || [];
+  if (Array.isArray(payload)) {
+    return { materials: payload, storerooms: [], storeroom_labels: [], uom_options: [] };
+  }
+  return {
+    materials: payload?.materials || [],
+    storerooms: payload?.storerooms || [],
+    storeroom_labels: payload?.storeroom_labels || [],
+    uom_options: payload?.uom_options || [],
+  };
 }
 
 export async function saveProductionJobMaterials({

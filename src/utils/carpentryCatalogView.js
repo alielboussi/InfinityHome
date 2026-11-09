@@ -2,10 +2,7 @@ import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy.js';
 import { isWarehouseSetAssembly } from './warehouseSetMath.js';
 import { normalizeMaterialUom } from '../constants/carpentryUom.js';
 import { listWarehouseSetComponentCandidates } from './warehouseCatalogSetCandidates.js';
-import {
-  readWarehouseFloor2WipFamilyImageUrl,
-  readWarehouseFloor2WipImageUrl,
-} from './warehouseFloor2WipImage.js';
+import { readWarehouseFloor2WipImageUrl } from './warehouseFloor2WipImage.js';
 import {
   buildProductionPortalCatalogContext,
   filterSetCandidatesToPortalProducts,
@@ -38,7 +35,6 @@ export function listCarpentryCatalogProducts(assemblies) {
         material_count: materials.length,
         floor2_image_url: readWarehouseFloor2WipImageUrl(a),
         image_url: readWarehouseFloor2WipImageUrl(a),
-        family_image_url: readWarehouseFloor2WipFamilyImageUrl(a),
         materials: materials.map((m) => ({
           material_assembly_id: m.material_assembly_id,
           quantity: Number(m.quantity) || 0,

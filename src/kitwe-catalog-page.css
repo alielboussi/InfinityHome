@@ -827,7 +827,136 @@ body.enterprise-theme .kitwe-catalog-page .kitwe-catalog-table select {
   white-space: nowrap;
 }
 
-/* Warehouse Floor 2 — Manufacture-style family grid (3 columns) */
+/* Production catalog — horizontal row cards (Carpentry, Upholstery, Floor 2) */
+.kitwe-catalog-product-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 8px;
+}
+
+.kitwe-catalog-product-rows__header {
+  display: grid;
+  grid-template-columns: 72px minmax(88px, 0.75fr) minmax(160px, 1.5fr) minmax(120px, 1fr) minmax(88px, auto);
+  gap: 12px;
+  align-items: center;
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--kitwe-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.kitwe-catalog-product-row {
+  display: grid;
+  grid-template-columns: 72px minmax(88px, 0.75fr) minmax(160px, 1.5fr) minmax(120px, 1fr) minmax(88px, auto);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  box-sizing: border-box;
+}
+
+body.enterprise-theme .kitwe-catalog-product-row {
+  background: var(--kitwe-panel-bg, #fff);
+  border-color: var(--kitwe-border, #e2e8f0);
+}
+
+.kitwe-catalog-product-row__thumb {
+  width: 72px;
+  height: 72px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: linear-gradient(155deg, #f1f5f9 0%, #e2e8f0 100%);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kitwe-catalog-product-row__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kitwe-catalog-product-row__thumb-placeholder {
+  font-size: 22px;
+  color: #94a3b8;
+  line-height: 1;
+}
+
+.kitwe-catalog-product-row__sku {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--kitwe-muted, #64748b);
+  word-break: break-word;
+}
+
+.kitwe-catalog-product-row__name {
+  font-size: 15px;
+  line-height: 1.35;
+  color: #0f172a;
+}
+
+.kitwe-catalog-product-row__meta {
+  font-size: 13px;
+  color: var(--kitwe-muted, #64748b);
+  line-height: 1.4;
+}
+
+.kitwe-catalog-product-row__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.kitwe-catalog-product-row--floor2 {
+  grid-template-columns: 72px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(200px, 1fr) minmax(72px, auto);
+}
+
+.kitwe-catalog-product-rows__header--floor2 {
+  grid-template-columns: 72px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(200px, 1fr) minmax(72px, auto);
+}
+
+@media (max-width: 720px) {
+  .kitwe-catalog-product-rows__header {
+    display: none;
+  }
+
+  .kitwe-catalog-product-row,
+  .kitwe-catalog-product-row--floor2 {
+    grid-template-columns: 72px 1fr;
+    grid-template-rows: auto auto;
+    row-gap: 6px;
+  }
+
+  .kitwe-catalog-product-row__thumb {
+    grid-row: 1 / span 2;
+  }
+
+  .kitwe-catalog-product-row__name {
+    grid-column: 2;
+  }
+
+  .kitwe-catalog-product-row__sku,
+  .kitwe-catalog-product-row__meta,
+  .kitwe-catalog-product-row__actions {
+    grid-column: 2;
+  }
+}
+
+/* Warehouse Floor 2 — legacy tile grid (mobile catalog app still uses tiles) */
 .floor2-manufacture-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

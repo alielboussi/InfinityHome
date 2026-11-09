@@ -820,6 +820,7 @@ const UI_STRINGS = {
     en: 'Save data was lost. Tap Save production item again.',
     ar: 'فُقدت بيانات الحفظ. اضغط حفظ عنصر الإنتاج مرة أخرى.',
   },
+  materialsSearch: { en: 'Search material', ar: 'ابحث عن مادة' },
   materialsLoadFailed: { en: 'Failed to load storeroom materials', ar: 'تعذر تحميل مواد المخزن' },
   materialsUomLabel: { en: 'UOM', ar: 'وحدة القياس' },
   manufactureEmptyNoStock: {

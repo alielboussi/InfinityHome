@@ -813,6 +813,19 @@ const UI_STRINGS = {
   loadWarehouseFailed: { en: 'Failed to load warehouse', ar: 'تعذر تحميل المستودع' },
   locationWarehouse: { en: 'Warehouse', ar: 'المستودع' },
   locationWarehouseFloor2: { en: 'Warehouse Floor 2', ar: 'الطابق 2 في المستودع' },
+  storeroomDeductTitle: { en: 'Deduct materials from', ar: 'خصم المواد من' },
+  storeroomDeductPickHint: {
+    en: 'You must select Storeroom 1, 2, or 3. Materials are deducted only from that storeroom.',
+    ar: 'يجب اختيار مستودع 1 أو 2 أو 3. يُخصم فقط من المستودع المحدد.',
+  },
+  storeroomDeductConfirmHint: {
+    en: 'Confirm deducting job materials from:',
+    ar: 'تأكيد خصم مواد المهمة من:',
+  },
+  storeroomDeductNoList: {
+    en: 'Storerooms could not be loaded. Close and try again, or check your connection.',
+    ar: 'تعذر تحميل المستودعات. أغلق وحاول مرة أخرى أو تحقق من الاتصال.',
+  },
   saveFailedGeneric: { en: 'Save failed.', ar: 'فشل الحفظ.' },
   saveFailedConnection: {
     en: 'Save failed. Check your connection and try again.',
@@ -822,6 +835,7 @@ const UI_STRINGS = {
     en: 'Save data was lost. Tap Save production item again.',
     ar: 'فُقدت بيانات الحفظ. اضغط حفظ عنصر الإنتاج مرة أخرى.',
   },
+  materialsSearch: { en: 'Search material', ar: 'ابحث عن مادة' },
   materialsLoadFailed: { en: 'Failed to load storeroom materials', ar: 'تعذر تحميل مواد المخزن' },
   materialsUomLabel: { en: 'UOM', ar: 'وحدة القياس' },
   manufactureEmptyNoStock: {

@@ -7,7 +7,8 @@ import { CARPENTRY_WAREHOUSE_NAMES, storeroomLabelForWarehouseIndex } from './co
 import { parseStoreroomMaterialMeta } from './utils/productionPortalCatalog';
 import { generateRandomWarehouseSku16, WAREHOUSE_RANDOM_SKU_LENGTH } from './utils/warehouseRandomSku';
 import { useMaterialUomOptions } from './hooks/useMaterialUomOptions';
-import { postStoreroomCreate, postStoreroomSetStock } from './services/carpentryCatalogApi';
+import { labelFromMaterialUomCode } from './constants/carpentryUom';
+import { postStoreroomCreate, postStoreroomDeleteStock, postStoreroomSetStock } from './services/carpentryCatalogApi';
 
 function isStoreroomMaterialAssembly(assembly) {
   return assembly?.metadata?.storeroom?.is_storeroom_material === true;
@@ -157,6 +158,28 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
     }
   };
 
+  const deleteRow = async (row) => {
+    if (!locationId) return;
+    const id = String(row.assembly_id);
+    const label = row.name || row.sku || id;
+    if (!window.confirm(
+      `Remove "${label}" from ${pageTitle}? The material record stays on file; only stock at this storeroom is cleared.`,
+    )) return;
+    setStockBusyId(`del-${id}`);
+    setError('');
+    try {
+      await postStoreroomDeleteStock({
+        assembly_id: id,
+        location_id: locationId,
+      });
+      await load();
+    } catch (err) {
+      setError(err?.message || 'Failed to remove material from storeroom');
+    } finally {
+      setStockBusyId('');
+    }
+  };
+
   const submitStockExisting = async (e) => {
     e.preventDefault();
     if (!locationId || !stockPickId) return;
@@ -221,6 +244,20 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
     [rows],
   );
 
+  const uomLabelByCode = useMemo(() => {
+    const map = new Map();
+    (uomOptions || []).forEach((opt) => {
+      if (opt?.value) map.set(String(opt.value), String(opt.label || opt.value));
+    });
+    return map;
+  }, [uomOptions]);
+
+  const formatUomLabel = (code) => {
+    const key = String(code || '').trim();
+    if (!key) return '—';
+    return uomLabelByCode.get(key) || labelFromMaterialUomCode(key) || key;
+  };
+
   if (!indexValid) {
     return <Navigate to="/warehouse-storerooms?room=1" replace />;
   }
@@ -230,7 +267,8 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
       {!embedInHub ? <BackToDashboard /> : null}
       {!embedInHub ? <h1 style={{ marginTop: 16 }}>{pageTitle}</h1> : null}
       <p style={{ color: 'var(--kitwe-muted, #64748b)', marginBottom: 16, maxWidth: 720 }}>
-        Create raw materials here (name, SKU, qty, UOM). Define UOMs first under
+        Create raw materials here (name, SKU, qty, UOM). The same SKU on another storeroom links to the
+        existing material and sets stock there (one material record, qty per storeroom). Define UOMs first under
         {' '}
         <strong>Materials → Units of measure</strong>
         . Carpentry and upholstery BOMs use this stock. Adjust on-hand qty in the table below.
@@ -396,7 +434,7 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
                 <tr key={row.assembly_id}>
                   <td>{row.sku}</td>
                   <td>{row.name}</td>
-                  <td>{row.default_uom || '—'}</td>
+                  <td>{formatUomLabel(row.default_uom)}</td>
                   <td>
                     <input
                       type="number"
@@ -409,14 +447,24 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
                     />
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      className="kitwe-btn-secondary kitwe-btn-compact"
-                      disabled={busy || Boolean(stockBusyId)}
-                      onClick={() => saveRowQty(id)}
-                    >
-                      {busy ? '…' : 'Save'}
-                    </button>
+                    <div className="kitwe-row-actions">
+                      <button
+                        type="button"
+                        className="kitwe-btn-secondary kitwe-btn-compact"
+                        disabled={busy || Boolean(stockBusyId)}
+                        onClick={() => saveRowQty(id)}
+                      >
+                        {busy ? '…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
+                        disabled={stockBusyId === `del-${id}` || Boolean(stockBusyId)}
+                        onClick={() => deleteRow(row)}
+                      >
+                        {stockBusyId === `del-${id}` ? '…' : 'Delete'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

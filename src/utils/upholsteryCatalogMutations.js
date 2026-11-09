@@ -2,6 +2,7 @@ import { normalizeCarpentryUom } from '../constants/carpentryUom';
 import { loadMaterialUomAllowedSet } from './materialUomMutations';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
 import { parseUpholsteryMeta } from './upholsteryCatalogView';
+import { saveCarpentryProductSelection } from './carpentryCatalogMutations';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 
@@ -30,6 +31,13 @@ export async function saveUpholsteryProductSelection(sb, assemblyId, selected) {
     updated_at: new Date().toISOString(),
   }).eq('id', id);
   if (error) throw new Error(error.message || 'Failed to save upholstery selection');
+
+  if (selected) {
+    const rawId = String(prev.raw_assembly_id || id).trim();
+    if (rawId) {
+      await saveCarpentryProductSelection(sb, rawId, true);
+    }
+  }
 }
 
 export async function saveUpholsteryRawAssemblyLink(sb, finishedAssemblyId, rawAssemblyId) {
@@ -62,6 +70,7 @@ export async function saveUpholsteryRawAssemblyLink(sb, finishedAssemblyId, rawA
     updated_at: new Date().toISOString(),
   }).eq('id', finishedId);
   if (error) throw new Error(error.message || 'Failed to save raw product link');
+  await saveCarpentryProductSelection(sb, rawId, true);
 }
 
 export async function saveUpholsteryProductMaterials(sb, assemblyId, materials) {

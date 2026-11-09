@@ -491,11 +491,18 @@ async function opUpholsteryManufacture(body, user) {
   const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
   const sb = getService();
   const { executeUpholsteryManufacture } = await import('../lib/upholsteryManufacture.js');
-  return executeUpholsteryManufacture(sb, {
+  const result = await executeUpholsteryManufacture(sb, {
     rawAssemblyId,
     productQty,
     userId: user?.id || user?.uid,
   });
+  try {
+    const { notifyProductionManufactureJob } = await import('../lib/productionExpoPush.js');
+    await notifyProductionManufactureJob({ channel: 'upholstery', job: result?.job });
+  } catch (pushErr) {
+    console.warn('[warehouse-mobile] upholstery manufacture job push notify failed:', pushErr?.message || pushErr);
+  }
+  return result;
 }
 
 async function opUpholsteryFloor2WipPhotoUpload(body, user) {
@@ -590,10 +597,7 @@ async function opCatalogFloor2List(user, { carpentryWorkshop = false, production
   const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
   const { parseCarpentryMeta } = await import('../../src/utils/carpentryCatalogView.js');
   const { findUpholsteryFinishedForRawAssembly } = await import('../../src/utils/upholsteryCatalogView.js');
-  const {
-    readWarehouseFloor2WipFamilyImageUrl,
-    readWarehouseFloor2WipImageUrl,
-  } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const { readWarehouseFloor2WipImageUrl } = await import('../../src/utils/warehouseFloor2WipImage.js');
 
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
     sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata, category_id'),
@@ -625,12 +629,9 @@ async function opCatalogFloor2List(user, { carpentryWorkshop = false, production
     const qty = qtyByAssembly.get(aid) || 0;
     const inCarpentry = parseCarpentryMeta(row).selected;
     const linkedUpholstery = Boolean(findUpholsteryFinishedForRawAssembly(allRows, aid));
-    const hasFloor2WipPhoto = Boolean(
-      readWarehouseFloor2WipImageUrl(row) || readWarehouseFloor2WipFamilyImageUrl(row),
-    );
+    const hasFloor2WipPhoto = Boolean(readWarehouseFloor2WipImageUrl(row));
     if (qty <= 0 && !inCarpentry && !linkedUpholstery && !hasFloor2WipPhoto) continue;
     const wipImage = readWarehouseFloor2WipImageUrl(row) || '';
-    const familyImage = readWarehouseFloor2WipFamilyImageUrl(row) || '';
     const floor2SetName = String(row?.metadata?.floor2_set_name || '').trim();
     products.push({
       id: aid,
@@ -642,7 +643,6 @@ async function opCatalogFloor2List(user, { carpentryWorkshop = false, production
       quantity: qty,
       floor2_qty: qty,
       image_url: wipImage,
-      family_image_url: familyImage,
       floor2_set_name: floor2SetName || undefined,
     });
   }
@@ -865,10 +865,8 @@ async function opCatalogFloor2CreateSet(body, user) {
   const sb = getService();
   const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
   const {
-    mergeWarehouseFloor2WipFamilyImageMetadata,
     mergeWarehouseFloor2WipImageMetadata,
     readWarehouseFloor2WipImageUrl,
-    readWarehouseFloor2WipFamilyImageUrl,
   } = await import('../../src/utils/warehouseFloor2WipImage.js');
   const { data: locRows } = await sb.from('locations').select('id, name');
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
@@ -879,7 +877,7 @@ async function opCatalogFloor2CreateSet(body, user) {
   if (imageBase64) {
     const { jpegBufferFromCatalogDirectUpload } = await import('../lib/catalogDirectPhotoUpload.js');
     const jpeg = await jpegBufferFromCatalogDirectUpload(imageBase64);
-    const objectPath = `warehouse-assemblies/floor2-family/${Date.now()}-${baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`;
+    const objectPath = `warehouse-assemblies/floor2-set-cover/${Date.now()}-${baseName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`;
     await uploadBufferToFirebaseStorage({
       bucketFolder: 'productimages',
       objectPath,
@@ -903,7 +901,6 @@ async function opCatalogFloor2CreateSet(body, user) {
       if (!existingAsm?.id) continue;
       const aid = String(existingAsm.id);
       const compName = String(existingAsm.name || comp.name || aid).trim();
-      const isThreeSeater = /\b3\s*seater\b/i.test(compName);
       let metadata = {
         ...(existingAsm.metadata || {}),
         floor2_set_name: baseName,
@@ -913,10 +910,7 @@ async function opCatalogFloor2CreateSet(body, user) {
         },
       };
       if (uploadedCoverUrl) {
-        metadata = mergeWarehouseFloor2WipFamilyImageMetadata(metadata, uploadedCoverUrl);
-        if (isThreeSeater || normalizedComponents.length === 1) {
-          metadata = mergeWarehouseFloor2WipImageMetadata(metadata, uploadedCoverUrl);
-        }
+        metadata = mergeWarehouseFloor2WipImageMetadata(metadata, uploadedCoverUrl);
       }
       await sb
         .from('warehouse_assemblies')
@@ -952,7 +946,6 @@ async function opCatalogFloor2CreateSet(body, user) {
         quantity: finalQty,
         floor2_qty: finalQty,
         image_url: readWarehouseFloor2WipImageUrl({ metadata }) || '',
-        family_image_url: readWarehouseFloor2WipFamilyImageUrl({ metadata }) || uploadedCoverUrl,
         floor2_set_name: baseName,
       });
       continue;
@@ -986,12 +979,8 @@ async function opCatalogFloor2CreateSet(body, user) {
         selected: true,
       },
     };
-    const isThreeSeater = /\b3\s*seater\b/i.test(compName) || /\b3\s*seater\b/i.test(comp.preset);
     if (uploadedCoverUrl) {
-      metadata = mergeWarehouseFloor2WipFamilyImageMetadata(metadata, uploadedCoverUrl);
-      if (isThreeSeater || normalizedComponents.length === 1) {
-        metadata = mergeWarehouseFloor2WipImageMetadata(metadata, uploadedCoverUrl);
-      }
+      metadata = mergeWarehouseFloor2WipImageMetadata(metadata, uploadedCoverUrl);
     }
 
     await sb
@@ -1016,8 +1005,7 @@ async function opCatalogFloor2CreateSet(body, user) {
       family_sku: familySku,
       quantity: compQty,
       floor2_qty: compQty,
-      image_url: (isThreeSeater || normalizedComponents.length === 1) ? uploadedCoverUrl : '',
-      family_image_url: uploadedCoverUrl,
+      image_url: uploadedCoverUrl || readWarehouseFloor2WipImageUrl({ metadata }) || '',
       floor2_set_name: baseName,
     });
   }
@@ -1368,11 +1356,18 @@ async function opCarpentryManufacture(body, user) {
   const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
   const sb = createFirestoreServerClient();
   const { executeCarpentryFloorManufacture } = await import('../lib/carpentryManufacture.js');
-  return executeCarpentryFloorManufacture(sb, {
+  const result = await executeCarpentryFloorManufacture(sb, {
     assemblyId,
     productQty,
     userId: user?.id || user?.uid,
   });
+  try {
+    const { notifyProductionManufactureJob } = await import('../lib/productionExpoPush.js');
+    await notifyProductionManufactureJob({ channel: 'carpentry', job: result?.job });
+  } catch (pushErr) {
+    console.warn('[warehouse-mobile] carpentry manufacture job push notify failed:', pushErr?.message || pushErr);
+  }
+  return result;
 }
 
 async function opCarpentryManufactureList(user) {
@@ -1434,9 +1429,13 @@ async function opCarpentryJobFinish(body, user) {
   if (!jobId) throw new Error('job_id required');
   const sb = createFirestoreServerClient();
   const { finishCarpentryProductionJob } = await import('../lib/carpentryProductionJobs.js');
+  const preferredStoreroomLocationId = String(
+    body.preferred_storeroom_location_id || body.preferredStoreroomLocationId || '',
+  ).trim() || null;
   return finishCarpentryProductionJob(sb, {
     jobId,
     userId: user?.id || user?.uid,
+    preferredStoreroomLocationId,
   });
 }
 
@@ -1636,12 +1635,16 @@ async function opProductionJobMaterialsSave(body, user) {
   if (!jobKind) throw new Error('job_kind required (upholstery|carpentry|painting|repair|quote)');
   const sb = getService();
   const { saveProductionJobMaterials } = await import('../lib/productionJobMaterials.js');
+  const preferredStoreroomLocationId = String(
+    body.preferred_storeroom_location_id || body.preferredStoreroomLocationId || '',
+  ).trim() || null;
   return saveProductionJobMaterials(sb, {
     jobKind,
     jobId: jobId || returnOrderId,
     returnOrderId: jobKind === 'repair' ? (returnOrderId || jobId) : null,
     productionRoute: jobKind === 'quote' ? productionRoute : null,
     materialLines,
+    preferredStoreroomLocationId,
   });
 }
 

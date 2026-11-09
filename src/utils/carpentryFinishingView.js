@@ -2,10 +2,7 @@ import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy.js';
 import { isWarehouseSetAssembly } from './warehouseSetMath.js';
 import { parseCarpentryMeta } from './carpentryCatalogView.js';
 import { findUpholsteryFinishedForRawAssembly } from './upholsteryCatalogView.js';
-import {
-  readWarehouseFloor2WipFamilyImageUrl,
-  readWarehouseFloor2WipImageUrl,
-} from './warehouseFloor2WipImage.js';
+import { readWarehouseFloor2WipImageUrl } from './warehouseFloor2WipImage.js';
 
 /** Unfinished WIP on Floor 2 for carpentry / Floor 2 products. */
 export function buildCarpentryFinishingCandidates(assemblies, inventoryRows, floor2LocationId) {
@@ -27,12 +24,9 @@ export function buildCarpentryFinishingCandidates(assemblies, inventoryRows, flo
     const carpentryMeta = parseCarpentryMeta(row);
     const inCarpentry = carpentryMeta.selected;
     const linkedUpholstery = Boolean(findUpholsteryFinishedForRawAssembly(allRows, aid));
-    const hasFloor2WipPhoto = Boolean(
-      readWarehouseFloor2WipImageUrl(row) || readWarehouseFloor2WipFamilyImageUrl(row),
-    );
+    const hasFloor2WipPhoto = Boolean(readWarehouseFloor2WipImageUrl(row));
     if (qty <= 0 && !inCarpentry && !linkedUpholstery && !hasFloor2WipPhoto) continue;
     const wipImage = readWarehouseFloor2WipImageUrl(row) || '';
-    const familyImage = readWarehouseFloor2WipFamilyImageUrl(row) || '';
     results.push({
       id: aid,
       assembly_id: aid,
@@ -41,8 +35,7 @@ export function buildCarpentryFinishingCandidates(assemblies, inventoryRows, flo
       material_count: (carpentryMeta.materials || []).length,
       floor2_qty: qty,
       floor2_image_url: wipImage,
-      image_url: wipImage || familyImage,
-      family_image_url: familyImage,
+      image_url: wipImage,
     });
   }
   return results.sort((a, b) => String(a.name).localeCompare(String(b.name)));

@@ -63,8 +63,11 @@ export async function resumeCarpentryProductionJob(jobId) {
   return warehouseMobileRequest('carpentry-job-resume', { job_id: jobId });
 }
 
-export async function finishCarpentryProductionJob(jobId) {
-  return warehouseMobileRequest('carpentry-job-finish', { job_id: jobId });
+export async function finishCarpentryProductionJob(jobId, { preferredStoreroomLocationId } = {}) {
+  return warehouseMobileRequest('carpentry-job-finish', {
+    job_id: jobId,
+    preferred_storeroom_location_id: preferredStoreroomLocationId || undefined,
+  });
 }
 
 export async function sendCarpentryProductToPainting({ assemblyId, productQty = 1 }) {
@@ -136,7 +139,15 @@ export async function pushProductionFloor2Manufacture({ assemblyId, productQty =
 
 export async function fetchProductionStoreroomMaterials() {
   const payload = await warehouseMobileRequest('production-storeroom-materials-list', {});
-  return payload?.materials || [];
+  if (Array.isArray(payload)) {
+    return { materials: payload, storerooms: [], storeroom_labels: [], uom_options: [] };
+  }
+  return {
+    materials: payload?.materials || [],
+    storerooms: payload?.storerooms || [],
+    storeroom_labels: payload?.storeroom_labels || [],
+    uom_options: payload?.uom_options || [],
+  };
 }
 
 export async function saveProductionJobMaterials({
@@ -145,6 +156,7 @@ export async function saveProductionJobMaterials({
   returnOrderId,
   productionRoute,
   materialLines,
+  preferredStoreroomLocationId,
 } = {}) {
   return warehouseMobileRequest('production-job-materials-save', {
     job_kind: jobKind,
@@ -152,5 +164,6 @@ export async function saveProductionJobMaterials({
     return_order_id: returnOrderId,
     production_route: productionRoute,
     material_lines: materialLines,
+    preferred_storeroom_location_id: preferredStoreroomLocationId || undefined,
   });
 }

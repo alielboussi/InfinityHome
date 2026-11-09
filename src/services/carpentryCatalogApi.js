@@ -15,7 +15,12 @@ import {
   addFloor1ProductToFloor2Local,
   setFloor2ProductStockQtyLocal,
 } from '../utils/carpentryCatalogMutations';
-import { receiveStoreroomMaterial, createStoreroomMaterial, setStoreroomMaterialStockQty } from '../utils/storeroomStockMutations';
+import {
+  receiveStoreroomMaterial,
+  createStoreroomMaterial,
+  setStoreroomMaterialStockQty,
+  removeStoreroomMaterialStockAtLocation,
+} from '../utils/storeroomStockMutations';
 import { cacheClear, cacheGet, cacheSet } from '../utils/staleCache';
 
 export { getCachedCarpentryCatalog } from '../utils/productionPortalCatalogCache';
@@ -121,6 +126,10 @@ async function postCarpentryCatalogDirect(body) {
   }
   if (op === 'set-storeroom-stock') {
     const result = await setStoreroomMaterialStockQty(db, body);
+    return { ok: true, ...result };
+  }
+  if (op === 'delete-storeroom-stock') {
+    const result = await removeStoreroomMaterialStockAtLocation(db, body);
     return { ok: true, ...result };
   }
   throw new Error(`Unknown op: ${op || '(missing)'}`);
@@ -279,11 +288,28 @@ export async function postSetFloor2ProductStock(assemblyId, quantity) {
 }
 
 export async function postStoreroomCreate(body) {
-  return postCarpentryCatalog({ op: 'create-storeroom-material', ...body });
+  try {
+    return await postCarpentryCatalog({ op: 'create-storeroom-material', ...body });
+  } catch (err) {
+    const msg = String(err?.message || '');
+    if (/already used/i.test(msg) && canManageCatalog(getCurrentUser())) {
+      try {
+        return await postCarpentryCatalogDirect({ op: 'create-storeroom-material', ...body });
+      } catch (directErr) {
+        throw new Error(directErr?.message || msg);
+      }
+    }
+    throw err;
+  }
 }
 
 export async function postStoreroomSetStock(body) {
   return postCarpentryCatalog({ op: 'set-storeroom-stock', ...body });
+}
+
+export async function postStoreroomDeleteStock(body) {
+  invalidateProductionPortalSnapshotCache();
+  return postCarpentryCatalog({ op: 'delete-storeroom-stock', ...body });
 }
 
 /** @deprecated Prefer postStoreroomCreate */

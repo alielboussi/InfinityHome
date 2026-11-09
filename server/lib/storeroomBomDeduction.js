@@ -42,7 +42,7 @@ function warehousePickOrder(carpentryLocs, preferredLocationId) {
   const ids = carpentryLocs.map((l) => String(l.id));
   const pref = String(preferredLocationId || '').trim();
   if (pref && ids.includes(pref)) {
-    return [pref, ...ids.filter((id) => id !== pref)];
+    return [pref];
   }
   return ids;
 }
@@ -68,13 +68,15 @@ function allocateAcrossWarehouses(needQty, qtyByLocationId, locationOrder) {
  * Deduct BOM lines from Storerooms 1–3 (carpentry + upholstery manufacture).
  * @returns {Promise<Array<{ material_assembly_id, warehouse_location_id, quantity, uom }>>}
  */
-export async function deductStoreroomBomMaterials(sb, materials, productQty, storeroomLocs) {
+export async function deductStoreroomBomMaterials(sb, materials, productQty, storeroomLocs, options = {}) {
   const qty = Math.max(1, Number(productQty) || 1);
   const lines = materials || [];
   if (!lines.length) return [];
   if (!storeroomLocs?.length) {
     throw new Error('Storerooms not configured — run seedCarpentryWarehouseLocations.js');
   }
+
+  const preferredDefault = String(options.preferredStoreroomLocationId || '').trim() || null;
 
   const uomAllowed = await loadMaterialUomAllowedSet(sb);
 
@@ -94,7 +96,10 @@ export async function deductStoreroomBomMaterials(sb, materials, productQty, sto
     const mid = String(line.material_assembly_id);
     const need = (Number(line.quantity) || 0) * qty;
     if (need <= 0) continue;
-    const order = warehousePickOrder(storeroomLocs, line.warehouse_location_id);
+    const linePref = String(line.warehouse_location_id || '').trim()
+      || preferredDefault
+      || '';
+    const order = warehousePickOrder(storeroomLocs, linePref);
     const byLoc = new Map(order.map((locId) => [locId, qtyMap.get(`${mid}:${locId}`) ?? 0]));
     const moves = allocateAcrossWarehouses(need, byLoc, order);
     for (const move of moves) {
@@ -114,4 +119,4 @@ export async function deductStoreroomBomMaterials(sb, materials, productQty, sto
   return usageRows;
 }
 
-export { adjustAssemblyInventory, loadAssemblyInventoryQty };
+export { adjustAssemblyInventory, loadAssemblyInventoryQty, warehousePickOrder };

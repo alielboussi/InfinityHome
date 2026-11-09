@@ -10,7 +10,10 @@ import {
   uomFromStoreroomMaterial,
 } from './utils/storeroomBomLineUom';
 import CategoryRemainingChecklist from './components/CategoryRemainingChecklist';
-import { groupKitweCatalogByFamilyBase } from './utils/groupKitweCatalogByFamilyBase';
+import {
+  catalogProductsAsFlatGroups,
+  filterCatalogProductsForSearch,
+} from './utils/catalogProductFlatGroups';
 import { buildKitweCrossPortalImageLookup } from './utils/kitweCatalogFamilyCardImage';
 import KitweCatalogFamilyGrid from './components/KitweCatalogFamilyGrid';
 import CatalogProductBomEditor from './components/CatalogProductBomEditor';
@@ -50,7 +53,6 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
   const [expandedId, setExpandedId] = useState('');
   const [inlayFamilyKey, setInlayFamilyKey] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [expandedSetId, setExpandedSetId] = useState('');
 
   const { options: uomOptions } = useMaterialUomOptions();
 
@@ -90,7 +92,7 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
   }, [applyCatalogSnapshot]);
 
   useEffect(() => {
-    load();
+    load({ forceFresh: true });
   }, [load]);
 
   const carpentryById = useMemo(
@@ -103,32 +105,10 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
     [upholsteryProducts],
   );
 
-  const candidateRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return (candidates || [])
-      .filter((c) => !selectedProductIds.has(String(c.id)))
-      .filter((c) => String(c.name || '').toLowerCase().includes(q)
-        || String(c.family_sku || '').toLowerCase().includes(q));
-  }, [candidates, selectedProductIds, search]);
-
-  const matchingSets = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return (warehouseSetCandidates || []).filter((set) => {
-      const setHay = `${set.family_sku || ''} ${set.name || ''}`.toLowerCase();
-      if (setHay.includes(q)) return true;
-      return (set.components || []).some(
-        (c) => String(c.name || '').toLowerCase().includes(q)
-          || String(c.family_sku || '').toLowerCase().includes(q),
-      );
-    });
-  }, [warehouseSetCandidates, search]);
-
   const kitweFamilyGridProps = useMemo(() => ({
-    groups: groupKitweCatalogByFamilyBase(upholsteryProducts),
+    groups: catalogProductsAsFlatGroups(filterCatalogProductsForSearch(upholsteryProducts, search)),
     imageLookup: buildKitweCrossPortalImageLookup(carpentryProducts, upholsteryProducts),
-  }), [upholsteryProducts, carpentryProducts]);
+  }), [upholsteryProducts, carpentryProducts, search]);
 
   const materialOptions = useMemo(
     () => (storeroomMaterials || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))),
@@ -146,7 +126,6 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
         ids.map((assemblyId) => postUpholsteryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true })),
       );
       setSearch('');
-      setExpandedSetId('');
       await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to add products');
@@ -162,7 +141,6 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
     try {
       await postUpholsteryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true });
       setSearch('');
-      setExpandedSetId('');
       await load({ forceFresh: true });
     } catch (err) {
       setError(err?.message || 'Failed to add product');
@@ -357,101 +335,9 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
             style={{ width: '100%' }}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search SKU or name to add a finished product…"
+            placeholder="Search SKU or name to filter catalog…"
             autoComplete="off"
           />
-        {search.trim() ? (
-          <ul id="upholstery-add-dropdown" className="carpentry-add-dropdown">
-            {matchingSets.map((set) => {
-              const open = expandedSetId === String(set.id);
-              const missing = (set.components || []).filter((c) => !selectedProductIds.has(String(c.id)));
-              const setBusy = String(busyId).startsWith('batch-') || busyId === String(set.id);
-              return (
-                <li key={`set-${set.id}`} className="carpentry-add-dropdown__item upholstery-add-set" role="presentation">
-                  <div className="carpentry-add-dropdown__item">
-                    <div className="carpentry-add-dropdown__meta">
-                      <span className="carpentry-add-dropdown__sku">{set.family_sku || '—'}</span>
-                      <span className="carpentry-add-dropdown__name">
-                        {set.name}
-                        {' '}
-                        <span className="warehouse-kind-badge warehouse-kind-badge--set">Set</span>
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="kitwe-btn-compact"
-                      disabled={setBusy}
-                      onClick={() => setExpandedSetId(open ? '' : String(set.id))}
-                    >
-                      {open ? 'Hide' : 'Components'}
-                    </button>
-                  </div>
-                  {open ? (
-                    <ul className="upholstery-set-component-list">
-                      {missing.length ? (
-                        <li className="upholstery-set-component-list__actions">
-                          <button
-                            type="button"
-                            className="kitwe-btn-create-set kitwe-btn-compact"
-                            disabled={setBusy}
-                            onClick={() => addProducts(missing.map((c) => c.id))}
-                          >
-                            Add all missing ({missing.length})
-                          </button>
-                        </li>
-                      ) : null}
-                      {(set.components || []).map((comp) => {
-                        const inCatalog = selectedProductIds.has(String(comp.id));
-                        return (
-                          <li key={comp.id} className="carpentry-add-dropdown__item upholstery-set-component-list__row">
-                            <div className="carpentry-add-dropdown__meta">
-                              <span className="carpentry-add-dropdown__sku">{comp.family_sku || '—'}</span>
-                              <span className="carpentry-add-dropdown__name">
-                                {comp.qty_per_set > 1 ? `${comp.qty_per_set}× ` : ''}
-                                {comp.name}
-                              </span>
-                            </div>
-                            {inCatalog ? (
-                              <span className="upholstery-set-component-list__added">In catalog</span>
-                            ) : (
-                              <button
-                                type="button"
-                                className="kitwe-btn-create-set kitwe-btn-compact"
-                                disabled={busyId === String(comp.id) || setBusy}
-                                onClick={() => addProduct(comp.id)}
-                              >
-                                {busyId === String(comp.id) ? '…' : 'Add'}
-                              </button>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : null}
-                </li>
-              );
-            })}
-            {candidateRows.length ? candidateRows.slice(0, 40).map((row) => (
-              <li key={row.id} className="carpentry-add-dropdown__item">
-                <div className="carpentry-add-dropdown__meta">
-                  <span className="carpentry-add-dropdown__sku">{row.family_sku || '—'}</span>
-                  <span className="carpentry-add-dropdown__name">{row.name}</span>
-                </div>
-                <button
-                  type="button"
-                  className="kitwe-btn-create-set kitwe-btn-compact"
-                  disabled={busyId === String(row.id)}
-                  onClick={() => addProduct(row.id)}
-                >
-                  {busyId === String(row.id) ? '…' : 'Add'}
-                </button>
-              </li>
-            )) : null}
-            {!candidateRows.length && !matchingSets.length ? (
-              <li className="carpentry-add-dropdown__empty">No matching warehouse products or sets.</li>
-            ) : null}
-          </ul>
-        ) : null}
         </div>
 
         <CategoryRemainingChecklist
@@ -470,15 +356,37 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
       {loading ? <p>Loading…</p> : null}
       {error ? <p style={{ color: '#f87171' }}>{error}</p> : null}
 
-      <KitweCatalogFamilyGrid
-        title="Upholstery catalog"
-        {...kitweFamilyGridProps}
-        inlayFamilyKey={inlayFamilyKey}
-        onInlayFamilyKeyChange={setInlayFamilyKey}
-        emptyHint="No upholstery products yet — search above to add from Warehouse Floor 1."
-        inlayIntro="Link raw carpentry products, edit BOM materials, or remove finished variants."
-        renderInlayContent={renderCatalogInlay}
-      />
+      {!loading && search.trim() && kitweFamilyGridProps.groups.length === 0 && upholsteryProducts.length > 0 ? (
+        <p className="kitwe-empty-hint" style={{ marginTop: 8 }}>
+          No catalog products match your search.
+        </p>
+      ) : (
+        <KitweCatalogFamilyGrid
+          title="Upholstery catalog"
+          {...kitweFamilyGridProps}
+          inlayFamilyKey={inlayFamilyKey}
+          onInlayFamilyKeyChange={setInlayFamilyKey}
+          emptyHint="No upholstery products yet — search above to add from Warehouse Floor 1."
+          inlayIntro="Link raw carpentry products, edit BOM materials, or remove finished variants."
+          renderInlayContent={renderCatalogInlay}
+          detailColumnLabel="Raw link"
+          renderRowMeta={(row) => {
+            const rawId = String(row.raw_assembly_id || '').trim();
+            if (!rawId) return 'No raw product linked';
+            const raw = carpentryById.get(rawId);
+            if (!raw) return `Linked id ${rawId.slice(0, 8)}…`;
+            const n = (row.materials || []).length;
+            return (
+              <>
+                {raw.family_sku || '—'}
+                {' · '}
+                {raw.name}
+                {n > 0 ? ` · ${n} BOM line${n === 1 ? '' : 's'}` : ''}
+              </>
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

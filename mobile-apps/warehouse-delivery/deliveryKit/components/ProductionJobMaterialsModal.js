@@ -198,7 +198,7 @@ export default function ProductionJobMaterialsModal({
         <View style={styles.searchRow}>
           <TextInput
             style={[kiosk.input, styles.searchInput, { textAlign: locale === 'ar' ? 'right' : 'left' }]}
-            placeholder={tUi('manufactureSearch', locale)}
+            placeholder={tUi('materialsSearch', locale)}
             placeholderTextColor={theme.textMuted}
             value={search}
             onChangeText={setSearch}
@@ -333,6 +333,6 @@ const styles = StyleSheet.create({
     color: theme.text,
   },
   removeBtn: { padding: 4 },
-  footer: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  footerBtn: { flex: 1 },
+  footer: { flexDirection: 'row', gap: 12, marginTop: 8, width: '100%' },
+  footerBtn: { flex: 1, flexBasis: 0, minWidth: 0 },
 });

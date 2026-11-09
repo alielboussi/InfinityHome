@@ -164,6 +164,21 @@ const UI_STRINGS = {
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
   quoteOrderCompleteDone: { en: 'Production ended.', ar: 'انتهى الإنتاج.' },
   quoteOrderMaterials: { en: 'Materials', ar: 'المواد' },
+  materialsSearch: { en: 'Search material', ar: 'ابحث عن مادة' },
+  materialsLoadFailed: { en: 'Failed to load storeroom materials', ar: 'تعذر تحميل مواد المخزن' },
+  storeroomDeductTitle: { en: 'Deduct materials from', ar: 'خصم المواد من' },
+  storeroomDeductPickHint: {
+    en: 'You must select Storeroom 1, 2, or 3. Materials are deducted only from that storeroom.',
+    ar: 'يجب اختيار مستودع 1 أو 2 أو 3. يُخصم فقط من المستودع المحدد.',
+  },
+  storeroomDeductConfirmHint: {
+    en: 'Confirm deducting job materials from:',
+    ar: 'تأكيد خصم مواد المهمة من:',
+  },
+  storeroomDeductNoList: {
+    en: 'Storerooms could not be loaded. Close and try again, or check your connection.',
+    ar: 'تعذر تحميل المستودعات. أغلق وحاول مرة أخرى أو تحقق من الاتصال.',
+  },
   quoteOrderScanPlaceholder: { en: 'Scan or type SKU / barcode', ar: 'امسح أو اكتب SKU / الباركود' },
   quoteOrderDeductScan: { en: 'Deduct scan', ar: 'خصم المسح' },
   quoteOrderLines: { en: 'Lines', ar: 'البنود' },

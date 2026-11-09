@@ -11,18 +11,14 @@ import {
   deductStoreroomBomMaterials,
   resolveCarpentryStoreroomLocations,
 } from './storeroomBomDeduction.js';
-import { newUuid } from './uuid.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { saveAssemblyForMobile } from './warehouseCatalogMobile.js';
 import {
-  readWarehouseFloor2WipFamilyImageUrl,
   readWarehouseFloor2WipImageUrl,
 } from '../../src/utils/warehouseFloor2WipImage.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
-const RUNS = 'carpentry_production_runs';
-const USAGE = 'carpentry_production_material_usage';
 const LOCATIONS = 'locations';
 
 async function loadAssemblyInventoryQty(sb, assemblyId, locationId) {
@@ -212,7 +208,7 @@ export async function consumeUpholsteryRawAndMaterials(sb, ctx, productQty, {
   return { qty, materialUsageRows, storeroomLocsForRecompute };
 }
 
-/** Credit finished qty on Warehouse Floor 1 (create assembly if SKU missing). */
+/** Credit finished qty on Warehouse Floor 1 — call only from finishUpholsteryProductionJob. */
 export async function creditUpholsteryFinishedOutput(sb, ctx, productQty) {
   const qty = Math.max(1, Math.floor(Number(productQty) || 1));
   return resolveOrCreateFinishedAtFactory(sb, ctx.finishedTemplate, qty);
@@ -277,7 +273,7 @@ export async function listUpholsteryManufactureCandidates(sb) {
       raw_name: rawAsm?.name || rawId,
       raw_sku: rawAsm?.family_sku || '',
       image_url: readWarehouseFloor2WipImageUrl(rawAsm),
-      family_image_url: readWarehouseFloor2WipFamilyImageUrl(rawAsm),
+      floor2_image_url: readWarehouseFloor2WipImageUrl(rawAsm),
       finished_assembly_id: finishedAsm.id,
       finished_name: finishedAsm.name,
       finished_sku: finishedAsm.family_sku,
@@ -291,7 +287,8 @@ export async function listUpholsteryManufactureCandidates(sb) {
 }
 
 /**
- * Workshop manufacture: deduct raw WIP on Floor 2, credit finished on Floor 1 — no storeroom BOM.
+ * Workshop manufacture: open an upholstery production job (Floor 2 qty unchanged on the portal).
+ * On job finish: deduct linked raw on Floor 2, credit finished on Floor 1, print labels.
  */
 export async function executeUpholsteryManufacture(sb, {
   rawAssemblyId,
@@ -299,68 +296,22 @@ export async function executeUpholsteryManufacture(sb, {
   userId = null,
 }) {
   const ctx = await loadUpholsteryManufactureContext(sb, rawAssemblyId);
-  const { qty, materialUsageRows, storeroomLocsForRecompute } = await consumeUpholsteryRawAndMaterials(
-    sb,
-    ctx,
-    productQty,
-    { deductStoreroomBom: false },
-  );
+  const qty = Math.max(1, Math.floor(Number(productQty) || 1));
   const { rawId, finishedTemplate } = ctx;
-  const output = await creditUpholsteryFinishedOutput(sb, ctx, qty);
 
-  const now = new Date().toISOString();
-  const runId = newUuid();
-  const { error: runErr } = await sb.from(RUNS).insert({
-    id: runId,
-    source: 'upholstery_floor',
-    quote_id: null,
-    assembly_id: output.output_assembly_id,
-    product_qty: qty,
-    started_at: now,
-    completed_at: now,
-    accepted_by: userId,
-    metadata: {
-      channel: 'warehouse_production_app',
-      raw_assembly_id: rawId,
-      finished_template_id: finishedTemplate.id,
-      output_created: output.created,
-      floor2_raw_only: true,
-    },
-    created_at: now,
+  const { pushFloor2ToProductionJob } = await import('./productionManufactureFloor2.js');
+  const result = await pushFloor2ToProductionJob(sb, {
+    assemblyId: rawId,
+    productQty: qty,
+    channel: 'upholstery',
+    userId,
   });
-  if (runErr && !/not found|does not exist/i.test(String(runErr.message || ''))) {
-    throw new Error(runErr.message || 'Failed to save production run');
-  }
-
-  const runIdForUsage = runErr ? null : runId;
-  if (runIdForUsage && materialUsageRows.length) {
-    for (const row of materialUsageRows) {
-      const { error: uErr } = await sb.from(USAGE).insert({
-        id: newUuid(),
-        run_id: runIdForUsage,
-        material_assembly_id: row.material_assembly_id,
-        warehouse_location_id: row.warehouse_location_id,
-        quantity: row.quantity,
-        uom: row.uom,
-        created_at: now,
-      });
-      if (uErr && !/not found|does not exist/i.test(String(uErr.message || ''))) {
-        throw new Error(uErr.message || 'Failed to save material usage');
-      }
-    }
-  }
-
-  await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocsForRecompute);
 
   return {
-    run_id: runErr ? null : runId,
+    job: result.job,
+    job_id: result.job?.job_id || result.job?.id || null,
     raw_assembly_id: rawId,
-    output_assembly_id: output.output_assembly_id,
+    finished_assembly_id: finishedTemplate.id,
     product_qty: qty,
-    output_sku: output.sku,
-    output_name: output.name,
-    output_created: output.created,
-    factory_qty_before: output.qty_before,
-    factory_qty_after: output.qty_after,
   };
 }

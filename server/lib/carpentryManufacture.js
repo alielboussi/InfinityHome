@@ -1,5 +1,6 @@
 import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 import { resolveWarehouseFloor2Location } from '../../src/constants/warehouseFloorLocations.js';
+import { requireWarehouseFloor2Location } from './productionFloor1StockPolicy.js';
 import { newUuid } from './uuid.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import {
@@ -18,16 +19,18 @@ const USAGE = 'carpentry_production_material_usage';
 const LOCATIONS = 'locations';
 
 /**
- * Workshop manufacture: deduct catalog storeroom BOM, credit WIP on Warehouse Floor 2.
- * Orders, repairs, and ad-hoc jobs use the wrench (manual scan) for extra materials.
+ * Apply storeroom BOM and credit WIP on Floor 2 — only when a catalog manufacture **job** is finished.
+ * (Floor 1 finished stock is never touched here.)
  */
-export async function executeCarpentryFloorManufacture(sb, {
+export async function completeCarpentryCatalogManufacture(sb, {
   assemblyId,
   productQty = 1,
   userId = null,
+  carpentryJobId = null,
+  preferredStoreroomLocationId = null,
 }) {
   const productId = String(assemblyId || '').trim();
-  const qty = Math.max(1, Number(productQty) || 1);
+  const qty = Math.max(1, Math.floor(Number(productQty) || 1));
   if (!productId) throw new Error('assembly_id required');
 
   const { data: assemblies, error: aErr } = await sb
@@ -40,10 +43,7 @@ export async function executeCarpentryFloorManufacture(sb, {
 
   const { data: locRows, error: locErr } = await sb.from(LOCATIONS).select('id, name');
   if (locErr) throw new Error(locErr.message || 'Failed to load locations');
-  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
-  const outputLocationId = floor2Loc?.id
-    ? String(floor2Loc.id)
-    : WAREHOUSE_FACTORY_LOCATION_ID;
+  const outputLocationId = requireWarehouseFloor2Location(locRows);
 
   const catalog = listCarpentryCatalogProducts([assemblies]);
   const product = catalog[0];
@@ -56,7 +56,9 @@ export async function executeCarpentryFloorManufacture(sb, {
     if (!storeroomLocs.length) {
       throw new Error('Storerooms not configured — run seedCarpentryWarehouseLocations.js');
     }
-    materialUsageRows = await deductStoreroomBomMaterials(sb, bomMaterials, qty, storeroomLocs);
+    materialUsageRows = await deductStoreroomBomMaterials(sb, bomMaterials, qty, storeroomLocs, {
+      preferredStoreroomLocationId,
+    });
   }
 
   await adjustAssemblyInventory(sb, productId, outputLocationId, qty);
@@ -75,6 +77,7 @@ export async function executeCarpentryFloorManufacture(sb, {
     metadata: {
       channel: 'carpentry_workshop_app',
       floor2_wip_only: true,
+      carpentry_job_id: carpentryJobId || null,
     },
     created_at: now,
   });
@@ -107,7 +110,20 @@ export async function executeCarpentryFloorManufacture(sb, {
     assembly_id: productId,
     product_qty: qty,
     material_lines: materialUsageRows.length,
+    floor2_location_id: outputLocationId,
   };
+}
+
+/**
+ * Workshop manufacture: open a carpentry job only — no Floor 1 / Floor 2 stock changes until job finish.
+ */
+export async function executeCarpentryFloorManufacture(sb, {
+  assemblyId,
+  productQty = 1,
+  userId = null,
+}) {
+  const { startCarpentryCatalogManufactureJob } = await import('./carpentryProductionJobs.js');
+  return startCarpentryCatalogManufactureJob(sb, { assemblyId, productQty, userId });
 }
 
 export async function listCarpentryFloorRunsEnriched(sb, { limit = 200 } = {}) {

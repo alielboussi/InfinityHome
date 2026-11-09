@@ -28,6 +28,7 @@ import {
   invalidateUpholsteryManufactureListCache,
 } from '../services/productionApi';
 import ProductionPressableHint from '../lib/ProductionPressableHint';
+import ProductionProductListRow, { productionProductRowPressableStyle } from '../shared/components/ProductionProductListRow';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import {
@@ -36,8 +37,8 @@ import {
   sanitizeWarehouseScannerInput,
 } from '../shared/warehouseScanResolver';
 
-const CARD_MIN_SIZE = PixelRatio.roundToNearestPixel((8 * 160) / 2.54 / PixelRatio.get());
 const CARD_GAP = 12;
+const productRowPressable = productionProductRowPressableStyle(CARD_GAP);
 
 function floor2Qty(item) {
   return Math.max(0, Math.floor(Number(item?.floor2_qty ?? item?.quantity) || 0));
@@ -47,7 +48,6 @@ function resolveFloor2ProductImage(item) {
   return (
     resolveProductImageUrl(item?.floor2_image_url)
     || resolveProductImageUrl(item?.image_url)
-    || resolveProductImageUrl(item?.family_image_url)
     || ''
   );
 }
@@ -247,7 +247,8 @@ export default function ManufactureScreen({
   const renderProductCard = ({ item }) => {
     const id = String(item.raw_assembly_id || item.id || item.assembly_id || '');
     const qty = floor2Qty(item);
-    const displayName = String(item.raw_name || item.name || item.finished_name || '');
+    const displayName = String(item.raw_name || item.name || item.finished_name || item.name || '');
+    const sku = String(item.raw_sku || item.finished_sku || item.family_sku || '').trim();
     const cardImage = resolveFloor2ProductImage(item);
     const cardBusy = busyId === id;
 
@@ -259,41 +260,18 @@ export default function ManufactureScreen({
         disabled={Boolean(busyId)}
         onPress={() => openQtyAdd(item)}
         style={({ pressed }) => [
-          styles.tile,
-          pressed && styles.tilePressed,
-          cardBusy && styles.tileBusy,
+          productRowPressable.row,
+          pressed && productRowPressable.rowPressed,
+          cardBusy && productRowPressable.rowBusy,
         ]}
       >
-        {cardImage ? (
-          <Image
-            source={{ uri: cardImage }}
-            style={styles.tileImage}
-            resizeMode="cover"
-            resizeMethod="resize"
-            fadeDuration={0}
-          />
-        ) : (
-          <View style={styles.tileImagePlaceholder} />
-        )}
-        <View style={styles.tileOverlay} />
-        {!cardImage ? (
-          <View style={styles.tileNoImageCenter} pointerEvents="none">
-            <MaterialCommunityIcons name="image-off-outline" size={48} color={theme.textMuted} />
-          </View>
-        ) : null}
-        <View style={styles.qtyBadge} pointerEvents="none">
-          <MaterialCommunityIcons name="package-variant-closed" size={20} color="#fff" />
-          <Text style={styles.qtyBadgeText}>{String(qty)}</Text>
-        </View>
-        <View style={styles.tileNameBar}>
-          <Text style={styles.tileName}>{displayName}</Text>
-          <Text style={styles.tileQty}>
-            {tUi('manufactureQtyLabel', locale).replace('{qty}', String(qty))}
-          </Text>
-        </View>
-        {cardBusy ? (
-          <ActivityIndicator color={theme.primary} size="small" style={styles.tileSpinner} />
-        ) : null}
+        <ProductionProductListRow
+          imageUrl={cardImage || undefined}
+          name={displayName}
+          sku={sku}
+          subtitle={tUi('manufactureQtyLabel', locale).replace('{qty}', String(qty))}
+          busy={cardBusy}
+        />
       </ProductionPressableHint>
     );
   };
@@ -469,53 +447,8 @@ const styles = StyleSheet.create({
   scanBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
   list: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
-  gridContent: { paddingBottom: 24 },
+  gridContent: { paddingBottom: 24, gap: CARD_GAP },
   empty: { marginTop: 24 },
-  tile: {
-    width: '100%',
-    aspectRatio: 1,
-    minHeight: CARD_MIN_SIZE,
-    marginBottom: CARD_GAP,
-    borderRadius: theme.radius,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.card,
-    overflow: 'hidden',
-  },
-  tileImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
-  tileImagePlaceholder: { ...StyleSheet.absoluteFillObject, backgroundColor: theme.surface },
-  tileOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15, 23, 42, 0.38)' },
-  tileNoImageCenter: { ...StyleSheet.absoluteFillObject, top: 56, justifyContent: 'center', alignItems: 'center' },
-  tilePressed: { opacity: 0.92, borderColor: theme.primary },
-  tileBusy: { opacity: 0.65 },
-  tileNameBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(15, 23, 42, 0.86)',
-    zIndex: 1,
-  },
-  tileName: { fontSize: 19, fontWeight: '800', color: '#ffffff', textAlign: 'center', lineHeight: 24 },
-  tileQty: { fontSize: 15, fontWeight: '700', color: '#38bdf8', textAlign: 'center', marginTop: 4 },
-  qtyBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.primary,
-    borderRadius: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  qtyBadgeText: { color: '#ffffff', fontSize: 17, fontWeight: '800' },
-  tileSpinner: { position: 'absolute', bottom: 12, alignSelf: 'center', zIndex: 3 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.85)',

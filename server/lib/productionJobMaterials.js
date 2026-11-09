@@ -1,14 +1,19 @@
 import { CARPENTRY_WAREHOUSE_NAMES } from '../../src/constants/carpentryWarehouses.js';
-import { normalizeCarpentryUom } from '../../src/constants/carpentryUom.js';
+import { labelFromMaterialUomCode, normalizeCarpentryUom } from '../../src/constants/carpentryUom.js';
 import { parseStoreroomMaterialMeta } from '../../src/utils/productionPortalCatalog.js';
 import {
   adjustAssemblyInventory,
   loadAssemblyInventoryQty,
   resolveCarpentryStoreroomLocations,
+  warehousePickOrder,
 } from './storeroomBomDeduction.js';
 import { normalizeProductionRoute } from './quoteProductionRouting.js';
 import { newUuid } from './uuid.js';
-import { loadMaterialUomAllowedSet } from '../../src/utils/materialUomMutations.js';
+import {
+  loadMaterialUomAllowedSet,
+  listMaterialUoms,
+  materialUomSelectOptions,
+} from '../../src/utils/materialUomMutations.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import {
   expandWarehouseSkuMatchKeys,
@@ -30,7 +35,75 @@ const QUOTE_RUNS = 'carpentry_production_runs';
 const QUOTE_USAGE = 'carpentry_production_material_usage';
 
 function lineKey(row) {
-  return String(row?.material_assembly_id || row?.assembly_id || '').trim();
+  const aid = String(row?.material_assembly_id || row?.assembly_id || '').trim();
+  const loc = String(row?.warehouse_location_id || '').trim();
+  if (!aid) return '';
+  return loc ? `${aid}#${loc}` : aid;
+}
+
+function assemblyIdFromLineKey(key) {
+  const s = String(key || '');
+  const i = s.indexOf('#');
+  return i >= 0 ? s.slice(0, i) : s;
+}
+
+function storeroomLocFromLineKey(key) {
+  const s = String(key || '');
+  const i = s.indexOf('#');
+  return i >= 0 ? s.slice(i + 1) : '';
+}
+
+function isStoreroomMaterialAssembly(asm) {
+  return asm?.metadata?.storeroom?.is_storeroom_material === true;
+}
+
+function displayStoreroomMaterialUomLabel(code, labelByCode) {
+  const c = normalizeCarpentryUom(code || 'ea') || 'ea';
+  const fromDb = labelByCode.get(c);
+  if (fromDb && String(fromDb).trim() && String(fromDb).toLowerCase() !== c.toLowerCase()) {
+    return String(fromDb).trim();
+  }
+  if (c.toLowerCase() === 'box_es' || c.toLowerCase() === 'boxes') return 'Box (es)';
+  const human = labelFromMaterialUomCode(c);
+  if (/_es$/i.test(c) && human) {
+    return human.replace(/\s+Es$/i, ' (es)').replace(/\s+\(Es\)$/i, ' (es)');
+  }
+  return human || c;
+}
+
+function mergeMaterialsByFamilySku(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    const skuKey = normalizeWarehouseProductSku(row.family_sku) || String(row.assembly_id || row.id);
+    if (!skuKey) continue;
+    const prev = map.get(skuKey);
+    if (!prev) {
+      map.set(skuKey, {
+        ...row,
+        locations: [...(row.locations || [])],
+        _canonicalQty: Number(row.quantity) || 0,
+      });
+      continue;
+    }
+    prev.quantity = (Number(prev.quantity) || 0) + (Number(row.quantity) || 0);
+    const locById = new Map((prev.locations || []).map((loc) => [String(loc.location_id), { ...loc }]));
+    for (const loc of row.locations || []) {
+      const id = String(loc.location_id);
+      const existing = locById.get(id);
+      if (existing) existing.quantity = (Number(existing.quantity) || 0) + (Number(loc.quantity) || 0);
+      else locById.set(id, { ...loc });
+    }
+    prev.locations = [...locById.values()];
+    if ((Number(row.quantity) || 0) > (Number(prev._canonicalQty) || 0)) {
+      prev.assembly_id = row.assembly_id;
+      prev.id = row.id;
+      prev._canonicalQty = Number(row.quantity) || 0;
+    }
+  }
+  return [...map.values()].map((row) => {
+    const { _canonicalQty, ...rest } = row;
+    return rest;
+  });
 }
 
 function normalizeLines(raw) {
@@ -40,6 +113,7 @@ function normalizeLines(raw) {
     const aid = lineKey(row);
     const q = Math.max(0, Number(row.quantity) || 0);
     if (!aid || q <= 0) continue;
+    const loc = String(row.warehouse_location_id || row.warehouseLocationId || '').trim();
     out.push({
       material_assembly_id: aid,
       assembly_id: aid,
@@ -47,6 +121,7 @@ function normalizeLines(raw) {
       uom: normalizeCarpentryUom(row.uom || uomFallback),
       name: String(row.name || '').trim(),
       family_sku: String(row.family_sku || '').trim(),
+      warehouse_location_id: loc || null,
     });
   }
   return out;
@@ -76,10 +151,12 @@ export async function listProductionStoreroomMaterials(sb) {
   }
 
   const locIds = storeroomLocs.map((l) => String(l.id));
-  const [{ data: assemblies, error: aErr }, { data: invRows, error: invErr }] = await Promise.all([
+  const [{ data: assemblies, error: aErr }, { data: invRows, error: invErr }, uomRows] = await Promise.all([
     sb.from(ASSEMBLIES).select('id, name, family_sku, metadata'),
     sb.from(ASSEMBLY_INVENTORY).select('assembly_id, location_id, quantity').in('location_id', locIds),
+    listMaterialUoms(sb).catch(() => []),
   ]);
+  const uomLabelByCode = new Map((uomRows || []).map((r) => [String(r.code), String(r.label || r.code)]));
   if (aErr) throw new Error(aErr.message || 'Failed to load materials');
   if (invErr) throw new Error(invErr.message || 'Failed to load storeroom stock');
 
@@ -92,7 +169,7 @@ export async function listProductionStoreroomMaterials(sb) {
   const byAid = new Map();
   for (const asm of assemblies || []) {
     if (!asm?.id) continue;
-    const isMaterial = asm?.metadata?.storeroom?.is_storeroom_material === true;
+    const isMaterial = isStoreroomMaterialAssembly(asm);
     const aid = String(asm.id);
     let totalQty = 0;
     const perLoc = [];
@@ -101,23 +178,33 @@ export async function listProductionStoreroomMaterials(sb) {
       if (q > 0) perLoc.push({ location_id: String(loc.id), location_name: loc.name, quantity: q });
       totalQty += q;
     }
-    if (!isMaterial && totalQty <= 0) continue;
+    if (!isMaterial) continue;
+    if (totalQty <= 0) continue;
     const meta = parseStoreroomMaterialMeta(asm);
+    const uomCode = meta.default_uom || 'ea';
     byAid.set(aid, {
       id: aid,
       assembly_id: aid,
       name: String(asm.name || aid).trim(),
       family_sku: String(asm.family_sku || '').trim(),
-      uom: meta.default_uom || 'ea',
+      uom: uomCode,
+      uom_label: displayStoreroomMaterialUomLabel(uomCode, uomLabelByCode),
       quantity: totalQty,
       locations: perLoc,
     });
   }
 
-  const materials = [...byAid.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const materials = mergeMaterialsByFamilySku([...byAid.values()])
+    .sort((a, b) => a.name.localeCompare(b.name));
   return {
     materials,
+    uom_options: materialUomSelectOptions(uomRows || []),
     storeroom_labels: CARPENTRY_WAREHOUSE_NAMES,
+    storerooms: storeroomLocs.map((loc, i) => ({
+      id: String(loc.id),
+      name: String(loc.name || ''),
+      label: CARPENTRY_WAREHOUSE_NAMES[i] || String(loc.name || ''),
+    })),
   };
 }
 
@@ -204,6 +291,7 @@ export async function saveProductionJobMaterials(sb, {
   returnOrderId = null,
   productionRoute = null,
   materialLines = [],
+  preferredStoreroomLocationId = null,
 }) {
   const kind = String(jobKind || '').trim().toLowerCase();
   const storeroomLocs = await resolveCarpentryStoreroomLocations(sb);
@@ -239,16 +327,25 @@ export async function saveProductionJobMaterials(sb, {
   const prevMap = new Map(prevLines.map((r) => [lineKey(r), r.quantity]));
   const nextMap = new Map(desired.map((r) => [lineKey(r), r.quantity]));
 
-  const allAids = [...new Set([...prevMap.keys(), ...nextMap.keys()])];
+  const allKeys = [...new Set([...prevMap.keys(), ...nextMap.keys()])];
   const usageRows = [];
 
-  for (const aid of allAids) {
-    const prev = prevMap.get(aid) || 0;
-    const next = nextMap.get(aid) || 0;
+  for (const key of allKeys) {
+    const prev = prevMap.get(key) || 0;
+    const next = nextMap.get(key) || 0;
     const delta = next - prev;
     if (Math.abs(delta) < 0.000001) continue;
+    const aid = assemblyIdFromLineKey(key);
+    const lineMeta = desired.find((d) => lineKey(d) === key)
+      || prevLines.find((d) => lineKey(d) === key);
+    const lineLoc = String(
+      lineMeta?.warehouse_location_id || storeroomLocFromLineKey(key) || '',
+    ).trim() || null;
     if (delta > 0) {
-      const order = storeroomLocs.map((l) => String(l.id));
+      const order = warehousePickOrder(storeroomLocs, lineLoc || preferredStoreroomLocationId);
+      if (!lineLoc && !preferredStoreroomLocationId) {
+        throw new Error('Choose a storeroom for each material line');
+      }
       const byLoc = new Map();
       for (const locId of order) {
         byLoc.set(locId, await loadAssemblyInventoryQty(sb, aid, locId));
@@ -260,19 +357,19 @@ export async function saveProductionJobMaterials(sb, {
           material_assembly_id: aid,
           warehouse_location_id: move.warehouse_location_id,
           quantity: move.quantity,
-          uom: desired.find((d) => lineKey(d) === aid)?.uom || 'ea',
+          uom: lineMeta?.uom || 'ea',
         });
       }
     } else {
       const addBack = -delta;
-      const primaryLoc = String(storeroomLocs[0]?.id || '');
-      if (primaryLoc) {
-        await adjustAssemblyInventory(sb, aid, primaryLoc, addBack);
+      const creditLoc = lineLoc || String(storeroomLocs[0]?.id || '');
+      if (creditLoc) {
+        await adjustAssemblyInventory(sb, aid, creditLoc, addBack);
         usageRows.push({
           material_assembly_id: aid,
-          warehouse_location_id: primaryLoc,
+          warehouse_location_id: creditLoc,
           quantity: -addBack,
-          uom: desired.find((d) => lineKey(d) === aid)?.uom || 'ea',
+          uom: lineMeta?.uom || 'ea',
         });
       }
     }
