@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
-import ProductionKioskTopBar from '../productionKiosk/components/ProductionKioskTopBar';
-import KioskSafeScroll from '../productionKiosk/components/KioskSafeScroll';
-import { kiosk } from '../productionKiosk/components/kioskStyles';
-import { sortDeliveryDriversByName } from '../productionKiosk/lib/sortDeliveryDrivers';
-import { getProductionDispatcherLabelSync } from '../productionKiosk/lib/productionDispatcherLabel';
-import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
-import { tUi } from '../productionKiosk/lib/productionKioskI18n';
-import DeliveryDriverPickerComponent from '../productionKiosk/components/DeliveryDriverPicker.js';
-import DeliverySignaturePad from '../productionKiosk/components/DeliverySignaturePad';
+import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
+import KioskSafeScroll from '../components/KioskSafeScroll';
+import { kiosk } from '../components/kioskStyles';
+import { sortDeliveryDriversByName } from '../lib/sortDeliveryDrivers';
+import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
+import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
+import { tUi } from '../lib/productionKioskI18n';
+import DeliveryDriverPickerComponent from '../components/DeliveryDriverPicker.js';
+import DeliverySignaturePad from '../components/DeliverySignaturePad';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
 export default function RepairReturnSignatureScreen({ route, navigation }) {

@@ -67,18 +67,6 @@ export async function finishCarpentryProductionJob(jobId) {
   return warehouseMobileRequest('carpentry-job-finish', { job_id: jobId });
 }
 
-export async function fetchCarpentryFinishingProducts() {
-  const payload = await warehouseMobileRequest('carpentry-finishing-list');
-  return payload?.products || [];
-}
-
-export async function runCarpentryFinishing({ assemblyId, productQty = 1 }) {
-  return warehouseMobileRequest('carpentry-finishing', {
-    assembly_id: assemblyId,
-    product_qty: productQty,
-  });
-}
-
 export async function sendCarpentryProductToPainting({ assemblyId, productQty = 1 }) {
   return warehouseMobileRequest('painting-send-from-floor2', {
     assembly_id: assemblyId,
@@ -106,6 +94,13 @@ export async function acceptCarpentryQuote(quoteId) {
 
 export async function completeCarpentryQuote(quoteId) {
   return warehouseMobileRequest('production-quote-complete', { route: CARPENTRY_ROUTE, quote_id: quoteId });
+}
+
+export async function sendCarpentryQuoteToPainting(quoteId, { productQty = 1 } = {}) {
+  return warehouseMobileRequest('painting-from-carpentry-quote', {
+    quote_id: quoteId,
+    product_qty: productQty,
+  });
 }
 
 export async function scanCarpentryQuoteMaterial(quoteId, scan, quantity = 1) {
@@ -144,11 +139,18 @@ export async function fetchProductionStoreroomMaterials() {
   return payload?.materials || [];
 }
 
-export async function saveProductionJobMaterials({ jobKind, jobId, returnOrderId, materialLines } = {}) {
+export async function saveProductionJobMaterials({
+  jobKind,
+  jobId,
+  returnOrderId,
+  productionRoute,
+  materialLines,
+} = {}) {
   return warehouseMobileRequest('production-job-materials-save', {
     job_kind: jobKind,
     job_id: jobId,
     return_order_id: returnOrderId,
+    production_route: productionRoute,
     material_lines: materialLines,
   });
 }

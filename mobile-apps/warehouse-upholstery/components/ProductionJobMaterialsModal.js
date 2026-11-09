@@ -54,6 +54,7 @@ export default function ProductionJobMaterialsModal({
   jobKind,
   jobId,
   returnOrderId = '',
+  productionRoute = '',
   initialLines = [],
   onSaved,
 }) {
@@ -180,6 +181,7 @@ export default function ProductionJobMaterialsModal({
         jobKind,
         jobId,
         returnOrderId,
+        productionRoute,
         materialLines: payload,
       });
       onSaved?.(payload);

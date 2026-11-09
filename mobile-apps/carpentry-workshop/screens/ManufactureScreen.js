@@ -1,4 +1,4 @@
-// @refresh reset — Floor 2 → production job (deduct WIP, cap at on-hand).
+// @refresh reset — catalog BOM from storerooms → credit Warehouse Floor 2 WIP.
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -23,8 +23,8 @@ import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi } from '../productionKiosk/lib/productionKioskI18n';
 import {
-  fetchProductionFloor2Products,
-  pushProductionFloor2Manufacture,
+  fetchCarpentryManufactureProducts,
+  runCarpentryManufacture,
 } from '../services/carpentryApi';
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 import { theme } from '../shared/theme';
@@ -74,7 +74,7 @@ function findMatchingFloor2ProductByScan(products, rawScan) {
   const probeLower = probe.toLowerCase();
 
   for (const item of products || []) {
-    const sku = String(item?.family_sku || '').trim();
+    const sku = String(item?.family_sku || item?.raw_sku || '').trim();
     if (sku) {
       if (sku.toLowerCase() === probeLower) return item;
       const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
@@ -82,7 +82,7 @@ function findMatchingFloor2ProductByScan(products, rawScan) {
         if (k && storedKeys.has(k)) return item;
       }
     }
-    const name = String(item?.name || '').trim();
+    const name = String(item?.name || item?.raw_name || '').trim();
     if (name && name.toLowerCase() === probeLower) return item;
     if (name && name.toLowerCase().includes(probeLower)) return item;
   }
@@ -90,7 +90,6 @@ function findMatchingFloor2ProductByScan(products, rawScan) {
 }
 
 export default function ManufactureScreen({
-  route,
   navigation,
   allowed,
   accessHint,
@@ -109,7 +108,6 @@ export default function ManufactureScreen({
   const [busyId, setBusyId] = useState('');
   const [qtyModal, setQtyModal] = useState(null);
   const [qtyDraft, setQtyDraft] = useState('1');
-  const [stockTab, setStockTab] = useState('all');
 
   const loadList = useCallback(async ({ fromPull = false } = {}) => {
     if (!allowed) {
@@ -123,7 +121,7 @@ export default function ManufactureScreen({
     else if (fromPull) setRefreshing(true);
     setError('');
     try {
-      const list = await fetchProductionFloor2Products();
+      const list = await fetchCarpentryManufactureProducts();
       const sorted = (Array.isArray(list) ? list : [])
         .slice()
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
@@ -140,20 +138,13 @@ export default function ManufactureScreen({
   useFocusEffect(
     useCallback(() => {
       loadList();
-      if (route?.params?.openScan) {
-        setScanOpen(true);
-        navigation.setParams({ openScan: false });
-      }
-    }, [loadList, route?.params?.openScan, navigation]),
+    }, [loadList]),
   );
 
   const filteredProducts = useMemo(() => {
     const raw = String(search || '').trim();
-    let base = products;
-    if (stockTab === 'stock') {
-      base = base.filter((item) => floor2Qty(item) > 0);
-    }
-    if (!raw) return base;
+    if (!raw) return [];
+    const base = products;
     const q = raw.toLowerCase();
     const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
     return base.filter((item) => {
@@ -166,20 +157,15 @@ export default function ManufactureScreen({
       }
       return false;
     });
-  }, [products, search, stockTab]);
+  }, [products, search]);
 
   const hasSearch = Boolean(String(search || '').trim());
 
   const openQtyAdd = useCallback((item) => {
     if (busyId) return;
-    const max = floor2Qty(item);
-    if (max < 1) {
-      Alert.alert(tUi('manufactureTitle', locale), tUi('paintingNoneAvailable', locale));
-      return;
-    }
     setQtyDraft('1');
     setQtyModal({ item });
-  }, [busyId, locale]);
+  }, [busyId]);
 
   const handleBarcodeScanned = useCallback((scannedValue) => {
     setScanOpen(false);
@@ -199,42 +185,32 @@ export default function ManufactureScreen({
 
   const handleQtyTextChange = (txt) => {
     const cleaned = String(txt || '').replace(/[^0-9]/g, '');
-    const max = qtyModal?.item ? floor2Qty(qtyModal.item) : 999;
     if (!cleaned) {
       setQtyDraft('');
       return;
     }
     const n = Math.floor(Number(cleaned) || 0);
-    setQtyDraft(String(Math.max(1, Math.min(max, n))));
+    setQtyDraft(String(Math.max(1, Math.min(999, n))));
   };
 
   const confirmAdd = async () => {
     if (!qtyModal?.item) return;
     const item = qtyModal.item;
-    const assemblyId = String(item.id || item.assembly_id || '');
-    const max = floor2Qty(item);
+    const assemblyId = String(item.id || item.assembly_id || item.raw_assembly_id || '');
     const rawNum = Math.floor(Number(qtyDraft) || 0);
     if (!Number.isFinite(rawNum) || rawNum < 1) {
       Alert.alert(tUi('manufactureAddStockTitle', locale), tUi('needQty', locale));
       return;
     }
-    if (rawNum > max) {
-      Alert.alert(
-        tUi('manufactureAddStockTitle', locale),
-        tUi('paintingQtyExceedsAvailable', locale).replace('{max}', String(max)),
-      );
-      return;
-    }
     setQtyModal(null);
     setBusyId(assemblyId);
     try {
-      const res = await pushProductionFloor2Manufacture({
+      await runCarpentryManufacture({
         assemblyId,
         productQty: rawNum,
-        channel: 'carpentry',
       });
       await loadList();
-      navigation.navigate('Jobs', { initialJob: res?.job || res });
+      Alert.alert(tUi('manufactureTitle', locale), tUi('manufactureDone', locale));
     } catch (e) {
       Alert.alert(tUi('manufactureFailed', locale), e?.message || tUi('manufactureFailed', locale));
     } finally {
@@ -262,7 +238,13 @@ export default function ManufactureScreen({
         ]}
       >
         {cardImage ? (
-          <Image source={{ uri: cardImage }} style={styles.tileImage} resizeMode="cover" />
+          <Image
+            source={{ uri: cardImage }}
+            style={styles.tileImage}
+            resizeMode="cover"
+            resizeMethod="resize"
+            fadeDuration={0}
+          />
         ) : (
           <View style={styles.tileImagePlaceholder} />
         )}
@@ -322,24 +304,6 @@ export default function ManufactureScreen({
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntroFloor2', locale)}</Text>
-      <View style={styles.tabRow}>
-        <Pressable
-          style={[styles.tabChip, stockTab === 'all' && styles.tabChipActive]}
-          onPress={() => setStockTab('all')}
-        >
-          <Text style={[styles.tabChipText, stockTab === 'all' && styles.tabChipTextActive]}>
-            {tUi('manufactureTabAll', locale)}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabChip, stockTab === 'stock' && styles.tabChipActive]}
-          onPress={() => setStockTab('stock')}
-        >
-          <Text style={[styles.tabChipText, stockTab === 'stock' && styles.tabChipTextActive]}>
-            {tUi('manufactureTabInStock', locale)}
-          </Text>
-        </Pressable>
-      </View>
       <View style={styles.searchRow}>
         <TextInput
           style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
@@ -377,6 +341,11 @@ export default function ManufactureScreen({
         contentContainerStyle={filteredProducts.length === 0 ? styles.listEmpty : styles.gridContent}
         renderItem={renderProductCard}
         keyboardShouldPersistTaps="handled"
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        removeClippedSubviews
+        updateCellsBatchingPeriod={50}
         ListEmptyComponent={
           !loading && !error && !hasSearch ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>
@@ -389,7 +358,7 @@ export default function ManufactureScreen({
       <Modal visible={Boolean(qtyModal)} transparent animationType="fade" onRequestClose={() => setQtyModal(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setQtyModal(null)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>{tUi('manufactureDeductTitle', locale)}</Text>
+            <Text style={styles.modalTitle}>{tUi('manufactureAddStockTitle', locale)}</Text>
             <Text style={styles.modalProductName}>{qtyModal?.item?.name || ''}</Text>
             <Text style={styles.modalSub}>
               {tUi('manufactureQtyLabel', locale).replace('{qty}', String(floor2Qty(qtyModal?.item)))}

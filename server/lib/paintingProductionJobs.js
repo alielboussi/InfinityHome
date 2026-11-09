@@ -61,6 +61,9 @@ function serializeJob(job) {
     manual_material_lines: Array.isArray(job.metadata?.manual_material_lines)
       ? job.metadata.manual_material_lines
       : [],
+    carpentry_quote_id: String(job.metadata?.carpentry_quote_id || '').trim() || null,
+    quote_id: String(job.metadata?.carpentry_quote_id || job.metadata?.quote_id || '').trim() || null,
+    inventory_source: job.metadata?.inventory_source || null,
   };
 }
 
@@ -164,6 +167,108 @@ export async function sendAssemblyToPaintingDepartment(sb, {
     await notifyPaintingNewJob(serializeJob(inserted));
   } catch (pushErr) {
     console.warn('[sendAssemblyToPaintingDepartment] push notify failed:', pushErr?.message || pushErr);
+  }
+
+  return { job: serializeJob(inserted) };
+}
+
+/**
+ * After a completed carpentry Hassan order — queue painting (Floor 2 WIP first, else Floor 1 finished stock).
+ */
+export async function sendCarpentryQuoteToPaintingDepartment(sb, {
+  quoteId,
+  productQty = 1,
+  userId = null,
+}) {
+  const qid = String(quoteId || '').trim();
+  if (!qid) throw new Error('quote_id required');
+
+  const { getQuoteProductionRouting } = await import('./quoteProductionRouting.js');
+  const routing = await getQuoteProductionRouting(sb, qid);
+  if (!routing?.route || routing.route !== 'carpentry') {
+    throw new Error('Quote is not on the carpentry production route');
+  }
+  if (!routing.completed_at) {
+    throw new Error('Complete the carpentry order before sending to painting');
+  }
+
+  const { data: activeRows, error: dupErr } = await sb.from(JOBS).select('id, status, metadata');
+  if (!dupErr && (activeRows || []).some((r) => (
+    ACTIVE_STATUSES.has(normalizeJobStatus(r.status))
+    && String(r.metadata?.carpentry_quote_id || '') === qid
+  ))) {
+    throw new Error('This order is already on the painting queue');
+  }
+
+  const { data: runs, error: runErr } = await sb
+    .from(RUNS)
+    .select('*')
+    .eq('quote_id', qid)
+    .not('completed_at', 'is', null)
+    .order('completed_at', { ascending: false })
+    .limit(1);
+  if (runErr) throw new Error(runErr.message || 'Failed to load production run');
+  const run = (runs || [])[0];
+  if (!run?.assembly_id) throw new Error('No completed carpentry run for this quote');
+
+  const assemblyId = String(run.assembly_id);
+  const qty = Math.max(1, Math.floor(Number(productQty) || Number(run.product_qty) || 1));
+  const { floor2LocationId, floor1LocationId } = await resolveFloor2AndFactoryIds(sb);
+
+  let inventory_source = 'floor2';
+  const floor2Have = await loadAssemblyInventoryQty(sb, assemblyId, floor2LocationId);
+  if (floor2Have >= qty) {
+    await adjustAssemblyInventory(sb, assemblyId, floor2LocationId, -qty);
+    await recomputeWarehouseLocationStockServer(sb, floor2LocationId);
+  } else {
+    const floor1Have = await loadAssemblyInventoryQty(sb, assemblyId, floor1LocationId);
+    if (floor1Have < qty) {
+      throw new Error(
+        `Insufficient stock for painting (need ${qty} on Floor 2 WIP or Warehouse Floor 1 after order complete)`,
+      );
+    }
+    inventory_source = 'floor1';
+    await adjustAssemblyInventory(sb, assemblyId, floor1LocationId, -qty);
+    await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
+  }
+
+  const ctx = await loadPaintingProductContext(sb, assemblyId);
+  const now = new Date().toISOString();
+  const jobId = newUuid();
+  const row = stripUndefinedDeep({
+    id: jobId,
+    assembly_id: ctx.productId,
+    product_name: String(ctx.assembly.name || '').trim(),
+    product_sku: String(ctx.assembly.family_sku || '').trim(),
+    product_qty: qty,
+    status: 'ready',
+    accumulated_ms: 0,
+    timer_started_at: null,
+    started_at: now,
+    completed_at: null,
+    accepted_by: userId || null,
+    metadata: {
+      channel: 'carpentry_workshop_app',
+      carpentry_quote_id: qid,
+      quote_id: qid,
+      inventory_source,
+      floor2_deducted_qty: inventory_source === 'floor2' ? qty : 0,
+      factory_deducted_qty: inventory_source === 'floor1' ? qty : 0,
+      floor2_location_id: floor2LocationId,
+    },
+    created_at: now,
+    updated_at: now,
+  });
+
+  const { data: inserted, error: insErr } = await sb.from(JOBS).insert(row).select('*').single();
+  if (insErr) throw new Error(insErr.message || 'Failed to create painting job');
+  if (!inserted?.id) throw new Error('Failed to create painting job (no row returned)');
+
+  try {
+    const { notifyPaintingNewJob } = await import('./productionExpoPush.js');
+    await notifyPaintingNewJob(serializeJob(inserted));
+  } catch (pushErr) {
+    console.warn('[sendCarpentryQuoteToPaintingDepartment] push notify failed:', pushErr?.message || pushErr);
   }
 
   return { job: serializeJob(inserted) };

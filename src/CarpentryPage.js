@@ -272,7 +272,7 @@ export default function CarpentryPage({ embedInHub = false } = {}) {
                         uomOptions={uomOptions}
                         storeroomLocations={carpentryLocations}
                         busyId={busyId}
-                        bomHint="Storeroom materials per unit of product (deducted on carpentry manufacture)."
+                        bomHint="Storeroom materials per unit (deduct on the workshop job via the wrench — manufacture only adds Floor 2 WIP)."
                         onUpdateLine={(index, patch) => updateMaterialLine(row.id, index, patch)}
                         onRemoveLine={(index) => setMaterialDrafts((prev) => ({
                           ...prev,

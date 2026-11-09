@@ -317,7 +317,7 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
                         uomOptions={uomOptions}
                         storeroomLocations={carpentryLocations}
                         busyId={busyId}
-                        bomHint="Storeroom materials per unit of finished product (deducted on upholstery manufacture)."
+                        bomHint="Storeroom materials per unit (deduct on Jobs/Orders via the wrench — manufacture only uses Floor 2 raw WIP)."
                         onUpdateLine={(index, patch) => updateMaterialLine(row.id, index, patch)}
                         onRemoveLine={(index) => setMaterialDrafts((prev) => ({
                           ...prev,

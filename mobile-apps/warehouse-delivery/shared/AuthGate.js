@@ -38,6 +38,17 @@ export default function FirebaseAuthGate({
   showUserBar = true,
   staySignedIn = true,
   signInMethods = 'both',
+  signInHeader = null,
+  signInHint = null,
+  signInEmailPlaceholder = 'Email',
+  signInPasswordPlaceholder = 'Password',
+  signInButtonLabel = 'Sign in',
+  signInSigningInLabel = 'Signing in…',
+  googleButtonLabel = 'Continue with Google',
+  googleSigningInLabel = 'Signing in…',
+  googleNotConfiguredLabel = 'Google sign-in is not configured for this build.',
+  loginNotAllowedLabel = 'Login not allowed.',
+  signInFailedLabel = 'Sign in failed',
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -71,7 +82,7 @@ export default function FirebaseAuthGate({
       if (shouldForceSignOutForAccessCheck(access)) {
         verifiedUidRef.current = '';
         await signOutFirebase();
-        setError(formatWarehouseMobileApiError(access.error, 'Login not allowed.'));
+        setError(formatWarehouseMobileApiError(access.error, loginNotAllowedLabel));
       } else {
         verifiedUidRef.current = user.uid;
       }
@@ -92,12 +103,12 @@ export default function FirebaseAuthGate({
       if (shouldForceSignOutForAccessCheck(access)) {
         verifiedUidRef.current = '';
         await signOutFirebase();
-        setError(formatWarehouseMobileApiError(access.error, 'Login not allowed.'));
+        setError(formatWarehouseMobileApiError(access.error, loginNotAllowedLabel));
       } else if (getFirebaseAuth().currentUser?.uid) {
         verifiedUidRef.current = getFirebaseAuth().currentUser.uid;
       }
     } catch (err) {
-      setError(err?.message || 'Sign in failed');
+      setError(err?.message || signInFailedLabel);
     } finally {
       setBusy(false);
     }
@@ -127,17 +138,17 @@ export default function FirebaseAuthGate({
   if (!user) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>{title}</Text>
+        {signInHeader || <Text style={styles.title}>{title}</Text>}
         <Text style={styles.hint}>
-          {allowGoogle && !allowEmail
+          {signInHint || (allowGoogle && !allowEmail
             ? 'Sign in with the Google account your administrator added in User Login Access.'
-            : 'Sign in with Google or your Firebase email and password.'}
+            : 'Sign in with Google or your Firebase email and password.')}
         </Text>
         {allowEmail ? (
           <>
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder={signInEmailPlaceholder}
               autoCapitalize="none"
               keyboardType="email-address"
               value={email}
@@ -145,7 +156,7 @@ export default function FirebaseAuthGate({
             />
             <TextInput
               style={styles.input}
-              placeholder="Password"
+              placeholder={signInPasswordPlaceholder}
               secureTextEntry
               value={password}
               onChangeText={setPassword}
@@ -155,18 +166,20 @@ export default function FirebaseAuthGate({
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {allowEmail ? (
           <Pressable style={styles.button} onPress={handleSignIn} disabled={busy}>
-            <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Sign in'}</Text>
+            <Text style={styles.buttonText}>{busy ? signInSigningInLabel : signInButtonLabel}</Text>
           </Pressable>
         ) : null}
         {allowGoogle && isGoogleSignInConfigured() ? (
           <GoogleSignInButton
             disabled={busy}
-            onError={(message) => setError(message || 'Google sign-in failed')}
+            label={googleButtonLabel}
+            busyLabel={googleSigningInLabel}
+            onError={(message) => setError(message || signInFailedLabel)}
             onSuccess={() => setError('')}
           />
         ) : null}
         {allowGoogle && !isGoogleSignInConfigured() ? (
-          <Text style={styles.error}>Google sign-in is not configured for this build.</Text>
+          <Text style={styles.error}>{googleNotConfiguredLabel}</Text>
         ) : null}
       </View>
     );

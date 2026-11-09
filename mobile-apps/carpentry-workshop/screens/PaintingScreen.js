@@ -117,6 +117,7 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
       const list = await fetchCarpentryFloor2Products();
       const sorted = (Array.isArray(list) ? list : [])
         .slice()
+        .filter((item) => floor2Qty(item) > 0)
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
       setProducts(sorted);
     } catch (e) {
@@ -136,10 +137,11 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
 
   const filteredProducts = useMemo(() => {
     const raw = String(search || '').trim();
-    if (!raw) return products;
+    const inStock = products.filter((item) => floor2Qty(item) > 0);
+    if (!raw) return inStock;
     const q = raw.toLowerCase();
     const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
-    return products.filter((item) => {
+    return inStock.filter((item) => {
       if (String(item.name || '').toLowerCase().includes(q)) return true;
       const sku = String(item.family_sku || '');
       if (sku.toLowerCase().includes(q)) return true;
@@ -251,7 +253,13 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
         ]}
       >
         {cardImage ? (
-          <Image source={{ uri: cardImage }} style={styles.tileImage} resizeMode="cover" />
+          <Image
+            source={{ uri: cardImage }}
+            style={styles.tileImage}
+            resizeMode="cover"
+            resizeMethod="resize"
+            fadeDuration={0}
+          />
         ) : (
           <View style={styles.tileImagePlaceholder} />
         )}
@@ -350,6 +358,11 @@ export default function PaintingScreen({ navigation, allowed, accessHint, onRefr
         contentContainerStyle={filteredProducts.length === 0 ? styles.listEmpty : styles.gridContent}
         renderItem={renderProductCard}
         keyboardShouldPersistTaps="handled"
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        removeClippedSubviews
+        updateCellsBatchingPeriod={50}
         ListEmptyComponent={
           !loading && !error && !hasSearch ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>

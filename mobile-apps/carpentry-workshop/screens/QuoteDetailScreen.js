@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../productionKiosk/components/ProductionKioskTopBar';
 import ProductionQrScanModal from '../productionKiosk/components/ProductionQrScanModal';
@@ -21,7 +22,9 @@ import {
   completeCarpentryQuote,
   fetchCarpentryProductionQuotes,
   scanCarpentryQuoteMaterial,
+  sendCarpentryQuoteToPainting,
 } from '../services/carpentryApi';
+import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
 import { theme } from '../shared/theme';
 import {
   QuoteProductionDrawingSection,
@@ -50,6 +53,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
   const [scan, setScan] = useState('');
   const [scanOpen, setScanOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
 
   useEffect(() => {
     if (!quoteId || Array.isArray(quote.lines)) return;
@@ -103,6 +107,28 @@ export default function QuoteDetailScreen({ route, navigation }) {
     }
   };
 
+  const finishQuote = async (sendToPainting) => {
+    setBusy(true);
+    try {
+      await completeCarpentryQuote(quoteId);
+      setCompleted(true);
+      if (sendToPainting) {
+        await sendCarpentryQuoteToPainting(quoteId);
+        Alert.alert(
+          tUi('quoteOrderEndConfirmTitle', locale),
+          tUi('carpentryQuoteSentToPainting', locale),
+        );
+      } else {
+        Alert.alert(tUi('quoteOrderEndConfirmTitle', locale), tUi('quoteOrderCompleteDone', locale));
+      }
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onComplete = () => {
     Alert.alert(
       tUi('quoteOrderEndConfirmTitle', locale),
@@ -111,20 +137,11 @@ export default function QuoteDetailScreen({ route, navigation }) {
         { text: tUi('cancel', locale), style: 'cancel' },
         {
           text: tUi('quoteOrderEnd', locale),
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              await completeCarpentryQuote(quoteId);
-              setCompleted(true);
-              Alert.alert(tUi('quoteOrderEndConfirmTitle', locale), tUi('quoteOrderCompleteDone', locale));
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
-            } finally {
-              setBusy(false);
-            }
-          },
+          onPress: () => finishQuote(false),
+        },
+        {
+          text: tUi('quoteOrderEndSendPainting', locale),
+          onPress: () => finishQuote(true),
         },
       ],
     );
@@ -192,6 +209,18 @@ export default function QuoteDetailScreen({ route, navigation }) {
         </Pressable>
       ) : null}
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderMaterials', locale)}</Text>
+      {!completed && quote.sent_to_production_at ? (
+        <Pressable
+          style={[kiosk.btn, kiosk.btnPrimary, styles.actionBtn, styles.wrenchRow]}
+          disabled={busy}
+          onPress={() => setMaterialsOpen(true)}
+        >
+          <MaterialCommunityIcons name="wrench" size={22} color="#fff" />
+          <Text style={[kiosk.btnText, kiosk.btnPrimaryText, styles.wrenchRowText]}>
+            {tUi('quoteOrderMaterials', locale)}
+          </Text>
+        </Pressable>
+      ) : null}
       <TextInput
         style={[kiosk.input, { textAlign: locale === 'ar' ? 'right' : 'left' }]}
         placeholder={tUi('quoteOrderScanPlaceholder', locale)}
@@ -230,6 +259,26 @@ export default function QuoteDetailScreen({ route, navigation }) {
         tUi={tUi}
         locale={locale}
       />
+      <ProductionJobMaterialsModal
+        visible={materialsOpen}
+        locale={locale}
+        textAlign={textAlign}
+        jobKind="quote"
+        jobId={quoteId}
+        productionRoute="carpentry"
+        initialLines={quote.manual_material_lines || []}
+        onClose={() => setMaterialsOpen(false)}
+        onSaved={async () => {
+          setMaterialsOpen(false);
+          try {
+            const list = await fetchCarpentryProductionQuotes();
+            const found = (Array.isArray(list) ? list : []).find((q) => String(q.quote_id) === quoteId);
+            if (found) setQuote(found);
+          } catch {
+            // ignore
+          }
+        }}
+      />
     </ScrollView>
   );
 }
@@ -248,4 +297,6 @@ const styles = StyleSheet.create({
   danger: { backgroundColor: '#7f1d1d' },
   section: { marginTop: 16, marginBottom: 8 },
   line: { color: theme.textSecondary, marginBottom: 4 },
+  wrenchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  wrenchRowText: { marginLeft: 4 },
 });

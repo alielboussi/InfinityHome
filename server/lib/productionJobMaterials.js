@@ -6,6 +6,8 @@ import {
   loadAssemblyInventoryQty,
   resolveCarpentryStoreroomLocations,
 } from './storeroomBomDeduction.js';
+import { normalizeProductionRoute } from './quoteProductionRouting.js';
+import { newUuid } from './uuid.js';
 import { loadMaterialUomAllowedSet } from '../../src/utils/materialUomMutations.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import {
@@ -23,6 +25,9 @@ const JOB_TABLES = {
 };
 
 const ACTIVE = new Set(['ready', 'running', 'paused']);
+const QUOTE_ROUTING = 'quote_production_routing';
+const QUOTE_RUNS = 'carpentry_production_runs';
+const QUOTE_USAGE = 'carpentry_production_material_usage';
 
 function lineKey(row) {
   return String(row?.material_assembly_id || row?.assembly_id || '').trim();
@@ -37,8 +42,11 @@ function normalizeLines(raw) {
     if (!aid || q <= 0) continue;
     out.push({
       material_assembly_id: aid,
+      assembly_id: aid,
       quantity: q,
       uom: normalizeCarpentryUom(row.uom || uomFallback),
+      name: String(row.name || '').trim(),
+      family_sku: String(row.family_sku || '').trim(),
     });
   }
   return out;
@@ -148,6 +156,32 @@ async function loadJobRow(sb, kind, jobId) {
   return data;
 }
 
+async function loadQuoteProductionOrder(sb, quoteId, productionRoute) {
+  const qid = String(quoteId || '').trim();
+  const route = normalizeProductionRoute(productionRoute);
+  if (!qid || !route) throw new Error('quote_id and production_route (carpentry|upholstery) required');
+  const { data, error } = await sb.from(QUOTE_ROUTING).select('*').eq('quote_id', qid).maybeSingle();
+  if (error) throw new Error(error.message || 'Failed to load quote order');
+  if (!data?.quote_id) throw new Error('Quote order not found');
+  if (!data.sent_to_production_at) throw new Error('Quote not sent to production');
+  if (data.completed_at) throw new Error('Quote order already completed');
+  if (String(data.route || '') !== route) throw new Error('Quote route mismatch');
+  return data;
+}
+
+async function findActiveQuoteRunId(sb, quoteId) {
+  const { data } = await sb
+    .from(QUOTE_RUNS)
+    .select('id')
+    .eq('quote_id', String(quoteId))
+    .eq('source', 'quote_order')
+    .is('completed_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ? String(data.id) : '';
+}
+
 async function loadReturnOrder(sb, returnOrderId) {
   const id = String(returnOrderId || '').trim();
   if (!id) throw new Error('return_order_id required');
@@ -168,6 +202,7 @@ export async function saveProductionJobMaterials(sb, {
   jobKind,
   jobId,
   returnOrderId = null,
+  productionRoute = null,
   materialLines = [],
 }) {
   const kind = String(jobKind || '').trim().toLowerCase();
@@ -185,7 +220,11 @@ export async function saveProductionJobMaterials(sb, {
   let entity = null;
   let meta = {};
 
-  if (kind === 'repair') {
+  if (kind === 'quote') {
+    entity = await loadQuoteProductionOrder(sb, jobId, productionRoute);
+    meta = { ...(entity.metadata || {}) };
+    table = QUOTE_ROUTING;
+  } else if (kind === 'repair') {
     entity = await loadReturnOrder(sb, returnOrderId || jobId);
     meta = { ...(entity.metadata || {}) };
     table = 'warehouse_return_orders';
@@ -253,7 +292,26 @@ export async function saveProductionJobMaterials(sb, {
   };
 
   const now = new Date().toISOString();
-  if (kind === 'repair') {
+  if (kind === 'quote') {
+    const { error: qErr } = await sb.from(table).update({ metadata: nextMeta, updated_at: now }).eq('quote_id', jobId);
+    if (qErr) throw new Error(qErr.message || 'Failed to save quote materials');
+    const runId = await findActiveQuoteRunId(sb, jobId);
+    if (runId) {
+      for (const row of usageRows) {
+        if (row.quantity <= 0) continue;
+        const { error: uErr } = await sb.from(QUOTE_USAGE).insert({
+          id: newUuid(),
+          run_id: runId,
+          material_assembly_id: row.material_assembly_id,
+          warehouse_location_id: row.warehouse_location_id,
+          quantity: row.quantity,
+          uom: row.uom,
+          created_at: now,
+        });
+        if (uErr) throw new Error(uErr.message || 'Failed to record quote material usage');
+      }
+    }
+  } else if (kind === 'repair') {
     await sb.from(table).update({ metadata: nextMeta, updated_at: now }).eq('id', jobId);
   } else {
     await sb.from(table).update({ metadata: nextMeta, updated_at: now }).eq('id', jobId);

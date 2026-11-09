@@ -59,6 +59,6 @@ export async function registerProductionPushTokenWithServer({ pushPrefs: pushPre
 export function navigateFromProductionNotification(navigationRef, data) {
   navigateFromProductionPushData(navigationRef, data, {
     jobs: 'Jobs',
-    repairs: 'Repairs',
+    repairs: 'Jobs',
   });
 }

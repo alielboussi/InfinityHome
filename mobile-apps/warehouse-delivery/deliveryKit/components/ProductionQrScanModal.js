@@ -74,7 +74,7 @@ export default function ProductionQrScanModal({
       <View style={styles.wrap}>
         <View style={styles.header}>
           <Text style={styles.title}>{tUi('stockQrTitle', locale)}</Text>
-          <Pressable style={styles.closeBtn} onPress={onClose} accessibilityLabel="Close QR scanner">
+          <Pressable style={styles.closeBtn} onPress={onClose} accessibilityLabel={tUi('closeQrScanner', locale)}>
             <Text style={styles.closeText}>✕</Text>
           </Pressable>
         </View>

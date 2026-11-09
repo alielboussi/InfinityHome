@@ -39,15 +39,14 @@ function formatElapsed(ms) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function QuoteOrderJobCard({ quote, locale, textAlign, onPress }) {
+function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   const startedRaw = quote?.run_started_at || quote?.accepted_at;
   const elapsedMs = startedRaw ? Math.max(0, Date.now() - new Date(startedRaw).getTime()) : 0;
   const elapsed = formatElapsed(elapsedMs);
+  const canMaterials = Boolean(quote?.sent_to_production_at || quote?.sent_to_production) && !quote?.completed_at;
   return (
-    <Pressable
-      style={({ pressed }) => [kiosk.card, styles.jobCard, pressed && { opacity: 0.92 }]}
-      onPress={onPress}
-    >
+    <View style={[kiosk.card, styles.jobCard]}>
+      <Pressable style={({ pressed }) => [pressed && { opacity: 0.92 }]} onPress={onPress}>
       <Text style={[styles.quoteBadge, { textAlign }]}>
         {quote.quote_number || quote.quote_id}
       </Text>
@@ -71,7 +70,19 @@ function QuoteOrderJobCard({ quote, locale, textAlign, onPress }) {
         tUi={tUi}
         locale={locale}
       />
-    </Pressable>
+      </Pressable>
+      {canMaterials ? (
+        <View style={styles.iconRow}>
+          <Pressable
+            style={styles.iconBtn}
+            onPress={() => onMaterials?.(quote)}
+            accessibilityLabel={tUi('quoteOrderMaterials', locale)}
+          >
+            <MaterialCommunityIcons name="wrench" size={48} color={KIOSK_ICON_BLUE_ON_DARK} />
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -152,7 +163,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [quoteOrders, setQuoteOrders] = useState([]);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [materialsJob, setMaterialsJob] = useState(null);
+  const [materialsTarget, setMaterialsTarget] = useState(null);
   const [jobFilter, setJobFilter] = useState('all');
 
   const loadJobs = useCallback(async ({ showLoading = true } = {}) => {
@@ -317,6 +328,12 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               locale={locale}
               textAlign={textAlign}
               onPress={() => navigation.navigate('UpholsteryQuoteDetail', { quote: item.quote })}
+              onMaterials={(q) => setMaterialsTarget({
+                jobKind: 'quote',
+                jobId: String(q.quote_id || ''),
+                productionRoute: 'upholstery',
+                initialLines: q.manual_material_lines || [],
+              })}
             />
           ) : (
             <JobCard
@@ -327,7 +344,11 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               onPlay={onPlay}
               onPause={onPause}
                 onFinish={onFinish}
-                onMaterials={(jobRow) => setMaterialsJob(jobRow)}
+                onMaterials={(jobRow) => setMaterialsTarget({
+                  jobKind: 'upholstery',
+                  jobId: String(jobRow.job_id || jobRow.id || ''),
+                  initialLines: jobRow.manual_material_lines || [],
+                })}
               />
           )
         )}
@@ -344,15 +365,16 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         }
       />
       <ProductionJobMaterialsModal
-        visible={!!materialsJob}
+        visible={Boolean(materialsTarget)}
         locale={locale}
         textAlign={textAlign}
-        jobKind="upholstery"
-        jobId={materialsJob?.job_id || materialsJob?.id || ''}
-        initialLines={materialsJob?.manual_material_lines || []}
-        onClose={() => setMaterialsJob(null)}
+        jobKind={materialsTarget?.jobKind || 'upholstery'}
+        jobId={materialsTarget?.jobId || ''}
+        productionRoute={materialsTarget?.productionRoute || ''}
+        initialLines={materialsTarget?.initialLines || []}
+        onClose={() => setMaterialsTarget(null)}
         onSaved={() => {
-          setMaterialsJob(null);
+          setMaterialsTarget(null);
           loadJobs();
         }}
       />

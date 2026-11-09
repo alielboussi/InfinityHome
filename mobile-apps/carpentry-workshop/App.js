@@ -1,4 +1,5 @@
 import './shared/lightweightRuntime.js';
+import './shared/suppressBridgelessCodegenWarnings.js';
 import { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -10,7 +11,6 @@ import { useProductionPushNotifications } from './productionKiosk/hooks/useProdu
 import DashboardScreen from './screens/DashboardScreen';
 import CarpentryCreateScreen from './screens/CarpentryCreateScreen';
 import ManufactureScreen from './screens/ManufactureScreen';
-import FinishingScreen from './screens/FinishingScreen';
 import QuotesScreen from './screens/QuotesScreen';
 import QuoteDetailScreen from './screens/QuoteDetailScreen';
 import WarehouseRepairsScreen from './screens/WarehouseRepairsScreen';
@@ -46,7 +46,14 @@ function MainStack({ navigationRef }) {
   }
 
   return (
-    <Stack.Navigator initialRouteName="Dashboard" screenOptions={stackScreenOptions}>
+    <Stack.Navigator
+      initialRouteName="Dashboard"
+      screenOptions={{
+        ...stackScreenOptions,
+        animation: 'none',
+        animationDuration: 0,
+      }}
+    >
       <Stack.Screen name="Dashboard" options={{ headerShown: false }}>
         {(props) => (
           <DashboardScreen
@@ -84,16 +91,6 @@ function MainStack({ navigationRef }) {
       <Stack.Screen name="Painting" options={{ headerShown: false }}>
         {(props) => (
           <PaintingScreen
-            {...props}
-            allowed={allowed}
-            accessHint={accessHint}
-            onRefreshAccess={refresh}
-          />
-        )}
-      </Stack.Screen>
-      <Stack.Screen name="Finishing" options={{ headerShown: false }}>
-        {(props) => (
-          <FinishingScreen
             {...props}
             allowed={allowed}
             accessHint={accessHint}

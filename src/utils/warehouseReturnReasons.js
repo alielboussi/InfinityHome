@@ -23,8 +23,20 @@ export const WAREHOUSE_RETURN_REASON_GROUPS = Object.freeze([
       'Finish',
       'Design',
       'Repair',
-      'Color',
       'Size',
+    ]),
+  },
+  {
+    id: 'painting',
+    label: 'Painting',
+    reasons: Object.freeze([
+      'Color',
+      'Touch-up',
+      'Spray finish',
+      'Scratches',
+      'Peeling',
+      'Mismatch',
+      'Finish',
     ]),
   },
   {

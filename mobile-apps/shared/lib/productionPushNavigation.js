@@ -91,5 +91,10 @@ export function navigateFromProductionPushData(navigationRef, data, routes) {
 
   if (screen === 'Repairs' && routes.repairs) {
     nav.navigate(routes.repairs, returnOrderId ? { returnOrderId } : undefined);
+    return;
+  }
+
+  if (screen === 'Orders' && routes.jobs) {
+    nav.navigate(routes.jobs, returnOrderId ? { returnOrderId } : undefined);
   }
 }

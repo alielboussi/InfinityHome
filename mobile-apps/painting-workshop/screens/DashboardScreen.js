@@ -2,7 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
-import { kiosk } from '../components/kioskStyles';
+import { kiosk, KIOSK_ICON_BLUE } from '../components/kioskStyles';
 import { kioskFooterBottomPad } from '../lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../lib/productionDashLayout';
 import { theme } from '../shared/theme';
@@ -32,7 +32,7 @@ function DashboardTile({
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
-        color={theme.primaryDark}
+        color={KIOSK_ICON_BLUE}
         style={kiosk.dashTileIcon}
       />
       <Text
@@ -59,9 +59,8 @@ export default function DashboardScreen({
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready, textAlign } = useProductionKioskLocale();
   const showJobs = !grant || isWorkshopOrDeliveryScreenAllowed(grant, 'painting_jobs', 'painting_workshop_app');
-  const showRepairs = !grant || isWorkshopOrDeliveryScreenAllowed(grant, 'painting_repairs', 'painting_workshop_app');
   const showPushSettings = !grant || isWorkshopOrDeliveryScreenAllowed(grant, 'painting_push_settings', 'painting_workshop_app');
-  const tileCount = Math.max(1, (showJobs ? 1 : 0) + (showRepairs ? 1 : 0) + (showPushSettings ? 1 : 0));
+  const tileCount = Math.max(1, (showJobs ? 1 : 0) + (showPushSettings ? 1 : 0));
   const { tileWidth, tileHeight, gap, contentWidth } = useProductionDashboardTileLayout(tileCount);
 
   if (!allowed) {
@@ -134,18 +133,6 @@ export default function DashboardScreen({
               width={tileWidth}
               height={tileHeight}
               onPress={() => navigation.navigate('Jobs')}
-            />
-          ) : null}
-          {showRepairs ? (
-            <DashboardTile
-              icon="wrench-clock"
-              title={tUi('dashRepairs', locale)}
-              hintKey="dashTileHint_repairs"
-              locale={locale}
-              textAlign={textAlign}
-              width={tileWidth}
-              height={tileHeight}
-              onPress={() => navigation.navigate('Repairs')}
             />
           ) : null}
           {showPushSettings ? (

@@ -57,6 +57,7 @@ module.exports = {
       googleWebClientId,
       googleAndroidClientId: googleWebClientId,
       appScheme: 'infinity-painting',
+      expoProjectFullName: '@alielboussi/infinity-painting-workshop',
     },
   }),
 };

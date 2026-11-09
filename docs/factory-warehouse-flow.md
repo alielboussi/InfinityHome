@@ -19,8 +19,8 @@ node scripts/seedWarehouseFloor2Location.js
 
 1. **Storeroom pages** — create materials in Storerooms 1–3 (random or manual 16-char SKU, qty, `metadata.storeroom.default_uom`).
 2. **Web Carpentry** (`/carpentry`) — pick products from **Warehouse Floor 1** (`/warehouse-products` catalog scope); define BOM using **storeroom stock only**. Workshop apps can also create new products (AI names + presets); those land on Floor 1 and are auto-added here.
-3. **Carpentry workshop app — Manufacture** — products on **`/carpentry`**; BOM → Storerooms 1–3; **unfinished WIP → Warehouse Floor 2**.
-4. **Carpentry workshop app — Finishing** — pick **unfinished** stock on Floor 2; tap finish → **same SKU credits Warehouse Floor 1** (`/warehouse-products`) for storage and Send Delivery.
+3. **Carpentry workshop app — Manufacture** — products on **`/carpentry`**; BOM → Storerooms 1–3; **unfinished WIP → Warehouse Floor 2** (stays there until downstream steps).
+4. **Carpentry workshop — Painting** (or **Painting workshop app**) — send WIP for paint; completion credits **Floor 1** when configured for that product path.
 5. **Web Upholstery** (`/upholstery`) — Floor 1 product scope; link finished SKU to raw on Floor 2 when upholstery follows carpentry WIP; storeroom BOM per row.
 6. **Production app — Upholstery manufacture** — deduct **raw from Floor 2** + storeroom BOM → credit **finished SKU at Floor 1** (when upholstery applies).
 7. **Warehouse Delivery app — Send Delivery** — **Floor 1** catalog only.

@@ -18,7 +18,8 @@ const USAGE = 'carpentry_production_material_usage';
 const LOCATIONS = 'locations';
 
 /**
- * Tap-to-manufacture: deduct BOM from Storerooms 1→2→3, credit finished product at Floor 2.
+ * Workshop manufacture: deduct catalog storeroom BOM, credit WIP on Warehouse Floor 2.
+ * Orders, repairs, and ad-hoc jobs use the wrench (manual scan) for extra materials.
  */
 export async function executeCarpentryFloorManufacture(sb, {
   assemblyId,
@@ -29,15 +30,13 @@ export async function executeCarpentryFloorManufacture(sb, {
   const qty = Math.max(1, Number(productQty) || 1);
   if (!productId) throw new Error('assembly_id required');
 
-  const [{ data: assemblies, error: aErr }, carpentryLocs] = await Promise.all([
-    sb.from(ASSEMBLIES).select('id, name, family_sku, metadata, item_kind').eq('id', productId).maybeSingle(),
-    resolveCarpentryStoreroomLocations(sb),
-  ]);
+  const { data: assemblies, error: aErr } = await sb
+    .from(ASSEMBLIES)
+    .select('id, name, family_sku, metadata, item_kind')
+    .eq('id', productId)
+    .maybeSingle();
   if (aErr) throw new Error(aErr.message || 'Failed to load product');
   if (!assemblies?.id) throw new Error('Product not found');
-  if (carpentryLocs.length < 1) {
-    throw new Error('Carpentry warehouses not configured — run seedCarpentryWarehouseLocations.js');
-  }
 
   const { data: locRows, error: locErr } = await sb.from(LOCATIONS).select('id, name');
   if (locErr) throw new Error(locErr.message || 'Failed to load locations');
@@ -49,10 +48,16 @@ export async function executeCarpentryFloorManufacture(sb, {
   const catalog = listCarpentryCatalogProducts([assemblies]);
   const product = catalog[0];
   if (!product) throw new Error('Product is not in the Carpentry catalog');
-  const materials = product.materials || [];
-  if (!materials.length) throw new Error('No materials defined for this product');
 
-  const usageRows = await deductStoreroomBomMaterials(sb, materials, qty, carpentryLocs);
+  const storeroomLocs = await resolveCarpentryStoreroomLocations(sb);
+  const bomMaterials = Array.isArray(product.materials) ? product.materials : [];
+  let materialUsageRows = [];
+  if (bomMaterials.length) {
+    if (!storeroomLocs.length) {
+      throw new Error('Storerooms not configured — run seedCarpentryWarehouseLocations.js');
+    }
+    materialUsageRows = await deductStoreroomBomMaterials(sb, bomMaterials, qty, storeroomLocs);
+  }
 
   await adjustAssemblyInventory(sb, productId, outputLocationId, qty);
 
@@ -67,26 +72,33 @@ export async function executeCarpentryFloorManufacture(sb, {
     started_at: now,
     completed_at: now,
     accepted_by: userId,
-    metadata: { channel: 'carpentry_workshop_app' },
+    metadata: {
+      channel: 'carpentry_workshop_app',
+      floor2_wip_only: true,
+    },
     created_at: now,
   });
   if (runErr) throw new Error(runErr.message || 'Failed to save production run');
 
-  for (const row of usageRows) {
-    const { error: uErr } = await sb.from(USAGE).insert({
-      id: newUuid(),
-      run_id: runId,
-      material_assembly_id: row.material_assembly_id,
-      warehouse_location_id: row.warehouse_location_id,
-      quantity: row.quantity,
-      uom: row.uom,
-      created_at: now,
-    });
-    if (uErr) throw new Error(uErr.message || 'Failed to save material usage');
+  if (materialUsageRows.length) {
+    for (const row of materialUsageRows) {
+      const { error: uErr } = await sb.from(USAGE).insert({
+        id: newUuid(),
+        run_id: runId,
+        material_assembly_id: row.material_assembly_id,
+        warehouse_location_id: row.warehouse_location_id,
+        quantity: row.quantity,
+        uom: row.uom,
+        created_at: now,
+      });
+      if (uErr && !/not found|does not exist/i.test(String(uErr.message || ''))) {
+        throw new Error(uErr.message || 'Failed to save material usage');
+      }
+    }
   }
 
-  for (const loc of carpentryLocs) {
-    await recomputeWarehouseLocationStockServer(sb, loc.id);
+  for (const loc of storeroomLocs) {
+    if (loc?.id) await recomputeWarehouseLocationStockServer(sb, loc.id);
   }
   await recomputeWarehouseLocationStockServer(sb, outputLocationId);
 
@@ -94,7 +106,7 @@ export async function executeCarpentryFloorManufacture(sb, {
     run_id: runId,
     assembly_id: productId,
     product_qty: qty,
-    material_lines: usageRows.length,
+    material_lines: materialUsageRows.length,
   };
 }
 

@@ -8,9 +8,11 @@
     "prestart": "node scripts/ensureCarpentryIcons.js && node scripts/materializeCarpentryStandalone.js && node scripts/assertCarpentryKioskStandalone.js && node scripts/assertCarpentrySharedStandalone.js",
     "postinstall": "node scripts/materializeCarpentryStandalone.js && node scripts/ensureCarpentryIcons.js && node scripts/assertCarpentryKioskStandalone.js && node scripts/assertCarpentrySharedStandalone.js",
     "start": "expo start --go",
+    "start:clear": "expo start --go -c",
     "start:offline": "expo start --offline --go",
     "android": "expo start --android",
-    "eas:build:android": "node scripts/materializeCarpentryStandalone.js && eas build --platform android --profile preview --non-interactive"
+    "verify:bundle": "node scripts/verifyExpoBundle.js",
+    "eas:build:android": "node scripts/verifyExpoBundle.js && eas build --platform android --profile preview --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

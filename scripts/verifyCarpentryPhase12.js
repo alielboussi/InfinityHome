@@ -34,10 +34,7 @@ try {
     "case 'carpentry-access-self'",
     "case 'carpentry-catalog-list'",
     "case 'carpentry-manufacture'",
-    "case 'carpentry-finishing-list'",
-    "case 'carpentry-finishing'",
     'executeCarpentryFloorManufacture',
-    'executeCarpentryFinishing',
     'evaluateCarpentryWorkshopAppAccess',
   ], 'warehouse-mobile');
 
@@ -66,11 +63,29 @@ try {
     'carpentry-access-self',
     'carpentry-catalog-list',
     'carpentry-manufacture',
-    'carpentry-finishing-list',
-    'carpentry-finishing',
+    'runCarpentryManufacture',
   ], 'carpentry app api');
 
-  assert(fs.existsSync(path.join(root, 'mobile-apps/carpentry-workshop/screens/FinishingScreen.js')), 'FinishingScreen missing');
+  const manufactureLib = read('server/lib/carpentryManufacture.js');
+  assert(
+    manufactureLib.includes('deductStoreroomBomMaterials'),
+    'carpentry manufacture must deduct catalog storeroom BOM',
+  );
+  assert(
+    manufactureLib.includes('floor2_wip_only'),
+    'carpentry manufacture must credit Floor 2 WIP',
+  );
+
+  const jobsLib = read('server/lib/carpentryProductionJobs.js');
+  assert(
+    !jobsLib.includes('deductStoreroomBomMaterials'),
+    'carpentry job start must not auto-deduct storeroom BOM',
+  );
+
+  assert(
+    !fs.existsSync(path.join(root, 'mobile-apps/carpentry-workshop/screens/FinishingScreen.js')),
+    'FinishingScreen should be removed — WIP moves to Floor 1 via Painting or Upholstery only',
+  );
 
   console.log('verifyCarpentryPhase12: ok');
 } catch (e) {

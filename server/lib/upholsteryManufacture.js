@@ -183,8 +183,10 @@ export async function loadUpholsteryManufactureContext(sb, rawAssemblyId) {
   };
 }
 
-/** Deduct Floor 2 raw + storeroom BOM (does not credit Floor 1). */
-export async function consumeUpholsteryRawAndMaterials(sb, ctx, productQty) {
+/** Deduct Floor 2 raw; optional storeroom BOM (BOM is job/order wrench only — not manufacture). */
+export async function consumeUpholsteryRawAndMaterials(sb, ctx, productQty, {
+  deductStoreroomBom = false,
+} = {}) {
   const qty = Math.max(1, Math.floor(Number(productQty) || 1));
   const { rawId, floor2Loc, upholsteryMaterials } = ctx;
 
@@ -197,7 +199,7 @@ export async function consumeUpholsteryRawAndMaterials(sb, ctx, productQty) {
 
   let materialUsageRows = [];
   let storeroomLocsForRecompute = [];
-  if (upholsteryMaterials.length) {
+  if (deductStoreroomBom && upholsteryMaterials.length) {
     storeroomLocsForRecompute = await resolveCarpentryStoreroomLocations(sb);
     materialUsageRows = await deductStoreroomBomMaterials(
       sb,
@@ -288,6 +290,9 @@ export async function listUpholsteryManufactureCandidates(sb) {
   return { products, floor2Missing: false, carpentryWarehousesMissing: false };
 }
 
+/**
+ * Workshop manufacture: deduct raw WIP on Floor 2, credit finished on Floor 1 — no storeroom BOM.
+ */
 export async function executeUpholsteryManufacture(sb, {
   rawAssemblyId,
   productQty = 1,
@@ -298,6 +303,7 @@ export async function executeUpholsteryManufacture(sb, {
     sb,
     ctx,
     productQty,
+    { deductStoreroomBom: false },
   );
   const { rawId, finishedTemplate } = ctx;
   const output = await creditUpholsteryFinishedOutput(sb, ctx, qty);
@@ -318,6 +324,7 @@ export async function executeUpholsteryManufacture(sb, {
       raw_assembly_id: rawId,
       finished_template_id: finishedTemplate.id,
       output_created: output.created,
+      floor2_raw_only: true,
     },
     created_at: now,
   });

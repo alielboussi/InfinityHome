@@ -261,8 +261,8 @@ const UI_STRINGS = {
   },
   manufactureTitle: { en: 'Manufacture', ar: 'تصنيع' },
   manufactureIntroFloor2: {
-    en: 'Scan or pick an in-stock product, set qty to deduct, then start a job.',
-    ar: 'امسح أو اختر منتجًا متوفرًا، حدد الكمية للخصم، ثم ابدأ مهمة.',
+    en: 'In-stock raw WIP on Floor 2 only. Deduct qty here to upholster to finished stock. Storeroom BOM on Jobs / Orders (wrench).',
+    ar: 'مواد خام متوفرة في Floor 2 فقط. خصم الكمية هنا للتنجيد إلى مخزون منتهٍ. مواد المستودع من المهام / الطلبات (مفتاح الربط).',
   },
   manufactureDeductTitle: { en: 'Deduct from Floor 2', ar: 'خصم من الطابق 2' },
   manufactureTabAll: { en: 'All', ar: 'الكل' },
@@ -315,12 +315,12 @@ const UI_STRINGS = {
   },
   manufactureConfirmTitle: { en: 'Manufacture', ar: 'تصنيع' },
   manufactureConfirmBody: {
-    en: 'Produce 1 × {name}? Materials will deduct from Carpentry warehouses per the BOM on the web portal.',
-    ar: 'إنتاج 1 × {name}؟ ستُخصم المواد من مستودعات النجارة حسب قائمة المواد في البوابة.',
+    en: 'Upholster {qty} × {name}? Deducts Floor 2 raw WIP only — record storeroom usage on a job or order.',
+    ar: 'تنجيد {qty} × {name}؟ يخصم مواد Floor 2 الخام فقط — سجّل المستودع في مهمة أو طلب.',
   },
   manufactureDone: {
-    en: 'Done — materials deducted. Unfinished unit(s) are on Warehouse Floor 2. Use Finishing to move to Floor 1.',
-    ar: 'تم — خُصمت المواد. الوحدات غير المنتهية في Floor 2. استخدم الإنهاء للنقل إلى Floor 1.',
+    en: 'Done — Floor 2 raw deducted; finished stock updated. Use the job wrench for storeroom materials.',
+    ar: 'تم — خُصم خام Floor 2 وتم تحديث المخزون المنتهٍ. استخدم مفتاح المهمة لمواد المستودع.',
   },
   manufactureFailed: { en: 'Manufacture failed', ar: 'فشل التصنيع' },
   manufactureEmpty: {

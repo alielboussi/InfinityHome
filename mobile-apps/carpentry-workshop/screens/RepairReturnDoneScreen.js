@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import DeliveryPrintModal, { DEFAULT_DELIVERY_PRINT_COPIES } from '../productionKiosk/components/DeliveryPrintModal';
-import ProductionKioskTopBar from '../productionKiosk/components/ProductionKioskTopBar';
-import KioskSafeScroll from '../productionKiosk/components/KioskSafeScroll';
-import { kiosk } from '../productionKiosk/components/kioskStyles';
-import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
-import { tUi } from '../productionKiosk/lib/productionKioskI18n';
+import DeliveryPrintModal, { DEFAULT_DELIVERY_PRINT_COPIES } from '../components/DeliveryPrintModal';
+import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
+import KioskSafeScroll from '../components/KioskSafeScroll';
+import { kiosk } from '../components/kioskStyles';
+import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
+import { tUi } from '../lib/productionKioskI18n';
 
 export default function RepairReturnDoneScreen({ route, navigation }) {
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();

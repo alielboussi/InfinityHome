@@ -244,6 +244,7 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
       total: q.total,
       currency: q.currency,
       sent_to_production_at: r.sent_to_production_at,
+      sent_to_production: Boolean(r.sent_to_production_at),
       accepted_at: r.accepted_at,
       completed_at: r.completed_at,
       run_id: run?.id || null,
@@ -251,6 +252,9 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
       run_completed_at: run?.completed_at || null,
       lines: itemsByQuoteId.get(String(r.quote_id)) || r.metadata?.lines || [],
       drawing_url: r.metadata?.drawing_url || null,
+      manual_material_lines: Array.isArray(r.metadata?.manual_material_lines)
+        ? r.metadata.manual_material_lines
+        : [],
     });
   }
   return { rows };

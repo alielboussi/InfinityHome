@@ -12,7 +12,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../productionKiosk/components/ProductionKioskTopBar';
-import { kiosk } from '../productionKiosk/components/kioskStyles';
+import { kiosk, KIOSK_ICON_BLUE_ON_DARK } from '../productionKiosk/components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../productionKiosk/lib/productionKioskI18n';
@@ -40,39 +40,53 @@ function formatElapsed(ms) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function QuoteOrderJobCard({ quote, locale, textAlign, onPress }) {
+function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   const startedRaw = quote?.run_started_at || quote?.accepted_at;
   const elapsedMs = startedRaw ? Math.max(0, Date.now() - new Date(startedRaw).getTime()) : 0;
   const elapsed = formatElapsed(elapsedMs);
+  const canMaterials = Boolean(quote?.sent_to_production_at || quote?.sent_to_production) && !quote?.completed_at;
   return (
-    <Pressable
-      style={({ pressed }) => [kiosk.card, styles.jobCard, pressed && { opacity: 0.92 }]}
-      onPress={onPress}
-    >
-      <Text style={[styles.quoteBadge, { textAlign }]}>
-        {quote.quote_number || quote.quote_id}
-      </Text>
-      <Text style={[styles.jobTitle, { textAlign }]}>
-        {textForDisplay(quote.customer_name || tUi('dashCarpentryQuoteOrders', locale), '—')}
-      </Text>
-      {quote.customer_phone ? (
-        <Text style={[styles.jobMeta, { textAlign }]}>{quote.customer_phone}</Text>
-      ) : null}
-      <View style={styles.timerRow}>
-        <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
-        <Text style={styles.timerValue}>{elapsed}</Text>
-        <Text style={styles.statusChip}>
-          {quote.accepted_at ? tUi('carpentryQuoteInProduction', locale) : tUi('carpentryQuoteAwaiting', locale)}
+    <View style={[kiosk.card, styles.jobCard]}>
+      <Pressable
+        style={({ pressed }) => [pressed && { opacity: 0.92 }]}
+        onPress={onPress}
+      >
+        <Text style={[styles.quoteBadge, { textAlign }]}>
+          {quote.quote_number || quote.quote_id}
         </Text>
-      </View>
-      <QuoteProductionCardExtras
-        quote={quote}
-        route="carpentry"
-        textAlign={textAlign}
-        tUi={tUi}
-        locale={locale}
-      />
-    </Pressable>
+        <Text style={[styles.jobTitle, { textAlign }]}>
+          {textForDisplay(quote.customer_name || tUi('dashCarpentryQuoteOrders', locale), '—')}
+        </Text>
+        {quote.customer_phone ? (
+          <Text style={[styles.jobMeta, { textAlign }]}>{quote.customer_phone}</Text>
+        ) : null}
+        <View style={styles.timerRow}>
+          <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
+          <Text style={styles.timerValue}>{elapsed}</Text>
+          <Text style={styles.statusChip}>
+            {quote.accepted_at ? tUi('carpentryQuoteInProduction', locale) : tUi('carpentryQuoteAwaiting', locale)}
+          </Text>
+        </View>
+        <QuoteProductionCardExtras
+          quote={quote}
+          route="carpentry"
+          textAlign={textAlign}
+          tUi={tUi}
+          locale={locale}
+        />
+      </Pressable>
+      {canMaterials ? (
+        <View style={styles.iconRow}>
+          <Pressable
+            style={styles.iconBtn}
+            onPress={() => onMaterials?.(quote)}
+            accessibilityLabel={tUi('quoteOrderMaterials', locale)}
+          >
+            <MaterialCommunityIcons name="wrench" size={48} color={KIOSK_ICON_BLUE_ON_DARK} />
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -113,7 +127,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
             style={styles.iconBtn}
             accessibilityLabel={tUi('upholsteryJobResume', locale)}
           >
-            <MaterialCommunityIcons name="play-circle" size={52} color={theme.primary} />
+            <MaterialCommunityIcons name="play-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
           </ProductionPressableHint>
         ) : null}
         {isRunning ? (
@@ -126,7 +140,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
             style={styles.iconBtn}
             accessibilityLabel={tUi('upholsteryJobPause', locale)}
           >
-            <MaterialCommunityIcons name="pause-circle" size={52} color={theme.primary} />
+            <MaterialCommunityIcons name="pause-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
           </ProductionPressableHint>
         ) : null}
         {!isCompleted ? (
@@ -139,7 +153,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
             style={styles.iconBtn}
             accessibilityLabel={tUi('quoteOrderMaterials', locale)}
           >
-            <MaterialCommunityIcons name="wrench" size={48} color={theme.primary} />
+            <MaterialCommunityIcons name="wrench" size={48} color={KIOSK_ICON_BLUE_ON_DARK} />
           </ProductionPressableHint>
         ) : null}
         <ProductionPressableHint
@@ -170,7 +184,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [quoteOrders, setQuoteOrders] = useState([]);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [materialsJob, setMaterialsJob] = useState(null);
+  const [materialsTarget, setMaterialsTarget] = useState(null);
   const [jobFilter, setJobFilter] = useState('all');
 
   const loadJobs = useCallback(async ({ showLoading = true } = {}) => {
@@ -319,7 +333,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         ))}
       </View>
       {loading && combinedItems.length === 0 ? (
-        <ActivityIndicator color={theme.primary} style={{ marginVertical: 16 }} />
+        <ActivityIndicator color={KIOSK_ICON_BLUE_ON_DARK} style={{ marginVertical: 16 }} />
       ) : null}
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
       <FlatList
@@ -328,6 +342,11 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         refreshing={loading}
         onRefresh={() => loadJobs({ showLoading: true })}
         contentContainerStyle={combinedItems.length === 0 ? styles.listEmpty : { paddingBottom: 24 }}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        removeClippedSubviews
+        updateCellsBatchingPeriod={50}
         renderItem={({ item }) => (
           item._kind === 'quote' ? (
             <QuoteOrderJobCard
@@ -335,6 +354,12 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               locale={locale}
               textAlign={textAlign}
               onPress={() => navigation.navigate('QuoteDetail', { quote: item.quote })}
+              onMaterials={(q) => setMaterialsTarget({
+                jobKind: 'quote',
+                jobId: String(q.quote_id || ''),
+                productionRoute: 'carpentry',
+                initialLines: q.manual_material_lines || [],
+              })}
             />
           ) : (
             <JobCard
@@ -345,7 +370,11 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               onPlay={onPlay}
               onPause={onPause}
               onFinish={onFinish}
-              onMaterials={(jobRow) => setMaterialsJob(jobRow)}
+              onMaterials={(jobRow) => setMaterialsTarget({
+                jobKind: 'carpentry',
+                jobId: String(jobRow.job_id || jobRow.id || ''),
+                initialLines: jobRow.manual_material_lines || [],
+              })}
             />
           )
         )}
@@ -358,15 +387,16 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         }
       />
       <ProductionJobMaterialsModal
-        visible={!!materialsJob}
+        visible={Boolean(materialsTarget)}
         locale={locale}
         textAlign={textAlign}
-        jobKind="carpentry"
-        jobId={materialsJob?.job_id || materialsJob?.id || ''}
-        initialLines={materialsJob?.manual_material_lines || []}
-        onClose={() => setMaterialsJob(null)}
+        jobKind={materialsTarget?.jobKind || 'carpentry'}
+        jobId={materialsTarget?.jobId || ''}
+        productionRoute={materialsTarget?.productionRoute || ''}
+        initialLines={materialsTarget?.initialLines || []}
+        onClose={() => setMaterialsTarget(null)}
         onSaved={() => {
-          setMaterialsJob(null);
+          setMaterialsTarget(null);
           loadJobs();
         }}
       />

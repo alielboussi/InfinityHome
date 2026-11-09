@@ -6,7 +6,7 @@
 |--------|----------|------|
 | **`mobile-apps/warehouse-upholstery`** | **Upholstery** | Create, stock, manufacture, Hassan quotes (Floor 1) |
 | **`mobile-apps/warehouse-delivery`** | **Delivery** | Kitwe truck send |
-| **`mobile-apps/carpentry-workshop`** | **Carpentry** | Floor 2, finishing, carpentry quotes |
+| **`mobile-apps/carpentry-workshop`** | **Carpentry** | Floor 2 manufacture, painting handoff, carpentry quotes |
 
 There is **no** `warehouse-production` folder anymore — it was renamed to **`warehouse-upholstery`**.
 

@@ -589,12 +589,14 @@ export async function saveProductionJobMaterials({
   jobKind,
   jobId,
   returnOrderId,
+  productionRoute,
   materialLines,
 } = {}) {
   return productionOp('production-job-materials-save', {
     job_kind: jobKind,
     job_id: jobId,
     return_order_id: returnOrderId,
+    production_route: productionRoute,
     material_lines: materialLines,
   });
 }

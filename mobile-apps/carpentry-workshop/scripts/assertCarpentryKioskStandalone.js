@@ -58,4 +58,30 @@ if (badImport) {
   process.exit(1);
 }
 
+const topBarAppRoot = path.join(__dirname, '..', 'components', 'ProductionKioskTopBar.js');
+if (!fs.existsSync(topBarAppRoot)) {
+  console.error('FAIL: components/ProductionKioskTopBar.js missing — run npm run materialize');
+  process.exit(1);
+}
+
+const carpentryAccessHook = path.join(__dirname, '..', 'hooks', 'useCarpentryAccessGrant.js');
+if (!fs.existsSync(carpentryAccessHook)) {
+  console.error('FAIL: hooks/useCarpentryAccessGrant.js missing — restore from git or run materialize');
+  process.exit(1);
+}
+
+const appBuildNoteShim = path.join(__dirname, '..', 'lib', 'buildDeliveryNotePrintHtml.js');
+if (fs.existsSync(appBuildNoteShim)) {
+  const body = fs.readFileSync(appBuildNoteShim, 'utf8');
+  if (/\.\/_repoUtils\//.test(body)) {
+    console.error('FAIL: lib/buildDeliveryNotePrintHtml.js still imports ./_repoUtils — run npm run materialize');
+    process.exit(1);
+  }
+}
+const kioskRepoUtils = path.join(__dirname, '..', 'productionKiosk', 'lib', '_repoUtils', 'buildDeliveryNotePrintHtml.js');
+if (!fs.existsSync(kioskRepoUtils)) {
+  console.error('FAIL: productionKiosk/lib/_repoUtils missing — run npm run materialize');
+  process.exit(1);
+}
+
 console.log('[assertCarpentryKioskStandalone] ok');

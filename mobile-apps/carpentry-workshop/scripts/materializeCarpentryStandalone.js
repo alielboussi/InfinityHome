@@ -279,12 +279,99 @@ function main() {
     process.exit(1);
   }
 
+  materializeAppRootKioskUi();
+
   safeWriteFileSync(
     path.join(kioskPath, '.standalone-materialized'),
     `Materialized from warehouse-upholstery at ${new Date().toISOString()}\n`,
   );
 
   console.log('[materializeCarpentryStandalone] ok');
+}
+
+const CARPENTRY_APP_HOOKS = new Set([
+  'useCarpentryAccessGrant.js',
+]);
+
+const KIOSK_LIB_PREFIX = '../productionKiosk/lib';
+
+/** App lib shims must not use ./_repoUtils (not vendored at app root) — use productionKiosk copy. */
+function patchAppRootLibRepoShims() {
+  const libDir = path.join(appRoot, 'lib');
+  const kioskRepoUtils = path.join(kioskPath, 'lib', '_repoUtils', 'buildDeliveryNotePrintHtml.js');
+  if (!fs.existsSync(kioskRepoUtils)) {
+    console.error('[materializeCarpentryStandalone] missing productionKiosk/lib/_repoUtils — vendor step failed');
+    process.exit(1);
+  }
+  const vendoredAtApp = path.join(libDir, '_repoUtils');
+  if (fs.existsSync(vendoredAtApp)) rmDeep(vendoredAtApp);
+  const vendoredConstsAtApp = path.join(libDir, '_repoConstants');
+  if (fs.existsSync(vendoredConstsAtApp)) rmDeep(vendoredConstsAtApp);
+
+  if (!fs.existsSync(libDir)) return;
+  for (const name of fs.readdirSync(libDir)) {
+    if (!name.endsWith('.js')) continue;
+    const filePath = path.join(libDir, name);
+    let text = fs.readFileSync(filePath, 'utf8');
+    let next = text
+      .replace(/from '\.\/_repoUtils\//g, `from '${KIOSK_LIB_PREFIX}/_repoUtils/`)
+      .replace(/from "\.\/_repoUtils\//g, `from "${KIOSK_LIB_PREFIX}/_repoUtils/`);
+    next = next
+      .replace(/from '\.\/_repoConstants\//g, `from '${KIOSK_LIB_PREFIX}/_repoConstants/`)
+      .replace(/from "\.\/_repoConstants\//g, `from "${KIOSK_LIB_PREFIX}/_repoConstants/`);
+    if (next !== text) safeWriteFileSync(filePath, next);
+  }
+}
+
+/** App-root components/hooks/lib for screens (Repairs) that match upholstery import paths. */
+function materializeAppRootKioskUi() {
+  const preservedHooks = new Map();
+  const hooksDest = path.join(appRoot, 'hooks');
+  if (fs.existsSync(hooksDest)) {
+    for (const name of fs.readdirSync(hooksDest)) {
+      if (!name.endsWith('.js')) continue;
+      if (CARPENTRY_APP_HOOKS.has(name)) {
+        preservedHooks.set(name, fs.readFileSync(path.join(hooksDest, name), 'utf8'));
+      }
+    }
+  }
+
+  for (const dirName of ['components', 'hooks']) {
+    const src = path.join(kioskPath, dirName);
+    const dest = path.join(appRoot, dirName);
+    if (isPathLink(dest)) rmDeep(dest);
+    rmDeep(dest);
+    if (fs.existsSync(src)) copyDir(src, dest);
+  }
+
+  for (const [name, content] of preservedHooks) {
+    safeWriteFileSync(path.join(hooksDest, name), content);
+  }
+
+  const srcLib = path.join(kioskPath, 'lib');
+  const destLib = path.join(appRoot, 'lib');
+  if (fs.existsSync(srcLib)) {
+    if (isPathLink(destLib)) rmDeep(destLib);
+    fs.mkdirSync(destLib, { recursive: true });
+    for (const name of fs.readdirSync(srcLib)) {
+      if (name === '_repoUtils' || name === '_repoConstants') continue;
+      const src = path.join(srcLib, name);
+      const dest = path.join(destLib, name);
+      if (fs.statSync(src).isDirectory()) {
+        copyDir(src, dest);
+      } else if (name.endsWith('.js')) {
+        copyFile(src, dest);
+      }
+    }
+  }
+
+  patchAppRootLibRepoShims();
+
+  const topBar = path.join(appRoot, 'components', 'ProductionKioskTopBar.js');
+  if (!fs.existsSync(topBar)) {
+    console.error('[materializeCarpentryStandalone] failed — app-root ProductionKioskTopBar missing');
+    process.exit(1);
+  }
 }
 
 main();

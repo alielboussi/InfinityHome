@@ -62,22 +62,25 @@ function buildCarpentryLineExtraTexts(line, tUi, locale) {
   return rows;
 }
 
-export function summarizeProductionQuoteCardExtras(lines, route) {
+export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale) {
   const normalized = String(route || '').toLowerCase();
   const list = Array.isArray(lines) ? lines : [];
   const bits = [];
+  const translate = typeof tUi === 'function'
+    ? (key, fallback) => tUi(key, locale) || fallback
+    : (_key, fallback) => fallback;
   for (const line of list.slice(0, 3)) {
     if (normalized === 'upholstery') {
-      if (line.leather_code) bits.push(`Leather: ${line.leather_code}`);
-      if (line.description) bits.push(`Desc: "${line.description}"`);
+      if (line.leather_code) bits.push(`${translate('quoteOrderLeatherCode', 'Leather')}: ${line.leather_code}`);
+      if (line.description) bits.push(`${translate('quoteOrderDescription', 'Desc')}: "${line.description}"`);
     }
     if (normalized === 'carpentry') {
-      if (line.wood) bits.push(`Wood: ${line.wood}`);
+      if (line.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${line.wood}`);
       const dims = formatDimensionsCm(line);
-      if (dims) bits.push(`L×W×H (cm): ${dims}`);
-      if (line.color_code) bits.push(`Color: ${line.color_code}`);
+      if (dims) bits.push(`${translate('quoteOrderDimensions', 'L×W×H (cm)')}: ${dims}`);
+      if (line.color_code) bits.push(`${translate('quoteOrderColorCode', 'Color')}: ${line.color_code}`);
       const acc = normalizeAccessoriesList(line.accessories);
-      if (acc.length) bits.push(`Included Accessories : ${acc.join(', ')}`);
+      if (acc.length) bits.push(`${translate('quoteOrderIncludedAccessories', 'Included Accessories')} : ${acc.join(', ')}`);
     }
   }
   return bits.join(' · ');
@@ -191,7 +194,7 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
     );
   }
 
-  const extras = summarizeProductionQuoteCardExtras(allLines, route);
+  const extras = summarizeProductionQuoteCardExtras(allLines, route, tUi, locale);
   if (!extras && !hasDrawing) return null;
   return (
     <View style={styles.cardExtras}>

@@ -7,7 +7,6 @@ import {
 } from './carpentryCatalog.js';
 import {
   adjustAssemblyInventory,
-  deductStoreroomBomMaterials,
   resolveCarpentryStoreroomLocations,
 } from './storeroomBomDeduction.js';
 
@@ -104,10 +103,7 @@ async function loadCarpentryProductContext(sb, assemblyId) {
   const catalog = listCarpentryCatalogProducts([assembly]);
   const product = catalog[0];
   if (!product) throw new Error('Product is not in the Carpentry catalog');
-  const materials = product.materials || [];
-  if (!materials.length) throw new Error('No materials defined for this product');
-
-  return { productId, product, materials, carpentryLocs, assembly };
+  return { productId, product, carpentryLocs, assembly };
 }
 
 export async function startCarpentryProductionJob(sb, {
@@ -121,7 +117,6 @@ export async function startCarpentryProductionJob(sb, {
   }
 
   const ctx = await loadCarpentryProductContext(sb, assemblyId);
-  const usageRows = await deductStoreroomBomMaterials(sb, ctx.materials, 1, ctx.carpentryLocs);
 
   const now = new Date().toISOString();
   const jobId = newUuid();
@@ -139,7 +134,8 @@ export async function startCarpentryProductionJob(sb, {
     accepted_by: userId || null,
     metadata: {
       channel: 'carpentry_workshop_app',
-      material_usage_rows: usageRows,
+      material_usage_rows: [],
+      manual_material_lines: [],
       storeroom_location_ids: ctx.carpentryLocs.map((l) => l.id).filter(Boolean),
     },
     created_at: now,
@@ -149,10 +145,6 @@ export async function startCarpentryProductionJob(sb, {
   const { data: inserted, error: insErr } = await sb.from(JOBS).insert(row).select('*').single();
   if (insErr) throw new Error(insErr.message || 'Failed to create carpentry job');
   if (!inserted?.id) throw new Error('Failed to create carpentry job (no row returned)');
-
-  await Promise.all(
-    ctx.carpentryLocs.map((loc) => recomputeWarehouseLocationStockServer(sb, loc.id)),
-  );
 
   return { job: serializeJob(inserted) };
 }
@@ -220,7 +212,10 @@ export async function finishCarpentryProductionJob(sb, {
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
   const outputLocationId = floor2Loc?.id ? String(floor2Loc.id) : WAREHOUSE_FACTORY_LOCATION_ID;
 
-  await adjustAssemblyInventory(sb, productId, outputLocationId, 1);
+  // Floor 2 WIP is added on Manufacture. Jobs only return WIP taken via floor2_push.
+  if (meta.floor2_push) {
+    await adjustAssemblyInventory(sb, productId, outputLocationId, 1);
+  }
 
   const now = new Date().toISOString();
   const finalElapsed = computeElapsedMs(job);
@@ -261,7 +256,9 @@ export async function finishCarpentryProductionJob(sb, {
   for (const locId of storeroomIds) {
     if (locId) await recomputeWarehouseLocationStockServer(sb, locId);
   }
-  await recomputeWarehouseLocationStockServer(sb, outputLocationId);
+  if (meta.floor2_push && outputLocationId) {
+    await recomputeWarehouseLocationStockServer(sb, outputLocationId);
+  }
 
   const updated = await saveJobPatch(sb, job.id, {
     status: 'completed',

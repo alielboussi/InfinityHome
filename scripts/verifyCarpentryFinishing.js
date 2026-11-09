@@ -1,5 +1,5 @@
 /**
- * Carpentry finishing: Floor 2 unfinished → Floor 1 same SKU.
+ * Floor 2 WIP list helpers (no direct Carpentry → Floor 1; use Painting or Upholstery).
  */
 import assert from 'node:assert/strict';
 import { buildCarpentryFinishingCandidates } from '../src/utils/carpentryFinishingView.js';

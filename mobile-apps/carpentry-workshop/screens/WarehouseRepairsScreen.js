@@ -12,7 +12,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../productionKiosk/components/ProductionKioskTopBar';
-import { kiosk } from '../productionKiosk/components/kioskStyles';
+import { kiosk, KIOSK_ICON_BLUE_ON_DARK } from '../productionKiosk/components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../productionKiosk/lib/productionKioskI18n';
@@ -101,7 +101,7 @@ function RepairCard({
             onPress={() => onPlay(row)}
             accessibilityLabel={tUi('returnAccept', locale)}
           >
-            <MaterialCommunityIcons name="play-circle" size={52} color={theme.primary} />
+            <MaterialCommunityIcons name="play-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         {isRunning ? (
@@ -111,7 +111,7 @@ function RepairCard({
             onPress={() => onPause(row)}
             accessibilityLabel={tUi('upholsteryJobPause', locale)}
           >
-            <MaterialCommunityIcons name="pause-circle" size={52} color={theme.primary} />
+            <MaterialCommunityIcons name="pause-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         {canMaterials ? (
@@ -121,7 +121,7 @@ function RepairCard({
             onPress={() => onMaterials?.(row)}
             accessibilityLabel={tUi('quoteOrderMaterials', locale)}
           >
-            <MaterialCommunityIcons name="wrench" size={48} color={theme.primary} />
+            <MaterialCommunityIcons name="wrench" size={48} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         {inRepair ? (
@@ -288,7 +288,7 @@ export default function WarehouseRepairsScreen({
       </Pressable>
       {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 24 }} color={theme.primary} />
+        <ActivityIndicator style={{ marginTop: 24 }} color={KIOSK_ICON_BLUE_ON_DARK} />
       ) : (
         <FlatList
           data={rows}

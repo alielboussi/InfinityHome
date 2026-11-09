@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
@@ -22,6 +23,7 @@ import {
   fetchUpholsteryProductionQuotes,
   scanUpholsteryQuoteMaterial,
 } from '../services/productionApi';
+import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { theme } from '../shared/theme';
 import {
   QuoteProductionDrawingSection,
@@ -50,6 +52,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const [scan, setScan] = useState('');
   const [scanOpen, setScanOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
 
   useEffect(() => {
     if (!quoteId || Array.isArray(quote.lines)) return;
@@ -189,6 +192,18 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         </Pressable>
       ) : null}
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderMaterials', locale)}</Text>
+      {!completed && quote.sent_to_production_at ? (
+        <Pressable
+          style={[kiosk.btn, kiosk.btnPrimary, styles.actionBtn, styles.wrenchRow]}
+          disabled={busy}
+          onPress={() => setMaterialsOpen(true)}
+        >
+          <MaterialCommunityIcons name="wrench" size={22} color="#fff" />
+          <Text style={[kiosk.btnText, kiosk.btnPrimaryText, styles.wrenchRowText]}>
+            {tUi('quoteOrderMaterials', locale)}
+          </Text>
+        </Pressable>
+      ) : null}
       <TextInput
         style={[kiosk.input, { textAlign: locale === 'ar' ? 'right' : 'left' }]}
         value={scan}
@@ -227,6 +242,26 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         tUi={tUi}
         locale={locale}
       />
+      <ProductionJobMaterialsModal
+        visible={materialsOpen}
+        locale={locale}
+        textAlign={textAlign}
+        jobKind="quote"
+        jobId={quoteId}
+        productionRoute="upholstery"
+        initialLines={quote.manual_material_lines || []}
+        onClose={() => setMaterialsOpen(false)}
+        onSaved={async () => {
+          setMaterialsOpen(false);
+          try {
+            const list = await fetchUpholsteryProductionQuotes();
+            const found = (Array.isArray(list) ? list : []).find((q) => String(q.quote_id) === quoteId);
+            if (found) setQuote(found);
+          } catch {
+            // ignore
+          }
+        }}
+      />
     </ScrollView>
   );
 }
@@ -245,4 +280,6 @@ const styles = StyleSheet.create({
   danger: { backgroundColor: '#7f1d1d' },
   section: { marginTop: 16, marginBottom: 8 },
   line: { color: theme.textSecondary, marginBottom: 4 },
+  wrenchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  wrenchRowText: { marginLeft: 4 },
 });

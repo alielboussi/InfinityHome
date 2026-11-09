@@ -54,6 +54,7 @@ export default function ProductionJobMaterialsModal({
   jobKind,
   jobId,
   returnOrderId = '',
+  productionRoute = '',
   initialLines = [],
   onSaved,
 }) {
@@ -87,11 +88,11 @@ export default function ProductionJobMaterialsModal({
       const list = await fetchProductionStoreroomMaterials();
       setCatalog(Array.isArray(list) ? list : []);
     } catch (e) {
-      setError(e?.message || 'Failed to load storeroom materials');
+      setError(e?.message || tUi('materialsLoadFailed', locale));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     if (visible) loadCatalog();
@@ -180,12 +181,13 @@ export default function ProductionJobMaterialsModal({
         jobKind,
         jobId,
         returnOrderId,
+        productionRoute,
         materialLines: payload,
       });
       onSaved?.(payload);
       onClose?.();
     } catch (e) {
-      Alert.alert(tUi('quoteOrderMaterials', locale), e?.message || 'Save failed');
+      Alert.alert(tUi('quoteOrderMaterials', locale), e?.message || tUi('saveFailedGeneric', locale));
     } finally {
       setSaving(false);
     }
@@ -236,7 +238,9 @@ export default function ProductionJobMaterialsModal({
                   <Text style={styles.lineName}>{item.name || stock?.name}</Text>
                   <Text style={styles.lineSku}>{item.family_sku || stock?.family_sku}</Text>
                   <Text style={styles.lineUom}>{tUi('manufactureRawQty', locale).replace('{qty}', String(stock?.quantity ?? '—'))}</Text>
-                  <Text style={styles.lineUomLabel}>UOM: {item.uom || stock?.uom || 'ea'}</Text>
+                  <Text style={styles.lineUomLabel}>
+                    {tUi('materialsUomLabel', locale)}: {item.uom || stock?.uom || 'ea'}
+                  </Text>
                 </View>
                 <View style={styles.qtyRow}>
                   <Pressable style={styles.stepBtn} onPress={() => bumpQty(item.assembly_id, -1)}>

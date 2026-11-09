@@ -1,4 +1,4 @@
-// @refresh reset — Floor 2 → production job (deduct WIP, cap at on-hand).
+// @refresh reset — Upholster raw WIP on Floor 2 (BOM + raw deduct → finished stock).
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -23,8 +23,9 @@ import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import {
-  fetchProductionFloor2Products,
-  pushProductionFloor2Manufacture,
+  fetchUpholsteryManufactureProducts,
+  runUpholsteryManufacture,
+  invalidateUpholsteryManufactureListCache,
 } from '../services/productionApi';
 import ProductionPressableHint from '../lib/ProductionPressableHint';
 import { theme } from '../shared/theme';
@@ -74,7 +75,7 @@ function findMatchingFloor2ProductByScan(products, rawScan) {
   const probeLower = probe.toLowerCase();
 
   for (const item of products || []) {
-    const sku = String(item?.family_sku || '').trim();
+    const sku = String(item?.family_sku || item?.raw_sku || item?.finished_sku || '').trim();
     if (sku) {
       if (sku.toLowerCase() === probeLower) return item;
       const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
@@ -82,7 +83,7 @@ function findMatchingFloor2ProductByScan(products, rawScan) {
         if (k && storedKeys.has(k)) return item;
       }
     }
-    const name = String(item?.name || '').trim();
+    const name = String(item?.raw_name || item?.name || item?.finished_name || '').trim();
     if (name && name.toLowerCase() === probeLower) return item;
     if (name && name.toLowerCase().includes(probeLower)) return item;
   }
@@ -109,7 +110,6 @@ export default function ManufactureScreen({
   const [busyId, setBusyId] = useState('');
   const [qtyModal, setQtyModal] = useState(null);
   const [qtyDraft, setQtyDraft] = useState('1');
-  const [stockTab, setStockTab] = useState('all');
 
   const loadList = useCallback(async ({ fromPull = false } = {}) => {
     if (!allowed) {
@@ -123,10 +123,10 @@ export default function ManufactureScreen({
     else if (fromPull) setRefreshing(true);
     setError('');
     try {
-      const list = await fetchProductionFloor2Products();
+      const list = await fetchUpholsteryManufactureProducts({ force: fromPull });
       const sorted = (Array.isArray(list) ? list : [])
         .slice()
-        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        .sort((a, b) => String(a.raw_name || a.name || '').localeCompare(String(b.raw_name || b.name || '')));
       setProducts(sorted);
     } catch (e) {
       setError(e?.message || tUi('manufactureLoadFailed', locale));
@@ -147,18 +147,20 @@ export default function ManufactureScreen({
     }, [loadList, route?.params?.openScan, navigation]),
   );
 
+  const inStockProducts = useMemo(
+    () => (products || []).filter((item) => floor2Qty(item) > 0),
+    [products],
+  );
+
   const filteredProducts = useMemo(() => {
     const raw = String(search || '').trim();
-    let base = products;
-    if (stockTab === 'stock') {
-      base = base.filter((item) => floor2Qty(item) > 0);
-    }
-    if (!raw) return base;
+    if (!raw) return inStockProducts;
     const q = raw.toLowerCase();
     const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
-    return base.filter((item) => {
-      if (String(item.name || '').toLowerCase().includes(q)) return true;
-      const sku = String(item.family_sku || '');
+    return inStockProducts.filter((item) => {
+      const label = String(item.raw_name || item.name || item.finished_name || '');
+      if (label.toLowerCase().includes(q)) return true;
+      const sku = String(item.raw_sku || item.family_sku || item.finished_sku || '');
       if (sku.toLowerCase().includes(q)) return true;
       const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
       for (const k of qKeys) {
@@ -166,7 +168,7 @@ export default function ManufactureScreen({
       }
       return false;
     });
-  }, [products, search, stockTab]);
+  }, [inStockProducts, search]);
 
   const hasSearch = Boolean(String(search || '').trim());
 
@@ -211,30 +213,30 @@ export default function ManufactureScreen({
   const confirmAdd = async () => {
     if (!qtyModal?.item) return;
     const item = qtyModal.item;
-    const assemblyId = String(item.id || item.assembly_id || '');
+    const rawAssemblyId = String(item.raw_assembly_id || item.id || item.assembly_id || '');
     const max = floor2Qty(item);
     const rawNum = Math.floor(Number(qtyDraft) || 0);
     if (!Number.isFinite(rawNum) || rawNum < 1) {
-      Alert.alert(tUi('manufactureAddStockTitle', locale), tUi('needQty', locale));
+      Alert.alert(tUi('manufactureDeductTitle', locale), tUi('needQty', locale));
       return;
     }
     if (rawNum > max) {
       Alert.alert(
-        tUi('manufactureAddStockTitle', locale),
+        tUi('manufactureDeductTitle', locale),
         tUi('paintingQtyExceedsAvailable', locale).replace('{max}', String(max)),
       );
       return;
     }
     setQtyModal(null);
-    setBusyId(assemblyId);
+    setBusyId(rawAssemblyId);
     try {
-      const res = await pushProductionFloor2Manufacture({
-        assemblyId,
+      await runUpholsteryManufacture({
+        rawAssemblyId,
         productQty: rawNum,
-        channel: 'upholstery',
       });
-      await loadList();
-      navigation.navigate('Jobs', { initialJob: res?.job || res });
+      invalidateUpholsteryManufactureListCache();
+      await loadList({ fromPull: true });
+      Alert.alert(tUi('manufactureTitle', locale), tUi('manufactureDone', locale));
     } catch (e) {
       Alert.alert(tUi('manufactureFailed', locale), e?.message || tUi('manufactureFailed', locale));
     } finally {
@@ -243,8 +245,9 @@ export default function ManufactureScreen({
   };
 
   const renderProductCard = ({ item }) => {
-    const id = String(item.id || item.assembly_id || '');
+    const id = String(item.raw_assembly_id || item.id || item.assembly_id || '');
     const qty = floor2Qty(item);
+    const displayName = String(item.raw_name || item.name || item.finished_name || '');
     const cardImage = resolveFloor2ProductImage(item);
     const cardBusy = busyId === id;
 
@@ -262,7 +265,13 @@ export default function ManufactureScreen({
         ]}
       >
         {cardImage ? (
-          <Image source={{ uri: cardImage }} style={styles.tileImage} resizeMode="cover" />
+          <Image
+            source={{ uri: cardImage }}
+            style={styles.tileImage}
+            resizeMode="cover"
+            resizeMethod="resize"
+            fadeDuration={0}
+          />
         ) : (
           <View style={styles.tileImagePlaceholder} />
         )}
@@ -277,7 +286,7 @@ export default function ManufactureScreen({
           <Text style={styles.qtyBadgeText}>{String(qty)}</Text>
         </View>
         <View style={styles.tileNameBar}>
-          <Text style={styles.tileName}>{item.name}</Text>
+          <Text style={styles.tileName}>{displayName}</Text>
           <Text style={styles.tileQty}>
             {tUi('manufactureQtyLabel', locale).replace('{qty}', String(qty))}
           </Text>
@@ -322,24 +331,6 @@ export default function ManufactureScreen({
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntroFloor2', locale)}</Text>
-      <View style={styles.tabRow}>
-        <Pressable
-          style={[styles.tabChip, stockTab === 'all' && styles.tabChipActive]}
-          onPress={() => setStockTab('all')}
-        >
-          <Text style={[styles.tabChipText, stockTab === 'all' && styles.tabChipTextActive]}>
-            {tUi('manufactureTabAll', locale)}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabChip, stockTab === 'stock' && styles.tabChipActive]}
-          onPress={() => setStockTab('stock')}
-        >
-          <Text style={[styles.tabChipText, stockTab === 'stock' && styles.tabChipTextActive]}>
-            {tUi('manufactureTabInStock', locale)}
-          </Text>
-        </Pressable>
-      </View>
       <View style={styles.searchRow}>
         <TextInput
           style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
@@ -377,10 +368,15 @@ export default function ManufactureScreen({
         contentContainerStyle={filteredProducts.length === 0 ? styles.listEmpty : styles.gridContent}
         renderItem={renderProductCard}
         keyboardShouldPersistTaps="handled"
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        removeClippedSubviews
+        updateCellsBatchingPeriod={50}
         ListEmptyComponent={
           !loading && !error && !hasSearch ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>
-              {tUi('manufactureEmpty', locale)}
+              {tUi(products.length ? 'manufactureEmptyNoStock' : 'manufactureUpholsteryEmpty', locale)}
             </Text>
           ) : null
         }
@@ -390,7 +386,9 @@ export default function ManufactureScreen({
         <Pressable style={styles.modalBackdrop} onPress={() => setQtyModal(null)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>{tUi('manufactureDeductTitle', locale)}</Text>
-            <Text style={styles.modalProductName}>{qtyModal?.item?.name || ''}</Text>
+            <Text style={styles.modalProductName}>
+              {qtyModal?.item?.raw_name || qtyModal?.item?.name || qtyModal?.item?.finished_name || ''}
+            </Text>
             <Text style={styles.modalSub}>
               {tUi('manufactureQtyLabel', locale).replace('{qty}', String(floor2Qty(qtyModal?.item)))}
             </Text>
@@ -447,18 +445,6 @@ export default function ManufactureScreen({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   intro: { marginBottom: 8 },
-  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  tabChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.card,
-  },
-  tabChipActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft || '#e0f2fe' },
-  tabChipText: { fontWeight: '700', color: theme.textMuted },
-  tabChipTextActive: { color: theme.primary },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',

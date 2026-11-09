@@ -3,8 +3,8 @@ import { normalizeWarehousePacketScan } from '../../src/utils/warehouseScanResol
 import { newUuid } from './uuid.js';
 import { enqueueWarehouseProductionLabelJob } from './productionLabelPrint.js';
 import { logWarehouseProductionStockIncrease } from './warehouseProductionLog.js';
+import { resolveCarpentryStoreroomLocations } from './storeroomBomDeduction.js';
 import {
-  consumeUpholsteryRawAndMaterials,
   creditUpholsteryFinishedOutput,
   loadUpholsteryManufactureContext,
   recomputeUpholsteryManufactureLocations,
@@ -117,11 +117,7 @@ export async function startUpholsteryProductionJob(sb, {
     throw new Error('Each job is one product only (qty 1). Start a new job for another unit.');
   }
   const ctx = await loadUpholsteryManufactureContext(sb, rawAssemblyId);
-  const { qty, materialUsageRows, storeroomLocsForRecompute } = await consumeUpholsteryRawAndMaterials(
-    sb,
-    ctx,
-    1,
-  );
+  const storeroomLocsForRecompute = await resolveCarpentryStoreroomLocations(sb);
 
   const now = new Date().toISOString();
   const jobId = newUuid();
@@ -145,7 +141,8 @@ export async function startUpholsteryProductionJob(sb, {
     accepted_by: userId || null,
     metadata: {
       channel: 'warehouse_production_app',
-      material_usage_rows: materialUsageRows,
+      material_usage_rows: [],
+      manual_material_lines: [],
       storeroom_location_ids: storeroomLocsForRecompute.map((l) => l.id).filter(Boolean),
     },
     created_at: now,
@@ -155,10 +152,6 @@ export async function startUpholsteryProductionJob(sb, {
   const { data: inserted, error: insErr } = await sb.from(JOBS).insert(row).select('*').single();
   if (insErr) throw new Error(insErr.message || 'Failed to create production job');
   if (!inserted?.id) throw new Error('Failed to create production job (no row returned)');
-
-  await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocsForRecompute, {
-    includeFactory: false,
-  });
 
   return { job: serializeJob(inserted) };
 }

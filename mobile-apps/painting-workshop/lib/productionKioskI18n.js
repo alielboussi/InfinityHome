@@ -356,6 +356,7 @@ const UI_STRINGS = {
   },
   paintingJobsTitle: { en: 'Painting jobs', ar: 'مهام الدهان' },
   dashRepairs: { en: 'Repairs', ar: 'إصلاحات' },
+  paintingOrdersTitle: { en: 'Orders', ar: 'الطلبات' },
   repairQueueEmpty: { en: 'No repair jobs in this queue.', ar: 'لا توجد إصلاحات في هذه القائمة.' },
   repairCompleteConfirm: {
     en: 'Stop the repair timer and choose what happens next.',
@@ -380,9 +381,14 @@ const UI_STRINGS = {
     ar: 'تم — المخزون الجاهز في Warehouse Floor 1.',
   },
   paintingJobEmpty: {
-    en: 'No painting jobs yet. Carpentry sends WIP from Floor 2 using the Painting button.',
-    ar: 'لا مهام دهان بعد. ترسل النجارة من Floor 2 عبر زر الدهان.',
+    en: 'No painting jobs or Hassan returns in the queue. Carpentry can send Floor 2 WIP or completed orders.',
+    ar: 'لا مهام دهان أو مرتجعات حسن في القائمة. يمكن للنجارة إرسال WIP من Floor 2 أو الطلبات المكتملة.',
   },
+  paintingQueueBadgeReturn: { en: 'Return', ar: 'مرتجع' },
+  paintingQueueBadgeCarpentryOrder: { en: 'Carpentry order (Floor 2)', ar: 'طلب نجارة (طابق 2)' },
+  paintingQueueBadgeCarpentryOrderFinished: { en: 'Carpentry order (finished)', ar: 'طلب نجارة (جاهز)' },
+  paintingQueueBadgeFloor2: { en: 'Floor 2 WIP', ar: 'WIP طابق 2' },
+  paintingOpenPushSettings: { en: 'Alerts', ar: 'التنبيهات' },
   paintingJobControlsHint: {
     en: 'Play · Pause · Stop (complete → Floor 1)',
     ar: 'تشغيل · إيقاف مؤقت · Stop (إنهاء → Floor 1)',

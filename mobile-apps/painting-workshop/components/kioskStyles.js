@@ -1,6 +1,10 @@
 import { StyleSheet } from 'react-native';
 import { portalButtonText, theme } from '../shared/theme';
 
+/** Dashboard / action icons — readable blue on white tiles and dark cards. */
+export const KIOSK_ICON_BLUE = '#2563eb';
+export const KIOSK_ICON_BLUE_ON_DARK = '#38bdf8';
+
 export const kiosk = StyleSheet.create({
   screen: {
     backgroundColor: theme.bg,
@@ -431,20 +435,19 @@ export const kiosk = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 8,
     paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   dashTileCard: {
     borderRadius: 14,
     borderColor: '#cbd5e1',
     paddingHorizontal: 10,
     paddingVertical: 12,
-    shadowOpacity: 0.14,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   dashTileCompact: {
     paddingHorizontal: 4,

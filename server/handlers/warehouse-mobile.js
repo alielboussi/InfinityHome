@@ -1454,6 +1454,20 @@ async function opPaintingSendFromFloor2(body, user) {
   });
 }
 
+async function opPaintingFromCarpentryQuote(body, user) {
+  await assertCarpentryWorkshopUser(user);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  if (!quoteId) throw new Error('quote_id required');
+  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty ?? body.quantity) || 1));
+  const sb = createFirestoreServerClient();
+  const { sendCarpentryQuoteToPaintingDepartment } = await import('../lib/paintingProductionJobs.js');
+  return sendCarpentryQuoteToPaintingDepartment(sb, {
+    quoteId,
+    productQty,
+    userId: user?.id || user?.uid,
+  });
+}
+
 async function opPaintingJobList(body, user) {
   try {
     await assertPaintingWorkshopUser(user);
@@ -1496,28 +1510,6 @@ async function opPaintingJobFinish(body, user) {
   return finishPaintingProductionJob(sb, {
     jobId,
     userId: user?.id || user?.uid,
-  });
-}
-
-async function opCarpentryFinishingList(user) {
-  await assertCarpentryWorkshopUser(user);
-  const sb = createFirestoreServerClient();
-  const { listCarpentryFinishingCandidates } = await import('../lib/carpentryFinishing.js');
-  return listCarpentryFinishingCandidates(sb);
-}
-
-async function opCarpentryFinishing(body, user) {
-  await assertCarpentryWorkshopUser(user);
-  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
-  if (!assemblyId) throw new Error('assembly_id required');
-  const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty) || 1));
-  const sb = createFirestoreServerClient();
-  const { executeCarpentryFinishing } = await import('../lib/carpentryFinishing.js');
-  return executeCarpentryFinishing(sb, {
-    assemblyId,
-    productQty,
-    userId: user?.id || user?.uid,
-    channel: 'carpentry_workshop_app',
   });
 }
 
@@ -1632,19 +1624,23 @@ async function opProductionStoreroomMaterialsList(user) {
 
 async function opProductionJobMaterialsSave(body, user) {
   await assertProductionKioskUser(user);
-  const jobKind = String(body.job_kind || body.jobKind || body.route || '').trim().toLowerCase();
+  const jobKind = String(body.job_kind || body.jobKind || '').trim().toLowerCase();
   const jobId = String(body.job_id || body.jobId || '').trim();
   const returnOrderId = String(body.return_order_id || body.returnOrderId || '').trim();
+  const productionRoute = String(
+    body.production_route || body.productionRoute || body.quote_route || body.quoteRoute || '',
+  ).trim().toLowerCase();
   const materialLines = Array.isArray(body.material_lines)
     ? body.material_lines
     : (Array.isArray(body.materials) ? body.materials : []);
-  if (!jobKind) throw new Error('job_kind required (upholstery|carpentry|painting|repair)');
+  if (!jobKind) throw new Error('job_kind required (upholstery|carpentry|painting|repair|quote)');
   const sb = getService();
   const { saveProductionJobMaterials } = await import('../lib/productionJobMaterials.js');
   return saveProductionJobMaterials(sb, {
     jobKind,
     jobId: jobId || returnOrderId,
     returnOrderId: jobKind === 'repair' ? (returnOrderId || jobId) : null,
+    productionRoute: jobKind === 'quote' ? productionRoute : null,
     materialLines,
   });
 }
@@ -1737,7 +1733,7 @@ async function opProductionPacketCreate(body, user) {
   const floor2SeedQty = resolveFloor2SeedQuantity(body, initialQty);
   const deferPortalCatalog = deferProductPhoto === true
     && (portalChannel === 'upholstery' || portalChannel === 'carpentry');
-  /** Upholstery & Carpentry: raw WIP seed goes on Floor 2; Floor 1 finished qty stays 0 until finished in Upholstery/Painting/Finishing. */
+  /** Upholstery & Carpentry: raw WIP seed goes on Floor 2; Floor 1 finished qty stays 0 until Painting or Upholstery completes. */
   const openingFloor1Qty = deferPortalCatalog
     ? 0
     : ((portalChannel === 'upholstery' || portalChannel === 'carpentry') ? 0 : initialQty);
@@ -4183,6 +4179,9 @@ export default async function handler(req, res) {
       case 'painting-send-from-floor2':
         result = await opPaintingSendFromFloor2(body, user);
         break;
+      case 'painting-from-carpentry-quote':
+        result = await opPaintingFromCarpentryQuote(body, user);
+        break;
       case 'painting-job-list':
         result = await opPaintingJobList(body, user);
         break;
@@ -4194,12 +4193,6 @@ export default async function handler(req, res) {
         break;
       case 'painting-job-finish':
         result = await opPaintingJobFinish(body, user);
-        break;
-      case 'carpentry-finishing-list':
-        result = await opCarpentryFinishingList(user);
-        break;
-      case 'carpentry-finishing':
-        result = await opCarpentryFinishing(body, user);
         break;
       case 'production-quotes-list':
         result = await opProductionQuotesList(body, user);

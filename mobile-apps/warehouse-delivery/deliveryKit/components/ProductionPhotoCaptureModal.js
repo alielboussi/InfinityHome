@@ -90,16 +90,16 @@ export default function ProductionPhotoCaptureModal({
         skipProcessing: false,
       });
       if (!photo?.uri) {
-        setCaptureError('Could not read the photo. Try again.');
+        setCaptureError(tUi('photoReadFailed', locale));
         return;
       }
       onCaptured(photo);
     } catch (err) {
-      setCaptureError(err?.message || 'Could not take photo.');
+      setCaptureError(err?.message || tUi('photoTakeFailed', locale));
     } finally {
       setCapturing(false);
     }
-  }, [capturing, granted, onCaptured]);
+  }, [capturing, granted, onCaptured, locale]);
 
   const permissionLoading = visible && permission === null;
   const showSettings = permission && !permission.granted && permission.canAskAgain === false;
@@ -117,7 +117,7 @@ export default function ProductionPhotoCaptureModal({
             style={styles.closeBtn}
             onPress={handleClose}
             disabled={capturing || permissionBusy}
-            accessibilityLabel="Close camera"
+            accessibilityLabel={tUi('closeCamera', locale)}
           >
             <Text style={styles.closeText}>✕</Text>
           </Pressable>

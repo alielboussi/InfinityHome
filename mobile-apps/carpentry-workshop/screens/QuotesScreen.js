@@ -96,6 +96,11 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
         refreshing={loading}
         onRefresh={load}
         contentContainerStyle={openQuotes.length === 0 ? styles.listEmpty : undefined}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={5}
+        removeClippedSubviews
+        updateCellsBatchingPeriod={50}
         renderItem={({ item }) => (
           <Pressable
             style={({ pressed }) => [kiosk.card, styles.row, pressed && styles.rowPressed]}

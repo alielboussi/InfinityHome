@@ -10,7 +10,6 @@ import { usePaintingAccessGrant } from './hooks/usePaintingAccessGrant';
 import { useProductionPushNotifications } from './hooks/useProductionPushNotifications';
 import DashboardScreen from './screens/DashboardScreen';
 import JobsScreen from './screens/JobsScreen';
-import WarehouseRepairsScreen from './screens/WarehouseRepairsScreen';
 import RepairReturnSignatureScreen from './screens/RepairReturnSignatureScreen';
 import RepairReturnDoneScreen from './screens/RepairReturnDoneScreen';
 import ProductionPushSettingsScreen from './screens/ProductionPushSettingsScreen';
@@ -42,19 +41,6 @@ function MainStack({ navigationRef }) {
 
   return (
     <Stack.Navigator initialRouteName="Dashboard" screenOptions={stackScreenOptions}>
-      <Stack.Screen name="Dashboard" options={{ headerShown: false }}>
-        {(props) => (
-          <DashboardScreen
-            {...props}
-            grant={grant}
-            userEmail={userEmail}
-            userDisplayName={userDisplayName}
-            allowed={allowed}
-            onRefreshAccess={() => refresh({ background: false })}
-            accessHint={accessHint}
-          />
-        )}
-      </Stack.Screen>
       <Stack.Screen name="Jobs" options={{ headerShown: false }}>
         {(props) => (
           <JobsScreen
@@ -65,17 +51,16 @@ function MainStack({ navigationRef }) {
           />
         )}
       </Stack.Screen>
-      <Stack.Screen name="Repairs" options={{ headerShown: false }}>
+      <Stack.Screen name="Dashboard" options={{ headerShown: false }}>
         {(props) => (
-          <WarehouseRepairsScreen
+          <DashboardScreen
             {...props}
-            route={{
-              ...props.route,
-              params: { repairDepartment: 'painting', titleKey: 'dashRepairs', ...props.route.params },
-            }}
+            grant={grant}
+            userEmail={userEmail}
+            userDisplayName={userDisplayName}
             allowed={allowed}
-            accessHint={accessHint}
             onRefreshAccess={() => refresh({ background: false })}
+            accessHint={accessHint}
           />
         )}
       </Stack.Screen>

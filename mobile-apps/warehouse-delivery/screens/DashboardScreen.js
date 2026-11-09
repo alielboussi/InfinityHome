@@ -2,7 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../deliveryKit/components/ProductionKioskTopBar';
-import { kiosk } from '../deliveryKit/components/kioskStyles';
+import { kiosk, KIOSK_ICON_BLUE } from '../deliveryKit/components/kioskStyles';
 import { kioskFooterBottomPad } from '../deliveryKit/lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../deliveryKit/lib/productionDashLayout';
 import { useProductionKioskLocale } from '../deliveryKit/hooks/useProductionKioskLocale';
@@ -26,7 +26,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
-        color={theme.primaryDark}
+        color={KIOSK_ICON_BLUE}
         style={kiosk.dashTileIcon}
       />
       <Text
