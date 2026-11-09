@@ -12,7 +12,7 @@ import { CARPENTRY_WAREHOUSE_NAMES } from '../constants/carpentryWarehouses.js';
 const ASSEMBLIES = 'warehouse_assemblies';
 const INVENTORY = 'warehouse_assembly_inventory';
 
-async function assertUniqueWarehouseSkuOnSb(sb, sku, { excludeAssemblyId } = {}) {
+async function assertUniqueWarehouseSkuOnSb(sb, sku, { excludeAssemblyId, excludeAssemblyIds } = {}) {
   const key = normalizeWarehouseSkuKey(sku);
   if (!key) throw new Error('SKU is required');
   const familySku = normalizeWarehouseProductSku(sku);
@@ -31,9 +31,14 @@ async function assertUniqueWarehouseSkuOnSb(sb, sku, { excludeAssemblyId } = {})
   if (aErr) throw new Error(aErr.message || 'Failed to validate SKU');
   if (pErr) throw new Error(pErr.message || 'Failed to validate SKU');
   if (lErr) throw new Error(lErr.message || 'Failed to validate SKU');
+  const excludeIds = new Set(
+    [excludeAssemblyId, ...(excludeAssemblyIds || [])]
+      .filter(Boolean)
+      .map((id) => String(id)),
+  );
   const productClash = (assemblies || []).find(
     (row) => normalizeWarehouseSkuKey(row.family_sku) === key
-      && String(row.id) !== String(excludeAssemblyId || ''),
+      && !excludeIds.has(String(row.id)),
   );
   if (productClash) {
     throw new Error(`SKU already used by warehouse product "${productClash.name || productClash.family_sku}".`);
@@ -287,6 +292,123 @@ export async function createStoreroomMaterial(sb, {
     location_id: locId,
     quantity: qty,
     default_uom: uom,
+  };
+}
+
+async function listStoreroomMaterialsWithSameSku(sb, assemblyRow) {
+  const key = normalizeWarehouseSkuKey(assemblyRow?.family_sku);
+  if (!key) return assemblyRow?.id ? [assemblyRow] : [];
+  const sku = normalizeWarehouseProductSku(assemblyRow.family_sku);
+  const { data, error } = await sb
+    .from(ASSEMBLIES)
+    .select('id, name, family_sku, metadata')
+    .eq('family_sku', sku);
+  if (error) throw new Error(error.message || 'Failed to look up materials by SKU');
+  const exact = (data || []).filter((row) => isStoreroomMaterialRow(row));
+  if (exact.length) return exact;
+  const { data: broad, error: broadErr } = await sb
+    .from(ASSEMBLIES)
+    .select('id, name, family_sku, metadata')
+    .ilike('family_sku', sku);
+  if (broadErr) throw new Error(broadErr.message || 'Failed to look up materials by SKU');
+  return (broad || []).filter(
+    (row) => isStoreroomMaterialRow(row)
+      && normalizeWarehouseSkuKey(row.family_sku) === key,
+  );
+}
+
+/**
+ * Update storeroom material fields; when apply_to_same_sku (default), name/SKU/UOM apply
+ * to every storeroom material assembly sharing the same SKU. Qty applies only to this row.
+ */
+export async function updateStoreroomMaterial(sb, {
+  assembly_id: assemblyId,
+  location_id: locationId,
+  name,
+  family_sku: familySkuInput,
+  default_uom: defaultUom,
+  quantity,
+  apply_to_same_sku: applyToSameSku = true,
+}) {
+  const aid = String(assemblyId || '').trim();
+  const locId = String(locationId || '').trim();
+  if (!aid) throw new Error('assembly_id required');
+  if (!locId) throw new Error('location_id required');
+
+  const { data: row, error: readErr } = await sb
+    .from(ASSEMBLIES)
+    .select('id, name, family_sku, metadata')
+    .eq('id', aid)
+    .maybeSingle();
+  if (readErr) throw new Error(readErr.message || 'Failed to read assembly');
+  if (!row?.id) throw new Error('Material not found');
+  if (!isStoreroomMaterialRow(row)) throw new Error('Not a storeroom material');
+
+  const materialName = String(name ?? row.name ?? '').trim();
+  if (!materialName) throw new Error('Material name is required');
+
+  const oldSkuKey = normalizeWarehouseSkuKey(row.family_sku);
+  let newSku = normalizeWarehouseProductSku(
+    familySkuInput !== undefined && familySkuInput !== null
+      ? familySkuInput
+      : row.family_sku,
+  );
+  if (!newSku) throw new Error('SKU is required');
+
+  const uomAllowed = await loadMaterialUomAllowedSet(sb);
+  const prevMeta = parseStoreroomMaterialMeta(row);
+  const uom = normalizeCarpentryUom(
+    defaultUom !== undefined && defaultUom !== null ? defaultUom : prevMeta.default_uom,
+    uomAllowed.size ? uomAllowed : undefined,
+  );
+  if (!uom) throw new Error('Choose a unit of measure');
+
+  const targets = applyToSameSku
+    ? await listStoreroomMaterialsWithSameSku(sb, row)
+    : [row];
+  const targetIds = targets.map((t) => String(t.id)).filter(Boolean);
+  if (!targetIds.length) throw new Error('Material not found');
+
+  const newSkuKey = normalizeWarehouseSkuKey(newSku);
+  if (newSkuKey !== oldSkuKey) {
+    await assertUniqueWarehouseSkuOnSb(sb, newSku, { excludeAssemblyIds: targetIds });
+  }
+
+  const now = new Date().toISOString();
+  for (const target of targets) {
+    const metadata = {
+      ...(target.metadata || {}),
+      storeroom: {
+        ...(target.metadata?.storeroom && typeof target.metadata.storeroom === 'object'
+          ? target.metadata.storeroom
+          : {}),
+        default_uom: uom,
+        is_storeroom_material: true,
+      },
+    };
+    const { error: updErr } = await sb.from(ASSEMBLIES).update({
+      name: materialName,
+      family_sku: newSku,
+      metadata,
+      updated_at: now,
+    }).eq('id', String(target.id));
+    if (updErr) throw new Error(updErr.message || 'Failed to update material');
+  }
+
+  const qty = Math.max(0, Number(quantity) || 0);
+  const stockResult = await setStoreroomMaterialStockQty(sb, {
+    assembly_id: aid,
+    location_id: locId,
+    quantity: qty,
+  });
+
+  return {
+    assembly_id: aid,
+    updated_assembly_ids: targetIds,
+    family_sku: newSku,
+    name: materialName,
+    default_uom: uom,
+    ...stockResult,
   };
 }
 

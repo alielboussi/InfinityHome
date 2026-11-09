@@ -138,20 +138,6 @@ export default function CarpentryPage({ embedInHub = false } = {}) {
     }
   };
 
-  const addProduct = async (assemblyId) => {
-    setBusyId(String(assemblyId));
-    setError('');
-    try {
-      await postCarpentryCatalog({ op: 'save-product', assembly_id: assemblyId, selected: true });
-      setSearch('');
-      await load({ forceFresh: true });
-    } catch (err) {
-      setError(err?.message || 'Failed to add product');
-    } finally {
-      setBusyId('');
-    }
-  };
-
   const removeProduct = async (assemblyId) => {
     const targetId = String(assemblyId);
     const prevCarpentry = carpentryProducts;

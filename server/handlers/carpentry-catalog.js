@@ -12,6 +12,7 @@ import {
   createStoreroomMaterial,
   setStoreroomMaterialStockQty,
   removeStoreroomMaterialStockAtLocation,
+  updateStoreroomMaterial,
 } from '../../src/utils/storeroomStockMutations.js';
 import {
   createMaterialUom,
@@ -84,6 +85,12 @@ export default async function handler(req, res) {
 
     if (op === 'delete-storeroom-stock') {
       const result = await removeStoreroomMaterialStockAtLocation(db, body);
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
+    if (op === 'update-storeroom-material') {
+      const result = await updateStoreroomMaterial(db, body);
       res.status(200).json({ ok: true, ...result });
       return;
     }

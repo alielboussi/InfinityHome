@@ -8,7 +8,12 @@ import { parseStoreroomMaterialMeta } from './utils/productionPortalCatalog';
 import { generateRandomWarehouseSku16, WAREHOUSE_RANDOM_SKU_LENGTH } from './utils/warehouseRandomSku';
 import { useMaterialUomOptions } from './hooks/useMaterialUomOptions';
 import { labelFromMaterialUomCode } from './constants/carpentryUom';
-import { postStoreroomCreate, postStoreroomDeleteStock, postStoreroomSetStock } from './services/carpentryCatalogApi';
+import {
+  postStoreroomCreate,
+  postStoreroomDeleteStock,
+  postStoreroomSetStock,
+  postStoreroomUpdateMaterial,
+} from './services/carpentryCatalogApi';
 
 function isStoreroomMaterialAssembly(assembly) {
   return assembly?.metadata?.storeroom?.is_storeroom_material === true;
@@ -37,6 +42,9 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
   const [stockPickQty, setStockPickQty] = useState('1');
   const [stockSearchRows, setStockSearchRows] = useState([]);
   const [stockSearchLoading, setStockSearchLoading] = useState(false);
+  const [editingId, setEditingId] = useState('');
+  const [editDraft, setEditDraft] = useState(null);
+  const [notice, setNotice] = useState('');
 
   const { options: uomOptions, defaultUom, loading: uomLoading } = useMaterialUomOptions();
 
@@ -153,6 +161,52 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
       await load();
     } catch (err) {
       setError(err?.message || 'Failed to update stock');
+    } finally {
+      setStockBusyId('');
+    }
+  };
+
+  const startEditRow = (row) => {
+    const id = String(row.assembly_id);
+    setNotice('');
+    setEditingId(id);
+    setEditDraft({
+      sku: row.sku === '—' ? '' : String(row.sku || ''),
+      name: String(row.name || ''),
+      uom: String(row.default_uom || defaultUom || ''),
+      qty: String(qtyDrafts[id] ?? row.quantity ?? ''),
+    });
+  };
+
+  const cancelEditRow = () => {
+    setEditingId('');
+    setEditDraft(null);
+  };
+
+  const saveEditRow = async (row) => {
+    if (!locationId || !editDraft) return;
+    const id = String(row.assembly_id);
+    setStockBusyId(`edit-${id}`);
+    setError('');
+    setNotice('');
+    try {
+      const result = await postStoreroomUpdateMaterial({
+        assembly_id: id,
+        location_id: locationId,
+        name: editDraft.name.trim(),
+        family_sku: editDraft.sku.trim().toUpperCase(),
+        default_uom: editDraft.uom,
+        quantity: editDraft.qty,
+        apply_to_same_sku: true,
+      });
+      const count = result?.updated_assembly_ids?.length || 1;
+      if (count > 1) {
+        setNotice(`Saved. Name, SKU, and UOM were updated on ${count} material records with the same SKU.`);
+      }
+      cancelEditRow();
+      await load();
+    } catch (err) {
+      setError(err?.message || 'Failed to update material');
     } finally {
       setStockBusyId('');
     }
@@ -404,6 +458,7 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
       <h2 style={{ fontSize: '1.1rem', marginBottom: 8 }}>On hand</h2>
       {loading ? <p>Loading…</p> : null}
       {error ? <p style={{ color: '#f87171' }}>{error}</p> : null}
+      {notice ? <p style={{ color: '#22c55e', marginBottom: 12 }}>{notice}</p> : null}
       {!loading && !error ? (
         <p style={{ marginBottom: 12 }}>
           <strong>{rows.length}</strong>
@@ -430,40 +485,126 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
             {rows.length ? rows.map((row) => {
               const id = String(row.assembly_id);
               const busy = stockBusyId === id;
+              const isEditing = editingId === id && editDraft;
+              const rowLocked = Boolean(stockBusyId) && stockBusyId !== id && !stockBusyId.startsWith(`edit-${id}`);
               return (
                 <tr key={row.assembly_id}>
-                  <td>{row.sku}</td>
-                  <td>{row.name}</td>
-                  <td>{formatUomLabel(row.default_uom)}</td>
                   <td>
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      className="kitwe-form-control kitwe-form-control--qty"
-                      style={{ maxWidth: 120 }}
-                      value={qtyDrafts[id] ?? String(row.quantity)}
-                      onChange={(e) => setQtyDrafts((prev) => ({ ...prev, [id]: e.target.value }))}
-                    />
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        className="kitwe-form-control"
+                        style={{ fontFamily: 'monospace', minWidth: 140 }}
+                        value={editDraft.sku}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, sku: e.target.value.toUpperCase() }))}
+                        autoComplete="off"
+                      />
+                    ) : (
+                      row.sku
+                    )}
+                  </td>
+                  <td>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        className="kitwe-form-control kitwe-form-control--product"
+                        value={editDraft.name}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                        autoComplete="off"
+                      />
+                    ) : (
+                      row.name
+                    )}
+                  </td>
+                  <td>
+                    {isEditing ? (
+                      <select
+                        className="kitwe-form-control"
+                        value={editDraft.uom}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, uom: e.target.value }))}
+                        disabled={uomLoading || !uomOptions.length}
+                      >
+                        {uomOptions.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      formatUomLabel(row.default_uom)
+                    )}
+                  </td>
+                  <td>
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        className="kitwe-form-control kitwe-form-control--qty"
+                        style={{ maxWidth: 120 }}
+                        value={editDraft.qty}
+                        onChange={(e) => setEditDraft((d) => ({ ...d, qty: e.target.value }))}
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        className="kitwe-form-control kitwe-form-control--qty"
+                        style={{ maxWidth: 120 }}
+                        value={qtyDrafts[id] ?? String(row.quantity)}
+                        onChange={(e) => setQtyDrafts((prev) => ({ ...prev, [id]: e.target.value }))}
+                        disabled={Boolean(editingId)}
+                      />
+                    )}
                   </td>
                   <td>
                     <div className="kitwe-row-actions">
-                      <button
-                        type="button"
-                        className="kitwe-btn-secondary kitwe-btn-compact"
-                        disabled={busy || Boolean(stockBusyId)}
-                        onClick={() => saveRowQty(id)}
-                      >
-                        {busy ? '…' : 'Save'}
-                      </button>
-                      <button
-                        type="button"
-                        className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
-                        disabled={stockBusyId === `del-${id}` || Boolean(stockBusyId)}
-                        onClick={() => deleteRow(row)}
-                      >
-                        {stockBusyId === `del-${id}` ? '…' : 'Delete'}
-                      </button>
+                      {isEditing ? (
+                        <>
+                          <button
+                            type="button"
+                            className="kitwe-btn-secondary kitwe-btn-compact"
+                            disabled={stockBusyId === `edit-${id}`}
+                            onClick={() => saveEditRow(row)}
+                          >
+                            {stockBusyId === `edit-${id}` ? '…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            className="kitwe-btn-secondary kitwe-btn-compact"
+                            disabled={Boolean(stockBusyId)}
+                            onClick={cancelEditRow}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="kitwe-btn-secondary kitwe-btn-compact"
+                            disabled={busy || rowLocked || Boolean(editingId)}
+                            onClick={() => saveRowQty(id)}
+                          >
+                            {busy ? '…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            className="kitwe-btn-secondary kitwe-btn-compact"
+                            disabled={rowLocked || Boolean(editingId)}
+                            onClick={() => startEditRow(row)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
+                            disabled={stockBusyId === `del-${id}` || rowLocked || Boolean(editingId)}
+                            onClick={() => deleteRow(row)}
+                          >
+                            {stockBusyId === `del-${id}` ? '…' : 'Delete'}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

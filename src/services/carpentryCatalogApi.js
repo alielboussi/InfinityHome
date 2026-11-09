@@ -20,6 +20,7 @@ import {
   createStoreroomMaterial,
   setStoreroomMaterialStockQty,
   removeStoreroomMaterialStockAtLocation,
+  updateStoreroomMaterial,
 } from '../utils/storeroomStockMutations';
 import { cacheClear, cacheGet, cacheSet } from '../utils/staleCache';
 
@@ -130,6 +131,10 @@ async function postCarpentryCatalogDirect(body) {
   }
   if (op === 'delete-storeroom-stock') {
     const result = await removeStoreroomMaterialStockAtLocation(db, body);
+    return { ok: true, ...result };
+  }
+  if (op === 'update-storeroom-material') {
+    const result = await updateStoreroomMaterial(db, body);
     return { ok: true, ...result };
   }
   throw new Error(`Unknown op: ${op || '(missing)'}`);
@@ -310,6 +315,11 @@ export async function postStoreroomSetStock(body) {
 export async function postStoreroomDeleteStock(body) {
   invalidateProductionPortalSnapshotCache();
   return postCarpentryCatalog({ op: 'delete-storeroom-stock', ...body });
+}
+
+export async function postStoreroomUpdateMaterial(body) {
+  invalidateProductionPortalSnapshotCache();
+  return postCarpentryCatalog({ op: 'update-storeroom-material', ...body });
 }
 
 /** @deprecated Prefer postStoreroomCreate */
