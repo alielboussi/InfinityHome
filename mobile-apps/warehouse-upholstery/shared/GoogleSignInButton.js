@@ -187,7 +187,14 @@ async function resolveGoogleIdToken(response, GoogleSignin) {
   }
 }
 
-function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled }) {
+function NativeGoogleSignInButton({
+  webClientId,
+  onError,
+  onSuccess,
+  disabled,
+  label = 'Continue with Google',
+  busyLabel = 'Signing in…',
+}) {
   const [busy, setBusy] = useState(false);
 
   const onPress = async () => {
@@ -243,7 +250,7 @@ function NativeGoogleSignInButton({ webClientId, onError, onSuccess, disabled })
       onPress={onPress}
       disabled={disabled || busy}
     >
-      <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Continue with Google'}</Text>
+      <Text style={styles.buttonText}>{busy ? busyLabel : label}</Text>
     </Pressable>
   );
 }
@@ -256,6 +263,8 @@ function BrowserGoogleSignInButton({
   onError,
   onSuccess,
   disabled,
+  label = 'Continue with Google',
+  busyLabel = 'Signing in…',
 }) {
   const [busy, setBusy] = useState(false);
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
@@ -296,12 +305,18 @@ function BrowserGoogleSignInButton({
       )}
       disabled={disabled || busy || !request}
     >
-      <Text style={styles.buttonText}>{busy ? 'Signing in…' : 'Continue with Google'}</Text>
+      <Text style={styles.buttonText}>{busy ? busyLabel : label}</Text>
     </Pressable>
   );
 }
 
-export function GoogleSignInButton({ onError, onSuccess, disabled }) {
+export function GoogleSignInButton({
+  onError,
+  onSuccess,
+  disabled,
+  label = 'Continue with Google',
+  busyLabel = 'Signing in…',
+}) {
   const oauth = resolveGoogleOAuthConfig();
 
   if (!oauth.webClientId) return null;
@@ -317,8 +332,10 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
           onError={onError}
           onSuccess={onSuccess}
           disabled={disabled}
+          label={label}
+          busyLabel={busyLabel}
         />
-        {isExpoGo() || !isNativeGoogleSignInLinked() ? (
+        {__DEV__ && (isExpoGo() || !isNativeGoogleSignInLinked()) ? (
           <Text style={styles.expoGoHint}>
             Browser Google sign-in. If Google returns redirect_uri_mismatch, add this URI on the Web OAuth client: {oauth.redirectUri}
           </Text>
@@ -334,6 +351,8 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
         onError={onError}
         onSuccess={onSuccess}
         disabled={disabled}
+        label={label}
+        busyLabel={busyLabel}
       />
     );
   }
@@ -347,6 +366,8 @@ export function GoogleSignInButton({ onError, onSuccess, disabled }) {
       onError={onError}
       onSuccess={onSuccess}
       disabled={disabled}
+      label={label}
+      busyLabel={busyLabel}
     />
   );
 }

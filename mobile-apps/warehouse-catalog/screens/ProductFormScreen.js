@@ -53,7 +53,7 @@ import { CatalogProductPhotoField } from '../shared/CatalogProductPhotoCapture';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { attachCatalogProductPhoto } from '../shared/catalogPhotoApi';
 import { pickCatalogProductPhotoFromLibrary } from '../lib/pickCatalogProductPhoto';
-import { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';
+import { isMattressCatalogProductName } from '../shared/repoSrc/utils/isMattressCatalogProductName.js';
 import { resolveWarehouseCategoryNameFromList } from '../shared/warehouseCategoryLookup';
 import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../shared/MobileAccessGrantContext';
 import { isWarehouseCatalogAddProductAllowed } from '../shared/mobileAccessManifest';

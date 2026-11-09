@@ -22,7 +22,7 @@ import CatalogProductPhotoZoomModal from '../shared/CatalogProductPhotoZoomModal
 import { attachCatalogProductPhoto } from '../shared/catalogPhotoApi';
 import { pickCatalogProductPhotoFromLibrary } from '../lib/pickCatalogProductPhoto';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
-import { isMattressCatalogProductName } from '../../../src/utils/isMattressCatalogProductName.js';
+import { isMattressCatalogProductName } from '../shared/repoSrc/utils/isMattressCatalogProductName.js';
 import { resolveWarehouseCatalogAssemblyImageUri } from '../shared/warehouseAssemblyImageUri';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';

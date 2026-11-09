@@ -1,4 +1,4 @@
-import { formatWarehouseProductionLabelColor } from '../../../src/utils/warehouseProductionLabelColor.js';
+import { formatWarehouseProductionLabelColor } from './repoSrc/utils/warehouseProductionLabelColor.js';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehousePacketScan,

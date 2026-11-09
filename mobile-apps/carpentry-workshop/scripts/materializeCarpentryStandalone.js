@@ -108,6 +108,7 @@ const VENDORED_REPO_UTIL_FILES = [
   'warehouseDeliverySetPrint.js',
   'warehouseDeliveryNotePrint.js',
   'buildDeliveryNotePrintHtml.js',
+  'warehouseDeliveryPrintGroups.js',
   'warehouseScanResolver.js',
   'warehouseAssemblyMath.js',
   'warehouseSetItems.js',
@@ -126,6 +127,9 @@ function vendorRepoUtils(root) {
   if (!fs.existsSync(repoUtils)) return;
   rmDeep(vendorDir);
   fs.mkdirSync(vendorDir, { recursive: true });
+  copyDir(repoUtils, vendorDir, {
+    fileFilter: (name) => name.endsWith('.js'),
+  });
   for (const name of VENDORED_REPO_UTIL_FILES) {
     copyRepoUtilFile(name, repoUtils, vendorDir);
   }

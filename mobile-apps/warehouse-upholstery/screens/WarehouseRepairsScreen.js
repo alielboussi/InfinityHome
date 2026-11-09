@@ -12,7 +12,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
-import { kiosk } from '../components/kioskStyles';
+import { kiosk, KIOSK_ICON_BLUE_ON_DARK } from '../components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
@@ -29,12 +29,14 @@ function formatElapsed(ms) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function returnCardTitle(row) {
+function returnCardTitle(row, locale) {
   const meta = row?.metadata || {};
   const total = Number(meta.batch_line_count) || 0;
   const index = Number(meta.batch_line_index) || 0;
   if (total > 1 && index > 0) {
-    return `${row.return_number} · unit ${index}/${total}`;
+    return `${row.return_number} · ${tUi('repairUnitIndex', locale)
+      .replace('{index}', String(index))
+      .replace('{total}', String(total))}`;
   }
   return row.return_number;
 }
@@ -60,7 +62,7 @@ function RepairCard({
 
   return (
     <View style={[kiosk.card, styles.card]}>
-      <Text style={[styles.title, { textAlign }]}>{returnCardTitle(row)}</Text>
+      <Text style={[styles.title, { textAlign }]}>{returnCardTitle(row, locale)}</Text>
       <Text style={[styles.product, { textAlign }]}>
         {textForDisplay(row.assembly_name, '—')} × {row.quantity}
       </Text>
@@ -101,7 +103,7 @@ function RepairCard({
             onPress={() => onPlay(row)}
             accessibilityLabel={tUi('returnAccept', locale)}
           >
-            <MaterialCommunityIcons name="play-circle" size={52} color={theme.primary} />
+            <MaterialCommunityIcons name="play-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         {isRunning ? (
@@ -111,7 +113,7 @@ function RepairCard({
             onPress={() => onPause(row)}
             accessibilityLabel={tUi('upholsteryJobPause', locale)}
           >
-            <MaterialCommunityIcons name="pause-circle" size={52} color={theme.primary} />
+            <MaterialCommunityIcons name="pause-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         {canMaterials ? (
@@ -121,7 +123,7 @@ function RepairCard({
             onPress={() => onMaterials?.(row)}
             accessibilityLabel={tUi('quoteOrderMaterials', locale)}
           >
-            <MaterialCommunityIcons name="wrench" size={48} color={theme.primary} />
+            <MaterialCommunityIcons name="wrench" size={48} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         {inRepair ? (
@@ -294,6 +296,10 @@ export default function WarehouseRepairsScreen({
           data={rows}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={7}
+          removeClippedSubviews
           ListEmptyComponent={(
             <Text style={[kiosk.hint, { textAlign }]}>{tUi('repairQueueEmpty', locale)}</Text>
           )}

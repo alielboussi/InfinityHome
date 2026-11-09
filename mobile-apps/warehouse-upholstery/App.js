@@ -46,7 +46,14 @@ function MainStack({ navigationRef }) {
   }
 
   return (
-    <Stack.Navigator initialRouteName="Dashboard" screenOptions={stackScreenOptions}>
+    <Stack.Navigator
+      initialRouteName="Dashboard"
+      screenOptions={{
+        ...stackScreenOptions,
+        animation: 'none',
+        animationDuration: 0,
+      }}
+    >
       <Stack.Screen name="Dashboard" options={{ headerShown: false }}>
         {(props) => (
           <DashboardScreen

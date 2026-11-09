@@ -1,9 +1,9 @@
 import './shared/lightweightRuntime.js';
+import './shared/suppressBridgelessCodegenWarnings.js';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { enableScreens } from 'react-native-screens';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import AppErrorBoundary from './shared/AppErrorBoundary';
 import BiometricGate from './shared/BiometricGate';
@@ -24,8 +24,6 @@ import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen
 import MobileScreenGate from './shared/MobileScreenGate';
 import { MOBILE_APP_DISPLAY_NAME } from './shared/mobileAccessManifest';
 import { stackScreenOptions, theme } from './shared/theme';
-
-enableScreens(true);
 
 const Stack = createNativeStackNavigator();
 

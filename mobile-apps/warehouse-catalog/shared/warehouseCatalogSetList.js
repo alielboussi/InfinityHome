@@ -1,8 +1,8 @@
-import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../../src/constants/warehouseShowroomLocations.js';
+import { WAREHOUSE_FACTORY_LOCATION_ID } from './repoSrc/constants/warehouseShowroomLocations.js';
 import {
   buildSetItemsByAssemblyAndLocation,
   setItemsAssemblyLocationKey,
-} from '../../../src/utils/warehouseSetItems.js';
+} from './repoSrc/utils/warehouseSetItems.js';
 import { isSetAssembly } from './warehouseCatalogProductCompleteness';
 
 /** Product assembly ids used as set components (any recipe location). */

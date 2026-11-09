@@ -4,8 +4,8 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { getFirebaseAuth } from '../shared/firebase';
-import { loadProductionPushPrefs } from '../../shared/productionPushPrefs';
-import { navigateFromProductionPushData } from '../../shared/lib/productionPushNavigation';
+import { loadProductionPushPrefs } from '../shared/productionPushPrefs';
+import { navigateFromProductionPushData } from '../shared/lib/productionPushNavigation';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({

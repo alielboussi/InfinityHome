@@ -146,7 +146,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
         }
       }
     } catch (err) {
-      setError(err?.message || 'Failed to load warehouse');
+      setError(err?.message || tUi('loadWarehouseFailed', locale));
       await reloadPresetsFromServer();
     } finally {
       setLoading(false);
@@ -272,7 +272,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
   };
 
   const showSaveFailure = (message) => {
-    const msg = String(message || '').trim() || 'Save failed.';
+    const msg = String(message || '').trim() || tUi('saveFailedGeneric', locale);
     setError(msg);
     Alert.alert(tUi('saveFailedTitle', locale), msg);
   };
@@ -313,7 +313,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
   const finishSaveWithoutPhoto = async () => {
     const pending = pendingSaveRef.current;
     if (!pending?.name || !pending.warehouseLocationId) {
-      showSaveFailure('Save data was lost. Tap Save production item again.');
+      showSaveFailure(tUi('createSaveDataLost', locale));
       return;
     }
     setSavePhase('processing');
@@ -378,7 +378,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
   const finishSaveWithPhoto = async (photoSource) => {
     const pending = pendingSaveRef.current;
     if (!pending?.name || !pending.warehouseLocationId) {
-      showSaveFailure('Save data was lost. Tap Save production item again.');
+      showSaveFailure(tUi('createSaveDataLost', locale));
       return;
     }
 
@@ -498,7 +498,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
       if (msg.toLowerCase().includes('already exists')) {
         showSaveFailure(tUi('duplicateName', locale));
       } else {
-        showSaveFailure(msg || 'Save failed. Check your connection and try again.');
+        showSaveFailure(msg || tUi('saveFailedConnection', locale));
       }
     } finally {
       setSaving(false);
@@ -616,7 +616,13 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
         <View style={kiosk.field}>
           <Text style={[kiosk.label, { textAlign }]}>{tUi('locationLabel', locale)}</Text>
           <Text style={kiosk.locationPill}>
-            {textForDisplay(warehouseLocationName, 'Warehouse')} — {tUi('warehouseOnly', locale)}
+            {warehouseLocationName === 'Warehouse Floor 2'
+              ? tUi('locationWarehouseFloor2', locale)
+              : warehouseLocationName === 'Warehouse'
+                ? tUi('locationWarehouse', locale)
+                : textForDisplay(warehouseLocationName, tUi('locationWarehouse', locale))}
+            {' — '}
+            {tUi('warehouseOnly', locale)}
           </Text>
         </View>
 

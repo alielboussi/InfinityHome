@@ -7,7 +7,10 @@ const STORAGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 let cache = null;
 let fetchedAt = 0;
+/** @type {Promise<object> | null} */
 let inflight = null;
+/** @type {'linked' | 'all' | null} */
+let inflightPacketLoad = null;
 
 function mergeCatalogResponses(prev, next, packetLoad) {
   if (!next) return prev;
@@ -50,6 +53,7 @@ export function invalidateWarehouseCatalogCache() {
   cache = null;
   fetchedAt = 0;
   inflight = null;
+  inflightPacketLoad = null;
   AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
 }
 
@@ -135,8 +139,18 @@ export async function fetchWarehouseCatalogCached(opts = {}) {
     }
   }
   if (inflight) {
-    return inflight;
+    if (inflightPacketLoad === 'all' || inflightPacketLoad === packetLoad) {
+      return inflight;
+    }
+    if (packetLoad === 'all' && inflightPacketLoad === 'linked') {
+      await inflight.catch(() => {});
+      inflight = null;
+      inflightPacketLoad = null;
+    } else {
+      return inflight;
+    }
   }
+  inflightPacketLoad = packetLoad;
   inflight = warehouseMobileRequest('catalog-list', {
     packet_load: packetLoad,
     include_colors: true,
@@ -147,10 +161,12 @@ export async function fetchWarehouseCatalogCached(opts = {}) {
       fetchedAt = Date.now();
       persistCatalogToDisk(merged);
       inflight = null;
+      inflightPacketLoad = null;
       return merged;
     })
     .catch((err) => {
       inflight = null;
+      inflightPacketLoad = null;
       throw err;
     });
   return inflight;

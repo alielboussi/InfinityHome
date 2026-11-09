@@ -10,6 +10,7 @@ const kitSharedDir = path.join(projectRoot, 'deliveryKit', 'shared');
 const deliveryKitLink = path.join(projectRoot, 'deliveryKit');
 const upholsteryRoot = path.resolve(projectRoot, '..', 'warehouse-upholstery');
 const deliveryKitPeers = require('./scripts/deliveryKitPeerDependencies');
+const { maybeSingletonResolve, applySingletonPackageMetro } = require('../shared/metroSingleScreenModule');
 
 function normalizePath(filePath) {
   return path.normalize(filePath).replace(/\\/g, '/').toLowerCase();
@@ -71,6 +72,7 @@ function finishResolve(result) {
 }
 
 const config = getDefaultConfig(projectRoot);
+applySingletonPackageMetro(config);
 
 const watchFolders = new Set(config.watchFolders || []);
 watchFolders.add(appSharedDir);
@@ -104,6 +106,7 @@ config.resolver.blockList = [
 function shouldResolvePeerFromApp(moduleName) {
   if (deliveryKitPeerSet.has(moduleName)) return true;
   if (moduleName === 'react-native-safe-area-context') return true;
+  if (moduleName === 'react-native-screens') return true;
   if (moduleName.startsWith('react/')) return true;
   return false;
 }
@@ -114,6 +117,9 @@ const expoCryptoSafeShim = path.join(projectRoot, 'shared', 'expoCryptoSafeShim.
 const priorResolve = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const singleton = maybeSingletonResolve(context, moduleName, platform, priorResolve, metroResolve, projectRoot);
+  if (singleton) return finishResolve(singleton);
+
   if (moduleName === 'delivery-app-ui-config') {
     return finishResolve({ type: 'sourceFile', filePath: deliveryAppUiConfig });
   }

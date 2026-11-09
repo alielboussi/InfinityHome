@@ -107,7 +107,7 @@ export default function UpholsteryQuotesScreen({
             onPress={() => navigation.navigate('UpholsteryQuoteDetail', { quote: item })}
           >
             <Text style={styles.quoteNum}>{item.quote_number || item.quote_id}</Text>
-            <Text style={styles.name}>{item.customer_name || 'Customer'}</Text>
+            <Text style={styles.name}>{item.customer_name || tUi('returnCustomer', locale)}</Text>
             <Text style={styles.phone}>{item.customer_phone || '—'}</Text>
             <Text style={styles.meta}>
               {item.accepted_at

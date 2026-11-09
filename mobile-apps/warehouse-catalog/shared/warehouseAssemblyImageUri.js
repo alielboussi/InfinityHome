@@ -2,7 +2,7 @@ import {
   assemblyImageUrlFromRow,
   resolveSeaterSetCoverImageUrl,
   resolveWarehouseCatalogAssemblyImageUri,
-} from '../../../src/utils/warehouseSeaterSetCoverImage.js';
+} from './repoSrc/utils/warehouseSeaterSetCoverImage.js';
 
 export {
   assemblyImageUrlFromRow,

@@ -30,6 +30,11 @@ export default function ProductionAppAuthGate({
       signInPasswordPlaceholder={tUi('loginPassword', locale)}
       signInButtonLabel={tUi('loginButton', locale)}
       signInSigningInLabel={tUi('loginSigningIn', locale)}
+      googleButtonLabel={tUi('loginGoogle', locale)}
+      googleSigningInLabel={tUi('loginSigningIn', locale)}
+      googleNotConfiguredLabel={tUi('loginGoogleNotConfigured', locale)}
+      loginNotAllowedLabel={tUi('loginNotAllowed', locale)}
+      signInFailedLabel={tUi('loginFailed', locale)}
     >
       {children}
     </FirebaseAuthGate>

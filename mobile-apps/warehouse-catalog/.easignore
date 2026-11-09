@@ -2,5 +2,7 @@
 android/
 android.local-prebuild-backup/
 .expo-export-*/
+.expo-export-verify/
 dist/
+dist-eas-*/
 build-apk-local.ps1

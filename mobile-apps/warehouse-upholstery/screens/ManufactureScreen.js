@@ -109,7 +109,6 @@ export default function ManufactureScreen({
   const [busyId, setBusyId] = useState('');
   const [qtyModal, setQtyModal] = useState(null);
   const [qtyDraft, setQtyDraft] = useState('1');
-  const [stockTab, setStockTab] = useState('all');
 
   const loadList = useCallback(async ({ fromPull = false } = {}) => {
     if (!allowed) {
@@ -147,16 +146,17 @@ export default function ManufactureScreen({
     }, [loadList, route?.params?.openScan, navigation]),
   );
 
+  const inStockProducts = useMemo(
+    () => (products || []).filter((item) => floor2Qty(item) > 0),
+    [products],
+  );
+
   const filteredProducts = useMemo(() => {
     const raw = String(search || '').trim();
-    let base = products;
-    if (stockTab === 'stock') {
-      base = base.filter((item) => floor2Qty(item) > 0);
-    }
-    if (!raw) return base;
+    if (!raw) return inStockProducts;
     const q = raw.toLowerCase();
     const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
-    return base.filter((item) => {
+    return inStockProducts.filter((item) => {
       if (String(item.name || '').toLowerCase().includes(q)) return true;
       const sku = String(item.family_sku || '');
       if (sku.toLowerCase().includes(q)) return true;
@@ -166,7 +166,7 @@ export default function ManufactureScreen({
       }
       return false;
     });
-  }, [products, search, stockTab]);
+  }, [inStockProducts, search]);
 
   const hasSearch = Boolean(String(search || '').trim());
 
@@ -262,7 +262,13 @@ export default function ManufactureScreen({
         ]}
       >
         {cardImage ? (
-          <Image source={{ uri: cardImage }} style={styles.tileImage} resizeMode="cover" />
+          <Image
+            source={{ uri: cardImage }}
+            style={styles.tileImage}
+            resizeMode="cover"
+            resizeMethod="resize"
+            fadeDuration={0}
+          />
         ) : (
           <View style={styles.tileImagePlaceholder} />
         )}
@@ -322,24 +328,6 @@ export default function ManufactureScreen({
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntroFloor2', locale)}</Text>
-      <View style={styles.tabRow}>
-        <Pressable
-          style={[styles.tabChip, stockTab === 'all' && styles.tabChipActive]}
-          onPress={() => setStockTab('all')}
-        >
-          <Text style={[styles.tabChipText, stockTab === 'all' && styles.tabChipTextActive]}>
-            {tUi('manufactureTabAll', locale)}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabChip, stockTab === 'stock' && styles.tabChipActive]}
-          onPress={() => setStockTab('stock')}
-        >
-          <Text style={[styles.tabChipText, stockTab === 'stock' && styles.tabChipTextActive]}>
-            {tUi('manufactureTabInStock', locale)}
-          </Text>
-        </Pressable>
-      </View>
       <View style={styles.searchRow}>
         <TextInput
           style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
@@ -377,10 +365,15 @@ export default function ManufactureScreen({
         contentContainerStyle={filteredProducts.length === 0 ? styles.listEmpty : styles.gridContent}
         renderItem={renderProductCard}
         keyboardShouldPersistTaps="handled"
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        removeClippedSubviews
+        updateCellsBatchingPeriod={50}
         ListEmptyComponent={
           !loading && !error && !hasSearch ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>
-              {tUi('manufactureEmpty', locale)}
+              {tUi(products.length ? 'manufactureEmptyNoStock' : 'manufactureUpholsteryEmpty', locale)}
             </Text>
           ) : null
         }
@@ -447,18 +440,6 @@ export default function ManufactureScreen({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   intro: { marginBottom: 8 },
-  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  tabChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.card,
-  },
-  tabChipActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft || '#e0f2fe' },
-  tabChipText: { fontWeight: '700', color: theme.textMuted },
-  tabChipTextActive: { color: theme.primary },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',

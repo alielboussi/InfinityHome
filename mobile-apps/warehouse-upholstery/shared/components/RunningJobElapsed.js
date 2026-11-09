@@ -10,7 +10,7 @@ function formatElapsed(ms) {
 }
 
 export function computeJobElapsedMs(job, nowMs = Date.now()) {
-  const base = Number(job?.elapsed_ms) ?? Number(job?.accumulated_ms) || 0;
+  const base = (Number(job?.elapsed_ms) ?? Number(job?.accumulated_ms)) || 0;
   const running = job?.status === 'running';
   if (!running || !job?.timer_started_at) return base;
   const started = new Date(job.timer_started_at).getTime();

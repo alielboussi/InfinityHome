@@ -13,7 +13,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
-import { kiosk } from '../components/kioskStyles';
+import { kiosk, KIOSK_ICON_BLUE_ON_DARK } from '../components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
@@ -84,7 +84,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
   return (
     <View style={[kiosk.card, styles.jobCard]}>
       {thumb ? (
-        <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="cover" />
+        <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="cover" resizeMethod="resize" fadeDuration={0} />
       ) : null}
       <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.finished_name || job.raw_name, '—')}</Text>
       <Text style={[styles.jobMeta, { textAlign }]}>
@@ -104,7 +104,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
             onPress={() => onPlay(job.job_id || job.id)}
             accessibilityLabel={tUi('upholsteryJobResume', locale)}
           >
-            <MaterialCommunityIcons name="play-circle" size={52} color={theme.primary} />
+            <MaterialCommunityIcons name="play-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         {isRunning ? (
@@ -114,7 +114,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
             onPress={() => onPause(job.job_id || job.id)}
             accessibilityLabel={tUi('upholsteryJobPause', locale)}
           >
-            <MaterialCommunityIcons name="pause-circle" size={52} color={theme.primary} />
+            <MaterialCommunityIcons name="pause-circle" size={52} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         {!isCompleted ? (
@@ -124,7 +124,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
             onPress={() => onMaterials?.(job)}
             accessibilityLabel={tUi('quoteOrderMaterials', locale)}
           >
-            <MaterialCommunityIcons name="wrench" size={48} color={theme.primary} />
+            <MaterialCommunityIcons name="wrench" size={48} color={KIOSK_ICON_BLUE_ON_DARK} />
           </Pressable>
         ) : null}
         <Pressable
@@ -331,6 +331,10 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               />
           )
         )}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews
         ListEmptyComponent={
           !loading && !error ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>

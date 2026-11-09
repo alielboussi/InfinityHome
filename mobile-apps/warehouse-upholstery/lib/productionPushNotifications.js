@@ -5,7 +5,7 @@ import Constants from 'expo-constants';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { getFirebaseAuth } from '../shared/firebase';
 import { loadProductionPushPrefs } from './productionPushPrefs';
-import { navigateFromProductionPushData } from '../../shared/lib/productionPushNavigation';
+import { navigateFromProductionPushData } from '../shared/lib/productionPushNavigation';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({

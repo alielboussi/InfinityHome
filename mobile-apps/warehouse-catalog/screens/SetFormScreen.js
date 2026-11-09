@@ -12,7 +12,7 @@ import GenerateRandomSkuButton from '../shared/GenerateRandomSkuButton';
 import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { warehouseMobileRequest, formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
 import { isSetAssembly } from '../shared/warehouseCatalogProductCompleteness';
-import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../../src/constants/warehouseShowroomLocations.js';
+import { WAREHOUSE_FACTORY_LOCATION_ID } from '../shared/repoSrc/constants/warehouseShowroomLocations.js';
 import { normalizeWarehouseProductSku } from '../shared/warehouseScanResolver';
 import { theme } from '../shared/theme';
 import { formButtonStyles } from '../shared/formButtonStyles';

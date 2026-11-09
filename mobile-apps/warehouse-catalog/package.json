@@ -3,12 +3,13 @@
   "version": "0.1.18",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "postinstall": "node scripts/ensureSharedLink.js && node scripts/mergeCatalogSharedOverlay.js",
+    "postinstall": "node scripts/materializeSharedForEas.js",
+    "prestart": "node scripts/materializeSharedForEas.js",
     "start": "expo start --offline --go",
     "start:online": "expo start --go",
     "android": "expo start --offline --android",
     "icons": "node ../../scripts/warehouseCatalogIconFrame.js",
-    "eas:build:android": "node scripts/materializeSharedForEas.js && eas build --platform android --profile preview --non-interactive",
+    "eas:build:android": "node scripts/verifyEasBundle.js && eas build --platform android --profile preview --non-interactive",
     "android:apk:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./build-apk-local.ps1"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import SharedProductionPushSettingsScreen from '../../shared/screens/ProductionPushSettingsScreen';
+import SharedProductionPushSettingsScreen from '../shared/screens/ProductionPushSettingsScreen';
 import { kiosk } from '../components/kioskStyles';
 import { kioskFooterBottomPad } from '../lib/kioskLayout';
 import { registerProductionPushTokenWithServer } from '../lib/productionPushNotifications';

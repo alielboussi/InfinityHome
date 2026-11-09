@@ -2,7 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
-import { kiosk } from '../components/kioskStyles';
+import { kiosk, KIOSK_ICON_BLUE } from '../components/kioskStyles';
 import { kioskFooterBottomPad } from '../lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../lib/productionDashLayout';
 import { theme } from '../shared/theme';
@@ -26,7 +26,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
-        color={theme.primaryDark}
+        color={KIOSK_ICON_BLUE}
         style={kiosk.dashTileIcon}
       />
       <Text
@@ -62,13 +62,6 @@ export default function DashboardScreen({
       onPress: () => navigation.navigate('Create'),
     },
     {
-      key: 'scan',
-      screenId: 'upholstery_manufacture',
-      icon: 'barcode-scan',
-      title: tUi('dashScanFloor2', locale),
-      onPress: () => navigation.navigate('Manufacture', { openScan: true }),
-    },
-    {
       key: 'manufacture',
       screenId: 'upholstery_manufacture',
       icon: 'factory',
@@ -95,13 +88,6 @@ export default function DashboardScreen({
       icon: 'wrench-clock',
       title: tUi('dashRepairs', locale),
       onPress: () => navigation.navigate('Repairs'),
-    },
-    {
-      key: 'push-settings',
-      screenId: 'upholstery_push_settings',
-      icon: 'bell-cog-outline',
-      title: 'Alert settings',
-      onPress: () => navigation.navigate('PushSettings'),
     },
   ];
 
@@ -132,9 +118,13 @@ export default function DashboardScreen({
         />
         <Text style={[kiosk.noticeErr, { textAlign: 'center' }]}>{tUi('accessDenied', ready ? locale : 'ar')}</Text>
         {userEmail ? (
-          <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>Signed in as {userEmail}</Text>
+          <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>
+            {tUi('signedInAs', ready ? locale : 'en').replace('{email}', userEmail)}
+          </Text>
         ) : (
-          <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>Not signed in</Text>
+          <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>
+            {tUi('notSignedIn', ready ? locale : 'en')}
+          </Text>
         )}
         {accessHint ? (
           <Text style={[styles.hint, { textAlign: 'center' }]}>{accessHint}</Text>

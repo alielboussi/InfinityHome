@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { canMobileScreenView } from './mobileAccessManifest';
+import { canMobileScreenView, isWarehouseProductionKitweDeliveryAllowed } from './mobileAccessManifest';
 import { theme } from './theme';
 
 /** Blocks stack screens unless /user-access allows view for screenId. */

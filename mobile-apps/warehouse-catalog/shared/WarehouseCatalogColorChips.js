@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { getWarehouseColorChipTheme } from '../../../src/utils/warehouseColorChip.js';
+import { getWarehouseColorChipTheme } from './repoSrc/utils/warehouseColorChip.js';
 
 function ColorChip({ name }) {
   const theme = getWarehouseColorChipTheme(name);
