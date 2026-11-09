@@ -76,10 +76,9 @@ export function storeroomLabelForMaterialLine(line, labelByLocationId) {
 export function materialLineDisplayName(line) {
   const name = String(line?.name || '').trim();
   if (name) return name;
-  const raw = materialAssemblyIdFromStoredRow(line);
-  if (!raw) return '—';
-  if (/^[0-9a-f-]{30,}$/i.test(raw) && raw.includes('-')) return '—';
-  return raw;
+  const sku = String(line?.family_sku || '').trim();
+  if (sku) return sku;
+  return '— (re-select material in app)';
 }
 
 export function formatMaterialLineQty(line) {

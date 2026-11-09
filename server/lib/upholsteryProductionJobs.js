@@ -4,7 +4,10 @@ import { newUuid } from './uuid.js';
 import { enqueueWarehouseProductionLabelJob } from './productionLabelPrint.js';
 import { logWarehouseProductionStockIncrease } from './warehouseProductionLog.js';
 import { resolveCarpentryStoreroomLocations } from './storeroomBomDeduction.js';
-import { enrichManualMaterialLines } from './productionJobMaterials.js';
+import {
+  enrichManualMaterialLines,
+  manualMaterialLinesNeedMetadataRepair,
+} from './productionJobMaterials.js';
 import {
   consumeUpholsteryRawAndMaterials,
   creditUpholsteryFinishedOutput,
@@ -167,9 +170,19 @@ export async function listUpholsteryProductionJobs(sb, { activeOnly = true } = {
   }
   rows.sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')));
   const jobs = [];
+  const now = new Date().toISOString();
   for (const row of rows) {
+    const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+    const lines = await enrichManualMaterialLines(sb, meta.manual_material_lines, {
+      usageRows: meta.material_usage_rows,
+    });
+    if (manualMaterialLinesNeedMetadataRepair(meta.manual_material_lines, lines)) {
+      await sb.from(JOBS).update({
+        metadata: { ...meta, manual_material_lines: lines },
+        updated_at: now,
+      }).eq('id', row.id);
+    }
     const base = serializeJob(row);
-    const lines = await enrichManualMaterialLines(sb, row.metadata?.manual_material_lines);
     jobs.push({ ...base, manual_material_lines: lines });
   }
   return { jobs };

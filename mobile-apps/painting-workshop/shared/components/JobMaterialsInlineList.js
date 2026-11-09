@@ -5,15 +5,18 @@ import {
   formatMaterialUom,
   humanizeUomCode,
   materialAssemblyIdFromStoredRow,
+  storeroomLabelForLocationId,
   warehouseLocationIdFromStoredRow,
   warehouseNameToStoreroomLabel,
 } from '../lib/storeroomDeductionFlow';
 
-function lineStoreroomLabel(line, labelByLocationId) {
+function lineStoreroomLabel(line, labelByLocationId, storerooms) {
   const fromLine = warehouseNameToStoreroomLabel(line?.storeroom_label || '');
   if (fromLine) return fromLine;
   const locId = warehouseLocationIdFromStoredRow(line);
   if (locId && labelByLocationId?.get(locId)) return labelByLocationId.get(locId);
+  const fromId = storeroomLabelForLocationId(locId, storerooms);
+  if (fromId) return fromId;
   return '—';
 }
 
@@ -37,6 +40,7 @@ export default function JobMaterialsInlineList({
   tUi,
   textAlign = 'left',
   storeroomLabelByLocationId,
+  storerooms,
   onEditMaterials,
   canEdit = false,
 }) {
@@ -66,7 +70,7 @@ export default function JobMaterialsInlineList({
           {rows.map((line, idx) => {
             const key = `${materialAssemblyIdFromStoredRow(line)}-${warehouseLocationIdFromStoredRow(line) || idx}`;
             const sku = String(line.family_sku || '').trim();
-            const storeroom = lineStoreroomLabel(line, storeroomLabelByLocationId);
+            const storeroom = lineStoreroomLabel(line, storeroomLabelByLocationId, storerooms);
             return (
               <View key={key} style={styles.row}>
                 <Text style={[styles.name, { textAlign }]}>{lineDisplayName(line)}</Text>

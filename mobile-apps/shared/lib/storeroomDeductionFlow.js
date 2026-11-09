@@ -221,6 +221,17 @@ export function formatMaterialUom(row) {
 }
 
 /** Portal location names → Storeroom 1 / 2 / 3 for kiosk cards. */
+/** Storeroom label from a location id when `storeroom_label` was not persisted (legacy job lines). */
+export function storeroomLabelForLocationId(locationId, storerooms = []) {
+  const id = String(locationId || '').trim();
+  if (!id) return '';
+  const hit = (storerooms || []).find((s) => String(s.id) === id);
+  if (hit) return formatStoreroomOptionLabel(hit);
+  const idx = (storerooms || []).findIndex((s) => String(s.id) === id);
+  if (idx >= 0) return `Storeroom ${idx + 1}`;
+  return '';
+}
+
 export function warehouseNameToStoreroomLabel(nameOrLabel) {
   const raw = String(nameOrLabel || '').trim();
   if (!raw) return '';
