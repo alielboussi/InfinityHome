@@ -51,7 +51,7 @@ export function storeroomsFromMaterialLocationRows(materials) {
       map.set(id, {
         id,
         name,
-        label: WAREHOUSE_NAME_TO_STOREROOM_LABEL[name] || name || id,
+        label: formatStoreroomOptionLabel({ id, name, label: WAREHOUSE_NAME_TO_STOREROOM_LABEL[name] }),
       });
     }
   }
@@ -64,13 +64,82 @@ export function parseStoreroomsFromMaterialsApi(payload) {
       .map((row) => ({
         id: String(row.id || '').trim(),
         name: String(row.name || ''),
-        label: String(row.label || row.name || ''),
+        label: formatStoreroomOptionLabel(row),
       }))
       .filter((row) => row.id);
   }
   const fromMaterials = storeroomsFromMaterialLocationRows(payload?.materials || []);
   if (fromMaterials.length) return fromMaterials;
   return [];
+}
+
+function storeroomLabelForLocation(id, locationName, labelCatalog) {
+  const catalog = (labelCatalog || []).find((s) => String(s.id) === String(id));
+  const name = String(locationName || catalog?.name || '').trim();
+  return catalog?.label || WAREHOUSE_NAME_TO_STOREROOM_LABEL[name] || name || String(id);
+}
+
+/** Storerooms where this catalog material has on-hand qty > 0 (uses merged `locations` on the row). */
+export function storeroomsForCatalogMaterial(materialRow, labelCatalog = []) {
+  const out = [];
+  const seen = new Set();
+  for (const loc of materialRow?.locations || []) {
+    const id = String(loc.location_id || '').trim();
+    if (!id || seen.has(id)) continue;
+    const qty = Math.max(0, Number(loc.quantity) || 0);
+    if (qty <= 0) continue;
+    seen.add(id);
+    const name = String(loc.location_name || '').trim();
+    out.push({
+      id,
+      name,
+      label: formatStoreroomOptionLabel({
+        name,
+        label: storeroomLabelForLocation(id, name, labelCatalog),
+      }),
+    });
+  }
+  return out;
+}
+
+/**
+ * Storerooms that can satisfy a job save/deduct for every line missing warehouse_location_id
+ * (intersection of in-stock locations per material).
+ */
+export function storeroomsForJobMaterialDeduction(materialLines, catalogRows, labelCatalog = []) {
+  const catalogById = new Map();
+  for (const row of catalogRows || []) {
+    const id = String(row.assembly_id || row.id || '').trim();
+    if (id) catalogById.set(id, row);
+  }
+  const need = (materialLines || []).filter((line) => {
+    const qty = Math.max(0, Math.floor(Number(line.quantity) || 0));
+    return qty > 0 && !String(line.warehouse_location_id || '').trim();
+  });
+  if (!need.length) {
+    return storeroomsFromMaterialLocationRows(catalogRows);
+  }
+
+  let intersection = null;
+  for (const line of need) {
+    const aid = String(line.assembly_id || line.material_assembly_id || '').trim();
+    const cat = catalogById.get(aid);
+    const opts = storeroomsForCatalogMaterial(cat, labelCatalog);
+    const ids = new Set(opts.map((s) => s.id));
+    if (!ids.size) return [];
+    if (intersection === null) intersection = ids;
+    else {
+      intersection = new Set([...intersection].filter((id) => ids.has(id)));
+    }
+  }
+  if (!intersection?.size) return [];
+  return [...intersection]
+    .map((id) => {
+      const hit = (labelCatalog || []).find((s) => String(s.id) === String(id));
+      if (hit) return hit;
+      return { id: String(id), name: '', label: String(id) };
+    })
+    .sort((a, b) => String(a.label).localeCompare(String(b.label)));
 }
 
 export function materialLinesNeedStoreroomPick(lines) {
@@ -118,9 +187,29 @@ export function enrichCatalogMaterialUom(rows, uomLabelMap) {
   });
 }
 
+export function materialAssemblyIdFromStoredRow(row) {
+  const raw = String(row?.material_assembly_id || row?.assembly_id || row?.id || '').trim();
+  const hash = raw.indexOf('#');
+  if (hash >= 0) return raw.slice(0, hash).trim();
+  const colons = raw.indexOf('::');
+  if (colons >= 0) return raw.slice(0, colons).trim();
+  return raw;
+}
+
+export function warehouseLocationIdFromStoredRow(row) {
+  const explicit = String(row?.warehouse_location_id || '').trim();
+  if (explicit) return explicit;
+  const raw = String(row?.material_assembly_id || row?.assembly_id || '');
+  const hash = raw.indexOf('#');
+  if (hash >= 0) return raw.slice(hash + 1).trim();
+  const colons = raw.indexOf('::');
+  if (colons >= 0) return raw.slice(colons + 2).trim();
+  return '';
+}
+
 export function materialLineKey(row) {
-  const aid = String(row?.assembly_id || row?.id || '').trim();
-  const loc = String(row?.warehouse_location_id || '').trim();
+  const aid = materialAssemblyIdFromStoredRow(row);
+  const loc = warehouseLocationIdFromStoredRow(row);
   if (!aid) return '';
   return loc ? `${aid}::${loc}` : aid;
 }
@@ -129,6 +218,39 @@ export function formatMaterialUom(row) {
   const label = row?.uom_label;
   if (label) return String(label);
   return humanizeUomCode(row?.uom || 'ea');
+}
+
+/** Portal location names → Storeroom 1 / 2 / 3 for kiosk cards. */
+export function warehouseNameToStoreroomLabel(nameOrLabel) {
+  const raw = String(nameOrLabel || '').trim();
+  if (!raw) return '';
+  if (WAREHOUSE_NAME_TO_STOREROOM_LABEL[raw]) return WAREHOUSE_NAME_TO_STOREROOM_LABEL[raw];
+  const match = raw.match(/carpentry\s+warehouse\s*(\d+)/i);
+  if (match) return `Storeroom ${match[1]}`;
+  if (/^storeroom\s+\d+/i.test(raw)) {
+    const n = raw.match(/(\d+)/);
+    return n ? `Storeroom ${n[1]}` : raw;
+  }
+  return raw;
+}
+
+export function formatStoreroomOptionLabel(option) {
+  const label = String(option?.label || '').trim();
+  if (label && !/^carpentry\s+warehouse/i.test(label)) {
+    return warehouseNameToStoreroomLabel(label);
+  }
+  const name = String(option?.name || '').trim();
+  return warehouseNameToStoreroomLabel(name) || warehouseNameToStoreroomLabel(label) || label || name;
+}
+
+export function catalogQtyAtStoreroom(catalogRow, warehouseLocationId) {
+  const locId = String(warehouseLocationId || '').trim();
+  if (!locId) return Math.max(0, Number(catalogRow?.quantity) || 0);
+  const hit = (catalogRow?.locations || []).find(
+    (loc) => String(loc.location_id || '') === locId,
+  );
+  if (hit) return Math.max(0, Number(hit.quantity) || 0);
+  return Math.max(0, Number(catalogRow?.quantity) || 0);
 }
 
 export function carpentryFinishNeedsStoreroomPick(job) {

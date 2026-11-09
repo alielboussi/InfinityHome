@@ -820,6 +820,10 @@ const UI_STRINGS = {
     en: 'Confirm deducting job materials from:',
     ar: 'تأكيد خصم مواد المهمة من:',
   },
+  storeroomDeductNoStock: {
+    en: 'This material is not in stock at any storeroom for this SKU.',
+    ar: 'لا يوجد مخزون لهذه المادة في أي مستودع لهذا الرمز.',
+  },
   storeroomDeductNoList: {
     en: 'Storerooms could not be loaded. Close and try again, or check your connection.',
     ar: 'تعذر تحميل المستودعات. أغلق وحاول مرة أخرى أو تحقق من الاتصال.',
@@ -834,6 +838,15 @@ const UI_STRINGS = {
     ar: 'فُقدت بيانات الحفظ. اضغط حفظ عنصر الإنتاج مرة أخرى.',
   },
   materialsSearch: { en: 'Search material', ar: 'ابحث عن مادة' },
+  materialsStoreroomOnHand: {
+    en: 'In this storeroom: {qty}',
+    ar: 'في هذا المستودع: {qty}',
+  },
+  materialsTotalOnHand: {
+    en: 'Total in all storerooms: {qty}',
+    ar: 'الإجمالي في كل المستودعات: {qty}',
+  },
+  jobMaterialsExpand: { en: 'Materials ({count})', ar: 'المواد ({count})' },
   materialsLoadFailed: { en: 'Failed to load storeroom materials', ar: 'تعذر تحميل مواد المخزن' },
   materialsUomLabel: { en: 'UOM', ar: 'وحدة القياس' },
   manufactureEmptyNoStock: {

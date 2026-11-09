@@ -4,6 +4,7 @@ import { newUuid } from './uuid.js';
 import { enqueueWarehouseProductionLabelJob } from './productionLabelPrint.js';
 import { logWarehouseProductionStockIncrease } from './warehouseProductionLog.js';
 import { resolveCarpentryStoreroomLocations } from './storeroomBomDeduction.js';
+import { enrichManualMaterialLines } from './productionJobMaterials.js';
 import {
   consumeUpholsteryRawAndMaterials,
   creditUpholsteryFinishedOutput,
@@ -165,7 +166,13 @@ export async function listUpholsteryProductionJobs(sb, { activeOnly = true } = {
     rows = rows.filter((r) => ACTIVE_STATUSES.has(normalizeJobStatus(r.status)));
   }
   rows.sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')));
-  return { jobs: rows.map((r) => serializeJob(r)) };
+  const jobs = [];
+  for (const row of rows) {
+    const base = serializeJob(row);
+    const lines = await enrichManualMaterialLines(sb, row.metadata?.manual_material_lines);
+    jobs.push({ ...base, manual_material_lines: lines });
+  }
+  return { jobs };
 }
 
 export async function pauseUpholsteryProductionJob(sb, { jobId, userId }) {

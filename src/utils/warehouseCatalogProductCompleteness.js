@@ -11,6 +11,11 @@ export function isSetAssembly(assembly) {
   return String(assembly?.item_kind || '').toLowerCase() === 'set';
 }
 
+/** Carpentry storeroom BOM row — not a Warehouse Floor 1 finished product. */
+export function isStoreroomMaterialAssembly(assembly) {
+  return assembly?.metadata?.storeroom?.is_storeroom_material === true;
+}
+
 export function assemblyInventoryMode(assembly) {
   return String(assembly?.inventory_mode || WAREHOUSE_INVENTORY_MODE.PACKETS).toLowerCase();
 }
@@ -54,6 +59,7 @@ export function isIncompletePacketBomProduct(assembly, pktList) {
 
 export function isCompleteCatalogProduct(assembly, pktList) {
   if (!assembly || isSetAssembly(assembly)) return false;
+  if (isStoreroomMaterialAssembly(assembly)) return false;
   if (assemblyUsesFinishedInventory(assembly)) return true;
   if (hasIncompletePacketCartonBom(assembly, pktList)) return false;
   return true;
@@ -73,6 +79,7 @@ export function isUncategorizedWarehouseProduct(assembly, categories) {
 /** Production “Add stock” — finished units only, no carton/packet BOM. */
 export function isFinishedProductWithoutPacketBom(assembly, pktList) {
   if (!assembly || isSetAssembly(assembly)) return false;
+  if (isStoreroomMaterialAssembly(assembly)) return false;
   if (!assemblyUsesFinishedInventory(assembly)) return false;
   if ((pktList || []).length > 0) return false;
   const packetCount = Number(assembly.packet_count);

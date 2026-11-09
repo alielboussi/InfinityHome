@@ -1,6 +1,7 @@
 import { normalizeCarpentryUom } from '../constants/carpentryUom';
 import { loadMaterialUomAllowedSet } from './materialUomMutations';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
+import { isStoreroomMaterialAssembly } from './warehouseCatalogProductCompleteness';
 import { parseUpholsteryMeta } from './upholsteryCatalogView';
 import { saveCarpentryProductSelection } from './carpentryCatalogMutations';
 
@@ -17,6 +18,9 @@ export async function saveUpholsteryProductSelection(sb, assemblyId, selected) {
   if (readErr) throw new Error(readErr.message || 'Failed to read assembly');
   if (!row?.id) throw new Error('Product not found');
   if (isWarehouseSetAssembly(row)) throw new Error('Sets cannot be added to Upholstery catalog');
+  if (selected && isStoreroomMaterialAssembly(row)) {
+    throw new Error('Storeroom materials cannot be added as Upholstery products');
+  }
   const prev = parseUpholsteryMeta(row);
   const metadata = {
     ...(row.metadata || {}),

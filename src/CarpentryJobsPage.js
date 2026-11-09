@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchCarpentryProductionJobs,
   fetchProductionQuoteOrdersForRoute,
 } from './services/carpentryCatalogApi';
+import {
+  JobMaterialsDetailRow,
+  JobMaterialsExpandButton,
+} from './components/JobMaterialsExpandPanel';
+import { useStoreroomLocationLabels } from './hooks/useStoreroomLocationLabels';
+import { materialLinesFromJob } from './utils/productionJobMaterialLines';
 
 function formatElapsed(ms) {
   const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
@@ -61,6 +67,8 @@ export default function CarpentryJobsPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [expandedJobId, setExpandedJobId] = useState('');
+  const storeroomLabels = useStoreroomLocationLabels();
 
   const load = useCallback(async () => {
     try {
@@ -199,6 +207,7 @@ export default function CarpentryJobsPage() {
         <table className="kitwe-catalog-table kitwe-catalog-table--upholstery" style={{ marginTop: 12 }}>
           <thead>
             <tr>
+              <th style={{ width: 120 }}>Materials</th>
               <th>Product</th>
               <th>Status</th>
               <th>Timer</th>
@@ -207,22 +216,43 @@ export default function CarpentryJobsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((job) => (
-              <tr key={job.id || job.job_id}>
-                <td>
-                  <strong>{job.product_name || job.assembly_id || '—'}</strong>
-                  {job.product_sku ? (
-                    <div style={{ fontSize: 12, color: 'var(--kitwe-muted, #64748b)' }}>{job.product_sku}</div>
+            {rows.map((job) => {
+              const jobKey = String(job.id || job.job_id);
+              const matLines = materialLinesFromJob(job);
+              const open = expandedJobId === jobKey;
+              return (
+                <React.Fragment key={jobKey}>
+                  <tr>
+                    <td>
+                      <JobMaterialsExpandButton
+                        open={open}
+                        count={matLines.length}
+                        onClick={() => setExpandedJobId((prev) => (prev === jobKey ? '' : jobKey))}
+                      />
+                    </td>
+                    <td>
+                      <strong>{job.product_name || job.assembly_id || '—'}</strong>
+                      {job.product_sku ? (
+                        <div style={{ fontSize: 12, color: 'var(--kitwe-muted, #64748b)' }}>{job.product_sku}</div>
+                      ) : null}
+                    </td>
+                    <td>{statusLabel(job.status)}</td>
+                    <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                      {formatElapsed(job.elapsed_ms ?? job.accumulated_ms)}
+                    </td>
+                    <td>{job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</td>
+                    <td>{job.completed_at ? new Date(job.completed_at).toLocaleString() : '—'}</td>
+                  </tr>
+                  {open ? (
+                    <JobMaterialsDetailRow
+                      job={job}
+                      colSpan={6}
+                      labelByLocationId={storeroomLabels}
+                    />
                   ) : null}
-                </td>
-                <td>{statusLabel(job.status)}</td>
-                <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                  {formatElapsed(job.elapsed_ms ?? job.accumulated_ms)}
-                </td>
-                <td>{job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</td>
-                <td>{job.completed_at ? new Date(job.completed_at).toLocaleString() : '—'}</td>
-              </tr>
-            ))}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       ) : null}

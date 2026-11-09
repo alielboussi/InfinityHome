@@ -9,6 +9,7 @@ import {
   adjustAssemblyInventory,
   resolveCarpentryStoreroomLocations,
 } from './storeroomBomDeduction.js';
+import { enrichManualMaterialLines } from './productionJobMaterials.js';
 
 const JOBS = 'carpentry_production_jobs';
 const RUNS = 'carpentry_production_runs';
@@ -213,7 +214,13 @@ export async function listCarpentryProductionJobs(sb, { activeOnly = true, limit
   }
   rows.sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')));
   const cap = Math.min(500, Math.max(1, Number(limit) || 200));
-  return { jobs: rows.slice(0, cap).map((r) => serializeJob(r)) };
+  const jobs = [];
+  for (const row of rows.slice(0, cap)) {
+    const base = serializeJob(row);
+    const lines = await enrichManualMaterialLines(sb, row.metadata?.manual_material_lines);
+    jobs.push({ ...base, manual_material_lines: lines });
+  }
+  return { jobs };
 }
 
 export async function pauseCarpentryProductionJob(sb, { jobId, userId }) {

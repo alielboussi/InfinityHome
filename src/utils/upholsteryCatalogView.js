@@ -1,5 +1,6 @@
 import { normalizeMaterialUom } from '../constants/carpentryUom.js';
 import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy.js';
+import { isStoreroomMaterialAssembly } from './warehouseCatalogProductCompleteness.js';
 import { isWarehouseSetAssembly } from './warehouseSetMath.js';
 import { listWarehouseSetComponentCandidates } from './warehouseCatalogSetCandidates.js';
 import {
@@ -27,6 +28,7 @@ export function warehouseCatalogProductCandidates(assemblies) {
 
 export function listUpholsteryCatalogProducts(assemblies) {
   return warehouseCatalogProductCandidates(assemblies)
+    .filter((a) => !isStoreroomMaterialAssembly(a))
     .filter((a) => parseUpholsteryMeta(a).selected)
     .map((a) => {
       const meta = parseUpholsteryMeta(a);

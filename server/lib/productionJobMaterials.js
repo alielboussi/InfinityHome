@@ -34,9 +34,21 @@ const QUOTE_ROUTING = 'quote_production_routing';
 const QUOTE_RUNS = 'carpentry_production_runs';
 const QUOTE_USAGE = 'carpentry_production_material_usage';
 
+/** Canonical assembly id (legacy rows may embed `#location_id` in material_assembly_id). */
+export function materialAssemblyIdFromStoredRow(row) {
+  const raw = String(row?.material_assembly_id || row?.assembly_id || '').trim();
+  return assemblyIdFromLineKey(raw);
+}
+
+export function warehouseLocationIdFromStoredRow(row) {
+  const explicit = String(row?.warehouse_location_id || row?.warehouseLocationId || '').trim();
+  if (explicit) return explicit;
+  return storeroomLocFromLineKey(String(row?.material_assembly_id || row?.assembly_id || ''));
+}
+
 function lineKey(row) {
-  const aid = String(row?.material_assembly_id || row?.assembly_id || '').trim();
-  const loc = String(row?.warehouse_location_id || '').trim();
+  const aid = materialAssemblyIdFromStoredRow(row);
+  const loc = warehouseLocationIdFromStoredRow(row);
   if (!aid) return '';
   return loc ? `${aid}#${loc}` : aid;
 }
@@ -110,10 +122,10 @@ function normalizeLines(raw) {
   const out = [];
   const uomFallback = 'ea';
   for (const row of raw || []) {
-    const aid = lineKey(row);
+    const aid = materialAssemblyIdFromStoredRow(row);
     const q = Math.max(0, Number(row.quantity) || 0);
     if (!aid || q <= 0) continue;
-    const loc = String(row.warehouse_location_id || row.warehouseLocationId || '').trim();
+    const loc = warehouseLocationIdFromStoredRow(row);
     out.push({
       material_assembly_id: aid,
       assembly_id: aid,
@@ -122,9 +134,60 @@ function normalizeLines(raw) {
       name: String(row.name || '').trim(),
       family_sku: String(row.family_sku || '').trim(),
       warehouse_location_id: loc || null,
+      storeroom_label: String(row.storeroom_label || '').trim(),
+      uom_label: String(row.uom_label || '').trim(),
     });
   }
   return out;
+}
+
+function storeroomDisplayLabelForId(locationId, storeroomLocs) {
+  const id = String(locationId || '').trim();
+  if (!id) return '';
+  const idx = (storeroomLocs || []).findIndex((l) => String(l.id) === id);
+  if (idx >= 0 && CARPENTRY_WAREHOUSE_NAMES[idx]) {
+    return `Storeroom ${idx + 1}`;
+  }
+  const hit = (storeroomLocs || []).find((l) => String(l.id) === id);
+  return hit?.name ? String(hit.name) : '';
+}
+
+/** Enrich saved job lines for API/clients (name, SKU, UOM labels, storeroom labels). */
+export async function enrichManualMaterialLines(sb, lines) {
+  const src = Array.isArray(lines) ? lines : [];
+  if (!src.length) return [];
+  const storeroomLocs = await resolveCarpentryStoreroomLocations(sb);
+  const aids = [...new Set(src.map(materialAssemblyIdFromStoredRow).filter(Boolean))];
+  const [{ data: assemblies }, uomRows] = await Promise.all([
+    aids.length
+      ? sb.from(ASSEMBLIES).select('id, name, family_sku, metadata').in('id', aids)
+      : Promise.resolve({ data: [] }),
+    listMaterialUoms(sb).catch(() => []),
+  ]);
+  const byId = new Map((assemblies || []).map((a) => [String(a.id), a]));
+  const uomLabelByCode = new Map((uomRows || []).map((r) => [String(r.code), String(r.label || r.code)]));
+
+  return src
+    .map((row) => {
+      const aid = materialAssemblyIdFromStoredRow(row);
+      const loc = warehouseLocationIdFromStoredRow(row);
+      const asm = byId.get(aid);
+      const metaUom = asm ? parseStoreroomMaterialMeta(asm).default_uom : '';
+      const uom = normalizeCarpentryUom(row.uom || metaUom || 'ea');
+      const qty = Math.max(0, Number(row.quantity) || 0);
+      return {
+        material_assembly_id: aid,
+        assembly_id: aid,
+        quantity: qty,
+        uom,
+        uom_label: String(row.uom_label || '').trim() || displayStoreroomMaterialUomLabel(uom, uomLabelByCode),
+        name: String(row.name || '').trim() || String(asm?.name || '').trim(),
+        family_sku: String(row.family_sku || '').trim() || String(asm?.family_sku || '').trim(),
+        warehouse_location_id: loc || null,
+        storeroom_label: String(row.storeroom_label || '').trim() || storeroomDisplayLabelForId(loc, storeroomLocs),
+      };
+    })
+    .filter((line) => line.material_assembly_id && line.quantity > 0);
 }
 
 function allocateAcrossWarehouses(needQty, qtyByLocationId, locationOrder) {
@@ -299,10 +362,18 @@ export async function saveProductionJobMaterials(sb, {
     throw new Error('Storerooms not configured — run seedCarpentryWarehouseLocations.js');
   }
   const uomAllowed = await loadMaterialUomAllowedSet(sb);
-  const desired = normalizeLines(materialLines).map((row) => ({
-    ...row,
-    uom: normalizeCarpentryUom(row.uom, uomAllowed.size ? uomAllowed : undefined),
-  }));
+  const uomRows = await listMaterialUoms(sb).catch(() => []);
+  const uomLabelByCode = new Map((uomRows || []).map((r) => [String(r.code), String(r.label || r.code)]));
+  const desired = normalizeLines(materialLines).map((row) => {
+    const uom = normalizeCarpentryUom(row.uom, uomAllowed.size ? uomAllowed : undefined);
+    const loc = row.warehouse_location_id;
+    return {
+      ...row,
+      uom,
+      uom_label: row.uom_label || displayStoreroomMaterialUomLabel(uom, uomLabelByCode),
+      storeroom_label: row.storeroom_label || storeroomDisplayLabelForId(loc, storeroomLocs),
+    };
+  });
 
   let table = null;
   let entity = null;
@@ -381,9 +452,11 @@ export async function saveProductionJobMaterials(sb, {
     mergedUsage.push(row);
   }
 
+  const enrichedLines = await enrichManualMaterialLines(sb, desired);
+
   const nextMeta = {
     ...meta,
-    manual_material_lines: desired,
+    manual_material_lines: enrichedLines,
     material_usage_rows: mergedUsage,
     storeroom_location_ids: storeroomLocs.map((l) => l.id).filter(Boolean),
   };
@@ -420,7 +493,7 @@ export async function saveProductionJobMaterials(sb, {
 
   return {
     ok: true,
-    material_lines: desired,
+    material_lines: enrichedLines,
     deducted_rows: usageRows.filter((r) => r.quantity > 0),
   };
 }

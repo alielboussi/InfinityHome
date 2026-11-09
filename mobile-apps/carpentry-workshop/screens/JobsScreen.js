@@ -35,6 +35,7 @@ import ProductionJobMaterialsModal from '../productionKiosk/components/Productio
 import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
 import { theme } from '../shared/theme';
 import RunningJobElapsed from '../productionKiosk/components/RunningJobElapsed';
+import JobMaterialsInlineList from '../shared/components/JobMaterialsInlineList';
 import { subscribeProductionRefresh } from '../productionKiosk/lib/productionRefreshBus';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { Image } from 'react-native';
@@ -176,6 +177,14 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
         </ProductionPressableHint>
       </View>
       <Text style={[kiosk.hint, { textAlign }]}>{tUi('upholsteryJobControlsHint', locale)}</Text>
+      <JobMaterialsInlineList
+        lines={job.manual_material_lines}
+        locale={locale}
+        tUi={tUi}
+        textAlign={textAlign}
+        canEdit={!isCompleted}
+        onEditMaterials={() => onMaterials?.(job)}
+      />
     </ProductionPressableHint>
   );
 }

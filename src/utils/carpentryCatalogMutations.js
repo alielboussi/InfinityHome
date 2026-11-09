@@ -3,6 +3,7 @@ import { WAREHOUSE_FACTORY_LOCATION_ID } from '../constants/warehouseShowroomLoc
 import { resolveWarehouseFloor2Location } from '../constants/warehouseFloorLocations';
 import { loadMaterialUomAllowedSet } from './materialUomMutations';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
+import { isStoreroomMaterialAssembly } from './warehouseCatalogProductCompleteness';
 import { parseCarpentryMeta } from './carpentryCatalogView';
 import { buildFloor2StockRows } from './carpentryFinishingView.js';
 import { newUuid } from './uuid';
@@ -23,6 +24,9 @@ export async function saveCarpentryProductSelection(sb, assemblyId, selected) {
   if (readErr) throw new Error(readErr.message || 'Failed to read assembly');
   if (!row?.id) throw new Error('Product not found');
   if (isWarehouseSetAssembly(row)) throw new Error('Sets cannot be added to Carpentry catalog');
+  if (selected && isStoreroomMaterialAssembly(row)) {
+    throw new Error('Storeroom materials cannot be added as Carpentry products');
+  }
   const prev = parseCarpentryMeta(row);
   const metadata = {
     ...(row.metadata || {}),

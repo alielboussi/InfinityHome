@@ -11,9 +11,11 @@ import { buildPacketsByAssembly } from './warehouseAssemblyPacketPool.js';
 import {
   assemblyUsesPacketBom,
   isCompleteCatalogProduct,
+  isStoreroomMaterialAssembly,
 } from './warehouseCatalogProductCompleteness.js';
 
 function isWarehouseFloor1PortalProduct(assembly, pktList) {
+  if (isStoreroomMaterialAssembly(assembly)) return false;
   if (isCompleteCatalogProduct(assembly, pktList)) return true;
   if (assemblyUsesPacketBom(assembly) && (pktList || []).length > 0) return true;
   return false;
@@ -79,6 +81,10 @@ export function listStoreroomMaterialOptions(assemblies, inventory, storeroomLoc
   }
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
   return [...qtyByAssembly.entries()]
+    .filter(([id]) => {
+      const a = assemblyById.get(id);
+      return a && isStoreroomMaterialAssembly(a);
+    })
     .map(([id, storeroom_qty]) => {
       const a = assemblyById.get(id);
       return {

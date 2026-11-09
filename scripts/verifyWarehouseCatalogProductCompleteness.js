@@ -4,6 +4,7 @@ const path = require('path');
 const {
   isCompleteCatalogProduct,
   isIncompletePacketBomProduct,
+  isStoreroomMaterialAssembly,
   WAREHOUSE_INVENTORY_MODE,
 } = require(path.join(__dirname, '../mobile-apps/shared/warehouseCatalogProductCompleteness.js'));
 
@@ -35,5 +36,14 @@ assert.strictEqual(isCompleteCatalogProduct(packetBom, goodLinks), true);
 
 assert.strictEqual(isIncompletePacketBomProduct(packetBom, []), true);
 assert.strictEqual(isCompleteCatalogProduct(packetBom, []), false);
+
+const storeroomMaterial = {
+  id: 'sr',
+  item_kind: 'product',
+  inventory_mode: WAREHOUSE_INVENTORY_MODE.FINISHED,
+  metadata: { storeroom: { is_storeroom_material: true } },
+};
+assert.strictEqual(isStoreroomMaterialAssembly(storeroomMaterial), true);
+assert.strictEqual(isCompleteCatalogProduct(storeroomMaterial, []), false);
 
 console.log('verifyWarehouseCatalogProductCompleteness: ok');

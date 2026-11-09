@@ -54,6 +54,28 @@ function testPortalProductScope() {
     'Floor 2 qty must not bypass incomplete catalog / warehouse-products rules',
   );
   assert.equal(allowed.has(floor1Id), true, 'Floor 1 catalog product must be addable');
+
+  const storeroomMaterialId = 'storeroom-nails';
+  const storeroomCtx = {
+    assemblies: [
+      {
+        id: storeroomMaterialId,
+        name: 'Storeroom nails',
+        item_kind: 'product',
+        inventory_mode: 'finished',
+        metadata: { storeroom: { is_storeroom_material: true, default_uom: 'pcs' } },
+      },
+      { id: floor1Id, name: 'Chair', item_kind: 'product', inventory_mode: 'finished' },
+    ],
+    assemblyPackets: [],
+    packets: [],
+  };
+  const storeroomAllowed = productionPortalProductIdSet(storeroomCtx);
+  assert.equal(
+    storeroomAllowed.has(storeroomMaterialId),
+    false,
+    'Storeroom materials must not appear as Floor 1 portal products',
+  );
 }
 
 function testClientSourceRouting() {

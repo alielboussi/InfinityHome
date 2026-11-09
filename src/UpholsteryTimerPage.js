@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchUpholsteryProductionJobs,
   fetchUpholsteryQuoteOrders,
 } from './services/warehouseProductionApi';
+import {
+  JobMaterialsDetailRow,
+  JobMaterialsExpandButton,
+} from './components/JobMaterialsExpandPanel';
+import { useStoreroomLocationLabels } from './hooks/useStoreroomLocationLabels';
+import { materialLinesFromJob } from './utils/productionJobMaterialLines';
 
 function formatElapsed(ms) {
   const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
@@ -63,6 +69,8 @@ export default function UpholsteryTimerPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [expandedJobId, setExpandedJobId] = useState('');
+  const storeroomLabels = useStoreroomLocationLabels();
 
   const load = useCallback(async () => {
     try {
@@ -193,6 +201,7 @@ export default function UpholsteryTimerPage() {
         <table className="kitwe-catalog-table" style={{ marginTop: 12 }}>
           <thead>
             <tr>
+              <th style={{ width: 120 }}>Materials</th>
               <th>Product</th>
               <th>SKU</th>
               <th>Qty</th>
@@ -206,18 +215,37 @@ export default function UpholsteryTimerPage() {
             {jobs.map((job) => {
               const qty = Math.max(1, Number(job.product_qty) || 1);
               const checked = Number(job.units_checked) || 0;
+              const jobKey = String(job.job_id || job.id);
+              const matLines = materialLinesFromJob(job);
+              const open = expandedJobId === jobKey;
               return (
-                <tr key={String(job.job_id || job.id)}>
-                  <td>{job.finished_name || job.raw_name || '—'}</td>
-                  <td>{job.finished_sku || '—'}</td>
-                  <td>{qty}</td>
-                  <td>{checked} / {qty}</td>
-                  <td>{statusLabel(job.status)}</td>
-                  <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                    {formatElapsed(job.elapsed_ms)}
-                  </td>
-                  <td>{job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</td>
-                </tr>
+                <React.Fragment key={jobKey}>
+                  <tr>
+                    <td>
+                      <JobMaterialsExpandButton
+                        open={open}
+                        count={matLines.length}
+                        onClick={() => setExpandedJobId((prev) => (prev === jobKey ? '' : jobKey))}
+                      />
+                    </td>
+                    <td>{job.finished_name || job.raw_name || '—'}</td>
+                    <td>{job.finished_sku || '—'}</td>
+                    <td>{qty}</td>
+                    <td>{checked} / {qty}</td>
+                    <td>{statusLabel(job.status)}</td>
+                    <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                      {formatElapsed(job.elapsed_ms)}
+                    </td>
+                    <td>{job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</td>
+                  </tr>
+                  {open ? (
+                    <JobMaterialsDetailRow
+                      job={job}
+                      colSpan={8}
+                      labelByLocationId={storeroomLabels}
+                    />
+                  ) : null}
+                </React.Fragment>
               );
             })}
           </tbody>
