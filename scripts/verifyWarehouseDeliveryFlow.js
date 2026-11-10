@@ -97,6 +97,14 @@ assert(
   'delivery submit must deduct send-location stock (in transit)',
 );
 assert(
+  fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAcceptStock.js'), 'utf8').includes('delivery_admin_hold'),
+  'delivery admin queue (repairs/orders) must release virtual hold without floor stock',
+);
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAdminQueue.js'), 'utf8').includes('assertAdminQueueDeliveryHold'),
+  'delivery submit must validate repair/order admin hold instead of floor qty',
+);
+assert(
   fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAcceptStock.js'), 'utf8').includes('source_stock_deducted_at'),
   'delivery accept must credit Kitwe when stock already left send location',
 );

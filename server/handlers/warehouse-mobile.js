@@ -127,8 +127,6 @@ import {
   printReturnCustomerPickupLabel,
   listRepairFloor2DeliveriesForCatalog,
   repairFloor2DeliveryAssemblyMap,
-  resolveWarehouseFloor2LocationId,
-  ensureRepairFloor2StockForDelivery,
 } from '../lib/warehouseReturnOrders.js';
 import { registerProductionPushToken } from '../lib/productionExpoPush.js';
 import {
@@ -3341,14 +3339,17 @@ async function opDeliverySubmit(body, user) {
   const byAssembly = buildPacketsByAssembly(links || [], packets || []);
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
   const repairFloor2Map = await repairFloor2DeliveryAssemblyMap(sb);
-  const { listOrderDeliveriesForMobile } = await import('../lib/warehouseDeliveryAdminQueue.js');
+  const repairByReturnId = new Map(
+    [...repairFloor2Map.values()].map((row) => [String(row.return_order_id), row]),
+  );
+  const submitReturnOrderId = String(body.return_order_id || body.returnOrderId || '').trim();
+  const { listOrderDeliveriesForMobile, assertAdminQueueDeliveryHold } = await import('../lib/warehouseDeliveryAdminQueue.js');
   const orderRows = await listOrderDeliveriesForMobile(sb);
   const orderFloor2Map = new Map(orderRows.map((row) => [String(row.assembly_id), row]));
 
   const entries = [];
   let totalCartons = 0;
   const now = new Date().toISOString();
-  const floor2DeductLocationId = await resolveWarehouseFloor2LocationId(sb);
 
   for (const group of groups) {
     if (isWarehouseSetDeliveryGroup(group)) {
@@ -3395,31 +3396,33 @@ async function opDeliverySubmit(body, user) {
         throw err;
       }
       const shipment = deliveryShipmentUnits(assembly, packetRows, units);
-      const repairStaging = repairFloor2Map.get(assemblyId) || null;
-      const orderStaging = orderFloor2Map.get(assemblyId) || null;
+      let repairStaging = null;
+      if (submitReturnOrderId) {
+        const pinned = repairByReturnId.get(submitReturnOrderId);
+        if (pinned && String(pinned.assembly_id) === assemblyId) {
+          repairStaging = pinned;
+        }
+      }
+      if (!repairStaging) {
+        repairStaging = repairFloor2Map.get(assemblyId) || null;
+      }
+      let orderStaging = null;
+      if (!repairStaging) {
+        orderStaging = orderFloor2Map.get(assemblyId) || null;
+      }
       const adminQueue = repairStaging || orderStaging;
-      const stockDeductLocationId = adminQueue && floor2DeductLocationId
-        ? floor2DeductLocationId
-        : WAREHOUSE_FROM_LOCATION_ID;
-      if (repairStaging) {
-        await ensureRepairFloor2StockForDelivery(sb, {
-          returnOrderId: repairStaging.return_order_id,
+      if (adminQueue) {
+        await assertAdminQueueDeliveryHold(sb, {
+          repairStaging,
+          orderStaging,
           assemblyId,
           requiredQty: shipment.finishedUnits,
         });
-      }
-      if (!adminQueue) {
-        await assertAssemblyStockAvailable(
-          sb,
-          assemblyId,
-          WAREHOUSE_FROM_LOCATION_ID,
-          shipment.finishedUnits,
-        );
       } else {
         await assertAssemblyStockAvailable(
           sb,
           assemblyId,
-          stockDeductLocationId,
+          WAREHOUSE_FROM_LOCATION_ID,
           shipment.finishedUnits,
         );
       }
@@ -3440,9 +3443,10 @@ async function opDeliverySubmit(body, user) {
           ...deliveryEntryBoxMetadata(shipment),
           driver_checked_at: driverCheckedAt,
           receiver_checked_at: null,
-          stock_deduct_location_id: stockDeductLocationId,
+          ...(!adminQueue ? { stock_deduct_location_id: WAREHOUSE_FROM_LOCATION_ID } : {}),
           ...(adminQueue ? {
             admin_queue_delivery: true,
+            delivery_admin_hold: true,
             ...(repairStaging ? { floor2_repair_delivery: true } : {}),
             return_order_id: repairStaging?.return_order_id || null,
             return_number: repairStaging?.return_number || null,

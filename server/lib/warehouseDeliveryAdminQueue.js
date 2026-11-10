@@ -222,6 +222,55 @@ async function listQuoteOrdersAwaitingDriver(sb) {
   return out;
 }
 
+/** Repairs / production orders in Delivery app queue — held on delivery_admin, not warehouse floors. */
+export async function assertAdminQueueDeliveryHold(sb, {
+  repairStaging,
+  orderStaging,
+  assemblyId,
+  requiredQty,
+} = {}) {
+  const need = Math.max(1, Math.floor(Number(requiredQty) || 1));
+  const aid = String(assemblyId || '').trim();
+  if (!aid) throw new Error('Unknown product in shipment.');
+
+  if (repairStaging) {
+    const rid = String(repairStaging.return_order_id || '').trim();
+    if (!rid) throw new Error('Repair delivery is missing return order.');
+    const { data: row } = await sb.from(RETURNS).select('*').eq('id', rid).maybeSingle();
+    if (!row) throw new Error('Return order not found.');
+    if (String(row.assembly_id) !== aid) {
+      throw new Error('Return product does not match shipment.');
+    }
+    if (!repairEligibleForMobileDeliveryQueue(row)) {
+      throw new Error('This repair is no longer waiting for driver delivery.');
+    }
+    const held = Math.max(1, Number(row.quantity) || 1);
+    if (held < need) {
+      throw new Error(`Repair hold qty ${held} is less than shipment ${need}.`);
+    }
+    return;
+  }
+
+  if (orderStaging) {
+    if (String(orderStaging.assembly_id) !== aid) {
+      throw new Error('Order product does not match shipment.');
+    }
+    const held = Math.max(1, Number(orderStaging.quantity) || 1);
+    if (held < need) {
+      throw new Error(`Order hold qty ${held} is less than shipment ${need}.`);
+    }
+    const stage = String(
+      orderStaging.delivery_admin_stage || DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
+    ).toLowerCase();
+    if (stage !== DELIVERY_ADMIN_STAGE.AWAITING_DRIVER) {
+      throw new Error('This production order is no longer waiting for driver delivery.');
+    }
+    return;
+  }
+
+  throw new Error('Delivery admin hold not found for this product.');
+}
+
 export async function listOrderDeliveriesForMobile(sb) {
   const [carpentry, upholstery, painting, quotes] = await Promise.all([
     listCompletedJobsAwaitingDriver(sb, CARPENTRY_JOBS, 'carpentry'),
@@ -358,15 +407,18 @@ export async function moveAdminQueueLineToKitwe(sb, line) {
   if (!aid || qty < 1) return null;
   const customerRepair = line.metadata?.return_has_customer === true;
   if (customerRepair) return { assemblyId: aid, qty, kitweAdded: 0 };
+  const virtualHold = line.metadata?.delivery_admin_hold === true;
   const { adjustAssemblyStock } = await returnStockMutations();
-  const deductLoc = String(line.metadata?.stock_deduct_location_id || WAREHOUSE_FROM_LOCATION_ID).trim()
-    || WAREHOUSE_FROM_LOCATION_ID;
-  const alreadyLeftSendLoc = Boolean(line.metadata?.source_stock_deducted_at);
-  if (!alreadyLeftSendLoc) {
-    try {
-      await adjustAssemblyStock(sb, aid, deductLoc, -qty);
-    } catch (err) {
-      if (!/Not enough finished product stock/i.test(String(err?.message || ''))) throw err;
+  if (!virtualHold) {
+    const deductLoc = String(line.metadata?.stock_deduct_location_id || WAREHOUSE_FROM_LOCATION_ID).trim()
+      || WAREHOUSE_FROM_LOCATION_ID;
+    const alreadyLeftSendLoc = Boolean(line.metadata?.source_stock_deducted_at);
+    if (!alreadyLeftSendLoc) {
+      try {
+        await adjustAssemblyStock(sb, aid, deductLoc, -qty);
+      } catch (err) {
+        if (!/Not enough finished product stock/i.test(String(err?.message || ''))) throw err;
+      }
     }
   }
   await adjustAssemblyStock(sb, aid, WAREHOUSE_TO_LOCATION_ID, qty);

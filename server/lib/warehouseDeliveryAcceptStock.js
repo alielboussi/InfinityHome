@@ -62,6 +62,16 @@ export async function deductSourceStockOnDeliverySubmit(sb, entries, {
     const qty = Math.max(0, Number(line.quantity) || 0);
     if (qty < 1) continue;
 
+    if (meta.admin_queue_delivery === true) {
+      line.metadata = {
+        ...meta,
+        delivery_admin_hold: true,
+        source_stock_deducted_at: now,
+        virtual_hold_released_at: now,
+      };
+      continue;
+    }
+
     const pid = deliveryEntryPacketId(line);
     const fromLoc = String(meta.stock_deduct_location_id || fromLocationId).trim() || fromLocationId;
 
@@ -109,6 +119,9 @@ export async function restoreSourceStockOnDeliveryCancel(sb, entries, {
   for (const line of entries || []) {
     if (!deliverySourceStockDeducted(line)) continue;
     if (line?.metadata?.received_at) continue;
+    if (line?.metadata?.delivery_admin_hold === true || line?.metadata?.admin_queue_delivery === true) {
+      continue;
+    }
 
     const qty = Math.max(0, Number(line.quantity) || 0);
     if (qty < 1) continue;
