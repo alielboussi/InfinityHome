@@ -570,7 +570,6 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       });
       const imgWidthMm = pageWidthMm;
       let contentHeightMm = Math.max(40, (canvas.height * imgWidthMm) / canvas.width);
-      const pageHeightMm = Math.min(297, Math.max(contentHeightMm + 2, 60));
       if (contentHeightMm > 297) {
         contentHeightMm = 297;
       }
