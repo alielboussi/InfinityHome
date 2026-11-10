@@ -3347,6 +3347,7 @@ async function opDeliverySubmit(body, user) {
   const entries = [];
   let totalCartons = 0;
   const now = new Date().toISOString();
+  const floor2DeductLocationId = await resolveWarehouseFloor2LocationId(sb);
 
   for (const group of groups) {
     if (isWarehouseSetDeliveryGroup(group)) {
@@ -3396,11 +3397,21 @@ async function opDeliverySubmit(body, user) {
       const repairStaging = repairFloor2Map.get(assemblyId) || null;
       const orderStaging = orderFloor2Map.get(assemblyId) || null;
       const adminQueue = repairStaging || orderStaging;
+      const stockDeductLocationId = adminQueue && floor2DeductLocationId
+        ? floor2DeductLocationId
+        : WAREHOUSE_FROM_LOCATION_ID;
       if (!adminQueue) {
         await assertAssemblyStockAvailable(
           sb,
           assemblyId,
           WAREHOUSE_FROM_LOCATION_ID,
+          shipment.finishedUnits,
+        );
+      } else {
+        await assertAssemblyStockAvailable(
+          sb,
+          assemblyId,
+          stockDeductLocationId,
           shipment.finishedUnits,
         );
       }
@@ -3482,6 +3493,9 @@ async function opDeliverySubmit(body, user) {
   }
 
   try {
+  const { deductSourceStockOnDeliverySubmit } = await import('../lib/warehouseDeliveryAcceptStock.js');
+  await deductSourceStockOnDeliverySubmit(sb, entries, { now });
+
   for (const entry of entries) {
     const { error } = await sb.from('warehouse_delivery_entries').insert({
       ...entry,

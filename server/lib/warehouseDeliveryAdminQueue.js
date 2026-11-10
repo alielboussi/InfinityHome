@@ -359,6 +359,16 @@ export async function moveAdminQueueLineToKitwe(sb, line) {
   const customerRepair = line.metadata?.return_has_customer === true;
   if (customerRepair) return { assemblyId: aid, qty, kitweAdded: 0 };
   const { adjustAssemblyStock } = await returnStockMutations();
+  const deductLoc = String(line.metadata?.stock_deduct_location_id || WAREHOUSE_FROM_LOCATION_ID).trim()
+    || WAREHOUSE_FROM_LOCATION_ID;
+  const alreadyLeftSendLoc = Boolean(line.metadata?.source_stock_deducted_at);
+  if (!alreadyLeftSendLoc) {
+    try {
+      await adjustAssemblyStock(sb, aid, deductLoc, -qty);
+    } catch (err) {
+      if (!/Not enough finished product stock/i.test(String(err?.message || ''))) throw err;
+    }
+  }
   await adjustAssemblyStock(sb, aid, WAREHOUSE_TO_LOCATION_ID, qty);
   return { assemblyId: aid, qty, kitweAdded: qty };
 }

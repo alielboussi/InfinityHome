@@ -28,7 +28,7 @@ export default function DeliveryCustomerDriverSection({
 
   const L = {
     title: labels.title || 'Customer driver',
-    hint: labels.hint || 'Tap + to enter name and phone (or pick a fleet driver below).',
+    addBtn: labels.addBtn || 'Add Customer',
     addTitle: labels.addTitle || 'Customer driver',
     namePh: labels.namePh || 'Driver name',
     phonePh: labels.phonePh || 'Phone number',
@@ -43,29 +43,35 @@ export default function DeliveryCustomerDriverSection({
     setOpen(false);
   };
 
+  const openModal = () => {
+    setNameDraft(customerName || '');
+    setPhoneDraft(customerPhone || '');
+    setOpen(true);
+  };
+
   return (
-    <View style={styles.wrap}>
-      <View style={styles.rowHead}>
-        <Text style={[kiosk.label || styles.label, { textAlign }]}>{L.title}</Text>
-        <Pressable
-          style={[styles.plusBtn, { backgroundColor: theme.primary }]}
-          disabled={disabled || fleetDriverActive}
-          onPress={() => {
-            setNameDraft(customerName || '');
-            setPhoneDraft(customerPhone || '');
-            setOpen(true);
-          }}
+    <View style={[kiosk.field || styles.field]}>
+      <Text style={[kiosk.label || styles.label, { textAlign }]}>{L.title}</Text>
+      <Pressable
+        style={[
+          kiosk.driverPickerBtn,
+          customerName ? kiosk.driverPickerBtnSelected : null,
+        ]}
+        disabled={disabled || fleetDriverActive}
+        onPress={openModal}
+      >
+        <Text
+          style={[
+            customerName ? kiosk.driverPickerValueText : kiosk.driverPickerPlaceholderText,
+            { textAlign: 'center' },
+          ]}
+          numberOfLines={2}
         >
-          <Text style={styles.plusText}>+</Text>
-        </Pressable>
-      </View>
-      {customerName ? (
-        <Text style={[kiosk.metaLine || styles.meta, { textAlign }]}>
-          {customerName} · {customerPhone}
+          {customerName
+            ? `${customerName}${customerPhone ? ` · ${customerPhone}` : ''}`
+            : L.addBtn}
         </Text>
-      ) : (
-        <Text style={[kiosk.hint || styles.hint, { textAlign }]}>{L.hint}</Text>
-      )}
+      </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
@@ -96,13 +102,8 @@ export default function DeliveryCustomerDriverSection({
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 12 },
-  rowHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  plusBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  plusText: { color: '#fff', fontSize: 22, fontWeight: '700', marginTop: -2 },
-  label: { fontSize: 15, fontWeight: '600' },
-  meta: { fontSize: 14, marginTop: 4 },
-  hint: { fontSize: 13, marginTop: 4, opacity: 0.85 },
+  field: { marginBottom: 12 },
+  label: { fontSize: 15, fontWeight: '600', marginBottom: 6 },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 24 },
   sheet: { borderRadius: 14, padding: 16, borderWidth: 1 },
   title: { fontSize: 17, fontWeight: '700', marginBottom: 12 },

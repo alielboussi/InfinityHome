@@ -78,14 +78,28 @@ assert(
   'Hassan page must render finished-unit delivery lines (not packet_id only)',
 );
 assert(
-  fs.readFileSync(path.join(root, 'src/utils/warehouseDelivery.js'), 'utf8').includes('deliveryEntryReceivable'),
-  'receiver progress must count finished-unit assembly lines',
+  fs.readFileSync(path.join(root, 'src/utils/warehouseDelivery.js'), 'utf8').includes('warehouseDeliveryReceiverTickRows'),
+  'receiver progress must use visible tick rows (set deliveries)',
+);
+assert(
+  fs.readFileSync(path.join(root, 'src/utils/warehouseDelivery.js'), 'utf8').includes('set-parent') && fs
+    .readFileSync(path.join(root, 'src/utils/warehouseDelivery.js'), 'utf8')
+    .includes("deliveryEntryReceivable(line) ? 'receiver-line'"),
+  'set-component finished units must be Kitwe tick rows',
 );
 assert(deliveries.includes('WAREHOUSE_RECEIVER_LIST_STATUSES'), 'Hassan page must load completed deliveries for history');
 assert(!deliveries.includes('prev.filter((s) => String(s.id)'), 'Hassan page must not remove cards when accept completes');
 assert(mobile.includes('admin_registry'), 'return/storage list must support admin registry');
 assert(mobile.includes('driver_signature_url'), 'delivery submit must store driver signature url');
 assert(mobile.includes('delivery-cancel'), 'warehouse-mobile must support delivery-cancel');
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAcceptStock.js'), 'utf8').includes('deductSourceStockOnDeliverySubmit'),
+  'delivery submit must deduct send-location stock (in transit)',
+);
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAcceptStock.js'), 'utf8').includes('source_stock_deducted_at'),
+  'delivery accept must credit Kitwe when stock already left send location',
+);
 assert(mobile.includes('delivery-draft-discard'), 'warehouse-mobile must discard failed delivery drafts');
 assert(mobile.includes('deleteWarehouseDeliverySessionHard'), 'failed delivery submit must hard-delete draft');
 
@@ -125,7 +139,7 @@ assert(
 const chrome = fs.readFileSync(path.join(root, 'src/AppChrome.js'), 'utf8');
 assert(chrome.includes('/warehouse-deliveries-admin'), 'inventory nav must include Deliveries');
 assert(
-  fs.readFileSync(path.join(root, 'src/WarehouseDeliveriesAdmin.js'), 'utf8').includes('sendWarehouseDeliveryWhatsApp'),
+  deliveries.includes('adminMode') && deliveries.includes('sendWarehouseDeliveryWhatsApp'),
   'Deliveries admin must support resend WhatsApp with delivery note PDF',
 );
 assert(chrome.includes('/warehouse-repairs-admin'), 'inventory nav must include Repairs');

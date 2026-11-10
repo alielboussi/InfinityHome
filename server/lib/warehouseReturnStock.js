@@ -1,3 +1,15 @@
+import {
+  WAREHOUSE_FROM_LOCATION_ID,
+  WAREHOUSE_TO_LOCATION_ID,
+} from '../../src/utils/warehouseDelivery.js';
+
+function assemblyStockLocationLabel(locationId) {
+  const id = String(locationId || '').trim();
+  if (id === WAREHOUSE_FROM_LOCATION_ID) return 'Factory Warehouse';
+  if (id === WAREHOUSE_TO_LOCATION_ID) return 'Kitwe';
+  return id || 'warehouse';
+}
+
 export async function getAssemblyStockQty(sb, assemblyId, locationId) {
   const { data } = await sb
     .from('warehouse_assembly_inventory')
@@ -16,7 +28,10 @@ export async function adjustAssemblyStock(sb, assemblyId, locationId, delta) {
   const current = await getAssemblyStockQty(sb, aid, loc);
   const next = current + d;
   if (next < 0) {
-    throw new Error('Not enough finished product stock at Kitwe for this return.');
+    const need = Math.abs(d);
+    throw new Error(
+      `Not enough finished product stock at ${assemblyStockLocationLabel(loc)} (have ${current}, need ${need} more to complete this move).`,
+    );
   }
   const { upsertFinishedAssemblyInventoryQuantity } = await import('./warehouseCatalogMobile.js');
   await upsertFinishedAssemblyInventoryQuantity(sb, {

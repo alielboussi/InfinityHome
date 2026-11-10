@@ -37,9 +37,12 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
   const padRef = useRef(null);
   const submitLockRef = useRef(false);
 
-  const sessionId = route.params?.sessionId || '';
-  const deliveryNumber = route.params?.deliveryNumber || '';
+  const bootstrapSession = route.params?.bootstrapSession === true;
+  const initialSessionId = route.params?.sessionId || '';
   const printNoteNumber = String(route.params?.printNoteNumber || '').trim();
+  const [sessionId, setSessionId] = useState(initialSessionId);
+  const [deliveryNumber, setDeliveryNumber] = useState(route.params?.deliveryNumber || '');
+  const [sessionOpening, setSessionOpening] = useState(bootstrapSession && !initialSessionId);
   const groups = route.params?.groups || [];
   const printGroups = route.params?.printGroups || [];
   const returnOrderId = route.params?.returnOrderId || '';
@@ -61,10 +64,34 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
   const [sigValid, setSigValid] = useState(false);
 
   useEffect(() => {
+    if (!bootstrapSession || sessionId) return undefined;
+    let cancelled = false;
+    setSessionOpening(true);
+    (async () => {
+      try {
+        const session = await warehouseMobileRequest('delivery-session-open', {});
+        if (cancelled) return;
+        setSessionId(String(session.session_id || ''));
+        setDeliveryNumber(String(session.delivery_number || ''));
+      } catch (err) {
+        if (!cancelled) {
+          setError(formatWarehouseMobileApiError(err?.message, tUi('deliverySubmitFailed', locale)));
+        }
+      } finally {
+        if (!cancelled) setSessionOpening(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [bootstrapSession, sessionId, locale]);
+
+  useEffect(() => {
+    if (sessionOpening) return;
     if (!sessionId || !Array.isArray(groups) || !groups.length) {
       navigation.replace(deliveryQueueReturnRoute(route.params?.queueKind));
     }
-  }, [sessionId, groups.length, navigation]);
+  }, [sessionId, groups.length, navigation, sessionOpening]);
+
+  const displayNoteNumber = printNoteNumber || deliveryNumber;
 
 
   useEffect(() => {
@@ -182,7 +209,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
 
   const customerLabels = {
     title: tUi('deliveryCustomerDriver', locale),
-    hint: tUi('deliveryCustomerDriverHint', locale),
+    addBtn: tUi('deliveryCustomerAddBtn', locale),
     addTitle: tUi('deliveryCustomerDriverAdd', locale),
     namePh: tUi('deliveryCustomerDriverNamePh', locale),
     phonePh: tUi('deliveryCustomerDriverPhonePh', locale),
@@ -211,7 +238,11 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         </Pressable>
 
         <View style={kiosk.card}>
-          <Text style={[kiosk.heroNumber, { textAlign }]}>{deliveryNumber}</Text>
+          {sessionOpening ? (
+            <ActivityIndicator style={{ marginVertical: 8 }} />
+          ) : (
+            <Text style={[kiosk.heroNumber, { textAlign }]}>{displayNoteNumber}</Text>
+          )}
         </View>
 
         <DeliveryCustomerDriverSection
@@ -246,7 +277,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
               }
               setDriverPickerOpen(true);
             }}
-            disabled={busy || Boolean(customerDriverName)}
+            disabled={busy || sessionOpening || Boolean(customerDriverName)}
           >
             <Text
               style={[
@@ -260,7 +291,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
           </Pressable>
         </View>
 
-        <View pointerEvents={busy ? 'none' : 'auto'}>
+        <View pointerEvents={busy || sessionOpening ? 'none' : 'auto'}>
           <DeliverySignaturePad
             ref={padRef}
             locale={locale}
@@ -272,9 +303,9 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         {error ? <Text style={[kiosk.errText, { textAlign }]}>{error}</Text> : null}
 
         <Pressable
-          style={[kiosk.btnPrimaryBlock, styles.sendBtn, (!sigValid || busy || (!driverName.trim() && !customerDriverName.trim())) && styles.sendBtnDisabled]}
+          style={[kiosk.btnPrimaryBlock, styles.sendBtn, (!sigValid || busy || sessionOpening || (!driverName.trim() && !customerDriverName.trim())) && styles.sendBtnDisabled]}
           onPress={submit}
-          disabled={!sigValid || busy || (!driverName.trim() && !customerDriverName.trim())}
+          disabled={!sigValid || busy || sessionOpening || (!driverName.trim() && !customerDriverName.trim())}
         >
           {busy ? (
             <ActivityIndicator color="#0f172a" />

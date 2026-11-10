@@ -12,6 +12,7 @@ import {
   readKitweAssemblyInventoryQtyMap,
   syncKitweCatalogForDeliveryAssemblies,
 } from './kitweDeliveryCatalogSync.js';
+import { warehouseDeliveryReceiverTickRows } from '../../src/utils/warehouseDelivery.js';
 import { newUuid } from './uuid.js';
 
 function entryReceiverChecked(entry) {
@@ -28,6 +29,34 @@ function entryPacketId(entry) {
 
 function entryReceivable(entry) {
   return Boolean(entryPacketId(entry) || deliveryEntryFinishedUnit(entry));
+}
+
+function allTickRowsReceived(lines) {
+  const ticks = warehouseDeliveryReceiverTickRows(lines || []);
+  return ticks.length > 0 && ticks.every(entryReceived);
+}
+
+function openTickRowsRemaining(lines) {
+  const ticks = warehouseDeliveryReceiverTickRows(lines || []);
+  return ticks.some((e) => !entryReceived(e));
+}
+
+/** Legacy DB rows counted as receivable but hidden from Kitwe UI — close when visible lines are done. */
+async function closeGhostReceivableLines(sb, lines, now, acceptedByEmail) {
+  const tickIds = new Set(warehouseDeliveryReceiverTickRows(lines || []).map((l) => String(l.id)));
+  for (const line of lines || []) {
+    if (!entryReceivable(line)) continue;
+    if (tickIds.has(String(line.id))) continue;
+    if (entryReceived(line)) continue;
+    const metadata = {
+      ...(line.metadata || {}),
+      received_at: now,
+      received_by_email: acceptedByEmail || null,
+      received_auto_closed: true,
+    };
+    await sb.from('warehouse_delivery_entries').update({ metadata }).eq('id', line.id);
+    line.metadata = metadata;
+  }
 }
 
 async function markKitweFactoryDeliveryFlags(sb, assemblyIds, now) {
@@ -109,7 +138,7 @@ export async function finalizeWarehouseDeliverySession(sb, session, {
     console.error('[delivery-accept] Kitwe catalog sync failed:', catalogSyncError);
   }
 
-  const openAfter = lines.some((e) => entryReceivable(e) && !entryReceived(e));
+  const openAfter = openTickRowsRemaining(lines);
   const allDone = !openAfter;
 
   const meta = {
@@ -198,8 +227,8 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
   )];
 
   if (!toReceive.length) {
-    const allReceivableReceived = receivable.length > 0 && receivable.every(entryReceived);
-    if (allReceivableReceived) {
+    if (allTickRowsReceived(lines)) {
+      await closeGhostReceivableLines(sb, lines, now, acceptedByEmail);
       return finalizeWarehouseDeliverySession(sb, session, {
         acceptedBy,
         acceptedByEmail,

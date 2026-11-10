@@ -9,8 +9,7 @@ import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
-async function openStagedDelivery(navigation, row) {
-  const session = await warehouseMobileRequest('delivery-session-open', {});
+function openStagedDelivery(navigation, row) {
   const qty = Math.max(1, Number(row.quantity) || 1);
   const now = new Date().toISOString();
   const groups = [{
@@ -28,9 +27,10 @@ async function openStagedDelivery(navigation, row) {
   const customerName = String(row.customer_name || '').trim();
   const customerPhone = String(row.customer_phone || '').trim();
   navigation.navigate('KitweSendSignature', {
-    sessionId: session.session_id,
-    deliveryNumber: session.delivery_number,
-    printNoteNumber: returnNumber || session.delivery_number,
+    bootstrapSession: true,
+    sessionId: '',
+    deliveryNumber: '',
+    printNoteNumber: returnNumber,
     groups,
     printGroups,
     queueKind: 'repair',
@@ -66,10 +66,11 @@ export default function DeliveryRepairQueueScreen({ navigation }) {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
   useEffect(() => { void load(); }, [load]);
 
-  const onDeliver = async (row) => {
+  const onDeliver = (row) => {
+    setError('');
     setBusyId(row.return_order_id);
     try {
-      await openStagedDelivery(navigation, row);
+      openStagedDelivery(navigation, row);
     } catch (err) {
       setError(err?.message || tUi('deliverySubmitFailed', locale));
     } finally {

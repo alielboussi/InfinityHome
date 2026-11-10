@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { FaWhatsapp } from 'react-icons/fa';
 import { useLocation } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
@@ -9,16 +10,19 @@ import {
   WAREHOUSE_RETURN_DELIVERY_SOURCES,
   warehouseDeliverySessionRouteLabel,
   deliverySenderName,
+  deliveryLineQty,
   groupWarehouseDisplayLines,
   isWarehousePending,
   isWarehouseCompleted,
   WAREHOUSE_RECEIVER_LIST_STATUSES,
   anyDeliveryPacketsReceiverConfirmed,
   deliveryEntryReceiverProgress,
+  warehouseDeliveryReceiverTickRows,
   deliveryEntryReceived,
   deliveryEntryReceivable,
   deliveryEntryPendingAcceptCount,
   deliverySessionNeedsCatalogFinalize,
+  deliverySessionNeedsTickRowFinalize,
   warehousePacketDisplayLabel,
   warehouseDeliveryReceiverLineKind,
 } from './utils/warehouseDelivery';
@@ -32,8 +36,10 @@ import {
 import {
   acceptWarehouseDeliverySession,
   setDeliveryEntryReceiverCheck,
+  cancelWarehouseDeliverySession,
+  discardWarehouseDeliveryDraft,
 } from './services/warehouseDeliveryMobileApi';
-import { getCurrentUser, canPerformWarehouseKitweReceiver } from './accessControl';
+import { getCurrentUser, canPerformWarehouseKitweReceiver, canManageCatalog } from './accessControl';
 
 const formatDateTime = (value) => {
   if (!value) return '-';
@@ -76,12 +82,15 @@ const PAGE_THEME = {
 };
 
 /**
- * Hassan Awad — Factory → Kitwe deliveries (receive + history on iPad).
+ * Factory → Kitwe deliveries (Kitwe receiver + inventory admin).
+ * @param {{ adminMode?: boolean }} props — `/warehouse-deliveries-admin` uses same cards + receive flow as Hassan.
  */
-export default function WarehouseDeliveries() {
+export default function WarehouseDeliveries({ adminMode = false } = {}) {
   const location = useLocation();
+  const receiverPath = adminMode ? '/warehouse-deliveries-admin' : location.pathname;
   const [sessions, setSessions] = useState([]);
   const [entriesBySession, setEntriesBySession] = useState({});
+  const [editQtyMap, setEditQtyMap] = useState({});
   const [destStockByProduct, setDestStockByProduct] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -94,6 +103,13 @@ export default function WarehouseDeliveries() {
   const [deliveryColorContext, setDeliveryColorContext] = useState(null);
   const [isIpadSafari, setIsIpadSafari] = useState(() => detectIpadSafari());
   const [openSessionId, setOpenSessionId] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [cancelBusyId, setCancelBusyId] = useState('');
+  const [removeBusyId, setRemoveBusyId] = useState('');
+  const [whatsappBusyId, setWhatsappBusyId] = useState('');
+  const [catalogAdmin, setCatalogAdmin] = useState(false);
   const sessionUser = useMemo(() => {
     try {
       return getCurrentUser();
@@ -101,8 +117,20 @@ export default function WarehouseDeliveries() {
       return null;
     }
   }, []);
-  const canAccept = canPerformWarehouseKitweReceiver(sessionUser, location.pathname);
+  const canAccept = canPerformWarehouseKitweReceiver(sessionUser, receiverPath);
   const refreshSeconds = canAccept ? 15 : 60;
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('user');
+      const user = raw ? JSON.parse(raw) : null;
+      setCurrentUserId(user?.id || '');
+      setCatalogAdmin(canManageCatalog(user));
+    } catch {
+      setCurrentUserId('');
+      setCatalogAdmin(false);
+    }
+  }, []);
 
   useEffect(() => {
     const onResize = () => setIsIpadSafari(detectIpadSafari());
@@ -114,36 +142,68 @@ export default function WarehouseDeliveries() {
     if (!silent) setLoading(true);
     if (!silent) setError('');
     try {
-      const sessionSelect = 'id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, accepted_at, applied_at, completed_at, pdf_url, metadata';
-      const statusFilter = (q) => q.in('status', WAREHOUSE_RECEIVER_LIST_STATUSES);
+      const sessionSelect = 'id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, accepted_at, applied_at, completed_at, last_edited_at, pdf_url, metadata';
+      const statusIn = (q) => q.in('status', WAREHOUSE_RECEIVER_LIST_STATUSES);
 
-      const [{ data: factoryRows, error: sessErr }, { data: returnRows, error: returnErr }] = await Promise.all([
-        statusFilter(
-          db
-            .from('warehouse_delivery_sessions')
-            .select(sessionSelect)
-            .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
-            .eq('to_location', WAREHOUSE_TO_LOCATION_ID),
-        ).order('delivery_number', { ascending: false }),
-        statusFilter(
-          db
-            .from('warehouse_delivery_sessions')
-            .select(sessionSelect)
-            .in('metadata->>source', WAREHOUSE_RETURN_DELIVERY_SOURCES),
-        ).order('delivery_number', { ascending: false }),
-      ]);
-      if (sessErr) throw sessErr;
-      if (returnErr) throw returnErr;
+      let sessionsList = [];
+      if (adminMode) {
+        const { data: factoryRows, error: sessErr } = await db
+          .from('warehouse_delivery_sessions')
+          .select(sessionSelect)
+          .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
+          .eq('to_location', WAREHOUSE_TO_LOCATION_ID)
+          .order('delivery_number', { ascending: false });
+        if (sessErr) throw sessErr;
+        const includeReturns = !['draft', 'cancelled', 'failed'].includes(statusFilter);
+        let returnRows = [];
+        if (includeReturns) {
+          const { data: rr, error: returnErr } = await statusIn(
+            db
+              .from('warehouse_delivery_sessions')
+              .select(sessionSelect)
+              .in('metadata->>source', WAREHOUSE_RETURN_DELIVERY_SOURCES),
+          ).order('delivery_number', { ascending: false });
+          if (returnErr) throw returnErr;
+          returnRows = rr || [];
+        }
+        const byId = new Map();
+        [...(factoryRows || []), ...returnRows].forEach((row) => {
+          if (row?.id) byId.set(String(row.id), row);
+        });
+        sessionsList = [...byId.values()].sort((a, b) => {
+          const na = String(a.delivery_number || '');
+          const nb = String(b.delivery_number || '');
+          return nb.localeCompare(na, undefined, { numeric: true });
+        });
+      } else {
+        const [{ data: factoryRows, error: sessErr }, { data: returnRows, error: returnErr }] = await Promise.all([
+          statusIn(
+            db
+              .from('warehouse_delivery_sessions')
+              .select(sessionSelect)
+              .eq('from_location', WAREHOUSE_FROM_LOCATION_ID)
+              .eq('to_location', WAREHOUSE_TO_LOCATION_ID),
+          ).order('delivery_number', { ascending: false }),
+          statusIn(
+            db
+              .from('warehouse_delivery_sessions')
+              .select(sessionSelect)
+              .in('metadata->>source', WAREHOUSE_RETURN_DELIVERY_SOURCES),
+          ).order('delivery_number', { ascending: false }),
+        ]);
+        if (sessErr) throw sessErr;
+        if (returnErr) throw returnErr;
 
-      const byId = new Map();
-      [...(factoryRows || []), ...(returnRows || [])].forEach((row) => {
-        if (row?.id) byId.set(String(row.id), row);
-      });
-      const sessionsList = [...byId.values()].sort((a, b) => {
-        const na = String(a.delivery_number || '');
-        const nb = String(b.delivery_number || '');
-        return nb.localeCompare(na, undefined, { numeric: true });
-      });
+        const byId = new Map();
+        [...(factoryRows || []), ...(returnRows || [])].forEach((row) => {
+          if (row?.id) byId.set(String(row.id), row);
+        });
+        sessionsList = [...byId.values()].sort((a, b) => {
+          const na = String(a.delivery_number || '');
+          const nb = String(b.delivery_number || '');
+          return nb.localeCompare(na, undefined, { numeric: true });
+        });
+      }
       setSessions(sessionsList);
 
       const ids = sessionsList.map((s) => s.id).filter(Boolean);
@@ -176,15 +236,18 @@ export default function WarehouseDeliveries() {
       });
 
       const grouped = {};
+      const nextEdit = {};
       const productIds = new Set();
       (entryRows || []).forEach((row) => {
         const sid = String(row.session_id || '');
         if (!sid) return;
         if (!grouped[sid]) grouped[sid] = [];
         grouped[sid].push(row);
+        nextEdit[row.id] = String(deliveryLineQty(row));
         if (row.product_id && row.kind !== 'set-parent') productIds.add(String(row.product_id));
       });
       setEntriesBySession(grouped);
+      if (adminMode) setEditQtyMap(nextEdit);
 
       const creatorIds = Array.from(new Set(
         sessionsList.map((s) => s.created_by_id).filter((id) => id != null)
@@ -226,7 +289,9 @@ export default function WarehouseDeliveries() {
         let healedAny = false;
         for (const session of sessionsList) {
           const entries = grouped[String(session.id)] || [];
-          if (!deliverySessionNeedsCatalogFinalize(entries, session.status)) continue;
+          const needsFinalize = deliverySessionNeedsCatalogFinalize(entries, session.status)
+            || deliverySessionNeedsTickRowFinalize(entries, session.status);
+          if (!needsFinalize) continue;
           try {
             await acceptWarehouseDeliverySession(session.id);
             healedAny = true;
@@ -250,7 +315,7 @@ export default function WarehouseDeliveries() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [canAccept]);
+  }, [adminMode, canAccept, statusFilter]);
 
   useEffect(() => {
     (async () => {
@@ -269,6 +334,9 @@ export default function WarehouseDeliveries() {
 
   useEffect(() => {
     loadDeliveries();
+  }, [loadDeliveries]);
+
+  useEffect(() => {
     const ms = canAccept ? 15000 : 60000;
     const id = setInterval(() => {
       if (busyId || printBusyId || pdfBusyId) return;
@@ -276,6 +344,24 @@ export default function WarehouseDeliveries() {
     }, ms);
     return () => clearInterval(id);
   }, [loadDeliveries, canAccept, busyId, printBusyId, pdfBusyId]);
+
+  const displaySessions = useMemo(() => {
+    if (!adminMode) return sessions;
+    const q = search.trim().toLowerCase();
+    return sessions.filter((s) => {
+      const status = String(s.status || '').toLowerCase();
+      if (statusFilter === 'all') {
+        if (status === 'draft' || status === 'cancelled') return false;
+      } else if (statusFilter !== 'pending' && statusFilter !== 'completed') {
+        if (status !== statusFilter) return false;
+      }
+      if (statusFilter === 'pending' && !isWarehousePending(status)) return false;
+      if (statusFilter === 'completed' && !isWarehouseCompleted(status)) return false;
+      if (!q) return true;
+      const hay = `${s.delivery_number || ''} ${s.id} ${s.created_by_email || ''} ${s.status || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [adminMode, sessions, search, statusFilter]);
 
   const handlePdf = async (session) => {
     if (!session?.id || pdfBusyId) return;
@@ -419,6 +505,137 @@ export default function WarehouseDeliveries() {
     }
   };
 
+  const handleSaveEdits = async (session) => {
+    if (!adminMode || !session?.id || busyId) return;
+    if (!isWarehousePending(session.status)) {
+      setError('Only pending deliveries can be edited. Completed inventory cannot be changed here.');
+      return;
+    }
+    setBusyId(session.id);
+    setError('');
+    try {
+      const entries = entriesBySession[String(session.id)] || [];
+      const items = entries.map((entry) => ({
+        id: entry.id,
+        quantity: Number(editQtyMap[entry.id] ?? deliveryLineQty(entry) ?? 0),
+      }));
+      const invalid = items.find((e) => !Number.isFinite(e.quantity) || e.quantity < 0);
+      if (invalid) throw new Error('Quantities cannot be negative.');
+
+      let userEmail = '';
+      try {
+        const raw = localStorage.getItem('user');
+        userEmail = raw ? (JSON.parse(raw)?.email || '') : '';
+      } catch {}
+
+      const { data, error: rpcErr } = await db.rpc('update_warehouse_delivery_items', {
+        p_session_id: session.id,
+        p_items: items,
+        p_edited_by: currentUserId || null,
+        p_edited_by_email: userEmail || null,
+      });
+      if (rpcErr) throw rpcErr;
+      if (data && data.ok === false) throw new Error(data.error || 'Save failed');
+      await loadDeliveries();
+    } catch (err) {
+      setError(err?.message || 'Failed to save changes.');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const handleResendWhatsApp = async (session) => {
+    if (!adminMode || !session?.id || whatsappBusyId || !catalogAdmin) return;
+    const status = String(session.status || '').toLowerCase();
+    if (status === 'draft' || status === 'cancelled') {
+      setError('Only submitted deliveries can be sent to WhatsApp.');
+      return;
+    }
+    const entries = entriesBySession[String(session.id)] || [];
+    if (!entries.length) {
+      setError('Add delivery lines before sending WhatsApp.');
+      return;
+    }
+    setWhatsappBusyId(session.id);
+    setError('');
+    try {
+      const html = await buildWarehouseDeliveryNoteHtml({
+        session,
+        entries,
+        copies: 1,
+        assemblyColorContext: deliveryColorContext,
+      });
+      const pdfBlob = await renderWarehouseDeliveryNotePdfBlob(html);
+      const pdfBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = String(reader.result || '');
+          resolve(dataUrl.replace(/^data:application\/pdf[^,]*,/, '').replace(/\s+/g, ''));
+        };
+        reader.onerror = () => reject(reader.error || new Error('PDF read failed'));
+        reader.readAsDataURL(pdfBlob);
+      });
+      const message = buildKitweDeliveryWhatsAppText(
+        session,
+        entries,
+        usersById,
+        deliveryColorContext,
+        { fromName, toName },
+      );
+      const dn = session.delivery_number || session.id;
+      const wa = await sendWarehouseDeliveryWhatsApp({
+        message,
+        pdfBase64,
+        pdfFilename: `${dn}-delivery-note.pdf`,
+      });
+      if (!wa.ok) throw new Error(wa.error || 'WhatsApp send failed.');
+    } catch (err) {
+      setError(err?.message || 'Failed to send WhatsApp.');
+    } finally {
+      setWhatsappBusyId('');
+    }
+  };
+
+  const handleRemoveDraft = async (session) => {
+    if (!adminMode || !session?.id || removeBusyId) return;
+    const dn = session.delivery_number || session.id;
+    const ok = window.confirm(
+      `Remove ${dn} from the system? Use this for failed or abandoned drafts so the sender can start again.`,
+    );
+    if (!ok) return;
+    setRemoveBusyId(session.id);
+    setError('');
+    try {
+      await discardWarehouseDeliveryDraft({ sessionId: session.id });
+      setOpenSessionId('');
+      await loadDeliveries();
+    } catch (err) {
+      setError(err?.message || 'Failed to remove delivery.');
+    } finally {
+      setRemoveBusyId('');
+    }
+  };
+
+  const handleCancelDelivery = async (session) => {
+    if (!adminMode || !session?.id || cancelBusyId) return;
+    const dn = session.delivery_number || session.id;
+    const ok = window.confirm(
+      `Cancel ${dn}? Stock is unchanged unless packets were already accepted at Kitwe.`,
+    );
+    if (!ok) return;
+    setCancelBusyId(session.id);
+    setError('');
+    try {
+      await cancelWarehouseDeliverySession({ sessionId: session.id, reason: 'Cancelled from admin' });
+      setOpenSessionId('');
+      await loadDeliveries();
+    } catch (err) {
+      setError(err?.message || 'Failed to cancel delivery.');
+    } finally {
+      setCancelBusyId('');
+    }
+  };
+
   const containerStyle = {
     minHeight: isIpadSafari ? '100dvh' : '100vh',
     padding: 'max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left))',
@@ -439,23 +656,51 @@ export default function WarehouseDeliveries() {
               fontSize: isIpadSafari ? 'clamp(1.35rem, 2.2vw, 2rem)' : undefined,
             }}
           >
-            Warehouse Deliveries
+            {adminMode ? 'Deliveries' : 'Warehouse Deliveries'}
           </h1>
         </div>
         <p style={{ color: PAGE_THEME.muted, marginBottom: 16, lineHeight: 1.5, marginTop: 0 }}>
-          Factory → Kitwe deliveries from the Production app, plus return shipments (WHR) and customer return deliveries (CR) when they use the delivery flow. Accepted sessions stay on this list for PDFs and review. Auto-refresh every {refreshSeconds} seconds.
+          {adminMode
+            ? 'Factory → Kitwe deliveries (same receive flow as Kitwe on iPad): tick items, accept stock, PDFs. Search and filters include admin cleanup for drafts. Auto-refresh every '
+            : 'Factory → Kitwe deliveries from the Production app, plus return shipments (WHR) and customer return deliveries (CR) when they use the delivery flow. Accepted sessions stay on this list for PDFs and review. Auto-refresh every '}
+          {refreshSeconds} seconds.
         </p>
-        {!canAccept && sessionUser && (
+        {adminMode ? (
+          <div className="warehouse-deliveries-toolbar" style={{ marginBottom: 16 }}>
+            <input
+              type="search"
+              className="warehouse-deliveries-toolbar__search"
+              placeholder="Search delivery #, email, status…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              className="warehouse-deliveries-toolbar__status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">Active deliveries</option>
+              <option value="pending">Pending</option>
+              <option value="completed">Completed</option>
+              <option value="draft">Draft (cleanup)</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+        ) : null}
+        {!canAccept && sessionUser && !adminMode ? (
           <div style={{ color: '#b45309', marginBottom: 12, fontWeight: 600 }}>
             Packet confirmation is limited to Hassan Awad (Kitwe), login-access admin, or localhost testing on this page (
             <code>/warehouse-deliveries</code>
-            ). Inventory → Deliveries is the admin list only.
+            ).
           </div>
-        )}
+        ) : null}
         {loading && <div style={{ color: PAGE_THEME.muted }}>Loading deliveries...</div>}
         {error && <div className="report-error" style={{ marginBottom: 12 }}>{error}</div>}
-        {!loading && sessions.length === 0 && (
-          <div style={{ color: PAGE_THEME.muted, fontWeight: 500 }}>No deliveries yet.</div>
+        {!loading && displaySessions.length === 0 && (
+          <div style={{ color: PAGE_THEME.muted, fontWeight: 500 }}>
+            {adminMode ? 'No deliveries found.' : 'No deliveries yet.'}
+          </div>
         )}
 
         <div style={{
@@ -465,18 +710,25 @@ export default function WarehouseDeliveries() {
           marginBottom: 20,
         }}
         >
-          {sessions.map((session) => {
+          {displaySessions.map((session) => {
             const entries = entriesBySession[String(session.id)] || [];
             const { total, confirmed } = deliveryEntryReceiverProgress(entries);
-            const receivableLines = (entries || []).filter((e) => deliveryEntryReceivable(e));
-            const receivedCount = receivableLines.filter((e) => deliveryEntryReceived(e)).length;
-            const progressItemLabel = receivableLines.some((e) => e?.metadata?.finished_unit) ? 'Items' : 'Packets';
+            const tickRows = warehouseDeliveryReceiverTickRows(entries);
+            const receivedCount = tickRows.filter((e) => deliveryEntryReceived(e)).length;
+            const progressItemLabel = tickRows.some((e) => e?.metadata?.finished_unit) ? 'Items' : 'Packets';
             const completed = isWarehouseCompleted(session.status);
             const driver = session?.metadata?.driver_name;
-            const progressLabel = completed || (total > 0 && receivedCount === total)
+            const allTicksReceived = total > 0 && receivedCount === total;
+            const progressLabel = completed
               ? `${progressItemLabel} received: ${receivedCount}/${total}`
-              : `${progressItemLabel} confirmed: ${confirmed}/${total}`;
-            const progressColor = completed || (total > 0 && receivedCount === total) ? '#4ade80' : '#fbbf24';
+              : allTicksReceived
+                ? `${progressItemLabel} received: ${receivedCount}/${total} (accept to complete)`
+                : `${progressItemLabel} confirmed: ${confirmed}/${total}`;
+            const progressColor = completed
+              ? '#4ade80'
+              : allTicksReceived
+                ? '#f59e0b'
+                : '#fbbf24';
             const routeLabel = warehouseDeliverySessionRouteLabel(session, { fromName, toName });
             return (
               <button
@@ -647,6 +899,120 @@ export default function WarehouseDeliveries() {
                   </span>
                 )}
               </div>
+              {adminMode ? (
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${PAGE_THEME.borderSoft}` }}>
+                  <div style={{ fontWeight: 700, marginBottom: 10 }}>Admin</div>
+                  {displayLines.map((line) => {
+                    if (line.kind === 'set-parent') {
+                      return (
+                        <div key={`admin-${line.id}`} style={{ fontWeight: 700, textDecoration: 'underline', marginTop: 8 }}>
+                          {line.name} (Set)
+                        </div>
+                      );
+                    }
+                    const original = line.original_quantity != null ? Number(line.original_quantity) : null;
+                    const canEdit = isWarehousePending(session.status);
+                    return (
+                      <div
+                        key={`admin-${line.id}`}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          alignItems: 'center',
+                          marginTop: 6,
+                          paddingLeft: line.kind === 'set-component' ? 16 : 0,
+                        }}
+                      >
+                        <span>
+                          {line.kind === 'set-component' ? `- ${line.name}` : line.name}
+                          {original != null && original !== deliveryLineQty(line) && (
+                            <span style={{ color: PAGE_THEME.muted, marginLeft: 8, fontSize: 12 }}>
+                              (submitted {original})
+                            </span>
+                          )}
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={editQtyMap[line.id] ?? deliveryLineQty(line)}
+                          onChange={(e) => setEditQtyMap((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                          disabled={!canEdit}
+                          style={{
+                            width: 90,
+                            padding: '4px 6px',
+                            borderRadius: 6,
+                            border: `1px solid ${PAGE_THEME.border}`,
+                            background: PAGE_THEME.surfaceAlt,
+                            color: PAGE_THEME.text,
+                            opacity: canEdit ? 1 : 0.6,
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                  <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {(() => {
+                      const statusLower = String(session.status || '').toLowerCase();
+                      const canWhatsApp = catalogAdmin
+                        && statusLower !== 'draft'
+                        && statusLower !== 'cancelled'
+                        && entries.length > 0;
+                      const canEditSession = isWarehousePending(session.status);
+                      return (
+                        <>
+                          {canWhatsApp && (
+                            <button
+                              type="button"
+                              className="portal-btn-whatsapp stock-periods-btn"
+                              title="Resend to Automated Delivery Receipts WhatsApp group with A4 delivery note PDF"
+                              aria-label="Resend delivery WhatsApp"
+                              onClick={() => handleResendWhatsApp(session)}
+                              disabled={whatsappBusyId === session.id}
+                            >
+                              <FaWhatsapp size={18} aria-hidden />
+                              {whatsappBusyId === session.id ? 'Sending…' : 'WhatsApp'}
+                            </button>
+                          )}
+                          {canEditSession && (
+                            <button
+                              type="button"
+                              className="product-form-btn product-form-btn--primary"
+                              onClick={() => handleSaveEdits(session)}
+                              disabled={busyId === session.id}
+                            >
+                              {busyId === session.id ? 'Saving…' : 'Save qty edits'}
+                            </button>
+                          )}
+                          {canEditSession && (
+                            <button
+                              type="button"
+                              className="product-form-btn"
+                              onClick={() => handleCancelDelivery(session)}
+                              disabled={cancelBusyId === session.id}
+                              style={{ color: '#c62828', borderColor: '#c62828' }}
+                            >
+                              {cancelBusyId === session.id ? 'Cancelling…' : 'Cancel delivery'}
+                            </button>
+                          )}
+                          {catalogAdmin && (statusLower === 'draft' || statusLower === 'cancelled') && (
+                            <button
+                              type="button"
+                              className="product-form-btn"
+                              onClick={() => handleRemoveDraft(session)}
+                              disabled={removeBusyId === session.id}
+                              style={{ background: '#b91c1c', color: '#fff' }}
+                            >
+                              {removeBusyId === session.id ? 'Removing…' : 'Remove draft'}
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}

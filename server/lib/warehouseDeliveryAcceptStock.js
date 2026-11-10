@@ -18,6 +18,130 @@ export function deliveryEntryFinishedUnit(entry) {
     && !deliveryEntryPacketId(entry);
 }
 
+export function deliverySourceStockDeducted(entry) {
+  return Boolean(entry?.metadata?.source_stock_deducted_at);
+}
+
+async function applyAssemblySourceDeduct(sb, assemblyId, fromLoc, qty, { allowAlreadyGone = false } = {}) {
+  try {
+    await adjustAssemblyStock(sb, assemblyId, fromLoc, -qty);
+    return { deducted: true, skipped: false };
+  } catch (err) {
+    if (allowAlreadyGone && /Not enough finished product stock/i.test(String(err?.message || ''))) {
+      return { deducted: false, skipped: true };
+    }
+    throw err;
+  }
+}
+
+async function applyPacketSourceDeduct(sb, packetId, fromLoc, qty, { allowAlreadyGone = false } = {}) {
+  try {
+    await adjustPacketStock(sb, packetId, fromLoc, -qty);
+    return { deducted: true, skipped: false };
+  } catch (err) {
+    if (allowAlreadyGone && /Not enough packet stock/i.test(String(err?.message || ''))) {
+      return { deducted: false, skipped: true };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Driver submit — stock leaves the send location (in transit). Kitwe receives on accept.
+ */
+export async function deductSourceStockOnDeliverySubmit(sb, entries, {
+  fromLocationId = WAREHOUSE_FROM_LOCATION_ID,
+  now = new Date().toISOString(),
+} = {}) {
+  const touchedPackets = new Set();
+  const locations = new Set();
+  for (const line of entries || []) {
+    const meta = { ...(line.metadata || {}) };
+    if (deliverySourceStockDeducted(line)) continue;
+
+    const qty = Math.max(0, Number(line.quantity) || 0);
+    if (qty < 1) continue;
+
+    const pid = deliveryEntryPacketId(line);
+    const fromLoc = String(meta.stock_deduct_location_id || fromLocationId).trim() || fromLocationId;
+
+    if (pid) {
+      await adjustPacketStock(sb, pid, fromLoc, -qty);
+      touchedPackets.add(pid);
+      locations.add(fromLoc);
+      line.metadata = {
+        ...meta,
+        source_stock_deducted_at: now,
+        stock_deduct_location_id: fromLoc,
+      };
+      continue;
+    }
+
+    if (deliveryEntryFinishedUnit(line)) {
+      const aid = String(meta.assembly_id || '').trim();
+      if (!aid) continue;
+      await adjustAssemblyStock(sb, aid, fromLoc, -qty);
+      locations.add(fromLoc);
+      line.metadata = {
+        ...meta,
+        source_stock_deducted_at: now,
+        stock_deduct_location_id: fromLoc,
+      };
+    }
+  }
+
+  for (const pid of touchedPackets) {
+    for (const loc of locations) {
+      await recomputeWarehouseStockForPacketTouch(sb, pid, loc);
+    }
+  }
+  for (const loc of locations) {
+    await recomputeWarehouseLocationStockServer(sb, loc);
+  }
+}
+
+/** Cancel before Kitwe accept — put in-transit stock back on the send location. */
+export async function restoreSourceStockOnDeliveryCancel(sb, entries, {
+  fromLocationId = WAREHOUSE_FROM_LOCATION_ID,
+} = {}) {
+  const touchedPackets = new Set();
+  const locations = new Set();
+  for (const line of entries || []) {
+    if (!deliverySourceStockDeducted(line)) continue;
+    if (line?.metadata?.received_at) continue;
+
+    const qty = Math.max(0, Number(line.quantity) || 0);
+    if (qty < 1) continue;
+
+    const meta = line.metadata || {};
+    const fromLoc = String(meta.stock_deduct_location_id || fromLocationId).trim() || fromLocationId;
+    const pid = deliveryEntryPacketId(line);
+
+    if (pid) {
+      await adjustPacketStock(sb, pid, fromLoc, qty);
+      touchedPackets.add(pid);
+      locations.add(fromLoc);
+      continue;
+    }
+
+    if (deliveryEntryFinishedUnit(line)) {
+      const aid = String(meta.assembly_id || '').trim();
+      if (!aid) continue;
+      await adjustAssemblyStock(sb, aid, fromLoc, qty);
+      locations.add(fromLoc);
+    }
+  }
+
+  for (const pid of touchedPackets) {
+    for (const loc of locations) {
+      await recomputeWarehouseStockForPacketTouch(sb, pid, loc);
+    }
+  }
+  for (const loc of locations) {
+    await recomputeWarehouseLocationStockServer(sb, loc);
+  }
+}
+
 /**
  * Move confirmed delivery lines: Factory packet −, Kitwe packet +.
  * @returns {Promise<Array<{ lineId: string, packetId: string, qty: number, assemblyId: string }>>}
@@ -31,7 +155,10 @@ export async function movePacketsForDeliveryReceive(sb, lines, {
     const pid = deliveryEntryPacketId(line);
     const qty = Math.max(0, Number(line.quantity) || 0);
     if (!pid || qty < 1) continue;
-    await adjustPacketStock(sb, pid, fromLocationId, -qty);
+    const fromLoc = String(line.metadata?.stock_deduct_location_id || fromLocationId).trim() || fromLocationId;
+    if (!deliverySourceStockDeducted(line)) {
+      await applyPacketSourceDeduct(sb, pid, fromLoc, qty, { allowAlreadyGone: true });
+    }
     await adjustPacketStock(sb, pid, toLocationId, qty);
     moved.push({
       lineId: String(line.id),
@@ -61,9 +188,8 @@ export async function moveAssembliesForDeliveryReceive(sb, lines, {
       continue;
     }
     const fromLoc = String(line.metadata?.stock_deduct_location_id || fromLocationId).trim() || fromLocationId;
-    await adjustAssemblyStock(sb, aid, fromLoc, -qty);
-    if (line.metadata?.admin_queue_delivery === true) {
-      continue;
+    if (!deliverySourceStockDeducted(line)) {
+      await applyAssemblySourceDeduct(sb, aid, fromLoc, qty, { allowAlreadyGone: true });
     }
     const customerRepairReturn = line.metadata?.return_has_customer === true;
     if (!customerRepairReturn) {

@@ -4,7 +4,7 @@ function entryReceived(entry) {
 
 /**
  * Cancel a submitted delivery before Hassan accepts any packets.
- * Does not adjust warehouse stock (stock moves only on accept).
+ * Restores send-location stock when driver submit already deducted it.
  */
 export async function cancelWarehouseDeliveryServer(sb, sessionId, { cancelledByEmail, reason } = {}) {
   const sid = String(sessionId || '').trim();
@@ -28,7 +28,7 @@ export async function cancelWarehouseDeliveryServer(sb, sessionId, { cancelledBy
 
   const { data: entries, error: entErr } = await sb
     .from('warehouse_delivery_entries')
-    .select('id, metadata')
+    .select('id, kind, name, quantity, metadata')
     .eq('session_id', sid);
   if (entErr) throw new Error(entErr.message || 'Failed to load delivery lines');
 
@@ -40,6 +40,9 @@ export async function cancelWarehouseDeliveryServer(sb, sessionId, { cancelledBy
   if (status !== 'submitted' && status !== 'pending' && status !== 'draft' && status !== 'partially_received') {
     throw new Error(`Delivery status "${session.status}" cannot be cancelled.`);
   }
+
+  const { restoreSourceStockOnDeliveryCancel } = await import('./warehouseDeliveryAcceptStock.js');
+  await restoreSourceStockOnDeliveryCancel(sb, entries || []);
 
   const now = new Date().toISOString();
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
@@ -58,7 +61,8 @@ export async function cancelWarehouseDeliveryServer(sb, sessionId, { cancelledBy
     ok: true,
     session_id: sid,
     delivery_number: session.delivery_number,
-    stock_unchanged: true,
+    stock_unchanged: false,
+    stock_restored: true,
   };
 }
 

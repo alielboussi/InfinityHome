@@ -194,6 +194,9 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
   const logoImg = logoSrc
     ? `<img class="company-logo" src="${safeImgSrc(logoSrc)}" alt="${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}" />`
     : `<div class="company-logo company-logo--text">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</div>`;
+  const companyNameLine = logoSrc
+    ? ''
+    : `<p class="company-name">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</p>`;
   const dispatched = String(dispatchedBy || '').trim() || '—';
   const title = deliveryNoteTitle(documentKind);
   const numLabel = deliveryNoteNumberLabel(documentKind);
@@ -210,7 +213,7 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
         <div class="header-brand">${logoImg}</div>
         <div class="header-main">
           <h1 class="title">${escapeHtml(title)}</h1>
-          <p class="company-name">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</p>
+          ${companyNameLine}
           <p class="delivery-num-label">${escapeHtml(numLabel)}</p>
           <p class="delivery-num">${escapeHtml(deliveryNumber)}</p>
           <p class="datetime"><span class="date">${escapeHtml(dateStr)}</span> · <span class="time">${escapeHtml(timeStr)} (Zambia)</span></p>

@@ -247,7 +247,7 @@ export default function FulfillmentFloor1DeliveryPage() {
         <p style={{ color: 'var(--br-text-muted, #666)', marginTop: 0 }}>
           Send warehouse deliveries to Hassan Awad without driver selection or signature.
           {' '}
-          <Link to="/warehouse-deliveries-admin">Full deliveries admin</Link>
+          <Link to="/warehouse-deliveries-admin">Deliveries (receive + admin)</Link>
         </p>
       </div>
 

@@ -14,6 +14,9 @@ async function main() {
   const { buildDeliveryNotePrintHtml } = await import(
     pathToFileURL(path.join(root, 'src/utils/buildDeliveryNotePrintHtml.js')).href
   );
+  const { DELIVERY_NOTE_LOGO_DATA_URI } = await import(
+    pathToFileURL(path.join(root, 'src/utils/deliveryNoteCompanyLogoEmbedded.js')).href
+  );
 
   const submittedAt = '2026-11-10T18:45:00.000Z';
   const html = buildDeliveryNotePrintHtml({
@@ -21,7 +24,7 @@ async function main() {
     driverName: 'John Driver',
     dispatchedBy: 'Ali',
     driverSignatureSrc: '',
-    companyLogoSrc: '',
+    companyLogoSrc: DELIVERY_NOTE_LOGO_DATA_URI,
     submittedAt,
     documentKind: 'repair_delivery',
     customerName: 'Jane Customer',
