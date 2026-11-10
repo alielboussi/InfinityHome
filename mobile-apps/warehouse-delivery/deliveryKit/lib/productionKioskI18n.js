@@ -545,6 +545,7 @@ const UI_STRINGS = {
   sentDeliveriesTitle: { en: 'Sent deliveries', ar: 'التسليمات المرسلة' },
   sentDeliveryKindRepair: { en: 'Repair delivery', ar: 'تسليم إصلاح' },
   sentDeliveryKindOrder: { en: 'Production order', ar: 'طلب إنتاج' },
+  sentDeliveryKindSold: { en: 'Sold (warehouse storage)', ar: 'مباع — مخزن' },
   sentDeliveryRefWhd: { en: 'WHD ref', ar: 'مرجع WHD' },
   sentDeliveriesEmpty: {
     en: 'No sent deliveries yet. Send from Floor 1, Repairs, or Orders to see them here.',

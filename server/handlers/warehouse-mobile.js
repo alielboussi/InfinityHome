@@ -141,6 +141,8 @@ import {
   reprintWarehouseStorageLabels,
   submitWarehouseStorageDelivery,
   submitWarehouseStorageSend,
+  listStorageSendsForSentDeliveries,
+  buildSoldDeliverySentDetail,
 } from '../lib/warehouseStorageSends.js';
 import {
   firebaseStoragePublicUrl,
@@ -3648,9 +3650,10 @@ function mobileSentDeliverySessionEligible(session) {
   const src = String(meta.source || '');
   if (WAREHOUSE_MOBILE_DELIVERY_SOURCES.has(src)) return true;
   const dk = String(meta.document_kind || '').toLowerCase();
-  if (dk === 'repair_delivery' || dk === 'order_delivery') return true;
+  if (dk === 'repair_delivery' || dk === 'order_delivery' || dk === 'sold_delivery') return true;
   if (meta.return_order_id || meta.return_number) return true;
   if (meta.production_job_id || meta.quote_id || meta.quote_number) return true;
+  if (meta.storage_send_id || meta.storage_number) return true;
   return false;
 }
 
@@ -3660,6 +3663,8 @@ function sentDeliveryDisplayNumber(session) {
   if (ro) return ro;
   const quote = String(meta.quote_number || '').trim();
   if (quote) return quote;
+  const storageNo = String(meta.storage_number || '').trim();
+  if (storageNo) return storageNo;
   if (String(meta.document_kind || '').toLowerCase() === 'order_delivery' && meta.production_job_id) {
     return `Job ${String(meta.production_job_id).slice(0, 8)}`;
   }
@@ -3686,6 +3691,7 @@ function mapSentDeliveryListRow(row) {
     driver_name: meta.driver_name || '',
     dispatched_by_name: meta.dispatched_by_name || row.created_by_name || '',
     total_qty: row.total_qty,
+    storage_send_id: String(meta.storage_send_id || '').trim() || null,
   };
 }
 
@@ -3714,10 +3720,29 @@ async function opDeliverySentList(body, user) {
 
   const sessions = (data || [])
     .filter((row) => mobileSentDeliverySessionEligible(row))
-    .slice(0, limit)
     .map(mapSentDeliveryListRow);
 
-  return { sessions };
+  const storageRows = await listStorageSendsForSentDeliveries(sb, { limit, email, admin });
+  const sessionIds = new Set(sessions.map((s) => s.session_id));
+  const storageSendIds = new Set(
+    sessions
+      .map((s) => String(s.storage_send_id || '').trim())
+      .filter(Boolean),
+  );
+  for (const row of storageRows) {
+    const sid = String(row.session_id || '').trim();
+    const sendId = String(row.storage_send_id || '').trim();
+    if (sid && sessionIds.has(sid)) continue;
+    if (sendId && storageSendIds.has(sendId)) continue;
+    if (row.delivery_session_id && sessionIds.has(row.delivery_session_id)) continue;
+    sessions.push(row);
+    if (sid) sessionIds.add(sid);
+    if (sendId) storageSendIds.add(sendId);
+  }
+
+  sessions.sort((a, b) => String(b.submitted_at || '').localeCompare(String(a.submitted_at || '')));
+
+  return { sessions: sessions.slice(0, limit) };
 }
 
 async function opDeliverySentDetail(body, user) {
@@ -3726,13 +3751,30 @@ async function opDeliverySentDetail(body, user) {
   if (!sessionId) throw new Error('session_id is required.');
 
   const sb = getService();
-  const { data: session, error: sessErr } = await sb
+  let { data: session, error: sessErr } = await sb
     .from('warehouse_delivery_sessions')
     .select('*')
     .eq('id', sessionId)
     .maybeSingle();
   if (sessErr) throw new Error(sessErr.message || 'Failed to load delivery');
-  if (!session) throw new Error('Delivery not found.');
+  if (!session) {
+    try {
+      const { storage_send: storageRow } = await getWarehouseStorageSend(sb, sessionId);
+      if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
+        const email = String(user?.email || '').trim().toLowerCase();
+        const creator = String(storageRow?.created_by_email || '').trim().toLowerCase();
+        if (!email || creator !== email) {
+          const err = new Error('You can only view your own sent deliveries.');
+          err.status = 403;
+          throw err;
+        }
+      }
+      return buildSoldDeliverySentDetail(sb, sessionId);
+    } catch (err) {
+      if (err?.status === 403) throw err;
+      throw new Error('Delivery not found.');
+    }
+  }
   if (!mobileSentDeliverySessionEligible(session)) {
     throw new Error('Delivery was not sent from the Delivery app.');
   }

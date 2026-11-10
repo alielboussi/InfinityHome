@@ -180,6 +180,14 @@ assert(
   mobile.includes('order_delivery'),
   'order queue submit must tag sessions for sent list',
 );
+assert(
+  mobile.includes('sold_delivery'),
+  'sent list must include sold warehouse storage deliveries',
+);
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/warehouseStorageSends.js'), 'utf8').includes('listStorageSendsForSentDeliveries'),
+  'sold deliveries must merge into sent list',
+);
 assert(mobile.includes('delivery-sent-detail'), 'warehouse-mobile must support delivery-sent-detail');
 assert(mobile.includes('evaluateWarehouseDeliveryDriverAppAccess'), 'delivery API must use evaluateWarehouseDeliveryDriverAppAccess');
 assert(

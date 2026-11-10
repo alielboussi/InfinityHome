@@ -11,6 +11,7 @@ import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLab
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { useDeliveryDrivers } from '../../hooks/useDeliveryDrivers';
 import { tUi } from '../lib/productionKioskI18n';
+import { saveLocalSentDelivery } from '../lib/deliverySentLocalStore';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
 export default function SoldDeliverSignatureScreen({ route, navigation }) {
@@ -77,6 +78,22 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
         signature_png_base64: dataUri,
       });
       const resolvedDriver = useCustomer ? customerDriverName : driverName;
+      const submittedAt = out.submitted_at || new Date().toISOString();
+      const resolvedSessionId = String(out.session_id || sessionId || '').trim();
+      await saveLocalSentDelivery({
+        session_id: resolvedSessionId || storageSendId,
+        delivery_number: out.delivery_number || deliveryNumber,
+        display_number: storageNumber || out.delivery_number || deliveryNumber,
+        document_kind: 'sold_delivery',
+        status: 'completed',
+        submitted_at: submittedAt,
+        driver_name: resolvedDriver,
+        dispatched_by_name: getProductionDispatcherLabelSync() || '',
+        driver_signature_url: out.driver_signature_url || '',
+        driver_signature_data_uri: dataUri,
+        print_groups: out.print_groups || printGroups,
+      }).catch(() => {});
+
       navigation.replace('SoldDeliverDone', {
         deliveryNumber: out.delivery_number || deliveryNumber,
         driverName: resolvedDriver,
@@ -84,7 +101,8 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
         printGroups: out.print_groups || printGroups,
         driverSignatureDataUri: dataUri,
         driverSignatureUrl: out.driver_signature_url || '',
-        submittedAt: out.submitted_at,
+        submittedAt,
+        sessionId: resolvedSessionId || storageSendId,
         documentKind: 'sold_delivery',
         customerName: out.customer_name || customerName,
         customerPhone: out.customer_phone || customerPhone,

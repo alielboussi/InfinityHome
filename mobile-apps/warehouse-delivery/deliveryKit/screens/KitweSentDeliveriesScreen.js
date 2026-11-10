@@ -28,6 +28,7 @@ function sentKindLabel(documentKind, locale) {
   const dk = String(documentKind || '').toLowerCase();
   if (dk === 'repair_delivery') return tUi('sentDeliveryKindRepair', locale);
   if (dk === 'order_delivery') return tUi('sentDeliveryKindOrder', locale);
+  if (dk === 'sold_delivery') return tUi('sentDeliveryKindSold', locale);
   return '';
 }
 

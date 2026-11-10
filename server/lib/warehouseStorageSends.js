@@ -6,7 +6,10 @@ import { getFirestore } from './firestoreDb.js';
 import { HASSAN_AWAD, canManageCatalog } from '../../src/accessControl.js';
 import { isLoginAccessAdmin } from './loginAccess.js';
 import { KITWE_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
-import { WAREHOUSE_FROM_LOCATION_ID } from '../../src/utils/warehouseDelivery.js';
+import {
+  WAREHOUSE_FROM_LOCATION_ID,
+  WAREHOUSE_TO_LOCATION_ID,
+} from '../../src/utils/warehouseDelivery.js';
 import {
   isWarehouseDeliveryAppAllowed,
   isWarehouseProductionKitweDeliveryAllowed,
@@ -438,6 +441,215 @@ export async function getWarehouseStorageSend(sb, id) {
   return { storage_send: mapRow(data) };
 }
 
+function soldDeliveryPrintGroups(row) {
+  const qty = Math.max(0, Number(row.quantity) || 0);
+  return [{
+    assembly_name: row.assembly_name,
+    units: qty,
+    elapsed_display: '—',
+    lines: [],
+  }];
+}
+
+async function openSoldDeliverySession(sb, { row, sessionId, user }) {
+  const sid = String(sessionId || newUuid()).trim();
+  const storageNumber = String(row.storage_number || '').trim();
+  if (!storageNumber) throw new Error('Storage number missing.');
+  const now = new Date().toISOString();
+  const qty = Math.max(1, Number(row.quantity) || 1);
+  const email = String(user?.email || '').trim().toLowerCase();
+  const creatorName = user?.user_metadata?.full_name || user?.full_name || user?.email || null;
+  const { data: existing } = await sb
+    .from('warehouse_delivery_sessions')
+    .select('id, delivery_number, status')
+    .eq('id', sid)
+    .maybeSingle();
+  if (existing?.id && String(existing.status) === 'draft') {
+    return { session_id: existing.id, delivery_number: existing.delivery_number || storageNumber };
+  }
+  const sessionRow = {
+    id: sid,
+    delivery_number: storageNumber,
+    from_location: WAREHOUSE_FROM_LOCATION_ID,
+    to_location: WAREHOUSE_TO_LOCATION_ID,
+    status: 'draft',
+    created_at: now,
+    transfer_datetime: now,
+    total_qty: qty,
+    created_by_email: email || null,
+    created_by_name: creatorName,
+    metadata: {
+      source: 'warehouse_production_mobile',
+      document_kind: 'sold_delivery',
+      storage_send_id: String(row.id),
+      storage_number: storageNumber,
+      customer_name: row.customer_name || '',
+      customer_phone: row.customer_phone || '',
+    },
+  };
+  const { error } = await sb.from('warehouse_delivery_sessions').insert(sessionRow);
+  if (error) throw new Error(error.message || 'Failed to open sold delivery session.');
+  return { session_id: sid, delivery_number: storageNumber };
+}
+
+async function finalizeSoldDeliverySession(sb, {
+  row,
+  sessionId,
+  user,
+  now,
+  driverId,
+  driverName,
+  customerDriverName,
+  customerDriverPhone,
+  customerDriverActive,
+  driverSignatureUrl,
+}) {
+  const sid = String(sessionId || '').trim();
+  if (!sid) return null;
+  const storageNumber = String(row.storage_number || '').trim();
+  const qty = Math.max(1, Number(row.quantity) || 1);
+  const email = String(user?.email || '').trim().toLowerCase();
+  const creatorName = user?.user_metadata?.full_name || user?.full_name || user?.email || null;
+  const sessionMeta = {
+    source: 'warehouse_production_mobile',
+    document_kind: 'sold_delivery',
+    storage_send_id: String(row.id),
+    storage_number: storageNumber,
+    customer_name: row.customer_name || '',
+    customer_phone: row.customer_phone || '',
+    driver_id: driverId || null,
+    driver_name: driverName,
+    driver_signature_url: driverSignatureUrl || null,
+    dispatched_by_name: creatorName,
+    submitted_by_email: email || null,
+    customer_driver_name: customerDriverActive ? customerDriverName : null,
+    customer_driver_phone: customerDriverActive ? customerDriverPhone : null,
+    customer_driver_signed: customerDriverActive,
+    sold_to_customer: true,
+  };
+
+  const { data: sess } = await sb
+    .from('warehouse_delivery_sessions')
+    .select('id')
+    .eq('id', sid)
+    .maybeSingle();
+
+  if (sess?.id) {
+    await sb.from('warehouse_delivery_sessions').update({
+      status: 'completed',
+      submitted_at: now,
+      total_qty: qty,
+      metadata: sessionMeta,
+      created_by_name: creatorName,
+    }).eq('id', sid);
+    await sb.from('warehouse_delivery_entries').delete().eq('session_id', sid);
+  } else {
+    await sb.from('warehouse_delivery_sessions').insert({
+      id: sid,
+      delivery_number: storageNumber,
+      from_location: WAREHOUSE_FROM_LOCATION_ID,
+      to_location: WAREHOUSE_TO_LOCATION_ID,
+      status: 'completed',
+      created_at: now,
+      submitted_at: now,
+      transfer_datetime: now,
+      total_qty: qty,
+      created_by_email: email || null,
+      created_by_name: creatorName,
+      metadata: sessionMeta,
+    });
+  }
+
+  const entryId = newUuid();
+  await sb.from('warehouse_delivery_entries').insert({
+    id: entryId,
+    session_id: sid,
+    kind: 'assembly',
+    name: row.assembly_name,
+    sku: row.assembly_sku || '',
+    quantity: qty,
+    metadata: {
+      assembly_id: row.assembly_id,
+      assembly_name: row.assembly_name,
+      finished_unit: true,
+      units: qty,
+      sold_storage_send_id: String(row.id),
+    },
+    created_at: now,
+  });
+  return sid;
+}
+
+/** Delivered POS storage units — for Sent deliveries (incl. legacy rows without sessions). */
+export async function listStorageSendsForSentDeliveries(sb, {
+  limit = 40,
+  email = '',
+  admin = false,
+} = {}) {
+  const cap = Math.min(80, Math.max(1, Number(limit) || 40));
+  let query = sb
+    .from(TABLE)
+    .select('id, storage_number, delivery_number, status, delivered_at, driver_name, metadata, created_by_email, quantity, assembly_name, customer_name')
+    .eq('status', WAREHOUSE_STORAGE_SEND_STATUSES.DELIVERED)
+    .order('delivered_at', { ascending: false, nullsFirst: false })
+    .limit(cap * 2);
+  if (!admin && email) {
+    query = query.eq('created_by_email', email);
+  }
+  const { data, error } = await query;
+  if (error) throw new Error(error.message || 'Failed to load sold deliveries.');
+  return (data || []).map((row) => {
+    const meta = row.metadata || {};
+    const sessionId = String(meta.delivery_session_id || row.id).trim();
+    const storageNumber = String(row.storage_number || row.delivery_number || '').trim();
+    return {
+      session_id: sessionId,
+      delivery_number: storageNumber || row.delivery_number,
+      display_number: storageNumber,
+      document_kind: 'sold_delivery',
+      status: 'completed',
+      submitted_at: row.delivered_at || null,
+      driver_name: row.driver_name || meta.customer_driver_name || '',
+      dispatched_by_name: meta.dispatched_by_name || '',
+      total_qty: row.quantity,
+      storage_send_id: String(row.id),
+      delivery_session_id: meta.delivery_session_id || null,
+    };
+  });
+}
+
+export async function buildSoldDeliverySentDetail(sb, storageSendId) {
+  const { storage_send: row } = await getWarehouseStorageSend(sb, storageSendId);
+  if (row.status !== WAREHOUSE_STORAGE_SEND_STATUSES.DELIVERED) {
+    throw new Error('Sold delivery not found.');
+  }
+  const meta = row.metadata || {};
+  const sessionId = String(meta.delivery_session_id || row.id).trim();
+  const signatureUrl = row.driver_signature_url || '';
+  const { fetchDeliverySignatureAsDataUri } = await import('./deliverySignatureInline.js');
+  const driverSignatureDataUri = signatureUrl
+    ? await fetchDeliverySignatureAsDataUri(signatureUrl)
+    : '';
+  const storageNumber = String(row.storage_number || row.delivery_number || '').trim();
+  return {
+    session: {
+      id: sessionId,
+      delivery_number: storageNumber,
+      display_number: storageNumber,
+      document_kind: 'sold_delivery',
+      status: 'completed',
+      submitted_at: row.delivered_at || meta.delivered_at || null,
+      driver_name: row.driver_name || meta.customer_driver_name || '',
+      dispatched_by_name: meta.dispatched_by_name || '',
+      driver_signature_url: signatureUrl,
+      customer_name: row.customer_name || '',
+      customer_phone: row.customer_phone || '',
+    },
+    print_groups: soldDeliveryPrintGroups(row),
+    driver_signature_data_uri: driverSignatureDataUri,
+  };
+}
+
 export async function prepareWarehouseStorageDelivery(sb, body, user, grant) {
   await assertWarehouseStorageProductionAccess(user, grant);
   const id = String(body.storage_send_id || body.id || '').trim();
@@ -445,11 +657,12 @@ export async function prepareWarehouseStorageDelivery(sb, body, user, grant) {
   if (row.status !== WAREHOUSE_STORAGE_SEND_STATUSES.IN_STORAGE) {
     throw new Error('This item is no longer in storage.');
   }
-  const sessionId = newUuid();
+  const sessionId = String(body.session_id || body.sessionId || '').trim() || newUuid();
+  const opened = await openSoldDeliverySession(sb, { row, sessionId, user });
   return {
-    session_id: sessionId,
+    session_id: opened.session_id,
     storage_send: row,
-    delivery_number: row.delivery_number || null,
+    delivery_number: opened.delivery_number || row.storage_number,
   };
 }
 
@@ -468,10 +681,24 @@ export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
   if (!deliveryNumber) throw new Error('Storage number missing.');
   const now = new Date().toISOString();
   const qty = Number(row.quantity) || 0;
+  const sessionId = String(body.session_id || body.sessionId || '').trim();
   const alreadyDeductedFloor1 = row.metadata?.floor1_deducted_on_create === true;
   if (!alreadyDeductedFloor1) {
     await adjustAssemblyStock(sb, row.assembly_id, FACTORY_ID, -qty);
   }
+
+  const deliverySessionId = await finalizeSoldDeliverySession(sb, {
+    row,
+    sessionId,
+    user,
+    now,
+    driverId,
+    driverName,
+    customerDriverName,
+    customerDriverPhone,
+    customerDriverActive,
+    driverSignatureUrl: body.driver_signature_url || null,
+  });
 
   const { error } = await sb.from(TABLE).update({
     status: WAREHOUSE_STORAGE_SEND_STATUSES.DELIVERED,
@@ -484,6 +711,7 @@ export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
     metadata: {
       ...(row.metadata || {}),
       delivered_at: now,
+      delivery_session_id: deliverySessionId || sessionId || null,
       customer_driver_name: customerDriverActive ? customerDriverName : null,
       customer_driver_phone: customerDriverActive ? customerDriverPhone : null,
       customer_driver_signed: customerDriverActive,
@@ -507,12 +735,8 @@ export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
     delivery_number: deliveryNumber,
     submitted_at: now,
     driver_signature_url: body.driver_signature_url || '',
-    print_groups: [{
-      assembly_name: row.assembly_name,
-      units: qty,
-      elapsed_display: '—',
-      lines: [],
-    }],
+    session_id: deliverySessionId || sessionId || null,
+    print_groups: soldDeliveryPrintGroups(row),
     customer_name: row.customer_name,
     customer_phone: row.customer_phone,
   };
