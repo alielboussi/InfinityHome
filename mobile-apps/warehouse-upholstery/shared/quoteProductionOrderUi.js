@@ -29,6 +29,29 @@ function normalizeAccessoriesList(raw) {
   return arr.map((s) => String(s ?? '').trim()).filter(Boolean);
 }
 
+/** Merge flat + metadata workshop fields from API / routing snapshot rows. */
+export function normalizeProductionQuoteLine(line) {
+  if (!line || typeof line !== 'object') return line;
+  const meta = line.metadata && typeof line.metadata === 'object' ? line.metadata : {};
+  const trim = (v) => {
+    const s = v != null ? String(v).trim() : '';
+    return s || '';
+  };
+  return {
+    ...line,
+    leather_code: trim(line.leather_code) || trim(meta.leather_code),
+    foam_type: trim(line.foam_type) || trim(meta.foam_type),
+    wood: trim(line.wood) || trim(meta.wood),
+    color_code: trim(line.color_code) || trim(meta.color_code),
+    dim_l_cm: trim(line.dim_l_cm) || trim(meta.dim_l_cm),
+    dim_w_cm: trim(line.dim_w_cm) || trim(meta.dim_w_cm),
+    dim_h_cm: trim(line.dim_h_cm) || trim(meta.dim_h_cm),
+    dimensions_lwh: trim(line.dimensions_lwh) || trim(meta.dimensions_lwh),
+    accessories: line.accessories ?? meta.accessories,
+    description: trim(line.description) || trim(meta.description) || line.description,
+  };
+}
+
 function carpentryLineHasExtras(line) {
   if (!line) return false;
   return Boolean(
@@ -95,20 +118,21 @@ export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale) {
     ? (key, fallback) => tUi(key, locale) || fallback
     : (_key, fallback) => fallback;
   for (const line of list.slice(0, 3)) {
+    const row = normalizeProductionQuoteLine(line);
     if (normalized === 'upholstery') {
-      if (line.leather_code) bits.push(`${translate('quoteOrderLeatherCode', 'Leather')}: ${line.leather_code}`);
-      const dims = formatDimensionsCm(line);
+      if (row.leather_code) bits.push(`${translate('quoteOrderLeatherCode', 'Leather')}: ${row.leather_code}`);
+      const dims = formatDimensionsCm(row);
       if (dims) bits.push(`${translate('quoteOrderDimensions', 'L×W×H (cm)')}: ${dims}`);
-      if (line.foam_type) bits.push(`${translate('quoteOrderFoamType', 'Foam')}: ${line.foam_type}`);
-      if (line.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${line.wood}`);
-      if (line.description) bits.push(`${translate('quoteOrderDescription', 'Desc')}: "${line.description}"`);
+      if (row.foam_type) bits.push(`${translate('quoteOrderFoamType', 'Foam')}: ${row.foam_type}`);
+      if (row.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${row.wood}`);
+      if (row.description) bits.push(`${translate('quoteOrderDescription', 'Desc')}: "${row.description}"`);
     }
     if (normalized === 'carpentry') {
-      if (line.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${line.wood}`);
-      const dims = formatDimensionsCm(line);
+      if (row.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${row.wood}`);
+      const dims = formatDimensionsCm(row);
       if (dims) bits.push(`${translate('quoteOrderDimensions', 'L×W×H (cm)')}: ${dims}`);
-      if (line.color_code) bits.push(`${translate('quoteOrderColorCode', 'Color')}: ${line.color_code}`);
-      const acc = normalizeAccessoriesList(line.accessories);
+      if (row.color_code) bits.push(`${translate('quoteOrderColorCode', 'Color')}: ${row.color_code}`);
+      const acc = normalizeAccessoriesList(row.accessories);
       if (acc.length) bits.push(`${translate('quoteOrderIncludedAccessories', 'Included Accessories')} : ${acc.join(', ')}`);
     }
   }
@@ -121,18 +145,19 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale }
   if (!list.length) return null;
 
   return list.map((line, index) => {
-    const key = String(line.id || `${line.name}-${index}`);
+    const row = normalizeProductionQuoteLine(line);
+    const key = String(row.id || `${row.name}-${index}`);
     const extras = [];
     if (normalized === 'upholstery') {
-      extras.push(...buildUpholsteryLineExtraTexts(line, tUi, locale));
+      extras.push(...buildUpholsteryLineExtraTexts(row, tUi, locale));
     }
     if (normalized === 'carpentry') {
-      extras.push(...buildCarpentryLineExtraTexts(line, tUi, locale));
+      extras.push(...buildCarpentryLineExtraTexts(row, tUi, locale));
     }
     return (
       <View key={key} style={styles.lineBlock}>
         <Text style={[styles.lineMain, { textAlign }]}>
-          {line.quantity} × {line.name}
+          {row.quantity} × {row.name}
         </Text>
         {extras.map((extra) => (
           <Text key={extra} style={[styles.lineExtra, { textAlign }]}>
@@ -188,13 +213,14 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
     return (
       <View style={styles.cardExtras}>
         {allLines.map((line, index) => {
-          const extras = buildCarpentryLineExtraTexts(line, tUi, locale);
-          const lineKey = String(line.id || `${line.name}-${index}`);
+          const row = normalizeProductionQuoteLine(line);
+          const extras = buildCarpentryLineExtraTexts(row, tUi, locale);
+          const lineKey = String(row.id || `${row.name}-${index}`);
           return (
             <View key={lineKey} style={styles.cardLineBlock}>
-              {line.name ? (
+              {row.name ? (
                 <Text style={[styles.cardLineTitle, { textAlign }]} numberOfLines={2}>
-                  {line.quantity || 1} × {line.name}
+                  {row.quantity || 1} × {row.name}
                 </Text>
               ) : null}
               {extras.map((extra) => (

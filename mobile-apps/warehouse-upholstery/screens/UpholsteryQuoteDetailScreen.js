@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -10,12 +11,12 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
-import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
+import { kioskFooterBottomPad, kioskScreenEdges } from '../lib/kioskLayout';
 import { tUi } from '../lib/productionKioskI18n';
 import {
   acceptUpholsteryQuote,
@@ -43,7 +44,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const initialQuote = route.params?.quote || {};
   const [quote, setQuote] = useState(initialQuote);
-  const [loadingOrder, setLoadingOrder] = useState(() => !Array.isArray(initialQuote.lines));
+  const [loadingOrder, setLoadingOrder] = useState(true);
   const quoteId = String(quote.quote_id || initialQuote.quote_id || '');
   const startedAt = quote.run_started_at || quote.accepted_at;
   const [accepted, setAccepted] = useState(Boolean(quote.accepted_at));
@@ -54,30 +55,34 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const [busy, setBusy] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
 
-  useEffect(() => {
-    if (!quoteId || Array.isArray(quote.lines)) return;
-    let alive = true;
+  const reloadQuote = useCallback(async () => {
+    if (!quoteId) {
+      setLoadingOrder(false);
+      return;
+    }
     setLoadingOrder(true);
-    fetchUpholsteryProductionQuotes()
-      .then((list) => {
-        if (!alive) return;
-        const found = (Array.isArray(list) ? list : []).find(
-          (q) => String(q.quote_id) === quoteId,
-        );
-        if (found) {
-          setQuote(found);
-          setAccepted(Boolean(found.accepted_at));
-          setCompleted(Boolean(found.completed_at));
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (alive) setLoadingOrder(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [quoteId, quote.lines]);
+    try {
+      const list = await fetchUpholsteryProductionQuotes();
+      const found = (Array.isArray(list) ? list : []).find(
+        (q) => String(q.quote_id) === quoteId,
+      );
+      if (found) {
+        setQuote(found);
+        setAccepted(Boolean(found.accepted_at));
+        setCompleted(Boolean(found.completed_at));
+      }
+    } catch {
+      // keep route params
+    } finally {
+      setLoadingOrder(false);
+    }
+  }, [quoteId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      reloadQuote();
+    }, [reloadQuote]),
+  );
 
   useEffect(() => {
     if (!accepted || completed || !startedAt) return undefined;
@@ -151,11 +156,17 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     }
   };
 
+  const bottomPad = kioskFooterBottomPad(insets) + 32;
+
   return (
+    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
     <ScrollView
-      style={[kiosk.screen, styles.flex]}
-      contentContainerStyle={[kioskScreenEdgesSafe(insets, 16), { paddingBottom: 32 }]}
+      style={[kiosk.screen, styles.scroll]}
+      contentContainerStyle={[kioskScreenEdges(insets, 0), { paddingBottom: bottomPad }]}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator
+      nestedScrollEnabled
+      keyboardDismissMode="on-drag"
     >
       <ProductionKioskTopBar
         title={tUi('quoteOrderScreenTitle', locale)}
@@ -225,15 +236,6 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
           <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('manufactureScanBtn', locale)}</Text>
         </Pressable>
       </View>
-      <ProductionQrScanModal
-        visible={scanOpen}
-        locale={locale}
-        onClose={() => setScanOpen(false)}
-        onScan={(value) => {
-          setScanOpen(false);
-          onScanSubmit(value);
-        }}
-      />
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
       <QuoteProductionLineRows
         lines={lines}
@@ -242,32 +244,37 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         tUi={tUi}
         locale={locale}
       />
-      <ProductionJobMaterialsModal
-        visible={materialsOpen}
-        locale={locale}
-        textAlign={textAlign}
-        jobKind="quote"
-        jobId={quoteId}
-        productionRoute="upholstery"
-        initialLines={quote.manual_material_lines || []}
-        onClose={() => setMaterialsOpen(false)}
-        onSaved={async () => {
-          setMaterialsOpen(false);
-          try {
-            const list = await fetchUpholsteryProductionQuotes();
-            const found = (Array.isArray(list) ? list : []).find((q) => String(q.quote_id) === quoteId);
-            if (found) setQuote(found);
-          } catch {
-            // ignore
-          }
-        }}
-      />
     </ScrollView>
+    <ProductionQrScanModal
+      visible={scanOpen}
+      locale={locale}
+      onClose={() => setScanOpen(false)}
+      onScan={(value) => {
+        setScanOpen(false);
+        onScanSubmit(value);
+      }}
+    />
+    <ProductionJobMaterialsModal
+      visible={materialsOpen}
+      locale={locale}
+      textAlign={textAlign}
+      jobKind="quote"
+      jobId={quoteId}
+      productionRoute="upholstery"
+      initialLines={quote.manual_material_lines || []}
+      onClose={() => setMaterialsOpen(false)}
+      onSaved={async () => {
+        setMaterialsOpen(false);
+        await reloadQuote();
+      }}
+    />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
+  safe: { flex: 1, backgroundColor: theme.bg },
+  scroll: { flex: 1 },
   quoteNum: { color: theme.primary, fontWeight: '700', fontSize: 18, marginBottom: 4 },
   name: { color: theme.text, fontSize: 17, fontWeight: '600' },
   phone: { color: theme.textMuted, fontSize: 13, marginTop: 4 },
