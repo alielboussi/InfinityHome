@@ -3499,7 +3499,7 @@ async function opDeliverySubmit(body, user) {
   });
   const repairSessionMeta = repairContext
     ? {
-      document_kind: repairContext.customer_name ? 'repair_delivery' : 'delivery',
+      document_kind: 'repair_delivery',
       return_order_id: repairContext.return_order_id,
       return_number: repairContext.return_number,
       customer_name: repairContext.customer_name,

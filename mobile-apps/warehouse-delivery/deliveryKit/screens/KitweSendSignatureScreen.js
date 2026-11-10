@@ -39,6 +39,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
 
   const sessionId = route.params?.sessionId || '';
   const deliveryNumber = route.params?.deliveryNumber || '';
+  const printNoteNumber = String(route.params?.printNoteNumber || '').trim();
   const groups = route.params?.groups || [];
   const printGroups = route.params?.printGroups || [];
   const returnOrderId = route.params?.returnOrderId || '';
@@ -139,6 +140,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
 
       navigation.replace('KitweSendDone', {
         deliveryNumber,
+        printNoteNumber: printNoteNumber || deliveryNumber,
         driverName,
         supervisorName: dispatchedByName,
         driverSignatureDataUri: dataUri,

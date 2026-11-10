@@ -9,21 +9,6 @@ import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
-function buildRepairPrintLines(row) {
-  const lines = [];
-  const ro = String(row.return_number || '').trim();
-  if (ro) lines.push({ name: ro, kind: 'meta' });
-  const customerName = String(row.customer_name || '').trim();
-  const customerPhone = String(row.customer_phone || '').trim();
-  if (customerName) {
-    const label = customerPhone
-      ? `Customer: ${customerName} · ${customerPhone}`
-      : `Customer: ${customerName}`;
-    lines.push({ name: label, kind: 'meta' });
-  }
-  return lines;
-}
-
 async function openStagedDelivery(navigation, row) {
   const session = await warehouseMobileRequest('delivery-session-open', {});
   const qty = Math.max(1, Number(row.quantity) || 1);
@@ -34,21 +19,23 @@ async function openStagedDelivery(navigation, row) {
     finished_driver_checked: true,
     finished_driver_checked_at: now,
   }];
+  const returnNumber = String(row.return_number || '').trim();
   const printGroups = [{
     assembly_name: row.assembly_name || row.assembly_id,
     units: qty,
-    lines: buildRepairPrintLines(row),
+    lines: [],
   }];
   const customerName = String(row.customer_name || '').trim();
   const customerPhone = String(row.customer_phone || '').trim();
   navigation.navigate('KitweSendSignature', {
     sessionId: session.session_id,
     deliveryNumber: session.delivery_number,
+    printNoteNumber: returnNumber || session.delivery_number,
     groups,
     printGroups,
     queueKind: 'repair',
     returnOrderId: row.return_order_id,
-    documentKind: customerName ? 'repair_delivery' : 'delivery',
+    documentKind: 'repair_delivery',
     repairCustomerName: customerName,
     repairCustomerPhone: customerPhone,
   });

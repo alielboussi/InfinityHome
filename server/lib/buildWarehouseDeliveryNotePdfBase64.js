@@ -95,13 +95,15 @@ export function buildWarehouseDeliveryNotePdfBase64({
     : null;
   const printGroups = printGroupsOverride || buildDeliveryPrintGroupsFromEntries(entries || [], formatter);
   const copyCount = Math.max(1, Math.min(3, Number(copies) || 1));
-  const dn = String(session?.delivery_number || session?.id || '').trim() || 'Delivery';
+  const kind = String(documentKind || meta.document_kind || 'delivery').trim();
+  const dn = kind === 'repair_delivery'
+    ? String(meta.return_number || session?.delivery_number || session?.id || '').trim() || 'Delivery'
+    : String(session?.delivery_number || session?.id || '').trim() || 'Delivery';
   const at = submittedAtOverride || session?.submitted_at || session?.created_at || new Date().toISOString();
   const dispatched = String(dispatchedByOverride || '').trim()
     || deliverySenderName(session)
     || '—';
   const driver = String(driverNameOverride || meta.driver_name || '').trim() || '—';
-  const kind = String(documentKind || 'delivery').trim();
   const custName = String(customerName || meta.customer_name || '').trim();
   const custPhone = String(customerPhone || meta.customer_phone || '').trim();
 

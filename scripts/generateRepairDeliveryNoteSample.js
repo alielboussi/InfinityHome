@@ -17,7 +17,7 @@ async function main() {
 
   const submittedAt = '2026-11-10T18:45:00.000Z';
   const html = buildDeliveryNotePrintHtml({
-    deliveryNumber: 'WHD00000000999',
+    deliveryNumber: 'RO0000000001',
     driverName: 'John Driver',
     dispatchedBy: 'Ali',
     driverSignatureSrc: '',
@@ -29,10 +29,7 @@ async function main() {
     printGroups: [{
       assembly_name: 'Test Product',
       units: 1,
-      lines: [
-        { name: 'RO0000000001', kind: 'meta' },
-        { name: 'Customer: Jane Customer · +260 97 123 4567', kind: 'meta' },
-      ],
+      lines: [],
     }],
     copies: 1,
   });

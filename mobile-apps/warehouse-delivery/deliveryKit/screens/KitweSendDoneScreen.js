@@ -12,6 +12,8 @@ import { theme } from '../shared/theme';
 export default function KitweSendDoneScreen({ route, navigation }) {
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const dn = route.params?.deliveryNumber || '';
+  const printNoteNumber = String(route.params?.printNoteNumber || '').trim();
+  const noteNumber = printNoteNumber || dn;
   const driverName = route.params?.driverName || '';
   const supervisorName = route.params?.supervisorName || '';
   const printGroups = route.params?.printGroups || [];
@@ -21,7 +23,7 @@ export default function KitweSendDoneScreen({ route, navigation }) {
   const documentKind = route.params?.documentKind || 'delivery';
   const customerName = route.params?.customerName || '';
   const customerPhone = route.params?.customerPhone || '';
-  const hasPrintPayload = Boolean(dn) && Array.isArray(printGroups) && printGroups.length > 0;
+  const hasPrintPayload = Boolean(noteNumber) && Array.isArray(printGroups) && printGroups.length > 0;
   const [printOpen, setPrintOpen] = useState(hasPrintPayload);
 
   useEffect(() => {
@@ -62,7 +64,7 @@ export default function KitweSendDoneScreen({ route, navigation }) {
         visible={printOpen && hasPrintPayload}
         locale={locale}
         textAlign={textAlign}
-        deliveryNumber={dn}
+        deliveryNumber={noteNumber}
         driverName={driverName}
         dispatchedBy={supervisorName}
         driverSignatureDataUri={driverSignatureDataUri}
