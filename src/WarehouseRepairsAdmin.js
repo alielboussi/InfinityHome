@@ -3,17 +3,42 @@ import BackToDashboard from './BackToDashboard';
 import { listDeliveryProductionQueue, listReturnOrders } from './services/warehouseDeliveryMobileApi';
 import { formatWarehouseAdminDateTime } from './utils/warehouseAdminFormat';
 import {
+  DELIVERY_ADMIN_HOLD_LABEL,
+  deliveryAdminInventoryFootnote,
   deliveryAdminStageLabel,
   isCompletedAwaitingDelivery,
   orderAdminStatusDisplay,
   readDeliveryAdminMeta,
   repairAdminStatusDisplay,
+  repairOnDeliveryAdminVirtualHold,
+  orderOnDeliveryAdminVirtualHold,
 } from './utils/warehouseDeliveryAdminQueue';
 import {
   REPAIR_DEPARTMENTS,
   repairDepartmentLabel,
   resolveReturnRepairDepartment,
 } from './utils/warehouseReturnRepairDepartment';
+
+function InventoryHoldNote({ text }) {
+  if (!text) return null;
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: '8px 10px',
+        borderRadius: 8,
+        border: '1px dashed #94a3b8',
+        background: '#f1f5f9',
+        fontSize: 13,
+        color: '#334155',
+        fontWeight: 600,
+        lineHeight: 1.4,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
 
 function stageBadge(stage, kind) {
   const label = deliveryAdminStageLabel(stage, kind);
@@ -46,6 +71,7 @@ function RepairAdminCard({ row }) {
     || (row.status === 'in_progress' ? 'in_progress' : null);
   const statusLabel = repairAdminStatusDisplay(row);
   const useAwaitingStyle = isCompletedAwaitingDelivery(row);
+  const holdNote = deliveryAdminInventoryFootnote(row, 'repair');
   return (
     <article
       style={{
@@ -94,12 +120,14 @@ function RepairAdminCard({ row }) {
         {row.customer_name ? ` · Customer: ${row.customer_name}` : ''}
         {row.customer_phone ? ` · ${row.customer_phone}` : ''}
       </div>
+      <InventoryHoldNote text={holdNote} />
     </article>
   );
 }
 
 function OrderAdminCard({ row }) {
   const statusLabel = orderAdminStatusDisplay(row);
+  const holdNote = deliveryAdminInventoryFootnote(row, 'order');
   return (
     <article
       style={{
@@ -124,8 +152,17 @@ function OrderAdminCard({ row }) {
         {' · Qty '}
         {row.quantity}
       </div>
+      <InventoryHoldNote text={holdNote} />
     </article>
   );
+}
+
+function holdSummaryLine(rows, kind) {
+  const n = rows.filter((row) => (
+    kind === 'order' ? orderOnDeliveryAdminVirtualHold(row) : repairOnDeliveryAdminVirtualHold(row)
+  )).length;
+  if (n < 1) return null;
+  return `${n} ${n === 1 ? 'unit' : 'units'} ${DELIVERY_ADMIN_HOLD_LABEL.toLowerCase()}`;
 }
 
 export default function WarehouseRepairsAdmin() {
@@ -212,6 +249,18 @@ export default function WarehouseRepairsAdmin() {
     return buckets;
   }, [filtered]);
 
+  const orderHoldSummary = holdSummaryLine(filteredOrders, 'order');
+
+  const repairHoldSummaryByDept = useMemo(() => {
+    const out = {};
+    for (const dept of REPAIR_DEPARTMENTS) {
+      const sectionRows = byDepartment[dept.id] || [];
+      const line = holdSummaryLine(sectionRows, 'repair');
+      if (line) out[dept.id] = line;
+    }
+    return out;
+  }, [byDepartment]);
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--dash-bg)', color: 'var(--dash-text)', padding: 24 }}>
       <div className="page-header-row">
@@ -254,7 +303,12 @@ export default function WarehouseRepairsAdmin() {
       {error && <div style={{ color: '#ff6b6b', marginBottom: 12 }}>{error}</div>}
 
       <section style={{ marginBottom: 32 }}>
-        <h2 style={{ margin: '0 0 12px', fontSize: 20 }}>Production orders (Delivery app)</h2>
+        <h2 style={{ margin: '0 0 4px', fontSize: 20 }}>Production orders (Delivery app)</h2>
+        {orderHoldSummary ? (
+          <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: 14 }}>{orderHoldSummary}</p>
+        ) : (
+          <div style={{ marginBottom: 12 }} />
+        )}
         {!loading && filteredOrders.length === 0 ? (
           <div style={{ color: 'var(--dash-muted)' }}>No orders awaiting driver.</div>
         ) : (
@@ -275,7 +329,14 @@ export default function WarehouseRepairsAdmin() {
         if (!sectionRows.length && !loading) return null;
         return (
           <section key={dept.id} style={{ marginBottom: 32 }}>
-            <h2 style={{ margin: '0 0 12px', fontSize: 20 }}>{dept.label}</h2>
+            <h2 style={{ margin: '0 0 4px', fontSize: 20 }}>{dept.label}</h2>
+            {repairHoldSummaryByDept[dept.id] ? (
+              <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: 14 }}>
+                {repairHoldSummaryByDept[dept.id]}
+              </p>
+            ) : (
+              <div style={{ marginBottom: 12 }} />
+            )}
             {sectionRows.length === 0 ? (
               <div style={{ color: 'var(--dash-muted)', marginBottom: 8 }}>No repairs in this department.</div>
             ) : (

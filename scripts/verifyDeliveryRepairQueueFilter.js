@@ -14,7 +14,13 @@ function assert(cond, msg) {
 async function main() {
   const root = path.join(__dirname, '..');
   const mod = await import(pathToFileURL(path.join(root, 'src/utils/warehouseDeliveryAdminQueue.js')).href);
-  const { repairEligibleForMobileDeliveryQueue, isCompletedAwaitingDelivery } = mod;
+  const {
+    repairEligibleForMobileDeliveryQueue,
+    isCompletedAwaitingDelivery,
+    deliveryAdminInventoryFootnote,
+    DELIVERY_ADMIN_HOLD_LABEL,
+    DELIVERY_ADMIN_IN_TRANSIT_LABEL,
+  } = mod;
 
   const awaiting = {
     status: 'completed',
@@ -66,6 +72,15 @@ async function main() {
     },
   };
   assert(repairEligibleForMobileDeliveryQueue(floor2WithApp), 'delivery_app flag wins over floor2 timestamp');
+
+  assert(
+    deliveryAdminInventoryFootnote(awaiting, 'repair') === DELIVERY_ADMIN_HOLD_LABEL,
+    'awaiting driver must show virtual hold footnote',
+  );
+  assert(
+    deliveryAdminInventoryFootnote(collected, 'repair') === DELIVERY_ADMIN_IN_TRANSIT_LABEL,
+    'collected must show in-transit footnote',
+  );
 
   console.log('verifyDeliveryRepairQueueFilter: ok');
 }

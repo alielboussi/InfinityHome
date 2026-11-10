@@ -111,6 +111,8 @@ assert(returnScreen.includes('repairCompleteFloor2Hint'), 'workshop repairs must
 const repairsAdmin = read('src/WarehouseRepairsAdmin.js');
 assert(repairsAdmin.includes('listDeliveryProductionQueue'), 'repairs admin must list production orders queue');
 assert(repairsAdmin.includes('deliveryAdminStageLabel'), 'repairs admin must show delivery admin stages');
+assert(repairsAdmin.includes('deliveryAdminInventoryFootnote'), 'repairs admin must show virtual hold footnote');
+assert(repairsAdmin.includes('DELIVERY_ADMIN_HOLD_LABEL'), 'repairs admin must label queue hold');
 assert(!returnScreen.includes('return-order-customer-delivery-prepare'), 'workshop repairs must not open inline delivery');
 assert(!returns.includes('await adjustAssemblyStock(sb, row.assembly_id, KITWE_LOCATION_ID, qty);\n\n  await sb.from(\'warehouse_delivery_sessions\')'), 'WHR submit must not restore Kitwe before Hassan accept');
 

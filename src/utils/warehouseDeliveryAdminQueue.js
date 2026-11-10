@@ -67,6 +67,38 @@ export function repairEligibleForMobileDeliveryQueue(row) {
 
 const COMPLETED_AWAITING_DELIVERY = 'Ready for delivery';
 
+/** Portal copy — unit is held on delivery_admin, not warehouse_assembly_inventory. */
+export const DELIVERY_ADMIN_HOLD_LABEL = 'In delivery queue (not on floor)';
+export const DELIVERY_ADMIN_IN_TRANSIT_LABEL = 'With driver — not counted on warehouse floors';
+
+export function repairOnDeliveryAdminVirtualHold(row) {
+  return repairEligibleForMobileDeliveryQueue(row);
+}
+
+export function orderOnDeliveryAdminVirtualHold(row) {
+  const stage = String(row?.delivery_admin_stage || '').toLowerCase();
+  if (stage === DELIVERY_ADMIN_STAGE.COLLECTED_BY_DRIVER
+    || stage === DELIVERY_ADMIN_STAGE.DELIVERY_COMPLETED) {
+    return false;
+  }
+  return stage === DELIVERY_ADMIN_STAGE.AWAITING_DRIVER || !stage;
+}
+
+/** Footnote for /warehouse-repairs-admin cards (null when on floors or fully done). */
+export function deliveryAdminInventoryFootnote(row, kind = 'repair') {
+  if (kind === 'order') {
+    if (orderOnDeliveryAdminVirtualHold(row)) return DELIVERY_ADMIN_HOLD_LABEL;
+    const stage = String(row?.delivery_admin_stage || '').toLowerCase();
+    if (stage === DELIVERY_ADMIN_STAGE.COLLECTED_BY_DRIVER) return DELIVERY_ADMIN_IN_TRANSIT_LABEL;
+    return null;
+  }
+  const admin = readDeliveryAdminMeta(row);
+  const stage = String(admin?.stage || row?.delivery_admin_stage || '').toLowerCase();
+  if (repairOnDeliveryAdminVirtualHold(row)) return DELIVERY_ADMIN_HOLD_LABEL;
+  if (stage === DELIVERY_ADMIN_STAGE.COLLECTED_BY_DRIVER) return DELIVERY_ADMIN_IN_TRANSIT_LABEL;
+  return null;
+}
+
 export function isCompletedAwaitingDelivery(row) {
   if (/awaiting driver/i.test(String(row?.lifecycle_badge || ''))) return true;
   return repairEligibleForMobileDeliveryQueue(row);
