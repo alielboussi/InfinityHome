@@ -40,6 +40,31 @@ function carpentryLineHasExtras(line) {
   );
 }
 
+function buildUpholsteryLineExtraTexts(line, tUi, locale) {
+  const rows = [];
+  if (line.leather_code) {
+    rows.push(`${tUi('quoteOrderLeatherCode', locale)}: ${line.leather_code}`);
+  }
+  const dims = formatDimensionsCm(line);
+  if (dims) {
+    rows.push(`${tUi('quoteOrderDimensions', locale)}: ${dims}`);
+  }
+  if (line.foam_type) {
+    rows.push(`${tUi('quoteOrderFoamType', locale) || 'Foam type'}: ${line.foam_type}`);
+  }
+  if (line.wood) {
+    rows.push(`${tUi('quoteOrderWood', locale)}: ${line.wood}`);
+  }
+  if (line.description) {
+    rows.push(`${tUi('quoteOrderDescription', locale)}: "${String(line.description).trim()}"`);
+  }
+  const accessories = normalizeAccessoriesList(line.accessories);
+  if (accessories.length) {
+    rows.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${accessories.join(', ')}`);
+  }
+  return rows;
+}
+
 function buildCarpentryLineExtraTexts(line, tUi, locale) {
   const rows = [];
   if (line.wood) {
@@ -72,6 +97,10 @@ export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale) {
   for (const line of list.slice(0, 3)) {
     if (normalized === 'upholstery') {
       if (line.leather_code) bits.push(`${translate('quoteOrderLeatherCode', 'Leather')}: ${line.leather_code}`);
+      const dims = formatDimensionsCm(line);
+      if (dims) bits.push(`${translate('quoteOrderDimensions', 'L×W×H (cm)')}: ${dims}`);
+      if (line.foam_type) bits.push(`${translate('quoteOrderFoamType', 'Foam')}: ${line.foam_type}`);
+      if (line.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${line.wood}`);
       if (line.description) bits.push(`${translate('quoteOrderDescription', 'Desc')}: "${line.description}"`);
     }
     if (normalized === 'carpentry') {
@@ -95,16 +124,7 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale }
     const key = String(line.id || `${line.name}-${index}`);
     const extras = [];
     if (normalized === 'upholstery') {
-      if (line.leather_code) {
-        extras.push(`${tUi('quoteOrderLeatherCode', locale)}: ${line.leather_code}`);
-      }
-      if (line.description) {
-        extras.push(`${tUi('quoteOrderDescription', locale)}: "${String(line.description).trim()}"`);
-      }
-      const acc = normalizeAccessoriesList(line.accessories);
-      if (acc.length) {
-        extras.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${acc.join(', ')}`);
-      }
+      extras.push(...buildUpholsteryLineExtraTexts(line, tUi, locale));
     }
     if (normalized === 'carpentry') {
       extras.push(...buildCarpentryLineExtraTexts(line, tUi, locale));

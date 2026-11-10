@@ -100,6 +100,7 @@
     { "source": "/api/whatsapp-transfer", "destination": "/api/notify?action=whatsapp-transfer" },
     { "source": "/api/whatsapp-warehouse-delivery", "destination": "/api/notify?action=whatsapp-warehouse-delivery" },
     { "source": "/api/whatsapp-factory-order", "destination": "/api/notify?action=whatsapp-factory-order" },
+    { "source": "/api/factory-order-send", "destination": "/api/notify?action=factory-order" },
     { "source": "/api/whatsapp-production", "destination": "/api/notify?action=whatsapp-production" },
     { "source": "/api/whatsapp-labels", "destination": "/api/notify?action=whatsapp-labels" },
     { "source": "/api/whatsapp-lusaka-transfer", "destination": "/api/notify?action=whatsapp-lusaka-transfer" },

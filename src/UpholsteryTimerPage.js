@@ -48,6 +48,7 @@ function computeQuoteOrderElapsedMs(order, nowMs = Date.now()) {
 function formatLineExtra(line) {
   const parts = [];
   if (line?.leather_code) parts.push(`Leather: ${line.leather_code}`);
+  if (line?.foam_type) parts.push(`Foam: ${line.foam_type}`);
   if (line?.color_code) parts.push(`Color: ${line.color_code}`);
   if (line?.wood) parts.push(`Wood: ${line.wood}`);
   const l = line?.length_cm;
@@ -114,6 +115,13 @@ export default function UpholsteryTimerPage() {
     ),
     [quoteOrders],
   );
+
+  const showMultiUnitColumns = useMemo(
+    () => jobs.some((j) => Math.max(1, Number(j.product_qty) || 1) > 1),
+    [jobs],
+  );
+
+  const manufactureJobColSpan = showMultiUnitColumns ? 8 : 6;
 
   return (
     <div className="kitwe-catalog-page" style={{ padding: '16px 20px', maxWidth: 1100 }}>
@@ -198,17 +206,35 @@ export default function UpholsteryTimerPage() {
         <p style={{ color: 'var(--text-muted, #64748b)' }}>No workshop floor upholstery jobs yet.</p>
       ) : null}
       {jobs.length ? (
-        <table className="kitwe-catalog-table" style={{ marginTop: 12 }}>
+        <table className="kitwe-catalog-table kitwe-catalog-table--production-jobs" style={{ marginTop: 12 }}>
+          <colgroup>
+            <col className="col-materials" />
+            <col className="col-product" />
+            <col className="col-sku" />
+            {showMultiUnitColumns ? (
+              <>
+                <col className="col-qty" />
+                <col className="col-units" />
+              </>
+            ) : null}
+            <col className="col-status" />
+            <col className="col-timer" />
+            <col className="col-started" />
+          </colgroup>
           <thead>
             <tr>
               <th className="col-materials">Materials</th>
-              <th>Product</th>
-              <th>SKU</th>
-              <th>Qty</th>
-              <th>Units checked</th>
-              <th>Status</th>
-              <th>Timer</th>
-              <th>Started</th>
+              <th className="col-product">Product</th>
+              <th className="col-sku">SKU</th>
+              {showMultiUnitColumns ? (
+                <>
+                  <th className="col-qty">Qty</th>
+                  <th className="col-units">Units checked</th>
+                </>
+              ) : null}
+              <th className="col-status">Status</th>
+              <th className="col-timer">Timer</th>
+              <th className="col-started">Started</th>
             </tr>
           </thead>
           <tbody>
@@ -228,20 +254,26 @@ export default function UpholsteryTimerPage() {
                         onClick={() => setExpandedJobId((prev) => (prev === jobKey ? '' : jobKey))}
                       />
                     </td>
-                    <td>{job.finished_name || job.raw_name || '—'}</td>
-                    <td>{job.finished_sku || '—'}</td>
-                    <td>{qty}</td>
-                    <td>{checked} / {qty}</td>
-                    <td>{statusLabel(job.status)}</td>
-                    <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="col-product">{job.finished_name || job.raw_name || '—'}</td>
+                    <td className="col-sku">{job.finished_sku || '—'}</td>
+                    {showMultiUnitColumns ? (
+                      <>
+                        <td className="col-qty">{qty}</td>
+                        <td className="col-units">{checked} / {qty}</td>
+                      </>
+                    ) : null}
+                    <td className="col-status">{statusLabel(job.status)}</td>
+                    <td className="col-timer" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                       {formatElapsed(job.elapsed_ms)}
                     </td>
-                    <td>{job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</td>
+                    <td className="col-started">
+                      {job.started_at ? new Date(job.started_at).toLocaleString() : '—'}
+                    </td>
                   </tr>
                   {open ? (
                     <JobMaterialsDetailRow
                       job={job}
-                      colSpan={8}
+                      colSpan={manufactureJobColSpan}
                       labelByLocationId={storeroomLabels}
                     />
                   ) : null}

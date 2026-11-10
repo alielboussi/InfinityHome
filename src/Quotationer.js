@@ -46,6 +46,7 @@ import {
 import {
   CARPENTRY_ACCESSORY_GROUPS,
   CARPENTRY_WOOD_OPTIONS,
+  UPHOLSTERY_FOAM_OPTIONS,
   normalizeQuoteItemAccessories,
 } from './utils/quoteProductionItemFields';
 import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
@@ -1150,7 +1151,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const saveQuote = async () => {
     const wasEditing = Boolean(currentQuoteId);
     if (!vatChoice) {
-      alert('Please choose VAT Exclusive or VAT @ 16%');
+      alert('Please choose 0% or 16% VAT');
       return;
     }
     if (canManageProductionRouting && !productionRoute) {
@@ -1472,15 +1473,28 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           <div className="quotes-create-panel-row">
             <div className="quotes-create-vat-wrap">
               <span className="quotes-create-label">VAT</span>
-              <select
-                className="quotes-select quotes-pos-select"
-                value={vatChoice}
-                onChange={e => setVatChoice(e.target.value)}
-                style={{ minWidth: 180 }}
+              <div
+                className="pos-currency-switch quotes-currency-switch quotes-vat-switch"
+                role="group"
+                aria-label="VAT rate"
               >
-                <option value="exclusive">VAT Exclusive</option>
-                <option value="vat16">VAT @ 16%</option>
-              </select>
+                <button
+                  type="button"
+                  className={vatChoice === 'exclusive' ? 'active' : ''}
+                  onClick={() => setVatChoice('exclusive')}
+                  aria-pressed={vatChoice === 'exclusive'}
+                >
+                  <span className="pos-currency-symbol">0%</span>
+                </button>
+                <button
+                  type="button"
+                  className={vatChoice === 'vat16' ? 'active' : ''}
+                  onClick={() => setVatChoice('vat16')}
+                  aria-pressed={vatChoice === 'vat16'}
+                >
+                  <span className="pos-currency-symbol">16%</span>
+                </button>
+              </div>
             </div>
             <div className="pos-currency-switch quotes-currency-switch" role="group" aria-label="Currency">
               <button
@@ -1646,17 +1660,86 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                             placeholder="Description"
                           />
                           {showUpholsteryMeta ? (
-                            <div className="quotes-line-meta-grid quotes-line-meta-grid--one">
+                            <div className="quotes-line-meta-grid quotes-line-meta-grid--upholstery">
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">L (cm)</span>
+                                <input
+                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={it.dim_l_cm || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { dim_l_cm: e.target.value, dimensions_lwh: '' })}
+                                  placeholder="L"
+                                  aria-label="Length cm optional"
+                                />
+                              </label>
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">W (cm)</span>
+                                <input
+                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={it.dim_w_cm || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { dim_w_cm: e.target.value, dimensions_lwh: '' })}
+                                  placeholder="W"
+                                  aria-label="Width cm optional"
+                                />
+                              </label>
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">H (cm)</span>
+                                <input
+                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={it.dim_h_cm || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { dim_h_cm: e.target.value, dimensions_lwh: '' })}
+                                  placeholder="H"
+                                  aria-label="Height cm optional"
+                                />
+                              </label>
                               <label className="quotes-line-meta-field">
                                 <span className="quotes-line-meta-label">Leather</span>
                                 <input
-                                  className="quotes-input quotes-input--slim"
+                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
                                   value={it.leather_code || ''}
                                   disabled={locked}
                                   onChange={e => updateItem(it.id, { leather_code: e.target.value })}
-                                  placeholder="Optional"
+                                  placeholder="Code"
                                   aria-label="Leather code optional"
                                 />
+                              </label>
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">Foam type</span>
+                                <select
+                                  className="quotes-select quotes-select--slim quotes-line-meta-control"
+                                  value={it.foam_type || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { foam_type: e.target.value })}
+                                  aria-label="Foam type optional"
+                                >
+                                  <option value="">—</option>
+                                  {UPHOLSTERY_FOAM_OPTIONS.map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="quotes-line-meta-field">
+                                <span className="quotes-line-meta-label">Wood</span>
+                                <select
+                                  className="quotes-select quotes-select--slim quotes-line-meta-control"
+                                  value={it.wood || ''}
+                                  disabled={locked}
+                                  onChange={e => updateItem(it.id, { wood: e.target.value })}
+                                  aria-label="Wood type optional"
+                                >
+                                  <option value="">—</option>
+                                  {CARPENTRY_WOOD_OPTIONS.map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
                               </label>
                             </div>
                           ) : null}
@@ -1875,13 +1958,19 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                           </div>
                         )}
                       </td>
-                      <td style={{ ...tableCellStyle, textAlign: 'right', width: '11%' }}>
+                      <td
+                        style={{ ...tableCellStyle, textAlign: 'right', width: '11%' }}
+                        className="quotes-line-amount-cell"
+                      >
                         <div className="quotes-line-amount-readonly quotes-line-amount-total">
                           <span className="quotes-line-price-prefix">{currencyLabel}</span>
                           <span>{lineTotal}</span>
                         </div>
                       </td>
-                      <td style={{ ...tableCellStyle, width: '8%', textAlign: 'center' }}>
+                      <td
+                        style={{ ...tableCellStyle, width: '8%', textAlign: 'center' }}
+                        className="quotes-line-actions-cell"
+                      >
                         {!locked ? (
                           <button
                             type="button"
@@ -1910,7 +1999,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
               <span className="quotes-totals-sep" aria-hidden="true" />
               <span>
                 <span className="quotes-totals-label">VAT</span> {vatAmount.toFixed(2)}
-                {vatChoice === 'vat16' ? '' : ' (excl.)'}
+                {vatChoice === 'vat16' ? ' @ 16%' : ' @ 0%'}
               </span>
               <span className="quotes-totals-sep" aria-hidden="true" />
               <span className="quotes-totals-total">

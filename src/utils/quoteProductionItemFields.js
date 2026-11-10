@@ -14,6 +14,25 @@ export const CARPENTRY_WOOD_OPTIONS = [
   'MDF',
 ];
 
+/** Upholstery foam grades (Quotationer + workshop display). */
+export const UPHOLSTERY_FOAM_OPTIONS = [
+  'High density (HD)',
+  'Medium density (MD)',
+  'Soft / low density',
+  'Memory foam',
+  'Rebonded',
+  'Spring foam',
+  'Coconut fibre (coir)',
+  'Wrap / Dacron',
+];
+
+export function normalizeUpholsteryFoamType(raw) {
+  const v = trimOrNull(raw);
+  if (!v) return null;
+  const match = UPHOLSTERY_FOAM_OPTIONS.find((o) => o.toLowerCase() === v.toLowerCase());
+  return match || v;
+}
+
 /** Carpentry accessories grouped by furniture category for Quotationer selector. */
 export const CARPENTRY_ACCESSORY_GROUPS = Object.freeze([
   {
@@ -237,6 +256,7 @@ export function pickQuoteItemProductionFields(it) {
     dimensions_lwh,
     color_code: trimOrNull(it?.color_code ?? meta.color_code),
     wood: normalizeCarpentryWoodChoice(it?.wood ?? meta.wood),
+    foam_type: normalizeUpholsteryFoamType(it?.foam_type ?? meta.foam_type),
     accessories,
   };
 }
@@ -252,6 +272,7 @@ export function buildQuoteItemMetadataFromPayload(it) {
   if (fields.dimensions_lwh) out.dimensions_lwh = fields.dimensions_lwh;
   if (fields.color_code) out.color_code = fields.color_code;
   if (fields.wood) out.wood = fields.wood;
+  if (fields.foam_type) out.foam_type = fields.foam_type;
   if (fields.accessories?.length) out.accessories = fields.accessories;
   return Object.keys(out).length ? out : null;
 }
@@ -276,6 +297,9 @@ export function formatQuoteItemProductionPdfLines(it) {
   }
   if (fields.leather_code) {
     lines.push(`-Leather Code: ${fields.leather_code}`);
+  }
+  if (fields.foam_type) {
+    lines.push(`-Foam Type: ${fields.foam_type}`);
   }
   return lines;
 }
@@ -304,8 +328,12 @@ export function summarizeProductionQuoteCardExtras(lines, route) {
   const list = Array.isArray(lines) ? lines : [];
   const bits = [];
   for (const line of list.slice(0, 3)) {
-    if (normalized === 'upholstery' && line.leather_code) {
-      bits.push(`Leather: ${line.leather_code}`);
+    if (normalized === 'upholstery') {
+      if (line.leather_code) bits.push(`Leather: ${line.leather_code}`);
+      const dims = formatQuoteDimensionsCm(line);
+      if (dims) bits.push(`L×W×H (cm): ${dims}`);
+      if (line.foam_type) bits.push(`Foam: ${line.foam_type}`);
+      if (line.wood) bits.push(`Wood: ${line.wood}`);
     }
     if (normalized === 'carpentry') {
       const dims = formatQuoteDimensionsCm(line);

@@ -43,6 +43,7 @@ export function normalizeQuotationItemRow(row) {
     dimensions_lwh: legacyLwh,
     color_code: row.color_code ?? meta.color_code ?? '',
     wood: row.wood ?? meta.wood ?? '',
+    foam_type: row.foam_type ?? meta.foam_type ?? '',
     accessories: normalizeQuoteItemAccessories(row.accessories ?? meta.accessories),
   };
 }

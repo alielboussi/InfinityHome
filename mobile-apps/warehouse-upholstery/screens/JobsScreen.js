@@ -23,6 +23,7 @@ import {
   finishUpholsteryProductionJob,
   pauseUpholsteryProductionJob,
   resumeUpholsteryProductionJob,
+  toggleUpholsteryProductionJobUnit,
 } from '../services/productionApi';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
@@ -93,11 +94,29 @@ function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   );
 }
 
-function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, onFinish, onMaterials }) {
+function JobCard({
+  job,
+  locale,
+  textAlign,
+  busy,
+  timerLocked,
+  unitBusy,
+  onPause,
+  onPlay,
+  onFinish,
+  onMaterials,
+  onToggleUnit,
+}) {
   const isRunning = job.status === 'running';
   const thumb = resolveProductImageUrl(job.floor2_image_url || job.product_image_url || job.image_url);
   const canPlay = job.status === 'ready' || job.status === 'paused';
   const isCompleted = job.status === 'completed';
+  const productQty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const showUnitChecks = productQty > 1;
+  const checkedSet = useMemo(() => {
+    const raw = job.checked_unit_indexes || [];
+    return new Set((Array.isArray(raw) ? raw : []).map((n) => Math.floor(Number(n))).filter((n) => n >= 1));
+  }, [job.checked_unit_indexes]);
 
   return (
     <View style={[kiosk.card, styles.jobCard]}>
@@ -113,6 +132,39 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
         <RunningJobElapsed job={job} style={styles.timerValue} />
         <Text style={styles.statusChip}>{tUi(`upholsteryJobStatus_${job.status}`, locale)}</Text>
       </View>
+
+      {showUnitChecks ? (
+        <View style={styles.unitBlock}>
+          <Text style={[styles.unitLabel, { textAlign }]}>
+            {tUi('upholsteryUnitsCheckedLabel', locale)}
+            {': '}
+            {checkedSet.size}
+            {' / '}
+            {productQty}
+          </Text>
+          {!isCompleted ? (
+            <Text style={[kiosk.hint, { textAlign, marginBottom: 6 }]}>
+              {tUi('upholsteryUnitTapHint', locale)}
+            </Text>
+          ) : null}
+          <View style={styles.unitChipRow}>
+            {Array.from({ length: productQty }, (_, i) => i + 1).map((unitN) => {
+              const on = checkedSet.has(unitN);
+              const jobId = String(job.job_id || job.id);
+              return (
+                <Pressable
+                  key={unitN}
+                  style={[styles.unitChip, on && styles.unitChipOn]}
+                  disabled={isCompleted || unitBusy || busy}
+                  onPress={() => onToggleUnit?.(jobId, unitN)}
+                >
+                  <Text style={[styles.unitChipText, on && styles.unitChipTextOn]}>{unitN}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.iconRow}>
         {canPlay ? (
@@ -179,6 +231,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [timerBusyId, setTimerBusyId] = useState('');
+  const [unitBusyId, setUnitBusyId] = useState('');
   const [materialsTarget, setMaterialsTarget] = useState(null);
   const [jobFilter, setJobFilter] = useState('all');
   const timerOpsRef = useRef(new Set());
@@ -276,6 +329,23 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const onPause = (jobId) => {
     void runOptimisticTimerOp(jobId, 'pause');
   };
+
+  const onToggleUnit = useCallback(async (jobId, unitIndex) => {
+    const id = String(jobId || '').trim();
+    if (!id) return;
+    setUnitBusyId(id);
+    try {
+      const result = await toggleUpholsteryProductionJobUnit(id, unitIndex);
+      const patch = serverJobPatchFromResponse(result);
+      if (patch) {
+        setJobs((prev) => mergeJobInList(prev, id, patch));
+      }
+    } catch (e) {
+      Alert.alert(tUi('manufactureFailed', locale), e?.message || '');
+    } finally {
+      setUnitBusyId('');
+    }
+  }, [locale]);
 
   const onFinish = (job) => {
     const jobId = job.job_id || job.id;
@@ -394,8 +464,10 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               textAlign={textAlign}
               busy={busyId === String(item.job.job_id || item.job.id)}
               timerLocked={timerBusyId === String(item.job.job_id || item.job.id)}
+              unitBusy={unitBusyId === String(item.job.job_id || item.job.id)}
               onPlay={onPlay}
               onPause={onPause}
+              onToggleUnit={onToggleUnit}
                 onFinish={onFinish}
                 onMaterials={(jobRow) => setMaterialsTarget({
                   jobKind: 'upholstery',
@@ -472,4 +544,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   iconBtn: { padding: 4 },
+  unitBlock: { marginBottom: 12 },
+  unitLabel: { fontSize: 14, fontWeight: '700', color: theme.text, marginBottom: 4 },
+  unitChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  unitChip: {
+    minWidth: 40,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.surfaceElevated,
+  },
+  unitChipOn: { borderColor: theme.primary, backgroundColor: theme.primaryBg },
+  unitChipText: { fontSize: 16, fontWeight: '700', color: theme.muted },
+  unitChipTextOn: { color: theme.primary },
 });

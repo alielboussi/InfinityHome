@@ -350,6 +350,16 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         `);
       }
 
+      if (fields.foam_type) {
+        const foamAr = translateTermToArabic(fields.foam_type, serverTranslations);
+        specBlocks.push(`
+          <div class="bilingual-row">
+            <div class="en-col" dir="ltr">-Foam Type: ${escapeHtml(fields.foam_type)}</div>
+            <div class="ar-col" dir="rtl">-نوع الفوم: ${escapeHtml(foamAr)}</div>
+          </div>
+        `);
+      }
+
       const desc = cleanDescriptionText(it.description);
       if (desc) {
         const descAr = translateTermToArabic(desc, serverTranslations);

@@ -11,6 +11,23 @@ import {
   sendQuoteToWarehouseProduction,
 } from './quoteProductionApi';
 
+async function uploadFactoryOrderPdfForWhatsApp(blob, pdfFilename) {
+  if (!blob) return null;
+  const safe = String(pdfFilename || 'Factory_Order.pdf').replace(/[^\w.-]+/g, '_');
+  const path = `factory-orders/${Date.now()}_${safe}`;
+  const { error } = await db.storage.from('laybypdfs').upload(path, blob, {
+    upsert: true,
+    contentType: 'application/pdf',
+    cacheControl: '3600',
+  });
+  if (error) throw new Error(error.message || 'Could not upload factory order PDF');
+  const { data, error: signErr } = await db.storage.from('laybypdfs').createSignedUrl(path, 60 * 60);
+  if (signErr || !data?.signedUrl) {
+    throw new Error(signErr?.message || 'Could not create factory order PDF link');
+  }
+  return data.signedUrl;
+}
+
 function titleCaseWords(text) {
   return String(text || '')
     .split(/\s+/)
@@ -93,7 +110,11 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
   });
 
   if (!routing?.sent_to_production_at) {
-    await sendQuoteToWarehouseProduction(qid);
+    try {
+      await sendQuoteToWarehouseProduction(qid);
+    } catch (prodErr) {
+      throw new Error(`Production app: ${prodErr?.message || prodErr}`);
+    }
   }
 
   const message = buildFactoryOrderWhatsAppMessage({
@@ -103,7 +124,7 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
     createdAt: quoteRow.created_at || new Date().toISOString(),
   });
 
-  const { base64 } = await generateFactoryOrderBilingualPdf(
+  const { blob, base64 } = await generateFactoryOrderBilingualPdf(
     {
       ...quoteRow,
       customer_name: customerName,
@@ -117,11 +138,22 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
   const safeCust = (customerName || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_') || 'Customer';
   const pdfFilename = `Order_${safeQuoteNum}_${safeCust}.pdf`;
 
-  await sendFactoryOrderWhatsApp({
-    message,
-    pdfBase64: base64,
-    pdfFilename,
-  });
+  let pdfUrl = '';
+  try {
+    pdfUrl = await uploadFactoryOrderPdfForWhatsApp(blob, pdfFilename);
+  } catch (uploadErr) {
+    throw new Error(`PDF upload: ${uploadErr?.message || uploadErr}`);
+  }
+
+  try {
+    await sendFactoryOrderWhatsApp({
+      message,
+      pdfUrl,
+      pdfFilename,
+    });
+  } catch (waErr) {
+    throw new Error(`Factory group: ${waErr?.message || waErr}`);
+  }
 
   return {
     ok: true,

@@ -75,6 +75,18 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (op === 'deliver-factory-order' || op === 'factory-order-deliver') {
+      const { deliverFactoryOrderGroupMessage } = await import('../../api/notify.js');
+      const result = await deliverFactoryOrderGroupMessage({
+        message: body.message,
+        pdfUrl: body.pdfUrl || body.pdf_url,
+        pdfBase64: body.pdfBase64 || body.pdf_base64,
+        pdfFilename: body.pdfFilename || body.pdf_filename,
+      });
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
     if (op === 'translate-arabic') {
       const { translateStringsToArabicServer } = await import('../lib/quoteArabicTranslate.js');
       const texts = Array.isArray(body.texts) ? body.texts : [];

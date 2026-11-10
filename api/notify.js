@@ -3851,6 +3851,10 @@ export async function deliverWarehouseDeliveryGroupMessage(body) {
   return handleWhatsAppWarehouseDelivery(body);
 }
 
+export async function deliverFactoryOrderGroupMessage(body) {
+  return handleWhatsAppFactoryOrder(body);
+}
+
 async function handleWhatsAppFactoryOrder(body) {
   const rawMessage = String(body.message || '').trim();
   const pdfUrl = String(body.pdfUrl || '').trim();

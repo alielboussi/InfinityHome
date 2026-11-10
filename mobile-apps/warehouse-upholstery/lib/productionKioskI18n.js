@@ -171,6 +171,7 @@ const UI_STRINGS = {
   quoteOrderDimensions: { en: 'L×W×H (cm)', ar: 'ط×ع×ار (سم)' },
   quoteOrderColorCode: { en: 'Color code', ar: 'رمز اللون' },
   quoteOrderWood: { en: 'Wood', ar: 'الخشب' },
+  quoteOrderFoamType: { en: 'Foam type', ar: 'نوع الفوم' },
   quoteOrderDescription: { en: 'Description', ar: 'الوصف' },
   quoteOrderIncludedAccessories: { en: 'Included Accessories', ar: 'الإكسسوارات المرفقة' },
   quoteOrderViewDrawing: { en: 'View drawing', ar: 'عرض الرسم' },
@@ -367,6 +368,14 @@ const UI_STRINGS = {
   upholsteryJobControlsHint: {
     en: 'Play · Pause · Stop (complete → Floor 1)',
     ar: 'تشغيل · إيقاف مؤقت · إيقاف (إنهاء → الطابق 1)',
+  },
+  upholsteryUnitsCheckedLabel: {
+    en: 'Units checked',
+    ar: 'الوحدات المفعّلة',
+  },
+  upholsteryUnitTapHint: {
+    en: 'Tap each unit when that piece is ready (Floor 2 batch jobs).',
+    ar: 'اضغط كل وحدة عند جهوزية القطعة (دفعات الطابق 2).',
   },
   upholsteryJobFinishDone: {
     en: 'Done — Floor 1 updated and labels queued.',

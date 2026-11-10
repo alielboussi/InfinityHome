@@ -18,6 +18,7 @@ import { computeQuotationDisplayTotal, quotationHasOutstandingDue, sortQuotation
 import { enrichQuotationListTotals } from './services/quotationListTotals';
 import { fetchQuoteProductionRoutingsMap } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
+import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import WarehouseSkuWhereabouts from './components/WarehouseSkuWhereabouts';
 import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
 
@@ -39,22 +40,29 @@ const titleCaseWords = (text) => String(text || '')
 const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
 
 async function fetchQuotationRead(action, params = {}) {
-  let headers = undefined;
+  let headers = {};
   try {
     const { data } = await db.auth.getSession();
     const token = data?.session?.access_token;
     if (token) headers = { Authorization: `Bearer ${token}` };
   } catch {}
 
-  const relQuotationRead = `/api/quotation-read?${new URLSearchParams({ action, ...params }).toString()}`;
-  const relAdminRead = `/api/admin?${new URLSearchParams({ adminAction: 'quotation-read', action, ...params }).toString()}`;
-  const canonicalQuotationRead = `${CANONICAL_APP_ORIGIN}/api/quotation-read?${new URLSearchParams({ action, ...params }).toString()}`;
-
-  const attempts = [relQuotationRead, relAdminRead, canonicalQuotationRead];
+  const qs = new URLSearchParams({ action, ...params }).toString();
+  const attempts = [
+    apiUrl(`/api/quotation-read?${qs}`),
+    apiUrl(`/api/admin?${new URLSearchParams({ adminAction: 'quotation-read', action, ...params })}`),
+    `${CANONICAL_APP_ORIGIN}/api/quotation-read?${qs}`,
+  ];
 
   let lastError = null;
   for (const url of attempts) {
-    const resp = await fetch(url, headers ? { headers } : undefined);
+    let resp;
+    try {
+      resp = await fetch(url, { headers: withApiHeaders(headers) });
+    } catch (err) {
+      lastError = err?.message || 'Network error';
+      continue;
+    }
     const payload = await resp.json().catch(() => ({}));
     if (resp.ok && payload?.ok) {
       return payload.rows || [];

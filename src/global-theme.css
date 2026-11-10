@@ -12487,6 +12487,14 @@ html.sr-lock, body.sr-lock { height: 100%; }
   padding: 6px 8px;
   vertical-align: top;
 }
+.quotes-table--create-lines td.quotes-line-qty-cell,
+.quotes-table--create-lines td.quotes-line-price-cell,
+.quotes-table--create-lines td.quotes-line-amount-cell,
+.quotes-table--create-lines td.quotes-line-actions-cell {
+  vertical-align: middle;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
 .quotes-table--create-lines thead th {
   font-size: 11px;
   font-weight: 700;
@@ -12548,6 +12556,48 @@ body.enterprise-theme .quotes-create-page .quotes-table--create-lines thead th {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: stretch;
   column-gap: 8px;
+}
+.quotes-line-meta-grid--upholstery {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: stretch;
+  column-gap: 8px;
+}
+.quotes-line-meta-grid--upholstery .quotes-line-meta-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+  min-height: 50px;
+}
+.quotes-line-meta-grid--upholstery .quotes-line-meta-label {
+  flex: 0 0 14px;
+  height: 14px;
+  line-height: 14px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.quotes-line-meta-grid--upholstery .quotes-input.quotes-line-meta-control,
+.quotes-line-meta-grid--upholstery .quotes-select.quotes-line-meta-control {
+  padding: 4px 8px !important;
+  font-size: 13px;
+  line-height: 1.25;
+  box-shadow: none;
+}
+.quotes-line-meta-grid--upholstery .quotes-line-meta-field:nth-child(-n+3) .quotes-line-meta-control {
+  text-align: center;
+}
+.quotes-line-meta-grid--upholstery .quotes-select.quotes-line-meta-control {
+  padding-right: 28px !important;
+  text-align: left;
+}
+@media (max-width: 1100px) {
+  .quotes-line-meta-grid--upholstery {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 .quotes-line-meta-grid--carpentry .quotes-line-meta-field {
   display: flex;
@@ -12771,6 +12821,8 @@ body.enterprise-theme .quotes-create-page .quotes-table--create-lines thead th {
   justify-content: center;
   max-width: 168px;
   margin: 0 auto;
+  height: 32px;
+  min-height: 32px;
 }
 .quotes-line-qty {
   flex: 0 0 52px;
@@ -12783,6 +12835,64 @@ body.enterprise-theme .quotes-create-page .quotes-table--create-lines thead th {
   min-width: 0;
   font-size: 12px;
   padding-right: 28px;
+}
+.quotes-table--create-lines .quotes-line-qty,
+.quotes-table--create-lines .quotes-line-unit,
+.quotes-table--create-lines .quotes-line-price {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  box-sizing: border-box;
+  line-height: 1.25;
+  margin: 0 !important;
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+}
+.quotes-table--create-lines .quotes-line-qty-row .quotes-line-qty,
+.quotes-table--create-lines .quotes-line-qty-row .quotes-line-unit {
+  align-self: center;
+  flex-shrink: 0;
+}
+body.enterprise-theme .quotes-table--create-lines .quotes-line-qty,
+body.enterprise-theme .quotes-table--create-lines .quotes-line-unit {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+}
+.quotes-table--create-lines .quotes-line-price-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 32px;
+  max-width: 132px;
+  margin: 0 auto;
+  width: 100%;
+}
+.quotes-table--create-lines .quotes-line-price.price-inline-input {
+  min-width: 0;
+  width: 100%;
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+}
+.quotes-table--create-lines .quotes-line-amount-total,
+.quotes-table--create-lines .quotes-line-price-cell .quotes-line-amount-readonly {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+.quotes-table--create-lines .quotes-line-price-cell .quotes-line-amount-readonly {
+  justify-content: center;
+  max-width: 132px;
+  margin: 0 auto;
+}
+.quotes-table--create-lines .quotes-line-actions-cell .quotes-line-delete {
+  margin-top: 0;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
 }
 .quotes-line-price-wrap {
   position: relative;
@@ -12928,6 +13038,10 @@ body.enterprise-theme .quotes-create-page .quotes-table--create-lines thead th {
   height: 36px !important;
   min-height: 36px !important;
   flex: 0 0 3cm;
+}
+.quotes-create-page .quotes-vat-switch {
+  width: 3.4cm !important;
+  flex: 0 0 3.4cm;
 }
 
 /* Unified inputs/selects */
@@ -13605,7 +13719,8 @@ body.enterprise-theme .quotes-create-page .quotes-table td {
   color: #1f2937 !important;
   border-color: #c9d3df !important;
 }
-body.enterprise-theme .quotes-create-page .quotes-currency-switch {
+body.enterprise-theme .quotes-create-page .quotes-currency-switch,
+body.enterprise-theme .quotes-create-page .quotes-vat-switch {
   width: 3cm !important;
   height: 36px !important;
   min-height: 36px !important;
@@ -13614,6 +13729,9 @@ body.enterprise-theme .quotes-create-page .quotes-currency-switch {
   background: #ffffff !important;
   box-shadow: none !important;
   overflow: hidden;
+}
+body.enterprise-theme .quotes-create-page .quotes-vat-switch {
+  width: 3.4cm !important;
 }
 body.enterprise-theme .quotes-products-page .quotes-currency-switch button {
   min-width: 0 !important;

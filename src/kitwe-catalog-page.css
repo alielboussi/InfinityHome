@@ -824,6 +824,37 @@ body.enterprise-theme .kitwe-catalog-page .kitwe-catalog-table select {
   vertical-align: middle;
 }
 
+/* Production job lists (portal) — fixed columns so Materials does not overlap Product */
+.kitwe-catalog-table--production-jobs {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.kitwe-catalog-table--production-jobs col.col-materials { width: 152px; }
+.kitwe-catalog-table--production-jobs col.col-product { width: 22%; }
+.kitwe-catalog-table--production-jobs col.col-sku { width: 13%; }
+.kitwe-catalog-table--production-jobs col.col-qty { width: 52px; }
+.kitwe-catalog-table--production-jobs col.col-units { width: 96px; }
+.kitwe-catalog-table--production-jobs col.col-status { width: 92px; }
+.kitwe-catalog-table--production-jobs col.col-timer { width: 92px; }
+.kitwe-catalog-table--production-jobs col.col-started { width: 21%; }
+
+.kitwe-catalog-table--production-jobs th.col-materials,
+.kitwe-catalog-table--production-jobs td.col-materials {
+  width: 152px;
+  max-width: 152px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.kitwe-catalog-table--production-jobs th.col-product,
+.kitwe-catalog-table--production-jobs td.col-product {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .kitwe-catalog-family-header td {
   background: var(--kitwe-panel-bg, #f1f5f9);
   border-bottom: 1px solid var(--kitwe-border, #cbd5e1);
