@@ -268,6 +268,10 @@ function buildBilingualDimensionsLines(fields) {
   };
 }
 
+/** A4 at 96dpi — html2canvas needs pixel width, not mm, or the capture clips the right edge. */
+const FACTORY_ORDER_A4_WIDTH_PX = 794;
+const FACTORY_ORDER_A4_HEIGHT_PX = 1123;
+
 /**
  * Generate a Factory Order A4 PDF with NO prices (only Product and Qty columns),
  * header "Order / طلب إنتاج", centered column headers, and right-aligned Arabic-only product rows.
@@ -417,11 +421,13 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
     }
     .page {
-      width: 210mm;
-      padding: 10mm 12mm 8mm;
+      width: ${FACTORY_ORDER_A4_WIDTH_PX}px;
+      max-width: ${FACTORY_ORDER_A4_WIDTH_PX}px;
+      padding: 38px 45px 30px;
       background: #ffffff;
       position: relative;
       display: block;
+      overflow: visible;
       page-break-after: always;
     }
     .page:last-child {
@@ -468,6 +474,8 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     }
     table.order-table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       margin-top: 4px;
     }
@@ -588,8 +596,8 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
   frame.style.position = 'fixed';
   frame.style.left = '-12000px';
   frame.style.top = '0';
-  frame.style.width = '210mm';
-  frame.style.height = '297mm';
+  frame.style.width = `${FACTORY_ORDER_A4_WIDTH_PX}px`;
+  frame.style.height = `${FACTORY_ORDER_A4_HEIGHT_PX}px`;
   frame.style.border = 'none';
   document.body.appendChild(frame);
 
@@ -684,26 +692,46 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     let pdf = null;
 
     for (let i = 0; i < targets.length; i += 1) {
-      const canvas = await html2canvas(targets[i], {
+      const target = targets[i];
+      const captureWidth = Math.max(
+        FACTORY_ORDER_A4_WIDTH_PX,
+        target.scrollWidth || 0,
+        target.offsetWidth || 0,
+      );
+      const captureHeight = Math.max(
+        target.scrollHeight || 0,
+        target.offsetHeight || 0,
+        120,
+      );
+      const canvas = await html2canvas(target, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
+        width: captureWidth,
+        height: captureHeight,
+        windowWidth: captureWidth,
+        windowHeight: Math.max(captureHeight, FACTORY_ORDER_A4_HEIGHT_PX),
+        scrollX: 0,
+        scrollY: 0,
       });
       const imgWidthMm = pageWidthMm;
-      const contentHeightMm = Math.max(60, Math.ceil((canvas.height * imgWidthMm) / canvas.width));
-      const pageHeightMm = Math.min(297, contentHeightMm + 2);
+      let contentHeightMm = Math.max(40, (canvas.height * imgWidthMm) / canvas.width);
+      const pageHeightMm = Math.min(297, Math.max(contentHeightMm + 2, 60));
+      if (contentHeightMm > 297) {
+        contentHeightMm = 297;
+      }
       if (i === 0) {
         pdf = new jsPDF({
           orientation: 'p',
           unit: 'mm',
-          format: [pageWidthMm, pageHeightMm],
+          format: 'a4',
         });
       } else {
-        pdf.addPage([pageWidthMm, pageHeightMm], 'p');
+        pdf.addPage('a4', 'p');
       }
       const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidthMm, Math.min(pageHeightMm, contentHeightMm));
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidthMm, contentHeightMm, undefined, 'FAST');
     }
 
     const blob = pdf.output('blob');
