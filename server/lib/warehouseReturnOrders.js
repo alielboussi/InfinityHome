@@ -234,6 +234,7 @@ function serializeReturnForClient(row) {
   ) {
     timer_status = 'completed';
   }
+  const deliveryAdmin = mapped.metadata?.delivery_admin;
   return {
     ...mapped,
     repair_department: dept,
@@ -242,6 +243,8 @@ function serializeReturnForClient(row) {
     accumulated_ms: timer.accumulated_ms,
     timer_started_at: timer.timer_started_at,
     lifecycle_badge: returnOrderLifecycleBadge(mapped),
+    delivery_admin_stage: deliveryAdmin?.stage ? String(deliveryAdmin.stage) : null,
+    ready_for_delivery_app: mapped.metadata?.ready_for_delivery_app === true,
     manual_material_lines: Array.isArray(mapped.metadata?.manual_material_lines)
       ? mapped.metadata.manual_material_lines
       : [],

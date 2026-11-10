@@ -15,6 +15,7 @@ import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk, KIOSK_ICON_BLUE_ON_DARK } from '../components/kioskStyles';
 import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
+import { isJobAwaitingDelivery } from '../shared/lib/deliveryAdminDisplayStatus';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import ProductionPressableHint from '../lib/ProductionPressableHint';
 import {
@@ -62,7 +63,11 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
       <View style={styles.timerRow}>
         <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
         <RunningJobElapsed job={job} style={styles.timerValue} />
-        <Text style={styles.statusChip}>{tUi(`upholsteryJobStatus_${job.status}`, locale)}</Text>
+        <Text style={styles.statusChip}>
+          {isJobAwaitingDelivery(job)
+            ? tUi('upholsteryJobStatus_completedAwaitingDelivery', locale)
+            : tUi(`upholsteryJobStatus_${job.status}`, locale)}
+        </Text>
       </View>
 
       <View style={styles.iconRow}>

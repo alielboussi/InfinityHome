@@ -356,6 +356,10 @@ const UI_STRINGS = {
   upholsteryJobStatus_running: { en: 'Running', ar: 'يعمل' },
   upholsteryJobStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتًا' },
   upholsteryJobStatus_completed: { en: 'Completed', ar: 'مكتمل' },
+  upholsteryJobStatus_completedAwaitingDelivery: {
+    en: 'Completed (Awaiting Delivery)',
+    ar: 'مكتمل (بانتظار التسليم)',
+  },
   dashPaintingTitle: { en: 'Painting', ar: 'دهان' },
   dashHintDismiss: { en: 'Tap outside to close', ar: 'اضغط خارج النافذة للإغلاق' },
   dashTileHint_paintingJobs: {
@@ -405,6 +409,10 @@ const UI_STRINGS = {
   repairTimerStatus_running: { en: 'Running', ar: 'قيد التشغيل' },
   repairTimerStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتاً' },
   repairTimerStatus_completed: { en: 'Done', ar: 'منتهي' },
+  deliveryStatus_completedAwaiting: {
+    en: 'Completed (Awaiting Delivery)',
+    ar: 'مكتمل (بانتظار التسليم)',
+  },
   paintingJobFinishBody: {
     en: 'Finish {qty} × {name}? Credits Warehouse Floor 1 (/warehouse-products).',
     ar: 'إنهاء {qty} × {name}؟ يُضاف إلى Warehouse Floor 1.',

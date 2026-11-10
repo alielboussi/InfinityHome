@@ -229,6 +229,10 @@ const UI_STRINGS = {
   repairTimerStatus_running: { en: 'Running', ar: 'قيد التشغيل' },
   repairTimerStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتاً' },
   repairTimerStatus_completed: { en: 'Done', ar: 'منتهي' },
+  deliveryStatus_completedAwaiting: {
+    en: 'Completed (Awaiting Delivery)',
+    ar: 'مكتمل (بانتظار التسليم)',
+  },
   dashUpholsteryQuoteOrdersSub: {
     en: 'Upholstery route — sent from Factory Orders',
     ar: 'مسار التنجيد — مرسلة من طلبات المصنع',
@@ -404,6 +408,10 @@ const UI_STRINGS = {
   upholsteryJobStatus_running: { en: 'Running', ar: 'يعمل' },
   upholsteryJobStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتًا' },
   upholsteryJobStatus_completed: { en: 'Completed', ar: 'مكتمل' },
+  upholsteryJobStatus_completedAwaitingDelivery: {
+    en: 'Completed (Awaiting Delivery)',
+    ar: 'مكتمل (بانتظار التسليم)',
+  },
   dashPaintingTitle: { en: 'Painting', ar: 'دهان' },
   dashPainting: { en: 'Painting', ar: 'دهان' },
   paintingTitle: { en: 'Painting', ar: 'دهان' },

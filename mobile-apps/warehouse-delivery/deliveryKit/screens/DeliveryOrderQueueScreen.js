@@ -93,6 +93,7 @@ export default function DeliveryOrderQueueScreen({ navigation }) {
           ListEmptyComponent={<Text style={[kiosk.hint, { textAlign }]}>{tUi('deliveryOrderQueueEmpty', locale)}</Text>}
           renderItem={({ item }) => (
             <View style={kiosk.card}>
+              <Text style={[styles.awaitingChip, { textAlign }]}>{tUi('deliveryStatus_completedAwaiting', locale)}</Text>
               <Text style={[kiosk.metaLine, { textAlign }]}>
                 {textForDisplay(item.assembly_name, '—')} × {item.quantity}
               </Text>
@@ -120,4 +121,10 @@ export default function DeliveryOrderQueueScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   list: { padding: 12, paddingBottom: 32, gap: 12 },
+  awaitingChip: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400e',
+    marginBottom: 6,
+  },
 });

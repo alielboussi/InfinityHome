@@ -22,6 +22,7 @@ import {
   mergeReturnOrderRow,
   optimisticReturnTimerRow,
 } from '../shared/lib/repairReturnQueueUi';
+import { isCompletedAwaitingDelivery } from '../shared/lib/deliveryAdminDisplayStatus';
 import { theme } from '../shared/theme';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import RunningRepairElapsed from '../components/RunningRepairElapsed';
@@ -58,10 +59,16 @@ function RepairCard({
   const canPlay = isSubmitted || isPaused;
   const inRepair = status === 'in_progress';
   const canMaterials = isSubmitted || inRepair;
+  const awaitingDelivery = isCompletedAwaitingDelivery(row);
 
   return (
     <View style={[kiosk.card, styles.card]}>
       <Text style={[styles.title, { textAlign }]}>{returnCardTitle(row, locale)}</Text>
+      {awaitingDelivery ? (
+        <Text style={[styles.awaitingDeliveryChip, { textAlign }]}>
+          {tUi('deliveryStatus_completedAwaiting', locale)}
+        </Text>
+      ) : null}
       <Text style={[styles.product, { textAlign }]}>
         {textForDisplay(row.assembly_name, '—')} × {row.quantity}
       </Text>
@@ -327,6 +334,12 @@ const styles = StyleSheet.create({
   timerLabel: { fontSize: 14, color: theme.textMuted },
   timerValue: { fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'], color: theme.text },
   statusChip: { fontSize: 13, fontWeight: '600', color: theme.primaryDark },
+  awaitingDeliveryChip: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400e',
+    marginBottom: 6,
+  },
   iconRow: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 16 },
   iconBtn: { alignItems: 'center' },
   hint: { color: theme.textMuted, marginTop: 10, fontSize: 13 },

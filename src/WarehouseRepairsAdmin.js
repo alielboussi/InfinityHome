@@ -4,7 +4,10 @@ import { listDeliveryProductionQueue, listReturnOrders } from './services/wareho
 import { formatWarehouseAdminDateTime } from './utils/warehouseAdminFormat';
 import {
   deliveryAdminStageLabel,
+  isCompletedAwaitingDelivery,
+  orderAdminStatusDisplay,
   readDeliveryAdminMeta,
+  repairAdminStatusDisplay,
 } from './utils/warehouseDeliveryAdminQueue';
 import {
   REPAIR_DEPARTMENTS,
@@ -39,7 +42,10 @@ function stageBadge(stage, kind) {
 
 function RepairAdminCard({ row }) {
   const admin = readDeliveryAdminMeta(row);
-  const stage = admin?.stage || (row.status === 'in_progress' ? 'in_progress' : null);
+  const stage = admin?.stage || row.delivery_admin_stage
+    || (row.status === 'in_progress' ? 'in_progress' : null);
+  const statusLabel = repairAdminStatusDisplay(row);
+  const useAwaitingStyle = isCompletedAwaitingDelivery(row);
   return (
     <article
       style={{
@@ -57,8 +63,14 @@ function RepairAdminCard({ row }) {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          {stage ? stageBadge(stage, 'repair') : (
-            <div style={{ fontWeight: 600 }}>{String(row.status || '').replace(/_/g, ' ')}</div>
+          {stage && !useAwaitingStyle ? stageBadge(stage, 'repair') : (
+            <div style={{
+              fontWeight: 600,
+              color: useAwaitingStyle ? '#92400e' : undefined,
+            }}
+            >
+              {statusLabel}
+            </div>
           )}
           {row.outbound_delivery_number ? (
             <div style={{ color: 'var(--dash-muted)', fontSize: 14, marginTop: 4 }}>
@@ -88,6 +100,7 @@ function RepairAdminCard({ row }) {
 
 function OrderAdminCard({ row }) {
   const stage = row.delivery_admin_stage || 'awaiting_driver';
+  const statusLabel = orderAdminStatusDisplay(row);
   return (
     <article
       style={{
@@ -104,7 +117,7 @@ function OrderAdminCard({ row }) {
             {String(row.department || 'production').toUpperCase()}
           </div>
         </div>
-        <div>{stageBadge(stage, 'order')}</div>
+        <div style={{ fontWeight: 600, color: '#92400e', textAlign: 'right' }}>{statusLabel}</div>
       </div>
       <div style={{ marginTop: 10 }}>
         <strong>{row.assembly_name}</strong>

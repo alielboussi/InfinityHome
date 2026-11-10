@@ -8,6 +8,7 @@ import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { isCompletedAwaitingDelivery } from '../shared/lib/deliveryAdminDisplayStatus';
 
 async function openStagedDelivery(navigation, row) {
   const session = await warehouseMobileRequest('delivery-session-open', {});
@@ -89,8 +90,13 @@ export default function DeliveryRepairQueueScreen({ navigation }) {
           keyExtractor={(item) => item.return_order_id}
           contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={[kiosk.hint, { textAlign }]}>{tUi('deliveryRepairQueueEmpty', locale)}</Text>}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const showAwaiting = isCompletedAwaitingDelivery(item) || String(item.delivery_admin_stage || '').toLowerCase() === 'awaiting_driver';
+            return (
             <View style={kiosk.card}>
+              {showAwaiting ? (
+                <Text style={[styles.awaitingChip, { textAlign }]}>{tUi('deliveryStatus_completedAwaiting', locale)}</Text>
+              ) : null}
               <Text style={kiosk.heroNumber}>{textForDisplay(item.return_number || '—', '—')}</Text>
               <Text style={[kiosk.metaLine, { textAlign }]}>
                 {textForDisplay(item.assembly_name, '—')} × {item.quantity}
@@ -106,7 +112,8 @@ export default function DeliveryRepairQueueScreen({ navigation }) {
                 <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryRepairDeliverBtn', locale)}</Text>
               </Pressable>
             </View>
-          )}
+            );
+          }}
         />
       )}
     </View>
@@ -116,4 +123,10 @@ export default function DeliveryRepairQueueScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   list: { padding: 12, paddingBottom: 32, gap: 12 },
+  awaitingChip: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400e',
+    marginBottom: 6,
+  },
 });

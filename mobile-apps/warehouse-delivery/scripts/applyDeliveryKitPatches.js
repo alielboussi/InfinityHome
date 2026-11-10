@@ -169,7 +169,11 @@ function patchDeliveryHubI18n(filePath) {
   deliveryRepairDeliverBtn: { en: 'Deliver repair', ar: 'تسليم الإصلاح' },
   deliveryOrderDeliverBtn: { en: 'Deliver order', ar: 'تسليم الطلب' },
   deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },
-  customerDriverSave: { en: 'Save', ar: 'حفظ' },`;
+  customerDriverSave: { en: 'Save', ar: 'حفظ' },
+  deliveryStatus_completedAwaiting: {
+    en: 'Completed (Awaiting Delivery)',
+    ar: 'مكتمل (بانتظار التسليم)',
+  },`;
   if (s.includes('deliveryHubTab_repairs') && s.includes(ordersLine) && !s.includes('deliveryRepairQueueEmpty')) {
     s = s.replace(ordersLine, `${ordersLine}${queueExtra}`);
     fs.writeFileSync(filePath, s);
