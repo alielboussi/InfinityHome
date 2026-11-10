@@ -2870,6 +2870,32 @@ function buildDeliverySubmitResponse(session, extras = {}) {
   };
 }
 
+async function repairReturnCustomerFields(sb, { returnOrderId, entries }) {
+  let rid = String(returnOrderId || '').trim();
+  if (!rid && entries?.length) {
+    for (const entry of entries) {
+      const candidate = String(entry?.metadata?.return_order_id || '').trim();
+      if (candidate) {
+        rid = candidate;
+        break;
+      }
+    }
+  }
+  if (!rid) return null;
+  const { data: row } = await sb
+    .from('warehouse_return_orders')
+    .select('id, customer_name, customer_phone, return_number')
+    .eq('id', rid)
+    .maybeSingle();
+  if (!row) return null;
+  return {
+    return_order_id: String(row.id),
+    return_number: row.return_number || null,
+    customer_name: String(row.customer_name || '').trim() || null,
+    customer_phone: String(row.customer_phone || '').trim() || null,
+  };
+}
+
 async function sendWarehouseDeliverySubmitWhatsApp({
   sb,
   sessionId,
@@ -2966,11 +2992,17 @@ async function sendWarehouseDeliverySubmitWhatsApp({
         if (!assemblyColorContext) {
           assemblyColorContext = await loadWarehouseDeliveryColorContext(sb);
         }
+        const documentKind = String(session?.metadata?.document_kind || 'delivery').trim();
+        const customerName = String(session?.metadata?.customer_name || '').trim();
+        const customerPhone = String(session?.metadata?.customer_phone || '').trim();
         pdfBase64 = buildWarehouseDeliveryNotePdfBase64({
           session,
           entries,
           copies: 1,
           assemblyColorContext,
+          documentKind,
+          customerName,
+          customerPhone,
         });
       }
     } catch (pdfErr) {
@@ -3395,6 +3427,8 @@ async function opDeliverySubmit(body, user) {
             return_order_id: repairStaging?.return_order_id || null,
             return_number: repairStaging?.return_number || null,
             return_has_customer: Boolean(repairStaging?.has_customer),
+            return_customer_name: repairStaging?.customer_name || null,
+            return_customer_phone: repairStaging?.customer_phone || null,
             production_job_id: orderStaging?.production_job_id || null,
             quote_id: orderStaging?.quote_id || null,
           } : {}),
@@ -3459,6 +3493,20 @@ async function opDeliverySubmit(body, user) {
   const mobileSource = await deliveryMobileSourceForUser(user);
   const userAlias = (await productionWhatsappProducerName(user)) || '—';
 
+  const repairContext = await repairReturnCustomerFields(sb, {
+    returnOrderId: body.return_order_id || body.returnOrderId,
+    entries,
+  });
+  const repairSessionMeta = repairContext
+    ? {
+      document_kind: repairContext.customer_name ? 'repair_delivery' : 'delivery',
+      return_order_id: repairContext.return_order_id,
+      return_number: repairContext.return_number,
+      customer_name: repairContext.customer_name,
+      customer_phone: repairContext.customer_phone,
+    }
+    : {};
+
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
     submitted_at: now,
@@ -3466,6 +3514,7 @@ async function opDeliverySubmit(body, user) {
     created_by_name: session.created_by_name || userAlias || null,
     metadata: {
       ...(session.metadata || {}),
+      ...repairSessionMeta,
       source: mobileSource,
       hassan_alert_pending: true,
       hassan_alert_at: now,
@@ -3504,6 +3553,7 @@ async function opDeliverySubmit(body, user) {
       total_qty: totalCartons,
       metadata: {
         ...(session.metadata || {}),
+        ...repairSessionMeta,
         source: mobileSource,
         hassan_alert_pending: true,
         hassan_alert_at: now,

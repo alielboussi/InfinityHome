@@ -231,6 +231,7 @@ try {
     'dashDeliveryOrders',
     'deliveryRepairQueueEmpty',
     'deliveryOrderQueueEmpty',
+    'deliveryRepairKindLabel',
     'deliveryRepairDeliverBtn',
     'deliveryOrderDeliverBtn',
     'deliveryCustomerDriver',

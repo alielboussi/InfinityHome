@@ -18,6 +18,9 @@ export default function KitweSendDoneScreen({ route, navigation }) {
   const driverSignatureDataUri = route.params?.driverSignatureDataUri || '';
   const driverSignatureUrl = route.params?.driverSignatureUrl || '';
   const submittedAt = route.params?.submittedAt || '';
+  const documentKind = route.params?.documentKind || 'delivery';
+  const customerName = route.params?.customerName || '';
+  const customerPhone = route.params?.customerPhone || '';
   const hasPrintPayload = Boolean(dn) && Array.isArray(printGroups) && printGroups.length > 0;
   const [printOpen, setPrintOpen] = useState(hasPrintPayload);
 
@@ -67,7 +70,9 @@ export default function KitweSendDoneScreen({ route, navigation }) {
         printGroups={printGroups}
         submittedAt={submittedAt}
         copyCount={DEFAULT_DELIVERY_PRINT_COPIES}
-        documentKind="delivery"
+        documentKind={documentKind}
+        customerName={customerName}
+        customerPhone={customerPhone}
         autoPrintOnOpen
         onDone={() => setPrintOpen(false)}
       />

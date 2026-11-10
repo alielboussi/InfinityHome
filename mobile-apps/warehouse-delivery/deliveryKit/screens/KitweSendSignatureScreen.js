@@ -41,6 +41,10 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
   const deliveryNumber = route.params?.deliveryNumber || '';
   const groups = route.params?.groups || [];
   const printGroups = route.params?.printGroups || [];
+  const returnOrderId = route.params?.returnOrderId || '';
+  const documentKind = route.params?.documentKind || 'delivery';
+  const repairCustomerName = route.params?.repairCustomerName || '';
+  const repairCustomerPhone = route.params?.repairCustomerPhone || '';
   const dispatchedByName = route.params?.dispatchedByName
     || getProductionDispatcherLabelSync()
     || '';
@@ -113,6 +117,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         customer_driver_phone: useCustomer ? customerDriverPhone : '',
         signature_png_base64: dataUri,
         groups,
+        ...(returnOrderId ? { return_order_id: returnOrderId } : {}),
       });
 
       clearDeliveryWorkspace();
@@ -140,6 +145,9 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         driverSignatureUrl: signatureUrl,
         printGroups,
         submittedAt,
+        documentKind,
+        customerName: repairCustomerName,
+        customerPhone: repairCustomerPhone,
       });
     } catch (err) {
       try {

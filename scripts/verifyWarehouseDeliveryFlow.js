@@ -141,6 +141,7 @@ const noteHtml = fs.readFileSync(path.join(root, 'src/utils/buildDeliveryNotePri
 assert(noteHtml.includes('company-logo'), 'delivery note HTML must include company logo');
 assert(noteHtml.includes('company-name'), 'delivery note must show company name under Delivery Note');
 assert(noteHtml.includes('Bestrest Furniture'), 'delivery note must show Bestrest Furniture');
+assert(noteHtml.includes('repair_delivery'), 'repair delivery A4 must show customer block');
 assert(
   fs.existsSync(path.join(root, 'src/utils/deliveryNoteCompanyLogoEmbedded.js')),
   'embedded delivery note logo must exist (run node scripts/embedDeliveryNoteLogo.js)',

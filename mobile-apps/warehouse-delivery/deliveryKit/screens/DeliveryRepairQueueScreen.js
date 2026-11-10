@@ -8,7 +8,21 @@ import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
-import { isCompletedAwaitingDelivery } from '../shared/lib/deliveryAdminDisplayStatus';
+
+function buildRepairPrintLines(row) {
+  const lines = [];
+  const ro = String(row.return_number || '').trim();
+  if (ro) lines.push({ name: ro, kind: 'meta' });
+  const customerName = String(row.customer_name || '').trim();
+  const customerPhone = String(row.customer_phone || '').trim();
+  if (customerName) {
+    const label = customerPhone
+      ? `Customer: ${customerName} · ${customerPhone}`
+      : `Customer: ${customerName}`;
+    lines.push({ name: label, kind: 'meta' });
+  }
+  return lines;
+}
 
 async function openStagedDelivery(navigation, row) {
   const session = await warehouseMobileRequest('delivery-session-open', {});
@@ -23,8 +37,10 @@ async function openStagedDelivery(navigation, row) {
   const printGroups = [{
     assembly_name: row.assembly_name || row.assembly_id,
     units: qty,
-    lines: row.return_number ? [{ name: `RO ${row.return_number}`, kind: 'meta' }] : [],
+    lines: buildRepairPrintLines(row),
   }];
+  const customerName = String(row.customer_name || '').trim();
+  const customerPhone = String(row.customer_phone || '').trim();
   navigation.navigate('KitweSendSignature', {
     sessionId: session.session_id,
     deliveryNumber: session.delivery_number,
@@ -32,6 +48,9 @@ async function openStagedDelivery(navigation, row) {
     printGroups,
     queueKind: 'repair',
     returnOrderId: row.return_order_id,
+    documentKind: customerName ? 'repair_delivery' : 'delivery',
+    repairCustomerName: customerName,
+    repairCustomerPhone: customerPhone,
   });
 }
 
@@ -91,18 +110,20 @@ export default function DeliveryRepairQueueScreen({ navigation }) {
           contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={[kiosk.hint, { textAlign }]}>{tUi('deliveryRepairQueueEmpty', locale)}</Text>}
           renderItem={({ item }) => {
-            const showAwaiting = isCompletedAwaitingDelivery(item) || String(item.delivery_admin_stage || '').toLowerCase() === 'awaiting_driver';
+            const customerName = String(item.customer_name || '').trim();
+            const customerPhone = String(item.customer_phone || '').trim();
             return (
             <View style={kiosk.card}>
-              {showAwaiting ? (
-                <Text style={[styles.awaitingChip, { textAlign }]}>{tUi('deliveryStatus_completedAwaiting', locale)}</Text>
-              ) : null}
+              <Text style={[styles.kindChip, { textAlign }]}>{tUi('deliveryRepairKindLabel', locale)}</Text>
               <Text style={kiosk.heroNumber}>{textForDisplay(item.return_number || '—', '—')}</Text>
               <Text style={[kiosk.metaLine, { textAlign }]}>
                 {textForDisplay(item.assembly_name, '—')} × {item.quantity}
               </Text>
-              {item.has_customer ? (
-                <Text style={[kiosk.hint, { textAlign }]}>{tUi('deliveryRepairCustomer', locale)}</Text>
+              {customerName ? (
+                <Text style={[kiosk.metaLine, { textAlign, marginTop: 4 }]}>
+                  {textForDisplay(customerName, '—')}
+                  {customerPhone ? ` · ${customerPhone}` : ''}
+                </Text>
               ) : null}
               <Pressable
                 style={kiosk.btnPrimaryBlock}
@@ -123,10 +144,12 @@ export default function DeliveryRepairQueueScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   list: { padding: 12, paddingBottom: 32, gap: 12 },
-  awaitingChip: {
+  kindChip: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#92400e',
+    color: '#94a3b8',
     marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
 });

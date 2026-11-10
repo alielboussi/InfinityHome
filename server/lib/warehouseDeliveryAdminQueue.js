@@ -136,7 +136,7 @@ function rowAwaitingDriver(admin) {
 export async function listRepairDeliveriesForMobile(sb) {
   const { data, error } = await sb
     .from(RETURNS)
-    .select('id, return_number, assembly_id, assembly_name, quantity, status, metadata, customer_name')
+    .select('id, return_number, assembly_id, assembly_name, quantity, status, metadata, customer_name, customer_phone')
     .eq('status', WAREHOUSE_RETURN_STATUSES.COMPLETED);
   if (error) throw new Error(error.message || 'Failed to load repair queue.');
 
@@ -151,6 +151,8 @@ export async function listRepairDeliveriesForMobile(sb) {
         assembly_name: row.assembly_name,
         quantity: Math.max(1, Number(row.quantity) || 1),
         has_customer: Boolean(String(row.customer_name || '').trim()),
+        customer_name: String(row.customer_name || '').trim() || null,
+        customer_phone: String(row.customer_phone || '').trim() || null,
         status: String(row.status || 'completed'),
         delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
         ready_for_delivery_app: true,

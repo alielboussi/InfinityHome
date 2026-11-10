@@ -62,6 +62,7 @@ function pdfNoteTitle(documentKind) {
   const kind = String(documentKind || 'delivery').trim();
   if (kind === 'return_shipment') return 'Return Note';
   if (kind === 'return_customer_delivery') return 'Return Delivery Note';
+  if (kind === 'repair_delivery') return 'Repair Delivery Note';
   if (kind === 'sold_delivery') return 'Sold Delivery Note';
   return 'Delivery Note';
 }
@@ -70,6 +71,7 @@ function pdfNoteNumberLabel(documentKind) {
   const kind = String(documentKind || 'delivery').trim();
   if (kind === 'return_shipment') return 'Return No.';
   if (kind === 'return_customer_delivery') return 'Return Delivery No.';
+  if (kind === 'repair_delivery') return 'Repair Delivery No.';
   if (kind === 'sold_delivery') return 'Sold Delivery No.';
   return 'Delivery #';
 }
@@ -133,7 +135,7 @@ export function buildWarehouseDeliveryNotePdfBase64({
     y += 5;
     doc.text(`Date: ${formatZambiaDate(at)}    Time: ${formatZambiaTime(at)}`, margin, y);
     y += 5;
-    if (kind === 'return_customer_delivery' && (custName || custPhone)) {
+    if ((kind === 'return_customer_delivery' || kind === 'repair_delivery') && (custName || custPhone)) {
       doc.text(`Customer: ${custName || '—'}${custPhone ? ` · ${custPhone}` : ''}`, margin, y);
       y += 5;
     }

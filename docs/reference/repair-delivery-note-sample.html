@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Repair Delivery Note</title>
+  <style>
+    @page { size: A4 portrait; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      font-family: Helvetica, Arial, sans-serif;
+      color: #111;
+      font-size: 11pt;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 3mm;
+      border: 3mm solid #000;
+      page-break-after: always;
+      position: relative;
+      background: #fff;
+    }
+    .page:last-child { page-break-after: auto; }
+    .page-inner {
+      min-height: calc(297mm - 12mm);
+      display: flex;
+      flex-direction: column;
+      padding: 2mm 0 0;
+    }
+    .cart-table-wrap { flex: 0 0 auto; width: 100%; }
+    .doc-header { margin-bottom: 8mm; }
+    .header-row {
+      display: grid;
+      grid-template-columns: 42mm minmax(0, 1fr) 42mm;
+      align-items: start;
+      column-gap: 3mm;
+      margin-bottom: 5mm;
+    }
+    .header-brand {
+      grid-column: 1;
+      justify-self: start;
+      align-self: start;
+    }
+    .header-spacer {
+      grid-column: 3;
+    }
+    .company-logo {
+      display: block;
+      width: 40mm;
+      max-width: 40mm;
+      height: auto;
+      max-height: 24mm;
+      object-fit: contain;
+      object-position: left top;
+    }
+    .company-logo--text {
+      width: 40mm;
+      max-width: 40mm;
+      font-size: 9pt;
+      font-weight: 800;
+      line-height: 1.25;
+      color: #111;
+    }
+    .header-main {
+      grid-column: 2;
+      text-align: center;
+      justify-self: center;
+    }
+    .title {
+      margin: 0 0 1.5mm;
+      font-size: 20pt;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .company-name {
+      margin: 0 0 3mm;
+      font-size: 13pt;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: #222;
+    }
+    .delivery-num-label {
+      margin: 0;
+      font-size: 10pt;
+      font-weight: 700;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .delivery-num {
+      margin: 1mm 0 3mm;
+      font-size: 15pt;
+      font-weight: 800;
+    }
+    .datetime { margin: 0; font-size: 10.5pt; color: #333; }
+    .dispatched-by {
+      margin: 0;
+      font-size: 11pt;
+      text-align: left;
+      border-top: 1px solid #333;
+      padding-top: 3mm;
+    }
+    .customer-line {
+      margin: 2mm 0 0;
+      font-size: 11pt;
+      text-align: left;
+    }
+    .cart-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .cart-table th, .cart-table td {
+      border: 1px solid #333;
+      vertical-align: middle;
+      height: auto;
+    }
+    .cart-table th {
+      background: #f4f4f4;
+      font-weight: 700;
+      padding: 1px 8px;
+      line-height: 1.1;
+    }
+    .cart-table td {
+      padding: 0;
+      line-height: 1.1;
+    }
+    .cart-table .qty { width: 22mm; text-align: center; }
+    .cart-table .elapsed { width: 28mm; text-align: center; font-size: 10pt; }
+    .cart-table th:first-child, .product-row td:first-child { text-align: center; }
+    .product-row td {
+      background: #fafafa;
+      padding: 1px 8px;
+    }
+    .product-row td.qty { padding: 1px 4px; }
+    .packet-row td {
+      padding: 0 6px 0 8px;
+    }
+    .packet-row td.qty { padding: 0 4px; }
+    .packet-label { text-align: left !important; word-wrap: break-word; overflow-wrap: anywhere; }
+    .product-row strong, .packet-row td { margin: 0; font-weight: inherit; }
+    .product-row td:first-child strong { font-weight: 700; }
+    .empty { text-align: center; color: #666; }
+    .signatures {
+      margin-top: 10mm;
+      border-top: 1px solid #333;
+      padding-top: 5mm;
+    }
+    .sig-driver-name { margin: 0 0 4mm; font-size: 11pt; }
+    .sig-line { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 4mm; }
+    .sig-inline-label { font-size: 10.5pt; font-weight: 700; }
+    .sig-image {
+      height: 22mm;
+      max-width: 90mm;
+      display: block;
+      border-bottom: 1px solid #111;
+    }
+    .sig-missing { font-size: 10pt; color: #888; font-style: italic; }
+    .disclaimer {
+      margin: 8mm 0 0;
+      padding: 4mm 0 0;
+      border-top: 1px solid #999;
+      font-size: 8.5pt;
+      line-height: 1.45;
+      color: #333;
+      text-align: justify;
+    }
+    .page-num {
+      margin: auto 0 0;
+      padding-top: 6mm;
+      text-align: center;
+      font-size: 10pt;
+      font-weight: 600;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+  
+    <section class="page">
+      <div class="page-inner">
+        
+    <header class="doc-header">
+      <div class="header-row">
+        <div class="header-brand"><div class="company-logo company-logo--text">Bestrest Furniture</div></div>
+        <div class="header-main">
+          <h1 class="title">Repair Delivery Note</h1>
+          <p class="company-name">Bestrest Furniture</p>
+          <p class="delivery-num-label">Repair Delivery No.</p>
+          <p class="delivery-num">WHD00000000999</p>
+          <p class="datetime"><span class="date">10/11/2026</span> · <span class="time">20:45 (Zambia)</span></p>
+        </div>
+        <div class="header-spacer" aria-hidden="true"></div>
+      </div>
+      <p class="dispatched-by"><strong>Dispatched by:</strong> Ali</p>
+      <p class="customer-line"><strong>Customer Name:</strong> Jane Customer</p>
+      <p class="customer-line"><strong>Customer Phone Number:</strong> +260 97 123 4567</p>
+    </header>
+        <div class="cart-table-wrap">
+        
+    <table class="cart-table">
+      <thead>
+        <tr>
+          <th>Product Name</th>
+          <th class="qty">Qty</th>
+        </tr>
+      </thead>
+      <tbody>
+          
+    <tr class="product-row">
+      <td><strong>Test Product</strong></td>
+      
+      <td class="qty">1</td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">- RO0000000001</td>
+      
+      <td class="qty"></td>
+    </tr>
+    <tr class="packet-row">
+      <td class="packet-label">- Customer: Jane Customer · +260 97 123 4567</td>
+      
+      <td class="qty"></td>
+    </tr>
+        </tbody>
+      </table>
+        </div>
+        
+    <footer class="signatures">
+      <div class="sig-driver-block">
+        <p class="sig-driver-name"><strong>Driver:</strong> John Driver</p>
+        <div class="sig-line">
+          <span class="sig-inline-label">Driver signature</span>
+          <span class="sig-missing">No signature image</span>
+        </div>
+      </div>
+    </footer>
+        <p class="disclaimer">By signing this document, the driver and dispatcher named above confirm that the goods listed have been verified, loaded onto the vehicle for delivery, and accept responsibility for the accuracy and completeness of this shipment.</p>
+        <p class="page-num">Page 1 of 1</p>
+      </div>
+    </section>
+</body>
+</html>
