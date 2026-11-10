@@ -1,6 +1,6 @@
 /**
  * Factory order + production kiosk Arabic for quote line text (Metro bundle — no repo src imports).
- * Keep in sync with src/utils/quoteArabicTranslate.js and mobile-apps/shared/quoteArabicTranslate.js
+ * Keep in sync with src/utils/quoteArabicTranslate.js
  */
 
 export const ARABIC_TERMS = Object.freeze({

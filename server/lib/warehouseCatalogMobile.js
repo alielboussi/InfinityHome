@@ -213,12 +213,21 @@ export async function fetchCatalogForMobile(sb, options = {}) {
   inventoryQuery = inventoryQuery.eq('location_id', warehouseLocationId);
   assemblyInvQuery = assemblyInvQuery.eq('location_id', warehouseLocationId);
 
+  let floor2AssemblyInvQuery = null;
+  if (floor2LocationId) {
+    floor2AssemblyInvQuery = sb
+      .from(ASSEMBLY_INVENTORY)
+      .select(MOBILE_ASSEMBLY_INVENTORY_FIELDS)
+      .eq('location_id', floor2LocationId);
+  }
+
   const catalogQueries = [
     sb.from(ASSEMBLIES).select(MOBILE_ASSEMBLY_FIELDS).order('name', { ascending: true }),
     sb.from(ASSEMBLY_PACKETS).select('assembly_id, packet_id, qty_per_unit'),
     inventoryQuery,
     assemblyInvQuery,
   ];
+  if (floor2AssemblyInvQuery) catalogQueries.push(floor2AssemblyInvQuery);
   if (includeColors) {
     catalogQueries.push(
       sb.from(ASSEMBLY_COLORS).select('assembly_id, color_id'),
@@ -231,13 +240,18 @@ export async function fetchCatalogForMobile(sb, options = {}) {
   const assemblyPacketsResult = catalogResults[1];
   const inventoryResult = catalogResults[2];
   const assemblyInvResult = catalogResults[3];
-  const assemblyColorsResult = includeColors ? catalogResults[4] : { data: [], error: null };
-  const colorsResult = includeColors ? catalogResults[5] : { data: [], error: null };
+  const floor2AssemblyInvResult = floor2AssemblyInvQuery ? catalogResults[4] : { data: [], error: null };
+  const colorBase = floor2AssemblyInvQuery ? 5 : 4;
+  const assemblyColorsResult = includeColors ? catalogResults[colorBase] : { data: [], error: null };
+  const colorsResult = includeColors ? catalogResults[colorBase + 1] : { data: [], error: null };
 
   throwIfDatastoreError(assembliesResult.error, 'Failed to load products');
   throwIfDatastoreError(assemblyPacketsResult.error, 'Failed to load packet links');
   throwIfDatastoreError(inventoryResult.error, 'Failed to load packet stock');
   throwIfDatastoreError(assemblyInvResult.error, 'Failed to load finished stock');
+  if (floor2AssemblyInvQuery) {
+    throwIfDatastoreError(floor2AssemblyInvResult.error, 'Failed to load Floor 2 finished stock');
+  }
   if (includeColors) {
     throwIfDatastoreError(assemblyColorsResult.error, 'Failed to load colors');
     throwIfDatastoreError(colorsResult.error, 'Failed to load variant colors');
@@ -254,11 +268,16 @@ export async function fetchCatalogForMobile(sb, options = {}) {
   const { data: setItems, error: setItemsErr } = await sb.from(SET_ITEMS).select('*');
   throwIfDatastoreError(setItemsErr, 'Failed to load set items');
 
+  const assemblyInventoryMerged = [
+    ...(assemblyInvResult.data || []),
+    ...(floor2AssemblyInvResult.data || []),
+  ];
+
   return attachWarehouseStockTotals({
     assemblies: assembliesWithCategories || [],
     packets,
     inventory: inventoryResult.data || [],
-    assemblyInventory: assemblyInvResult.data || [],
+    assemblyInventory: assemblyInventoryMerged,
     assemblyColors: assemblyColorsResult.data || [],
     assemblyPackets: assemblyPackets || [],
     colors: colorsResult.data || [],

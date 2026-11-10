@@ -49,6 +49,7 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
 
   const session = detail?.session;
   const printGroups = detail?.print_groups || [];
+  const customerSentLines = detail?.customer_sent_lines || [];
 
   const noteNumber = session?.display_number || session?.delivery_number || '';
   const documentKind = session?.document_kind || 'delivery';
@@ -118,6 +119,19 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
             <Text style={[kiosk.metaLine, { textAlign, marginBottom: 0 }]}>
               {tUi('sentDeliveryDispatchedBy', locale)}: {session.dispatched_by_name || '—'}
             </Text>
+          </View>
+        ) : null}
+
+        {session && !loading && customerSentLines.length ? (
+          <View style={[kiosk.card, { marginTop: 12 }]}>
+            <Text style={[kiosk.sectionTitle, { textAlign, marginBottom: 8 }]}>
+              {tUi('sentToCustomerTitle', locale)}
+            </Text>
+            {customerSentLines.map((line) => (
+              <Text key={line.id} style={[kiosk.metaLine, { textAlign }]}>
+                {line.label}
+              </Text>
+            ))}
           </View>
         ) : null}
 

@@ -1,3 +1,4 @@
+// @refresh reset — full remount on save (avoids stale jobFilter chip state after filter removal).
 import QuoteOrderElapsed from '../shared/components/QuoteOrderElapsed';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';

@@ -15,7 +15,14 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../shared/MobileAccessGrantContext';
-import { isWarehouseCatalogLabelPrintAllowed, isWarehouseCatalogPhotoImportAllowed, isWarehouseCatalogAddProductAllowed } from '../shared/mobileAccessManifest';
+import {
+  isWarehouseCatalogLabelPrintAllowed,
+  isWarehouseCatalogPhotoImportAllowed,
+  isWarehouseCatalogAddProductAllowed,
+  isWarehouseProductStockQtyEditAllowed,
+} from '../shared/mobileAccessManifest';
+import { warehouseMobileRequest, formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
+import { qtyPatchFromMobileQuantityResponse } from '../shared/warehouseCatalogStore';
 import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
 import { CatalogProductPhotoIconButton } from '../shared/CatalogProductPhotoCapture';
 import CatalogProductPhotoZoomModal from '../shared/CatalogProductPhotoZoomModal';
@@ -144,10 +151,13 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     error: catalogError,
     ensureFresh,
     refresh,
+    patchCatalog,
   } = useWarehouseCatalog();
   const grant = useSharedMobileAccessGrant();
   const userEmail = useSharedMobileAccessUserEmail();
   const canAddProduct = isWarehouseCatalogAddProductAllowed(grant, userEmail);
+  const canEditSetStock = isWarehouseProductStockQtyEditAllowed(grant)
+    && catalogMode === 'complete';
   const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant, userEmail);
   const canImportPhoto = isWarehouseCatalogPhotoImportAllowed(grant, userEmail);
   const [search, setSearch] = useState('');
@@ -157,6 +167,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const [labelPrintItem, setLabelPrintItem] = useState(null);
   const [photoBusyAssemblyId, setPhotoBusyAssemblyId] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
+  const [setQtyDraftById, setSetQtyDraftById] = useState({});
+  const [setStockBusyId, setSetStockBusyId] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -383,11 +395,64 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     });
   };
 
+  const openNewSetForm = () => {
+    navigation.navigate('SetForm');
+  };
+
   const formatQty = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return '0';
     return String(Math.max(0, Math.floor(n)));
   };
+
+  const handleSetStockIncrease = useCallback(async (setId) => {
+    if (!canEditSetStock || setStockBusyId) return;
+    const aid = String(setId || '').trim();
+    const locId = catalog?.warehouseLocationId;
+    if (!aid) return;
+    if (!locId) {
+      Alert.alert('Stock', 'Warehouse location is not loaded yet. Pull to refresh and try again.');
+      return;
+    }
+    const current = Math.max(0, Math.floor(Number(assemblyWarehouseQty[aid] ?? 0)));
+    const rawDraft = String(setQtyDraftById[aid] ?? '').trim();
+    const amount = rawDraft === '' ? 1 : Math.floor(Number(rawDraft) || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      Alert.alert('Enter quantity', 'Enter a positive quantity or leave empty to add 1 set.');
+      return;
+    }
+    const target = current + amount;
+    setSetStockBusyId(aid);
+    try {
+      const result = await warehouseMobileRequest('assembly-product-quantity-set', {
+        assembly_id: aid,
+        warehouse_location_id: locId,
+        quantity: target,
+      });
+      patchCatalog(qtyPatchFromMobileQuantityResponse(result, aid, target));
+      setSetQtyDraftById((prev) => {
+        const next = { ...prev };
+        delete next[aid];
+        return next;
+      });
+      await refresh({ force: true, background: true }).catch(() => null);
+    } catch (err) {
+      Alert.alert(
+        'Stock update failed',
+        formatWarehouseMobileApiError(err?.message, 'Could not update set quantity.'),
+      );
+    } finally {
+      setSetStockBusyId('');
+    }
+  }, [
+    canEditSetStock,
+    setStockBusyId,
+    catalog?.warehouseLocationId,
+    assemblyWarehouseQty,
+    setQtyDraftById,
+    patchCatalog,
+    refresh,
+  ]);
 
   const openLabelPrint = (name, sku, assemblyForColor = null) => {
     const labelName = String(name || '').trim();
@@ -505,6 +570,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     const buildableQty = assemblyWarehouseQty[setId] ?? 0;
     const qtyNum = Math.max(0, Math.floor(Number(buildableQty) || 0));
     const qtyStyle = qtyNum > 0 ? styles.qtyValuePositive : styles.qtyValueZero;
+    const isStockBusy = setStockBusyId === setId;
+    const setQtyDraftVal = setQtyDraftById[setId] !== undefined ? String(setQtyDraftById[setId]) : '';
 
     return (
       <View style={styles.gridCard}>
@@ -536,6 +603,34 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             <Text style={[styles.qtyValue, qtyStyle]} numberOfLines={1}>
               {formatQty(buildableQty)}
             </Text>
+            {canEditSetStock ? (
+              <View style={styles.setStockActionRow}>
+                <TextInput
+                  style={styles.setQtyInput}
+                  keyboardType="number-pad"
+                  value={setQtyDraftVal}
+                  editable={!isStockBusy}
+                  onChangeText={(txt) => {
+                    const cleaned = txt.replace(/[^0-9]/g, '');
+                    setSetQtyDraftById((prev) => ({ ...prev, [setId]: cleaned }));
+                  }}
+                  placeholder="Qty"
+                  placeholderTextColor={theme.textDim}
+                />
+                <Pressable
+                  style={[styles.setStepBtnPlus, (isStockBusy || photoBusyAssemblyId) && styles.btnDisabled]}
+                  disabled={Boolean(isStockBusy || photoBusyAssemblyId)}
+                  onPress={() => handleSetStockIncrease(setId)}
+                  accessibilityLabel={`Increase stock for set ${setAssembly.name}`}
+                >
+                  {isStockBusy ? (
+                    <ActivityIndicator size="small" color="#0f172a" />
+                  ) : (
+                    <Text style={styles.setStepBtnPlusText}>+</Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         </View>
         {(componentLines.length > 0 || packetLines.length > 0) ? (
@@ -721,7 +816,7 @@ export default function WarehouseProductsScreen({ navigation, route }) {
       <View style={styles.toolbar}>
         <TextInput
           style={styles.search}
-          placeholder="Search SKU or name…"
+          placeholder="Search SKU, name, or set…"
           placeholderTextColor={theme.textDim}
           value={search}
           onChangeText={wedgeAwareTextChange(setSearch, {
@@ -750,13 +845,22 @@ export default function WarehouseProductsScreen({ navigation, route }) {
           />
         </Pressable>
         {catalogMode === 'complete' && canAddProduct ? (
-          <Pressable
-            style={styles.addBtn}
-            onPress={openNewProductForm}
-            accessibilityLabel="Add product"
-          >
-            <Text style={styles.addBtnText}>+</Text>
-          </Pressable>
+          <>
+            <Pressable
+              style={styles.addSetBtn}
+              onPress={openNewSetForm}
+              accessibilityLabel="Create set"
+            >
+              <Text style={styles.addSetBtnText}>Set</Text>
+            </Pressable>
+            <Pressable
+              style={styles.addBtn}
+              onPress={openNewProductForm}
+              accessibilityLabel="Add product"
+            >
+              <Text style={styles.addBtnText}>+</Text>
+            </Pressable>
+          </>
         ) : null}
       </View>
 
@@ -973,6 +1077,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   categoryPickerDoneText: { color: '#f8fafc', fontWeight: '700', fontSize: 15 },
+  addSetBtn: {
+    height: 44,
+    paddingHorizontal: 10,
+    borderRadius: theme.radiusSm,
+    backgroundColor: theme.surfaceElevated,
+    borderWidth: 1,
+    borderColor: theme.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addSetBtnText: { color: theme.primary, fontSize: 13, fontWeight: '800' },
   addBtn: {
     width: 44,
     height: 44,
@@ -1081,6 +1196,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
+  setStockActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+    width: '100%',
+  },
+  setQtyInput: {
+    flex: 1,
+    maxWidth: 72,
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    color: theme.text,
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  setStepBtnPlus: {
+    width: 40,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.primary,
+  },
+  setStepBtnPlusText: {
+    color: '#0f172a',
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  btnDisabled: { opacity: 0.45 },
   qtyValue: { fontSize: 18, fontWeight: '800', textAlign: 'center', width: '100%' },
   qtyValueBoxUnit: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
   qtyValuePositive: { color: '#069506' },

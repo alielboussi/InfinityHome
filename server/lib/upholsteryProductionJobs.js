@@ -281,7 +281,8 @@ export async function finishUpholsteryProductionJob(sb, {
 
   const ctx = await loadUpholsteryManufactureContext(sb, job.raw_assembly_id);
   const meta = job.metadata || {};
-  const deductRawOnFinish = meta.floor2_deduct_on_finish === true;
+  const alreadyDeducted = meta.floor2_raw_deducted === true;
+  const deductRawOnFinish = meta.floor2_deduct_on_finish === true && !alreadyDeducted;
   let storeroomLocsForRecompute = [];
   if (deductRawOnFinish) {
     const { storeroomLocsForRecompute: storeroomLocs } = await consumeUpholsteryRawAndMaterials(
@@ -379,7 +380,7 @@ export async function finishUpholsteryProductionJob(sb, {
       production_run_id: runErr ? null : runId,
       label_job_id: labelJobId ?? null,
       label_print_warning: labelPrintWarning ?? null,
-      floor2_raw_deducted: deductRawOnFinish || meta.floor2_raw_deducted === true,
+      floor2_raw_deducted: alreadyDeducted || deductRawOnFinish || meta.floor2_raw_deducted === true,
     }),
   });
 

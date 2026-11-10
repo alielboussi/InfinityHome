@@ -12,7 +12,10 @@ import {
   readKitweAssemblyInventoryQtyMap,
   syncKitweCatalogForDeliveryAssemblies,
 } from './kitweDeliveryCatalogSync.js';
-import { warehouseDeliveryReceiverTickRows } from '../../src/utils/warehouseDelivery.js';
+import {
+  warehouseDeliveryReceiverTickRows,
+  deliveryEntrySentToCustomer,
+} from '../../src/utils/warehouseDelivery.js';
 import { newUuid } from './uuid.js';
 
 function entryReceiverChecked(entry) {
@@ -106,6 +109,7 @@ export async function finalizeWarehouseDeliverySession(sb, session, {
   const receivedAssemblyIds = [...new Set(
     lines
       .filter(entryReceived)
+      .filter((line) => !deliveryEntrySentToCustomer(line))
       .map((line) => String(line.metadata?.assembly_id || '').trim())
       .filter(Boolean),
   )];

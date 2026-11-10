@@ -1,5 +1,6 @@
 import './shared/lightweightRuntime.js';
 import './shared/suppressBridgelessCodegenWarnings.js';
+import { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
@@ -7,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ProductionAppAuthGate from './deliveryKit/components/ProductionAppAuthGate';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { useDeliveryAccessGrant } from './hooks/useDeliveryAccessGrant';
+import { useDeliveryPushNotifications } from './hooks/useDeliveryPushNotifications';
 import DashboardScreen from './screens/DashboardScreen';
 import KitweSendHomeScreen from './deliveryKit/screens/KitweSendHomeScreen';
 import DeliveryRepairQueueScreen from './deliveryKit/screens/DeliveryRepairQueueScreen';
@@ -24,7 +26,7 @@ import { stackScreenOptions, theme } from './shared/theme';
 
 const Stack = createNativeStackNavigator();
 
-function MainStack() {
+function MainStack({ navigationRef }) {
   const {
     grant,
     loading,
@@ -35,6 +37,8 @@ function MainStack() {
     refresh,
     accessHint,
   } = useDeliveryAccessGrant();
+
+  useDeliveryPushNotifications(navigationRef, { allowed });
 
   if (!bootstrapped && loading) {
     return (
@@ -148,14 +152,15 @@ function MainStack() {
 }
 
 export default function App() {
+  const navigationRef = useRef(null);
   return (
     <SafeAreaProvider>
       <ProductionAppAuthGate
         titleKey="dashDeliveryAppTitle"
         signInMethods={__DEV__ ? 'both' : 'google'}
       >
-        <NavigationContainer>
-          <MainStack />
+        <NavigationContainer ref={navigationRef}>
+          <MainStack navigationRef={navigationRef} />
         </NavigationContainer>
       </ProductionAppAuthGate>
     </SafeAreaProvider>

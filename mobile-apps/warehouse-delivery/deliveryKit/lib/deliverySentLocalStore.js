@@ -9,8 +9,6 @@ function normalizeRecord(raw) {
   return {
     session_id: sessionId,
     delivery_number: String(raw?.delivery_number || '').trim(),
-    display_number: String(raw?.display_number || raw?.delivery_number || '').trim(),
-    document_kind: String(raw?.document_kind || 'delivery').trim() || 'delivery',
     status: String(raw?.status || 'submitted').trim() || 'submitted',
     submitted_at: String(raw?.submitted_at || raw?.saved_at || '').trim(),
     driver_name: String(raw?.driver_name || '').trim(),
@@ -58,8 +56,6 @@ export function localSentToListRow(row) {
   return {
     session_id: row.session_id,
     delivery_number: row.delivery_number,
-    display_number: row.display_number || row.delivery_number,
-    document_kind: row.document_kind || 'delivery',
     status: row.status,
     submitted_at: row.submitted_at,
     driver_name: row.driver_name,
@@ -73,8 +69,6 @@ export function localSentToDetail(row) {
     session: {
       id: row.session_id,
       delivery_number: row.delivery_number,
-      display_number: row.display_number || row.delivery_number,
-      document_kind: row.document_kind || 'delivery',
       status: row.status,
       submitted_at: row.submitted_at,
       driver_name: row.driver_name,

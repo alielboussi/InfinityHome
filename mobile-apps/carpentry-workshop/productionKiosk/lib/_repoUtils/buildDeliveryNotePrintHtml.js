@@ -169,6 +169,7 @@ function deliveryNoteTitle(documentKind = 'delivery') {
   const kind = String(documentKind || 'delivery').trim();
   if (kind === 'return' || kind === 'return_shipment') return 'Return Note';
   if (kind === 'return_customer_delivery') return 'Return Delivery Note';
+  if (kind === 'repair_delivery') return 'Repair Delivery Note';
   if (kind === 'sold_delivery') return 'Sold Delivery Note';
   /** Kitwe truck send + sent-delivery reprints only — never mix with sold_delivery. */
   return 'Delivery Note';
@@ -178,13 +179,14 @@ function deliveryNoteNumberLabel(documentKind = 'delivery') {
   const kind = String(documentKind || 'delivery').trim();
   if (kind === 'return' || kind === 'return_shipment') return 'Return No.';
   if (kind === 'return_customer_delivery') return 'Return Delivery No.';
+  if (kind === 'repair_delivery') return 'Repair Delivery No.';
   if (kind === 'sold_delivery') return 'Sold Delivery No.';
   return 'Delivery No.';
 }
 
 function deliveryNoteShowsCustomerBlock(documentKind = 'delivery') {
   const kind = String(documentKind || '').trim();
-  return kind === 'sold_delivery' || kind === 'return_customer_delivery';
+  return kind === 'sold_delivery' || kind === 'return_customer_delivery' || kind === 'repair_delivery';
 }
 
 function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {
@@ -192,6 +194,9 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
   const logoImg = logoSrc
     ? `<img class="company-logo" src="${safeImgSrc(logoSrc)}" alt="${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}" />`
     : `<div class="company-logo company-logo--text">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</div>`;
+  const companyNameLine = logoSrc
+    ? ''
+    : `<p class="company-name">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</p>`;
   const dispatched = String(dispatchedBy || '').trim() || '—';
   const title = deliveryNoteTitle(documentKind);
   const numLabel = deliveryNoteNumberLabel(documentKind);
@@ -208,7 +213,7 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
         <div class="header-brand">${logoImg}</div>
         <div class="header-main">
           <h1 class="title">${escapeHtml(title)}</h1>
-          <p class="company-name">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</p>
+          ${companyNameLine}
           <p class="delivery-num-label">${escapeHtml(numLabel)}</p>
           <p class="delivery-num">${escapeHtml(deliveryNumber)}</p>
           <p class="datetime"><span class="date">${escapeHtml(dateStr)}</span> · <span class="time">${escapeHtml(timeStr)} (Zambia)</span></p>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FaWhatsapp } from 'react-icons/fa';
+import { FaWhatsapp, FaUserCheck } from 'react-icons/fa';
 import { useLocation } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
@@ -24,6 +24,7 @@ import {
   deliverySessionNeedsTickRowFinalize,
   warehousePacketDisplayLabel,
   warehouseDeliveryReceiverLineKind,
+  deliveryEntrySentToCustomer,
 } from './utils/warehouseDelivery';
 import { buildKitweDeliveryWhatsAppText } from './utils/kitweDeliveryWhatsAppAdmin';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
@@ -35,6 +36,7 @@ import {
 import {
   acceptWarehouseDeliverySession,
   setDeliveryEntryReceiverCheck,
+  setDeliveryEntrySendToCustomer,
   cancelWarehouseDeliverySession,
   discardWarehouseDeliveryDraft,
 } from './services/warehouseDeliveryMobileApi';
@@ -490,7 +492,13 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
           if (String(row.id) !== String(entryId)) return row;
           return {
             ...row,
-            metadata: { ...(row.metadata || {}), receiver_checked_at: checkedAt },
+            metadata: {
+              ...(row.metadata || {}),
+              receiver_checked_at: checkedAt,
+              sent_to_customer: false,
+              sent_to_customer_at: null,
+              sent_to_customer_by_email: null,
+            },
           };
         });
       });
@@ -501,6 +509,37 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
     } catch (err) {
       await loadDeliveries({ silent: true, skipAutoFinalize: true });
       setError(err?.message || 'Failed to update packet confirmation.');
+    }
+  };
+
+  const toggleSendToCustomer = async (entryId, send) => {
+    if (!canAccept) return;
+    setError('');
+    const now = send ? new Date().toISOString() : null;
+    setEntriesBySession((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((sid) => {
+        next[sid] = next[sid].map((row) => {
+          if (String(row.id) !== String(entryId)) return row;
+          return {
+            ...row,
+            metadata: {
+              ...(row.metadata || {}),
+              sent_to_customer: send,
+              sent_to_customer_at: now,
+              sent_to_customer_by_email: send ? (sessionUser?.email || null) : null,
+              receiver_checked_at: send ? now : null,
+            },
+          };
+        });
+      });
+      return next;
+    });
+    try {
+      await setDeliveryEntrySendToCustomer(entryId, send);
+    } catch (err) {
+      await loadDeliveries({ silent: true, skipAutoFinalize: true });
+      setError(err?.message || 'Failed to mark send to customer.');
     }
   };
 
@@ -714,15 +753,19 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
             const { total, confirmed } = deliveryEntryReceiverProgress(entries);
             const tickRows = warehouseDeliveryReceiverTickRows(entries);
             const receivedCount = tickRows.filter((e) => deliveryEntryReceived(e)).length;
+            const sentToCustomerCount = tickRows.filter((e) => deliveryEntrySentToCustomer(e)).length;
             const progressItemLabel = tickRows.some((e) => e?.metadata?.finished_unit) ? 'Items' : 'Packets';
             const completed = isWarehouseCompleted(session.status);
             const driver = session?.metadata?.driver_name;
             const allTicksReceived = total > 0 && receivedCount === total;
+            const sentSuffix = sentToCustomerCount > 0
+              ? ` · Sent to customer: ${sentToCustomerCount}`
+              : '';
             const progressLabel = completed
-              ? `${progressItemLabel} received: ${receivedCount}/${total}`
+              ? `${progressItemLabel} received: ${receivedCount}/${total}${sentSuffix}`
               : allTicksReceived
-                ? `${progressItemLabel} received: ${receivedCount}/${total} (accept to complete)`
-                : `${progressItemLabel} confirmed: ${confirmed}/${total}`;
+                ? `${progressItemLabel} received: ${receivedCount}/${total} (accept to complete)${sentSuffix}`
+                : `${progressItemLabel} confirmed: ${confirmed}/${total}${sentSuffix}`;
             const progressColor = completed
               ? '#4ade80'
               : allTicksReceived
@@ -832,31 +875,55 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
                   );
                 }
                 if (rowKind !== 'receiver-line') return null;
+                const sentToCustomer = deliveryEntrySentToCustomer(line);
                 const checked = Boolean(line?.metadata?.receiver_checked_at);
                 const received = deliveryEntryReceived(line);
+                const kitweChecked = (checked || received) && !sentToCustomer;
+                const canToggle = canAccept && pending && !received;
                 return (
-                  <label
+                  <div
                     key={line.id}
                     className="warehouse-packet-check-row"
                     style={{
-                      border: `1px solid ${checked || received ? PAGE_THEME.borderSoft : PAGE_THEME.border}`,
-                      background: checked || received ? PAGE_THEME.surfaceAlt : PAGE_THEME.surface,
-                      color: received ? PAGE_THEME.muted : PAGE_THEME.text,
-                      cursor: canAccept && !received && pending ? 'pointer' : 'default',
+                      border: `1px solid ${sentToCustomer
+                        ? '#86efac'
+                        : (checked || received ? PAGE_THEME.borderSoft : PAGE_THEME.border)}`,
+                      background: sentToCustomer
+                        ? '#ecfdf5'
+                        : (checked || received ? PAGE_THEME.surfaceAlt : PAGE_THEME.surface),
+                      color: received && !sentToCustomer ? PAGE_THEME.muted : PAGE_THEME.text,
                     }}
                   >
                     <input
                       type="checkbox"
                       className="warehouse-packet-check-input"
-                      checked={checked || received}
-                      disabled={!canAccept || !pending || received}
+                      checked={kitweChecked}
+                      disabled={!canToggle}
                       onChange={(e) => toggleReceiverCheck(line.id, e.target.checked)}
+                      title="Receive into Kitwe stock"
+                      aria-label="Receive into Kitwe stock"
                     />
                     <span className="warehouse-packet-check-label">
                       {warehousePacketDisplayLabel(line)}
-                      {received ? ' (received)' : ''}
+                      {sentToCustomer
+                        ? ' (sent to customer)'
+                        : (received ? ' (received)' : '')}
                     </span>
-                  </label>
+                    {canToggle ? (
+                      <button
+                        type="button"
+                        className={`warehouse-send-customer-btn${sentToCustomer ? ' is-active' : ''}`}
+                        title={sentToCustomer ? 'Undo send to customer' : 'Send to customer'}
+                        aria-label={sentToCustomer ? 'Undo send to customer' : 'Send to customer'}
+                        onClick={() => toggleSendToCustomer(line.id, !sentToCustomer)}
+                      >
+                        <FaUserCheck aria-hidden />
+                        <span>{sentToCustomer ? 'Sent to customer' : 'Send to customer'}</span>
+                      </button>
+                    ) : sentToCustomer ? (
+                      <span className="warehouse-send-customer-badge">Sent to customer</span>
+                    ) : null}
+                  </div>
                 );
               })}
               <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap' }}>

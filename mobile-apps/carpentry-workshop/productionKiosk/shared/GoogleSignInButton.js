@@ -1,13 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
 import Constants from 'expo-constants';
 import { isRunningInExpoGo, requireOptionalNativeModule } from 'expo';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
-import { getFirebaseAuth, signOutFirebase, ensureFirebaseAuthToken } from './firebase';
-import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
+import { completeGoogleFirebaseSignIn } from './googleSignInFirebase';
 import {
   DEFAULT_GOOGLE_ANDROID_CLIENT_ID,
   DEFAULT_GOOGLE_WEB_CLIENT_ID,
@@ -155,23 +152,6 @@ function formatGoogleSignInError(err, nativeHelpers = null) {
   return message;
 }
 
-async function completeGoogleFirebaseSignIn(idToken, onError, onSuccess) {
-  if (!idToken) {
-    onError?.('Google sign-in did not return an ID token.');
-    return;
-  }
-  const credential = GoogleAuthProvider.credential(idToken);
-  await signInWithCredential(getFirebaseAuth(), credential);
-  await ensureFirebaseAuthToken(true);
-  const access = await verifyMobileLoginAccess();
-  if (shouldForceSignOutForAccessCheck(access)) {
-    await signOutFirebase();
-    onError?.(access.error || 'Login not allowed.');
-    return;
-  }
-  onSuccess?.();
-}
-
 async function loadNativeGoogleSignIn() {
   return import('@react-native-google-signin/google-signin');
 }
@@ -255,58 +235,15 @@ function NativeGoogleSignInButton({
   );
 }
 
-function BrowserGoogleSignInButton({
-  webClientId,
-  androidClientId,
-  iosClientId,
-  redirectUri,
-  onError,
-  onSuccess,
-  disabled,
-  label = 'Continue with Google',
-  busyLabel = 'Signing in…',
-}) {
-  const [busy, setBusy] = useState(false);
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    webClientId,
-    ...(Platform.OS === 'android' ? { androidClientId: androidClientId || webClientId } : {}),
-    ...(iosClientId ? { iosClientId } : {}),
-    redirectUri,
-  });
-
-  useEffect(() => {
-    if (!response || busy) return;
-    (async () => {
-      if (response.type !== 'success') {
-        if (response.type === 'error') {
-          onError?.(response.error?.message || 'Google sign-in failed.');
-        }
-        return;
-      }
-      setBusy(true);
-      try {
-        const idToken = response.params?.id_token || response.authentication?.idToken;
-        await completeGoogleFirebaseSignIn(idToken, onError, onSuccess);
-      } catch (err) {
-        onError?.(err?.message || 'Google sign-in failed.');
-      } finally {
-        setBusy(false);
-      }
-    })();
-  }, [response, busy, onError, onSuccess]);
-
+function BrowserGoogleSignInLoader(props) {
   return (
-    <Pressable
-      style={[styles.button, (disabled || busy || !request) && styles.buttonDisabled]}
-      onPress={() => promptAsync(
-        Platform.OS === 'android'
-          ? { showInRecents: true, createTask: true }
-          : undefined,
+    <Suspense
+      fallback={(
+        <ActivityIndicator style={{ marginTop: 12 }} color="#2563eb" />
       )}
-      disabled={disabled || busy || !request}
     >
-      <Text style={styles.buttonText}>{busy ? busyLabel : label}</Text>
-    </Pressable>
+      <LazyBrowserGoogleSignInButton {...props} />
+    </Suspense>
   );
 }
 
@@ -324,7 +261,7 @@ export function GoogleSignInButton({
   if (oauth.useBrowserOAuth) {
     return (
       <>
-        <BrowserGoogleSignInButton
+        <BrowserGoogleSignInLoader
           webClientId={oauth.webClientId}
           androidClientId={oauth.androidClientId}
           iosClientId={oauth.iosClientId}
@@ -358,7 +295,7 @@ export function GoogleSignInButton({
   }
 
   return (
-    <BrowserGoogleSignInButton
+    <BrowserGoogleSignInLoader
       webClientId={oauth.webClientId}
       androidClientId={oauth.androidClientId}
       iosClientId={oauth.iosClientId}
@@ -397,3 +334,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+const LazyBrowserGoogleSignInButton = lazy(() => import('./BrowserGoogleSignInButton.impl').catch((err) => {
+  console.warn('[GoogleSignIn] browser OAuth module failed:', err?.message || err);
+  return {
+    default: function BrowserGoogleSignInUnavailable({ onError, label = 'Continue with Google' }) {
+      useEffect(() => {
+        onError?.(
+          'Google sign-in needs Expo Go for SDK 58 (update Expo Go on this device). Try email sign-in, or install the workshop APK.',
+        );
+      }, [onError]);
+      return (
+        <Pressable style={[styles.button, styles.buttonDisabled]} disabled>
+          <Text style={styles.buttonText}>{label}</Text>
+        </Pressable>
+      );
+    },
+  };
+}));

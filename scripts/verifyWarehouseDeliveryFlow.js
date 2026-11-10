@@ -88,6 +88,15 @@ assert(
   'set-component finished units must be Kitwe tick rows',
 );
 assert(deliveries.includes('WAREHOUSE_RECEIVER_LIST_STATUSES'), 'Hassan page must load completed deliveries for history');
+assert(deliveries.includes('Send to customer'), 'Hassan accept page must offer send-to-customer per product');
+assert(mobile.includes('delivery-receiver-send-to-customer'), 'receiver API must persist send-to-customer');
+assert(
+  fs.readFileSync(
+    path.join(root, 'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSentDeliveryDetailScreen.js'),
+    'utf8',
+  ).includes('customer_sent_lines'),
+  'Delivery sent detail must show Hassan send-to-customer lines',
+);
 assert(!deliveries.includes('prev.filter((s) => String(s.id)'), 'Hassan page must not remove cards when accept completes');
 assert(mobile.includes('admin_registry'), 'return/storage list must support admin registry');
 assert(mobile.includes('driver_signature_url'), 'delivery submit must store driver signature url');

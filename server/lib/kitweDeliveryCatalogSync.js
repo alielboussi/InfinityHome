@@ -1,5 +1,5 @@
 import { normalizeWarehouseProductSku } from '../../src/utils/warehouseScanResolver.js';
-import { WAREHOUSE_TO_LOCATION_ID } from '../../src/utils/warehouseDelivery.js';
+import { WAREHOUSE_TO_LOCATION_ID, deliveryEntrySentToCustomer } from '../../src/utils/warehouseDelivery.js';
 import {
   deliveryFinishedUnitsFromEntryMetadata,
   deliveryTruckBoxesToFinishedUnits,
@@ -206,7 +206,9 @@ export function assemblyUnitsFullyReceived(sessionLines) {
   }
   for (const [aid, asmLines] of finishedByAssembly.entries()) {
     if (!asmLines.every(entryReceived)) continue;
-    const qty = asmLines.reduce(
+    const kitweLines = asmLines.filter((line) => !deliveryEntrySentToCustomer(line));
+    if (!kitweLines.length) continue;
+    const qty = kitweLines.reduce(
       (sum, line) => sum + deliveryFinishedUnitsFromEntryMetadata(line, [], null),
       0,
     );
@@ -215,22 +217,24 @@ export function assemblyUnitsFullyReceived(sessionLines) {
   for (const [aid, asmLines] of byAssembly.entries()) {
     if (units.has(aid)) continue;
     if (!asmLines.every(entryReceived)) continue;
-    const metaUnits = Math.max(0, Number(asmLines[0]?.metadata?.units) || 0);
+    const kitweLines = asmLines.filter((line) => !deliveryEntrySentToCustomer(line));
+    if (!kitweLines.length) continue;
+    const metaUnits = Math.max(0, Number(kitweLines[0]?.metadata?.units) || 0);
     if (metaUnits > 0) {
       units.set(aid, metaUnits);
       continue;
     }
-    const per = Math.max(0, Number(asmLines[0]?.metadata?.units_per_carton) || 0);
+    const per = Math.max(0, Number(kitweLines[0]?.metadata?.units_per_carton) || 0);
     if (per > 1) {
-      const cartons = asmLines.reduce((sum, line) => sum + Math.max(0, Number(line.quantity) || 0), 0);
+      const cartons = kitweLines.reduce((sum, line) => sum + Math.max(0, Number(line.quantity) || 0), 0);
       units.set(aid, Math.max(1, deliveryTruckBoxesToFinishedUnits(
         { units_per_carton: per, inventory_mode: 'finished' },
-        asmLines,
+        kitweLines,
         cartons,
       )));
       continue;
     }
-    units.set(aid, Math.max(1, Number(asmLines[0]?.metadata?.units) || 1));
+    units.set(aid, Math.max(1, Number(kitweLines[0]?.metadata?.units) || 1));
   }
   return units;
 }
@@ -243,9 +247,11 @@ export function assemblyUnitsReadyForKitweCatalog(sessionLines, movedAssemblyIds
       (line) => String(line.metadata?.assembly_id || '') === String(aid) && entryPacketId(line),
     );
     if (!asmLines.length || !asmLines.every(entryReceived)) continue;
+    const kitweLines = asmLines.filter((line) => !deliveryEntrySentToCustomer(line));
+    if (!kitweLines.length) continue;
     units.set(
       String(aid),
-      Math.max(1, Number(asmLines[0]?.metadata?.units) || 1),
+      Math.max(1, Number(kitweLines[0]?.metadata?.units) || 1),
     );
   }
   return units;

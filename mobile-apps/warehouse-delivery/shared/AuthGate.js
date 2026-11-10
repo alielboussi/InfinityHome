@@ -20,6 +20,14 @@ import { resetBiometricUnlock } from './biometricSession';
 import { shouldForceSignOutForAccessCheck, verifyMobileLoginAccess } from './loginAccess';
 import { formatWarehouseMobileApiError } from './warehouseMobileApi';
 
+function safeGoogleConfigured() {
+  try {
+    return isGoogleSignInConfigured();
+  } catch {
+    return false;
+  }
+}
+
 export { getFirebaseIdToken };
 
 export function useFirebaseUser() {
@@ -169,7 +177,7 @@ export default function FirebaseAuthGate({
             <Text style={styles.buttonText}>{busy ? signInSigningInLabel : signInButtonLabel}</Text>
           </Pressable>
         ) : null}
-        {allowGoogle && isGoogleSignInConfigured() ? (
+        {allowGoogle && safeGoogleConfigured() ? (
           <GoogleSignInButton
             disabled={busy}
             label={googleButtonLabel}
@@ -178,7 +186,7 @@ export default function FirebaseAuthGate({
             onSuccess={() => setError('')}
           />
         ) : null}
-        {allowGoogle && !isGoogleSignInConfigured() ? (
+        {allowGoogle && !safeGoogleConfigured() ? (
           <Text style={styles.error}>{googleNotConfiguredLabel}</Text>
         ) : null}
       </View>

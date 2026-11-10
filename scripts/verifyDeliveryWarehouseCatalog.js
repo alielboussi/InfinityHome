@@ -53,7 +53,21 @@ assert(filterSrc.includes('assemblyUsesPacketBom'), 'must allow warehouse packet
 assert(filterSrc.includes('factory-warehouse-flow'), 'must reference flow doc');
 assert(filterSrc.includes('FACTORY_LOCATION_ID'), 'delivery filter must pin Floor 1 factory location');
 assert(filterSrc.includes('isDeliveryCatalogBoundToFloor2'), 'delivery filter must reject Floor 2-bound catalogs');
-assert(!filterSrc.includes('delivery_floor2_assembly_ids'), 'Floor 2 WIP must not be deliverable');
+const warehouseMobilePath = path.join(root, 'server/handlers/warehouse-mobile.js');
+assert(fs.existsSync(warehouseMobilePath), 'warehouse-mobile.js required');
+const warehouseMobileSrc = fs.readFileSync(warehouseMobilePath, 'utf8');
+assert(
+  warehouseMobileSrc.includes('repair_floor2_deliveries'),
+  'catalog-list must expose repair admin-queue lines for mobile delivery',
+);
+assert(
+  warehouseMobileSrc.includes('order_floor2_deliveries'),
+  'catalog-list must expose production order delivery lines for mobile',
+);
+assert(
+  warehouseMobileSrc.includes('listRepairFloor2DeliveriesForCatalog'),
+  'repair delivery list helper required on catalog-list',
+);
 
 assert(kitweSrc.includes('filterAssembliesForDeliveryWarehouse'), 'Kitwe send must filter catalog');
 assert(kitweSrc.includes('deliveryScanNotInWarehouse'), 'scan must reject off-catalog products');

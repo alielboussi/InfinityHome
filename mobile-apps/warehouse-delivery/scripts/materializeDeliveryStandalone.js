@@ -19,9 +19,62 @@ function rmDeep(target) {
   fs.rmSync(target, { recursive: true, force: true });
 }
 
+function filesAreIdentical(src, dest) {
+  try {
+    const a = fs.statSync(src);
+    const b = fs.statSync(dest);
+    if (a.size !== b.size) return false;
+    const srcBuf = fs.readFileSync(src);
+    const destBuf = fs.readFileSync(dest);
+    return srcBuf.equals(destBuf);
+  } catch {
+    return false;
+  }
+}
+
+const RETRYABLE_COPY_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'UNKNOWN']);
+
+function sleep(ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { /* sync wait — postinstall only */ }
+}
+
+/** Windows-safe copy (AV/indexer locks often break copyFileSync overwrite). */
 function copyFile(src, dest) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(src, dest);
+  if (fs.existsSync(dest) && filesAreIdentical(src, dest)) return;
+
+  const body = fs.readFileSync(src);
+  const tmp = `${dest}.materialize-${process.pid}-${Date.now()}.tmp`;
+
+  const attempt = () => {
+    fs.writeFileSync(tmp, body);
+    if (fs.existsSync(dest)) {
+      try {
+        fs.unlinkSync(dest);
+      } catch {
+        fs.rmSync(dest, { force: true });
+      }
+    }
+    fs.renameSync(tmp, dest);
+  };
+
+  let lastErr;
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      attempt();
+      return;
+    } catch (err) {
+      lastErr = err;
+      try {
+        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+      } catch { /* ignore */ }
+      const code = String(err?.code || '').toUpperCase();
+      if (!RETRYABLE_COPY_CODES.has(code) || i >= 5) break;
+      sleep(80 * (i + 1));
+    }
+  }
+  throw lastErr;
 }
 
 /** production/lib uses ../../../src; deliveryKit/lib needs ../../../../src (one extra app folder). */

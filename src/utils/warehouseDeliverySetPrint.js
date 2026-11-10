@@ -1,4 +1,4 @@
-import { WAREHOUSE_TO_LOCATION_ID } from './warehouseDelivery.js';
+import { WAREHOUSE_TO_LOCATION_ID, deliveryEntrySentToCustomer } from './warehouseDelivery.js';
 import { deliveryDisplayNameWithFormatter } from './warehouseDeliveryDisplayName.js';
 
 export {
@@ -94,19 +94,25 @@ export function buildSetDeliveryPrintGroupsFromEntries(entries, nameFormatter = 
     const lines = [];
     components.forEach((comp) => {
       const asmId = String(comp.metadata?.assembly_id || '');
+      const sentComp = deliveryEntrySentToCustomer(comp);
       lines.push({
         depth: 1,
-        name: deliveryDisplayNameWithFormatter(nameFormatter, comp.name, asmId),
+        name: sentComp
+          ? `${deliveryDisplayNameWithFormatter(nameFormatter, comp.name, asmId)} — sent to customer`
+          : deliveryDisplayNameWithFormatter(nameFormatter, comp.name, asmId),
         qty: Math.max(1, Number(comp.quantity) || 1),
+        sent_to_customer: sentComp,
       });
       packets
         .filter((p) => String(p.metadata?.assembly_id) === asmId)
         .forEach((p) => {
+          const sentPkt = deliveryEntrySentToCustomer(p);
           lines.push({
             depth: 2,
-            name: p.name,
+            name: sentPkt ? `${p.name} — sent to customer` : p.name,
             qty: Number(p.quantity) || 0,
             packet_number: p.metadata?.packet_number,
+            sent_to_customer: sentPkt,
           });
         });
     });

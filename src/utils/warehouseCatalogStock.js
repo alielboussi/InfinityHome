@@ -155,10 +155,23 @@ export function attachWarehouseStockTotals(catalog) {
     assemblies,
   );
 
+  const floor2LocationId = normalized?.floor2LocationId
+    ? String(normalized.floor2LocationId)
+    : '';
+  const assemblyFloor2Qty = {};
+  if (floor2LocationId) {
+    const floor2InvMap = assemblyQtyAtLocation(assemblyInventory, floor2LocationId);
+    (assemblies || []).forEach((assembly) => {
+      const id = String(assembly.id);
+      assemblyFloor2Qty[id] = floor2InvMap.get(id) ?? 0;
+    });
+  }
+
   return {
     ...normalized,
     packetWarehouseQty,
     assemblyWarehouseQty,
     assemblyWarehouseLeftoverQty,
+    assemblyFloor2Qty,
   };
 }

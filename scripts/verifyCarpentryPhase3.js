@@ -68,7 +68,8 @@ try {
 
   includesAll(read('mobile-apps/carpentry-workshop/productionKiosk/lib/productionPushNotifications.js'), [
     "app_target: 'carpentry'",
-    "screen === 'Quotes'",
+    "quotesList: 'Quotes'",
+    "quotesDetail: 'QuoteDetail'",
   ], 'carpentry push registration');
 
   console.log('verifyCarpentryPhase3: ok');

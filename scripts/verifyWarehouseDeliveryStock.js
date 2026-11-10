@@ -35,6 +35,18 @@ assert(
 assert(kitweSync.includes('repairKitweCatalogForSession'), 'repair helper must exist for backfill');
 assert(kitweSync.includes('assemblyUnitsReadyForKitweCatalog'), 'accept must detect fully received assemblies for Kitwe catalog');
 assert(kitweSync.includes('assemblyUnitsFullyReceived'), 'POS mirror only when full BOM received for assembly');
+assert(acceptStock.includes('deliveryEntrySentToCustomer'), 'accept stock must skip Kitwe add for Hassan send-to-customer lines');
+assert(kitweSync.includes('deliveryEntrySentToCustomer'), 'Kitwe catalog must exclude send-to-customer units');
+assert(
+  fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAdminQueue.js'), 'utf8')
+    .includes('deliveryEntrySentToCustomer'),
+  'admin-queue accept must skip Kitwe add for send-to-customer lines',
+);
+assert(
+  fs.readFileSync(path.join(root, 'server/handlers/warehouse-mobile.js'), 'utf8')
+    .includes('delivery-receiver-send-to-customer'),
+  'Hassan receiver API must expose send-to-customer op',
+);
 assert(accept.includes('kitwe_from_factory_delivery'), 'accept must mark assemblies for Kitwe products portal list');
 assert(stock.includes('Not enough packet stock'), 'packet deduct must fail when factory stock insufficient');
 

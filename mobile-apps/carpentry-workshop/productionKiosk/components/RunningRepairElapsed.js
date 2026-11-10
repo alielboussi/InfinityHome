@@ -1,4 +1,4 @@
-import { formatProductionElapsed as formatElapsed } from '../shared/lib/formatProductionElapsed';
+import { formatProductionElapsed as formatElapsed } from '../lib/formatProductionElapsed';
 import { useEffect, useState } from 'react';
 import { Text } from 'react-native';
 

@@ -78,6 +78,10 @@ assert(read('src/WarehouseReturns.js').includes('loadReturnQuoteCustomers'), 're
 assert(read('src/utils/warehouseReturnReasons.js').includes('returnReasonShowsLeatherCode'), 'leather code reasons helper required');
 assert(chrome.includes('/warehouse-returns'), 'Hassan nav must link Repairs');
 assert(chrome.includes('/warehouse-repairs-admin'), 'catalog nav must link Repairs admin');
+assert(
+  fs.readFileSync(path.join(root, 'src/WarehouseRepairsAdmin.js'), 'utf8').includes('deptFilter'),
+  'repairs admin must filter by carpentry / upholstery',
+);
 assert(chrome.includes('Repairs Trackage'), 'Hassan nav must link Repairs Trackage');
 assert(
   read('src/WarehouseReturnsTrackage.js').includes('REPAIR_DEPARTMENTS'),

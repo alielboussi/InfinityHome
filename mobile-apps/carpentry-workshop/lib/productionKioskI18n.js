@@ -164,7 +164,12 @@ const UI_STRINGS = {
   quoteOrderEnd: { en: 'End order', ar: 'إنهاء الطلب' },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
-  quoteOrderCompleteDone: { en: 'Production ended.', ar: 'انتهى الإنتاج.' },
+  quoteOrderEndSendPainting: { en: 'End + send to painting', ar: 'إنهاء وإرسال للدهان' },
+  carpentryQuoteSentToPainting: {
+    en: 'Order completed and sent to the Painting app.',
+    ar: 'اكتمل الطلب وأُرسل إلى تطبيق الدهان.',
+  },
+  quoteOrderCompleteDone: { en: 'Production ended — Delivery app virtual hold.', ar: 'انتهى الإنتاج — حجز افتراضي في تطبيق التسليم.' },
   quoteOrderMaterials: { en: 'Materials', ar: 'المواد' },
   quoteOrderMaterialsHint: {
     en: 'Open Materials to pick items, type a barcode, or scan — storeroom is deducted when you save.',
@@ -303,8 +308,12 @@ const UI_STRINGS = {
   },
   manufactureScanBtn: { en: 'Scan', ar: 'مسح' },
   manufactureIntro: {
-    en: 'Products from the web Carpentry catalog. Tap one to produce ×1 — BOM deducts from Storerooms 1–3; unfinished units store on Warehouse Floor 2.',
-    ar: 'منتجات من كتالوج النجارة. اضغط ×1 — تُخصم المواد من المستودعات 1–3 وتُخزَّن الوحدات غير المنتهية في Warehouse Floor 2.',
+    en: 'Carpentry catalog (same flow as Upholstery Manufacture). Pick qty to open a job — Floor 2 stock is not reduced here. On Jobs: add storeroom materials (wrench), then Finish to deduct BOM from storerooms and add WIP qty on Warehouse Floor 2.',
+    ar: 'كتالوج النجارة (نفس تدفق التصنيع في التنجيد). اختر الكمية لبدء مهمة — لا يُخصم من Floor 2 هنا. في المهام: أضف مواد المستودع (مفتاح الربط)، ثم إنهاء لخصم BOM وإضافة WIP على Warehouse Floor 2.',
+  },
+  manufactureJobOpened: {
+    en: 'Production job started. Open Jobs to add materials and finish.',
+    ar: 'تم بدء مهمة الإنتاج. افتح المهام لإضافة المواد والإنهاء.',
   },
   dashFinishing: { en: 'Finishing', ar: 'إنهاء' },
   finishingTitle: { en: 'Finishing', ar: 'إنهاء' },

@@ -91,12 +91,39 @@ export async function fetchCarpentryProductionQuotes() {
   }
 }
 
+export async function fetchProductionQuoteArabicTranslations(texts = []) {
+  try {
+    const payload = await warehouseMobileRequest('production-quote-translate-arabic', { texts });
+    return payload?.translations || {};
+  } catch {
+    return {};
+  }
+}
+
 export async function acceptCarpentryQuote(quoteId) {
   return warehouseMobileRequest('production-quote-accept', { route: CARPENTRY_ROUTE, quote_id: quoteId });
 }
 
-export async function completeCarpentryQuote(quoteId) {
-  return warehouseMobileRequest('production-quote-complete', { route: CARPENTRY_ROUTE, quote_id: quoteId });
+export async function completeCarpentryQuote(quoteId, { deferDeliveryQueue = false } = {}) {
+  return warehouseMobileRequest('production-quote-complete', {
+    route: CARPENTRY_ROUTE,
+    quote_id: quoteId,
+    defer_delivery_queue: Boolean(deferDeliveryQueue),
+  });
+}
+
+export async function pauseCarpentryQuote(quoteId) {
+  return warehouseMobileRequest('production-quote-pause', {
+    route: CARPENTRY_ROUTE,
+    quote_id: quoteId,
+  });
+}
+
+export async function resumeCarpentryQuote(quoteId) {
+  return warehouseMobileRequest('production-quote-resume', {
+    route: CARPENTRY_ROUTE,
+    quote_id: quoteId,
+  });
 }
 
 export async function sendCarpentryQuoteToPainting(quoteId, { productQty = 1 } = {}) {

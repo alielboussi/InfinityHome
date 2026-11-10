@@ -20,6 +20,7 @@ import WarehouseUnusedPacketsScreen from './screens/WarehouseUnusedPacketsScreen
 import ScanScreen from './screens/ScanScreen';
 import PacketFormScreen from './screens/PacketFormScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
+import SetFormScreen from './screens/SetFormScreen';
 import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { MOBILE_APP_DISPLAY_NAME } from './shared/mobileAccessManifest';
@@ -145,6 +146,7 @@ function MainStack() {
         )}
       </Stack.Screen>
       <Stack.Screen name="ProductForm" options={{ title: 'Product' }} component={ProductFormScreen} />
+      <Stack.Screen name="SetForm" options={{ title: 'Set' }} component={SetFormScreen} />
     </Stack.Navigator>
     </WarehouseCatalogProvider>
     </MobileAccessGrantProvider>

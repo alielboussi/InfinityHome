@@ -10,9 +10,11 @@ import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifes
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi } from '../productionKiosk/lib/productionKioskI18n';
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
+import { useDashboardNotificationBadges } from '../shared/hooks/useDashboardNotificationBadges';
+import DashboardTileBadge from '../shared/components/DashboardTileBadge';
 
 function DashboardTile({
-  icon, title, width, height, onPress, hintKey, locale, textAlign,
+  icon, title, width, height, onPress, hintKey, locale, textAlign, badgeCount = 0,
 }) {
   const iconSize = Math.round(Math.min(44, height * 0.32));
   return (
@@ -28,6 +30,7 @@ function DashboardTile({
         pressed && kiosk.dashTilePressed,
       ]}
     >
+      <DashboardTileBadge count={badgeCount} />
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
@@ -57,6 +60,7 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready, textAlign } = useProductionKioskLocale();
+  const { counts, clearBadge } = useDashboardNotificationBadges();
 
   const allTiles = [
     {
@@ -81,6 +85,7 @@ export default function DashboardScreen({
       icon: 'progress-clock',
       title: tUi('carpentryJobsTitle', locale),
       hintKey: 'dashTileHint_jobs',
+      badgeKey: 'jobs',
       onPress: () => navigation.navigate('Jobs'),
     },
     {
@@ -89,6 +94,7 @@ export default function DashboardScreen({
       icon: 'format-paint',
       title: tUi('dashPainting', locale),
       hintKey: 'dashTileHint_painting',
+      badgeKey: 'painting',
       onPress: () => navigation.navigate('Painting'),
     },
     {
@@ -97,6 +103,7 @@ export default function DashboardScreen({
       icon: 'clipboard-text-outline',
       title: tUi('dashCarpentryQuoteOrders', locale),
       hintKey: 'dashTileHint_quotes',
+      badgeKey: 'quotes',
       onPress: () => navigation.navigate('Quotes'),
     },
     {
@@ -105,6 +112,7 @@ export default function DashboardScreen({
       icon: 'wrench-clock',
       title: tUi('dashRepairs', locale),
       hintKey: 'dashTileHint_repairs',
+      badgeKey: 'repairs',
       onPress: () => navigation.navigate('Repairs'),
     },
   ];
@@ -201,7 +209,11 @@ export default function DashboardScreen({
               textAlign={textAlign}
               width={tileWidth}
               height={tileHeight}
-              onPress={tile.onPress}
+              badgeCount={tile.badgeKey ? counts[tile.badgeKey] || 0 : 0}
+              onPress={() => {
+                if (tile.badgeKey) clearBadge(tile.badgeKey);
+                tile.onPress();
+              }}
             />
           ))}
         </View>

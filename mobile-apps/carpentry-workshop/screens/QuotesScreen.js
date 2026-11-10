@@ -54,7 +54,7 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
     return (
       <View style={[kiosk.screen, kioskScreenEdgesSafe(insets, 32), styles.flex]}>
         <ProductionKioskTopBar
-          title={tUi('dashCarpentryQuoteOrders', locale)}
+          title={tUi('carpentryQuotesTitle', locale)}
           locale={locale}
           onToggleLocale={toggleLocale}
         />
@@ -77,7 +77,7 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
   return (
     <View style={[kiosk.screen, styles.flex, kioskScreenEdgesSafe(insets, 16)]}>
       <ProductionKioskTopBar
-        title={tUi('dashCarpentryQuoteOrders', locale)}
+        title={tUi('carpentryQuotesTitle', locale)}
         locale={locale}
         onToggleLocale={toggleLocale}
       />
@@ -107,7 +107,7 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
             onPress={() => navigation.navigate('QuoteDetail', { quote: item })}
           >
             <Text style={styles.quoteNum}>{item.quote_number || item.quote_id}</Text>
-            <Text style={styles.name}>{item.customer_name || 'Customer'}</Text>
+            <Text style={styles.name}>{item.customer_name || tUi('returnCustomer', locale)}</Text>
             <Text style={styles.phone}>{item.customer_phone || '—'}</Text>
             <Text style={styles.meta}>
               {item.accepted_at

@@ -1,6 +1,7 @@
 /**
  * Delivery app Repairs queue — eligibility must match portal display helper.
  */
+const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
@@ -81,6 +82,11 @@ async function main() {
     deliveryAdminInventoryFootnote(collected, 'repair') === DELIVERY_ADMIN_IN_TRANSIT_LABEL,
     'collected must show in-transit footnote',
   );
+
+  const adminPage = fs.readFileSync(path.join(root, 'src/WarehouseRepairsAdmin.js'), 'utf8');
+  assert(adminPage.includes("id: 'carpentry'"), 'repairs admin must filter carpentry');
+  assert(adminPage.includes("id: 'upholstery'"), 'repairs admin must filter upholstery');
+  assert(adminPage.includes('deptFilter'), 'repairs admin must have department filter');
 
   console.log('verifyDeliveryRepairQueueFilter: ok');
 }

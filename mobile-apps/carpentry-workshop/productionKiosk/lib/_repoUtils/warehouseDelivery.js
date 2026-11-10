@@ -99,6 +99,13 @@ export function deliverySessionNeedsCatalogFinalize(entries, sessionStatus) {
   return receivable.length > 0 && receivable.every(deliveryEntryReceived);
 }
 
+/** Every Kitwe tick row received but session still pending (stuck after partial accept). */
+export function deliverySessionNeedsTickRowFinalize(entries, sessionStatus) {
+  if (!isWarehousePending(sessionStatus)) return false;
+  const ticks = warehouseDeliveryReceiverTickRows(entries);
+  return ticks.length > 0 && ticks.every((e) => deliveryEntryReceived(e));
+}
+
 /** Finished product name stored on packet lines at submit. */
 export function warehousePacketProductName(line) {
   return String(line?.metadata?.assembly_name || '').trim();

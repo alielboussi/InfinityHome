@@ -89,6 +89,8 @@ import {
   WAREHOUSE_ACCEPT_USER_ID,
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
+  deliveryCustomerSentLines,
+  warehousePacketDisplayLabel,
 } from '../../src/utils/warehouseDelivery.js';
 import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryPrintGroups.js';
 import {
@@ -1510,9 +1512,14 @@ async function opPaintingJobFinish(body, user) {
   if (!jobId) throw new Error('job_id required');
   const sb = createFirestoreServerClient();
   const { finishPaintingProductionJob } = await import('../lib/paintingProductionJobs.js');
+  const destinationRaw = String(body.destination || body.finish_destination || body.finishDestination || 'delivery')
+    .trim()
+    .toLowerCase();
+  const destination = destinationRaw === 'floor1' ? 'floor1' : 'delivery';
   return finishPaintingProductionJob(sb, {
     jobId,
     userId: user?.id || user?.uid,
+    destination,
   });
 }
 
@@ -1564,10 +1571,15 @@ async function opProductionQuoteComplete(body, user) {
   if (!quoteId) throw new Error('quote_id required');
   const sb = getService();
   const { completeQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
+  const deferDeliveryQueue = body.defer_delivery_queue === true
+    || body.deferDeliveryQueue === true
+    || body.send_to_painting === true
+    || body.sendToPainting === true;
   return completeQuoteProductionOrder(sb, {
     quoteId,
     route,
     userId: user?.id || user?.uid,
+    deferDeliveryQueue,
   });
 }
 
@@ -3801,6 +3813,11 @@ async function opDeliverySentDetail(body, user) {
     ? await fetchDeliverySignatureAsDataUri(signatureUrl)
     : '';
   const documentKind = String(meta.document_kind || 'delivery').trim() || 'delivery';
+  const customerSentLines = deliveryCustomerSentLines(entries || []).map((line) => ({
+    id: line.id,
+    label: warehousePacketDisplayLabel(line),
+    sent_at: line.metadata?.sent_to_customer_at || null,
+  }));
   return {
     session: {
       id: session.id,
@@ -3816,6 +3833,7 @@ async function opDeliverySentDetail(body, user) {
       customer_phone: meta.customer_phone || '',
     },
     print_groups: buildDeliveryPrintGroupsFromEntries(entries || [], nameFormatter),
+    customer_sent_lines: customerSentLines,
     driver_signature_data_uri: driverSignatureDataUri,
   };
 }
@@ -3968,9 +3986,47 @@ async function opDeliveryReceiverCheck(body, user) {
     ...(entry.metadata || {}),
     receiver_checked_at: checked ? now : null,
   };
+  if (checked) {
+    metadata.sent_to_customer = false;
+    metadata.sent_to_customer_at = null;
+    metadata.sent_to_customer_by_email = null;
+  }
   const { error } = await sb.from('warehouse_delivery_entries').update({ metadata }).eq('id', entryId);
   if (error) throw new Error(error.message || 'Failed to update line');
   return { entry_id: entryId, receiver_checked: checked, metadata };
+}
+
+async function opDeliveryReceiverSendToCustomer(body, user) {
+  if (!canWarehouseDeliveryReceiverActions(user)) {
+    const err = new Error('Only the Kitwe receiver can send items to the customer.');
+    err.status = 403;
+    throw err;
+  }
+  const entryId = String(body.entry_id || '');
+  const send = body.send !== false && body.sent !== false;
+  if (!entryId) throw new Error('entry_id is required.');
+  const sb = getService();
+  const { data: entry } = await sb.from('warehouse_delivery_entries').select('*').eq('id', entryId).maybeSingle();
+  if (!entry) throw new Error('Delivery line not found.');
+  if (entry.metadata?.received_at) {
+    throw new Error('This item is already accepted.');
+  }
+  const now = new Date().toISOString();
+  const metadata = { ...(entry.metadata || {}) };
+  if (send) {
+    metadata.sent_to_customer = true;
+    metadata.sent_to_customer_at = now;
+    metadata.sent_to_customer_by_email = user?.email || null;
+    metadata.receiver_checked_at = now;
+  } else {
+    metadata.sent_to_customer = false;
+    metadata.sent_to_customer_at = null;
+    metadata.sent_to_customer_by_email = null;
+    metadata.receiver_checked_at = null;
+  }
+  const { error } = await sb.from('warehouse_delivery_entries').update({ metadata }).eq('id', entryId);
+  if (error) throw new Error(error.message || 'Failed to update line');
+  return { entry_id: entryId, sent_to_customer: send, metadata };
 }
 
 async function opDeliveryAccept(body, user) {
@@ -4281,6 +4337,9 @@ export default async function handler(req, res) {
         break;
       case 'delivery-receiver-check':
         result = await opDeliveryReceiverCheck(body, user);
+        break;
+      case 'delivery-receiver-send-to-customer':
+        result = await opDeliveryReceiverSendToCustomer(body, user);
         break;
       case 'delivery-accept':
         result = await opDeliveryAccept(body, user);

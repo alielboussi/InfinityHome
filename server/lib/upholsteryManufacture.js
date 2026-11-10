@@ -208,7 +208,49 @@ export async function consumeUpholsteryRawAndMaterials(sb, ctx, productQty, {
   return { qty, materialUsageRows, storeroomLocsForRecompute };
 }
 
-/** Credit finished qty on Warehouse Floor 1 — call only from finishUpholsteryProductionJob. */
+/** Resolve finished SKU row — no stock movement (Delivery app stages Floor 2 on job finish). */
+export async function resolveFinishedOutputAssemblyOnly(sb, ctx) {
+  const templateAssembly = ctx.finishedTemplate;
+  const sku = normalizeWarehouseProductSku(templateAssembly.family_sku);
+  const name = String(templateAssembly.name || '').trim();
+  if (!sku || !name) throw new Error('Finished product template is missing SKU or name');
+
+  let output = await findWarehouseAssemblyBySku(sb, sku);
+  let created = false;
+  if (!output) {
+    output = await saveAssemblyForMobile(sb, {
+      name,
+      family_sku: sku,
+      category_id: templateAssembly.category_id || null,
+      warehouse_location_id: WAREHOUSE_FACTORY_LOCATION_ID,
+      inventory_mode: 'finished',
+      packet_count: null,
+      packet_links: [],
+      location_ids: [],
+      units_per_carton: templateAssembly.units_per_carton ?? 1,
+      dim_length: templateAssembly.dim_length,
+      dim_width: templateAssembly.dim_width,
+      dim_height: templateAssembly.dim_height,
+      turkish_name: templateAssembly.turkish_name,
+      has_color_variants: templateAssembly.has_color_variants,
+    });
+    created = true;
+  }
+
+  const outputId = String(output.id || '');
+  if (!outputId) throw new Error('Failed to resolve warehouse output product');
+  return {
+    outputAssembly: output,
+    output_assembly_id: outputId,
+    sku,
+    name,
+    qty_before: 0,
+    qty_after: 0,
+    created,
+  };
+}
+
+/** @deprecated Floor 1 credit — use resolveFinishedOutputAssemblyOnly + Floor 2 staging for delivery app. */
 export async function creditUpholsteryFinishedOutput(sb, ctx, productQty) {
   const qty = Math.max(1, Math.floor(Number(productQty) || 1));
   return resolveOrCreateFinishedAtFactory(sb, ctx.finishedTemplate, qty);
@@ -287,8 +329,8 @@ export async function listUpholsteryManufactureCandidates(sb) {
 }
 
 /**
- * Workshop manufacture: open an upholstery production job (Floor 2 qty unchanged on the portal).
- * On job finish: deduct linked raw on Floor 2, credit finished on Floor 1, print labels.
+ * Workshop manufacture: open an upholstery production job and deduct Floor 2 raw immediately
+ * (WIP taken to the bench). On job finish: virtual delivery hold (no Floor 1 credit).
  */
 export async function executeUpholsteryManufacture(sb, {
   rawAssemblyId,

@@ -21,8 +21,19 @@ if (!/executeUpholsteryManufacture[\s\S]*pushFloor2ToProductionJob/.test(upholst
   failed += 1;
 }
 
-if (!/creditUpholsteryFinishedOutput/.test(upholsteryJobs)) {
-  console.error('[verifyProductionFloor1JobPolicy] upholstery Floor 1 credit must be in job finish');
+const floor2Push = read('server/lib/productionManufactureFloor2.js');
+if (!/route === 'carpentry'[\s\S]*startCarpentryCatalogManufactureJob/.test(floor2Push)) {
+  console.error('[verifyProductionFloor1JobPolicy] carpentry Floor 2 push must open catalog manufacture job (add stock on finish)');
+  failed += 1;
+}
+if (!/adjustAssemblyInventory[\s\S]*floor2Id[\s\S]*-qty/.test(floor2Push)
+    || !/floor2_raw_deducted: true/.test(floor2Push)) {
+  console.error('[verifyProductionFloor1JobPolicy] upholstery manufacture must deduct Floor 2 immediately');
+  failed += 1;
+}
+
+if (!/finishUpholsteryProductionJob[\s\S]*registerProductionJobAwaitingDriver/.test(upholsteryJobs)) {
+  console.error('[verifyProductionFloor1JobPolicy] upholstery job finish must register delivery admin queue (no instant Floor 1)');
   failed += 1;
 }
 
@@ -44,8 +55,13 @@ if (!/sendAssemblyToPaintingDepartment[\s\S]*adjustAssemblyInventory[\s\S]*floor
   failed += 1;
 }
 
-if (!/finishPaintingProductionJob[\s\S]*adjustAssemblyInventory[\s\S]*floor1LocationId[\s\S]*qty/.test(paintingJobs)) {
-  console.error('[verifyProductionFloor1JobPolicy] painting finish must credit Floor 1');
+if (!/finishPaintingProductionJob[\s\S]*registerProductionJobAwaitingDriver/.test(paintingJobs)) {
+  console.error('[verifyProductionFloor1JobPolicy] painting job finish must register delivery admin queue');
+  failed += 1;
+}
+if (!/destination = 'delivery'[\s\S]*floor1/.test(paintingJobs)
+    && !/dest === 'floor1'/.test(paintingJobs)) {
+  console.error('[verifyProductionFloor1JobPolicy] painting finish must support Floor 1 storage destination');
   failed += 1;
 }
 

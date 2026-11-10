@@ -55,6 +55,20 @@ export function navigateFromProductionPushData(navigationRef, data, routes) {
     }
   }
 
+  if (eventType === 'delivery_repairs' || screen === 'DeliveryRepairQueue') {
+    if (routes.deliveryRepairs) {
+      nav.navigate(routes.deliveryRepairs);
+      return;
+    }
+  }
+
+  if (eventType === 'delivery_orders' || screen === 'DeliveryOrderQueue') {
+    if (routes.deliveryOrders) {
+      nav.navigate(routes.deliveryOrders);
+      return;
+    }
+  }
+
   if (screen === routes.soldOrders || screen === 'SoldOrders') {
     if (routes.soldOrders) {
       nav.navigate(routes.soldOrders);
@@ -91,5 +105,10 @@ export function navigateFromProductionPushData(navigationRef, data, routes) {
 
   if (screen === 'Repairs' && routes.repairs) {
     nav.navigate(routes.repairs, returnOrderId ? { returnOrderId } : undefined);
+    return;
+  }
+
+  if (screen === 'Orders' && routes.jobs) {
+    nav.navigate(routes.jobs, returnOrderId ? { returnOrderId } : undefined);
   }
 }

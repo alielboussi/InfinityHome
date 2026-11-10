@@ -401,12 +401,34 @@ export async function resumeQuoteProductionOrder(sb, { quoteId, route, userId })
   return { run_id: run.id, resumed_at: resumedAt, accumulated_ms: accumulated };
 }
 
-export async function completeQuoteProductionOrder(sb, { quoteId, userId }) {
+export async function completeQuoteProductionOrder(sb, {
+  quoteId,
+  userId,
+  deferDeliveryQueue = false,
+}) {
+  void userId;
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('quote_id required');
   const run = await findActiveQuoteRun(sb, qid);
   if (!run) throw new Error('No active production run for this quote');
-  if (run.completed_at) return { run_id: run.id, already_completed: true };
+  if (run.completed_at) {
+    if (!deferDeliveryQueue) {
+      const { data: quoteRow } = await sb.from('quotations').select('id, quote_number').eq('id', qid).maybeSingle();
+      const { data: routingRow } = await sb.from(ROUTING).select('route, metadata').eq('quote_id', qid).maybeSingle();
+      const alreadyQueued = routingRow?.metadata?.delivery_admin?.stage;
+      if (!alreadyQueued) {
+        const { registerQuoteOrderAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+        await registerQuoteOrderAwaitingDriver(sb, {
+          quoteId: qid,
+          assemblyId: run.assembly_id,
+          qty: Math.max(1, Number(run.product_qty) || 1),
+          route: routingRow?.route || run.metadata?.route || 'upholstery',
+          quoteNumber: quoteRow?.quote_number || null,
+        });
+      }
+    }
+    return { run_id: run.id, already_completed: true };
+  }
 
   const now = new Date().toISOString();
   const { error: runErr } = await sb.from(RUNS).update({ completed_at: now }).eq('id', run.id);
@@ -416,17 +438,19 @@ export async function completeQuoteProductionOrder(sb, { quoteId, userId }) {
 
   const { data: quoteRow } = await sb.from('quotations').select('id, quote_number').eq('id', qid).maybeSingle();
   const { data: routingRow } = await sb.from(ROUTING).select('route').eq('quote_id', qid).maybeSingle();
-  const { registerQuoteOrderAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
-  await registerQuoteOrderAwaitingDriver(sb, {
-    quoteId: qid,
-    assemblyId: run.assembly_id,
-    qty: Math.max(1, Number(run.product_qty) || 1),
-    route: routingRow?.route || run.metadata?.route || 'upholstery',
-    quoteNumber: quoteRow?.quote_number || null,
-    now,
-  });
+  if (!deferDeliveryQueue) {
+    const { registerQuoteOrderAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+    await registerQuoteOrderAwaitingDriver(sb, {
+      quoteId: qid,
+      assemblyId: run.assembly_id,
+      qty: Math.max(1, Number(run.product_qty) || 1),
+      route: routingRow?.route || run.metadata?.route || 'upholstery',
+      quoteNumber: quoteRow?.quote_number || null,
+      now,
+    });
+  }
 
-  return { run_id: run.id, completed_at: now };
+  return { run_id: run.id, completed_at: now, deferred_delivery_queue: Boolean(deferDeliveryQueue) };
 }
 
 async function resolveMaterialAssemblyFromScan(sb, scan) {

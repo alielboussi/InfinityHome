@@ -50,6 +50,42 @@ async function main() {
   assert(kinds[0] === 'assembly-header', 'set parent is a group header');
   assert(kinds[1] === 'receiver-line' && kinds[2] === 'receiver-line', 'set components are tickable');
 
+  const sentLine = {
+    id: 'sent',
+    kind: 'product',
+    name: 'Order chair',
+    quantity: 1,
+    metadata: {
+      finished_unit: true,
+      sent_to_customer: true,
+      sent_to_customer_at: '2026-01-01T00:00:00Z',
+      receiver_checked_at: '2026-01-01T00:00:00Z',
+      received_at: '2026-01-01T00:00:00Z',
+      assembly_id: 'asm-sent',
+    },
+  };
+  assert.strictEqual(mod.deliveryEntrySentToCustomer(sentLine), true);
+  assert.strictEqual(mod.deliveryCustomerSentLines([sentLine, entries[3]]).length, 1);
+
+  const catalog = await import(
+    pathToFileURL(path.join(root, 'server/lib/kitweDeliveryCatalogSync.js')).href
+  );
+  const kitweUnits = catalog.assemblyUnitsFullyReceived([sentLine]);
+  assert.strictEqual(kitweUnits.size, 0, 'sent-to-customer units must not enter Kitwe catalog');
+
+  const kitweLine = {
+    ...sentLine,
+    id: 'kitwe',
+    metadata: {
+      ...sentLine.metadata,
+      sent_to_customer: false,
+      sent_to_customer_at: null,
+      assembly_id: 'asm-kitwe',
+    },
+  };
+  const mixed = catalog.assemblyUnitsFullyReceived([kitweLine]);
+  assert.strictEqual(mixed.get('asm-kitwe'), 1);
+
   const wdSrc = require('fs').readFileSync(path.join(root, 'src/utils/warehouseDelivery.js'), 'utf8');
   assert(
     !wdSrc.includes("set-parent' || line?.kind === 'set-component') return 'skip'"),

@@ -2,7 +2,7 @@ import { getFirestore } from './firestoreDb.js';
 
 const TOKENS_COLLECTION = 'warehouse_production_push_tokens';
 
-const VALID_APP_TARGETS = new Set(['upholstery', 'carpentry', 'painting']);
+const VALID_APP_TARGETS = new Set(['upholstery', 'carpentry', 'painting', 'delivery']);
 
 export function normalizePushAppTarget(raw) {
   const v = String(raw || '').trim().toLowerCase();
@@ -50,6 +50,8 @@ function tokenAllowsEvent(prefs, eventType) {
   if (ev === 'repair' || ev === 'repairs') return p.repairs !== false;
   if (ev === 'painting_job' || ev === 'painting_jobs') return p.painting_jobs !== false;
   if (ev === 'job' || ev === 'jobs') return p.jobs !== false;
+  if (ev === 'delivery_repair' || ev === 'delivery_repairs') return p.delivery_repairs !== false;
+  if (ev === 'delivery_order' || ev === 'delivery_orders') return p.delivery_orders !== false;
   return true;
 }
 
@@ -201,6 +203,43 @@ export async function notifyPaintingNewJob(job) {
     body: `${name} × ${qty}`.trim(),
     data: { screen: 'Jobs', event_type: 'painting_jobs', painting_job_id: job?.job_id || job?.id || '' },
     appTargets: ['painting'],
+  });
+}
+
+export async function notifyDeliveryRepairReadyForDriver(order) {
+  const num = order?.return_number || order?.id || '';
+  const name = order?.assembly_name || 'Product';
+  return sendProductionOperatorPush({
+    title: 'Repair ready for delivery',
+    body: `${num} — ${name}`.trim(),
+    data: {
+      screen: 'DeliveryRepairQueue',
+      event_type: 'delivery_repairs',
+      return_order_id: order?.id || '',
+    },
+    appTargets: ['delivery'],
+  });
+}
+
+export async function notifyDeliveryOrderReadyForDriver({
+  assemblyName,
+  qty = 1,
+  department = '',
+  jobId = '',
+  quoteNumber = '',
+} = {}) {
+  const label = String(quoteNumber || assemblyName || 'Order').trim();
+  const q = Math.max(1, Math.floor(Number(qty) || 1));
+  const dept = String(department || '').trim();
+  return sendProductionOperatorPush({
+    title: 'Order ready for delivery',
+    body: `${label}${dept ? ` (${dept})` : ''} × ${q}`.trim(),
+    data: {
+      screen: 'DeliveryOrderQueue',
+      event_type: 'delivery_orders',
+      job_id: String(jobId || '').trim(),
+    },
+    appTargets: ['delivery'],
   });
 }
 

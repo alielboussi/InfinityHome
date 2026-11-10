@@ -30,8 +30,11 @@ export async function resumePaintingProductionJob(jobId) {
   return warehouseMobileRequest('painting-job-resume', { job_id: jobId });
 }
 
-export async function finishPaintingProductionJob(jobId) {
-  return warehouseMobileRequest('painting-job-finish', { job_id: jobId });
+export async function finishPaintingProductionJob(jobId, { destination = 'delivery' } = {}) {
+  return warehouseMobileRequest('painting-job-finish', {
+    job_id: jobId,
+    destination: destination === 'floor1' ? 'floor1' : 'delivery',
+  });
 }
 
 export async function fetchProductionStoreroomMaterials() {

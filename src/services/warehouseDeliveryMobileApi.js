@@ -57,6 +57,13 @@ export function setDeliveryEntryReceiverCheck(entryId, checked) {
   return warehouseDeliveryMobileOp('delivery-receiver-check', { entry_id: entryId, checked });
 }
 
+export function setDeliveryEntrySendToCustomer(entryId, send) {
+  return warehouseDeliveryMobileOp('delivery-receiver-send-to-customer', {
+    entry_id: entryId,
+    send,
+  });
+}
+
 export function acceptWarehouseDeliverySession(sessionId) {
   return warehouseDeliveryMobileOp('delivery-accept', { session_id: sessionId });
 }

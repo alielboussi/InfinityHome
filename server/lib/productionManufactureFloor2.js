@@ -9,7 +9,6 @@ import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockR
 
 const LOCATIONS = 'locations';
 const JOBS_UPHOLSTERY = 'upholstery_production_jobs';
-const JOBS_CARPENTRY = 'carpentry_production_jobs';
 
 function stripUndefinedDeep(value) {
   if (value === undefined) return undefined;
@@ -42,7 +41,8 @@ async function resolveFloor2Id(sb) {
 /**
  * Open a production job from Floor 2 WIP (no automatic storeroom BOM).
  * Neither channel touches Warehouse Floor 1 on job open (see productionFloor1StockPolicy.js).
- * Carpentry: may deduct Floor 2 when the job opens (floor2_push). Upholstery: Floor 2 unchanged until job finish.
+ * Upholstery: deduct Floor 2 immediately (WIP taken to the bench). Carpentry: job only — Floor 2
+ * is credited when the manufacture job is finished.
  */
 export async function pushFloor2ToProductionJob(sb, {
   assemblyId,
@@ -55,6 +55,11 @@ export async function pushFloor2ToProductionJob(sb, {
   const aid = String(assemblyId || '').trim();
   const qty = Math.max(1, Math.floor(Number(productQty) || 1));
   if (!aid) throw new Error('assembly_id required');
+
+  if (route === 'carpentry') {
+    const { startCarpentryCatalogManufactureJob } = await import('./carpentryProductionJobs.js');
+    return startCarpentryCatalogManufactureJob(sb, { assemblyId: aid, productQty: qty, userId });
+  }
 
   const floor2Id = await resolveFloor2Id(sb);
   const have = await loadAssemblyInventoryQty(sb, aid, floor2Id);
@@ -70,55 +75,13 @@ export async function pushFloor2ToProductionJob(sb, {
   if (aErr) throw new Error(aErr.message || 'Failed to load product');
   if (!assembly?.id) throw new Error('Product not found');
 
-  // Carpentry: WIP leaves Floor 2 when the job opens. Upholstery: raw stays on Floor 2 in the
-  // portal until the job is finished (deduct raw + credit finished on finishUpholsteryProductionJob).
-  if (route === 'carpentry') {
-    await adjustAssemblyInventory(sb, aid, floor2Id, -qty);
-    await recomputeWarehouseLocationStockServer(sb, floor2Id);
-  }
+  await adjustAssemblyInventory(sb, aid, floor2Id, -qty);
+  await recomputeWarehouseLocationStockServer(sb, floor2Id);
 
   const now = new Date().toISOString();
   const jobId = newUuid();
   const productName = String(assembly.name || aid).trim();
   const productSku = String(assembly.family_sku || '').trim();
-
-  if (route === 'carpentry') {
-    const row = stripUndefinedDeep({
-      id: jobId,
-      assembly_id: aid,
-      product_name: productName,
-      product_sku: productSku,
-      product_qty: qty,
-      status: 'ready',
-      accumulated_ms: 0,
-      timer_started_at: null,
-      started_at: now,
-      completed_at: null,
-      accepted_by: userId || null,
-      metadata: {
-        channel: 'carpentry_workshop_app',
-        floor2_push: true,
-        material_usage_rows: [],
-        manual_material_lines: [],
-        storeroom_location_ids: [],
-      },
-      created_at: now,
-      updated_at: now,
-    });
-    const { data: inserted, error: insErr } = await sb.from(JOBS_CARPENTRY).insert(row).select('*').single();
-    if (insErr) throw new Error(insErr.message || 'Failed to create carpentry job');
-    return {
-      job: {
-        job_id: inserted.id,
-        id: inserted.id,
-        assembly_id: aid,
-        product_name: productName,
-        product_sku: productSku,
-        product_qty: qty,
-        status: inserted.status,
-      },
-    };
-  }
 
   const { data: allAssemblies } = await sb.from('warehouse_assemblies').select('id, name, family_sku, metadata');
   const finished = findUpholsteryFinishedForRawAssembly(allAssemblies || [], aid);
@@ -143,7 +106,9 @@ export async function pushFloor2ToProductionJob(sb, {
     metadata: {
       channel: 'warehouse_production_app',
       floor2_push: true,
-      floor2_deduct_on_finish: true,
+      floor2_deduct_on_finish: false,
+      floor2_raw_deducted: true,
+      floor2_deducted_qty: qty,
       material_usage_rows: [],
       manual_material_lines: [],
       storeroom_location_ids: [],

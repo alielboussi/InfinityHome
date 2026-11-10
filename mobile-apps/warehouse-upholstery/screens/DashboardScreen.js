@@ -9,8 +9,12 @@ import { theme } from '../shared/theme';
 import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifest';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
+import { useDashboardNotificationBadges } from '../shared/hooks/useDashboardNotificationBadges';
+import DashboardTileBadge from '../shared/components/DashboardTileBadge';
 
-function DashboardTile({ icon, title, width, height, onPress }) {
+function DashboardTile({
+  icon, title, width, height, onPress, badgeCount = 0,
+}) {
   const iconSize = Math.round(Math.min(44, height * 0.32));
   return (
     <Pressable
@@ -23,6 +27,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
       onPress={onPress}
       accessibilityRole="button"
     >
+      <DashboardTileBadge count={badgeCount} />
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
@@ -52,6 +57,7 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
+  const { counts, clearBadge } = useDashboardNotificationBadges();
 
   const allTiles = [
     {
@@ -73,6 +79,7 @@ export default function DashboardScreen({
       screenId: 'upholstery_jobs',
       icon: 'progress-clock',
       title: tUi('upholsteryJobsTitle', locale),
+      badgeKey: 'jobs',
       onPress: () => navigation.navigate('Jobs'),
     },
     {
@@ -80,6 +87,7 @@ export default function DashboardScreen({
       screenId: 'upholstery_quotes',
       icon: 'clipboard-text-outline',
       title: tUi('dashUpholsteryQuoteOrders', locale),
+      badgeKey: 'quotes',
       onPress: () => navigation.navigate('UpholsteryQuotes'),
     },
     {
@@ -87,6 +95,7 @@ export default function DashboardScreen({
       screenId: 'upholstery_repairs',
       icon: 'wrench-clock',
       title: tUi('dashRepairs', locale),
+      badgeKey: 'repairs',
       onPress: () => navigation.navigate('Repairs'),
     },
   ];
@@ -185,7 +194,11 @@ export default function DashboardScreen({
               title={tile.title}
               width={tileWidth}
               height={tileHeight}
-              onPress={tile.onPress}
+              badgeCount={tile.badgeKey ? counts[tile.badgeKey] || 0 : 0}
+              onPress={() => {
+                if (tile.badgeKey) clearBadge(tile.badgeKey);
+                tile.onPress();
+              }}
             />
           ))}
         </View>

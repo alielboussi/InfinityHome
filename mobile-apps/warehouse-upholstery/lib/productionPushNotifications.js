@@ -5,6 +5,10 @@ import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { getFirebaseAuth } from '../shared/firebase';
 import { loadProductionPushPrefs } from './productionPushPrefs';
 import { navigateFromProductionPushData } from '../shared/lib/productionPushNavigation';
+import {
+  applyPushDataToDashboardBadge,
+  clearDashboardBadgeForPushData,
+} from '../shared/lib/dashboardNotificationBadges';
 
 let notificationHandlerConfigured = false;
 
@@ -96,9 +100,12 @@ export function subscribeProductionPushListeners(navigationRef) {
   }
   const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
     const data = response?.notification?.request?.content?.data || {};
+    clearDashboardBadgeForPushData(data);
     navigateFromProductionNotification(navigationRef, data);
   });
-  const subReceived = Notifications.addNotificationReceivedListener(() => {
+  const subReceived = Notifications.addNotificationReceivedListener((notification) => {
+    const data = notification?.request?.content?.data || {};
+    applyPushDataToDashboardBadge(data);
     const { emitProductionRefresh } = require('./productionRefreshBus');
     emitProductionRefresh('push');
   });

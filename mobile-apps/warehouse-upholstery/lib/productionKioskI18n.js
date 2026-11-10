@@ -339,8 +339,8 @@ const UI_STRINGS = {
     ar: 'تنجيد {qty} × {name}؟ يخصم مواد Floor 2 الخام فقط — سجّل المستودع في مهمة أو طلب.',
   },
   manufactureDone: {
-    en: 'Done — Floor 2 raw deducted; finished stock updated. Use the job wrench for storeroom materials.',
-    ar: 'تم — خُصم خام Floor 2 وتم تحديث المخزون المنتهٍ. استخدم مفتاح المهمة لمواد المستودع.',
+    en: 'Job opened — Floor 2 raw deducted now. Open Jobs to add materials and finish (Delivery virtual hold).',
+    ar: 'تم بدء المهمة — خُصم خام Floor 2 الآن. افتح المهام لإضافة المواد والإنهاء (حجز تسليم افتراضي).',
   },
   manufactureFailed: { en: 'Manufacture failed', ar: 'فشل التصنيع' },
   manufactureEmpty: {

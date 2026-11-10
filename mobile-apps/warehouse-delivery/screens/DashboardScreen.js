@@ -12,8 +12,12 @@ import {
   isWorkshopOrDeliveryScreenAllowed,
 } from '../shared/mobileAccessManifest';
 import { theme } from '../shared/theme';
+import { useDashboardNotificationBadges } from '../shared/hooks/useDashboardNotificationBadges';
+import DashboardTileBadge from '../shared/components/DashboardTileBadge';
 
-function DashboardTile({ icon, title, width, height, onPress }) {
+function DashboardTile({
+  icon, title, width, height, onPress, badgeCount = 0,
+}) {
   const iconSize = Math.round(Math.min(44, height * 0.32));
   return (
     <Pressable
@@ -26,6 +30,7 @@ function DashboardTile({ icon, title, width, height, onPress }) {
       onPress={onPress}
       accessibilityRole="button"
     >
+      <DashboardTileBadge count={badgeCount} />
       <MaterialCommunityIcons
         name={icon}
         size={iconSize}
@@ -55,6 +60,7 @@ export default function DashboardScreen({
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
+  const { counts, clearBadge } = useDashboardNotificationBadges();
 
   const allTiles = [
     {
@@ -69,6 +75,7 @@ export default function DashboardScreen({
       screenId: 'delivery_send_kitwe',
       icon: 'tools',
       title: tUi('dashDeliveryRepairs', locale),
+      badgeKey: 'delivery_repairs',
       onPress: () => navigation.navigate('DeliveryRepairQueue'),
     },
     {
@@ -76,6 +83,7 @@ export default function DashboardScreen({
       screenId: 'delivery_send_kitwe',
       icon: 'clipboard-list-outline',
       title: tUi('dashDeliveryOrders', locale),
+      badgeKey: 'delivery_orders',
       onPress: () => navigation.navigate('DeliveryOrderQueue'),
     },
     {
@@ -193,7 +201,11 @@ export default function DashboardScreen({
               title={tile.title}
               width={tileWidth}
               height={tileHeight}
-              onPress={tile.onPress}
+              badgeCount={tile.badgeKey ? counts[tile.badgeKey] || 0 : 0}
+              onPress={() => {
+                if (tile.badgeKey) clearBadge(tile.badgeKey);
+                tile.onPress();
+              }}
             />
           ))}
         </View>

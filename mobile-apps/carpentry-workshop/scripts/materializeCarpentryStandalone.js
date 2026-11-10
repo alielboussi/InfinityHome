@@ -247,10 +247,42 @@ function main() {
     let pushText = fs.readFileSync(pushNotifPath, 'utf8');
     pushText = pushText
       .replace("app_target: 'upholstery'", "app_target: 'carpentry'")
+      .replace("quotesList: 'UpholsteryQuotes'", "quotesList: 'Quotes'")
+      .replace("quotesDetail: 'UpholsteryQuoteDetail'", "quotesDetail: 'QuoteDetail'")
+      .replace("jobs: 'Jobs',\n    repairs: 'Repairs',", "jobs: 'Jobs',\n    repairs: 'Repairs',\n    painting: 'Painting',")
       .replace("screen === 'UpholsteryQuotes' || screen === 'UpholsteryQuoteDetail'", "screen === 'Quotes' || screen === 'QuoteDetail'")
       .replace("nav.navigate('UpholsteryQuotes')", "nav.navigate('Quotes')")
       .replace("nav.navigate('UpholsteryQuoteDetail'", "nav.navigate('QuoteDetail'");
     safeWriteFileSync(pushNotifPath, pushText);
+  }
+
+  const i18nPath = path.join(kioskPath, 'lib', 'productionKioskI18n.js');
+  if (fs.existsSync(i18nPath)) {
+    let i18n = fs.readFileSync(i18nPath, 'utf8');
+    if (!i18n.includes('quoteOrderEndSendPainting:')) {
+      i18n = i18n.replace(
+        "quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },",
+        "quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },\n"
+        + "  quoteOrderEndSendPainting: { en: 'End + send to painting', ar: 'إنهاء وإرسال للدهان' },\n"
+        + "  carpentryQuoteSentToPainting: {\n"
+        + "    en: 'Order completed and sent to the Painting app.',\n"
+        + "    ar: 'اكتمل الطلب وأُرسل إلى تطبيق الدهان.',\n"
+        + '  },',
+      );
+    }
+    i18n = i18n.replace(
+      "quoteOrderCompleteDone: { en: 'Production ended.', ar: 'انتهى الإنتاج.' },",
+      "quoteOrderCompleteDone: { en: 'Production ended — Delivery app virtual hold.', ar: 'انتهى الإنتاج — حجز افتراضي في تطبيق التسليم.' },",
+    );
+    const carpentryManufactureIntro = {
+      en: 'Carpentry catalog (same flow as Upholstery Manufacture). Pick qty to open a job — Floor 2 stock is not reduced here. On Jobs: add storeroom materials (wrench), then Finish to deduct BOM from storerooms and add WIP qty on Warehouse Floor 2.',
+      ar: 'كتالوج النجارة (نفس تدفق التصنيع في التنجيد). اختر الكمية لبدء مهمة — لا يُخصم من Floor 2 هنا. في المهام: أضف مواد المستودع (مفتاح الربط)، ثم إنهاء لخصم BOM وإضافة WIP على Warehouse Floor 2.',
+    };
+    i18n = i18n.replace(
+      /manufactureIntro: \{[\s\S]*?\n  \},/,
+      `manufactureIntro: {\n    en: '${carpentryManufactureIntro.en.replace(/'/g, "\\'")}',\n    ar: '${carpentryManufactureIntro.ar.replace(/'/g, "\\'")}',\n  },`,
+    );
+    safeWriteFileSync(i18nPath, i18n);
   }
 
   const prodApiPath = path.join(kioskPath, 'services', 'productionApi.js');

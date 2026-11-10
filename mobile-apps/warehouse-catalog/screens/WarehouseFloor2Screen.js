@@ -29,6 +29,7 @@ import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { theme } from '../shared/theme';
 import ProductionProductListRow, { productionProductRowPressableStyle } from '../shared/components/ProductionProductListRow';
 
+const CARD_MIN_SIZE = PixelRatio.roundToNearestPixel((8 * 160) / 2.54 / PixelRatio.get());
 const CARD_GAP = 12;
 const productRowPressable = productionProductRowPressableStyle(CARD_GAP);
 

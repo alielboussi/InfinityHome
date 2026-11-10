@@ -227,14 +227,13 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
     await recomputeWarehouseLocationStockServer(sb, floor2LocationId);
   } else {
     const floor1Have = await loadAssemblyInventoryQty(sb, assemblyId, floor1LocationId);
-    if (floor1Have < qty) {
-      throw new Error(
-        `Insufficient stock for painting (need ${qty} on Floor 2 WIP or Warehouse Floor 1 after order complete)`,
-      );
+    if (floor1Have >= qty) {
+      inventory_source = 'floor1';
+      await adjustAssemblyInventory(sb, assemblyId, floor1LocationId, -qty);
+      await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
+    } else {
+      inventory_source = 'virtual_hold';
     }
-    inventory_source = 'floor1';
-    await adjustAssemblyInventory(sb, assemblyId, floor1LocationId, -qty);
-    await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
   }
 
   const ctx = await loadPaintingProductContext(sb, assemblyId);
@@ -259,6 +258,7 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
       inventory_source,
       floor2_deducted_qty: inventory_source === 'floor2' ? qty : 0,
       factory_deducted_qty: inventory_source === 'floor1' ? qty : 0,
+      virtual_hold: inventory_source === 'virtual_hold',
       floor2_location_id: floor2LocationId,
     },
     created_at: now,
@@ -344,12 +344,15 @@ export async function resumePaintingProductionJob(sb, { jobId, userId }) {
 }
 
 /**
- * Painting app: finish job — credit finished qty on Warehouse Floor 1 (Send Delivery).
- * Floor 2 was already deducted when carpentry sent WIP to painting.
+ * Painting app: finish job.
+ * destination=delivery → virtual hold in Delivery app (default).
+ * destination=floor1 → credit Warehouse Floor 1 for storage.
+ * Floor 2 was already deducted when carpentry sent WIP (unless source was virtual_hold).
  */
 export async function finishPaintingProductionJob(sb, {
   jobId,
   userId = null,
+  destination = 'delivery',
 }) {
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
@@ -358,6 +361,9 @@ export async function finishPaintingProductionJob(sb, {
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
   const { floor2LocationId } = await resolveFloor2AndFactoryIds(sb);
 
+  const dest = String(destination || 'delivery').trim().toLowerCase() === 'floor1'
+    ? 'floor1'
+    : 'delivery';
   const now = new Date().toISOString();
   const finalElapsed = computeElapsedMs(job);
   const runId = newUuid();
@@ -375,11 +381,20 @@ export async function finishPaintingProductionJob(sb, {
       painting_job_id: job.id,
       elapsed_ms: finalElapsed,
       floor2_location_id: floor2LocationId,
+      finish_destination: dest,
     },
     created_at: now,
   });
   if (runErr && !/not found|does not exist/i.test(String(runErr.message || ''))) {
     throw new Error(runErr.message || 'Failed to save production run');
+  }
+
+  let floor1Credited = false;
+  if (dest === 'floor1' && productId) {
+    const { floor1LocationId } = await resolveFloor2AndFactoryIds(sb);
+    await adjustAssemblyInventory(sb, productId, floor1LocationId, qty);
+    await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
+    floor1Credited = true;
   }
 
   const updated = await saveJobPatch(sb, job.id, {
@@ -390,25 +405,33 @@ export async function finishPaintingProductionJob(sb, {
     metadata: {
       ...(job.metadata || {}),
       production_run_id: runErr ? null : runId,
+      finish_destination: dest,
+      floor1_credited: floor1Credited,
     },
   });
 
-  const { data: asm } = await sb.from('warehouse_assemblies').select('name').eq('id', productId).maybeSingle();
-  const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
-  const registered = await registerProductionJobAwaitingDriver(sb, {
-    jobsTable: JOBS,
-    jobRow: updated,
-    assemblyId: productId,
-    assemblyName: asm?.name || productId,
-    qty,
-    department: 'painting',
-  });
+  let deliveryAdminAwaiting = false;
+  if (dest === 'delivery') {
+    const { data: asm } = await sb.from('warehouse_assemblies').select('name').eq('id', productId).maybeSingle();
+    const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+    await registerProductionJobAwaitingDriver(sb, {
+      jobsTable: JOBS,
+      jobRow: updated,
+      assemblyId: productId,
+      assemblyName: asm?.name || productId,
+      qty,
+      department: 'painting',
+    });
+    deliveryAdminAwaiting = true;
+  }
 
   return {
     job: serializeJob(updated),
     run_id: runErr ? null : runId,
     assembly_id: productId,
     product_qty: qty,
-    delivery_admin_awaiting_driver: true,
+    finish_destination: dest,
+    delivery_admin_awaiting_driver: deliveryAdminAwaiting,
+    floor1_credited: floor1Credited,
   };
 }

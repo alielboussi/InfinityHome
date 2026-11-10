@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -32,8 +32,18 @@ import RunningJobElapsed from '../components/RunningJobElapsed';
 import JobMaterialsInlineList from '../shared/components/JobMaterialsInlineList';
 import { subscribeProductionRefresh } from '../lib/productionRefreshBus';
 import { RepairCard } from './WarehouseRepairsScreen';
+import {
+  mergeReturnOrderRow,
+  optimisticReturnTimerRow,
+} from '../shared/lib/repairReturnQueueUi';
+import {
+  mergeJobInList,
+  optimisticPauseJobPatch,
+  optimisticResumeJobPatch,
+  serverJobPatchFromResponse,
+} from '../shared/lib/productionJobTimerOptimistic';
 
-function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMaterials }) {
+function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, onFinish, onMaterials }) {
   const isRunning = job.status === 'running';
   const canPlay = job.status === 'ready' || job.status === 'paused';
   const isCompleted = job.status === 'completed';
@@ -76,7 +86,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
             hintKey="hintJobPlay"
             locale={locale}
             textAlign={textAlign}
-            disabled={busy}
+            disabled={busy || Boolean(timerLocked)}
             onPress={() => onPlay(job.job_id || job.id)}
             style={styles.iconBtn}
           >
@@ -88,7 +98,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
             hintKey="hintJobPause"
             locale={locale}
             textAlign={textAlign}
-            disabled={busy}
+            disabled={busy || Boolean(timerLocked)}
             onPress={() => onPause(job.job_id || job.id)}
             style={styles.iconBtn}
           >
@@ -153,6 +163,9 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
   const [returns, setReturns] = useState([]);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [timerBusyId, setTimerBusyId] = useState('');
+  const timerOpsRef = useRef(new Set());
+  const jobsSnapshotRef = useRef([]);
   const [materialsJob, setMaterialsJob] = useState(null);
   const [repairMaterials, setRepairMaterials] = useState(null);
 
@@ -204,8 +217,60 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
     }
   };
 
-  const onPlay = (jobId) => wrapJobBusy(jobId, () => resumePaintingProductionJob(jobId));
-  const onPause = (jobId) => wrapJobBusy(jobId, () => pausePaintingProductionJob(jobId));
+  const runOptimisticTimerOp = useCallback(async (jobId, mode) => {
+    const id = String(jobId || '').trim();
+    if (!id || timerOpsRef.current.has(id)) return;
+
+    let applied = false;
+    setJobs((prev) => {
+      const job = prev.find((j) => String(j.job_id || j.id) === id);
+      if (!job) return prev;
+      applied = true;
+      jobsSnapshotRef.current = prev;
+      const patch = mode === 'pause' ? optimisticPauseJobPatch(job) : optimisticResumeJobPatch();
+      return mergeJobInList(prev, id, patch);
+    });
+    if (!applied) return;
+
+    timerOpsRef.current.add(id);
+    setTimerBusyId(id);
+    try {
+      const result = mode === 'pause'
+        ? await pausePaintingProductionJob(id)
+        : await resumePaintingProductionJob(id);
+      const serverPatch = serverJobPatchFromResponse(result);
+      if (serverPatch) {
+        setJobs((prev) => mergeJobInList(prev, id, serverPatch));
+      }
+    } catch (e) {
+      setJobs(jobsSnapshotRef.current);
+      Alert.alert(tUi('manufactureFailed', locale), e?.message || '');
+    } finally {
+      timerOpsRef.current.delete(id);
+      setTimerBusyId((cur) => (cur === id ? '' : cur));
+    }
+  }, [locale]);
+
+  const onPlay = (jobId) => {
+    void runOptimisticTimerOp(jobId, 'resume');
+  };
+
+  const onPause = (jobId) => {
+    void runOptimisticTimerOp(jobId, 'pause');
+  };
+
+  const completePaintingFinish = (jobId, destination) => {
+    wrapJobBusy(jobId, async () => {
+      const result = await finishPaintingProductionJob(jobId, { destination });
+      const dest = result?.finish_destination || destination;
+      Alert.alert(
+        tUi('upholsteryJobFinish', locale),
+        dest === 'floor1'
+          ? tUi('paintingJobFinishDoneFloor1', locale)
+          : tUi('paintingJobFinishDoneDelivery', locale),
+      );
+    });
+  };
 
   const onFinish = (job) => {
     const jobId = job.job_id || job.id;
@@ -222,25 +287,29 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
       [
         { text: tUi('cancel', locale), style: 'cancel' },
         {
-          text: tUi('upholsteryJobFinish', locale),
-          style: 'destructive',
-          onPress: () => wrapJobBusy(jobId, async () => {
-            await finishPaintingProductionJob(jobId);
-            Alert.alert(tUi('upholsteryJobFinish', locale), tUi('paintingJobFinishDone', locale));
-          }),
+          text: tUi('paintingFinishToDelivery', locale),
+          onPress: () => completePaintingFinish(jobId, 'delivery'),
+        },
+        {
+          text: tUi('paintingFinishToFloor1', locale),
+          onPress: () => completePaintingFinish(jobId, 'floor1'),
         },
       ],
     );
   };
 
-  const runReturnOp = async (row, op, body) => {
+  const runReturnOp = async (row, op, body, { timerAction } = {}) => {
+    const optimistic = timerAction ? optimisticReturnTimerRow(row, timerAction) : null;
+    if (optimistic) mergeReturnOrderRow(setReturns, optimistic);
     setBusyId(`return:${row.id}`);
     setError('');
     try {
-      await warehouseMobileRequest(op, { return_order_id: row.id, ...body });
-      await loadQueue();
+      const res = await warehouseMobileRequest(op, { return_order_id: row.id, ...body });
+      if (res?.return_order) mergeReturnOrderRow(setReturns, res.return_order);
+      void loadQueue({ showLoading: false });
     } catch (err) {
       setError(err?.message || tUi('returnAcceptFailed', locale));
+      void loadQueue({ showLoading: false });
     } finally {
       setBusyId('');
     }
@@ -248,13 +317,13 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
 
   const onReturnPlay = (row) => {
     if (row.status === 'submitted') {
-      runReturnOp(row, 'return-order-accept');
+      runReturnOp(row, 'return-order-accept', {}, { timerAction: 'accept' });
       return;
     }
-    runReturnOp(row, 'return-order-resume');
+    runReturnOp(row, 'return-order-resume', {}, { timerAction: 'resume' });
   };
 
-  const onReturnPause = (row) => runReturnOp(row, 'return-order-pause');
+  const onReturnPause = (row) => runReturnOp(row, 'return-order-pause', {}, { timerAction: 'pause' });
 
   const onReturnStop = (row) => {
     Alert.alert(
@@ -346,6 +415,7 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
               locale={locale}
               textAlign={textAlign}
               busy={busyId === `job:${jobRow.job_id || jobRow.id}`}
+              timerLocked={timerBusyId === String(jobRow.job_id || jobRow.id)}
               onPlay={onPlay}
               onPause={onPause}
               onFinish={onFinish}

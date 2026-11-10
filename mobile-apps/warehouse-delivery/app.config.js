@@ -101,6 +101,13 @@ module.exports = {
           photosPermission: 'Allow photo access if the system routes scanner permission through the gallery.',
         },
       ],
+      [
+        'expo-notifications',
+        {
+          color: '#38bdf8',
+          defaultChannel: 'delivery-alerts',
+        },
+      ],
     ],
     extra: {
       firebase,

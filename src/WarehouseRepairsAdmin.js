@@ -115,6 +115,8 @@ function RepairAdminCard({ row }) {
         Sent by: {row.created_by_name || row.created_by_email || '—'}
       </div>
       <div style={{ color: 'var(--dash-muted)', marginTop: 4 }}>
+        {repairDepartmentLabel(resolveReturnRepairDepartment(row))}
+        {' · '}
         Reason: {row.reason || '—'}
         {row.leather_code ? ` · Leather: ${row.leather_code}` : ''}
         {row.customer_name ? ` · Customer: ${row.customer_name}` : ''}
@@ -165,12 +167,20 @@ function holdSummaryLine(rows, kind) {
   return `${n} ${n === 1 ? 'unit' : 'units'} ${DELIVERY_ADMIN_HOLD_LABEL.toLowerCase()}`;
 }
 
+const DEPT_FILTERS = Object.freeze([
+  { id: 'all', label: 'All' },
+  { id: 'upholstery', label: 'Upholstery' },
+  { id: 'carpentry', label: 'Carpentry' },
+  { id: 'painting', label: 'Painting' },
+]);
+
 export default function WarehouseRepairsAdmin() {
   const [rows, setRows] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -207,9 +217,11 @@ export default function WarehouseRepairsAdmin() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
+    const deptWant = String(deptFilter || 'all').toLowerCase();
     return rows.filter((row) => {
       const dept = resolveReturnRepairDepartment(row);
+      if (deptWant !== 'all' && dept !== deptWant) return false;
+      if (!q) return true;
       const admin = readDeliveryAdminMeta(row);
       const hay = [
         row.return_number,
@@ -228,16 +240,19 @@ export default function WarehouseRepairsAdmin() {
       ].join(' ').toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, search]);
+  }, [rows, search, deptFilter]);
 
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter((row) => (
-      [row.assembly_name, row.family_sku, row.department, row.quote_number, row.production_job_id]
-        .join(' ').toLowerCase().includes(q)
-    ));
-  }, [orders, search]);
+    const deptWant = String(deptFilter || 'all').toLowerCase();
+    return orders.filter((row) => {
+      const dept = String(row.department || '').trim().toLowerCase();
+      if (deptWant !== 'all' && dept !== deptWant) return false;
+      if (!q) return true;
+      return [row.assembly_name, row.family_sku, row.department, row.quote_number, row.production_job_id]
+        .join(' ').toLowerCase().includes(q);
+    });
+  }, [orders, search, deptFilter]);
 
   const byDepartment = useMemo(() => {
     const buckets = Object.fromEntries(REPAIR_DEPARTMENTS.map((d) => [d.id, []]));
@@ -282,6 +297,30 @@ export default function WarehouseRepairsAdmin() {
         {' '}
         when Hassan accepts. No Floor 1 / Floor 2 stock is credited for these lines.
       </p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        {DEPT_FILTERS.map((opt) => {
+          const on = deptFilter === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setDeptFilter(opt.id)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 8,
+                border: on ? '1px solid #1d4ed8' : '1px solid var(--dash-border)',
+                background: on ? '#dbeafe' : 'var(--dash-surface-2)',
+                color: on ? '#1e3a8a' : 'var(--dash-text)',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
 
       <input
         type="search"

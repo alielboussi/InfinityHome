@@ -414,13 +414,23 @@ const UI_STRINGS = {
     ar: 'جاهز للتسليم',
   },
   paintingJobFinishBody: {
-    en: 'Finish {qty} × {name}? Credits Warehouse Floor 1 (/warehouse-products).',
-    ar: 'إنهاء {qty} × {name}؟ يُضاف إلى Warehouse Floor 1.',
+    en: 'Finish {qty} × {name}? Send to the Delivery app (virtual hold) or store on Floor 1.',
+    ar: 'إنهاء {qty} × {name}؟ إرسال لتطبيق التسليم (حجز افتراضي) أو تخزين في الطابق 1.',
   },
   paintingJobFinishDone: {
-    en: 'Done — finished stock is on Warehouse Floor 1.',
-    ar: 'تم — المخزون الجاهز في Warehouse Floor 1.',
+    en: 'Done — choose Floor 1 storage or the Delivery queue.',
+    ar: 'تم — اختر تخزين الطابق 1 أو قائمة التسليم.',
   },
+  paintingJobFinishDoneDelivery: {
+    en: 'Done — in the Delivery app queue (virtual hold, not on floor stock).',
+    ar: 'تم — في قائمة تطبيق التسليم (حجز افتراضي، ليس على مخزون الطوابق).',
+  },
+  paintingJobFinishDoneFloor1: {
+    en: 'Done — finished stock credited on Warehouse Floor 1.',
+    ar: 'تم — أُضيف المخزون الجاهز إلى الطابق 1.',
+  },
+  paintingFinishToDelivery: { en: 'Delivery queue', ar: 'قائمة التسليم' },
+  paintingFinishToFloor1: { en: 'Floor 1 storage', ar: 'تخزين الطابق 1' },
   paintingJobEmpty: {
     en: 'No painting jobs or Hassan returns in the queue. Carpentry can send Floor 2 WIP or completed orders.',
     ar: 'لا مهام دهان أو مرتجعات حسن في القائمة. يمكن للنجارة إرسال WIP من Floor 2 أو الطلبات المكتملة.',
@@ -431,8 +441,8 @@ const UI_STRINGS = {
   paintingQueueBadgeFloor2: { en: 'Floor 2 WIP', ar: 'WIP طابق 2' },
   paintingOpenPushSettings: { en: 'Alerts', ar: 'التنبيهات' },
   paintingJobControlsHint: {
-    en: 'Play · Pause · Stop (complete → Floor 1)',
-    ar: 'تشغيل · إيقاف مؤقت · Stop (إنهاء → Floor 1)',
+    en: 'Play · Pause · Stop (Delivery queue or Floor 1)',
+    ar: 'تشغيل · إيقاف مؤقت · Stop (قائمة التسليم أو الطابق 1)',
   },
   manufactureUpholsteryConfirmBody: {
     en: 'Finish 1 × {name}? Deducts raw from Warehouse Floor 2; {finished} credits Warehouse Floor 1.',

@@ -11,6 +11,7 @@ import { useStoreroomLocationLabels } from './hooks/useStoreroomLocationLabels';
 import { materialLinesFromJob } from './utils/productionJobMaterialLines';
 
 import { formatProductionElapsed } from './utils/formatProductionElapsed';
+import { formatQuoteOrderTimer } from './utils/quoteOrderElapsed';
 
 
 function statusLabel(status) {
@@ -27,17 +28,6 @@ function quoteOrderStatus(order) {
   if (order?.completed_at || order?.run_completed_at) return 'Completed';
   if (order?.accepted_at || order?.run_started_at) return 'In Production';
   return 'Awaiting Accept';
-}
-
-function computeQuoteOrderElapsedMs(order, nowMs = Date.now()) {
-  const startRaw = order?.run_started_at || order?.accepted_at;
-  if (!startRaw) return 0;
-  const startMs = new Date(startRaw).getTime();
-  if (!Number.isFinite(startMs)) return 0;
-  const endRaw = order?.completed_at || order?.run_completed_at;
-  const endMs = endRaw ? new Date(endRaw).getTime() : nowMs;
-  if (!Number.isFinite(endMs)) return Math.max(0, nowMs - startMs);
-  return Math.max(0, endMs - startMs);
 }
 
 function formatLineExtra(line) {
@@ -149,7 +139,6 @@ export default function UpholsteryTimerPage() {
           <tbody>
             {sortedQuoteOrders.map((order) => {
               const lines = Array.isArray(order.lines) ? order.lines : [];
-              const elapsed = computeQuoteOrderElapsedMs(order, nowMs);
               return (
                 <tr key={`quote-${order.quote_id}`}>
                   <td>
@@ -182,7 +171,7 @@ export default function UpholsteryTimerPage() {
                   </td>
                   <td>{quoteOrderStatus(order)}</td>
                   <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                    {order.accepted_at || order.run_started_at ? formatProductionElapsed(elapsed) : '00:00:00'}
+                    {formatQuoteOrderTimer(order, nowMs)}
                   </td>
                   <td>{order.sent_to_production_at ? new Date(order.sent_to_production_at).toLocaleString() : '—'}</td>
                   <td>{order.accepted_at ? new Date(order.accepted_at).toLocaleString() : '—'}</td>

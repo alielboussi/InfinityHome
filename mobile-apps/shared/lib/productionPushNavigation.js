@@ -40,9 +40,10 @@ export function navigateFromProductionPushData(navigationRef, data, routes) {
   }
 
   if (eventType === 'painting_jobs' || eventType === 'painting_job') {
-    if (routes.jobs) {
+    const dest = routes.painting || routes.jobs;
+    if (dest) {
       const params = jobId ? { focusJobId: jobId } : undefined;
-      nav.navigate(routes.jobs, params);
+      nav.navigate(dest, params);
       return;
     }
   }
@@ -51,6 +52,20 @@ export function navigateFromProductionPushData(navigationRef, data, routes) {
     if (routes.jobs) {
       const params = jobId ? { focusJobId: jobId } : undefined;
       nav.navigate(routes.jobs, params);
+      return;
+    }
+  }
+
+  if (eventType === 'delivery_repairs' || screen === 'DeliveryRepairQueue') {
+    if (routes.deliveryRepairs) {
+      nav.navigate(routes.deliveryRepairs);
+      return;
+    }
+  }
+
+  if (eventType === 'delivery_orders' || screen === 'DeliveryOrderQueue') {
+    if (routes.deliveryOrders) {
+      nav.navigate(routes.deliveryOrders);
       return;
     }
   }

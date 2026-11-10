@@ -1,4 +1,8 @@
-import { groupWarehouseDisplayLines, deliveryEntryPacketId } from './warehouseDelivery.js';
+import {
+  groupWarehouseDisplayLines,
+  deliveryEntryPacketId,
+  deliveryEntrySentToCustomer,
+} from './warehouseDelivery.js';
 import { buildSetDeliveryPrintGroupsFromEntries } from './warehouseDeliverySetPrint.js';
 
 function assemblyDisplayName(nameFormatter, rawName, assemblyId) {
@@ -77,9 +81,12 @@ export function buildDeliveryPrintGroupsFromEntries(entries, nameFormatter = nul
     if (!deliveryPrintSubrowIsPacketLine(subLine, assemblyName)) continue;
 
     group.lines.push({
-      name: subLine.name,
+      name: deliveryEntrySentToCustomer(row)
+        ? `${subLine.name} — sent to customer`
+        : subLine.name,
       packet_number: subLine.packet_number,
       qty: subLine.qty,
+      sent_to_customer: deliveryEntrySentToCustomer(row),
     });
   }
 

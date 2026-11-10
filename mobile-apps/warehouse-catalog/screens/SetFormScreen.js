@@ -13,7 +13,10 @@ import { useWarehouseCatalog } from '../shared/WarehouseCatalogContext';
 import { warehouseMobileRequest, formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
 import { isSetAssembly } from '../shared/warehouseCatalogProductCompleteness';
 import { WAREHOUSE_FACTORY_LOCATION_ID } from '../shared/repoSrc/constants/warehouseShowroomLocations.js';
-import { normalizeWarehouseProductSku } from '../shared/warehouseScanResolver';
+import {
+  expandWarehouseSkuMatchKeys,
+  normalizeWarehouseProductSku,
+} from '../shared/warehouseScanResolver';
 import { theme } from '../shared/theme';
 import { formButtonStyles } from '../shared/formButtonStyles';
 
@@ -30,12 +33,19 @@ export default function SetFormScreen({ navigation }) {
     [catalog],
   );
   const filteredProducts = useMemo(() => {
-    const q = String(setSearch || '').trim().toLowerCase();
-    if (!q) return [];
-    return products.filter(
-      (a) => String(a.name || '').toLowerCase().includes(q)
-        || String(a.family_sku || '').toLowerCase().includes(q),
-    ).slice(0, 30);
+    const raw = String(setSearch || '').trim();
+    if (!raw) return [];
+    const qLower = raw.toLowerCase();
+    const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
+  return products.filter((a) => {
+      if (String(a.name || '').toLowerCase().includes(qLower)) return true;
+      if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
+      const skuKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(a.family_sku));
+      for (const k of qKeys) {
+        if (k && skuKeys.has(k)) return true;
+      }
+      return false;
+    }).slice(0, 30);
   }, [products, setSearch]);
 
   const toggleProduct = (assembly) => {

@@ -25,6 +25,7 @@ import {
   fetchCarpentryManufactureProducts,
   runCarpentryManufacture,
 } from '../services/carpentryApi';
+import { emitProductionRefresh } from '../productionKiosk/lib/productionRefreshBus';
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 import ProductionProductListRow, { productionProductRowPressableStyle } from '../shared/components/ProductionProductListRow';
 import { theme } from '../shared/theme';
@@ -140,10 +141,12 @@ export default function ManufactureScreen({
     }, [loadList]),
   );
 
+  const catalogProducts = useMemo(() => (products || []).slice(), [products]);
+
   const filteredProducts = useMemo(() => {
     const raw = String(search || '').trim();
-    if (!raw) return [];
-    const base = products;
+    if (!raw) return catalogProducts;
+    const base = catalogProducts;
     const q = raw.toLowerCase();
     const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
     return base.filter((item) => {
@@ -156,7 +159,7 @@ export default function ManufactureScreen({
       }
       return false;
     });
-  }, [products, search]);
+  }, [catalogProducts, search]);
 
   const hasSearch = Boolean(String(search || '').trim());
 
@@ -208,8 +211,9 @@ export default function ManufactureScreen({
         assemblyId,
         productQty: rawNum,
       });
-      await loadList();
-      Alert.alert(tUi('manufactureTitle', locale), tUi('manufactureDone', locale));
+      emitProductionRefresh('manufacture');
+      await loadList({ fromPull: true });
+      Alert.alert(tUi('manufactureTitle', locale), tUi('manufactureJobOpened', locale));
     } catch (e) {
       Alert.alert(tUi('manufactureFailed', locale), e?.message || tUi('manufactureFailed', locale));
     } finally {
@@ -280,7 +284,7 @@ export default function ManufactureScreen({
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
-      <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntroFloor2', locale)}</Text>
+      <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntro', locale)}</Text>
       <View style={styles.searchRow}>
         <TextInput
           style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
@@ -324,9 +328,9 @@ export default function ManufactureScreen({
         removeClippedSubviews
         updateCellsBatchingPeriod={50}
         ListEmptyComponent={
-          !loading && !error && !hasSearch ? (
+          !loading && !error ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>
-              {tUi('manufactureEmpty', locale)}
+              {hasSearch ? tUi('manufactureSearchNoMatch', locale) : tUi('manufactureEmpty', locale)}
             </Text>
           ) : null
         }
@@ -335,7 +339,7 @@ export default function ManufactureScreen({
       <Modal visible={Boolean(qtyModal)} transparent animationType="fade" onRequestClose={() => setQtyModal(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setQtyModal(null)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>{tUi('manufactureAddStockTitle', locale)}</Text>
+            <Text style={styles.modalTitle}>{tUi('manufactureConfirmTitle', locale)}</Text>
             <Text style={styles.modalProductName}>{qtyModal?.item?.name || ''}</Text>
             <Text style={styles.modalSub}>
               {tUi('manufactureQtyLabel', locale).replace('{qty}', String(floor2Qty(qtyModal?.item)))}

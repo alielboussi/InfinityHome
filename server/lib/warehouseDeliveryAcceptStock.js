@@ -1,6 +1,7 @@
 import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
+  deliveryEntrySentToCustomer,
 } from '../../src/utils/warehouseDelivery.js';
 import { adjustPacketStock } from './warehouseDeliveryStock.js';
 import { adjustAssemblyStock } from './warehouseReturnStock.js';
@@ -172,6 +173,7 @@ export async function movePacketsForDeliveryReceive(sb, lines, {
     if (!deliverySourceStockDeducted(line)) {
       await applyPacketSourceDeduct(sb, pid, fromLoc, qty, { allowAlreadyGone: true });
     }
+    if (deliveryEntrySentToCustomer(line)) continue;
     await adjustPacketStock(sb, pid, toLocationId, qty);
     moved.push({
       lineId: String(line.id),
@@ -204,8 +206,9 @@ export async function moveAssembliesForDeliveryReceive(sb, lines, {
     if (!deliverySourceStockDeducted(line)) {
       await applyAssemblySourceDeduct(sb, aid, fromLoc, qty, { allowAlreadyGone: true });
     }
-    const customerRepairReturn = line.metadata?.return_has_customer === true;
-    if (!customerRepairReturn) {
+    const skipKitweAdd = line.metadata?.return_has_customer === true
+      || deliveryEntrySentToCustomer(line);
+    if (!skipKitweAdd) {
       await adjustAssemblyStock(sb, aid, toLocationId, qty);
     }
     moved.push({

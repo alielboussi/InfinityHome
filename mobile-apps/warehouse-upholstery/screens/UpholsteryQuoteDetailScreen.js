@@ -111,20 +111,23 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const customerName = displayQuoteFieldValue(locale, quote.customer_name, arabicMap) || '—';
 
   const onAccept = async () => {
+    const snapshot = quote;
+    const nowIso = new Date().toISOString();
+    setAccepted(true);
+    setQuote((prev) => ({
+      ...prev,
+      accepted_at: nowIso,
+      run_started_at: nowIso,
+      timer_status: 'running',
+      accumulated_ms: 0,
+      run_paused_at: null,
+    }));
     setBusy(true);
     try {
       await acceptUpholsteryQuote(quoteId);
-      const nowIso = new Date().toISOString();
-      setAccepted(true);
-      setQuote((prev) => ({
-        ...prev,
-        accepted_at: nowIso,
-        run_started_at: nowIso,
-        timer_status: 'running',
-        accumulated_ms: 0,
-        run_paused_at: null,
-      }));
     } catch (e) {
+      setAccepted(Boolean(snapshot.accepted_at));
+      setQuote(snapshot);
       Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
     } finally {
       setBusy(false);
@@ -132,18 +135,26 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   };
 
   const onPause = async () => {
+    const snapshot = quote;
+    const pausedAt = new Date().toISOString();
+    setQuote((prev) => ({
+      ...prev,
+      timer_status: 'paused',
+      run_paused_at: pausedAt,
+      accumulated_ms: accumulatedMs,
+    }));
     setBusy(true);
     try {
       const result = await pauseUpholsteryQuote(quoteId);
-      const pausedAt = result?.paused_at || new Date().toISOString();
       const acc = Math.max(0, Number(result?.accumulated_ms) || accumulatedMs);
       setQuote((prev) => ({
         ...prev,
         timer_status: 'paused',
-        run_paused_at: pausedAt,
+        run_paused_at: result?.paused_at || pausedAt,
         accumulated_ms: acc,
       }));
     } catch (e) {
+      setQuote(snapshot);
       const msg = String(e?.message || '');
       const body = /unknown op/i.test(msg)
         ? tUi('quoteOrderPauseServerStale', locale)
@@ -155,20 +166,29 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   };
 
   const onResume = async () => {
+    const snapshot = quote;
+    const resumedAt = new Date().toISOString();
+    setQuote((prev) => ({
+      ...prev,
+      timer_status: 'running',
+      run_paused_at: null,
+      run_started_at: resumedAt,
+      accumulated_ms: accumulatedMs,
+    }));
+    setTick(Date.now());
     setBusy(true);
     try {
       const result = await resumeUpholsteryQuote(quoteId);
-      const resumedAt = result?.resumed_at || new Date().toISOString();
       const acc = Math.max(0, Number(result?.accumulated_ms) || accumulatedMs);
       setQuote((prev) => ({
         ...prev,
         timer_status: 'running',
         run_paused_at: null,
-        run_started_at: resumedAt,
+        run_started_at: result?.resumed_at || resumedAt,
         accumulated_ms: acc,
       }));
-      setTick(Date.now());
     } catch (e) {
+      setQuote(snapshot);
       const msg = String(e?.message || '');
       const body = /unknown op/i.test(msg)
         ? tUi('quoteOrderPauseServerStale', locale)

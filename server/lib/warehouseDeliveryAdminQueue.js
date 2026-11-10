@@ -5,7 +5,11 @@ import {
   repairEligibleForMobileDeliveryQueue,
 } from '../../src/utils/warehouseDeliveryAdminQueue.js';
 import { WAREHOUSE_RETURN_STATUSES } from '../../src/utils/warehouseReturnOrder.js';
-import { WAREHOUSE_FROM_LOCATION_ID, WAREHOUSE_TO_LOCATION_ID } from '../../src/utils/warehouseDelivery.js';
+import {
+  WAREHOUSE_FROM_LOCATION_ID,
+  WAREHOUSE_TO_LOCATION_ID,
+  deliveryEntrySentToCustomer,
+} from '../../src/utils/warehouseDelivery.js';
 
 async function returnStockMutations() {
   return import('./warehouseReturnStock.js');
@@ -82,6 +86,19 @@ export async function registerProductionJobAwaitingDriver(sb, {
     metadata: patch,
     updated_at: now,
   }).eq('id', jobRow.id);
+
+  try {
+    const { notifyDeliveryOrderReadyForDriver } = await import('./productionExpoPush.js');
+    await notifyDeliveryOrderReadyForDriver({
+      assemblyName,
+      qty,
+      department,
+      jobId: jobRow.id,
+      quoteNumber,
+    });
+  } catch (err) {
+    console.warn('[registerProductionJobAwaitingDriver] delivery push failed:', err?.message || err);
+  }
 }
 
 export async function registerQuoteOrderAwaitingDriver(sb, {
@@ -114,7 +131,7 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
   }).eq('quote_id', String(quoteId));
 
   const { data: asm } = await sb.from(ASSEMBLIES).select('name').eq('id', String(assemblyId)).maybeSingle();
-  return {
+  const result = {
     assembly_id: String(assemblyId),
     assembly_name: asm?.name || assemblyId,
     quote_id: String(quoteId),
@@ -122,6 +139,21 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
     quantity: Math.max(1, Math.floor(Number(qty) || 1)),
     department: String(route || 'upholstery').toLowerCase(),
   };
+
+  try {
+    const { notifyDeliveryOrderReadyForDriver } = await import('./productionExpoPush.js');
+    await notifyDeliveryOrderReadyForDriver({
+      assemblyName: result.assembly_name,
+      qty: result.quantity,
+      department: result.department,
+      jobId: result.quote_id,
+      quoteNumber: result.quote_number,
+    });
+  } catch (err) {
+    console.warn('[registerQuoteOrderAwaitingDriver] delivery push failed:', err?.message || err);
+  }
+
+  return result;
 }
 
 function parseRowMetadata(raw) {
@@ -406,7 +438,9 @@ export async function moveAdminQueueLineToKitwe(sb, line) {
   const qty = Math.max(1, Number(line.quantity) || 1);
   if (!aid || qty < 1) return null;
   const customerRepair = line.metadata?.return_has_customer === true;
-  if (customerRepair) return { assemblyId: aid, qty, kitweAdded: 0 };
+  if (customerRepair || deliveryEntrySentToCustomer(line)) {
+    return { assemblyId: aid, qty, kitweAdded: 0 };
+  }
   const virtualHold = line.metadata?.delivery_admin_hold === true;
   const { adjustAssemblyStock } = await returnStockMutations();
   if (!virtualHold) {

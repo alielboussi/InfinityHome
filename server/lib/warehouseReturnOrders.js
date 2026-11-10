@@ -750,6 +750,14 @@ export async function completeWarehouseReturnOrder(sb, body, user) {
   if (error) throw new Error(error.message || 'Failed to complete return.');
 
   const { data: updated } = await sb.from(RETURNS).select('*').eq('id', id).maybeSingle();
+
+  try {
+    const { notifyDeliveryRepairReadyForDriver } = await import('./productionExpoPush.js');
+    await notifyDeliveryRepairReadyForDriver(updated || row);
+  } catch (err) {
+    console.warn('[completeWarehouseReturnOrder] delivery push failed:', err?.message || err);
+  }
+
   return {
     return_order: serializeReturnForClient(updated),
     completed_at: now,
