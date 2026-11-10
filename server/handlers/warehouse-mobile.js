@@ -90,7 +90,7 @@ import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
 } from '../../src/utils/warehouseDelivery.js';
-import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryNotePrint.js';
+import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryPrintGroups.js';
 import {
   isWarehouseSetDeliveryGroup,
   resolveSetComponentsForDelivery,

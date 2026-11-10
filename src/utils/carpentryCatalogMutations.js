@@ -1,12 +1,12 @@
-import { normalizeCarpentryUom } from '../constants/carpentryUom';
-import { WAREHOUSE_FACTORY_LOCATION_ID } from '../constants/warehouseShowroomLocations';
-import { resolveWarehouseFloor2Location } from '../constants/warehouseFloorLocations';
-import { loadMaterialUomAllowedSet } from './materialUomMutations';
-import { isWarehouseSetAssembly } from './warehouseSetMath';
-import { isStoreroomMaterialAssembly } from './warehouseCatalogProductCompleteness';
-import { parseCarpentryMeta } from './carpentryCatalogView';
+import { normalizeCarpentryUom } from '../constants/carpentryUom.js';
+import { WAREHOUSE_FACTORY_LOCATION_ID } from '../constants/warehouseShowroomLocations.js';
+import { resolveWarehouseFloor2Location } from '../constants/warehouseFloorLocations.js';
+import { loadMaterialUomAllowedSet } from './materialUomMutations.js';
+import { isWarehouseSetAssembly } from './warehouseSetMath.js';
+import { isStoreroomMaterialAssembly } from './warehouseCatalogProductCompleteness.js';
+import { parseCarpentryMeta } from './carpentryCatalogView.js';
 import { buildFloor2StockRows } from './carpentryFinishingView.js';
-import { newUuid } from './uuid';
+import { newUuid } from './uuid.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';

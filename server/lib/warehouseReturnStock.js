@@ -1,5 +1,3 @@
-import { upsertFinishedAssemblyInventoryQuantity } from './warehouseCatalogMobile.js';
-
 export async function getAssemblyStockQty(sb, assemblyId, locationId) {
   const { data } = await sb
     .from('warehouse_assembly_inventory')
@@ -20,6 +18,7 @@ export async function adjustAssemblyStock(sb, assemblyId, locationId, delta) {
   if (next < 0) {
     throw new Error('Not enough finished product stock at Kitwe for this return.');
   }
+  const { upsertFinishedAssemblyInventoryQuantity } = await import('./warehouseCatalogMobile.js');
   await upsertFinishedAssemblyInventoryQuantity(sb, {
     assemblyId: aid,
     locationId: loc,

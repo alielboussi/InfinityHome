@@ -233,6 +233,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWarehouseMobileHandlerLoad.js', {
+    stdio: 'inherit',
+    cwd: path.join(__dirname, '..'),
+  });
+} catch {
+  console.error('[warehouse-mobile-handler:fail] verifyWarehouseMobileHandlerLoad.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyDeliverySignatureStrokes.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

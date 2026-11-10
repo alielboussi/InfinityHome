@@ -1,23 +1,35 @@
-import { firebaseAuth } from '../firebase';
-import { apiUrl } from '../utils/apiUrl';
+import { apiUrl, withApiHeaders } from '../utils/apiUrl';
+import { firebaseGetAccessToken } from '../utils/firebaseAuthApi';
 
 async function authHeaders() {
-  const user = firebaseAuth?.currentUser;
-  const token = user ? await user.getIdToken() : '';
-  if (!token) throw new Error('Authentication required');
-  return {
+  const token = await firebaseGetAccessToken();
+  if (!token) {
+    throw new Error('Authentication required — sign out and sign in again.');
+  }
+  return withApiHeaders({
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
     'Content-Type': 'application/json',
-  };
+  });
 }
 
 export async function warehouseDeliveryMobileOp(op, body = {}) {
-  const response = await fetch(apiUrl('/api/warehouse-mobile'), {
-    method: 'POST',
-    headers: await authHeaders(),
-    body: JSON.stringify({ op, ...body }),
-  });
+  let response;
+  try {
+    response = await fetch(apiUrl('/api/warehouse-mobile'), {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ op, ...body }),
+    });
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+      throw new Error(
+        'Cannot reach the warehouse API (/api/warehouse-mobile). Wait for deploy or check connection.',
+      );
+    }
+    throw err;
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {
     throw new Error(payload?.error || `Request failed (${response.status})`);

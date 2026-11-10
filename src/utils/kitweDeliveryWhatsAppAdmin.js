@@ -1,7 +1,7 @@
-import { buildWarehouseDeliveryWhatsAppMessage } from './buildWarehouseDeliveryWhatsAppMessage';
-import { deliverySenderName } from './warehouseDelivery';
-import { buildDeliveryPrintGroupsFromEntries } from './warehouseDeliveryPrintGroups';
-import { createWarehouseDeliveryNameFormatter } from './warehouseDeliveryDisplayName';
+import { buildWarehouseDeliveryWhatsAppMessage } from './buildWarehouseDeliveryWhatsAppMessage.js';
+import { deliverySenderName } from './warehouseDelivery.js';
+import { buildDeliveryPrintGroupsFromEntries } from './warehouseDeliveryPrintGroups.js';
+import { createWarehouseDeliveryNameFormatter } from './warehouseDeliveryDisplayName.js';
 
 export function buildWarehouseDeliveryWhatsAppProductGroups(entries, assemblyColorContext) {
   const formatter = assemblyColorContext
