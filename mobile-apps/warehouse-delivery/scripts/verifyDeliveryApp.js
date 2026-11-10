@@ -90,6 +90,11 @@ try {
   assert(kitweHome.includes('buildDeliveryPacketChecks'), 'Kitwe send must use packet checklist before cart');
   assert(kitweHome.includes('validateCartForSubmit'), 'Kitwe send must validate cart checklist before signature');
   assert(kitweHome.includes("'delivery-session-open'"), 'Kitwe send must open delivery session');
+  assert(
+    !/if\s*\(\s*sid0\s*&&\s*dnum0\s*\)\s*return/.test(kitweHome),
+    'Kitwe send must always validate delivery-session-open on mount (no stale session skip)',
+  );
+  assert(kitweHome.includes('replaced_stale_session'), 'Kitwe send must handle stale delivery sessions');
   assert(kitweHome.includes('KitweSendSignature'), 'Kitwe send must navigate to driver signature');
 
   assert(fs.existsSync(path.join(appRoot, 'lib', 'deliveryDriversStore.js')), 'lib/deliveryDriversStore.js required (outside deliveryKit)');

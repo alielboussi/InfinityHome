@@ -40,6 +40,15 @@ assert(stock.includes('Not enough packet stock'), 'packet deduct must fail when 
 
 const portal = fs.readFileSync(path.join(root, 'src/utils/kitweProductPortal.js'), 'utf8');
 assert(portal.includes('kitwe_portal_listed'), 'portal create must mark assemblies for Kitwe catalog list');
+assert(
+  /upsertInventoryQuantity\(\s*\{[\s\S]*?\}\s*,\s*db\s*\)/.test(portal),
+  'Kitwe portal stock must pass data client to upsertInventoryQuantity',
+);
+assert(portal.includes('removeFromKitweProductsCatalog'), 'Kitwe portal must support catalog row removal');
+
+const kitweUi = fs.readFileSync(path.join(root, 'src/KitweProductsPage.js'), 'utf8');
+assert(kitweUi.includes('removeFromKitweProductsCatalog'), 'Kitwe products page must wire delete');
+assert(kitweUi.includes('kitwe-btn-danger'), 'Kitwe products delete must use danger styling');
 
 const kitwePage = fs.readFileSync(path.join(root, 'src/KitweProductsPage.js'), 'utf8');
 assert(

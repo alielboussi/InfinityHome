@@ -162,7 +162,6 @@ export default function WarehouseRepairsScreen({
       const res = await warehouseMobileRequest('return-order-list', {
         for_production: true,
         repair_department: repairDepartment,
-        hassan_only: true,
       });
       setRows(res?.return_orders || []);
     } catch (err) {

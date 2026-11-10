@@ -19,16 +19,18 @@ export function resolveReturnRepairDepartment(row) {
   const reason = normalizeWarehouseReturnReason(row?.reason);
   const meta = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
   const groupId = String(row?.reason_group || meta.reason_group || '').trim().toLowerCase();
-
-  if (groupId === 'painting') return 'painting';
-  if (groupId === 'general') return 'carpentry';
-
   const lower = reason.toLowerCase();
   const paintingReasons = ['color', 'touch-up', 'spray finish', 'scratches', 'peeling', 'mismatch', 'finish'];
-  if (paintingReasons.includes(lower)) return 'painting';
 
   if (groupId === 'upholstery') return 'upholstery';
-  if (groupId === 'carpentry') return 'carpentry';
+  if (groupId === 'painting') return 'painting';
+  if (groupId === 'general') return 'carpentry';
+  if (groupId === 'carpentry') {
+    if (paintingReasons.includes(lower)) return 'painting';
+    return 'carpentry';
+  }
+
+  if (paintingReasons.includes(lower)) return 'painting';
   if (['structure', 'legs', 'quality check', 'other'].includes(lower)) return 'carpentry';
   if (['upholstery', 'cushion'].includes(lower)) return 'upholstery';
   if (lower === 'maintenance') return 'carpentry';

@@ -55,6 +55,7 @@ for (const app of apps) {
   assert(repairs.includes('return-order-customer-delivery-prepare'), `${app.id}: repairs must prepare CR delivery`);
   assert(repairs.includes('RepairReturnSignature'), `${app.id}: repairs must navigate to signature screen`);
   assert(repairs.includes('repair_department'), `${app.id}: repairs list must filter by department`);
+  assert(!repairs.includes('hassan_only: true'), `${app.id}: repairs queue must list all department jobs, not Hassan creator-only`);
 
   assert(sig.includes('delivery-drivers-list'), `${app.id}: signature must load drivers from portal API`);
   assert(sig.includes('signature_png_base64'), `${app.id}: signature must submit PNG`);

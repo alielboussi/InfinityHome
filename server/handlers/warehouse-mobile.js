@@ -3777,9 +3777,11 @@ async function opReturnOrderList(body, user) {
   const forProduction = body.for_production === true;
   const adminRegistry = body.admin_registry === true;
   const repairDepartment = String(body.repair_department || body.repairDepartment || '').trim().toLowerCase() || null;
-  const hassanOnly = repairDepartment
+  const hassanOnly = trackageOnly
     ? body.hassan_only !== false && body.hassanOnly !== false
-    : body.hassan_only === true || body.hassanOnly === true;
+    : forProduction && repairDepartment
+      ? body.hassan_only === true || body.hassanOnly === true
+      : body.hassan_only === true || body.hassanOnly === true;
   if (adminRegistry) {
     if (!canManageCatalog(user)) {
       const err = new Error('Catalog admin access required.');

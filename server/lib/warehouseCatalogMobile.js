@@ -37,6 +37,7 @@ import {
   resolveWarehouseCategoryName,
 } from '../../src/utils/warehouseCategoryLookup.js';
 import { resolveSeaterSetCoverImageUrl } from '../../src/utils/warehouseSeaterSetCoverImage.js';
+import { applyWarehouseSetQuantityFromRecipe } from '../../src/utils/warehouseSetAssemblyQty.js';
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const ASSEMBLY_QTY_SELECT = 'id, packet_count, inventory_mode, item_kind, units_per_carton';
@@ -863,6 +864,23 @@ export async function setAssemblyProductQuantityForMobile(sb, body) {
   if (apErr) throw new Error(apErr.message || 'Failed to load packet links');
   if (aiErr) throw new Error(aiErr.message || 'Failed to load product stock');
   if (!assembly) throw new Error('Product not found.');
+
+  if (isWarehouseSetAssembly(assembly)) {
+    const built = await applyWarehouseSetQuantityFromRecipe(sb, {
+      setAssemblyId: assemblyId,
+      locationId,
+      targetUnits: target,
+      incrementOnly: true,
+    });
+    return {
+      assembly_id: assemblyId,
+      quantity: built.quantity,
+      previous: built.previous,
+      warehouseLocationId: locationId,
+      assemblyWarehouseQty: { [assemblyId]: built.quantity },
+      packetWarehouseQty: {},
+    };
+  }
 
   const linkRows = assemblyPacketRows || [];
   const packetIds = [...new Set(linkRows.map((row) => String(row.packet_id)).filter(Boolean))];

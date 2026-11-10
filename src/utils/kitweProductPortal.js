@@ -6,6 +6,7 @@ import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
 import { kitweQtyByAssembly } from './kitweSetStock';
 import {
+  deleteWarehouseAssembly,
   saveWarehouseAssembly,
   setWarehouseAssemblyQuantity,
   WAREHOUSE_INVENTORY_MODE,
@@ -91,7 +92,7 @@ export async function setKitwePortalProductStock(assembly, quantity) {
       productId: retail.id,
       locationId: KITWE_LOCATION_ID,
       quantity: qty,
-    });
+    }, db);
   }
   return qty;
 }
@@ -139,6 +140,38 @@ async function markAssemblyKitwePortalListed(assemblyId) {
     updated_at: now,
   }).eq('id', id);
   if (error) throw new Error(error.message || 'Failed to mark Kitwe portal product');
+}
+
+/** Remove a row from /kitwe-products (zero Kitwe stock; factory warehouse catalog unchanged). */
+export async function removeFromKitweProductsCatalog(assembly) {
+  const id = String(assembly?.id || '').trim();
+  if (!id) throw new Error('Product not found.');
+  const meta = assembly?.metadata || {};
+
+  if (isWarehouseSetAssembly(assembly) && meta.kitwe_portal_set === true) {
+    await deleteWarehouseAssembly(id);
+    return;
+  }
+
+  await setKitwePortalProductStock(assembly, 0);
+
+  const now = new Date().toISOString();
+  const {
+    kitwe_portal_listed: _listed,
+    kitwe_portal_listed_at: _listedAt,
+    kitwe_from_factory_delivery: _fromDelivery,
+    kitwe_factory_delivery_at: _deliveryAt,
+    kitwe_factory_delivery_units: _deliveryUnits,
+    ...rest
+  } = meta;
+  const { error } = await db.from('warehouse_assemblies').update({
+    metadata: {
+      ...rest,
+      kitwe_portal_removed_at: now,
+    },
+    updated_at: now,
+  }).eq('id', id);
+  if (error) throw new Error(error.message || 'Failed to remove from Kitwe catalog');
 }
 
 export async function createKitwePortalProduct({

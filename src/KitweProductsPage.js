@@ -26,8 +26,10 @@ import {
 import {
   createKitwePortalProduct,
   markKitwePortalSet,
+  removeFromKitweProductsCatalog,
   setKitwePortalProductStock,
 } from './utils/kitweProductPortal';
+import { isKitwePortalCreatedSet } from './utils/kitweSetStock';
 import { generateRandomWarehouseSku16 } from './utils/warehouseRandomSku';
 import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { recomputeWarehouseLocationStock } from './services/warehouseTransfer';
@@ -55,6 +57,7 @@ export default function KitweProductsPage() {
   const [priceDraft, setPriceDraft] = useState({});
   const [savingId, setSavingId] = useState('');
   const [labelBusyId, setLabelBusyId] = useState('');
+  const [deleteBusyId, setDeleteBusyId] = useState('');
 
   const [setName, setSetName] = useState('');
   const [setSku, setSetSku] = useState('');
@@ -440,6 +443,32 @@ export default function KitweProductsPage() {
     }
   };
 
+  const deleteRow = async (row) => {
+    const isPortalSet = isKitwePortalCreatedSet(row);
+    const label = String(row.name || row.family_sku || 'this item');
+    const ok = window.confirm(
+      isPortalSet
+        ? `Delete set "${label}"? This removes the set and its Kitwe recipe.`
+        : `Remove "${label}" from Kitwe products? Kitwe stock is cleared; Factory warehouse catalog is unchanged.`,
+    );
+    if (!ok) return;
+    setDeleteBusyId(row.id);
+    setError('');
+    try {
+      await removeFromKitweProductsCatalog(row);
+      setBulkSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(String(row.id));
+        return next;
+      });
+      await load();
+    } catch (err) {
+      setError(err?.message || 'Delete failed');
+    } finally {
+      setDeleteBusyId('');
+    }
+  };
+
   const handleCreateSet = async (e) => {
     e.preventDefault();
     setSetSaving(true);
@@ -624,6 +653,14 @@ export default function KitweProductsPage() {
                 onClick={() => printLabel(row)}
               >
                 {labelBusyId === row.id ? '…' : 'Label'}
+              </button>
+              <button
+                type="button"
+                className="kitwe-btn-danger kitwe-btn-compact"
+                disabled={deleteBusyId === row.id}
+                onClick={() => deleteRow(row)}
+              >
+                {deleteBusyId === row.id ? '…' : 'Delete'}
               </button>
             </div>
           </td>
@@ -869,7 +906,7 @@ export default function KitweProductsPage() {
             <th className="col-qty">Qty (edit)</th>
             <th className="col-price" title="Standard price">Std price</th>
             <th className="col-price" title="Promotional price">Promo price</th>
-            <th className="col-actions">Save</th>
+            <th className="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>

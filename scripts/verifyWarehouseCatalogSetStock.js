@@ -139,11 +139,29 @@ if (!portalPage.includes('buildWarehouseAssemblyLeftoverQtyMap')) {
   process.exit(1);
 }
 if (!portalPage.includes('catalogDisplayStockByAssembly')) {
-  console.error('[verifyWarehouseCatalogSetStock] web portal must display leftover qty on complete view');
+  console.error('[verifyWarehouseCatalogSetStock] web portal must map catalog display stock');
   process.exit(1);
 }
-if (!portalPage.includes('collectSetComponentAssemblyIds')) {
-  console.error('[verifyWarehouseCatalogSetStock] web portal must hide zero-leftover set components');
+if (!portalPage.includes('isWarehouseSetAssembly(a)')) {
+  console.error('[verifyWarehouseCatalogSetStock] Sets view must list set assemblies only');
+  process.exit(1);
+}
+if (portalPage.includes('factorySetComponentIds') || portalPage.includes('Set component')) {
+  console.error('[verifyWarehouseCatalogSetStock] Sets view must not merge or badge set components');
   process.exit(1);
 }
 console.log('[verifyWarehouseCatalogSetStock] web portal parity ok');
+
+const setQtyJs = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/utils/warehouseSetAssemblyQty.js'),
+  'utf8',
+);
+if (!setQtyJs.includes('applyWarehouseSetQuantityFromRecipe')) {
+  console.error('[verifyWarehouseCatalogSetStock] sets must consume components when qty increases');
+  process.exit(1);
+}
+if (!setQtyJs.includes('factorySetCatalogScopeIds')) {
+  console.error('[verifyWarehouseCatalogSetStock] set qty save must scope catalog reads');
+  process.exit(1);
+}
+console.log('[verifyWarehouseCatalogSetStock] set recipe qty ok');

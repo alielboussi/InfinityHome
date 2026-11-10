@@ -23,6 +23,7 @@ const row = (reason, reason_group) => ({
 });
 
 assert(resolveReturnRepairDepartment(row('Repair', 'upholstery')) === 'upholstery', 'upholstery group → upholstery');
+assert(resolveReturnRepairDepartment(row('Color', 'upholstery')) === 'upholstery', 'upholstery color stays upholstery');
 assert(resolveReturnRepairDepartment(row('Maintenance', 'upholstery')) === 'upholstery', 'upholstery maintenance → upholstery');
 assert(resolveReturnRepairDepartment(row('Structure', 'carpentry')) === 'carpentry', 'carpentry structure → carpentry');
 assert(resolveReturnRepairDepartment(row('Color', 'carpentry')) === 'painting', 'carpentry color → painting');

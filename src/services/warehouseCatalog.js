@@ -34,6 +34,7 @@ import {
 import { cacheClear, cacheGet, cacheSet } from '../utils/staleCache';
 import { buildWarehouseCategoryIndex } from '../utils/warehouseCategoryLookup.js';
 import { resolveSeaterSetCoverImageUrl } from '../utils/warehouseSeaterSetCoverImage.js';
+import { applyWarehouseSetQuantityFromRecipe } from '../utils/warehouseSetAssemblyQty.js';
 
 const WAREHOUSE_CATALOG_CACHE_KEY = 'warehouse:catalog:v2';
 
@@ -719,6 +720,18 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
 
   invalidateWarehouseCatalogCache();
   return { ...row, id: assemblyId };
+}
+
+/** Sets on Floor 1: target qty consumes component stock per factory recipe. */
+export async function setWarehouseSetQuantityFromRecipe(setAssemblyId, locationId, targetUnits, options = {}) {
+  const result = await applyWarehouseSetQuantityFromRecipe(db, {
+    setAssemblyId,
+    locationId,
+    targetUnits,
+    ...options,
+  });
+  invalidateWarehouseCatalogCache();
+  return result;
 }
 
 export async function setWarehouseAssemblyQuantity(assemblyId, locationId, quantity) {

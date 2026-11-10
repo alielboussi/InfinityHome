@@ -18,7 +18,6 @@ export async function fetchPaintingReturnOrders() {
   const payload = await warehouseMobileRequest('return-order-list', {
     for_production: true,
     repair_department: 'painting',
-    hassan_only: true,
   });
   return payload?.return_orders || [];
 }

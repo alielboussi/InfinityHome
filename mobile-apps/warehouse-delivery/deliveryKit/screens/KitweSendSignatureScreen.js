@@ -131,7 +131,6 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         submittedAt,
       });
     } catch (err) {
-      clearDeliveryWorkspace();
       try {
         await warehouseMobileRequest('delivery-draft-discard', { session_id: sessionId });
       } catch {

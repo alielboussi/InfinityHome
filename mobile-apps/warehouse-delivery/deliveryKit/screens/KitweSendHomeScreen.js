@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Alert,
   Keyboard,
@@ -91,6 +92,10 @@ export default function KitweSendHomeScreen({ navigation }) {
   const [scanOpen, setScanOpen] = useState(false);
   const [pickModal, setPickModal] = useState(null);
   const [sessionOpening, setSessionOpening] = useState(false);
+  const sessionIdRef = useRef(sessionId);
+  const groupsRef = useRef(groups);
+  sessionIdRef.current = sessionId;
+  groupsRef.current = groups;
 
   const allAssemblies = catalog?.assemblies || [];
   const deliveryAssemblies = useMemo(
@@ -147,42 +152,45 @@ export default function KitweSendHomeScreen({ navigation }) {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const sid0 = String(restored?.sessionId || '').trim();
-    const dnum0 = String(restored?.deliveryNumber || '').trim();
-    if (sid0 && dnum0) return undefined;
-
-    (async () => {
-      setSessionOpening(true);
-      setError('');
-      try {
-        const sess = await warehouseMobileRequest('delivery-session-open', {
-          ...(sid0 ? { session_id: sid0 } : {}),
-        });
-        if (cancelled) return;
-        const sid = String(sess.session_id || '').trim();
-        const dnum = String(sess.delivery_number || '').trim();
-        if (!sid || !dnum) {
-          throw new Error(tUi('deliverySessionFailed', locale));
-        }
-        setSessionId(sid);
-        setDeliveryNumber(dnum);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err?.message || tUi('deliverySessionFailed', locale));
-        }
-      } finally {
-        if (!cancelled) setSessionOpening(false);
+  const syncDeliverySession = useCallback(async ({ alertIfRenewed = false } = {}) => {
+    const sid0 = String(sessionIdRef.current || '').trim();
+    setSessionOpening(true);
+    setError('');
+    try {
+      const sess = await warehouseMobileRequest('delivery-session-open', {
+        ...(sid0 ? { session_id: sid0 } : {}),
+      });
+      const sid = String(sess.session_id || '').trim();
+      const dnum = String(sess.delivery_number || '').trim();
+      if (!sid || !dnum) {
+        throw new Error(tUi('deliverySessionFailed', locale));
       }
-    })();
+      setSessionId(sid);
+      setDeliveryNumber(dnum);
+      if (sess.replaced_stale_session && alertIfRenewed) {
+        Alert.alert(tUi('deliveryTitle', locale), tUi('deliverySessionRenewed', locale));
+      }
+    } catch (err) {
+      setError(err?.message || tUi('deliverySessionFailed', locale));
+    } finally {
+      setSessionOpening(false);
+    }
+  }, [locale]);
 
-    return () => {
-      cancelled = true;
-    };
-  // Reserve delivery # as soon as the screen opens (not only on Send).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        if (cancelled) return;
+        await syncDeliverySession({
+          alertIfRenewed: (groupsRef.current || []).length > 0,
+        });
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [syncDeliverySession]),
+  );
 
   useEffect(() => {
     if (!draftAssemblyId || !draftAssembly) return;

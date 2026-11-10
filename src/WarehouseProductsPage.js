@@ -21,6 +21,8 @@ import {
   deleteWarehousePacket,
   invalidateWarehouseCatalogCache,
   setWarehouseAssemblyQuantity,
+  setWarehouseAssemblyProductQuantity,
+  setWarehouseSetQuantityFromRecipe,
   setWarehousePacketQuantity,
 } from './services/warehouseCatalog';
 import { useWarehouseCatalogQuery, WAREHOUSE_CATALOG_QUERY_KEY } from './hooks/useWarehouseCatalogQuery';
@@ -67,6 +69,8 @@ import WarehouseCatalogBulkLabelDialog from './components/WarehouseCatalogBulkLa
 import { buildWarehouseBulkLabelDialogRows } from './utils/warehouseBulkLabelPrint';
 import WarehouseSalesStoragePanel from './components/WarehouseSalesStoragePanel';
 import { warehouseCatalogViewFromPath } from './utils/routeSuspenseKey';
+import { expandWarehouseSetItemsRows } from './utils/warehouseSetItems';
+import { WAREHOUSE_FACTORY_LOCATION_ID } from './constants/warehouseShowroomLocations';
 
 export default function WarehouseProductsPage({ embedInHub = false } = {}) {
   const queryClient = useQueryClient();
@@ -302,19 +306,39 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
 
   const isCompleteProductsView = !isSetsView && !isIncompleteView && !isUncategorizedView;
 
+  const assemblyMatchesCatalogSearch = useCallback((assembly, raw) => {
+    if (!raw) return true;
+    const qLower = raw.toLowerCase();
+    const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
+    const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
+    const pktList = packetsByAssembly.get(String(assembly.id)) || [];
+    const cat = categoryName(assembly.category_id).toLowerCase();
+
+    const keysOverlap = (storedSku, queryKeys, normalizer) => {
+      const storedKeys = expandWarehouseSkuMatchKeys(normalizer(storedSku));
+      for (const k of queryKeys) {
+        if (k && storedKeys.has(k)) return true;
+      }
+      return false;
+    };
+
+    if (String(assembly.name || '').toLowerCase().includes(qLower)) return true;
+    if (cat.includes(qLower)) return true;
+    if (String(assembly.family_sku || '').toLowerCase().includes(qLower)) return true;
+    if (keysOverlap(assembly.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
+    return pktList.some(
+      (p) => String(p.name || '').toLowerCase().includes(qLower)
+        || String(p.sku || '').toLowerCase().includes(qLower)
+        || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
+    );
+  }, [packetsByAssembly, categoryName]);
+
   const warehouseCatalogProducts = useMemo(() => {
     if (isSetsView) {
       return (assemblies || []).filter((a) => isWarehouseSetAssembly(a));
     }
     const base = (assemblies || []).filter((a) => !isWarehouseSetAssembly(a));
     return base.filter((a) => {
-      if (isCompleteProductsView) {
-        const id = String(a.id);
-        if (warehouseSetStockContext.setComponentIds.has(id)) {
-          const leftover = warehouseSetStockContext.leftoverById.get(id) ?? 0;
-          if (leftover <= 0) return false;
-        }
-      }
       const pktList = packetsByAssembly.get(String(a.id)) || [];
       if (isIncompleteView) return isIncompletePacketBomProduct(a, pktList);
       if (isUncategorizedView) return isUncategorizedWarehouseProduct(a, categories);
@@ -323,13 +347,10 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
   }, [
     assemblies,
     categories,
-    isCompleteProductsView,
     isIncompleteView,
     isUncategorizedView,
     isSetsView,
     packetsByAssembly,
-    warehouseSetStockContext.leftoverById,
-    warehouseSetStockContext.setComponentIds,
   ]);
 
   /** Physical / buildable qty (labels, packet math) — not set-component leftover. */
@@ -344,62 +365,29 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
     return out;
   }, [warehouseCatalogProducts, warehouseSetStockContext.qtyById, warehouseLocationId]);
 
-  /** Catalog list qty — leftover units for set components on the complete products view. */
+  /** Catalog list qty — full Floor 1 on-hand (set recipe components are normal products). */
   const catalogDisplayStockByAssembly = useMemo(() => {
     const out = new Map();
     if (!warehouseLocationId) return out;
     const whKey = String(warehouseLocationId);
     warehouseCatalogProducts.forEach((assembly) => {
       const id = String(assembly.id);
-      let qty = warehouseSetStockContext.qtyById.get(id) ?? 0;
-      if (isCompleteProductsView && warehouseSetStockContext.setComponentIds.has(id)) {
-        qty = warehouseSetStockContext.leftoverById.get(id) ?? 0;
-      }
+      const qty = warehouseSetStockContext.qtyById.get(id) ?? 0;
       out.set(id, new Map([[whKey, qty]]));
     });
     return out;
-  }, [
-    isCompleteProductsView,
-    warehouseCatalogProducts,
-    warehouseSetStockContext.leftoverById,
-    warehouseSetStockContext.qtyById,
-    warehouseSetStockContext.setComponentIds,
-    warehouseLocationId,
-  ]);
+  }, [warehouseCatalogProducts, warehouseSetStockContext.qtyById, warehouseLocationId]);
 
   const filteredAssemblies = useMemo(() => {
     const raw = debouncedSearch.trim();
-    const base = warehouseCatalogProducts.filter((a) => {
-      if (categoryFilter && String(a.category_id || '') !== String(categoryFilter)) return false;
-      return true;
-    });
+    const passesCategory = (a) => (
+      !categoryFilter || String(a.category_id || '') === String(categoryFilter)
+    );
+    const base = warehouseCatalogProducts.filter(passesCategory);
+
     if (!raw) return base;
-    const qLower = raw.toLowerCase();
-    const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
-    const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
-
-    const keysOverlap = (storedSku, queryKeys, normalizer) => {
-      const storedKeys = expandWarehouseSkuMatchKeys(normalizer(storedSku));
-      for (const k of queryKeys) {
-        if (k && storedKeys.has(k)) return true;
-      }
-      return false;
-    };
-
-    return base.filter((a) => {
-      const pktList = packetsByAssembly.get(String(a.id)) || [];
-      const cat = categoryName(a.category_id).toLowerCase();
-      if (String(a.name || '').toLowerCase().includes(qLower)) return true;
-      if (cat.includes(qLower)) return true;
-      if (String(a.family_sku || '').toLowerCase().includes(qLower)) return true;
-      if (keysOverlap(a.family_sku, qProductKeys, normalizeWarehouseProductSku)) return true;
-      return pktList.some(
-        (p) => String(p.name || '').toLowerCase().includes(qLower)
-          || String(p.sku || '').toLowerCase().includes(qLower)
-          || keysOverlap(p.sku, qPacketKeys, normalizeWarehousePacketScan),
-      );
-    });
-  }, [warehouseCatalogProducts, packetsByAssembly, debouncedSearch, categoryFilter, categoryName]);
+    return base.filter((a) => assemblyMatchesCatalogSearch(a, raw));
+  }, [assemblyMatchesCatalogSearch, categoryFilter, debouncedSearch, warehouseCatalogProducts]);
 
   useEffect(() => {
     setListPage(1);
@@ -600,6 +588,57 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
     setStockQtyDraftById((prev) => ({ ...prev, [id]: String(Math.max(0, Math.floor(Number(displayQty) || 0))) }));
   }, []);
 
+  const patchAssemblyInventoryQty = useCallback((assemblyId, quantity) => {
+    if (!warehouseLocationId) return;
+    const loc = String(warehouseLocationId);
+    const asmKey = String(assemblyId);
+    const qty = Math.max(0, Math.floor(Number(quantity) || 0));
+    setAssemblyInventory((prev) => {
+      const rows = (prev || []).map((row) => ({ ...row }));
+      const idx = rows.findIndex(
+        (row) => String(row.assembly_id) === asmKey && String(row.location_id) === loc,
+      );
+      if (idx >= 0) rows[idx] = { ...rows[idx], quantity: qty };
+      else rows.push({ assembly_id: assemblyId, location_id: warehouseLocationId, quantity: qty });
+      return rows;
+    });
+  }, [warehouseLocationId]);
+
+  const patchAfterSetRecipeSave = useCallback((setId, result) => {
+    const built = Math.max(0, Math.floor(Number(result?.component_sets_built) || 0));
+    if (!built || !warehouseLocationId) return;
+    const loc = String(warehouseLocationId);
+    const lines = expandWarehouseSetItemsRows(setItems).filter(
+      (row) => String(row.set_assembly_id) === String(setId)
+        && String(row.location_id) === String(WAREHOUSE_FACTORY_LOCATION_ID),
+    );
+    setAssemblyInventory((prev) => {
+      const rows = (prev || []).map((row) => ({ ...row }));
+      const upsertQty = (assemblyId, quantity) => {
+        const asmKey = String(assemblyId);
+        const qty = Math.max(0, Math.floor(Number(quantity) || 0));
+        const idx = rows.findIndex(
+          (row) => String(row.assembly_id) === asmKey && String(row.location_id) === loc,
+        );
+        if (idx >= 0) rows[idx] = { ...rows[idx], quantity: qty };
+        else rows.push({ assembly_id: assemblyId, location_id: warehouseLocationId, quantity: qty });
+      };
+      upsertQty(setId, result.quantity);
+      lines.forEach((line) => {
+        const componentId = String(line.component_assembly_id || '').trim();
+        if (!componentId) return;
+        const perSet = Math.max(1, Number(line.quantity) || 1);
+        const deduct = built * perSet;
+        const idx = rows.findIndex(
+          (row) => String(row.assembly_id) === componentId && String(row.location_id) === loc,
+        );
+        const current = idx >= 0 ? Math.max(0, Math.floor(Number(rows[idx].quantity) || 0)) : 0;
+        upsertQty(componentId, Math.max(0, current - deduct));
+      });
+      return rows;
+    });
+  }, [setItems, warehouseLocationId]);
+
   const handleSaveFinishedAssemblyQty = async (assembly, { warehouseBoxEntry: boxEntry, unitsPerBox: upb }) => {
     if (!canManage || !warehouseLocationId) return;
     const id = String(assembly?.id || '').trim();
@@ -610,14 +649,20 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
     setSaving(true);
     setError('');
     try {
-      await setWarehouseAssemblyQuantity(id, warehouseLocationId, finishedUnits);
+      if (isWarehouseSetAssembly(assembly)) {
+        const result = await setWarehouseSetQuantityFromRecipe(id, warehouseLocationId, finishedUnits);
+        patchAfterSetRecipeSave(id, result);
+      } else {
+        await setWarehouseAssemblyProductQuantity(id, warehouseLocationId, finishedUnits);
+        patchAssemblyInventoryQty(id, finishedUnits);
+      }
       setStockEditAssemblyId('');
       setStockQtyDraftById((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
-      await refreshCatalog();
+      void refreshCatalog();
     } catch (err) {
       setError(err?.message || 'Quantity update failed');
     } finally {
@@ -682,7 +727,9 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
       <div className={`warehouse-catalog-filter-row${embedInHub ? ' warehouse-catalog-filter-row--flat' : ''}`}>
         <input
           className="warehouse-catalog-filter-control warehouse-catalog-search products-search-bar"
-          placeholder="Search product SKU, packet SKU, name…"
+          placeholder={isSetsView
+            ? 'Search sets (SKU, name)…'
+            : 'Search product SKU, packet SKU, name…'}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onBlur={(e) => {
@@ -717,16 +764,22 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
                   ? 'No incomplete products — all packet BOMs match their carton counts.'
                   : isSetsView
                     ? (
-                      <>
-                        No sets yet.{' '}
-                        {canAddProduct ? (
-                          <Link to="/warehouse-products/new?kind=set">Create a set</Link>
-                        ) : (
-                          'Ask a catalog manager to create one.'
-                        )}
-                      </>
+                      debouncedSearch.trim()
+                        ? 'No matching sets.'
+                        : (
+                          <>
+                            No sets yet.{' '}
+                            {canAddProduct ? (
+                              <Link to="/warehouse-products/new?kind=set">Create a set</Link>
+                            ) : (
+                              'Ask a catalog manager to create one.'
+                            )}
+                            {' '}
+                            Use View → Products for seater units and other set recipe lines.
+                          </>
+                        )
                     )
-                  : (
+                    : (
                     <>
                       No products yet. Create packets on{' '}
                       <Link to="/warehouse-products/packets">Packets (Warehouse)</Link>

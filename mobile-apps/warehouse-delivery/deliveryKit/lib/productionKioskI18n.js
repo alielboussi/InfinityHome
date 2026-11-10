@@ -599,6 +599,10 @@ const UI_STRINGS = {
   },
   deliverySendConfirmBtn: { en: 'Send delivery & print', ar: 'إرسال التسليم والطباعة' },
   deliverySessionFailed: { en: 'Could not start delivery session.', ar: 'تعذر بدء جلسة التسليم.' },
+  deliverySessionRenewed: {
+    en: 'This delivery number was already submitted or closed. A new number was assigned — your cart is still here.',
+    ar: 'تم إرسال رقم التسليم السابق أو إغلاقه. تم تعيين رقم جديد — قائمة المنتجات ما زالت كما هي.',
+  },
   deliveryNeedProduct: { en: 'Add at least one product.', ar: 'أضف منتجًا واحدًا على الأقل.' },
   deliveryNeedDriver: { en: 'Select a driver.', ar: 'اختر السائق.' },
   deliverySubmitFailed: { en: 'Submit failed.', ar: 'فشل الإرسال.' },
