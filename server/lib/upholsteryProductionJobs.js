@@ -373,13 +373,13 @@ export async function finishUpholsteryProductionJob(sb, {
     completed_at: now,
     accumulated_ms: finalElapsed,
     timer_started_at: null,
-    metadata: {
+    metadata: stripUndefinedDeep({
       ...meta,
       production_run_id: runErr ? null : runId,
-      label_job_id: labelJobId,
-      label_print_warning: labelPrintWarning,
-      floor2_raw_deducted: deductRawOnFinish ? true : meta.floor2_raw_deducted,
-    },
+      label_job_id: labelJobId ?? null,
+      label_print_warning: labelPrintWarning ?? null,
+      floor2_raw_deducted: deductRawOnFinish || meta.floor2_raw_deducted === true,
+    }),
   });
 
   return {

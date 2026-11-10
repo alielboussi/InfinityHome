@@ -194,7 +194,14 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
       const lines = [...(prev[productId] || [emptyMaterial()])];
       const next = { ...lines[index], ...patch };
       if (Object.prototype.hasOwnProperty.call(patch, 'material_assembly_id')) {
-        next.uom = uomFromStoreroomMaterial(materialOptions, patch.material_assembly_id);
+        const pickedId = String(patch.material_assembly_id || '').trim();
+        const picked = (materialOptions || []).find((m) => String(m.id) === pickedId);
+        if (pickedId && (!picked || Math.max(0, Number(picked.storeroom_qty) || 0) <= 0)) {
+          next.material_assembly_id = '';
+          next.uom = '';
+        } else {
+          next.uom = uomFromStoreroomMaterial(materialOptions, patch.material_assembly_id);
+        }
       }
       lines[index] = next;
       return { ...prev, [productId]: lines };

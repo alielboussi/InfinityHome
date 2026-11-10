@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -31,6 +31,12 @@ import RunningJobElapsed from '../components/RunningJobElapsed';
 import JobMaterialsInlineList from '../shared/components/JobMaterialsInlineList';
 import { subscribeProductionRefresh } from '../lib/productionRefreshBus';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
+import {
+  mergeJobInList,
+  optimisticPauseJobPatch,
+  optimisticResumeJobPatch,
+  serverJobPatchFromResponse,
+} from '../shared/lib/productionJobTimerOptimistic';
 
 function formatElapsed(ms) {
   const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
@@ -87,7 +93,7 @@ function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   );
 }
 
-function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMaterials }) {
+function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, onFinish, onMaterials }) {
   const isRunning = job.status === 'running';
   const thumb = resolveProductImageUrl(job.floor2_image_url || job.product_image_url || job.image_url);
   const canPlay = job.status === 'ready' || job.status === 'paused';
@@ -112,7 +118,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
         {canPlay ? (
           <Pressable
             style={styles.iconBtn}
-            disabled={busy}
+            disabled={Boolean(timerLocked)}
             onPress={() => onPlay(job.job_id || job.id)}
             accessibilityLabel={tUi('upholsteryJobResume', locale)}
           >
@@ -122,7 +128,7 @@ function JobCard({ job, locale, textAlign, busy, onPause, onPlay, onFinish, onMa
         {isRunning ? (
           <Pressable
             style={styles.iconBtn}
-            disabled={busy}
+            disabled={Boolean(timerLocked)}
             onPress={() => onPause(job.job_id || job.id)}
             accessibilityLabel={tUi('upholsteryJobPause', locale)}
           >
@@ -172,8 +178,11 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [quoteOrders, setQuoteOrders] = useState([]);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [timerBusyId, setTimerBusyId] = useState('');
   const [materialsTarget, setMaterialsTarget] = useState(null);
   const [jobFilter, setJobFilter] = useState('all');
+  const timerOpsRef = useRef(new Set());
+  const jobsSnapshotRef = useRef([]);
 
   const loadJobs = useCallback(async ({ showLoading = true } = {}) => {
     if (!allowed) {
@@ -226,12 +235,46 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     }
   };
 
+  const runOptimisticTimerOp = useCallback(async (jobId, mode) => {
+    const id = String(jobId || '').trim();
+    if (!id || timerOpsRef.current.has(id)) return;
+
+    let applied = false;
+    setJobs((prev) => {
+      const job = prev.find((j) => String(j.job_id || j.id) === id);
+      if (!job) return prev;
+      applied = true;
+      jobsSnapshotRef.current = prev;
+      const patch = mode === 'pause' ? optimisticPauseJobPatch(job) : optimisticResumeJobPatch();
+      return mergeJobInList(prev, id, patch);
+    });
+    if (!applied) return;
+
+    timerOpsRef.current.add(id);
+    setTimerBusyId(id);
+    try {
+      const result = mode === 'pause'
+        ? await pauseUpholsteryProductionJob(id)
+        : await resumeUpholsteryProductionJob(id);
+      const serverPatch = serverJobPatchFromResponse(result);
+      if (serverPatch) {
+        setJobs((prev) => mergeJobInList(prev, id, serverPatch));
+      }
+    } catch (e) {
+      setJobs(jobsSnapshotRef.current);
+      Alert.alert(tUi('manufactureFailed', locale), e?.message || '');
+    } finally {
+      timerOpsRef.current.delete(id);
+      setTimerBusyId((cur) => (cur === id ? '' : cur));
+    }
+  }, [locale]);
+
   const onPlay = (jobId) => {
-    wrapBusy(jobId, () => resumeUpholsteryProductionJob(jobId));
+    void runOptimisticTimerOp(jobId, 'resume');
   };
 
   const onPause = (jobId) => {
-    wrapBusy(jobId, () => pauseUpholsteryProductionJob(jobId));
+    void runOptimisticTimerOp(jobId, 'pause');
   };
 
   const onFinish = (job) => {
@@ -350,6 +393,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               locale={locale}
               textAlign={textAlign}
               busy={busyId === String(item.job.job_id || item.job.id)}
+              timerLocked={timerBusyId === String(item.job.job_id || item.job.id)}
               onPlay={onPlay}
               onPause={onPause}
                 onFinish={onFinish}

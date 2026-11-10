@@ -97,9 +97,10 @@ async function assemblyHasInventoryAtLocations(sb, assemblyId, locationIds) {
 
 async function isAssemblyEligibleForStoreroomSkuReuse(sb, assembly, storeroomLocIds) {
   if (!assembly?.id) return false;
-  if (isProductionCatalogAssembly(assembly)) return false;
   if (isStoreroomMaterialRow(assembly) || hasStoreroomMetadataBlock(assembly)) return true;
-  return assemblyHasInventoryAtLocations(sb, assembly.id, storeroomLocIds);
+  if (await assemblyHasInventoryAtLocations(sb, assembly.id, storeroomLocIds)) return true;
+  if (isProductionCatalogAssembly(assembly)) return false;
+  return false;
 }
 
 async function findAssemblyByFamilySku(sb, familySku) {
@@ -125,6 +126,47 @@ async function resolveStoreroomSkuReuseAssembly(sb, familySku) {
     return null;
   }
   return assembly;
+}
+
+/** Storeroom create form: existing material with this SKU in another storeroom (same name / UOM). */
+export async function lookupStoreroomMaterialBySku(sb, familySkuInput) {
+  const familySku = normalizeWarehouseProductSku(familySkuInput);
+  if (!familySku) {
+    return { ok: true, found: false };
+  }
+  const assembly = await findAssemblyByFamilySku(sb, familySku);
+  if (!assembly) {
+    return { ok: true, found: false, family_sku: familySku };
+  }
+  const storeroomLocIds = await loadCarpentryStoreroomLocationIds(sb);
+  const eligible = await isAssemblyEligibleForStoreroomSkuReuse(sb, assembly, storeroomLocIds);
+  const meta = parseStoreroomMaterialMeta(assembly);
+  const uomAllowed = await loadMaterialUomAllowedSet(sb);
+  const defaultUom = normalizeCarpentryUom(meta.default_uom, uomAllowed.size ? uomAllowed : undefined);
+  if (!eligible) {
+    return {
+      ok: true,
+      found: true,
+      eligible: false,
+      assembly_id: String(assembly.id),
+      name: String(assembly.name || '').trim(),
+      family_sku: String(assembly.family_sku || familySku).trim(),
+      default_uom: defaultUom || '',
+      reason: isProductionCatalogAssembly(assembly)
+        ? 'warehouse_product'
+        : 'not_storeroom',
+    };
+  }
+  return {
+    ok: true,
+    found: true,
+    eligible: true,
+    assembly_id: String(assembly.id),
+    name: String(assembly.name || '').trim(),
+    family_sku: String(assembly.family_sku || familySku).trim(),
+    default_uom: defaultUom || '',
+    link_existing: true,
+  };
 }
 
 async function ensureStoreroomMaterialFlags(sb, assemblyId, uom) {
@@ -208,17 +250,14 @@ export async function createStoreroomMaterial(sb, {
   default_uom: defaultUom,
   generate_sku: generateSku,
 }) {
-  const materialName = String(name || '').trim();
   const locId = String(locationId || '').trim();
   const qty = Math.max(0, Number(quantity) || 0);
-  if (!materialName) throw new Error('Material name is required');
   if (!locId) throw new Error('location_id is required');
   if (qty <= 0) throw new Error('quantity must be greater than zero');
 
   let familySku = String(familySkuInput || '').trim();
   const uomAllowed = await loadMaterialUomAllowedSet(sb);
-  const uom = normalizeCarpentryUom(defaultUom, uomAllowed.size ? uomAllowed : undefined);
-  if (!uom) throw new Error('Choose a unit of measure (create UOMs under Materials first)');
+  const uomInput = normalizeCarpentryUom(defaultUom, uomAllowed.size ? uomAllowed : undefined);
   const now = new Date().toISOString();
 
   if (generateSku || !familySku) {
@@ -228,6 +267,12 @@ export async function createStoreroomMaterial(sb, {
     if (!familySku) throw new Error('SKU is required');
     const existing = await resolveStoreroomSkuReuseAssembly(sb, familySku);
     if (existing) {
+      const linkedName = String(name || '').trim() || String(existing.name || '').trim();
+      if (!linkedName) throw new Error('Material name is required');
+      const meta = parseStoreroomMaterialMeta(existing);
+      const uom = uomInput
+        || normalizeCarpentryUom(meta.default_uom, uomAllowed.size ? uomAllowed : undefined);
+      if (!uom) throw new Error('Choose a unit of measure (create UOMs under Materials first)');
       await ensureStoreroomMaterialFlags(sb, existing.id, uom);
       const assemblyId = String(existing.id);
       const { error: upsertErr } = await sb.from(INVENTORY).upsert({
@@ -256,6 +301,11 @@ export async function createStoreroomMaterial(sb, {
     }
     await assertUniqueWarehouseSkuOnSb(sb, familySku);
   }
+
+  const materialName = String(name || '').trim();
+  if (!materialName) throw new Error('Material name is required');
+  const uom = uomInput;
+  if (!uom) throw new Error('Choose a unit of measure (create UOMs under Materials first)');
 
   const metadata = {
     storeroom: {

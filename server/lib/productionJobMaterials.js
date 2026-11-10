@@ -1,6 +1,9 @@
 import { CARPENTRY_WAREHOUSE_NAMES } from '../../src/constants/carpentryWarehouses.js';
 import { labelFromMaterialUomCode, normalizeCarpentryUom } from '../../src/constants/carpentryUom.js';
-import { parseStoreroomMaterialMeta } from '../../src/utils/productionPortalCatalog.js';
+import {
+  isStoreroomMaterialInStock,
+  parseStoreroomMaterialMeta,
+} from '../../src/utils/productionPortalCatalog.js';
 import {
   adjustAssemblyInventory,
   loadAssemblyInventoryQty,
@@ -345,6 +348,7 @@ export async function listProductionStoreroomMaterials(sb) {
   }
 
   const materials = mergeMaterialsByFamilySku([...byAid.values()])
+    .filter(isStoreroomMaterialInStock)
     .sort((a, b) => a.name.localeCompare(b.name));
   return {
     materials,
@@ -500,6 +504,13 @@ export async function saveProductionJobMaterials(sb, {
       lineMeta?.warehouse_location_id || storeroomLocFromLineKey(key) || '',
     ).trim() || null;
     if (delta > 0) {
+      let onHandTotal = 0;
+      for (const loc of storeroomLocs) {
+        onHandTotal += await loadAssemblyInventoryQty(sb, aid, loc.id);
+      }
+      if (onHandTotal <= 0) {
+        throw new Error('Material is out of stock — cannot add to job materials');
+      }
       const order = warehousePickOrder(storeroomLocs, lineLoc || preferredStoreroomLocationId);
       if (!lineLoc && !preferredStoreroomLocationId) {
         throw new Error('Choose a storeroom for each material line');

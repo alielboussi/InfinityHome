@@ -30,7 +30,7 @@ export default function CatalogProductBomEditor({
             onChange={(e) => onUpdateLine(index, { material_assembly_id: e.target.value })}
           >
             <option value="">Material…</option>
-            {(materialOptions || []).map((m) => (
+            {(materialOptions || []).filter((m) => Math.max(0, Number(m.storeroom_qty) || 0) > 0).map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
                 {' '}

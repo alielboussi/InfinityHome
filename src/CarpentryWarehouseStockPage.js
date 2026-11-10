@@ -11,9 +11,11 @@ import { labelFromMaterialUomCode } from './constants/carpentryUom';
 import {
   postStoreroomCreate,
   postStoreroomDeleteStock,
+  postStoreroomLookupSku,
   postStoreroomSetStock,
   postStoreroomUpdateMaterial,
 } from './services/carpentryCatalogApi';
+import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 
 function isStoreroomMaterialAssembly(assembly) {
   return assembly?.metadata?.storeroom?.is_storeroom_material === true;
@@ -45,6 +47,8 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
   const [editingId, setEditingId] = useState('');
   const [editDraft, setEditDraft] = useState(null);
   const [notice, setNotice] = useState('');
+  const [skuLinkHint, setSkuLinkHint] = useState('');
+  const [skuLookupBusy, setSkuLookupBusy] = useState(false);
 
   const { options: uomOptions, defaultUom, loading: uomLoading } = useMaterialUomOptions();
 
@@ -265,7 +269,37 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
 
   const regenerateSku = () => {
     setMaterialSku(generateRandomWarehouseSku16());
+    setSkuLinkHint('');
   };
+
+  const lookupSkuForCreateForm = useCallback(async (rawSku) => {
+    const sku = normalizeWarehouseProductSku(rawSku);
+    if (!sku || sku.length < 6) {
+      setSkuLinkHint('');
+      return;
+    }
+    setSkuLookupBusy(true);
+    try {
+      const hit = await postStoreroomLookupSku(sku);
+      if (hit?.eligible && hit?.name) {
+        setMaterialName(hit.name);
+        if (hit.default_uom) setCreateUom((prev) => prev || hit.default_uom);
+        setSkuLinkHint(
+          `Same SKU as another storeroom — using “${hit.name}”. Saving adds opening qty here only.`,
+        );
+      } else if (hit?.found && !hit?.eligible) {
+        setSkuLinkHint(
+          'This SKU belongs to a warehouse product, not a storeroom material. Use a different SKU or add stock via “Stock at this storeroom”.',
+        );
+      } else {
+        setSkuLinkHint('');
+      }
+    } catch {
+      setSkuLinkHint('');
+    } finally {
+      setSkuLookupBusy(false);
+    }
+  }, []);
 
   const submitCreate = async (e) => {
     e.preventDefault();
@@ -274,17 +308,21 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
     setError('');
     try {
       const skuTrim = materialSku.trim();
-      await postStoreroomCreate({
+      const result = await postStoreroomCreate({
         name: materialName.trim(),
         location_id: locationId,
         quantity: createQty,
         default_uom: createUom,
         ...(skuTrim ? { family_sku: skuTrim } : { generate_sku: true }),
       });
+      if (result?.linked_existing_storeroom_material) {
+        setNotice(`Linked existing material “${result.name || materialName}” — stock updated at ${pageTitle}.`);
+      }
       setMaterialName('');
       setMaterialSku(generateRandomWarehouseSku16());
       setCreateQty('1');
       setCreateUom(defaultUom || '');
+      setSkuLinkHint('');
       await load();
     } catch (err) {
       setError(err?.message || 'Failed to create material');
@@ -348,7 +386,11 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
               className="kitwe-form-control"
               style={{ flex: '1 1 200px', fontFamily: 'monospace' }}
               value={materialSku}
-              onChange={(e) => setMaterialSku(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                setMaterialSku(e.target.value.toUpperCase());
+                setSkuLinkHint('');
+              }}
+              onBlur={() => lookupSkuForCreateForm(materialSku)}
               placeholder={`SKU (${WAREHOUSE_RANDOM_SKU_LENGTH} chars or manual)`}
               autoComplete="off"
             />
@@ -360,6 +402,12 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
               New random SKU
             </button>
           </div>
+          {skuLookupBusy ? (
+            <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--kitwe-muted)' }}>Looking up SKU…</p>
+          ) : null}
+          {skuLinkHint ? (
+            <p style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--kitwe-primary, #0d9488)' }}>{skuLinkHint}</p>
+          ) : null}
           <div className="kitwe-component-row">
             <input
               type="number"
@@ -470,15 +518,22 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
           units total
         </p>
       ) : null}
-      <div className="kitwe-catalog-table-wrap">
-        <table className="kitwe-catalog-table">
+      <div className="kitwe-catalog-table-wrap kitwe-catalog-table-wrap--storeroom">
+        <table className="kitwe-catalog-table kitwe-catalog-table--storeroom">
+          <colgroup>
+            <col className="kitwe-col-sku" />
+            <col className="kitwe-col-product" />
+            <col className="kitwe-col-uom" />
+            <col className="kitwe-col-qty" />
+            <col className="kitwe-col-actions" />
+          </colgroup>
           <thead>
             <tr>
-              <th>SKU</th>
-              <th>Material</th>
-              <th>UOM</th>
-              <th>Qty on hand</th>
-              <th />
+              <th className="col-sku">SKU</th>
+              <th className="col-product col-material">Material</th>
+              <th className="col-uom">UOM</th>
+              <th className="col-qty">Qty on hand</th>
+              <th className="col-actions" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -489,12 +544,11 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
               const rowLocked = Boolean(stockBusyId) && stockBusyId !== id && !stockBusyId.startsWith(`edit-${id}`);
               return (
                 <tr key={row.assembly_id}>
-                  <td>
+                  <td className="col-sku">
                     {isEditing ? (
                       <input
                         type="text"
                         className="kitwe-form-control"
-                        style={{ fontFamily: 'monospace', minWidth: 140 }}
                         value={editDraft.sku}
                         onChange={(e) => setEditDraft((d) => ({ ...d, sku: e.target.value.toUpperCase() }))}
                         autoComplete="off"
@@ -503,7 +557,7 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
                       row.sku
                     )}
                   </td>
-                  <td>
+                  <td className="col-product col-material">
                     {isEditing ? (
                       <input
                         type="text"
@@ -516,7 +570,7 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
                       row.name
                     )}
                   </td>
-                  <td>
+                  <td className="col-uom">
                     {isEditing ? (
                       <select
                         className="kitwe-form-control"
@@ -532,14 +586,13 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
                       formatUomLabel(row.default_uom)
                     )}
                   </td>
-                  <td>
+                  <td className="col-qty">
                     {isEditing ? (
                       <input
                         type="number"
                         min={0}
                         step="any"
                         className="kitwe-form-control kitwe-form-control--qty"
-                        style={{ maxWidth: 120 }}
                         value={editDraft.qty}
                         onChange={(e) => setEditDraft((d) => ({ ...d, qty: e.target.value }))}
                       />
@@ -549,14 +602,13 @@ export default function CarpentryWarehouseStockPage({ warehouseIndexOverride, em
                         min={0}
                         step="any"
                         className="kitwe-form-control kitwe-form-control--qty"
-                        style={{ maxWidth: 120 }}
                         value={qtyDrafts[id] ?? String(row.quantity)}
                         onChange={(e) => setQtyDrafts((prev) => ({ ...prev, [id]: e.target.value }))}
                         disabled={Boolean(editingId)}
                       />
                     )}
                   </td>
-                  <td>
+                  <td className="col-actions">
                     <div className="kitwe-row-actions">
                       {isEditing ? (
                         <>

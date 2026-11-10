@@ -325,6 +325,78 @@
   padding-right: 12px !important;
 }
 
+/* Storeroom stock list (3 cols + qty + actions) — fit main column without horizontal scroll */
+.kitwe-catalog-table-wrap--storeroom {
+  overflow-x: visible;
+}
+
+.kitwe-catalog-table--storeroom {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.kitwe-catalog-table--storeroom col.kitwe-col-sku { width: 22%; }
+.kitwe-catalog-table--storeroom col.kitwe-col-product { width: 26%; }
+.kitwe-catalog-table--storeroom col.kitwe-col-uom { width: 12%; }
+.kitwe-catalog-table--storeroom col.kitwe-col-qty { width: 10%; }
+.kitwe-catalog-table--storeroom col.kitwe-col-actions { width: 30%; }
+
+.kitwe-catalog-table--storeroom th,
+.kitwe-catalog-table--storeroom td {
+  overflow: hidden;
+}
+
+.kitwe-catalog-table--storeroom th.col-material,
+.kitwe-catalog-table--storeroom td.col-material,
+.kitwe-catalog-table--storeroom th.col-product,
+.kitwe-catalog-table--storeroom td.col-product {
+  overflow: visible;
+  white-space: normal;
+  word-break: break-word;
+  text-overflow: clip;
+}
+
+.kitwe-catalog-table--storeroom td.col-sku {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.kitwe-catalog-table--storeroom td.col-product .kitwe-form-control,
+.kitwe-catalog-table--storeroom td.col-sku .kitwe-form-control {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.kitwe-catalog-table--storeroom td.col-qty .kitwe-form-control--qty {
+  width: 100%;
+  max-width: 80px;
+}
+
+.kitwe-catalog-table--storeroom th.col-actions,
+.kitwe-catalog-table--storeroom td.col-actions {
+  overflow: visible;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.kitwe-catalog-table--storeroom .kitwe-row-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
+.kitwe-catalog-table--storeroom .kitwe-row-actions .kitwe-btn-compact {
+  flex: 0 0 auto;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+  font-size: 0.8125rem;
+}
+
 .kitwe-packet-detail-row td {
   padding: 0 12px 12px 12px;
   background: var(--kitwe-panel-bg, #f8fafc);
@@ -739,6 +811,17 @@ body.enterprise-theme .kitwe-catalog-page .kitwe-catalog-table select {
 .kitwe-catalog-table--upholstery .col-actions {
   width: 1%;
   white-space: nowrap;
+}
+
+/* Production jobs — “Materials (n)” toggle must not clip */
+.kitwe-catalog-table .col-materials,
+.kitwe-catalog-table th.col-materials,
+.kitwe-catalog-table td.col-materials {
+  width: 1%;
+  min-width: max-content;
+  white-space: nowrap;
+  overflow: visible;
+  vertical-align: middle;
 }
 
 .kitwe-catalog-family-header td {

@@ -67,6 +67,23 @@ export function parseStoreroomMaterialMeta(assembly) {
   return { default_uom: uom };
 }
 
+/** On-hand across storeroom locations on a catalog row (API or portal picker). */
+export function storeroomMaterialOnHandTotal(row) {
+  const locs = row?.locations || [];
+  if (locs.length) {
+    const fromLocs = locs.reduce(
+      (sum, loc) => sum + Math.max(0, Number(loc.quantity) || 0),
+      0,
+    );
+    if (fromLocs > 0) return fromLocs;
+  }
+  return Math.max(0, Number(row?.quantity ?? row?.storeroom_qty) || 0);
+}
+
+export function isStoreroomMaterialInStock(row) {
+  return storeroomMaterialOnHandTotal(row) > 0;
+}
+
 /** Materials with stock in Storerooms 1–3 (BOM picker on /carpentry and /upholstery). */
 export function listStoreroomMaterialOptions(assemblies, inventory, storeroomLocationIds) {
   const locIds = new Set((storeroomLocationIds || []).map((id) => String(id)));

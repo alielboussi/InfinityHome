@@ -172,8 +172,24 @@ export function mergeCatalogByFamilySku(rows) {
   return [...map.values()];
 }
 
+export function catalogMaterialOnHandTotal(row) {
+  const locs = row?.locations || [];
+  if (locs.length) {
+    const fromLocs = locs.reduce(
+      (sum, loc) => sum + Math.max(0, Number(loc.quantity) || 0),
+      0,
+    );
+    if (fromLocs > 0) return fromLocs;
+  }
+  return Math.max(0, Number(row?.quantity) || 0);
+}
+
+export function isStoreroomMaterialSelectable(row) {
+  return catalogMaterialOnHandTotal(row) > 0;
+}
+
 export function filterInStockCatalogMaterials(rows) {
-  return (rows || []).filter((row) => Math.max(0, Number(row.quantity) || 0) > 0);
+  return (rows || []).filter(isStoreroomMaterialSelectable);
 }
 
 export function enrichCatalogMaterialUom(rows, uomLabelMap) {
@@ -256,12 +272,12 @@ export function formatStoreroomOptionLabel(option) {
 
 export function catalogQtyAtStoreroom(catalogRow, warehouseLocationId) {
   const locId = String(warehouseLocationId || '').trim();
-  if (!locId) return Math.max(0, Number(catalogRow?.quantity) || 0);
+  if (!locId) return catalogMaterialOnHandTotal(catalogRow);
   const hit = (catalogRow?.locations || []).find(
     (loc) => String(loc.location_id || '') === locId,
   );
   if (hit) return Math.max(0, Number(hit.quantity) || 0);
-  return Math.max(0, Number(catalogRow?.quantity) || 0);
+  return 0;
 }
 
 export function carpentryFinishNeedsStoreroomPick(job) {

@@ -26,6 +26,7 @@ import {
   buildUomLabelMap,
   enrichCatalogMaterialUom,
   filterInStockCatalogMaterials,
+  isStoreroomMaterialSelectable,
   formatMaterialUom,
   humanizeUomCode,
   materialAssemblyIdFromStoredRow,
@@ -37,6 +38,7 @@ import {
   storeroomDeductionStrings,
   storeroomsForCatalogMaterial,
   storeroomsForJobMaterialDeduction,
+  catalogMaterialOnHandTotal,
   catalogQtyAtStoreroom,
   formatStoreroomOptionLabel,
   warehouseNameToStoreroomLabel,
@@ -169,6 +171,21 @@ export default function ProductionJobMaterialsModal({
 
   const finalizeAddMaterial = (row, storeroomLocationId) => {
     if (!row || !storeroomLocationId) return;
+    if (!isStoreroomMaterialSelectable(row)) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+      return;
+    }
+    const atLoc = catalogQtyAtStoreroom(row, storeroomLocationId);
+    if (atLoc <= 0) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+      return;
+    }
     const assemblyId = materialKey(row);
     const locId = String(storeroomLocationId);
     const draft = {
@@ -195,6 +212,13 @@ export default function ProductionJobMaterialsModal({
 
   const requestAddMaterial = (row) => {
     if (!row) return;
+    if (!isStoreroomMaterialSelectable(row)) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+      return;
+    }
     const picks = storeroomsForCatalogMaterial(row, storerooms);
     if (!picks.length) {
       Alert.alert(
@@ -211,8 +235,13 @@ export default function ProductionJobMaterialsModal({
   const handleScan = (value) => {
     setScanOpen(false);
     const matched = matchMaterialByScan(catalog, value);
-    if (matched) requestAddMaterial(matched);
-    else Alert.alert(tUi('quoteOrderMaterials', locale), tUi('manufactureSearchNoMatch', locale));
+    if (matched && isStoreroomMaterialSelectable(matched)) requestAddMaterial(matched);
+    else if (matched) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+    } else Alert.alert(tUi('quoteOrderMaterials', locale), tUi('manufactureSearchNoMatch', locale));
   };
 
   const filteredSearch = useMemo(() => {
@@ -220,6 +249,7 @@ export default function ProductionJobMaterialsModal({
     if (!q) return [];
     const keys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(search));
     return catalog.filter((row) => {
+      if (!isStoreroomMaterialSelectable(row)) return false;
       if (String(row.name || '').toLowerCase().includes(q)) return true;
       if (String(row.family_sku || '').toLowerCase().includes(q)) return true;
       const stored = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(row.family_sku));
@@ -240,7 +270,18 @@ export default function ProductionJobMaterialsModal({
     setLines((prev) => prev.map((l) => {
       if (materialLineKey(l) !== lineId) return l;
       const cur = Math.max(0, Math.floor(Number(l.quantity) || 0));
-      const next = Math.max(0, cur + delta);
+      let next = Math.max(0, cur + delta);
+      const stock = catalogById.get(l.assembly_id);
+      if (stock && delta > 0) {
+        const cap = l.warehouse_location_id
+          ? catalogQtyAtStoreroom(stock, l.warehouse_location_id)
+          : catalogMaterialOnHandTotal(stock);
+        if (cap <= 0) {
+          next = cur;
+        } else if (next > cap) {
+          next = Math.floor(cap);
+        }
+      }
       return { ...l, quantity: next };
     }));
   };
@@ -289,6 +330,26 @@ export default function ProductionJobMaterialsModal({
   };
 
   const onSave = async () => {
+    for (const l of lines) {
+      const qty = Math.max(0, Math.floor(Number(l.quantity) || 0));
+      if (qty <= 0) continue;
+      const stock = catalogById.get(l.assembly_id);
+      if (!stock || !isStoreroomMaterialSelectable(stock)) {
+        Alert.alert(
+          tUi('quoteOrderMaterials', locale),
+          tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+        );
+        return;
+      }
+      const locId = l.warehouse_location_id;
+      if (locId && catalogQtyAtStoreroom(stock, locId) <= 0) {
+        Alert.alert(
+          tUi('quoteOrderMaterials', locale),
+          tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+        );
+        return;
+      }
+    }
     const payload = lines
       .map((l) => ({
         assembly_id: l.assembly_id,

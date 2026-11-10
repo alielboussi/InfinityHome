@@ -69,7 +69,7 @@ export default function PaintingJobsPage() {
         <table className="kitwe-catalog-table kitwe-catalog-table--upholstery" style={{ marginTop: 20 }}>
           <thead>
             <tr>
-              <th style={{ width: 120 }}>Materials</th>
+              <th className="col-materials">Materials</th>
               <th>Product</th>
               <th>Qty</th>
               <th>Status</th>
@@ -86,7 +86,7 @@ export default function PaintingJobsPage() {
               return (
                 <React.Fragment key={jobKey}>
                   <tr>
-                    <td>
+                    <td className="col-materials">
                       <JobMaterialsExpandButton
                         open={open}
                         count={matLines.length}

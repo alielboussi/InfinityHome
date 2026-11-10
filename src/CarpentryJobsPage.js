@@ -207,7 +207,7 @@ export default function CarpentryJobsPage() {
         <table className="kitwe-catalog-table kitwe-catalog-table--upholstery" style={{ marginTop: 12 }}>
           <thead>
             <tr>
-              <th style={{ width: 120 }}>Materials</th>
+              <th className="col-materials">Materials</th>
               <th>Product</th>
               <th>Status</th>
               <th>Timer</th>
@@ -223,7 +223,7 @@ export default function CarpentryJobsPage() {
               return (
                 <React.Fragment key={jobKey}>
                   <tr>
-                    <td>
+                    <td className="col-materials">
                       <JobMaterialsExpandButton
                         open={open}
                         count={matLines.length}

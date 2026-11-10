@@ -10,6 +10,7 @@ import { loadProductionPortalCatalogInputs } from '../lib/loadProductionPortalCa
 import {
   receiveStoreroomMaterial,
   createStoreroomMaterial,
+  lookupStoreroomMaterialBySku,
   setStoreroomMaterialStockQty,
   removeStoreroomMaterialStockAtLocation,
   updateStoreroomMaterial,
@@ -74,6 +75,13 @@ export default async function handler(req, res) {
     if (op === 'create-storeroom-material') {
       const result = await createStoreroomMaterial(db, body);
       res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
+    if (op === 'lookup-storeroom-sku') {
+      const sku = body.family_sku || body.sku || body.familySku;
+      const result = await lookupStoreroomMaterialBySku(db, sku);
+      res.status(200).json(result);
       return;
     }
 

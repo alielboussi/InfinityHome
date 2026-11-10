@@ -292,6 +292,12 @@ export async function postSetFloor2ProductStock(assemblyId, quantity) {
   });
 }
 
+export async function postStoreroomLookupSku(familySku) {
+  const sku = String(familySku || '').trim();
+  if (!sku) return { ok: true, found: false };
+  return postCarpentryCatalog({ op: 'lookup-storeroom-sku', family_sku: sku });
+}
+
 export async function postStoreroomCreate(body) {
   try {
     return await postCarpentryCatalog({ op: 'create-storeroom-material', ...body });
