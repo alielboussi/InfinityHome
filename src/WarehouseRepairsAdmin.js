@@ -99,7 +99,6 @@ function RepairAdminCard({ row }) {
 }
 
 function OrderAdminCard({ row }) {
-  const stage = row.delivery_admin_stage || 'awaiting_driver';
   const statusLabel = orderAdminStatusDisplay(row);
   return (
     <article
