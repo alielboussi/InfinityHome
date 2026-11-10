@@ -65,6 +65,27 @@ async function clearFloor1RepairGhostQty(sb, assemblyId, qty) {
   }
 }
 
+export async function ensureRepairFloor2StockForDelivery(sb, {
+  returnOrderId,
+  assemblyId,
+  requiredQty,
+} = {}) {
+  const floor2Id = await resolveWarehouseFloor2LocationId(sb);
+  if (!floor2Id) throw new Error('Warehouse Floor 2 location is not configured.');
+  const need = Math.max(1, Math.floor(Number(requiredQty) || 1));
+  const aid = String(assemblyId || '').trim();
+  if (!aid) return;
+  const have = await getAssemblyStockQty(sb, aid, floor2Id);
+  if (have + 0.000001 >= need) return;
+
+  const rid = String(returnOrderId || '').trim();
+  if (!rid) throw new Error('Repair delivery is missing return order.');
+  const { data: row } = await sb.from(RETURNS).select('*').eq('id', rid).maybeSingle();
+  if (!row) throw new Error('Return order not found.');
+  const qty = Math.max(need, Math.max(1, Number(row.quantity) || 1));
+  await stageRepairedUnitOnFloor2(sb, { row, qty, now: new Date().toISOString() });
+}
+
 async function stageRepairedUnitOnFloor2(sb, { row, qty, now }) {
   const floor2Id = await resolveWarehouseFloor2LocationId(sb);
   if (!floor2Id) throw new Error('Warehouse Floor 2 location is not configured.');
@@ -748,6 +769,8 @@ export async function completeWarehouseReturnOrder(sb, body, user) {
     updated_at: now,
   }).eq('id', id);
   if (error) throw new Error(error.message || 'Failed to complete return.');
+
+  await stageRepairedUnitOnFloor2(sb, { row: { ...row, metadata: nextMeta }, qty, now });
 
   const { data: updated } = await sb.from(RETURNS).select('*').eq('id', id).maybeSingle();
   return {

@@ -128,6 +128,7 @@ import {
   listRepairFloor2DeliveriesForCatalog,
   repairFloor2DeliveryAssemblyMap,
   resolveWarehouseFloor2LocationId,
+  ensureRepairFloor2StockForDelivery,
 } from '../lib/warehouseReturnOrders.js';
 import { registerProductionPushToken } from '../lib/productionExpoPush.js';
 import {
@@ -3400,6 +3401,13 @@ async function opDeliverySubmit(body, user) {
       const stockDeductLocationId = adminQueue && floor2DeductLocationId
         ? floor2DeductLocationId
         : WAREHOUSE_FROM_LOCATION_ID;
+      if (repairStaging) {
+        await ensureRepairFloor2StockForDelivery(sb, {
+          returnOrderId: repairStaging.return_order_id,
+          assemblyId,
+          requiredQty: shipment.finishedUnits,
+        });
+      }
       if (!adminQueue) {
         await assertAssemblyStockAvailable(
           sb,
@@ -3435,6 +3443,7 @@ async function opDeliverySubmit(body, user) {
           stock_deduct_location_id: stockDeductLocationId,
           ...(adminQueue ? {
             admin_queue_delivery: true,
+            ...(repairStaging ? { floor2_repair_delivery: true } : {}),
             return_order_id: repairStaging?.return_order_id || null,
             return_number: repairStaging?.return_number || null,
             return_has_customer: Boolean(repairStaging?.has_customer),

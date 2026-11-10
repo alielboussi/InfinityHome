@@ -50,7 +50,8 @@ assert(reasons.includes('Upholstery'), 'return reasons must include Upholstery g
 assert(reasons.includes('Legs'), 'return reasons must include Legs');
 assert(returns.includes('RO'), 'return numbers must use RO prefix');
 assert(returns.includes('delivery_admin'), 'complete must register repairs on delivery admin queue');
-assert(returns.includes('markRepairWorkCompleteAwaitingDriver'), 'complete must not credit warehouse floors');
+assert(returns.includes('markRepairWorkCompleteAwaitingDriver'), 'complete must register delivery admin without Floor 1 credit');
+assert(returns.includes('stageRepairedUnitOnFloor2'), 'complete must stage repair WIP on Floor 2 for delivery app');
 assert(returns.includes('returnVisibleInWorkshopRepairQueue'), 'workshop repair list must keep ready-for-delivery rows');
 assert(returns.includes('repairEligibleForMobileDeliveryQueue'), 'workshop list must use delivery queue eligibility');
 assert(returns.includes('buildKitweReturnProductOptions'), 'returns must list Kitwe catalog products with stock');
