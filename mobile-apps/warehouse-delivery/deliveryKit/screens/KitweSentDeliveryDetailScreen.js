@@ -50,8 +50,11 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
   const session = detail?.session;
   const printGroups = detail?.print_groups || [];
 
+  const noteNumber = session?.display_number || session?.delivery_number || '';
+  const documentKind = session?.document_kind || 'delivery';
+
   const noteFields = session ? {
-    deliveryNumber: session.delivery_number,
+    deliveryNumber: noteNumber,
     driverName: session.driver_name,
     dispatchedBy: session.dispatched_by_name,
     driverSignatureSrc: detail?.driver_signature_data_uri || session.driver_signature_url,
@@ -60,6 +63,9 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
     submittedAt: session.submitted_at,
     printGroups,
     copies: DELIVERY_SENT_REPRINT_COPIES,
+    documentKind,
+    customerName: session.customer_name || '',
+    customerPhone: session.customer_phone || '',
   } : null;
 
   const onViewPdf = async () => {
@@ -97,7 +103,12 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
 
         {session ? (
           <View style={kiosk.card}>
-            <Text style={[kiosk.heroNumber, { textAlign }]}>{session.delivery_number}</Text>
+            <Text style={[kiosk.heroNumber, { textAlign }]}>{noteNumber}</Text>
+            {session.delivery_number && noteNumber !== session.delivery_number ? (
+              <Text style={[kiosk.metaLine, { textAlign }]}>
+                {tUi('sentDeliveryRefWhd', locale)}: {session.delivery_number}
+              </Text>
+            ) : null}
             <Text style={[kiosk.metaLine, { textAlign }]}>
               {tUi('sentDeliverySubmittedAt', locale)}: {dateStr} · {timeStr} (Zambia)
             </Text>
@@ -140,7 +151,7 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
           visible={printOpen}
           locale={locale}
           textAlign={textAlign}
-          deliveryNumber={session.delivery_number}
+          deliveryNumber={noteNumber}
           driverName={session.driver_name}
           dispatchedBy={session.dispatched_by_name}
           driverSignatureUrl={session.driver_signature_url}
@@ -148,7 +159,9 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
           printGroups={printGroups}
           submittedAt={session.submitted_at}
           copyCount={DELIVERY_SENT_REPRINT_COPIES}
-          documentKind="delivery"
+          documentKind={documentKind}
+          customerName={session.customer_name || ''}
+          customerPhone={session.customer_phone || ''}
           reprintMode
           autoPrintOnOpen={false}
           onDone={() => setPrintOpen(false)}

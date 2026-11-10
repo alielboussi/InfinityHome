@@ -172,6 +172,14 @@ const deliveryPdf = fs.readFileSync(path.join(root, 'src/utils/warehouseDelivery
 assert(deliveryPdf.includes('deliverySenderName'), 'warehouse delivery PDF must show app name not email');
 assert(noteHtml.includes('Page ${pageIndex} of ${pageTotal}'), 'delivery note must show page numbers');
 assert(mobile.includes('delivery-sent-list'), 'warehouse-mobile must support delivery-sent-list');
+assert(
+  mobile.includes('mobileSentDeliverySessionEligible'),
+  'sent list must include repair/order deliveries from Delivery app',
+);
+assert(
+  mobile.includes('order_delivery'),
+  'order queue submit must tag sessions for sent list',
+);
 assert(mobile.includes('delivery-sent-detail'), 'warehouse-mobile must support delivery-sent-detail');
 assert(mobile.includes('evaluateWarehouseDeliveryDriverAppAccess'), 'delivery API must use evaluateWarehouseDeliveryDriverAppAccess');
 assert(

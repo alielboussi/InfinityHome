@@ -156,9 +156,11 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
       await saveLocalSentDelivery({
         session_id: sessionId,
         delivery_number: deliveryNumber,
+        display_number: printNoteNumber || deliveryNumber,
+        document_kind: documentKind,
         status: 'submitted',
         submitted_at: submittedAt,
-        driver_name: driverName,
+        driver_name: useCustomer ? customerDriverName : driverName,
         dispatched_by_name: dispatchedByName,
         driver_signature_url: signatureUrl,
         driver_signature_data_uri: dataUri,

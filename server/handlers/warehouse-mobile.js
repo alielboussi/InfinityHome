@@ -3455,6 +3455,7 @@ async function opDeliverySubmit(body, user) {
             return_customer_phone: repairStaging?.customer_phone || null,
             production_job_id: orderStaging?.production_job_id || null,
             quote_id: orderStaging?.quote_id || null,
+            quote_number: orderStaging?.quote_number || null,
           } : {}),
         }),
       });
@@ -3534,6 +3535,20 @@ async function opDeliverySubmit(body, user) {
     }
     : {};
 
+  const orderEntry = entries.find(
+    (e) => e?.metadata?.admin_queue_delivery === true
+      && !e?.metadata?.return_order_id
+      && (e.metadata?.production_job_id || e.metadata?.quote_id),
+  );
+  const orderSessionMeta = orderEntry
+    ? {
+      document_kind: 'order_delivery',
+      production_job_id: orderEntry.metadata?.production_job_id || null,
+      quote_id: orderEntry.metadata?.quote_id || null,
+      quote_number: orderEntry.metadata?.quote_number || null,
+    }
+    : {};
+
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
     submitted_at: now,
@@ -3542,6 +3557,7 @@ async function opDeliverySubmit(body, user) {
     metadata: {
       ...(session.metadata || {}),
       ...repairSessionMeta,
+      ...orderSessionMeta,
       source: mobileSource,
       hassan_alert_pending: true,
       hassan_alert_at: now,
@@ -3621,6 +3637,34 @@ async function opDeliverySubmit(body, user) {
 }
 
 const WAREHOUSE_PRODUCTION_MOBILE_SOURCE = 'warehouse_production_mobile';
+const WAREHOUSE_CATALOG_MOBILE_SOURCE = 'warehouse_catalog_mobile';
+const WAREHOUSE_MOBILE_DELIVERY_SOURCES = new Set([
+  WAREHOUSE_PRODUCTION_MOBILE_SOURCE,
+  WAREHOUSE_CATALOG_MOBILE_SOURCE,
+]);
+
+function mobileSentDeliverySessionEligible(session) {
+  const meta = session?.metadata || {};
+  const src = String(meta.source || '');
+  if (WAREHOUSE_MOBILE_DELIVERY_SOURCES.has(src)) return true;
+  const dk = String(meta.document_kind || '').toLowerCase();
+  if (dk === 'repair_delivery' || dk === 'order_delivery') return true;
+  if (meta.return_order_id || meta.return_number) return true;
+  if (meta.production_job_id || meta.quote_id || meta.quote_number) return true;
+  return false;
+}
+
+function sentDeliveryDisplayNumber(session) {
+  const meta = session?.metadata || {};
+  const ro = String(meta.return_number || '').trim();
+  if (ro) return ro;
+  const quote = String(meta.quote_number || '').trim();
+  if (quote) return quote;
+  if (String(meta.document_kind || '').toLowerCase() === 'order_delivery' && meta.production_job_id) {
+    return `Job ${String(meta.production_job_id).slice(0, 8)}`;
+  }
+  return session.delivery_number;
+}
 
 function canViewWarehouseSentDeliverySession(session, user) {
   if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) return true;
@@ -3631,9 +3675,12 @@ function canViewWarehouseSentDeliverySession(session, user) {
 
 function mapSentDeliveryListRow(row) {
   const meta = row?.metadata || {};
+  const documentKind = String(meta.document_kind || 'delivery').trim() || 'delivery';
   return {
     session_id: row.id,
     delivery_number: row.delivery_number,
+    display_number: sentDeliveryDisplayNumber(row),
+    document_kind: documentKind,
     status: row.status,
     submitted_at: row.submitted_at || row.created_at,
     driver_name: meta.driver_name || '',
@@ -3666,7 +3713,7 @@ async function opDeliverySentList(body, user) {
   if (error) throw new Error(error.message || 'Failed to load deliveries');
 
   const sessions = (data || [])
-    .filter((row) => String(row?.metadata?.source || '') === WAREHOUSE_PRODUCTION_MOBILE_SOURCE)
+    .filter((row) => mobileSentDeliverySessionEligible(row))
     .slice(0, limit)
     .map(mapSentDeliveryListRow);
 
@@ -3686,8 +3733,8 @@ async function opDeliverySentDetail(body, user) {
     .maybeSingle();
   if (sessErr) throw new Error(sessErr.message || 'Failed to load delivery');
   if (!session) throw new Error('Delivery not found.');
-  if (String(session.metadata?.source || '') !== WAREHOUSE_PRODUCTION_MOBILE_SOURCE) {
-    throw new Error('Delivery was not sent from Production.');
+  if (!mobileSentDeliverySessionEligible(session)) {
+    throw new Error('Delivery was not sent from the Delivery app.');
   }
   if (!canViewWarehouseSentDeliverySession(session, user)) {
     const err = new Error('You can only view your own sent deliveries.');
@@ -3711,15 +3758,20 @@ async function opDeliverySentDetail(body, user) {
   const driverSignatureDataUri = signatureUrl
     ? await fetchDeliverySignatureAsDataUri(signatureUrl)
     : '';
+  const documentKind = String(meta.document_kind || 'delivery').trim() || 'delivery';
   return {
     session: {
       id: session.id,
       delivery_number: session.delivery_number,
+      display_number: sentDeliveryDisplayNumber(session),
+      document_kind: documentKind,
       status: session.status,
       submitted_at: session.submitted_at || session.created_at,
       driver_name: meta.driver_name || '',
       dispatched_by_name: meta.dispatched_by_name || session.created_by_name || '',
       driver_signature_url: signatureUrl,
+      customer_name: meta.customer_name || '',
+      customer_phone: meta.customer_phone || '',
     },
     print_groups: buildDeliveryPrintGroupsFromEntries(entries || [], nameFormatter),
     driver_signature_data_uri: driverSignatureDataUri,

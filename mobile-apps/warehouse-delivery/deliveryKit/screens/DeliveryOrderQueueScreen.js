@@ -19,6 +19,7 @@ async function openStagedDelivery(navigation, row) {
     finished_driver_checked: true,
     finished_driver_checked_at: now,
   }];
+  const printNoteNumber = String(row.quote_number || row.production_job_id || '').trim();
   const printGroups = [{
     assembly_name: row.assembly_name || row.assembly_id,
     units: qty,
@@ -27,9 +28,11 @@ async function openStagedDelivery(navigation, row) {
   navigation.navigate('KitweSendSignature', {
     sessionId: session.session_id,
     deliveryNumber: session.delivery_number,
+    printNoteNumber: printNoteNumber || session.delivery_number,
     groups,
     printGroups,
     queueKind: 'order',
+    documentKind: 'order_delivery',
   });
 }
 

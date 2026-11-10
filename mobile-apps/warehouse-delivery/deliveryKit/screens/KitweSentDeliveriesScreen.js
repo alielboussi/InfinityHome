@@ -24,6 +24,13 @@ function statusLabel(status, locale) {
   return tUi('sentDeliveryStatusOther', locale);
 }
 
+function sentKindLabel(documentKind, locale) {
+  const dk = String(documentKind || '').toLowerCase();
+  if (dk === 'repair_delivery') return tUi('sentDeliveryKindRepair', locale);
+  if (dk === 'order_delivery') return tUi('sentDeliveryKindOrder', locale);
+  return '';
+}
+
 function mapLoadError(err, locale) {
   if (err?.code === 'api_not_deployed') {
     return tUi('sentDeliveriesServerPending', locale);
@@ -110,13 +117,25 @@ export default function KitweSentDeliveriesScreen({ navigation }) {
         const when = row.submitted_at || '';
         const dateStr = when ? formatZambiaDate(when) : '—';
         const timeStr = when ? formatZambiaTime(when) : '';
+        const hero = String(row.display_number || row.delivery_number || '—');
+        const kind = sentKindLabel(row.document_kind, locale);
+        const whd = String(row.delivery_number || '').trim();
+        const showWhd = whd && hero !== whd;
         return (
           <Pressable
             key={row.session_id}
             style={kiosk.card}
             onPress={() => navigation.navigate('KitweSentDeliveryDetail', { sessionId: row.session_id })}
           >
-            <Text style={[kiosk.heroNumber, { textAlign }]}>{row.delivery_number}</Text>
+            <Text style={[kiosk.heroNumber, { textAlign }]}>{hero}</Text>
+            {kind ? (
+              <Text style={[kiosk.metaLine, { textAlign, marginBottom: 2 }]}>{kind}</Text>
+            ) : null}
+            {showWhd ? (
+              <Text style={[styles.hint, { textAlign, marginTop: 0, marginBottom: 4 }]}>
+                {tUi('sentDeliveryRefWhd', locale)}: {whd}
+              </Text>
+            ) : null}
             <Text style={[kiosk.metaLine, { textAlign }]}>
               {statusLabel(row.status, locale)}
               {timeStr ? ` · ${dateStr} · ${timeStr} (Zambia)` : ''}

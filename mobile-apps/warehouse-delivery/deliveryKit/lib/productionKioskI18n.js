@@ -543,8 +543,11 @@ const UI_STRINGS = {
     ar: 'عرض المذكرة · إعادة طباعة نسخة واحدة',
   },
   sentDeliveriesTitle: { en: 'Sent deliveries', ar: 'التسليمات المرسلة' },
+  sentDeliveryKindRepair: { en: 'Repair delivery', ar: 'تسليم إصلاح' },
+  sentDeliveryKindOrder: { en: 'Production order', ar: 'طلب إنتاج' },
+  sentDeliveryRefWhd: { en: 'WHD ref', ar: 'مرجع WHD' },
   sentDeliveriesEmpty: {
-    en: 'No sent deliveries yet. Complete Send Delivery to see them here.',
+    en: 'No sent deliveries yet. Send from Floor 1, Repairs, or Orders to see them here.',
     ar: 'لا توجد تسليمات مرسلة بعد. أكمل «توقيع التسليم» لتظهر هنا.',
   },
   sentDeliveriesLoadFailed: { en: 'Could not load deliveries.', ar: 'تعذر تحميل التسليمات.' },
