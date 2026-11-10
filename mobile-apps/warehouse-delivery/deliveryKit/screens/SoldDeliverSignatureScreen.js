@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import DeliveryDriverPickerComponent from '../components/DeliveryDriverPicker.js';
+import DeliveryCustomerDriverSection from '../components/DeliveryCustomerDriverSection';
 import DeliverySignaturePad from '../components/DeliverySignaturePad';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import KioskSafeScroll from '../components/KioskSafeScroll';
@@ -26,6 +27,8 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
 
   const [driverId, setDriverId] = useState('');
   const [driverName, setDriverName] = useState('');
+  const [customerDriverName, setCustomerDriverName] = useState('');
+  const [customerDriverPhone, setCustomerDriverPhone] = useState('');
   const [driverPickerOpen, setDriverPickerOpen] = useState(false);
   const { drivers, loading: driversLoading } = useDeliveryDrivers();
   const [busy, setBusy] = useState(false);
@@ -45,8 +48,13 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
 
   const submit = useCallback(async () => {
     if (submitLock.current || busy) return;
-    if (!driverName.trim()) {
+    const useCustomer = Boolean(customerDriverName.trim() && customerDriverPhone.trim());
+    if (!useCustomer && !driverName.trim()) {
       setError(tUi('deliveryNeedDriver', locale));
+      return;
+    }
+    if (useCustomer && driverId) {
+      setError(tUi('deliveryDriverEitherOr', locale));
       return;
     }
     if (!sigValid) {
@@ -62,16 +70,18 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
       const out = await warehouseMobileRequest('storage-deliver-submit', {
         storage_send_id: storageSendId,
         session_id: sessionId,
-        driver_id: driverId,
-        driver_name: driverName,
+        driver_id: useCustomer ? '' : driverId,
+        driver_name: useCustomer ? customerDriverName : driverName,
+        customer_driver_name: useCustomer ? customerDriverName : '',
+        customer_driver_phone: useCustomer ? customerDriverPhone : '',
         signature_png_base64: dataUri,
       });
+      const resolvedDriver = useCustomer ? customerDriverName : driverName;
       navigation.replace('SoldDeliverDone', {
         deliveryNumber: out.delivery_number || deliveryNumber,
-        driverName,
+        driverName: resolvedDriver,
         supervisorName: getProductionDispatcherLabelSync() || '',
         printGroups: out.print_groups || printGroups,
-        driverSignatureDataUri: dataUri,
         driverSignatureDataUri: dataUri,
         driverSignatureUrl: out.driver_signature_url || '',
         submittedAt: out.submitted_at,
@@ -86,23 +96,61 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
       submitLock.current = false;
     }
   }, [
-    busy, customerName, customerPhone, deliveryNumber, driverId, driverName,
-    locale, navigation, printGroups, sessionId, sigValid, storageSendId,
+    busy, customerDriverName, customerDriverPhone, customerName, customerPhone, deliveryNumber,
+    driverId, driverName, locale, navigation, printGroups, sessionId, sigValid, storageSendId,
   ]);
+
+  const customerLabels = {
+    title: tUi('deliveryCustomerDriver', locale),
+    hint: tUi('deliveryCustomerDriverHint', locale),
+    addTitle: tUi('deliveryCustomerDriverAdd', locale),
+    namePh: tUi('deliveryCustomerDriverNamePh', locale),
+    phonePh: tUi('deliveryCustomerDriverPhonePh', locale),
+    save: tUi('customerDriverSave', locale),
+  };
 
   return (
     <>
       <KioskSafeScroll contentContainerStyle={styles.wrap}>
         <ProductionKioskTopBar title={tUi('soldDeliverTitle', locale)} locale={locale} onToggleLocale={toggleLocale} />
         <Text style={[kiosk.metaLine, { textAlign }]}>{storageNumber || deliveryNumber}</Text>
-        <Pressable
-          style={[kiosk.driverPickerBtn, driverName ? kiosk.driverPickerBtnSelected : null, { marginBottom: 12 }]}
-          onPress={() => setDriverPickerOpen(true)}
-        >
-          <Text style={driverName ? kiosk.driverPickerValueText : kiosk.driverPickerPlaceholderText}>
-            {driverName || tUi('deliveryDriverPlaceholder', locale)}
-          </Text>
-        </Pressable>
+
+        <DeliveryCustomerDriverSection
+          locale={locale}
+          textAlign={textAlign}
+          disabled={busy}
+          customerName={customerDriverName}
+          customerPhone={customerDriverPhone}
+          fleetDriverActive={Boolean(driverId || driverName)}
+          labels={customerLabels}
+          kiosk={kiosk}
+          onCustomerChange={({ name, phone }) => {
+            setCustomerDriverName(name);
+            setCustomerDriverPhone(phone);
+            setDriverId('');
+            setDriverName('');
+          }}
+        />
+
+        <View style={kiosk.field}>
+          <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryDriver', locale)}</Text>
+          <Pressable
+            style={[kiosk.driverPickerBtn, driverName ? kiosk.driverPickerBtnSelected : null, { marginBottom: 12 }]}
+            onPress={() => {
+              if (customerDriverName) {
+                setError(tUi('deliveryDriverEitherOr', locale));
+                return;
+              }
+              setDriverPickerOpen(true);
+            }}
+            disabled={busy || Boolean(customerDriverName)}
+          >
+            <Text style={driverName ? kiosk.driverPickerValueText : kiosk.driverPickerPlaceholderText}>
+              {driverName || tUi('deliveryDriverPlaceholder', locale)}
+            </Text>
+          </Pressable>
+        </View>
+
         <DeliverySignaturePad
           ref={padRef}
           locale={locale}
@@ -110,7 +158,14 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
           onValidationChange={(r) => setSigValid(Boolean(r?.ok))}
         />
         {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
-        <Pressable style={[kiosk.btnPrimaryBlock, busy && { opacity: 0.6 }]} onPress={submit} disabled={busy}>
+        <Pressable
+          style={[
+            kiosk.btnPrimaryBlock,
+            (busy || (!driverName.trim() && !customerDriverName.trim())) && { opacity: 0.6 },
+          ]}
+          onPress={submit}
+          disabled={busy || (!driverName.trim() && !customerDriverName.trim())}
+        >
           {busy ? <ActivityIndicator color="#fff" /> : (
             <Text style={kiosk.btnPrimaryBlockText}>{tUi('returnSignSubmit', locale)}</Text>
           )}

@@ -25,6 +25,16 @@ export function returnOrderLifecycleBadge(row) {
   if (status === WAREHOUSE_RETURN_STATUSES.AWAITING_KITWE_ACCEPT) {
     return 'In transit to Kitwe — awaiting Hassan accept on Warehouse Deliveries';
   }
+  const admin = meta.delivery_admin;
+  if (admin?.stage === 'awaiting_driver') {
+    return 'Awaiting driver — Warehouse Delivery app → Repairs';
+  }
+  if (admin?.stage === 'collected_by_driver') {
+    return 'Collected by driver — awaiting Hassan accept on Deliveries';
+  }
+  if (admin?.stage === 'delivery_completed') {
+    return 'Delivery completed';
+  }
   if (
     status === WAREHOUSE_RETURN_STATUSES.COMPLETED
     && meta.floor1_awaiting_hassan

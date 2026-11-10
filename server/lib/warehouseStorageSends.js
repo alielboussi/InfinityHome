@@ -455,10 +455,9 @@ export async function prepareWarehouseStorageDelivery(sb, body, user, grant) {
 
 export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
   await assertWarehouseStorageProductionAccess(user, grant);
+  const { resolveMobileDeliveryDriver } = await import('./resolveMobileDeliveryDriver.js');
   const id = String(body.storage_send_id || body.id || '').trim();
-  const driverId = String(body.driver_id || '').trim();
-  const driverName = String(body.driver_name || '').trim();
-  if (!driverName) throw new Error('Driver is required.');
+  const { driverName, driverId, customerDriverName, customerDriverPhone, customerDriverActive } = resolveMobileDeliveryDriver(body);
 
   const { storage_send: row } = await getWarehouseStorageSend(sb, id);
   if (row.status !== WAREHOUSE_STORAGE_SEND_STATUSES.IN_STORAGE) {
@@ -485,6 +484,9 @@ export async function submitWarehouseStorageDelivery(sb, body, user, grant) {
     metadata: {
       ...(row.metadata || {}),
       delivered_at: now,
+      customer_driver_name: customerDriverActive ? customerDriverName : null,
+      customer_driver_phone: customerDriverActive ? customerDriverPhone : null,
+      customer_driver_signed: customerDriverActive,
     },
   }).eq('id', id);
   if (error) {

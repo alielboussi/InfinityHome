@@ -14,8 +14,6 @@ import ManufactureScreen from './screens/ManufactureScreen';
 import QuotesScreen from './screens/QuotesScreen';
 import QuoteDetailScreen from './screens/QuoteDetailScreen';
 import WarehouseRepairsScreen from './screens/WarehouseRepairsScreen';
-import RepairReturnSignatureScreen from './screens/RepairReturnSignatureScreen';
-import RepairReturnDoneScreen from './screens/RepairReturnDoneScreen';
 import ProductionPushSettingsScreen from './screens/ProductionPushSettingsScreen';
 import JobsScreen from './screens/JobsScreen';
 import PaintingScreen from './screens/PaintingScreen';
@@ -124,8 +122,6 @@ function MainStack({ navigationRef }) {
           />
         )}
       </Stack.Screen>
-      <Stack.Screen name="RepairReturnSignature" options={{ headerShown: false }} component={RepairReturnSignatureScreen} />
-      <Stack.Screen name="RepairReturnDone" options={{ headerShown: false }} component={RepairReturnDoneScreen} />
       <Stack.Screen name="PushSettings" options={{ headerShown: false }} component={ProductionPushSettingsScreen} />
     </Stack.Navigator>
   );

@@ -4,6 +4,10 @@ import { listReturnOrders } from './services/warehouseDeliveryMobileApi';
 import { formatWarehouseAdminDateTime } from './utils/warehouseAdminFormat';
 import { formatReturnElapsedDuration, returnOrderLifecycleBadge } from './utils/warehouseReturnOrder';
 import {
+  deliveryAdminStageLabel,
+  readDeliveryAdminMeta,
+} from './utils/warehouseDeliveryAdminQueue';
+import {
   REPAIR_DEPARTMENTS,
   repairDepartmentLabel,
   resolveReturnRepairDepartment,
@@ -13,6 +17,8 @@ import { formatProductionElapsed } from './utils/formatProductionElapsed';
 
 
 function TrackageCard({ row }) {
+  const admin = readDeliveryAdminMeta(row);
+  const deliveryStage = admin?.stage ? deliveryAdminStageLabel(admin.stage, 'repair') : '';
   const dept = row.repair_department || resolveReturnRepairDepartment(row);
   const completed = row.work_completed_at
     ? formatReturnElapsedDuration(
@@ -60,6 +66,21 @@ function TrackageCard({ row }) {
             {repairDepartmentLabel(dept)}
           </div>
           <div style={{ fontWeight: 600 }}>{String(row.status || '').replace(/_/g, ' ')}</div>
+          {deliveryStage ? (
+            <div style={{
+              display: 'inline-block',
+              fontSize: 12,
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: 6,
+              background: '#e0f2fe',
+              color: '#0369a1',
+              marginTop: 6,
+            }}
+            >
+              {deliveryStage}
+            </div>
+          ) : null}
           {liveTimer ? (
             <div style={{ color: '#0369a1', fontWeight: 700, marginTop: 4 }}>
               ⏱ {liveTimer}
@@ -151,11 +172,10 @@ export default function WarehouseReturnsTrackage() {
     <div style={{ minHeight: '100vh', background: 'var(--dash-bg)', color: 'var(--dash-text)', padding: 24 }}>
       <div className="page-header-row">
         <BackToDashboard />
-        <h1 style={{ margin: 0 }}>Returns trackage</h1>
+        <h1 style={{ margin: 0 }}>Repairs trackage</h1>
       </div>
       <p style={{ color: 'var(--dash-muted)', marginBottom: 16, lineHeight: 1.5 }}>
-        All Kitwe return jobs you created, grouped by workshop department. Shows live repair timers,
-        completed turnaround, and delivery note numbers when dispatched.
+        All Kitwe return jobs you created, grouped by workshop department.         Shows live repair timers, delivery status (Delivery app), and note numbers when dispatched.
       </p>
 
       <input

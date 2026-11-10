@@ -49,7 +49,8 @@ assert(zpl.includes('Product Name:'), 'return customer label must use Product Na
 assert(reasons.includes('Upholstery'), 'return reasons must include Upholstery group');
 assert(reasons.includes('Legs'), 'return reasons must include Legs');
 assert(returns.includes('RO'), 'return numbers must use RO prefix');
-assert(returns.includes('factory_stock_added_at'), 'complete must add factory warehouse stock');
+assert(returns.includes('delivery_admin'), 'complete must register repairs on delivery admin queue');
+assert(returns.includes('markRepairWorkCompleteAwaitingDriver'), 'complete must not credit warehouse floors');
 assert(returns.includes('buildKitweReturnProductOptions'), 'returns must list Kitwe catalog products with stock');
 assert(returns.includes('canWarehouseKitweReturnCreator'), 'returns API must allow login-access admin like deliveries');
 assert(returns.includes('allocateWarehouseReturnDeliveryNumber'), 'return shipments must use WHR/CR note numbers');
@@ -68,9 +69,9 @@ assert(returns.includes('kitwe_restored_at'), 'ship back must restore Kitwe stoc
 assert(returns.includes('factory_stock_removed_at'), 'customer label must deduct factory stock');
 assert(read('src/WarehouseReturns.js').includes('loadReturnQuoteCustomers'), 'returns must fallback to quote_customers catalog');
 assert(read('src/utils/warehouseReturnReasons.js').includes('returnReasonShowsLeatherCode'), 'leather code reasons helper required');
-assert(chrome.includes('/warehouse-returns'), 'Hassan nav must link Returns');
+assert(chrome.includes('/warehouse-returns'), 'Hassan nav must link Repairs');
 assert(chrome.includes('/warehouse-repairs-admin'), 'catalog nav must link Repairs admin');
-assert(chrome.includes('Returns Trackage'), 'Hassan nav must link Returns Trackage');
+assert(chrome.includes('Repairs Trackage'), 'Hassan nav must link Repairs Trackage');
 assert(
   read('src/WarehouseReturnsTrackage.js').includes('REPAIR_DEPARTMENTS'),
   'returns trackage must group by repair department',
@@ -99,8 +100,11 @@ assert(returnScreen.includes('onToggleLocale={toggleLocale}') || returnScreen.in
 assert(!returnScreen.includes("mode: 'complete'"), 'complete must not open signature screen without prepare');
 assert(returnScreen.includes("tUi('returnAccept'") || returnScreen.includes('returnAccept'), 'returns actions must use i18n');
 assert(!returnScreen.includes('forceArabic: true'), 'returns must not lock locale to Arabic');
-assert(returnScreen.includes('repairDispositionFloor1'), 'workshop repairs must offer Floor 1 vs delivery on stop');
-assert(returnScreen.includes('RepairReturnSignature'), 'workshop repairs must navigate to RepairReturnSignature');
+assert(returnScreen.includes('repairCompleteFloor2Hint'), 'workshop repairs must mention delivery queue on stop');
+const repairsAdmin = read('src/WarehouseRepairsAdmin.js');
+assert(repairsAdmin.includes('listDeliveryProductionQueue'), 'repairs admin must list production orders queue');
+assert(repairsAdmin.includes('deliveryAdminStageLabel'), 'repairs admin must show delivery admin stages');
+assert(!returnScreen.includes('return-order-customer-delivery-prepare'), 'workshop repairs must not open inline delivery');
 assert(!returns.includes('await adjustAssemblyStock(sb, row.assembly_id, KITWE_LOCATION_ID, qty);\n\n  await sb.from(\'warehouse_delivery_sessions\')'), 'WHR submit must not restore Kitwe before Hassan accept');
 
 const noteHtml = read('src/utils/buildDeliveryNotePrintHtml.js');

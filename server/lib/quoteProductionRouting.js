@@ -414,8 +414,17 @@ export async function completeQuoteProductionOrder(sb, { quoteId, userId }) {
 
   await sb.from(ROUTING).update({ completed_at: now }).eq('quote_id', qid);
 
-  await adjustAssemblyInventory(sb, run.assembly_id, WAREHOUSE_FACTORY_LOCATION_ID, Number(run.product_qty) || 1);
-  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FACTORY_LOCATION_ID);
+  const { data: quoteRow } = await sb.from('quotations').select('id, quote_number').eq('id', qid).maybeSingle();
+  const { data: routingRow } = await sb.from(ROUTING).select('route').eq('quote_id', qid).maybeSingle();
+  const { registerQuoteOrderAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+  await registerQuoteOrderAwaitingDriver(sb, {
+    quoteId: qid,
+    assemblyId: run.assembly_id,
+    qty: Math.max(1, Number(run.product_qty) || 1),
+    route: routingRow?.route || run.metadata?.route || 'upholstery',
+    quoteNumber: quoteRow?.quote_number || null,
+    now,
+  });
 
   return { run_id: run.id, completed_at: now };
 }

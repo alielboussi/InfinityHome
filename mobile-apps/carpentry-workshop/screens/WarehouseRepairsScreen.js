@@ -18,6 +18,10 @@ import { kioskScreenEdgesSafe } from '../productionKiosk/lib/kioskLayout';
 import { useProductionKioskLocale } from '../productionKiosk/hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../productionKiosk/lib/productionKioskI18n';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import {
+  mergeReturnOrderRow,
+  optimisticReturnTimerRow,
+} from '../shared/lib/repairReturnQueueUi';
 import { theme } from '../shared/theme';
 import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
 import RunningRepairElapsed from '../productionKiosk/components/RunningRepairElapsed';
@@ -150,14 +154,14 @@ export default function WarehouseRepairsScreen({
   const [busyId, setBusyId] = useState('');
   const [repairMaterials, setRepairMaterials] = useState(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ background = false } = {}) => {
     if (!allowed) {
       setRows([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
-    setError('');
+    if (!background) setLoading(true);
+    if (!background) setError('');
     try {
       const res = await warehouseMobileRequest('return-order-list', {
         for_production: true,
@@ -165,23 +169,29 @@ export default function WarehouseRepairsScreen({
       });
       setRows(res?.return_orders || []);
     } catch (err) {
-      setError(err?.message || tUi('returnLoadFailed', locale));
-      setRows([]);
+      if (!background) {
+        setError(err?.message || tUi('returnLoadFailed', locale));
+        setRows([]);
+      }
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [allowed, repairDepartment, locale]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const runOp = async (row, op, body) => {
+  const runOp = async (row, op, body, { timerAction } = {}) => {
+    const optimistic = timerAction ? optimisticReturnTimerRow(row, timerAction) : null;
+    if (optimistic) mergeReturnOrderRow(setRows, optimistic);
     setBusyId(row.id);
     setError('');
     try {
-      await warehouseMobileRequest(op, { return_order_id: row.id, ...body });
-      await load();
+      const res = await warehouseMobileRequest(op, { return_order_id: row.id, ...body });
+      if (res?.return_order) mergeReturnOrderRow(setRows, res.return_order);
+      void load({ background: true });
     } catch (err) {
       setError(err?.message || tUi('returnAcceptFailed', locale));
+      void load({ background: true });
     } finally {
       setBusyId('');
     }
@@ -189,59 +199,26 @@ export default function WarehouseRepairsScreen({
 
   const onPlay = (row) => {
     if (row.status === 'submitted') {
-      runOp(row, 'return-order-accept');
+      runOp(row, 'return-order-accept', {}, { timerAction: 'accept' });
       return;
     }
-    runOp(row, 'return-order-resume');
+    runOp(row, 'return-order-resume', {}, { timerAction: 'resume' });
   };
 
-  const onPause = (row) => runOp(row, 'return-order-pause');
+  const onPause = (row) => runOp(row, 'return-order-pause', {}, { timerAction: 'pause' });
 
   const onStop = (row) => {
-    const hasCustomer = Boolean(String(row.customer_name || '').trim());
     Alert.alert(
       tUi('repairCompleteConfirm', locale),
-      tUi('repairDispositionPrompt', locale),
+      tUi('repairCompleteFloor2Hint', locale),
       [
         { text: tUi('cancel', locale), style: 'cancel' },
         {
-          text: tUi('repairDispositionFloor1', locale),
+          text: tUi('repairCompleteConfirmBtn', locale),
           onPress: () => runOp(row, 'return-order-complete'),
-        },
-        {
-          text: tUi('repairDispositionDelivery', locale),
-          onPress: () => completeAndDispatch(row, hasCustomer),
         },
       ],
     );
-  };
-
-  const completeAndDispatch = async (row, hasCustomer) => {
-    setBusyId(row.id);
-    setError('');
-    try {
-      await warehouseMobileRequest('return-order-complete', { return_order_id: row.id });
-      const prepOp = hasCustomer
-        ? 'return-order-customer-delivery-prepare'
-        : 'return-order-ship-prepare';
-      const prep = await warehouseMobileRequest(prepOp, { return_order_id: row.id });
-      navigation.navigate('RepairReturnSignature', {
-        dispatchKind: hasCustomer ? 'customer' : 'kitwe',
-        returnOrderId: row.id,
-        returnNumber: row.return_number,
-        sessionId: prep.session_id,
-        deliveryNumber: prep.delivery_number,
-        printGroups: prep.print_groups || [],
-        documentKind: prep.document_kind,
-        customerName: prep.customer_name || row.customer_name,
-        customerPhone: prep.customer_phone || row.customer_phone,
-      });
-    } catch (err) {
-      setError(err?.message || tUi('returnCompleteFailed', locale));
-      await load();
-    } finally {
-      setBusyId('');
-    }
   };
 
   const titleKey = route.params?.titleKey || 'dashRepairs';
@@ -281,7 +258,7 @@ export default function WarehouseRepairsScreen({
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
-      {loading ? (
+      {loading && !rows.length ? (
         <ActivityIndicator style={{ marginTop: 24 }} color={KIOSK_ICON_BLUE_ON_DARK} />
       ) : (
         <FlatList

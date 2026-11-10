@@ -44,6 +44,7 @@ export const WarehouseReturns = lazyRoute(() => import('./WarehouseReturns'));
 export const WarehouseReturnsTrackage = lazyRoute(() => import('./WarehouseReturnsTrackage'));
 export const WarehouseStorage = lazyRoute(() => import('./WarehouseStorage'));
 export const WarehouseDeliveriesAdmin = lazyRoute(() => import('./WarehouseDeliveriesAdmin'));
+export const FulfillmentFloor1DeliveryPage = lazyRoute(() => import('./FulfillmentFloor1DeliveryPage'));
 export const WarehouseRepairsAdmin = lazyRoute(() => import('./WarehouseRepairsAdmin'));
 export const WarehouseSalesStorageAdmin = lazyRoute(() => import('./WarehouseSalesStorageAdmin'));
 export const WarehouseDeliveryDriversPage = lazyRoute(() => import('./WarehouseDeliveryDriversPage'));

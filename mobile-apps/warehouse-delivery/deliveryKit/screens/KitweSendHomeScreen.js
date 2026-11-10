@@ -23,6 +23,7 @@ import { assembliesUsingPacket, findWarehousePacketByScan } from '../lib/deliver
 import { filterAssembliesForDeliverySearch } from '../lib/deliveryCatalogSearch';
 import {
   deliveryWarehouseAssemblyIdSet,
+  filterAssembliesForDeliveryFloor1Only,
   filterAssembliesForDeliveryWarehouse,
   filterAssembliesToDeliveryWarehouse,
 } from '../lib/deliveryWarehouseCatalog';
@@ -73,7 +74,7 @@ function buildScansFromChecks(packetRows, unitsNum, checks) {
   return { ok: true, scans };
 }
 
-export default function KitweSendHomeScreen({ navigation }) {
+export default function KitweSendHomeScreen({ navigation, hubEmbedded = false }) {
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const restored = readDeliveryWorkspace();
   const [sessionId, setSessionId] = useState(restored?.sessionId || '');
@@ -99,7 +100,7 @@ export default function KitweSendHomeScreen({ navigation }) {
 
   const allAssemblies = catalog?.assemblies || [];
   const deliveryAssemblies = useMemo(
-    () => filterAssembliesForDeliveryWarehouse(catalog),
+    () => filterAssembliesForDeliveryFloor1Only(catalog),
     [catalog],
   );
   const deliveryAssemblyIds = useMemo(
@@ -714,14 +715,18 @@ export default function KitweSendHomeScreen({ navigation }) {
   return (
     <>
       <KioskSafeScroll contentContainerStyle={styles.wrap}>
-        <ProductionKioskTopBar
-          title={tUi('deliveryTitle', locale)}
-          locale={locale}
-          onToggleLocale={toggleLocale}
-        />
-        <Pressable onPress={() => navigation.goBack()} style={kiosk.backRow}>
-          <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
-        </Pressable>
+        {hubEmbedded ? null : (
+          <>
+            <ProductionKioskTopBar
+              title={tUi('dashFloor1Deliveries', locale)}
+              locale={locale}
+              onToggleLocale={toggleLocale}
+            />
+            <Pressable onPress={() => navigation.goBack()} style={kiosk.backRow}>
+              <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
+            </Pressable>
+          </>
+        )}
 
         <View style={kiosk.card}>
           <Text style={[kiosk.heroNumber, { textAlign }]}>

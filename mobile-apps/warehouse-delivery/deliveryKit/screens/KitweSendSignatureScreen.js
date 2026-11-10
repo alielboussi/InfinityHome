@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import DeliveryDriverPickerComponent from '../components/DeliveryDriverPicker.js';
+import DeliveryCustomerDriverSection from '../components/DeliveryCustomerDriverSection';
 import DeliverySignaturePad from '../components/DeliverySignaturePad';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import KioskSafeScroll from '../components/KioskSafeScroll';
@@ -11,6 +12,7 @@ import { useDeliveryDrivers } from '../../hooks/useDeliveryDrivers';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { saveLocalSentDelivery } from '../lib/deliverySentLocalStore';
 import { clearDeliveryWorkspace } from '../lib/productionDeliveryWorkspaceCache';
+import { deliveryQueueReturnRoute } from '../lib/deliveryQueueNavigation';
 import { tUi } from '../lib/productionKioskI18n';
 import { formatWarehouseMobileApiError, warehouseMobileRequest } from '../shared/warehouseMobileApi';
 
@@ -45,6 +47,8 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
 
   const [driverId, setDriverId] = useState('');
   const [driverName, setDriverName] = useState('');
+  const [customerDriverName, setCustomerDriverName] = useState('');
+  const [customerDriverPhone, setCustomerDriverPhone] = useState('');
   const [driverPickerOpen, setDriverPickerOpen] = useState(false);
   const { drivers, loading: driversLoading } = useDeliveryDrivers();
   const [busy, setBusy] = useState(false);
@@ -53,7 +57,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
 
   useEffect(() => {
     if (!sessionId || !Array.isArray(groups) || !groups.length) {
-      navigation.replace('KitweSendHome');
+      navigation.replace(deliveryQueueReturnRoute(route.params?.queueKind));
     }
   }, [sessionId, groups.length, navigation]);
 
@@ -74,8 +78,13 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
       setError(tUi('deliveryNeedProduct', locale));
       return;
     }
-    if (!driverName.trim()) {
+    const useCustomer = Boolean(customerDriverName.trim() && customerDriverPhone.trim());
+    if (!useCustomer && !driverName.trim()) {
       setError(tUi('deliveryNeedDriver', locale));
+      return;
+    }
+    if (useCustomer && driverId) {
+      setError(tUi('deliveryDriverEitherOr', locale));
       return;
     }
     if (!sigValid) {
@@ -98,8 +107,10 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
 
       const submitResult = await warehouseMobileRequest('delivery-submit', {
         session_id: sessionId,
-        driver_id: driverId,
-        driver_name: driverName,
+        driver_id: useCustomer ? '' : driverId,
+        driver_name: useCustomer ? customerDriverName : driverName,
+        customer_driver_name: useCustomer ? customerDriverName : '',
+        customer_driver_phone: useCustomer ? customerDriverPhone : '',
         signature_png_base64: dataUri,
         groups,
       });
@@ -138,7 +149,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
       }
       const msg = mapSubmitError(err, locale);
       Alert.alert(tUi('deliveryTitle', locale), msg);
-      navigation.replace('KitweSendHome');
+      navigation.replace(deliveryQueueReturnRoute(route.params?.queueKind));
     } finally {
       setBusy(false);
       submitLockRef.current = false;
@@ -149,6 +160,8 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
     dispatchedByName,
     driverId,
     driverName,
+    customerDriverName,
+    customerDriverPhone,
     groups,
     locale,
     navigation,
@@ -156,6 +169,15 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
     sessionId,
     sigValid,
   ]);
+
+  const customerLabels = {
+    title: tUi('deliveryCustomerDriver', locale),
+    hint: tUi('deliveryCustomerDriverHint', locale),
+    addTitle: tUi('deliveryCustomerDriverAdd', locale),
+    namePh: tUi('deliveryCustomerDriverNamePh', locale),
+    phonePh: tUi('deliveryCustomerDriverPhonePh', locale),
+    save: tUi('customerDriverSave', locale),
+  };
 
   return (
     <>
@@ -182,6 +204,24 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
           <Text style={[kiosk.heroNumber, { textAlign }]}>{deliveryNumber}</Text>
         </View>
 
+        <DeliveryCustomerDriverSection
+          locale={locale}
+          textAlign={textAlign}
+          disabled={busy}
+          customerName={customerDriverName}
+          customerPhone={customerDriverPhone}
+          fleetDriverActive={Boolean(driverId || driverName)}
+          labels={customerLabels}
+          kiosk={kiosk}
+          onCustomerChange={({ name, phone }) => {
+            setCustomerDriverName(name);
+            setCustomerDriverPhone(phone);
+            setDriverId('');
+            setDriverName('');
+          }}
+          onUseFleetDriver={() => {}}
+        />
+
         <View style={[kiosk.field, styles.driverField]}>
           <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryDriver', locale)}</Text>
           <Pressable
@@ -189,8 +229,14 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
               kiosk.driverPickerBtn,
               driverName ? kiosk.driverPickerBtnSelected : null,
             ]}
-            onPress={() => setDriverPickerOpen(true)}
-            disabled={busy}
+            onPress={() => {
+              if (customerDriverName) {
+                setError(tUi('deliveryDriverEitherOr', locale));
+                return;
+              }
+              setDriverPickerOpen(true);
+            }}
+            disabled={busy || Boolean(customerDriverName)}
           >
             <Text
               style={[
@@ -216,9 +262,9 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         {error ? <Text style={[kiosk.errText, { textAlign }]}>{error}</Text> : null}
 
         <Pressable
-          style={[kiosk.btnPrimaryBlock, styles.sendBtn, (!sigValid || busy || !driverName.trim()) && styles.sendBtnDisabled]}
+          style={[kiosk.btnPrimaryBlock, styles.sendBtn, (!sigValid || busy || (!driverName.trim() && !customerDriverName.trim())) && styles.sendBtnDisabled]}
           onPress={submit}
-          disabled={!sigValid || busy || !driverName.trim()}
+          disabled={!sigValid || busy || (!driverName.trim() && !customerDriverName.trim())}
         >
           {busy ? (
             <ActivityIndicator color="#0f172a" />

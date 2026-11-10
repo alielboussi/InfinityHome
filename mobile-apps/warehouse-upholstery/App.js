@@ -15,8 +15,6 @@ import JobsScreen from './screens/JobsScreen';
 import UpholsteryQuotesScreen from './screens/UpholsteryQuotesScreen';
 import UpholsteryQuoteDetailScreen from './screens/UpholsteryQuoteDetailScreen';
 import WarehouseRepairsScreen from './screens/WarehouseRepairsScreen';
-import RepairReturnSignatureScreen from './screens/RepairReturnSignatureScreen';
-import RepairReturnDoneScreen from './screens/RepairReturnDoneScreen';
 import ProductionPushSettingsScreen from './screens/ProductionPushSettingsScreen';
 import { stackScreenOptions, theme } from './shared/theme';
 
@@ -114,8 +112,6 @@ function MainStack({ navigationRef }) {
           />
         )}
       </Stack.Screen>
-      <Stack.Screen name="RepairReturnSignature" options={{ headerShown: false }} component={RepairReturnSignatureScreen} />
-      <Stack.Screen name="RepairReturnDone" options={{ headerShown: false }} component={RepairReturnDoneScreen} />
       <Stack.Screen name="PushSettings" options={{ headerShown: false }} component={ProductionPushSettingsScreen} />
     </Stack.Navigator>
   );

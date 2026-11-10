@@ -9,6 +9,8 @@ import MobileScreenGate from './shared/MobileScreenGate';
 import { useDeliveryAccessGrant } from './hooks/useDeliveryAccessGrant';
 import DashboardScreen from './screens/DashboardScreen';
 import KitweSendHomeScreen from './deliveryKit/screens/KitweSendHomeScreen';
+import DeliveryRepairQueueScreen from './deliveryKit/screens/DeliveryRepairQueueScreen';
+import DeliveryOrderQueueScreen from './deliveryKit/screens/DeliveryOrderQueueScreen';
 import KitweSendSignatureScreen from './deliveryKit/screens/KitweSendSignatureScreen';
 import KitweSendDoneScreen from './deliveryKit/screens/KitweSendDoneScreen';
 import KitweSendProductScreen from './deliveryKit/screens/KitweSendProductScreen';
@@ -71,7 +73,21 @@ function MainStack() {
           </MobileScreenGate>
         )}
       </Stack.Screen>
-  <Stack.Screen name="KitweSendProduct" options={{ headerShown: false }}>
+      <Stack.Screen name="DeliveryRepairQueue" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <DeliveryRepairQueueScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="DeliveryOrderQueue" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <DeliveryOrderQueueScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="KitweSendProduct" options={{ headerShown: false }}>
         {(props) => (
           <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
             <KitweSendProductScreen {...props} />

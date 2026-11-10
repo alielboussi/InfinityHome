@@ -296,11 +296,6 @@ export async function finishCarpentryProductionJob(sb, {
     });
     runId = manufactureResult.run_id;
   } else {
-    // floor2_push: WIP was deducted when the job opened — return completed qty to Floor 2 (never Floor 1).
-    if (meta.floor2_push) {
-      await adjustAssemblyInventory(sb, productId, outputLocationId, qty);
-    }
-
     const now = new Date().toISOString();
     const finalElapsed = computeElapsedMs(job);
     runId = newUuid();
@@ -340,7 +335,7 @@ export async function finishCarpentryProductionJob(sb, {
     for (const locId of storeroomIds) {
       if (locId) await recomputeWarehouseLocationStockServer(sb, locId);
     }
-    if (meta.floor2_push && outputLocationId) {
+    if (meta.floor2_push && outputLocationId && !meta.delivery_admin) {
       await recomputeWarehouseLocationStockServer(sb, outputLocationId);
     }
   }
@@ -358,6 +353,19 @@ export async function finishCarpentryProductionJob(sb, {
       production_run_id: runId || null,
     },
   });
+
+  if (productId && !meta.catalog_manufacture) {
+    const { data: asm } = await sb.from('warehouse_assemblies').select('name').eq('id', productId).maybeSingle();
+    const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+    await registerProductionJobAwaitingDriver(sb, {
+      jobsTable: JOBS,
+      jobRow: { id: job.id, metadata: updated?.metadata || meta },
+      assemblyId: productId,
+      assemblyName: asm?.name || productId,
+      qty,
+      department: 'carpentry',
+    });
+  }
 
   return {
     job: serializeJob(updated),

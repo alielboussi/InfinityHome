@@ -527,6 +527,15 @@ export async function fetchUpholsteryProductionQuotes() {
   }
 }
 
+export async function fetchProductionQuoteArabicTranslations(texts = []) {
+  try {
+    const payload = await productionOp('production-quote-translate-arabic', { texts });
+    return payload?.translations || {};
+  } catch {
+    return {};
+  }
+}
+
 export async function acceptUpholsteryQuote(quoteId) {
   return productionOp('production-quote-accept', {
     route: UPHOLSTERY_ROUTE,
@@ -536,6 +545,20 @@ export async function acceptUpholsteryQuote(quoteId) {
 
 export async function completeUpholsteryQuote(quoteId) {
   return productionOp('production-quote-complete', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+  });
+}
+
+export async function pauseUpholsteryQuote(quoteId) {
+  return productionOp('production-quote-pause', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+  });
+}
+
+export async function resumeUpholsteryQuote(quoteId) {
+  return productionOp('production-quote-resume', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
   });
@@ -597,12 +620,16 @@ export async function saveProductionJobMaterials({
   jobKind,
   jobId,
   returnOrderId,
+  productionRoute,
   materialLines,
+  preferredStoreroomLocationId,
 } = {}) {
   return productionOp('production-job-materials-save', {
     job_kind: jobKind,
     job_id: jobId,
     return_order_id: returnOrderId,
+    production_route: productionRoute,
     material_lines: materialLines,
+    preferred_storeroom_location_id: preferredStoreroomLocationId || undefined,
   });
 }

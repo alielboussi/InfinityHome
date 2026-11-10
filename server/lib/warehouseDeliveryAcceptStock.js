@@ -57,8 +57,18 @@ export async function moveAssembliesForDeliveryReceive(sb, lines, {
     const aid = String(line.metadata?.assembly_id || '').trim();
     const qty = Math.max(0, Number(line.quantity) || 0);
     if (!aid || qty < 1) continue;
-    await adjustAssemblyStock(sb, aid, fromLocationId, -qty);
-    await adjustAssemblyStock(sb, aid, toLocationId, qty);
+    if (line.metadata?.admin_queue_delivery === true) {
+      continue;
+    }
+    const fromLoc = String(line.metadata?.stock_deduct_location_id || fromLocationId).trim() || fromLocationId;
+    await adjustAssemblyStock(sb, aid, fromLoc, -qty);
+    if (line.metadata?.admin_queue_delivery === true) {
+      continue;
+    }
+    const customerRepairReturn = line.metadata?.return_has_customer === true;
+    if (!customerRepairReturn) {
+      await adjustAssemblyStock(sb, aid, toLocationId, qty);
+    }
     moved.push({
       lineId: String(line.id),
       assemblyId: aid,

@@ -6,6 +6,7 @@ import {
   deliveryEntryFinishedUnit,
 } from './warehouseDeliveryAcceptStock.js';
 import { finalizeReturnShipmentOnKitweAccept } from './warehouseReturnOrders.js';
+import { finalizeAdminQueueOnKitweAccept } from './warehouseDeliveryAdminQueue.js';
 import {
   assemblyUnitsReadyForKitweCatalog,
   readKitweAssemblyInventoryQtyMap,
@@ -217,11 +218,20 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
 
   const isReturnShipment = session.metadata?.is_return_shipment === true;
   let moved;
+  const adminQueueLines = toReceive.filter((e) => e?.metadata?.admin_queue_delivery === true);
+  const standardLines = toReceive.filter((e) => e?.metadata?.admin_queue_delivery !== true);
+
   if (isReturnShipment) {
     moved = await moveReturnShipmentAssembliesToKitwe(sb, toReceive);
   } else {
-    moved = await movePacketsForDeliveryReceive(sb, toReceive);
-    await moveAssembliesForDeliveryReceive(sb, toReceive);
+    const { moveAdminQueueLineToKitwe } = await import('./warehouseDeliveryAdminQueue.js');
+    moved = [];
+    for (const line of adminQueueLines) {
+      const r = await moveAdminQueueLineToKitwe(sb, line);
+      if (r) moved.push({ lineId: String(line.id), assemblyId: r.assemblyId, qty: r.qty });
+    }
+    await movePacketsForDeliveryReceive(sb, standardLines);
+    await moveAssembliesForDeliveryReceive(sb, standardLines);
   }
   for (const line of toReceive) {
     const metadata = {
@@ -231,6 +241,7 @@ export async function acceptWarehouseDeliveryServer(sb, sessionId, { acceptedBy,
     };
     await sb.from('warehouse_delivery_entries').update({ metadata }).eq('id', line.id);
   }
+  await finalizeAdminQueueOnKitweAccept(sb, toReceive, { acceptedAt: now });
   await syncWarehouseStockAfterDeliveryReceive(sb, moved);
 
   const kitweQtyAfterStockAccept = touchedAssemblyIds.length

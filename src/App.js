@@ -42,6 +42,7 @@ import {
   WarehouseReturnsTrackage,
   WarehouseStorage,
   WarehouseDeliveriesAdmin,
+  FulfillmentFloor1DeliveryPage,
   WarehouseRepairsAdmin,
   WarehouseSalesStorageAdmin,
   WarehouseDeliveryDriversPage,
@@ -88,6 +89,7 @@ const DASHBOARD_THEME_PATHS = new Set([
       '/ledger-mobile',
       '/all-transfers',
       '/warehouse-deliveries-admin',
+      '/fulfillment-floor1-delivery',
       '/warehouse-repairs-admin',
       '/warehouse-products/sales-storage',
       '/stock-periods',
@@ -452,6 +454,14 @@ function App() {
           <Route path="/warehouse-returns-trackage" element={<WarehouseReturnsTrackage />} />
           <Route path="/warehouse-storage" element={<WarehouseStorage />} />
           <Route path="/warehouse-deliveries-admin" element={<WarehouseDeliveriesAdmin />} />
+          <Route
+            path="/fulfillment-floor1-delivery"
+            element={(
+              <RequireAdminPage check={canManageCatalog}>
+                <FulfillmentFloor1DeliveryPage />
+              </RequireAdminPage>
+            )}
+          />
           <Route
             path="/warehouse-repairs-admin"
             element={(

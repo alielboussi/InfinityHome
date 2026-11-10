@@ -112,3 +112,8 @@ export function filterAssembliesToDeliveryWarehouse(catalog, assemblies) {
   const allowed = deliveryWarehouseAssemblyIdSet(catalog);
   return (assemblies || []).filter((a) => a?.id && allowed.has(String(a.id)));
 }
+
+/** Floor 1 stock only — name used by Kitwe Send hub screen. */
+export function filterAssembliesForDeliveryFloor1Only(catalog) {
+  return filterAssembliesForDeliveryWarehouse(catalog);
+}

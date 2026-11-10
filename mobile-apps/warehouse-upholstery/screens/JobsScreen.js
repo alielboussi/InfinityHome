@@ -1,4 +1,4 @@
-import { formatProductionElapsed as formatElapsed } from '../shared/lib/formatProductionElapsed';
+import QuoteOrderElapsed from '../shared/components/QuoteOrderElapsed';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -43,9 +43,6 @@ import {
 
 
 function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
-  const startedRaw = quote?.run_started_at || quote?.accepted_at;
-  const elapsedMs = startedRaw ? Math.max(0, Date.now() - new Date(startedRaw).getTime()) : 0;
-  const elapsed = formatElapsed(elapsedMs);
   const canMaterials = Boolean(quote?.sent_to_production_at || quote?.sent_to_production) && !quote?.completed_at;
   return (
     <View style={[kiosk.card, styles.jobCard]}>
@@ -61,7 +58,7 @@ function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
       ) : null}
       <View style={styles.timerRow}>
         <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
-        <Text style={styles.timerValue}>{elapsed}</Text>
+        <QuoteOrderElapsed quote={quote} style={styles.timerValue} />
         <Text style={styles.statusChip}>
           {quote.accepted_at ? tUi('carpentryQuoteInProduction', locale) : tUi('carpentryQuoteAwaiting', locale)}
         </Text>

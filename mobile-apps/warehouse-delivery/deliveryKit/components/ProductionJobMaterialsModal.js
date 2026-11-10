@@ -12,13 +12,37 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ProductionQrScanModal from './ProductionQrScanModal';
+import ProductionKioskTopBar from './ProductionKioskTopBar';
 import { kiosk } from './kioskStyles';
+import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import {
   fetchProductionStoreroomMaterials,
   saveProductionJobMaterials,
 } from '../services/productionApi';
 import { theme } from '../shared/theme';
+import StoreroomDeductionPromptModal from '../shared/components/StoreroomDeductionPromptModal';
+import {
+  buildUomLabelMap,
+  enrichCatalogMaterialUom,
+  filterInStockCatalogMaterials,
+  isStoreroomMaterialSelectable,
+  formatMaterialUom,
+  humanizeUomCode,
+  materialAssemblyIdFromStoredRow,
+  materialLineKey,
+  materialLinesNeedStoreroomPick,
+  warehouseLocationIdFromStoredRow,
+  mergeCatalogByFamilySku,
+  parseStoreroomsFromMaterialsApi,
+  storeroomDeductionStrings,
+  storeroomsForCatalogMaterial,
+  storeroomsForJobMaterialDeduction,
+  catalogMaterialOnHandTotal,
+  catalogQtyAtStoreroom,
+  formatStoreroomOptionLabel,
+  warehouseNameToStoreroomLabel,
+} from '../shared/lib/storeroomDeductionFlow';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,
@@ -26,7 +50,7 @@ import {
 } from '../shared/warehouseScanResolver';
 
 function materialKey(row) {
-  return String(row?.assembly_id || row?.id || '');
+  return materialAssemblyIdFromStoredRow(row) || String(row?.id || '');
 }
 
 function matchMaterialByScan(catalog, raw) {
@@ -49,14 +73,18 @@ function matchMaterialByScan(catalog, raw) {
 export default function ProductionJobMaterialsModal({
   visible,
   onClose,
-  locale,
-  textAlign,
+  locale: localeProp,
+  textAlign: textAlignProp,
   jobKind,
   jobId,
   returnOrderId = '',
+  productionRoute = '',
   initialLines = [],
   onSaved,
 }) {
+  const { locale: localeHook, textAlign: textAlignHook, toggleLocale } = useProductionKioskLocale();
+  const locale = localeProp || localeHook;
+  const textAlign = textAlignProp || textAlignHook;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [catalog, setCatalog] = useState([]);
@@ -64,6 +92,13 @@ export default function ProductionJobMaterialsModal({
   const [search, setSearch] = useState('');
   const [scanOpen, setScanOpen] = useState(false);
   const [error, setError] = useState('');
+  const [storerooms, setStorerooms] = useState([]);
+  const [storeroomPromptVisible, setStoreroomPromptVisible] = useState(false);
+  const [pendingSavePayload, setPendingSavePayload] = useState(null);
+  const [pendingAddRow, setPendingAddRow] = useState(null);
+  const [pendingStoreroomLineChange, setPendingStoreroomLineChange] = useState(null);
+
+  const storeroomCopy = useMemo(() => storeroomDeductionStrings(tUi, locale), [locale]);
 
   useEffect(() => {
     if (!visible) return;
@@ -73,6 +108,9 @@ export default function ProductionJobMaterialsModal({
         name: row.name || '',
         family_sku: row.family_sku || '',
         uom: row.uom || 'ea',
+        uom_label: row.uom_label || humanizeUomCode(row.uom || 'ea'),
+        warehouse_location_id: warehouseLocationIdFromStoredRow(row) || row.warehouse_location_id || '',
+        storeroom_label: warehouseNameToStoreroomLabel(row.storeroom_label || ''),
         quantity: Math.max(0, Math.floor(Number(row.quantity) || 0)),
       })),
     );
@@ -84,8 +122,16 @@ export default function ProductionJobMaterialsModal({
     setLoading(true);
     setError('');
     try {
-      const list = await fetchProductionStoreroomMaterials();
-      setCatalog(Array.isArray(list) ? list : []);
+      const payload = await fetchProductionStoreroomMaterials();
+      const raw = Array.isArray(payload) ? payload : (payload?.materials || []);
+      const uomMap = buildUomLabelMap(Array.isArray(payload) ? {} : payload);
+      const list = enrichCatalogMaterialUom(
+        filterInStockCatalogMaterials(mergeCatalogByFamilySku(raw)),
+        uomMap,
+      );
+      setCatalog(list);
+      const storeroomPayload = Array.isArray(payload) ? { materials: list } : { ...payload, materials: list };
+      setStorerooms(parseStoreroomsFromMaterialsApi(storeroomPayload));
     } catch (e) {
       setError(e?.message || tUi('materialsLoadFailed', locale));
     } finally {
@@ -103,31 +149,99 @@ export default function ProductionJobMaterialsModal({
     return m;
   }, [catalog]);
 
-  const addMaterial = (row) => {
-    if (!row) return;
-    const id = materialKey(row);
+  const promptStorerooms = useMemo(() => {
+    if (pendingAddRow) {
+      return storeroomsForCatalogMaterial(pendingAddRow, storerooms);
+    }
+    if (pendingStoreroomLineChange) {
+      const stock = catalogById.get(materialKey(pendingStoreroomLineChange));
+      return stock ? storeroomsForCatalogMaterial(stock, storerooms) : storerooms;
+    }
+    if (pendingSavePayload?.length) {
+      return storeroomsForJobMaterialDeduction(pendingSavePayload, catalog, storerooms);
+    }
+    return storerooms;
+  }, [pendingAddRow, pendingSavePayload, pendingStoreroomLineChange, catalog, catalogById, storerooms]);
+
+  const storeroomLabelForId = (id) => {
+    const row = (storerooms || []).find((s) => String(s.id) === String(id));
+    if (row) return formatStoreroomOptionLabel(row);
+    return '';
+  };
+
+  const finalizeAddMaterial = (row, storeroomLocationId) => {
+    if (!row || !storeroomLocationId) return;
+    if (!isStoreroomMaterialSelectable(row)) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+      return;
+    }
+    const atLoc = catalogQtyAtStoreroom(row, storeroomLocationId);
+    if (atLoc <= 0) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+      return;
+    }
+    const assemblyId = materialKey(row);
+    const locId = String(storeroomLocationId);
+    const draft = {
+      assembly_id: assemblyId,
+      name: row.name,
+      family_sku: row.family_sku,
+      uom: row.uom || 'ea',
+      uom_label: row.uom_label || '',
+      warehouse_location_id: locId,
+      storeroom_label: storeroomLabelForId(locId),
+    };
+    const key = materialLineKey(draft);
     setLines((prev) => {
-      const found = prev.find((l) => l.assembly_id === id);
+      const found = prev.find((l) => materialLineKey(l) === key);
       if (found) {
-        return prev.map((l) => (l.assembly_id === id
+        return prev.map((l) => (materialLineKey(l) === key
           ? { ...l, quantity: Math.max(1, (Number(l.quantity) || 0) + 1) }
           : l));
       }
-      return [...prev, {
-        assembly_id: id,
-        name: row.name,
-        family_sku: row.family_sku,
-        uom: row.uom || 'ea',
-        quantity: 1,
-      }];
+      return [...prev, { ...draft, quantity: 1 }];
     });
+    setSearch('');
+  };
+
+  const requestAddMaterial = (row) => {
+    if (!row) return;
+    if (!isStoreroomMaterialSelectable(row)) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+      return;
+    }
+    const picks = storeroomsForCatalogMaterial(row, storerooms);
+    if (!picks.length) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+      return;
+    }
+    setPendingAddRow(row);
+    setPendingSavePayload(null);
+    setStoreroomPromptVisible(true);
   };
 
   const handleScan = (value) => {
     setScanOpen(false);
     const matched = matchMaterialByScan(catalog, value);
-    if (matched) addMaterial(matched);
-    else Alert.alert(tUi('quoteOrderMaterials', locale), tUi('manufactureSearchNoMatch', locale));
+    if (matched && isStoreroomMaterialSelectable(matched)) requestAddMaterial(matched);
+    else if (matched) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+      );
+    } else Alert.alert(tUi('quoteOrderMaterials', locale), tUi('manufactureSearchNoMatch', locale));
   };
 
   const filteredSearch = useMemo(() => {
@@ -135,6 +249,7 @@ export default function ProductionJobMaterialsModal({
     if (!q) return [];
     const keys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(search));
     return catalog.filter((row) => {
+      if (!isStoreroomMaterialSelectable(row)) return false;
       if (String(row.name || '').toLowerCase().includes(q)) return true;
       if (String(row.family_sku || '').toLowerCase().includes(q)) return true;
       const stored = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(row.family_sku));
@@ -145,34 +260,55 @@ export default function ProductionJobMaterialsModal({
     }).slice(0, 12);
   }, [catalog, search]);
 
-  const setLineQty = (aid, raw) => {
+  const setLineQty = (lineId, raw) => {
     const cleaned = String(raw || '').replace(/[^0-9.]/g, '');
     const n = cleaned === '' ? '' : String(Math.max(0, Math.floor(Number(cleaned) || 0)));
-    setLines((prev) => prev.map((l) => (l.assembly_id === aid ? { ...l, quantity: n } : l)));
+    setLines((prev) => prev.map((l) => (materialLineKey(l) === lineId ? { ...l, quantity: n } : l)));
   };
 
-  const bumpQty = (aid, delta) => {
+  const bumpQty = (lineId, delta) => {
     setLines((prev) => prev.map((l) => {
-      if (l.assembly_id !== aid) return l;
+      if (materialLineKey(l) !== lineId) return l;
       const cur = Math.max(0, Math.floor(Number(l.quantity) || 0));
-      const next = Math.max(0, cur + delta);
+      let next = Math.max(0, cur + delta);
+      const stock = catalogById.get(l.assembly_id);
+      if (stock && delta > 0) {
+        const cap = l.warehouse_location_id
+          ? catalogQtyAtStoreroom(stock, l.warehouse_location_id)
+          : catalogMaterialOnHandTotal(stock);
+        if (cap <= 0) {
+          next = cur;
+        } else if (next > cap) {
+          next = Math.floor(cap);
+        }
+      }
       return { ...l, quantity: next };
     }));
   };
 
-  const removeLine = (aid) => {
-    setLines((prev) => prev.filter((l) => l.assembly_id !== aid));
+  const removeLine = (lineId) => {
+    setLines((prev) => prev.filter((l) => materialLineKey(l) !== lineId));
   };
 
-  const onSave = async () => {
-    const payload = lines
-      .map((l) => ({
-        assembly_id: l.assembly_id,
-        material_assembly_id: l.assembly_id,
-        quantity: Math.max(0, Math.floor(Number(l.quantity) || 0)),
-        uom: l.uom || 'ea',
-      }))
-      .filter((l) => l.assembly_id && l.quantity > 0);
+  const requestStoreroomChange = (line) => {
+    if (!line) return;
+    setPendingStoreroomLineChange(line);
+    setStoreroomPromptVisible(true);
+  };
+
+  const applyStoreroomChange = (line, storeroomLocationId) => {
+    const locId = String(storeroomLocationId || '').trim();
+    if (!line || !locId) return;
+    const label = storeroomLabelForId(locId);
+    const targetKey = materialLineKey(line);
+    setLines((prev) => prev.map((l) => (
+      materialLineKey(l) === targetKey
+        ? { ...l, warehouse_location_id: locId, storeroom_label: label }
+        : l
+    )));
+  };
+
+  const commitSave = async (preferredStoreroomLocationId, payload) => {
     setSaving(true);
     setError('');
     try {
@@ -180,7 +316,9 @@ export default function ProductionJobMaterialsModal({
         jobKind,
         jobId,
         returnOrderId,
+        productionRoute,
         materialLines: payload,
+        preferredStoreroomLocationId,
       });
       onSaved?.(payload);
       onClose?.();
@@ -191,10 +329,65 @@ export default function ProductionJobMaterialsModal({
     }
   };
 
+  const onSave = async () => {
+    for (const l of lines) {
+      const qty = Math.max(0, Math.floor(Number(l.quantity) || 0));
+      if (qty <= 0) continue;
+      const stock = catalogById.get(l.assembly_id);
+      if (!stock || !isStoreroomMaterialSelectable(stock)) {
+        Alert.alert(
+          tUi('quoteOrderMaterials', locale),
+          tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+        );
+        return;
+      }
+      const locId = l.warehouse_location_id;
+      if (locId && catalogQtyAtStoreroom(stock, locId) <= 0) {
+        Alert.alert(
+          tUi('quoteOrderMaterials', locale),
+          tUi('storeroomDeductNoStock', locale) || 'This material is not in stock at any storeroom.',
+        );
+        return;
+      }
+    }
+    const payload = lines
+      .map((l) => ({
+        assembly_id: l.assembly_id,
+        material_assembly_id: l.assembly_id,
+        quantity: Math.max(0, Math.floor(Number(l.quantity) || 0)),
+        uom: l.uom || 'ea',
+        name: String(l.name || '').trim(),
+        family_sku: String(l.family_sku || '').trim(),
+        storeroom_label: String(l.storeroom_label || '').trim(),
+        warehouse_location_id: l.warehouse_location_id || undefined,
+      }))
+      .filter((l) => l.assembly_id && l.quantity > 0);
+    if (!materialLinesNeedStoreroomPick(payload)) {
+      await commitSave(null, payload);
+      return;
+    }
+    const picks = storeroomsForJobMaterialDeduction(payload, catalog, storerooms);
+    if (!picks.length) {
+      Alert.alert(
+        tUi('quoteOrderMaterials', locale),
+        tUi('storeroomDeductNoStock', locale) || 'No storeroom has stock for all selected materials.',
+      );
+      return;
+    }
+    setPendingSavePayload(payload);
+    setStoreroomPromptVisible(true);
+  };
+
   return (
+    <>
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.root}>
-        <Text style={[styles.title, { textAlign }]}>{tUi('quoteOrderMaterials', locale)}</Text>
+        <ProductionKioskTopBar
+          title={tUi('quoteOrderMaterials', locale)}
+          locale={locale}
+          onToggleLocale={toggleLocale}
+          compact
+        />
         <View style={styles.searchRow}>
           <TextInput
             style={[kiosk.input, styles.searchInput, { textAlign: locale === 'ar' ? 'right' : 'left' }]}
@@ -212,9 +405,9 @@ export default function ProductionJobMaterialsModal({
         {search.trim() && filteredSearch.length > 0 ? (
           <View style={styles.searchHits}>
             {filteredSearch.map((row) => (
-              <Pressable key={row.id} style={styles.searchHit} onPress={() => addMaterial(row)}>
+              <Pressable key={row.id} style={styles.searchHit} onPress={() => requestAddMaterial(row)}>
                 <Text style={styles.hitName}>{row.name}</Text>
-                <Text style={styles.hitSku}>{row.family_sku} · {row.uom || 'ea'}</Text>
+                <Text style={styles.hitSku}>{row.family_sku} · {formatMaterialUom(row)}</Text>
               </Pressable>
             ))}
           </View>
@@ -222,7 +415,7 @@ export default function ProductionJobMaterialsModal({
         <FlatList
           style={styles.list}
           data={lines}
-          keyExtractor={(item) => item.assembly_id}
+          keyExtractor={(item) => materialLineKey(item)}
           ListEmptyComponent={(
             <Text style={[kiosk.hint, { textAlign: 'center', marginTop: 12 }]}>
               {tUi('quoteOrderScanPlaceholder', locale)}
@@ -230,30 +423,69 @@ export default function ProductionJobMaterialsModal({
           )}
           renderItem={({ item }) => {
             const stock = catalogById.get(item.assembly_id);
+            const lineId = materialLineKey(item);
+            const locLabel = warehouseNameToStoreroomLabel(
+              item.storeroom_label || storeroomLabelForId(item.warehouse_location_id),
+            );
+            const qtyHere = stock
+              ? catalogQtyAtStoreroom(stock, item.warehouse_location_id)
+              : null;
+            const totalQty = stock ? Math.max(0, Number(stock.quantity) || 0) : null;
             return (
               <View style={styles.lineRow}>
                 <View style={styles.lineHead}>
                   <Text style={styles.lineName}>{item.name || stock?.name}</Text>
                   <Text style={styles.lineSku}>{item.family_sku || stock?.family_sku}</Text>
-                  <Text style={styles.lineUom}>{tUi('manufactureRawQty', locale).replace('{qty}', String(stock?.quantity ?? '—'))}</Text>
+                  {locLabel ? (
+                    <Pressable onPress={() => requestStoreroomChange(item)} accessibilityRole="button">
+                      <Text style={[styles.lineUom, styles.lineStoreroomTap]}>
+                        {locLabel}
+                        {' '}
+                        ·
+                        {' '}
+                        {tUi('changeStoreroom', locale) || 'Change storeroom'}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable onPress={() => requestStoreroomChange(item)} accessibilityRole="button">
+                      <Text style={[styles.lineUom, styles.lineStoreroomTap]}>
+                        {tUi('chooseStoreroom', locale) || 'Choose storeroom'}
+                      </Text>
+                    </Pressable>
+                  )}
+                  {qtyHere != null && item.warehouse_location_id ? (
+                    <Text style={styles.lineUom}>
+                      {tUi('materialsStoreroomOnHand', locale).replace('{qty}', String(qtyHere))}
+                    </Text>
+                  ) : null}
+                  {totalQty != null && totalQty !== qtyHere ? (
+                    <Text style={styles.lineUomMuted}>
+                      {tUi('materialsTotalOnHand', locale).replace('{qty}', String(totalQty))}
+                    </Text>
+                  ) : null}
+                  {totalQty != null && !item.warehouse_location_id ? (
+                    <Text style={styles.lineUom}>
+                      {tUi('materialsTotalOnHand', locale).replace('{qty}', String(totalQty))}
+                    </Text>
+                  ) : null}
                   <Text style={styles.lineUomLabel}>
-                    {tUi('materialsUomLabel', locale)}: {item.uom || stock?.uom || 'ea'}
+                    {tUi('materialsUomLabel', locale)}: {formatMaterialUom(item) || formatMaterialUom(stock) || 'ea'}
                   </Text>
                 </View>
                 <View style={styles.qtyRow}>
-                  <Pressable style={styles.stepBtn} onPress={() => bumpQty(item.assembly_id, -1)}>
+                  <Pressable style={styles.stepBtn} onPress={() => bumpQty(lineId, -1)}>
                     <Text style={styles.stepTxt}>−</Text>
                   </Pressable>
                   <TextInput
                     style={styles.qtyInput}
                     keyboardType="number-pad"
                     value={String(item.quantity ?? '')}
-                    onChangeText={(txt) => setLineQty(item.assembly_id, txt)}
+                    onChangeText={(txt) => setLineQty(lineId, txt)}
                   />
-                  <Pressable style={styles.stepBtn} onPress={() => bumpQty(item.assembly_id, 1)}>
+                  <Pressable style={styles.stepBtn} onPress={() => bumpQty(lineId, 1)}>
                     <Text style={styles.stepTxt}>+</Text>
                   </Pressable>
-                  <Pressable onPress={() => removeLine(item.assembly_id)} style={styles.removeBtn}>
+                  <Pressable onPress={() => removeLine(lineId)} style={styles.removeBtn}>
                     <MaterialCommunityIcons name="close-circle" size={28} color={theme.danger} />
                   </Pressable>
                 </View>
@@ -262,12 +494,24 @@ export default function ProductionJobMaterialsModal({
           }}
         />
         <View style={styles.footer}>
-          <Pressable style={[kiosk.btn, styles.footerBtn]} disabled={saving} onPress={onClose}>
-            <Text style={kiosk.btnText}>{tUi('cancel', locale)}</Text>
-          </Pressable>
-          <Pressable style={[kiosk.btn, kiosk.btnPrimary, styles.footerBtn]} disabled={saving} onPress={onSave}>
-            <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{saving ? '…' : tUi('confirm', locale)}</Text>
-          </Pressable>
+          <View style={styles.footerSlot}>
+            <Pressable
+              style={[styles.footerAction, styles.footerCancel]}
+              disabled={saving}
+              onPress={onClose}
+            >
+              <Text style={styles.footerCancelText}>{tUi('cancel', locale)}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.footerSlot}>
+            <Pressable
+              style={[styles.footerAction, styles.footerConfirm]}
+              disabled={saving}
+              onPress={onSave}
+            >
+              <Text style={styles.footerConfirmText}>{saving ? '…' : tUi('confirm', locale)}</Text>
+            </Pressable>
+          </View>
         </View>
         <ProductionQrScanModal
           visible={scanOpen}
@@ -277,12 +521,39 @@ export default function ProductionJobMaterialsModal({
         />
       </View>
     </Modal>
+    <StoreroomDeductionPromptModal
+      visible={storeroomPromptVisible}
+      locale={locale}
+      textAlign={textAlign}
+      storerooms={promptStorerooms}
+      {...storeroomCopy}
+      onCancel={() => {
+        setStoreroomPromptVisible(false);
+        setPendingSavePayload(null);
+        setPendingAddRow(null);
+        setPendingStoreroomLineChange(null);
+      }}
+      onConfirm={(preferredId) => {
+        setStoreroomPromptVisible(false);
+        const addRow = pendingAddRow;
+        const payload = pendingSavePayload;
+        const lineChange = pendingStoreroomLineChange;
+        setPendingAddRow(null);
+        setPendingSavePayload(null);
+        setPendingStoreroomLineChange(null);
+        if (addRow) finalizeAddMaterial(addRow, preferredId);
+        else if (lineChange) applyStoreroomChange(lineChange, preferredId);
+        else if (payload) commitSave(preferredId, payload);
+      }}
+    />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.surface, padding: 16, paddingTop: 48 },
   title: { fontSize: 20, fontWeight: '800', color: theme.text, marginBottom: 12 },
+  lineUomMuted: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
   searchRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 },
   searchInput: { flex: 1, marginBottom: 0 },
   scanBtn: {
@@ -309,6 +580,7 @@ const styles = StyleSheet.create({
   lineName: { fontWeight: '800', color: theme.text, fontSize: 16 },
   lineSku: { color: theme.textMuted, fontSize: 13 },
   lineUom: { color: theme.primary, fontSize: 12, marginTop: 4 },
+  lineStoreroomTap: { textDecorationLine: 'underline' },
   lineUomLabel: { color: theme.textSecondary, fontSize: 12, fontWeight: '600' },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   stepBtn: {
@@ -334,5 +606,25 @@ const styles = StyleSheet.create({
   },
   removeBtn: { padding: 4 },
   footer: { flexDirection: 'row', gap: 12, marginTop: 8, width: '100%' },
-  footerBtn: { flex: 1, flexBasis: 0, minWidth: 0 },
+  footerSlot: { flex: 1, flexBasis: 0, minWidth: 0 },
+  footerAction: {
+    width: '100%',
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: theme.radiusSm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  footerCancel: {
+    backgroundColor: theme.surfaceElevated,
+    borderColor: theme.border,
+  },
+  footerConfirm: {
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
+  },
+  footerCancelText: { fontWeight: '800', fontSize: 16, color: theme.text, textAlign: 'center' },
+  footerConfirmText: { fontWeight: '800', fontSize: 16, color: '#fff', textAlign: 'center' },
 });

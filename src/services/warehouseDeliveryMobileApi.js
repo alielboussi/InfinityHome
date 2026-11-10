@@ -49,6 +49,18 @@ export function acceptWarehouseDeliverySession(sessionId) {
   return warehouseDeliveryMobileOp('delivery-accept', { session_id: sessionId });
 }
 
+/** Factory → Kitwe — open or reuse draft delivery session (WHD number). */
+export function openWarehouseDeliverySession(body = {}) {
+  return warehouseDeliveryMobileOp('delivery-session-open', body);
+}
+
+/** Submit cart (driver_name required by API; use FULFILLMENT_WEB_DRIVER_NAME for web desk). */
+export function submitWarehouseDelivery(body) {
+  return warehouseDeliveryMobileOp('delivery-submit', body);
+}
+
+export const FULFILLMENT_WEB_DRIVER_NAME = 'Fulfillment desk (web)';
+
 /** Hassan mirror / catalog admin — next mobile session gets WHD0000000001. */
 export function resetWarehouseDeliveryNumberSequence() {
   return warehouseDeliveryMobileOp('delivery-number-reset');
@@ -80,6 +92,10 @@ export function createReturnOrder(payload) {
 
 export function listReturnOrders(options = {}) {
   return warehouseDeliveryMobileOp('return-order-list', options);
+}
+
+export function listDeliveryProductionQueue() {
+  return warehouseDeliveryMobileOp('delivery-production-queue-list');
 }
 
 export function listReturnQuoteCustomers() {

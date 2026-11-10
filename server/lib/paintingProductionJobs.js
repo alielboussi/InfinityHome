@@ -356,9 +356,7 @@ export async function finishPaintingProductionJob(sb, {
 
   const productId = String(job.assembly_id || '').trim();
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
-  const { floor2LocationId, floor1LocationId } = await resolveFloor2AndFactoryIds(sb);
-
-  await adjustAssemblyInventory(sb, productId, floor1LocationId, qty);
+  const { floor2LocationId } = await resolveFloor2AndFactoryIds(sb);
 
   const now = new Date().toISOString();
   const finalElapsed = computeElapsedMs(job);
@@ -384,8 +382,6 @@ export async function finishPaintingProductionJob(sb, {
     throw new Error(runErr.message || 'Failed to save production run');
   }
 
-  await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
-
   const updated = await saveJobPatch(sb, job.id, {
     status: 'completed',
     completed_at: now,
@@ -394,18 +390,25 @@ export async function finishPaintingProductionJob(sb, {
     metadata: {
       ...(job.metadata || {}),
       production_run_id: runErr ? null : runId,
-      floor1_credited_qty: qty,
     },
   });
 
-  const floor1After = await loadAssemblyInventoryQty(sb, productId, floor1LocationId);
+  const { data: asm } = await sb.from('warehouse_assemblies').select('name').eq('id', productId).maybeSingle();
+  const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+  const registered = await registerProductionJobAwaitingDriver(sb, {
+    jobsTable: JOBS,
+    jobRow: updated,
+    assemblyId: productId,
+    assemblyName: asm?.name || productId,
+    qty,
+    department: 'painting',
+  });
 
   return {
     job: serializeJob(updated),
     run_id: runErr ? null : runId,
     assembly_id: productId,
     product_qty: qty,
-    floor1_location_id: floor1LocationId,
-    floor1_qty_after: floor1After,
+    delivery_admin_awaiting_driver: true,
   };
 }

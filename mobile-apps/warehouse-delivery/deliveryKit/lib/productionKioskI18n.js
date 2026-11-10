@@ -159,11 +159,17 @@ const UI_STRINGS = {
   quoteOrderScreenTitle: { en: 'Order', ar: 'طلب' },
   quoteOrderTimer: { en: 'Production timer', ar: 'مؤقت الإنتاج' },
   quoteOrderAcceptStart: { en: 'Accept & start', ar: 'قبول وبدء' },
-  quoteOrderEnd: { en: 'End', ar: 'إنهاء' },
+  quoteOrderPause: { en: 'Pause order', ar: 'إيقاف الطلب' },
+  quoteOrderResume: { en: 'Resume order', ar: 'استئناف الطلب' },
+  quoteOrderEnd: { en: 'End order', ar: 'إنهاء الطلب' },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
   quoteOrderCompleteDone: { en: 'Production ended.', ar: 'انتهى الإنتاج.' },
   quoteOrderMaterials: { en: 'Materials', ar: 'المواد' },
+  quoteOrderMaterialsHint: {
+    en: 'Open Materials to pick items, type a barcode, or scan — storeroom is deducted when you save.',
+    ar: 'افتح المواد لاختيار الأصناف أو إدخال/مسح الباركود — يُخصم من المخزن عند الحفظ.',
+  },
   quoteOrderScanPlaceholder: { en: 'Scan or type SKU / barcode', ar: 'امسح أو اكتب الرمز أو الباركود' },
   quoteOrderDeductScan: { en: 'Deduct scan', ar: 'خصم المسح' },
   quoteOrderLines: { en: 'Lines', ar: 'البنود' },
@@ -171,6 +177,7 @@ const UI_STRINGS = {
   quoteOrderDimensions: { en: 'L×W×H (cm)', ar: 'ط×ع×ار (سم)' },
   quoteOrderColorCode: { en: 'Color code', ar: 'رمز اللون' },
   quoteOrderWood: { en: 'Wood', ar: 'الخشب' },
+  quoteOrderFoamType: { en: 'Foam type', ar: 'نوع الفوم' },
   quoteOrderDescription: { en: 'Description', ar: 'الوصف' },
   quoteOrderIncludedAccessories: { en: 'Included Accessories', ar: 'الإكسسوارات المرفقة' },
   quoteOrderViewDrawing: { en: 'View drawing', ar: 'عرض الرسم' },
@@ -180,6 +187,10 @@ const UI_STRINGS = {
   quoteOrderScanDeducted: { en: 'Material stock updated for this order.', ar: 'تم تحديث مخزون المواد لهذا الطلب.' },
   quoteOrderScanFailed: { en: 'Scan failed', ar: 'فشل المسح' },
   quoteOrderFailed: { en: 'Failed', ar: 'فشل' },
+  quoteOrderPauseServerStale: {
+    en: 'Pause is not available on the server yet. Wait for the latest website deploy, then try again.',
+    ar: 'إيقاف الطلب غير متاح على الخادم بعد. انتظر نشر الموقع الأحدث ثم حاول مرة أخرى.',
+  },
   dashTitle: { en: 'Upholstery', ar: 'التنجيد' },
   dashCreate: { en: 'Create new item', ar: 'إنشاء قطعة جديدة' },
   dashCreateSub: {
@@ -200,9 +211,14 @@ const UI_STRINGS = {
   dashRepairs: { en: 'Repairs', ar: 'إصلاحات' },
   repairQueueEmpty: { en: 'No repair jobs in this queue.', ar: 'لا توجد إصلاحات في هذه القائمة.' },
   repairCompleteConfirm: {
-    en: 'Stop the repair timer and choose what happens next.',
-    ar: 'إيقاف مؤقت الإصلاح واختيار الخطوة التالية.',
+    en: 'Stop the repair timer?',
+    ar: 'إيقاف مؤقت الإصلاح؟',
   },
+  repairCompleteFloor2Hint: {
+    en: 'The repair joins the Delivery app Repairs queue (awaiting driver). Warehouse floors are not credited.',
+    ar: 'ينضم الإصلاح إلى قائمة «الإصلاحات» في تطبيق التسليم (بانتظار السائق). لا يُزاد مخزون الطوابق.',
+  },
+  repairCompleteConfirmBtn: { en: 'Complete repair', ar: 'إنهاء الإصلاح' },
   repairDispositionPrompt: {
     en: 'Send repaired stock to Floor 1, or dispatch a delivery with driver signature?',
     ar: 'إرسال المخزون إلى الطابق 1، أم تسليم مع توقيع السائق؟',
@@ -261,8 +277,8 @@ const UI_STRINGS = {
   },
   manufactureTitle: { en: 'Manufacture', ar: 'تصنيع' },
   manufactureIntroFloor2: {
-    en: 'Scan or pick an in-stock product, set qty to deduct, then start a job.',
-    ar: 'امسح أو اختر منتجًا متوفرًا، حدد الكمية للخصم، ثم ابدأ مهمة.',
+    en: 'In-stock raw WIP on Floor 2 only. Deduct qty here to upholster to finished stock. Storeroom BOM on Jobs / Orders (wrench).',
+    ar: 'مواد خام متوفرة في Floor 2 فقط. خصم الكمية هنا للتنجيد إلى مخزون منتهٍ. مواد المستودع من المهام / الطلبات (مفتاح الربط).',
   },
   manufactureDeductTitle: { en: 'Deduct from Floor 2', ar: 'خصم من الطابق 2' },
   manufactureTabAll: { en: 'All', ar: 'الكل' },
@@ -315,12 +331,12 @@ const UI_STRINGS = {
   },
   manufactureConfirmTitle: { en: 'Manufacture', ar: 'تصنيع' },
   manufactureConfirmBody: {
-    en: 'Produce 1 × {name}? Materials will deduct from Carpentry warehouses per the BOM on the web portal.',
-    ar: 'إنتاج 1 × {name}؟ ستُخصم المواد من مستودعات النجارة حسب قائمة المواد في البوابة.',
+    en: 'Upholster {qty} × {name}? Deducts Floor 2 raw WIP only — record storeroom usage on a job or order.',
+    ar: 'تنجيد {qty} × {name}؟ يخصم مواد Floor 2 الخام فقط — سجّل المستودع في مهمة أو طلب.',
   },
   manufactureDone: {
-    en: 'Done — materials deducted. Unfinished unit(s) are on Warehouse Floor 2. Use Finishing to move to Floor 1.',
-    ar: 'تم — خُصمت المواد. الوحدات غير المنتهية في Floor 2. استخدم الإنهاء للنقل إلى Floor 1.',
+    en: 'Done — Floor 2 raw deducted; finished stock updated. Use the job wrench for storeroom materials.',
+    ar: 'تم — خُصم خام Floor 2 وتم تحديث المخزون المنتهٍ. استخدم مفتاح المهمة لمواد المستودع.',
   },
   manufactureFailed: { en: 'Manufacture failed', ar: 'فشل التصنيع' },
   manufactureEmpty: {
@@ -367,6 +383,14 @@ const UI_STRINGS = {
   upholsteryJobControlsHint: {
     en: 'Play · Pause · Stop (complete → Floor 1)',
     ar: 'تشغيل · إيقاف مؤقت · إيقاف (إنهاء → الطابق 1)',
+  },
+  upholsteryUnitsCheckedLabel: {
+    en: 'Units checked',
+    ar: 'الوحدات المفعّلة',
+  },
+  upholsteryUnitTapHint: {
+    en: 'Tap each unit when that piece is ready (Floor 2 batch jobs).',
+    ar: 'اضغط كل وحدة عند جهوزية القطعة (دفعات الطابق 2).',
   },
   upholsteryJobFinishDone: {
     en: 'Done — Floor 1 updated and labels queued.',
@@ -502,6 +526,9 @@ const UI_STRINGS = {
   cancel: { en: 'Cancel', ar: 'إلغاء' },
   confirm: { en: 'Confirm', ar: 'تأكيد' },
   dashDelivery: { en: 'Send Delivery', ar: 'إرسال التسليم' },
+  dashFloor1Deliveries: { en: 'Floor 1 Deliveries', ar: 'تسليمات الطابق 1' },
+  dashDeliveryRepairs: { en: 'Repairs', ar: 'إصلاحات' },
+  dashDeliveryOrders: { en: 'Orders', ar: 'طلبات' },
   dashDeliverySub: {
     en: 'Truck delivery — driver checklist → Hassan',
     ar: 'تسليم بالشاحنة — قائمة السائق → حسن',
@@ -554,6 +581,28 @@ const UI_STRINGS = {
     ar: 'منتجات نهائية ومجموعات وحزم المستودع — وليس WIP في Floor 2.',
   },
   deliveryDriver: { en: 'Driver', ar: 'السائق' },
+  deliveryHubTitle: { en: 'Delivery', ar: 'التسليم' },
+  deliveryHubTab_floor1: { en: 'Floor 1', ar: 'الطابق 1' },
+  deliveryHubTab_repairs: { en: 'Repairs', ar: 'إصلاحات' },
+  deliveryHubTab_orders: { en: 'Orders', ar: 'طلبات' },
+  deliveryRepairQueueEmpty: {
+    en: 'No repairs waiting for a driver.',
+    ar: 'لا توجد إصلاحات بانتظار السائق.',
+  },
+  deliveryOrderQueueEmpty: {
+    en: 'No finished orders waiting for a driver.',
+    ar: 'لا توجد طلبات منتهية بانتظار السائق.',
+  },
+  deliveryRepairDeliverBtn: { en: 'Deliver repair', ar: 'تسليم الإصلاح' },
+  deliveryOrderDeliverBtn: { en: 'Deliver order', ar: 'تسليم الطلب' },
+  deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },
+  deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },
+  deliveryCustomerDriverHint: { en: 'Tap + to enter name and phone (or pick a fleet driver below).', ar: 'اضغط + لإدخال الاسم والهاتف (أو اختر سائق الأسطول أدناه).' },
+  deliveryCustomerDriverAdd: { en: 'Customer driver', ar: 'سائق العميل' },
+  deliveryCustomerDriverNamePh: { en: 'Driver name', ar: 'اسم السائق' },
+  deliveryCustomerDriverPhonePh: { en: 'Phone number', ar: 'رقم الهاتف' },
+  deliveryDriverEitherOr: { en: 'Choose either a fleet driver or a customer driver — not both.', ar: 'اختر سائق الأسطول أو سائق العميل — وليس كليهما.' },
+  customerDriverSave: { en: 'Save', ar: 'حفظ' },
   deliveryDriverPlaceholder: { en: 'Choose driver', ar: 'اختر السائق' },
   deliveryAddProductBtn: { en: '+ Add warehouse product', ar: '+ إضافة منتج من المستودع' },
   deliveryAddSection: { en: 'Add products', ar: 'إضافة منتجات' },
@@ -599,10 +648,6 @@ const UI_STRINGS = {
   },
   deliverySendConfirmBtn: { en: 'Send delivery & print', ar: 'إرسال التسليم والطباعة' },
   deliverySessionFailed: { en: 'Could not start delivery session.', ar: 'تعذر بدء جلسة التسليم.' },
-  deliverySessionRenewed: {
-    en: 'This delivery number was already submitted or closed. A new number was assigned — your cart is still here.',
-    ar: 'تم إرسال رقم التسليم السابق أو إغلاقه. تم تعيين رقم جديد — قائمة المنتجات ما زالت كما هي.',
-  },
   deliveryNeedProduct: { en: 'Add at least one product.', ar: 'أضف منتجًا واحدًا على الأقل.' },
   deliveryNeedDriver: { en: 'Select a driver.', ar: 'اختر السائق.' },
   deliverySubmitFailed: { en: 'Submit failed.', ar: 'فشل الإرسال.' },
@@ -815,6 +860,23 @@ const UI_STRINGS = {
   loadWarehouseFailed: { en: 'Failed to load warehouse', ar: 'تعذر تحميل المستودع' },
   locationWarehouse: { en: 'Warehouse', ar: 'المستودع' },
   locationWarehouseFloor2: { en: 'Warehouse Floor 2', ar: 'الطابق 2 في المستودع' },
+  storeroomDeductTitle: { en: 'Deduct materials from', ar: 'خصم المواد من' },
+  storeroomDeductPickHint: {
+    en: 'You must select Storeroom 1, 2, or 3. Materials are deducted only from that storeroom.',
+    ar: 'يجب اختيار مستودع 1 أو 2 أو 3. يُخصم فقط من المستودع المحدد.',
+  },
+  storeroomDeductConfirmHint: {
+    en: 'Confirm deducting job materials from:',
+    ar: 'تأكيد خصم مواد المهمة من:',
+  },
+  storeroomDeductNoStock: {
+    en: 'This material is not in stock at any storeroom for this SKU.',
+    ar: 'لا يوجد مخزون لهذه المادة في أي مستودع لهذا الرمز.',
+  },
+  storeroomDeductNoList: {
+    en: 'Storerooms could not be loaded. Close and try again, or check your connection.',
+    ar: 'تعذر تحميل المستودعات. أغلق وحاول مرة أخرى أو تحقق من الاتصال.',
+  },
   saveFailedGeneric: { en: 'Save failed.', ar: 'فشل الحفظ.' },
   saveFailedConnection: {
     en: 'Save failed. Check your connection and try again.',
@@ -825,6 +887,15 @@ const UI_STRINGS = {
     ar: 'فُقدت بيانات الحفظ. اضغط حفظ عنصر الإنتاج مرة أخرى.',
   },
   materialsSearch: { en: 'Search material', ar: 'ابحث عن مادة' },
+  materialsStoreroomOnHand: {
+    en: 'In this storeroom: {qty}',
+    ar: 'في هذا المستودع: {qty}',
+  },
+  materialsTotalOnHand: {
+    en: 'Total in all storerooms: {qty}',
+    ar: 'الإجمالي في كل المستودعات: {qty}',
+  },
+  jobMaterialsExpand: { en: 'Materials ({count})', ar: 'المواد ({count})' },
   materialsLoadFailed: { en: 'Failed to load storeroom materials', ar: 'تعذر تحميل مواد المخزن' },
   materialsUomLabel: { en: 'UOM', ar: 'وحدة القياس' },
   manufactureEmptyNoStock: {

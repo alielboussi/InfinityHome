@@ -125,6 +125,9 @@ import {
   submitReturnCustomerDelivery,
   submitReturnShipment,
   printReturnCustomerPickupLabel,
+  listRepairFloor2DeliveriesForCatalog,
+  repairFloor2DeliveryAssemblyMap,
+  resolveWarehouseFloor2LocationId,
 } from '../lib/warehouseReturnOrders.js';
 import { registerProductionPushToken } from '../lib/productionExpoPush.js';
 import {
@@ -3209,18 +3212,38 @@ async function processSetDeliveryGroup({
   return { entries, totalCartons };
 }
 
+async function opDeliveryProductionQueueList(user) {
+  await assertMobileDeliverySubmitAccess(user);
+  const sb = getService();
+  const { listRepairDeliveriesForMobile, listOrderDeliveriesForMobile } = await import('../lib/warehouseDeliveryAdminQueue.js');
+  const repairs = await listRepairDeliveriesForMobile(sb);
+  const orders = await listOrderDeliveriesForMobile(sb);
+  return { repairs, orders };
+}
+
 async function opDeliverySubmit(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
   const groups = Array.isArray(body.groups) ? body.groups : [];
-  const driverName = String(body.driver_name || body.driverName || '').trim();
-  const driverId = String(body.driver_id || body.driverId || '').trim();
+  let driverName = String(body.driver_name || body.driverName || '').trim();
+  let driverId = String(body.driver_id || body.driverId || '').trim();
+  const customerDriverNameRaw = String(body.customer_driver_name || body.customerDriverName || '').trim();
+  const customerDriverPhone = String(body.customer_driver_phone || body.customerDriverPhone || '').trim();
+  const { capitalizePersonName } = await import('../../src/utils/warehouseProductionDeliveryStaging.js');
   const clientPdfBase64 = String(
     body.delivery_note_pdf_base64 || body.deliveryNotePdfBase64 || '',
   ).trim();
   let driverSignatureUrl = String(body.driver_signature_url || body.driverSignatureUrl || '').trim();
   if (!sessionId) throw new Error('session_id is required.');
   if (!groups.length) throw new Error('Add at least one product group.');
+  if (customerDriverNameRaw && driverId) {
+    throw new Error('Choose either a fleet driver or a customer driver — not both.');
+  }
+  if (customerDriverNameRaw) {
+    if (!customerDriverPhone) throw new Error('Customer driver phone is required.');
+    driverName = capitalizePersonName(customerDriverNameRaw);
+    driverId = '';
+  }
   if (!driverName) throw new Error('Select a driver before submitting.');
 
   const sb = getService();
@@ -3284,6 +3307,10 @@ async function opDeliverySubmit(body, user) {
   ]);
   const byAssembly = buildPacketsByAssembly(links || [], packets || []);
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
+  const repairFloor2Map = await repairFloor2DeliveryAssemblyMap(sb);
+  const { listOrderDeliveriesForMobile } = await import('../lib/warehouseDeliveryAdminQueue.js');
+  const orderRows = await listOrderDeliveriesForMobile(sb);
+  const orderFloor2Map = new Map(orderRows.map((row) => [String(row.assembly_id), row]));
 
   const entries = [];
   let totalCartons = 0;
@@ -3334,12 +3361,17 @@ async function opDeliverySubmit(body, user) {
         throw err;
       }
       const shipment = deliveryShipmentUnits(assembly, packetRows, units);
-      await assertAssemblyStockAvailable(
-        sb,
-        assemblyId,
-        WAREHOUSE_FROM_LOCATION_ID,
-        shipment.finishedUnits,
-      );
+      const repairStaging = repairFloor2Map.get(assemblyId) || null;
+      const orderStaging = orderFloor2Map.get(assemblyId) || null;
+      const adminQueue = repairStaging || orderStaging;
+      if (!adminQueue) {
+        await assertAssemblyStockAvailable(
+          sb,
+          assemblyId,
+          WAREHOUSE_FROM_LOCATION_ID,
+          shipment.finishedUnits,
+        );
+      }
       totalCartons += shipment.finishedUnits;
       const driverCheckedAt = group.finished_driver_checked_at || now;
       entries.push({
@@ -3357,6 +3389,15 @@ async function opDeliverySubmit(body, user) {
           ...deliveryEntryBoxMetadata(shipment),
           driver_checked_at: driverCheckedAt,
           receiver_checked_at: null,
+          stock_deduct_location_id: stockDeductLocationId,
+          ...(adminQueue ? {
+            admin_queue_delivery: true,
+            return_order_id: repairStaging?.return_order_id || null,
+            return_number: repairStaging?.return_number || null,
+            return_has_customer: Boolean(repairStaging?.has_customer),
+            production_job_id: orderStaging?.production_job_id || null,
+            quote_id: orderStaging?.quote_id || null,
+          } : {}),
         }),
       });
       continue;
@@ -3433,9 +3474,26 @@ async function opDeliverySubmit(body, user) {
       driver_id: driverId || null,
       driver_name: driverName,
       driver_signature_url: driverSignatureUrl || null,
+      ...(customerDriverNameRaw ? {
+        customer_driver_name: capitalizePersonName(customerDriverNameRaw),
+        customer_driver_phone: customerDriverPhone,
+        customer_driver_signed: true,
+      } : {}),
     },
   }).eq('id', sessionId);
   if (updErr) throw new Error(updErr.message || 'Failed to submit delivery');
+
+  try {
+    const { advanceAdminQueueOnDeliverySubmit } = await import('../lib/warehouseDeliveryAdminQueue.js');
+    await advanceAdminQueueOnDeliverySubmit(sb, entries, {
+      submittedAt: now,
+      driverName,
+      customerDriverName: customerDriverNameRaw ? capitalizePersonName(customerDriverNameRaw) : '',
+      customerDriverPhone,
+    });
+  } catch (markErr) {
+    console.warn('[delivery-submit] admin queue mark:', markErr?.message || markErr);
+  }
 
   const whatsappResult = await sendWarehouseDeliverySubmitWhatsApp({
     sb,
@@ -3980,6 +4038,11 @@ export default async function handler(req, res) {
           : 'linked';
         const includeColors = body.include_colors !== false;
         result = await fetchCatalogForMobile(getService(), { packetLoad, includeColors });
+        result.repair_floor2_deliveries = await listRepairFloor2DeliveriesForCatalog(getService());
+        {
+          const { listOrderDeliveriesForMobile } = await import('../lib/warehouseDeliveryAdminQueue.js');
+          result.order_floor2_deliveries = await listOrderDeliveriesForMobile(getService());
+        }
         break;
       }
       case 'generate-unique-sku':
@@ -4026,6 +4089,9 @@ export default async function handler(req, res) {
         break;
       case 'delivery-signature-upload':
         result = await opDeliverySignatureUpload(body, user);
+        break;
+      case 'delivery-production-queue-list':
+        result = await opDeliveryProductionQueueList(user);
         break;
       case 'delivery-submit':
         result = await opDeliverySubmit(body, user);

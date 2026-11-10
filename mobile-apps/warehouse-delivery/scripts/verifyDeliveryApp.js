@@ -82,6 +82,15 @@ try {
     'Delivery app config must hide Kitwe Send scope hints (number only)',
   );
 
+  const deliveryCatalog = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'lib', 'deliveryWarehouseCatalog.js'),
+    'utf8',
+  );
+  assert(
+    deliveryCatalog.includes('filterAssembliesForDeliveryFloor1Only'),
+    'deliveryWarehouseCatalog must export filterAssembliesForDeliveryFloor1Only for Kitwe Send',
+  );
+
   const kitweHome = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'KitweSendHomeScreen.js'),
     'utf8',
@@ -118,6 +127,35 @@ try {
   );
   assert(sig.includes("'delivery-submit'"), 'Signature screen must submit delivery');
   assert(sig.includes('DeliverySignaturePad'), 'Signature screen must capture driver signature');
+  assert(sig.includes('DeliveryCustomerDriverSection'), 'Kitwe signature must support customer driver +');
+
+  assert(appJs.includes('DeliveryRepairQueue'), 'App must register DeliveryRepairQueue');
+  assert(appJs.includes('DeliveryOrderQueue'), 'App must register DeliveryOrderQueue');
+  assert(!appJs.includes('DeliverySendHub'), 'Delivery hub tabs removed — queues are dashboard tiles');
+  const dashboard = fs.readFileSync(path.join(appRoot, 'screens', 'DashboardScreen.js'), 'utf8');
+  assert(dashboard.includes('dashFloor1Deliveries'), 'Dashboard must label Floor 1 Deliveries');
+  assert(dashboard.includes("navigate('KitweSendHome')"), 'Floor 1 tile must open KitweSendHome');
+  assert(dashboard.includes("navigate('DeliveryRepairQueue')"), 'Dashboard must open Repairs queue');
+  assert(dashboard.includes("navigate('DeliveryOrderQueue')"), 'Dashboard must open Orders queue');
+  const hubI18n = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'productionKioskI18n.js'), 'utf8');
+  assert(hubI18n.includes('dashFloor1Deliveries'), 'Delivery i18n must label Floor 1 Deliveries tile');
+  const repairQueue = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'screens', 'DeliveryRepairQueueScreen.js'),
+    'utf8',
+  );
+  assert(repairQueue.includes('delivery-production-queue-list'), 'Repair queue must call delivery-production-queue-list');
+  const orderQueue = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'screens', 'DeliveryOrderQueueScreen.js'),
+    'utf8',
+  );
+  assert(orderQueue.includes('delivery-production-queue-list'), 'Order queue must call delivery-production-queue-list');
+
+  const soldSig = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'screens', 'SoldDeliverSignatureScreen.js'),
+    'utf8',
+  );
+  assert(soldSig.includes('DeliveryCustomerDriverSection'), 'Sold deliver signature must support customer driver +');
+  assert(soldSig.includes('customer_driver_name'), 'Sold deliver submit must send customer driver fields');
 
   const zambia = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'lib', 'zambiaDateTime.js'),
@@ -186,6 +224,29 @@ try {
       console.warn('WARN: not installed yet (run npm install):', name);
     }
   }
+
+  const deliveryOnlyI18nKeys = [
+    'dashFloor1Deliveries',
+    'dashDeliveryRepairs',
+    'dashDeliveryOrders',
+    'deliveryRepairQueueEmpty',
+    'deliveryOrderQueueEmpty',
+    'deliveryRepairDeliverBtn',
+    'deliveryOrderDeliverBtn',
+    'deliveryCustomerDriver',
+    'deliveryCustomerDriverHint',
+    'deliveryDriverEitherOr',
+    'customerDriverSave',
+  ];
+  for (const key of deliveryOnlyI18nKeys) {
+    const re = new RegExp(`${key}:\\s*\\{[\\s\\S]*?\\bar:\\s*'`, 'm');
+    assert(re.test(hubI18n), `delivery i18n key ${key} must include Arabic (ar)`);
+  }
+  assert(sig.includes('customerLabels') && sig.includes('deliveryCustomerDriver'), 'Kitwe signature must localize customer driver section');
+  assert(
+    !fs.readFileSync(path.join(appRoot, 'screens', 'DashboardScreen.js'), 'utf8').includes('forceArabic'),
+    'Delivery dashboard must allow locale toggle (not forceArabic)',
+  );
 
   if (!process.exitCode) console.log('verifyDeliveryApp: ok');
 } catch (e) {

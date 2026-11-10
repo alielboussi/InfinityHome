@@ -10,7 +10,7 @@ import {
 } from './productionJobMaterials.js';
 import {
   consumeUpholsteryRawAndMaterials,
-  creditUpholsteryFinishedOutput,
+  resolveFinishedOutputAssemblyOnly,
   loadUpholsteryManufactureContext,
   recomputeUpholsteryManufactureLocations,
 } from './upholsteryManufacture.js';
@@ -293,7 +293,8 @@ export async function finishUpholsteryProductionJob(sb, {
     storeroomLocsForRecompute = storeroomLocs || [];
   }
 
-  const output = await creditUpholsteryFinishedOutput(sb, ctx, qty);
+  const output = await resolveFinishedOutputAssemblyOnly(sb, ctx);
+  output.qty_after = qty;
   const materialUsageRows = Array.isArray(meta.material_usage_rows) ? meta.material_usage_rows : [];
   const storeroomIds = Array.isArray(meta.storeroom_location_ids) ? meta.storeroom_location_ids : [];
 
@@ -359,10 +360,10 @@ export async function finishUpholsteryProductionJob(sb, {
     user,
     assembly: output.outputAssembly,
     delta: qty,
-    qtyBefore: output.qty_before,
-    qtyAfter: output.qty_after,
-    warehouseLocationId: WAREHOUSE_FACTORY_LOCATION_ID,
-    source: 'warehouse_production_app',
+    qtyBefore: 0,
+    qtyAfter: qty,
+    warehouseLocationId: 'warehouse_floor_2_staging',
+    source: 'warehouse_production_app_delivery_queue',
   });
 
   const storeroomLocs = [...storeroomIds.map((id) => ({ id })), ...storeroomLocsForRecompute];
@@ -380,6 +381,16 @@ export async function finishUpholsteryProductionJob(sb, {
       label_print_warning: labelPrintWarning ?? null,
       floor2_raw_deducted: deductRawOnFinish || meta.floor2_raw_deducted === true,
     }),
+  });
+
+  const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+  await registerProductionJobAwaitingDriver(sb, {
+    jobsTable: 'upholstery_production_jobs',
+    jobRow: updated,
+    assemblyId: output.output_assembly_id,
+    assemblyName: output.name,
+    qty,
+    department: 'upholstery',
   });
 
   return {

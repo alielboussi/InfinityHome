@@ -579,6 +579,9 @@ export function isPathAllowed(user, path) {
   if (p === '/warehouse-deliveries-admin' || p.startsWith('/warehouse-deliveries-admin/')) {
     return canManageCatalog(user);
   }
+  if (p === '/fulfillment-floor1-delivery' || p.startsWith('/fulfillment-floor1-delivery/')) {
+    return canManageCatalog(user);
+  }
   if (p === '/warehouse-delivery-drivers' || p.startsWith('/warehouse-delivery-drivers/')) {
     return canManageCatalog(user);
   }

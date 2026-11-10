@@ -254,4 +254,12 @@ if (!r.includes('<h1 class=\\"title\\">Return Note</h1>')) throw new Error('retu
   { cwd: root, stdio: 'pipe' },
 );
 
+const fulfillmentPage = fs.readFileSync(path.join(root, 'src/FulfillmentFloor1DeliveryPage.js'), 'utf8');
+assert(fulfillmentPage.includes('submitWarehouseDelivery'), 'fulfillment temp page must submit via warehouse-mobile');
+assert(fulfillmentPage.includes('FULFILLMENT_WEB_DRIVER_NAME'), 'fulfillment temp page must use web driver placeholder');
+assert(
+  fs.readFileSync(path.join(root, 'src/AppChrome.js'), 'utf8').includes('/fulfillment-floor1-delivery'),
+  'fulfillment nav must link temporary Floor 1 delivery page',
+);
+
 console.log('verifyWarehouseDeliveryFlow: ok');

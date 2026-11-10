@@ -36,8 +36,134 @@ import { returnOrderElapsedSeconds } from '../../src/utils/warehouseReturnOrder.
 import { returnOrderLifecycleBadge } from '../../src/utils/warehouseReturnOrder.js';
 import { buildWarehouseDeliveryNotePdfBase64 } from './buildWarehouseDeliveryNotePdfBase64.js';
 import { uploadWarehouseReturnDeliveryNotePdf } from './warehouseReturnDeliveryNoteStorage.js';
+import { resolveWarehouseFloor2Location } from '../../src/constants/warehouseFloorLocations.js';
+import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
+import { FLOOR2_WIP_KIND_REPAIR } from '../../src/utils/warehouseRepairFloor2Staging.js';
 
 const RETURNS = 'warehouse_return_orders';
+
+export async function resolveWarehouseFloor2LocationId(sb) {
+  const { data: locRows, error } = await sb.from('locations').select('id, name');
+  if (error) throw new Error(error.message || 'Failed to load locations.');
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  return floor2Loc?.id ? String(floor2Loc.id) : '';
+}
+
+async function clearFloor1RepairGhostQty(sb, assemblyId, qty) {
+  const aid = String(assemblyId || '').trim();
+  const cap = Math.max(0, Math.floor(Number(qty) || 0));
+  if (!aid || cap < 1) return;
+  const floor1Qty = await getAssemblyStockQty(sb, aid, WAREHOUSE_FROM_LOCATION_ID);
+  const remove = Math.min(cap, floor1Qty);
+  if (remove > 0) {
+    await adjustAssemblyStock(sb, aid, WAREHOUSE_FROM_LOCATION_ID, -remove);
+  }
+}
+
+async function stageRepairedUnitOnFloor2(sb, { row, qty, now }) {
+  const floor2Id = await resolveWarehouseFloor2LocationId(sb);
+  if (!floor2Id) throw new Error('Warehouse Floor 2 location is not configured.');
+
+  const assemblyId = String(row.assembly_id || '').trim();
+  if (!assemblyId) throw new Error('Return is missing product.');
+
+  await clearFloor1RepairGhostQty(sb, assemblyId, qty);
+  await adjustAssemblyStock(sb, assemblyId, floor2Id, qty);
+
+  const { data: asmRow } = await sb
+    .from('warehouse_assemblies')
+    .select('metadata')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  const asmMeta = asmRow?.metadata || {};
+  await sb.from('warehouse_assemblies').update({
+    metadata: {
+      ...asmMeta,
+      floor2_wip: {
+        kind: FLOOR2_WIP_KIND_REPAIR,
+        return_order_id: String(row.id),
+        return_number: row.return_number || null,
+        staged_at: now,
+      },
+    },
+    updated_at: now,
+  }).eq('id', assemblyId);
+
+  await recomputeWarehouseLocationStockServer(sb, floor2Id);
+  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FROM_LOCATION_ID);
+}
+
+/** Delivery app catalog: assemblies awaiting ship from Floor 2 after workshop repair complete. */
+export async function listRepairFloor2DeliveriesForCatalog(sb) {
+  const { listRepairDeliveriesForMobile } = await import('./warehouseDeliveryAdminQueue.js');
+  return listRepairDeliveriesForMobile(sb);
+}
+
+export async function repairFloor2DeliveryAssemblyMap(sb) {
+  const rows = await listRepairFloor2DeliveriesForCatalog(sb);
+  return new Map(rows.map((row) => [String(row.assembly_id), row]));
+}
+
+export async function clearAssemblyFloor2RepairWip(sb, assemblyId, now = new Date().toISOString()) {
+  const aid = String(assemblyId || '').trim();
+  if (!aid) return;
+  const { data: asmRow } = await sb
+    .from('warehouse_assemblies')
+    .select('metadata')
+    .eq('id', aid)
+    .maybeSingle();
+  const asmMeta = asmRow?.metadata || {};
+  if (!asmMeta.floor2_wip) return;
+  const nextMeta = { ...asmMeta };
+  delete nextMeta.floor2_wip;
+  await sb.from('warehouse_assemblies').update({
+    metadata: nextMeta,
+    updated_at: now,
+  }).eq('id', aid);
+}
+
+export async function finalizeRepairFloor2DeliveriesOnKitweAccept(sb, lines, {
+  acceptedAt = new Date().toISOString(),
+} = {}) {
+  const returnIds = new Set();
+  for (const line of lines || []) {
+    if (line?.metadata?.floor2_repair_delivery !== true) continue;
+    const returnOrderId = String(line.metadata?.return_order_id || '').trim();
+    const assemblyId = String(line.metadata?.assembly_id || '').trim();
+    const qty = Math.max(1, Number(line.quantity) || 1);
+    if (!returnOrderId || !assemblyId) continue;
+    returnIds.add(returnOrderId);
+    await clearAssemblyFloor2RepairWip(sb, assemblyId, acceptedAt);
+    await clearFloor1RepairGhostQty(sb, assemblyId, qty);
+  }
+
+  for (const returnOrderId of returnIds) {
+    const { data: row } = await sb.from(RETURNS).select('*').eq('id', returnOrderId).maybeSingle();
+    if (!row) continue;
+    const prevMeta = row.metadata || {};
+    if (prevMeta.kitwe_restored_at || prevMeta.customer_fulfilled_at) continue;
+
+    const hasCustomer = returnRowHasCustomer(row);
+    await sb.from(RETURNS).update({
+      status: hasCustomer
+        ? WAREHOUSE_RETURN_STATUSES.CUSTOMER_DELIVERED
+        : WAREHOUSE_RETURN_STATUSES.SHIPPED,
+      updated_at: acceptedAt,
+      metadata: {
+        ...prevMeta,
+        floor1_awaiting_hassan: false,
+        kitwe_restored_at: hasCustomer ? prevMeta.kitwe_restored_at : acceptedAt,
+        customer_fulfilled_at: hasCustomer ? acceptedAt : prevMeta.customer_fulfilled_at,
+        repair_delivered_via_floor2_at: acceptedAt,
+        factory_stock_removed_at: acceptedAt,
+      },
+    }).eq('id', returnOrderId);
+  }
+
+  const floor2Id = await resolveWarehouseFloor2LocationId(sb);
+  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FROM_LOCATION_ID);
+  if (floor2Id) await recomputeWarehouseLocationStockServer(sb, floor2Id);
+}
 
 function canWarehouseKitweReturnCreator(user) {
   const email = String(user?.email || '').trim().toLowerCase();
@@ -536,23 +662,14 @@ export async function completeWarehouseReturnOrder(sb, body, user) {
   const finalMs = computeRepairElapsedMs(row, new Date(now).getTime());
   const durationSeconds = Math.max(0, Math.floor(finalMs / 1000));
 
-  if (!prevMeta.factory_stock_added_at) {
-    await adjustAssemblyStock(sb, row.assembly_id, WAREHOUSE_FROM_LOCATION_ID, qty);
-  }
-
-  const awaitingHassanFloor1 = !returnRowHasCustomer(row);
+  const { markRepairWorkCompleteAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+  const adminMeta = await markRepairWorkCompleteAwaitingDriver(sb, row, { now });
   const nextMeta = {
-    ...prevMeta,
-    factory_stock_added_at: prevMeta.factory_stock_added_at || now,
-    ready_for_shipment: true,
+    ...adminMeta,
     repair_accumulated_ms: finalMs,
     repair_timer_started_at: null,
     repair_timer_paused: false,
   };
-  if (awaitingHassanFloor1) {
-    nextMeta.floor1_awaiting_hassan = true;
-    nextMeta.floor1_lifecycle = 'awaiting_hassan_shipback';
-  }
 
   const { error } = await sb.from(RETURNS).update({
     status: WAREHOUSE_RETURN_STATUSES.COMPLETED,
@@ -568,18 +685,10 @@ export async function completeWarehouseReturnOrder(sb, body, user) {
   if (error) throw new Error(error.message || 'Failed to complete return.');
 
   const { data: updated } = await sb.from(RETURNS).select('*').eq('id', id).maybeSingle();
-  let customerLabel = null;
-  if (returnRowHasCustomer(updated || row)) {
-    try {
-      customerLabel = await printReturnCustomerPickupLabel(sb, { return_order_id: id }, user);
-    } catch (labelErr) {
-      console.warn('[completeWarehouseReturnOrder] customer label:', labelErr?.message || labelErr);
-    }
-  }
   return {
     return_order: serializeReturnForClient(updated),
     completed_at: now,
-    customer_label: customerLabel?.label_print || null,
+    delivery_admin_awaiting_driver: true,
   };
 }
 
@@ -786,11 +895,10 @@ export async function prepareReturnCustomerDeliverySession(sb, body, user) {
 }
 
 export async function submitReturnCustomerDelivery(sb, body, user, uploadSignature) {
+  const { resolveMobileDeliveryDriver } = await import('./resolveMobileDeliveryDriver.js');
   const sessionId = String(body.session_id || '').trim();
-  const driverName = String(body.driver_name || '').trim();
-  const driverId = String(body.driver_id || '').trim();
+  const { driverName, driverId, customerDriverName, customerDriverPhone, customerDriverActive } = resolveMobileDeliveryDriver(body);
   if (!sessionId) throw new Error('session_id is required.');
-  if (!driverName) throw new Error('Driver is required.');
 
   const { data: session } = await sb
     .from('warehouse_delivery_sessions')
@@ -837,6 +945,9 @@ export async function submitReturnCustomerDelivery(sb, body, user, uploadSignatu
       driver_name: driverName,
       driver_signature_url: signatureUrl,
       submitted_by: user?.email || null,
+      customer_driver_name: customerDriverActive ? customerDriverName : null,
+      customer_driver_phone: customerDriverActive ? customerDriverPhone : null,
+      customer_driver_signed: customerDriverActive,
     },
   }).eq('id', sessionId);
 
@@ -908,11 +1019,10 @@ export async function markReturnOrderShipped(sb, returnOrderId, deliveryNumber, 
 }
 
 export async function submitReturnShipment(sb, body, user, uploadSignature) {
+  const { resolveMobileDeliveryDriver } = await import('./resolveMobileDeliveryDriver.js');
   const sessionId = String(body.session_id || '').trim();
-  const driverName = String(body.driver_name || '').trim();
-  const driverId = String(body.driver_id || '').trim();
+  const { driverName, driverId, customerDriverName, customerDriverPhone, customerDriverActive } = resolveMobileDeliveryDriver(body);
   if (!sessionId) throw new Error('session_id is required.');
-  if (!driverName) throw new Error('Driver is required.');
 
   const { data: session } = await sb
     .from('warehouse_delivery_sessions')
@@ -950,6 +1060,9 @@ export async function submitReturnShipment(sb, body, user, uploadSignature) {
       driver_name: driverName,
       driver_signature_url: signatureUrl,
       submitted_by: user?.email || null,
+      customer_driver_name: customerDriverActive ? customerDriverName : null,
+      customer_driver_phone: customerDriverActive ? customerDriverPhone : null,
+      customer_driver_signed: customerDriverActive,
     },
   }).eq('id', sessionId);
 

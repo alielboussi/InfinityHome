@@ -55,11 +55,25 @@ export default function DashboardScreen({
 
   const allTiles = [
     {
-      key: 'send',
+      key: 'floor1',
       screenId: 'delivery_send_kitwe',
-      icon: 'truck-delivery-outline',
-      title: tUi('dashDelivery', locale),
+      icon: 'warehouse',
+      title: tUi('dashFloor1Deliveries', locale),
       onPress: () => navigation.navigate('KitweSendHome'),
+    },
+    {
+      key: 'repairs',
+      screenId: 'delivery_send_kitwe',
+      icon: 'tools',
+      title: tUi('dashDeliveryRepairs', locale),
+      onPress: () => navigation.navigate('DeliveryRepairQueue'),
+    },
+    {
+      key: 'orders',
+      screenId: 'delivery_send_kitwe',
+      icon: 'clipboard-list-outline',
+      title: tUi('dashDeliveryOrders', locale),
+      onPress: () => navigation.navigate('DeliveryOrderQueue'),
     },
     {
       key: 'sent',

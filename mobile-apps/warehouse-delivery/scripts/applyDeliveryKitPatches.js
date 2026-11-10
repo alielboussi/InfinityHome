@@ -118,9 +118,94 @@ function patchProductionNameClashUi(filePath) {
   fs.writeFileSync(filePath, header + fs.readFileSync(repoUtil, 'utf8'));
 }
 
+function patchDeliveryWarehouseCatalog(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  let s = fs.readFileSync(filePath, 'utf8');
+  if (s.includes('filterAssembliesForDeliveryFloor1Only')) return;
+  const tail = `
+/** Floor 1 stock only — name used by Kitwe Send hub screen. */
+export function filterAssembliesForDeliveryFloor1Only(catalog) {
+  return filterAssembliesForDeliveryWarehouse(catalog);
+}
+`;
+  fs.writeFileSync(filePath, `${s.trimEnd()}\n${tail}`);
+}
+
+function patchDeliveryHubI18n(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  let s = fs.readFileSync(filePath, 'utf8');
+  const block = `  deliveryHubTitle: { en: 'Delivery', ar: 'التسليم' },
+  deliveryHubTab_floor1: { en: 'Floor 1', ar: 'الطابق 1' },
+  deliveryHubTab_repairs: { en: 'Repairs', ar: 'إصلاحات' },
+  deliveryHubTab_orders: { en: 'Orders', ar: 'طلبات' },
+  deliveryRepairQueueEmpty: {
+    en: 'No repairs waiting for a driver.',
+    ar: 'لا توجد إصلاحات بانتظار السائق.',
+  },
+  deliveryOrderQueueEmpty: {
+    en: 'No finished orders waiting for a driver.',
+    ar: 'لا توجد طلبات منتهية بانتظار السائق.',
+  },
+  deliveryRepairDeliverBtn: { en: 'Deliver repair', ar: 'تسليم الإصلاح' },
+  deliveryOrderDeliverBtn: { en: 'Deliver order', ar: 'تسليم الطلب' },
+  deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },
+  customerDriverSave: { en: 'Save', ar: 'حفظ' },
+  dashFloor1Deliveries: { en: 'Floor 1 Deliveries', ar: 'تسليمات الطابق 1' },
+  dashDeliveryRepairs: { en: 'Repairs', ar: 'إصلاحات' },
+  dashDeliveryOrders: { en: 'Orders', ar: 'طلبات' },
+`;
+  if (s.includes('dashFloor1Deliveries')) return;
+  if (s.includes('deliveryHubTab_repairs') && s.includes('deliveryRepairQueueEmpty')) return;
+  const ordersLine = "  deliveryHubTab_orders: { en: 'Orders', ar: 'طلبات' },";
+  const queueExtra = `
+  deliveryRepairQueueEmpty: {
+    en: 'No repairs waiting for a driver.',
+    ar: 'لا توجد إصلاحات بانتظار السائق.',
+  },
+  deliveryOrderQueueEmpty: {
+    en: 'No finished orders waiting for a driver.',
+    ar: 'لا توجد طلبات منتهية بانتظار السائق.',
+  },
+  deliveryRepairDeliverBtn: { en: 'Deliver repair', ar: 'تسليم الإصلاح' },
+  deliveryOrderDeliverBtn: { en: 'Deliver order', ar: 'تسليم الطلب' },
+  deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },
+  customerDriverSave: { en: 'Save', ar: 'حفظ' },`;
+  if (s.includes('deliveryHubTab_repairs') && s.includes(ordersLine) && !s.includes('deliveryRepairQueueEmpty')) {
+    s = s.replace(ordersLine, `${ordersLine}${queueExtra}`);
+    fs.writeFileSync(filePath, s);
+    return;
+  }
+  if (s.includes('deliveryHubTab_repairs')) {
+    fs.writeFileSync(filePath, s);
+    return;
+  }
+  const dashLine = "  dashDelivery: { en: 'Send Delivery', ar: 'إرسال التسليم' },";
+  if (s.includes(dashLine) && !s.includes('dashFloor1Deliveries')) {
+    s = s.replace(
+      dashLine,
+      `${dashLine}
+  dashFloor1Deliveries: { en: 'Floor 1 Deliveries', ar: 'تسليمات الطابق 1' },
+  dashDeliveryRepairs: { en: 'Repairs', ar: 'إصلاحات' },
+  dashDeliveryOrders: { en: 'Orders', ar: 'طلبات' },`,
+    );
+  }
+  const anchor = '  deliveryCustomerDriver:';
+  if (s.includes(anchor)) {
+    s = s.replace(anchor, `${block}  deliveryCustomerDriver:`);
+  } else if (s.includes('  deliveryDriver:')) {
+    s = s.replace(/(  deliveryDriver: \{[^}]+\},)/, `$1\n${block}`);
+  } else {
+    console.warn('[applyDeliveryKitPatches] delivery hub i18n: no anchor found');
+    return;
+  }
+  fs.writeFileSync(filePath, s);
+}
+
 function main() {
   copyDirMerge(overlaysRoot, kitRoot);
   patchProductionNameClashUi(path.join(kitRoot, 'lib', 'productionNameClashUi.js'));
+  patchDeliveryHubI18n(path.join(kitRoot, 'lib', 'productionKioskI18n.js'));
+  patchDeliveryWarehouseCatalog(path.join(kitRoot, 'lib', 'deliveryWarehouseCatalog.js'));
 
   patchSignatureScreen(
     path.join(kitRoot, 'screens', 'KitweSendSignatureScreen.js'),

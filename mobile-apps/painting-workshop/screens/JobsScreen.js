@@ -251,48 +251,15 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
 
   const onReturnPause = (row) => runReturnOp(row, 'return-order-pause');
 
-  const completeReturnAndDispatch = async (row, hasCustomer) => {
-    setBusyId(`return:${row.id}`);
-    setError('');
-    try {
-      await warehouseMobileRequest('return-order-complete', { return_order_id: row.id });
-      const prepOp = hasCustomer
-        ? 'return-order-customer-delivery-prepare'
-        : 'return-order-ship-prepare';
-      const prep = await warehouseMobileRequest(prepOp, { return_order_id: row.id });
-      navigation.navigate('RepairReturnSignature', {
-        dispatchKind: hasCustomer ? 'customer' : 'kitwe',
-        returnOrderId: row.id,
-        returnNumber: row.return_number,
-        sessionId: prep.session_id,
-        deliveryNumber: prep.delivery_number,
-        printGroups: prep.print_groups || [],
-        documentKind: prep.document_kind,
-        customerName: prep.customer_name || row.customer_name,
-        customerPhone: prep.customer_phone || row.customer_phone,
-      });
-    } catch (err) {
-      setError(err?.message || tUi('returnCompleteFailed', locale));
-      await loadQueue();
-    } finally {
-      setBusyId('');
-    }
-  };
-
   const onReturnStop = (row) => {
-    const hasCustomer = Boolean(String(row.customer_name || '').trim());
     Alert.alert(
       tUi('repairCompleteConfirm', locale),
-      tUi('repairDispositionPrompt', locale),
+      tUi('repairCompleteFloor2Hint', locale),
       [
         { text: tUi('cancel', locale), style: 'cancel' },
         {
-          text: tUi('repairDispositionFloor1', locale),
+          text: tUi('repairCompleteConfirmBtn', locale),
           onPress: () => runReturnOp(row, 'return-order-complete'),
-        },
-        {
-          text: tUi('repairDispositionDelivery', locale),
-          onPress: () => completeReturnAndDispatch(row, hasCustomer),
         },
       ],
     );
