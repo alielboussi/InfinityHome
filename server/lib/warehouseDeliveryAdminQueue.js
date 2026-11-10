@@ -4,8 +4,10 @@ import {
 } from '../../src/utils/warehouseDeliveryAdminQueue.js';
 import { WAREHOUSE_RETURN_STATUSES } from '../../src/utils/warehouseReturnOrder.js';
 import { WAREHOUSE_FROM_LOCATION_ID, WAREHOUSE_TO_LOCATION_ID } from '../../src/utils/warehouseDelivery.js';
-import { adjustAssemblyStock } from './warehouseReturnStock.js';
-import { getAssemblyStockQty } from './warehouseReturnStock.js';
+
+async function returnStockMutations() {
+  return import('./warehouseReturnStock.js');
+}
 
 const RETURNS = 'warehouse_return_orders';
 const CARPENTRY_JOBS = 'carpentry_production_jobs';
@@ -120,9 +122,41 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
   };
 }
 
+function parseRowMetadata(raw) {
+  if (!raw) return {};
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 function rowAwaitingDriver(admin) {
   return admin
     && String(admin.stage || '').toLowerCase() === DELIVERY_ADMIN_STAGE.AWAITING_DRIVER;
+}
+
+/** Completed workshop repair waiting for Delivery app driver (repairs queue). */
+function isRepairRowAwaitingDriver(row) {
+  const meta = parseRowMetadata(row?.metadata);
+  const admin = meta.delivery_admin;
+  if (rowAwaitingDriver(admin)) return true;
+  if (meta.ready_for_delivery_app === true) return true;
+  const stage = String(admin?.stage || '').toLowerCase();
+  if (stage === DELIVERY_ADMIN_STAGE.COLLECTED_BY_DRIVER
+    || stage === DELIVERY_ADMIN_STAGE.DELIVERY_COMPLETED) {
+    return false;
+  }
+  if (meta.floor1_awaiting_hassan || meta.floor2_repair_staged_at || meta.kitwe_restored_at) {
+    return false;
+  }
+  if (meta.customer_fulfilled_at) return false;
+  return String(row?.status || '').toLowerCase() === WAREHOUSE_RETURN_STATUSES.COMPLETED;
 }
 
 export async function listRepairDeliveriesForMobile(sb) {
@@ -133,19 +167,22 @@ export async function listRepairDeliveriesForMobile(sb) {
   if (error) throw new Error(error.message || 'Failed to load repair queue.');
 
   return (data || [])
-    .filter((row) => {
-      const admin = row?.metadata?.delivery_admin;
-      return rowAwaitingDriver(admin);
-    })
-    .map((row) => ({
-      return_order_id: String(row.id),
-      return_number: row.return_number,
-      assembly_id: String(row.assembly_id),
-      assembly_name: row.assembly_name,
-      quantity: Math.max(1, Number(row.quantity) || 1),
-      has_customer: Boolean(String(row.customer_name || '').trim()),
-      delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
-    }));
+    .filter((row) => isRepairRowAwaitingDriver(row))
+    .map((row) => {
+      const meta = parseRowMetadata(row.metadata);
+      return {
+        return_order_id: String(row.id),
+        return_number: row.return_number,
+        assembly_id: String(row.assembly_id),
+        assembly_name: row.assembly_name,
+        quantity: Math.max(1, Number(row.quantity) || 1),
+        has_customer: Boolean(String(row.customer_name || '').trim()),
+        status: String(row.status || 'completed'),
+        delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
+        ready_for_delivery_app: true,
+        metadata: meta,
+      };
+    });
 }
 
 async function listCompletedJobsAwaitingDriver(sb, table, department) {
@@ -158,7 +195,8 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
 
   const out = [];
   for (const job of data || []) {
-    const admin = job?.metadata?.delivery_admin;
+    const meta = parseRowMetadata(job?.metadata);
+    const admin = meta.delivery_admin;
     if (!rowAwaitingDriver(admin)) continue;
     const asmId = String(admin.assembly_id || job.assembly_id || '').trim();
     if (!asmId) continue;
@@ -188,7 +226,8 @@ async function listQuoteOrdersAwaitingDriver(sb) {
 
   const out = [];
   for (const row of data || []) {
-    const admin = row?.metadata?.delivery_admin;
+    const meta = parseRowMetadata(row?.metadata);
+    const admin = meta.delivery_admin;
     if (!rowAwaitingDriver(admin)) continue;
     const asmId = String(admin.assembly_id || '').trim();
     if (!asmId) continue;
@@ -343,6 +382,7 @@ export async function moveAdminQueueLineToKitwe(sb, line) {
   if (!aid || qty < 1) return null;
   const customerRepair = line.metadata?.return_has_customer === true;
   if (customerRepair) return { assemblyId: aid, qty, kitweAdded: 0 };
+  const { adjustAssemblyStock } = await returnStockMutations();
   await adjustAssemblyStock(sb, aid, WAREHOUSE_TO_LOCATION_ID, qty);
   return { assemblyId: aid, qty, kitweAdded: qty };
 }
@@ -415,6 +455,7 @@ export async function scrubLegacyFloor1Ghost(sb, assemblyId, qty) {
   const aid = String(assemblyId || '').trim();
   const cap = Math.max(0, Math.floor(Number(qty) || 0));
   if (!aid || cap < 1) return;
+  const { getAssemblyStockQty, adjustAssemblyStock } = await returnStockMutations();
   const floor1Qty = await getAssemblyStockQty(sb, aid, WAREHOUSE_FROM_LOCATION_ID);
   const remove = Math.min(cap, floor1Qty);
   if (remove > 0) {

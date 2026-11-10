@@ -1,4 +1,4 @@
-import { normalizeWarehouseReturnReason } from './warehouseReturnReasons';
+import { normalizeWarehouseReturnReason } from './warehouseReturnReasons.js';
 
 export const WAREHOUSE_RETURN_STATUSES = Object.freeze({
   SUBMITTED: 'submitted',
