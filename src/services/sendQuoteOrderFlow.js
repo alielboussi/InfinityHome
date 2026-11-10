@@ -124,7 +124,7 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
     createdAt: quoteRow.created_at || new Date().toISOString(),
   });
 
-  const { blob, base64 } = await generateFactoryOrderBilingualPdf(
+  const { blob } = await generateFactoryOrderBilingualPdf(
     {
       ...quoteRow,
       customer_name: customerName,
