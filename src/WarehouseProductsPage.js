@@ -20,7 +20,6 @@ import {
   deleteWarehouseAssembly,
   deleteWarehousePacket,
   invalidateWarehouseCatalogCache,
-  setWarehouseAssemblyQuantity,
   setWarehouseAssemblyProductQuantity,
   setWarehouseSetQuantityFromRecipe,
   setWarehousePacketQuantity,
@@ -303,8 +302,6 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
     stockForAssemblyAtLocation,
     warehouseLocationId,
   ]);
-
-  const isCompleteProductsView = !isSetsView && !isIncompleteView && !isUncategorizedView;
 
   const assemblyMatchesCatalogSearch = useCallback((assembly, raw) => {
     if (!raw) return true;

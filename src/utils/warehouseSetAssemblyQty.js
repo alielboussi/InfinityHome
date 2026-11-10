@@ -11,7 +11,6 @@ import {
 } from './warehouseAssemblyProductQuantity.js';
 import {
   buildWarehouseAssemblyLeftoverQtyMap,
-  computeWarehouseFactorySetBuildableQty,
   isWarehouseSetAssembly,
 } from './warehouseSetMath.js';
 import { expandWarehouseSetItemsRows } from './warehouseSetItems.js';
@@ -98,18 +97,9 @@ async function loadLocationAssemblyQtyMap(sb, locationId, {
   return out;
 }
 
-async function writeComponentUnitsAtLocation(sb, assembly, pktList, locationId, targetUnits, {
-  assemblyPacketRows,
-  allPackets,
-  inventoryByPacketId,
-}) {
+async function writeComponentUnitsAtLocation(sb, assembly, pktList, locationId, targetUnits) {
   const locId = String(locationId);
   const target = Math.max(0, Math.floor(Number(targetUnits) || 0));
-  const poolOpts = {
-    assemblyId: assembly.id,
-    assemblyPacketRows: assemblyPacketRows || [],
-    catalogPackets: allPackets || [],
-  };
   const packetUpdates = packetUpdatesForAssemblyTargetUnits(assembly, pktList, target);
   const now = new Date().toISOString();
   if (packetUpdates?.length) {
@@ -300,11 +290,7 @@ export async function applyWarehouseSetQuantityFromRecipe(
     if (nextUnits < 0) {
       throw new Error(`Not enough stock for ${assembly.name}.`);
     }
-    await writeComponentUnitsAtLocation(sb, assembly, pktList, locId, nextUnits, {
-      assemblyPacketRows: assemblyPacketRows || [],
-      allPackets: allPackets || [],
-      inventoryByPacketId,
-    });
+    await writeComponentUnitsAtLocation(sb, assembly, pktList, locId, nextUnits);
   }));
 
   const now = new Date().toISOString();
