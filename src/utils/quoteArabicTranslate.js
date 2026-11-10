@@ -352,3 +352,10 @@ export function displayQuoteFieldValue(locale, value, serverMap = {}) {
   if (locale !== 'ar') return raw;
   return translateTermToArabic(raw, serverMap);
 }
+
+/** Factory order WhatsApp — department line is always Arabic. */
+export function factoryOrderDepartmentArabic(route) {
+  const r = String(route || '').trim().toLowerCase();
+  if (r === 'carpentry') return 'قسم النجارة';
+  return 'قسم التنجيد';
+}

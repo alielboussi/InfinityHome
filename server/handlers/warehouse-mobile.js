@@ -1567,6 +1567,32 @@ async function opProductionQuoteComplete(body, user) {
   });
 }
 
+async function opProductionQuotePause(body, user) {
+  const route = await assertQuoteRouteUser(user, body.route);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  if (!quoteId) throw new Error('quote_id required');
+  const sb = getService();
+  const { pauseQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
+  return pauseQuoteProductionOrder(sb, {
+    quoteId,
+    route,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opProductionQuoteResume(body, user) {
+  const route = await assertQuoteRouteUser(user, body.route);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  if (!quoteId) throw new Error('quote_id required');
+  const sb = getService();
+  const { resumeQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
+  return resumeQuoteProductionOrder(sb, {
+    quoteId,
+    route,
+    userId: user?.id || user?.uid,
+  });
+}
+
 async function opProductionQuoteMaterialScan(body, user) {
   const route = await assertQuoteRouteUser(user, body.route);
   const quoteId = String(body.quote_id || body.quoteId || '').trim();
@@ -4217,6 +4243,12 @@ export default async function handler(req, res) {
         break;
       case 'production-quote-complete':
         result = await opProductionQuoteComplete(body, user);
+        break;
+      case 'production-quote-pause':
+        result = await opProductionQuotePause(body, user);
+        break;
+      case 'production-quote-resume':
+        result = await opProductionQuoteResume(body, user);
         break;
       case 'production-quote-material-scan':
         result = await opProductionQuoteMaterialScan(body, user);

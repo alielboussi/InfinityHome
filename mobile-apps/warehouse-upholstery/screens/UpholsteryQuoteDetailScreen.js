@@ -21,6 +21,8 @@ import {
   completeUpholsteryQuote,
   fetchProductionQuoteArabicTranslations,
   fetchUpholsteryProductionQuotes,
+  pauseUpholsteryQuote,
+  resumeUpholsteryQuote,
 } from '../services/productionApi';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { theme } from '../shared/theme';
@@ -82,16 +84,28 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     }, [reloadQuote]),
   );
 
+  const isPaused = useMemo(
+    () => String(quote.timer_status || '').toLowerCase() === 'paused' || Boolean(quote.run_paused_at),
+    [quote.timer_status, quote.run_paused_at],
+  );
+  const accumulatedMs = useMemo(
+    () => Math.max(0, Number(quote.accumulated_ms) || 0),
+    [quote.accumulated_ms],
+  );
+
   useEffect(() => {
-    if (!accepted || completed || !startedAt) return undefined;
+    if (!accepted || completed || !startedAt || isPaused) return undefined;
     const id = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [accepted, completed, startedAt]);
+  }, [accepted, completed, startedAt, isPaused]);
 
   const elapsedLabel = useMemo(() => {
-    if (!startedAt || !accepted || completed) return '—';
-    return formatElapsed(tick - new Date(startedAt).getTime());
-  }, [startedAt, accepted, completed, tick]);
+    if (!accepted || completed) return '—';
+    if (isPaused) return formatElapsed(accumulatedMs);
+    if (!startedAt) return '—';
+    const runningMs = Math.max(0, tick - new Date(startedAt).getTime());
+    return formatElapsed(accumulatedMs + runningMs);
+  }, [startedAt, accepted, completed, tick, isPaused, accumulatedMs]);
 
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
   const arabicMap = useProductionQuoteArabicMap(
@@ -107,7 +121,54 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       await acceptUpholsteryQuote(quoteId);
       const nowIso = new Date().toISOString();
       setAccepted(true);
-      setQuote((prev) => ({ ...prev, accepted_at: nowIso, run_started_at: nowIso }));
+      setQuote((prev) => ({
+        ...prev,
+        accepted_at: nowIso,
+        run_started_at: nowIso,
+        timer_status: 'running',
+        accumulated_ms: 0,
+        run_paused_at: null,
+      }));
+    } catch (e) {
+      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onPause = async () => {
+    setBusy(true);
+    try {
+      const result = await pauseUpholsteryQuote(quoteId);
+      const pausedAt = result?.paused_at || new Date().toISOString();
+      const acc = Math.max(0, Number(result?.accumulated_ms) || accumulatedMs);
+      setQuote((prev) => ({
+        ...prev,
+        timer_status: 'paused',
+        run_paused_at: pausedAt,
+        accumulated_ms: acc,
+      }));
+    } catch (e) {
+      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onResume = async () => {
+    setBusy(true);
+    try {
+      const result = await resumeUpholsteryQuote(quoteId);
+      const resumedAt = result?.resumed_at || new Date().toISOString();
+      const acc = Math.max(0, Number(result?.accumulated_ms) || accumulatedMs);
+      setQuote((prev) => ({
+        ...prev,
+        timer_status: 'running',
+        run_paused_at: null,
+        run_started_at: resumedAt,
+        accumulated_ms: acc,
+      }));
+      setTick(Date.now());
     } catch (e) {
       Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
     } finally {
@@ -182,9 +243,32 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         </Pressable>
       ) : null}
       {accepted && !completed ? (
-        <Pressable style={[kiosk.btn, styles.actionBtn, styles.danger]} disabled={busy} onPress={onComplete}>
-          <Text style={kiosk.btnText}>{tUi('quoteOrderEnd', locale)}</Text>
-        </Pressable>
+        <View style={styles.orderControlRow}>
+          {isPaused ? (
+            <Pressable
+              style={[kiosk.btn, kiosk.btnPrimary, styles.orderControlBtn]}
+              disabled={busy}
+              onPress={onResume}
+            >
+              <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('quoteOrderResume', locale)}</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              style={[kiosk.btn, styles.orderControlBtn, styles.pauseBtn]}
+              disabled={busy}
+              onPress={onPause}
+            >
+              <Text style={kiosk.btnText}>{tUi('quoteOrderPause', locale)}</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={[kiosk.btn, styles.orderControlBtn, styles.danger]}
+            disabled={busy}
+            onPress={onComplete}
+          >
+            <Text style={kiosk.btnText}>{tUi('quoteOrderEnd', locale)}</Text>
+          </Pressable>
+        </View>
       ) : null}
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderMaterials', locale)}</Text>
       {!completed && quote.sent_to_production_at ? (
@@ -242,6 +326,9 @@ const styles = StyleSheet.create({
   timerLabel: { color: theme.textMuted },
   timer: { color: theme.primary, fontSize: 28, fontWeight: '700', marginTop: 8, textAlign: 'center' },
   actionBtn: { alignSelf: 'stretch', marginBottom: 8 },
+  orderControlRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  orderControlBtn: { flex: 1, alignSelf: 'stretch' },
+  pauseBtn: { backgroundColor: '#334155' },
   materialsHint: { color: theme.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
   danger: { backgroundColor: '#7f1d1d' },
   section: { marginTop: 16, marginBottom: 8 },

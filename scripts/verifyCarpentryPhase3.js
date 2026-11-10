@@ -36,6 +36,8 @@ try {
     "case 'production-quotes-list'",
     "case 'production-quote-accept'",
     "case 'production-quote-complete'",
+    "case 'production-quote-pause'",
+    "case 'production-quote-resume'",
     "case 'production-quote-material-scan'",
   ], 'warehouse-mobile phase3');
 

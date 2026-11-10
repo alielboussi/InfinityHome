@@ -235,6 +235,7 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
     const q = quoteById.get(String(r.quote_id));
     if (!q) continue;
     const run = runByQuote.get(String(r.quote_id)) || null;
+    const timerFields = quoteRunListFields(run);
     rows.push({
       quote_id: r.quote_id,
       route: r.route,
@@ -250,6 +251,7 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
       run_id: run?.id || null,
       run_started_at: run?.started_at || null,
       run_completed_at: run?.completed_at || null,
+      ...timerFields,
       lines: itemsByQuoteId.get(String(r.quote_id)) || r.metadata?.lines || [],
       drawing_url: r.metadata?.drawing_url || null,
       manual_material_lines: Array.isArray(r.metadata?.manual_material_lines)
@@ -271,6 +273,39 @@ async function findActiveQuoteRun(sb, quoteId) {
     .maybeSingle();
   if (error) throw new Error(error.message || 'Failed to load production run');
   return data || null;
+}
+
+function quoteRunMeta(run) {
+  return run?.metadata && typeof run.metadata === 'object' ? run.metadata : {};
+}
+
+function computeQuoteRunElapsedMs(run, nowMs = Date.now()) {
+  if (!run || run.completed_at) return 0;
+  const meta = quoteRunMeta(run);
+  let ms = Math.max(0, Number(meta.accumulated_ms) || 0);
+  const paused = String(meta.timer_status || '').toLowerCase() === 'paused' || Boolean(meta.paused_at);
+  if (!paused && run.started_at) {
+    const started = new Date(run.started_at).getTime();
+    if (Number.isFinite(started)) ms += Math.max(0, nowMs - started);
+  }
+  return ms;
+}
+
+function quoteRunListFields(run) {
+  if (!run) {
+    return {
+      timer_status: null,
+      run_paused_at: null,
+      accumulated_ms: 0,
+    };
+  }
+  const meta = quoteRunMeta(run);
+  const paused = String(meta.timer_status || '').toLowerCase() === 'paused' || Boolean(meta.paused_at);
+  return {
+    timer_status: paused ? 'paused' : (run.completed_at ? 'completed' : 'running'),
+    run_paused_at: meta.paused_at || null,
+    accumulated_ms: Math.max(0, Number(meta.accumulated_ms) || 0),
+  };
 }
 
 export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId }) {
@@ -313,6 +348,57 @@ export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId })
   if (routeErr) throw new Error(routeErr.message || 'Failed to update routing');
 
   return { run_id: runId, started_at: now };
+}
+
+export async function pauseQuoteProductionOrder(sb, { quoteId, route, userId }) {
+  void userId;
+  void route;
+  const qid = String(quoteId || '').trim();
+  if (!qid) throw new Error('quote_id required');
+  const run = await findActiveQuoteRun(sb, qid);
+  if (!run || run.completed_at) throw new Error('No active production run for this quote');
+  const meta = { ...quoteRunMeta(run) };
+  if (String(meta.timer_status || '').toLowerCase() === 'paused') {
+    return { run_id: run.id, already_paused: true, accumulated_ms: computeQuoteRunElapsedMs(run) };
+  }
+  const accumulated = computeQuoteRunElapsedMs(run);
+  const pausedAt = new Date().toISOString();
+  const { error } = await sb.from(RUNS).update({
+    metadata: {
+      ...meta,
+      timer_status: 'paused',
+      paused_at: pausedAt,
+      accumulated_ms: accumulated,
+    },
+  }).eq('id', run.id);
+  if (error) throw new Error(error.message || 'Failed to pause order');
+  return { run_id: run.id, paused_at: pausedAt, accumulated_ms: accumulated };
+}
+
+export async function resumeQuoteProductionOrder(sb, { quoteId, route, userId }) {
+  void userId;
+  void route;
+  const qid = String(quoteId || '').trim();
+  if (!qid) throw new Error('quote_id required');
+  const run = await findActiveQuoteRun(sb, qid);
+  if (!run || run.completed_at) throw new Error('No active production run for this quote');
+  const meta = { ...quoteRunMeta(run) };
+  if (String(meta.timer_status || '').toLowerCase() !== 'paused') {
+    return { run_id: run.id, already_running: true };
+  }
+  const accumulated = Math.max(0, Number(meta.accumulated_ms) || 0);
+  const resumedAt = new Date().toISOString();
+  const { error } = await sb.from(RUNS).update({
+    started_at: resumedAt,
+    metadata: {
+      ...meta,
+      timer_status: 'running',
+      paused_at: null,
+      accumulated_ms: accumulated,
+    },
+  }).eq('id', run.id);
+  if (error) throw new Error(error.message || 'Failed to resume order');
+  return { run_id: run.id, resumed_at: resumedAt, accumulated_ms: accumulated };
 }
 
 export async function completeQuoteProductionOrder(sb, { quoteId, userId }) {

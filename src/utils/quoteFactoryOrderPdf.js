@@ -7,6 +7,7 @@ import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime';
 import { translateQuoteStringsToArabic } from '../services/quoteProductionApi';
 import {
   ARABIC_TERMS,
+  factoryOrderDepartmentArabic,
   toArabicIndicDigits,
   translateTermToArabic,
   translateQtyUnitLabel,
@@ -35,7 +36,7 @@ function cleanDescriptionText(val) {
 /**
  * Build the WhatsApp text message for the "Factory New" group (`120363201559496504@g.us`):
  *
- * Department : Upholstery / Carpentry
+ * Department : قسم التنجيد / قسم النجارة (Arabic only on this line)
  * Customer Name: ...
  * Customer Phone Number: ...
  * Quote Date: DD/MM/YYYY
@@ -47,9 +48,7 @@ export function buildFactoryOrderWhatsAppMessage({
   customerPhone,
   createdAt,
 } = {}) {
-  const dept = String(route || '').trim().toLowerCase() === 'carpentry'
-    ? 'Carpentry'
-    : 'Upholstery';
+  const deptAr = factoryOrderDepartmentArabic(route);
   const cName = String(customerName || '').trim() || '—';
   const cPhone = String(customerPhone || '').trim() || '—';
   const stamp = createdAt || new Date().toISOString();
@@ -57,7 +56,7 @@ export function buildFactoryOrderWhatsAppMessage({
   const quoteTime = `${formatZambiaTime(stamp)} Central Africa Time (CAT), UTC+02:00`;
 
   return [
-    `Department : ${dept}`,
+    `Department : ${deptAr}`,
     `Customer Name: ${cName}`,
     `Customer Phone Number: ${cPhone}`,
     `Quote Date: ${quoteDate}`,

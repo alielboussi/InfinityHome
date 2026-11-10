@@ -550,6 +550,20 @@ export async function completeUpholsteryQuote(quoteId) {
   });
 }
 
+export async function pauseUpholsteryQuote(quoteId) {
+  return productionOp('production-quote-pause', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+  });
+}
+
+export async function resumeUpholsteryQuote(quoteId) {
+  return productionOp('production-quote-resume', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+  });
+}
+
 export async function scanUpholsteryQuoteMaterial(quoteId, scan, quantity = 1) {
   return productionOp('production-quote-material-scan', {
     route: UPHOLSTERY_ROUTE,
