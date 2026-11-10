@@ -593,6 +593,10 @@ const UI_STRINGS = {
     en: 'No repairs waiting for a driver.',
     ar: 'لا توجد إصلاحات بانتظار السائق.',
   },
+  deliveryStatus_completedAwaiting: {
+    en: 'Ready for delivery',
+    ar: 'جاهز للتسليم',
+  },
   deliveryOrderQueueEmpty: {
     en: 'No finished orders waiting for a driver.',
     ar: 'لا توجد طلبات منتهية بانتظار السائق.',

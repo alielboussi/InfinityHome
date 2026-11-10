@@ -1,6 +1,9 @@
 /** Repairs + production orders — delivery lifecycle on /warehouse-repairs-admin (no floor stock). */
 
-import { WAREHOUSE_RETURN_STATUSES } from './warehouseReturnOrder.js';
+import {
+  parseWarehouseReturnMetadata,
+  WAREHOUSE_RETURN_STATUSES,
+} from './warehouseReturnOrder.js';
 
 export const DELIVERY_ADMIN_KIND = Object.freeze({
   REPAIR: 'repair',
@@ -14,19 +17,7 @@ export const DELIVERY_ADMIN_STAGE = Object.freeze({
   DELIVERY_COMPLETED: 'delivery_completed',
 });
 
-export function parseWarehouseReturnMetadata(raw) {
-  if (!raw) return {};
-  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
+export { parseWarehouseReturnMetadata };
 
 export function readDeliveryAdminMeta(row) {
   const meta = parseWarehouseReturnMetadata(row?.metadata);
@@ -74,7 +65,7 @@ export function repairEligibleForMobileDeliveryQueue(row) {
   return true;
 }
 
-const COMPLETED_AWAITING_DELIVERY = 'Completed (Awaiting Delivery)';
+const COMPLETED_AWAITING_DELIVERY = 'Ready for delivery';
 
 export function isCompletedAwaitingDelivery(row) {
   if (/awaiting driver/i.test(String(row?.lifecycle_badge || ''))) return true;

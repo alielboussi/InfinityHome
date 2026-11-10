@@ -16,18 +16,32 @@ export const WAREHOUSE_RETURN_TERMINAL_STATUSES = Object.freeze([
   WAREHOUSE_RETURN_STATUSES.CUSTOMER_DELIVERED,
 ]);
 
+export function parseWarehouseReturnMetadata(raw) {
+  if (!raw) return {};
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 /** Human-readable Floor 1 / Kitwe lifecycle for Hassan and production UIs. */
 export function returnOrderLifecycleBadge(row) {
   const status = String(row?.status || '').trim();
-  const meta = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+  const meta = parseWarehouseReturnMetadata(row?.metadata);
   const hasCustomer = Boolean(String(row?.customer_name || '').trim());
 
   if (status === WAREHOUSE_RETURN_STATUSES.AWAITING_KITWE_ACCEPT) {
     return 'In transit to Kitwe — awaiting Hassan accept on Warehouse Deliveries';
   }
   const admin = meta.delivery_admin;
-  if (admin?.stage === 'awaiting_driver') {
-    return 'Awaiting driver — Warehouse Delivery app → Repairs';
+  if (admin?.stage === 'awaiting_driver' || meta.ready_for_delivery_app === true) {
+    return 'Ready for delivery — Delivery app → Repairs';
   }
   if (admin?.stage === 'collected_by_driver') {
     return 'Collected by driver — awaiting Hassan accept on Deliveries';

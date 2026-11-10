@@ -9,6 +9,9 @@ import {
 import { WAREHOUSE_RETURN_REASON_GROUPS, normalizeWarehouseReturnReason } from '../../src/utils/warehouseReturnReasons.js';
 import {
   parseReturnCreateLines,
+  parseWarehouseReturnMetadata,
+  returnOrderElapsedSeconds,
+  returnOrderLifecycleBadge,
   WAREHOUSE_RETURN_STATUSES,
 } from '../../src/utils/warehouseReturnOrder.js';
 import { isWarehouseProductAssembly } from '../../src/utils/warehouseCatalogHierarchy.js';
@@ -32,8 +35,10 @@ import {
   resolveReturnRepairDepartment,
   returnMatchesRepairDepartment,
 } from '../../src/utils/warehouseReturnRepairDepartment.js';
-import { returnOrderElapsedSeconds } from '../../src/utils/warehouseReturnOrder.js';
-import { returnOrderLifecycleBadge } from '../../src/utils/warehouseReturnOrder.js';
+import {
+  DELIVERY_ADMIN_STAGE,
+  repairEligibleForMobileDeliveryQueue,
+} from '../../src/utils/warehouseDeliveryAdminQueue.js';
 import { buildWarehouseDeliveryNotePdfBase64 } from './buildWarehouseDeliveryNotePdfBase64.js';
 import { uploadWarehouseReturnDeliveryNotePdf } from './warehouseReturnDeliveryNoteStorage.js';
 import { resolveWarehouseFloor2Location } from '../../src/constants/warehouseFloorLocations.js';
@@ -222,7 +227,9 @@ function serializeReturnForClient(row) {
   const mapped = mapReturnRow(row);
   if (!mapped) return null;
   const dept = resolveReturnRepairDepartment(mapped);
-  const timer = repairTimerMeta(mapped.metadata);
+  const meta = parseWarehouseReturnMetadata(mapped.metadata);
+  const clientRow = { ...mapped, metadata: meta };
+  const timer = repairTimerMeta(meta);
   let timer_status = 'ready';
   if (mapped.status === WAREHOUSE_RETURN_STATUSES.IN_PROGRESS) {
     timer_status = timer.paused ? 'paused' : 'running';
@@ -234,19 +241,21 @@ function serializeReturnForClient(row) {
   ) {
     timer_status = 'completed';
   }
-  const deliveryAdmin = mapped.metadata?.delivery_admin;
+  const deliveryAdmin = meta.delivery_admin;
   return {
-    ...mapped,
+    ...clientRow,
     repair_department: dept,
     timer_status,
-    elapsed_ms: computeRepairElapsedMs(mapped),
+    elapsed_ms: computeRepairElapsedMs(clientRow),
     accumulated_ms: timer.accumulated_ms,
     timer_started_at: timer.timer_started_at,
-    lifecycle_badge: returnOrderLifecycleBadge(mapped),
+    lifecycle_badge: returnOrderLifecycleBadge(clientRow)
+      || (repairEligibleForMobileDeliveryQueue(clientRow) ? 'Ready for delivery — Delivery app → Repairs' : ''),
     delivery_admin_stage: deliveryAdmin?.stage ? String(deliveryAdmin.stage) : null,
-    ready_for_delivery_app: mapped.metadata?.ready_for_delivery_app === true,
-    manual_material_lines: Array.isArray(mapped.metadata?.manual_material_lines)
-      ? mapped.metadata.manual_material_lines
+    ready_for_delivery_app: meta.ready_for_delivery_app === true
+      || repairEligibleForMobileDeliveryQueue(clientRow),
+    manual_material_lines: Array.isArray(meta.manual_material_lines)
+      ? meta.manual_material_lines
       : [],
   };
 }
@@ -536,6 +545,53 @@ async function queueProductionReturnPush(order) {
   }
 }
 
+function returnNeedsDeliveryAdminBackfill(row) {
+  if (row?.status !== WAREHOUSE_RETURN_STATUSES.COMPLETED) return false;
+  const meta = parseWarehouseReturnMetadata(row?.metadata);
+  const stage = String(meta?.delivery_admin?.stage || '').toLowerCase();
+  if (stage === DELIVERY_ADMIN_STAGE.COLLECTED_BY_DRIVER
+    || stage === DELIVERY_ADMIN_STAGE.DELIVERY_COMPLETED) {
+    return false;
+  }
+  if (meta.kitwe_restored_at || meta.customer_fulfilled_at || meta.in_transit_to_kitwe_at) {
+    return false;
+  }
+  if (stage === DELIVERY_ADMIN_STAGE.AWAITING_DRIVER && meta.ready_for_delivery_app === true) {
+    return false;
+  }
+  if (repairEligibleForMobileDeliveryQueue(row)) return true;
+  return !meta.delivery_admin || stage !== DELIVERY_ADMIN_STAGE.AWAITING_DRIVER;
+}
+
+async function backfillReturnDeliveryAdmin(sb, row) {
+  if (!returnNeedsDeliveryAdminBackfill(row)) return row;
+  const meta = parseWarehouseReturnMetadata(row?.metadata);
+  const { markRepairWorkCompleteAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+  const now = String(row.work_completed_at || row.updated_at || new Date().toISOString());
+  const nextMeta = {
+    ...(await markRepairWorkCompleteAwaitingDriver(sb, row, { now })),
+    repair_accumulated_ms: meta.repair_accumulated_ms ?? null,
+    repair_timer_started_at: null,
+    repair_timer_paused: false,
+  };
+  await sb.from(RETURNS).update({
+    metadata: nextMeta,
+    updated_at: new Date().toISOString(),
+  }).eq('id', row.id);
+  return { ...row, metadata: nextMeta };
+}
+
+function returnVisibleInWorkshopRepairQueue(row) {
+  if (row.status === WAREHOUSE_RETURN_STATUSES.SUBMITTED
+    || row.status === WAREHOUSE_RETURN_STATUSES.IN_PROGRESS) {
+    return true;
+  }
+  if (row.status === WAREHOUSE_RETURN_STATUSES.COMPLETED) {
+    return repairEligibleForMobileDeliveryQueue(row);
+  }
+  return false;
+}
+
 export async function listWarehouseReturnOrders(sb, {
   forProduction = false,
   trackageOnly = false,
@@ -557,15 +613,21 @@ export async function listWarehouseReturnOrders(sb, {
   const { data, error } = await query;
   if (error) throw new Error(error.message || 'Failed to load returns.');
   let rows = (data || []).map(mapReturnRow);
+  const patched = [];
+  for (const row of rows) {
+    if (returnNeedsDeliveryAdminBackfill(row)) {
+      patched.push(await backfillReturnDeliveryAdmin(sb, row));
+    } else {
+      patched.push(row);
+    }
+  }
+  rows = patched;
   if (hassanOnly) {
     rows = rows.filter(isReturnCreatedByHassan);
   }
   if (repairDepartment) {
     rows = rows.filter((r) => returnMatchesRepairDepartment(r, repairDepartment));
-    rows = rows.filter((r) => (
-      r.status === WAREHOUSE_RETURN_STATUSES.SUBMITTED
-      || r.status === WAREHOUSE_RETURN_STATUSES.IN_PROGRESS
-    ));
+    rows = rows.filter(returnVisibleInWorkshopRepairQueue);
   }
   return { return_orders: rows.map((r) => serializeReturnForClient(r)) };
 }

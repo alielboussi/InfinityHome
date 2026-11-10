@@ -24,7 +24,8 @@ async function main() {
     },
   };
   assert(repairEligibleForMobileDeliveryQueue(awaiting), 'registered awaiting_driver must queue');
-  assert(isCompletedAwaitingDelivery(awaiting), 'portal must show Completed (Awaiting Delivery)');
+  assert(isCompletedAwaitingDelivery(awaiting), 'portal must show Ready for delivery');
+  assert(mod.repairAdminStatusDisplay(awaiting) === 'Ready for delivery', 'portal status label');
 
   const legacyFloor1 = {
     status: 'completed',

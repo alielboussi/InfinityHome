@@ -221,7 +221,7 @@ export default function WarehouseRepairsAdmin() {
       <p style={{ color: 'var(--dash-muted)', marginBottom: 16, lineHeight: 1.5 }}>
         Registry for Kitwe returns and finished production orders. Workshop complete →
         {' '}
-        <strong>awaiting driver</strong>
+        <strong>ready for delivery</strong>
         {' '}
         in the Delivery app →
         {' '}

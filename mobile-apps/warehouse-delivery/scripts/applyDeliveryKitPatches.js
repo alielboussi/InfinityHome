@@ -171,7 +171,7 @@ function patchDeliveryHubI18n(filePath) {
   deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },
   customerDriverSave: { en: 'Save', ar: 'حفظ' },
   deliveryStatus_completedAwaiting: {
-    en: 'Completed (Awaiting Delivery)',
+    en: 'Ready for delivery',
     ar: 'مكتمل (بانتظار التسليم)',
   },
   deliveryAccessDenied: {

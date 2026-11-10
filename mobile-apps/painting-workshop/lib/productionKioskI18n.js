@@ -410,8 +410,8 @@ const UI_STRINGS = {
   repairTimerStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتاً' },
   repairTimerStatus_completed: { en: 'Done', ar: 'منتهي' },
   deliveryStatus_completedAwaiting: {
-    en: 'Completed (Awaiting Delivery)',
-    ar: 'مكتمل (بانتظار التسليم)',
+    en: 'Ready for delivery',
+    ar: 'جاهز للتسليم',
   },
   paintingJobFinishBody: {
     en: 'Finish {qty} × {name}? Credits Warehouse Floor 1 (/warehouse-products).',

@@ -51,6 +51,8 @@ assert(reasons.includes('Legs'), 'return reasons must include Legs');
 assert(returns.includes('RO'), 'return numbers must use RO prefix');
 assert(returns.includes('delivery_admin'), 'complete must register repairs on delivery admin queue');
 assert(returns.includes('markRepairWorkCompleteAwaitingDriver'), 'complete must not credit warehouse floors');
+assert(returns.includes('returnVisibleInWorkshopRepairQueue'), 'workshop repair list must keep ready-for-delivery rows');
+assert(returns.includes('repairEligibleForMobileDeliveryQueue'), 'workshop list must use delivery queue eligibility');
 assert(returns.includes('buildKitweReturnProductOptions'), 'returns must list Kitwe catalog products with stock');
 assert(returns.includes('canWarehouseKitweReturnCreator'), 'returns API must allow login-access admin like deliveries');
 assert(returns.includes('allocateWarehouseReturnDeliveryNumber'), 'return shipments must use WHR/CR note numbers');
