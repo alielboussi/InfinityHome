@@ -125,7 +125,7 @@ export async function sendFactoryOrderWhatsApp({ message, pdfBase64, pdfUrl, pdf
   } else if (b64) {
     payload.pdfBase64 = b64;
   } else {
-    throw new Error('Factory order PDF link is missing (upload failed). Save the quote and try again.');
+    throw new Error('Factory order PDF is missing. Save the quote and try again.');
   }
   const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
     method: 'POST',

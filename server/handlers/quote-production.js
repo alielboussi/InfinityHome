@@ -76,12 +76,32 @@ export default async function handler(req, res) {
     }
 
     if (op === 'deliver-factory-order' || op === 'factory-order-deliver') {
+      const pdfFilename = String(body.pdfFilename || body.pdf_filename || 'Factory_Order.pdf').trim()
+        || 'Factory_Order.pdf';
+      let pdfUrl = String(body.pdfUrl || body.pdf_url || '').trim();
+      const pdfBase64 = String(body.pdfBase64 || body.pdf_base64 || '')
+        .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
+        .replace(/\s+/g, '');
+
+      if (!pdfUrl && pdfBase64) {
+        const { uploadPdfAndGetUrl } = await import('../lib/firebaseStorage.js');
+        const safeName = pdfFilename.replace(/[^\w.-]+/g, '_') || 'Factory_Order.pdf';
+        const objectPath = `factory-orders/${Date.now()}_${safeName}`;
+        const buffer = Buffer.from(pdfBase64, 'base64');
+        pdfUrl = await uploadPdfAndGetUrl({
+          bucket: 'labels',
+          path: objectPath,
+          buffer,
+          downloadName: safeName,
+        });
+      }
+
       const { deliverFactoryOrderGroupMessage } = await import('../../api/notify.js');
       const result = await deliverFactoryOrderGroupMessage({
         message: body.message,
-        pdfUrl: body.pdfUrl || body.pdf_url,
-        pdfBase64: body.pdfBase64 || body.pdf_base64,
-        pdfFilename: body.pdfFilename || body.pdf_filename,
+        pdfUrl,
+        pdfBase64: pdfUrl ? '' : pdfBase64,
+        pdfFilename,
       });
       res.status(200).json({ ok: true, ...result });
       return;
