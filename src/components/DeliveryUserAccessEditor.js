@@ -47,7 +47,7 @@ function grantForDeliverySave(grant) {
     warehouse_production_kitwe: 'deny',
     screens: {
       ...(grant.screens || {}),
-      kitwe_send_delivery: buildMobileScreenAccessRow(false),
+      kitwe_send_delivery: buildMobileScreenAccessRow(anyAllowed),
     },
   };
 }

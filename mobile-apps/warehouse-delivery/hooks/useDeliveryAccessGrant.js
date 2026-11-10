@@ -4,6 +4,7 @@ import { ensureFirebaseAuthToken, getFirebaseAuth, subscribeFirebaseAuth, waitFo
 import { verifyMobileLoginAccess } from '../shared/loginAccess';
 import { invalidateDeliveryDriversCache, prefetchDeliveryDrivers } from '../lib/deliveryDriversStore';
 import {
+  buildDeliveryAppAdminFallbackGrant,
   defaultMobileAccessGrant,
   evaluateWarehouseDeliveryDriverAppAccess,
   isProductionLoginAccessAdminEmail,
@@ -40,7 +41,7 @@ export function useDeliveryAccessGrant() {
       const access = await verifyMobileLoginAccess();
       if (!access.ok || !access.user) {
         if (isProductionLoginAccessAdminEmail(fbEmail)) {
-          const fallbackGrant = defaultMobileAccessGrant();
+          const fallbackGrant = buildDeliveryAppAdminFallbackGrant();
           setGrant(fallbackGrant);
           setAllowed(true);
           setAccessHint(

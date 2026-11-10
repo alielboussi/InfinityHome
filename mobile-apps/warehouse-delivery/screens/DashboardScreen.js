@@ -7,7 +7,10 @@ import { kioskFooterBottomPad } from '../deliveryKit/lib/kioskLayout';
 import { useProductionDashboardTileLayout } from '../deliveryKit/lib/productionDashLayout';
 import { useProductionKioskLocale } from '../deliveryKit/hooks/useProductionKioskLocale';
 import { tUi } from '../deliveryKit/lib/productionKioskI18n';
-import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifest';
+import {
+  DELIVERY_APP_SCREENS,
+  isWorkshopOrDeliveryScreenAllowed,
+} from '../shared/mobileAccessManifest';
 import { theme } from '../shared/theme';
 
 function DashboardTile({ icon, title, width, height, onPress }) {
@@ -91,9 +94,17 @@ export default function DashboardScreen({
     },
   ];
 
-  const tiles = grant
+  let tiles = grant
     ? allTiles.filter((t) => isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'warehouse_delivery_app'))
     : allTiles;
+  if (allowed && tiles.length === 0) {
+    const anyDelivery = DELIVERY_APP_SCREENS.some((s) => (
+      isWorkshopOrDeliveryScreenAllowed(grant, s.id, 'warehouse_delivery_app')
+    ));
+    if (anyDelivery || grant?.warehouse_delivery_app === 'allow') {
+      tiles = allTiles;
+    }
+  }
   const tileCount = Math.max(1, tiles.length);
   const {
     tileWidth, tileHeight, gap, contentWidth,

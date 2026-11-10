@@ -445,11 +445,31 @@ const WORKSHOP_AND_DELIVERY_SCREEN_GROUPS = Object.freeze([
 
 export function isWorkshopOrDeliveryScreenAllowed(grant, screenId, appFlag) {
   if (!grant) return false;
-  const row = grant.screens?.[screenId];
-  if (row && (row.view === 'allow' || row.view === 'deny')) {
-    return row.view === 'allow';
+  const ids = screenId === 'delivery_send_kitwe'
+    ? ['delivery_send_kitwe', 'kitwe_send_delivery']
+    : screenId === 'kitwe_send_delivery'
+      ? ['kitwe_send_delivery', 'delivery_send_kitwe']
+      : [screenId];
+  for (const id of ids) {
+    const row = grant.screens?.[id];
+    if (row && (row.view === 'allow' || row.view === 'deny')) {
+      if (row.view === 'allow') return true;
+      return false;
+    }
   }
   return Boolean(appFlag && grant[appFlag] === 'allow');
+}
+
+/** Full delivery dashboard grant when profile API fails (admin email). */
+export function buildDeliveryAppAdminFallbackGrant() {
+  const grant = defaultMobileAccessGrant();
+  grant.warehouse_delivery_app = 'allow';
+  grant.warehouse_production_kitwe = 'deny';
+  DELIVERY_APP_SCREENS.forEach((s) => {
+    grant.screens[s.id] = buildMobileScreenAccessRow(true);
+  });
+  grant.screens.kitwe_send_delivery = buildMobileScreenAccessRow(true);
+  return grant;
 }
 
 export function defaultMobileAccessGrant() {
@@ -735,8 +755,19 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     }
   });
 
+  const deliverySendAllowed = isWorkshopOrDeliveryScreenAllowed(
+    merged,
+    'delivery_send_kitwe',
+    'warehouse_delivery_app',
+  );
+  const kitweScreenAllowed = kitweDeliveryAllowed || deliverySendAllowed;
+
   merged.warehouse_production_kitwe = kitweDeliveryAllowed ? 'allow' : 'deny';
-  merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweDeliveryAllowed);
+  merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweScreenAllowed);
+
+  if (deliverySendAllowed) {
+    merged.warehouse_delivery_app = 'allow';
+  }
 
   return merged;
 }
