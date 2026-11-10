@@ -28,17 +28,21 @@ export function isLoginAccessAdmin(email) {
 export async function getLoginAccessRecord(uid, emailFallback = '') {
   const db = getFirestore();
   if (!db) return null;
-  if (uid) {
-    const snap = await db.collection(COLLECTION).doc(String(uid)).get();
-    if (snap.exists) return { id: snap.id, ...snap.data() };
-  }
-  const normEmail = normalizeEmail(emailFallback);
-  if (normEmail) {
-    const qSnap = await db.collection(COLLECTION).where('email', '==', normEmail).limit(1).get();
-    if (!qSnap.empty) {
-      const docSnap = qSnap.docs[0];
-      return { id: docSnap.id, ...docSnap.data() };
+  try {
+    if (uid) {
+      const snap = await db.collection(COLLECTION).doc(String(uid)).get();
+      if (snap.exists) return { id: snap.id, ...snap.data() };
     }
+    const normEmail = normalizeEmail(emailFallback);
+    if (normEmail) {
+      const qSnap = await db.collection(COLLECTION).where('email', '==', normEmail).limit(1).get();
+      if (!qSnap.empty) {
+        const docSnap = qSnap.docs[0];
+        return { id: docSnap.id, ...docSnap.data() };
+      }
+    }
+  } catch (err) {
+    console.warn('[loginAccess] getLoginAccessRecord failed:', err?.message || err);
   }
   return null;
 }

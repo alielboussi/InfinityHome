@@ -423,9 +423,19 @@ async function handleAuthProfile(req, res) {
     profileUser.mobile_display_name = loginRecord.mobile_display_name;
   }
 
-  const { evaluateWarehouseProductionAppAccess, evaluateWarehouseDeliveryDriverAppAccess } = await import('../src/mobile/mobileAccessManifest.js');
-  const productionAppAllowed = evaluateWarehouseProductionAppAccess(mobileAccess, authUser.email);
-  const deliveryAppAllowed = evaluateWarehouseDeliveryDriverAppAccess(mobileAccess, authUser.email);
+  let productionAppAllowed = false;
+  let deliveryAppAllowed = false;
+  try {
+    const { evaluateWarehouseProductionAppAccess, evaluateWarehouseDeliveryDriverAppAccess } = await import('../src/mobile/mobileAccessManifest.js');
+    productionAppAllowed = evaluateWarehouseProductionAppAccess(mobileAccess, authUser.email);
+    deliveryAppAllowed = evaluateWarehouseDeliveryDriverAppAccess(mobileAccess, authUser.email);
+  } catch (err) {
+    console.warn('[auth-profile] access evaluation failed:', err?.message || err);
+    const { isProductionLoginAccessAdminEmail } = await import('../src/mobile/mobileAccessManifest.js');
+    const admin = isProductionLoginAccessAdminEmail(authUser.email);
+    productionAppAllowed = admin;
+    deliveryAppAllowed = admin;
+  }
 
   res.status(200).json({
     ok: true,

@@ -139,12 +139,24 @@ export default function WarehouseRepairsAdmin() {
     setLoading(true);
     setError('');
     try {
-      const [res, queue] = await Promise.all([
-        listReturnOrders({ admin_registry: true }),
-        listDeliveryProductionQueue().catch(() => ({ orders: [] })),
-      ]);
-      setRows(res?.return_orders || []);
-      setOrders(queue?.orders || []);
+      let loadError = '';
+      try {
+        const res = await listReturnOrders({ admin_registry: true });
+        setRows(res?.return_orders || []);
+      } catch (err) {
+        loadError = err?.message || 'Failed to load repair registry.';
+        setRows([]);
+      }
+      try {
+        const queue = await listDeliveryProductionQueue();
+        setOrders(queue?.orders || []);
+      } catch {
+        if (!loadError) {
+          loadError = 'Repair list loaded but the delivery queue API failed — deploy latest API or retry.';
+        }
+        setOrders([]);
+      }
+      setError(loadError);
     } catch (err) {
       setError(err?.message || 'Failed to load repairs.');
       setRows([]);

@@ -116,7 +116,9 @@ export default function DashboardScreen({
           locale={ready ? locale : 'en'}
           onToggleLocale={toggleLocale}
         />
-        <Text style={[kiosk.noticeErr, { textAlign: 'center' }]}>{tUi('accessDenied', ready ? locale : 'ar')}</Text>
+        <Text style={[kiosk.noticeErr, { textAlign: 'center' }]}>
+          {tUi('deliveryAccessDenied', ready ? locale : 'en')}
+        </Text>
         {userEmail ? (
           <Text style={[styles.user, { textAlign: 'center', marginTop: 12 }]}>Signed in as {userEmail}</Text>
         ) : (

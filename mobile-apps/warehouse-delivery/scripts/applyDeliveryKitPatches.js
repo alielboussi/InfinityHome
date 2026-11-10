@@ -173,6 +173,10 @@ function patchDeliveryHubI18n(filePath) {
   deliveryStatus_completedAwaiting: {
     en: 'Completed (Awaiting Delivery)',
     ar: 'مكتمل (بانتظار التسليم)',
+  },
+  deliveryAccessDenied: {
+    en: 'Delivery app access is off or could not be verified.',
+    ar: 'صلاحية تطبيق التسليم غير مفعّلة أو تعذّر التحقق منها.',
   },`;
   if (s.includes('deliveryHubTab_repairs') && s.includes(ordersLine) && !s.includes('deliveryRepairQueueEmpty')) {
     s = s.replace(ordersLine, `${ordersLine}${queueExtra}`);

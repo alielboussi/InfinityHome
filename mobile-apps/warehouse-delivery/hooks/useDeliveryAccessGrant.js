@@ -6,6 +6,7 @@ import { invalidateDeliveryDriversCache, prefetchDeliveryDrivers } from '../lib/
 import {
   defaultMobileAccessGrant,
   evaluateWarehouseDeliveryDriverAppAccess,
+  isProductionLoginAccessAdminEmail,
   sanitizeMobileAccessGrantForUser,
 } from '../shared/mobileAccessManifest';
 import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
@@ -38,6 +39,19 @@ export function useDeliveryAccessGrant() {
 
       const access = await verifyMobileLoginAccess();
       if (!access.ok || !access.user) {
+        if (isProductionLoginAccessAdminEmail(fbEmail)) {
+          const fallbackGrant = defaultMobileAccessGrant();
+          setGrant(fallbackGrant);
+          setAllowed(true);
+          setAccessHint(
+            formatAccessHint(
+              access.error,
+              'Profile could not load from the server; using administrator delivery access. Tap Check access again after the site is healthy.',
+            ),
+          );
+          prefetchDeliveryDrivers();
+          return;
+        }
         setAllowed(false);
         if (access.reason === 'disabled') {
           setAccessHint(formatAccessHint(access.error, 'Your account has been disabled.'));
