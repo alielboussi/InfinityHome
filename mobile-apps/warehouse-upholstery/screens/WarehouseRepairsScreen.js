@@ -1,3 +1,4 @@
+import { formatProductionElapsed as formatElapsed } from '../shared/lib/formatProductionElapsed';
 import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -21,13 +22,7 @@ import { theme } from '../shared/theme';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import RunningRepairElapsed from '../components/RunningRepairElapsed';
 
-function formatElapsed(ms) {
-  const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+
 
 function returnCardTitle(row, locale) {
   const meta = row?.metadata || {};

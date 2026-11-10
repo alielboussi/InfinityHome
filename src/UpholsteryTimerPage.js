@@ -10,13 +10,8 @@ import {
 import { useStoreroomLocationLabels } from './hooks/useStoreroomLocationLabels';
 import { materialLinesFromJob } from './utils/productionJobMaterialLines';
 
-function formatElapsed(ms) {
-  const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+import { formatProductionElapsed } from './utils/formatProductionElapsed';
+
 
 function statusLabel(status) {
   const map = {
@@ -187,7 +182,7 @@ export default function UpholsteryTimerPage() {
                   </td>
                   <td>{quoteOrderStatus(order)}</td>
                   <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                    {order.accepted_at || order.run_started_at ? formatElapsed(elapsed) : '00:00:00'}
+                    {order.accepted_at || order.run_started_at ? formatProductionElapsed(elapsed) : '00:00:00'}
                   </td>
                   <td>{order.sent_to_production_at ? new Date(order.sent_to_production_at).toLocaleString() : '—'}</td>
                   <td>{order.accepted_at ? new Date(order.accepted_at).toLocaleString() : '—'}</td>
@@ -264,7 +259,7 @@ export default function UpholsteryTimerPage() {
                     ) : null}
                     <td className="col-status">{statusLabel(job.status)}</td>
                     <td className="col-timer" style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                      {formatElapsed(job.elapsed_ms)}
+                      {formatProductionElapsed(job.elapsed_ms)}
                     </td>
                     <td className="col-started">
                       {job.started_at ? new Date(job.started_at).toLocaleString() : '—'}

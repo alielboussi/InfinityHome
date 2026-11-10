@@ -1,13 +1,8 @@
+import { formatProductionElapsed as formatElapsed } from '../lib/formatProductionElapsed';
 import { useEffect, useState } from 'react';
 import { Text } from 'react-native';
 
-function formatElapsed(ms) {
-  const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+
 
 export function computeRepairElapsedMs(row, nowMs = Date.now()) {
   let ms = Number(row?.elapsed_ms) || Number(row?.accumulated_ms) || 0;

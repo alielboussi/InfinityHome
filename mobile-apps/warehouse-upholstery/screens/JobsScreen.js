@@ -1,3 +1,4 @@
+import { formatProductionElapsed as formatElapsed } from '../shared/lib/formatProductionElapsed';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -39,13 +40,7 @@ import {
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
 
-function formatElapsed(ms) {
-  const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+
 
 function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   const startedRaw = quote?.run_started_at || quote?.accepted_at;

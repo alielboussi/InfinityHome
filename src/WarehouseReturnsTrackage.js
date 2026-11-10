@@ -9,15 +9,8 @@ import {
   resolveReturnRepairDepartment,
 } from './utils/warehouseReturnRepairDepartment';
 
-function formatElapsedMs(ms) {
-  const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const parts = [];
-  if (h) parts.push(`${h}h`);
-  parts.push(`${m}m`);
-  return parts.join(' ');
-}
+import { formatProductionElapsed } from './utils/formatProductionElapsed';
+
 
 function TrackageCard({ row }) {
   const dept = row.repair_department || resolveReturnRepairDepartment(row);
@@ -28,7 +21,7 @@ function TrackageCard({ row }) {
     )
     : null;
   const liveTimer = row.status === 'in_progress' && row.elapsed_ms != null
-    ? formatElapsedMs(row.elapsed_ms)
+    ? formatProductionElapsed(row.elapsed_ms)
     : null;
   const meta = row.metadata || {};
   const batchIndex = Number(meta.batch_line_index) || 0;

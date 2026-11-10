@@ -107,11 +107,15 @@ export function formatReturnElapsedDuration(startIso, endIso = null) {
   if (!Number.isFinite(end) || end < start) return '—';
   const totalSec = Math.floor((end - start) / 1000);
   const days = Math.floor(totalSec / 86400);
+  const months = Math.floor(days / 30);
+  const daysRem = days % 30;
   const hours = Math.floor((totalSec % 86400) / 3600);
   const mins = Math.floor((totalSec % 3600) / 60);
   const parts = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0 || days > 0) parts.push(`${hours}h`);
+  if (months > 0) parts.push(`${months}mo`);
+  if (daysRem > 0 || months > 0) parts.push(`${daysRem}d`);
+  else if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || days > 0 || months > 0) parts.push(`${hours}h`);
   parts.push(`${mins}m`);
   return parts.join(' ');
 }

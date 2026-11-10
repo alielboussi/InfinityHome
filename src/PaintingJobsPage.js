@@ -7,13 +7,8 @@ import {
 import { useStoreroomLocationLabels } from './hooks/useStoreroomLocationLabels';
 import { materialLinesFromJob } from './utils/productionJobMaterialLines';
 
-function formatElapsed(ms) {
-  const totalSec = Math.max(0, Math.floor(Number(ms) / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+import { formatProductionElapsed } from './utils/formatProductionElapsed';
+
 
 function statusLabel(status) {
   const s = String(status || '').toLowerCase();
@@ -101,7 +96,7 @@ export default function PaintingJobsPage() {
                     </td>
                     <td>{job.product_qty ?? 1}</td>
                     <td>{statusLabel(job.status)}</td>
-                    <td>{formatElapsed(job.elapsed_ms ?? job.accumulated_ms)}</td>
+                    <td>{formatProductionElapsed(job.elapsed_ms ?? job.accumulated_ms)}</td>
                     <td>{job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</td>
                     <td>{job.completed_at ? new Date(job.completed_at).toLocaleString() : '—'}</td>
                   </tr>
