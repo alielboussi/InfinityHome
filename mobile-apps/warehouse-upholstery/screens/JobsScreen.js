@@ -230,7 +230,6 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [timerBusyId, setTimerBusyId] = useState('');
   const [unitBusyId, setUnitBusyId] = useState('');
   const [materialsTarget, setMaterialsTarget] = useState(null);
-  const [jobFilter, setJobFilter] = useState('all');
   const timerOpsRef = useRef(new Set());
   const jobsSnapshotRef = useRef([]);
 
@@ -374,15 +373,8 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const combinedItems = useMemo(() => {
     const quoteRows = quoteOrders.map((q) => ({ _kind: 'quote', _key: `quote-${q.quote_id}`, quote: q }));
     const jobRows = jobs.map((j) => ({ _kind: 'job', _key: `job-${j.job_id || j.id}`, job: j }));
-    if (jobFilter === 'quotes') return quoteRows;
-    if (jobFilter === 'floor2') {
-      return jobRows.filter((row) => row.job?.floor2_push || row.job?.metadata?.floor2_push);
-    }
-    if (jobFilter === 'active') {
-      return jobRows.filter((row) => ['ready', 'running', 'paused'].includes(row.job?.status));
-    }
     return [...quoteRows, ...jobRows];
-  }, [quoteOrders, jobs, jobFilter]);
+  }, [quoteOrders, jobs]);
 
   if (!allowed) {
     return (
@@ -417,19 +409,6 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('upholsteryJobIntro', locale)}</Text>
-      <View style={styles.filterRow}>
-        {['all', 'quotes', 'floor2', 'active'].map((key) => (
-          <Pressable
-            key={key}
-            style={[styles.filterChip, jobFilter === key && styles.filterChipOn]}
-            onPress={() => setJobFilter(key)}
-          >
-            <Text style={[styles.filterChipText, jobFilter === key && styles.filterChipTextOn]}>
-              {tUi(`jobsFilter_${key}`, locale)}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
       {loading && combinedItems.length === 0 ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 16 }} />
       ) : null}
@@ -511,11 +490,6 @@ const styles = StyleSheet.create({
   empty: { marginTop: 24 },
   jobCard: { marginBottom: 12 },
   jobThumb: { width: '100%', height: 120, borderRadius: 10, marginBottom: 8, backgroundColor: theme.surfaceElevated },
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: theme.border },
-  filterChipOn: { borderColor: theme.primary, backgroundColor: theme.primaryBg },
-  filterChipText: { fontSize: 13, fontWeight: '600', color: theme.muted },
-  filterChipTextOn: { color: theme.primary },
   quoteBadge: { fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 4 },
   jobTitle: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4 },
   jobMeta: { fontSize: 13, color: theme.muted, marginBottom: 10 },
