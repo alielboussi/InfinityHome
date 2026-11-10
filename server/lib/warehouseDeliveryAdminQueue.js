@@ -1,6 +1,8 @@
 import {
   DELIVERY_ADMIN_KIND,
   DELIVERY_ADMIN_STAGE,
+  parseWarehouseReturnMetadata,
+  repairEligibleForMobileDeliveryQueue,
 } from '../../src/utils/warehouseDeliveryAdminQueue.js';
 import { WAREHOUSE_RETURN_STATUSES } from '../../src/utils/warehouseReturnOrder.js';
 import { WAREHOUSE_FROM_LOCATION_ID, WAREHOUSE_TO_LOCATION_ID } from '../../src/utils/warehouseDelivery.js';
@@ -123,40 +125,12 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
 }
 
 function parseRowMetadata(raw) {
-  if (!raw) return {};
-  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
+  return parseWarehouseReturnMetadata(raw);
 }
 
 function rowAwaitingDriver(admin) {
   return admin
     && String(admin.stage || '').toLowerCase() === DELIVERY_ADMIN_STAGE.AWAITING_DRIVER;
-}
-
-/** Completed workshop repair waiting for Delivery app driver (repairs queue). */
-function isRepairRowAwaitingDriver(row) {
-  const meta = parseRowMetadata(row?.metadata);
-  const admin = meta.delivery_admin;
-  if (rowAwaitingDriver(admin)) return true;
-  if (meta.ready_for_delivery_app === true) return true;
-  const stage = String(admin?.stage || '').toLowerCase();
-  if (stage === DELIVERY_ADMIN_STAGE.COLLECTED_BY_DRIVER
-    || stage === DELIVERY_ADMIN_STAGE.DELIVERY_COMPLETED) {
-    return false;
-  }
-  if (meta.floor1_awaiting_hassan || meta.floor2_repair_staged_at || meta.kitwe_restored_at) {
-    return false;
-  }
-  if (meta.customer_fulfilled_at) return false;
-  return String(row?.status || '').toLowerCase() === WAREHOUSE_RETURN_STATUSES.COMPLETED;
 }
 
 export async function listRepairDeliveriesForMobile(sb) {
@@ -167,7 +141,7 @@ export async function listRepairDeliveriesForMobile(sb) {
   if (error) throw new Error(error.message || 'Failed to load repair queue.');
 
   return (data || [])
-    .filter((row) => isRepairRowAwaitingDriver(row))
+    .filter((row) => repairEligibleForMobileDeliveryQueue(row))
     .map((row) => {
       const meta = parseRowMetadata(row.metadata);
       return {

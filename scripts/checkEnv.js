@@ -233,6 +233,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyDeliveryRepairQueueFilter.js', {
+    stdio: 'inherit',
+    cwd: path.join(__dirname, '..'),
+  });
+} catch {
+  console.error('[delivery-repair-queue-filter:fail] verifyDeliveryRepairQueueFilter.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseMobileHandlerLoad.js', {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),
