@@ -527,6 +527,15 @@ export async function fetchUpholsteryProductionQuotes() {
   }
 }
 
+export async function fetchProductionQuoteArabicTranslations(texts = []) {
+  try {
+    const payload = await productionOp('production-quote-translate-arabic', { texts });
+    return payload?.translations || {};
+  } catch {
+    return {};
+  }
+}
+
 export async function acceptUpholsteryQuote(quoteId) {
   return productionOp('production-quote-accept', {
     route: UPHOLSTERY_ROUTE,

@@ -1584,6 +1584,18 @@ async function opProductionQuoteMaterialScan(body, user) {
   });
 }
 
+async function opProductionQuoteTranslateArabic(body, user) {
+  await assertProductionKioskUser(user);
+  const texts = Array.isArray(body.texts) ? body.texts : [];
+  const list = texts
+    .map((t) => String(t ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 120);
+  const { translateStringsToArabicServer } = await import('../lib/quoteArabicTranslate.js');
+  const translations = await translateStringsToArabicServer(list);
+  return { translations };
+}
+
 async function opProductionFloor2List(user) {
   await assertProductionKioskUser(user);
   return opCatalogFloor2List(user, { productionKiosk: true });
@@ -4208,6 +4220,9 @@ export default async function handler(req, res) {
         break;
       case 'production-quote-material-scan':
         result = await opProductionQuoteMaterialScan(body, user);
+        break;
+      case 'production-quote-translate-arabic':
+        result = await opProductionQuoteTranslateArabic(body, user);
         break;
       case 'production-floor2-list':
         result = await opProductionFloor2List(user);

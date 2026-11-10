@@ -1,4 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  collectProductionQuoteArabicPhrases,
+  displayQuoteFieldValue,
+  formatQuoteDimensionsCmDisplay,
+  formatQuoteLineQtyLabel,
+} from './quoteArabicTranslate';
 import {
   Image,
   Linking,
@@ -10,17 +16,8 @@ import {
 } from 'react-native';
 import { theme } from './theme';
 
-function formatDimensionsCm(line) {
-  const l = line?.dim_l_cm != null && String(line.dim_l_cm).trim() ? String(line.dim_l_cm).trim() : '';
-  const w = line?.dim_w_cm != null && String(line.dim_w_cm).trim() ? String(line.dim_w_cm).trim() : '';
-  const h = line?.dim_h_cm != null && String(line.dim_h_cm).trim() ? String(line.dim_h_cm).trim() : '';
-  if (l && w && h) return `${l} × ${w} × ${h}`;
-  const legacy = line?.dimensions_lwh != null && String(line.dimensions_lwh).trim()
-    ? String(line.dimensions_lwh).trim()
-    : '';
-  if (legacy) return legacy.replace(/\s*[x×*]\s*/gi, ' × ');
-  const partial = [l, w, h].filter(Boolean);
-  return partial.length ? partial.join(' × ') : '';
+function formatDimensionsCm(line, locale = 'en') {
+  return formatQuoteDimensionsCmDisplay(line, locale);
 }
 
 function normalizeAccessoriesList(raw) {
@@ -63,35 +60,39 @@ function carpentryLineHasExtras(line) {
   );
 }
 
-function buildUpholsteryLineExtraTexts(line, tUi, locale) {
+function buildUpholsteryLineExtraTexts(line, tUi, locale, arabicMap = {}) {
+  const show = (v) => displayQuoteFieldValue(locale, v, arabicMap);
   const rows = [];
   if (line.leather_code) {
     rows.push(`${tUi('quoteOrderLeatherCode', locale)}: ${line.leather_code}`);
   }
-  const dims = formatDimensionsCm(line);
+  const dims = formatDimensionsCm(line, locale);
   if (dims) {
     rows.push(`${tUi('quoteOrderDimensions', locale)}: ${dims}`);
   }
   if (line.foam_type) {
-    rows.push(`${tUi('quoteOrderFoamType', locale) || 'Foam type'}: ${line.foam_type}`);
+    rows.push(`${tUi('quoteOrderFoamType', locale) || 'Foam type'}: ${show(line.foam_type)}`);
   }
   if (line.wood) {
-    rows.push(`${tUi('quoteOrderWood', locale)}: ${line.wood}`);
+    rows.push(`${tUi('quoteOrderWood', locale)}: ${show(line.wood)}`);
   }
   if (line.description) {
-    rows.push(`${tUi('quoteOrderDescription', locale)}: "${String(line.description).trim()}"`);
+    const desc = show(line.description);
+    rows.push(`${tUi('quoteOrderDescription', locale)}: "${desc}"`);
   }
   const accessories = normalizeAccessoriesList(line.accessories);
   if (accessories.length) {
-    rows.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${accessories.join(', ')}`);
+    const accShown = accessories.map((a) => show(a)).join('، ');
+    rows.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${accShown}`);
   }
   return rows;
 }
 
-function buildCarpentryLineExtraTexts(line, tUi, locale) {
+function buildCarpentryLineExtraTexts(line, tUi, locale, arabicMap = {}) {
+  const show = (v) => displayQuoteFieldValue(locale, v, arabicMap);
   const rows = [];
   if (line.wood) {
-    rows.push(`${tUi('quoteOrderWood', locale)}: ${line.wood}`);
+    rows.push(`${tUi('quoteOrderWood', locale)}: ${show(line.wood)}`);
   }
   const dims = formatDimensionsCm(line);
   if (dims) {
@@ -101,19 +102,57 @@ function buildCarpentryLineExtraTexts(line, tUi, locale) {
     rows.push(`${tUi('quoteOrderColorCode', locale)}: ${line.color_code}`);
   }
   if (line.description) {
-    rows.push(`${tUi('quoteOrderDescription', locale)}: "${String(line.description).trim()}"`);
+    const desc = show(line.description);
+    rows.push(`${tUi('quoteOrderDescription', locale)}: "${desc}"`);
   }
   const accessories = normalizeAccessoriesList(line.accessories);
   if (accessories.length) {
-    rows.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${accessories.join(', ')}`);
+    const accShown = accessories.map((a) => show(a)).join('، ');
+    rows.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${accShown}`);
   }
   return rows;
 }
 
-export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale) {
+/** Server-backed Arabic map when locale is `ar` (falls back to local dictionary). */
+export function useProductionQuoteArabicMap(lines, locale, fetchTranslations) {
+  const [map, setMap] = useState({});
+  const phraseKey = useMemo(() => collectProductionQuoteArabicPhrases(lines).join('\0'), [lines]);
+
+  useEffect(() => {
+    if (locale !== 'ar') {
+      setMap({});
+      return undefined;
+    }
+    const phrases = phraseKey ? phraseKey.split('\0').filter(Boolean) : [];
+    if (!phrases.length) {
+      setMap({});
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      let serverMap = {};
+      if (typeof fetchTranslations === 'function') {
+        try {
+          serverMap = await fetchTranslations(phrases);
+        } catch {
+          serverMap = {};
+        }
+      }
+      if (!cancelled) setMap(serverMap || {});
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [locale, phraseKey, fetchTranslations]);
+
+  return map;
+}
+
+export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale, arabicMap = {}) {
   const normalized = String(route || '').toLowerCase();
   const list = Array.isArray(lines) ? lines : [];
   const bits = [];
+  const show = (v) => displayQuoteFieldValue(locale, v, arabicMap);
   const translate = typeof tUi === 'function'
     ? (key, fallback) => tUi(key, locale) || fallback
     : (_key, fallback) => fallback;
@@ -121,25 +160,27 @@ export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale) {
     const row = normalizeProductionQuoteLine(line);
     if (normalized === 'upholstery') {
       if (row.leather_code) bits.push(`${translate('quoteOrderLeatherCode', 'Leather')}: ${row.leather_code}`);
-      const dims = formatDimensionsCm(row);
+      const dims = formatDimensionsCm(row, locale);
       if (dims) bits.push(`${translate('quoteOrderDimensions', 'L×W×H (cm)')}: ${dims}`);
-      if (row.foam_type) bits.push(`${translate('quoteOrderFoamType', 'Foam')}: ${row.foam_type}`);
-      if (row.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${row.wood}`);
-      if (row.description) bits.push(`${translate('quoteOrderDescription', 'Desc')}: "${row.description}"`);
+      if (row.foam_type) bits.push(`${translate('quoteOrderFoamType', 'Foam')}: ${show(row.foam_type)}`);
+      if (row.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${show(row.wood)}`);
+      if (row.description) bits.push(`${translate('quoteOrderDescription', 'Desc')}: "${show(row.description)}"`);
     }
     if (normalized === 'carpentry') {
-      if (row.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${row.wood}`);
-      const dims = formatDimensionsCm(row);
+      if (row.wood) bits.push(`${translate('quoteOrderWood', 'Wood')}: ${show(row.wood)}`);
+      const dims = formatDimensionsCm(row, locale);
       if (dims) bits.push(`${translate('quoteOrderDimensions', 'L×W×H (cm)')}: ${dims}`);
       if (row.color_code) bits.push(`${translate('quoteOrderColorCode', 'Color')}: ${row.color_code}`);
       const acc = normalizeAccessoriesList(row.accessories);
-      if (acc.length) bits.push(`${translate('quoteOrderIncludedAccessories', 'Included Accessories')} : ${acc.join(', ')}`);
+      if (acc.length) {
+        bits.push(`${translate('quoteOrderIncludedAccessories', 'Included Accessories')} : ${acc.map((a) => show(a)).join('، ')}`);
+      }
     }
   }
   return bits.join(' · ');
 }
 
-export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale }) {
+export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale, arabicMap = {} }) {
   const normalized = String(route || '').toLowerCase();
   const list = Array.isArray(lines) ? lines : [];
   if (!list.length) return null;
@@ -149,15 +190,26 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale }
     const key = String(row.id || `${row.name}-${index}`);
     const extras = [];
     if (normalized === 'upholstery') {
-      extras.push(...buildUpholsteryLineExtraTexts(row, tUi, locale));
+      extras.push(...buildUpholsteryLineExtraTexts(row, tUi, locale, arabicMap));
     }
     if (normalized === 'carpentry') {
-      extras.push(...buildCarpentryLineExtraTexts(row, tUi, locale));
+      extras.push(...buildCarpentryLineExtraTexts(row, tUi, locale, arabicMap));
     }
+    const nameShown = displayQuoteFieldValue(locale, row.name, arabicMap);
+    const qtyUnit = row.unit_abbr || row.unit_label || row.abbreviation || '';
+    const qtyLead = locale === 'ar' && qtyUnit
+      ? formatQuoteLineQtyLabel(row.quantity, qtyUnit, locale, arabicMap)
+      : String(row.quantity ?? 1);
+    const qtyShown = locale === 'ar'
+      ? formatQuoteLineQtyLabel(row.quantity, '', locale, arabicMap) || String(row.quantity ?? 1)
+      : String(row.quantity ?? 1);
+    const title = locale === 'ar' && qtyUnit
+      ? `${qtyLead} × ${nameShown}`
+      : `${qtyShown} × ${nameShown}`;
     return (
       <View key={key} style={styles.lineBlock}>
         <Text style={[styles.lineMain, { textAlign }]}>
-          {row.quantity} × {row.name}
+          {title}
         </Text>
         {extras.map((extra) => (
           <Text key={extra} style={[styles.lineExtra, { textAlign }]}>
@@ -203,7 +255,7 @@ export function QuoteProductionDrawingSection({ drawingUrl, textAlign, tUi, loca
   );
 }
 
-export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale }) {
+export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale, arabicMap = {} }) {
   const normalized = String(route || '').toLowerCase();
   const hasDrawing = Boolean(String(quote.drawing_url || '').trim());
   const allLines = Array.isArray(quote.lines) ? quote.lines : [];
@@ -214,13 +266,14 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
       <View style={styles.cardExtras}>
         {allLines.map((line, index) => {
           const row = normalizeProductionQuoteLine(line);
-          const extras = buildCarpentryLineExtraTexts(row, tUi, locale);
+          const extras = buildCarpentryLineExtraTexts(row, tUi, locale, arabicMap);
           const lineKey = String(row.id || `${row.name}-${index}`);
+          const nameShown = displayQuoteFieldValue(locale, row.name, arabicMap);
           return (
             <View key={lineKey} style={styles.cardLineBlock}>
               {row.name ? (
                 <Text style={[styles.cardLineTitle, { textAlign }]} numberOfLines={2}>
-                  {row.quantity || 1} × {row.name}
+                  {row.quantity || 1} × {nameShown}
                 </Text>
               ) : null}
               {extras.map((extra) => (
@@ -240,7 +293,7 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
     );
   }
 
-  const extras = summarizeProductionQuoteCardExtras(allLines, route, tUi, locale);
+  const extras = summarizeProductionQuoteCardExtras(allLines, route, tUi, locale, arabicMap);
   if (!extras && !hasDrawing) return null;
   return (
     <View style={styles.cardExtras}>

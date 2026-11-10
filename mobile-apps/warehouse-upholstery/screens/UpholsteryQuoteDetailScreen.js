@@ -7,13 +7,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
-import ProductionQrScanModal from '../components/ProductionQrScanModal';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { kioskFooterBottomPad, kioskScreenEdges } from '../lib/kioskLayout';
@@ -21,15 +19,17 @@ import { tUi } from '../lib/productionKioskI18n';
 import {
   acceptUpholsteryQuote,
   completeUpholsteryQuote,
+  fetchProductionQuoteArabicTranslations,
   fetchUpholsteryProductionQuotes,
-  scanUpholsteryQuoteMaterial,
 } from '../services/productionApi';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { theme } from '../shared/theme';
 import {
   QuoteProductionDrawingSection,
   QuoteProductionLineRows,
+  useProductionQuoteArabicMap,
 } from '../shared/quoteProductionOrderUi';
+import { displayQuoteFieldValue } from '../shared/quoteArabicTranslate';
 
 function formatElapsed(ms) {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -50,8 +50,6 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const [accepted, setAccepted] = useState(Boolean(quote.accepted_at));
   const [completed, setCompleted] = useState(Boolean(quote.completed_at));
   const [tick, setTick] = useState(Date.now());
-  const [scan, setScan] = useState('');
-  const [scanOpen, setScanOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
 
@@ -96,6 +94,12 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   }, [startedAt, accepted, completed, tick]);
 
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
+  const arabicMap = useProductionQuoteArabicMap(
+    lines,
+    locale,
+    fetchProductionQuoteArabicTranslations,
+  );
+  const customerName = displayQuoteFieldValue(locale, quote.customer_name, arabicMap) || '—';
 
   const onAccept = async () => {
     setBusy(true);
@@ -136,26 +140,6 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     );
   };
 
-  const onScanSubmit = async (rawValue) => {
-    const value = String(rawValue ?? scan).trim();
-    if (!value) return;
-    setBusy(true);
-    try {
-      if (!accepted) {
-        await acceptUpholsteryQuote(quoteId);
-        const nowIso = new Date().toISOString();
-        setAccepted(true);
-        setQuote((prev) => ({ ...prev, accepted_at: nowIso, run_started_at: nowIso }));
-      }
-      await scanUpholsteryQuoteMaterial(quoteId, value, 1);
-      setScan('');
-    } catch (e) {
-      Alert.alert(tUi('quoteOrderScanFailed', locale), e?.message || '');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const bottomPad = kioskFooterBottomPad(insets) + 32;
 
   return (
@@ -180,7 +164,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
       ) : null}
       <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
-      <Text style={[styles.name, { textAlign }]}>{quote.customer_name || '—'}</Text>
+      <Text style={[styles.name, { textAlign }]}>{customerName}</Text>
       <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
       <QuoteProductionDrawingSection
         drawingUrl={quote.drawing_url}
@@ -215,27 +199,11 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
           </Text>
         </Pressable>
       ) : null}
-      <TextInput
-        style={[kiosk.input, { textAlign: locale === 'ar' ? 'right' : 'left' }]}
-        value={scan}
-        onChangeText={setScan}
-        placeholder={tUi('quoteOrderScanPlaceholder', locale)}
-        placeholderTextColor="#94a3b8"
-        onSubmitEditing={() => onScanSubmit()}
-        editable={!completed && !busy}
-      />
-      <View style={styles.scanRow}>
-        <Pressable style={[kiosk.btn, styles.actionBtn, styles.scanBtnFlex]} disabled={busy || completed} onPress={() => onScanSubmit()}>
-          <Text style={kiosk.btnText}>{tUi('quoteOrderDeductScan', locale)}</Text>
-        </Pressable>
-        <Pressable
-          style={[kiosk.btn, kiosk.btnPrimary, styles.actionBtn]}
-          disabled={busy || completed}
-          onPress={() => setScanOpen(true)}
-        >
-          <Text style={[kiosk.btnText, kiosk.btnPrimaryText]}>{tUi('manufactureScanBtn', locale)}</Text>
-        </Pressable>
-      </View>
+      {!completed && quote.sent_to_production_at ? (
+        <Text style={[styles.materialsHint, { textAlign }]}>
+          {tUi('quoteOrderMaterialsHint', locale)}
+        </Text>
+      ) : null}
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
       <QuoteProductionLineRows
         lines={lines}
@@ -243,17 +211,9 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         textAlign={textAlign}
         tUi={tUi}
         locale={locale}
+        arabicMap={arabicMap}
       />
     </ScrollView>
-    <ProductionQrScanModal
-      visible={scanOpen}
-      locale={locale}
-      onClose={() => setScanOpen(false)}
-      onScan={(value) => {
-        setScanOpen(false);
-        onScanSubmit(value);
-      }}
-    />
     <ProductionJobMaterialsModal
       visible={materialsOpen}
       locale={locale}
@@ -282,8 +242,7 @@ const styles = StyleSheet.create({
   timerLabel: { color: theme.textMuted },
   timer: { color: theme.primary, fontSize: 28, fontWeight: '700', marginTop: 8, textAlign: 'center' },
   actionBtn: { alignSelf: 'stretch', marginBottom: 8 },
-  scanRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  scanBtnFlex: { flex: 1 },
+  materialsHint: { color: theme.textMuted, fontSize: 13, marginBottom: 12, lineHeight: 18 },
   danger: { backgroundColor: '#7f1d1d' },
   section: { marginTop: 16, marginBottom: 8 },
   line: { color: theme.textSecondary, marginBottom: 4 },

@@ -5,153 +5,14 @@ import { pickQuoteItemProductionFields } from './quoteProductionItemFields';
 import { rewriteLegacyStorageUrl } from './storageImageUrl';
 import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime';
 import { translateQuoteStringsToArabic } from '../services/quoteProductionApi';
+import {
+  ARABIC_TERMS,
+  toArabicIndicDigits,
+  translateTermToArabic,
+  translateQtyUnitLabel,
+} from './quoteArabicTranslate';
 
-export const ARABIC_TERMS = Object.freeze({
-  Laminated: 'لامينيت (خشب مغلف)',
-  Rosewood: 'خشب الورد',
-  Mukwa: 'خشب موكوا',
-  Hardwood: 'خشب صلب',
-  'Sprayed Wood': 'خشب مرشوش',
-  'Melamine Wood': 'خشب ميلامين',
-  MDF: 'خشب إم دي إف (MDF)',
-
-  Granite: 'جرانيت',
-  'Quartz Countertop': 'سطح كوارتز',
-  'Marble Countertop': 'سطح رخام',
-  Sink: 'حوض مطبخ',
-  'Double Bowl Sink': 'حوض مطبخ مزدوج',
-  Mixer: 'خلاط مياه',
-  'Pull-Out Spray Mixer': 'خلاط مياه بسحاب',
-  'Soft-Close Hinges': 'مفصلات إغلاق ناعم (هيدروليك)',
-  'Soft-Close Drawer Runners': 'مجاري أدراج إغلاق ناعم',
-  'Cabinet Handles / Knobs': 'مقابض خزائن',
-  'Cutlery Tray': 'منظم ملاعق وسكاكين',
-  'Spice Rack Pull-Out': 'رف توابل سحاب',
-  'Corner Carousel / Magic Corner': 'سلة زاوية دوارة (ماجيك كورنر)',
-  'Dish Rack Insert': 'حامل أطباق داخلي',
-  'Pull-Out Waste Bin': 'سلة مهملات سحاب',
-  'Plinth / Kickboard': 'نعلة سفلية للخزائن (وزرة)',
-  'Under-Cabinet LED Strip': 'إضاءة LED أسفل الخزائن',
-  'Gas Struts / Lift-Up Stay': 'مساعدات غاز للرفع (باكم)',
-
-  'Door Lock Set': 'طقم قفل باب',
-  'Mortise Lock & Cylinder': 'كالون وسلندر باب',
-  'Door Handle Set': 'طقم مقبض باب',
-  'Flush Pull Handle': 'مقبض غاطس',
-  'Heavy-Duty Hinges': 'مفصلات خدمة شاقة',
-  'Concealed Hinges': 'مفصلات مخفية',
-  'Door Closer': 'دفاش باب هيدروليك',
-  'Door Stopper': 'مصد باب',
-  'Tower Bolt / Flush Bolt': 'ترباس باب',
-  'Peephole / Door Viewer': 'عين سحرية للباب',
-  'Weather Strip / Seal': 'ربل عزل للباب',
-  'Architrave / Door Frame Trim': 'برواز / حلق الباب',
-
-  'Orthopedic Slats / Base': 'ألواح قاعدة سرير طبية',
-  'Hydraulic Storage Lift Mechanism': 'ميكانيزم رفع هيدروليك للتخزين',
-  'Under-Bed Storage Drawers': 'أدراج تخزين أسفل السرير',
-  'Upholstered Headboard Cushion': 'وسادة ظهر سرير منجدة',
-  'Bedside Reading Light': 'إضاءة قراءة جانبية للسرير',
-  'Built-In USB / Power Socket': 'مقبس كهرباء و USB مدمج',
-  'Mattress Support Center Rail': 'عارضة دعم وسطية للمرتبة',
-  'Bedside Floating Shelf': 'رف جانبي عائم للسرير',
-
-  'Tempered Glass Top': 'سطح زجاج مقوى (سيكوريت)',
-  'Marble / Granite Table Top': 'سطح طاولة رخام / جرانيت',
-  'Extension Leaf Mechanism': 'ميكانيزم تمديد الطاولة',
-  'Lazy Susan Turntable': 'قرص دوار للطاولة',
-  'Metal / Brass Leg Caps': 'أغطية أرجل معدنية / نحاسية',
-  'Adjustable Floor Glides': 'رجلاشات أرجل قابلة للتعديل',
-
-  'Upholstered Seat Pad': 'قاعدة مقعد منجدة',
-  'Fabric / Leather Seat Cover': 'غطاء مقعد قماش / جلد',
-  'Felt Floor Protectors': 'لباد حماية للأرضيات',
-  'Brass / Chrome Footrest Trim': 'حلية مسند قدم نحاس / كروم',
-  'Armrest Pads': 'مساند أذرع مبطنة',
-
-  'Beveled Mirror Glass': 'زجاج مرآة مشطوف الحواف',
-  'LED Backlight Strip': 'شريط إضاءة خلفية LED',
-  'Glass Shelves': 'أرفف زجاجية',
-  'Wine / Stemware Rack Insert': 'حامل كؤوس وزجاجات',
-  'Push-to-Open Latches': 'كباس فتح بالضغط (بوش)',
-  'Soft-Close Buffet Hinges & Runners': 'مفصلات ومجاري بوفيه إغلاق ناعم',
-  'Heavy-Duty Wall Mounting Brackets': 'حوامل تثبيت جدارية قوية',
-
-  'Hollywood LED Mirror Bulbs': 'لمبات مرآة هوليوود LED',
-  'Touch-Sensor LED Mirror Light': 'إضاءة مرآة LED تعمل باللمس',
-  'Velvet Jewelry Tray Insert': 'منظم مجوهرات قطيفة للدرج',
-  'Cosmetic Drawer Dividers': 'فواصل أدراج لمستحضرات التجميل',
-  'Glass Top Protector': 'زجاج حماية لسطح التسريحة',
-  'Dresser Stool / Pouf': 'كرسي / بوف تسريحة',
-  'Hair Dryer / Styling Holder': 'حامل مجفف شعر',
-
-  'Pop-Up Power & HDMI Box': 'علبة كهرباء و HDMI منبثقة',
-  'Cable Management Grommet': 'فتحة تمرير كابلات',
-  'Under-Table Cable Tray': 'حامل كابلات أسفل الطاولة',
-  'Wire Management Spine': 'عمود تنظيم الأسلاك',
-  'Modesty Panel': 'ساتر أمامي للطاولة',
-  'Integrated Wireless Charger': 'شاحن لاسلكي مدمج',
-
-  'Cable Grommet': 'فتحة تمرير أسلاك',
-  'Desktop Power & USB Outlet': 'مخرج كهرباء و USB للمكتب',
-  'Pull-Out Keyboard Tray': 'رف لوحة مفاتيح سحاب',
-  'Lockable 3-Drawer Pedestal': 'وحدة 3 أدراج بقفل',
-  'Central Drawer Lock': 'قفل مركزي للأدراج',
-  'CPU Holder': 'حامل كيس كمبيوتر (CPU)',
-  'Monitor Arm Mount': 'ذراع حامل شاشة',
-  'Desk Modesty Panel': 'ساتر أمامي للمكتب',
-
-  'Gas Lift Cylinder': 'بستم غاز لرفع الكرسي',
-  'Swivel Tilt Mechanism': 'ماكينة دوران وإمالة للكرسي',
-  'PU / Nylon Castor Wheels': 'عجل كرسي نايلون / PU',
-  'Adjustable 3D Armrests': 'مساند أذرع قابلة للتعديل 3D',
-  'Lumbar Support Cushion': 'وسادة دعم القطنية (الظهر)',
-  'Adjustable Headrest': 'مسند رأس قابل للتعديل',
-  'Chrome / Aluminum 5-Star Base': 'قاعدة خماسية كروم / ألومنيوم',
-});
-
-const WORD_FALLBACKS = [
-  [/\bkitchen\s+cabinet(s)?\b/gi, 'خزانة مطبخ'],
-  [/\bkitchen\s+unit(s)?\b/gi, 'وحدة مطبخ'],
-  [/\bkitchen\b/gi, 'مطبخ'],
-  [/\bcabinet(s)?\b/gi, 'خزانة'],
-  [/\bwardrobe(s)?\b/gi, 'خزانة ملابس (دولاب)'],
-  [/\bdoor(s)?\b/gi, 'باب'],
-  [/\bbed(s)?\b/gi, 'سرير'],
-  [/\bdining\s+table(s)?\b/gi, 'طاولة طعام (سفرة)'],
-  [/\bdining\s+chair(s)?\b/gi, 'كرسي طاولة طعام'],
-  [/\bcoffee\s+table(s)?\b/gi, 'طاولة قهوة (وسط)'],
-  [/\bside\s+table(s)?\b/gi, 'طاولة جانبية'],
-  [/\bconference\s+table(s)?\b/gi, 'طاولة اجتماعات'],
-  [/\boffice\s+desk(s)?\b/gi, 'مكتب عمل'],
-  [/\boffice\s+chair(s)?\b/gi, 'كرسي مكتب'],
-  [/\bbuffet\s+mirror(s)?\b/gi, 'مرآة بوفيه'],
-  [/\bbuffet(s)?\b/gi, 'بوفيه'],
-  [/\bdresser\s+table\s+mirror(s)?\b/gi, 'مرآة تسريحة'],
-  [/\bdresser\s+mirror(s)?\b/gi, 'مرآة تسريحة'],
-  [/\bdresser\s+table(s)?\b/gi, 'طاولة تسريحة'],
-  [/\bdresser(s)?\b/gi, 'تسريحة'],
-  [/\bmirror(s)?\b/gi, 'مرآة'],
-  [/\b3\s*seater\s*recliner\b/gi, 'كنبة 3 مقاعد ريكلاينر'],
-  [/\b2\s*seater\s*recliner\b/gi, 'كنبة مقعدين ريكلاينر'],
-  [/\b(single|1)\s*seater\s*recliner\b/gi, 'كرسي مفرد ريكلاينر'],
-  [/\b3\s*seater\b/gi, 'كنبة 3 مقاعد'],
-  [/\b2\s*seater\b/gi, 'كنبة مقعدين'],
-  [/\b(single|1)\s*seater\b/gi, 'كرسي مفرد'],
-  [/\blounge\s+chair(s)?\b/gi, 'كرسي استرخاء'],
-  [/\bcorner\s+sofa\b/gi, 'كنبة زاوية (ركنة)'],
-  [/\bl\s*shape\b/gi, 'ركنة حرف L'],
-  [/\bsofa(s)?\b/gi, 'كنبة'],
-  [/\bchair(s)?\b/gi, 'كرسي'],
-  [/\btable(s)?\b/gi, 'طاولة'],
-  [/\bdesk(s)?\b/gi, 'مكتب'],
-  [/\bcurtain(s)?\b/gi, 'ستائر'],
-  [/\bpillow(s)?\b/gi, 'وسائد'],
-];
-
-const CI_TERMS = new Map(
-  Object.entries(ARABIC_TERMS).map(([k, v]) => [k.toLowerCase(), v]),
-);
+export { ARABIC_TERMS, translateTermToArabic };
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -169,18 +30,6 @@ function cleanDescriptionText(val) {
   s = s.replace(/^["“]+|["”]+$/g, '').trim();
   if (!s) return '';
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-export function translateTermToArabic(term, serverMap = {}) {
-  const s = String(term ?? '').trim();
-  if (!s) return '';
-  if (serverMap[s]) return serverMap[s];
-  if (CI_TERMS.has(s.toLowerCase())) return CI_TERMS.get(s.toLowerCase());
-  let out = s;
-  for (const [regex, ar] of WORD_FALLBACKS) {
-    out = out.replace(regex, ar);
-  }
-  return out;
 }
 
 /**
@@ -249,17 +98,17 @@ function buildBilingualDimensionsLines(fields) {
   if (fields.dim_l_cm) {
     const v = cleanDim(fields.dim_l_cm);
     enParts.push(`${v}cm Length`);
-    arParts.push(`الطول ${v} سم`);
+    arParts.push(`الطول ${toArabicIndicDigits(v)} سم`);
   }
   if (fields.dim_w_cm) {
     const v = cleanDim(fields.dim_w_cm);
     enParts.push(`${v}cm Width`);
-    arParts.push(`العرض ${v} سم`);
+    arParts.push(`العرض ${toArabicIndicDigits(v)} سم`);
   }
   if (fields.dim_h_cm) {
     const v = cleanDim(fields.dim_h_cm);
     enParts.push(`${v}cm Height`);
-    arParts.push(`الارتفاع ${v} سم`);
+    arParts.push(`الارتفاع ${toArabicIndicDigits(v)} سم`);
   }
   if (!enParts.length) return null;
   return {
@@ -390,7 +239,11 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
       const qty = String(it.quantity ?? 1).trim();
       const unitAbbr = String(it.unit_abbr || it.abbreviation || it.unit_label || '').trim();
-      const qtyText = unitAbbr && unitAbbr !== '-' ? `${qty} ${unitAbbr}` : qty;
+      const unitAr = unitAbbr && unitAbbr !== '-' ? translateQtyUnitLabel(unitAbbr, 'ar', serverTranslations) : '';
+      const qtyArDigits = toArabicIndicDigits(qty);
+      const qtyText = unitAbbr && unitAbbr !== '-'
+        ? `${qty} ${unitAbbr} / ${qtyArDigits} ${unitAr || unitAbbr}`
+        : `${qty} / ${qtyArDigits}`;
 
       return `
         <tr>
