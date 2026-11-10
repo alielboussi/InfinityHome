@@ -61,6 +61,10 @@ assert(returns.includes('pos_sale_id: saleId'), 'receipt returns must set pos_sa
 assert(returns.includes('uploadWarehouseReturnDeliveryNotePdf'), 'CR submit must host delivery note PDF for label QR');
 assert(returns.includes('AWAITING_KITWE_ACCEPT'), 'WHR ship must await Hassan Kitwe accept');
 assert(returns.includes('floor1_awaiting_hassan'), 'no-customer complete must flag Floor 1 lifecycle');
+assert(
+  fs.existsSync(path.join(root, 'src/utils/warehouseRepairFloor2Staging.js')),
+  'warehouseRepairFloor2Staging.js must be committed (warehouse-mobile import)',
+);
 assert(fs.existsSync(path.join(root, 'docs/sql/warehouse_return_orders_pos_sale.sql')), 'pos_sale migration SQL must be documented');
 assert(read('src/utils/warehouseReturnOrder.js').includes('returnOrderLifecycleBadge'), 'lifecycle badge helper required');
 assert(returns.includes('finalizeReturnShipmentOnKitweAccept'), 'Hassan accept must finalize WHR return order');
