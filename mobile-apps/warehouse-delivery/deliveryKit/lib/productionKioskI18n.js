@@ -142,6 +142,10 @@ const UI_STRINGS = {
     ar: 'لم يُعثر على موقع المستودع. أضف موقعًا باسم «المستودع».',
   },
   accessDenied: { en: 'You do not have access to production.', ar: 'لا تملك صلاحية الإنتاج.' },
+  deliveryAccessDenied: {
+    en: 'Delivery app access is off or could not be verified.',
+    ar: 'صلاحية تطبيق التسليم غير مفعّلة أو تعذّر التحقق منها.',
+  },
   retryAccess: { en: 'Check access again', ar: 'تحقق من الصلاحية مرة أخرى' },
   loading: { en: 'Loading…', ar: 'جاري التحميل…' },
   loginHintGoogle: {
