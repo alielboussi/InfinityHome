@@ -1,6 +1,6 @@
 /**
  * Factory order + production kiosk Arabic for quote line text.
- * Used by web PDF, server translate-arabic, and mobile production apps (via mobile-apps/shared re-export).
+ * Used by web PDF and server translate-arabic. Mobile copy: mobile-apps/shared/quoteArabicTranslate.js (keep in sync).
  */
 
 export const ARABIC_TERMS = Object.freeze({
