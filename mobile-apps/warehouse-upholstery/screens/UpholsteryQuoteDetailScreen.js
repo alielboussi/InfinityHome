@@ -149,7 +149,11 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         accumulated_ms: acc,
       }));
     } catch (e) {
-      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+      const msg = String(e?.message || '');
+      const body = /unknown op/i.test(msg)
+        ? tUi('quoteOrderPauseServerStale', locale)
+        : msg;
+      Alert.alert(tUi('quoteOrderFailed', locale), body);
     } finally {
       setBusy(false);
     }
@@ -170,7 +174,11 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       }));
       setTick(Date.now());
     } catch (e) {
-      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+      const msg = String(e?.message || '');
+      const body = /unknown op/i.test(msg)
+        ? tUi('quoteOrderPauseServerStale', locale)
+        : msg;
+      Alert.alert(tUi('quoteOrderFailed', locale), body);
     } finally {
       setBusy(false);
     }

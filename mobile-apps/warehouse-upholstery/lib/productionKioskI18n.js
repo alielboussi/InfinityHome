@@ -187,6 +187,10 @@ const UI_STRINGS = {
   quoteOrderScanDeducted: { en: 'Material stock updated for this order.', ar: 'تم تحديث مخزون المواد لهذا الطلب.' },
   quoteOrderScanFailed: { en: 'Scan failed', ar: 'فشل المسح' },
   quoteOrderFailed: { en: 'Failed', ar: 'فشل' },
+  quoteOrderPauseServerStale: {
+    en: 'Pause is not available on the server yet. Wait for the latest website deploy, then try again.',
+    ar: 'إيقاف الطلب غير متاح على الخادم بعد. انتظر نشر الموقع الأحدث ثم حاول مرة أخرى.',
+  },
   dashTitle: { en: 'Upholstery', ar: 'التنجيد' },
   dashCreate: { en: 'Create new item', ar: 'إنشاء قطعة جديدة' },
   dashCreateSub: {
