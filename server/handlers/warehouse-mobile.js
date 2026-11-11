@@ -96,7 +96,9 @@ import {
   buildDeliveryPrintGroupsFromEntries,
   printGroupsFromQuoteLines,
   sanitizeDeliveryNotePrintGroups,
+  whatsAppProductGroupsFromPrintGroups,
 } from '../../src/utils/warehouseDeliveryPrintGroups.js';
+import { buildProductionLineSummaryRow } from '../../src/utils/quoteProductionItemFields.js';
 import {
   isWarehouseSetDeliveryGroup,
   resolveSetComponentsForDelivery,
@@ -463,6 +465,19 @@ async function opDeliveryAccessSelf(user) {
     display_name: record?.mobile_display_name || record?.display_name || user?.full_name || user?.email || null,
     grant,
   };
+}
+
+async function opOrdersAccessSelf(user) {
+  const grant = await mobileAccessGrantForUser(user);
+  const { opOrdersAccessSelf: run } = await import('../lib/ordersAppMobile.js');
+  return run(user, grant);
+}
+
+async function withOrdersApp(user, fn) {
+  const grant = await mobileAccessGrantForUser(user);
+  const { assertOrdersAppUser } = await import('../lib/ordersAppMobile.js');
+  await assertOrdersAppUser(user, grant);
+  return fn(getService());
 }
 
 async function opCarpentryCatalogList(user) {
@@ -2987,9 +3002,17 @@ async function sendWarehouseDeliverySubmitWhatsApp({
     entries = entryRows || [];
   }
 
+  const documentKind = String(session?.metadata?.document_kind || 'delivery').trim().toLowerCase();
+  const adminQueueKind = documentKind === 'order_delivery' || documentKind === 'repair_delivery';
+  const printGroups = adminQueueKind
+    ? await resolveAdminQueuePrintGroups(sb, session)
+    : sanitizeDeliveryNotePrintGroups(session?.metadata?.print_groups);
+
   let productGroups;
   let assemblyColorContext = null;
-  if (entries?.length) {
+  if (adminQueueKind) {
+    productGroups = whatsAppProductGroupsFromPrintGroups(printGroups);
+  } else if (entries?.length) {
     assemblyColorContext = await loadWarehouseDeliveryColorContext(sb);
     productGroups = buildWarehouseDeliveryWhatsAppProductGroups(entries, assemblyColorContext);
   } else {
@@ -3011,6 +3034,11 @@ async function sendWarehouseDeliverySubmitWhatsApp({
     });
   }
 
+  const totalWhatsAppProducts = productGroups.reduce(
+    (sum, group) => sum + Math.max(1, Number(group.units ?? group.quantity) || 1),
+    0,
+  );
+
   const route = warehouseDeliveryWhatsAppRoute({
     ...session,
     metadata: {
@@ -3030,7 +3058,7 @@ async function sendWarehouseDeliverySubmitWhatsApp({
     routeLabel: route.title || 'Warehouse To Showroom',
     productGroups,
     totalPackets: Number(totalCartons) || Number(session?.total_qty) || 0,
-    totalProducts,
+    totalProducts: totalWhatsAppProducts || totalProducts,
   });
 
   const deliveryNumber = String(session?.delivery_number || sessionId || '').trim();
@@ -3038,6 +3066,7 @@ async function sendWarehouseDeliverySubmitWhatsApp({
   let pdfBase64 = String(clientPdfBase64 || '')
     .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
     .replace(/\s+/g, '');
+  if (adminQueueKind) pdfBase64 = '';
 
   if (!pdfBase64) {
     try {
@@ -3048,20 +3077,18 @@ async function sendWarehouseDeliverySubmitWhatsApp({
           .eq('session_id', sessionId);
         entries = entryRows || [];
       }
-      if (entries.length) {
-        if (!assemblyColorContext) {
+      if (printGroups.length || entries.length) {
+        if (!assemblyColorContext && !adminQueueKind) {
           assemblyColorContext = await loadWarehouseDeliveryColorContext(sb);
         }
-        const documentKind = String(session?.metadata?.document_kind || 'delivery').trim();
         const customerName = String(session?.metadata?.customer_name || '').trim();
         const customerPhone = String(session?.metadata?.customer_phone || '').trim();
-        const savedGroups = sanitizeDeliveryNotePrintGroups(session?.metadata?.print_groups);
         pdfBase64 = buildWarehouseDeliveryNotePdfBase64({
           session,
           entries,
           copies: 1,
-          printGroups: savedGroups.length ? savedGroups : undefined,
-          assemblyColorContext,
+          printGroups: adminQueueKind ? printGroups : (printGroups.length ? printGroups : undefined),
+          assemblyColorContext: adminQueueKind ? null : assemblyColorContext,
           documentKind,
           customerName,
           customerPhone,
@@ -3632,7 +3659,19 @@ async function opDeliverySubmit(body, user) {
     }
     : (clientDocumentKind === 'order_delivery' ? { document_kind: 'order_delivery' } : {});
 
-  const clientPrintGroups = sanitizeDeliveryNotePrintGroups(body.print_groups || body.printGroups);
+  let clientPrintGroups = sanitizeDeliveryNotePrintGroups(body.print_groups || body.printGroups);
+  if (String(orderSessionMeta.document_kind || clientDocumentKind) === 'order_delivery') {
+    try {
+      const quoteLines = await loadQuoteLinesForDeliveryNote(sb, {
+        quoteId: orderSessionMeta.quote_id || groups?.[0]?.quote_id,
+        quoteNumber: orderSessionMeta.quote_number || groups?.[0]?.quote_number,
+      });
+      const fromQuote = printGroupsFromQuoteLines(quoteLines);
+      if (fromQuote.length) clientPrintGroups = fromQuote;
+    } catch (quotePrintErr) {
+      console.warn('[delivery-submit] quote print groups:', quotePrintErr?.message || quotePrintErr);
+    }
+  }
 
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
@@ -3871,19 +3910,74 @@ async function loadQuoteRoutingMeta(sb, { quoteId, quoteNumber } = {}) {
   return data?.metadata || {};
 }
 
-async function resolveSentDeliveryPrintGroups(sb, session, entries, nameFormatter) {
+async function resolveAdminQueuePrintGroups(sb, session) {
   const meta = session?.metadata || {};
-  const saved = sanitizeDeliveryNotePrintGroups(meta.print_groups);
-  if (saved.length) return saved;
   const kind = String(meta.document_kind || '').toLowerCase();
+  const saved = sanitizeDeliveryNotePrintGroups(meta.print_groups);
   if (kind === 'order_delivery' || meta.quote_id || meta.quote_number) {
     const routingMeta = await loadQuoteRoutingMeta(sb, {
       quoteId: meta.quote_id,
       quoteNumber: meta.quote_number || sentDeliveryDisplayNumber(session),
     });
-    const fromQuote = printGroupsFromQuoteLines(routingMeta.lines);
+    const quoteLines = await loadQuoteLinesForDeliveryNote(sb, {
+      quoteId: meta.quote_id,
+      quoteNumber: meta.quote_number || sentDeliveryDisplayNumber(session),
+      fallbackLines: routingMeta.lines,
+    });
+    const fromQuote = printGroupsFromQuoteLines(quoteLines);
     if (fromQuote.length) return fromQuote;
   }
+  if (kind === 'repair_delivery') {
+    if (saved.length) return saved;
+    const rid = String(meta.return_order_id || '').trim();
+    if (rid) {
+      const { data: row } = await sb
+        .from('warehouse_return_orders')
+        .select('assembly_name, quantity')
+        .eq('id', rid)
+        .maybeSingle();
+      const name = String(row?.assembly_name || '').trim();
+      if (name) {
+        return sanitizeDeliveryNotePrintGroups([{
+          assembly_name: name,
+          units: row?.quantity,
+          lines: [],
+        }]);
+      }
+    }
+  }
+  return saved;
+}
+
+async function loadQuoteLinesForDeliveryNote(sb, { quoteId, quoteNumber, fallbackLines } = {}) {
+  let qid = String(quoteId || '').trim();
+  if (!qid) {
+    const qn = String(quoteNumber || '').trim();
+    if (qn) {
+      const { data: quote } = await sb
+        .from('quotations')
+        .select('id')
+        .eq('quote_number', qn)
+        .maybeSingle();
+      qid = String(quote?.id || '').trim();
+    }
+  }
+  if (qid) {
+    const { data: items } = await sb
+      .from('quotation_items')
+      .select('*')
+      .eq('quotation_id', qid)
+      .order('sort_order');
+    if (items?.length) return items.map((it) => buildProductionLineSummaryRow(it));
+  }
+  return Array.isArray(fallbackLines) ? fallbackLines : [];
+}
+
+async function resolveSentDeliveryPrintGroups(sb, session, entries, nameFormatter) {
+  const adminGroups = await resolveAdminQueuePrintGroups(sb, session);
+  if (adminGroups.length) return adminGroups;
+  const saved = sanitizeDeliveryNotePrintGroups(session?.metadata?.print_groups);
+  if (saved.length) return saved;
   return sanitizeDeliveryNotePrintGroups(
     buildDeliveryPrintGroupsFromEntries(entries || [], nameFormatter),
   );
@@ -4561,6 +4655,87 @@ export default async function handler(req, res) {
         break;
       case 'delivery-access-self':
         result = await opDeliveryAccessSelf(user);
+        break;
+      case 'orders-access-self':
+        result = await opOrdersAccessSelf(user);
+        break;
+      case 'orders-customers-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersCustomersList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersCustomersList(sb);
+        });
+        break;
+      case 'orders-customer-save':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersCustomerSave } = await import('../lib/ordersAppMobile.js');
+          return opOrdersCustomerSave(sb, body);
+        });
+        break;
+      case 'orders-products-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersProductsList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersProductsList(sb);
+        });
+        break;
+      case 'orders-product-save':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersProductSave } = await import('../lib/ordersAppMobile.js');
+          return opOrdersProductSave(sb, body);
+        });
+        break;
+      case 'orders-quotes-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersQuotesList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersQuotesList(sb);
+        });
+        break;
+      case 'orders-quote-get':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersQuoteGet } = await import('../lib/ordersAppMobile.js');
+          return opOrdersQuoteGet(sb, body);
+        });
+        break;
+      case 'orders-quote-save':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersQuoteSave } = await import('../lib/ordersAppMobile.js');
+          return opOrdersQuoteSave(sb, body, user);
+        });
+        break;
+      case 'orders-quote-set-route':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersQuoteSetRoute } = await import('../lib/ordersAppMobile.js');
+          return opOrdersQuoteSetRoute(sb, body);
+        });
+        break;
+      case 'orders-quote-send-production':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersQuoteSendProduction } = await import('../lib/ordersAppMobile.js');
+          return opOrdersQuoteSendProduction(sb, body, user);
+        });
+        break;
+      case 'orders-deliveries-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersDeliveriesList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersDeliveriesList(sb);
+        });
+        break;
+      case 'orders-repairs-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersRepairsList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersRepairsList(sb);
+        });
+        break;
+      case 'orders-tracking-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersTrackingList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersTrackingList(sb);
+        });
+        break;
+      case 'orders-storage-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersStorageList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersStorageList(sb);
+        });
         break;
       case 'carpentry-catalog-list':
         result = await opCarpentryCatalogList(user);

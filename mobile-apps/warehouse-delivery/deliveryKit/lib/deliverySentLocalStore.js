@@ -9,14 +9,10 @@ function normalizeRecord(raw) {
   return {
     session_id: sessionId,
     delivery_number: String(raw?.delivery_number || '').trim(),
-    display_number: String(raw?.display_number || raw?.delivery_number || '').trim(),
-    document_kind: String(raw?.document_kind || 'delivery').trim() || 'delivery',
     status: String(raw?.status || 'submitted').trim() || 'submitted',
     submitted_at: String(raw?.submitted_at || raw?.saved_at || '').trim(),
     driver_name: String(raw?.driver_name || '').trim(),
     dispatched_by_name: String(raw?.dispatched_by_name || raw?.supervisor_name || '').trim(),
-    customer_name: String(raw?.customer_name || '').trim(),
-    customer_phone: String(raw?.customer_phone || '').trim(),
     driver_signature_url: String(raw?.driver_signature_url || '').trim(),
     driver_signature_data_uri: String(raw?.driver_signature_data_uri || '').trim(),
     print_groups: Array.isArray(raw?.print_groups) ? raw.print_groups : [],
@@ -60,14 +56,10 @@ export function localSentToListRow(row) {
   return {
     session_id: row.session_id,
     delivery_number: row.delivery_number,
-    display_number: row.display_number || row.delivery_number,
-    document_kind: row.document_kind || 'delivery',
     status: row.status,
     submitted_at: row.submitted_at,
     driver_name: row.driver_name,
     dispatched_by_name: row.dispatched_by_name,
-    customer_name: row.customer_name || '',
-    customer_phone: row.customer_phone || '',
     local_only: true,
   };
 }

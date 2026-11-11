@@ -11,6 +11,7 @@ import { formatZambiaDate, formatZambiaTime } from '../../src/utils/zambiaDateTi
 
 function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
   if (!line || typeof line !== 'object') return false;
+  if (line.line_kind === 'field' || line.kind === 'field') return true;
   if (line.line_kind === 'reason' || line.kind === 'reason') return true;
   const packetNo = line.packet_number ?? line.metadata?.packet_number;
   if (packetNo != null && String(packetNo).trim() !== '') return true;
@@ -26,6 +27,9 @@ function formatPrintLineLabel(line, assemblyName = '') {
   const namePart = String(line.name || line.reason || 'Packet').trim();
   if (line.line_kind === 'reason' || line.kind === 'reason') {
     return `-Reason ${namePart}`;
+  }
+  if (line.line_kind === 'field' || line.kind === 'field') {
+    return `-${namePart}`;
   }
   if (depth === 2) return `-- ${namePart}`;
   if (depth === 1) return `- ${namePart}`;
@@ -97,7 +101,9 @@ export function buildWarehouseDeliveryNotePdfBase64({
   const savedGroups = sanitizeDeliveryNotePrintGroups(printGroupsOverride);
   const printGroups = savedGroups.length
     ? savedGroups
-    : sanitizeDeliveryNotePrintGroups(buildDeliveryPrintGroupsFromEntries(entries || [], formatter));
+    : (printGroupsOverride !== undefined
+      ? savedGroups
+      : sanitizeDeliveryNotePrintGroups(buildDeliveryPrintGroupsFromEntries(entries || [], formatter)));
   const copyCount = Math.max(1, Math.min(3, Number(copies) || 1));
   const kind = String(documentKind || meta.document_kind || 'delivery').trim();
   const dn = kind === 'repair_delivery'

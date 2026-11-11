@@ -4,6 +4,7 @@ import {
   deliveryEntrySentToCustomer,
 } from './warehouseDelivery.js';
 import { buildSetDeliveryPrintGroupsFromEntries } from './warehouseDeliverySetPrint.js';
+import { formatQuoteItemDeliveryNoteFieldLines } from './quoteProductionItemFields.js';
 
 function assemblyDisplayName(nameFormatter, rawName, assemblyId) {
   const raw = String(rawName || '').trim() || 'Product';
@@ -16,6 +17,7 @@ function assemblyDisplayName(nameFormatter, rawName, assemblyId) {
 /** Sub-rows on the A4 note are packet/carton lines only — not finished-unit-only products. */
 export function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
   if (!line || typeof line !== 'object') return false;
+  if (line.line_kind === 'field' || line.kind === 'field') return true;
   if (line.line_kind === 'reason' || line.kind === 'reason') return true;
   const packetNo = line.packet_number ?? line.metadata?.packet_number;
   if (packetNo != null && String(packetNo).trim() !== '') return true;
@@ -120,7 +122,28 @@ export function printGroupsFromQuoteLines(lines) {
     (Array.isArray(lines) ? lines : []).map((line) => ({
       assembly_name: line?.name || line?.name_override || line?.assembly_name,
       units: line?.quantity ?? line?.units,
-      lines: [],
+      lines: formatQuoteItemDeliveryNoteFieldLines(line).map((name) => ({
+        name,
+        kind: 'field',
+        qty: '',
+      })),
     })),
   );
+}
+
+/** WhatsApp product blocks from A4 print groups (quote/repair names — never catalog fallback). */
+export function whatsAppProductGroupsFromPrintGroups(printGroups) {
+  return sanitizeDeliveryNotePrintGroups(printGroups).map((group) => ({
+    assemblyName: group.assembly_name,
+    units: Math.max(1, Number(group.units) || 1),
+    packetLines: (group.lines || []).map((line) => {
+      const kind = String(line?.kind || line?.line_kind || '').toLowerCase();
+      const qtyRaw = line?.qty ?? line?.quantity;
+      return {
+        name: String(line?.name || '').trim(),
+        kind,
+        quantity: kind === 'field' || qtyRaw === '' || qtyRaw == null ? '' : Number(qtyRaw) || 0,
+      };
+    }),
+  }));
 }

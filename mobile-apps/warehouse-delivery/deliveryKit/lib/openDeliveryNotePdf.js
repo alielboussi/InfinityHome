@@ -13,7 +13,6 @@ import { resolveDeliveryDriverSignatureDataUri, coerceInlineSignatureForPrint } 
 export async function openDeliveryNotePdf({
   deliveryNumber,
   driverName,
-  driverPhone = '',
   dispatchedBy,
   driverSignatureSrc,
   driverSignatureDataUri,
@@ -21,9 +20,6 @@ export async function openDeliveryNotePdf({
   submittedAt,
   printGroups,
   copies = 1,
-  documentKind = 'delivery',
-  customerName = '',
-  customerPhone = '',
 }) {
   const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUri().catch(() => '');
   const signatureSrc = await resolveDeliveryDriverSignatureDataUri({
@@ -33,16 +29,12 @@ export async function openDeliveryNotePdf({
   const html = buildDeliveryNotePrintHtml({
     deliveryNumber,
     driverName,
-    driverPhone,
     dispatchedBy,
     driverSignatureSrc: signatureSrc,
     companyLogoSrc,
     submittedAt: submittedAt || new Date().toISOString(),
     printGroups,
     copies: Math.max(1, Math.min(10, Number(copies) || 1)),
-    documentKind,
-    customerName,
-    customerPhone,
   });
   if (Platform.OS === 'web') {
     openDeliveryNoteHtmlInBrowser(html, deliveryNumber || 'Delivery note');

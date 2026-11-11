@@ -8,6 +8,7 @@ import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { printGroupsFromQuoteLines } from '../../../../src/utils/warehouseDeliveryPrintGroups.js';
 
 async function openStagedDelivery(navigation, row) {
   const session = await warehouseMobileRequest('delivery-session-open', {});
@@ -24,16 +25,11 @@ async function openStagedDelivery(navigation, row) {
     finished_driver_checked_at: now,
   }];
   const printNoteNumber = String(row.quote_number || row.production_job_id || '').trim();
-  const printGroups = (quoteLines.length
+  const printGroups = printGroupsFromQuoteLines(quoteLines.length
     ? quoteLines
     : (String(row.assembly_name || '').trim() && String(row.assembly_name) !== String(row.assembly_id)
       ? [{ name: row.assembly_name, quantity: qty }]
-      : [])
-  ).map((line) => ({
-    assembly_name: line.name,
-    units: Math.max(1, Number(line.quantity) || qty),
-    lines: [],
-  }));
+      : []));
   navigation.navigate('KitweSendSignature', {
     sessionId: session.session_id,
     deliveryNumber: session.delivery_number,

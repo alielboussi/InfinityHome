@@ -66,7 +66,13 @@ export function buildWarehouseDeliveryWhatsAppMessage(input) {
     if (!finishedOnly) {
       for (const line of lines) {
         const pktName = String(line?.name || '').trim() || '—';
-        const pktQty = Math.max(1, Number(line?.quantity ?? line?.qty) || 1);
+        const kind = String(line?.kind || line?.line_kind || '').toLowerCase();
+        const qtyRaw = line?.quantity ?? line?.qty;
+        if (kind === 'field' || qtyRaw === '') {
+          productBlocks.push(`-${pktName}`);
+          continue;
+        }
+        const pktQty = Math.max(1, Number(qtyRaw) || 1);
         productBlocks.push(`-${pktName} * ${pktQty}`);
       }
     }

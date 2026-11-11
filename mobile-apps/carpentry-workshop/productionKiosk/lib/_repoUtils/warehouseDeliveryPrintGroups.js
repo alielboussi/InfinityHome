@@ -4,6 +4,7 @@ import {
   deliveryEntrySentToCustomer,
 } from './warehouseDelivery.js';
 import { buildSetDeliveryPrintGroupsFromEntries } from './warehouseDeliverySetPrint.js';
+import { formatQuoteItemDeliveryNoteFieldLines } from './quoteProductionItemFields.js';
 
 function assemblyDisplayName(nameFormatter, rawName, assemblyId) {
   const raw = String(rawName || '').trim() || 'Product';
@@ -16,6 +17,7 @@ function assemblyDisplayName(nameFormatter, rawName, assemblyId) {
 /** Sub-rows on the A4 note are packet/carton lines only — not finished-unit-only products. */
 export function deliveryPrintSubrowIsPacketLine(line, assemblyName = '') {
   if (!line || typeof line !== 'object') return false;
+  if (line.line_kind === 'field' || line.kind === 'field') return true;
   if (line.line_kind === 'reason' || line.kind === 'reason') return true;
   const packetNo = line.packet_number ?? line.metadata?.packet_number;
   if (packetNo != null && String(packetNo).trim() !== '') return true;
@@ -91,4 +93,40 @@ export function buildDeliveryPrintGroupsFromEntries(entries, nameFormatter = nul
   }
 
   return [...setGroups, ...byAssembly.values()];
+}
+
+/** Drop catalog-fallback / meta rows so A4 notes only show real product lines. */
+export function sanitizeDeliveryNotePrintGroups(groups) {
+  return (Array.isArray(groups) ? groups : [])
+    .map((group) => {
+      const name = String(group?.assembly_name || group?.name || '').trim();
+      if (!name) return null;
+      const lines = (Array.isArray(group.lines) ? group.lines : []).filter((line) => {
+        const kind = String(line?.kind || line?.line_kind || '').toLowerCase();
+        if (kind === 'meta') return false;
+        return Boolean(String(line?.name || '').trim());
+      });
+      return {
+        assembly_name: name,
+        set_name: group.set_name || null,
+        units: Math.max(1, Number(group.units ?? group.quantity) || 1),
+        lines,
+        elapsed_display: group.elapsed_display,
+      };
+    })
+    .filter(Boolean);
+}
+
+export function printGroupsFromQuoteLines(lines) {
+  return sanitizeDeliveryNotePrintGroups(
+    (Array.isArray(lines) ? lines : []).map((line) => ({
+      assembly_name: line?.name || line?.name_override || line?.assembly_name,
+      units: line?.quantity ?? line?.units,
+      lines: formatQuoteItemDeliveryNoteFieldLines(line).map((name) => ({
+        name,
+        kind: 'field',
+        qty: '',
+      })),
+    })),
+  );
 }

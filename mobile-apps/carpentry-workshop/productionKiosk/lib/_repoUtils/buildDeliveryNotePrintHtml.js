@@ -1,6 +1,9 @@
 /** Shared delivery note A4 HTML — also used by Production app (re-export) and web print. */
 import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime.js';
-import { deliveryPrintSubrowIsPacketLine } from './warehouseDeliveryPrintGroups.js';
+import {
+  deliveryPrintSubrowIsPacketLine,
+  sanitizeDeliveryNotePrintGroups,
+} from './warehouseDeliveryPrintGroups.js';
 
 const PAGE_BORDER = '#000';
 const PAGE_BORDER_MM = 3;
@@ -140,6 +143,8 @@ function renderBlockRows(block, { showElapsedColumn = false } = {}) {
     let label;
     if (line.line_kind === 'reason' || line.kind === 'reason') {
       label = `-Reason ${namePart}`;
+    } else if (line.line_kind === 'field' || line.kind === 'field') {
+      label = `-${namePart}`;
     } else if (depth === 2) {
       label = `-- ${namePart}`;
     } else if (depth === 1) {
@@ -186,10 +191,20 @@ function deliveryNoteNumberLabel(documentKind = 'delivery') {
 
 function deliveryNoteShowsCustomerBlock(documentKind = 'delivery') {
   const kind = String(documentKind || '').trim();
-  return kind === 'sold_delivery' || kind === 'return_customer_delivery' || kind === 'repair_delivery';
+  return kind === 'sold_delivery'
+    || kind === 'return_customer_delivery'
+    || kind === 'repair_delivery'
+    || kind === 'order_delivery';
 }
 
-function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {
+export function formatDeliveryNoteDriverLabel(name, phone) {
+  const n = String(name || '').trim();
+  const p = String(phone || '').trim();
+  if (n && p && !n.includes(p)) return `${n} · ${p}`;
+  return n || p || '';
+}
+
+function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {
   const logoSrc = String(companyLogoSrc || '').trim();
   const logoImg = logoSrc
     ? `<img class="company-logo" src="${safeImgSrc(logoSrc)}" alt="${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}" />`
@@ -197,15 +212,16 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
   const companyNameLine = logoSrc
     ? ''
     : `<p class="company-name">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</p>`;
-  const dispatched = String(dispatchedBy || '').trim() || '—';
   const title = deliveryNoteTitle(documentKind);
   const numLabel = deliveryNoteNumberLabel(documentKind);
   const custName = String(customerName || '').trim();
   const custPhone = String(customerPhone || '').trim();
   const showCustomer = deliveryNoteShowsCustomerBlock(documentKind);
-  const customerBlock = showCustomer && (custName || custPhone)
-    ? `<p class="customer-line"><strong>Customer Name:</strong> ${escapeHtml(custName || '—')}</p>
-      <p class="customer-line"><strong>Customer Phone Number:</strong> ${escapeHtml(custPhone || '—')}</p>`
+  const customerBlock = showCustomer
+    ? `<div class="party-block">
+        <p class="customer-line"><strong>Customer Name:</strong> ${escapeHtml(custName || '—')}</p>
+        <p class="customer-line"><strong>Customer Phone Number:</strong> ${escapeHtml(custPhone || '—')}</p>
+      </div>`
     : '';
   return `
     <header class="doc-header">
@@ -220,7 +236,6 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
         </div>
         <div class="header-spacer" aria-hidden="true"></div>
       </div>
-      <p class="dispatched-by"><strong>Dispatched by:</strong> ${escapeHtml(dispatched)}</p>
       ${customerBlock}
     </header>`;
 }
@@ -249,20 +264,25 @@ function renderCartTableHead(showElapsedColumn = false) {
       <tbody>`;
 }
 
-function renderDriverSignatureFooter(driverName, signatureSrc) {
+function renderDriverSignatureFooter(driverName, signatureSrc, driverPhone = '') {
   const raw = String(signatureSrc || '').trim();
   // expo-print WebView cannot load remote images in PDF/print — only inline data URIs render.
   const safeSrc = raw.startsWith('data:image/') ? raw : '';
   const safeName = String(driverName || '').trim() || '—';
+  const safePhone = String(driverPhone || '').trim();
   const img = safeSrc
     ? `<img class="sig-image" src="${safeSrc.replace(/"/g, '&quot;')}" alt="Driver signature" />`
     : '<span class="sig-missing">No signature image</span>';
+  const phoneLine = safePhone
+    ? `<p class="sig-driver-name"><strong>Driver Phone Number:</strong> ${escapeHtml(safePhone)}</p>`
+    : '';
   return `
     <footer class="signatures">
       <div class="sig-driver-block">
-        <p class="sig-driver-name"><strong>Driver:</strong> ${escapeHtml(safeName)}</p>
+        <p class="sig-driver-name"><strong>Driver Name:</strong> ${escapeHtml(safeName)}</p>
+        ${phoneLine}
         <div class="sig-line">
-          <span class="sig-inline-label">Driver signature</span>
+          <span class="sig-inline-label">Driver Signature:</span>
           ${img}
         </div>
       </div>
@@ -283,7 +303,7 @@ function renderPage(opts) {
     pageTotal,
     isLast,
     driverName,
-    dispatchedBy,
+    driverPhone = '',
     driverSignatureSrc,
     companyLogoSrc,
     documentKind = 'delivery',
@@ -298,14 +318,14 @@ function renderPage(opts) {
   return `
     <section class="page">
       <div class="page-inner">
-        ${renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, companyLogoSrc, documentKind, customerName, customerPhone)}
+        ${renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind, customerName, customerPhone)}
         <div class="cart-table-wrap">
         ${renderCartTableHead(showElapsedColumn)}
           ${bodyRows || emptyRow}
         </tbody>
       </table>
         </div>
-        ${isLast ? renderDriverSignatureFooter(driverName, driverSignatureSrc) : ''}
+        ${isLast ? renderDriverSignatureFooter(driverName, driverSignatureSrc, driverPhone) : ''}
         ${isLast ? renderDisclaimer() : ''}
         <p class="page-num">Page ${pageIndex} of ${pageTotal}</p>
       </div>
@@ -319,7 +339,7 @@ export function deliveryNoteDocumentTitle(documentKind = 'delivery') {
 export function buildDeliveryNotePrintHtml({
   deliveryNumber,
   driverName,
-  dispatchedBy = '',
+  driverPhone = '',
   driverSignatureSrc = '',
   companyLogoSrc = '',
   submittedAt,
@@ -333,7 +353,7 @@ export function buildDeliveryNotePrintHtml({
   const at = submittedAt || new Date().toISOString();
   const dateStr = formatCatDate(at);
   const timeStr = formatCatTime(at);
-  const pages = paginateDeliveryNoteBlocks(printGroups);
+  const pages = paginateDeliveryNoteBlocks(sanitizeDeliveryNotePrintGroups(printGroups));
   const pageTotal = pages.length;
   const useElapsed = showElapsedColumn || documentKind === 'return' || documentKind === 'return_shipment';
 
@@ -348,7 +368,7 @@ export function buildDeliveryNotePrintHtml({
         pageTotal,
         isLast: i === pageTotal - 1,
         driverName,
-        dispatchedBy,
+        driverPhone,
         driverSignatureSrc,
         companyLogoSrc,
         documentKind,
@@ -465,15 +485,13 @@ export function buildDeliveryNotePrintHtml({
       font-weight: 800;
     }
     .datetime { margin: 0; font-size: 10.5pt; color: #333; }
-    .dispatched-by {
-      margin: 0;
-      font-size: 11pt;
-      text-align: left;
+    .party-block {
       border-top: 1px solid #333;
       padding-top: 3mm;
+      margin-top: 3mm;
     }
     .customer-line {
-      margin: 2mm 0 0;
+      margin: 0 0 2mm;
       font-size: 11pt;
       text-align: left;
     }

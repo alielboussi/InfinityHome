@@ -237,9 +237,9 @@ export function hasQuoteDimensionCm({ dim_l_cm, dim_w_cm, dim_h_cm, dimensions_l
 /** Read optional workshop fields from a quotation_items row or client item. */
 export function pickQuoteItemProductionFields(it) {
   const meta = it?.metadata && typeof it.metadata === 'object' ? it.metadata : {};
-  let dim_l_cm = trimOrNull(it?.dim_l_cm ?? meta.dim_l_cm);
-  let dim_w_cm = trimOrNull(it?.dim_w_cm ?? meta.dim_w_cm);
-  let dim_h_cm = trimOrNull(it?.dim_h_cm ?? meta.dim_h_cm);
+  let dim_l_cm = trimOrNull(it?.dim_l_cm ?? it?.length_cm ?? meta.dim_l_cm ?? meta.length_cm);
+  let dim_w_cm = trimOrNull(it?.dim_w_cm ?? it?.width_cm ?? meta.dim_w_cm ?? meta.width_cm);
+  let dim_h_cm = trimOrNull(it?.dim_h_cm ?? it?.height_cm ?? meta.dim_h_cm ?? meta.height_cm);
   if (!dim_l_cm && !dim_w_cm && !dim_h_cm) {
     const legacy = parseLegacyDimensionsLwh(it?.dimensions_lwh ?? meta.dimensions_lwh);
     dim_l_cm = legacy.dim_l_cm;
@@ -247,7 +247,9 @@ export function pickQuoteItemProductionFields(it) {
     dim_h_cm = legacy.dim_h_cm;
   }
   const dimensions_lwh = formatQuoteDimensionsCm({ dim_l_cm, dim_w_cm, dim_h_cm });
-  const accessories = normalizeQuoteItemAccessories(it?.accessories ?? meta.accessories);
+  const accessories = normalizeQuoteItemAccessories(
+    it?.accessories ?? it?.included_accessories ?? meta.accessories ?? meta.included_accessories,
+  );
   return {
     leather_code: trimOrNull(it?.leather_code ?? meta.leather_code),
     dim_l_cm,
@@ -301,6 +303,24 @@ export function formatQuoteItemProductionPdfLines(it) {
   if (fields.foam_type) {
     lines.push(`-Foam Type: ${fields.foam_type}`);
   }
+  return lines;
+}
+
+/**
+ * Delivery-note field rows under a quote product:
+ * Product Name
+ * -Field 1
+ * -Field 2, Field 2 Option 2
+ */
+export function formatQuoteItemDeliveryNoteFieldLines(it) {
+  const lines = formatQuoteItemProductionPdfLines(it).map((s) => String(s || '').replace(/^-/, '').trim())
+    .filter(Boolean);
+  const fields = pickQuoteItemProductionFields(it);
+  if (fields.accessories?.length) {
+    lines.push(fields.accessories.join(', '));
+  }
+  const desc = trimOrNull(it?.description);
+  if (desc) lines.push(desc);
   return lines;
 }
 

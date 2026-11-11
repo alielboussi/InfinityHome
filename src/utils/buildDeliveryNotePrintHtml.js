@@ -143,6 +143,8 @@ function renderBlockRows(block, { showElapsedColumn = false } = {}) {
     let label;
     if (line.line_kind === 'reason' || line.kind === 'reason') {
       label = `-Reason ${namePart}`;
+    } else if (line.line_kind === 'field' || line.kind === 'field') {
+      label = `-${namePart}`;
     } else if (depth === 2) {
       label = `-- ${namePart}`;
     } else if (depth === 1) {

@@ -13,6 +13,7 @@ const apps = [
   'warehouse-catalog',
   'lusaka-stock',
   'customer-credit',
+  'orders',
 ];
 
 let failed = false;

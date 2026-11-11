@@ -123,6 +123,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyOrdersApp.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[orders-app:fail] verifyOrdersApp.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/embedDeliveryNoteLogo.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

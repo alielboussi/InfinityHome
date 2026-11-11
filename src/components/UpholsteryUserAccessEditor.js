@@ -6,6 +6,7 @@ import {
   CARPENTRY_APP_SCREENS,
   defaultMobileAccessGrant,
   isWorkshopOrDeliveryScreenAllowed,
+  ORDERS_APP_SCREENS,
   PAINTING_APP_SCREENS,
   sanitizeMobileAccessGrantForUser,
   UPHOLSTERY_APP_SCREENS,
@@ -31,6 +32,13 @@ const APP_CONFIG = Object.freeze({
     hint: 'Users always open the Painting dashboard first. Yes enables that page on the app; No hides it.',
     flag: 'painting_workshop_app',
     screens: PAINTING_APP_SCREENS,
+    showPhotoUpload: false,
+  },
+  orders: {
+    title: 'Orders',
+    hint: 'Users always open the Orders dashboard first. Yes enables that page on the app; No hides it. Hassan Awad always has every page.',
+    flag: 'orders_app',
+    screens: ORDERS_APP_SCREENS,
     showPhotoUpload: false,
   },
 });

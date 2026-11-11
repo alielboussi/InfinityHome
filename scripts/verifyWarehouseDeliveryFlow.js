@@ -58,6 +58,18 @@ assert(
   'delivery submit WhatsApp must build product groups from entries with colors',
 );
 assert(
+  mobile.includes('whatsAppProductGroupsFromPrintGroups'),
+  'order/repair WhatsApp must use quote/repair print groups, not catalog entries',
+);
+assert(
+  mobile.includes('resolveAdminQueuePrintGroups'),
+  'order/repair WhatsApp PDF must hydrate print groups from quote/return, not catalog fallback',
+);
+assert(
+  mobile.includes('if (adminQueueKind) pdfBase64 = \'\''),
+  'order/repair WhatsApp must rebuild PDF on the server from quote/repair lines',
+);
+assert(
   fs.readFileSync(path.join(root, 'src/utils/warehouseDeliveryDisplayName.js'), 'utf8')
     .includes('formatWarehouseDeliveryDisplayName'),
   'delivery display name helper must exist',
@@ -293,6 +305,48 @@ const groups = buildDeliveryPrintGroupsFromEntries([{
 if (groups[0].lines.length !== 0) throw new Error('finished unit must not add packet sub-rows');
 const html = buildDeliveryNotePrintHtml({ deliveryNumber: 'WHD1', driverName: 'D', printGroups: groups, documentKind: 'delivery' });
 if (html.includes('- Bowl Single Seater')) throw new Error('delivery note must not duplicate product as packet line');
+"`,
+  { cwd: root, stdio: 'pipe' },
+);
+
+execSync(
+  `node --input-type=module -e "
+import { printGroupsFromQuoteLines, whatsAppProductGroupsFromPrintGroups } from './src/utils/warehouseDeliveryPrintGroups.js';
+import { buildDeliveryNotePrintHtml } from './src/utils/buildDeliveryNotePrintHtml.js';
+import { buildWarehouseDeliveryWhatsAppMessage } from './src/utils/buildWarehouseDeliveryWhatsAppMessage.js';
+const quoteGroups = printGroupsFromQuoteLines([{
+  name: 'wardrobe (bedroom)',
+  quantity: 1,
+  wood: 'Mukwa',
+  color_code: 'LAG890',
+  accessories: ['Granite', 'Sink'],
+}]);
+if (quoteGroups[0].assembly_name !== 'wardrobe (bedroom)') throw new Error('quote print group must use line name');
+if (!quoteGroups[0].lines.some((l) => l.name === 'Mukwa')) throw new Error('quote print group must include wood field');
+if (!quoteGroups[0].lines.some((l) => String(l.name).includes('LAG890'))) throw new Error('quote print group must include color field');
+if (!quoteGroups[0].lines.some((l) => l.name === 'Granite, Sink')) throw new Error('quote print group must join accessory options');
+const quoteHtml = buildDeliveryNotePrintHtml({
+  deliveryNumber: 'QT#322',
+  driverName: 'Jane',
+  printGroups: quoteGroups,
+  documentKind: 'order_delivery',
+  customerName: 'walk in',
+  customerPhone: '+2600961222333',
+});
+if (!quoteHtml.includes('wardrobe (bedroom)')) throw new Error('order note must show quote product');
+if (!quoteHtml.includes('-Mukwa')) throw new Error('order note must show quote field as dash line');
+if (!quoteHtml.includes('-Granite, Sink')) throw new Error('order note must show accessory options');
+if (quoteHtml.includes('Aria 2 Seater')) throw new Error('order note must not use catalog fallback');
+const waGroups = whatsAppProductGroupsFromPrintGroups(quoteGroups);
+const wa = buildWarehouseDeliveryWhatsAppMessage({
+  title: 'Order delivery',
+  productGroups: waGroups,
+  totalProducts: 1,
+});
+if (!wa.includes('wardrobe (bedroom) * 1')) throw new Error('order WhatsApp must use quote product name');
+if (!wa.includes('-Mukwa')) throw new Error('order WhatsApp must include quote fields');
+if (wa.includes('-Mukwa *')) throw new Error('order WhatsApp field lines must not show packet qty');
+if (wa.includes('Aria 2 Seater')) throw new Error('order WhatsApp must not use catalog fallback');
 "`,
   { cwd: root, stdio: 'pipe' },
 );

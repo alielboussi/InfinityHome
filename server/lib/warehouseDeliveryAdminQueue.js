@@ -107,6 +107,7 @@ function quoteRoutingLineItems(meta) {
     const name = String(line?.name || line?.name_override || '').trim();
     if (!name) return null;
     return {
+      ...line,
       name,
       quantity: Math.max(1, Math.floor(Number(line.quantity) || 1)),
     };
