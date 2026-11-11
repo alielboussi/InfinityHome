@@ -22,6 +22,20 @@
   margin-bottom: 12px;
 }
 
+.layby-mgmt-row--closed {
+  opacity: 0.55;
+  background: #f1f5f9;
+}
+
+.layby-mgmt-row--closed .layby-customer-name {
+  color: #64748b;
+}
+
+.layby-customer-note--closed {
+  color: #94a3b8;
+  font-style: italic;
+}
+
 .layby-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -1269,10 +1269,14 @@ export default function LaybyManagement() {
     }
   }
 
+  const isRowClosed = (row) => Boolean(row?.accountClosed) || sumRowDue(row) <= 0.009;
+
   const filteredRows = useMemo(() => {
     const term = (debouncedSearch || '').toLowerCase().trim();
-    if (!term) return rows;
-    return rows.filter(r => {
+    if (!term) {
+      return rows.filter((r) => !isRowClosed(r));
+    }
+    return rows.filter((r) => {
       const name = String(r.customer?.name || '').toLowerCase();
       const phone = String(r.customer?.phone || '').toLowerCase();
       return name.includes(term) || phone.includes(term);
@@ -1560,6 +1564,7 @@ export default function LaybyManagement() {
             </thead>
             <tbody>
               {filteredRows.map(row => {
+                const rowClosed = isRowClosed(row);
                 const formatGroupCell = (field) => {
                   const entries = Object.entries(getDisplayTotalsForRow(row));
                   if (!entries.length) return '—';
@@ -1585,9 +1590,15 @@ export default function LaybyManagement() {
                   primaryLayby,
                 };
                 return (
-                  <tr key={`row-${row.customerId}`}>
+                  <tr
+                    key={`row-${row.customerId}`}
+                    className={rowClosed ? 'layby-mgmt-row--closed' : undefined}
+                  >
                     <td className="text-col">
                       <div className="layby-customer-name">{row.customer?.name || row.customerId}</div>
+                      {rowClosed && (
+                        <div className="layby-customer-note layby-customer-note--closed">Closed — search result only</div>
+                      )}
                       {row.placeholderHold && (
                         <div className="layby-customer-note">
                           Pending reconciliation — totals hidden while Acc(2) is being fixed
@@ -1668,21 +1679,21 @@ export default function LaybyManagement() {
                             const customerId = row.customerId;
                             const primaryLayby = row.primaryLayby || (row.laybys || []).find((layby) => layby?.id) || null;
                             const laybyId = primaryLayby?.id || (row.laybys || []).find((layby) => layby?.id)?.id;
-                            let { statement, totalsByCurrency, pooledCustomerStatement } = buildPooledCustomerPdfPayload(row);
-                            if (!statement.sales?.length && !statement.payments?.length) {
-                              const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId);
-                              if (statementErr) {
-                                setError(statementErr?.message || 'Failed to build customer statement');
-                                return;
-                              }
-                              if (statementRes) {
-                                statement = {
-                                  sales: statementRes?.sales || [],
-                                  items: statementRes?.items || [],
-                                  payments: statementRes?.payments || [],
-                                };
-                                totalsByCurrency = computePooledLaybyTotalsByCurrency(statement);
-                              }
+                            const { statement: cachedStatement, pooledCustomerStatement } = buildPooledCustomerPdfPayload(row);
+                            let statement = cachedStatement;
+                            let totalsByCurrency = row?.totalsByCurrency || {};
+                            const { data: statementRes, error: statementErr } = await fetchLaybyStatement(customerId);
+                            if (statementErr) {
+                              setError(statementErr?.message || 'Failed to build customer statement');
+                              return;
+                            }
+                            if (statementRes) {
+                              statement = {
+                                sales: statementRes?.sales || [],
+                                items: statementRes?.items || [],
+                                payments: statementRes?.payments || [],
+                              };
+                              totalsByCurrency = computePooledLaybyTotalsByCurrency(statement);
                             }
                             const pdfLayby = {
                               ...(primaryLayby || {}),

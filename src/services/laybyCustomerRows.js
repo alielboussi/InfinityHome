@@ -830,9 +830,11 @@ export async function fetchLaybyCustomerRows() {
 
     let mergedTotalsWithStarting = applyStartingDueToTotalsByCurrency(mergedTotalsByCurrency, customer);
 
-    if (sumDue(mergedTotalsWithStarting) <= 0.009) return;
+    const accountClosed = sumDue(mergedTotalsWithStarting) <= 0.009;
 
-    const activeStatement = filterStatementToOutstandingSales(mergedStatement);
+    const activeStatement = accountClosed
+      ? mergedStatement
+      : filterStatementToOutstandingSales(mergedStatement);
     const outstandingSales = activeStatement?.sales || [];
     const mergedTotalsByCurrencyFinal = mergedTotalsWithStarting;
 
@@ -891,6 +893,7 @@ export async function fetchLaybyCustomerRows() {
       statement: activeStatement,
       fullStatement: fullStatementWithOpening,
       totalsByCurrency: mergedTotalsByCurrencyFinal,
+      accountClosed,
       linkedQuoteId: linkedQuote?.id || null,
       totalsDebug: {
         source: 'pooled_statement',
@@ -901,6 +904,7 @@ export async function fetchLaybyCustomerRows() {
         startingDueBalance: startingDueAmount,
         startingDueBalanceDate: getStartingDueBalanceDate(customer),
         statementError: null,
+        accountClosed,
       },
       laybys,
       primaryLayby: resolvedPrimaryLayby,

@@ -11,6 +11,7 @@ import {
   enrichManualMaterialLines,
   manualMaterialLinesNeedMetadataRepair,
 } from './productionJobMaterials.js';
+import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
 
 const JOBS = 'painting_production_jobs';
 const RUNS = 'carpentry_production_runs';
@@ -68,6 +69,8 @@ function serializeJob(job) {
     carpentry_quote_id: String(job.metadata?.carpentry_quote_id || '').trim() || null,
     quote_id: String(job.metadata?.carpentry_quote_id || job.metadata?.quote_id || '').trim() || null,
     inventory_source: job.metadata?.inventory_source || null,
+    floor2_image_url: String(job.floor2_image_url || '').trim(),
+    image_url: String(job.image_url || job.floor2_image_url || '').trim(),
   };
 }
 
@@ -308,6 +311,22 @@ export async function listPaintingProductionJobs(sb, { activeOnly = false, limit
     }
     const base = serializeJob(row);
     jobs.push({ ...base, manual_material_lines: lines });
+  }
+  const assemblyIds = [...new Set(jobs.map((j) => String(j.assembly_id || '').trim()).filter(Boolean))];
+  if (assemblyIds.length) {
+    const { data: assemblies } = await sb
+      .from(ASSEMBLIES)
+      .select('id, image_url, metadata')
+      .in('id', assemblyIds);
+    const byId = new Map((assemblies || []).map((row) => [String(row.id), row]));
+    for (const job of jobs) {
+      const asm = byId.get(String(job.assembly_id || ''));
+      const wip = readWarehouseFloor2WipImageUrl(asm);
+      const fromFloor1 = String(job.inventory_source || '').toLowerCase() === 'floor1';
+      const photo = fromFloor1 ? String(asm?.image_url || '').trim() : wip;
+      job.floor2_image_url = fromFloor1 ? '' : wip;
+      job.image_url = photo;
+    }
   }
   return { jobs };
 }

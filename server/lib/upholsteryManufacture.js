@@ -282,7 +282,7 @@ export async function recomputeUpholsteryManufactureLocations(
  */
 export async function listUpholsteryManufactureCandidates(sb) {
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
-    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata, category_id'),
+    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata, category_id, image_url'),
     sb.from(LOCATIONS).select('id, name'),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
@@ -314,8 +314,8 @@ export async function listUpholsteryManufactureCandidates(sb) {
       raw_assembly_id: rawId,
       raw_name: rawAsm?.name || rawId,
       raw_sku: rawAsm?.family_sku || '',
-      image_url: readWarehouseFloor2WipImageUrl(rawAsm),
-      floor2_image_url: readWarehouseFloor2WipImageUrl(rawAsm),
+      image_url: String(finishedAsm.image_url || '').trim(),
+      floor2_image_url: '',
       finished_assembly_id: finishedAsm.id,
       finished_name: finishedAsm.name,
       finished_sku: finishedAsm.family_sku,

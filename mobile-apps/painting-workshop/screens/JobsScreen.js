@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -28,6 +29,7 @@ import {
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { theme } from '../shared/theme';
+import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import RunningJobElapsed from '../components/RunningJobElapsed';
 import JobMaterialsInlineList from '../shared/components/JobMaterialsInlineList';
 import { subscribeProductionRefresh } from '../lib/productionRefreshBus';
@@ -54,6 +56,9 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
   if (fromQuote) {
     sourceKey = invSource === 'floor1' ? 'paintingQueueBadgeCarpentryOrderFinished' : 'paintingQueueBadgeCarpentryOrder';
   }
+  const thumb = resolveProductImageUrl(
+    invSource === 'floor1' ? job.image_url : (job.floor2_image_url || ''),
+  );
 
   return (
     <ProductionPressableHint
@@ -62,6 +67,9 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
       textAlign={textAlign}
       style={[kiosk.card, styles.jobCard]}
     >
+      {thumb ? (
+        <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="contain" />
+      ) : null}
       <Text style={[styles.kindChip, { alignSelf: textAlign === 'right' ? 'flex-end' : 'flex-start' }]}>
         {tUi(sourceKey, locale)}
       </Text>
@@ -492,6 +500,7 @@ const styles = StyleSheet.create({
   },
   kindChipReturn: { color: theme.danger },
   jobCard: { marginBottom: 12 },
+  jobThumb: { width: '100%', height: 160, borderRadius: 10, marginBottom: 8, backgroundColor: '#ffffff' },
   jobTitle: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4 },
   jobMeta: { fontSize: 13, color: theme.muted, marginBottom: 10 },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' },

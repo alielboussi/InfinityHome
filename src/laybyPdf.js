@@ -912,24 +912,74 @@ function buildSettlementPaymentLinesFromPayments(payments) {
     .map(batchGroupedPaymentToSettlementLine);
 }
 
+function sumPaymentDiscountForCurrency(payments, preferredCurrency) {
+  const code = String(preferredCurrency || 'K').trim().toUpperCase();
+  const wantUsd = code === 'USD' || code === '$';
+  return (payments || []).reduce((sum, payment) => {
+    const raw = String(payment?.currency || '').trim().toUpperCase();
+    const paymentCode = (raw === '$' || raw === 'USD') ? 'USD' : 'K';
+    if (wantUsd ? paymentCode !== 'USD' : paymentCode === 'USD') return sum;
+    return sum + Math.max(0, Number(payment?.discount_amount || 0));
+  }, 0);
+}
+
 function resolvePdfSettlementTotals({ opts, related, currency, paymentLines }) {
-  const rowTotalsFromMgmt = readRowTotalsFromOpts(opts, currency);
-  const pooled = computePooledLaybyTotalsByCurrency(normalizeLaybyStatement({
+  const usdRowTotals = readRowTotalsUsd(opts);
+  let settlementCurrency = String(currency || 'K').trim().toUpperCase();
+  if (usdRowTotals && (usdRowTotals.total > 0.009 || usdRowTotals.paid > 0.009 || usdRowTotals.due > 0.009)) {
+    settlementCurrency = 'USD';
+  }
+  const rowTotalsFromMgmt = readRowTotalsFromOpts(opts, settlementCurrency) || usdRowTotals;
+  const normalizedRelated = normalizeLaybyStatement({
     sales: related?.sales || [],
     items: related?.items || [],
     payments: related?.payments || [],
-  }));
-  const code = String(currency || 'K').trim().toUpperCase();
-  const pooledBucket = pooled[code] || pooled.K || pooled.USD || Object.values(pooled)[0] || null;
+  });
+  const pooled = computePooledLaybyTotalsByCurrency(normalizedRelated);
+  const code = settlementCurrency === 'USD' || settlementCurrency === '$' ? 'USD' : 'K';
+  const pooledBucket = pooled[code] || pooled.USD || pooled.K || Object.values(pooled)[0] || null;
   const linePaid = (paymentLines || []).reduce((sum, line) => sum + Number(line?.amount || 0), 0);
   const lineDiscount = (paymentLines || []).reduce((sum, line) => sum + Number(line?.discount_amount || 0), 0);
-  const paidTotal = rowTotalsFromMgmt && Number.isFinite(Number(rowTotalsFromMgmt.paid))
-    ? Number(rowTotalsFromMgmt.paid)
-    : (Number(pooledBucket?.paid || 0) > 0.009 ? Number(pooledBucket.paid) : linePaid);
-  const dueRemaining = rowTotalsFromMgmt && Number.isFinite(Number(rowTotalsFromMgmt.due))
-    ? Math.max(0, Number(rowTotalsFromMgmt.due))
-    : Math.max(0, Number(pooledBucket?.due ?? (Number(pooledBucket?.total || 0) - paidTotal - lineDiscount)));
-  return { paidTotal, dueRemaining, discountTotal: lineDiscount };
+  const paymentDiscount = Math.max(
+    lineDiscount,
+    sumPaymentDiscountForCurrency(normalizedRelated.payments, code),
+  );
+  const contractTotal = Number(rowTotalsFromMgmt?.total) > 0.009
+    ? Number(rowTotalsFromMgmt.total)
+    : Number(pooledBucket?.total || 0);
+  const pooledPaid = Number(pooledBucket?.paid || 0);
+  let pooledDue = Math.max(0, Number(pooledBucket?.due ?? NaN));
+  if (!Number.isFinite(pooledDue)) pooledDue = 0;
+
+  // Settlement rows can include payments not yet in related.payments (fresh down payment).
+  if (linePaid > pooledPaid + 0.009) {
+    pooledDue = Math.max(0, pooledDue - (linePaid - pooledPaid));
+  }
+
+  const paidTotal = linePaid > 0.009
+    ? linePaid
+    : (Number(rowTotalsFromMgmt?.paid) > 0.009
+      ? Number(rowTotalsFromMgmt.paid)
+      : (pooledPaid > 0.009 ? pooledPaid : 0));
+
+  let dueRemaining = pooledDue;
+  if (contractTotal > 0.009 && linePaid > 0.009) {
+    const dueFromContract = Math.max(0, contractTotal - linePaid - paymentDiscount);
+    dueRemaining = Math.min(dueRemaining, dueFromContract);
+  }
+
+  const mgmtPaid = Number(rowTotalsFromMgmt?.paid || 0);
+  const mgmtDue = Number(rowTotalsFromMgmt?.due || 0);
+  const paymentIncrement = linePaid - (mgmtPaid > 0.009 ? mgmtPaid : pooledPaid);
+  if (paymentIncrement > 0.009 && mgmtDue > 0.009 && Math.abs(paymentIncrement - mgmtDue) < 0.02) {
+    dueRemaining = Math.max(0, mgmtDue - paymentIncrement);
+  }
+
+  if (linePaid > 0.009 && contractTotal > 0.009 && linePaid + paymentDiscount >= contractTotal - 0.02) {
+    dueRemaining = 0;
+  }
+
+  return { paidTotal, dueRemaining, discountTotal: paymentDiscount };
 }
 
 function groupPaymentsByAllocationBatch(payments = []) {

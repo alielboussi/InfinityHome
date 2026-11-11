@@ -98,10 +98,16 @@ export default function LaybyManagementMobile() {
     loadRows();
   }, [rtTick]);
 
+  const sumRowDue = (row) => Object.values(row?.totalsByCurrency || {})
+    .reduce((sum, totals) => sum + Number(totals?.due || 0), 0);
+  const isRowClosed = (row) => Boolean(row?.accountClosed) || sumRowDue(row) <= 0.009;
+
   const filteredRows = useMemo(() => {
     const term = (search || '').toLowerCase().trim();
-    if (!term) return rows;
-    return rows.filter(r => {
+    if (!term) {
+      return rows.filter((r) => !isRowClosed(r));
+    }
+    return rows.filter((r) => {
       const name = String(r.customer?.name || '').toLowerCase();
       const phone = String(r.customer?.phone || '').toLowerCase();
       return name.includes(term) || phone.includes(term);

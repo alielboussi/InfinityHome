@@ -147,7 +147,7 @@ function JobCard({
 }) {
   const isCompleted = job.status === 'completed';
   const isRunning = job.status === 'running';
-  const thumb = resolveProductImageUrl(job.floor2_image_url || job.product_image_url || job.image_url);
+  const thumb = resolveProductImageUrl(job.floor2_image_url || job.product_image_url || '');
   const canPlay = job.status === 'ready' || job.status === 'paused';
 
   return (

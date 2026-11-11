@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -26,8 +25,7 @@ import {
   runCarpentryManufacture,
 } from '../services/carpentryApi';
 import { emitProductionRefresh } from '../productionKiosk/lib/productionRefreshBus';
-import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
-import ProductionProductListRow, { productionProductRowPressableStyle } from '../shared/components/ProductionProductListRow';
+import ManufactureProductGridCard from '../shared/components/ManufactureProductGridCard';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import {
@@ -37,18 +35,13 @@ import {
 } from '../shared/warehouseScanResolver';
 
 const CARD_GAP = 12;
-const productRowPressable = productionProductRowPressableStyle(CARD_GAP);
 
 function floor2Qty(item) {
   return Math.max(0, Math.floor(Number(item?.floor2_qty ?? item?.quantity) || 0));
 }
 
-function resolveFloor2ProductImage(item) {
-  return (
-    resolveProductImageUrl(item?.floor2_image_url)
-    || resolveProductImageUrl(item?.image_url)
-    || ''
-  );
+function resolveManufactureProductImage(item) {
+  return resolveProductImageUrl(item?.floor2_image_url) || '';
 }
 
 function extractPhotoQrSku(raw) {
@@ -224,31 +217,20 @@ export default function ManufactureScreen({
   const renderProductCard = ({ item }) => {
     const id = String(item.id || item.assembly_id || '');
     const qty = floor2Qty(item);
-    const cardImage = resolveFloor2ProductImage(item);
+    const cardImage = resolveManufactureProductImage(item);
     const cardBusy = busyId === id;
-    const sku = String(item.family_sku || item.raw_sku || '').trim();
 
     return (
-      <ProductionPressableHint
-        hintKey="dashTileHint_manufacture"
-        locale={locale}
-        textAlign={textAlign}
-        disabled={Boolean(busyId)}
-        onPress={() => openQtyAdd(item)}
-        style={({ pressed }) => [
-          productRowPressable.row,
-          pressed && productRowPressable.rowPressed,
-          cardBusy && productRowPressable.rowBusy,
-        ]}
-      >
-        <ProductionProductListRow
+      <View style={styles.gridItem}>
+        <ManufactureProductGridCard
           imageUrl={cardImage || undefined}
           name={item.name}
-          sku={sku}
-          subtitle={tUi('manufactureQtyLabel', locale).replace('{qty}', String(qty))}
+          qty={qty}
           busy={cardBusy}
+          disabled={Boolean(busyId)}
+          onPress={() => openQtyAdd(item)}
         />
-      </ProductionPressableHint>
+      </View>
     );
   };
 
@@ -317,13 +299,15 @@ export default function ManufactureScreen({
         style={styles.list}
         data={filteredProducts}
         keyExtractor={(item) => String(item.id || item.assembly_id)}
+        numColumns={2}
+        columnWrapperStyle={filteredProducts.length ? styles.gridRow : undefined}
         refreshing={refreshing}
         onRefresh={() => loadList({ fromPull: true })}
         contentContainerStyle={filteredProducts.length === 0 ? styles.listEmpty : styles.gridContent}
         renderItem={renderProductCard}
         keyboardShouldPersistTaps="handled"
-        initialNumToRender={4}
-        maxToRenderPerBatch={4}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
         windowSize={5}
         removeClippedSubviews
         updateCellsBatchingPeriod={50}
@@ -433,7 +417,9 @@ const styles = StyleSheet.create({
   scanBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800' },
   list: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
-  gridContent: { paddingBottom: 24, gap: CARD_GAP },
+  gridContent: { paddingBottom: 24 },
+  gridRow: { gap: CARD_GAP, marginBottom: CARD_GAP },
+  gridItem: { flex: 1 },
   empty: { marginTop: 24 },
   modalBackdrop: {
     flex: 1,

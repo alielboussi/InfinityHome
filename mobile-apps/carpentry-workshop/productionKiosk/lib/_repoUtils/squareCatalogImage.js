@@ -122,6 +122,7 @@ function resolveContentRect(img, w, h) {
 /**
  * Fit product pixels on a white square. Trims obvious ChatGPT/white letterbox first
  * so a square file with a wide TV stand in the middle is not a tiny strip in the list.
+ * Contain never crops the product; cover is only used when a caller asks for it.
  */
 export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX, { fit = 'contain' } = {}) {
   const w = img.naturalWidth || img.width;

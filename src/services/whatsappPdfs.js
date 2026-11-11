@@ -104,7 +104,7 @@ export async function buildLaybyPdfUrlForWhatsApp({ laybyId, customerId, laybySn
       statement = laybySnapshot?.statement || laybySnapshot?.fullStatement || null;
     }
 
-    if (!statement || (!statement.sales?.length && !statement.payments?.length)) {
+    if (resolvedCustomerId) {
       const { data: statementRes } = await fetchLaybyStatement(resolvedCustomerId);
       if (statementRes) {
         statement = {

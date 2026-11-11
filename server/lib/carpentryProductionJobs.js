@@ -70,6 +70,8 @@ function serializeJob(job) {
       ? job.metadata.manual_material_lines
       : [],
     floor2_push: Boolean(job.metadata?.floor2_push),
+    floor2_image_url: String(job.floor2_image_url || '').trim(),
+    image_url: String(job.image_url || job.floor2_image_url || '').trim(),
   };
 }
 
@@ -233,6 +235,19 @@ export async function listCarpentryProductionJobs(sb, { activeOnly = true, limit
     }
     const base = serializeJob(row);
     jobs.push({ ...base, manual_material_lines: lines });
+  }
+  const assemblyIds = [...new Set(jobs.map((j) => String(j.assembly_id || '').trim()).filter(Boolean))];
+  if (assemblyIds.length) {
+    const { data: assemblies } = await sb
+      .from(ASSEMBLIES)
+      .select('id, metadata')
+      .in('id', assemblyIds);
+    const byId = new Map((assemblies || []).map((row) => [String(row.id), row]));
+    for (const job of jobs) {
+      const wip = readWarehouseFloor2WipImageUrl(byId.get(String(job.assembly_id || '')));
+      job.floor2_image_url = wip;
+      job.image_url = wip;
+    }
   }
   return { jobs };
 }
@@ -402,13 +417,7 @@ export async function listCarpentryManufactureCandidates(sb) {
   const products = carpentryRows.map((p) => {
     const id = String(p.id);
     const raw = assemblyById.get(id) || {};
-    const imageUrl = String(
-      p.floor2_image_url
-      || p.image_url
-      || readWarehouseFloor2WipImageUrl(raw)
-      || raw.image_url
-      || '',
-    ).trim();
+    const floor2ImageUrl = readWarehouseFloor2WipImageUrl(raw);
     return {
       id,
       raw_assembly_id: id,
@@ -418,8 +427,8 @@ export async function listCarpentryManufactureCandidates(sb) {
       material_count: (p.materials || []).length,
       materials: p.materials || [],
       floor2_qty: floor2QtyByAssembly.get(id) || 0,
-      image_url: imageUrl,
-      floor2_image_url: imageUrl,
+      image_url: '',
+      floor2_image_url: floor2ImageUrl,
     };
   });
 

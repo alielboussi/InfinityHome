@@ -296,9 +296,25 @@ function main() {
 
   const screensDest = path.join(kioskPath, 'screens');
   fs.mkdirSync(screensDest, { recursive: true });
+  const carpentryManufactureSrc = path.join(appRoot, 'screens', 'ManufactureScreen.js');
+  const carpentryManufactureDest = path.join(screensDest, 'ManufactureScreen.js');
+  if (fs.existsSync(carpentryManufactureSrc)) {
+    let manufactureSrc = fs.readFileSync(carpentryManufactureSrc, 'utf8');
+    manufactureSrc = manufactureSrc
+      .replaceAll('../productionKiosk/components/', '../components/')
+      .replaceAll('../productionKiosk/lib/', '../lib/')
+      .replaceAll('../productionKiosk/hooks/', '../hooks/')
+      .replaceAll("../services/carpentryApi", "../services/carpentryApi");
+    safeWriteFileSync(carpentryManufactureDest, manufactureSrc);
+  }
   copyDir(path.join(upholsteryRoot, 'screens'), screensDest, {
-    fileFilter: (name) => KIOSK_SCREENS.has(name),
+    fileFilter: (name) => KIOSK_SCREENS.has(name) && name !== 'ManufactureScreen.js',
   });
+  const carpentryApiSrc = path.join(appRoot, 'services', 'carpentryApi.js');
+  const carpentryApiDest = path.join(kioskPath, 'services', 'carpentryApi.js');
+  if (fs.existsSync(carpentryApiSrc)) {
+    copyFile(carpentryApiSrc, carpentryApiDest);
+  }
 
   materializeSharedKioskHelpers();
   materializeShared();
