@@ -40,6 +40,10 @@ function isFinishedUnitProductGroup(assemblyName, packetLines) {
  * }} input
  */
 export function buildWarehouseDeliveryWhatsAppMessage(input) {
+  const title = String(input?.title || '').trim();
+  const extraLines = Array.isArray(input?.extraLines)
+    ? input.extraLines.map((line) => String(line || '').trim()).filter(Boolean)
+    : [];
   const fromLabel = String(input?.fromName || 'Warehouse').trim() || 'Warehouse';
   const toLabel = String(input?.toName || 'Kitwe').trim() || 'Kitwe';
   const sentBy = String(input?.sentBy || input?.userAlias || '').trim() || '—';
@@ -73,9 +77,11 @@ export function buildWarehouseDeliveryWhatsAppMessage(input) {
     : computedTotalItems;
 
   const lines = [
+    ...(title ? [title] : []),
     `From : ${fromLabel}`,
     `To: ${toLabel}`,
     `Sent By: ${sentBy}`,
+    ...extraLines,
     'Products:',
     '_____________________________________________',
     ...(productBlocks.length ? productBlocks : ['—']),

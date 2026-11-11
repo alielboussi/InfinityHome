@@ -145,6 +145,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         customer_driver_phone: useCustomer ? customerDriverPhone : '',
         signature_png_base64: dataUri,
         groups,
+        document_kind: documentKind,
         ...(returnOrderId ? { return_order_id: returnOrderId } : {}),
       });
 
@@ -152,6 +153,10 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
 
       const signatureUrl = String(submitResult?.driver_signature_url || '').trim();
       const submittedAt = submitResult?.submitted_at || new Date().toISOString();
+      const resolvedDriverName = useCustomer ? customerDriverName : driverName;
+      const resolvedDriverPhone = useCustomer ? customerDriverPhone : '';
+      const noteCustomerName = String(route.params?.customerName || repairCustomerName || '').trim();
+      const noteCustomerPhone = String(route.params?.customerPhone || repairCustomerPhone || '').trim();
 
       await saveLocalSentDelivery({
         session_id: sessionId,
@@ -160,8 +165,10 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         document_kind: documentKind,
         status: 'submitted',
         submitted_at: submittedAt,
-        driver_name: useCustomer ? customerDriverName : driverName,
+        driver_name: resolvedDriverName,
         dispatched_by_name: dispatchedByName,
+        customer_name: noteCustomerName,
+        customer_phone: noteCustomerPhone,
         driver_signature_url: signatureUrl,
         driver_signature_data_uri: dataUri,
         print_groups: printGroups,
@@ -170,15 +177,16 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
       navigation.replace('KitweSendDone', {
         deliveryNumber,
         printNoteNumber: printNoteNumber || deliveryNumber,
-        driverName,
+        driverName: resolvedDriverName,
+        driverPhone: resolvedDriverPhone,
         supervisorName: dispatchedByName,
         driverSignatureDataUri: dataUri,
         driverSignatureUrl: signatureUrl,
         printGroups,
         submittedAt,
         documentKind,
-        customerName: repairCustomerName,
-        customerPhone: repairCustomerPhone,
+        customerName: noteCustomerName,
+        customerPhone: noteCustomerPhone,
       });
     } catch (err) {
       try {

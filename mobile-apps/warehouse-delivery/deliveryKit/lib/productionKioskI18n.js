@@ -552,6 +552,15 @@ const UI_STRINGS = {
     ar: 'عرض المذكرة · إعادة طباعة نسخة واحدة',
   },
   sentDeliveriesTitle: { en: 'Sent deliveries', ar: 'التسليمات المرسلة' },
+  sentDeliveriesSearchPlaceholder: {
+    en: 'Search #, customer name, or type (Floor 1 / Repair / Order / Sold)…',
+    ar: 'ابحث بالرقم أو اسم الزبون أو النوع (الطابق 1 / إصلاح / طلب / مباع)…',
+  },
+  sentDeliveriesSearchNoMatch: { en: 'No deliveries match your search.', ar: 'لا توجد تسليمات مطابقة للبحث.' },
+  sentDeliveryKindFloor1: { en: 'Floor 1', ar: 'الطابق 1' },
+  sentDeliveryKindRepair: { en: 'Repair', ar: 'إصلاح' },
+  sentDeliveryKindOrder: { en: 'Order', ar: 'طلب' },
+  sentDeliveryKindSold: { en: 'Sold', ar: 'مباع' },
   sentDeliveriesEmpty: {
     en: 'No sent deliveries yet. Complete Send Delivery to see them here.',
     ar: 'لا توجد تسليمات مرسلة بعد. أكمل «توقيع التسليم» لتظهر هنا.',

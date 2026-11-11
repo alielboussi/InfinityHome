@@ -186,7 +186,17 @@ function deliveryNoteNumberLabel(documentKind = 'delivery') {
 
 function deliveryNoteShowsCustomerBlock(documentKind = 'delivery') {
   const kind = String(documentKind || '').trim();
-  return kind === 'sold_delivery' || kind === 'return_customer_delivery' || kind === 'repair_delivery';
+  return kind === 'sold_delivery'
+    || kind === 'return_customer_delivery'
+    || kind === 'repair_delivery'
+    || kind === 'order_delivery';
+}
+
+export function formatDeliveryNoteDriverLabel(name, phone) {
+  const n = String(name || '').trim();
+  const p = String(phone || '').trim();
+  if (n && p && !n.includes(p)) return `${n} · ${p}`;
+  return n || p || '';
 }
 
 function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {
@@ -220,8 +230,10 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
         </div>
         <div class="header-spacer" aria-hidden="true"></div>
       </div>
-      <p class="dispatched-by"><strong>Dispatched by:</strong> ${escapeHtml(dispatched)}</p>
-      ${customerBlock}
+      <div class="party-block">
+        ${customerBlock}
+        <p class="dispatched-by"><strong>Dispatched by:</strong> ${escapeHtml(dispatched)}</p>
+      </div>
     </header>`;
 }
 
@@ -249,11 +261,11 @@ function renderCartTableHead(showElapsedColumn = false) {
       <tbody>`;
 }
 
-function renderDriverSignatureFooter(driverName, signatureSrc) {
+function renderDriverSignatureFooter(driverName, signatureSrc, driverPhone = '') {
   const raw = String(signatureSrc || '').trim();
   // expo-print WebView cannot load remote images in PDF/print — only inline data URIs render.
   const safeSrc = raw.startsWith('data:image/') ? raw : '';
-  const safeName = String(driverName || '').trim() || '—';
+  const safeName = formatDeliveryNoteDriverLabel(driverName, driverPhone) || '—';
   const img = safeSrc
     ? `<img class="sig-image" src="${safeSrc.replace(/"/g, '&quot;')}" alt="Driver signature" />`
     : '<span class="sig-missing">No signature image</span>';
@@ -283,6 +295,7 @@ function renderPage(opts) {
     pageTotal,
     isLast,
     driverName,
+    driverPhone = '',
     dispatchedBy,
     driverSignatureSrc,
     companyLogoSrc,
@@ -305,7 +318,7 @@ function renderPage(opts) {
         </tbody>
       </table>
         </div>
-        ${isLast ? renderDriverSignatureFooter(driverName, driverSignatureSrc) : ''}
+        ${isLast ? renderDriverSignatureFooter(driverName, driverSignatureSrc, driverPhone) : ''}
         ${isLast ? renderDisclaimer() : ''}
         <p class="page-num">Page ${pageIndex} of ${pageTotal}</p>
       </div>
@@ -319,6 +332,7 @@ export function deliveryNoteDocumentTitle(documentKind = 'delivery') {
 export function buildDeliveryNotePrintHtml({
   deliveryNumber,
   driverName,
+  driverPhone = '',
   dispatchedBy = '',
   driverSignatureSrc = '',
   companyLogoSrc = '',
@@ -348,6 +362,7 @@ export function buildDeliveryNotePrintHtml({
         pageTotal,
         isLast: i === pageTotal - 1,
         driverName,
+        driverPhone,
         dispatchedBy,
         driverSignatureSrc,
         companyLogoSrc,
@@ -465,15 +480,17 @@ export function buildDeliveryNotePrintHtml({
       font-weight: 800;
     }
     .datetime { margin: 0; font-size: 10.5pt; color: #333; }
+    .party-block {
+      border-top: 1px solid #333;
+      padding-top: 3mm;
+    }
     .dispatched-by {
       margin: 0;
       font-size: 11pt;
       text-align: left;
-      border-top: 1px solid #333;
-      padding-top: 3mm;
     }
     .customer-line {
-      margin: 2mm 0 0;
+      margin: 0 0 2mm;
       font-size: 11pt;
       text-align: left;
     }

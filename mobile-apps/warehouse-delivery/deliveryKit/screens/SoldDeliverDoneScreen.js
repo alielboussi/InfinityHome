@@ -11,6 +11,7 @@ export default function SoldDeliverDoneScreen({ route, navigation }) {
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const dn = route.params?.deliveryNumber || '';
   const driverName = route.params?.driverName || '';
+  const driverPhone = route.params?.driverPhone || '';
   const supervisorName = route.params?.supervisorName || '';
   const printGroups = route.params?.printGroups || [];
   const driverSignatureDataUri = route.params?.driverSignatureDataUri || '';
@@ -44,6 +45,7 @@ export default function SoldDeliverDoneScreen({ route, navigation }) {
         textAlign={textAlign}
         deliveryNumber={dn}
         driverName={driverName}
+        driverPhone={driverPhone}
         dispatchedBy={supervisorName}
         driverSignatureUrl={driverSignatureUrl}
         printGroups={printGroups}

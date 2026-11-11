@@ -48,4 +48,17 @@ assert(
   'WhatsApp message must include colored product name',
 );
 
+const repairWa = buildWarehouseDeliveryWhatsAppMessage({
+  title: 'Repair delivery',
+  extraLines: ['Repair: RT-1', 'Driver: Test Driver'],
+  fromName: 'Warehouse',
+  toName: 'Customer',
+  userAlias: 'Test',
+  productGroups: [{ assemblyName: 'Chair', units: 1, packetLines: [] }],
+  totalProducts: 1,
+});
+assert(repairWa.includes('Repair delivery'), 'repair WhatsApp must include Repair delivery title');
+assert(repairWa.includes('Repair: RT-1'), 'repair WhatsApp must include return number');
+assert(repairWa.startsWith('Repair delivery'), 'repair title must lead the WhatsApp message');
+
 console.log('verifyWarehouseDeliveryDisplayName: ok');

@@ -78,6 +78,7 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
         signature_png_base64: dataUri,
       });
       const resolvedDriver = useCustomer ? customerDriverName : driverName;
+      const resolvedDriverPhone = useCustomer ? customerDriverPhone : '';
       const submittedAt = out.submitted_at || new Date().toISOString();
       const resolvedSessionId = String(out.session_id || sessionId || '').trim();
       await saveLocalSentDelivery({
@@ -89,6 +90,8 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
         submitted_at: submittedAt,
         driver_name: resolvedDriver,
         dispatched_by_name: getProductionDispatcherLabelSync() || '',
+        customer_name: out.customer_name || customerName,
+        customer_phone: out.customer_phone || customerPhone,
         driver_signature_url: out.driver_signature_url || '',
         driver_signature_data_uri: dataUri,
         print_groups: out.print_groups || printGroups,
@@ -97,6 +100,7 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
       navigation.replace('SoldDeliverDone', {
         deliveryNumber: out.delivery_number || deliveryNumber,
         driverName: resolvedDriver,
+        driverPhone: resolvedDriverPhone,
         supervisorName: getProductionDispatcherLabelSync() || '',
         printGroups: out.print_groups || printGroups,
         driverSignatureDataUri: dataUri,

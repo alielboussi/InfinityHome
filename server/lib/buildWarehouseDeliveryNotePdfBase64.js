@@ -103,9 +103,21 @@ export function buildWarehouseDeliveryNotePdfBase64({
   const dispatched = String(dispatchedByOverride || '').trim()
     || deliverySenderName(session)
     || '—';
-  const driver = String(driverNameOverride || meta.driver_name || '').trim() || '—';
+  const driverName = String(
+    driverNameOverride || meta.driver_name || meta.customer_driver_name || '',
+  ).trim();
+  const driverPhone = String(meta.customer_driver_phone || '').trim();
+  const driver = (driverName && driverPhone && !driverName.includes(driverPhone)
+    ? `${driverName} · ${driverPhone}`
+    : (driverName || driverPhone)) || '—';
   const custName = String(customerName || meta.customer_name || '').trim();
   const custPhone = String(customerPhone || meta.customer_phone || '').trim();
+  const showCustomer = (
+    kind === 'return_customer_delivery'
+    || kind === 'repair_delivery'
+    || kind === 'order_delivery'
+    || kind === 'sold_delivery'
+  ) && (custName || custPhone);
 
   const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -137,8 +149,10 @@ export function buildWarehouseDeliveryNotePdfBase64({
     y += 5;
     doc.text(`Date: ${formatZambiaDate(at)}    Time: ${formatZambiaTime(at)}`, margin, y);
     y += 5;
-    if ((kind === 'return_customer_delivery' || kind === 'repair_delivery') && (custName || custPhone)) {
-      doc.text(`Customer: ${custName || '—'}${custPhone ? ` · ${custPhone}` : ''}`, margin, y);
+    if (showCustomer) {
+      doc.text(`Customer Name: ${custName || '—'}`, margin, y);
+      y += 5;
+      doc.text(`Customer Phone Number: ${custPhone || '—'}`, margin, y);
       y += 5;
     }
     doc.text(`Dispatched by: ${dispatched}`, margin, y);

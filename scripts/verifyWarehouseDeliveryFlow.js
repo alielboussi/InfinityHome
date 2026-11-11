@@ -72,6 +72,18 @@ assert(
   'notify must export deliverWarehouseDeliveryGroupMessage for delivery submit',
 );
 assert(mobile.includes('whatsapp_sent_at'), 'delivery submit must record whatsapp_sent_at on success');
+assert(mobile.includes('warehouseDeliveryWhatsAppRoute'), 'delivery submit must label Floor 1 / repair / order WhatsApp');
+assert(mobile.includes("'repair_delivery'"), 'repair submit must tag WhatsApp as repair delivery');
+assert(mobile.includes("'order_delivery'"), 'order submit must tag WhatsApp as order delivery');
+assert(
+  fs.readFileSync(path.join(root, 'api/notify.js'), 'utf8').includes("120363410583418058@g.us"),
+  'warehouse delivery WhatsApp must target Automated Delivery Reciepts group',
+);
+assert(
+  fs.readFileSync(path.join(root, 'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSendSignatureScreen.js'), 'utf8')
+    .includes('document_kind: documentKind'),
+  'signature submit must send document_kind so repair/order WhatsApp is labeled',
+);
 assert(!deliveries.includes('receiverTestMirror'), 'WarehouseDeliveries must not include Hassan test mirror');
 assert(
   deliveries.includes('warehouseDeliveryReceiverLineKind'),
@@ -296,6 +308,10 @@ if (d.includes('Customer Name:')) throw new Error('kitwe delivery must not show 
 const s = buildDeliveryNotePrintHtml({ deliveryNumber: 'WST0000000001', driverName: 'D', printGroups: groups, documentKind: 'sold_delivery', customerName: 'Test', customerPhone: '123' });
 if (!s.includes('<h1 class=\\"title\\">Sold Delivery Note</h1>')) throw new Error('sold header missing');
 if (!s.includes('Customer Name:')) throw new Error('sold delivery must show customer block');
+const o = buildDeliveryNotePrintHtml({ deliveryNumber: 'QT#322', driverName: 'Jane', driverPhone: '0977', printGroups: groups, documentKind: 'order_delivery', customerName: 'walk in', customerPhone: '+2600961222333', dispatchedBy: 'Ali' });
+if (o.indexOf('Customer Name:') > o.indexOf('Dispatched by:')) throw new Error('order customer must sit above Dispatched by');
+if (!o.includes('walk in') || !o.includes('+2600961222333')) throw new Error('order delivery must show customer details');
+if (!o.includes('Jane') || !o.includes('0977')) throw new Error('order delivery must show customer driver name and phone');
 const r = buildDeliveryNotePrintHtml({ deliveryNumber: 'RO1', driverName: 'D', printGroups: groups, documentKind: 'return_shipment' });
 if (!r.includes('<h1 class=\\"title\\">Return Note</h1>')) throw new Error('return header missing');
 "`,

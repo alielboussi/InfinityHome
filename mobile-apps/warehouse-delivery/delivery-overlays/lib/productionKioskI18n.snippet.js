@@ -21,4 +21,13 @@ export const DELIVERY_HUB_I18N = {
     en: 'Choose either a fleet driver or a customer driver — not both.',
     ar: 'اختر سائق الأسطول أو سائق العميل — وليس كليهما.',
   },
+  sentDeliveriesSearchPlaceholder: {
+    en: 'Search #, customer name, or type (Floor 1 / Repair / Order / Sold)…',
+    ar: 'ابحث بالرقم أو اسم الزبون أو النوع (الطابق 1 / إصلاح / طلب / مباع)…',
+  },
+  sentDeliveriesSearchNoMatch: { en: 'No deliveries match your search.', ar: 'لا توجد تسليمات مطابقة للبحث.' },
+  sentDeliveryKindFloor1: { en: 'Floor 1', ar: 'الطابق 1' },
+  sentDeliveryKindRepair: { en: 'Repair', ar: 'إصلاح' },
+  sentDeliveryKindOrder: { en: 'Order', ar: 'طلب' },
+  sentDeliveryKindSold: { en: 'Sold', ar: 'مباع' },
 };

@@ -293,7 +293,7 @@ function parseWasenderKinds() {
     }
     return kinds;
   }
-  if (isWasenderOnlyProvider()) return ['sale', 'layby', 'transfer', 'labels'];
+  if (isWasenderOnlyProvider()) return ['sale', 'layby', 'transfer', 'warehouseDelivery', 'labels'];
   return [];
 }
 

@@ -2909,6 +2909,40 @@ async function repairReturnCustomerFields(sb, { returnOrderId, entries }) {
   };
 }
 
+function warehouseDeliveryWhatsAppRoute(session) {
+  const meta = session?.metadata || {};
+  const dk = String(meta.document_kind || '').toLowerCase();
+  const customerName = String(meta.customer_name || '').trim();
+  if (dk === 'repair_delivery') {
+    return {
+      title: 'Repair delivery',
+      fromName: 'Warehouse',
+      toName: customerName || 'Customer',
+      extraLines: [
+        meta.return_number ? `Repair: ${meta.return_number}` : '',
+        String(meta.driver_name || '').trim() ? `Driver: ${meta.driver_name}` : '',
+      ].filter(Boolean),
+    };
+  }
+  if (dk === 'order_delivery') {
+    return {
+      title: 'Order delivery',
+      fromName: 'Warehouse',
+      toName: customerName || 'Customer',
+      extraLines: [
+        meta.quote_number ? `Order: ${meta.quote_number}` : '',
+        String(meta.driver_name || '').trim() ? `Driver: ${meta.driver_name}` : '',
+      ].filter(Boolean),
+    };
+  }
+  return {
+    title: '',
+    fromName: 'Warehouse',
+    toName: 'Kitwe',
+    extraLines: [],
+  };
+}
+
 async function sendWarehouseDeliverySubmitWhatsApp({
   sb,
   sessionId,
@@ -2973,14 +3007,23 @@ async function sendWarehouseDeliverySubmitWhatsApp({
     });
   }
 
+  const route = warehouseDeliveryWhatsAppRoute({
+    ...session,
+    metadata: {
+      ...(session?.metadata || {}),
+      driver_name: String(driverName || session?.metadata?.driver_name || '').trim(),
+    },
+  });
   const whatsappMessage = buildWarehouseDeliveryWhatsAppMessage({
-    fromName: 'Warehouse',
-    toName: 'Kitwe',
+    title: route.title,
+    extraLines: route.extraLines,
+    fromName: route.fromName,
+    toName: route.toName,
     sentBy: userAlias,
     userAlias,
     submittedAt: submittedAt || session?.submitted_at || new Date().toISOString(),
     driverName: String(driverName || session?.metadata?.driver_name || '').trim() || '—',
-    routeLabel: 'Warehouse To Showroom',
+    routeLabel: route.title || 'Warehouse To Showroom',
     productGroups,
     totalPackets: Number(totalCartons) || Number(session?.total_qty) || 0,
     totalProducts,
@@ -3308,19 +3351,24 @@ async function opDeliverySubmit(body, user) {
       ]);
       const byAssembly = buildPacketsByAssembly(links || [], packets || []);
       const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
-      const whatsappResult = await sendWarehouseDeliverySubmitWhatsApp({
-        sb,
-        sessionId,
-        session,
-        user,
-        groups,
-        driverName,
-        totalCartons: session.total_qty,
-        byAssembly,
-        assemblyById,
-        submittedAt: session.submitted_at,
-        clientPdfBase64,
-      });
+      let whatsappResult = { ok: false };
+      try {
+        whatsappResult = await sendWarehouseDeliverySubmitWhatsApp({
+          sb,
+          sessionId,
+          session,
+          user,
+          groups,
+          driverName,
+          totalCartons: session.total_qty,
+          byAssembly,
+          assemblyById,
+          submittedAt: session.submitted_at,
+          clientPdfBase64,
+        });
+      } catch (waErr) {
+        console.warn('[delivery-submit] WhatsApp retry failed:', waErr?.message || waErr);
+      }
       const { data: refreshed } = await sb
         .from('warehouse_delivery_sessions')
         .select('*')
@@ -3480,6 +3528,8 @@ async function opDeliverySubmit(body, user) {
             production_job_id: orderStaging?.production_job_id || null,
             quote_id: orderStaging?.quote_id || null,
             quote_number: orderStaging?.quote_number || null,
+            customer_name: orderStaging?.customer_name || null,
+            customer_phone: orderStaging?.customer_phone || null,
           } : {}),
         }),
       });
@@ -3549,6 +3599,7 @@ async function opDeliverySubmit(body, user) {
     returnOrderId: body.return_order_id || body.returnOrderId,
     entries,
   });
+  const clientDocumentKind = String(body.document_kind || body.documentKind || '').trim().toLowerCase();
   const repairSessionMeta = repairContext
     ? {
       document_kind: 'repair_delivery',
@@ -3570,8 +3621,10 @@ async function opDeliverySubmit(body, user) {
       production_job_id: orderEntry.metadata?.production_job_id || null,
       quote_id: orderEntry.metadata?.quote_id || null,
       quote_number: orderEntry.metadata?.quote_number || null,
+      customer_name: orderEntry.metadata?.customer_name || null,
+      customer_phone: orderEntry.metadata?.customer_phone || null,
     }
-    : {};
+    : (clientDocumentKind === 'order_delivery' ? { document_kind: 'order_delivery' } : {});
 
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
@@ -3611,36 +3664,42 @@ async function opDeliverySubmit(body, user) {
     console.warn('[delivery-submit] admin queue mark:', markErr?.message || markErr);
   }
 
-  const whatsappResult = await sendWarehouseDeliverySubmitWhatsApp({
-    sb,
-    sessionId,
-    session: {
-      ...session,
-      submitted_at: now,
-      total_qty: totalCartons,
-      metadata: {
-        ...(session.metadata || {}),
-        ...repairSessionMeta,
-        source: mobileSource,
-        hassan_alert_pending: true,
-        hassan_alert_at: now,
-        submitted_by_email: user?.email || null,
-        dispatched_by_name: userAlias,
-        driver_id: driverId || null,
-        driver_name: driverName,
-        driver_signature_url: driverSignatureUrl || null,
+  let whatsappResult = { ok: false };
+  try {
+    whatsappResult = await sendWarehouseDeliverySubmitWhatsApp({
+      sb,
+      sessionId,
+      session: {
+        ...session,
+        submitted_at: now,
+        total_qty: totalCartons,
+        metadata: {
+          ...(session.metadata || {}),
+          ...repairSessionMeta,
+          ...orderSessionMeta,
+          source: mobileSource,
+          hassan_alert_pending: true,
+          hassan_alert_at: now,
+          submitted_by_email: user?.email || null,
+          dispatched_by_name: userAlias,
+          driver_id: driverId || null,
+          driver_name: driverName,
+          driver_signature_url: driverSignatureUrl || null,
+        },
       },
-    },
-    user,
-    groups,
-    driverName,
-    totalCartons,
-    byAssembly,
-    assemblyById,
-    submittedAt: now,
-    entries,
-    clientPdfBase64,
-  });
+      user,
+      groups,
+      driverName,
+      totalCartons,
+      byAssembly,
+      assemblyById,
+      submittedAt: now,
+      entries,
+      clientPdfBase64,
+    });
+  } catch (waErr) {
+    console.warn('[delivery-submit] WhatsApp notify failed:', waErr?.message || waErr);
+  }
 
   const { data: refreshedSession } = await sb
     .from('warehouse_delivery_sessions')
@@ -3700,6 +3759,13 @@ function canViewWarehouseSentDeliverySession(session, user) {
   return Boolean(email && creator && creator === email);
 }
 
+function formatSentDriverLabel(meta = {}) {
+  const name = String(meta.driver_name || meta.customer_driver_name || '').trim();
+  const phone = String(meta.customer_driver_phone || '').trim();
+  if (name && phone && !name.includes(phone)) return `${name} · ${phone}`;
+  return name;
+}
+
 function mapSentDeliveryListRow(row) {
   const meta = row?.metadata || {};
   const documentKind = String(meta.document_kind || 'delivery').trim() || 'delivery';
@@ -3710,8 +3776,10 @@ function mapSentDeliveryListRow(row) {
     document_kind: documentKind,
     status: row.status,
     submitted_at: row.submitted_at || row.created_at,
-    driver_name: meta.driver_name || '',
+    driver_name: formatSentDriverLabel(meta),
     dispatched_by_name: meta.dispatched_by_name || row.created_by_name || '',
+    customer_name: String(meta.customer_name || '').trim(),
+    customer_phone: String(meta.customer_phone || '').trim(),
     total_qty: row.total_qty,
     storage_send_id: String(meta.storage_send_id || '').trim() || null,
   };
@@ -3836,7 +3904,7 @@ async function opDeliverySentDetail(body, user) {
       document_kind: documentKind,
       status: session.status,
       submitted_at: session.submitted_at || session.created_at,
-      driver_name: meta.driver_name || '',
+      driver_name: formatSentDriverLabel(meta),
       dispatched_by_name: meta.dispatched_by_name || session.created_by_name || '',
       driver_signature_url: signatureUrl,
       customer_name: meta.customer_name || '',

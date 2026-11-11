@@ -33,6 +33,7 @@ export default function DeliveryPrintModal({
   textAlign,
   deliveryNumber,
   driverName,
+  driverPhone = '',
   dispatchedBy,
   driverSignatureDataUri,
   driverSignatureUrl,
@@ -81,6 +82,7 @@ export default function DeliveryPrintModal({
     return buildDeliveryNotePrintHtml({
       deliveryNumber,
       driverName,
+      driverPhone,
       dispatchedBy: dispatchedBy || '',
       driverSignatureSrc: signatureSrc,
       companyLogoSrc,
@@ -99,6 +101,7 @@ export default function DeliveryPrintModal({
     dispatchedBy,
     documentKind,
     driverName,
+    driverPhone,
     driverSignatureDataUri,
     driverSignatureUrl,
     printGroups,
@@ -172,12 +175,16 @@ export default function DeliveryPrintModal({
         await openDeliveryNotePdf({
           deliveryNumber,
           driverName,
+          driverPhone,
           dispatchedBy,
           driverSignatureDataUri,
           driverSignatureUrl,
           submittedAt,
           printGroups,
           copies: Math.max(1, Math.min(10, Number(copyCount) || DEFAULT_DELIVERY_PRINT_COPIES)),
+          documentKind,
+          customerName,
+          customerPhone,
         });
       }
     } catch (err) {
@@ -192,9 +199,13 @@ export default function DeliveryPrintModal({
   }, [
     buildNoteHtml,
     copyCount,
+    customerName,
+    customerPhone,
     deliveryNumber,
     dispatchedBy,
+    documentKind,
     driverName,
+    driverPhone,
     driverSignatureDataUri,
     driverSignatureUrl,
     isWeb,

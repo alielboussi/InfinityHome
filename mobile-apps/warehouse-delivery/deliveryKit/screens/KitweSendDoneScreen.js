@@ -15,6 +15,7 @@ export default function KitweSendDoneScreen({ route, navigation }) {
   const printNoteNumber = String(route.params?.printNoteNumber || '').trim();
   const noteNumber = printNoteNumber || dn;
   const driverName = route.params?.driverName || '';
+  const driverPhone = route.params?.driverPhone || '';
   const supervisorName = route.params?.supervisorName || '';
   const printGroups = route.params?.printGroups || [];
   const driverSignatureDataUri = route.params?.driverSignatureDataUri || '';
@@ -66,6 +67,7 @@ export default function KitweSendDoneScreen({ route, navigation }) {
         textAlign={textAlign}
         deliveryNumber={noteNumber}
         driverName={driverName}
+        driverPhone={driverPhone}
         dispatchedBy={supervisorName}
         driverSignatureDataUri={driverSignatureDataUri}
         driverSignatureUrl={driverSignatureUrl}

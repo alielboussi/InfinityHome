@@ -157,6 +157,12 @@ try {
     'utf8',
   );
   assert(orderQueue.includes('delivery-production-queue-list'), 'Order queue must call delivery-production-queue-list');
+  const sentList = fs.readFileSync(
+    path.join(appRoot, 'deliveryKit', 'screens', 'KitweSentDeliveriesScreen.js'),
+    'utf8',
+  );
+  assert(sentList.includes('sentDeliveriesSearchPlaceholder'), 'Sent deliveries must include search field');
+  assert(sentList.includes('matchesSentDeliverySearch'), 'Sent deliveries must filter by #, customer, and type');
 
   const soldSig = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'SoldDeliverSignatureScreen.js'),
@@ -247,6 +253,11 @@ try {
     'deliveryCustomerDriverHint',
     'deliveryDriverEitherOr',
     'customerDriverSave',
+    'sentDeliveriesSearchPlaceholder',
+    'sentDeliveryKindFloor1',
+    'sentDeliveryKindRepair',
+    'sentDeliveryKindOrder',
+    'sentDeliveryKindSold',
   ];
   for (const key of deliveryOnlyI18nKeys) {
     const re = new RegExp(`${key}:\\s*\\{[\\s\\S]*?\\bar:\\s*'`, 'm');

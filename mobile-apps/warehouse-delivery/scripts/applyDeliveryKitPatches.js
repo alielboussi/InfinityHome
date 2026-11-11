@@ -134,6 +134,22 @@ export function filterAssembliesForDeliveryFloor1Only(catalog) {
 function patchDeliveryHubI18n(filePath) {
   if (!fs.existsSync(filePath)) return;
   let s = fs.readFileSync(filePath, 'utf8');
+  if (!s.includes('sentDeliveriesSearchPlaceholder') && s.includes('sentDeliveriesTitle:')) {
+    s = s.replace(
+      "  sentDeliveriesTitle: { en: 'Sent deliveries', ar: 'التسليمات المرسلة' },",
+      `  sentDeliveriesTitle: { en: 'Sent deliveries', ar: 'التسليمات المرسلة' },
+  sentDeliveriesSearchPlaceholder: {
+    en: 'Search #, customer name, or type (Floor 1 / Repair / Order / Sold)…',
+    ar: 'ابحث بالرقم أو اسم الزبون أو النوع (الطابق 1 / إصلاح / طلب / مباع)…',
+  },
+  sentDeliveriesSearchNoMatch: { en: 'No deliveries match your search.', ar: 'لا توجد تسليمات مطابقة للبحث.' },
+  sentDeliveryKindFloor1: { en: 'Floor 1', ar: 'الطابق 1' },
+  sentDeliveryKindRepair: { en: 'Repair', ar: 'إصلاح' },
+  sentDeliveryKindOrder: { en: 'Order', ar: 'طلب' },
+  sentDeliveryKindSold: { en: 'Sold', ar: 'مباع' },`,
+    );
+    fs.writeFileSync(filePath, s);
+  }
   if (!s.includes('deliveryCustomerAddBtn') && s.includes('deliveryCustomerDriver:')) {
     s = s.replace(
       "  deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },",

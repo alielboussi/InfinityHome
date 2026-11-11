@@ -40,6 +40,8 @@ async function openStagedDelivery(navigation, row) {
     printGroups,
     queueKind: 'order',
     documentKind: 'order_delivery',
+    customerName: row.customer_name || '',
+    customerPhone: row.customer_phone || '',
   });
 }
 

@@ -589,7 +589,7 @@ export async function listStorageSendsForSentDeliveries(sb, {
   const cap = Math.min(80, Math.max(1, Number(limit) || 40));
   let query = sb
     .from(TABLE)
-    .select('id, storage_number, delivery_number, status, delivered_at, driver_name, metadata, created_by_email, quantity, assembly_name, customer_name')
+    .select('id, storage_number, delivery_number, status, delivered_at, driver_name, metadata, created_by_email, quantity, assembly_name, customer_name, customer_phone')
     .eq('status', WAREHOUSE_STORAGE_SEND_STATUSES.DELIVERED)
     .order('delivered_at', { ascending: false, nullsFirst: false })
     .limit(cap * 2);
@@ -611,6 +611,8 @@ export async function listStorageSendsForSentDeliveries(sb, {
       submitted_at: row.delivered_at || null,
       driver_name: row.driver_name || meta.customer_driver_name || '',
       dispatched_by_name: meta.dispatched_by_name || '',
+      customer_name: row.customer_name || '',
+      customer_phone: row.customer_phone || '',
       total_qty: row.quantity,
       storage_send_id: String(row.id),
       delivery_session_id: meta.delivery_session_id || null,

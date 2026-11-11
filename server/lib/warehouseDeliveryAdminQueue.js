@@ -279,6 +279,7 @@ async function listQuoteOrdersAwaitingDriver(sb) {
       quantity: quoteLinesTotalQty(lines, admin.quantity),
       quote_number: admin.quote_number || meta.quote_number || null,
       customer_name: String(meta.customer_name || '').trim() || null,
+      customer_phone: String(meta.customer_phone || '').trim() || null,
       department: admin.department || row.route || 'upholstery',
       lines,
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
