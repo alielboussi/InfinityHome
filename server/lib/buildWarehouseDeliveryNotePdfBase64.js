@@ -88,7 +88,6 @@ export function buildWarehouseDeliveryNotePdfBase64({
   customerName = '',
   customerPhone = '',
   driverNameOverride = '',
-  dispatchedByOverride = '',
   submittedAtOverride = '',
 } = {}) {
   const meta = session?.metadata || {};
