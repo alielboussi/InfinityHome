@@ -116,6 +116,7 @@ export function buildWarehouseDeliveryNotePdfBase64({
   const driverPhone = String(meta.customer_driver_phone || '').trim();
   const custName = String(customerName || meta.customer_name || '').trim();
   const custPhone = String(customerPhone || meta.customer_phone || '').trim();
+  const dispatchedBy = String(meta.dispatched_by_name || session?.created_by_name || '').trim();
   const showCustomer = (
     kind === 'return_customer_delivery'
     || kind === 'repair_delivery'
@@ -157,6 +158,10 @@ export function buildWarehouseDeliveryNotePdfBase64({
       doc.text(`Customer Name: ${custName || '—'}`, margin, y);
       y += 5;
       doc.text(`Customer Phone Number: ${custPhone || '—'}`, margin, y);
+      y += 5;
+    }
+    if (dispatchedBy) {
+      doc.text(`Delivery Dispatched By : ${dispatchedBy}`, margin, y);
       y += 5;
     }
 

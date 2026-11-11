@@ -38,8 +38,8 @@ export function listUpholsteryCatalogProducts(assemblies) {
         family_sku: a.family_sku,
         raw_assembly_id: meta.raw_assembly_id,
         material_count: meta.materials.length,
-        floor2_image_url: readWarehouseFloor2WipImageUrl(a),
-        image_url: readWarehouseFloor2WipImageUrl(a),
+        floor2_image_url: readWarehouseFloor2WipImageUrl(a) || String(a.image_url || '').trim(),
+        image_url: readWarehouseFloor2WipImageUrl(a) || String(a.image_url || '').trim(),
         materials: meta.materials.map((m) => ({
           material_assembly_id: m.material_assembly_id,
           quantity: Number(m.quantity) || 0,

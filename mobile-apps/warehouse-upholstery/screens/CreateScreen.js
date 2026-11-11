@@ -409,7 +409,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             baseName: baseNameEn,
             preset: pending.preset,
             quantity: pending.qtyNum,
-            imageBase64: uploadPhoto,
             dimLength: pending.dimLength,
             dimWidth: pending.dimWidth,
             dimHeight: pending.dimHeight,
@@ -417,12 +416,28 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
           assemblyId = String(created?.product?.assembly_id || created?.product?.id || '').trim();
           if (!assemblyId) throw new Error('Product save failed — server did not return a product id.');
           pendingSaveRef.current = { ...pending, resumeAssemblyId: assemblyId };
-        } else {
-          setAiPhotoStatus(tUi('photoProcessing', locale));
+        }
+        setAiPhotoStatus(tUi('photoProcessing', locale));
+        try {
+          await attachProductionProductPhoto({
+            assemblyId,
+            imageBase64: uploadPhoto,
+            alsoFloor2Wip: true,
+            pendingPortalSetup: {
+              portal_catalog: 'carpentry',
+              floor2_product_qty: pending.qtyNum,
+            },
+            preset: pending.preset,
+            onAttempt: (attempt, max) => {
+              setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
+            },
+          });
+        } catch (photoErr) {
           await uploadCarpentryFloor2ProductPhoto({
             assemblyId,
             imageBase64: uploadPhoto,
           });
+          throw photoErr;
         }
         pendingSaveRef.current = null;
         pendingPhotoRef.current = null;
@@ -467,7 +482,8 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
         pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint || parsed.pendingLabelPrint,
         pendingPortalSetup: pendingSaveRef.current?.pendingPortalSetup || parsed.pendingPortalSetup,
         preset: pending.preset,
-        onPhotoAttempt: (attempt, max) => {
+        alsoFloor2Wip: true,
+        onAttempt: (attempt, max) => {
           setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
         },
       });

@@ -204,7 +204,7 @@ export function formatDeliveryNoteDriverLabel(name, phone) {
   return n || p || '';
 }
 
-function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {
+function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '', dispatchedBy = '') {
   const logoSrc = String(companyLogoSrc || '').trim();
   const logoImg = logoSrc
     ? `<img class="company-logo" src="${safeImgSrc(logoSrc)}" alt="${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}" />`
@@ -217,12 +217,19 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, docu
   const custName = String(customerName || '').trim();
   const custPhone = String(customerPhone || '').trim();
   const showCustomer = deliveryNoteShowsCustomerBlock(documentKind);
+  const alias = String(dispatchedBy || '').trim();
+  const dispatchedLine = alias
+    ? `<p class="customer-line dispatched-by-line"><strong>Delivery Dispatched By :</strong> ${escapeHtml(alias)}</p>`
+    : '';
   const customerBlock = showCustomer
     ? `<div class="party-block">
         <p class="customer-line"><strong>Customer Name:</strong> ${escapeHtml(custName || '—')}</p>
         <p class="customer-line"><strong>Customer Phone Number:</strong> ${escapeHtml(custPhone || '—')}</p>
+        ${dispatchedLine}
       </div>`
-    : '';
+    : (dispatchedLine
+      ? `<div class="party-block">${dispatchedLine}</div>`
+      : '');
   return `
     <header class="doc-header">
       <div class="header-row">
@@ -310,6 +317,7 @@ function renderPage(opts) {
     showElapsedColumn = false,
     customerName = '',
     customerPhone = '',
+    dispatchedBy = '',
   } = opts;
   const bodyRows = blocks.map((b) => renderBlockRows(b, { showElapsedColumn })).join('');
   const colSpan = showElapsedColumn ? 3 : 2;
@@ -318,7 +326,7 @@ function renderPage(opts) {
   return `
     <section class="page">
       <div class="page-inner">
-        ${renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind, customerName, customerPhone)}
+        ${renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind, customerName, customerPhone, dispatchedBy)}
         <div class="cart-table-wrap">
         ${renderCartTableHead(showElapsedColumn)}
           ${bodyRows || emptyRow}
@@ -349,6 +357,7 @@ export function buildDeliveryNotePrintHtml({
   showElapsedColumn = false,
   customerName = '',
   customerPhone = '',
+  dispatchedBy = '',
 }) {
   const at = submittedAt || new Date().toISOString();
   const dateStr = formatCatDate(at);
@@ -375,6 +384,7 @@ export function buildDeliveryNotePrintHtml({
         showElapsedColumn: useElapsed,
         customerName,
         customerPhone,
+        dispatchedBy,
       }))
     .join('');
 

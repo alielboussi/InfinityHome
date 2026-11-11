@@ -1,7 +1,7 @@
 import { API_BASE, getFirebaseIdToken } from '../shared/firebase';
 import { formatWarehouseMobileApiError } from '../shared/warehouseMobileApi';
 
-const CLIENT_SOURCE = 'warehouse_production_app';
+const CLIENT_SOURCE = 'carpentry_workshop_app';
 
 function resolveApiBase() {
   return String(process.env.EXPO_PUBLIC_API_BASE || API_BASE || '').replace(/\/+$/, '');
@@ -30,6 +30,7 @@ async function postProductionAiPhotoOnce({
   pendingLabelPrint,
   pendingPortalSetup,
   preset,
+  alsoFloor2Wip,
 }) {
   const token = await getFirebaseIdToken();
   if (!token) {
@@ -55,6 +56,7 @@ async function postProductionAiPhotoOnce({
       ...(preset ? { preset: String(preset).trim(), product_preset: String(preset).trim() } : {}),
       ...(pendingLabelPrint ? { pending_label_print: pendingLabelPrint } : {}),
       ...(pendingPortalSetup ? { pending_portal_setup: pendingPortalSetup } : {}),
+      ...(alsoFloor2Wip ? { also_floor2_wip: true } : {}),
     }),
   });
 
@@ -101,6 +103,7 @@ export async function attachProductionProductPhotoWithAi({
   pendingLabelPrint,
   pendingPortalSetup,
   preset,
+  alsoFloor2Wip,
   onAttempt,
 } = {}) {
   const id = String(assemblyId || '').trim();
@@ -121,6 +124,7 @@ export async function attachProductionProductPhotoWithAi({
         pendingLabelPrint,
         pendingPortalSetup,
         preset,
+        alsoFloor2Wip,
       });
     } catch (err) {
       lastErr = err;

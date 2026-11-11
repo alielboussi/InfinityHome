@@ -24,9 +24,9 @@ export function buildCarpentryFinishingCandidates(assemblies, inventoryRows, flo
     const carpentryMeta = parseCarpentryMeta(row);
     const inCarpentry = carpentryMeta.selected;
     const linkedUpholstery = Boolean(findUpholsteryFinishedForRawAssembly(allRows, aid));
-    const hasFloor2WipPhoto = Boolean(readWarehouseFloor2WipImageUrl(row));
+    const hasFloor2WipPhoto = Boolean(readWarehouseFloor2WipImageUrl(row) || String(row.image_url || '').trim());
     if (qty <= 0 && !inCarpentry && !linkedUpholstery && !hasFloor2WipPhoto) continue;
-    const wipImage = readWarehouseFloor2WipImageUrl(row) || '';
+    const wipImage = readWarehouseFloor2WipImageUrl(row) || String(row.image_url || '').trim();
     results.push({
       id: aid,
       assembly_id: aid,

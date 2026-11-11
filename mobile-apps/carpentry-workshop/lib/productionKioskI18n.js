@@ -700,8 +700,8 @@ const UI_STRINGS = {
   deliveryPrintSystemPicker: { en: 'Choose printer (system list)', ar: 'اختر الطابعة (قائمة النظام)' },
   deliveryPrintRetry: { en: 'Retry print', ar: 'إعادة الطباعة' },
   deliveryPrintRetryHint: {
-    en: 'If printing timed out (1 minute) or nothing came out, check printer Wi‑Fi/Ethernet then tap Retry.',
-    ar: 'إذا انتهت مهلة الطباعة (دقيقة واحدة) أو لم تخرج نسخة، تحقق من اتصال الطابعة ثم اضغط إعادة المحاولة.',
+    en: 'If printing timed out (30 seconds) or nothing came out, check printer Wi‑Fi/Ethernet then tap Retry or Skip printing.',
+    ar: 'إذا انتهت مهلة الطباعة (30 ثانية) أو لم تخرج نسخة، تحقق من اتصال الطابعة ثم اضغط إعادة المحاولة أو تخطي الطباعة.',
   },
   deliveryPrintSkip: { en: 'Skip printing', ar: 'تخطي الطباعة' },
   deliveryPrintNoPrinters: {
@@ -714,8 +714,8 @@ const UI_STRINGS = {
   },
   deliveryPrintScanFailed: { en: 'Printer search failed.', ar: 'فشل البحث عن الطابعات.' },
   deliveryPrintTimeoutError: {
-    en: 'Print timed out after 1 minute due to connectivity. Please check your printer connection and tap Retry.',
-    ar: 'انتهت مهلة الطباعة بعد دقيقة واحدة بسبب الاتصال. يرجى التحقق من اتصال الطابعة والضغط على إعادة المحاولة.',
+    en: 'Print timed out after 30 seconds due to connectivity. Please check your printer connection, then tap Retry or Skip printing.',
+    ar: 'انتهت مهلة الطباعة بعد 30 ثانية بسبب الاتصال. يرجى التحقق من اتصال الطابعة ثم اضغط إعادة المحاولة أو تخطي الطباعة.',
   },
   deliveryPrintFailed: { en: 'Print failed. Please check printer connectivity and tap Retry.', ar: 'فشلت الطباعة. يرجى التحقق من اتصال الطابعة والضغط على إعادة المحاولة.' },
   deliveryScanBtn: { en: 'Scan packet', ar: 'مسح الطرد' },

@@ -252,6 +252,7 @@ export async function attachProductionProductPhoto({
   pendingLabelPrint,
   pendingPortalSetup: pendingPortalSetupPayload,
   preset,
+  alsoFloor2Wip,
   onAttempt,
 }) {
   const { attachProductionProductPhotoWithAi } = await import('./productionPhotoApi.js');
@@ -261,6 +262,7 @@ export async function attachProductionProductPhoto({
     pendingLabelPrint,
     pendingPortalSetup: pendingPortalSetupPayload,
     preset,
+    alsoFloor2Wip,
     onAttempt,
   });
 }
@@ -313,7 +315,7 @@ export async function createProductionProductOnly({
     packet_number: 1,
     qty_per_unit: 1,
     client_source: CLIENT_SOURCE,
-    portal_catalog: 'carpentry',
+    portal_catalog: CLIENT_SOURCE === 'carpentry_workshop_app' ? 'carpentry' : 'upholstery',
     defer_product_photo: true,
     require_product_photo: false,
     dim_length: dimLength,
@@ -391,7 +393,7 @@ export async function createProductionPacket({
     packet_number: 1,
     qty_per_unit: 1,
     client_source: CLIENT_SOURCE,
-    portal_catalog: 'carpentry',
+    portal_catalog: CLIENT_SOURCE === 'carpentry_workshop_app' ? 'carpentry' : 'upholstery',
     defer_product_photo: hasPhoto,
     require_product_photo: false,
     dim_length: dimLength,

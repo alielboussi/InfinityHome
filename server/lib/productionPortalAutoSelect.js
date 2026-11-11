@@ -62,7 +62,7 @@ export async function autoSelectProductionPortalCatalog(sb, assemblyId, {
       });
       floor2_added = true;
     } catch (err) {
-      floor2_error = err?.message || String(err);
+      throw new Error(err?.message || 'Failed to save Floor 2 quantity on the web portal.');
     }
     return {
       applied: 'carpentry',
@@ -85,7 +85,7 @@ export async function autoSelectProductionPortalCatalog(sb, assemblyId, {
       });
       floor2_added = true;
     } catch (err) {
-      floor2_error = err?.message || String(err);
+      throw new Error(err?.message || 'Failed to save Floor 2 quantity on the web portal.');
     }
     return {
       applied: 'upholstery',

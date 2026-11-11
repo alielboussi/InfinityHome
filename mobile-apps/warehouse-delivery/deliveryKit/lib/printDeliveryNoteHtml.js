@@ -77,10 +77,10 @@ export function openDeliveryNoteHtmlInBrowser(html, title = 'Delivery note') {
   }
 }
 
-/** 1-minute timeout for printing before prompting the user to retry. */
-export const DELIVERY_PRINT_TIMEOUT_MS = 60_000;
+/** 30-second timeout for printing before prompting skip or retry. */
+export const DELIVERY_PRINT_TIMEOUT_MS = 30_000;
 export const PRINT_TIMEOUT_CODE = 'print_timeout';
-export const PRINT_TIMEOUT_MESSAGE = 'Print timed out after 1 minute due to connectivity. Please check your printer connection and tap Retry.';
+export const PRINT_TIMEOUT_MESSAGE = 'Print timed out after 30 seconds due to connectivity. Please check your printer connection, then tap Retry or Skip printing.';
 
 export function isPrintConnectivityFailure(err) {
   const code = String(err?.code || '').toLowerCase();
@@ -105,7 +105,7 @@ export function withPrintTimeout(promise, timeoutMs = DELIVERY_PRINT_TIMEOUT_MS)
 
 /**
  * Print delivery note HTML — Android/iOS system print, or browser print dialog on web.
- * Enforces a 1-minute timeout on connectivity/spooler hangs.
+ * Enforces a 30-second timeout on connectivity/spooler hangs.
  */
 export async function printDeliveryNoteFromHtml(html, { timeoutMs = DELIVERY_PRINT_TIMEOUT_MS } = {}) {
   const run = async () => {

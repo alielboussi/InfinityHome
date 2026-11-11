@@ -252,6 +252,7 @@ export async function attachProductionProductPhoto({
   pendingLabelPrint,
   pendingPortalSetup: pendingPortalSetupPayload,
   preset,
+  alsoFloor2Wip,
   onAttempt,
 }) {
   const { attachProductionProductPhotoWithAi } = await import('./productionPhotoApi.js');
@@ -261,6 +262,7 @@ export async function attachProductionProductPhoto({
     pendingLabelPrint,
     pendingPortalSetup: pendingPortalSetupPayload,
     preset,
+    alsoFloor2Wip,
     onAttempt,
   });
 }

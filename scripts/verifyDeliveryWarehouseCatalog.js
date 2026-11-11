@@ -89,7 +89,7 @@ assert(
   'catalog-list must expose floor2LocationId for delivery Floor 2 rejection',
 );
 
-assert(printSrc.includes('DELIVERY_PRINT_TIMEOUT_MS = 60_000'), 'print must enforce 1-minute timeout');
+assert(printSrc.includes('DELIVERY_PRINT_TIMEOUT_MS = 30_000'), 'print must enforce 30-second timeout');
 assert(printSrc.includes('isPrintConnectivityFailure'), 'print must classify connectivity timeouts');
 assert(printModalSrc.includes('deliveryPrintTimeoutError'), 'print modal must prompt retry after timeout');
 assert(printModalSrc.includes('isPrintConnectivityFailure'), 'print modal must treat connectivity failures as retryable');

@@ -317,7 +317,7 @@ export default function DeliveryPrintModal({
             </View>
           ) : null}
 
-          <Pressable style={styles.skipBtn} onPress={onDone} disabled={printing}>
+          <Pressable style={styles.skipBtn} onPress={onDone}>
             <Text style={styles.skipText}>{tUi('deliveryPrintSkip', locale)}</Text>
           </Pressable>
 

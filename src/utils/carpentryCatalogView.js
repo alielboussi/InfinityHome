@@ -35,8 +35,8 @@ export function listCarpentryCatalogProducts(assemblies) {
         name: a.name,
         family_sku: a.family_sku,
         material_count: materials.length,
-        floor2_image_url: readWarehouseFloor2WipImageUrl(a),
-        image_url: readWarehouseFloor2WipImageUrl(a),
+        floor2_image_url: readWarehouseFloor2WipImageUrl(a) || String(a.image_url || '').trim(),
+        image_url: readWarehouseFloor2WipImageUrl(a) || String(a.image_url || '').trim(),
         materials: materials.map((m) => ({
           material_assembly_id: m.material_assembly_id,
           quantity: Number(m.quantity) || 0,
