@@ -24,13 +24,15 @@ async function openStagedDelivery(navigation, row) {
     finished_driver_checked_at: now,
   }];
   const printNoteNumber = String(row.quote_number || row.production_job_id || '').trim();
-  const printGroups = (quoteLines.length ? quoteLines : [{
-    name: row.assembly_name || row.assembly_id,
-    quantity: qty,
-  }]).map((line) => ({
+  const printGroups = (quoteLines.length
+    ? quoteLines
+    : (String(row.assembly_name || '').trim() && String(row.assembly_name) !== String(row.assembly_id)
+      ? [{ name: row.assembly_name, quantity: qty }]
+      : [])
+  ).map((line) => ({
     assembly_name: line.name,
     units: Math.max(1, Number(line.quantity) || qty),
-    lines: row.quote_number ? [{ name: `Order ${row.quote_number}`, kind: 'meta' }] : [],
+    lines: [],
   }));
   navigation.navigate('KitweSendSignature', {
     sessionId: session.session_id,

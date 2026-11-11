@@ -145,6 +145,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         customer_driver_phone: useCustomer ? customerDriverPhone : '',
         signature_png_base64: dataUri,
         groups,
+        print_groups: printGroups,
         document_kind: documentKind,
         ...(returnOrderId ? { return_order_id: returnOrderId } : {}),
       });

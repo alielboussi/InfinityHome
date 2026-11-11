@@ -305,13 +305,20 @@ const d = buildDeliveryNotePrintHtml({ deliveryNumber: 'WHD1', driverName: 'D', 
 if (!d.includes('<h1 class=\\"title\\">Delivery Note</h1>')) throw new Error('delivery header missing');
 if (d.includes('Sold Delivery Note')) throw new Error('kitwe delivery must not use Sold Delivery Note');
 if (d.includes('Customer Name:')) throw new Error('kitwe delivery must not show customer block');
+if (d.includes('Dispatched by:')) throw new Error('delivery note must not show Dispatched by');
 const s = buildDeliveryNotePrintHtml({ deliveryNumber: 'WST0000000001', driverName: 'D', printGroups: groups, documentKind: 'sold_delivery', customerName: 'Test', customerPhone: '123' });
 if (!s.includes('<h1 class=\\"title\\">Sold Delivery Note</h1>')) throw new Error('sold header missing');
 if (!s.includes('Customer Name:')) throw new Error('sold delivery must show customer block');
-const o = buildDeliveryNotePrintHtml({ deliveryNumber: 'QT#322', driverName: 'Jane', driverPhone: '0977', printGroups: groups, documentKind: 'order_delivery', customerName: 'walk in', customerPhone: '+2600961222333', dispatchedBy: 'Ali' });
-if (o.indexOf('Customer Name:') > o.indexOf('Dispatched by:')) throw new Error('order customer must sit above Dispatched by');
-if (!o.includes('walk in') || !o.includes('+2600961222333')) throw new Error('order delivery must show customer details');
-if (!o.includes('Jane') || !o.includes('0977')) throw new Error('order delivery must show customer driver name and phone');
+if (s.includes('Dispatched by:')) throw new Error('sold note must not show Dispatched by');
+const o = buildDeliveryNotePrintHtml({ deliveryNumber: 'QT#322', driverName: 'Jane', driverPhone: '0977', printGroups: groups, documentKind: 'order_delivery', customerName: 'walk in', customerPhone: '+2600961222333' });
+if (o.includes('Dispatched by:')) throw new Error('order note must not show Dispatched by');
+if (!o.includes('Customer Name:') || !o.includes('walk in')) throw new Error('order delivery must show customer name');
+if (!o.includes('Customer Phone Number:') || !o.includes('+2600961222333')) throw new Error('order delivery must show customer phone');
+if (!o.includes('Driver Name:') || !o.includes('Jane')) throw new Error('order delivery must show driver name');
+if (!o.includes('Driver Phone Number:') || !o.includes('0977')) throw new Error('order customer-driver must show driver phone');
+const fleet = buildDeliveryNotePrintHtml({ deliveryNumber: 'WHD1', driverName: 'Fleet', printGroups: groups, documentKind: 'delivery' });
+if (fleet.includes('Driver Phone Number:')) throw new Error('fleet driver must not show driver phone');
+if (!fleet.includes('Driver Name:')) throw new Error('floor 1 note must show driver name');
 const r = buildDeliveryNotePrintHtml({ deliveryNumber: 'RO1', driverName: 'D', printGroups: groups, documentKind: 'return_shipment' });
 if (!r.includes('<h1 class=\\"title\\">Return Note</h1>')) throw new Error('return header missing');
 "`,

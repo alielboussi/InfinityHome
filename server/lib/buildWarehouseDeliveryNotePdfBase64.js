@@ -2,8 +2,10 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DELIVERY_NOTE_DISCLAIMER } from '../../src/utils/buildDeliveryNotePrintHtml.js';
 import { DELIVERY_NOTE_LOGO_DATA_URI } from '../../src/utils/deliveryNoteCompanyLogoEmbedded.js';
-import { deliverySenderName } from '../../src/utils/warehouseDelivery.js';
-import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryPrintGroups.js';
+import {
+  buildDeliveryPrintGroupsFromEntries,
+  sanitizeDeliveryNotePrintGroups,
+} from '../../src/utils/warehouseDeliveryPrintGroups.js';
 import { createWarehouseDeliveryNameFormatter } from '../../src/utils/warehouseDeliveryDisplayName.js';
 import { formatZambiaDate, formatZambiaTime } from '../../src/utils/zambiaDateTime.js';
 
@@ -93,23 +95,20 @@ export function buildWarehouseDeliveryNotePdfBase64({
   const formatter = assemblyColorContext
     ? createWarehouseDeliveryNameFormatter(assemblyColorContext)
     : null;
-  const printGroups = printGroupsOverride || buildDeliveryPrintGroupsFromEntries(entries || [], formatter);
+  const savedGroups = sanitizeDeliveryNotePrintGroups(printGroupsOverride);
+  const printGroups = savedGroups.length
+    ? savedGroups
+    : sanitizeDeliveryNotePrintGroups(buildDeliveryPrintGroupsFromEntries(entries || [], formatter));
   const copyCount = Math.max(1, Math.min(3, Number(copies) || 1));
   const kind = String(documentKind || meta.document_kind || 'delivery').trim();
   const dn = kind === 'repair_delivery'
     ? String(meta.return_number || session?.delivery_number || session?.id || '').trim() || 'Delivery'
     : String(session?.delivery_number || session?.id || '').trim() || 'Delivery';
   const at = submittedAtOverride || session?.submitted_at || session?.created_at || new Date().toISOString();
-  const dispatched = String(dispatchedByOverride || '').trim()
-    || deliverySenderName(session)
-    || '—';
   const driverName = String(
     driverNameOverride || meta.driver_name || meta.customer_driver_name || '',
   ).trim();
   const driverPhone = String(meta.customer_driver_phone || '').trim();
-  const driver = (driverName && driverPhone && !driverName.includes(driverPhone)
-    ? `${driverName} · ${driverPhone}`
-    : (driverName || driverPhone)) || '—';
   const custName = String(customerName || meta.customer_name || '').trim();
   const custPhone = String(customerPhone || meta.customer_phone || '').trim();
   const showCustomer = (
@@ -117,7 +116,7 @@ export function buildWarehouseDeliveryNotePdfBase64({
     || kind === 'repair_delivery'
     || kind === 'order_delivery'
     || kind === 'sold_delivery'
-  ) && (custName || custPhone);
+  );
 
   const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -155,10 +154,6 @@ export function buildWarehouseDeliveryNotePdfBase64({
       doc.text(`Customer Phone Number: ${custPhone || '—'}`, margin, y);
       y += 5;
     }
-    doc.text(`Dispatched by: ${dispatched}`, margin, y);
-    y += 5;
-    doc.text(`Driver: ${driver}`, margin, y);
-    y += 4;
 
     autoTable(doc, {
       startY: y + 2,
@@ -175,9 +170,16 @@ export function buildWarehouseDeliveryNotePdfBase64({
     });
 
     let footY = (doc.lastAutoTable?.finalY || y + 40) + 8;
+    doc.setFontSize(10);
+    doc.text(`Driver Name: ${driverName || '—'}`, margin, footY);
+    footY += 5;
+    if (driverPhone) {
+      doc.text(`Driver Phone Number: ${driverPhone}`, margin, footY);
+      footY += 5;
+    }
     if (meta.driver_signature_url) {
       doc.setFontSize(9);
-      doc.text('Driver signature: captured electronically', margin, footY);
+      doc.text('Driver Signature: captured electronically', margin, footY);
       footY += 6;
     }
 

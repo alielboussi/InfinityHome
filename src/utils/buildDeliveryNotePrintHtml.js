@@ -1,6 +1,9 @@
 /** Shared delivery note A4 HTML — also used by Production app (re-export) and web print. */
 import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime.js';
-import { deliveryPrintSubrowIsPacketLine } from './warehouseDeliveryPrintGroups.js';
+import {
+  deliveryPrintSubrowIsPacketLine,
+  sanitizeDeliveryNotePrintGroups,
+} from './warehouseDeliveryPrintGroups.js';
 
 const PAGE_BORDER = '#000';
 const PAGE_BORDER_MM = 3;
@@ -199,7 +202,7 @@ export function formatDeliveryNoteDriverLabel(name, phone) {
   return n || p || '';
 }
 
-function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {
+function renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind = 'delivery', customerName = '', customerPhone = '') {
   const logoSrc = String(companyLogoSrc || '').trim();
   const logoImg = logoSrc
     ? `<img class="company-logo" src="${safeImgSrc(logoSrc)}" alt="${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}" />`
@@ -207,15 +210,16 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
   const companyNameLine = logoSrc
     ? ''
     : `<p class="company-name">${escapeHtml(DELIVERY_NOTE_COMPANY_NAME)}</p>`;
-  const dispatched = String(dispatchedBy || '').trim() || '—';
   const title = deliveryNoteTitle(documentKind);
   const numLabel = deliveryNoteNumberLabel(documentKind);
   const custName = String(customerName || '').trim();
   const custPhone = String(customerPhone || '').trim();
   const showCustomer = deliveryNoteShowsCustomerBlock(documentKind);
-  const customerBlock = showCustomer && (custName || custPhone)
-    ? `<p class="customer-line"><strong>Customer Name:</strong> ${escapeHtml(custName || '—')}</p>
-      <p class="customer-line"><strong>Customer Phone Number:</strong> ${escapeHtml(custPhone || '—')}</p>`
+  const customerBlock = showCustomer
+    ? `<div class="party-block">
+        <p class="customer-line"><strong>Customer Name:</strong> ${escapeHtml(custName || '—')}</p>
+        <p class="customer-line"><strong>Customer Phone Number:</strong> ${escapeHtml(custPhone || '—')}</p>
+      </div>`
     : '';
   return `
     <header class="doc-header">
@@ -230,10 +234,7 @@ function renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, compan
         </div>
         <div class="header-spacer" aria-hidden="true"></div>
       </div>
-      <div class="party-block">
-        ${customerBlock}
-        <p class="dispatched-by"><strong>Dispatched by:</strong> ${escapeHtml(dispatched)}</p>
-      </div>
+      ${customerBlock}
     </header>`;
 }
 
@@ -265,16 +266,21 @@ function renderDriverSignatureFooter(driverName, signatureSrc, driverPhone = '')
   const raw = String(signatureSrc || '').trim();
   // expo-print WebView cannot load remote images in PDF/print — only inline data URIs render.
   const safeSrc = raw.startsWith('data:image/') ? raw : '';
-  const safeName = formatDeliveryNoteDriverLabel(driverName, driverPhone) || '—';
+  const safeName = String(driverName || '').trim() || '—';
+  const safePhone = String(driverPhone || '').trim();
   const img = safeSrc
     ? `<img class="sig-image" src="${safeSrc.replace(/"/g, '&quot;')}" alt="Driver signature" />`
     : '<span class="sig-missing">No signature image</span>';
+  const phoneLine = safePhone
+    ? `<p class="sig-driver-name"><strong>Driver Phone Number:</strong> ${escapeHtml(safePhone)}</p>`
+    : '';
   return `
     <footer class="signatures">
       <div class="sig-driver-block">
-        <p class="sig-driver-name"><strong>Driver:</strong> ${escapeHtml(safeName)}</p>
+        <p class="sig-driver-name"><strong>Driver Name:</strong> ${escapeHtml(safeName)}</p>
+        ${phoneLine}
         <div class="sig-line">
-          <span class="sig-inline-label">Driver signature</span>
+          <span class="sig-inline-label">Driver Signature:</span>
           ${img}
         </div>
       </div>
@@ -311,7 +317,7 @@ function renderPage(opts) {
   return `
     <section class="page">
       <div class="page-inner">
-        ${renderPageHeader(deliveryNumber, dateStr, timeStr, dispatchedBy, companyLogoSrc, documentKind, customerName, customerPhone)}
+        ${renderPageHeader(deliveryNumber, dateStr, timeStr, companyLogoSrc, documentKind, customerName, customerPhone)}
         <div class="cart-table-wrap">
         ${renderCartTableHead(showElapsedColumn)}
           ${bodyRows || emptyRow}
@@ -347,7 +353,7 @@ export function buildDeliveryNotePrintHtml({
   const at = submittedAt || new Date().toISOString();
   const dateStr = formatCatDate(at);
   const timeStr = formatCatTime(at);
-  const pages = paginateDeliveryNoteBlocks(printGroups);
+  const pages = paginateDeliveryNoteBlocks(sanitizeDeliveryNotePrintGroups(printGroups));
   const pageTotal = pages.length;
   const useElapsed = showElapsedColumn || documentKind === 'return' || documentKind === 'return_shipment';
 
@@ -483,11 +489,7 @@ export function buildDeliveryNotePrintHtml({
     .party-block {
       border-top: 1px solid #333;
       padding-top: 3mm;
-    }
-    .dispatched-by {
-      margin: 0;
-      font-size: 11pt;
-      text-align: left;
+      margin-top: 3mm;
     }
     .customer-line {
       margin: 0 0 2mm;

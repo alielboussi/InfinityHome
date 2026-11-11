@@ -139,8 +139,7 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
     .maybeSingle();
   const prev = routing?.metadata || {};
   const lines = quoteRoutingLineItems(prev);
-  const { data: asm } = await sb.from(ASSEMBLIES).select('name').eq('id', String(assemblyId)).maybeSingle();
-  const assemblyName = quoteLinesDisplayName(lines, asm?.name || assemblyId);
+  const assemblyName = quoteLinesDisplayName(lines, '');
   const quantity = quoteLinesTotalQty(lines, qty);
   const resolvedQuoteNumber = quoteNumber || prev.quote_number || null;
   await sb.from(QUOTE_ROUTING).update({
@@ -270,11 +269,10 @@ async function listQuoteOrdersAwaitingDriver(sb) {
     if (!asmId) continue;
     const { data: asm } = await sb.from(ASSEMBLIES).select('name, family_sku').eq('id', asmId).maybeSingle();
     const lines = quoteRoutingLineItems(meta);
-    const fallbackName = admin.assembly_name || asm?.name || asmId;
     out.push({
       quote_id: String(row.quote_id),
       assembly_id: asmId,
-      assembly_name: quoteLinesDisplayName(lines, fallbackName),
+      assembly_name: quoteLinesDisplayName(lines, ''),
       family_sku: asm?.family_sku || '',
       quantity: quoteLinesTotalQty(lines, admin.quantity),
       quote_number: admin.quote_number || meta.quote_number || null,

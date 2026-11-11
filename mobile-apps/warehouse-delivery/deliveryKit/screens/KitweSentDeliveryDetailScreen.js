@@ -57,6 +57,7 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
   const noteFields = session ? {
     deliveryNumber: noteNumber,
     driverName: session.driver_name,
+    driverPhone: session.driver_phone || '',
     dispatchedBy: session.dispatched_by_name,
     driverSignatureSrc: detail?.driver_signature_data_uri || session.driver_signature_url,
     driverSignatureDataUri: detail?.driver_signature_data_uri || '',
@@ -167,6 +168,7 @@ export default function KitweSentDeliveryDetailScreen({ route, navigation }) {
           textAlign={textAlign}
           deliveryNumber={noteNumber}
           driverName={session.driver_name}
+          driverPhone={session.driver_phone || ''}
           dispatchedBy={session.dispatched_by_name}
           driverSignatureUrl={session.driver_signature_url}
           driverSignatureDataUri={detail?.driver_signature_data_uri || ''}

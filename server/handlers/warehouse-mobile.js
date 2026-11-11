@@ -92,7 +92,11 @@ import {
   deliveryCustomerSentLines,
   warehousePacketDisplayLabel,
 } from '../../src/utils/warehouseDelivery.js';
-import { buildDeliveryPrintGroupsFromEntries } from '../../src/utils/warehouseDeliveryPrintGroups.js';
+import {
+  buildDeliveryPrintGroupsFromEntries,
+  printGroupsFromQuoteLines,
+  sanitizeDeliveryNotePrintGroups,
+} from '../../src/utils/warehouseDeliveryPrintGroups.js';
 import {
   isWarehouseSetDeliveryGroup,
   resolveSetComponentsForDelivery,
@@ -3051,10 +3055,12 @@ async function sendWarehouseDeliverySubmitWhatsApp({
         const documentKind = String(session?.metadata?.document_kind || 'delivery').trim();
         const customerName = String(session?.metadata?.customer_name || '').trim();
         const customerPhone = String(session?.metadata?.customer_phone || '').trim();
+        const savedGroups = sanitizeDeliveryNotePrintGroups(session?.metadata?.print_groups);
         pdfBase64 = buildWarehouseDeliveryNotePdfBase64({
           session,
           entries,
           copies: 1,
+          printGroups: savedGroups.length ? savedGroups : undefined,
           assemblyColorContext,
           documentKind,
           customerName,
@@ -3626,6 +3632,8 @@ async function opDeliverySubmit(body, user) {
     }
     : (clientDocumentKind === 'order_delivery' ? { document_kind: 'order_delivery' } : {});
 
+  const clientPrintGroups = sanitizeDeliveryNotePrintGroups(body.print_groups || body.printGroups);
+
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
     submitted_at: now,
@@ -3635,6 +3643,7 @@ async function opDeliverySubmit(body, user) {
       ...(session.metadata || {}),
       ...repairSessionMeta,
       ...orderSessionMeta,
+      ...(clientPrintGroups.length ? { print_groups: clientPrintGroups } : {}),
       source: mobileSource,
       hassan_alert_pending: true,
       hassan_alert_at: now,
@@ -3677,6 +3686,7 @@ async function opDeliverySubmit(body, user) {
           ...(session.metadata || {}),
           ...repairSessionMeta,
           ...orderSessionMeta,
+          ...(clientPrintGroups.length ? { print_groups: clientPrintGroups } : {}),
           source: mobileSource,
           hassan_alert_pending: true,
           hassan_alert_at: now,
@@ -3835,6 +3845,50 @@ async function opDeliverySentList(body, user) {
   return { sessions: sessions.slice(0, limit) };
 }
 
+async function loadQuoteRoutingMeta(sb, { quoteId, quoteNumber } = {}) {
+  const qid = String(quoteId || '').trim();
+  if (qid) {
+    const { data } = await sb
+      .from('quote_production_routing')
+      .select('metadata')
+      .eq('quote_id', qid)
+      .maybeSingle();
+    if (data?.metadata) return data.metadata;
+  }
+  const qn = String(quoteNumber || '').trim();
+  if (!qn) return {};
+  const { data: quote } = await sb
+    .from('quotations')
+    .select('id')
+    .eq('quote_number', qn)
+    .maybeSingle();
+  if (!quote?.id) return {};
+  const { data } = await sb
+    .from('quote_production_routing')
+    .select('metadata')
+    .eq('quote_id', quote.id)
+    .maybeSingle();
+  return data?.metadata || {};
+}
+
+async function resolveSentDeliveryPrintGroups(sb, session, entries, nameFormatter) {
+  const meta = session?.metadata || {};
+  const saved = sanitizeDeliveryNotePrintGroups(meta.print_groups);
+  if (saved.length) return saved;
+  const kind = String(meta.document_kind || '').toLowerCase();
+  if (kind === 'order_delivery' || meta.quote_id || meta.quote_number) {
+    const routingMeta = await loadQuoteRoutingMeta(sb, {
+      quoteId: meta.quote_id,
+      quoteNumber: meta.quote_number || sentDeliveryDisplayNumber(session),
+    });
+    const fromQuote = printGroupsFromQuoteLines(routingMeta.lines);
+    if (fromQuote.length) return fromQuote;
+  }
+  return sanitizeDeliveryNotePrintGroups(
+    buildDeliveryPrintGroupsFromEntries(entries || [], nameFormatter),
+  );
+}
+
 async function opDeliverySentDetail(body, user) {
   await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || body.sessionId || '').trim();
@@ -3891,11 +3945,15 @@ async function opDeliverySentDetail(body, user) {
     ? await fetchDeliverySignatureAsDataUri(signatureUrl)
     : '';
   const documentKind = String(meta.document_kind || 'delivery').trim() || 'delivery';
+  const routingMeta = (documentKind === 'order_delivery' || meta.quote_id || meta.quote_number)
+    ? await loadQuoteRoutingMeta(sb, { quoteId: meta.quote_id, quoteNumber: meta.quote_number })
+    : {};
   const customerSentLines = deliveryCustomerSentLines(entries || []).map((line) => ({
     id: line.id,
     label: warehousePacketDisplayLabel(line),
     sent_at: line.metadata?.sent_to_customer_at || null,
   }));
+  const printGroups = await resolveSentDeliveryPrintGroups(sb, session, entries, nameFormatter);
   return {
     session: {
       id: session.id,
@@ -3904,13 +3962,14 @@ async function opDeliverySentDetail(body, user) {
       document_kind: documentKind,
       status: session.status,
       submitted_at: session.submitted_at || session.created_at,
-      driver_name: formatSentDriverLabel(meta),
+      driver_name: String(meta.driver_name || meta.customer_driver_name || '').trim(),
+      driver_phone: String(meta.customer_driver_phone || '').trim(),
       dispatched_by_name: meta.dispatched_by_name || session.created_by_name || '',
       driver_signature_url: signatureUrl,
-      customer_name: meta.customer_name || '',
-      customer_phone: meta.customer_phone || '',
+      customer_name: String(meta.customer_name || routingMeta.customer_name || '').trim(),
+      customer_phone: String(meta.customer_phone || routingMeta.customer_phone || '').trim(),
     },
-    print_groups: buildDeliveryPrintGroupsFromEntries(entries || [], nameFormatter),
+    print_groups: printGroups,
     customer_sent_lines: customerSentLines,
     driver_signature_data_uri: driverSignatureDataUri,
   };
