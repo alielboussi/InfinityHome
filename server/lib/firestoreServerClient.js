@@ -72,12 +72,19 @@ function fail(message, code) {
   return { data: null, error: { message: normalizeFailMessage(message), code: code || 'firestore' } };
 }
 
-function withoutUndefined(obj) {
-  const out = {};
-  Object.entries(obj || {}).forEach(([key, val]) => {
-    if (val !== undefined) out[key] = val;
-  });
-  return out;
+function withoutUndefined(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== undefined).map(withoutUndefined);
+  }
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    const out = {};
+    Object.entries(value).forEach(([key, val]) => {
+      if (val === undefined) return;
+      out[key] = withoutUndefined(val);
+    });
+    return out;
+  }
+  return value;
 }
 
 function compareValues(a, b) {

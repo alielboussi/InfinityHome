@@ -311,6 +311,16 @@ if (html.includes('- Bowl Single Seater')) throw new Error('delivery note must n
 
 execSync(
   `node --input-type=module -e "
+import { sanitizeDeliveryNotePrintGroups } from './src/utils/warehouseDeliveryPrintGroups.js';
+const groups = sanitizeDeliveryNotePrintGroups([{ assembly_name: 'Aria 2 Seater', units: 1, lines: [] }]);
+if (groups[0].elapsed_display !== '—') throw new Error('missing elapsed_display must become em dash, not undefined');
+if (JSON.stringify(groups).includes('undefined')) throw new Error('sanitized print groups must not serialize undefined');
+"`,
+  { cwd: root, stdio: 'pipe' },
+);
+
+execSync(
+  `node --input-type=module -e "
 import { printGroupsFromQuoteLines, whatsAppProductGroupsFromPrintGroups } from './src/utils/warehouseDeliveryPrintGroups.js';
 import { buildDeliveryNotePrintHtml } from './src/utils/buildDeliveryNotePrintHtml.js';
 import { buildWarehouseDeliveryWhatsAppMessage } from './src/utils/buildWarehouseDeliveryWhatsAppMessage.js';

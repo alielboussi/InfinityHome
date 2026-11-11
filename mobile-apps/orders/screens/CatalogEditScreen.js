@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
+import ChipSelect from '../components/ChipSelect';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
@@ -24,16 +25,34 @@ export default function CatalogEditScreen({
   load,
   save,
   extraFields = [],
-  subtitleKey,
+  subtitle,
+  renderRowDetail,
 }) {
   const { locale, toggleLocale } = useProductionKioskLocale();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [editingId, setEditingId] = useState('');
   const [name, setName] = useState('');
   const [extras, setExtras] = useState({});
   const [q, setQ] = useState('');
+
+  const resetForm = () => {
+    setEditingId('');
+    setName('');
+    setExtras({});
+  };
+
+  const fillForm = (row) => {
+    setEditingId(String(row.id));
+    setName(String(row.name || ''));
+    const next = {};
+    extraFields.forEach((field) => {
+      next[field.key] = row[field.key] == null ? '' : String(row[field.key]);
+    });
+    setExtras(next);
+  };
 
   const refresh = useCallback(async () => {
     if (!allowed) {
@@ -59,9 +78,12 @@ export default function CatalogEditScreen({
     setBusy(true);
     setError('');
     try {
-      await save({ name, ...extras });
-      setName('');
-      setExtras({});
+      await save({
+        id: editingId || undefined,
+        name,
+        ...extras,
+      });
+      resetForm();
       await refresh();
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
@@ -73,8 +95,13 @@ export default function CatalogEditScreen({
   const needle = q.trim().toLowerCase();
   const filtered = !needle
     ? rows
-    : rows.filter((row) => String(row.name || '').toLowerCase().includes(needle)
-      || String(row.phone || '').toLowerCase().includes(needle));
+    : rows.filter((row) => [
+      row.name,
+      row.phone,
+      row.description,
+      row.address,
+      row.city,
+    ].some((v) => String(v || '').toLowerCase().includes(needle)));
 
   return (
     <OrdersScreenShell
@@ -87,49 +114,81 @@ export default function CatalogEditScreen({
       onRefreshAccess={onRefreshAccess}
     >
       <View style={kiosk.card}>
-        {subtitleKey ? <Text style={kiosk.hint}>{tUi(subtitleKey, locale)}</Text> : null}
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder={tUi('name', locale)}
-          placeholderTextColor={theme.textDim}
-          style={styles.input}
-        />
-        {extraFields.map((field) => (
+        {subtitle ? <Text style={kiosk.hint}>{subtitle}</Text> : null}
+        <View style={kiosk.field}>
+          <Text style={kiosk.label}>{tUi('name', locale)}</Text>
           <TextInput
-            key={field.key}
-            value={String(extras[field.key] || '')}
-            onChangeText={(v) => setExtras((prev) => ({ ...prev, [field.key]: v }))}
-            placeholder={tUi(field.labelKey, locale)}
+            value={name}
+            onChangeText={setName}
+            placeholder={tUi('name', locale)}
             placeholderTextColor={theme.textDim}
-            keyboardType={field.keyboard || 'default'}
-            style={styles.input}
+            style={kiosk.input}
           />
-        ))}
+        </View>
+        {extraFields.map((field) => {
+          if (field.type === 'select') {
+            return (
+              <ChipSelect
+                key={field.key}
+                label={tUi(field.labelKey, locale)}
+                value={extras[field.key] || ''}
+                options={field.options || []}
+                onChange={(v) => setExtras((prev) => ({ ...prev, [field.key]: v }))}
+                placeholder={field.placeholder || '—'}
+              />
+            );
+          }
+          return (
+            <View key={field.key} style={kiosk.field}>
+              <Text style={kiosk.label}>{tUi(field.labelKey, locale)}</Text>
+              <TextInput
+                value={String(extras[field.key] || '')}
+                onChangeText={(v) => setExtras((prev) => ({ ...prev, [field.key]: v }))}
+                placeholder={tUi(field.labelKey, locale)}
+                placeholderTextColor={theme.textDim}
+                keyboardType={field.keyboard || 'default'}
+                multiline={Boolean(field.multiline)}
+                style={[kiosk.input, field.multiline && styles.area]}
+              />
+            </View>
+          );
+        })}
         <Pressable style={kiosk.btnPrimaryBlock} disabled={busy || !name.trim()} onPress={onSave}>
-          <Text style={kiosk.btnPrimaryBlockText}>{busy ? tUi('saving', locale) : tUi('save', locale)}</Text>
+          <Text style={kiosk.btnPrimaryBlockText}>
+            {busy ? tUi('saving', locale) : (editingId ? tUi('edit', locale) : tUi('save', locale))}
+          </Text>
         </Pressable>
+        {editingId ? (
+          <Pressable style={[kiosk.btn, { marginTop: 8 }]} onPress={resetForm}>
+            <Text style={kiosk.btnText}>{tUi('cancelEdit', locale)}</Text>
+          </Pressable>
+        ) : null}
       </View>
       <TextInput
         value={q}
         onChangeText={setQ}
         placeholder={tUi('search', locale)}
         placeholderTextColor={theme.textDim}
-        style={styles.input}
+        style={[kiosk.input, { marginBottom: 10 }]}
       />
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
       {loading ? <ActivityIndicator color={theme.primary} /> : (
         <FlatList
           data={filtered}
           keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={{ paddingBottom: 32, gap: 10 }}
+          contentContainerStyle={{ paddingBottom: 32 }}
           ListEmptyComponent={<Text style={kiosk.hint}>{tUi('empty', locale)}</Text>}
           renderItem={({ item }) => (
-            <View style={kiosk.card}>
+            <Pressable style={kiosk.card} onPress={() => fillForm(item)}>
               <Text style={kiosk.metaLine}>{textForDisplay(item.name, '—')}</Text>
-              {item.phone ? <Text style={kiosk.hint}>{item.phone}</Text> : null}
-              {item.price != null ? <Text style={kiosk.hint}>{item.price}</Text> : null}
-            </View>
+              {renderRowDetail ? renderRowDetail(item) : (
+                <>
+                  {item.phone ? <Text style={kiosk.hint}>{item.phone}</Text> : null}
+                  {item.price != null ? <Text style={kiosk.hint}>{item.price}</Text> : null}
+                </>
+              )}
+              <Text style={[kiosk.hint, { color: theme.primary }]}>{tUi('edit', locale)}</Text>
+            </Pressable>
           )}
         />
       )}
@@ -138,14 +197,5 @@ export default function CatalogEditScreen({
 }
 
 const styles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: theme.text,
-    marginBottom: 8,
-    backgroundColor: theme.surface,
-  },
+  area: { minHeight: 88, textAlignVertical: 'top' },
 });

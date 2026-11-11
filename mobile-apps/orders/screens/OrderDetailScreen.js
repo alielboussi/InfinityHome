@@ -1,22 +1,27 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Share, Text, View } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
+import ActionMenu from '../components/ActionMenu';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
-import { fetchOrdersQuote, sendOrdersQuoteProduction, setOrdersQuoteRoute } from '../services/ordersApi';
+import {
+  fetchOrdersQuote,
+  sendOrdersQuoteProduction,
+  setOrdersQuoteRoute,
+} from '../services/ordersApi';
 
 export default function OrderDetailScreen({ navigation, route, allowed, accessHint, onRefreshAccess }) {
   const quoteId = route.params?.quoteId;
   const { locale, toggleLocale } = useProductionKioskLocale();
   const [quote, setQuote] = useState(null);
   const [items, setItems] = useState([]);
+  const [routing, setRouting] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [prodRoute, setProdRoute] = useState('carpentry');
 
   const load = useCallback(async () => {
     if (!allowed || !quoteId) return;
@@ -26,6 +31,7 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
       const res = await fetchOrdersQuote(quoteId);
       setQuote(res.quote || null);
       setItems(res.items || []);
+      setRouting(res.routing || null);
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
     } finally {
@@ -36,6 +42,11 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   const send = async () => {
+    const prodRoute = String(routing?.route || '').toLowerCase();
+    if (prodRoute !== 'carpentry' && prodRoute !== 'upholstery') {
+      Alert.alert(tUi('workshopRoute', locale), tUi('workshopRequired', locale));
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -48,6 +59,8 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
       setBusy(false);
     }
   };
+
+  const alreadySent = Boolean(routing?.sent_to_production_at);
 
   return (
     <OrdersScreenShell
@@ -66,20 +79,50 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
             <Text style={kiosk.metaLine}>{textForDisplay(quote?.customer_name, '')}</Text>
             <Text style={kiosk.hint}>{quote?.customer_phone || ''}</Text>
             <Text style={kiosk.hint}>{[quote?.currency, quote?.total, quote?.status].filter(Boolean).join(' · ')}</Text>
+            {routing?.route ? (
+              <Text style={kiosk.hint}>
+                {routing.route === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale)}
+                {alreadySent ? ' · sent to production' : ''}
+              </Text>
+            ) : null}
           </View>
           {items.map((item) => (
             <View key={item.id} style={kiosk.card}>
-              <Text style={kiosk.metaLine}>{textForDisplay(item.name_override || item.name, '—')} × {item.quantity}</Text>
+              <Text style={kiosk.metaLine}>{textForDisplay(item.name || item.name_override, '—')} × {item.quantity}</Text>
+              {item.description ? <Text style={kiosk.hint}>{item.description}</Text> : null}
+              {item.wood ? <Text style={kiosk.hint}>Wood: {item.wood}</Text> : null}
+              {item.color_code ? <Text style={kiosk.hint}>Color: {item.color_code}</Text> : null}
             </View>
           ))}
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-            <Pressable style={[kiosk.card, { flex: 1 }, prodRoute === 'carpentry' && { borderWidth: 2, borderColor: theme.primary }]} onPress={() => setProdRoute('carpentry')}>
-              <Text style={kiosk.metaLine}>{tUi('routeCarpentry', locale)}</Text>
-            </Pressable>
-            <Pressable style={[kiosk.card, { flex: 1 }, prodRoute === 'upholstery' && { borderWidth: 2, borderColor: theme.primary }]} onPress={() => setProdRoute('upholstery')}>
-              <Text style={kiosk.metaLine}>{tUi('routeUpholstery', locale)}</Text>
-            </Pressable>
-          </View>
+          <ActionMenu
+            triggerLabel={tUi('actions', locale)}
+            items={[
+              {
+                key: 'edit',
+                label: tUi('editQuote', locale),
+                onClick: () => navigation.navigate('NewOrder', { quoteId }),
+              },
+              {
+                key: 'share',
+                label: tUi('shareQuote', locale),
+                onClick: async () => {
+                  const body = [
+                    quote?.quote_number,
+                    quote?.customer_name,
+                    '',
+                    ...items.map((it) => `${it.name || it.name_override} × ${it.quantity}`),
+                  ].join('\n');
+                  await Share.share({ message: body });
+                },
+              },
+              {
+                key: 'send',
+                label: busy ? tUi('saving', locale) : (alreadySent ? tUi('resendOrder', locale) : tUi('sendOrder', locale)),
+                disabled: busy,
+                onClick: send,
+              },
+            ]}
+          />
           <Pressable style={[kiosk.btnPrimaryBlock, { marginTop: 12 }]} disabled={busy} onPress={send}>
             <Text style={kiosk.btnPrimaryBlockText}>{busy ? tUi('saving', locale) : tUi('sendProduction', locale)}</Text>
           </Pressable>

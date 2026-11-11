@@ -4737,6 +4737,72 @@ export default async function handler(req, res) {
           return opOrdersStorageList(sb);
         });
         break;
+      case 'orders-units-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersUnitsList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersUnitsList(sb);
+        });
+        break;
+      case 'orders-quote-delete':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersQuoteDelete } = await import('../lib/ordersAppMobile.js');
+          return opOrdersQuoteDelete(sb, body);
+        });
+        break;
+      case 'orders-delivery-get':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersDeliveryGet } = await import('../lib/ordersAppMobile.js');
+          return opOrdersDeliveryGet(sb, body);
+        });
+        break;
+      case 'orders-delivery-receiver-check':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersDeliveryReceiverCheck } = await import('../lib/ordersAppMobile.js');
+          return opOrdersDeliveryReceiverCheck(sb, body, user);
+        });
+        break;
+      case 'orders-delivery-send-to-customer':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersDeliverySendToCustomer } = await import('../lib/ordersAppMobile.js');
+          return opOrdersDeliverySendToCustomer(sb, body, user);
+        });
+        break;
+      case 'orders-delivery-accept':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersDeliveryAccept } = await import('../lib/ordersAppMobile.js');
+          return opOrdersDeliveryAccept(sb, body, user);
+        });
+        break;
+      case 'orders-return-products-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersReturnProductsList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersReturnProductsList(sb);
+        });
+        break;
+      case 'orders-return-create':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersReturnCreate } = await import('../lib/ordersAppMobile.js');
+          return opOrdersReturnCreate(sb, body, user);
+        });
+        break;
+      case 'orders-storage-pos-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersStoragePosList } = await import('../lib/ordersAppMobile.js');
+          return opOrdersStoragePosList(sb, user);
+        });
+        break;
+      case 'orders-storage-pos-detail':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersStoragePosDetail } = await import('../lib/ordersAppMobile.js');
+          return opOrdersStoragePosDetail(sb, body, user);
+        });
+        break;
+      case 'orders-storage-submit':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersStorageSubmit } = await import('../lib/ordersAppMobile.js');
+          return opOrdersStorageSubmit(sb, body, user);
+        });
+        break;
       case 'carpentry-catalog-list':
         result = await opCarpentryCatalogList(user);
         break;
