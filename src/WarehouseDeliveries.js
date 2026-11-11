@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FaWhatsapp, FaUserCheck } from 'react-icons/fa';
+import { FaWhatsapp } from 'react-icons/fa';
 import { useLocation } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
