@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -11,13 +11,11 @@ import {
   View,
 } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
-import SearchPick from '../components/SearchPick';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
-import { tUi, textForDisplay } from '../lib/productionKioskI18n';
+import { tUi } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
 import {
-  fetchOrdersStorage,
   fetchOrdersStoragePosDetail,
   fetchOrdersStoragePosSales,
   submitOrdersStorageSend,
@@ -26,35 +24,45 @@ import {
 export default function StorageScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
   const { locale, toggleLocale } = useProductionKioskLocale();
   const [sales, setSales] = useState([]);
-  const [sends, setSends] = useState([]);
+  const [receiptQ, setReceiptQ] = useState('');
+  const [saleDate, setSaleDate] = useState('');
   const [saleId, setSaleId] = useState('');
   const [detail, setDetail] = useState(null);
   const [lineState, setLineState] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const load = useCallback(async () => {
+  const loadSalesIndex = useCallback(async () => {
     if (!allowed) return;
     setLoading(true);
     setError('');
     try {
-      const [pos, list] = await Promise.all([
-        fetchOrdersStoragePosSales(),
-        fetchOrdersStorage(),
-      ]);
+      const pos = await fetchOrdersStoragePosSales();
       setSales(pos.sales || pos.pos_sales || []);
-      setSends(Array.isArray(list.sends) ? list.sends : []);
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
-      setSends([]);
+      setSales([]);
     } finally {
       setLoading(false);
     }
   }, [allowed, locale]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => { void loadSalesIndex(); }, [loadSalesIndex]));
+
+  const receiptOptions = useMemo(() => {
+    const needle = receiptQ.trim().toLowerCase();
+    if (!needle && !saleDate.trim()) return [];
+    return sales.filter((s) => {
+      const matchesReceipt = !needle
+        || String(s.receipt_number || '').toLowerCase().includes(needle)
+        || String(s.id || '').includes(needle);
+      const dateKey = String(s.sale_date || s.created_at || '').slice(0, 10);
+      const matchesDate = !saleDate.trim() || dateKey === saleDate.trim();
+      return matchesReceipt && matchesDate;
+    }).slice(0, 12);
+  }, [sales, receiptQ, saleDate]);
 
   useEffect(() => {
     if (!saleId) {
@@ -94,7 +102,9 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
       const sendsOut = out?.storage_sends || (out?.storage_send ? [out.storage_send] : []);
       const numbers = sendsOut.map((s) => s.storage_number).filter(Boolean).join(', ');
       setNotice(numbers ? `${numbers} sent to Floor 1.` : 'Sent to Floor 1.');
-      await load();
+      setSaleId('');
+      setReceiptQ('');
+      setSaleDate('');
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
     } finally {
@@ -115,27 +125,64 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
       {loading ? <ActivityIndicator color={theme.primary} /> : (
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
           <Text style={kiosk.hint}>
-            Choose a Kitwe POS receipt, select sold lines, and send quantity to Floor 1 stock.
+            Search by receipt number and date, select lines, and send quantity to Floor 1 stock.
           </Text>
           {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
           {notice ? <Text style={[kiosk.hint, { color: '#047857' }]}>{notice}</Text> : null}
 
           <View style={kiosk.card}>
-            <SearchPick
-              label={tUi('receipt', locale)}
-              value={saleId}
-              options={sales.map((s) => ({
-                value: String(s.id),
-                label: `${s.receipt_number}${s.sale_date ? ` · ${String(s.sale_date).slice(0, 10)}` : ''}`,
-              }))}
-              onChange={setSaleId}
-              placeholder="Search receipt number"
-            />
+            <View style={kiosk.field}>
+              <Text style={kiosk.label}>{tUi('receipt', locale)}</Text>
+              {saleId && detail?.sale ? (
+                <Pressable onPress={() => { setSaleId(''); setReceiptQ(''); setSaleDate(''); }}>
+                  <Text style={kiosk.metaLine}>{detail.sale.receipt_number}</Text>
+                  <Text style={kiosk.hint}>Tap to change receipt</Text>
+                </Pressable>
+              ) : (
+                <>
+                  <TextInput
+                    style={kiosk.input}
+                    value={receiptQ}
+                    onChangeText={setReceiptQ}
+                    placeholder="Receipt #"
+                    placeholderTextColor={theme.textDim}
+                  />
+                  <TextInput
+                    style={[kiosk.input, { marginTop: 8 }]}
+                    value={saleDate}
+                    onChangeText={setSaleDate}
+                    placeholder="Date YYYY-MM-DD (optional)"
+                    placeholderTextColor={theme.textDim}
+                  />
+                  {!receiptQ.trim() && !saleDate.trim() ? (
+                    <Text style={kiosk.hint}>Enter receipt # or date to search.</Text>
+                  ) : null}
+                  {receiptOptions.map((s) => (
+                    <Pressable
+                      key={String(s.id)}
+                      style={styles.block}
+                      onPress={() => {
+                        setSaleId(String(s.id));
+                        setReceiptQ('');
+                      }}
+                    >
+                      <Text style={kiosk.hint}>
+                        {s.receipt_number}
+                        {s.sale_date ? ` · ${String(s.sale_date).slice(0, 10)}` : ''}
+                        {s.customer_name ? ` · ${s.customer_name}` : ''}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </>
+              )}
+            </View>
             {detail?.sale ? (
               <View style={{ marginBottom: 12 }}>
-                <Text style={kiosk.metaLine}>{detail.sale.receipt_number}</Text>
                 {detail.sale.customer_name ? (
-                  <Text style={kiosk.hint}>{detail.sale.customer_name}{detail.sale.customer_phone ? ` · ${detail.sale.customer_phone}` : ''}</Text>
+                  <Text style={kiosk.hint}>
+                    {detail.sale.customer_name}
+                    {detail.sale.customer_phone ? ` · ${detail.sale.customer_phone}` : ''}
+                  </Text>
                 ) : null}
               </View>
             ) : null}
@@ -175,14 +222,6 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
               <Text style={kiosk.btnPrimaryBlockText}>{busy ? tUi('saving', locale) : tUi('sendFloor1', locale)}</Text>
             </Pressable>
           </View>
-
-          {sends.map((row) => (
-            <View key={row.id} style={kiosk.card}>
-              <Text style={kiosk.metaLine}>{row.storage_number || row.display_number || row.id}</Text>
-              <Text style={kiosk.hint}>{textForDisplay(row.customer_name, row.status || '')}</Text>
-              {row.assembly_name ? <Text style={kiosk.hint}>{row.assembly_name} × {row.quantity}</Text> : null}
-            </View>
-          ))}
         </ScrollView>
       )}
     </OrdersScreenShell>

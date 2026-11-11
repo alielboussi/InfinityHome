@@ -102,7 +102,7 @@ export async function opOrdersCustomerSave(sb, body) {
 export async function opOrdersProductsList(sb) {
   const { data, error } = await sb
     .from('quotation_products')
-    .select('id, name, price, unit_id, description, active, created_at')
+    .select('id, name, price, currency, unit_id, description, active, created_at')
     .order('name', { ascending: true });
   if (error) throw new Error(error.message || 'Failed to load products.');
   return { products: data || [] };
@@ -118,6 +118,7 @@ export async function opOrdersProductSave(sb, body) {
   const row = {
     name,
     price: Number(body.price) || 0,
+    currency: trim(body.currency) || 'K',
     unit_id,
     description: trim(body.description) || null,
     active: body.active === false ? false : true,
@@ -427,29 +428,10 @@ export async function opOrdersDeliveryReceiverCheck(sb, body, user) {
   return { entry_id: entryId, receiver_checked: checked, metadata };
 }
 
-export async function opOrdersDeliverySendToCustomer(sb, body, user) {
-  const entryId = trim(body.entry_id);
-  const send = body.send !== false && body.sent !== false;
-  if (!entryId) throw new Error('entry_id is required.');
-  const { data: entry } = await sb.from('warehouse_delivery_entries').select('*').eq('id', entryId).maybeSingle();
-  if (!entry) throw new Error('Delivery line not found.');
-  if (entry.metadata?.received_at) throw new Error('This item is already accepted.');
-  const now = new Date().toISOString();
-  const metadata = { ...(entry.metadata || {}) };
-  if (send) {
-    metadata.sent_to_customer = true;
-    metadata.sent_to_customer_at = now;
-    metadata.sent_to_customer_by_email = user?.email || null;
-    metadata.receiver_checked_at = now;
-  } else {
-    metadata.sent_to_customer = false;
-    metadata.sent_to_customer_at = null;
-    metadata.sent_to_customer_by_email = null;
-    metadata.receiver_checked_at = null;
-  }
-  const { error } = await sb.from('warehouse_delivery_entries').update({ metadata }).eq('id', entryId);
-  if (error) throw new Error(error.message || 'Failed to update line');
-  return { entry_id: entryId, sent_to_customer: send, metadata };
+export async function opOrdersDeliverySendToCustomer(sb, body) {
+  void sb;
+  void body;
+  throw new Error('Send to customer is disabled. Receive lines into Kitwe using the checklist only.');
 }
 
 export async function opOrdersDeliveryAccept(sb, body, user) {
@@ -494,4 +476,40 @@ export async function opOrdersStoragePosDetail(sb, body, user) {
 
 export async function opOrdersStorageSubmit(sb, body, user) {
   return submitWarehouseStorageSend(sb, body, user);
+}
+
+/** Kitwe stock from Hassan Awad quote orders — received factory deliveries awaiting customer release. */
+export async function opOrdersKitweHassanInbound(sb) {
+  const { data: entries, error } = await sb
+    .from('warehouse_delivery_entries')
+    .select('id, quantity, name, metadata, session_id')
+    .limit(800);
+  if (error) throw new Error(error.message || 'Failed to load Kitwe inbound lines.');
+  const aggregated = new Map();
+  for (const row of entries || []) {
+    const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+    const quoteId = String(meta.quote_id || '').trim();
+    if (!quoteId) continue;
+    if (meta.sent_to_customer === true) continue;
+    if (!meta.receiver_checked_at && !meta.received_at) continue;
+    const product = String(meta.assembly_name || row.name || 'Product').trim();
+    const quoteNumber = String(meta.quote_number || meta.quote_id || quoteId).trim();
+    const key = `${quoteId}::${product}`;
+    const qty = Math.max(0, Number(row.quantity) || 0);
+    if (!aggregated.has(key)) {
+      aggregated.set(key, {
+        quote_id: quoteId,
+        quote_number: quoteNumber,
+        product_name: product,
+        quantity: qty,
+      });
+    } else {
+      aggregated.get(key).quantity += qty;
+    }
+  }
+  const lines = [...aggregated.values()].sort((a, b) => (
+    String(a.quote_number).localeCompare(String(b.quote_number))
+      || String(a.product_name).localeCompare(String(b.product_name))
+  ));
+  return { lines };
 }

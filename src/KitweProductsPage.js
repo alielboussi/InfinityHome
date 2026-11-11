@@ -34,6 +34,7 @@ import { generateRandomWarehouseSku16 } from './utils/warehouseRandomSku';
 import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { recomputeWarehouseLocationStock } from './services/warehouseTransfer';
 import useDebouncedValue from './hooks/useDebouncedValue';
+import { listHassanKitweQuoteInbound } from './services/warehouseDeliveryMobileApi';
 
 const emptyLine = () => ({ component_assembly_id: '', quantity: 1 });
 
@@ -77,6 +78,9 @@ export default function KitweProductsPage() {
   const [bulkSelected, setBulkSelected] = useState(() => new Set());
   const [bulkLabelDialogOpen, setBulkLabelDialogOpen] = useState(false);
   const [bulkLabelBusy, setBulkLabelBusy] = useState(false);
+  const [hassanInbound, setHassanInbound] = useState([]);
+  const [hassanInboundError, setHassanInboundError] = useState('');
+  const [hassanInboundLoading, setHassanInboundLoading] = useState(true);
   const hasCatalogRef = useRef(false);
   const retailLoadSeqRef = useRef(0);
   const { data: catalogData, error: catalogError, isLoading: catalogLoading } = useWarehouseCatalogQuery();
@@ -147,6 +151,26 @@ export default function KitweProductsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setHassanInboundLoading(true);
+      setHassanInboundError('');
+      try {
+        const res = await listHassanKitweQuoteInbound();
+        if (!cancelled) setHassanInbound(res?.lines || []);
+      } catch (err) {
+        if (!cancelled) {
+          setHassanInbound([]);
+          setHassanInboundError(err?.message || 'Failed to load Hassan quote stock.');
+        }
+      } finally {
+        if (!cancelled) setHassanInboundLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!showCreateSet || setSku) return;
@@ -703,6 +727,42 @@ export default function KitweProductsPage() {
         Listed products are Factory→Kitwe deliveries accepted by Hassan, plus any product you create here.
         Components used in a Kitwe set are hidden; sets show on this list with their products expandable below each set row.
       </p>
+
+      <section className="kitwe-hassan-inbound-panel" style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 17, margin: '0 0 8px' }}>Hassan Awad quote orders in Kitwe</h2>
+        <p style={{ color: 'var(--kitwe-muted, #94a3b8)', margin: '0 0 12px', lineHeight: 1.45 }}>
+          Factory deliveries linked to Hassan quotes — received into Kitwe and held until a future customer release app.
+        </p>
+        {hassanInboundError ? (
+          <div className="report-error" style={{ marginBottom: 8 }}>{hassanInboundError}</div>
+        ) : null}
+        {hassanInboundLoading ? (
+          <div style={{ color: 'var(--kitwe-muted, #94a3b8)' }}>Loading Hassan orders…</div>
+        ) : hassanInbound.length === 0 ? (
+          <div style={{ color: 'var(--kitwe-muted, #94a3b8)' }}>No Hassan quote stock in Kitwe yet.</div>
+        ) : (
+          <div className="kitwe-catalog-table-wrap">
+            <table className="kitwe-catalog-table" style={{ minWidth: 480 }}>
+              <thead>
+                <tr>
+                  <th>Quote</th>
+                  <th>Product</th>
+                  <th style={{ textAlign: 'right' }}>Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hassanInbound.map((line) => (
+                  <tr key={`${line.quote_id}-${line.product_name}`}>
+                    <td>{line.quote_number || line.quote_id}</td>
+                    <td>{line.product_name}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{line.quantity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="kitwe-catalog-toolbar">
         <input

@@ -88,6 +88,10 @@ export function fetchOrdersStorage() {
   return warehouseMobileRequest('orders-storage-list');
 }
 
+export function fetchOrdersKitweHassanInbound() {
+  return warehouseMobileRequest('orders-kitwe-hassan-inbound');
+}
+
 export function fetchOrdersStoragePosSales() {
   return warehouseMobileRequest('orders-storage-pos-list');
 }

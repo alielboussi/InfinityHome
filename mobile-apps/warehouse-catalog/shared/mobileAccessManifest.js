@@ -197,7 +197,8 @@ export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_packets',
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
-]);
+  'hassan_kitwe_orders',
+];
 
 /** Every navigable screen (CI + defaults). */
 export const MOBILE_SCREENS = Object.freeze([
@@ -261,6 +262,12 @@ export const MOBILE_SCREENS = Object.freeze([
     permissionMatrix: true,
   },
   {
+    id: 'hassan_kitwe_orders',
+    label: 'Hassan orders',
+    description: 'Hassan Awad quote lines received into Kitwe (awaiting customer release)',
+    permissionMatrix: true,
+  },
+  {
     id: 'kitwe_send_delivery',
     label: 'Send to Kitwe',
     description: 'Production app: factory truck delivery → Hassan acceptance',
@@ -309,6 +316,7 @@ const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_incomplete_products: 'WarehouseIncompleteProducts',
   warehouse_packets: 'WarehousePackets',
   warehouse_unused_packets: 'WarehouseUnusedPackets',
+  hassan_kitwe_orders: 'HassanKitweOrders',
   kitwe_send_delivery: 'KitweSendHome',
 });
 

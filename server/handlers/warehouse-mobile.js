@@ -4234,36 +4234,9 @@ async function opDeliveryReceiverCheck(body, user) {
 }
 
 async function opDeliveryReceiverSendToCustomer(body, user) {
-  if (!canWarehouseDeliveryReceiverActions(user)) {
-    const err = new Error('Only the Kitwe receiver can send items to the customer.');
-    err.status = 403;
-    throw err;
-  }
-  const entryId = String(body.entry_id || '');
-  const send = body.send !== false && body.sent !== false;
-  if (!entryId) throw new Error('entry_id is required.');
-  const sb = getService();
-  const { data: entry } = await sb.from('warehouse_delivery_entries').select('*').eq('id', entryId).maybeSingle();
-  if (!entry) throw new Error('Delivery line not found.');
-  if (entry.metadata?.received_at) {
-    throw new Error('This item is already accepted.');
-  }
-  const now = new Date().toISOString();
-  const metadata = { ...(entry.metadata || {}) };
-  if (send) {
-    metadata.sent_to_customer = true;
-    metadata.sent_to_customer_at = now;
-    metadata.sent_to_customer_by_email = user?.email || null;
-    metadata.receiver_checked_at = now;
-  } else {
-    metadata.sent_to_customer = false;
-    metadata.sent_to_customer_at = null;
-    metadata.sent_to_customer_by_email = null;
-    metadata.receiver_checked_at = null;
-  }
-  const { error } = await sb.from('warehouse_delivery_entries').update({ metadata }).eq('id', entryId);
-  if (error) throw new Error(error.message || 'Failed to update line');
-  return { entry_id: entryId, sent_to_customer: send, metadata };
+  void body;
+  void user;
+  throw new Error('Send to customer is disabled. Tick lines to receive into Kitwe stock only.');
 }
 
 async function opDeliveryAccept(body, user) {
@@ -4809,6 +4782,17 @@ export default async function handler(req, res) {
           return opOrdersStorageSubmit(sb, body, user);
         });
         break;
+      case 'orders-kitwe-hassan-inbound': {
+        const grant = await mobileAccessGrantForUser(user);
+        const { evaluateOrdersAppAccess, opOrdersKitweHassanInbound } = await import('../lib/ordersAppMobile.js');
+        if (!canWarehouseDeliveryReceiverActions(user) && !evaluateOrdersAppAccess(grant, user?.email)) {
+          const err = new Error('You do not have access to Hassan quote stock in Kitwe.');
+          err.status = 403;
+          throw err;
+        }
+        result = await opOrdersKitweHassanInbound(getService());
+        break;
+      }
       case 'carpentry-catalog-list':
         result = await opCarpentryCatalogList(user);
         break;

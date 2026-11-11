@@ -10,11 +10,17 @@ export default function SearchPick({
   onChange,
   placeholder = 'Search…',
   emptyLabel = 'Select…',
+  searchRequired = true,
+  recentWhenEmpty = [],
+  recentLimit = 2,
+  searchHint = 'Type to search',
 }) {
   const [q, setQ] = useState('');
   const selected = options.find((o) => String(o.value) === String(value || ''));
   const needle = q.trim().toLowerCase();
-  const visible = options.filter((o) => !needle || String(o.label || '').toLowerCase().includes(needle)).slice(0, 16);
+  const visible = needle
+    ? options.filter((o) => String(o.label || '').toLowerCase().includes(needle)).slice(0, 16)
+    : (searchRequired ? (recentWhenEmpty || []).slice(0, recentLimit) : options.slice(0, 16));
 
   return (
     <View style={kiosk.field}>
@@ -33,6 +39,9 @@ export default function SearchPick({
             placeholderTextColor={theme.textDim}
             style={kiosk.input}
           />
+          {searchRequired && !needle && !visible.length ? (
+            <Text style={kiosk.hint}>{searchHint}</Text>
+          ) : null}
           {visible.map((opt) => (
             <Pressable
               key={String(opt.value)}

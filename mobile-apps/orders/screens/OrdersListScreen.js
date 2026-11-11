@@ -17,7 +17,6 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
 import {
-  deleteOrdersQuote,
   fetchOrdersQuote,
   fetchOrdersQuotes,
   sendOrdersQuoteProduction,
@@ -119,6 +118,7 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
       {loading ? <ActivityIndicator color={theme.primary} /> : (
         <FlatList
+          style={{ flex: 1 }}
           data={filtered}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={{ paddingBottom: 32 }}
@@ -169,28 +169,6 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
                         key: 'open',
                         label: 'Open quote',
                         onClick: () => navigation.navigate('OrderDetail', { quoteId: item.id }),
-                      },
-                      {
-                        key: 'delete',
-                        label: tUi('deleteQuote', locale),
-                        tone: 'delete',
-                        onClick: () => {
-                          Alert.alert(tUi('deleteQuote', locale), 'Delete this quote? This cannot be undone.', [
-                            { text: 'Cancel', style: 'cancel' },
-                            {
-                              text: 'Delete',
-                              style: 'destructive',
-                              onPress: async () => {
-                                try {
-                                  await deleteOrdersQuote(item.id);
-                                  await load();
-                                } catch (err) {
-                                  Alert.alert('Delete failed', err?.message || '');
-                                }
-                              },
-                            },
-                          ]);
-                        },
                       },
                     ]}
                   />

@@ -57,11 +57,16 @@ export function setDeliveryEntryReceiverCheck(entryId, checked) {
   return warehouseDeliveryMobileOp('delivery-receiver-check', { entry_id: entryId, checked });
 }
 
+/** @deprecated Send-to-customer is disabled — receive into Kitwe only. */
 export function setDeliveryEntrySendToCustomer(entryId, send) {
   return warehouseDeliveryMobileOp('delivery-receiver-send-to-customer', {
     entry_id: entryId,
     send,
   });
+}
+
+export function listHassanKitweQuoteInbound() {
+  return warehouseDeliveryMobileOp('orders-kitwe-hassan-inbound');
 }
 
 export function acceptWarehouseDeliverySession(sessionId) {

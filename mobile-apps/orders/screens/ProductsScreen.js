@@ -21,6 +21,7 @@ export default function ProductsScreen(props) {
     <CatalogEditScreen
       {...props}
       titleKey="tileProducts"
+      showPriceCurrencyToggle
       subtitle="Tap a saved product to edit. Choose a unit of measure and enter a description when creating or updating."
       extraFields={[
         { key: 'price', labelKey: 'price', keyboard: 'decimal-pad' },
@@ -42,7 +43,7 @@ export default function ProductsScreen(props) {
         return (
           <>
             <Text style={kiosk.hint}>
-              {item.price != null ? `K ${Number(item.price || 0).toFixed(2)}` : ''}
+              {item.price != null ? `${item.currency || 'K'} ${Number(item.price || 0).toFixed(2)}` : ''}
               {unit ? ` · ${unitLabel(unit)}` : ''}
             </Text>
             {item.description ? <Text style={kiosk.hint} numberOfLines={3}>{item.description}</Text> : null}

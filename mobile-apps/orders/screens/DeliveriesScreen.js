@@ -19,7 +19,6 @@ import {
   deliveryEntryPendingAcceptCount,
   deliveryEntryReceived,
   deliveryEntryReceiverProgress,
-  deliveryEntrySentToCustomer,
   formatDateTime,
   groupWarehouseDisplayLines,
   isWarehouseCompleted,
@@ -34,7 +33,6 @@ import {
   acceptOrdersDelivery,
   fetchOrdersDeliveries,
   setOrdersDeliveryReceiverCheck,
-  setOrdersDeliverySendToCustomer,
 } from '../services/ordersApi';
 
 export default function DeliveriesScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
@@ -99,18 +97,6 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
     }
   };
 
-  const toggleCustomer = async (session, line, send) => {
-    setBusy(true);
-    try {
-      const res = await setOrdersDeliverySendToCustomer(line.id, send);
-      patchEntry(String(session.id), line.id, res.metadata);
-    } catch (err) {
-      Alert.alert('Update failed', err?.message || '');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const accept = async (session) => {
     setBusy(true);
     try {
@@ -136,7 +122,7 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
       onRefreshAccess={onRefreshAccess}
     >
       <Text style={kiosk.hint}>
-        Factory → Kitwe deliveries. Open a card, tick received items, then accept stock.
+        Factory → Kitwe deliveries. Tick received lines to record into Kitwe stock, then accept the delivery.
       </Text>
       <TextInput
         value={search}
@@ -197,10 +183,9 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
                     return <Text key={line.id} style={[kiosk.metaLine, { marginTop: 10 }]}>{line.name}</Text>;
                   }
                   if (kind !== 'receiver-line') return null;
-                  const sentToCustomer = deliveryEntrySentToCustomer(line);
                   const checked = Boolean(line?.metadata?.receiver_checked_at);
                   const received = deliveryEntryReceived(line);
-                  const kitweChecked = (checked || received) && !sentToCustomer;
+                  const kitweChecked = checked || received;
                   const canToggle = pending && !received;
                   return (
                     <View key={line.id} style={styles.tickRow}>
@@ -214,20 +199,9 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
                         </View>
                         <Text style={styles.tickLabel}>
                           {warehousePacketDisplayLabel(line)}
-                          {sentToCustomer ? ' (sent to customer)' : (received ? ' (received)' : '')}
+                          {received ? ' (received into Kitwe)' : ''}
                         </Text>
                       </Pressable>
-                      {canToggle ? (
-                        <Pressable
-                          style={[kiosk.btn, { marginTop: 8 }]}
-                          disabled={busy}
-                          onPress={() => toggleCustomer(openSession, line, !sentToCustomer)}
-                        >
-                          <Text style={kiosk.btnText}>
-                            {sentToCustomer ? tUi('sentCustomer', locale) : tUi('sendCustomer', locale)}
-                          </Text>
-                        </Pressable>
-                      ) : null}
                     </View>
                   );
                 })}

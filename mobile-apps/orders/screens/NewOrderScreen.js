@@ -72,7 +72,6 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
   const [routeChoice, setRouteChoice] = useState('');
   const [vatChoice, setVatChoice] = useState('');
   const [currency, setCurrency] = useState('K');
-  const [discount, setDiscount] = useState('0');
   const [quoteId, setQuoteId] = useState(quoteIdParam || '');
   const [openAccessories, setOpenAccessories] = useState('');
 
@@ -97,7 +96,6 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
         setQuoteId(q.id || quoteIdParam);
         setCustomerId(q.customer_id ? String(q.customer_id) : '');
         setCurrency(q.currency || 'K');
-        setDiscount(String(q.discount || 0));
         setVatChoice(q.vat_apply ? 'vat16' : 'exclusive');
         setRouteChoice(String(detail.routing?.route || '').toLowerCase());
         setLines((detail.items || []).map((it) => ({
@@ -156,11 +154,9 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
 
   const totals = useMemo(() => {
     const subtotal = lines.reduce((s, line) => s + lineQty(line) * Number(line.unit_price || 0), 0);
-    const disc = Number(discount || 0);
-    const afterDisc = Math.max(0, subtotal - disc);
-    const vatAmount = vatChoice === 'vat16' ? afterDisc * 0.16 : 0;
-    return { subtotal, disc, vatAmount, total: afterDisc + vatAmount };
-  }, [lines, discount, vatChoice]);
+    const vatAmount = vatChoice === 'vat16' ? subtotal * 0.16 : 0;
+    return { subtotal, vatAmount, total: subtotal + vatAmount };
+  }, [lines, vatChoice]);
 
   const onSave = async () => {
     if (productionRouteMissing) {
@@ -182,7 +178,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
         id: quoteId || undefined,
         customer_id: customerId,
         currency,
-        discount: Number(discount || 0),
+        discount: 0,
         vat_choice: vatChoice,
         route: routeChoice,
         items: lines.map((line) => ({
@@ -213,13 +209,15 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
 
   const customer = customers.find((c) => String(c.id) === String(customerId));
   const custNeedle = custQ.trim().toLowerCase();
-  const visibleCustomers = customers.filter((c) => !custNeedle
-    || String(c.name || '').toLowerCase().includes(custNeedle)
-    || String(c.phone || '').includes(custNeedle)).slice(0, 12);
+  const visibleCustomers = !custNeedle
+    ? []
+    : customers.filter((c) => String(c.name || '').toLowerCase().includes(custNeedle)
+      || String(c.phone || '').includes(custNeedle)).slice(0, 12);
   const prodNeedle = prodQ.trim().toLowerCase();
-  const visibleProducts = products.filter((p) => !prodNeedle
-    || String(p.name || '').toLowerCase().includes(prodNeedle)
-    || String(p.description || '').toLowerCase().includes(prodNeedle)).slice(0, 12);
+  const visibleProducts = !prodNeedle
+    ? []
+    : products.filter((p) => String(p.name || '').toLowerCase().includes(prodNeedle)
+      || String(p.description || '').toLowerCase().includes(prodNeedle)).slice(0, 12);
 
   return (
     <OrdersScreenShell
@@ -270,6 +268,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                   placeholder={tUi('search', locale)}
                   placeholderTextColor={theme.textDim}
                 />
+                {!custNeedle ? <Text style={kiosk.hint}>Type to search customers.</Text> : null}
                 {visibleCustomers.map((c) => (
                   <Pressable key={c.id} style={styles.pickRow} onPress={() => setCustomerId(String(c.id))}>
                     <Text style={kiosk.metaLine}>{textForDisplay(c.name, '')}</Text>
@@ -292,22 +291,11 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
             </View>
             <Text style={[kiosk.label, { marginTop: 12 }]}>{tUi('currency', locale)}</Text>
             <View style={styles.row}>
-              {['K', '$', 'FC'].map((code) => (
+              {['K', '$'].map((code) => (
                 <Pressable key={code} style={[styles.routeBtn, currency === code && styles.routeOn]} onPress={() => setCurrency(code)}>
                   <Text style={kiosk.metaLine}>{code}</Text>
                 </Pressable>
               ))}
-            </View>
-            <View style={kiosk.field}>
-              <Text style={kiosk.label}>{tUi('discount', locale)}</Text>
-              <TextInput
-                style={kiosk.input}
-                value={discount}
-                onChangeText={setDiscount}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                placeholderTextColor={theme.textDim}
-              />
             </View>
           </View>
 
@@ -320,6 +308,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
               placeholder={tUi('search', locale)}
               placeholderTextColor={theme.textDim}
             />
+            {!prodNeedle ? <Text style={kiosk.hint}>Type to search products.</Text> : null}
             {visibleProducts.map((p) => (
               <Pressable key={p.id} style={styles.pickRow} onPress={() => addProduct(p)}>
                 <Text style={kiosk.metaLine}>{textForDisplay(p.name, '')}</Text>
@@ -385,20 +374,20 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                         </View>
                       ))}
                     </View>
-                    <ChipSelect
-                      label={tUi('wood', locale)}
-                      value={line.wood}
-                      options={CARPENTRY_WOOD_OPTIONS.map((o) => ({ value: o, label: o }))}
-                      onChange={(v) => updateLine(line.key, { wood: v })}
-                    />
                     {showUph ? (
                       <>
+                        <ChipSelect
+                          label={tUi('wood', locale)}
+                          value={line.wood}
+                          options={CARPENTRY_WOOD_OPTIONS.map((o) => ({ value: o, label: o }))}
+                          onChange={(v) => updateLine(line.key, { wood: v })}
+                        />
                         <View style={kiosk.field}>
                           <Text style={kiosk.label}>{tUi('leather', locale)}</Text>
                           <TextInput
                             style={kiosk.input}
                             value={line.leather_code}
-                            onChangeText={(v) => updateLine(line.key, { leather_code: v })}
+                            onChangeText={v => updateLine(line.key, { leather_code: v })}
                           />
                         </View>
                         <ChipSelect
@@ -408,16 +397,25 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                           onChange={(v) => updateLine(line.key, { foam_type: v })}
                         />
                       </>
-                    ) : (
-                      <View style={kiosk.field}>
-                        <Text style={kiosk.label}>{tUi('color', locale)}</Text>
-                        <TextInput
-                          style={kiosk.input}
-                          value={line.color_code}
-                          onChangeText={(v) => updateLine(line.key, { color_code: v })}
+                    ) : null}
+                    {showCarp ? (
+                      <>
+                        <ChipSelect
+                          label={tUi('wood', locale)}
+                          value={line.wood}
+                          options={CARPENTRY_WOOD_OPTIONS.map((o) => ({ value: o, label: o }))}
+                          onChange={(v) => updateLine(line.key, { wood: v })}
                         />
-                      </View>
-                    )}
+                        <View style={kiosk.field}>
+                          <Text style={kiosk.label}>{tUi('color', locale)}</Text>
+                          <TextInput
+                            style={kiosk.input}
+                            value={line.color_code}
+                            onChangeText={(v) => updateLine(line.key, { color_code: v })}
+                          />
+                        </View>
+                      </>
+                    ) : null}
                     {showCarp ? (
                       <View style={kiosk.field}>
                         <Text style={kiosk.label}>{tUi('accessories', locale)}</Text>
@@ -455,7 +453,6 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
 
           <View style={kiosk.card}>
             <Text style={kiosk.hint}>{tUi('subtotal', locale)} {currency} {totals.subtotal.toFixed(2)}</Text>
-            <Text style={kiosk.hint}>{tUi('discount', locale)} {currency} {totals.disc.toFixed(2)}</Text>
             <Text style={kiosk.hint}>{tUi('vat', locale)} {currency} {totals.vatAmount.toFixed(2)}</Text>
             <Text style={kiosk.metaLine}>{tUi('total', locale)} {currency} {totals.total.toFixed(2)}</Text>
           </View>

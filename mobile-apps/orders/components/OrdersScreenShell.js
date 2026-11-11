@@ -34,11 +34,14 @@ export default function OrdersScreenShell({
             </Pressable>
           ) : null}
         </>
-      ) : children}
+      ) : (
+        <View style={styles.body}>{children}</View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  body: { flex: 1 },
 });

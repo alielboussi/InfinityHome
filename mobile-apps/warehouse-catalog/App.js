@@ -22,6 +22,7 @@ import PacketFormScreen from './screens/PacketFormScreen';
 import ProductFormScreen from './screens/ProductFormScreen';
 import SetFormScreen from './screens/SetFormScreen';
 import WarehouseProductDetailScreen from './screens/WarehouseProductDetailScreen';
+import HassanChecklistScreen from './screens/HassanChecklistScreen';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { MOBILE_APP_DISPLAY_NAME } from './shared/mobileAccessManifest';
 import { stackScreenOptions, theme } from './shared/theme';
@@ -147,6 +148,13 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen name="ProductForm" options={{ title: 'Product' }} component={ProductFormScreen} />
       <Stack.Screen name="SetForm" options={{ title: 'Set' }} component={SetFormScreen} />
+      <Stack.Screen name="HassanKitweOrders" options={{ title: 'Hassan orders' }}>
+        {(props) => (
+          <MobileScreenGate screenId="hassan_kitwe_orders" grant={grant} navigation={props.navigation}>
+            <HassanChecklistScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
     </Stack.Navigator>
     </WarehouseCatalogProvider>
     </MobileAccessGrantProvider>

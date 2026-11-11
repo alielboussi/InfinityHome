@@ -17,10 +17,14 @@ import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import {
-  WAREHOUSE_RETURN_REASON_GROUPS,
   returnOrderUnitLabel,
   returnReasonShowsLeatherCode,
 } from '../lib/warehouseReturnUi';
+import {
+  applyRepairReasonPick,
+  carpentryRepairReasonOptions,
+  upholsteryRepairReasonOptions,
+} from '../lib/repairReasonOptions';
 import { theme } from '../shared/theme';
 import {
   createOrdersReturn,
@@ -32,14 +36,6 @@ import {
 } from '../services/ordersApi';
 
 const emptyUnit = () => ({ reason: '', reason_group: '', leather_code: '' });
-
-function reasonOptions() {
-  const opts = [];
-  WAREHOUSE_RETURN_REASON_GROUPS.forEach((group) => {
-    group.reasons.forEach((r) => opts.push({ value: `${group.id}::${r}`, label: `${group.label}: ${r}` }));
-  });
-  return opts;
-}
 
 export default function RepairsScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
   const { locale, toggleLocale } = useProductionKioskLocale();
@@ -55,6 +51,7 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
   const [assemblyId, setAssemblyId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [unitLines, setUnitLines] = useState([emptyUnit()]);
+  const [receiptQ, setReceiptQ] = useState('');
   const [receiptSaleId, setReceiptSaleId] = useState('');
   const [receiptDetail, setReceiptDetail] = useState(null);
   const [receiptLineState, setReceiptLineState] = useState({});
@@ -163,6 +160,18 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
     label: `${p.name || p.assembly_name}${p.kitwe_qty != null ? ` · stock ${p.kitwe_qty}` : ''}`,
   }));
 
+  const receiptNeedle = receiptQ.trim().toLowerCase();
+  const receiptOptions = !receiptNeedle
+    ? []
+    : sales
+      .filter((s) => String(s.receipt_number || '').toLowerCase().includes(receiptNeedle)
+        || String(s.id || '').includes(receiptNeedle))
+      .slice(0, 12)
+      .map((s) => ({
+        value: String(s.id),
+        label: `${s.receipt_number}${s.sale_date ? ` · ${String(s.sale_date).slice(0, 10)}` : ''}`,
+      }));
+
   return (
     <OrdersScreenShell
       title={tUi('tileRepairs', locale)}
@@ -186,22 +195,46 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
               label="Customer (optional)"
               value={customerId}
               options={customers.map((c) => ({ value: String(c.id), label: `${c.name}${c.phone ? ` · ${c.phone}` : ''}` }))}
-              onChange={(v) => { setCustomerId(v); setAssemblyId(''); }}
+              onChange={(v) => { setCustomerId(v); setAssemblyId(''); setReceiptSaleId(''); setReceiptQ(''); }}
               placeholder="Search customer — leave empty for Kitwe catalog"
+              searchRequired
+              searchHint="Type to search customers"
             />
 
             {customerReturnMode ? (
               <>
-                <SearchPick
-                  label={tUi('receipt', locale)}
-                  value={receiptSaleId}
-                  options={sales.map((s) => ({
-                    value: String(s.id),
-                    label: `${s.receipt_number}${s.sale_date ? ` · ${String(s.sale_date).slice(0, 10)}` : ''}`,
-                  }))}
-                  onChange={setReceiptSaleId}
-                  placeholder="Search receipt number"
-                />
+                <View style={kiosk.field}>
+                  <Text style={kiosk.label}>{tUi('receipt', locale)}</Text>
+                  {receiptSaleId && receiptDetail?.sale ? (
+                    <Pressable onPress={() => { setReceiptSaleId(''); setReceiptQ(''); setReceiptDetail(null); }}>
+                      <Text style={kiosk.metaLine}>{receiptDetail.sale.receipt_number}</Text>
+                      <Text style={kiosk.hint}>Tap to change receipt</Text>
+                    </Pressable>
+                  ) : (
+                    <>
+                      <TextInput
+                        style={kiosk.input}
+                        value={receiptQ}
+                        onChangeText={setReceiptQ}
+                        placeholder="Search receipt #"
+                        placeholderTextColor={theme.textDim}
+                      />
+                      {!receiptNeedle ? <Text style={kiosk.hint}>Type receipt number to search.</Text> : null}
+                      {receiptOptions.map((opt) => (
+                        <Pressable
+                          key={opt.value}
+                          style={styles.block}
+                          onPress={() => {
+                            setReceiptSaleId(opt.value);
+                            setReceiptQ('');
+                          }}
+                        >
+                          <Text style={kiosk.hint}>{opt.label}</Text>
+                        </Pressable>
+                      ))}
+                    </>
+                  )}
+                </View>
                 {(receiptDetail?.items || []).map((line) => {
                   const st = receiptLineState[String(line.id)] || {};
                   return (
@@ -228,22 +261,42 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
                               }))}
                             />
                           </View>
-                          <ChipSelect
-                            label={tUi('reason', locale)}
-                            value={st.reason_group && st.reason ? `${st.reason_group}::${st.reason}` : ''}
-                            options={reasonOptions()}
-                            onChange={(v) => {
-                              const [group, ...rest] = String(v).split('::');
-                              setReceiptLineState((prev) => ({
-                                ...prev,
-                                [String(line.id)]: {
-                                  ...prev[String(line.id)],
-                                  reason: rest.join('::'),
-                                  reason_group: group,
-                                },
-                              }));
-                            }}
-                          />
+                          <View style={styles.reasonRow}>
+                            <View style={{ flex: 1 }}>
+                              <ChipSelect
+                                label="Upholstery reason"
+                                value={st.reason_group === 'upholstery' && st.reason ? `upholstery::${st.reason}` : ''}
+                                options={upholsteryRepairReasonOptions()}
+                                onChange={(v) => {
+                                  const picked = applyRepairReasonPick(v);
+                                  setReceiptLineState((prev) => ({
+                                    ...prev,
+                                    [String(line.id)]: {
+                                      ...prev[String(line.id)],
+                                      ...picked,
+                                    },
+                                  }));
+                                }}
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <ChipSelect
+                                label="Carpentry reason"
+                                value={st.reason_group === 'carpentry' && st.reason ? `carpentry::${st.reason}` : ''}
+                                options={carpentryRepairReasonOptions()}
+                                onChange={(v) => {
+                                  const picked = applyRepairReasonPick(v);
+                                  setReceiptLineState((prev) => ({
+                                    ...prev,
+                                    [String(line.id)]: {
+                                      ...prev[String(line.id)],
+                                      ...picked,
+                                    },
+                                  }));
+                                }}
+                              />
+                            </View>
+                          </View>
                           {returnReasonShowsLeatherCode(st.reason) ? (
                             <View style={kiosk.field}>
                               <Text style={kiosk.label}>{tUi('leather', locale)}</Text>
@@ -271,6 +324,8 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
                   options={productOpts}
                   onChange={setAssemblyId}
                   placeholder="Search Kitwe product"
+                  searchRequired
+                  searchHint="Type to search Kitwe products"
                 />
                 <View style={kiosk.field}>
                   <Text style={kiosk.label}>{tUi('qty', locale)}</Text>
@@ -284,17 +339,34 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
                 {unitLines.map((line, index) => (
                   <View key={`unit-${index}`} style={styles.block}>
                     <Text style={kiosk.metaLine}>Unit {index + 1}</Text>
-                    <ChipSelect
-                      label={tUi('reason', locale)}
-                      value={line.reason_group && line.reason ? `${line.reason_group}::${line.reason}` : ''}
-                      options={reasonOptions()}
-                      onChange={(v) => {
-                        const [group, ...rest] = String(v).split('::');
-                        setUnitLines((prev) => prev.map((row, i) => (
-                          i === index ? { ...row, reason: rest.join('::'), reason_group: group } : row
-                        )));
-                      }}
-                    />
+                    <View style={styles.reasonRow}>
+                      <View style={{ flex: 1 }}>
+                        <ChipSelect
+                          label="Upholstery reason"
+                          value={line.reason_group === 'upholstery' && line.reason ? `upholstery::${line.reason}` : ''}
+                          options={upholsteryRepairReasonOptions()}
+                          onChange={(v) => {
+                            const picked = applyRepairReasonPick(v);
+                            setUnitLines((prev) => prev.map((row, i) => (
+                              i === index ? { ...row, ...picked } : row
+                            )));
+                          }}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <ChipSelect
+                          label="Carpentry reason"
+                          value={line.reason_group === 'carpentry' && line.reason ? `carpentry::${line.reason}` : ''}
+                          options={carpentryRepairReasonOptions()}
+                          onChange={(v) => {
+                            const picked = applyRepairReasonPick(v);
+                            setUnitLines((prev) => prev.map((row, i) => (
+                              i === index ? { ...row, ...picked } : row
+                            )));
+                          }}
+                        />
+                      </View>
+                    </View>
                     {returnReasonShowsLeatherCode(line.reason) ? (
                       <View style={kiosk.field}>
                         <Text style={kiosk.label}>{tUi('leather', locale)}</Text>
@@ -331,6 +403,7 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
 }
 
 const styles = StyleSheet.create({
+  reasonRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   block: {
     borderWidth: 1,
     borderColor: theme.border,
