@@ -139,6 +139,25 @@ export function evaluatePaintingWorkshopAppAccess(grant, email) {
   return isPaintingWorkshopAppAllowed(grant);
 }
 
+/** Hassan Awad — Orders app owner (every dashboard page). */
+export const ORDERS_APP_OWNER_EMAIL = 'hassanawad18@gmail.com';
+
+export function isOrdersAppOwnerEmail(email) {
+  return String(email || '').trim().toLowerCase() === ORDERS_APP_OWNER_EMAIL;
+}
+
+/** /user-access — Orders Android app (Hassan quotationer dashboard). */
+export function isOrdersAppAllowed(grant) {
+  return grant?.orders_app === 'allow';
+}
+
+/** Same rule as warehouse-mobile `orders-access-self`. Hassan and login-access admin always allowed. */
+export function evaluateOrdersAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (isOrdersAppOwnerEmail(email)) return true;
+  return isOrdersAppAllowed(grant);
+}
+
 /** Driver delivery Android app — User Access → Delivery (`warehouse_delivery_app` only). */
 export function evaluateWarehouseDeliveryDriverAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
@@ -418,6 +437,49 @@ export const PAINTING_APP_SCREENS = Object.freeze([
   },
 ]);
 
+export const ORDERS_APP_SCREENS = Object.freeze([
+  {
+    id: 'orders_customers',
+    label: 'Customers',
+    description: 'Quote customers (Hassan quotationer)',
+  },
+  {
+    id: 'orders_products',
+    label: 'Products',
+    description: 'Quote product catalog',
+  },
+  {
+    id: 'orders_new_order',
+    label: 'New Order',
+    description: 'Create a quotation / factory order',
+  },
+  {
+    id: 'orders_list',
+    label: 'Orders',
+    description: 'Factory orders and quotations',
+  },
+  {
+    id: 'orders_deliveries',
+    label: 'Deliveries',
+    description: 'Warehouse deliveries to Kitwe',
+  },
+  {
+    id: 'orders_repairs',
+    label: 'Repairs',
+    description: 'Kitwe returns and repairs',
+  },
+  {
+    id: 'orders_storage',
+    label: 'Storage',
+    description: 'Warehouse storage holds',
+  },
+  {
+    id: 'orders_tracking',
+    label: 'Tracking',
+    description: 'Repairs trackage (all return statuses)',
+  },
+]);
+
 export const DELIVERY_APP_SCREENS = Object.freeze([
   {
     id: 'delivery_send_kitwe',
@@ -441,6 +503,7 @@ const WORKSHOP_AND_DELIVERY_SCREEN_GROUPS = Object.freeze([
   { flag: 'carpentry_workshop_app', screens: CARPENTRY_APP_SCREENS },
   { flag: 'painting_workshop_app', screens: PAINTING_APP_SCREENS },
   { flag: 'warehouse_delivery_app', screens: DELIVERY_APP_SCREENS },
+  { flag: 'orders_app', screens: ORDERS_APP_SCREENS },
 ]);
 
 export function isWorkshopOrDeliveryScreenAllowed(grant, screenId, appFlag) {
@@ -510,6 +573,7 @@ export function defaultMobileAccessGrant() {
     warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
     painting_workshop_app: 'deny',
+    orders_app: 'deny',
     location_stock_increase: locationStockIncrease,
     location_photo_upload: locationPhotoUpload,
     screens,
@@ -730,6 +794,12 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
 
   merged.warehouse_delivery_app = (
     merged.warehouse_delivery_app === 'allow' || merged.warehouse_delivery_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
+  merged.orders_app = (
+    merged.orders_app === 'allow' || merged.orders_app === true
   )
     ? 'allow'
     : 'deny';

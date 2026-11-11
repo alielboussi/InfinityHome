@@ -999,7 +999,9 @@ body.enterprise-theme .kitwe-catalog-product-row {
 .kitwe-catalog-product-row__thumb img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: #ffffff;
   display: block;
 }
 
@@ -1140,7 +1142,9 @@ body.enterprise-theme .floor2-manufacture-tile__photo-hit:disabled {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: #ffffff;
   display: block;
 }
 

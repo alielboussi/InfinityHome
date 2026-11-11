@@ -540,7 +540,7 @@ export default function WarehouseFloor2Screen() {
                     <ActivityIndicator size="small" color={theme.primary} />
                   </View>
                 ) : rowImage ? (
-                  <Image source={{ uri: rowImage }} style={styles.inlayThumb} resizeMode="cover" />
+                  <Image source={{ uri: rowImage }} style={styles.inlayThumb} resizeMode="contain" />
                 ) : (
                   <View style={styles.inlayThumbPlaceholder}>
                     <MaterialCommunityIcons

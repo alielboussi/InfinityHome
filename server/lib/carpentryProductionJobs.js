@@ -5,6 +5,7 @@ import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockR
 import {
   listCarpentryCatalogProducts,
 } from './carpentryCatalog.js';
+import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
 import {
   adjustAssemblyInventory,
   resolveCarpentryStoreroomLocations,
@@ -377,7 +378,7 @@ export async function finishCarpentryProductionJob(sb, {
 
 export async function listCarpentryManufactureCandidates(sb) {
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
-    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata, category_id'),
+    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata, category_id, image_url'),
     sb.from(LOCATIONS).select('id, name'),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
@@ -397,10 +398,17 @@ export async function listCarpentryManufactureCandidates(sb) {
     );
   }
 
+  const assemblyById = new Map((assemblies || []).map((row) => [String(row.id), row]));
   const products = carpentryRows.map((p) => {
     const id = String(p.id);
-    const meta = p.metadata && typeof p.metadata === 'object' ? p.metadata : {};
-    const imageUrl = meta.floor2_wip_image_url || meta.catalog_image_url || meta.image_url || '';
+    const raw = assemblyById.get(id) || {};
+    const imageUrl = String(
+      p.floor2_image_url
+      || p.image_url
+      || readWarehouseFloor2WipImageUrl(raw)
+      || raw.image_url
+      || '',
+    ).trim();
     return {
       id,
       raw_assembly_id: id,
@@ -411,6 +419,7 @@ export async function listCarpentryManufactureCandidates(sb) {
       materials: p.materials || [],
       floor2_qty: floor2QtyByAssembly.get(id) || 0,
       image_url: imageUrl,
+      floor2_image_url: imageUrl,
     };
   });
 

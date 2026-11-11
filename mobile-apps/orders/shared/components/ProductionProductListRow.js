@@ -80,7 +80,7 @@ export default function ProductionProductListRow({
           accessibilityRole="button"
           accessibilityLabel={`View enlarged photo for ${label}`}
         >
-          <Image source={{ uri: imageUrl }} style={productionProductRowStyles.thumb} resizeMode="cover" />
+          <Image source={{ uri: imageUrl }} style={productionProductRowStyles.thumb} resizeMode="contain" />
         </TouchableOpacity>
       ) : (
         <View style={productionProductRowStyles.thumbPlaceholder}>

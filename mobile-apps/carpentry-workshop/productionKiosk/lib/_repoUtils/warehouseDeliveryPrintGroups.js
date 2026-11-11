@@ -156,3 +156,20 @@ export function printGroupsFromQuoteLines(lines) {
     })),
   );
 }
+
+/** WhatsApp product blocks from A4 print groups (quote/repair names — never catalog fallback). */
+export function whatsAppProductGroupsFromPrintGroups(printGroups) {
+  return sanitizeDeliveryNotePrintGroups(printGroups).map((group) => ({
+    assemblyName: group.assembly_name,
+    units: Math.max(1, Number(group.units) || 1),
+    packetLines: (group.lines || []).map((line) => {
+      const kind = String(line?.kind || line?.line_kind || '').toLowerCase();
+      const qtyRaw = line?.qty ?? line?.quantity;
+      return {
+        name: String(line?.name || '').trim(),
+        kind,
+        quantity: kind === 'field' || qtyRaw === '' || qtyRaw == null ? '' : Number(qtyRaw) || 0,
+      };
+    }),
+  }));
+}

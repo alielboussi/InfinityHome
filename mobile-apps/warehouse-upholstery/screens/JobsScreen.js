@@ -159,7 +159,7 @@ function JobCard({
   return (
     <View style={[kiosk.card, styles.jobCard]}>
       {thumb ? (
-        <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="cover" resizeMethod="resize" fadeDuration={0} />
+        <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="contain" resizeMethod="resize" fadeDuration={0} />
       ) : null}
       <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.finished_name || job.raw_name, '—')}</Text>
       <Text style={[styles.jobMeta, { textAlign }]}>
