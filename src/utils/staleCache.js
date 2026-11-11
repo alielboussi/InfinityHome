@@ -6,24 +6,58 @@ const PREFIX = 'staleCache:';
 
 function now() { return Date.now(); }
 
-export function cacheGet(key) {
+function readRecord(key) {
   try {
     const m = mem.get(key);
-    if (m && m.expiresAt > now()) return m.value;
+    if (m && m.value !== undefined) return m;
   } catch {}
   try {
     const raw = localStorage.getItem(PREFIX + key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return null;
-    if (parsed.expiresAt && parsed.expiresAt > now()) {
-      mem.set(key, parsed);
-      return parsed.value;
-    }
-    // expired; clean it
-    localStorage.removeItem(PREFIX + key);
+    if (!parsed || typeof parsed !== 'object' || parsed.value === undefined) return null;
+    mem.set(key, parsed);
+    return parsed;
   } catch {}
   return null;
+}
+
+export function cacheGet(key) {
+  const rec = readRecord(key);
+  if (!rec) return null;
+  if (rec.expiresAt && rec.expiresAt <= now()) {
+    try { localStorage.removeItem(PREFIX + key); } catch {}
+    try { mem.delete(key); } catch {}
+    return null;
+  }
+  return rec.value;
+}
+
+/** Cached value even after TTL — paint immediately, then refresh in the background. */
+export function cachePeek(key) {
+  const rec = readRecord(key);
+  return rec && rec.value !== undefined ? rec.value : null;
+}
+
+export const PORTAL_SWR_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Instant revisit: apply snapshot, skip spinner. Returns true when UI can paint now.
+ */
+export function applyPortalSnapshot(key, apply, setLoading) {
+  try {
+    const snap = cachePeek(key);
+    if (snap == null) {
+      if (typeof setLoading === 'function') setLoading(true);
+      return false;
+    }
+    apply(snap);
+    if (typeof setLoading === 'function') setLoading(false);
+    return true;
+  } catch {
+    if (typeof setLoading === 'function') setLoading(true);
+    return false;
+  }
 }
 
 export function cacheSet(key, value, ttlMs = 5 * 60 * 1000) {
@@ -56,5 +90,14 @@ export function cacheClearAll() {
   } catch {}
 }
 
-const staleCache = { cacheGet, cacheSet, cacheClear, cacheTouch, cacheClearAll };
+const staleCache = {
+  cacheGet,
+  cachePeek,
+  cacheSet,
+  cacheClear,
+  cacheTouch,
+  cacheClearAll,
+  applyPortalSnapshot,
+  PORTAL_SWR_TTL_MS,
+};
 export default staleCache;

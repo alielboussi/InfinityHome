@@ -13,18 +13,25 @@ async function openStagedDelivery(navigation, row) {
   const session = await warehouseMobileRequest('delivery-session-open', {});
   const qty = Math.max(1, Number(row.quantity) || 1);
   const now = new Date().toISOString();
+  const quoteLines = Array.isArray(row.lines) ? row.lines.filter((line) => String(line?.name || '').trim()) : [];
   const groups = [{
     assembly_id: row.assembly_id,
     units: qty,
+    assembly_name: row.assembly_name || row.assembly_id,
+    quote_id: row.quote_id || null,
+    quote_number: row.quote_number || null,
     finished_driver_checked: true,
     finished_driver_checked_at: now,
   }];
   const printNoteNumber = String(row.quote_number || row.production_job_id || '').trim();
-  const printGroups = [{
-    assembly_name: row.assembly_name || row.assembly_id,
-    units: qty,
+  const printGroups = (quoteLines.length ? quoteLines : [{
+    name: row.assembly_name || row.assembly_id,
+    quantity: qty,
+  }]).map((line) => ({
+    assembly_name: line.name,
+    units: Math.max(1, Number(line.quantity) || qty),
     lines: row.quote_number ? [{ name: `Order ${row.quote_number}`, kind: 'meta' }] : [],
-  }];
+  }));
   navigation.navigate('KitweSendSignature', {
     sessionId: session.session_id,
     deliveryNumber: session.delivery_number,
@@ -97,9 +104,20 @@ export default function DeliveryOrderQueueScreen({ navigation }) {
           renderItem={({ item }) => (
             <View style={kiosk.card}>
               <Text style={[styles.awaitingChip, { textAlign }]}>{tUi('deliveryStatus_completedAwaiting', locale)}</Text>
-              <Text style={[kiosk.metaLine, { textAlign }]}>
-                {textForDisplay(item.assembly_name, '—')} × {item.quantity}
-              </Text>
+              {Array.isArray(item.lines) && item.lines.length ? (
+                item.lines.map((line, idx) => (
+                  <Text key={`${line.name}-${idx}`} style={[kiosk.metaLine, { textAlign }]}>
+                    {textForDisplay(line.name, '—')} × {Math.max(1, Number(line.quantity) || 1)}
+                  </Text>
+                ))
+              ) : (
+                <Text style={[kiosk.metaLine, { textAlign }]}>
+                  {textForDisplay(item.assembly_name, '—')} × {item.quantity}
+                </Text>
+              )}
+              {item.customer_name ? (
+                <Text style={[kiosk.hint, { textAlign }]}>{textForDisplay(item.customer_name, '')}</Text>
+              ) : null}
               {item.department ? (
                 <Text style={[kiosk.hint, { textAlign }]}>{String(item.department).toUpperCase()}</Text>
               ) : null}

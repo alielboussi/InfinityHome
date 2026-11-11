@@ -11,6 +11,13 @@ import {
   saleMatchesRange,
 } from './utils/dashboardSaleRange';
 import { isRealtimeEnabled } from './utils/realtimeConfig';
+import { applyPortalSnapshot, cacheSet, PORTAL_SWR_TTL_MS } from './utils/staleCache';
+import { prefetchNavRoutesOnIdle } from './lazyPages';
+
+const DASHBOARD_COST_CACHE = 'dashboard:productCost:v1';
+const dashboardSalesCacheKey = (range, startDate, endDate) => (
+  `dashboard:sales:${range}:${startDate || ''}:${endDate || ''}`
+);
 
 const DASHBOARD_REFRESH_MS = 90 * 1000;
 
@@ -30,6 +37,70 @@ const SALES_RANGE_OPTIONS = [
   { value: 'all', label: 'All Time' },
   { value: 'custom', label: 'Custom Range' },
 ];
+
+async function computeMostSoldForSaleIds(saleIds) {
+  try {
+    if (!saleIds.length) return { name: '—', qty: 0 };
+
+    const qtyByProduct = new Map();
+    const qtyByName = new Map();
+    const chunks = [];
+    for (let i = 0; i < saleIds.length; i += 200) chunks.push(saleIds.slice(i, i + 200));
+
+    for (const chunk of chunks) {
+      const { data: items, error: itemErr } = await db
+        .from('sales_items')
+        .select('product_id, display_name, quantity')
+        .in('sale_id', chunk);
+      if (itemErr) throw itemErr;
+      (items || []).forEach((item) => {
+        const qty = Number(item?.quantity || 0);
+        if (!Number.isFinite(qty) || qty <= 0) return;
+        const productId = item?.product_id != null ? String(item.product_id) : '';
+        const displayName = String(item?.display_name || '').trim();
+        if (productId) {
+          qtyByProduct.set(productId, (qtyByProduct.get(productId) || 0) + qty);
+        } else if (displayName) {
+          qtyByName.set(displayName, (qtyByName.get(displayName) || 0) + qty);
+        }
+      });
+    }
+
+    let bestName = '—';
+    let bestQty = 0;
+    const productIds = Array.from(qtyByProduct.keys());
+    const productNames = new Map();
+    if (productIds.length) {
+      for (let i = 0; i < productIds.length; i += 200) {
+        const chunk = productIds.slice(i, i + 200);
+        const { data: products, error: prodErr } = await db
+          .from('products')
+          .select('id, name')
+          .in('id', chunk);
+        if (prodErr) throw prodErr;
+        (products || []).forEach((product) => {
+          productNames.set(String(product.id), String(product.name || '').trim());
+        });
+      }
+    }
+
+    qtyByProduct.forEach((qty, productId) => {
+      if (qty > bestQty) {
+        bestQty = qty;
+        bestName = productNames.get(productId) || 'Unnamed Product';
+      }
+    });
+    qtyByName.forEach((qty, name) => {
+      if (qty > bestQty) {
+        bestQty = qty;
+        bestName = name;
+      }
+    });
+    return { name: bestName, qty: bestQty };
+  } catch {
+    return { name: '—', qty: 0 };
+  }
+}
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -67,78 +138,11 @@ function Dashboard() {
     if (!user) return;
     let active = true;
 
-    const computeMostSoldProduct = async () => {
-      try {
-        const { data: completedSales, error: salesErr } = await db
-          .from('sales')
-          .select('id')
-          .eq('status', 'completed');
-        if (salesErr) throw salesErr;
-        const saleIds = (completedSales || []).map((sale) => sale?.id).filter((id) => id != null);
-        if (!saleIds.length) return { name: '—', qty: 0 };
-
-        const qtyByProduct = new Map();
-        const qtyByName = new Map();
-        const chunks = [];
-        for (let i = 0; i < saleIds.length; i += 200) chunks.push(saleIds.slice(i, i + 200));
-
-        for (const chunk of chunks) {
-          const { data: items, error: itemErr } = await db
-            .from('sales_items')
-            .select('product_id, display_name, quantity')
-            .in('sale_id', chunk);
-          if (itemErr) throw itemErr;
-          (items || []).forEach((item) => {
-            const qty = Number(item?.quantity || 0);
-            if (!Number.isFinite(qty) || qty <= 0) return;
-            const productId = item?.product_id != null ? String(item.product_id) : '';
-            const displayName = String(item?.display_name || '').trim();
-            if (productId) {
-              qtyByProduct.set(productId, (qtyByProduct.get(productId) || 0) + qty);
-            } else if (displayName) {
-              qtyByName.set(displayName, (qtyByName.get(displayName) || 0) + qty);
-            }
-          });
-        }
-
-        let bestName = '—';
-        let bestQty = 0;
-
-        const productIds = Array.from(qtyByProduct.keys());
-        const productNames = new Map();
-        if (productIds.length) {
-          for (let i = 0; i < productIds.length; i += 200) {
-            const chunk = productIds.slice(i, i + 200);
-            const { data: products, error: prodErr } = await db
-              .from('products')
-              .select('id, name')
-              .in('id', chunk);
-            if (prodErr) throw prodErr;
-            (products || []).forEach((product) => {
-              productNames.set(String(product.id), String(product.name || '').trim());
-            });
-          }
-        }
-
-        qtyByProduct.forEach((qty, productId) => {
-          if (qty > bestQty) {
-            bestQty = qty;
-            bestName = productNames.get(productId) || 'Unnamed Product';
-          }
-        });
-
-        qtyByName.forEach((qty, name) => {
-          if (qty > bestQty) {
-            bestQty = qty;
-            bestName = name;
-          }
-        });
-
-        return { name: bestName, qty: bestQty };
-      } catch {
-        return { name: '—', qty: 0 };
+    applyPortalSnapshot(DASHBOARD_COST_CACHE, (snap) => {
+      if (snap?.productCost) {
+        setStats((prev) => ({ ...prev, productCost: snap.productCost }));
       }
-    };
+    });
 
     // Total inventory cost = sum(quantity * product.cost_price) split by currency.
     const computeProductCost = async () => {
@@ -171,19 +175,10 @@ function Dashboard() {
     };
 
     (async () => {
-      const [
-        productCost,
-        mostSoldProduct,
-      ] = await Promise.all([
-        computeProductCost(),
-        computeMostSoldProduct(),
-      ]);
-
+      const productCost = await computeProductCost();
       if (active) {
-        setStats({
-          productCost,
-          mostSoldProduct,
-        });
+        setStats((prev) => ({ ...prev, productCost }));
+        cacheSet(DASHBOARD_COST_CACHE, { productCost }, PORTAL_SWR_TTL_MS);
       }
     })();
 
@@ -192,7 +187,14 @@ function Dashboard() {
 
   // Date-filtered total sales (separate effect so the range dropdown re-queries).
   const loadSalesTotals = useCallback(async (range, startDate, endDate) => {
-    setSalesLoading(true);
+    const cacheKey = dashboardSalesCacheKey(range, startDate, endDate);
+    applyPortalSnapshot(cacheKey, (snap) => {
+      if (snap?.salesTotals) setSalesTotals(snap.salesTotals);
+      if (snap?.discountTotals) setDiscountTotals(snap.discountTotals);
+      if (snap?.mostSoldProduct) {
+        setStats((prev) => ({ ...prev, mostSoldProduct: snap.mostSoldProduct }));
+      }
+    }, setSalesLoading);
     const totals = { K: 0, USD: 0 };
     const discounts = { K: 0, USD: 0 };
     try {
@@ -214,6 +216,12 @@ function Dashboard() {
         .filter((sale) => normalizeCurrencyCode(sale?.currency) === 'USD')
         .map((sale) => sale?.id)
         .filter((id) => id != null);
+
+      const rangeSaleIds = completedSales.map((sale) => sale?.id).filter((id) => id != null);
+      let mostSoldProduct = { name: '—', qty: 0 };
+      if (rangeSaleIds.length) {
+        mostSoldProduct = await computeMostSoldForSaleIds(rangeSaleIds);
+      }
 
       (completedSales || []).forEach((s) => {
         const code = normalizeCurrencyCode(s.currency);
@@ -243,6 +251,12 @@ function Dashboard() {
         totals.USD = usdPaid;
         discounts.USD += usdPaymentDiscount;
       }
+      setStats((prev) => ({ ...prev, mostSoldProduct }));
+      cacheSet(cacheKey, {
+        salesTotals: totals,
+        discountTotals: discounts,
+        mostSoldProduct,
+      }, PORTAL_SWR_TTL_MS);
     } catch {
       // leave zeros on failure
     }
@@ -260,16 +274,18 @@ function Dashboard() {
 
   useEffect(() => {
     if (!user) return undefined;
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') bumpDashboardRefresh();
-    };
-    document.addEventListener('visibilitychange', onVisible);
     const timer = setInterval(bumpDashboardRefresh, DASHBOARD_REFRESH_MS);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(timer);
-    };
+    return () => clearInterval(timer);
   }, [user, bumpDashboardRefresh]);
+
+  useEffect(() => {
+    prefetchNavRoutesOnIdle([
+      '/all-sales',
+      '/layby-management',
+      '/quotes-board',
+      '/warehouse-floors',
+    ]);
+  }, []);
 
   useEffect(() => {
     if (!user || !isRealtimeEnabled()) return undefined;

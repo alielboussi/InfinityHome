@@ -292,6 +292,11 @@ const UI_STRINGS = {
   jobsFilter_quotes: { en: 'Orders', ar: 'الطلبات' },
   jobsFilter_floor2: { en: 'Floor 2', ar: 'الطابق 2' },
   jobsFilter_active: { en: 'In progress', ar: 'قيد التنفيذ' },
+  jobsSearchPlaceholder: {
+    en: 'Search quote #, customer name, or phone…',
+    ar: 'ابحث برقم العرض أو اسم الزبون أو الهاتف…',
+  },
+  jobsSearchNoMatch: { en: 'No jobs match your search.', ar: 'لا توجد مهام مطابقة للبحث.' },
   jobFinishNoMaterialsHint: {
     en: 'No storeroom materials were recorded for this job.',
     ar: 'لم تُسجَّل مواد من المخزن لهذه المهمة.',
@@ -587,6 +592,7 @@ const UI_STRINGS = {
   },
   deliveryDriver: { en: 'Driver', ar: 'السائق' },
   deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },
+  deliveryCustomerAddBtn: { en: 'Add customer driver', ar: 'إضافة سائق العميل' },
   deliveryCustomerDriverHint: { en: 'Tap + to enter name and phone (or pick a fleet driver below).', ar: 'اضغط + لإدخال الاسم والهاتف (أو اختر سائق الأسطول أدناه).' },
   deliveryCustomerDriverAdd: { en: 'Customer driver', ar: 'سائق العميل' },
   deliveryCustomerDriverNamePh: { en: 'Driver name', ar: 'اسم السائق' },

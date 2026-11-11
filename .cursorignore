@@ -1,0 +1,73 @@
+﻿# Heavy / generated folders — keep Cursor indexing and Agent off these paths.
+# Source in src/, server/, api/, scripts/, and mobile-apps app code stays visible.
+
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp/
+.pnp.js
+.yarn/
+.yarn-cache/
+.venv/
+__pycache__/
+
+# Portal / CRA / installer builds
+build/
+**/build/
+dist/
+**/dist/
+dist-installer/
+**/dist-installer/
+label-worker/build/
+label-worker/dist/
+label-worker/installer/dist-installer/
+
+# Expo / EAS local verify dumps (multi-GB file trees)
+**/.expo/
+**/.expo-bundle-verify/
+**/.expo-bundle-verify-full/
+**/.expo-bundle-verify-repair/
+**/.expo-bundle-verify-rnss/
+**/.expo-bundle-verify-ui/
+**/.expo-export-verify/
+**/.expo-export-eas-check/
+**/.expo-jobfilter-check/
+**/.expo-tmp-parse-check/
+**/dist-eas-check/
+**/dist-eas-check3/
+**/dist-bundle-check/
+**/dist-bundle-check2/
+**/dist-eas-preflight/
+**/dist-eas-preflight3/
+
+# Android / Gradle / iOS native output
+**/.gradle/
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+**/android/intermediates/
+**/ios/Pods/
+**/ios/build/
+**/.turbo/
+**/.next/
+**/.nuxt/
+**/.cache/
+**/.parcel-cache/
+**/.sass-cache/
+
+# Vercel / IDE / coverage / backups
+.vercel/
+.idea/
+coverage/
+**/.nyc_output/
+backups/
+*.sqlite
+*.db
+*.apk
+*.exe
+*.msi
+
+# Large asset dumps
+IconKitchen-Output/
+Photos(Warehouse)/
+public/exported/

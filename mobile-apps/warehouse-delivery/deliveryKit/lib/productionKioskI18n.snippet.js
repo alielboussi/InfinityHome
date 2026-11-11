@@ -7,7 +7,9 @@ export const DELIVERY_HUB_I18N = {
   deliveryHubTab_floor1: { en: 'Floor 1', ar: 'الطابق 1' },
   deliveryHubTab_repairs: { en: 'Repairs', ar: 'إصلاحات' },
   deliveryHubTab_orders: { en: 'Orders', ar: 'طلبات' },
+  deliveryRepairKindLabel: { en: 'Repair', ar: 'إصلاح' },
   deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },
+  deliveryCustomerAddBtn: { en: 'Add customer driver', ar: 'إضافة سائق العميل' },
   deliveryCustomerDriverHint: {
     en: 'Tap + to enter name and phone (or pick a fleet driver below).',
     ar: 'اضغط + لإدخال الاسم والهاتف (أو اختر سائق الأسطول أدناه).',

@@ -8,6 +8,9 @@ import { useStoreroomLocationLabels } from './hooks/useStoreroomLocationLabels';
 import { materialLinesFromJob } from './utils/productionJobMaterialLines';
 
 import { formatProductionElapsed } from './utils/formatProductionElapsed';
+import { applyPortalSnapshot, cacheSet, PORTAL_SWR_TTL_MS } from './utils/staleCache';
+
+const PAINTING_JOBS_CACHE_KEY = 'production:painting-jobs:v1';
 
 
 function statusLabel(status) {
@@ -26,13 +29,17 @@ export default function PaintingJobsPage() {
   const storeroomLabels = useStoreroomLocationLabels();
 
   const load = useCallback(async () => {
+    applyPortalSnapshot(PAINTING_JOBS_CACHE_KEY, (snap) => {
+      if (Array.isArray(snap?.jobs)) setJobs(snap.jobs);
+    }, setLoading);
     try {
       const payload = await fetchPaintingProductionJobs({ activeOnly: false, limit: 150 });
-      setJobs(Array.isArray(payload?.jobs) ? payload.jobs : []);
+      const nextJobs = Array.isArray(payload?.jobs) ? payload.jobs : [];
+      setJobs(nextJobs);
       setError(payload?.tableMissing ? 'Painting jobs table not deployed yet — run applyPaintingProductionJobsSchema.js' : '');
+      cacheSet(PAINTING_JOBS_CACHE_KEY, { jobs: nextJobs }, PORTAL_SWR_TTL_MS);
     } catch (err) {
       setError(err?.message || 'Failed to load painting jobs');
-      setJobs([]);
     } finally {
       setLoading(false);
     }

@@ -3422,7 +3422,13 @@ async function opDeliverySubmit(body, user) {
       }
       let orderStaging = null;
       if (!repairStaging) {
-        orderStaging = orderFloor2Map.get(assemblyId) || null;
+        const groupQuoteId = String(group.quote_id || group.quoteId || '').trim();
+        if (groupQuoteId) {
+          orderStaging = orderRows.find((row) => String(row.quote_id || '') === groupQuoteId) || null;
+        }
+        if (!orderStaging) {
+          orderStaging = orderFloor2Map.get(assemblyId) || null;
+        }
       }
       const adminQueue = repairStaging || orderStaging;
       if (adminQueue) {
@@ -3442,16 +3448,20 @@ async function opDeliverySubmit(body, user) {
       }
       totalCartons += shipment.finishedUnits;
       const driverCheckedAt = group.finished_driver_checked_at || now;
+      const orderDisplayName = String(
+        group.assembly_name || orderStaging?.assembly_name || '',
+      ).trim();
+      const entryName = orderStaging && orderDisplayName ? orderDisplayName : assembly.name;
       entries.push({
         id: newUuid(),
         session_id: sessionId,
         kind: 'assembly',
-        name: assembly.name,
+        name: entryName,
         sku: assembly.family_sku,
         quantity: shipment.finishedUnits,
         metadata: stripUndefinedMetadata({
           assembly_id: assemblyId,
-          assembly_name: assembly.name,
+          assembly_name: entryName,
           finished_unit: true,
           units: shipment.finishedUnits,
           ...deliveryEntryBoxMetadata(shipment),

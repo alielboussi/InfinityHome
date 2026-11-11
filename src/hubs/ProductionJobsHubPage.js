@@ -1,6 +1,5 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import BackToDashboard from '../BackToDashboard';
 import PortalHubBar from '../components/PortalHubBar';
 import { usePortalHubView } from '../hooks/usePortalHubView';
 import UpholsteryTimerPage from '../UpholsteryTimerPage';
@@ -34,7 +33,6 @@ export default function ProductionJobsHubPage() {
   return (
     <div className="portal-hub-page">
       <div className="portal-hub-page__chrome page-header-row">
-        <BackToDashboard />
         <PortalHubBar
           title="Jobs"
           viewLabel="Job screen"

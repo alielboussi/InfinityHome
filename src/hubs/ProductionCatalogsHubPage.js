@@ -1,6 +1,5 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import BackToDashboard from '../BackToDashboard';
 import PortalHubBar from '../components/PortalHubBar';
 import { usePortalHubView } from '../hooks/usePortalHubView';
 import UpholsteryPage from '../UpholsteryPage';
@@ -29,7 +28,6 @@ export default function ProductionCatalogsHubPage() {
   return (
     <div className="portal-hub-page">
       <div className="portal-hub-page__chrome page-header-row">
-        <BackToDashboard />
         <PortalHubBar
           title="Catalogs"
           viewLabel="Catalog"

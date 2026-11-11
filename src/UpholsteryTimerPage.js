@@ -12,6 +12,9 @@ import { materialLinesFromJob } from './utils/productionJobMaterialLines';
 
 import { formatProductionElapsed } from './utils/formatProductionElapsed';
 import { formatQuoteOrderTimer } from './utils/quoteOrderElapsed';
+import { applyPortalSnapshot, cacheSet, PORTAL_SWR_TTL_MS } from './utils/staleCache';
+
+const UPHOLSTERY_JOBS_CACHE_KEY = 'production:upholstery-jobs:v1';
 
 
 function statusLabel(status) {
@@ -59,17 +62,23 @@ export default function UpholsteryTimerPage() {
   const storeroomLabels = useStoreroomLocationLabels();
 
   const load = useCallback(async () => {
+    applyPortalSnapshot(UPHOLSTERY_JOBS_CACHE_KEY, (snap) => {
+      if (Array.isArray(snap?.jobs)) setJobs(snap.jobs);
+      if (Array.isArray(snap?.quoteOrders)) setQuoteOrders(snap.quoteOrders);
+    }, setLoading);
     try {
       const [list, quotes] = await Promise.all([
         fetchUpholsteryProductionJobs({ activeOnly: false }),
         fetchUpholsteryQuoteOrders({ limit: 150 }),
       ]);
-      setJobs(Array.isArray(list) ? list : []);
-      setQuoteOrders(Array.isArray(quotes) ? quotes : []);
+      const nextJobs = Array.isArray(list) ? list : [];
+      const nextQuotes = Array.isArray(quotes) ? quotes : [];
+      setJobs(nextJobs);
+      setQuoteOrders(nextQuotes);
       setError('');
+      cacheSet(UPHOLSTERY_JOBS_CACHE_KEY, { jobs: nextJobs, quoteOrders: nextQuotes }, PORTAL_SWR_TTL_MS);
     } catch (err) {
       setError(err?.message || 'Failed to load jobs');
-      setJobs([]);
     } finally {
       setLoading(false);
     }

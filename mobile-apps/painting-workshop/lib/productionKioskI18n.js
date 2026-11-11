@@ -530,6 +530,7 @@ const UI_STRINGS = {
   },
   deliveryDriver: { en: 'Driver', ar: 'السائق' },
   deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },
+  deliveryCustomerAddBtn: { en: 'Add customer driver', ar: 'إضافة سائق العميل' },
   deliveryCustomerDriverHint: { en: 'Tap + to enter name and phone (or pick a fleet driver below).', ar: 'اضغط + لإدخال الاسم والهاتف (أو اختر سائق الأسطول أدناه).' },
   deliveryCustomerDriverAdd: { en: 'Customer driver', ar: 'سائق العميل' },
   deliveryCustomerDriverNamePh: { en: 'Driver name', ar: 'اسم السائق' },

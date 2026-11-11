@@ -28,12 +28,17 @@ export default function DeliveryCustomerDriverSection({
 
   const L = {
     title: labels.title || 'Customer driver',
-    hint: labels.hint || 'Tap + to enter name and phone (or pick a fleet driver below).',
+    addBtn: labels.addBtn || 'Add customer driver',
     addTitle: labels.addTitle || 'Customer driver',
     namePh: labels.namePh || 'Driver name',
     phonePh: labels.phonePh || 'Phone number',
     save: labels.save || 'Save',
   };
+
+  const selected = Boolean(String(customerName || '').trim());
+  const btnLabel = selected
+    ? [customerName, customerPhone].filter(Boolean).join(' · ')
+    : L.addBtn;
 
   const saveCustomer = () => {
     const name = capitalizePersonName(nameDraft);
@@ -44,28 +49,33 @@ export default function DeliveryCustomerDriverSection({
   };
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.rowHead}>
-        <Text style={[kiosk.label || styles.label, { textAlign }]}>{L.title}</Text>
-        <Pressable
-          style={[styles.plusBtn, { backgroundColor: theme.primary }]}
-          disabled={disabled || fleetDriverActive}
-          onPress={() => {
-            setNameDraft(customerName || '');
-            setPhoneDraft(customerPhone || '');
-            setOpen(true);
-          }}
+    <View style={[kiosk.field, styles.wrap]}>
+      <Text style={[kiosk.label || styles.label, { textAlign }]}>{L.title}</Text>
+      <Pressable
+        style={[
+          kiosk.driverPickerBtn || styles.pickerBtn,
+          selected ? kiosk.driverPickerBtnSelected || styles.pickerBtnSelected : null,
+          disabled || fleetDriverActive ? styles.pickerDisabled : null,
+        ]}
+        disabled={disabled || fleetDriverActive}
+        onPress={() => {
+          setNameDraft(customerName || '');
+          setPhoneDraft(customerPhone || '');
+          setOpen(true);
+        }}
+      >
+        <Text
+          style={[
+            selected
+              ? kiosk.driverPickerValueText || styles.pickerValue
+              : kiosk.driverPickerPlaceholderText || styles.pickerPlaceholder,
+            { textAlign: 'center' },
+          ]}
+          numberOfLines={2}
         >
-          <Text style={styles.plusText}>+</Text>
-        </Pressable>
-      </View>
-      {customerName ? (
-        <Text style={[kiosk.metaLine || styles.meta, { textAlign }]}>
-          {customerName} · {customerPhone}
+          {btnLabel}
         </Text>
-      ) : (
-        <Text style={[kiosk.hint || styles.hint, { textAlign }]}>{L.hint}</Text>
-      )}
+      </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
@@ -96,13 +106,37 @@ export default function DeliveryCustomerDriverSection({
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 12 },
-  rowHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  plusBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  plusText: { color: '#fff', fontSize: 22, fontWeight: '700', marginTop: -2 },
+  wrap: {},
   label: { fontSize: 15, fontWeight: '600' },
-  meta: { fontSize: 14, marginTop: 4 },
-  hint: { fontSize: 13, marginTop: 4, opacity: 0.85 },
+  pickerBtn: {
+    width: '100%',
+    minHeight: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#ef4444',
+    backgroundColor: '#450a0a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerBtnSelected: {
+    backgroundColor: '#7f1d1d',
+    borderColor: '#f87171',
+  },
+  pickerDisabled: { opacity: 0.45 },
+  pickerPlaceholder: {
+    color: '#fecaca',
+    fontWeight: '800',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  pickerValue: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 16,
+    textAlign: 'center',
+  },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: 24 },
   sheet: { borderRadius: 14, padding: 16, borderWidth: 1 },
   title: { fontSize: 17, fontWeight: '700', marginBottom: 12 },

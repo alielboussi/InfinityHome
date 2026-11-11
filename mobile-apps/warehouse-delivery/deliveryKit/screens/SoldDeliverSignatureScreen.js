@@ -120,6 +120,7 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
 
   const customerLabels = {
     title: tUi('deliveryCustomerDriver', locale),
+    addBtn: tUi('deliveryCustomerAddBtn', locale),
     hint: tUi('deliveryCustomerDriverHint', locale),
     addTitle: tUi('deliveryCustomerDriverAdd', locale),
     namePh: tUi('deliveryCustomerDriverNamePh', locale),

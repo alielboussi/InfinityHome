@@ -92,7 +92,7 @@ export default function UpholsteryPage({ embedInHub = false } = {}) {
   }, [applyCatalogSnapshot]);
 
   useEffect(() => {
-    load({ forceFresh: true });
+    load();
   }, [load]);
 
   const carpentryById = useMemo(

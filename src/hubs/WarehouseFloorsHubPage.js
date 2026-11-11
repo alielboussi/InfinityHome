@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import BackToDashboard from '../BackToDashboard';
 import PortalHubBar from '../components/PortalHubBar';
 import WarehouseCatalogViewToggle from '../components/WarehouseCatalogViewToggle';
 import WarehouseCatalogCreateActions from '../components/WarehouseCatalogCreateActions';
@@ -31,7 +30,6 @@ export default function WarehouseFloorsHubPage() {
     return (
       <div className="portal-hub-page">
         <div className="portal-hub-page__chrome page-header-row">
-          <BackToDashboard />
           <PortalHubBar
             title="Warehouses"
             viewLabel="Floor"
@@ -61,7 +59,6 @@ export default function WarehouseFloorsHubPage() {
     return (
       <div className="portal-hub-page">
         <div className="portal-hub-page__chrome page-header-row">
-          <BackToDashboard />
           <PortalHubBar
             title="Warehouses"
             viewLabel="Floor"

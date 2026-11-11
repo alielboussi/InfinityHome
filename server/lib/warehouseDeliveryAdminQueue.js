@@ -101,6 +101,29 @@ export async function registerProductionJobAwaitingDriver(sb, {
   }
 }
 
+function quoteRoutingLineItems(meta) {
+  const raw = Array.isArray(meta?.lines) ? meta.lines : [];
+  return raw.map((line) => {
+    const name = String(line?.name || line?.name_override || '').trim();
+    if (!name) return null;
+    return {
+      name,
+      quantity: Math.max(1, Math.floor(Number(line.quantity) || 1)),
+    };
+  }).filter(Boolean);
+}
+
+function quoteLinesDisplayName(lines, fallback) {
+  if (!lines.length) return String(fallback || '').trim();
+  if (lines.length === 1) return lines[0].name;
+  return lines.map((line) => `${line.name} × ${line.quantity}`).join(', ');
+}
+
+function quoteLinesTotalQty(lines, fallbackQty) {
+  if (!lines.length) return Math.max(1, Math.floor(Number(fallbackQty) || 1));
+  return Math.max(1, lines.reduce((sum, line) => sum + line.quantity, 0));
+}
+
 export async function registerQuoteOrderAwaitingDriver(sb, {
   quoteId,
   assemblyId,
@@ -115,29 +138,35 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
     .eq('quote_id', String(quoteId))
     .maybeSingle();
   const prev = routing?.metadata || {};
+  const lines = quoteRoutingLineItems(prev);
+  const { data: asm } = await sb.from(ASSEMBLIES).select('name').eq('id', String(assemblyId)).maybeSingle();
+  const assemblyName = quoteLinesDisplayName(lines, asm?.name || assemblyId);
+  const quantity = quoteLinesTotalQty(lines, qty);
+  const resolvedQuoteNumber = quoteNumber || prev.quote_number || null;
   await sb.from(QUOTE_ROUTING).update({
     metadata: {
       ...prev,
       ...buildAdminPatch(DELIVERY_ADMIN_KIND.ORDER, DELIVERY_ADMIN_STAGE.AWAITING_DRIVER, {
         registered_at: now,
         quote_id: String(quoteId),
-        quote_number: quoteNumber,
+        quote_number: resolvedQuoteNumber,
         assembly_id: String(assemblyId),
-        quantity: Math.max(1, Math.floor(Number(qty) || 1)),
+        assembly_name: assemblyName,
+        quantity,
         department: String(route || 'upholstery').toLowerCase(),
       }),
     },
     updated_at: now,
   }).eq('quote_id', String(quoteId));
 
-  const { data: asm } = await sb.from(ASSEMBLIES).select('name').eq('id', String(assemblyId)).maybeSingle();
   const result = {
     assembly_id: String(assemblyId),
-    assembly_name: asm?.name || assemblyId,
+    assembly_name: assemblyName,
     quote_id: String(quoteId),
-    quote_number: quoteNumber,
-    quantity: Math.max(1, Math.floor(Number(qty) || 1)),
+    quote_number: resolvedQuoteNumber,
+    quantity,
     department: String(route || 'upholstery').toLowerCase(),
+    lines,
   };
 
   try {
@@ -240,14 +269,18 @@ async function listQuoteOrdersAwaitingDriver(sb) {
     const asmId = String(admin.assembly_id || '').trim();
     if (!asmId) continue;
     const { data: asm } = await sb.from(ASSEMBLIES).select('name, family_sku').eq('id', asmId).maybeSingle();
+    const lines = quoteRoutingLineItems(meta);
+    const fallbackName = admin.assembly_name || asm?.name || asmId;
     out.push({
       quote_id: String(row.quote_id),
       assembly_id: asmId,
-      assembly_name: admin.assembly_name || asm?.name || asmId,
+      assembly_name: quoteLinesDisplayName(lines, fallbackName),
       family_sku: asm?.family_sku || '',
-      quantity: Math.max(1, Number(admin.quantity) || 1),
-      quote_number: admin.quote_number || null,
+      quantity: quoteLinesTotalQty(lines, admin.quantity),
+      quote_number: admin.quote_number || meta.quote_number || null,
+      customer_name: String(meta.customer_name || '').trim() || null,
       department: admin.department || row.route || 'upholstery',
+      lines,
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
     });
   }

@@ -18,6 +18,9 @@ import {
   repairDepartmentLabel,
   resolveReturnRepairDepartment,
 } from './utils/warehouseReturnRepairDepartment';
+import { applyPortalSnapshot, cachePeek, cacheSet, PORTAL_SWR_TTL_MS } from './utils/staleCache';
+
+const REPAIRS_ADMIN_CACHE_KEY = 'warehouse:repairs-admin:v1';
 
 function InventoryHoldNote({ text }) {
   if (!text) return null;
@@ -183,31 +186,45 @@ export default function WarehouseRepairsAdmin() {
   const [deptFilter, setDeptFilter] = useState('all');
 
   const load = useCallback(async () => {
-    setLoading(true);
+    applyPortalSnapshot(REPAIRS_ADMIN_CACHE_KEY, (snap) => {
+      if (Array.isArray(snap?.rows)) setRows(snap.rows);
+      if (Array.isArray(snap?.orders)) setOrders(snap.orders);
+    }, setLoading);
     setError('');
     try {
       let loadError = '';
+      let nextRows = [];
+      let nextOrders = [];
+      let rowsOk = false;
+      let ordersOk = false;
       try {
         const res = await listReturnOrders({ admin_registry: true });
-        setRows(res?.return_orders || []);
+        nextRows = res?.return_orders || [];
+        setRows(nextRows);
+        rowsOk = true;
       } catch (err) {
         loadError = err?.message || 'Failed to load repair registry.';
-        setRows([]);
       }
       try {
         const queue = await listDeliveryProductionQueue();
-        setOrders(queue?.orders || []);
+        nextOrders = queue?.orders || [];
+        setOrders(nextOrders);
+        ordersOk = true;
       } catch {
         if (!loadError) {
           loadError = 'Repair list loaded but the delivery queue API failed — deploy latest API or retry.';
         }
-        setOrders([]);
       }
       setError(loadError);
+      if (rowsOk || ordersOk) {
+        const prev = cachePeek(REPAIRS_ADMIN_CACHE_KEY) || {};
+        cacheSet(REPAIRS_ADMIN_CACHE_KEY, {
+          rows: rowsOk ? nextRows : (Array.isArray(prev.rows) ? prev.rows : []),
+          orders: ordersOk ? nextOrders : (Array.isArray(prev.orders) ? prev.orders : []),
+        }, PORTAL_SWR_TTL_MS);
+      }
     } catch (err) {
       setError(err?.message || 'Failed to load repairs.');
-      setRows([]);
-      setOrders([]);
     } finally {
       setLoading(false);
     }

@@ -4,7 +4,7 @@ import db from './dataClient';
 import { fromPublic } from './dbSchema';
 import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import { convertQuoteToLayby } from './services/quoteConversion';
-import { cacheClear } from './utils/staleCache';
+import { cacheClear, cachePeek, cacheSet, applyPortalSnapshot, PORTAL_SWR_TTL_MS } from './utils/staleCache';
 import { LAYBY_ROWS_CACHE_KEY } from './utils/laybyRollup';
 import BackToDashboard from './BackToDashboard';
 import {
@@ -38,6 +38,7 @@ const titleCaseWords = (text) => String(text || '')
   .join(' ');
 
 const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
+const QUOTES_BOARD_CACHE_KEY = 'quotes-board:list:v1';
 
 async function fetchQuotationRead(action, params = {}) {
   let headers = {};
@@ -106,7 +107,11 @@ export default function QuotesBoard() {
   React.useEffect(() => {
     let cancelled = false;
     async function load() {
-      setLoading(true);
+      applyPortalSnapshot(QUOTES_BOARD_CACHE_KEY, (snap) => {
+        if (Array.isArray(snap?.quotes)) setQuotes(snap.quotes);
+        if (snap?.customerMap && typeof snap.customerMap === 'object') setCustomerMap(snap.customerMap);
+        if (snap?.routingsMap && typeof snap.routingsMap === 'object') setRoutingsMap(snap.routingsMap);
+      }, setLoading);
       let data = [];
       let error = null;
       try {
@@ -132,7 +137,14 @@ export default function QuotesBoard() {
           const quoteIds = rows.map(r => r.id).filter(Boolean);
           fetchQuoteProductionRoutingsMap(quoteIds)
             .then((rmap) => {
-              if (!cancelled) setRoutingsMap(rmap || {});
+              if (cancelled) return;
+              setRoutingsMap(rmap || {});
+              const prev = cachePeek(QUOTES_BOARD_CACHE_KEY) || {};
+              cacheSet(QUOTES_BOARD_CACHE_KEY, {
+                quotes: rows,
+                customerMap: prev.customerMap && typeof prev.customerMap === 'object' ? prev.customerMap : {},
+                routingsMap: rmap || {},
+              }, PORTAL_SWR_TTL_MS);
             })
             .catch(() => {});
           try {
@@ -148,7 +160,15 @@ export default function QuotesBoard() {
               const { data: cust } = missing.length ? await db.from('customers').select('id, name').in('id', missing) : { data: [] };
               (cust || []).forEach(c => { map[String(c.id)] = titleCaseWords(c.name); });
             }
-            if (!cancelled) setCustomerMap(map);
+            if (!cancelled) {
+              setCustomerMap(map);
+              const prev = cachePeek(QUOTES_BOARD_CACHE_KEY) || {};
+              cacheSet(QUOTES_BOARD_CACHE_KEY, {
+                quotes: rows,
+                customerMap: map,
+                routingsMap: prev.routingsMap && typeof prev.routingsMap === 'object' ? prev.routingsMap : {},
+              }, PORTAL_SWR_TTL_MS);
+            }
           } catch {}
         }
         setLoading(false);

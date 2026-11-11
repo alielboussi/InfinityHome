@@ -12484,16 +12484,19 @@ html.sr-lock, body.sr-lock { height: 100%; }
 /* Slim quote line table (create view) */
 .quotes-table--create-lines th,
 .quotes-table--create-lines td {
-  padding: 6px 8px;
+  padding: 10px 10px;
   vertical-align: top;
+  box-sizing: border-box;
 }
 .quotes-table--create-lines td.quotes-line-qty-cell,
+.quotes-table--create-lines td.quotes-line-unit-cell,
 .quotes-table--create-lines td.quotes-line-price-cell,
 .quotes-table--create-lines td.quotes-line-amount-cell,
 .quotes-table--create-lines td.quotes-line-actions-cell {
-  vertical-align: middle;
-  padding-top: 6px;
-  padding-bottom: 6px;
+  vertical-align: top;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  overflow: hidden;
 }
 .quotes-table--create-lines thead th {
   font-size: 11px;
@@ -12539,6 +12542,23 @@ body.enterprise-theme .quotes-create-page .quotes-table--create-lines thead th {
 }
 .quotes-line-name {
   font-weight: 600;
+  height: 36px !important;
+  min-height: 36px !important;
+}
+.quotes-table--create-lines .quotes-line-qty-cell {
+  width: 72px;
+}
+.quotes-table--create-lines .quotes-line-unit-cell {
+  width: 108px;
+}
+.quotes-table--create-lines .quotes-line-price-cell {
+  width: 128px;
+}
+.quotes-table--create-lines .quotes-line-amount-cell {
+  width: 116px;
+}
+.quotes-table--create-lines .quotes-line-actions-cell {
+  width: 52px;
 }
 .quotes-line-meta-grid {
   display: grid;
@@ -12816,22 +12836,22 @@ body.enterprise-theme .quotes-create-page .quotes-table--create-lines thead th {
 }
 .quotes-line-qty-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
-  justify-content: center;
-  max-width: 168px;
-  margin: 0 auto;
-  height: 32px;
-  min-height: 32px;
+  width: 100%;
+  margin: 0;
+  height: auto;
+  min-height: 0;
 }
 .quotes-line-qty {
-  flex: 0 0 52px;
+  width: 100%;
   text-align: center;
   padding-left: 6px;
   padding-right: 6px;
 }
 .quotes-line-unit {
-  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
   font-size: 12px;
   padding-right: 28px;
@@ -12839,87 +12859,91 @@ body.enterprise-theme .quotes-create-page .quotes-table--create-lines thead th {
 .quotes-table--create-lines .quotes-line-qty,
 .quotes-table--create-lines .quotes-line-unit,
 .quotes-table--create-lines .quotes-line-price {
-  height: 32px !important;
-  min-height: 32px !important;
-  max-height: 32px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+  width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   line-height: 1.25;
   margin: 0 !important;
-  padding-top: 5px !important;
-  padding-bottom: 5px !important;
-}
-.quotes-table--create-lines .quotes-line-qty-row .quotes-line-qty,
-.quotes-table--create-lines .quotes-line-qty-row .quotes-line-unit {
-  align-self: center;
-  flex-shrink: 0;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
 }
 body.enterprise-theme .quotes-table--create-lines .quotes-line-qty,
 body.enterprise-theme .quotes-table--create-lines .quotes-line-unit {
-  height: 32px !important;
-  min-height: 32px !important;
-  max-height: 32px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
 }
 .quotes-table--create-lines .quotes-line-price-wrap {
   position: relative;
   display: flex;
   align-items: center;
-  height: 32px;
-  max-width: 132px;
-  margin: 0 auto;
+  height: 36px;
+  max-width: none;
+  margin: 0;
   width: 100%;
 }
 .quotes-table--create-lines .quotes-line-price.price-inline-input {
   min-width: 0;
   width: 100%;
-  height: 32px !important;
-  min-height: 32px !important;
-  max-height: 32px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
 }
 .quotes-table--create-lines .quotes-line-amount-total,
 .quotes-table--create-lines .quotes-line-price-cell .quotes-line-amount-readonly {
-  min-height: 32px;
-  display: inline-flex;
+  min-height: 36px;
+  display: flex;
   align-items: center;
   justify-content: flex-end;
   width: 100%;
 }
 .quotes-table--create-lines .quotes-line-price-cell .quotes-line-amount-readonly {
-  justify-content: center;
-  max-width: 132px;
-  margin: 0 auto;
+  justify-content: flex-end;
+  max-width: none;
+  margin: 0;
 }
 .quotes-table--create-lines .quotes-line-actions-cell .quotes-line-delete {
   margin-top: 0;
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
 }
 .quotes-line-price-wrap {
   position: relative;
-  max-width: 132px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
+  width: 100%;
 }
 .quotes-line-price-prefix {
   position: absolute;
-  left: 8px;
+  left: 10px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 12px;
-  color: #94a3b8;
+  font-weight: 600;
+  color: #64748b;
   pointer-events: none;
 }
 .quotes-line-price {
   text-align: right;
-  padding-left: 26px !important;
-  padding-right: 8px !important;
+  padding-left: 28px !important;
+  padding-right: 10px !important;
 }
 .quotes-line-amount-readonly {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+.quotes-line-currency {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
 }
 .quotes-line-amount-total {
   font-weight: 600;

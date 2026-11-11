@@ -12,6 +12,9 @@ import { materialLinesFromJob } from './utils/productionJobMaterialLines';
 
 import { formatProductionElapsed } from './utils/formatProductionElapsed';
 import { formatQuoteOrderTimer } from './utils/quoteOrderElapsed';
+import { applyPortalSnapshot, cacheSet, PORTAL_SWR_TTL_MS } from './utils/staleCache';
+
+const CARPENTRY_JOBS_CACHE_KEY = 'production:carpentry-jobs:v1';
 
 
 function statusLabel(status) {
@@ -56,20 +59,25 @@ export default function CarpentryJobsPage() {
   const storeroomLabels = useStoreroomLocationLabels();
 
   const load = useCallback(async () => {
+    applyPortalSnapshot(CARPENTRY_JOBS_CACHE_KEY, (snap) => {
+      if (Array.isArray(snap?.jobs)) setJobs(snap.jobs);
+      if (Array.isArray(snap?.quoteOrders)) setQuoteOrders(snap.quoteOrders);
+    }, setLoading);
     try {
       const [payload, fallbackQuotes] = await Promise.all([
         fetchCarpentryProductionJobs({ activeOnly: false, limit: 150 }),
         fetchProductionQuoteOrdersForRoute('carpentry'),
       ]);
-      setJobs(Array.isArray(payload?.jobs) ? payload.jobs : []);
+      const nextJobs = Array.isArray(payload?.jobs) ? payload.jobs : [];
       const orders = Array.isArray(payload?.quote_orders) && payload.quote_orders.length
         ? payload.quote_orders
         : (Array.isArray(fallbackQuotes) ? fallbackQuotes : []);
+      setJobs(nextJobs);
       setQuoteOrders(orders);
       setError(payload?.tableMissing ? 'Carpentry jobs table not deployed yet — run applyCarpentryProductionJobsSchema.js' : '');
+      cacheSet(CARPENTRY_JOBS_CACHE_KEY, { jobs: nextJobs, quoteOrders: orders }, PORTAL_SWR_TTL_MS);
     } catch (err) {
       setError(err?.message || 'Failed to load carpentry jobs');
-      setJobs([]);
     } finally {
       setLoading(false);
     }

@@ -18,6 +18,9 @@ import { sendLusakaTransferPdfWhatsApp } from './services/whatsapp';
 import { apiUrl } from './utils/apiUrl';
 import { loadTransferSessionDetail } from './utils/transferSessionDetail';
 import { downloadTransferSessionItemsPdf } from './utils/transferSessionItemsPdf';
+import { applyPortalSnapshot, cacheSet, PORTAL_SWR_TTL_MS } from './utils/staleCache';
+
+const LUSAKA_TRANSFER_CACHE_KEY = 'lusaka-transfers:catalog:v1';
 
 const BUCKET = 'WarehouseTransfers';
 
@@ -177,7 +180,11 @@ export default function LusakaTransfers() {
   const toName = (locations || []).find((row) => String(row.id) === String(toLocationId))?.name || '';
 
   const loadCatalog = useCallback(async () => {
-    setLoading(true);
+    applyPortalSnapshot(LUSAKA_TRANSFER_CACHE_KEY, (snap) => {
+      if (Array.isArray(snap?.locations)) setLocations(snap.locations);
+      if (snap?.company) setCompany(snap.company);
+      if (Array.isArray(snap?.allowedProductIds)) setAllowedProductIds(new Set(snap.allowedProductIds));
+    }, setLoading);
     setError('');
     try {
       const [{ data: locs }, { data: companyRow }, allowed] = await Promise.all([
@@ -188,6 +195,11 @@ export default function LusakaTransfers() {
       setLocations(locs || []);
       setCompany(companyRow || null);
       setAllowedProductIds(allowed);
+      cacheSet(LUSAKA_TRANSFER_CACHE_KEY, {
+        locations: locs || [],
+        company: companyRow || null,
+        allowedProductIds: Array.from(allowed || []),
+      }, PORTAL_SWR_TTL_MS);
     } catch (err) {
       setError(err?.message || 'Failed to load products.');
     } finally {

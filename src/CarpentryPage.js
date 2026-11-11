@@ -95,7 +95,7 @@ export default function CarpentryPage({ embedInHub = false } = {}) {
   }, [applyCatalogSnapshot]);
 
   useEffect(() => {
-    load({ forceFresh: true });
+    load();
   }, [load]);
 
   const selectedProductIds = useMemo(

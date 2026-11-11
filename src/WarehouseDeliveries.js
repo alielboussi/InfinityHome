@@ -40,6 +40,7 @@ import {
   cancelWarehouseDeliverySession,
   discardWarehouseDeliveryDraft,
 } from './services/warehouseDeliveryMobileApi';
+import { applyPortalSnapshot, cacheSet, PORTAL_SWR_TTL_MS } from './utils/staleCache';
 import { getCurrentUser, canPerformWarehouseKitweReceiver, canManageCatalog } from './accessControl';
 
 const formatDateTime = (value) => {
@@ -206,6 +207,11 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
         });
       }
       setSessions(sessionsList);
+      cacheSet(
+        adminMode ? 'warehouse:deliveries:admin:v1' : 'warehouse:deliveries:receiver:v1',
+        { sessions: sessionsList, entriesBySession: {} },
+        PORTAL_SWR_TTL_MS,
+      );
 
       const ids = sessionsList.map((s) => s.id).filter(Boolean);
       if (!ids.length) {
@@ -248,6 +254,11 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
         if (row.product_id && row.kind !== 'set-parent') productIds.add(String(row.product_id));
       });
       setEntriesBySession(grouped);
+      cacheSet(
+        adminMode ? 'warehouse:deliveries:admin:v1' : 'warehouse:deliveries:receiver:v1',
+        { sessions: sessionsList, entriesBySession: grouped },
+        PORTAL_SWR_TTL_MS,
+      );
       if (adminMode) setEditQtyMap(nextEdit);
 
       const creatorIds = Array.from(new Set(
@@ -311,8 +322,10 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
       }
     } catch (err) {
       setError(err?.message || 'Failed to load deliveries.');
-      setSessions([]);
-      setEntriesBySession({});
+      if (!silent) {
+        setSessions([]);
+        setEntriesBySession({});
+      }
     } finally {
       if (!silent) setLoading(false);
     }
@@ -334,8 +347,15 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
   }, []);
 
   useEffect(() => {
-    loadDeliveries();
-  }, [loadDeliveries]);
+    const cacheKey = adminMode ? 'warehouse:deliveries:admin:v1' : 'warehouse:deliveries:receiver:v1';
+    const had = applyPortalSnapshot(cacheKey, (snap) => {
+      if (Array.isArray(snap?.sessions)) setSessions(snap.sessions);
+      if (snap?.entriesBySession && typeof snap.entriesBySession === 'object') {
+        setEntriesBySession(snap.entriesBySession);
+      }
+    }, setLoading);
+    loadDeliveries({ silent: had });
+  }, [loadDeliveries, adminMode]);
 
   useEffect(() => {
     const ms = canAccept ? 15000 : 60000;

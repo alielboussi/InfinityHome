@@ -134,6 +134,18 @@ export function filterAssembliesForDeliveryFloor1Only(catalog) {
 function patchDeliveryHubI18n(filePath) {
   if (!fs.existsSync(filePath)) return;
   let s = fs.readFileSync(filePath, 'utf8');
+  if (!s.includes('deliveryCustomerAddBtn') && s.includes('deliveryCustomerDriver:')) {
+    s = s.replace(
+      "  deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },",
+      "  deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },\n  deliveryCustomerAddBtn: { en: 'Add customer driver', ar: 'إضافة سائق العميل' },",
+    );
+    fs.writeFileSync(filePath, s);
+  }
+  const repairKindLine = "  deliveryRepairKindLabel: { en: 'Repair', ar: 'إصلاح' },";
+  if (!s.includes('deliveryRepairKindLabel') && s.includes('deliveryRepairDeliverBtn:')) {
+    s = s.replace('  deliveryRepairDeliverBtn:', `${repairKindLine}\n  deliveryRepairDeliverBtn:`);
+    fs.writeFileSync(filePath, s);
+  }
   const block = `  deliveryHubTitle: { en: 'Delivery', ar: 'التسليم' },
   deliveryHubTab_floor1: { en: 'Floor 1', ar: 'الطابق 1' },
   deliveryHubTab_repairs: { en: 'Repairs', ar: 'إصلاحات' },
@@ -146,6 +158,7 @@ function patchDeliveryHubI18n(filePath) {
     en: 'No finished orders waiting for a driver.',
     ar: 'لا توجد طلبات منتهية بانتظار السائق.',
   },
+  deliveryRepairKindLabel: { en: 'Repair', ar: 'إصلاح' },
   deliveryRepairDeliverBtn: { en: 'Deliver repair', ar: 'تسليم الإصلاح' },
   deliveryOrderDeliverBtn: { en: 'Deliver order', ar: 'تسليم الطلب' },
   deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },
@@ -166,6 +179,7 @@ function patchDeliveryHubI18n(filePath) {
     en: 'No finished orders waiting for a driver.',
     ar: 'لا توجد طلبات منتهية بانتظار السائق.',
   },
+  deliveryRepairKindLabel: { en: 'Repair', ar: 'إصلاح' },
   deliveryRepairDeliverBtn: { en: 'Deliver repair', ar: 'تسليم الإصلاح' },
   deliveryOrderDeliverBtn: { en: 'Deliver order', ar: 'تسليم الطلب' },
   deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },

@@ -40,9 +40,10 @@ export function navigateFromProductionPushData(navigationRef, data, routes) {
   }
 
   if (eventType === 'painting_jobs' || eventType === 'painting_job') {
-    if (routes.jobs) {
+    const dest = routes.painting || routes.jobs;
+    if (dest) {
       const params = jobId ? { focusJobId: jobId } : undefined;
-      nav.navigate(routes.jobs, params);
+      nav.navigate(dest, params);
       return;
     }
   }

@@ -297,6 +297,11 @@ const UI_STRINGS = {
   jobsFilter_quotes: { en: 'Orders', ar: 'الطلبات' },
   jobsFilter_floor2: { en: 'Floor 2', ar: 'الطابق 2' },
   jobsFilter_active: { en: 'In progress', ar: 'قيد التنفيذ' },
+  jobsSearchPlaceholder: {
+    en: 'Search quote #, customer name, or phone…',
+    ar: 'ابحث برقم العرض أو اسم الزبون أو الهاتف…',
+  },
+  jobsSearchNoMatch: { en: 'No jobs match your search.', ar: 'لا توجد مهام مطابقة للبحث.' },
   jobFinishNoMaterialsHint: {
     en: 'No storeroom materials were recorded for this job.',
     ar: 'لم تُسجَّل مواد من المخزن لهذه المهمة.',
@@ -310,10 +315,6 @@ const UI_STRINGS = {
   manufactureIntro: {
     en: 'Carpentry catalog (same flow as Upholstery Manufacture). Pick qty to open a job — Floor 2 stock is not reduced here. On Jobs: add storeroom materials (wrench), then Finish to deduct BOM from storerooms and add WIP qty on Warehouse Floor 2.',
     ar: 'كتالوج النجارة (نفس تدفق التصنيع في التنجيد). اختر الكمية لبدء مهمة — لا يُخصم من Floor 2 هنا. في المهام: أضف مواد المستودع (مفتاح الربط)، ثم إنهاء لخصم BOM وإضافة WIP على Warehouse Floor 2.',
-  },
-  manufactureJobOpened: {
-    en: 'Production job started. Open Jobs to add materials and finish.',
-    ar: 'تم بدء مهمة الإنتاج. افتح المهام لإضافة المواد والإنهاء.',
   },
   dashFinishing: { en: 'Finishing', ar: 'إنهاء' },
   finishingTitle: { en: 'Finishing', ar: 'إنهاء' },
@@ -348,8 +349,8 @@ const UI_STRINGS = {
     ar: 'تنجيد {qty} × {name}؟ يخصم مواد Floor 2 الخام فقط — سجّل المستودع في مهمة أو طلب.',
   },
   manufactureDone: {
-    en: 'Done — Floor 2 raw deducted; finished stock updated. Use the job wrench for storeroom materials.',
-    ar: 'تم — خُصم خام Floor 2 وتم تحديث المخزون المنتهٍ. استخدم مفتاح المهمة لمواد المستودع.',
+    en: 'Job opened — Floor 2 raw deducted now. Open Jobs to add materials and finish (Delivery virtual hold).',
+    ar: 'تم بدء المهمة — خُصم خام Floor 2 الآن. افتح المهام لإضافة المواد والإنهاء (حجز تسليم افتراضي).',
   },
   manufactureFailed: { en: 'Manufacture failed', ar: 'فشل التصنيع' },
   manufactureEmpty: {
@@ -596,6 +597,7 @@ const UI_STRINGS = {
   },
   deliveryDriver: { en: 'Driver', ar: 'السائق' },
   deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },
+  deliveryCustomerAddBtn: { en: 'Add customer driver', ar: 'إضافة سائق العميل' },
   deliveryCustomerDriverHint: { en: 'Tap + to enter name and phone (or pick a fleet driver below).', ar: 'اضغط + لإدخال الاسم والهاتف (أو اختر سائق الأسطول أدناه).' },
   deliveryCustomerDriverAdd: { en: 'Customer driver', ar: 'سائق العميل' },
   deliveryCustomerDriverNamePh: { en: 'Driver name', ar: 'اسم السائق' },

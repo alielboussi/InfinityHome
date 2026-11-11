@@ -292,6 +292,11 @@ const UI_STRINGS = {
   jobsFilter_quotes: { en: 'Orders', ar: 'الطلبات' },
   jobsFilter_floor2: { en: 'Floor 2', ar: 'الطابق 2' },
   jobsFilter_active: { en: 'In progress', ar: 'قيد التنفيذ' },
+  jobsSearchPlaceholder: {
+    en: 'Search quote #, customer name, or phone…',
+    ar: 'ابحث برقم العرض أو اسم الزبون أو الهاتف…',
+  },
+  jobsSearchNoMatch: { en: 'No jobs match your search.', ar: 'لا توجد مهام مطابقة للبحث.' },
   jobFinishNoMaterialsHint: {
     en: 'No storeroom materials were recorded for this job.',
     ar: 'لم تُسجَّل مواد من المخزن لهذه المهمة.',
@@ -339,8 +344,8 @@ const UI_STRINGS = {
     ar: 'تنجيد {qty} × {name}؟ يخصم مواد Floor 2 الخام فقط — سجّل المستودع في مهمة أو طلب.',
   },
   manufactureDone: {
-    en: 'Done — Floor 2 raw deducted; finished stock updated. Use the job wrench for storeroom materials.',
-    ar: 'تم — خُصم خام Floor 2 وتم تحديث المخزون المنتهٍ. استخدم مفتاح المهمة لمواد المستودع.',
+    en: 'Job opened — Floor 2 raw deducted now. Open Jobs to add materials and finish (Delivery virtual hold).',
+    ar: 'تم بدء المهمة — خُصم خام Floor 2 الآن. افتح المهام لإضافة المواد والإنهاء (حجز تسليم افتراضي).',
   },
   manufactureFailed: { en: 'Manufacture failed', ar: 'فشل التصنيع' },
   manufactureEmpty: {
@@ -566,8 +571,6 @@ const UI_STRINGS = {
   sentDeliveryStatusPartial: { en: 'Receiving', ar: 'قيد الاستلام' },
   sentDeliveryStatusOther: { en: 'In progress', ar: 'قيد المعالجة' },
   sentDeliveryDetailTitle: { en: 'Delivery note', ar: 'مذكرة التسليم' },
-  sentToCustomerTitle: { en: 'Sent to customer', ar: 'أُرسل للعميل' },
-  sentToCustomerEmpty: { en: 'No items sent to customer from Kitwe.', ar: 'لا توجد عناصر أُرسلت للعميل من كيتوي.' },
   sentDeliveryDriver: { en: 'Driver', ar: 'السائق' },
   sentDeliveryDispatchedBy: { en: 'Dispatched by', ar: 'أُرسل بواسطة' },
   sentDeliverySubmittedAt: { en: 'Submitted', ar: 'وقت الإرسال' },
@@ -595,7 +598,6 @@ const UI_STRINGS = {
   deliveryHubTab_floor1: { en: 'Floor 1', ar: 'الطابق 1' },
   deliveryHubTab_repairs: { en: 'Repairs', ar: 'إصلاحات' },
   deliveryHubTab_orders: { en: 'Orders', ar: 'طلبات' },
-  deliveryRepairKindLabel: { en: 'Repair', ar: 'إصلاح' },
   deliveryRepairQueueEmpty: {
     en: 'No repairs waiting for a driver.',
     ar: 'لا توجد إصلاحات بانتظار السائق.',
@@ -604,6 +606,7 @@ const UI_STRINGS = {
     en: 'No finished orders waiting for a driver.',
     ar: 'لا توجد طلبات منتهية بانتظار السائق.',
   },
+  deliveryRepairKindLabel: { en: 'Repair', ar: 'إصلاح' },
   deliveryRepairDeliverBtn: { en: 'Deliver repair', ar: 'تسليم الإصلاح' },
   deliveryOrderDeliverBtn: { en: 'Deliver order', ar: 'تسليم الطلب' },
   deliveryRepairCustomer: { en: 'Customer pickup', ar: 'استلام العميل' },
@@ -612,6 +615,7 @@ const UI_STRINGS = {
   dashDeliveryRepairs: { en: 'Repairs', ar: 'إصلاحات' },
   dashDeliveryOrders: { en: 'Orders', ar: 'طلبات' },
   deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },
+  deliveryCustomerAddBtn: { en: 'Add customer driver', ar: 'إضافة سائق العميل' },
   deliveryCustomerDriverHint: { en: 'Tap + to enter name and phone (or pick a fleet driver below).', ar: 'اضغط + لإدخال الاسم والهاتف (أو اختر سائق الأسطول أدناه).' },
   deliveryCustomerDriverAdd: { en: 'Customer driver', ar: 'سائق العميل' },
   deliveryCustomerDriverNamePh: { en: 'Driver name', ar: 'اسم السائق' },

@@ -83,9 +83,8 @@ export function resolveDashboardBadgeKeyFromPushData(data) {
 
   if (eventType === 'quotes' || eventType === 'quote') return 'quotes';
   if (eventType === 'repairs' || eventType === 'repair') return 'repairs';
-  if (eventType === 'jobs' || eventType === 'job' || eventType === 'painting_jobs' || eventType === 'painting_job') {
-    return 'jobs';
-  }
+  if (eventType === 'painting_jobs' || eventType === 'painting_job' || screen === 'Painting') return 'painting';
+  if (eventType === 'jobs' || eventType === 'job') return 'jobs';
   if (eventType === 'delivery_repairs' || screen === 'DeliveryRepairQueue') return 'delivery_repairs';
   if (eventType === 'delivery_orders' || screen === 'DeliveryOrderQueue') return 'delivery_orders';
   if (eventType === 'sold' || screen === 'SoldOrders') return 'sold';

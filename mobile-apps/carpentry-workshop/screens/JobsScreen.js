@@ -1,3 +1,4 @@
+// @refresh reset — full remount (avoids stale jobFilter after chips were removed).
 import QuoteOrderElapsed from '../shared/components/QuoteOrderElapsed';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
@@ -8,6 +9,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -48,7 +50,50 @@ import {
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
 
+function normalizeSearchDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
 
+function normalizeQuoteKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/^qt[#\s]*/i, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function jobsSearchBlob(item) {
+  if (item?._kind === 'quote') {
+    const quote = item.quote || {};
+    return {
+      quoteKeys: [quote.quote_number, quote.quote_id, quote.id].map(normalizeQuoteKey).filter(Boolean),
+      name: String(quote.customer_name || '').toLowerCase(),
+      phone: normalizeSearchDigits(quote.customer_phone),
+    };
+  }
+  const job = item?.job || {};
+  const meta = job.metadata && typeof job.metadata === 'object' ? job.metadata : {};
+  return {
+    quoteKeys: [job.quote_number, meta.quote_number, job.quote_id, meta.quote_id]
+      .map(normalizeQuoteKey)
+      .filter(Boolean),
+    name: String(job.customer_name || meta.customer_name || '').toLowerCase(),
+    phone: normalizeSearchDigits(job.customer_phone || meta.customer_phone),
+  };
+}
+
+function matchesJobsSearch(item, rawQuery) {
+  const query = String(rawQuery || '').trim();
+  if (!query) return true;
+  const blob = jobsSearchBlob(item);
+  const qLower = query.toLowerCase();
+  const qQuote = normalizeQuoteKey(query);
+  const qDigits = normalizeSearchDigits(query);
+  if (qQuote && blob.quoteKeys.some((key) => key.includes(qQuote))) return true;
+  if (qLower && blob.name.includes(qLower)) return true;
+  if (qDigits.length >= 3 && blob.phone.includes(qDigits)) return true;
+  if (qDigits && blob.quoteKeys.some((key) => key.includes(qDigits))) return true;
+  return false;
+}
 
 function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   const canMaterials = Boolean(quote?.sent_to_production_at || quote?.sent_to_production) && !quote?.completed_at;
@@ -209,7 +254,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const timerOpsRef = useRef(new Set());
   const jobsSnapshotRef = useRef([]);
   const [materialsTarget, setMaterialsTarget] = useState(null);
-  const [jobFilter, setJobFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const [storerooms, setStorerooms] = useState([]);
   const [storeroomFinishJobId, setStoreroomFinishJobId] = useState('');
   const [storeroomPromptVisible, setStoreroomPromptVisible] = useState(false);
@@ -355,15 +400,9 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const combinedItems = useMemo(() => {
     const quoteRows = quoteOrders.map((q) => ({ _kind: 'quote', _key: `quote-${q.quote_id}`, quote: q }));
     const jobRows = jobs.map((j) => ({ _kind: 'job', _key: `job-${j.job_id || j.id}`, job: j }));
-    if (jobFilter === 'quotes') return quoteRows;
-    if (jobFilter === 'floor2') {
-      return jobRows.filter((row) => row.job?.floor2_push || row.job?.metadata?.floor2_push);
-    }
-    if (jobFilter === 'active') {
-      return jobRows.filter((row) => ['ready', 'running', 'paused'].includes(row.job?.status));
-    }
-    return [...quoteRows, ...jobRows];
-  }, [quoteOrders, jobs, jobFilter]);
+    const all = [...quoteRows, ...jobRows];
+    return all.filter((row) => matchesJobsSearch(row, search));
+  }, [quoteOrders, jobs, search]);
 
   if (!allowed) {
     return (
@@ -398,26 +437,29 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('upholsteryJobIntro', locale)}</Text>
-      <View style={styles.filterRow}>
-        {['all', 'quotes', 'floor2', 'active'].map((key) => (
-          <Pressable
-            key={key}
-            style={[styles.filterChip, jobFilter === key && styles.filterChipOn]}
-            onPress={() => setJobFilter(key)}
-          >
-            <Text style={[styles.filterChipText, jobFilter === key && styles.filterChipTextOn]}>
-              {tUi(`jobsFilter_${key}`, locale)}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-      {loading && combinedItems.length === 0 ? (
+      <TextInput
+        style={[kiosk.input, styles.searchInput, { textAlign: locale === 'ar' ? 'right' : 'left' }]}
+        placeholder={tUi('jobsSearchPlaceholder', locale)}
+        placeholderTextColor={theme.textMuted}
+        value={search}
+        onChangeText={setSearch}
+        autoCorrect={false}
+        autoCapitalize="none"
+        clearButtonMode="while-editing"
+        returnKeyType="search"
+        accessibilityLabel={tUi('jobsSearchPlaceholder', locale)}
+      />
+      {search.trim() && !loading && combinedItems.length === 0 && !error ? (
+        <Text style={[kiosk.hint, { textAlign }]}>{tUi('jobsSearchNoMatch', locale)}</Text>
+      ) : null}
+      {loading && combinedItems.length === 0 && !search.trim() ? (
         <ActivityIndicator color={KIOSK_ICON_BLUE_ON_DARK} style={{ marginVertical: 16 }} />
       ) : null}
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
       <FlatList
         data={combinedItems}
         keyExtractor={(item) => item._key}
+        keyboardShouldPersistTaps="handled"
         refreshing={loading}
         onRefresh={() => loadJobs({ showLoading: true })}
         contentContainerStyle={combinedItems.length === 0 ? styles.listEmpty : { paddingBottom: 24 }}
@@ -459,7 +501,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
           )
         )}
         ListEmptyComponent={
-          !loading && !error ? (
+          !loading && !error && !search.trim() ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>
               {tUi('upholsteryJobEmpty', locale)}
             </Text>
@@ -504,15 +546,11 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   intro: { marginBottom: 8 },
+  searchInput: { marginBottom: 12 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   empty: { marginTop: 24 },
   jobCard: { marginBottom: 12 },
   jobThumb: { width: '100%', height: 120, borderRadius: 10, marginBottom: 8, backgroundColor: theme.surfaceElevated },
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: theme.border },
-  filterChipOn: { borderColor: theme.primary, backgroundColor: theme.primaryBg },
-  filterChipText: { fontSize: 13, fontWeight: '600', color: theme.muted },
-  filterChipTextOn: { color: theme.primary },
   quoteBadge: { fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 4 },
   jobTitle: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4 },
   jobMeta: { fontSize: 13, color: theme.muted, marginBottom: 10 },

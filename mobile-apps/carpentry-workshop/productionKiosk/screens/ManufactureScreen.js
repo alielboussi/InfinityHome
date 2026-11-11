@@ -1,4 +1,4 @@
-// @refresh reset — catalog BOM from storerooms → credit Warehouse Floor 2 WIP.
+// @refresh reset — Upholster raw WIP on Floor 2 (BOM + raw deduct → finished stock).
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -7,6 +7,7 @@ import {
   FlatList,
   Image,
   Modal,
+  PixelRatio,
   Pressable,
   StyleSheet,
   Text,
@@ -22,9 +23,10 @@ import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import {
-  fetchCarpentryManufactureProducts,
-  runCarpentryManufacture,
-} from '../../services/carpentryApi';
+  fetchUpholsteryManufactureProducts,
+  runUpholsteryManufacture,
+  invalidateUpholsteryManufactureListCache,
+} from '../services/productionApi';
 import { emitProductionRefresh } from '../lib/productionRefreshBus';
 import ProductionPressableHint from '../lib/ProductionPressableHint';
 import ProductionProductListRow, { productionProductRowPressableStyle } from '../shared/components/ProductionProductListRow';
@@ -74,7 +76,7 @@ function findMatchingFloor2ProductByScan(products, rawScan) {
   const probeLower = probe.toLowerCase();
 
   for (const item of products || []) {
-    const sku = String(item?.family_sku || item?.raw_sku || '').trim();
+    const sku = String(item?.family_sku || item?.raw_sku || item?.finished_sku || '').trim();
     if (sku) {
       if (sku.toLowerCase() === probeLower) return item;
       const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
@@ -82,7 +84,7 @@ function findMatchingFloor2ProductByScan(products, rawScan) {
         if (k && storedKeys.has(k)) return item;
       }
     }
-    const name = String(item?.name || item?.raw_name || '').trim();
+    const name = String(item?.raw_name || item?.name || item?.finished_name || '').trim();
     if (name && name.toLowerCase() === probeLower) return item;
     if (name && name.toLowerCase().includes(probeLower)) return item;
   }
@@ -90,6 +92,7 @@ function findMatchingFloor2ProductByScan(products, rawScan) {
 }
 
 export default function ManufactureScreen({
+  route,
   navigation,
   allowed,
   accessHint,
@@ -121,10 +124,10 @@ export default function ManufactureScreen({
     else if (fromPull) setRefreshing(true);
     setError('');
     try {
-      const list = await fetchCarpentryManufactureProducts();
+      const list = await fetchUpholsteryManufactureProducts({ force: fromPull });
       const sorted = (Array.isArray(list) ? list : [])
         .slice()
-        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        .sort((a, b) => String(a.raw_name || a.name || '').localeCompare(String(b.raw_name || b.name || '')));
       setProducts(sorted);
     } catch (e) {
       setError(e?.message || tUi('manufactureLoadFailed', locale));
@@ -137,21 +140,28 @@ export default function ManufactureScreen({
 
   useFocusEffect(
     useCallback(() => {
-      loadList();
-    }, [loadList]),
+      loadList({ fromPull: false });
+      if (route?.params?.openScan) {
+        setScanOpen(true);
+        navigation.setParams({ openScan: false });
+      }
+    }, [loadList, route?.params?.openScan, navigation]),
   );
 
-  const catalogProducts = useMemo(() => (products || []).slice(), [products]);
+  const inStockProducts = useMemo(
+    () => (products || []).filter((item) => floor2Qty(item) > 0),
+    [products],
+  );
 
   const filteredProducts = useMemo(() => {
     const raw = String(search || '').trim();
-    if (!raw) return catalogProducts;
-    const base = catalogProducts;
+    if (!raw) return inStockProducts;
     const q = raw.toLowerCase();
     const qKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
-    return base.filter((item) => {
-      if (String(item.name || '').toLowerCase().includes(q)) return true;
-      const sku = String(item.family_sku || '');
+    return inStockProducts.filter((item) => {
+      const label = String(item.raw_name || item.name || item.finished_name || '');
+      if (label.toLowerCase().includes(q)) return true;
+      const sku = String(item.raw_sku || item.family_sku || item.finished_sku || '');
       if (sku.toLowerCase().includes(q)) return true;
       const storedKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(sku));
       for (const k of qKeys) {
@@ -159,15 +169,20 @@ export default function ManufactureScreen({
       }
       return false;
     });
-  }, [catalogProducts, search]);
+  }, [inStockProducts, search]);
 
   const hasSearch = Boolean(String(search || '').trim());
 
   const openQtyAdd = useCallback((item) => {
     if (busyId) return;
+    const max = floor2Qty(item);
+    if (max < 1) {
+      Alert.alert(tUi('manufactureTitle', locale), tUi('paintingNoneAvailable', locale));
+      return;
+    }
     setQtyDraft('1');
     setQtyModal({ item });
-  }, [busyId]);
+  }, [busyId, locale]);
 
   const handleBarcodeScanned = useCallback((scannedValue) => {
     setScanOpen(false);
@@ -177,7 +192,8 @@ export default function ManufactureScreen({
     const queryValue = photoSku || cleaned;
     setSearch(queryValue);
 
-    const matched = findMatchingFloor2ProductByScan(productsRef.current, scannedValue);
+    const inStock = (productsRef.current || []).filter((item) => floor2Qty(item) > 0);
+    const matched = findMatchingFloor2ProductByScan(inStock, scannedValue);
     if (matched) {
       openQtyAdd(matched);
     } else {
@@ -187,33 +203,43 @@ export default function ManufactureScreen({
 
   const handleQtyTextChange = (txt) => {
     const cleaned = String(txt || '').replace(/[^0-9]/g, '');
+    const max = qtyModal?.item ? floor2Qty(qtyModal.item) : 999;
     if (!cleaned) {
       setQtyDraft('');
       return;
     }
     const n = Math.floor(Number(cleaned) || 0);
-    setQtyDraft(String(Math.max(1, Math.min(999, n))));
+    setQtyDraft(String(Math.max(1, Math.min(max, n))));
   };
 
   const confirmAdd = async () => {
     if (!qtyModal?.item) return;
     const item = qtyModal.item;
-    const assemblyId = String(item.id || item.assembly_id || item.raw_assembly_id || '');
+    const rawAssemblyId = String(item.raw_assembly_id || item.id || item.assembly_id || '');
+    const max = floor2Qty(item);
     const rawNum = Math.floor(Number(qtyDraft) || 0);
     if (!Number.isFinite(rawNum) || rawNum < 1) {
-      Alert.alert(tUi('manufactureAddStockTitle', locale), tUi('needQty', locale));
+      Alert.alert(tUi('manufactureDeductTitle', locale), tUi('needQty', locale));
+      return;
+    }
+    if (rawNum > max) {
+      Alert.alert(
+        tUi('manufactureDeductTitle', locale),
+        tUi('paintingQtyExceedsAvailable', locale).replace('{max}', String(max)),
+      );
       return;
     }
     setQtyModal(null);
-    setBusyId(assemblyId);
+    setBusyId(rawAssemblyId);
     try {
-      await runCarpentryManufacture({
-        assemblyId,
+      await runUpholsteryManufacture({
+        rawAssemblyId,
         productQty: rawNum,
       });
+      invalidateUpholsteryManufactureListCache();
       emitProductionRefresh('manufacture');
       await loadList({ fromPull: true });
-      Alert.alert(tUi('manufactureTitle', locale), tUi('manufactureJobOpened', locale));
+      Alert.alert(tUi('manufactureTitle', locale), tUi('manufactureDone', locale));
     } catch (e) {
       Alert.alert(tUi('manufactureFailed', locale), e?.message || tUi('manufactureFailed', locale));
     } finally {
@@ -222,11 +248,12 @@ export default function ManufactureScreen({
   };
 
   const renderProductCard = ({ item }) => {
-    const id = String(item.id || item.assembly_id || '');
+    const id = String(item.raw_assembly_id || item.id || item.assembly_id || '');
     const qty = floor2Qty(item);
+    const displayName = String(item.raw_name || item.name || item.finished_name || '');
+    const sku = String(item.raw_sku || item.finished_sku || item.family_sku || '').trim();
     const cardImage = resolveFloor2ProductImage(item);
     const cardBusy = busyId === id;
-    const sku = String(item.family_sku || item.raw_sku || '').trim();
 
     return (
       <ProductionPressableHint
@@ -243,7 +270,7 @@ export default function ManufactureScreen({
       >
         <ProductionProductListRow
           imageUrl={cardImage || undefined}
-          name={item.name}
+          name={displayName}
           sku={sku}
           subtitle={tUi('manufactureQtyLabel', locale).replace('{qty}', String(qty))}
           busy={cardBusy}
@@ -284,7 +311,7 @@ export default function ManufactureScreen({
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
-      <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntro', locale)}</Text>
+      <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('manufactureIntroFloor2', locale)}</Text>
       <View style={styles.searchRow}>
         <TextInput
           style={[kiosk.input, styles.searchInput, { textAlign: 'left' }]}
@@ -328,9 +355,9 @@ export default function ManufactureScreen({
         removeClippedSubviews
         updateCellsBatchingPeriod={50}
         ListEmptyComponent={
-          !loading && !error ? (
+          !loading && !error && !hasSearch ? (
             <Text style={[kiosk.hint, styles.empty, { textAlign: 'center' }]}>
-              {hasSearch ? tUi('manufactureSearchNoMatch', locale) : tUi('manufactureEmpty', locale)}
+              {tUi('manufactureEmpty', locale)}
             </Text>
           ) : null
         }
@@ -339,8 +366,10 @@ export default function ManufactureScreen({
       <Modal visible={Boolean(qtyModal)} transparent animationType="fade" onRequestClose={() => setQtyModal(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setQtyModal(null)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>{tUi('manufactureConfirmTitle', locale)}</Text>
-            <Text style={styles.modalProductName}>{qtyModal?.item?.name || ''}</Text>
+            <Text style={styles.modalTitle}>{tUi('manufactureDeductTitle', locale)}</Text>
+            <Text style={styles.modalProductName}>
+              {qtyModal?.item?.raw_name || qtyModal?.item?.name || qtyModal?.item?.finished_name || ''}
+            </Text>
             <Text style={styles.modalSub}>
               {tUi('manufactureQtyLabel', locale).replace('{qty}', String(floor2Qty(qtyModal?.item)))}
             </Text>
@@ -397,18 +426,6 @@ export default function ManufactureScreen({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   intro: { marginBottom: 8 },
-  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  tabChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.card,
-  },
-  tabChipActive: { borderColor: theme.primary, backgroundColor: theme.primarySoft || '#e0f2fe' },
-  tabChipText: { fontWeight: '700', color: theme.textMuted },
-  tabChipTextActive: { color: theme.primary },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',

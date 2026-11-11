@@ -1,6 +1,5 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import BackToDashboard from '../BackToDashboard';
 import PortalHubBar from '../components/PortalHubBar';
 import { usePortalHubView } from '../hooks/usePortalHubView';
 import CarpentryWarehouseStockPage from '../CarpentryWarehouseStockPage';
@@ -22,7 +21,6 @@ export default function WarehouseStoreroomsHubPage() {
   return (
     <div className="portal-hub-page">
       <div className="portal-hub-page__chrome page-header-row">
-        <BackToDashboard />
         <PortalHubBar
           title="Carpentry storerooms"
           viewLabel="Storeroom"

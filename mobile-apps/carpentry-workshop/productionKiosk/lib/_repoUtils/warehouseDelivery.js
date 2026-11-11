@@ -76,6 +76,16 @@ export function deliveryEntryReceived(entry) {
   return Boolean(entry?.metadata?.received_at);
 }
 
+/** Hassan marked this line to go to the customer instead of Kitwe stock. */
+export function deliveryEntrySentToCustomer(entry) {
+  const meta = entry?.metadata && typeof entry.metadata === 'object' ? entry.metadata : {};
+  return meta.sent_to_customer === true || Boolean(meta.sent_to_customer_at);
+}
+
+export function deliveryCustomerSentLines(entries) {
+  return (entries || []).filter(deliveryEntrySentToCustomer);
+}
+
 export function deliveryEntryPendingReceive(entry) {
   return deliveryEntryReceivable(entry) && !deliveryEntryReceived(entry);
 }

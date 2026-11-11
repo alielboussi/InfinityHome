@@ -858,7 +858,7 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
 }
 
 function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
-  const tableCellStyle = { border: '1px solid #c9d3df', padding: '8px 10px' };
+  const tableCellStyle = { border: '1px solid #c9d3df', padding: '8px 10px', verticalAlign: 'top' };
   const navigate = useNavigate();
   const location = useLocation();
   const [quote, setQuote] = React.useState(() => ({ ...defaultQuote }));
@@ -1343,7 +1343,6 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const pageStyle = React.useMemo(() => ({
     padding: isIpadProLayout ? '12px 18px 24px' : 12,
   }), [isIpadProLayout]);
-  const tableLayoutMode = React.useMemo(() => isIpadProLayout ? 'auto' : 'fixed', [isIpadProLayout]);
   const tableWrapperStyle = React.useMemo(() => ({
     marginTop: 12,
     overflowX: 'auto',
@@ -1620,14 +1619,15 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           </div>
 
           <div className="quotes-table-wrap" style={tableWrapperStyle}>
-            <table className="table quotes-table quotes-table--create-lines" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: tableLayoutMode, minWidth: isIpadProLayout ? 900 : undefined }}>
+            <table className="table quotes-table quotes-table--create-lines" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', minWidth: isIpadProLayout ? 960 : 880 }}>
               <thead>
                 <tr>
-                  <th style={{ ...tableCellStyle, width: '44%' }}>Item &amp; description</th>
-                  <th style={{ ...tableCellStyle, width: '13%', textAlign: 'center' }}>Qty / unit</th>
-                  <th style={{ ...tableCellStyle, width: '16%', textAlign: 'center' }}>Price</th>
-                  <th style={{ ...tableCellStyle, width: '11%', textAlign: 'right' }}>Amount</th>
-                  <th style={{ ...tableCellStyle, width: '8%', textAlign: 'center' }} aria-label="Actions" />
+                  <th style={{ ...tableCellStyle, width: 'auto' }}>Item &amp; description</th>
+                  <th style={{ ...tableCellStyle, width: '7.5%', textAlign: 'center' }}>Qty</th>
+                  <th style={{ ...tableCellStyle, width: '11%', textAlign: 'center' }}>Unit</th>
+                  <th style={{ ...tableCellStyle, width: '15%', textAlign: 'right' }}>Price</th>
+                  <th style={{ ...tableCellStyle, width: '13%', textAlign: 'right' }}>Amount</th>
+                  <th style={{ ...tableCellStyle, width: '52px', textAlign: 'center' }} aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -1642,7 +1642,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                   const showCarpentryMeta = canManageProductionRouting && productionRoute === 'carpentry';
                   return (
                     <tr key={it.id} className="quotes-line-row">
-                      <td style={{ ...tableCellStyle, width: '44%' }} className="quotes-line-item-cell">
+                      <td style={tableCellStyle} className="quotes-line-item-cell">
                         <div className="quotes-line-cell">
                           <input
                             className="quotes-input quotes-input--slim quotes-line-name"
@@ -1907,36 +1907,36 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                           ) : null}
                         </div>
                       </td>
-                      <td style={{ ...tableCellStyle, width: '13%', textAlign: 'center' }} className="quotes-line-qty-cell">
-                        <div className="quotes-line-qty-row">
-                          <input
-                            className="quotes-input quotes-input--slim quotes-line-qty"
-                            type="text"
-                            inputMode="decimal"
-                            pattern="[0-9]*"
-                            value={qtyValue}
-                            disabled={locked}
-                            onChange={e => updateItem(it.id, { quantity: e.target.value })}
-                            onWheel={e => e.preventDefault()}
-                            onWheelCapture={e => e.preventDefault()}
-                            placeholder="Qty"
-                            aria-label="Quantity"
-                          />
-                          <select
-                            className="quotes-select quotes-select--slim quotes-line-unit"
-                            value={it.unit_id || ''}
-                            disabled={locked}
-                            onChange={e => updateItem(it.id, { unit_id: e.target.value })}
-                            aria-label="Unit"
-                          >
-                            <option value="">Unit</option>
-                            {units.map(u => (
-                              <option key={u.id} value={u.id}>{normalizeUnitAbbreviation(u.abbreviation, u.name)}</option>
-                            ))}
-                          </select>
-                        </div>
+                      <td style={{ ...tableCellStyle, textAlign: 'center' }} className="quotes-line-qty-cell">
+                        <input
+                          className="quotes-input quotes-input--slim quotes-line-qty"
+                          type="text"
+                          inputMode="decimal"
+                          pattern="[0-9]*"
+                          value={qtyValue}
+                          disabled={locked}
+                          onChange={e => updateItem(it.id, { quantity: e.target.value })}
+                          onWheel={e => e.preventDefault()}
+                          onWheelCapture={e => e.preventDefault()}
+                          placeholder="0"
+                          aria-label="Quantity"
+                        />
                       </td>
-                      <td style={{ ...tableCellStyle, textAlign: 'center', width: '16%' }} className="quotes-line-price-cell">
+                      <td style={{ ...tableCellStyle, textAlign: 'center' }} className="quotes-line-unit-cell">
+                        <select
+                          className="quotes-select quotes-select--slim quotes-line-unit"
+                          value={it.unit_id || ''}
+                          disabled={locked}
+                          onChange={e => updateItem(it.id, { unit_id: e.target.value })}
+                          aria-label="Unit"
+                        >
+                          <option value="">Unit</option>
+                          {units.map(u => (
+                            <option key={u.id} value={u.id}>{normalizeUnitAbbreviation(u.abbreviation, u.name)}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ ...tableCellStyle, textAlign: 'right' }} className="quotes-line-price-cell">
                         {!locked ? (
                           <div className="quotes-line-price-wrap">
                             <span className="quotes-line-price-prefix">{currencyLabel}</span>
@@ -1953,22 +1953,22 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                           </div>
                         ) : (
                           <div className="quotes-line-amount-readonly">
-                            <span className="quotes-line-price-prefix">{currencyLabel}</span>
+                            <span className="quotes-line-currency">{currencyLabel}</span>
                             <span>{unitPriceValue === '' ? '0.00' : Number(unitPriceValue || 0).toFixed(2)}</span>
                           </div>
                         )}
                       </td>
                       <td
-                        style={{ ...tableCellStyle, textAlign: 'right', width: '11%' }}
+                        style={{ ...tableCellStyle, textAlign: 'right' }}
                         className="quotes-line-amount-cell"
                       >
                         <div className="quotes-line-amount-readonly quotes-line-amount-total">
-                          <span className="quotes-line-price-prefix">{currencyLabel}</span>
+                          <span className="quotes-line-currency">{currencyLabel}</span>
                           <span>{lineTotal}</span>
                         </div>
                       </td>
                       <td
-                        style={{ ...tableCellStyle, width: '8%', textAlign: 'center' }}
+                        style={{ ...tableCellStyle, textAlign: 'center' }}
                         className="quotes-line-actions-cell"
                       >
                         {!locked ? (

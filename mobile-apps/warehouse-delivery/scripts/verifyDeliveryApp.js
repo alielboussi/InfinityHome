@@ -23,8 +23,16 @@ try {
   assert(missing.length === 0, `package.json missing deliveryKit peers: ${missing.join(', ')}`);
 
   assert(fs.existsSync(path.join(appRoot, 'metro.config.js')), 'metro.config.js required for shared/ + deliveryKit');
+  assert(
+    fs.existsSync(path.join(appRoot, 'shared', 'expoApplicationSafeShim.js')),
+    'shared/expoApplicationSafeShim.js required (Expo Go missing ExpoApplication)',
+  );
   assert(fs.existsSync(path.join(appRoot, 'babel.config.js')), 'babel.config.js required (babel-preset-expo / RN codegen)');
   const metro = fs.readFileSync(path.join(appRoot, 'metro.config.js'), 'utf8');
+  assert(
+    metro.includes('expoApplicationSafeShim') && metro.includes('expo-application'),
+    'metro must alias expo-application to expoApplicationSafeShim',
+  );
   assert(
     metro.includes('deliveryKit') && metro.includes('node_modules'),
     'metro must block deliveryKit/warehouse-production node_modules (duplicate RNCSafeAreaProvider)',
@@ -235,6 +243,7 @@ try {
     'deliveryRepairDeliverBtn',
     'deliveryOrderDeliverBtn',
     'deliveryCustomerDriver',
+    'deliveryCustomerAddBtn',
     'deliveryCustomerDriverHint',
     'deliveryDriverEitherOr',
     'customerDriverSave',
