@@ -88,40 +88,11 @@ function shouldUseTrimmedBounds(bounds, width, height) {
   return singleBand && areaRatio < 0.88;
 }
 
-/**
- * Center-cover into a square canvas. Optional trim only for clear letterbox margins.
- * @param {HTMLImageElement} img
- * @param {number} size
- * @returns {HTMLCanvasElement}
- */
-export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX, { fit = 'contain' } = {}) {
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  if (!w || !h) throw new Error('Invalid image dimensions');
-
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas not supported');
-
-  if (fit === 'contain') {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, size, size);
-    const scale = Math.min(size / w, size / h);
-    const dw = w * scale;
-    const dh = h * scale;
-    const dx = (size - dw) / 2;
-    const dy = (size - dh) / 2;
-    ctx.drawImage(img, 0, 0, w, h, dx, dy, dw, dh);
-    return canvas;
-  }
-
+function resolveContentRect(img, w, h) {
   let x0 = 0;
   let y0 = 0;
   let x1 = w - 1;
   let y1 = h - 1;
-
   try {
     const temp = document.createElement('canvas');
     temp.width = w;
@@ -138,17 +109,51 @@ export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX, 
       }
     }
   } catch {
-    // Tainted canvas (CORS) — cover-crop the full frame only.
+    // Tainted canvas (CORS) — use the full frame.
+  }
+  return {
+    x0,
+    y0,
+    cw: Math.max(1, x1 - x0 + 1),
+    ch: Math.max(1, y1 - y0 + 1),
+  };
+}
+
+/**
+ * Fit product pixels on a white square. Trims obvious ChatGPT/white letterbox first
+ * so a square file with a wide TV stand in the middle is not a tiny strip in the list.
+ * Contain never crops the product; cover is only used when a caller asks for it.
+ */
+export function drawImageToSquareCanvas(img, size = WAREHOUSE_CATALOG_IMAGE_PX, { fit = 'contain' } = {}) {
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  if (!w || !h) throw new Error('Invalid image dimensions');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas not supported');
+
+  const { x0, y0, cw, ch } = resolveContentRect(img, w, h);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+
+  if (fit !== 'cover') {
+    const scale = Math.min(size / cw, size / ch);
+    const dw = cw * scale;
+    const dh = ch * scale;
+    const dx = (size - dw) / 2;
+    const dy = (size - dh) / 2;
+    ctx.drawImage(img, x0, y0, cw, ch, dx, dy, dw, dh);
+    return canvas;
   }
 
-  const cw = Math.max(1, x1 - x0 + 1);
-  const ch = Math.max(1, y1 - y0 + 1);
   const scale = Math.max(size / cw, size / ch);
   const sw = size / scale;
   const sh = size / scale;
   const sx = x0 + (cw - sw) / 2;
   const sy = y0 + (ch - sh) / 2;
-
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
   return canvas;
 }
