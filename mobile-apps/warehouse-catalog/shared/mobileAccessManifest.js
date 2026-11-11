@@ -198,7 +198,7 @@ export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
   'hassan_kitwe_orders',
-];
+]);
 
 /** Every navigable screen (CI + defaults). */
 export const MOBILE_SCREENS = Object.freeze([

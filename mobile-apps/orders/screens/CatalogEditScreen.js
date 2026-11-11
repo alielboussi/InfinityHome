@@ -119,7 +119,7 @@ export default function CatalogEditScreen({
       row.description,
       row.address,
       row.city,
-    ].some((v) => String(v || '').toLowerCase().includes(needle));
+    ].some((v) => String(v || '').toLowerCase().includes(needle)));
   }, [rows, needle]);
 
   const listHeader = (
