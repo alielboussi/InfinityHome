@@ -112,8 +112,19 @@ assert(
   'set-component finished units must be Kitwe tick rows',
 );
 assert(deliveries.includes('WAREHOUSE_RECEIVER_LIST_STATUSES'), 'Hassan page must load completed deliveries for history');
-assert(deliveries.includes('Send to customer'), 'Hassan accept page must offer send-to-customer per product');
-assert(mobile.includes('delivery-receiver-send-to-customer'), 'receiver API must persist send-to-customer');
+assert(
+  !deliveries.includes('Send to customer'),
+  'Hassan accept page must not offer send-to-customer (Kitwe receive only)',
+);
+assert(
+  deliveries.includes('setDeliveryEntryReceiverCheck'),
+  'Hassan accept page must tick lines into Kitwe via receiver check',
+);
+assert(mobile.includes('delivery-receiver-send-to-customer'), 'receiver send-to-customer op must stay routed for legacy clients');
+assert(
+  mobile.includes('Send to customer is disabled'),
+  'receiver send-to-customer API must reject (Kitwe stock only)',
+);
 assert(
   fs.readFileSync(
     path.join(root, 'mobile-apps/warehouse-delivery/deliveryKit/screens/KitweSentDeliveryDetailScreen.js'),
