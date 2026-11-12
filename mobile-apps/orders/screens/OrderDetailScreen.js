@@ -63,9 +63,14 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
             setBusy(true);
             setError('');
             try {
-              await setOrdersQuoteRoute(quoteId, prodRoute);
-              await sendOrdersQuoteProduction(quoteId);
-              Alert.alert(tUi('sendOrder', locale), `Order sent to ${dept}.`);
+              if (!alreadySent) {
+                await setOrdersQuoteRoute(quoteId, prodRoute);
+              }
+              const res = await sendOrdersQuoteProduction(quoteId);
+              const msg = res?.resent
+                ? `Order notification resent to ${dept}.`
+                : `Order sent to ${dept}.`;
+              Alert.alert(tUi('sendOrder', locale), msg);
               await load();
             } catch (err) {
               Alert.alert('Send Order failed', err?.message || '');

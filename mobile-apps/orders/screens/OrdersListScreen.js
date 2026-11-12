@@ -69,9 +69,15 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
           onPress: async () => {
             setBusyId(String(row.id));
             try {
-              await setOrdersQuoteRoute(row.id, route);
-              await sendOrdersQuoteProduction(row.id);
-              Alert.alert(tUi('sendOrder', locale), `Order sent to ${dept}.`);
+              const alreadySent = Boolean(row.routing?.sent_to_production_at);
+              if (!alreadySent) {
+                await setOrdersQuoteRoute(row.id, route);
+              }
+              const res = await sendOrdersQuoteProduction(row.id);
+              const msg = res?.resent
+                ? `Order notification resent to ${dept}.`
+                : `Order sent to ${dept}.`;
+              Alert.alert(tUi('sendOrder', locale), msg);
               await load();
             } catch (err) {
               Alert.alert('Send Order failed', err?.message || '');

@@ -11,6 +11,7 @@ export default function DropdownSelect({
   placeholder = '',
   allowEmpty = false,
   disabled = false,
+  compact = false,
 }) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => String(o.value) === String(value || ''));
@@ -23,19 +24,34 @@ export default function DropdownSelect({
 
   return (
     <View style={kiosk.field}>
-      {label ? <Text style={kiosk.label}>{label}</Text> : null}
+      {label ? (
+        <Text style={[kiosk.label, compact && styles.labelCompact]} numberOfLines={compact ? 2 : undefined}>
+          {label}
+        </Text>
+      ) : null}
       <Pressable
         disabled={disabled}
-        style={[styles.trigger, kiosk.input, disabled && styles.triggerDisabled]}
+        style={[
+          styles.trigger,
+          kiosk.input,
+          compact && styles.triggerCompact,
+          disabled && styles.triggerDisabled,
+        ]}
         onPress={() => setOpen(true)}
       >
         <Text
-          style={[styles.triggerText, selected ? styles.triggerValue : styles.triggerPlaceholder]}
-          numberOfLines={2}
+          style={[
+            styles.triggerText,
+            compact && styles.triggerTextCompact,
+            selected ? styles.triggerValue : styles.triggerPlaceholder,
+          ]}
+          numberOfLines={compact ? 1 : 2}
+          adjustsFontSizeToFit={compact}
+          minimumFontScale={compact ? 0.78 : 1}
         >
           {display}
         </Text>
-        <Text style={styles.chevron} accessibilityElementsHidden>▾</Text>
+        <Text style={[styles.chevron, compact && styles.chevronCompact]} accessibilityElementsHidden>▾</Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -59,7 +75,11 @@ export default function DropdownSelect({
                     style={[styles.option, on && styles.optionOn]}
                     onPress={() => pick(opt.value)}
                   >
-                    <Text style={[styles.optionText, on && styles.optionTextOn]}>{opt.label}</Text>
+                    <Text
+                      style={[styles.optionText, compact && styles.optionTextCompact, on && styles.optionTextOn]}
+                    >
+                      {opt.label}
+                    </Text>
                   </Pressable>
                 );
               })}
@@ -83,10 +103,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   triggerDisabled: { opacity: 0.5 },
+  triggerCompact: { minHeight: 42, paddingVertical: 8, paddingHorizontal: 10 },
+  labelCompact: { fontSize: 12, lineHeight: 15, marginBottom: 4 },
   triggerText: { flex: 1, fontSize: 18, paddingRight: 8 },
+  triggerTextCompact: { fontSize: 13, lineHeight: 16, paddingRight: 4 },
   triggerValue: { color: '#0f172a', fontWeight: '600' },
   triggerPlaceholder: { color: '#64748b', fontWeight: '500' },
   chevron: { color: '#64748b', fontSize: 14, fontWeight: '700' },
+  chevronCompact: { fontSize: 11 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.55)',
@@ -121,6 +145,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#dbeafe',
   },
   optionText: { color: theme.text, fontWeight: '600', fontSize: 15 },
+  optionTextCompact: { fontSize: 14, lineHeight: 18 },
   optionTextOn: { color: theme.primary, fontWeight: '800' },
   closeBtn: {
     marginTop: 10,

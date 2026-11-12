@@ -11,6 +11,7 @@ export async function printWarehouseStorageSaleLabel(db, {
   customerPhone,
   qty = 1,
   saleDate,
+  receiptNumber,
   setName,
   printedBy,
 }) {
@@ -29,6 +30,7 @@ export async function printWarehouseStorageSaleLabel(db, {
     customerPhone: custPhone,
     copies,
     saleDate: saleDate || new Date(),
+    receiptNumber: String(receiptNumber || '').trim(),
     setName: parentSetName,
   });
 

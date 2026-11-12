@@ -107,3 +107,8 @@ export function fetchOrdersStoragePosDetail(saleId) {
 export function submitOrdersStorageSend(body) {
   return warehouseMobileRequest('orders-storage-submit', body);
 }
+
+/** `print: true` sends one copy to Zebra Weblink; otherwise preview only. */
+export function testOrdersStorageLabel(body = {}) {
+  return warehouseMobileRequest('orders-storage-label-test', body);
+}

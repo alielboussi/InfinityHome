@@ -264,6 +264,7 @@ async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
     customerPhone: detail.sale.customer_phone || '',
     qty,
     saleDate: detail.sale.sale_date || detail.sale.created_at,
+    receiptNumber: detail.sale.receipt_number || '',
     printedBy: row.created_by_name,
   });
 

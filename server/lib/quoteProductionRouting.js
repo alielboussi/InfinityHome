@@ -188,6 +188,45 @@ export async function sendQuoteToProduction(sb, quoteId, userId) {
   return { quote_id: quoteId, route: routing.route, sent_to_production_at: now };
 }
 
+async function pushProductionQuoteNotification(sb, quoteId, quote, routing) {
+  const customer = await resolveCustomerContact(sb, quote.customer_id);
+  const { notifyProductionQuoteOrderSent } = await import('./productionExpoPush.js');
+  await notifyProductionQuoteOrderSent({
+    route: routing.route,
+    quoteNumber: quote.quote_number || routing.metadata?.quote_number,
+    customerName: customer.name,
+    quoteId,
+  });
+}
+
+export async function resendQuoteToProduction(sb, quoteId, userId) {
+  void userId;
+  const { quote, routing } = await loadQuoteBundle(sb, quoteId);
+  if (!routing?.route) throw new Error('Choose Carpentry or Upholstery before sending to production');
+  if (!routing.sent_to_production_at) {
+    return sendQuoteToProduction(sb, quoteId, userId);
+  }
+  try {
+    await pushProductionQuoteNotification(sb, quoteId, quote, routing);
+  } catch (pushErr) {
+    throw new Error(pushErr?.message || 'Failed to resend order notification');
+  }
+  return {
+    quote_id: quoteId,
+    route: routing.route,
+    sent_to_production_at: routing.sent_to_production_at,
+    resent: true,
+  };
+}
+
+export async function sendOrResendQuoteToProduction(sb, quoteId, userId) {
+  const routing = await getQuoteProductionRouting(sb, quoteId);
+  if (routing?.sent_to_production_at) {
+    return resendQuoteToProduction(sb, quoteId, userId);
+  }
+  return sendQuoteToProduction(sb, quoteId, userId);
+}
+
 export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = {}) {
   const normalized = normalizeProductionRoute(route);
   if (!normalized) throw new Error('route required');

@@ -119,6 +119,19 @@ export function warehouseDeliveryReceiverLineKind(line) {
   return 'skip';
 }
 
+export function warehouseDeliveryReceiverProductHeader(line) {
+  return line?.kind === 'set-parent' || line?.kind === 'assembly-header';
+}
+
+export function warehouseDeliveryReceiverNested(line) {
+  return line?.kind === 'packet-line' || line?.kind === 'set-component';
+}
+
+export function allDeliveryPacketsReceiverConfirmed(entries) {
+  const { total, confirmed } = deliveryEntryReceiverProgress(entries);
+  return total > 0 && confirmed === total;
+}
+
 export function warehouseDeliveryReceiverTickRows(entries) {
   return groupWarehouseDisplayLines(entries).filter(
     (line) => warehouseDeliveryReceiverLineKind(line) === 'receiver-line',

@@ -1,7 +1,10 @@
+import { Platform, Share } from 'react-native';
+import { File } from 'expo-file-system';
 import {
   cacheDirectory,
   deleteAsync,
   EncodingType,
+  getContentUriAsync,
   makeDirectoryAsync,
   writeAsStringAsync,
 } from 'expo-file-system/legacy';
@@ -19,14 +22,23 @@ export async function shareQuotePdfToWhatsApp(quoteId) {
   await makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
   await deleteAsync(fileUri, { idempotent: true }).catch(() => {});
   await writeAsStringAsync(fileUri, pdf_base64, { encoding: EncodingType.Base64 });
-  const Sharing = await import('expo-sharing');
-  const canShare = await Sharing.isAvailableAsync();
-  if (!canShare) {
-    throw new Error('Sharing is not available on this device.');
+
+  const file = new File(fileUri);
+  if (await File.canPreview(file)) {
+    await File.preview(file, { title: 'Share quote PDF' });
+    return;
   }
-  await Sharing.shareAsync(fileUri, {
-    mimeType: 'application/pdf',
-    UTI: 'com.adobe.pdf',
-    dialogTitle: 'Share quote PDF',
-  });
+
+  const shareUrl = Platform.OS === 'android'
+    ? await getContentUriAsync(fileUri)
+    : fileUri;
+
+  const result = await Share.share(
+    Platform.OS === 'ios'
+      ? { url: shareUrl, title: 'Share quote PDF' }
+      : { message: 'Quote PDF', url: shareUrl, title: 'Share quote PDF' },
+  );
+  if (result.action === Share.dismissedAction) {
+    return;
+  }
 }

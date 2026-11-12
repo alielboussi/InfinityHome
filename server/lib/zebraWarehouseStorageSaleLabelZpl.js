@@ -1,8 +1,9 @@
-/** Zebra ZPL — POS / Sales Storage label (80×68 mm: Code 128 SKU, Product Name, Image QR aligned with values, Customer Name, Customer Phone, Sale Date, optional Set). */
+/** Zebra ZPL — POS / Sales Storage label (80×68 mm). Values + photo QR center-aligned on one vertical axis; headers left. */
 
 import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import {
   COMPANY_NAME,
+  BARCODE_WIDTH_MM,
   BARCODE_HEIGHT_MM,
   BORDER_TOP_INSET_MM,
   BLOCK_GAP_MM,
@@ -30,11 +31,15 @@ const FIELD_LABELS = {
   customerName: 'Customer Name:',
   customerPhone: 'Customer #:',
   saleDate: 'Sale Date:',
+  receipt: 'Receipt #:',
   setName: 'Set:',
 };
 
-/** Left edge of value column (in mm) so values and Image QR align to the right of headers. */
-const VALUE_COL_LEFT_MM = 29;
+/** Left labels; values + QR share this right edge (mm from label origin). */
+const STORAGE_LABEL_QR_SIZE_MM = 6.5;
+const STORAGE_LABEL_QR_SIZE_COMPACT_MM = 5.5;
+/** Inset values/QR from the inner right border (0 = full width band to inner right). */
+const STORAGE_VALUE_RIGHT_INSET_MM = 0;
 
 function zplEscape(value) {
   return String(value || '')
@@ -69,31 +74,32 @@ function parseSaleDateInput(raw) {
   return new Date(s);
 }
 
-function computeStorageSaleLabelDots({ dpi = 203, includeSetRow = false } = {}) {
-  const base = computeProductionLabelLayout({ dpi });
-  const toDots = (mm) => mmToDots(mm, dpi);
-  const textTopDots = (rowStartMm, padMm = 0.25) => toDots(rowStartMm + padMm);
+export function computeStorageSaleLabelLayoutMm({
+  includeSetRow = false,
+  includeReceiptRow = false,
+} = {}) {
+  const compact = includeSetRow || includeReceiptRow;
+  const marginMm = LABEL_MARGIN_MM;
+  const mainWidthMm = LABEL_WIDTH_MM - marginMm * 2;
+  const valueRightMm = LABEL_WIDTH_MM - marginMm - STORAGE_VALUE_RIGHT_INSET_MM;
+  const valueBoxLeftMm = marginMm;
+  const valueBoxWidthMm = valueRightMm - valueBoxLeftMm;
+  const valueCenterXMm = valueBoxLeftMm + valueBoxWidthMm / 2;
+  const rowStepMm = compact ? 3.4 : ROW_TEXT_MM;
+  const gapMm = compact ? 0.35 : BLOCK_GAP_MM;
+  const qrSizeMm = compact ? STORAGE_LABEL_QR_SIZE_COMPACT_MM : STORAGE_LABEL_QR_SIZE_MM;
 
-  const valueBoxWidthMm = LABEL_WIDTH_MM - VALUE_COL_LEFT_MM - LABEL_MARGIN_MM - 1;
-  const valueCenterXMm = VALUE_COL_LEFT_MM + valueBoxWidthMm / 2;
-
-  const rowStepMm = includeSetRow ? 3.55 : ROW_TEXT_MM;
-  const gapMm = includeSetRow ? 0.4 : BLOCK_GAP_MM;
-  const qrSizeMm = includeSetRow ? 8.2 : QR_SIZE_MM;
-
-  const companyTextTopMm = LABEL_MARGIN_MM + BORDER_TOP_INSET_MM;
+  const companyTextTopMm = marginMm + BORDER_TOP_INSET_MM;
   const barcodeTopMm = companyTextTopMm + COMPANY_TEXT_HEIGHT_MM + GAP_AFTER_COMPANY_MM;
   let y = barcodeTopMm + BARCODE_HEIGHT_MM + GAP_AFTER_BARCODE_MM;
 
   const skuRowMm = y;
   y += rowStepMm + gapMm;
   const nameBlockTopMm = y;
-  y = nameBlockTopMm + NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES + gapMm;
-
-  // Lift QR up slightly (~2.2mm) and shift right (+3.5mm) so it aligns with the right-hand details column
-  const qrBlockYMm = y - 2.2;
-  const imageQrLeftMm = valueCenterXMm - qrSizeMm / 2 + 3.5;
-  y += qrSizeMm + gapMm - 1.2;
+  y += rowStepMm + gapMm;
+  const qrBlockYMm = y;
+  const imageQrLeftMm = valueCenterXMm - qrSizeMm / 2;
+  y += qrSizeMm + gapMm;
 
   const customerNameRowMm = y;
   y += rowStepMm + gapMm;
@@ -101,25 +107,62 @@ function computeStorageSaleLabelDots({ dpi = 203, includeSetRow = false } = {}) 
   y += rowStepMm + gapMm;
   const saleDateRowMm = y;
   y += rowStepMm + gapMm;
+  const receiptRowMm = includeReceiptRow ? y : null;
+  if (includeReceiptRow) y += rowStepMm + gapMm;
   const setRowMm = includeSetRow ? y : null;
 
+  return {
+    marginMm,
+    mainWidthMm,
+    valueBoxLeftMm,
+    valueBoxWidthMm,
+    valueRightMm,
+    valueCenterXMm,
+    barcodeLeftMm: (LABEL_WIDTH_MM - BARCODE_WIDTH_MM) / 2,
+    barcodeTopMm,
+    companyTextTopMm,
+    skuRowMm,
+    nameBlockTopMm,
+    qrBlockYMm,
+    imageQrLeftMm,
+    qrSizeMm,
+    customerNameRowMm,
+    customerPhoneRowMm,
+    saleDateRowMm,
+    receiptRowMm,
+    setRowMm,
+    rowStepMm,
+    compact,
+  };
+}
+
+function computeStorageSaleLabelDots({
+  dpi = 203,
+  includeSetRow = false,
+  includeReceiptRow = false,
+} = {}) {
+  const base = computeProductionLabelLayout({ dpi });
+  const toDots = (mm) => mmToDots(mm, dpi);
+  const textTopDots = (rowStartMm, padMm = 0.25) => toDots(rowStartMm + padMm);
+  const layout = computeStorageSaleLabelLayoutMm({ includeSetRow, includeReceiptRow });
   const d = base.dots;
-  const rowFont = includeSetRow ? Math.max(24, d.headerFont - 3) : d.headerFont;
+  const rowFont = layout.compact ? Math.max(24, d.headerFont - 3) : d.headerFont;
   return {
     ...d,
     headerFont: rowFont,
     valueFont: rowFont,
-    valueX: toDots(VALUE_COL_LEFT_MM),
-    valueBoxW: toDots(valueBoxWidthMm),
-    skuRowY: textTopDots(skuRowMm),
-    nameBlockTop: textTopDots(nameBlockTopMm),
-    qrBlockY: toDots(qrBlockYMm),
-    imageQrX: toDots(imageQrLeftMm),
-    qrSize: toDots(qrSizeMm),
-    customerNameRowY: textTopDots(customerNameRowMm),
-    customerPhoneRowY: textTopDots(customerPhoneRowMm),
-    saleDateRowY: textTopDots(saleDateRowMm),
-    setRowY: setRowMm != null ? textTopDots(setRowMm) : null,
+    valueX: toDots(layout.valueBoxLeftMm),
+    valueBoxW: toDots(layout.valueBoxWidthMm),
+    skuRowY: textTopDots(layout.skuRowMm),
+    nameBlockTop: textTopDots(layout.nameBlockTopMm),
+    qrBlockY: toDots(layout.qrBlockYMm),
+    imageQrX: toDots(layout.imageQrLeftMm),
+    qrSize: toDots(layout.qrSizeMm),
+    customerNameRowY: textTopDots(layout.customerNameRowMm),
+    customerPhoneRowY: textTopDots(layout.customerPhoneRowMm),
+    saleDateRowY: textTopDots(layout.saleDateRowMm),
+    receiptRowY: layout.receiptRowMm != null ? textTopDots(layout.receiptRowMm) : null,
+    setRowY: layout.setRowMm != null ? textTopDots(layout.setRowMm) : null,
   };
 }
 
@@ -136,9 +179,11 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
 
   const setNameText = zplEscape(opts.setName || opts.set_name || '');
   const includeSetRow = Boolean(setNameText);
+  const receiptText = zplEscape(opts.receiptNumber || opts.receipt_number || '');
+  const includeReceiptRow = Boolean(receiptText);
 
   const widthDots = mmToDots(widthMm, dpi);
-  const d = computeStorageSaleLabelDots({ dpi, includeSetRow });
+  const d = computeStorageSaleLabelDots({ dpi, includeSetRow, includeReceiptRow });
   const mainX = d.margin;
   const mainW = d.mainWidth;
   const hf = d.headerFont;
@@ -189,6 +234,12 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
     valueField(d.customerPhoneRowY, customerPhone),
     labelField(d.saleDateRowY, FIELD_LABELS.saleDate),
     valueField(d.saleDateRowY, saleDateText),
+    ...(includeReceiptRow && d.receiptRowY != null
+      ? [
+        labelField(d.receiptRowY, FIELD_LABELS.receipt),
+        valueField(d.receiptRowY, receiptText),
+      ]
+      : []),
     ...(includeSetRow && d.setRowY != null
       ? [
         labelField(d.setRowY, FIELD_LABELS.setName),

@@ -12,9 +12,10 @@ import {
   sortQuotationRows,
 } from '../../src/utils/quotationDisplay.js';
 import { buildQuoteItemMetadataFromPayload } from '../../src/utils/quoteProductionItemFields.js';
+import { generateQuotePdf } from '../../src/quotespdf.js';
 import {
   getQuoteProductionRouting,
-  sendQuoteToProduction,
+  sendOrResendQuoteToProduction,
   upsertQuoteProductionRoute,
 } from './quoteProductionRouting.js';
 import {
@@ -30,6 +31,7 @@ import {
   listWarehouseReturnOrders,
 } from './warehouseReturnOrders.js';
 import {
+  assertWarehouseStorageCreator,
   getPosSaleDetailForStorage,
   listPosSalesForStorage,
   listWarehouseStorageSends,
@@ -228,7 +230,6 @@ export async function opOrdersQuotePdf(sb, body) {
     paid = (pays || []).reduce((s, row) => s + Number(row.amount || 0), 0);
   }
   const totalNum = Number(quote.total || 0);
-  const generateQuotePdf = (await import('../../src/quotespdf.js')).default;
   const arrayBuffer = await generateQuotePdf(
     {
       ...quote,
@@ -397,8 +398,7 @@ export async function opOrdersQuoteSetRoute(sb, body) {
 export async function opOrdersQuoteSendProduction(sb, body, user) {
   const quoteId = trim(body.quote_id);
   if (!quoteId) throw new Error('quote_id is required.');
-  const result = await sendQuoteToProduction(sb, quoteId, user?.id);
-  return result;
+  return sendOrResendQuoteToProduction(sb, quoteId, user?.id);
 }
 
 const SESSION_SELECT = 'id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, accepted_at, applied_at, completed_at, last_edited_at, pdf_url, metadata';
@@ -539,6 +539,74 @@ export async function opOrdersStoragePosDetail(sb, body, user) {
 
 export async function opOrdersStorageSubmit(sb, body, user) {
   return submitWarehouseStorageSend(sb, body, user);
+}
+
+/** Preview or print a single Sales Storage Zebra label (80×68 mm) — for Storage screen testing. */
+export async function opOrdersStorageLabelTest(sb, body, user) {
+  await assertWarehouseStorageCreator(user);
+  const {
+    buildWarehouseStorageSaleLabelPngBase64,
+    buildStorageSaleLabelFields,
+    STORAGE_SALE_LABEL_SAMPLE,
+  } = await import('./warehouseStorageSaleLabelImage.js');
+  const { buildWarehouseStorageSaleLabelZpl } = await import('./zebraWarehouseStorageSaleLabelZpl.js');
+  const { printWarehouseStorageSaleLabel } = await import('./warehouseStorageSaleLabelPrint.js');
+  const { getFirestore } = await import('./firestoreDb.js');
+
+  const printToZebra = body.print === true;
+  let sample = { ...STORAGE_SALE_LABEL_SAMPLE };
+
+  const saleId = trim(body.sale_id);
+  const saleItemId = trim(body.sale_item_id);
+  if (saleId) {
+    const detail = await getPosSaleDetailForStorage(sb, user, { sale_id: saleId });
+    const line = saleItemId
+      ? (detail.items || []).find((i) => String(i.id) === saleItemId)
+      : (detail.items || [])[0];
+    if (detail?.sale) {
+      sample = {
+        ...sample,
+        customerName: detail.sale.customer_name || sample.customerName,
+        customerPhone: detail.sale.customer_phone || sample.customerPhone,
+        receiptNumber: detail.sale.receipt_number || sample.receiptNumber,
+        saleDate: detail.sale.sale_date || detail.sale.created_at || sample.saleDate,
+      };
+    }
+    if (line) {
+      sample = {
+        ...sample,
+        name: line.display_name || sample.name,
+        sku: String(line.sku || line.product_sku || line.display_name || sample.sku).trim(),
+      };
+    }
+  }
+
+  const fields = buildStorageSaleLabelFields(sample);
+  const label_preview_png_base64 = await buildWarehouseStorageSaleLabelPngBase64(sample);
+  const zpl = buildWarehouseStorageSaleLabelZpl({ ...sample, copies: 1 });
+
+  let print_result = null;
+  let print_error = null;
+  if (printToZebra) {
+    try {
+      print_result = await printWarehouseStorageSaleLabel(getFirestore(), {
+        ...sample,
+        qty: 1,
+        printedBy: user?.email || 'orders-storage-test',
+      });
+    } catch (err) {
+      print_error = err?.message || String(err);
+    }
+  }
+
+  return {
+    label: fields,
+    label_preview_png_base64,
+    label_size_mm: { width: 80, height: 68, gap: 3 },
+    zpl_byte_length: zpl.length,
+    print_result,
+    print_error,
+  };
 }
 
 /** Kitwe stock from Hassan Awad quote orders — received factory deliveries awaiting customer release. */

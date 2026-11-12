@@ -4788,6 +4788,12 @@ export default async function handler(req, res) {
           return opOrdersStorageSubmit(sb, body, user);
         });
         break;
+      case 'orders-storage-label-test':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersStorageLabelTest } = await import('../lib/ordersAppMobile.js');
+          return opOrdersStorageLabelTest(sb, body, user);
+        });
+        break;
       case 'orders-kitwe-hassan-inbound': {
         const grant = await mobileAccessGrantForUser(user);
         const { evaluateOrdersAppAccess, opOrdersKitweHassanInbound } = await import('../lib/ordersAppMobile.js');
