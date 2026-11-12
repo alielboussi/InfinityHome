@@ -27,18 +27,20 @@ import { formatProductionLabelBlockDate } from './warehouseProductionLabelCatTim
 
 const FIELD_LABELS = {
   sku: 'SKU:',
-  name: 'Product Name:',
-  customerName: 'Customer Name:',
+  name: 'Name:',
+  customerName: 'Customer:',
   customerPhone: 'Customer #:',
   saleDate: 'Sale Date:',
   receipt: 'Receipt #:',
   setName: 'Set:',
 };
 
-/** Left labels; values + QR share this right edge (mm from label origin). */
-const STORAGE_LABEL_QR_SIZE_MM = 6.5;
-const STORAGE_LABEL_QR_SIZE_COMPACT_MM = 5.5;
-/** Inset values/QR from the inner right border (0 = full width band to inner right). */
+/** Values/QR sit right of this — keeps left headers from overlapping centered values. */
+const STORAGE_VALUE_COL_LEFT_MM = 29;
+const STORAGE_LABEL_QR_SIZE_MM = 6;
+const STORAGE_LABEL_QR_SIZE_COMPACT_MM = 5;
+const STORAGE_QR_AFTER_GAP_MM = 1.2;
+/** Inset values/QR from the inner right border (0 = inner right edge). */
 const STORAGE_VALUE_RIGHT_INSET_MM = 0;
 
 function zplEscape(value) {
@@ -82,12 +84,15 @@ export function computeStorageSaleLabelLayoutMm({
   const marginMm = LABEL_MARGIN_MM;
   const mainWidthMm = LABEL_WIDTH_MM - marginMm * 2;
   const valueRightMm = LABEL_WIDTH_MM - marginMm - STORAGE_VALUE_RIGHT_INSET_MM;
-  const valueBoxLeftMm = marginMm;
+  const valueBoxLeftMm = STORAGE_VALUE_COL_LEFT_MM;
   const valueBoxWidthMm = valueRightMm - valueBoxLeftMm;
   const valueCenterXMm = valueBoxLeftMm + valueBoxWidthMm / 2;
-  const rowStepMm = compact ? 3.4 : ROW_TEXT_MM;
-  const gapMm = compact ? 0.35 : BLOCK_GAP_MM;
+  const rowStepMm = compact ? 3.35 : ROW_TEXT_MM;
+  const gapMm = compact ? 0.4 : BLOCK_GAP_MM;
   const qrSizeMm = compact ? STORAGE_LABEL_QR_SIZE_COMPACT_MM : STORAGE_LABEL_QR_SIZE_MM;
+  const nameBlockHeightMm = compact
+    ? rowStepMm * 1.5
+    : NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES;
 
   const companyTextTopMm = marginMm + BORDER_TOP_INSET_MM;
   const barcodeTopMm = companyTextTopMm + COMPANY_TEXT_HEIGHT_MM + GAP_AFTER_COMPANY_MM;
@@ -96,10 +101,10 @@ export function computeStorageSaleLabelLayoutMm({
   const skuRowMm = y;
   y += rowStepMm + gapMm;
   const nameBlockTopMm = y;
-  y += rowStepMm + gapMm;
+  y = nameBlockTopMm + nameBlockHeightMm + gapMm;
   const qrBlockYMm = y;
   const imageQrLeftMm = valueCenterXMm - qrSizeMm / 2;
-  y += qrSizeMm + gapMm;
+  y += qrSizeMm + STORAGE_QR_AFTER_GAP_MM;
 
   const customerNameRowMm = y;
   y += rowStepMm + gapMm;
