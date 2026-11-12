@@ -14,6 +14,7 @@ import { useMobileAccessGrant } from './shared/useMobileAccessGrant';
 import DashboardScreen from './screens/DashboardScreen';
 import WarehouseProductsScreen from './screens/WarehouseProductsScreen';
 import WarehouseFloor2Screen from './screens/WarehouseFloor2Screen';
+import FarmWarehouseScreen from './screens/FarmWarehouseScreen';
 import WarehouseStoreroomScreen from './screens/WarehouseStoreroomScreen';
 import WarehousePacketsScreen from './screens/WarehousePacketsScreen';
 import WarehouseUnusedPacketsScreen from './screens/WarehouseUnusedPacketsScreen';
@@ -72,6 +73,16 @@ function MainStack() {
         {(props) => (
           <MobileScreenGate screenId="warehouse_floor_2" grant={grant} navigation={props.navigation}>
             <WarehouseFloor2Screen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen
+        name="FarmWarehouse"
+        options={{ title: 'Farm Warehouse 1' }}
+      >
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_farm_1" grant={grant} navigation={props.navigation}>
+            <FarmWarehouseScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

@@ -14,6 +14,7 @@ import {
   listCarpentryFloorRuns,
   addFloor1ProductToFloor2Local,
   setFloor2ProductStockQtyLocal,
+  setFarmProductStockQtyLocal,
 } from '../utils/carpentryCatalogMutations';
 import {
   receiveStoreroomMaterial,
@@ -287,6 +288,27 @@ export async function postSetFloor2ProductStock(assemblyId, quantity) {
   }
   return postCarpentryCatalog({
     op: 'set-floor2-stock',
+    assembly_id: assemblyId,
+    quantity,
+  });
+}
+
+export async function postSetFarmProductStock(assemblyId, quantity) {
+  invalidateProductionPortalSnapshotCache();
+  try {
+    const user = getCurrentUser();
+    if (canManageCatalog(user)) {
+      const result = await setFarmProductStockQtyLocal(db, {
+        assemblyId,
+        quantity,
+      });
+      return { ok: true, ...result };
+    }
+  } catch {
+    /* fallback to API */
+  }
+  return postCarpentryCatalog({
+    op: 'set-farm-stock',
     assembly_id: assemblyId,
     quantity,
   });

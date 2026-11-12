@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { kioskTextAlign } from '../lib/kioskLayout';
 import { readProductionKioskLocale, writeProductionKioskLocale } from '../lib/productionKioskLocale';
 
-export function useProductionKioskLocale(options = {}) {
-  const forceArabic = options?.forceArabic === true;
+/**
+ * Locale follows the delivery dashboard toggle (AsyncStorage). All screens share the same EN/AR choice.
+ */
+export function useProductionKioskLocale() {
   const [locale, setLocaleState] = useState('ar');
   const [ready, setReady] = useState(false);
 
@@ -11,10 +13,10 @@ export function useProductionKioskLocale(options = {}) {
     let alive = true;
     (async () => {
       const v = await readProductionKioskLocale();
-      if (alive) {
+      if (alive && (v === 'ar' || v === 'en')) {
         setLocaleState(v);
-        setReady(true);
       }
+      if (alive) setReady(true);
     })();
     return () => { alive = false; };
   }, []);
@@ -29,20 +31,12 @@ export function useProductionKioskLocale(options = {}) {
     setLocale(locale === 'ar' ? 'en' : 'ar');
   }, [locale, setLocale]);
 
-  useEffect(() => {
-    if (!forceArabic) return;
-    setLocale('ar');
-  }, [forceArabic, setLocale]);
-
-  const effectiveLocale = forceArabic ? 'ar' : locale;
-
   return {
-    locale: effectiveLocale,
+    locale,
     setLocale,
-    toggleLocale: forceArabic ? () => {} : toggleLocale,
-    isArabic: effectiveLocale === 'ar',
-    textAlign: kioskTextAlign(effectiveLocale),
+    toggleLocale,
+    isArabic: locale === 'ar',
+    textAlign: kioskTextAlign(locale),
     ready,
-    forceArabic,
   };
 }

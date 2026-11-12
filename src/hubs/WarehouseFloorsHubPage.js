@@ -10,10 +10,12 @@ import { usePortalHubView } from '../hooks/usePortalHubView';
 import { warehouseCatalogViewFromPath } from '../utils/routeSuspenseKey';
 import WarehouseProductsPage from '../WarehouseProductsPage';
 import WarehouseFloor2Page from '../WarehouseFloor2Page';
+import FarmWarehouse1Page from '../FarmWarehouse1Page';
 
 const FLOOR_OPTIONS = [
   { value: '1', label: 'Floor 1 — Catalog' },
   { value: '2', label: 'Floor 2 — WIP' },
+  { value: 'farm', label: 'Farm Warehouse 1' },
 ];
 
 export default function WarehouseFloorsHubPage() {
@@ -68,6 +70,23 @@ export default function WarehouseFloorsHubPage() {
           />
         </div>
         <WarehouseFloor2Page embedInHub />
+      </div>
+    );
+  }
+
+  if (floor === 'farm') {
+    return (
+      <div className="portal-hub-page">
+        <div className="portal-hub-page__chrome page-header-row">
+          <PortalHubBar
+            title="Warehouses"
+            viewLabel="Floor"
+            viewValue={floor}
+            viewOptions={FLOOR_OPTIONS}
+            onViewChange={setFloor}
+          />
+        </div>
+        <FarmWarehouse1Page embedInHub />
       </div>
     );
   }

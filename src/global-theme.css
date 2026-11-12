@@ -17556,6 +17556,56 @@ body.enterprise-theme .production-admin-tabs__btn.is-active {
   background: rgba(56, 189, 248, 0.12) !important;
 }
 
+.user-access-table__name {
+  min-width: 11rem;
+}
+
+.user-access-name-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+  max-width: 14rem;
+}
+
+.user-access-name-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--br-border-soft, #334155);
+  background: var(--br-surface, #1e293b);
+  color: var(--br-text, #e2e8f0);
+  font-size: 0.85rem;
+}
+
+body.enterprise-theme .user-access-name-input {
+  background: #fff;
+  color: var(--ent-text, #1f2733);
+  border-color: var(--ent-border, #cbd5e1);
+}
+
+.user-access-name-save {
+  font-size: 0.75rem !important;
+  height: 26px !important;
+  line-height: 24px !important;
+}
+
+.user-access-btn--danger {
+  border-color: #b91c1c;
+  color: #fecaca;
+}
+
+body.enterprise-theme .user-access-btn--danger {
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.user-access-btn--danger:hover:not(:disabled) {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
 .user-access-row-actions {
   display: inline-flex;
   flex-direction: column;

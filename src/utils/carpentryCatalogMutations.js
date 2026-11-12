@@ -1,6 +1,7 @@
 import { normalizeCarpentryUom } from '../constants/carpentryUom.js';
 import { WAREHOUSE_FACTORY_LOCATION_ID } from '../constants/warehouseShowroomLocations.js';
 import { resolveWarehouseFloor2Location } from '../constants/warehouseFloorLocations.js';
+import { resolveFarmWarehouse1Location } from '../constants/farmWarehouseLocations.js';
 import { loadMaterialUomAllowedSet } from './materialUomMutations.js';
 import { isWarehouseSetAssembly } from './warehouseSetMath.js';
 import { isStoreroomMaterialAssembly } from './warehouseCatalogProductCompleteness.js';
@@ -231,5 +232,43 @@ export async function setFloor2ProductStockQtyLocal(sb, {
     assembly_id: productId,
     quantity: nextQty,
     floor2_location_id: outputLocationId,
+  };
+}
+
+export async function setFarmProductStockQtyLocal(sb, {
+  assemblyId,
+  quantity,
+}) {
+  const productId = String(assemblyId || '').trim();
+  const nextQty = Math.max(0, Math.floor(Number(quantity) || 0));
+  if (!productId) throw new Error('assembly_id required');
+
+  const [{ data: row, error: readErr }, { data: locRows, error: locErr }] = await Promise.all([
+    sb.from(ASSEMBLIES).select('id, name, family_sku, metadata, item_kind').eq('id', productId).maybeSingle(),
+    sb.from(LOCATIONS).select('id, name'),
+  ]);
+  if (readErr) throw new Error(readErr.message || 'Failed to read product');
+  if (!row?.id) throw new Error('Product not found');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+
+  const farmLoc = resolveFarmWarehouse1Location(locRows || []);
+  if (!farmLoc?.id) {
+    throw new Error('Farm Warehouse 1 location is not configured. Run node scripts/ensureFarmWarehouseLocation.js');
+  }
+  const outputLocationId = String(farmLoc.id);
+
+  const now = new Date().toISOString();
+  const { error: invErr } = await sb.from(ASSEMBLY_INVENTORY).upsert({
+    assembly_id: productId,
+    location_id: outputLocationId,
+    quantity: nextQty,
+    updated_at: now,
+  }, { onConflict: 'assembly_id,location_id' });
+  if (invErr) throw new Error(invErr.message || 'Failed to update Farm warehouse quantity');
+
+  return {
+    assembly_id: productId,
+    quantity: nextQty,
+    farm_location_id: outputLocationId,
   };
 }

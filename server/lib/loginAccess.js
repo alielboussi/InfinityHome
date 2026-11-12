@@ -8,6 +8,7 @@ import {
 } from '../../src/mobile/mobileAccessManifest.js';
 
 const COLLECTION = 'app_login_access';
+const BLOCKED_EMAIL_COLLECTION = 'app_login_blocked_emails';
 const PROTECTED_EMAILS = new Set([PRODUCTION_LOGIN_ACCESS_ADMIN_EMAIL]);
 
 function normalizeEmail(email) {
@@ -45,6 +46,19 @@ export async function getLoginAccessRecord(uid, emailFallback = '') {
     console.warn('[loginAccess] getLoginAccessRecord failed:', err?.message || err);
   }
   return null;
+}
+
+export async function isLoginEmailBlocked(email) {
+  const db = getFirestore();
+  const norm = normalizeEmail(email);
+  if (!db || !norm) return false;
+  try {
+    const snap = await db.collection(BLOCKED_EMAIL_COLLECTION).doc(norm).get();
+    return snap.exists;
+  } catch (err) {
+    console.warn('[loginAccess] isLoginEmailBlocked failed:', err?.message || err);
+    return false;
+  }
 }
 
 export async function listLoginAccessRecords() {
@@ -121,6 +135,10 @@ export async function assertLoginAllowed(authUser) {
     || null;
 
   try {
+    if (await isLoginEmailBlocked(email)) {
+      throw disabledError();
+    }
+
     const ref = db.collection(COLLECTION).doc(uid);
     const snap = await ref.get();
     const now = new Date().toISOString();
@@ -140,16 +158,18 @@ export async function assertLoginAllowed(authUser) {
     }
 
     const data = snap.data() || {};
-    if (data.login_enabled === false) {
+    if (data.login_enabled === false || data.access_revoked === true) {
       throw disabledError();
     }
 
     const patch = {
       email,
-      display_name: displayName || data.display_name || null,
       last_seen_at: now,
       updated_at: now,
     };
+    if (!data.display_name_locked) {
+      patch.display_name = displayName || data.display_name || null;
+    }
     if (!data.mobile_access) {
       patch.mobile_access = defaultMobileAccessGrant();
     }
@@ -319,6 +339,74 @@ export async function patchProductionAppAccess({
     mobileDisplayName,
     actorEmail,
   });
+}
+
+export async function setLoginAccessDisplayName({
+  uid,
+  displayName,
+  actorEmail,
+}) {
+  const db = getFirestore();
+  if (!db || !uid) throw new Error('User id is required.');
+  const ref = db.collection(COLLECTION).doc(String(uid));
+  const existing = await ref.get();
+  if (!existing.exists) {
+    throw new Error('User has not signed in yet.');
+  }
+  const trimmed = String(displayName || '').trim();
+  const now = new Date().toISOString();
+  await ref.set({
+    display_name: trimmed || null,
+    display_name_locked: Boolean(trimmed),
+    updated_at: now,
+    updated_by: normalizeEmail(actorEmail) || null,
+  }, { merge: true });
+  const updated = await ref.get();
+  return { id: updated.id, ...updated.data() };
+}
+
+/**
+ * Permanently revoke login: block email, disable Firebase user, remove access record.
+ */
+export async function deleteLoginAccess({ uid, actorEmail }) {
+  const db = getFirestore();
+  if (!db || !uid) throw new Error('User id is required.');
+
+  const ref = db.collection(COLLECTION).doc(String(uid));
+  const existing = await ref.get();
+  if (!existing.exists) {
+    throw new Error('User has not signed in yet.');
+  }
+
+  const data = existing.data() || {};
+  const email = normalizeEmail(data.email);
+  if (!email) throw new Error('User record has no email.');
+  if (PROTECTED_EMAILS.has(email)) {
+    throw new Error('This administrator account cannot be removed.');
+  }
+
+  const now = new Date().toISOString();
+  const actor = normalizeEmail(actorEmail) || null;
+  await db.collection(BLOCKED_EMAIL_COLLECTION).doc(email).set({
+    email,
+    uid: String(uid),
+    blocked_at: now,
+    blocked_by: actor,
+  });
+
+  if (getFirebaseAdminApp()) {
+    try {
+      await admin.auth().updateUser(String(uid), { disabled: true });
+    } catch (err) {
+      if (err?.code !== 'auth/user-not-found') {
+        console.warn('[loginAccess] deleteLoginAccess: Firebase disable failed:', err?.message || err);
+      }
+    }
+  }
+
+  await ref.delete();
+
+  return { uid: String(uid), email, deleted: true };
 }
 
 export async function updateMobileAccessGrant({

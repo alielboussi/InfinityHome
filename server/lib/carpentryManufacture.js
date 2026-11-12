@@ -1,5 +1,6 @@
 import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 import { resolveWarehouseFloor2Location } from '../../src/constants/warehouseFloorLocations.js';
+import { resolveFarmWarehouse1Location } from '../../src/constants/farmWarehouseLocations.js';
 import { requireWarehouseFloor2Location } from './productionFloor1StockPolicy.js';
 import { newUuid } from './uuid.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
@@ -294,5 +295,45 @@ export async function setFloor2ProductStockQty(sb, {
     assembly_id: productId,
     quantity: nextQty,
     floor2_location_id: outputLocationId,
+  };
+}
+
+export async function setFarmProductStockQty(sb, {
+  assemblyId,
+  quantity,
+}) {
+  const productId = String(assemblyId || '').trim();
+  const nextQty = Math.max(0, Math.floor(Number(quantity) || 0));
+  if (!productId) throw new Error('assembly_id required');
+
+  const [{ data: assembly, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
+    sb.from(ASSEMBLIES).select('id').eq('id', productId).maybeSingle(),
+    sb.from(LOCATIONS).select('id, name'),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load product');
+  if (!assembly?.id) throw new Error('Product not found');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+
+  const farmLoc = resolveFarmWarehouse1Location(locRows || []);
+  if (!farmLoc?.id) {
+    throw new Error('Farm Warehouse 1 location is not configured. Run node scripts/ensureFarmWarehouseLocation.js');
+  }
+  const outputLocationId = String(farmLoc.id);
+
+  const now = new Date().toISOString();
+  const { error: invErr } = await sb.from('warehouse_assembly_inventory').upsert({
+    assembly_id: productId,
+    location_id: outputLocationId,
+    quantity: nextQty,
+    updated_at: now,
+  }, { onConflict: 'assembly_id,location_id' });
+  if (invErr) throw new Error(invErr.message || 'Failed to update Farm warehouse quantity');
+
+  await recomputeWarehouseLocationStockServer(sb, outputLocationId);
+
+  return {
+    assembly_id: productId,
+    quantity: nextQty,
+    farm_location_id: outputLocationId,
   };
 }

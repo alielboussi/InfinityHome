@@ -24,6 +24,7 @@ import { filterAssembliesForDeliverySearch } from '../lib/deliveryCatalogSearch'
 import {
   deliveryWarehouseAssemblyIdSet,
   filterAssembliesForDeliveryFloor1Only,
+  filterAssembliesForDeliveryFloor2Farm,
   filterAssembliesForDeliveryWarehouse,
   filterAssembliesToDeliveryWarehouse,
 } from '../lib/deliveryWarehouseCatalog';
@@ -74,7 +75,10 @@ function buildScansFromChecks(packetRows, unitsNum, checks) {
   return { ok: true, scans };
 }
 
-export default function KitweSendHomeScreen({ navigation, hubEmbedded = false }) {
+export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, deliveryFlow = 'kitwe' }) {
+  const isFarmFlow = deliveryFlow === 'farm';
+  const sessionOpenOp = isFarmFlow ? 'farm-delivery-session-open' : 'delivery-session-open';
+  const signatureRoute = isFarmFlow ? 'FarmSendSignature' : 'KitweSendSignature';
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const restored = readDeliveryWorkspace();
   const [sessionId, setSessionId] = useState(restored?.sessionId || '');
@@ -100,12 +104,14 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false })
 
   const allAssemblies = catalog?.assemblies || [];
   const deliveryAssemblies = useMemo(
-    () => filterAssembliesForDeliveryFloor1Only(catalog),
-    [catalog],
+    () => (isFarmFlow
+      ? filterAssembliesForDeliveryFloor2Farm(catalog)
+      : filterAssembliesForDeliveryFloor1Only(catalog)),
+    [catalog, isFarmFlow],
   );
   const deliveryAssemblyIds = useMemo(
-    () => deliveryWarehouseAssemblyIdSet(catalog),
-    [catalog],
+    () => new Set(deliveryAssemblies.map((a) => String(a.id))),
+    [deliveryAssemblies],
   );
   const packets = catalog?.packets || [];
   const links = catalog?.assemblyPackets || [];
@@ -142,8 +148,13 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false })
       const persisted = await loadPersistedWarehouseCatalog();
       if (persisted && !cancelled) setCatalog(persisted);
       try {
-        const fresh = await fetchWarehouseCatalogCached({ fullPackets: true });
-        if (!cancelled) setCatalog(fresh);
+        if (isFarmFlow) {
+          const farmCat = await warehouseMobileRequest('farm-delivery-catalog', {});
+          if (!cancelled) setCatalog(farmCat);
+        } else {
+          const fresh = await fetchWarehouseCatalogCached({ fullPackets: true });
+          if (!cancelled) setCatalog(fresh);
+        }
       } catch {
         // keep persisted catalog if any
       }
@@ -151,14 +162,14 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false })
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isFarmFlow]);
 
   const syncDeliverySession = useCallback(async ({ alertIfRenewed = false } = {}) => {
     const sid0 = String(sessionIdRef.current || '').trim();
     setSessionOpening(true);
     setError('');
     try {
-      const sess = await warehouseMobileRequest('delivery-session-open', {
+      const sess = await warehouseMobileRequest(sessionOpenOp, {
         ...(sid0 ? { session_id: sid0 } : {}),
       });
       const sid = String(sess.session_id || '').trim();
@@ -176,7 +187,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false })
     } finally {
       setSessionOpening(false);
     }
-  }, [locale]);
+  }, [locale, sessionOpenOp]);
 
   useFocusEffect(
     useCallback(() => {
@@ -687,10 +698,11 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false })
         setSessionId(sid);
         setDeliveryNumber(dnum);
       }
-      navigation.navigate('KitweSendSignature', {
+      navigation.navigate(signatureRoute, {
         sessionId: sid,
         deliveryNumber: dnum,
         dispatchedByName: getProductionDispatcherLabelSync(),
+        documentKind: isFarmFlow ? 'farm_delivery' : 'delivery',
         groups: groups.map((g) => {
           if (isWarehouseSetDeliveryGroup(g)) return serializeSetGroupForSubmit(g);
           return {
@@ -718,7 +730,11 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false })
         {hubEmbedded ? null : (
           <>
             <ProductionKioskTopBar
-              title={tUi('dashFloor1Deliveries', locale)}
+              title={
+                isFarmFlow
+                  ? (locale === 'ar' ? 'الإرسال إلى المزرعة' : 'Send to Farm')
+                  : tUi('dashFloor1Deliveries', locale)
+              }
               locale={locale}
               onToggleLocale={toggleLocale}
             />

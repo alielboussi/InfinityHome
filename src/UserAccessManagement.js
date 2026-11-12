@@ -35,7 +35,7 @@ async function fetchLoginAccessUsers() {
   return payload.users || [];
 }
 
-async function setUserLoginEnabled(uid, loginEnabled) {
+async function postLoginAccess(body) {
   const token = await firebaseGetAccessToken();
   if (!token) throw new Error('Authentication required');
   const response = await fetch(apiUrl('/api/login-access'), {
@@ -45,13 +45,31 @@ async function setUserLoginEnabled(uid, loginEnabled) {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     }),
-    body: JSON.stringify({ uid, login_enabled: loginEnabled }),
+    body: JSON.stringify(body),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload?.ok === false) {
     throw new Error(payload?.error || `Update failed (${response.status})`);
   }
+  return payload;
+}
+
+async function setUserLoginEnabled(uid, loginEnabled) {
+  const payload = await postLoginAccess({ uid, login_enabled: loginEnabled });
   return payload.user;
+}
+
+async function setUserDisplayName(uid, displayName) {
+  const payload = await postLoginAccess({
+    uid,
+    action: 'set-display-name',
+    display_name: displayName,
+  });
+  return payload.user;
+}
+
+async function deleteUserAccess(uid) {
+  return postLoginAccess({ uid, action: 'delete-access' });
 }
 
 export default function UserAccessManagement() {
@@ -65,6 +83,8 @@ export default function UserAccessManagement() {
   const [upholsteryUserId, setUpholsteryUserId] = useState('');
   const [upholsteryFocusApp, setUpholsteryFocusApp] = useState('upholstery');
   const [deliveryUserId, setDeliveryUserId] = useState('');
+  const [nameDrafts, setNameDrafts] = useState({});
+  const [nameSavingUid, setNameSavingUid] = useState('');
 
   useEffect(() => {
     setSessionUser(getCurrentUser());
@@ -115,6 +135,47 @@ export default function UserAccessManagement() {
     }
   };
 
+  const saveName = async (row) => {
+    const draft = nameDrafts[row.id];
+    const nextName = draft !== undefined ? draft : (row.display_name || '');
+    setNameSavingUid(row.id);
+    setError('');
+    try {
+      const updated = await setUserDisplayName(row.id, nextName);
+      setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, ...updated } : item)));
+      setNameDrafts((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+    } catch (err) {
+      setError(err?.message || 'Failed to save name.');
+    } finally {
+      setNameSavingUid('');
+    }
+  };
+
+  const removeUser = async (row) => {
+    const label = row.display_name || row.email || row.id;
+    const ok = window.confirm(
+      `Remove login access for ${label}?\n\nThey will not be able to sign in on the portal or any mobile app. This cannot be undone from this page.`,
+    );
+    if (!ok) return;
+    setBusyUid(row.id);
+    setError('');
+    try {
+      await deleteUserAccess(row.id);
+      setRows((prev) => prev.filter((item) => item.id !== row.id));
+      if (mobileUserId === row.id) setMobileUserId('');
+      if (upholsteryUserId === row.id) setUpholsteryUserId('');
+      if (deliveryUserId === row.id) setDeliveryUserId('');
+    } catch (err) {
+      setError(err?.message || 'Failed to remove user.');
+    } finally {
+      setBusyUid('');
+    }
+  };
+
   const mobileUser = rows.find((r) => r.id === mobileUserId) || null;
   const upholsteryUser = rows.find((r) => r.id === upholsteryUserId) || null;
   const deliveryUser = rows.find((r) => r.id === deliveryUserId) || null;
@@ -132,9 +193,11 @@ export default function UserAccessManagement() {
       </div>
       <p className="user-access-intro">
         New mobile users are added when they sign in with <strong>Google</strong> on a warehouse mobile app. They appear
-        in the list below after first sign-in — use <strong>Refresh</strong>, then set{' '}
-        <strong>Catalog</strong>, <strong>Upholstery</strong>, <strong>Carpentry</strong>, <strong>Painting</strong>,{' '}
-        <strong>Delivery</strong>, or <strong>Orders</strong> permissions. Login can be disabled here; you cannot create accounts from this page.
+        in the list below after first sign-in — use <strong>Refresh</strong>, then set the{' '}
+        <strong>Name</strong> column manually if needed, and set <strong>Catalog</strong>, <strong>Upholstery</strong>,{' '}
+        <strong>Carpentry</strong>, <strong>Painting</strong>, <strong>Delivery</strong>, or <strong>Orders</strong>{' '}
+        permissions. <strong>Disable</strong> blocks sign-in until re-enabled. <strong>Remove</strong> permanently
+        blocks that email on the portal and all mobile apps.
       </p>
 
       {error ? <div className="report-error user-access-error">{error}</div> : null}
@@ -171,6 +234,12 @@ export default function UserAccessManagement() {
                 {rows.map((row) => {
                   const enabled = row.login_enabled !== false;
                   const isBusy = busyUid === row.id;
+                  const isNameSaving = nameSavingUid === row.id;
+                  const nameValue = nameDrafts[row.id] !== undefined
+                    ? nameDrafts[row.id]
+                    : (row.display_name || '');
+                  const nameDirty = nameDrafts[row.id] !== undefined
+                    && String(nameDrafts[row.id] || '').trim() !== String(row.display_name || '').trim();
                   const isWarehouseSelected = mobileUserId === row.id;
                   const isUpholsterySelected = upholsteryUserId === row.id;
                   const isDeliverySelected = deliveryUserId === row.id;
@@ -183,7 +252,36 @@ export default function UserAccessManagement() {
                         : '';
                   return (
                     <tr key={row.id} className={selectedAppEditor ? 'user-access-table__row--active' : ''}>
-                      <td>{row.display_name || '—'}</td>
+                      <td className="user-access-table__name">
+                        <div className="user-access-name-edit">
+                          <input
+                            type="text"
+                            className="user-access-name-input"
+                            value={nameValue}
+                            placeholder="Set name…"
+                            aria-label={`Portal name for ${row.email || 'user'}`}
+                            disabled={isBusy || isNameSaving}
+                            onChange={(e) => {
+                              setNameDrafts((prev) => ({ ...prev, [row.id]: e.target.value }));
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                saveName(row);
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="user-access-btn user-access-btn--ghost user-access-name-save"
+                            disabled={isBusy || isNameSaving || !nameDirty}
+                            title={nameDirty ? 'Save name' : 'Name saved — Google profile will not overwrite while set'}
+                            onClick={() => saveName(row)}
+                          >
+                            {isNameSaving ? '…' : 'Save'}
+                          </button>
+                        </div>
+                      </td>
                       <td>{row.mobile_display_name || '—'}</td>
                       <td>{row.email || '—'}</td>
                       <td>
@@ -230,6 +328,14 @@ export default function UserAccessManagement() {
                             onClick={() => toggleUser(row)}
                           >
                             {isBusy ? '…' : (enabled ? 'Disable' : 'Enable')}
+                          </button>
+                          <button
+                            type="button"
+                            className="user-access-btn user-access-btn--danger"
+                            disabled={isBusy}
+                            onClick={() => removeUser(row)}
+                          >
+                            {isBusy ? '…' : 'Remove'}
                           </button>
                         </div>
                       </td>

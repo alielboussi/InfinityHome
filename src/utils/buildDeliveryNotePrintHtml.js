@@ -176,6 +176,7 @@ function deliveryNoteTitle(documentKind = 'delivery') {
   if (kind === 'return_customer_delivery') return 'Return Delivery Note';
   if (kind === 'repair_delivery') return 'Repair Delivery Note';
   if (kind === 'sold_delivery') return 'Sold Delivery Note';
+  if (kind === 'farm_delivery') return 'Farm Delivery Note';
   /** Kitwe truck send + sent-delivery reprints only — never mix with sold_delivery. */
   return 'Delivery Note';
 }

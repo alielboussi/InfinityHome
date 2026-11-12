@@ -9,6 +9,7 @@ import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping.js';
 import {
   assemblyUsesPacketBom,
   isCompleteCatalogProduct,
+  isFinishedProductWithoutPacketBom,
   isSetAssembly,
 } from '../shared/warehouseCatalogProductCompleteness.js';
 
@@ -116,4 +117,68 @@ export function filterAssembliesToDeliveryWarehouse(catalog, assemblies) {
 /** Floor 1 stock only — name used by Kitwe Send hub screen. */
 export function filterAssembliesForDeliveryFloor1Only(catalog) {
   return filterAssembliesForDeliveryWarehouse(catalog);
+}
+
+function isFloor2BoundDeliveryCatalog(catalog) {
+  const floor2Id = String(catalog?.floor2LocationId || catalog?.farm_delivery_floor2_id || '').trim();
+  const locId = String(catalog?.warehouseLocationId || '').trim();
+  return Boolean(floor2Id && locId && locId === floor2Id);
+}
+
+/**
+ * Send to Farm — eligible assemblies when catalog stock is bound to Floor 2 (farm-delivery-catalog).
+ */
+export function filterAssembliesForDeliveryFloor2Farm(catalog) {
+  if (!isFloor2BoundDeliveryCatalog(catalog)) return [];
+  const list = catalog?.assemblies;
+  if (!Array.isArray(list) || !list.length) return [];
+
+  const byAssembly = buildPacketsByAssembly(
+    catalog.assemblyPackets || [],
+    catalog.packets || [],
+  );
+  const ctx = warehouseProductsCatalogContext(catalog);
+
+  return list.filter((assembly) => {
+    if (!assembly?.id) return false;
+    const pktList = byAssembly.get(String(assembly.id)) || [];
+    const id = String(assembly.id);
+    const floor2Qty = Math.max(0, Number(ctx.assemblyWarehouseQty?.[id] ?? 0) || 0);
+
+    if (isSetAssembly(assembly)) {
+      return floor2Qty > 0;
+    }
+
+    if (ctx.setComponentIds.has(id)) {
+      const leftover = Math.max(0, Number(ctx.leftoverById[id] ?? 0) || 0);
+      if (leftover <= 0) return false;
+    } else if (floor2Qty <= 0) {
+      const pktListIds = (pktList || []).map((p) => String(p.id));
+      const packetQtyMap = ctx.packetWarehouseQty || catalog.packetWarehouseQty || {};
+      const hasPacketStock = pktListIds.some(
+        (pid) => Math.max(0, Number(packetQtyMap[pid] ?? 0) || 0) > 0,
+      );
+      if (!hasPacketStock) return false;
+    }
+
+    if (isFinishedProductWithoutPacketBom(assembly, pktList) && floor2Qty > 0) {
+      return true;
+    }
+
+    if (isCompleteCatalogProduct(assembly, pktList)) return true;
+    if (isWarehouseProductKind(assembly) && assemblyUsesPacketBom(assembly) && (pktList || []).length > 0) {
+      return true;
+    }
+
+    return false;
+  });
+}
+
+export function filterAssembliesForDeliveryFloor2FarmOnly(catalog) {
+  return filterAssembliesForDeliveryFloor2Farm(catalog);
+}
+
+/** @deprecated use filterAssembliesForDeliveryFloor2Farm */
+export function deliveryFloor2FarmAssemblyIdSet(catalog) {
+  return new Set(filterAssembliesForDeliveryFloor2Farm(catalog).map((a) => String(a.id)));
 }

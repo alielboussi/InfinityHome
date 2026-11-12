@@ -71,6 +71,20 @@ export default function DashboardScreen({
       onPress: () => navigation.navigate('KitweSendHome'),
     },
     {
+      key: 'farm',
+      screenId: 'delivery_send_farm',
+      icon: 'barn',
+      title: 'Send to Farm',
+      onPress: () => navigation.navigate('FarmSendHome'),
+    },
+    {
+      key: 'warehouseFromFarm',
+      screenId: 'delivery_send_warehouse',
+      icon: 'home-export-outline',
+      title: 'Send to Warehouse',
+      onPress: () => navigation.navigate('WarehouseFromFarmHome'),
+    },
+    {
       key: 'repairs',
       screenId: 'delivery_send_kitwe',
       icon: 'tools',

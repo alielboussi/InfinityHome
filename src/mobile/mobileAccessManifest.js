@@ -175,6 +175,7 @@ export function isWarehouseProductStockQtyEditAllowed(grant) {
 
 export const FLOOR2_AND_STOREROOM_SCREEN_IDS = Object.freeze([
   'warehouse_floor_2',
+  'warehouse_farm_1',
   'warehouse_storeroom_1',
   'warehouse_storeroom_2',
   'warehouse_storeroom_3',
@@ -210,6 +211,7 @@ export function isWarehouseFloor2CreateSetAllowed(grant, email) {
 export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_products',
   'warehouse_floor_2',
+  'warehouse_farm_1',
   'warehouse_storeroom_1',
   'warehouse_storeroom_2',
   'warehouse_storeroom_3',
@@ -238,6 +240,13 @@ export const MOBILE_SCREENS = Object.freeze([
     id: 'warehouse_floor_2',
     label: 'Floor 2',
     description: 'Warehouse Floor 2 WIP products — grid view, stock increase, and photo import',
+    permissionMatrix: true,
+    supportsLocationStockAndPhoto: true,
+  },
+  {
+    id: 'warehouse_farm_1',
+    label: 'Farm Warehouse 1',
+    description: 'Farm warehouse — same SKUs and Floor 2 WIP photos; independent farm on-hand qty',
     permissionMatrix: true,
     supportsLocationStockAndPhoto: true,
   },
@@ -329,6 +338,7 @@ export const DEFAULT_MOBILE_LANDING_SCREEN = 'dashboard';
 const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_products: 'WarehouseProducts',
   warehouse_floor_2: 'WarehouseFloor2',
+  warehouse_farm_1: 'FarmWarehouse',
   warehouse_storeroom_1: 'WarehouseStoreroom1',
   warehouse_storeroom_2: 'WarehouseStoreroom2',
   warehouse_storeroom_3: 'WarehouseStoreroom3',
@@ -495,6 +505,16 @@ export const DELIVERY_APP_SCREENS = Object.freeze([
     description: 'Scan products, driver signature, and send truck delivery to Kitwe',
   },
   {
+    id: 'delivery_send_farm',
+    label: 'Send to Farm',
+    description: 'Send Floor 2 finished units to Farm Warehouse 1 (driver signature + FRM note)',
+  },
+  {
+    id: 'delivery_send_warehouse',
+    label: 'Send to Warehouse',
+    description: 'Send Farm Warehouse 1 units back to Floor 2 (driver signature; WhatsApp share only)',
+  },
+  {
     id: 'delivery_sent_list',
     label: 'Sent Deliveries',
     description: 'View sent deliveries and print delivery notes',
@@ -520,7 +540,15 @@ export function isWorkshopOrDeliveryScreenAllowed(grant, screenId, appFlag) {
     ? ['delivery_send_kitwe', 'kitwe_send_delivery']
     : screenId === 'kitwe_send_delivery'
       ? ['kitwe_send_delivery', 'delivery_send_kitwe']
-      : [screenId];
+      : screenId === 'delivery_send_farm'
+        ? ['delivery_send_farm', 'farm_send_delivery']
+        : screenId === 'farm_send_delivery'
+          ? ['farm_send_delivery', 'delivery_send_farm']
+          : screenId === 'delivery_send_warehouse'
+            ? ['delivery_send_warehouse', 'warehouse_send_farm']
+            : screenId === 'warehouse_send_farm'
+              ? ['warehouse_send_farm', 'delivery_send_warehouse']
+              : [screenId];
   for (const id of ids) {
     const row = grant.screens?.[id];
     if (row && (row.view === 'allow' || row.view === 'deny')) {
@@ -540,6 +568,8 @@ export function buildDeliveryAppAdminFallbackGrant() {
     grant.screens[s.id] = buildMobileScreenAccessRow(true);
   });
   grant.screens.kitwe_send_delivery = buildMobileScreenAccessRow(true);
+  grant.screens.farm_send_delivery = buildMobileScreenAccessRow(true);
+  grant.screens.warehouse_send_farm = buildMobileScreenAccessRow(true);
   return grant;
 }
 
@@ -620,6 +650,14 @@ export function canMobileScreenView(grant, screenId) {
 
   if (screenId === 'kitwe_send_delivery') {
     return isWarehouseDeliveryAppAllowed(grant);
+  }
+
+  if (screenId === 'farm_send_delivery') {
+    return isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_send_farm', 'warehouse_delivery_app');
+  }
+
+  if (screenId === 'warehouse_send_farm') {
+    return isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_send_warehouse', 'warehouse_delivery_app');
   }
 
   return isMobileScreenAccessAllowed(grant, screenId);
@@ -846,6 +884,20 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
   if (deliverySendAllowed) {
     merged.warehouse_delivery_app = 'allow';
   }
+
+  const farmSendAllowed = isWorkshopOrDeliveryScreenAllowed(
+    merged,
+    'delivery_send_farm',
+    'warehouse_delivery_app',
+  );
+  merged.screens.farm_send_delivery = buildMobileScreenAccessRow(farmSendAllowed);
+
+  const warehouseFromFarmAllowed = isWorkshopOrDeliveryScreenAllowed(
+    merged,
+    'delivery_send_warehouse',
+    'warehouse_delivery_app',
+  );
+  merged.screens.warehouse_send_farm = buildMobileScreenAccessRow(warehouseFromFarmAllowed);
 
   return merged;
 }

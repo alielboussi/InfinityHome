@@ -58,6 +58,7 @@ import {
   isWarehouseProductionPhotoUploadAllowed,
   isWarehouseProductStockQtyEditAllowed,
   isWarehouseProductTurkishSyncAllowed,
+  isWorkshopOrDeliveryScreenAllowed,
 } from '../../src/mobile/mobileAccessManifest.js';
 import { canManageCatalog } from '../../src/accessControl.js';
 import {
@@ -1121,6 +1122,111 @@ async function purgeFloor2WipStorageObjects(assemblyId) {
   } catch (err) {
     console.warn('purgeFloor2WipStorageObjects:', err?.message || err);
   }
+}
+
+async function opCatalogFarmList(user) {
+  await assertCatalogScreenViewUser(user, 'warehouse_farm_1');
+  const { catalogFarmList } = await import('../lib/farmWarehouseDelivery.js');
+  return catalogFarmList(getService());
+}
+
+async function opCatalogFarmStockAdjust(body, user) {
+  const grant = await assertCatalogScreenViewUser(user, 'warehouse_farm_1');
+  if (
+    !isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_farm_1', user?.email)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Farm warehouse stock adjustment is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+  const assemblyId = String(body.assembly_id || body.assemblyId || '').trim();
+  const delta = body.delta ?? body.quantity_delta;
+  const quantity = body.quantity;
+  const { adjustFarmStock } = await import('../lib/farmWarehouseDelivery.js');
+  return adjustFarmStock(getService(), { assemblyId, delta, quantity });
+}
+
+async function assertFarmDeliveryAccess(user) {
+  if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) return;
+  const grant = await mobileAccessGrantForUser(user);
+  if (
+    isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_send_farm', 'warehouse_delivery_app')
+  ) {
+    return;
+  }
+  const err = new Error('Send to Farm is not enabled for your account in User Access.');
+  err.status = 403;
+  throw err;
+}
+
+async function assertFarmReturnAccess(user) {
+  if (canManageCatalog(user) || isLoginAccessAdmin(user?.email)) return;
+  const grant = await mobileAccessGrantForUser(user);
+  if (
+    isWorkshopOrDeliveryScreenAllowed(grant, 'delivery_send_warehouse', 'warehouse_delivery_app')
+  ) {
+    return;
+  }
+  const err = new Error('Send to Warehouse is not enabled for your account in User Access.');
+  err.status = 403;
+  throw err;
+}
+
+async function opFarmSendCatalog(user) {
+  await assertFarmDeliveryAccess(user);
+  const { farmSendCatalog } = await import('../lib/farmWarehouseDelivery.js');
+  return farmSendCatalog(getService());
+}
+
+async function opFarmDeliverySessionOpen(user, body) {
+  await assertFarmDeliveryAccess(user);
+  const email = String(user?.email || '').trim().toLowerCase();
+  const { openFarmDeliverySession } = await import('../lib/farmWarehouseDelivery.js');
+  return openFarmDeliverySession(getService(), user, email);
+}
+
+async function opFarmDeliveryCatalog(user) {
+  await assertFarmDeliveryAccess(user);
+  const { fetchCatalogForFarmDelivery } = await import('../lib/farmWarehouseDelivery.js');
+  return fetchCatalogForFarmDelivery(getService());
+}
+
+async function opFarmDeliverySubmit(body, user) {
+  await assertFarmDeliveryAccess(user);
+  const groups = Array.isArray(body.groups) ? body.groups : [];
+  if (groups.length) {
+    return opDeliverySubmit(
+      {
+        ...body,
+        document_kind: 'farm_delivery',
+      },
+      user,
+      { skipAccessCheck: true },
+    );
+  }
+  const { submitFarmDeliverySimple } = await import('../lib/farmWarehouseDelivery.js');
+  return submitFarmDeliverySimple(getService(), body, user);
+}
+
+async function opFarmReturnCatalog(user) {
+  await assertFarmReturnAccess(user);
+  const { farmReturnCatalog } = await import('../lib/farmWarehouseDelivery.js');
+  return farmReturnCatalog(getService());
+}
+
+async function opFarmReturnSessionOpen(user, body) {
+  await assertFarmReturnAccess(user);
+  const email = String(user?.email || '').trim().toLowerCase();
+  const { openFarmReturnSession } = await import('../lib/farmWarehouseDelivery.js');
+  return openFarmReturnSession(getService(), user, email);
+}
+
+async function opFarmReturnSubmit(body, user) {
+  await assertFarmReturnAccess(user);
+  const { submitFarmReturnDelivery } = await import('../lib/farmWarehouseDelivery.js');
+  return submitFarmReturnDelivery(getService(), body, user);
 }
 
 async function opCatalogFloor2PhotoRemove(body, user, { carpentryWorkshop = false } = {}) {
@@ -3233,6 +3339,7 @@ async function processSetDeliveryGroup({
   byAssembly,
   setItems,
   now,
+  stockSourceLocationId = WAREHOUSE_FROM_LOCATION_ID,
 }) {
   const setId = String(group.set_assembly_id || '');
   const setAssembly = assemblyById.get(setId);
@@ -3311,7 +3418,7 @@ async function processSetDeliveryGroup({
       await assertAssemblyStockAvailable(
         sb,
         assemblyId,
-        WAREHOUSE_FROM_LOCATION_ID,
+        stockSourceLocationId,
         shipment.finishedUnits,
       );
       totalCartons += shipment.finishedUnits;
@@ -3329,6 +3436,7 @@ async function processSetDeliveryGroup({
           assembly_name: assembly.name,
           finished_unit: true,
           units: shipment.finishedUnits,
+          stock_deduct_location_id: stockSourceLocationId,
           ...deliveryEntryBoxMetadata(shipment),
         }),
       });
@@ -3369,7 +3477,7 @@ async function processSetDeliveryGroup({
       if (!scanLineDriverChecked(scanLine || {})) {
         throw new Error(`Driver must confirm every packet for ${setAssembly.name} → ${assembly.name}.`);
       }
-      await assertPacketStockAvailable(sb, packet.id, WAREHOUSE_FROM_LOCATION_ID, moveQty);
+      await assertPacketStockAvailable(sb, packet.id, stockSourceLocationId, moveQty);
       totalCartons += moveQty;
       entries.push({
         id: newUuid(),
@@ -3386,6 +3494,7 @@ async function processSetDeliveryGroup({
           assembly_name: assembly.name,
           packet_number: packet.packet_number,
           units: shipment.finishedUnits,
+          stock_deduct_location_id: stockSourceLocationId,
           ...deliveryEntryBoxMetadata(shipment),
           driver_checked_at: scanLine?.driver_checked_at || now,
           receiver_checked_at: null,
@@ -3406,8 +3515,8 @@ async function opDeliveryProductionQueueList(user) {
   return { repairs, orders };
 }
 
-async function opDeliverySubmit(body, user) {
-  await assertMobileDeliverySubmitAccess(user);
+async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
+  if (!skipAccessCheck) await assertMobileDeliverySubmitAccess(user);
   const sessionId = String(body.session_id || '');
   const groups = Array.isArray(body.groups) ? body.groups : [];
   let driverName = String(body.driver_name || body.driverName || '').trim();
@@ -3482,6 +3591,21 @@ async function opDeliverySubmit(body, user) {
     throw new Error('Delivery session is not open for editing.');
   }
 
+  const deliveryFlowMeta = String(session.metadata?.delivery_flow || '').trim();
+  const isFarmDelivery = deliveryFlowMeta === 'farm'
+    || String(session.metadata?.document_kind || '').trim() === 'farm_delivery';
+  let stockSourceLocationId = WAREHOUSE_FROM_LOCATION_ID;
+  let farmCreditLocationId = '';
+  if (isFarmDelivery) {
+    const { resolveFarmWarehouseIds, creditFarmStockFromDeliveryEntries } = await import('../lib/farmWarehouseDelivery.js');
+    const { floor2Id, farmId } = await resolveFarmWarehouseIds(sb);
+    if (String(session.from_location) !== floor2Id || String(session.to_location) !== farmId) {
+      throw new Error('Not a Farm Warehouse delivery session.');
+    }
+    stockSourceLocationId = floor2Id;
+    farmCreditLocationId = farmId;
+  }
+
   if (!driverSignatureUrl) {
     const inlineSig = body.signature_png_base64 || body.image_base64 || body.png_base64;
     if (inlineSig) {
@@ -3497,13 +3621,15 @@ async function opDeliverySubmit(body, user) {
   ]);
   const byAssembly = buildPacketsByAssembly(links || [], packets || []);
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
-  const repairFloor2Map = await repairFloor2DeliveryAssemblyMap(sb);
+  const repairFloor2Map = isFarmDelivery ? new Map() : await repairFloor2DeliveryAssemblyMap(sb);
   const repairByReturnId = new Map(
     [...repairFloor2Map.values()].map((row) => [String(row.return_order_id), row]),
   );
-  const submitReturnOrderId = String(body.return_order_id || body.returnOrderId || '').trim();
+  const submitReturnOrderId = isFarmDelivery
+    ? ''
+    : String(body.return_order_id || body.returnOrderId || '').trim();
   const { listOrderDeliveriesForMobile, assertAdminQueueDeliveryHold } = await import('../lib/warehouseDeliveryAdminQueue.js');
-  const orderRows = await listOrderDeliveriesForMobile(sb);
+  const orderRows = isFarmDelivery ? [] : await listOrderDeliveriesForMobile(sb);
   const orderFloor2Map = new Map(orderRows.map((row) => [String(row.assembly_id), row]));
 
   const entries = [];
@@ -3520,6 +3646,7 @@ async function opDeliverySubmit(body, user) {
         byAssembly,
         setItems: setItems || [],
         now,
+        stockSourceLocationId,
       });
       entries.push(...setResult.entries);
       totalCartons += setResult.totalCartons;
@@ -3562,11 +3689,11 @@ async function opDeliverySubmit(body, user) {
           repairStaging = pinned;
         }
       }
-      if (!repairStaging) {
+      if (!isFarmDelivery && !repairStaging) {
         repairStaging = repairFloor2Map.get(assemblyId) || null;
       }
       let orderStaging = null;
-      if (!repairStaging) {
+      if (!isFarmDelivery && !repairStaging) {
         const groupQuoteId = String(group.quote_id || group.quoteId || '').trim();
         if (groupQuoteId) {
           orderStaging = orderRows.find((row) => String(row.quote_id || '') === groupQuoteId) || null;
@@ -3575,7 +3702,7 @@ async function opDeliverySubmit(body, user) {
           orderStaging = orderFloor2Map.get(assemblyId) || null;
         }
       }
-      const adminQueue = repairStaging || orderStaging;
+      const adminQueue = isFarmDelivery ? null : (repairStaging || orderStaging);
       if (adminQueue) {
         await assertAdminQueueDeliveryHold(sb, {
           repairStaging,
@@ -3587,7 +3714,7 @@ async function opDeliverySubmit(body, user) {
         await assertAssemblyStockAvailable(
           sb,
           assemblyId,
-          WAREHOUSE_FROM_LOCATION_ID,
+          stockSourceLocationId,
           shipment.finishedUnits,
         );
       }
@@ -3612,7 +3739,7 @@ async function opDeliverySubmit(body, user) {
           ...deliveryEntryBoxMetadata(shipment),
           driver_checked_at: driverCheckedAt,
           receiver_checked_at: null,
-          ...(!adminQueue ? { stock_deduct_location_id: WAREHOUSE_FROM_LOCATION_ID } : {}),
+          ...(!adminQueue ? { stock_deduct_location_id: stockSourceLocationId } : {}),
           ...(adminQueue ? {
             admin_queue_delivery: true,
             delivery_admin_hold: true,
@@ -3653,7 +3780,7 @@ async function opDeliverySubmit(body, user) {
       if (!scanLineDriverChecked(scanLine || {})) {
         throw new Error(`Driver must confirm every packet carton for ${assembly.name}.`);
       }
-      await assertPacketStockAvailable(sb, packet.id, WAREHOUSE_FROM_LOCATION_ID, moveQty);
+      await assertPacketStockAvailable(sb, packet.id, stockSourceLocationId, moveQty);
       totalCartons += moveQty;
       const driverCheckedAt = scanLine?.driver_checked_at || now;
       entries.push({
@@ -3672,6 +3799,7 @@ async function opDeliverySubmit(body, user) {
           ...deliveryEntryBoxMetadata(shipment),
           driver_checked_at: driverCheckedAt,
           receiver_checked_at: null,
+          stock_deduct_location_id: stockSourceLocationId,
         }),
       });
     }
@@ -3679,7 +3807,11 @@ async function opDeliverySubmit(body, user) {
 
   try {
   const { deductSourceStockOnDeliverySubmit } = await import('../lib/warehouseDeliveryAcceptStock.js');
-  await deductSourceStockOnDeliverySubmit(sb, entries, { now });
+  await deductSourceStockOnDeliverySubmit(sb, entries, { now, fromLocationId: stockSourceLocationId });
+  if (farmCreditLocationId) {
+    const { creditFarmStockFromDeliveryEntries } = await import('../lib/farmWarehouseDelivery.js');
+    await creditFarmStockFromDeliveryEntries(sb, entries, farmCreditLocationId);
+  }
 
   for (const entry of entries) {
     const { error } = await sb.from('warehouse_delivery_entries').insert({
@@ -3737,6 +3869,10 @@ async function opDeliverySubmit(body, user) {
     }
   }
 
+  const dispatchedByForFarm = String(
+    body.dispatched_by_name || body.dispatchedByName || userAlias || '',
+  ).trim();
+
   const { error: updErr } = await sb.from('warehouse_delivery_sessions').update({
     status: 'submitted',
     submitted_at: now,
@@ -3744,18 +3880,19 @@ async function opDeliverySubmit(body, user) {
     created_by_name: session.created_by_name || userAlias || null,
     metadata: {
       ...(session.metadata || {}),
-      ...repairSessionMeta,
-      ...orderSessionMeta,
+      ...(isFarmDelivery ? {} : repairSessionMeta),
+      ...(isFarmDelivery ? {} : orderSessionMeta),
       ...(clientPrintGroups.length ? { print_groups: clientPrintGroups } : {}),
       source: mobileSource,
-      hassan_alert_pending: true,
-      hassan_alert_at: now,
+      document_kind: isFarmDelivery ? 'farm_delivery' : (session.metadata?.document_kind || undefined),
+      hassan_alert_pending: isFarmDelivery ? false : true,
+      ...(isFarmDelivery ? {} : { hassan_alert_at: now }),
       submitted_by_email: user?.email || null,
-      dispatched_by_name: userAlias,
+      dispatched_by_name: isFarmDelivery ? dispatchedByForFarm : userAlias,
       driver_id: driverId || null,
       driver_name: driverName,
       driver_signature_url: driverSignatureUrl || null,
-      ...(customerDriverNameRaw ? {
+      ...(customerDriverNameRaw && !isFarmDelivery ? {
         customer_driver_name: capitalizePersonName(customerDriverNameRaw),
         customer_driver_phone: customerDriverPhone,
         customer_driver_signed: true,
@@ -3764,20 +3901,22 @@ async function opDeliverySubmit(body, user) {
   }).eq('id', sessionId);
   if (updErr) throw new Error(updErr.message || 'Failed to submit delivery');
 
-  try {
-    const { advanceAdminQueueOnDeliverySubmit } = await import('../lib/warehouseDeliveryAdminQueue.js');
-    await advanceAdminQueueOnDeliverySubmit(sb, entries, {
-      submittedAt: now,
-      driverName,
-      customerDriverName: customerDriverNameRaw ? capitalizePersonName(customerDriverNameRaw) : '',
-      customerDriverPhone,
-    });
-  } catch (markErr) {
-    console.warn('[delivery-submit] admin queue mark:', markErr?.message || markErr);
+  if (!isFarmDelivery) {
+    try {
+      const { advanceAdminQueueOnDeliverySubmit } = await import('../lib/warehouseDeliveryAdminQueue.js');
+      await advanceAdminQueueOnDeliverySubmit(sb, entries, {
+        submittedAt: now,
+        driverName,
+        customerDriverName: customerDriverNameRaw ? capitalizePersonName(customerDriverNameRaw) : '',
+        customerDriverPhone,
+      });
+    } catch (markErr) {
+      console.warn('[delivery-submit] admin queue mark:', markErr?.message || markErr);
+    }
   }
 
   let whatsappResult = { ok: false };
-  try {
+  if (!isFarmDelivery) try {
     whatsappResult = await sendWarehouseDeliverySubmitWhatsApp({
       sb,
       sessionId,
@@ -4895,6 +5034,31 @@ export default async function handler(req, res) {
         break;
       case 'catalog-floor2-photo-remove':
         result = await opCatalogFloor2PhotoRemove(body, user);
+        break;
+      case 'catalog-farm-list':
+        result = await opCatalogFarmList(user);
+        break;
+      case 'catalog-farm-stock-adjust':
+        result = await opCatalogFarmStockAdjust(body, user);
+        break;
+      case 'farm-send-catalog':
+      case 'farm-delivery-catalog':
+        result = await opFarmDeliveryCatalog(user);
+        break;
+      case 'farm-delivery-session-open':
+        result = await opFarmDeliverySessionOpen(user, body);
+        break;
+      case 'farm-delivery-submit':
+        result = await opFarmDeliverySubmit(body, user);
+        break;
+      case 'farm-return-catalog':
+        result = await opFarmReturnCatalog(user);
+        break;
+      case 'farm-return-session-open':
+        result = await opFarmReturnSessionOpen(user, body);
+        break;
+      case 'farm-return-submit':
+        result = await opFarmReturnSubmit(body, user);
         break;
       case 'catalog-storeroom-list':
         result = await opCatalogStoreroomList(body, user);

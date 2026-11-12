@@ -27,6 +27,7 @@ const routeMap = {
   Dashboard: 'dashboard',
   WarehouseProducts: 'warehouse_products',
   WarehouseFloor2: 'warehouse_floor_2',
+  FarmWarehouse: 'warehouse_farm_1',
   WarehouseStoreroom1: 'warehouse_storeroom_1',
   WarehouseStoreroom2: 'warehouse_storeroom_2',
   WarehouseStoreroom3: 'warehouse_storeroom_3',

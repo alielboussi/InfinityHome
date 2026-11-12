@@ -11,6 +11,11 @@ import { useDeliveryAccessGrant } from './hooks/useDeliveryAccessGrant';
 import { useDeliveryPushNotifications } from './hooks/useDeliveryPushNotifications';
 import DashboardScreen from './screens/DashboardScreen';
 import KitweSendHomeScreen from './deliveryKit/screens/KitweSendHomeScreen';
+import FarmSendHomeScreen from './deliveryKit/screens/FarmSendHomeScreen';
+import FarmSendSignatureScreen from './deliveryKit/screens/FarmSendSignatureScreen';
+import WarehouseFromFarmHomeScreen from './deliveryKit/screens/WarehouseFromFarmHomeScreen';
+import WarehouseFromFarmSignatureScreen from './deliveryKit/screens/WarehouseFromFarmSignatureScreen';
+import WarehouseFromFarmDoneScreen from './deliveryKit/screens/WarehouseFromFarmDoneScreen';
 import DeliveryRepairQueueScreen from './deliveryKit/screens/DeliveryRepairQueueScreen';
 import DeliveryOrderQueueScreen from './deliveryKit/screens/DeliveryOrderQueueScreen';
 import KitweSendSignatureScreen from './deliveryKit/screens/KitweSendSignatureScreen';
@@ -67,6 +72,48 @@ function MainStack({ navigationRef }) {
         {(props) => (
           <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
             <KitweSendHomeScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="FarmSendHome" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="farm_send_delivery" grant={grant} navigation={props.navigation}>
+            <FarmSendHomeScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="FarmSendSignature" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="farm_send_delivery" grant={grant} navigation={props.navigation}>
+            <FarmSendSignatureScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="FarmSendDone" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="farm_send_delivery" grant={grant} navigation={props.navigation}>
+            <KitweSendDoneScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="WarehouseFromFarmHome" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_send_farm" grant={grant} navigation={props.navigation}>
+            <WarehouseFromFarmHomeScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="WarehouseFromFarmSignature" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_send_farm" grant={grant} navigation={props.navigation}>
+            <WarehouseFromFarmSignatureScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="WarehouseFromFarmDone" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="warehouse_send_farm" grant={grant} navigation={props.navigation}>
+            <WarehouseFromFarmDoneScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

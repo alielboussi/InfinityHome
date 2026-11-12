@@ -38,16 +38,33 @@ function normalizeGrant(raw) {
   return sanitizeMobileAccessGrantForUser(raw || defaultMobileAccessGrant(), '');
 }
 
-/** Delivery app uses warehouse_delivery_app + delivery_* screens — clear legacy Kitwe flags on save. */
+/** Delivery app uses warehouse_delivery_app + per-page delivery_* screens (route aliases synced on save). */
 function grantForDeliverySave(grant) {
   const anyAllowed = DELIVERY_APP_SCREENS.some((s) => grant.screens?.[s.id]?.view === 'allow');
+  const kitweAllowed = isWorkshopOrDeliveryScreenAllowed(
+    grant,
+    'delivery_send_kitwe',
+    'warehouse_delivery_app',
+  );
+  const farmAllowed = isWorkshopOrDeliveryScreenAllowed(
+    grant,
+    'delivery_send_farm',
+    'warehouse_delivery_app',
+  );
+  const warehouseAllowed = isWorkshopOrDeliveryScreenAllowed(
+    grant,
+    'delivery_send_warehouse',
+    'warehouse_delivery_app',
+  );
   return {
     ...grant,
     warehouse_delivery_app: anyAllowed ? 'allow' : 'deny',
     warehouse_production_kitwe: 'deny',
     screens: {
       ...(grant.screens || {}),
-      kitwe_send_delivery: buildMobileScreenAccessRow(anyAllowed),
+      kitwe_send_delivery: buildMobileScreenAccessRow(kitweAllowed),
+      farm_send_delivery: buildMobileScreenAccessRow(farmAllowed),
+      warehouse_send_farm: buildMobileScreenAccessRow(warehouseAllowed),
     },
   };
 }

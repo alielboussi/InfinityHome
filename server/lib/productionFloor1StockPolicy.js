@@ -15,8 +15,18 @@
 
 import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
 import { resolveWarehouseFloor2Location } from '../../src/constants/warehouseFloorLocations.js';
+import { resolveFarmWarehouse1Location } from '../../src/constants/farmWarehouseLocations.js';
 
 export { WAREHOUSE_FACTORY_LOCATION_ID as WAREHOUSE_FLOOR1_LOCATION_ID };
+
+export function requireFarmWarehouse1Location(locRows, message) {
+  const farmLoc = resolveFarmWarehouse1Location(locRows || []);
+  const farmId = farmLoc?.id ? String(farmLoc.id) : '';
+  if (!farmId) {
+    throw new Error(message || 'Farm Warehouse 1 location not configured — run scripts/ensureFarmWarehouseLocation.js');
+  }
+  return farmId;
+}
 
 export function requireWarehouseFloor2Location(locRows, message) {
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);

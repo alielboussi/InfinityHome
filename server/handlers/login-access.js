@@ -1,9 +1,11 @@
 import {
   assertLoginAllowed,
   createLoginAccessUser,
+  deleteLoginAccess,
   isLoginAccessAdmin,
   listLoginAccessRecords,
   patchProductionAppAccess,
+  setLoginAccessDisplayName,
   setLoginAccessEnabled,
   updateMobileAccessGrant,
 } from '../lib/loginAccess.js';
@@ -47,6 +49,25 @@ export default async function handler(req, res) {
       const uid = String(body.uid || body.id || '').trim();
       if (!uid) {
         res.status(400).json({ ok: false, error: 'uid is required' });
+        return;
+      }
+
+      if (action === 'delete-access') {
+        const result = await deleteLoginAccess({
+          uid,
+          actorEmail: actor.email,
+        });
+        res.status(200).json({ ok: true, ...result });
+        return;
+      }
+
+      if (action === 'set-display-name') {
+        const user = await setLoginAccessDisplayName({
+          uid,
+          displayName: body.display_name ?? body.displayName,
+          actorEmail: actor.email,
+        });
+        res.status(200).json({ ok: true, user });
         return;
       }
 
