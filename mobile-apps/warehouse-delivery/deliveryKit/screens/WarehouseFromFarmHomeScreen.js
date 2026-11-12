@@ -205,6 +205,9 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
           locale={locale}
           onToggleLocale={toggleLocale}
         />
+        <Pressable onPress={() => navigation.goBack()} style={kiosk.backRow}>
+          <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
+        </Pressable>
         {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
         <View style={kiosk.card}>
           {sessionOpening ? (

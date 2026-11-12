@@ -3,13 +3,18 @@ import db from './dataClient';
 import './kitwe-catalog-page.css';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
-import { isCatalogLocationStockIncreaseAllowed } from './mobile/mobileAccessManifest';
+import {
+  isCatalogLocationPhotoUploadAllowed,
+  isCatalogLocationStockIncreaseAllowed,
+} from './mobile/mobileAccessManifest';
 import WarehouseFloor2WipThumbnail from './components/WarehouseFloor2WipThumbnail';
+import { mergeWarehouseFloor2WipImageMetadata } from './utils/warehouseFloor2WipImage';
 import { fetchCarpentryCatalog, getCachedCarpentryCatalog } from './services/carpentryCatalogApi';
 import { postSetFarmProductStock } from './services/carpentryCatalogApi';
 import { resolveFarmWarehouse1Location } from './constants/farmWarehouseLocations';
 import { resolveWarehouseFloor2Location } from './constants/warehouseFloorLocations';
 import { buildFarmWarehouseCandidates } from './utils/farmWarehouseCatalogView';
+import { floor2StockAsFlatGroups } from './utils/warehouseFloor2StockGroups';
 import { getCachedProductionPortalSnapshot } from './utils/loadProductionPortalCatalogInputs';
 
 function buildAssemblyMapFromCatalog(catalog) {
@@ -45,6 +50,60 @@ export default function FarmWarehouse1Page({
     'warehouse_farm_1',
     sessionUser?.email,
   );
+  const canEditWipPhoto = canManage || isCatalogLocationPhotoUploadAllowed(
+    grant,
+    'warehouse_farm_1',
+    sessionUser?.email,
+  );
+
+  const farmQtyByAssembly = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row) => {
+      const aid = String(row.assembly_id || row.id || '');
+      if (aid) map.set(aid, Math.max(0, Math.floor(Number(row.farm_qty) || 0)));
+    });
+    return map;
+  }, [rows]);
+
+  const farmStockRows = useMemo(
+    () => rows.map((row) => ({
+      assembly_id: row.assembly_id || row.id,
+      quantity: Math.max(0, Math.floor(Number(row.farm_qty) || 0)),
+    })),
+    [rows],
+  );
+
+  const stockFamilyGroups = useMemo(
+    () => floor2StockAsFlatGroups(farmStockRows, assemblyById),
+    [farmStockRows, assemblyById],
+  );
+
+  const filteredStockFamilyGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return stockFamilyGroups;
+    return stockFamilyGroups.filter((group) => {
+      if (String(group.familyBase || '').toLowerCase().includes(q)) return true;
+      return (group.rows || []).some((row) => {
+        const aid = String(row.assembly_id || '');
+        const asm = assemblyById.get(aid);
+        const name = String(asm?.name || '').toLowerCase();
+        const sku = String(asm?.family_sku || '').toLowerCase();
+        return name.includes(q) || sku.includes(q);
+      });
+    });
+  }, [stockFamilyGroups, search, assemblyById]);
+
+  const handleAssemblyImageUpdated = useCallback((assemblyId, imageUrl) => {
+    const id = String(assemblyId || '');
+    if (!id) return;
+    setAssemblyById((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(id) || { id };
+      const metadata = mergeWarehouseFloor2WipImageMetadata(existing.metadata, imageUrl);
+      next.set(id, { ...existing, metadata });
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async ({ forceFresh = false } = {}) => {
     if (forceFresh || !getCachedCarpentryCatalog()) setLoading(true);
@@ -86,7 +145,7 @@ export default function FarmWarehouse1Page({
         (photoRows || []).forEach((a) => {
           const id = String(a.id);
           const prev = baseMap.get(id) || { id };
-          baseMap.set(id, { ...prev, ...a });
+          baseMap.set(id, { ...prev, ...a, name: prev.name || a.name, family_sku: prev.family_sku || a.family_sku });
         });
       }
       setAssemblyById(baseMap);
@@ -101,20 +160,10 @@ export default function FarmWarehouse1Page({
     load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = String(search || '').trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => {
-      const name = String(row.name || '').toLowerCase();
-      const sku = String(row.family_sku || '').toLowerCase();
-      return name.includes(q) || sku.includes(q);
-    });
-  }, [rows, search]);
-
   const handleSaveStockOnHand = async (assemblyId) => {
     const id = String(assemblyId || '').trim();
     if (!id || !canIncreaseFarmStock) return;
-    const current = rows.find((r) => String(r.assembly_id || r.id) === id)?.farm_qty ?? 0;
+    const current = farmQtyByAssembly.get(id) ?? 0;
     const raw = stockEditById[id] !== undefined ? stockEditById[id] : current;
     const nextQty = Math.max(0, Math.floor(Number(raw) || 0));
     setBusyId(`stock-${id}`);
@@ -134,16 +183,15 @@ export default function FarmWarehouse1Page({
     }
   };
 
-  const renderStockCell = (row) => {
-    const aid = String(row.assembly_id || row.id || '');
-    const current = Math.max(0, Math.floor(Number(row.farm_qty) || 0));
-    const draftVal = stockEditById[aid] !== undefined ? stockEditById[aid] : String(current);
-    const isSaving = busyId === `stock-${aid}`;
+  const renderStockEditor = (aid, rowQty) => {
     if (!canIncreaseFarmStock) {
-      return <span>{current}</span>;
+      return <span>{Math.max(0, Number(rowQty) || 0)}</span>;
     }
+    const draftVal = stockEditById[aid] !== undefined ? stockEditById[aid] : rowQty;
+    const isSaving = busyId === `stock-${aid}`;
+    const asm = assemblyById.get(aid);
     return (
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="floor2-stock-editor">
         <input
           type="number"
           min="0"
@@ -156,7 +204,7 @@ export default function FarmWarehouse1Page({
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleSaveStockOnHand(aid);
           }}
-          aria-label={`Farm stock for ${row.name || aid}`}
+          aria-label={`Stock on hand for ${asm?.name || aid}`}
         />
         <button
           type="button"
@@ -177,52 +225,90 @@ export default function FarmWarehouse1Page({
         {pageSubtitle}
       </p>
       {error ? <p style={{ color: '#f87171' }}>{error}</p> : null}
-      <div className="kitwe-catalog-add-toolbar kitwe-catalog-add-toolbar--inline-row">
-        <ServerSearch value={search} onChange={setSearch} />
-      </div>
-      {loading ? <p>Loading…</p> : null}
-      {!loading && filtered.length === 0 ? (
-        <p style={{ color: 'var(--kitwe-muted, #64748b)' }}>No farm warehouse products found.</p>
-      ) : null}
-      <div className="kitwe-catalog-grid" style={{ marginTop: 16 }}>
-        {filtered.map((row) => {
-          const aid = String(row.assembly_id || row.id || '');
-          const asm = assemblyById.get(aid) || { id: aid, name: row.name, family_sku: row.family_sku };
-          return (
-            <div key={aid} className="kitwe-catalog-card">
-              <WarehouseFloor2WipThumbnail
-                assembly={asm}
-                canEdit={false}
-              />
-              <div className="kitwe-catalog-card__body">
-                <div className="kitwe-catalog-card__title" title={row.name}>{row.name || aid}</div>
-                {row.family_sku ? (
-                  <div className="kitwe-catalog-card__sku">{row.family_sku}</div>
-                ) : null}
-                <div style={{ marginTop: 8, fontSize: 13 }}>
-                  <div>Floor 2: {Math.max(0, Number(row.floor2_qty) || 0)}</div>
-                  <div style={{ marginTop: 6 }}>Farm on hand: {renderStockCell(row)}</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
-function ServerSearch({ value, onChange }) {
-  return (
-    <div className="carpentry-add-search-wrap kitwe-catalog-add-toolbar__search">
-      <input
-        type="search"
-        className="kitwe-search-input"
-        placeholder="Search farm product or SKU…"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label="Search farm warehouse"
-      />
+      <div className="kitwe-catalog-add-toolbar kitwe-catalog-add-toolbar--inline-row">
+        <div className="carpentry-add-search-wrap kitwe-catalog-add-toolbar__search">
+          <input
+            type="search"
+            className="kitwe-search-input carpentry-add-search-input kitwe-catalog-search"
+            style={{ width: '100%' }}
+            placeholder="Search farm products by name or SKU…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {loading ? <p>Loading…</p> : null}
+
+      {!loading && search.trim() && filteredStockFamilyGroups.length === 0 && stockFamilyGroups.length > 0 ? (
+        <p className="kitwe-empty-hint" style={{ marginTop: 8 }}>
+          No farm products match your search.
+        </p>
+      ) : null}
+
+      {!loading && !search.trim() && stockFamilyGroups.length === 0 ? (
+        <p className="kitwe-empty-hint" style={{ marginTop: 8 }}>
+          No products on the farm list yet. Farm rows follow the same Floor 2 WIP catalog — set farm stock when units
+          arrive at the farm.
+        </p>
+      ) : null}
+
+      {filteredStockFamilyGroups.length > 0 ? (
+        <div className="kitwe-catalog-table-wrap" style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 16, margin: '8px 0 12px', padding: '0 10px' }}>
+            Current stock at Farm
+            {canEditWipPhoto ? (
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 400, color: '#64748b', marginTop: 4 }}>
+                WIP photos are shared with Floor 2. Adjust farm on-hand in the Stock on hand column.
+              </span>
+            ) : null}
+          </h2>
+          <div className="kitwe-catalog-product-rows" role="list">
+            <div
+              className="kitwe-catalog-product-rows__header kitwe-catalog-product-rows__header--floor2-farm"
+              aria-hidden
+            >
+              <span>Photo</span>
+              <span>SKU</span>
+              <span>Product</span>
+              <span>Stock on hand</span>
+            </div>
+            {filteredStockFamilyGroups.map((group) => {
+              const row = (group.rows || [])[0];
+              if (!row) return null;
+              const aid = String(row.assembly_id);
+              const asm = assemblyById.get(aid);
+              const sku = asm?.family_sku || '—';
+              const farmQty = farmQtyByAssembly.get(aid) ?? row.quantity;
+              return (
+                <article
+                  key={group.key}
+                  className="kitwe-catalog-product-row kitwe-catalog-product-row--floor2-farm"
+                  role="listitem"
+                >
+                  <div className="kitwe-catalog-product-row__wip">
+                    <WarehouseFloor2WipThumbnail
+                      assembly={asm || { id: aid, name: group.familyBase, metadata: {} }}
+                      canEdit={canEditWipPhoto}
+                      compactLabel="WIP"
+                      onUpdated={handleAssemblyImageUpdated}
+                      onError={(msg) => setError(msg || 'Failed to update WIP photo')}
+                    />
+                  </div>
+                  <div className="kitwe-catalog-product-row__sku">{sku}</div>
+                  <div className="kitwe-catalog-product-row__name">
+                    <strong>{group.familyBase}</strong>
+                  </div>
+                  <div className="kitwe-catalog-product-row__meta">
+                    {renderStockEditor(aid, farmQty)}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -12,6 +12,7 @@ const mustInclude = [
   ['server/lib/farmWarehouseDelivery.js', 'fetchCatalogForFarmDelivery'],
   ['server/lib/ensureFarmWarehouseLocation.js', 'ensureFarmWarehouseLocation'],
   ['server/lib/warehouseFarmDeliveryNumber.js', 'FRM0000000001'],
+  ['server/lib/warehouseFarmReturnNumber.js', 'WFLR0000000001'],
   ['mobile-apps/warehouse-catalog/App.js', 'FarmWarehouse'],
   ['mobile-apps/warehouse-delivery/App.js', 'FarmSendHome'],
   ['mobile-apps/warehouse-delivery/App.js', 'WarehouseFromFarmHome'],

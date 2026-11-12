@@ -3,6 +3,7 @@ import { resolveFarmWarehouse1Location } from '../../src/constants/farmWarehouse
 import { buildFarmReturnSendCatalogRows, buildFarmSendCatalogRows } from '../../src/utils/farmWarehouseCatalogView.js';
 import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
 import { allocateFarmDeliveryNumber } from './warehouseFarmDeliveryNumber.js';
+import { allocateFarmReturnNumber } from './warehouseFarmReturnNumber.js';
 import { adjustAssemblyStock, getAssemblyStockQty } from './warehouseReturnStock.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { newUuid } from './uuid.js';
@@ -332,10 +333,6 @@ export async function farmReturnCatalog(sb) {
   return { products, farm_location_id: farmId, floor2_location_id: floor2Id };
 }
 
-function formatFarmReturnTransferRef() {
-  return `RTN${String(Date.now()).slice(-10)}`;
-}
-
 export async function openFarmReturnSession(sb, user, email) {
   const { floor2Id, farmId } = await resolveFarmWarehouseIds(sb);
   if (email) {
@@ -353,7 +350,7 @@ export async function openFarmReturnSession(sb, user, email) {
       return { session_id: existing.id, transfer_ref: existing.delivery_number, reused: true };
     }
   }
-  const transferRef = formatFarmReturnTransferRef();
+  const transferRef = await allocateFarmReturnNumber();
   const now = new Date().toISOString();
   const sessionId = newUuid();
   const row = {
