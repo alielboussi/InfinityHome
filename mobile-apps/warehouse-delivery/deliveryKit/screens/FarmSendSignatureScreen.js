@@ -187,12 +187,21 @@ export default function FarmSendSignatureScreen({ route, navigation }) {
       <View style={[kiosk.field, styles.driverField]}>
         <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryDriver', locale)}</Text>
         <Pressable
-          style={kiosk.inputPressable}
+          style={[
+            kiosk.driverPickerBtn,
+            driverName ? kiosk.driverPickerBtnSelected : null,
+          ]}
           onPress={() => setDriverPickerOpen(true)}
           disabled={busy || driversLoading}
         >
-          <Text style={[kiosk.inputPressableText, { textAlign }]}>
-            {driverName || (driversLoading ? '…' : tUi('deliverySelectDriver', locale))}
+          <Text
+            style={[
+              driverName ? kiosk.driverPickerValueText : kiosk.driverPickerPlaceholderText,
+              { textAlign: 'center' },
+            ]}
+            numberOfLines={2}
+          >
+            {driverName || (driversLoading ? '…' : tUi('deliveryDriverPlaceholder', locale))}
           </Text>
         </Pressable>
       </View>

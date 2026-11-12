@@ -12,6 +12,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DeliveryWarehouseProductGrid from '../components/DeliveryWarehouseProductGrid';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
+import DeliveryFarmQtyAddModal from '../components/DeliveryFarmQtyAddModal';
 import DeliveryProductPickModal from '../components/DeliveryProductPickModal';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
 import KioskSafeScroll from '../components/KioskSafeScroll';
@@ -98,6 +99,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
   const [draftFinishedConfirmed, setDraftFinishedConfirmed] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [pickModal, setPickModal] = useState(null);
+  const [farmQtyModal, setFarmQtyModal] = useState(null);
   const [sessionOpening, setSessionOpening] = useState(false);
   const sessionIdRef = useRef(sessionId);
   const groupsRef = useRef(groups);
@@ -302,11 +304,200 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
     setDraftChecks((prev) => refreshDeliveryPacketCheckQty(prev, rows, unitsNum));
   }, [unitsNum, draftAssemblyId, byAssembly]);
 
+  const openFarmQtyModal = useCallback((assembly, extra = {}) => {
+    if (!assembly?.id) return;
+    const id = String(assembly.id);
+    const maxQty = Math.max(0, Math.floor(Number(catalog?.assemblyWarehouseQty?.[id] ?? 0) || 0));
+    setError('');
+    setFarmQtyModal({
+      assembly,
+      maxQty,
+      packet: extra.packet || null,
+    });
+  }, [catalog]);
+
+  const confirmFarmQtyAdd = useCallback((qtyRaw) => {
+    const modal = farmQtyModal;
+    if (!modal?.assembly?.id) return;
+    const assembly = modal.assembly;
+    const id = String(assembly.id);
+    const qty = Math.max(1, Math.floor(Number(qtyRaw) || 0));
+    const maxQty = modal.maxQty ?? 0;
+    if (maxQty > 0 && qty > maxQty) {
+      Alert.alert(
+        tUi('deliveryFarmAlertInsufficient', locale),
+        tUi('deliveryFarmAlertAvailable', locale).replace('{n}', String(maxQty)),
+      );
+      return;
+    }
+    const rows = byAssembly.get(id) || [];
+
+    if (isWarehouseSetAssembly(assembly)) {
+      setFarmQtyModal(null);
+      selectSetForDraft(assembly);
+      setUnits(String(qty));
+      return;
+    }
+
+    if (isFinishedProductWithoutPacketBom(assembly, rows)) {
+      const checkedAt = new Date().toISOString();
+      setGroups((prev) => {
+        const rest = prev.filter((g) => String(g.assembly_id) !== id);
+        return [
+          ...rest,
+          {
+            assembly_id: assembly.id,
+            assembly_name: assembly.name,
+            units: qty,
+            scans: [],
+            finished_driver_checked: true,
+            finished_driver_checked_at: checkedAt,
+          },
+        ];
+      });
+      setFarmQtyModal(null);
+      setError('');
+      return;
+    }
+
+    if (!rows.length) {
+      Alert.alert(
+        tUi('deliveryFarmTitle', locale),
+        tUi('deliveryScanProductSkuUseCarton', locale),
+      );
+      setFarmQtyModal(null);
+      return;
+    }
+
+    const checks = {};
+    for (const p of rows) {
+      const req = qty * Math.max(1, Number(p.qty_per_unit) || 1);
+      checks[p.id] = {
+        packet_id: p.id,
+        quantity: req,
+        driver_checked: true,
+        driver_checked_at: new Date().toISOString(),
+      };
+    }
+    const built = buildScansFromChecks(rows, qty, checks);
+    if (!built.ok) {
+      setFarmQtyModal(null);
+      selectAssemblyForDraft(assembly);
+      setUnits(String(qty));
+      setError(tUi('deliveryCheckAllPackets', locale).replace('{name}', assembly.name || id));
+      return;
+    }
+    setGroups((prev) => {
+      const rest = prev.filter((g) => String(g.assembly_id) !== id);
+      return [
+        ...rest,
+        {
+          assembly_id: assembly.id,
+          assembly_name: assembly.name,
+          units: qty,
+          scans: built.scans,
+        },
+      ];
+    });
+    setFarmQtyModal(null);
+    setError('');
+  }, [
+    byAssembly,
+    farmQtyModal,
+    locale,
+    selectAssemblyForDraft,
+    selectSetForDraft,
+  ]);
+
+  const handleFarmFlowScan = useCallback((value) => {
+    const resolved = resolveDeliveryCatalogScan(value, {
+      assemblies: deliveryAssemblies,
+      packets,
+      assemblyPackets: links,
+    });
+    if (resolved?.kind === 'assembly_sku_needs_carton') {
+      if (!deliveryAssemblyIds.has(String(resolved.assembly?.id))) {
+        setError(tUi('deliveryScanNotInWarehouse', locale));
+        return;
+      }
+      setError(tUi('deliveryScanProductSkuUseCarton', locale));
+      return;
+    }
+    if (resolved?.kind === 'assembly' || resolved?.kind === 'assembly_box') {
+      if (!deliveryAssemblyIds.has(String(resolved.assembly?.id))) {
+        setError(tUi('deliveryScanNotInWarehouse', locale));
+        return;
+      }
+      openFarmQtyModal(resolved.assembly);
+      return;
+    }
+    if (resolved?.kind === 'packet' && resolved.packet) {
+      const packet = resolved.packet;
+      const productCandidates = filterAssembliesToDeliveryWarehouse(
+        catalog,
+        assembliesUsingPacket(packet.id, links, allAssemblies, packets),
+      ).filter((a) => deliveryAssemblyIds.has(String(a.id)));
+      if (!productCandidates.length) {
+        setError(tUi('deliveryScanNotInWarehouse', locale));
+        return;
+      }
+      setError('');
+      if (productCandidates.length === 1) {
+        openFarmQtyModal(productCandidates[0], { packet });
+        return;
+      }
+      const label = `#${packet.packet_number || ''} ${packet.name || ''}`.trim();
+      setPickModal({ packet, assemblies: productCandidates, packetLabel: label, farmQtyAfterPick: true });
+      return;
+    }
+
+    const packet = findWarehousePacketByScan(value, packets);
+    if (packet) {
+      const candidates = filterAssembliesToDeliveryWarehouse(
+        catalog,
+        assembliesUsingPacket(packet.id, links, allAssemblies, packets),
+      ).filter((a) => deliveryAssemblyIds.has(String(a.id)));
+      if (!candidates.length) {
+        setError(tUi('deliveryScanNotInWarehouse', locale));
+        return;
+      }
+      setError('');
+      if (candidates.length === 1) {
+        openFarmQtyModal(candidates[0], { packet });
+        return;
+      }
+      const label = `#${packet.packet_number || ''} ${packet.name || ''}`.trim();
+      setPickModal({ packet, assemblies: candidates, packetLabel: label, farmQtyAfterPick: true });
+      return;
+    }
+
+    const nameHits = filterAssembliesForDeliverySearch(deliveryAssemblies, value, { limit: 1 });
+    if (nameHits.length === 1) {
+      setError('');
+      openFarmQtyModal(nameHits[0]);
+      return;
+    }
+    setError(tUi('deliveryScanNoProduct', locale));
+  }, [
+    allAssemblies,
+    catalog,
+    deliveryAssemblyIds,
+    deliveryAssemblies,
+    links,
+    locale,
+    openFarmQtyModal,
+    packets,
+  ]);
+
   const handleScanValue = useCallback((raw) => {
     const value = String(raw || '').trim();
     if (!value) return;
     if (!packets.length && !deliveryAssemblies.length) {
       setError(tUi('loading', locale));
+      return;
+    }
+    if (isFarmFlow) {
+      handleFarmFlowScan(value);
       return;
     }
 
@@ -395,6 +586,8 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
     locale,
     packets,
     selectAssemblyForDraft,
+    isFarmFlow,
+    handleFarmFlowScan,
   ]);
 
   const toggleDraftPacket = (packetId, requiredQty) => {
@@ -1150,9 +1343,25 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
         onClose={() => setPickModal(null)}
         onPick={(asm) => {
           const packet = pickModal?.packet;
+          const farmAfter = pickModal?.farmQtyAfterPick;
           setPickModal(null);
+          if (isFarmFlow && farmAfter) {
+            openFarmQtyModal(asm, { packet });
+            return;
+          }
           applyAssemblyWithPacket(asm, packet);
         }}
+      />
+
+      <DeliveryFarmQtyAddModal
+        visible={Boolean(farmQtyModal?.assembly)}
+        locale={locale}
+        textAlign={textAlign}
+        productName={farmQtyModal?.assembly?.name || ''}
+        productSku={farmQtyModal?.assembly?.family_sku || ''}
+        maxQty={Math.max(0, Number(farmQtyModal?.maxQty) || 0)}
+        onClose={() => setFarmQtyModal(null)}
+        onConfirm={confirmFarmQtyAdd}
       />
     </>
   );

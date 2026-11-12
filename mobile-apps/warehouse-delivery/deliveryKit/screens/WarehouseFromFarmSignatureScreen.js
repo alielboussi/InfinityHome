@@ -117,6 +117,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
   ]);
 
   const sortedDrivers = sortDeliveryDriversByName(drivers || []);
+  const cartTotal = (lines || []).reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
 
   return (
     <KioskSafeScroll
@@ -139,15 +140,46 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
         <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmDriverOnlyHint', locale)}</Text>
       </View>
 
+      <Text style={[kiosk.sectionTitle, { textAlign }]}>
+        {tUi('deliveryFarmCartTitle', locale).replace('{n}', String(cartTotal))}
+      </Text>
+      {(lines || []).map((line) => {
+        const key = String(line.assembly_id || line.name || '');
+        return (
+          <View key={key} style={kiosk.cartCard}>
+            <Text style={[kiosk.cartProductTitle, { textAlign }]} numberOfLines={3}>
+              {line.name || key}
+            </Text>
+            {line.family_sku ? (
+              <Text style={[kiosk.cartMeta, { textAlign }]} numberOfLines={1}>
+                {line.family_sku}
+              </Text>
+            ) : null}
+            <Text style={[kiosk.cartMeta, { textAlign }]}>
+              {tUi('deliveryQtyShort', locale).replace('{n}', String(line.quantity || 0))}
+            </Text>
+          </View>
+        );
+      })}
+
       <View style={[kiosk.field, styles.driverField]}>
         <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryDriver', locale)}</Text>
         <Pressable
-          style={kiosk.inputPressable}
+          style={[
+            kiosk.driverPickerBtn,
+            driverName ? kiosk.driverPickerBtnSelected : null,
+          ]}
           onPress={() => setDriverPickerOpen(true)}
           disabled={busy || driversLoading}
         >
-          <Text style={[kiosk.inputPressableText, { textAlign }]}>
-            {driverName || (driversLoading ? '…' : tUi('deliverySelectDriver', locale))}
+          <Text
+            style={[
+              driverName ? kiosk.driverPickerValueText : kiosk.driverPickerPlaceholderText,
+              { textAlign: 'center' },
+            ]}
+            numberOfLines={2}
+          >
+            {driverName || (driversLoading ? '…' : tUi('deliveryDriverPlaceholder', locale))}
           </Text>
         </Pressable>
       </View>

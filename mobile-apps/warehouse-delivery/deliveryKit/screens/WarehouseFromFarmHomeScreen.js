@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import DeliveryFarmQtyAddModal from '../components/DeliveryFarmQtyAddModal';
 import DeliveryWarehouseProductGrid from '../components/DeliveryWarehouseProductGrid';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
@@ -49,6 +50,7 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   const [draftId, setDraftId] = useState('');
   const [units, setUnits] = useState('1');
   const [scanOpen, setScanOpen] = useState(false);
+  const [scanQtyProduct, setScanQtyProduct] = useState(null);
   const productsRef = useRef(products);
   productsRef.current = products;
 
@@ -111,31 +113,32 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
   );
   const maxUnits = Math.max(0, Math.floor(Number(draftProduct?.farm_qty) || 0));
 
-  const addToCart = useCallback(() => {
-    if (!draftProduct) {
+  const addProductToCart = useCallback((product, qtyRaw) => {
+    if (!product) {
       Alert.alert(
         tUi('deliveryFarmAlertPickProduct', locale),
         tUi('deliveryFarmAlertPickProductBody', locale),
       );
-      return;
+      return false;
     }
-    const aid = String(draftProduct.assembly_id || draftProduct.id || '').trim();
-    const qty = Math.max(1, Math.floor(Number(units) || 0));
-    if (qty > maxUnits) {
+    const aid = String(product.assembly_id || product.id || '').trim();
+    const max = Math.max(0, Math.floor(Number(product.farm_qty) || 0));
+    const qty = Math.max(1, Math.floor(Number(qtyRaw) || 0));
+    if (qty > max) {
       Alert.alert(
         tUi('deliveryFarmAlertInsufficient', locale),
-        tUi('deliveryFarmAlertAvailable', locale).replace('{n}', String(maxUnits)),
+        tUi('deliveryFarmAlertAvailable', locale).replace('{n}', String(max)),
       );
-      return;
+      return false;
     }
     setCart((prev) => {
       const existing = prev.find((row) => row.assembly_id === aid);
       if (existing) {
         const nextQty = existing.quantity + qty;
-        if (nextQty > maxUnits) {
+        if (nextQty > max) {
           Alert.alert(
             tUi('deliveryFarmAlertInsufficient', locale),
-            tUi('deliveryFarmAlertExceeds', locale).replace('{n}', String(maxUnits)),
+            tUi('deliveryFarmAlertExceeds', locale).replace('{n}', String(max)),
           );
           return prev;
         }
@@ -145,16 +148,22 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       }
       return [...prev, {
         assembly_id: aid,
-        name: draftProduct.name || aid,
-        family_sku: draftProduct.family_sku || '',
+        name: product.name || aid,
+        family_sku: product.family_sku || '',
         quantity: qty,
-        max_qty: maxUnits,
+        max_qty: max,
       }];
     });
-    setUnits('1');
-    setDraftId('');
-    setSearch('');
-  }, [draftProduct, locale, maxUnits, units]);
+    return true;
+  }, [locale]);
+
+  const addToCart = useCallback(() => {
+    if (addProductToCart(draftProduct, units)) {
+      setUnits('1');
+      setDraftId('');
+      setSearch('');
+    }
+  }, [addProductToCart, draftProduct, units]);
 
   const onScan = useCallback((value) => {
     const hit = matchProductByScan(productsRef.current, value);
@@ -166,9 +175,24 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       );
       return;
     }
-    setDraftId(String(hit.assembly_id || hit.id || ''));
-    setSearch(String(hit.family_sku || hit.name || ''));
+    const farmQty = Math.max(0, Number(hit.farm_qty) || 0);
+    if (farmQty < 1) {
+      Alert.alert(
+        tUi('deliveryFarmAlertInsufficient', locale),
+        tUi('deliveryFarmAlertAvailable', locale).replace('{n}', '0'),
+      );
+      return;
+    }
+    setScanQtyProduct(hit);
   }, [locale]);
+
+  const onScanQtyConfirm = useCallback((qtyRaw) => {
+    if (addProductToCart(scanQtyProduct, qtyRaw)) {
+      setScanQtyProduct(null);
+      setDraftId('');
+      setSearch('');
+    }
+  }, [addProductToCart, scanQtyProduct]);
 
   const goSignature = () => {
     if (!sessionId || !cart.length) {
@@ -278,25 +302,43 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
           </View>
         ) : null}
 
-        {cart.length > 0 ? (
-          <View style={kiosk.card}>
-            <Text style={[kiosk.title, { textAlign }]}>
-              {tUi('deliveryFarmCartTitle', locale).replace('{n}', String(cartTotal))}
-            </Text>
-            {cart.map((line) => (
-              <View key={line.assembly_id} style={styles.cartRow}>
-                <Text style={{ flex: 1 }}>{line.name} × {line.quantity}</Text>
-                <Pressable
-                  onPress={() => setCart((prev) => prev.filter((r) => r.assembly_id !== line.assembly_id))}
-                >
-                  <Text style={{ color: theme.danger }}>{tUi('deliveryFarmRemove', locale)}</Text>
-                </Pressable>
+        <Text style={[kiosk.sectionTitle, { textAlign }]}>
+          {tUi('deliveryFarmCartTitle', locale).replace('{n}', String(cartTotal))}
+        </Text>
+        {!cart.length ? (
+          <Text style={[kiosk.metaLine, { textAlign, marginBottom: 8 }]}>
+            {tUi('deliveryCartEmpty', locale)}
+          </Text>
+        ) : null}
+        {cart.map((line) => (
+          <View key={line.assembly_id} style={kiosk.cartCard}>
+            <View style={kiosk.cartProductHeader}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[kiosk.cartProductTitle, { textAlign }]} numberOfLines={3}>
+                  {line.name || line.assembly_id}
+                </Text>
+                {line.family_sku ? (
+                  <Text style={[kiosk.cartMeta, { textAlign }]} numberOfLines={1}>
+                    {line.family_sku}
+                  </Text>
+                ) : null}
+                <Text style={[kiosk.cartMeta, { textAlign }]}>
+                  {tUi('deliveryQtyShort', locale).replace('{n}', String(line.quantity))}
+                </Text>
               </View>
-            ))}
-            <Pressable style={[kiosk.btnPrimaryBlock, { marginTop: 12 }]} onPress={goSignature}>
-              <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySignatureTitle', locale)}</Text>
-            </Pressable>
+              <Pressable
+                onPress={() => setCart((prev) => prev.filter((r) => r.assembly_id !== line.assembly_id))}
+                hitSlop={8}
+              >
+                <Text style={kiosk.cartRemoveText}>{tUi('deliveryFarmRemove', locale)}</Text>
+              </Pressable>
+            </View>
           </View>
+        ))}
+        {cart.length > 0 ? (
+          <Pressable style={[kiosk.btnPrimaryBlock, { marginTop: 4 }]} onPress={goSignature}>
+            <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySignatureTitle', locale)}</Text>
+          </Pressable>
         ) : null}
       </KioskSafeScroll>
 
@@ -306,6 +348,17 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         onScanned={onScan}
         locale={locale}
         title={tUi('deliveryFarmScanTitle', locale)}
+      />
+
+      <DeliveryFarmQtyAddModal
+        visible={Boolean(scanQtyProduct)}
+        locale={locale}
+        textAlign={textAlign}
+        productName={scanQtyProduct?.name || ''}
+        productSku={scanQtyProduct?.family_sku || ''}
+        maxQty={Math.max(0, Number(scanQtyProduct?.farm_qty) || 0)}
+        onClose={() => setScanQtyProduct(null)}
+        onConfirm={onScanQtyConfirm}
       />
     </>
   );
