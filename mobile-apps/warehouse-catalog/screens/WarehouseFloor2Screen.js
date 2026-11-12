@@ -243,6 +243,39 @@ export default function WarehouseFloor2Screen() {
     }
   };
 
+  const removeFloor2Photo = async (assemblyId) => {
+    if (!canUploadPhoto || busyId || photoBusyId) return;
+    const aid = String(assemblyId || '').trim();
+    if (!aid) return;
+    setPhotoBusyId(aid);
+    try {
+      await warehouseMobileRequest('catalog-floor2-photo-remove', { assembly_id: aid });
+      setProducts((prev) =>
+        prev.map((row) => {
+          const rid = String(row.assembly_id || row.id || '');
+            return rid === aid ? { ...row, floor2_image_url: '' } : row;
+        }),
+      );
+      await loadProducts();
+    } catch (e) {
+      Alert.alert('Remove photo failed', e?.message || 'Could not remove Floor 2 image.');
+    } finally {
+      setPhotoBusyId('');
+    }
+  };
+
+  const confirmRemovePhoto = (assemblyId, displayName) => {
+    if (!canUploadPhoto || busyId || photoBusyId) return;
+    Alert.alert(
+      'Remove WIP photo',
+      `Remove the Floor 2 photo for ${displayName || 'this product'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => removeFloor2Photo(assemblyId) },
+      ],
+    );
+  };
+
   const pickAndUploadPhoto = async (assemblyId) => {
     if (!canUploadPhoto || busyId || photoBusyId) return;
     const aid = String(assemblyId || '').trim();
@@ -271,9 +304,7 @@ export default function WarehouseFloor2Screen() {
         setProducts((prev) =>
           prev.map((row) => {
             const rid = String(row.assembly_id || row.id || '');
-            return rid === aid
-              ? { ...row, floor2_image_url: nextUrl, image_url: nextUrl }
-              : row;
+            return rid === aid ? { ...row, floor2_image_url: nextUrl } : row;
           }),
         );
       }
@@ -419,11 +450,11 @@ export default function WarehouseFloor2Screen() {
             <Text style={styles.modalTitle}>{inlayGroup?.displayName || 'Floor 2 Product'}</Text>
             <Text style={styles.modalSub}>
               {canIncreaseStock && canUploadPhoto
-                ? 'Tap thumbnail to import photo · use − / + to decrease or add Floor 2 stock.'
+                ? 'Tap thumbnail to change photo · X removes WIP photo · − / + adjusts stock.'
                 : canIncreaseStock
                   ? 'Use − / + to decrease or add Floor 2 stock.'
                   : canUploadPhoto
-                    ? 'Tap thumbnail to import photo.'
+                    ? 'Tap thumbnail to change photo · X removes WIP photo.'
                     : 'View Floor 2 stock on hand.'}
             </Text>
             <ScrollView style={styles.inlayScroll} keyboardShouldPersistTaps="handled">
@@ -454,14 +485,27 @@ export default function WarehouseFloor2Screen() {
                   <View key={id} style={styles.inlayRow}>
                     <View style={styles.inlayRowTop}>
                       {canUploadPhoto ? (
-                        <Pressable
-                          onPress={() => pickAndUploadPhoto(id)}
-                          disabled={Boolean(busyId || photoBusyId)}
-                          hitSlop={8}
-                          style={styles.inlayThumbBtn}
-                        >
-                          {thumbContent}
-                        </Pressable>
+                        <View style={styles.inlayThumbCol}>
+                          <Pressable
+                            onPress={() => pickAndUploadPhoto(id)}
+                            disabled={Boolean(busyId || photoBusyId)}
+                            hitSlop={8}
+                            style={styles.inlayThumbBtn}
+                          >
+                            {thumbContent}
+                          </Pressable>
+                          {rowImage && !isPhotoBusy ? (
+                            <Pressable
+                              onPress={() => confirmRemovePhoto(id, item.raw_name || item.name)}
+                              disabled={Boolean(busyId || photoBusyId)}
+                              hitSlop={8}
+                              style={styles.inlayRemovePhotoBtn}
+                              accessibilityLabel="Remove Floor 2 WIP photo"
+                            >
+                              <MaterialCommunityIcons name="image-remove-outline" size={22} color={theme.danger} />
+                            </Pressable>
+                          ) : null}
+                        </View>
                       ) : (
                         thumbContent
                       )}
@@ -778,6 +822,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.textMuted,
     marginTop: 2,
+  },
+  inlayThumbCol: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  inlayRemovePhotoBtn: {
+    padding: 2,
   },
   inlayThumbBtn: {
     borderRadius: 8,

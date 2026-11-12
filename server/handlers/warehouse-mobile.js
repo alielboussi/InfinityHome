@@ -804,7 +804,7 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
     const metadata = mergeWarehouseFloor2WipImageMetadata(afterPhoto?.metadata || freshAsm?.metadata, imageUrl);
     const { error: metaErr } = await sb
       .from('warehouse_assemblies')
-      .update({ metadata, image_url: imageUrl, updated_at: new Date().toISOString() })
+      .update({ metadata, updated_at: new Date().toISOString() })
       .eq('id', assemblyId);
     if (metaErr) throw new Error(metaErr.message || 'Failed to save product photo.');
   }
@@ -1090,13 +1090,83 @@ async function opCatalogFloor2PhotoUpload(body, user, { carpentryWorkshop = fals
   const metadata = mergeWarehouseFloor2WipImageMetadata(existing.metadata, publicUrl);
   const { error: updErr } = await sb
     .from('warehouse_assemblies')
-    .update({ metadata, image_url: publicUrl, updated_at: now })
+    .update({ metadata, updated_at: now })
     .eq('id', assemblyId);
   if (updErr) throw new Error(updErr.message || 'Failed to save Floor 2 photo');
 
   return {
     assembly_id: assemblyId,
     image_url: publicUrl,
+  };
+}
+
+async function purgeFloor2WipStorageObjects(assemblyId) {
+  const id = String(assemblyId || '').trim();
+  if (!id) return;
+  try {
+    const admin = (await import('firebase-admin')).default;
+    const { getFirebaseAdminApp } = await import('../lib/firebaseAdmin.js');
+    const app = getFirebaseAdminApp();
+    if (!app) return;
+    const bucketName = String(
+      process.env.FIREBASE_STORAGE_BUCKET
+      || process.env.REACT_APP_FIREBASE_STORAGE_BUCKET
+      || '',
+    ).trim();
+    const gcs = bucketName ? admin.storage().bucket(bucketName) : admin.storage().bucket();
+    const [files] = await gcs.getFiles({ prefix: `warehouse-assemblies/${id}/floor2-wip/` });
+    if (files?.length) {
+      await Promise.all(files.map((file) => file.delete().catch(() => {})));
+    }
+  } catch (err) {
+    console.warn('purgeFloor2WipStorageObjects:', err?.message || err);
+  }
+}
+
+async function opCatalogFloor2PhotoRemove(body, user, { carpentryWorkshop = false } = {}) {
+  if (carpentryWorkshop) {
+    await assertCarpentryWorkshopUser(user);
+  } else {
+    const grant = await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+    if (
+      !isCatalogLocationPhotoUploadAllowed(grant, 'warehouse_floor_2', user?.email)
+      && !canManageCatalog(user)
+      && !isLoginAccessAdmin(user?.email)
+    ) {
+      const err = new Error('Floor 2 image upload is disabled for your account in User Access.');
+      err.status = 403;
+      throw err;
+    }
+  }
+  const assemblyId = String(
+    body.assembly_id || body.assemblyId || body.raw_assembly_id || body.rawAssemblyId || '',
+  ).trim();
+  if (!assemblyId) throw new Error('assembly_id is required.');
+
+  const sb = getService();
+  const { data: existing, error: loadErr } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name, metadata, image_url')
+    .eq('id', assemblyId)
+    .maybeSingle();
+  if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
+  if (!existing) throw new Error('Product not found.');
+
+  await purgeFloor2WipStorageObjects(assemblyId);
+
+  const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const metadata = mergeWarehouseFloor2WipImageMetadata(existing.metadata, '');
+  const now = new Date().toISOString();
+  const { error: updErr } = await sb
+    .from('warehouse_assemblies')
+    .update({ metadata, updated_at: now })
+    .eq('id', assemblyId);
+  if (updErr) throw new Error(updErr.message || 'Failed to remove Floor 2 photo');
+
+  return {
+    assembly_id: assemblyId,
+    image_url: '',
+    floor2_image_url: '',
   };
 }
 
@@ -4823,6 +4893,9 @@ export default async function handler(req, res) {
       case 'catalog-floor2-photo-upload':
         result = await opCatalogFloor2PhotoUpload(body, user);
         break;
+      case 'catalog-floor2-photo-remove':
+        result = await opCatalogFloor2PhotoRemove(body, user);
+        break;
       case 'catalog-storeroom-list':
         result = await opCatalogStoreroomList(body, user);
         break;
@@ -4867,6 +4940,9 @@ export default async function handler(req, res) {
         break;
       case 'carpentry-floor2-photo-upload':
         result = await opCatalogFloor2PhotoUpload(body, user, { carpentryWorkshop: true });
+        break;
+      case 'carpentry-floor2-photo-remove':
+        result = await opCatalogFloor2PhotoRemove(body, user, { carpentryWorkshop: true });
         break;
       case 'carpentry-job-start':
         result = await opCarpentryJobStart(body, user);
