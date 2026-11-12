@@ -10,6 +10,7 @@ import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifes
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import ProductionPressableHint from '../lib/ProductionPressableHint';
+import { ORDERS_APP_DASHBOARD_PARITY } from '../shared/ordersAppDashboardParity';
 
 function DashboardTile({
   icon, title, width, height, onPress, locale, textAlign,
@@ -58,16 +59,13 @@ export default function DashboardScreen({
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready, textAlign } = useProductionKioskLocale();
 
-  const allTiles = [
-    { key: 'customers', screenId: 'orders_customers', icon: 'account-group', title: tUi('tileCustomers', locale), onPress: () => navigation.navigate('Customers') },
-    { key: 'products', screenId: 'orders_products', icon: 'cube-outline', title: tUi('tileProducts', locale), onPress: () => navigation.navigate('Products') },
-    { key: 'new', screenId: 'orders_new_order', icon: 'plus-box-outline', title: tUi('tileNewOrder', locale), onPress: () => navigation.navigate('NewOrder') },
-    { key: 'orders', screenId: 'orders_list', icon: 'clipboard-text-outline', title: tUi('tileOrders', locale), onPress: () => navigation.navigate('Orders') },
-    { key: 'deliveries', screenId: 'orders_deliveries', icon: 'truck-delivery-outline', title: tUi('tileDeliveries', locale), onPress: () => navigation.navigate('Deliveries') },
-    { key: 'repairs', screenId: 'orders_repairs', icon: 'wrench-clock', title: tUi('tileRepairs', locale), onPress: () => navigation.navigate('Repairs') },
-    { key: 'storage', screenId: 'orders_storage', icon: 'warehouse', title: tUi('tileStorage', locale), onPress: () => navigation.navigate('Storage') },
-    { key: 'tracking', screenId: 'orders_tracking', icon: 'map-marker-path', title: tUi('tileTracking', locale), onPress: () => navigation.navigate('Tracking') },
-  ];
+  const allTiles = ORDERS_APP_DASHBOARD_PARITY.map((row) => ({
+    key: row.screenId.replace(/^orders_/, ''),
+    screenId: row.screenId,
+    icon: row.mciIcon,
+    title: tUi(row.i18nKey, locale),
+    onPress: () => navigation.navigate(row.mobileStack),
+  }));
 
   const tiles = (fullAccess || !grant)
     ? allTiles

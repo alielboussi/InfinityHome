@@ -139,6 +139,25 @@ export function evaluatePaintingWorkshopAppAccess(grant, email) {
   return isPaintingWorkshopAppAllowed(grant);
 }
 
+/** Hassan Awad — Orders app owner (every dashboard page). */
+export const ORDERS_APP_OWNER_EMAIL = 'hassanawad18@gmail.com';
+
+export function isOrdersAppOwnerEmail(email) {
+  return String(email || '').trim().toLowerCase() === ORDERS_APP_OWNER_EMAIL;
+}
+
+/** /user-access — Orders Android app (Hassan quotationer dashboard). */
+export function isOrdersAppAllowed(grant) {
+  return grant?.orders_app === 'allow';
+}
+
+/** Same rule as warehouse-mobile `orders-access-self`. Hassan and login-access admin always allowed. */
+export function evaluateOrdersAppAccess(grant, email) {
+  if (isProductionLoginAccessAdminEmail(email)) return true;
+  if (isOrdersAppOwnerEmail(email)) return true;
+  return isOrdersAppAllowed(grant);
+}
+
 /** Driver delivery Android app — User Access → Delivery (`warehouse_delivery_app` only). */
 export function evaluateWarehouseDeliveryDriverAppAccess(grant, email) {
   if (isProductionLoginAccessAdminEmail(email)) return true;
@@ -197,7 +216,6 @@ export const MOBILE_DASHBOARD_NAV_SCREEN_IDS = Object.freeze([
   'warehouse_packets',
   'warehouse_unused_packets',
   'warehouse_incomplete_products',
-  'hassan_kitwe_orders',
 ]);
 
 /** Every navigable screen (CI + defaults). */
@@ -316,7 +334,6 @@ const SCREEN_NAV_ROUTE = Object.freeze({
   warehouse_incomplete_products: 'WarehouseIncompleteProducts',
   warehouse_packets: 'WarehousePackets',
   warehouse_unused_packets: 'WarehouseUnusedPackets',
-  hassan_kitwe_orders: 'HassanKitweOrders',
   kitwe_send_delivery: 'KitweSendHome',
 });
 
@@ -426,6 +443,49 @@ export const PAINTING_APP_SCREENS = Object.freeze([
   },
 ]);
 
+export const ORDERS_APP_SCREENS = Object.freeze([
+  {
+    id: 'orders_customers',
+    label: 'Customers',
+    description: 'Quote customers (Hassan quotationer)',
+  },
+  {
+    id: 'orders_products',
+    label: 'Products',
+    description: 'Quote product catalog',
+  },
+  {
+    id: 'orders_new_order',
+    label: 'New Order',
+    description: 'Create a quotation / factory order',
+  },
+  {
+    id: 'orders_list',
+    label: 'Orders',
+    description: 'Factory orders and quotations',
+  },
+  {
+    id: 'orders_deliveries',
+    label: 'Deliveries',
+    description: 'Warehouse deliveries to Kitwe',
+  },
+  {
+    id: 'orders_repairs',
+    label: 'Repairs',
+    description: 'Kitwe returns and repairs',
+  },
+  {
+    id: 'orders_storage',
+    label: 'Storage',
+    description: 'Warehouse storage holds',
+  },
+  {
+    id: 'orders_tracking',
+    label: 'Tracking',
+    description: 'Repairs trackage (all return statuses)',
+  },
+]);
+
 export const DELIVERY_APP_SCREENS = Object.freeze([
   {
     id: 'delivery_send_kitwe',
@@ -449,15 +509,36 @@ const WORKSHOP_AND_DELIVERY_SCREEN_GROUPS = Object.freeze([
   { flag: 'carpentry_workshop_app', screens: CARPENTRY_APP_SCREENS },
   { flag: 'painting_workshop_app', screens: PAINTING_APP_SCREENS },
   { flag: 'warehouse_delivery_app', screens: DELIVERY_APP_SCREENS },
+  { flag: 'orders_app', screens: ORDERS_APP_SCREENS },
 ]);
 
 export function isWorkshopOrDeliveryScreenAllowed(grant, screenId, appFlag) {
   if (!grant) return false;
-  const row = grant.screens?.[screenId];
-  if (row && (row.view === 'allow' || row.view === 'deny')) {
-    return row.view === 'allow';
+  const ids = screenId === 'delivery_send_kitwe'
+    ? ['delivery_send_kitwe', 'kitwe_send_delivery']
+    : screenId === 'kitwe_send_delivery'
+      ? ['kitwe_send_delivery', 'delivery_send_kitwe']
+      : [screenId];
+  for (const id of ids) {
+    const row = grant.screens?.[id];
+    if (row && (row.view === 'allow' || row.view === 'deny')) {
+      if (row.view === 'allow') return true;
+      return false;
+    }
   }
   return Boolean(appFlag && grant[appFlag] === 'allow');
+}
+
+/** Full delivery dashboard grant when profile API fails (admin email). */
+export function buildDeliveryAppAdminFallbackGrant() {
+  const grant = defaultMobileAccessGrant();
+  grant.warehouse_delivery_app = 'allow';
+  grant.warehouse_production_kitwe = 'deny';
+  DELIVERY_APP_SCREENS.forEach((s) => {
+    grant.screens[s.id] = buildMobileScreenAccessRow(true);
+  });
+  grant.screens.kitwe_send_delivery = buildMobileScreenAccessRow(true);
+  return grant;
 }
 
 export function defaultMobileAccessGrant() {
@@ -498,6 +579,7 @@ export function defaultMobileAccessGrant() {
     warehouse_delivery_app: 'deny',
     carpentry_workshop_app: 'deny',
     painting_workshop_app: 'deny',
+    orders_app: 'deny',
     location_stock_increase: locationStockIncrease,
     location_photo_upload: locationPhotoUpload,
     screens,
@@ -722,6 +804,12 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     ? 'allow'
     : 'deny';
 
+  merged.orders_app = (
+    merged.orders_app === 'allow' || merged.orders_app === true
+  )
+    ? 'allow'
+    : 'deny';
+
   WORKSHOP_AND_DELIVERY_SCREEN_GROUPS.forEach(({ flag, screens: groupScreens }) => {
     const rawScreens = grant?.screens || {};
     const hasExplicitGroupScreen = groupScreens.some(
@@ -743,8 +831,19 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     }
   });
 
+  const deliverySendAllowed = isWorkshopOrDeliveryScreenAllowed(
+    merged,
+    'delivery_send_kitwe',
+    'warehouse_delivery_app',
+  );
+  const kitweScreenAllowed = kitweDeliveryAllowed || deliverySendAllowed;
+
   merged.warehouse_production_kitwe = kitweDeliveryAllowed ? 'allow' : 'deny';
-  merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweDeliveryAllowed);
+  merged.screens.kitwe_send_delivery = buildMobileScreenAccessRow(kitweScreenAllowed);
+
+  if (deliverySendAllowed) {
+    merged.warehouse_delivery_app = 'allow';
+  }
 
   return merged;
 }

@@ -17,6 +17,7 @@ import {
 } from './accessControl';
 import { preloadAppRoute, prefetchNavRoutesOnIdle } from './lazyPages';
 import { performPortalLogout } from './utils/portalLogout';
+import { buildQuotationerOnlyNavGroups } from './mobile/ordersAppDashboardParity.js';
 
 const NAV_STORAGE_KEY = 'ent-nav-open';
 
@@ -96,35 +97,7 @@ const NAV_GROUPS = [
   },
 ];
 
-const QUOTATIONER_ONLY_NAV_GROUPS = [
-  {
-    id: 'dashboard',
-    title: 'Dashboard',
-    items: [
-      { label: 'Layby Dashboard', route: '/quotationer', exact: true },
-    ],
-  },
-  {
-    id: 'quotationer',
-    title: 'Quotationer',
-    items: [
-      { label: 'Manage Customers', route: '/quotationer', search: '?view=customers' },
-      { label: 'Manage Products', route: '/quotationer', search: '?view=products' },
-      { label: 'New Quote', route: '/quotationer', search: '?view=create' },
-      { label: 'Factory Orders', route: '/factory-orders' },
-    ],
-  },
-  {
-    id: 'warehouse',
-    title: 'Warehouse',
-    items: [
-      { label: 'Warehouse Deliveries', route: '/warehouse-deliveries' },
-      { label: 'Repairs', route: '/warehouse-returns' },
-      { label: 'Repairs Trackage', route: '/warehouse-returns-trackage' },
-      { label: 'Warehouse Storage', route: '/warehouse-storage' },
-    ],
-  },
-];
+const QUOTATIONER_ONLY_NAV_GROUPS = buildQuotationerOnlyNavGroups();
 
 function dedupeNavGroups(groups) {
   const seenItems = new Set();

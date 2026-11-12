@@ -4,10 +4,20 @@
  */
 const fs = require('fs');
 
+/** `react-native-screens`: pick one tree (`src/` via Metro) and block `lib/` (mixing both registers RNSScreen twice). */
 const SINGLETON_PACKAGE_ENTRIES = {
-  'react-native-screens': ['src/index.tsx', 'src/index.ts', 'lib/module/index.js'],
+  'react-native-screens': ['src/index.tsx', 'src/index.ts'],
   'react-native-safe-area-context': ['src/index.tsx', 'src/index.ts', 'lib/module/index.js'],
 };
+
+const SINGLETON_PACKAGE_SRC_BLOCK = [
+  /[\\/]node_modules[\\/]react-native-screens[\\/]lib[\\/]/,
+];
+
+function applySingletonPackageMetro(config) {
+  const block = Array.isArray(config.resolver.blockList) ? config.resolver.blockList : [];
+  config.resolver.blockList = [...block, ...SINGLETON_PACKAGE_SRC_BLOCK];
+}
 
 function resolveSingletonEntry(moduleName, resolveFromApp, packageRoot) {
   const root = packageRoot(moduleName);
@@ -47,4 +57,8 @@ function maybeSingletonResolve(context, moduleName, platform, priorResolve, metr
   return { type: 'sourceFile', filePath };
 }
 
-module.exports = { maybeSingletonResolve, SINGLETON_PACKAGE_ENTRIES };
+module.exports = {
+  maybeSingletonResolve,
+  SINGLETON_PACKAGE_ENTRIES,
+  applySingletonPackageMetro,
+};

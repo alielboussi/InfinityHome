@@ -11,7 +11,17 @@ function applyMaterializedSharedMetro(config, projectRoot) {
 
   const watchFolders = new Set(config.watchFolders || []);
   watchFolders.add(appSharedDir);
+  watchFolders.delete(templateSharedDir);
   config.watchFolders = [...watchFolders];
+
+  if (fs.existsSync(appSharedDir)) {
+    const templateSharedPattern = templateSharedDir.replace(/\\/g, '[\\\\/]');
+    const block = Array.isArray(config.resolver.blockList) ? config.resolver.blockList : [];
+    config.resolver.blockList = [
+      ...block,
+      new RegExp(`${templateSharedPattern}[\\\\/].*`),
+    ];
+  }
 
   return { appSharedDir, templateSharedDir };
 }

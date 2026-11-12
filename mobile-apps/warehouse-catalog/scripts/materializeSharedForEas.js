@@ -12,6 +12,8 @@ const sharedSource = path.resolve(catalogRoot, '..', 'shared');
 const repoRoot = path.resolve(catalogRoot, '../..');
 const portalSrcRoot = path.join(repoRoot, 'src');
 const repoSrcVendorRoot = path.join(sharedPath, 'repoSrc');
+/** Tarball shared/ snapshot — EAS preview sets EAS_NO_VCS so git merge cannot run. */
+const catalogSharedUploadSnapshot = path.join(catalogRoot, '.catalog-shared-upload-snapshot');
 
 function repoSrcLooksVendored() {
   return (
@@ -85,9 +87,44 @@ function mergeCatalogSharedFromGit() {
   }
 }
 
+function snapshotCatalogSharedFromUpload() {
+  if (!fs.existsSync(sharedPath)) return;
+  rmDeep(catalogSharedUploadSnapshot);
+  fs.cpSync(sharedPath, catalogSharedUploadSnapshot, { recursive: true });
+}
+
+/** When git is unavailable on EAS (EAS_NO_VCS), overlay catalog-only modules from the uploaded tarball. */
+function mergeCatalogSharedFromUploadSnapshot() {
+  if (!fs.existsSync(catalogSharedUploadSnapshot)) return;
+  let merged = 0;
+  const stack = [catalogSharedUploadSnapshot];
+  while (stack.length) {
+    const dir = stack.pop();
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const src = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'repoSrc') continue;
+        stack.push(src);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const rel = path.relative(catalogSharedUploadSnapshot, src);
+      const dest = path.join(sharedPath, rel);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      if (!fs.existsSync(dest) || fs.readFileSync(dest).compare(fs.readFileSync(src)) !== 0) {
+        fs.copyFileSync(src, dest);
+        merged += 1;
+      }
+    }
+  }
+  if (merged) {
+    console.log('[materializeSharedForEas] merged', merged, 'catalog shared file(s) from upload snapshot');
+  }
+}
+
 const REPO_IMPORT_RE = /from\s+['"](?:\.\.\/)+src\/(utils|constants)\/([^'"]+)['"]/g;
 const REPO_VENDORED_IMPORT_RE =
-  /from\s+['"](?:\.\.\/)?(?:shared\/)?repoSrc\/(utils|constants)\/([^'"]+)['"]/g;
+  /from\s+['"](?:\.\.\/|\.\/)?(?:shared\/)?repoSrc\/(utils|constants)\/([^'"]+)['"]/g;
 const LEGACY_REPO_VENDOR_RE = /from\s+['"]\.\.\/_repoSrc\/(utils|constants)\/([^'"]+)['"]/g;
 const RELATIVE_SRC_IMPORT_RE = /from\s+['"](\.\.?\/[^'"]+)['"]/g;
 
@@ -277,6 +314,8 @@ if (!fs.existsSync(sharedSource)) {
   process.exit(1);
 }
 
+snapshotCatalogSharedFromUpload();
+
 rmDeep(sharedPath);
 
 fs.cpSync(sharedSource, sharedPath, { recursive: true });
@@ -285,5 +324,6 @@ if (fs.existsSync(overlayPath)) {
   fs.cpSync(overlayPath, sharedPath, { recursive: true, force: true });
 }
 mergeCatalogSharedFromGit();
+mergeCatalogSharedFromUploadSnapshot();
 vendorCatalogRepoSrc();
 console.log('[materializeSharedForEas] copied', sharedSource, '->', sharedPath);

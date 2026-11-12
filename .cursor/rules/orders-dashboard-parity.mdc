@@ -1,0 +1,30 @@
+---
+description: Hassan Awad web quotationer dashboard and Orders Android app must stay in lockstep
+globs:
+  - src/AppChrome.js
+  - src/Quotationer*.js
+  - src/FactoryOrders*.js
+  - src/WarehouseDelivery*.js
+  - src/WarehouseStorage.js
+  - src/WarehouseReturn*.js
+  - src/mobile/ordersAppDashboardParity.js
+  - src/mobile/mobileAccessManifest.js
+  - mobile-apps/orders/**
+  - mobile-apps/shared/ordersAppDashboardParity.js
+  - server/lib/ordersAppMobile.js
+alwaysApply: false
+---
+
+# Hassan Orders dashboard parity (web ↔ Android)
+
+Marker: `ORDERS_APP_DASHBOARD_PARITY_LOCKED` (`scripts/verifyOrdersApp.js` on build).
+
+When changing **Hassan Awad’s quotationer dashboard** (web sidebar under quotationer-only UX) or the **Orders** mobile app:
+
+1. Read **`docs/hassan-orders-dashboard-parity.md`**.
+2. Update **`src/mobile/ordersAppDashboardParity.js`** first, then copy to **`mobile-apps/shared/ordersAppDashboardParity.js`**.
+3. Wire **web** (`AppChrome` uses `buildQuotationerOnlyNavGroups`) and **mobile** (`DashboardScreen` + `App.js` stacks) from that module — do not hand-edit nav/tile lists elsewhere.
+4. Keep **`ORDERS_APP_SCREENS`**, **`HASSAN_AWAD.allowedRoutes`**, screen implementations, and **API handlers** aligned so behaviour matches, not just labels.
+5. Run **`node scripts/verifyOrdersApp.js`** before finishing.
+
+Forbidden without updating parity + mobile + verify: adding a Hassan sidebar item or Orders dashboard tile in only one place.

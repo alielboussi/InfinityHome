@@ -1,5 +1,9 @@
 # Repository Rules
 
+## Hassan Awad — web quotationer dashboard ↔ Orders Android
+
+Hassan’s portal sidebar and the **Orders** app dashboard must stay **functionally identical** (same pages, APIs, User Access screen ids). **`src/mobile/ordersAppDashboardParity.js`** is the single source of truth; mirror to **`mobile-apps/shared/ordersAppDashboardParity.js`**. See **`docs/hassan-orders-dashboard-parity.md`**. Regression: **`node scripts/verifyOrdersApp.js`** (build via `checkEnv.js`).
+
 ## Local `npm start` (no dev proxy)
 
 - `src/setupProxy.js` is removed. Localhost calls production APIs through `src/utils/apiUrl.js` when `REACT_APP_API_BASE` is set in `.env.local`.

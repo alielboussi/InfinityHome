@@ -18,8 +18,10 @@ if (!fs.existsSync(repoSrcVendor)) {
 const required = [
   'shared/repoSrc/utils/warehouseSetMath.js',
   'shared/repoSrc/utils/isMattressCatalogProductName.js',
+  'shared/repoSrc/utils/warehouseSeaterSetCoverImage.js',
   'shared/metroInlineRequires.js',
   'shared/expoAndroidLightweight.js',
+  'shared/GenerateRandomSkuButton.js',
 ];
 for (const rel of required) {
   const full = path.join(catalogRoot, rel);
