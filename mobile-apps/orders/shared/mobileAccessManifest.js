@@ -280,6 +280,12 @@ export const MOBILE_SCREENS = Object.freeze([
     permissionMatrix: true,
   },
   {
+    id: 'hassan_kitwe_orders',
+    label: 'Hassan orders',
+    description: 'Hassan Awad quote lines received into Kitwe (awaiting customer release)',
+    permissionMatrix: true,
+  },
+  {
     id: 'kitwe_send_delivery',
     label: 'Send to Kitwe',
     description: 'Production app: factory truck delivery → Hassan acceptance',

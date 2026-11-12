@@ -4674,6 +4674,12 @@ export default async function handler(req, res) {
           return opOrdersQuoteGet(sb, body);
         });
         break;
+      case 'orders-quote-pdf':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersQuotePdf } = await import('../lib/ordersAppMobile.js');
+          return opOrdersQuotePdf(sb, body);
+        });
+        break;
       case 'orders-quote-save':
         result = await withOrdersApp(user, async (sb) => {
           const { opOrdersQuoteSave } = await import('../lib/ordersAppMobile.js');

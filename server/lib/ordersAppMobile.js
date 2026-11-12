@@ -150,13 +150,35 @@ async function attachCustomerNames(sb, quotes) {
   }));
 }
 
+function ordersUomBucket(unit) {
+  const abbr = String(unit?.abbreviation || '').trim();
+  const name = String(unit?.name || '').trim();
+  const display = String(abbr || name || '').trim();
+  if (!display || display === '-' || display === '—') return '';
+  const compact = display.toLowerCase().replace(/\s+/g, '').replace(/²/g, '2');
+  if (compact === 'm') return 'm';
+  if (compact === 'pcs' || compact === 'pc') return 'pcs';
+  if (compact === 'm2' || compact === 'sq' || compact === 'sqm') return 'sq';
+  if (/^m\s*²$/i.test(abbr)) return 'sq';
+  const nameCompact = name.toLowerCase().replace(/[^a-z]/g, '');
+  if (nameCompact.includes('squaremeter') || nameCompact.includes('squaremetre') || nameCompact.includes('metersquared')) {
+    return 'sq';
+  }
+  if (nameCompact === 'meter' || nameCompact === 'metre' || nameCompact === 'meters' || nameCompact === 'metres') {
+    return 'm';
+  }
+  if (nameCompact.includes('piece')) return 'pcs';
+  return '';
+}
+
 export async function opOrdersUnitsList(sb) {
   const { data, error } = await sb
     .from('quotation_units')
     .select('id, name, abbreviation')
     .order('name', { ascending: true });
   if (error) throw new Error(error.message || 'Failed to load units.');
-  return { units: data || [] };
+  const units = (data || []).filter((u) => ordersUomBucket(u) !== '');
+  return { units };
 }
 
 export async function opOrdersQuotesList(sb) {
@@ -184,6 +206,47 @@ export async function opOrdersQuotesList(sb) {
       routing: routingById[String(q.id)] || null,
     })),
   };
+}
+
+export async function opOrdersQuotePdf(sb, body) {
+  const quoteId = trim(body.quote_id || body.id);
+  if (!quoteId) throw new Error('quote_id is required.');
+  const bundle = await opOrdersQuoteGet(sb, { quote_id: quoteId });
+  const quote = bundle.quote;
+  if (!quote) throw new Error('Order not found.');
+  const units = bundle.units || [];
+  const enrichedItems = (bundle.items || []).map((it) => ({
+    ...it,
+    unit_label: units.find((u) => String(u.id) === String(it.unit_id))?.name || '',
+    unit_abbr: units.find((u) => String(u.id) === String(it.unit_id))?.abbreviation
+      || units.find((u) => String(u.id) === String(it.unit_id))?.name
+      || '-',
+  }));
+  let paid = 0;
+  if (quote.sale_id) {
+    const { data: pays } = await sb.from('sales_payments').select('amount').eq('sale_id', quote.sale_id);
+    paid = (pays || []).reduce((s, row) => s + Number(row.amount || 0), 0);
+  }
+  const totalNum = Number(quote.total || 0);
+  const generateQuotePdf = (await import('../../src/quotespdf.js')).default;
+  const arrayBuffer = await generateQuotePdf(
+    {
+      ...quote,
+      paid_amount: paid,
+      outstanding_amount: Math.max(0, totalNum - paid),
+    },
+    enrichedItems,
+    {
+      mode: 'arraybuffer',
+      companyOverride: { name: 'Best Rest Furniture', company_name: 'Best Rest Furniture' },
+    },
+  );
+  const pdfBase64 = Buffer.from(arrayBuffer).toString('base64');
+  const customerPart = String(quote.customer_name || 'Customer')
+    .replace(/[^a-zA-Z0-9 _-]/g, '')
+    .replace(/\s+/g, '_') || 'Customer';
+  const filename = `${customerPart}_Quote_${quote.quote_number || quoteId}.pdf`;
+  return { pdf_base64: pdfBase64, filename };
 }
 
 export async function opOrdersQuoteGet(sb, body) {

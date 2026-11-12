@@ -8,13 +8,17 @@ export default function CustomersScreen(props) {
     <CatalogEditScreen
       {...props}
       titleKey="tileCustomers"
-      subtitle="Tap a saved customer to edit name, phone, address, city, country and TPIN."
+      twoColumnForm
+      hideCancelOnEdit
+      showPriceCurrencyToggle
+      defaultPriceCurrency="K"
+      subtitle="Tap a customer below to load their details, then tap Update."
       extraFields={[
         { key: 'phone', labelKey: 'phone', keyboard: 'phone-pad' },
-        { key: 'address', labelKey: 'address' },
         { key: 'city', labelKey: 'city' },
         { key: 'country', labelKey: 'country' },
         { key: 'tpin', labelKey: 'tpin' },
+        { key: 'address', labelKey: 'address', fullWidth: true, multiline: true },
       ]}
       load={async () => {
         const res = await fetchOrdersCustomers();

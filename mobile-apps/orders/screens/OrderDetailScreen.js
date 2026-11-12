@@ -1,11 +1,13 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Text, View } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
 import ActionMenu from '../components/ActionMenu';
+import QuoteReadOnlyForm from '../components/QuoteReadOnlyForm';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
-import { tUi, textForDisplay } from '../lib/productionKioskI18n';
+import { tUi } from '../lib/productionKioskI18n';
+import { promptShareQuotePdf } from '../lib/quoteSharePrompt';
 import { theme } from '../shared/theme';
 import {
   fetchOrdersQuote,
@@ -18,6 +20,7 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
   const { locale, toggleLocale } = useProductionKioskLocale();
   const [quote, setQuote] = useState(null);
   const [items, setItems] = useState([]);
+  const [units, setUnits] = useState([]);
   const [routing, setRouting] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -31,6 +34,7 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
       const res = await fetchOrdersQuote(quoteId);
       setQuote(res.quote || null);
       setItems(res.items || []);
+      setUnits(res.units || []);
       setRouting(res.routing || null);
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
@@ -47,17 +51,31 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
       Alert.alert(tUi('workshopRoute', locale), tUi('workshopRequired', locale));
       return;
     }
-    setBusy(true);
-    setError('');
-    try {
-      await setOrdersQuoteRoute(quoteId, prodRoute);
-      await sendOrdersQuoteProduction(quoteId);
-      await load();
-    } catch (err) {
-      setError(err?.message || tUi('loadFailed', locale));
-    } finally {
-      setBusy(false);
-    }
+    const dept = prodRoute === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale);
+    Alert.alert(
+      tUi('sendOrder', locale),
+      `Send this order to the ${dept} production app?`,
+      [
+        { text: tUi('close', locale), style: 'cancel' },
+        {
+          text: tUi('sendOrder', locale),
+          onPress: async () => {
+            setBusy(true);
+            setError('');
+            try {
+              await setOrdersQuoteRoute(quoteId, prodRoute);
+              await sendOrdersQuoteProduction(quoteId);
+              Alert.alert(tUi('sendOrder', locale), `Order sent to ${dept}.`);
+              await load();
+            } catch (err) {
+              Alert.alert('Send Order failed', err?.message || '');
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const alreadySent = Boolean(routing?.sent_to_production_at);
@@ -73,60 +91,41 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
       onRefreshAccess={onRefreshAccess}
     >
       {loading ? <ActivityIndicator color={theme.primary} /> : (
-        <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+        <>
           {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
-          <View style={kiosk.card}>
-            <Text style={kiosk.metaLine}>{textForDisplay(quote?.customer_name, '')}</Text>
-            <Text style={kiosk.hint}>{quote?.customer_phone || ''}</Text>
-            <Text style={kiosk.hint}>{[quote?.currency, quote?.total, quote?.status].filter(Boolean).join(' · ')}</Text>
-            {routing?.route ? (
-              <Text style={kiosk.hint}>
-                {routing.route === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale)}
-                {alreadySent ? ' · sent to production' : ''}
-              </Text>
-            ) : null}
-          </View>
-          {items.map((item) => (
-            <View key={item.id} style={kiosk.card}>
-              <Text style={kiosk.metaLine}>{textForDisplay(item.name || item.name_override, '—')} × {item.quantity}</Text>
-              {item.description ? <Text style={kiosk.hint}>{item.description}</Text> : null}
-              {item.wood ? <Text style={kiosk.hint}>Wood: {item.wood}</Text> : null}
-              {item.color_code ? <Text style={kiosk.hint}>Color: {item.color_code}</Text> : null}
-            </View>
-          ))}
-          <ActionMenu
-            triggerLabel={tUi('actions', locale)}
-            items={[
-              {
-                key: 'edit',
-                label: tUi('editQuote', locale),
-                onClick: () => navigation.navigate('NewOrder', { quoteId }),
-              },
-              {
-                key: 'share',
-                label: tUi('shareQuote', locale),
-                onClick: async () => {
-                  const body = [
-                    quote?.quote_number,
-                    quote?.customer_name,
-                    '',
-                    ...items.map((it) => `${it.name || it.name_override} × ${it.quantity}`),
-                  ].join('\n');
-                  await Share.share({ message: body });
-                },
-              },
-              {
-                key: 'send',
-                label: busy ? tUi('saving', locale) : (alreadySent ? tUi('resendOrder', locale) : tUi('sendOrder', locale)),
-                disabled: busy,
-                onClick: send,
-              },
-            ]}
+          <QuoteReadOnlyForm
+            quote={quote}
+            items={items}
+            units={units}
+            routing={routing}
+            locale={locale}
           />
-          <Pressable style={[kiosk.btnPrimaryBlock, { marginTop: 12 }]} disabled={busy} onPress={send}>
-            <Text style={kiosk.btnPrimaryBlockText}>{busy ? tUi('saving', locale) : tUi('sendProduction', locale)}</Text>
-          </Pressable>
-        </ScrollView>
+          <View style={[kiosk.card, { marginTop: 8 }]}>
+            <ActionMenu
+              triggerLabel={tUi('actions', locale)}
+              items={[
+                {
+                  key: 'edit',
+                  label: tUi('editQuote', locale),
+                  onClick: () => navigation.navigate('NewOrder', { quoteId }),
+                },
+                {
+                  key: 'pdf',
+                  label: tUi('shareQuote', locale),
+                  onClick: () => promptShareQuotePdf(quoteId, locale),
+                },
+                {
+                  key: 'send',
+                  label: busy
+                    ? tUi('saving', locale)
+                    : (alreadySent ? tUi('resendOrder', locale) : tUi('sendOrder', locale)),
+                  disabled: busy,
+                  onClick: send,
+                },
+              ]}
+            />
+          </View>
+        </>
       )}
     </OrdersScreenShell>
   );

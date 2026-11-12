@@ -38,3 +38,40 @@ export function unitLabel(unit) {
   const name = String(unit.name || '').trim();
   return abbr || name || '';
 }
+
+/** Orders app UOM: m, m²/sq, pcs only (no blank “—” unit). */
+export function ordersUomBucket(unit) {
+  const abbr = String(unit?.abbreviation || '').trim();
+  const name = String(unit?.name || '').trim();
+  const display = unitLabel(unit);
+  if (!display || display === '-' || display === '—') return '';
+  const compact = display.toLowerCase().replace(/\s+/g, '').replace(/²/g, '2');
+  if (compact === 'm') return 'm';
+  if (compact === 'pcs' || compact === 'pc') return 'pcs';
+  if (compact === 'm2' || compact === 'sq' || compact === 'sqm') return 'sq';
+  if (/^m\s*²$/i.test(abbr)) return 'sq';
+  const nameCompact = name.toLowerCase().replace(/[^a-z]/g, '');
+  if (nameCompact.includes('squaremeter') || nameCompact.includes('squaremetre') || nameCompact.includes('metersquared')) {
+    return 'sq';
+  }
+  if (nameCompact === 'meter' || nameCompact === 'metre' || nameCompact === 'meters' || nameCompact === 'metres') {
+    return 'm';
+  }
+  if (nameCompact.includes('piece')) return 'pcs';
+  return '';
+}
+
+export function filterOrdersUomUnits(units) {
+  return (units || []).filter((u) => ordersUomBucket(u) !== '');
+}
+
+/** Keep a legacy selection visible when editing old rows. */
+export function ordersUnitOptions(units, selectedId) {
+  const filtered = filterOrdersUomUnits(units);
+  const sid = selectedId ? String(selectedId) : '';
+  if (sid && !filtered.some((u) => String(u.id) === sid)) {
+    const keep = (units || []).find((u) => String(u.id) === sid);
+    if (keep) return [...filtered, keep];
+  }
+  return filtered;
+}

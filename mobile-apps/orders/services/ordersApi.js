@@ -32,6 +32,10 @@ export function fetchOrdersQuote(quoteId) {
   return warehouseMobileRequest('orders-quote-get', { quote_id: quoteId });
 }
 
+export function fetchOrdersQuotePdf(quoteId) {
+  return warehouseMobileRequest('orders-quote-pdf', { quote_id: quoteId });
+}
+
 export function saveOrdersQuote(body) {
   return warehouseMobileRequest('orders-quote-save', body);
 }

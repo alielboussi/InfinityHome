@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
-import ChipSelect from '../components/ChipSelect';
+import DropdownSelect from '../components/DropdownSelect';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
@@ -19,6 +19,7 @@ import {
   CARPENTRY_ACCESSORY_GROUPS,
   CARPENTRY_WOOD_OPTIONS,
   UPHOLSTERY_FOAM_OPTIONS,
+  ordersUnitOptions,
   unitLabel,
 } from '../lib/quoteLineFields';
 import { theme } from '../shared/theme';
@@ -29,6 +30,10 @@ import {
   fetchOrdersUnits,
   saveOrdersQuote,
 } from '../services/ordersApi';
+
+function GridCol({ children, style }) {
+  return <View style={[styles.gridCol, style]}>{children}</View>;
+}
 
 function lineQty(line) {
   if (line.quantity === '' || line.quantity == null) return 1;
@@ -199,7 +204,13 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
         })),
       });
       const createdId = res.quote_id || res.quote?.id || quoteId;
-      navigation.replace('OrderDetail', { quoteId: createdId });
+      const wasNew = !quoteId;
+      if (wasNew) {
+        navigation.navigate('Dashboard');
+      } else {
+        setQuoteId(createdId || quoteId);
+        navigation.replace('OrderDetail', { quoteId: createdId });
+      }
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
     } finally {
@@ -280,22 +291,29 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
           </View>
 
           <View style={kiosk.card}>
-            <Text style={kiosk.label}>{tUi('vat', locale)}</Text>
-            <View style={styles.row}>
-              <Pressable style={[styles.routeBtn, vatChoice === 'exclusive' && styles.routeOn]} onPress={() => setVatChoice('exclusive')}>
-                <Text style={kiosk.metaLine}>{tUi('vat0', locale)}</Text>
-              </Pressable>
-              <Pressable style={[styles.routeBtn, vatChoice === 'vat16' && styles.routeOn]} onPress={() => setVatChoice('vat16')}>
-                <Text style={kiosk.metaLine}>{tUi('vat16', locale)}</Text>
-              </Pressable>
-            </View>
-            <Text style={[kiosk.label, { marginTop: 12 }]}>{tUi('currency', locale)}</Text>
-            <View style={styles.row}>
-              {['K', '$'].map((code) => (
-                <Pressable key={code} style={[styles.routeBtn, currency === code && styles.routeOn]} onPress={() => setCurrency(code)}>
-                  <Text style={kiosk.metaLine}>{code}</Text>
-                </Pressable>
-              ))}
+            <View style={styles.gridRow}>
+              <GridCol>
+                <DropdownSelect
+                  label={tUi('vat', locale)}
+                  value={vatChoice}
+                  options={[
+                    { value: 'exclusive', label: tUi('vat0', locale) },
+                    { value: 'vat16', label: tUi('vat16', locale) },
+                  ]}
+                  onChange={setVatChoice}
+                />
+              </GridCol>
+              <GridCol>
+                <DropdownSelect
+                  label={tUi('currency', locale)}
+                  value={currency}
+                  options={[
+                    { value: 'K', label: 'K' },
+                    { value: '$', label: '$' },
+                  ]}
+                  onChange={setCurrency}
+                />
+              </GridCol>
             </View>
           </View>
 
@@ -322,99 +340,138 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
             const showCarp = routeChoice === 'carpentry';
             return (
               <View key={line.key} style={kiosk.card}>
-                <View style={kiosk.field}>
-                  <Text style={kiosk.label}>{tUi('product', locale)}</Text>
-                  <TextInput style={kiosk.input} value={line.name} onChangeText={(v) => updateLine(line.key, { name: v })} />
+                <View style={styles.gridRow}>
+                  <GridCol>
+                    <View style={kiosk.field}>
+                      <Text style={kiosk.label}>{tUi('product', locale)}</Text>
+                      <TextInput
+                        style={kiosk.input}
+                        value={line.name}
+                        onChangeText={(v) => updateLine(line.key, { name: v })}
+                      />
+                    </View>
+                  </GridCol>
+                  <GridCol>
+                    <View style={kiosk.field}>
+                      <Text style={kiosk.label}>{tUi('qty', locale)}</Text>
+                      <TextInput
+                        style={kiosk.input}
+                        keyboardType="decimal-pad"
+                        value={String(line.quantity)}
+                        onChangeText={(v) => updateLine(line.key, { quantity: v })}
+                      />
+                    </View>
+                  </GridCol>
                 </View>
                 <View style={kiosk.field}>
                   <Text style={kiosk.label}>{tUi('description', locale)}</Text>
                   <TextInput
                     style={[kiosk.input, styles.area]}
                     multiline
+                    placeholder="Description on quote PDF"
+                    placeholderTextColor={theme.textDim}
                     value={line.description}
                     onChangeText={(v) => updateLine(line.key, { description: v })}
                   />
                 </View>
-                <View style={kiosk.field}>
-                  <Text style={kiosk.label}>{tUi('qty', locale)}</Text>
-                  <TextInput
-                    style={kiosk.input}
-                    keyboardType="decimal-pad"
-                    value={String(line.quantity)}
-                    onChangeText={(v) => updateLine(line.key, { quantity: v })}
-                  />
-                </View>
-                <ChipSelect
-                  label={tUi('unit', locale)}
-                  value={line.unit_id}
-                  options={units.map((u) => ({ value: String(u.id), label: unitLabel(u) }))}
-                  onChange={(v) => updateLine(line.key, { unit_id: v })}
-                />
-                <View style={kiosk.field}>
-                  <Text style={kiosk.label}>{tUi('price', locale)}</Text>
-                  <TextInput
-                    style={kiosk.input}
-                    keyboardType="decimal-pad"
-                    value={String(line.unit_price)}
-                    onChangeText={(v) => updateLine(line.key, { unit_price: v })}
-                  />
+                <View style={styles.gridRow}>
+                  <GridCol>
+                    <DropdownSelect
+                      label={tUi('unit', locale)}
+                      value={line.unit_id}
+                      options={ordersUnitOptions(units, line.unit_id).map((u) => ({
+                        value: String(u.id),
+                        label: unitLabel(u),
+                      }))}
+                      onChange={(v) => updateLine(line.key, { unit_id: v })}
+                    />
+                  </GridCol>
+                  <GridCol>
+                    <View style={kiosk.field}>
+                      <Text style={kiosk.label}>{tUi('price', locale)}</Text>
+                      <TextInput
+                        style={kiosk.input}
+                        keyboardType="decimal-pad"
+                        value={String(line.unit_price)}
+                        onChangeText={(v) => updateLine(line.key, { unit_price: v })}
+                      />
+                    </View>
+                  </GridCol>
                 </View>
                 {(showUph || showCarp) ? (
                   <>
-                    <View style={styles.row}>
-                      {[['dim_l_cm', 'dimL'], ['dim_w_cm', 'dimW'], ['dim_h_cm', 'dimH']].map(([key, labelKey]) => (
-                        <View key={key} style={{ flex: 1 }}>
-                          <Text style={kiosk.label}>{tUi(labelKey, locale)}</Text>
-                          <TextInput
-                            style={kiosk.input}
-                            keyboardType="decimal-pad"
-                            value={line[key]}
-                            onChangeText={(v) => updateLine(line.key, { [key]: v })}
-                          />
-                        </View>
+                    <View style={styles.gridRow}>
+                      {[['dim_l_cm', 'dimL', 'L'], ['dim_w_cm', 'dimW', 'W'], ['dim_h_cm', 'dimH', 'H']].map(([key, labelKey, ph]) => (
+                        <GridCol key={key}>
+                          <View style={kiosk.field}>
+                            <Text style={kiosk.label}>{tUi(labelKey, locale)}</Text>
+                            <TextInput
+                              style={kiosk.input}
+                              keyboardType="decimal-pad"
+                              placeholder={ph}
+                              placeholderTextColor={theme.textDim}
+                              value={line[key]}
+                              onChangeText={(v) => updateLine(line.key, { [key]: v })}
+                            />
+                          </View>
+                        </GridCol>
                       ))}
                     </View>
                     {showUph ? (
                       <>
-                        <ChipSelect
+                        <View style={styles.gridRow}>
+                          <GridCol>
+                            <View style={kiosk.field}>
+                              <Text style={kiosk.label}>{tUi('leather', locale)}</Text>
+                              <TextInput
+                                style={kiosk.input}
+                                placeholder="Code"
+                                placeholderTextColor={theme.textDim}
+                                value={line.leather_code}
+                                onChangeText={(v) => updateLine(line.key, { leather_code: v })}
+                              />
+                            </View>
+                          </GridCol>
+                          <GridCol>
+                            <DropdownSelect
+                              label={tUi('foam', locale)}
+                              value={line.foam_type}
+                              options={UPHOLSTERY_FOAM_OPTIONS.map((o) => ({ value: o, label: o }))}
+                              onChange={(v) => updateLine(line.key, { foam_type: v })}
+                            />
+                          </GridCol>
+                        </View>
+                        <DropdownSelect
                           label={tUi('wood', locale)}
                           value={line.wood}
                           options={CARPENTRY_WOOD_OPTIONS.map((o) => ({ value: o, label: o }))}
                           onChange={(v) => updateLine(line.key, { wood: v })}
-                        />
-                        <View style={kiosk.field}>
-                          <Text style={kiosk.label}>{tUi('leather', locale)}</Text>
-                          <TextInput
-                            style={kiosk.input}
-                            value={line.leather_code}
-                            onChangeText={v => updateLine(line.key, { leather_code: v })}
-                          />
-                        </View>
-                        <ChipSelect
-                          label={tUi('foam', locale)}
-                          value={line.foam_type}
-                          options={UPHOLSTERY_FOAM_OPTIONS.map((o) => ({ value: o, label: o }))}
-                          onChange={(v) => updateLine(line.key, { foam_type: v })}
                         />
                       </>
                     ) : null}
                     {showCarp ? (
-                      <>
-                        <ChipSelect
-                          label={tUi('wood', locale)}
-                          value={line.wood}
-                          options={CARPENTRY_WOOD_OPTIONS.map((o) => ({ value: o, label: o }))}
-                          onChange={(v) => updateLine(line.key, { wood: v })}
-                        />
-                        <View style={kiosk.field}>
-                          <Text style={kiosk.label}>{tUi('color', locale)}</Text>
-                          <TextInput
-                            style={kiosk.input}
-                            value={line.color_code}
-                            onChangeText={(v) => updateLine(line.key, { color_code: v })}
+                      <View style={styles.gridRow}>
+                        <GridCol>
+                          <View style={kiosk.field}>
+                            <Text style={kiosk.label}>{tUi('color', locale)}</Text>
+                            <TextInput
+                              style={kiosk.input}
+                              placeholder="RAL 9010"
+                              placeholderTextColor={theme.textDim}
+                              value={line.color_code}
+                              onChangeText={(v) => updateLine(line.key, { color_code: v })}
+                            />
+                          </View>
+                        </GridCol>
+                        <GridCol>
+                          <DropdownSelect
+                            label={tUi('wood', locale)}
+                            value={line.wood}
+                            options={CARPENTRY_WOOD_OPTIONS.map((o) => ({ value: o, label: o }))}
+                            onChange={(v) => updateLine(line.key, { wood: v })}
                           />
-                        </View>
-                      </>
+                        </GridCol>
+                      </View>
                     ) : null}
                     {showCarp ? (
                       <View style={kiosk.field}>
@@ -473,6 +530,8 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
 }
 
 const styles = StyleSheet.create({
+  gridRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 4 },
+  gridCol: { flex: 1, minWidth: 0 },
   row: { flexDirection: 'row', gap: 8, marginTop: 8 },
   routeBtn: {
     flex: 1,

@@ -4,7 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Share,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -15,9 +15,9 @@ import ActionMenu from '../components/ActionMenu';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
+import { promptShareQuotePdf } from '../lib/quoteSharePrompt';
 import { theme } from '../shared/theme';
 import {
-  fetchOrdersQuote,
   fetchOrdersQuotes,
   sendOrdersQuoteProduction,
   setOrdersQuoteRoute,
@@ -52,40 +52,36 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  const shareQuote = async (row) => {
-    try {
-      const detail = await fetchOrdersQuote(row.id);
-      const items = detail.items || [];
-      const body = [
-        detail.quote?.quote_number || row.quote_number,
-        detail.quote?.customer_name || row.customer_name,
-        `Total ${row.currency || 'K'} ${Number(row.total || 0).toFixed(2)}`,
-        '',
-        ...items.map((it) => `${it.name || it.name_override} × ${it.quantity} @ ${it.unit_price}`),
-      ].join('\n');
-      await Share.share({ message: body, title: row.quote_number || 'Quote' });
-    } catch (err) {
-      Alert.alert('Share failed', err?.message || 'Could not share quote.');
-    }
-  };
-
-  const sendOrder = async (row) => {
+  const sendOrder = (row) => {
     const route = String(row.routing?.route || '').toLowerCase();
     if (route !== 'carpentry' && route !== 'upholstery') {
       Alert.alert(tUi('workshopRoute', locale), tUi('workshopRequired', locale));
       return;
     }
-    setBusyId(String(row.id));
-    try {
-      await setOrdersQuoteRoute(row.id, route);
-      await sendOrdersQuoteProduction(row.id);
-      Alert.alert(tUi('sendOrder', locale), `Order sent to ${route === 'carpentry' ? 'Carpentry' : 'Upholstery'}.`);
-      await load();
-    } catch (err) {
-      Alert.alert('Send Order failed', err?.message || '');
-    } finally {
-      setBusyId('');
-    }
+    const dept = route === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale);
+    Alert.alert(
+      tUi('sendOrder', locale),
+      `Send this order to the ${dept} production app?`,
+      [
+        { text: tUi('close', locale), style: 'cancel' },
+        {
+          text: tUi('sendOrder', locale),
+          onPress: async () => {
+            setBusyId(String(row.id));
+            try {
+              await setOrdersQuoteRoute(row.id, route);
+              await sendOrdersQuoteProduction(row.id);
+              Alert.alert(tUi('sendOrder', locale), `Order sent to ${dept}.`);
+              await load();
+            } catch (err) {
+              Alert.alert('Send Order failed', err?.message || '');
+            } finally {
+              setBusyId('');
+            }
+          },
+        },
+      ],
+    );
   };
 
   const needle = q.trim().toLowerCase();
@@ -128,21 +124,29 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
             const sending = busyId === String(item.id);
             return (
               <View style={kiosk.card}>
-                <View style={styles.head}>
-                  <Text style={kiosk.metaLine}>{item.quote_number || `Q-${String(item.id).slice(0, 8)}`}</Text>
-                  <Text style={styles.badge}>{statusLabel(item)}</Text>
-                </View>
-                <Text style={kiosk.hint}>{textForDisplay(item.customer_name, '—')}</Text>
-                <Text style={kiosk.hint}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</Text>
-                <Text style={kiosk.metaLine}>
-                  {item.currency || 'K'} {Number(item.total || 0).toFixed(2)}
-                </Text>
-                {item.routing?.route ? (
-                  <Text style={kiosk.hint}>
-                    {item.routing.route === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale)}
-                    {alreadySent ? ' · sent' : ''}
+                <Pressable
+                  onPress={() => navigation.navigate('OrderDetail', { quoteId: item.id })}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.head}>
+                    <Text style={kiosk.metaLine}>{item.quote_number || `Q-${String(item.id).slice(0, 8)}`}</Text>
+                    <Text style={styles.badge}>{statusLabel(item)}</Text>
+                  </View>
+                  <Text style={kiosk.hint}>{textForDisplay(item.customer_name, '—')}</Text>
+                  <Text style={kiosk.hint}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</Text>
+                  <Text style={kiosk.metaLine}>
+                    {item.currency || 'K'} {Number(item.total || 0).toFixed(2)}
                   </Text>
-                ) : null}
+                  {item.routing?.route ? (
+                    <Text style={kiosk.hint}>
+                      {item.routing.route === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale)}
+                      {alreadySent ? ' · sent' : ''}
+                    </Text>
+                  ) : null}
+                  <Text style={[kiosk.hint, { color: theme.primary, marginTop: 6 }]}>
+                    Tap to view quote details
+                  </Text>
+                </Pressable>
                 <View style={{ marginTop: 10 }}>
                   <ActionMenu
                     triggerLabel={tUi('actions', locale)}
@@ -155,7 +159,7 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
                       {
                         key: 'pdf',
                         label: tUi('shareQuote', locale),
-                        onClick: () => shareQuote(item),
+                        onClick: () => promptShareQuotePdf(item.id, locale),
                       },
                       {
                         key: 'send',
@@ -164,11 +168,6 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
                           : (alreadySent ? tUi('resendOrder', locale) : tUi('sendOrder', locale)),
                         disabled: Boolean(busyId),
                         onClick: () => sendOrder(item),
-                      },
-                      {
-                        key: 'open',
-                        label: 'Open quote',
-                        onClick: () => navigation.navigate('OrderDetail', { quoteId: item.id }),
                       },
                     ]}
                   />

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
 import ChipSelect from '../components/ChipSelect';
+import DropdownSelect from '../components/DropdownSelect';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
@@ -35,7 +36,10 @@ export default function CatalogEditScreen({
   renderRowDetail,
   showPriceCurrencyToggle = false,
   defaultPriceCurrency = 'K',
+  twoColumnForm = false,
+  hideCancelOnEdit = false,
 }) {
+  const listRef = useRef(null);
   const { locale, toggleLocale } = useProductionKioskLocale();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,12 +63,16 @@ export default function CatalogEditScreen({
     setName(String(row.name || ''));
     const next = {};
     extraFields.forEach((field) => {
-      next[field.key] = row[field.key] == null ? '' : String(row[field.key]);
+      const raw = row[field.key];
+      next[field.key] = raw == null ? '' : String(raw);
     });
     setExtras(next);
     if (showPriceCurrencyToggle) {
       setPriceCurrency(String(row.currency || defaultPriceCurrency).trim() || defaultPriceCurrency);
     }
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset?.({ offset: 0, animated: true });
+    });
   };
 
   const refresh = useCallback(async () => {
@@ -106,6 +114,74 @@ export default function CatalogEditScreen({
     }
   };
 
+  const renderExtraField = (field) => {
+    if (field.type === 'select') {
+      const optionRows = typeof field.getOptions === 'function' ? field.getOptions(extras) : field.options || [];
+      const common = {
+        label: tUi(field.labelKey, locale),
+        value: extras[field.key] || '',
+        options: optionRows,
+        onChange: (v) => setExtras((prev) => ({ ...prev, [field.key]: v })),
+        placeholder: field.placeholder ?? '',
+        allowEmpty: Boolean(field.allowEmpty),
+      };
+      if (field.dropdown) {
+        return <DropdownSelect key={field.key} {...common} />;
+      }
+      return <ChipSelect key={field.key} {...common} />;
+    }
+    return (
+      <View key={field.key} style={kiosk.field}>
+        <Text style={kiosk.label}>{tUi(field.labelKey, locale)}</Text>
+        <TextInput
+          value={String(extras[field.key] || '')}
+          onChangeText={(v) => setExtras((prev) => ({ ...prev, [field.key]: v }))}
+          placeholder={tUi(field.labelKey, locale)}
+          placeholderTextColor={theme.textDim}
+          keyboardType={field.keyboard || 'default'}
+          multiline={Boolean(field.multiline)}
+          style={[kiosk.input, field.multiline && styles.area]}
+        />
+      </View>
+    );
+  };
+
+  const renderExtraFields = () => {
+    if (!twoColumnForm) {
+      return extraFields.map((field) => renderExtraField(field));
+    }
+    const nodes = [];
+    let pair = [];
+    const flushPair = () => {
+      if (!pair.length) return;
+      if (pair.length === 1) {
+        nodes.push(<View key={`solo-${pair[0].key}`}>{renderExtraField(pair[0])}</View>);
+      } else {
+        nodes.push(
+          <View key={`row-${pair[0].key}-${pair[1].key}`} style={styles.gridRow}>
+            <View style={styles.gridCol}>{renderExtraField(pair[0])}</View>
+            <View style={styles.gridCol}>{renderExtraField(pair[1])}</View>
+          </View>,
+        );
+      }
+      pair = [];
+    };
+    extraFields.forEach((field) => {
+      const selectFullWidth = field.type === 'select' && !field.twoColumn;
+      if (field.fullWidth || field.multiline || selectFullWidth) {
+        flushPair();
+        nodes.push(<View key={`full-${field.key}`}>{renderExtraField(field)}</View>);
+        return;
+      }
+      pair.push(field);
+      if (pair.length === 2) flushPair();
+    });
+    flushPair();
+    return nodes;
+  };
+
+  const primaryActionLabel = editingId ? tUi('update', locale) : tUi('save', locale);
+
   const needle = q.trim().toLowerCase();
   const filtered = useMemo(() => {
     if (!needle) {
@@ -126,66 +202,72 @@ export default function CatalogEditScreen({
     <View>
       <View style={kiosk.card}>
         {subtitle ? <Text style={kiosk.hint}>{subtitle}</Text> : null}
-        <View style={kiosk.field}>
-          <Text style={kiosk.label}>{tUi('name', locale)}</Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder={tUi('name', locale)}
-            placeholderTextColor={theme.textDim}
-            style={kiosk.input}
-          />
-        </View>
-        {showPriceCurrencyToggle ? (
-          <View style={kiosk.field}>
-            <Text style={kiosk.label}>{tUi('currency', locale)}</Text>
-            <View style={styles.currencyRow}>
-              {['K', '$'].map((code) => (
-                <Pressable
-                  key={code}
-                  style={[styles.currencyBtn, priceCurrency === code && styles.currencyOn]}
-                  onPress={() => setPriceCurrency(code)}
-                >
-                  <Text style={kiosk.metaLine}>{code}</Text>
-                </Pressable>
-              ))}
+        {twoColumnForm ? (
+          <View style={styles.gridRow}>
+            <View style={styles.gridCol}>
+              <View style={kiosk.field}>
+                <Text style={kiosk.label}>{tUi('name', locale)}</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder={tUi('name', locale)}
+                  placeholderTextColor={theme.textDim}
+                  style={kiosk.input}
+                />
+              </View>
             </View>
+            {showPriceCurrencyToggle ? (
+              <View style={styles.gridCol}>
+                <DropdownSelect
+                  label={tUi('currency', locale)}
+                  value={priceCurrency}
+                  options={[
+                    { value: 'K', label: 'K' },
+                    { value: '$', label: '$' },
+                  ]}
+                  onChange={setPriceCurrency}
+                />
+              </View>
+            ) : (
+              <View style={styles.gridCol} />
+            )}
           </View>
-        ) : null}
-        {extraFields.map((field) => {
-          if (field.type === 'select') {
-            return (
-              <ChipSelect
-                key={field.key}
-                label={tUi(field.labelKey, locale)}
-                value={extras[field.key] || ''}
-                options={field.options || []}
-                onChange={(v) => setExtras((prev) => ({ ...prev, [field.key]: v }))}
-                placeholder={field.placeholder || '—'}
-              />
-            );
-          }
-          return (
-            <View key={field.key} style={kiosk.field}>
-              <Text style={kiosk.label}>{tUi(field.labelKey, locale)}</Text>
+        ) : (
+          <>
+            <View style={kiosk.field}>
+              <Text style={kiosk.label}>{tUi('name', locale)}</Text>
               <TextInput
-                value={String(extras[field.key] || '')}
-                onChangeText={(v) => setExtras((prev) => ({ ...prev, [field.key]: v }))}
-                placeholder={tUi(field.labelKey, locale)}
+                value={name}
+                onChangeText={setName}
+                placeholder={tUi('name', locale)}
                 placeholderTextColor={theme.textDim}
-                keyboardType={field.keyboard || 'default'}
-                multiline={Boolean(field.multiline)}
-                style={[kiosk.input, field.multiline && styles.area]}
+                style={kiosk.input}
               />
             </View>
-          );
-        })}
-        <Pressable style={kiosk.btnPrimaryBlock} disabled={busy || !name.trim()} onPress={onSave}>
+            {showPriceCurrencyToggle ? (
+              <DropdownSelect
+                label={tUi('currency', locale)}
+                value={priceCurrency}
+                options={[
+                  { value: 'K', label: 'K' },
+                  { value: '$', label: '$' },
+                ]}
+                onChange={setPriceCurrency}
+              />
+            ) : null}
+          </>
+        )}
+        {renderExtraFields()}
+        <Pressable
+          style={[kiosk.btnPrimaryBlock, { marginTop: 12 }]}
+          disabled={busy || !name.trim()}
+          onPress={onSave}
+        >
           <Text style={kiosk.btnPrimaryBlockText}>
-            {busy ? tUi('saving', locale) : (editingId ? tUi('edit', locale) : tUi('save', locale))}
+            {busy ? tUi('saving', locale) : primaryActionLabel}
           </Text>
         </Pressable>
-        {editingId ? (
+        {editingId && !hideCancelOnEdit ? (
           <Pressable style={[kiosk.btn, { marginTop: 8 }]} onPress={resetForm}>
             <Text style={kiosk.btnText}>{tUi('cancelEdit', locale)}</Text>
           </Pressable>
@@ -217,6 +299,7 @@ export default function CatalogEditScreen({
       onRefreshAccess={onRefreshAccess}
     >
       <FlatList
+        ref={listRef}
         style={styles.list}
         data={loading ? [] : filtered}
         keyExtractor={(item) => String(item.id)}
@@ -235,7 +318,9 @@ export default function CatalogEditScreen({
                 {item.price != null ? <Text style={kiosk.hint}>{item.price}</Text> : null}
               </>
             )}
-            <Text style={[kiosk.hint, { color: theme.primary }]}>{tUi('edit', locale)}</Text>
+            <Text style={[kiosk.hint, { color: theme.primary }]}>
+              {editingId === String(item.id) ? tUi('update', locale) : tUi('tapToEdit', locale)}
+            </Text>
           </Pressable>
         )}
       />
@@ -246,15 +331,6 @@ export default function CatalogEditScreen({
 const styles = StyleSheet.create({
   list: { flex: 1 },
   area: { minHeight: 88, textAlignVertical: 'top' },
-  currencyRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
-  currencyBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-    backgroundColor: theme.surface,
-  },
-  currencyOn: { borderColor: theme.primary, borderWidth: 2, backgroundColor: '#dbeafe' },
+  gridRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  gridCol: { flex: 1, minWidth: 0 },
 });

@@ -4,7 +4,7 @@ import { Text } from 'react-native';
 import CatalogEditScreen from './CatalogEditScreen';
 import { kiosk } from '../components/kioskStyles';
 import { fetchOrdersProducts, fetchOrdersUnits, saveOrdersProduct } from '../services/ordersApi';
-import { unitLabel } from '../lib/quoteLineFields';
+import { ordersUnitOptions, unitLabel } from '../lib/quoteLineFields';
 
 export default function ProductsScreen(props) {
   const [units, setUnits] = useState([]);
@@ -21,17 +21,26 @@ export default function ProductsScreen(props) {
     <CatalogEditScreen
       {...props}
       titleKey="tileProducts"
+      twoColumnForm
+      hideCancelOnEdit
       showPriceCurrencyToggle
-      subtitle="Tap a saved product to edit. Choose a unit of measure and enter a description when creating or updating."
+      defaultPriceCurrency="K"
+      subtitle="Tap a product below to load its details, then tap Update."
       extraFields={[
         { key: 'price', labelKey: 'price', keyboard: 'decimal-pad' },
         {
           key: 'unit_id',
           labelKey: 'unit',
           type: 'select',
-          options: units.map((u) => ({ value: String(u.id), label: unitLabel(u) })),
+          dropdown: true,
+          twoColumn: true,
+          getOptions: (extras) =>
+            ordersUnitOptions(units, extras?.unit_id).map((u) => ({
+              value: String(u.id),
+              label: unitLabel(u),
+            })),
         },
-        { key: 'description', labelKey: 'description', multiline: true },
+        { key: 'description', labelKey: 'description', multiline: true, fullWidth: true },
       ]}
       load={async () => {
         const res = await fetchOrdersProducts();
