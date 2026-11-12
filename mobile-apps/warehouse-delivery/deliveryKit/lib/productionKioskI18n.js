@@ -693,6 +693,7 @@ const UI_STRINGS = {
   deliveryFarmCartTitle: { en: 'Cart ({n})', ar: 'السلة ({n})' },
   deliveryFarmRemove: { en: 'Remove', ar: 'إزالة' },
   deliveryFarmOnHand: { en: 'Farm: {n}', ar: 'المزرعة: {n}' },
+  deliveryFarmNoProducts: { en: 'No matching products.', ar: 'لا توجد منتجات مطابقة.' },
   deliveryFarmScanTitle: { en: 'Scan SKU (Code 128)', ar: 'مسح SKU (Code 128)' },
   deliveryFarmScanA11y: { en: 'Scan barcode', ar: 'مسح الباركود' },
   deliveryFarmLocationMissing: {

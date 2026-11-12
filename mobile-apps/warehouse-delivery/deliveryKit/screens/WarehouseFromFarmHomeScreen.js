@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import DeliveryWarehouseProductGrid from '../components/DeliveryWarehouseProductGrid';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
 import KioskSafeScroll from '../components/KioskSafeScroll';
@@ -15,6 +16,7 @@ import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import { mapFarmWarehouseSetupError, warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { theme } from '../shared/theme';
 
 function normalizeScan(value) {
@@ -242,26 +244,21 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         {loading ? (
           <Text style={{ textAlign, color: theme.textMuted }}>{tUi('loading', locale)}</Text>
         ) : null}
-        {!loading && filtered.map((p) => {
-          const id = String(p.assembly_id || p.id);
-          const selected = draftId === id;
-          const qty = Math.max(0, Number(p.farm_qty) || 0);
-          return (
-            <Pressable
-              key={id}
-              style={[kiosk.listRow, selected && styles.rowSelected]}
-              onPress={() => setDraftId(id)}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={kiosk.listTitle}>{p.name || id}</Text>
-                {p.family_sku ? <Text style={kiosk.listMeta}>{p.family_sku}</Text> : null}
-                <Text style={kiosk.listMeta}>
-                  {tUi('deliveryFarmOnHand', locale).replace('{n}', String(qty))}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        })}
+        {!loading && filtered.length > 0 ? (
+          <DeliveryWarehouseProductGrid
+            items={filtered.filter((p) => Math.max(0, Number(p.farm_qty) || 0) > 0)}
+            selectedId={draftId}
+            onSelect={(p) => setDraftId(String(p.assembly_id || p.id))}
+            getImageUrl={(p) => resolveProductImageUrl(p?.floor2_image_url || p?.image_url || '')}
+            getQtyLabel={(p) => {
+              const qty = Math.max(0, Number(p.farm_qty) || 0);
+              return tUi('deliveryFarmOnHand', locale).replace('{n}', String(qty));
+            }}
+          />
+        ) : null}
+        {!loading && filtered.length === 0 ? (
+          <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmNoProducts', locale)}</Text>
+        ) : null}
 
         {draftProduct ? (
           <View style={kiosk.card}>

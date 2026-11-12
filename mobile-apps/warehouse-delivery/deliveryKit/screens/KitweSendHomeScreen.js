@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import DeliveryWarehouseProductGrid from '../components/DeliveryWarehouseProductGrid';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import DeliveryProductPickModal from '../components/DeliveryProductPickModal';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
@@ -42,6 +43,7 @@ import {
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 import { tUi } from '../lib/productionKioskI18n';
+import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { fetchWarehouseCatalogCached, loadPersistedWarehouseCatalog } from '../shared/warehouseCatalogStore';
 import { mapFarmWarehouseSetupError, warehouseMobileRequest } from '../shared/warehouseMobileApi';
@@ -122,10 +124,14 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
     [links, packets],
   );
 
-  const filtered = useMemo(
-    () => filterAssembliesForDeliverySearch(deliveryAssemblies, search, { limit: 25 }),
-    [deliveryAssemblies, search],
-  );
+  const filtered = useMemo(() => {
+    const limit = isFarmFlow ? 80 : 25;
+    const q = String(search || '').trim();
+    if (isFarmFlow && !q) {
+      return deliveryAssemblies.slice(0, limit);
+    }
+    return filterAssembliesForDeliverySearch(deliveryAssemblies, search, { limit });
+  }, [deliveryAssemblies, search, isFarmFlow]);
 
   const draftPacketRows = draftAssemblyId
     ? (byAssembly.get(String(draftAssemblyId)) || [])
@@ -784,7 +790,21 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
           </Pressable>
         </View>
 
-        {!draftAssemblyId && !draftSetId && search.trim().length > 0 && filtered.length > 0 ? (
+        {!draftAssemblyId && !draftSetId && isFarmFlow && filtered.length > 0 ? (
+          <DeliveryWarehouseProductGrid
+            items={filtered}
+            selectedId={draftAssemblyId}
+            onSelect={selectAssemblyForDraft}
+            getImageUrl={(a) => resolveProductImageUrl(
+              a?.floor2_image_url
+              || a?.image_url
+              || a?.metadata?.warehouse_floor2_wip_image_url
+              || a?.metadata?.floor2_wip_image_url
+              || '',
+            )}
+          />
+        ) : null}
+        {!draftAssemblyId && !draftSetId && !isFarmFlow && search.trim().length > 0 && filtered.length > 0 ? (
           <View style={kiosk.listGroup}>
             {filtered.map((a, index) => (
               <Pressable

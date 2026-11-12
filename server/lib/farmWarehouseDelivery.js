@@ -3,7 +3,7 @@ import { resolveFarmWarehouse1Location } from '../../src/constants/farmWarehouse
 import { buildFarmReturnSendCatalogRows, buildFarmSendCatalogRows } from '../../src/utils/farmWarehouseCatalogView.js';
 import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
 import { allocateFarmDeliveryNumber } from './warehouseFarmDeliveryNumber.js';
-import { allocateFarmReturnNumber } from './warehouseFarmReturnNumber.js';
+import { allocateFarmReturnNumber, parseFarmReturnSequence } from './warehouseFarmReturnNumber.js';
 import { adjustAssemblyStock, getAssemblyStockQty } from './warehouseReturnStock.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { newUuid } from './uuid.js';
@@ -347,7 +347,17 @@ export async function openFarmReturnSession(sb, user, email) {
       .limit(1)
       .maybeSingle();
     if (existing?.id) {
-      return { session_id: existing.id, transfer_ref: existing.delivery_number, reused: true };
+      const currentRef = String(existing.delivery_number || '').trim();
+      if (!parseFarmReturnSequence(currentRef)) {
+        const transferRef = await allocateFarmReturnNumber();
+        const now = new Date().toISOString();
+        await sb.from('warehouse_delivery_sessions').update({
+          delivery_number: transferRef,
+          updated_at: now,
+        }).eq('id', existing.id);
+        return { session_id: existing.id, transfer_ref: transferRef, reused: true, migrated_ref: true };
+      }
+      return { session_id: existing.id, transfer_ref: currentRef, reused: true };
     }
   }
   const transferRef = await allocateFarmReturnNumber();
