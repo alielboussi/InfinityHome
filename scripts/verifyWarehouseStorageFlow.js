@@ -53,5 +53,8 @@ assert(read('src/Quotationer.js').includes("from('quote_customers')"), 'quotatio
 assert(read('server/lib/warehouseStorageSends.js').includes('canWarehouseKitweStorageCreator'), 'storage API must allow login-access admin');
 assert(read('src/utils/warehouseStoragePosSales.js').includes('loadKitwePosSaleDetailForStoragePage'), 'storage page must load receipt lines from client');
 assert(read('server/lib/warehouseStorageSends.js').includes('saleIdEqVariants'), 'storage sale detail must coerce numeric sale_id for Firestore');
+assert(read('server/lib/warehouseStorageSends.js').includes('remaining_to_send'), 'receipt lines must expose remaining send qty');
+assert(read('server/lib/warehouseStorageSends.js').includes('pickWarehouseAssemblyMatch'), 'POS lines must resolve warehouse sets as well as products');
+assert(read('server/lib/warehouseStorageSends.js').includes('total_labels_printed'), 'POS storage send must return component-expanded label count');
 
 console.log('verifyWarehouseStorageFlow: OK');

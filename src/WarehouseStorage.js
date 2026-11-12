@@ -16,10 +16,20 @@ const fieldStyle = {
   fontSize: 15,
 };
 
+function lineMaxSendQty(line) {
+  const sold = Math.max(0, Number(line?.sold_quantity ?? line?.quantity) || 0);
+  const remaining = line?.remaining_to_send;
+  if (remaining != null && Number.isFinite(Number(remaining))) {
+    return Math.max(0, Math.floor(Number(remaining)));
+  }
+  return sold;
+}
+
 function emptyLineState(line) {
+  const max = lineMaxSendQty(line);
   return {
     selected: false,
-    quantity: Math.max(1, Number(line?.quantity) || 1),
+    quantity: max > 0 ? Math.min(max, 1) : 0,
   };
 }
 
@@ -126,15 +136,22 @@ export default function WarehouseStorage() {
     setError('');
     setNotice('');
     try {
-      const lines = selectedLines.map((line) => {
+      const lines = selectedLines
+        .filter((line) => lineMaxSendQty(line) > 0)
+        .map((line) => {
         const st = lineState[String(line.id)] || {};
-        const qty = Math.max(1, Math.min(line.quantity, Math.floor(Number(st.quantity) || 1)));
+        const max = lineMaxSendQty(line);
+        const qty = Math.max(1, Math.min(max, Math.floor(Number(st.quantity) || 1)));
         return { sale_item_id: line.id, quantity: qty };
       });
       const out = await submitStorageSend({ sale_id: saleId, lines });
       const sends = out?.storage_sends || (out?.storage_send ? [out.storage_send] : []);
       const numbers = sends.map((s) => s.storage_number).filter(Boolean).join(', ');
-      const totalLabels = sends.reduce((n, s) => n + (Number(s.quantity) || 0), 0);
+      const totalLabels = Math.max(
+        0,
+        Number(out?.total_labels_printed)
+          || sends.reduce((n, s) => n + Math.max(0, Number(s.labels_printed) || 0), 0),
+      );
       setNotice(
         numbers
           ? `${numbers} sent to Floor 1 (${totalLabels} label${totalLabels === 1 ? '' : 's'} on Zebra).`
@@ -201,6 +218,10 @@ export default function WarehouseStorage() {
           <div style={{ display: 'grid', gap: 10, marginBottom: 16 }}>
             {detail.items.map((line) => {
               const st = lineState[String(line.id)] || emptyLineState(line);
+              const maxSend = lineMaxSendQty(line);
+              const sold = Math.max(0, Number(line.sold_quantity ?? line.quantity) || 0);
+              const alreadySent = Math.max(0, Number(line.already_sent) || 0);
+              const fullySent = maxSend < 1;
               return (
                 <div
                   key={line.id}
@@ -208,12 +229,14 @@ export default function WarehouseStorage() {
                     border: '1px solid var(--br-border, #ddd)',
                     borderRadius: 10,
                     padding: 12,
+                    opacity: fullySent ? 0.6 : 1,
                     background: st.selected ? 'var(--br-surface-elevated, #f0f9ff)' : 'var(--br-surface, #fff)',
                   }}
                 >
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: fullySent ? 'not-allowed' : 'pointer' }}>
                     <input
                       type="checkbox"
+                      disabled={fullySent}
                       checked={Boolean(st.selected)}
                       onChange={(ev) => {
                         setLineState((prev) => ({
@@ -229,25 +252,33 @@ export default function WarehouseStorage() {
                     <span>
                       <strong>{line.display_name}</strong>
                       <span style={{ color: 'var(--br-muted)', marginLeft: 8 }}>
-                        sold {line.quantity}
+                        sold {sold}
+                        {alreadySent > 0 ? ` · sent ${alreadySent}` : ''}
+                        {maxSend > 0 ? ` · send 1–${maxSend}` : ' · fully sent'}
+                        {line.is_set && maxSend > 0
+                          ? ` · ${line.labels_per_send_unit || 1} component label(s) per set`
+                          : ''}
                       </span>
                     </span>
                   </label>
-                  {st.selected ? (
+                  {st.selected && maxSend > 0 ? (
                     <label style={{ display: 'block', marginTop: 10, marginLeft: 28 }}>
                       <span style={{ fontWeight: 600, display: 'block', marginBottom: 4 }}>Qty to Floor 1</span>
                       <input
                         type="number"
                         min={1}
-                        max={line.quantity}
+                        max={maxSend}
                         style={{ ...fieldStyle, maxWidth: 120 }}
                         value={st.quantity}
                         onChange={(ev) => {
+                          const raw = ev.target.value;
+                          const n = Math.floor(Number(raw) || 1);
+                          const clamped = Math.min(maxSend, Math.max(1, n));
                           setLineState((prev) => ({
                             ...prev,
                             [String(line.id)]: {
                               ...(prev[String(line.id)] || emptyLineState(line)),
-                              quantity: ev.target.value,
+                              quantity: raw === '' ? '' : clamped,
                             },
                           }));
                         }}

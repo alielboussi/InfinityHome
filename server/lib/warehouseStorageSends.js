@@ -99,6 +99,13 @@ async function loadSaleCustomer(sb, sale) {
   return { customer_id: customerId, customer_name: '', customer_phone: '' };
 }
 
+function pickWarehouseAssemblyMatch(rows) {
+  const list = rows || [];
+  const product = list.find((a) => isWarehouseProductAssembly(a));
+  if (product) return product;
+  return list.find((a) => isWarehouseSetAssembly(a)) || null;
+}
+
 async function findAssemblyForProduct(sb, productId, displayName) {
   if (productId) {
     const { data: product } = await sb
@@ -113,7 +120,7 @@ async function findAssemblyForProduct(sb, productId, displayName) {
         .select('id, name, family_sku, item_kind')
         .eq('family_sku', skuKey)
         .limit(5);
-      const hit = (bySku || []).find((a) => isWarehouseProductAssembly(a));
+      const hit = pickWarehouseAssemblyMatch(bySku);
       if (hit) return hit;
     }
     if (product?.name) {
@@ -122,7 +129,7 @@ async function findAssemblyForProduct(sb, productId, displayName) {
         .select('id, name, family_sku, item_kind')
         .ilike('name', product.name.trim())
         .limit(5);
-      const hit = (byName || []).find((a) => isWarehouseProductAssembly(a));
+      const hit = pickWarehouseAssemblyMatch(byName);
       if (hit) return hit;
     }
   }
@@ -133,7 +140,7 @@ async function findAssemblyForProduct(sb, productId, displayName) {
       .select('id, name, family_sku, item_kind')
       .ilike('name', name)
       .limit(5);
-    const hit = (byName || []).find((a) => isWarehouseProductAssembly(a));
+    const hit = pickWarehouseAssemblyMatch(byName);
     if (hit) return hit;
   }
   return null;
@@ -211,12 +218,63 @@ function isStorageEligibleSaleRow(row) {
   return String(row?.location_id || '') === String(KITWE_LOCATION_ID);
 }
 
+async function sumStorageSentQtyForSaleLine(sb, saleId, saleItemId) {
+  const saleKeys = saleIdEqVariants(saleId);
+  const { data, error } = await sb
+    .from(TABLE)
+    .select('quantity')
+    .in('sale_id', saleKeys)
+    .eq('sale_item_id', saleItemId);
+  if (error) return 0;
+  return (data || []).reduce(
+    (n, r) => n + Math.max(0, Number(r.quantity) || 0),
+    0,
+  );
+}
+
 async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
-  if (qty > line.quantity) {
-    throw new Error(`Cannot send more than sold quantity (${line.quantity}).`);
+  const soldQty = Math.max(0, Number(line.quantity) || 0);
+  const alreadySent = await sumStorageSentQtyForSaleLine(sb, saleId, line.id);
+  const remaining = Math.max(0, soldQty - alreadySent);
+  if (qty > remaining) {
+    throw new Error(
+      alreadySent > 0
+        ? `Cannot send more than remaining on receipt (${remaining} left of ${soldQty} sold; ${alreadySent} already sent).`
+        : `Cannot send more than sold quantity (${soldQty}).`,
+    );
   }
 
   const assembly = await resolveAssemblyForPosSaleLine(sb, line);
+  const isSet = isWarehouseSetAssembly(assembly);
+  let labelTargets = [];
+  let totalLabelsPrinted = 0;
+
+  if (isSet) {
+    const [{ data: allAssemblies }, { data: allSetItems }] = await Promise.all([
+      sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind'),
+      sb.from('warehouse_set_items').select('*'),
+    ]);
+    const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
+    const comps = resolveSetComponentsForManualStorage(
+      assembly.id,
+      allSetItems || [],
+      assembliesById,
+    );
+    if (!comps.length) {
+      throw new Error(`Set "${assembly.name}" has no component products configured.`);
+    }
+    labelTargets = comps.map(({ component, perSetQty }) => ({
+      assembly: component,
+      printQty: perSetQty * qty,
+      parentSet: assembly,
+    }));
+  } else {
+    labelTargets = [{
+      assembly,
+      printQty: qty,
+      parentSet: null,
+    }];
+  }
 
   const kitweQty = await getAssemblyStockQty(sb, assembly.id, KITWE_LOCATION_ID);
   if (kitweQty < qty) {
@@ -247,7 +305,17 @@ async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
     updated_at: now,
     created_by_email: user?.email || null,
     created_by_name: user?.user_metadata?.full_name || user?.full_name || HASSAN_AWAD.displayName,
-    metadata: { receipt_number: detail.sale.receipt_number, kitwe_deducted_at: now },
+    metadata: {
+      receipt_number: detail.sale.receipt_number,
+      kitwe_deducted_at: now,
+      item_kind: isSet ? 'set' : 'product',
+      printed_components: labelTargets.map((t) => ({
+        assembly_id: t.assembly.id,
+        name: t.assembly.name,
+        sku: t.assembly.family_sku || '',
+        printed_qty: t.printQty,
+      })),
+    },
   };
 
   const { error } = await sb.from(TABLE).insert(row);
@@ -257,16 +325,21 @@ async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
     throw new Error(error.message || 'Failed to save storage send.');
   }
 
-  await printWarehouseStorageSaleLabel(getFirestore(), {
-    name: assembly.name,
-    sku: assembly.family_sku || assembly.name,
-    customerName: detail.sale.customer_name || 'Customer',
-    customerPhone: detail.sale.customer_phone || '',
-    qty,
-    saleDate: detail.sale.sale_date || detail.sale.created_at,
-    receiptNumber: detail.sale.receipt_number || '',
-    printedBy: row.created_by_name,
-  });
+  for (const target of labelTargets) {
+    const copies = Math.max(1, Math.floor(Number(target.printQty) || 1));
+    await printWarehouseStorageSaleLabel(getFirestore(), {
+      name: target.assembly.name,
+      sku: target.assembly.family_sku || target.assembly.name,
+      customerName: detail.sale.customer_name || 'Customer',
+      customerPhone: detail.sale.customer_phone || '',
+      qty: copies,
+      saleDate: detail.sale.sale_date || detail.sale.created_at,
+      receiptNumber: detail.sale.receipt_number || '',
+      setName: target.parentSet ? target.parentSet.name : '',
+      printedBy: row.created_by_name,
+    });
+    totalLabelsPrinted += copies;
+  }
 
   await sb.from(TABLE).update({
     labels_printed_at: now,
@@ -275,7 +348,7 @@ async function executeStorageSendLine(sb, user, detail, saleId, line, qty) {
 
   const mapped = mapRow({ ...row, labels_printed_at: now });
   queueProductionStoragePush(mapped);
-  return mapped;
+  return { ...mapped, labels_printed: totalLabelsPrinted };
 }
 
 /** Firestore equality is strict — HTML/API often pass sale_id as string while rows store numbers. */
@@ -298,6 +371,55 @@ function mapStorageSaleItems(rows) {
     quantity: Math.max(0, Number(row.quantity) || 0),
     unit_price: row.unit_price,
   })).filter((row) => row.quantity > 0);
+}
+
+async function enrichStorageSaleItems(sb, saleId, items) {
+  if (!items.length) return items;
+
+  const saleKeys = saleIdEqVariants(saleId);
+  const itemIds = items.map((i) => i.id);
+  const [{ data: priorSends }, { data: allAssemblies }, { data: allSetItems }] = await Promise.all([
+    sb.from(TABLE).select('sale_item_id, quantity').in('sale_id', saleKeys).in('sale_item_id', itemIds),
+    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind'),
+    sb.from('warehouse_set_items').select('*'),
+  ]);
+
+  const sentByLine = new Map();
+  for (const r of priorSends || []) {
+    const k = String(r.sale_item_id);
+    sentByLine.set(k, (sentByLine.get(k) || 0) + Math.max(0, Number(r.quantity) || 0));
+  }
+
+  const assembliesById = new Map((allAssemblies || []).map((a) => [String(a.id), a]));
+  const enriched = [];
+
+  for (const item of items) {
+    const sold = item.quantity;
+    const alreadySent = sentByLine.get(String(item.id)) || 0;
+    const remaining = Math.max(0, sold - alreadySent);
+    const assembly = await findAssemblyForProduct(sb, item.product_id, item.display_name);
+    let isSet = false;
+    let labelsPerUnit = 1;
+    if (assembly && isWarehouseSetAssembly(assembly)) {
+      isSet = true;
+      const comps = resolveSetComponentsForManualStorage(
+        assembly.id,
+        allSetItems || [],
+        assembliesById,
+      );
+      labelsPerUnit = comps.reduce((sum, c) => sum + c.perSetQty, 0) || 1;
+    }
+    enriched.push({
+      ...item,
+      sold_quantity: sold,
+      already_sent: alreadySent,
+      remaining_to_send: remaining,
+      is_set: isSet,
+      labels_per_send_unit: labelsPerUnit,
+    });
+  }
+
+  return enriched;
 }
 
 async function querySaleItemsForStorage(sb, saleId) {
@@ -374,7 +496,11 @@ export async function getPosSaleDetailForStorage(sb, user, body) {
     querySaleItemsForStorage(sb, saleId),
     loadSaleCustomer(sb, sale),
   ]);
-  const items = mapStorageSaleItems(itemsRaw);
+  const items = await enrichStorageSaleItems(
+    sb,
+    saleId,
+    mapStorageSaleItems(itemsRaw),
+  );
   return {
     sale: {
       ...sale,
@@ -406,10 +532,26 @@ export async function submitWarehouseStorageSend(sb, body, user) {
     if (saleItemId == null) throw new Error('Receipt line is required.');
     const line = detail.items.find((i) => String(i.id) === String(saleItemId));
     if (!line) throw new Error('Sale line not found.');
+    const remaining = Math.max(0, Number(line.remaining_to_send ?? line.quantity) || 0);
+    if (remaining < 1) {
+      throw new Error(`"${line.display_name}" is already fully sent to storage.`);
+    }
+    if (qty > remaining) {
+      throw new Error(`Cannot send more than ${remaining} for "${line.display_name}".`);
+    }
     sends.push(await executeStorageSendLine(sb, user, detail, saleId, line, qty));
   }
 
-  return { storage_sends: sends, storage_send: sends[0] || null };
+  const totalLabelsPrinted = sends.reduce(
+    (n, s) => n + Math.max(0, Number(s.labels_printed) || 0),
+    0,
+  );
+
+  return {
+    storage_sends: sends,
+    storage_send: sends[0] || null,
+    total_labels_printed: totalLabelsPrinted,
+  };
 }
 
 async function queueProductionStoragePush(row) {

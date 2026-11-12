@@ -23,6 +23,23 @@ import {
   testOrdersStorageLabel,
 } from '../services/ordersApi';
 
+function lineMaxSendQty(line) {
+  const sold = Math.max(0, Number(line?.sold_quantity ?? line?.quantity) || 0);
+  const remaining = line?.remaining_to_send;
+  if (remaining != null && Number.isFinite(Number(remaining))) {
+    return Math.max(0, Math.floor(Number(remaining)));
+  }
+  return sold;
+}
+
+function clampSendQtyInput(raw, maxQty) {
+  const max = Math.max(1, Math.floor(Number(maxQty) || 1));
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  const n = Math.floor(Number(digits) || 1);
+  return String(Math.min(max, Math.max(1, n)));
+}
+
 export default function StorageScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
   const { locale, toggleLocale } = useProductionKioskLocale();
   const [sales, setSales] = useState([]);
@@ -81,7 +98,11 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
         setDetail(res);
         const next = {};
         (res.items || []).forEach((line) => {
-          next[String(line.id)] = { selected: false, quantity: Math.max(1, Number(line.quantity) || 1) };
+          const max = lineMaxSendQty(line);
+          next[String(line.id)] = {
+            selected: false,
+            quantity: max > 0 ? String(Math.min(max, 1)) : '0',
+          };
         });
         setLineState(next);
       })
@@ -101,13 +122,18 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
     try {
       const lines = selectedLines.map((line) => {
         const st = lineState[String(line.id)] || {};
-        const qty = Math.max(1, Math.min(line.quantity, Math.floor(Number(st.quantity) || 1)));
+        const max = lineMaxSendQty(line);
+        const qty = Math.max(1, Math.min(max, Math.floor(Number(st.quantity) || 1)));
         return { sale_item_id: line.id, quantity: qty };
       });
       const out = await submitOrdersStorageSend({ sale_id: saleId, lines });
       const sendsOut = out?.storage_sends || (out?.storage_send ? [out.storage_send] : []);
       const numbers = sendsOut.map((s) => s.storage_number).filter(Boolean).join(', ');
-      const labelCount = lines.reduce((n, l) => n + Math.max(1, Math.floor(Number(l.quantity) || 1)), 0);
+      const labelCount = Math.max(
+        0,
+        Number(out?.total_labels_printed)
+          || sendsOut.reduce((n, s) => n + Math.max(0, Number(s.labels_printed) || 0), 0),
+      );
       setNotice(
         numbers
           ? `${numbers} → Floor 1. ${labelCount} Zebra label${labelCount === 1 ? '' : 's'} (Code 128, QR, receipt, customer).`
@@ -224,20 +250,37 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
             ) : null}
             {(detail?.items || []).map((line) => {
               const st = lineState[String(line.id)] || {};
+              const maxSend = lineMaxSendQty(line);
+              const sold = Math.max(0, Number(line.sold_quantity ?? line.quantity) || 0);
+              const alreadySent = Math.max(0, Number(line.already_sent) || 0);
+              const fullySent = maxSend < 1;
               return (
                 <View key={line.id} style={styles.block}>
                   <Pressable
+                    disabled={fullySent}
                     onPress={() => setLineState((prev) => ({
                       ...prev,
-                      [String(line.id)]: { ...(prev[String(line.id)] || {}), selected: !st.selected },
+                      [String(line.id)]: {
+                        ...(prev[String(line.id)] || {}),
+                        selected: !st.selected,
+                        quantity: prev[String(line.id)]?.quantity ?? String(Math.min(maxSend, 1) || 1),
+                      },
                     }))}
                   >
-                    <Text style={kiosk.metaLine}>
+                    <Text style={[kiosk.metaLine, fullySent && { opacity: 0.55 }]}>
                       {st.selected ? '☑' : '☐'} {line.display_name}
-                      <Text style={kiosk.hint}>  sold {line.quantity}</Text>
+                      <Text style={kiosk.hint}>
+                        {' '}
+                        sold {sold}
+                        {alreadySent > 0 ? ` · sent ${alreadySent}` : ''}
+                        {maxSend > 0 ? ` · send 1–${maxSend}` : ' · fully sent'}
+                        {line.is_set && maxSend > 0
+                          ? ` · ${line.labels_per_send_unit || 1} label(s) per set`
+                          : ''}
+                      </Text>
                     </Text>
                   </Pressable>
-                  {st.selected ? (
+                  {st.selected && maxSend > 0 ? (
                     <View style={kiosk.field}>
                       <Text style={kiosk.label}>{tUi('qtyFloor1', locale)}</Text>
                       <TextInput
@@ -246,7 +289,17 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
                         value={String(st.quantity)}
                         onChangeText={(v) => setLineState((prev) => ({
                           ...prev,
-                          [String(line.id)]: { ...(prev[String(line.id)] || {}), quantity: v },
+                          [String(line.id)]: {
+                            ...(prev[String(line.id)] || {}),
+                            quantity: clampSendQtyInput(v, maxSend),
+                          },
+                        }))}
+                        onBlur={() => setLineState((prev) => ({
+                          ...prev,
+                          [String(line.id)]: {
+                            ...(prev[String(line.id)] || {}),
+                            quantity: clampSendQtyInput(prev[String(line.id)]?.quantity, maxSend) || '1',
+                          },
                         }))}
                       />
                     </View>
