@@ -140,7 +140,12 @@ export async function buildWarehouseStorageSaleLabelPngBuffer(opts = {}) {
   const meta = buildStorageSaleLabelFields(opts);
   const includeSetRow = Boolean(meta.setName);
   const includeReceiptRow = Boolean(meta.receiptNumber);
-  const layout = computeStorageSaleLabelLayoutMm({ includeSetRow, includeReceiptRow });
+  const qrDataLength = buildProductPhotoQrUrl(meta.sku).length;
+  const layout = computeStorageSaleLabelLayoutMm({
+    includeSetRow,
+    includeReceiptRow,
+    qrDataLength,
+  });
 
   const marginPx = mmToPx(layout.marginMm);
   const mainWidthPx = mmToPx(layout.mainWidthMm);
@@ -154,7 +159,7 @@ export async function buildWarehouseStorageSaleLabelPngBuffer(opts = {}) {
   const barcodeLeft = mmToPx(layout.barcodeLeftMm);
 
   const barcodeResized = await makeCode128Png(meta.sku);
-  const qrSizePx = mmToPx(layout.qrSizeMm);
+  const qrSizePx = mmToPx(layout.qrPrintedHeightMm);
   const imageQrPng = await makeQrPng(meta.imageQrUrl, qrSizePx);
   const imageQrLeft = mmToPx(layout.imageQrLeftMm);
   const qrTop = mmToPx(layout.qrBlockYMm);
@@ -167,35 +172,35 @@ export async function buildWarehouseStorageSaleLabelPngBuffer(opts = {}) {
   ${storageRowSvg({
     labelXpx,
     valueCenterXpx,
-    rowYpx: textBaseline(layout.skuRowMm, ROW_TEXT_MM),
+    rowYpx: textBaseline(layout.skuRowMm, layout.rowTextMm),
     label: FIELD_LABELS.sku,
     value: meta.sku,
   })}
   ${storageRowSvg({
     labelXpx,
     valueCenterXpx,
-    rowYpx: textBaseline(layout.nameBlockTopMm, ROW_TEXT_MM),
+    rowYpx: textBaseline(layout.nameBlockTopMm, layout.rowTextMm),
     label: FIELD_LABELS.name,
     value: meta.name,
   })}
   ${storageRowSvg({
     labelXpx,
     valueCenterXpx,
-    rowYpx: textBaseline(layout.customerNameRowMm, ROW_TEXT_MM),
+    rowYpx: textBaseline(layout.customerNameRowMm, layout.rowTextMm),
     label: FIELD_LABELS.customerName,
     value: meta.customerName,
   })}
   ${storageRowSvg({
     labelXpx,
     valueCenterXpx,
-    rowYpx: textBaseline(layout.customerPhoneRowMm, ROW_TEXT_MM),
+    rowYpx: textBaseline(layout.customerPhoneRowMm, layout.rowTextMm),
     label: FIELD_LABELS.customerPhone,
     value: meta.customerPhone,
   })}
   ${storageRowSvg({
     labelXpx,
     valueCenterXpx,
-    rowYpx: textBaseline(layout.saleDateRowMm, ROW_TEXT_MM),
+    rowYpx: textBaseline(layout.saleDateRowMm, layout.rowTextMm),
     label: FIELD_LABELS.saleDate,
     value: meta.saleDateText,
   })}
@@ -203,7 +208,7 @@ export async function buildWarehouseStorageSaleLabelPngBuffer(opts = {}) {
     ? storageRowSvg({
       labelXpx,
       valueCenterXpx,
-      rowYpx: textBaseline(layout.receiptRowMm, ROW_TEXT_MM),
+      rowYpx: textBaseline(layout.receiptRowMm, layout.rowTextMm),
       label: FIELD_LABELS.receipt,
       value: meta.receiptNumber,
     })
@@ -212,7 +217,7 @@ export async function buildWarehouseStorageSaleLabelPngBuffer(opts = {}) {
     ? storageRowSvg({
       labelXpx,
       valueCenterXpx,
-      rowYpx: textBaseline(layout.setRowMm, ROW_TEXT_MM),
+      rowYpx: textBaseline(layout.setRowMm, layout.rowTextMm),
       label: FIELD_LABELS.setName,
       value: meta.setName,
     })

@@ -177,11 +177,28 @@ export function computeProductionLabelLayout({
   };
 }
 
+/** QR version proxy (model 2) from payload length — matches `zebraQrMagnification` sizing. */
+export function estimateZebraQrModules(dataLength = 40) {
+  return Math.max(21, Math.min(57, Math.ceil(Math.sqrt(Math.max(1, dataLength) * 12))));
+}
+
 /** Zebra ^BQ magnification so QR prints ~targetDots wide (model 2). */
 export function zebraQrMagnification(targetDots, dataLength = 40) {
-  const modules = Math.max(21, Math.min(57, Math.ceil(Math.sqrt(Math.max(1, dataLength) * 12))));
+  const modules = estimateZebraQrModules(dataLength);
   const mag = Math.round(Number(targetDots) / modules);
   return Math.max(3, Math.min(10, mag));
+}
+
+/** Printed QR side length in dots (^BQ model 2) — layout must reserve this, not the target box alone. */
+export function zebraQrPrintedDots(targetDots, dataLength = 40) {
+  const modules = estimateZebraQrModules(dataLength);
+  const mag = zebraQrMagnification(targetDots, dataLength);
+  return modules * mag;
+}
+
+export function zebraQrPrintedMm(targetWidthMm, dataLength = 40, dpi = 203) {
+  const dots = zebraQrPrintedDots(mmToDots(targetWidthMm, dpi), dataLength);
+  return (dots * 25.4) / Number(dpi);
 }
 
 export { mmToDots };

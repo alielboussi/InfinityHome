@@ -11,7 +11,7 @@ Physical size: **80 mm × 68 mm** die-cut, **3 mm** gap between labels on the ro
 | Rows | Field labels (left) + **center-aligned** values/QR stacked on one vertical axis (inner right margin) |
 | | SKU → value |
 | | Product Name → up to 2 lines |
-| | **Image QR** (product photo URL by SKU) beside name block |
+| | **Image QR** (product photo URL by SKU) — vertical gap uses **actual** Zebra print size (~12 mm for typical URLs), not the target width alone, so customer rows sit below the QR |
 | | Customer Name |
 | | Customer # (phone) |
 | | Sale Date (`DD / MM / YYYY`, CAT) |

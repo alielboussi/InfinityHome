@@ -22,6 +22,7 @@ import {
   labelPitchMm,
   mmToDots,
   zebraQrMagnification,
+  zebraQrPrintedMm,
 } from './warehouseProductionLabelLayout.js';
 import { formatProductionLabelBlockDate } from './warehouseProductionLabelCatTime.js';
 
@@ -41,7 +42,7 @@ const STORAGE_LABEL_QR_SIZE_MM = 6.3;
 const STORAGE_LABEL_QR_SIZE_COMPACT_MM = 5.25;
 const STORAGE_ROW_GAP_MM = 2;
 const STORAGE_QR_BEFORE_GAP_MM = 2;
-const STORAGE_QR_AFTER_GAP_MM = 2;
+const STORAGE_QR_AFTER_GAP_MM = 3;
 /** Inset values/QR from the inner right border (0 = inner right edge). */
 const STORAGE_VALUE_RIGHT_INSET_MM = 0;
 
@@ -81,6 +82,8 @@ function parseSaleDateInput(raw) {
 export function computeStorageSaleLabelLayoutMm({
   includeSetRow = false,
   includeReceiptRow = false,
+  qrDataLength = 96,
+  dpi = 203,
 } = {}) {
   const compact = includeSetRow || includeReceiptRow;
   const marginMm = LABEL_MARGIN_MM;
@@ -91,7 +94,8 @@ export function computeStorageSaleLabelLayoutMm({
   const valueCenterXMm = valueBoxLeftMm + valueBoxWidthMm / 2;
   const rowTextMm = compact ? 3.35 : ROW_TEXT_MM;
   const rowGapMm = compact ? 1.5 : STORAGE_ROW_GAP_MM;
-  const qrSizeMm = compact ? STORAGE_LABEL_QR_SIZE_COMPACT_MM : STORAGE_LABEL_QR_SIZE_MM;
+  const qrTargetMm = compact ? STORAGE_LABEL_QR_SIZE_COMPACT_MM : STORAGE_LABEL_QR_SIZE_MM;
+  const qrPrintedHeightMm = zebraQrPrintedMm(qrTargetMm, qrDataLength, dpi);
   const nameBlockHeightMm = compact
     ? rowTextMm * 1.5
     : NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES;
@@ -107,8 +111,8 @@ export function computeStorageSaleLabelLayoutMm({
   const nameBlockTopMm = y;
   y = nameBlockTopMm + nameBlockHeightMm + qrBeforeGap;
   const qrBlockYMm = y;
-  const imageQrLeftMm = valueCenterXMm - qrSizeMm / 2;
-  y += qrSizeMm + qrAfterGap;
+  const imageQrLeftMm = valueCenterXMm - qrPrintedHeightMm / 2;
+  y += qrPrintedHeightMm + qrAfterGap;
 
   const customerNameRowMm = y;
   y += rowTextMm + rowGapMm;
@@ -134,7 +138,8 @@ export function computeStorageSaleLabelLayoutMm({
     nameBlockTopMm,
     qrBlockYMm,
     imageQrLeftMm,
-    qrSizeMm,
+    qrTargetMm,
+    qrPrintedHeightMm,
     customerNameRowMm,
     customerPhoneRowMm,
     saleDateRowMm,
@@ -150,11 +155,17 @@ function computeStorageSaleLabelDots({
   dpi = 203,
   includeSetRow = false,
   includeReceiptRow = false,
+  qrDataLength = 96,
 } = {}) {
   const base = computeProductionLabelLayout({ dpi });
   const toDots = (mm) => mmToDots(mm, dpi);
   const textTopDots = (rowStartMm, padMm = 0.25) => toDots(rowStartMm + padMm);
-  const layout = computeStorageSaleLabelLayoutMm({ includeSetRow, includeReceiptRow });
+  const layout = computeStorageSaleLabelLayoutMm({
+    includeSetRow,
+    includeReceiptRow,
+    qrDataLength,
+    dpi,
+  });
   const d = base.dots;
   const rowFont = layout.compact ? Math.max(24, d.headerFont - 3) : d.headerFont;
   return {
@@ -167,7 +178,8 @@ function computeStorageSaleLabelDots({
     nameBlockTop: textTopDots(layout.nameBlockTopMm),
     qrBlockY: toDots(layout.qrBlockYMm),
     imageQrX: toDots(layout.imageQrLeftMm),
-    qrSize: toDots(layout.qrSizeMm),
+    qrSize: toDots(layout.qrTargetMm),
+    qrPrintedSize: toDots(layout.qrPrintedHeightMm),
     customerNameRowY: textTopDots(layout.customerNameRowMm),
     customerPhoneRowY: textTopDots(layout.customerPhoneRowMm),
     saleDateRowY: textTopDots(layout.saleDateRowMm),
@@ -193,7 +205,14 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
   const includeReceiptRow = Boolean(receiptText);
 
   const widthDots = mmToDots(widthMm, dpi);
-  const d = computeStorageSaleLabelDots({ dpi, includeSetRow, includeReceiptRow });
+  const photoQrUrl = String(opts.imageQrUrl || '').trim()
+    || buildProductPhotoQrUrl(String(opts.sku || '').trim());
+  const d = computeStorageSaleLabelDots({
+    dpi,
+    includeSetRow,
+    includeReceiptRow,
+    qrDataLength: photoQrUrl.length,
+  });
   const mainX = d.margin;
   const mainW = d.mainWidth;
   const hf = d.headerFont;
@@ -207,8 +226,6 @@ export function buildWarehouseStorageSaleLabelZpl(opts = {}) {
   const saleDateText = zplEscape(formatProductionLabelBlockDate(saleAt));
   const companyLine = zplEscape(COMPANY_NAME);
 
-  const photoQrUrl = String(opts.imageQrUrl || '').trim()
-    || buildProductPhotoQrUrl(String(opts.sku || '').trim());
   const imageQr = qrEscape(photoQrUrl);
   const imageMag = zebraQrMagnification(d.qrSize, imageQr.length);
 
