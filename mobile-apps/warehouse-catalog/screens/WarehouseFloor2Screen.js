@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -98,6 +98,34 @@ function floor2ProductsAsFlatCards(products) {
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
+const Floor2GroupListRow = memo(function Floor2GroupListRow({ group, busyId, photoBusyId, onOpen }) {
+  const product = group.items?.[0];
+  const cardImage = group.imageUrl || productCardImageUrl(product);
+  const cardBusy = group.items.some(
+    (row) => busyId === String(row.assembly_id || row.id) || photoBusyId === String(row.assembly_id || row.id),
+  );
+  const sku = String(product?.family_sku || '').trim();
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        productRowPressable.row,
+        pressed && productRowPressable.rowPressed,
+        cardBusy && productRowPressable.rowBusy,
+      ]}
+      disabled={Boolean(busyId || photoBusyId)}
+      onPress={() => onOpen(group)}
+    >
+      <ProductionProductListRow
+        imageUrl={cardImage || undefined}
+        name={group.displayName}
+        sku={sku}
+        subtitle={`On hand: ${group.totalFloor2}`}
+        busy={cardBusy}
+      />
+    </Pressable>
+  );
+});
+
 export default function WarehouseFloor2Screen() {
   const grant = useSharedMobileAccessGrant();
   const userEmail = useSharedMobileAccessUserEmail();
@@ -164,15 +192,15 @@ export default function WarehouseFloor2Screen() {
     });
   }, [allGroups, search]);
 
-  const openInlay = (group) => {
+  const openInlay = useCallback((group) => {
     if (busyId || photoBusyId || !group?.items?.length) return;
     setInlayGroupKey(group.key);
-  };
+  }, [busyId, photoBusyId]);
 
-  const closeInlay = () => {
+  const closeInlay = useCallback(() => {
     if (busyId || photoBusyId) return;
     setInlayGroupKey('');
-  };
+  }, [busyId, photoBusyId]);
 
   const handleAdjustQty = async (item, direction) => {
     if (!canIncreaseStock || busyId) return;
@@ -243,7 +271,9 @@ export default function WarehouseFloor2Screen() {
         setProducts((prev) =>
           prev.map((row) => {
             const rid = String(row.assembly_id || row.id || '');
-            return rid === aid ? { ...row, image_url: nextUrl } : row;
+            return rid === aid
+              ? { ...row, floor2_image_url: nextUrl, image_url: nextUrl }
+              : row;
           }),
         );
       }
@@ -315,33 +345,17 @@ export default function WarehouseFloor2Screen() {
     }
   };
 
-  const renderGroupCard = ({ item: group }) => {
-    const product = group.items?.[0];
-    const cardImage = group.imageUrl || productCardImageUrl(product);
-    const cardBusy = group.items.some(
-      (row) => busyId === String(row.assembly_id || row.id) || photoBusyId === String(row.assembly_id || row.id),
-    );
-    const sku = String(product?.family_sku || '').trim();
-    return (
-      <Pressable
-        style={({ pressed }) => [
-          productRowPressable.row,
-          pressed && productRowPressable.rowPressed,
-          cardBusy && productRowPressable.rowBusy,
-        ]}
-        disabled={Boolean(busyId || photoBusyId)}
-        onPress={() => openInlay(group)}
-      >
-        <ProductionProductListRow
-          imageUrl={cardImage || undefined}
-          name={group.displayName}
-          sku={sku}
-          subtitle={`On hand: ${group.totalFloor2}`}
-          busy={cardBusy}
-        />
-      </Pressable>
-    );
-  };
+  const renderGroupCard = useCallback(
+    ({ item: group }) => (
+      <Floor2GroupListRow
+        group={group}
+        busyId={busyId}
+        photoBusyId={photoBusyId}
+        onOpen={openInlay}
+      />
+    ),
+    [busyId, photoBusyId, openInlay],
+  );
 
   const hasSearch = Boolean(String(search || '').trim());
 
@@ -384,6 +398,10 @@ export default function WarehouseFloor2Screen() {
         onRefresh={() => loadProducts({ fromPull: true })}
         contentContainerStyle={groups.length === 0 ? styles.listEmpty : styles.gridContent}
         renderItem={renderGroupCard}
+        initialNumToRender={12}
+        maxToRenderPerBatch={16}
+        windowSize={7}
+        removeClippedSubviews
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           !loading && !error ? (

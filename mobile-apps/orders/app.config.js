@@ -86,6 +86,9 @@ module.exports = {
         || googleWebClientId,
       appScheme: 'infinity-orders',
       expoProjectFullName: '@alielboussi/infinity-orders',
+      eas: {
+        projectId: '094ca8ca-76fe-4e6e-add5-c8fb1e35c59f',
+      },
     },
   }),
 };
