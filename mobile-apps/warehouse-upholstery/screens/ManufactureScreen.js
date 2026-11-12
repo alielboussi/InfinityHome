@@ -1,5 +1,5 @@
 // @refresh reset — Upholster raw WIP on Floor 2 (BOM + raw deduct → finished stock).
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -25,10 +25,11 @@ import {
   runUpholsteryManufacture,
   invalidateUpholsteryManufactureListCache,
 } from '../services/productionApi';
-import { emitProductionRefresh } from '../lib/productionRefreshBus';
+import { emitProductionRefresh, subscribeProductionRefresh } from '../lib/productionRefreshBus';
 import ManufactureProductGridCard from '../shared/components/ManufactureProductGridCard';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
+import { pickManufactureFloor2ImageUrl } from '../shared/manufactureFloor2Image';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,
@@ -42,7 +43,8 @@ function floor2Qty(item) {
 }
 
 function resolveManufactureProductImage(item) {
-  return resolveProductImageUrl(item?.image_url) || '';
+  const url = pickManufactureFloor2ImageUrl(item);
+  return url ? resolveProductImageUrl(url) : '';
 }
 
 function extractPhotoQrSku(raw) {
@@ -104,7 +106,7 @@ export default function ManufactureScreen({
   const [qtyModal, setQtyModal] = useState(null);
   const [qtyDraft, setQtyDraft] = useState('1');
 
-  const loadList = useCallback(async ({ fromPull = false } = {}) => {
+  const loadList = useCallback(async ({ fromPull = false, refresh = false } = {}) => {
     if (!allowed) {
       setProducts([]);
       setLoading(false);
@@ -116,7 +118,7 @@ export default function ManufactureScreen({
     else if (fromPull) setRefreshing(true);
     setError('');
     try {
-      const list = await fetchUpholsteryManufactureProducts({ force: fromPull });
+      const list = await fetchUpholsteryManufactureProducts({ force: fromPull || refresh });
       const sorted = (Array.isArray(list) ? list : [])
         .slice()
         .sort((a, b) => String(a.raw_name || a.name || '').localeCompare(String(b.raw_name || b.name || '')));
@@ -132,13 +134,18 @@ export default function ManufactureScreen({
 
   useFocusEffect(
     useCallback(() => {
-      loadList({ fromPull: false });
+      loadList({ fromPull: false, refresh: true });
       if (route?.params?.openScan) {
         setScanOpen(true);
         navigation.setParams({ openScan: false });
       }
     }, [loadList, route?.params?.openScan, navigation]),
   );
+
+  useEffect(() => subscribeProductionRefresh(() => {
+    invalidateUpholsteryManufactureListCache();
+    loadList({ refresh: true });
+  }), [loadList]);
 
   const inStockProducts = useMemo(
     () => (products || []).filter((item) => floor2Qty(item) > 0),
@@ -242,7 +249,7 @@ export default function ManufactureScreen({
   const renderProductCard = ({ item }) => {
     const id = String(item.raw_assembly_id || item.id || item.assembly_id || '');
     const qty = floor2Qty(item);
-    const displayName = String(item.finished_name || item.raw_name || item.name || '');
+    const displayName = String(item.raw_name || item.finished_name || item.name || '');
     const cardImage = resolveManufactureProductImage(item);
     const cardBusy = busyId === id;
 

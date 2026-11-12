@@ -10,12 +10,13 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import DeliveryWarehouseProductGrid from '../components/DeliveryWarehouseProductGrid';
+import DeliveryKioskFormScroll from '../components/DeliveryKioskFormScroll';
+import DeliveryKioskVirtualList from '../components/DeliveryKioskVirtualList';
+import { DeliveryWarehouseGridCard, deliveryWarehouseGridKey } from '../components/DeliveryWarehouseProductGrid';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import DeliveryFarmQtyAddModal from '../components/DeliveryFarmQtyAddModal';
 import DeliveryProductPickModal from '../components/DeliveryProductPickModal';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
-import KioskSafeScroll from '../components/KioskSafeScroll';
 import { kiosk } from '../components/kioskStyles';
 import {
   buildDeliveryPacketChecks,
@@ -924,9 +925,37 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
     }
   };
 
-  return (
-    <>
-      <KioskSafeScroll contentContainerStyle={styles.wrap}>
+  const farmGridData = useMemo(() => {
+    if (!isFarmFlow || draftAssemblyId || draftSetId) return [];
+    return filtered;
+  }, [draftAssemblyId, draftSetId, filtered, isFarmFlow]);
+
+  const farmGridImageUrl = useCallback(
+    (a) => resolveProductImageUrl(
+      a?.floor2_image_url
+      || a?.image_url
+      || a?.metadata?.warehouse_floor2_wip_image_url
+      || a?.metadata?.floor2_wip_image_url
+      || '',
+    ),
+    [],
+  );
+
+  const renderFarmGridItem = useCallback(({ item }) => {
+    const id = deliveryWarehouseGridKey(item);
+    const selected = draftAssemblyId && id === String(draftAssemblyId);
+    return (
+      <DeliveryWarehouseGridCard
+        item={item}
+        selected={selected}
+        onSelect={selectAssemblyForDraft}
+        getImageUrl={farmGridImageUrl}
+      />
+    );
+  }, [draftAssemblyId, farmGridImageUrl, selectAssemblyForDraft]);
+
+  const kitweListHeader = (
+          <>
         {hubEmbedded ? null : (
           <>
             <ProductionKioskTopBar
@@ -983,20 +1012,6 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
           </Pressable>
         </View>
 
-        {!draftAssemblyId && !draftSetId && isFarmFlow && filtered.length > 0 ? (
-          <DeliveryWarehouseProductGrid
-            items={filtered}
-            selectedId={draftAssemblyId}
-            onSelect={selectAssemblyForDraft}
-            getImageUrl={(a) => resolveProductImageUrl(
-              a?.floor2_image_url
-              || a?.image_url
-              || a?.metadata?.warehouse_floor2_wip_image_url
-              || a?.metadata?.floor2_wip_image_url
-              || '',
-            )}
-          />
-        ) : null}
         {!draftAssemblyId && !draftSetId && !isFarmFlow && search.trim().length > 0 && filtered.length > 0 ? (
           <View style={kiosk.listGroup}>
             {filtered.map((a, index) => (
@@ -1013,7 +1028,11 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
             ))}
           </View>
         ) : null}
+          </>
+        );
 
+  const kitweListFooter = (
+          <>
         {draftSetAssembly ? (
           <View style={kiosk.panelCard}>
             <Pressable onPress={clearDraft}>
@@ -1323,7 +1342,29 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
             {sessionOpening ? '…' : tUi('deliverySendBtn', locale)}
           </Text>
         </Pressable>
-      </KioskSafeScroll>
+          </>
+        );
+
+  return (
+    <>
+      {isFarmFlow ? (
+        <DeliveryKioskVirtualList
+          data={farmGridData}
+          renderItem={renderFarmGridItem}
+          keyExtractor={deliveryWarehouseGridKey}
+          numColumns={2}
+          columnWrapperStyle={styles.farmGridRow}
+          extraData={draftAssemblyId}
+          contentContainerStyle={styles.wrap}
+          ListHeaderComponent={kitweListHeader}
+          ListFooterComponent={kitweListFooter}
+        />
+      ) : (
+        <DeliveryKioskFormScroll contentContainerStyle={styles.wrap}>
+          {kitweListHeader}
+          {kitweListFooter}
+        </DeliveryKioskFormScroll>
+      )}
 
       <ProductionQrScanModal
         visible={scanOpen}
@@ -1377,4 +1418,5 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.5 },
   flowHint: { marginTop: 10, marginBottom: 4, lineHeight: 20, color: theme.muted },
   setComponentBlock: { marginTop: 8 },
+  farmGridRow: { gap: 8, marginBottom: 8, alignItems: 'flex-start' },
 });

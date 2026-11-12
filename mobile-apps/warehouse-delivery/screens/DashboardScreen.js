@@ -192,7 +192,11 @@ export default function DashboardScreen({
       ) : null}
 
       <ScrollView
-        contentContainerStyle={styles.gridScroll}
+        style={{ flex: 1 }}
+        contentContainerStyle={[
+          styles.gridScroll,
+          { paddingBottom: kioskFooterBottomPad(insets) + 16 },
+        ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >

@@ -124,7 +124,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
       scrollEnabled={!busy}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={styles.wrap}
-      extraBottom={16}
+      extraBottom={36}
     >
       <ProductionKioskTopBar
         title={tUi('deliveryFarmReturnSignatureTitle', locale)}

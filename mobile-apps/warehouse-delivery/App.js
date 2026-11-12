@@ -204,14 +204,14 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ProductionKioskLocaleProvider>
-        <ProductionAppAuthGate
-          titleKey="dashDeliveryAppTitle"
-          signInMethods={__DEV__ ? 'both' : 'google'}
-        >
-          <NavigationContainer ref={navigationRef}>
+        <NavigationContainer ref={navigationRef}>
+          <ProductionAppAuthGate
+            titleKey="dashDeliveryAppTitle"
+            signInMethods={__DEV__ ? 'both' : 'google'}
+          >
             <MainStack navigationRef={navigationRef} />
-          </NavigationContainer>
-        </ProductionAppAuthGate>
+          </ProductionAppAuthGate>
+        </NavigationContainer>
       </ProductionKioskLocaleProvider>
     </SafeAreaProvider>
   );

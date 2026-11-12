@@ -28,6 +28,7 @@ import { emitProductionRefresh } from '../productionKiosk/lib/productionRefreshB
 import ManufactureProductGridCard from '../shared/components/ManufactureProductGridCard';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
+import { pickManufactureFloor2ImageUrl } from '../shared/manufactureFloor2Image';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,
@@ -41,7 +42,8 @@ function floor2Qty(item) {
 }
 
 function resolveManufactureProductImage(item) {
-  return resolveProductImageUrl(item?.floor2_image_url) || '';
+  const url = pickManufactureFloor2ImageUrl(item);
+  return url ? resolveProductImageUrl(url) : '';
 }
 
 function extractPhotoQrSku(raw) {

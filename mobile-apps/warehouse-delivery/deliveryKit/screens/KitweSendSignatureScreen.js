@@ -233,7 +233,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
         scrollEnabled={!busy}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.wrap}
-        extraBottom={16}
+        extraBottom={36}
       >
         <ProductionKioskTopBar
           title={tUi('deliverySignatureTitle', locale)}
@@ -345,7 +345,7 @@ export default function KitweSendSignatureScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexGrow: 1, paddingBottom: 12 },
+  wrap: { flexGrow: 1 },
   driverField: { marginBottom: 8 },
   sendBtn: { marginTop: 20 },
   sendBtnDisabled: { opacity: 0.55 },

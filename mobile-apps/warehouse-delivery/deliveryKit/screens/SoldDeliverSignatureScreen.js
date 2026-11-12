@@ -134,7 +134,7 @@ export default function SoldDeliverSignatureScreen({ route, navigation }) {
 
   return (
     <>
-      <KioskSafeScroll contentContainerStyle={styles.wrap}>
+      <KioskSafeScroll contentContainerStyle={styles.wrap} extraBottom={36}>
         <ProductionKioskTopBar title={tUi('soldDeliverTitle', locale)} locale={locale} onToggleLocale={toggleLocale} />
         <Text style={[kiosk.metaLine, { textAlign }]}>{storageNumber || deliveryNumber}</Text>
 

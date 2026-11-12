@@ -240,6 +240,31 @@ function parseCreateProductionPacketResponse(payload) {
   };
 }
 
+function parseCreateCarpentryFloor2Response(payload) {
+  const product = payload?.product || null;
+  const labelCopies = Number(payload?.label_copies);
+  const assemblyId = String(product?.assembly_id || product?.id || '').trim();
+  const qtyFallback = Math.max(0, Math.floor(Number(product?.quantity) || 0));
+  return {
+    product,
+    assemblyId,
+    packet: product
+      ? {
+        id: assemblyId,
+        assembly_id: assemblyId,
+        sku: product.family_sku || '',
+        name: product.name || '',
+      }
+      : null,
+    labelCopies: Number.isFinite(labelCopies) ? labelCopies : qtyFallback,
+    labelJobId: payload?.label_job_id || null,
+    labelPrintWarning: payload?.label_print_warning || null,
+    label: payload?.label || null,
+    labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
+    pendingLabelPrint: payload?.pending_label_print || payload?.pendingLabelPrint || null,
+  };
+}
+
 export async function cancelProductionPacketDraft(assemblyId) {
   const id = String(assemblyId || '').trim();
   if (!id) throw new Error('assembly_id is required.');
@@ -278,7 +303,7 @@ export async function createCarpentryFloor2Product({
   dimWidth,
   dimHeight,
 } = {}) {
-  return productionOp('carpentry-floor2-create-product', {
+  const payload = await productionOp('carpentry-floor2-create-product', {
     name,
     base_name: baseName,
     preset: preset ? String(preset).trim() : undefined,
@@ -289,6 +314,7 @@ export async function createCarpentryFloor2Product({
     dim_width: dimWidth,
     dim_height: dimHeight,
   });
+  return parseCreateCarpentryFloor2Response(payload);
 }
 
 export async function uploadCarpentryFloor2ProductPhoto({ assemblyId, imageBase64 }) {

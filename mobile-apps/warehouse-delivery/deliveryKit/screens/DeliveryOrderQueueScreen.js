@@ -4,7 +4,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
-import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
+import { kioskFooterBottomPad, kioskScreenEdgesSafe, KIOSK_SCROLL_EXTRA_BOTTOM } from '../lib/kioskLayout';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
@@ -99,7 +99,11 @@ export default function DeliveryOrderQueueScreen({ navigation }) {
         <FlatList
           data={rows}
           keyExtractor={rowKey}
-          contentContainerStyle={styles.list}
+          style={{ flex: 1 }}
+          contentContainerStyle={[
+            styles.list,
+            { paddingBottom: kioskFooterBottomPad(insets) + KIOSK_SCROLL_EXTRA_BOTTOM },
+          ]}
           ListEmptyComponent={<Text style={[kiosk.hint, { textAlign }]}>{tUi('deliveryOrderQueueEmpty', locale)}</Text>}
           renderItem={({ item }) => (
             <View style={kiosk.card}>

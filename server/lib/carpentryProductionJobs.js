@@ -429,6 +429,7 @@ export async function listCarpentryManufactureCandidates(sb) {
       floor2_qty: floor2QtyByAssembly.get(id) || 0,
       image_url: '',
       floor2_image_url: floor2ImageUrl,
+      metadata: raw?.metadata || {},
     };
   });
 

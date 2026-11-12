@@ -121,14 +121,14 @@ export default function App() {
   const navigationRef = useRef(null);
   return (
     <SafeAreaProvider>
-      <ProductionAppAuthGate
-        titleKey="dashTitle"
-        signInMethods={__DEV__ ? 'both' : 'google'}
-      >
-        <NavigationContainer ref={navigationRef}>
+      <NavigationContainer ref={navigationRef}>
+        <ProductionAppAuthGate
+          titleKey="dashTitle"
+          signInMethods={__DEV__ ? 'both' : 'google'}
+        >
           <MainStack navigationRef={navigationRef} />
-        </NavigationContainer>
-      </ProductionAppAuthGate>
+        </ProductionAppAuthGate>
+      </NavigationContainer>
     </SafeAreaProvider>
   );
 }

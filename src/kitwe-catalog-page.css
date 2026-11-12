@@ -1174,10 +1174,18 @@ body.enterprise-theme .kitwe-catalog-product-row__wip button.warehouse-assembly-
   grid-template-columns: 96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(200px, 1fr) minmax(72px, auto);
 }
 
-/* Farm warehouse — same Floor 2 row layout, no Actions column */
+/* Farm warehouse — Floor 2 layout with label print in Actions */
 .kitwe-catalog-product-row--floor2-farm,
 .kitwe-catalog-product-rows__header--floor2-farm {
-  grid-template-columns: 96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(200px, 1fr);
+  grid-template-columns: 96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(200px, 1fr) minmax(72px, auto);
+}
+
+.kitwe-catalog-product-row__actions-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 @media (max-width: 720px) {

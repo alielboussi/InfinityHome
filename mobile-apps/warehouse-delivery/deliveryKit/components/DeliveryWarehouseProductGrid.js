@@ -1,6 +1,8 @@
+import React, { useCallback, useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../shared/theme';
+import DeliveryKioskVirtualList from './DeliveryKioskVirtualList';
 
 function defaultImageUrl(item) {
   const direct = String(
@@ -13,18 +15,15 @@ function defaultImageUrl(item) {
   return direct || '';
 }
 
-/**
- * Floor 1 catalog-style 2-column product grid for delivery pickers.
- */
-function GridCard({
+export const DeliveryWarehouseGridCard = React.memo(function DeliveryWarehouseGridCard({
   item,
   selected,
   onSelect,
   getImageUrl,
   getQtyLabel,
 }) {
-  const name = String(item.name || '—').trim();
-  const sku = String(item.family_sku || item.sku || '').trim();
+  const name = String(item?.name || '—').trim();
+  const sku = String(item?.family_sku || item?.sku || '').trim();
   const imageUrl = getImageUrl(item);
   const qtyLine = typeof getQtyLabel === 'function' ? getQtyLabel(item) : '';
 
@@ -41,7 +40,12 @@ function GridCard({
     >
       <View style={styles.thumbWrap}>
         {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.thumb} resizeMode="contain" />
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.thumb}
+            resizeMode="contain"
+            fadeDuration={0}
+          />
         ) : (
           <View style={styles.thumbPlaceholder}>
             <MaterialCommunityIcons name="sofa-outline" size={32} color={theme.textMuted} />
@@ -55,50 +59,67 @@ function GridCard({
       ) : null}
     </Pressable>
   );
+});
+
+export function deliveryWarehouseGridKey(item) {
+  return String(item?.assembly_id || item?.id || '');
 }
 
-/** Floor 1 catalog-style 2-column grid; flex-wrap for use inside kiosk scroll views. */
-export default function DeliveryWarehouseProductGrid({
+/**
+ * Virtualized 2-column picker (single FlatList scroll — use with ListHeader/Footer on parent).
+ */
+export function DeliveryWarehouseVirtualGrid({
   items,
   selectedId = '',
   onSelect,
   getImageUrl = defaultImageUrl,
   getQtyLabel,
+  ListHeaderComponent,
+  ListFooterComponent,
+  contentContainerStyle,
   emptyComponent = null,
 }) {
-  const data = Array.isArray(items) ? items : [];
-  if (!data.length) {
-    return emptyComponent || null;
-  }
+  const data = useMemo(
+    () => (Array.isArray(items) ? items : []),
+    [items],
+  );
+
+  const renderItem = useCallback(({ item }) => {
+    const id = deliveryWarehouseGridKey(item);
+    const selected = selectedId && id === String(selectedId);
+    return (
+      <DeliveryWarehouseGridCard
+        item={item}
+        selected={selected}
+        onSelect={onSelect}
+        getImageUrl={getImageUrl}
+        getQtyLabel={getQtyLabel}
+      />
+    );
+  }, [getImageUrl, getQtyLabel, onSelect, selectedId]);
+
+  const keyExtractor = useCallback((item) => deliveryWarehouseGridKey(item), []);
 
   return (
-    <View style={styles.gridWrap}>
-      {data.map((item) => {
-        const id = String(item.assembly_id || item.id || '');
-        const selected = selectedId && id === String(selectedId);
-        return (
-          <GridCard
-            key={id}
-            item={item}
-            selected={selected}
-            onSelect={onSelect}
-            getImageUrl={getImageUrl}
-            getQtyLabel={getQtyLabel}
-          />
-        );
-      })}
-    </View>
+    <DeliveryKioskVirtualList
+      data={data}
+      renderItem={renderItem}
+      keyExtractor={keyExtractor}
+      numColumns={2}
+      columnWrapperStyle={styles.gridRow}
+      ListHeaderComponent={ListHeaderComponent}
+      ListFooterComponent={ListFooterComponent}
+      ListEmptyComponent={data.length ? null : emptyComponent}
+      extraData={selectedId}
+      contentContainerStyle={contentContainerStyle}
+    />
   );
 }
 
+export default DeliveryWarehouseVirtualGrid;
+
 const styles = StyleSheet.create({
-  gridWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-    alignItems: 'flex-start',
-  },
+  gridRow: { gap: 8, marginBottom: 8, alignItems: 'flex-start' },
   gridCard: {
     flexGrow: 0,
     flexShrink: 1,

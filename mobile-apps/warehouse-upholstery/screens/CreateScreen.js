@@ -324,7 +324,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
       const available = await ensureProductNameAvailable(pending.name);
       if (!available) return;
       if (floor2Create) {
-        await createCarpentryFloor2Product({
+        const result = await createCarpentryFloor2Product({
           name: pending.name,
           baseName: baseNameEn,
           preset: pending.preset,
@@ -333,9 +333,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
           dimWidth: pending.dimWidth,
           dimHeight: pending.dimHeight,
         });
-        pendingSaveRef.current = null;
-        setSuccess(tUi('floor2CreateSaved', locale));
-        resetForm();
+        await applyCreateResult(pending, result);
         return;
       }
       const result = await createProductionPacket({
@@ -399,12 +397,24 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
       const uploadPhoto = await prepareProductionPhotoForUpload(photoSource);
 
       if (floor2Create) {
-        let assemblyId = String(pending.resumeAssemblyId || '').trim();
-        if (!assemblyId) {
+        let parsed;
+        if (pending.resumeAssemblyId) {
+          parsed = {
+            assemblyId: pending.resumeAssemblyId,
+            pendingLabelPrint: pending.pendingLabelPrint || null,
+            labelCopies: pending.qtyNum,
+            packet: {
+              id: pending.resumeAssemblyId,
+              assembly_id: pending.resumeAssemblyId,
+              sku: pending.pendingLabelPrint?.sku || '',
+              name: pending.name,
+            },
+          };
+        } else {
           const available = await ensureProductNameAvailable(pending.name);
           if (!available) return;
           setAiPhotoStatus(tUi('savePhaseCreatingProduct', locale));
-          const created = await createCarpentryFloor2Product({
+          parsed = await createCarpentryFloor2Product({
             name: pending.name,
             baseName: baseNameEn,
             preset: pending.preset,
@@ -413,15 +423,20 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             dimWidth: pending.dimWidth,
             dimHeight: pending.dimHeight,
           });
-          assemblyId = String(created?.product?.assembly_id || created?.product?.id || '').trim();
-          if (!assemblyId) throw new Error('Product save failed — server did not return a product id.');
-          pendingSaveRef.current = { ...pending, resumeAssemblyId: assemblyId };
+          if (!parsed.assemblyId) throw new Error('Product save failed — server did not return a product id.');
+          pendingSaveRef.current = {
+            ...pending,
+            resumeAssemblyId: parsed.assemblyId,
+            pendingLabelPrint: parsed.pendingLabelPrint || null,
+          };
         }
         setAiPhotoStatus(tUi('photoProcessing', locale));
+        let photoPayload;
         try {
-          await attachProductionProductPhoto({
-            assemblyId,
+          photoPayload = await attachProductionProductPhoto({
+            assemblyId: parsed.assemblyId,
             imageBase64: uploadPhoto,
+            pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint || parsed.pendingLabelPrint,
             alsoFloor2Wip: true,
             pendingPortalSetup: {
               portal_catalog: 'carpentry',
@@ -434,15 +449,22 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
           });
         } catch (photoErr) {
           await uploadCarpentryFloor2ProductPhoto({
-            assemblyId,
+            assemblyId: parsed.assemblyId,
             imageBase64: uploadPhoto,
           });
           throw photoErr;
         }
+        const result = {
+          ...parsed,
+          labelJobId: photoPayload?.label_job_id || parsed.labelJobId || null,
+          labelPrintWarning: photoPayload?.label_print_warning || parsed.labelPrintWarning || null,
+          labelPreviewPngBase64: photoPayload?.label_preview_png_base64 || parsed.labelPreviewPngBase64 || '',
+          photoSaved: true,
+          catalogImageUrl: photoPayload?.catalog_image_url || null,
+        };
+        await applyCreateResult(pending, result);
         pendingSaveRef.current = null;
         pendingPhotoRef.current = null;
-        setSuccess(tUi('floor2CreateSaved', locale));
-        resetForm();
         return;
       }
 

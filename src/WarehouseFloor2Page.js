@@ -17,6 +17,13 @@ import {
 } from './services/carpentryCatalogApi';
 import { getCachedProductionPortalSnapshot } from './utils/loadProductionPortalCatalogInputs';
 import CategoryRemainingChecklist from './components/CategoryRemainingChecklist';
+import WarehouseProductionLabelPrintDialog, {
+  WarehouseLabelPrintIconButton,
+} from './components/WarehouseProductionLabelPrintDialog';
+import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
+import { isWarehouseCatalogLabelPrintAllowed } from './mobile/mobileAccessManifest';
+import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
+import { warehouseLabelPrintItemFromRow } from './utils/warehouseRowLabelPrint';
 
 function buildAssemblyMapFromCatalog(catalog) {
   const map = new Map();
@@ -52,6 +59,26 @@ export default function WarehouseFloor2Page({
   const [busyId, setBusyId] = useState('');
   const sessionUser = useMemo(() => getCurrentUser(), []);
   const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
+  const { grant } = useAuthProfileMobileGrant();
+  const canPrintLabels = canManage || isWarehouseCatalogLabelPrintAllowed(grant, sessionUser?.email);
+  const [labelPrintItem, setLabelPrintItem] = useState(null);
+
+  const packetsByAssembly = useMemo(() => {
+    const snap = getCachedProductionPortalSnapshot();
+    if (!snap?.assemblyPackets || !snap?.packets) return new Map();
+    return buildPacketsByAssembly(snap.assemblyPackets, snap.packets);
+  }, []);
+
+  const openRowLabelPrint = useCallback((assembly, qty) => {
+    const pktList = packetsByAssembly.get(String(assembly?.id)) || [];
+    const item = warehouseLabelPrintItemFromRow(assembly, qty, { pktList });
+    if (!item) {
+      setError('Name and SKU are required to print a label.');
+      return;
+    }
+    setError('');
+    setLabelPrintItem(item);
+  }, [packetsByAssembly]);
 
   const handleAssemblyImageUpdated = useCallback((assemblyId, imageUrl) => {
     const id = String(assemblyId || '');
@@ -374,20 +401,28 @@ export default function WarehouseFloor2Page({
                     {renderStockEditor(aid, row.quantity)}
                   </div>
                   <div className="kitwe-catalog-product-row__actions">
-                    {canManage ? (
-                      <button
-                        type="button"
-                        className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
-                        disabled={busyId === `del-${aid}`}
-                        onClick={() => handleDeleteFloor2Product(aid)}
-                      >
-                        {busyId === `del-${aid}` ? '…' : 'Delete'}
-                      </button>
-                    ) : (
-                      <span style={{ fontSize: 13, color: 'var(--kitwe-muted, #64748b)' }}>
-                        Qty: {Math.max(0, Number(row.quantity) || 0)}
-                      </span>
-                    )}
+                    <div className="kitwe-catalog-product-row__actions-inner">
+                      {canPrintLabels && asm ? (
+                        <WarehouseLabelPrintIconButton
+                          title="Print warehouse label"
+                          onClick={() => openRowLabelPrint(asm, row.quantity)}
+                        />
+                      ) : null}
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
+                          disabled={busyId === `del-${aid}`}
+                          onClick={() => handleDeleteFloor2Product(aid)}
+                        >
+                          {busyId === `del-${aid}` ? '…' : 'Delete'}
+                        </button>
+                      ) : !canPrintLabels ? (
+                        <span style={{ fontSize: 13, color: 'var(--kitwe-muted, #64748b)' }}>
+                          Qty: {Math.max(0, Number(row.quantity) || 0)}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </article>
               );
@@ -395,6 +430,11 @@ export default function WarehouseFloor2Page({
           </div>
         </div>
       ) : null}
+      <WarehouseProductionLabelPrintDialog
+        open={Boolean(labelPrintItem)}
+        item={labelPrintItem}
+        onClose={() => setLabelPrintItem(null)}
+      />
     </div>
   );
 }

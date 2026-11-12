@@ -16,6 +16,12 @@ import { resolveWarehouseFloor2Location } from './constants/warehouseFloorLocati
 import { buildFarmWarehouseCandidates } from './utils/farmWarehouseCatalogView';
 import { floor2StockAsFlatGroups } from './utils/warehouseFloor2StockGroups';
 import { getCachedProductionPortalSnapshot } from './utils/loadProductionPortalCatalogInputs';
+import WarehouseProductionLabelPrintDialog, {
+  WarehouseLabelPrintIconButton,
+} from './components/WarehouseProductionLabelPrintDialog';
+import { isWarehouseCatalogLabelPrintAllowed } from './mobile/mobileAccessManifest';
+import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
+import { warehouseLabelPrintItemFromRow } from './utils/warehouseRowLabelPrint';
 
 function buildAssemblyMapFromCatalog(catalog) {
   const map = new Map();
@@ -55,6 +61,25 @@ export default function FarmWarehouse1Page({
     'warehouse_farm_1',
     sessionUser?.email,
   );
+  const canPrintLabels = canManage || isWarehouseCatalogLabelPrintAllowed(grant, sessionUser?.email);
+  const [labelPrintItem, setLabelPrintItem] = useState(null);
+
+  const packetsByAssembly = useMemo(() => {
+    const snap = getCachedProductionPortalSnapshot();
+    if (!snap?.assemblyPackets || !snap?.packets) return new Map();
+    return buildPacketsByAssembly(snap.assemblyPackets, snap.packets);
+  }, []);
+
+  const openRowLabelPrint = useCallback((assembly, qty) => {
+    const pktList = packetsByAssembly.get(String(assembly?.id)) || [];
+    const item = warehouseLabelPrintItemFromRow(assembly, qty, { pktList });
+    if (!item) {
+      setError('Name and SKU are required to print a label.');
+      return;
+    }
+    setError('');
+    setLabelPrintItem(item);
+  }, [packetsByAssembly]);
 
   const farmQtyByAssembly = useMemo(() => {
     const map = new Map();
@@ -273,6 +298,7 @@ export default function FarmWarehouse1Page({
               <span>SKU</span>
               <span>Product</span>
               <span>Stock on hand</span>
+              <span>Actions</span>
             </div>
             {filteredStockFamilyGroups.map((group) => {
               const row = (group.rows || [])[0];
@@ -303,12 +329,27 @@ export default function FarmWarehouse1Page({
                   <div className="kitwe-catalog-product-row__meta">
                     {renderStockEditor(aid, farmQty)}
                   </div>
+                  <div className="kitwe-catalog-product-row__actions">
+                    {canPrintLabels && asm ? (
+                      <WarehouseLabelPrintIconButton
+                        title="Print warehouse label"
+                        onClick={() => openRowLabelPrint(asm, farmQty)}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 13, color: 'var(--kitwe-muted, #64748b)' }}>—</span>
+                    )}
+                  </div>
                 </article>
               );
             })}
           </div>
         </div>
       ) : null}
+      <WarehouseProductionLabelPrintDialog
+        open={Boolean(labelPrintItem)}
+        item={labelPrintItem}
+        onClose={() => setLabelPrintItem(null)}
+      />
     </div>
   );
 }

@@ -821,6 +821,43 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
 
   await recomputeWarehouseLocationStockServer(sb, floor2Id);
 
+  const clientSource = carpentryWorkshop ? 'carpentry_workshop_app' : 'warehouse_floor_2';
+  const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
+  const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
+  const deferLabels = Boolean(carpentryWorkshop && !imageBase64 && labelCopies > 0);
+  const printedAt = new Date();
+  const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Carpentry workshop';
+  let labelJobId = null;
+  let labelPrintWarning = null;
+  if (carpentryWorkshop && labelCopies > 0 && !deferLabels) {
+    try {
+      labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+        name: finalName,
+        sku: labelSku,
+        qty: labelCopies,
+        printedBy: labelPrintedBy,
+        source: clientSource,
+        printedAt,
+      });
+      if (!labelJobId) {
+        labelPrintWarning = 'Item saved but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
+      }
+    } catch (printErr) {
+      const { formatZebraPrintError } = await import('../lib/formatZebraPrintError.js');
+      labelPrintWarning = formatZebraPrintError(printErr);
+      console.warn('[warehouse-mobile] carpentry floor2 label print failed:', printErr?.message || printErr);
+    }
+  }
+
+  const preview = carpentryWorkshop && labelCopies > 0
+    ? await buildProductionLabelPreviewPayload({
+      name: finalName,
+      sku: labelSku,
+      printedAt,
+      skipPng: deferLabels,
+    })
+    : { label: null, label_preview_png_base64: null };
+
   return {
     product: {
       id: assemblyId,
@@ -834,6 +871,23 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
       image_url: imageUrl,
       family_image_url: '',
     },
+  ...(carpentryWorkshop
+    ? {
+      label_copies: labelCopies,
+      label_job_id: labelJobId,
+      label_print_warning: labelPrintWarning,
+      pending_label_print: deferLabels
+        ? {
+          name: finalName,
+          sku: labelSku,
+          qty: labelCopies,
+          client_source: clientSource,
+        }
+        : null,
+      label: preview.label,
+      label_preview_png_base64: preview.label_preview_png_base64,
+    }
+    : {}),
   };
 }
 

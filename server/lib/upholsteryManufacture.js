@@ -14,6 +14,7 @@ import {
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { saveAssemblyForMobile } from './warehouseCatalogMobile.js';
 import {
+  readWarehouseFloor2WipFamilyImageUrl,
   readWarehouseFloor2WipImageUrl,
 } from '../../src/utils/warehouseFloor2WipImage.js';
 
@@ -70,6 +71,34 @@ async function loadFloor2QtyByAssemblyId(sb, assemblyIds, floor2LocationId) {
     (data || []).forEach((row) => {
       out.set(String(row.assembly_id), Number(row.quantity) || 0);
     });
+  }
+  return out;
+}
+
+/** All Floor 2 on-hand rows (authoritative for manufacture picker). */
+async function loadAllFloor2QtyByAssemblyId(sb, floor2LocationId) {
+  const loc = String(floor2LocationId || '').trim();
+  const out = new Map();
+  if (!loc) return out;
+  const pageSize = 1000;
+  let from = 0;
+  for (;;) {
+    const { data, error } = await sb
+      .from(ASSEMBLY_INVENTORY)
+      .select('assembly_id, quantity')
+      .eq('location_id', loc)
+      .gt('quantity', 0)
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message || 'Failed to load Floor 2 stock');
+    const rows = data || [];
+    rows.forEach((row) => {
+      const id = String(row.assembly_id || '').trim();
+      if (!id) return;
+      const qty = Math.max(0, Math.floor(Number(row.quantity) || 0));
+      if (qty > 0) out.set(id, qty);
+    });
+    if (rows.length < pageSize) break;
+    from += pageSize;
   }
   return out;
 }
@@ -295,32 +324,35 @@ export async function listUpholsteryManufactureCandidates(sb) {
   const rows = assemblies || [];
   const assemblyById = new Map(rows.map((row) => [String(row.id), row]));
   const upholsteryRows = listUpholsteryCatalogProducts(rows);
-  const rawIds = upholsteryRows
-    .map((u) => String(u.raw_assembly_id || '').trim())
-    .filter(Boolean);
-  const floor2QtyByAssembly = await loadFloor2QtyByAssemblyId(sb, rawIds, floor2Loc.id);
+  const floor2QtyByAssembly = await loadAllFloor2QtyByAssemblyId(sb, floor2Loc.id);
 
   const products = [];
   for (const u of upholsteryRows) {
     const rawId = String(u.raw_assembly_id || '').trim();
     if (!rawId) continue;
-    const finishedAsm = findUpholsteryFinishedForRawAssembly(rows, rawId);
+    const finishedAsm = findUpholsteryFinishedForRawAssembly(rows, rawId)
+      || assemblyById.get(String(u.id || ''));
     if (!finishedAsm) continue;
-    const rawAsm = assemblyById.get(rawId);
+    const rawAsm = assemblyById.get(rawId) || {};
+    if (!parseCarpentryMeta(rawAsm).selected) continue;
     const rawQty = floor2QtyByAssembly.get(rawId) || 0;
     if (rawQty < 1) continue;
+    const rawWip = readWarehouseFloor2WipImageUrl(rawAsm);
+    const finishedWip = readWarehouseFloor2WipImageUrl(finishedAsm);
+    const familyWip = readWarehouseFloor2WipFamilyImageUrl(finishedAsm);
     products.push({
       id: rawId,
       raw_assembly_id: rawId,
       raw_name: rawAsm?.name || rawId,
       raw_sku: rawAsm?.family_sku || '',
-      image_url: String(finishedAsm.image_url || '').trim(),
-      floor2_image_url: '',
+      image_url: '',
+      floor2_image_url: rawWip || finishedWip || familyWip || '',
       finished_assembly_id: finishedAsm.id,
       finished_name: finishedAsm.name,
       finished_sku: finishedAsm.family_sku,
       floor2_qty: rawQty,
       carpentry_qty: rawQty,
+      metadata: rawAsm?.metadata && typeof rawAsm.metadata === 'object' ? rawAsm.metadata : {},
     });
   }
 

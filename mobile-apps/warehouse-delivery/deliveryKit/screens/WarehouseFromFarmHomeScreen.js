@@ -12,7 +12,6 @@ import DeliveryFarmQtyAddModal from '../components/DeliveryFarmQtyAddModal';
 import DeliveryWarehouseProductGrid from '../components/DeliveryWarehouseProductGrid';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import ProductionQrScanModal from '../components/ProductionQrScanModal';
-import KioskSafeScroll from '../components/KioskSafeScroll';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
@@ -223,124 +222,169 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
 
   const cartTotal = cart.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
 
-  return (
-    <>
-      <KioskSafeScroll contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
-        <ProductionKioskTopBar
-          title={tUi('deliveryFarmToWarehouseTitle', locale)}
-          locale={locale}
-          onToggleLocale={toggleLocale}
-        />
-        <Pressable onPress={() => navigation.goBack()} style={kiosk.backRow}>
-          <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
-        </Pressable>
-        {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
-        <View style={kiosk.card}>
-          {sessionOpening ? (
-            <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmOpeningSession', locale)}</Text>
-          ) : (
-            <Text style={[kiosk.heroNumber, { textAlign }]}>{transferRef || '—'}</Text>
-          )}
-          <Text style={[kiosk.metaLine, { textAlign }]}>
-            {tUi('deliveryFarmReturnHint', locale)}
-          </Text>
-        </View>
+  const gridProducts = useMemo(
+    () => (filtered || []).filter((p) => Math.max(0, Number(p.farm_qty) || 0) > 0),
+    [filtered],
+  );
 
-        <View style={[kiosk.field, styles.searchRow]}>
+  const onGridSelect = useCallback((p) => {
+    setDraftId(String(p.assembly_id || p.id));
+  }, []);
+
+  const gridImageUrl = useCallback(
+    (p) => resolveProductImageUrl(p?.floor2_image_url || p?.image_url || ''),
+    [],
+  );
+
+  const gridQtyLabel = useCallback((p) => {
+    const qty = Math.max(0, Number(p.farm_qty) || 0);
+    return tUi('deliveryFarmOnHand', locale).replace('{n}', String(qty));
+  }, [locale]);
+
+  const listHeader = useMemo(() => (
+    <>
+      <ProductionKioskTopBar
+        title={tUi('deliveryFarmToWarehouseTitle', locale)}
+        locale={locale}
+        onToggleLocale={toggleLocale}
+      />
+      <Pressable onPress={() => navigation.goBack()} style={kiosk.backRow}>
+        <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
+      </Pressable>
+      {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
+      <View style={kiosk.card}>
+        {sessionOpening ? (
+          <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmOpeningSession', locale)}</Text>
+        ) : (
+          <Text style={[kiosk.heroNumber, { textAlign }]}>{transferRef || '—'}</Text>
+        )}
+        <Text style={[kiosk.metaLine, { textAlign }]}>
+          {tUi('deliveryFarmReturnHint', locale)}
+        </Text>
+      </View>
+
+      <View style={[kiosk.field, styles.searchRow]}>
+        <TextInput
+          style={[kiosk.input, { flex: 1, textAlign }]}
+          placeholder={tUi('deliveryFarmSearchPlaceholder', locale)}
+          placeholderTextColor={theme.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Pressable
+          style={kiosk.btnIcon}
+          onPress={() => setScanOpen(true)}
+          accessibilityLabel={tUi('deliveryFarmScanA11y', locale)}
+        >
+          <MaterialCommunityIcons name="barcode-scan" size={26} color={theme.primary} />
+        </Pressable>
+      </View>
+
+      {loading ? (
+        <Text style={{ textAlign, color: theme.textMuted }}>{tUi('loading', locale)}</Text>
+      ) : null}
+      {!loading && gridProducts.length === 0 ? (
+        <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmNoProducts', locale)}</Text>
+      ) : null}
+    </>
+  ), [
+    error,
+    gridProducts.length,
+    loading,
+    locale,
+    navigation,
+    search,
+    sessionOpening,
+    textAlign,
+    toggleLocale,
+    transferRef,
+  ]);
+
+  const listFooter = useMemo(() => (
+    <>
+      {draftProduct ? (
+        <View style={kiosk.card}>
+          <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryFarmQtyLabel', locale)}</Text>
           <TextInput
-            style={[kiosk.input, { flex: 1, textAlign }]}
-            placeholder={tUi('deliveryFarmSearchPlaceholder', locale)}
-            placeholderTextColor={theme.textMuted}
-            value={search}
-            onChangeText={setSearch}
-            autoCapitalize="none"
-            autoCorrect={false}
+            style={[kiosk.input, { textAlign }]}
+            keyboardType="number-pad"
+            value={units}
+            onChangeText={setUnits}
           />
-          <Pressable
-            style={kiosk.btnIcon}
-            onPress={() => setScanOpen(true)}
-            accessibilityLabel={tUi('deliveryFarmScanA11y', locale)}
-          >
-            <MaterialCommunityIcons name="barcode-scan" size={26} color={theme.primary} />
+          <Text style={[kiosk.metaLine, { textAlign }]}>
+            {tUi('deliveryFarmQtyMax', locale).replace('{n}', String(maxUnits))}
+          </Text>
+          <Pressable style={kiosk.btnPrimaryBlock} onPress={addToCart}>
+            <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryFarmAddToCart', locale)}</Text>
           </Pressable>
         </View>
+      ) : null}
 
-        {loading ? (
-          <Text style={{ textAlign, color: theme.textMuted }}>{tUi('loading', locale)}</Text>
-        ) : null}
-        {!loading && filtered.length > 0 ? (
-          <DeliveryWarehouseProductGrid
-            items={filtered.filter((p) => Math.max(0, Number(p.farm_qty) || 0) > 0)}
-            selectedId={draftId}
-            onSelect={(p) => setDraftId(String(p.assembly_id || p.id))}
-            getImageUrl={(p) => resolveProductImageUrl(p?.floor2_image_url || p?.image_url || '')}
-            getQtyLabel={(p) => {
-              const qty = Math.max(0, Number(p.farm_qty) || 0);
-              return tUi('deliveryFarmOnHand', locale).replace('{n}', String(qty));
-            }}
-          />
-        ) : null}
-        {!loading && filtered.length === 0 ? (
-          <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmNoProducts', locale)}</Text>
-        ) : null}
-
-        {draftProduct ? (
-          <View style={kiosk.card}>
-            <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryFarmQtyLabel', locale)}</Text>
-            <TextInput
-              style={[kiosk.input, { textAlign }]}
-              keyboardType="number-pad"
-              value={units}
-              onChangeText={setUnits}
-            />
-            <Text style={[kiosk.metaLine, { textAlign }]}>
-              {tUi('deliveryFarmQtyMax', locale).replace('{n}', String(maxUnits))}
-            </Text>
-            <Pressable style={kiosk.btnPrimaryBlock} onPress={addToCart}>
-              <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryFarmAddToCart', locale)}</Text>
+      <Text style={[kiosk.sectionTitle, { textAlign }]}>
+        {tUi('deliveryFarmCartTitle', locale).replace('{n}', String(cartTotal))}
+      </Text>
+      {!cart.length ? (
+        <Text style={[kiosk.metaLine, { textAlign, marginBottom: 8 }]}>
+          {tUi('deliveryCartEmpty', locale)}
+        </Text>
+      ) : null}
+      {cart.map((line) => (
+        <View key={line.assembly_id} style={kiosk.cartCard}>
+          <View style={kiosk.cartProductHeader}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[kiosk.cartProductTitle, { textAlign }]} numberOfLines={3}>
+                {line.name || line.assembly_id}
+              </Text>
+              {line.family_sku ? (
+                <Text style={[kiosk.cartMeta, { textAlign }]} numberOfLines={1}>
+                  {line.family_sku}
+                </Text>
+              ) : null}
+              <Text style={[kiosk.cartMeta, { textAlign }]}>
+                {tUi('deliveryQtyShort', locale).replace('{n}', String(line.quantity))}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setCart((prev) => prev.filter((r) => r.assembly_id !== line.assembly_id))}
+              hitSlop={8}
+            >
+              <Text style={kiosk.cartRemoveText}>{tUi('deliveryFarmRemove', locale)}</Text>
             </Pressable>
           </View>
-        ) : null}
+        </View>
+      ))}
+      {cart.length > 0 ? (
+        <Pressable style={[kiosk.btnPrimaryBlock, { marginTop: 4 }]} onPress={goSignature}>
+          <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySignatureTitle', locale)}</Text>
+        </Pressable>
+      ) : null}
+    </>
+  ), [
+    addToCart,
+    cart,
+    cartTotal,
+    draftProduct,
+    goSignature,
+    locale,
+    maxUnits,
+    textAlign,
+    units,
+  ]);
 
-        <Text style={[kiosk.sectionTitle, { textAlign }]}>
-          {tUi('deliveryFarmCartTitle', locale).replace('{n}', String(cartTotal))}
-        </Text>
-        {!cart.length ? (
-          <Text style={[kiosk.metaLine, { textAlign, marginBottom: 8 }]}>
-            {tUi('deliveryCartEmpty', locale)}
-          </Text>
-        ) : null}
-        {cart.map((line) => (
-          <View key={line.assembly_id} style={kiosk.cartCard}>
-            <View style={kiosk.cartProductHeader}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[kiosk.cartProductTitle, { textAlign }]} numberOfLines={3}>
-                  {line.name || line.assembly_id}
-                </Text>
-                {line.family_sku ? (
-                  <Text style={[kiosk.cartMeta, { textAlign }]} numberOfLines={1}>
-                    {line.family_sku}
-                  </Text>
-                ) : null}
-                <Text style={[kiosk.cartMeta, { textAlign }]}>
-                  {tUi('deliveryQtyShort', locale).replace('{n}', String(line.quantity))}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => setCart((prev) => prev.filter((r) => r.assembly_id !== line.assembly_id))}
-                hitSlop={8}
-              >
-                <Text style={kiosk.cartRemoveText}>{tUi('deliveryFarmRemove', locale)}</Text>
-              </Pressable>
-            </View>
-          </View>
-        ))}
-        {cart.length > 0 ? (
-          <Pressable style={[kiosk.btnPrimaryBlock, { marginTop: 4 }]} onPress={goSignature}>
-            <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliverySignatureTitle', locale)}</Text>
-          </Pressable>
-        ) : null}
-      </KioskSafeScroll>
+  return (
+    <>
+      <DeliveryWarehouseProductGrid
+        items={gridProducts}
+        selectedId={draftId}
+        onSelect={onGridSelect}
+        getImageUrl={gridImageUrl}
+        getQtyLabel={gridQtyLabel}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={listFooter}
+        contentContainerStyle={styles.wrap}
+      />
 
       <ProductionQrScanModal
         visible={scanOpen}
@@ -365,7 +409,7 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingBottom: 24 },
+  wrap: { flexGrow: 1 },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   rowSelected: { borderColor: theme.primary, borderWidth: 1 },
   cartRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 },
