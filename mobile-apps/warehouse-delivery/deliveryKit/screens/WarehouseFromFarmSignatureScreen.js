@@ -97,7 +97,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
       });
     } catch (err) {
       const msg = formatWarehouseMobileApiError(err?.message, tUi('deliverySubmitFailed', locale));
-      Alert.alert('الإرسال إلى المستودع', msg);
+      Alert.alert(tUi('deliveryFarmToWarehouseTitle', locale), msg);
     } finally {
       setBusy(false);
       submitLockRef.current = false;
@@ -126,7 +126,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
       extraBottom={16}
     >
       <ProductionKioskTopBar
-        title="توقيع النقل إلى المستودع"
+        title={tUi('deliveryFarmReturnSignatureTitle', locale)}
         locale={locale}
         onToggleLocale={toggleLocale}
       />
@@ -136,7 +136,7 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
 
       <View style={kiosk.card}>
         <Text style={[kiosk.heroNumber, { textAlign }]}>{transferRef}</Text>
-        <Text style={[kiosk.metaLine, { textAlign }]}>سائق فقط — بدون سائق العميل.</Text>
+        <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmDriverOnlyHint', locale)}</Text>
       </View>
 
       <View style={[kiosk.field, styles.driverField]}>
@@ -156,7 +156,8 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
 
       <DeliverySignaturePad
         ref={padRef}
-        disabled={busy}
+        locale={locale}
+        textAlign={textAlign}
         onValidationChange={handleValidationChange}
       />
 
@@ -174,7 +175,12 @@ export default function WarehouseFromFarmSignatureScreen({ route, navigation }) 
 
       <DriverPicker
         visible={driverPickerOpen}
+        title={tUi('deliveryDriver', locale)}
         drivers={sortedDrivers}
+        loading={driversLoading}
+        locale={locale}
+        textAlign={textAlign}
+        selectedDriverId={driverId}
         onClose={() => setDriverPickerOpen(false)}
         onSelect={(d) => {
           setDriverId(String(d?.id || ''));

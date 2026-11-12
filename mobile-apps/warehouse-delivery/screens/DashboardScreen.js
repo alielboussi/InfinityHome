@@ -74,14 +74,14 @@ export default function DashboardScreen({
       key: 'farm',
       screenId: 'delivery_send_farm',
       icon: 'barn',
-      title: 'Send to Farm',
+      title: tUi('dashSendToFarm', locale),
       onPress: () => navigation.navigate('FarmSendHome'),
     },
     {
       key: 'warehouseFromFarm',
       screenId: 'delivery_send_warehouse',
       icon: 'home-export-outline',
-      title: 'Send to Warehouse',
+      title: tUi('dashSendToWarehouse', locale),
       onPress: () => navigation.navigate('WarehouseFromFarmHome'),
     },
     {

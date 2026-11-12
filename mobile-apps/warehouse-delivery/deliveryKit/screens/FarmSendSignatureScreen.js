@@ -138,10 +138,7 @@ export default function FarmSendSignatureScreen({ route, navigation }) {
       });
     } catch (err) {
       const msg = mapSubmitError(err, locale);
-      Alert.alert(
-        locale === 'ar' ? 'الإرسال إلى المزرعة' : 'Send to Farm',
-        msg,
-      );
+      Alert.alert(tUi('deliveryFarmTitle', locale), msg);
       navigation.replace('FarmSendHome');
     } finally {
       setBusy(false);
@@ -164,8 +161,6 @@ export default function FarmSendSignatureScreen({ route, navigation }) {
 
   const sortedDrivers = sortDeliveryDriversByName(drivers || []);
 
-  const title = locale === 'ar' ? 'توقيع الإرسال إلى المزرعة' : 'Farm delivery signature';
-
   return (
     <KioskSafeScroll
       scrollEnabled={!busy}
@@ -174,7 +169,7 @@ export default function FarmSendSignatureScreen({ route, navigation }) {
       extraBottom={16}
     >
       <ProductionKioskTopBar
-        title={title}
+        title={tUi('deliveryFarmSignatureTitle', locale)}
         locale={locale}
         onToggleLocale={toggleLocale}
       />
@@ -185,7 +180,7 @@ export default function FarmSendSignatureScreen({ route, navigation }) {
       <View style={kiosk.card}>
         <Text style={[kiosk.heroNumber, { textAlign }]}>{deliveryNumber}</Text>
         <Text style={[kiosk.metaLine, { textAlign }]}>
-          {locale === 'ar' ? 'سائق فقط — بدون سائق العميل.' : 'Driver only — no customer driver.'}
+          {tUi('deliveryFarmDriverOnlyHint', locale)}
         </Text>
       </View>
 
@@ -206,6 +201,8 @@ export default function FarmSendSignatureScreen({ route, navigation }) {
 
       <DeliverySignaturePad
         ref={padRef}
+        locale={locale}
+        textAlign={textAlign}
         disabled={busy}
         onValidationChange={handleValidationChange}
       />
@@ -224,7 +221,12 @@ export default function FarmSendSignatureScreen({ route, navigation }) {
 
       <DriverPicker
         visible={driverPickerOpen}
+        title={tUi('deliveryDriver', locale)}
         drivers={sortedDrivers}
+        loading={driversLoading}
+        locale={locale}
+        textAlign={textAlign}
+        selectedDriverId={driverId}
         onClose={() => setDriverPickerOpen(false)}
         onSelect={(d) => {
           setDriverId(String(d?.id || ''));

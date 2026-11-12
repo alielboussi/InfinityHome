@@ -1,6 +1,6 @@
 /**
- * Warehouse Catalog mobile app — screens and permission axes (web /user-access).
- * When a new screen ships in the APK, register it here AND copy to mobile-apps/shared/mobileAccessManifest.js.
+ * Warehouse Catalog mobile app — screens and permission axes.
+ * Keep in sync with src/mobile/mobileAccessManifest.js (web /user-access + CI).
  *
  * Permission values: 'allow' | 'deny' (default deny until admin enables).
  */
@@ -245,7 +245,7 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_farm_1',
-    label: 'Farm Warehouse 1',
+    label: 'Farm',
     description: 'Farm warehouse — same SKUs and Floor 2 WIP photos; independent farm on-hand qty',
     permissionMatrix: true,
     supportsLocationStockAndPhoto: true,

@@ -10,12 +10,13 @@ const mustInclude = [
   ['src/mobile/mobileAccessManifest.js', 'delivery_send_farm'],
   ['src/constants/farmWarehouseLocations.js', 'Farm Warehouse 1'],
   ['server/lib/farmWarehouseDelivery.js', 'fetchCatalogForFarmDelivery'],
+  ['server/lib/ensureFarmWarehouseLocation.js', 'ensureFarmWarehouseLocation'],
   ['server/lib/warehouseFarmDeliveryNumber.js', 'FRM0000000001'],
   ['mobile-apps/warehouse-catalog/App.js', 'FarmWarehouse'],
   ['mobile-apps/warehouse-delivery/App.js', 'FarmSendHome'],
   ['mobile-apps/warehouse-delivery/App.js', 'WarehouseFromFarmHome'],
   ['src/mobile/mobileAccessManifest.js', 'delivery_send_warehouse'],
-  ['src/hubs/WarehouseFloorsHubPage.js', 'Farm Warehouse 1'],
+  ['src/hubs/WarehouseFloorsHubPage.js', "label: 'Farm'"],
 ];
 
 for (const [rel, needle] of mustInclude) {

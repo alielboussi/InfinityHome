@@ -245,7 +245,7 @@ export const MOBILE_SCREENS = Object.freeze([
   },
   {
     id: 'warehouse_farm_1',
-    label: 'Farm Warehouse 1',
+    label: 'Farm',
     description: 'Farm warehouse — same SKUs and Floor 2 WIP photos; independent farm on-hand qty',
     permissionMatrix: true,
     supportsLocationStockAndPhoto: true,

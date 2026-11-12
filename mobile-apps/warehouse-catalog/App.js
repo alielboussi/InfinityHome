@@ -78,7 +78,7 @@ function MainStack() {
       </Stack.Screen>
       <Stack.Screen
         name="FarmWarehouse"
-        options={{ title: 'Farm Warehouse 1' }}
+        options={{ title: 'Farm' }}
       >
         {(props) => (
           <MobileScreenGate screenId="warehouse_farm_1" grant={grant} navigation={props.navigation}>

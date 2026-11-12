@@ -14,7 +14,7 @@ import KioskSafeScroll from '../components/KioskSafeScroll';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
-import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { mapFarmWarehouseSetupError, warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { theme } from '../shared/theme';
 
 function normalizeScan(value) {
@@ -57,11 +57,15 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       setSessionId(String(res?.session_id || ''));
       setTransferRef(String(res?.transfer_ref || ''));
     } catch (e) {
-      setError(e?.message || 'فشل فتح جلسة النقل');
+      setError(mapFarmWarehouseSetupError(
+        e?.message || tUi('deliveryFarmSessionFailed', locale),
+        locale,
+        tUi,
+      ));
     } finally {
       setSessionOpening(false);
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,13 +78,19 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         if (cancelled) return;
         setProducts(Array.isArray(catalog?.products) ? catalog.products : []);
       } catch (e) {
-        if (!cancelled) setError(e?.message || 'فشل تحميل منتجات المزرعة');
+        if (!cancelled) {
+          setError(mapFarmWarehouseSetupError(
+            e?.message || tUi('deliveryFarmCatalogFailed', locale),
+            locale,
+            tUi,
+          ));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [openSession]);
+  }, [openSession, locale]);
 
   const filtered = useMemo(() => {
     const q = String(search || '').trim().toLowerCase();
@@ -101,13 +111,19 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
 
   const addToCart = useCallback(() => {
     if (!draftProduct) {
-      Alert.alert('اختر منتجاً', 'اختر من القائمة أو امسح الرمز.');
+      Alert.alert(
+        tUi('deliveryFarmAlertPickProduct', locale),
+        tUi('deliveryFarmAlertPickProductBody', locale),
+      );
       return;
     }
     const aid = String(draftProduct.assembly_id || draftProduct.id || '').trim();
     const qty = Math.max(1, Math.floor(Number(units) || 0));
     if (qty > maxUnits) {
-      Alert.alert('كمية غير كافية', `المتاح في المزرعة: ${maxUnits}`);
+      Alert.alert(
+        tUi('deliveryFarmAlertInsufficient', locale),
+        tUi('deliveryFarmAlertAvailable', locale).replace('{n}', String(maxUnits)),
+      );
       return;
     }
     setCart((prev) => {
@@ -115,7 +131,10 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
       if (existing) {
         const nextQty = existing.quantity + qty;
         if (nextQty > maxUnits) {
-          Alert.alert('كمية غير كافية', `يتجاوز المخزون في المزرعة (${maxUnits})`);
+          Alert.alert(
+            tUi('deliveryFarmAlertInsufficient', locale),
+            tUi('deliveryFarmAlertExceeds', locale).replace('{n}', String(maxUnits)),
+          );
           return prev;
         }
         return prev.map((row) => (
@@ -133,22 +152,28 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
     setUnits('1');
     setDraftId('');
     setSearch('');
-  }, [draftProduct, maxUnits, units]);
+  }, [draftProduct, locale, maxUnits, units]);
 
   const onScan = useCallback((value) => {
     const hit = matchProductByScan(productsRef.current, value);
     setScanOpen(false);
     if (!hit) {
-      Alert.alert('لا يوجد تطابق', 'لا يوجد منتج في المزرعة لهذا المسح.');
+      Alert.alert(
+        tUi('deliveryFarmAlertNoMatch', locale),
+        tUi('deliveryFarmAlertNoMatchBody', locale),
+      );
       return;
     }
     setDraftId(String(hit.assembly_id || hit.id || ''));
     setSearch(String(hit.family_sku || hit.name || ''));
-  }, []);
+  }, [locale]);
 
   const goSignature = () => {
     if (!sessionId || !cart.length) {
-      Alert.alert('السلة فارغة', 'أضف منتجاً واحداً على الأقل.');
+      Alert.alert(
+        tUi('deliveryFarmAlertEmptyCart', locale),
+        tUi('deliveryFarmAlertEmptyCartBody', locale),
+      );
       return;
     }
     const shareGroups = cart.map((line) => ({
@@ -176,38 +201,44 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
     <>
       <KioskSafeScroll contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
         <ProductionKioskTopBar
-          title="الإرسال إلى المستودع"
+          title={tUi('deliveryFarmToWarehouseTitle', locale)}
           locale={locale}
           onToggleLocale={toggleLocale}
         />
         {error ? <Text style={[kiosk.noticeErr, { textAlign }]}>{error}</Text> : null}
         <View style={kiosk.card}>
           {sessionOpening ? (
-            <Text style={[kiosk.metaLine, { textAlign }]}>جاري فتح النقل…</Text>
+            <Text style={[kiosk.metaLine, { textAlign }]}>{tUi('deliveryFarmOpeningSession', locale)}</Text>
           ) : (
             <Text style={[kiosk.heroNumber, { textAlign }]}>{transferRef || '—'}</Text>
           )}
           <Text style={[kiosk.metaLine, { textAlign }]}>
-            اختر منتجات المزرعة (كمية أكبر من صفر). تُنقل إلى مستودع الطابق 2 عند الإرسال.
+            {tUi('deliveryFarmReturnHint', locale)}
           </Text>
         </View>
 
         <View style={[kiosk.field, styles.searchRow]}>
           <TextInput
             style={[kiosk.input, { flex: 1, textAlign }]}
-            placeholder="بحث بالاسم أو SKU…"
+            placeholder={tUi('deliveryFarmSearchPlaceholder', locale)}
             placeholderTextColor={theme.textMuted}
             value={search}
             onChangeText={setSearch}
             autoCapitalize="none"
             autoCorrect={false}
           />
-          <Pressable style={kiosk.btnIcon} onPress={() => setScanOpen(true)} accessibilityLabel="Scan barcode">
+          <Pressable
+            style={kiosk.btnIcon}
+            onPress={() => setScanOpen(true)}
+            accessibilityLabel={tUi('deliveryFarmScanA11y', locale)}
+          >
             <MaterialCommunityIcons name="barcode-scan" size={26} color={theme.primary} />
           </Pressable>
         </View>
 
-        {loading ? <Text style={{ textAlign, color: theme.textMuted }}>جاري التحميل…</Text> : null}
+        {loading ? (
+          <Text style={{ textAlign, color: theme.textMuted }}>{tUi('loading', locale)}</Text>
+        ) : null}
         {!loading && filtered.map((p) => {
           const id = String(p.assembly_id || p.id);
           const selected = draftId === id;
@@ -221,7 +252,9 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={kiosk.listTitle}>{p.name || id}</Text>
                 {p.family_sku ? <Text style={kiosk.listMeta}>{p.family_sku}</Text> : null}
-                <Text style={kiosk.listMeta}>المزرعة: {qty}</Text>
+                <Text style={kiosk.listMeta}>
+                  {tUi('deliveryFarmOnHand', locale).replace('{n}', String(qty))}
+                </Text>
               </View>
             </Pressable>
           );
@@ -229,7 +262,7 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
 
         {draftProduct ? (
           <View style={kiosk.card}>
-            <Text style={[kiosk.label, { textAlign }]}>الكمية</Text>
+            <Text style={[kiosk.label, { textAlign }]}>{tUi('deliveryFarmQtyLabel', locale)}</Text>
             <TextInput
               style={[kiosk.input, { textAlign }]}
               keyboardType="number-pad"
@@ -237,24 +270,26 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
               onChangeText={setUnits}
             />
             <Text style={[kiosk.metaLine, { textAlign }]}>
-              الحد الأقصى {maxUnits} من المزرعة
+              {tUi('deliveryFarmQtyMax', locale).replace('{n}', String(maxUnits))}
             </Text>
             <Pressable style={kiosk.btnPrimaryBlock} onPress={addToCart}>
-              <Text style={kiosk.btnPrimaryBlockText}>إضافة إلى السلة</Text>
+              <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryFarmAddToCart', locale)}</Text>
             </Pressable>
           </View>
         ) : null}
 
         {cart.length > 0 ? (
           <View style={kiosk.card}>
-            <Text style={[kiosk.title, { textAlign }]}>السلة ({cartTotal})</Text>
+            <Text style={[kiosk.title, { textAlign }]}>
+              {tUi('deliveryFarmCartTitle', locale).replace('{n}', String(cartTotal))}
+            </Text>
             {cart.map((line) => (
               <View key={line.assembly_id} style={styles.cartRow}>
                 <Text style={{ flex: 1 }}>{line.name} × {line.quantity}</Text>
                 <Pressable
                   onPress={() => setCart((prev) => prev.filter((r) => r.assembly_id !== line.assembly_id))}
                 >
-                  <Text style={{ color: theme.danger }}>إزالة</Text>
+                  <Text style={{ color: theme.danger }}>{tUi('deliveryFarmRemove', locale)}</Text>
                 </Pressable>
               </View>
             ))}
@@ -269,7 +304,8 @@ export default function WarehouseFromFarmHomeScreen({ navigation }) {
         visible={scanOpen}
         onClose={() => setScanOpen(false)}
         onScanned={onScan}
-        title="مسح SKU (Code 128)"
+        locale={locale}
+        title={tUi('deliveryFarmScanTitle', locale)}
       />
     </>
   );

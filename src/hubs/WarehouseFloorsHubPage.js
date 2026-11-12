@@ -13,9 +13,9 @@ import WarehouseFloor2Page from '../WarehouseFloor2Page';
 import FarmWarehouse1Page from '../FarmWarehouse1Page';
 
 const FLOOR_OPTIONS = [
-  { value: '1', label: 'Floor 1 — Catalog' },
-  { value: '2', label: 'Floor 2 — WIP' },
-  { value: 'farm', label: 'Farm Warehouse 1' },
+  { value: '1', label: 'Floor 1' },
+  { value: '2', label: 'Floor 2' },
+  { value: 'farm', label: 'Farm' },
 ];
 
 export default function WarehouseFloorsHubPage() {

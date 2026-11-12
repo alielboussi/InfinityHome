@@ -44,7 +44,7 @@ import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLab
 import { tUi } from '../lib/productionKioskI18n';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
 import { fetchWarehouseCatalogCached, loadPersistedWarehouseCatalog } from '../shared/warehouseCatalogStore';
-import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { mapFarmWarehouseSetupError, warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { theme } from '../shared/theme';
 import { showKitweSendScopeHints } from 'delivery-app-ui-config';
 import {
@@ -183,7 +183,8 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
         Alert.alert(tUi('deliveryTitle', locale), tUi('deliverySessionRenewed', locale));
       }
     } catch (err) {
-      setError(err?.message || tUi('deliverySessionFailed', locale));
+      const raw = err?.message || tUi('deliverySessionFailed', locale);
+      setError(mapFarmWarehouseSetupError(raw, locale, tUi));
     } finally {
       setSessionOpening(false);
     }
@@ -732,7 +733,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
             <ProductionKioskTopBar
               title={
                 isFarmFlow
-                  ? (locale === 'ar' ? 'الإرسال إلى المزرعة' : 'Send to Farm')
+                  ? tUi('deliveryFarmTitle', locale)
                   : tUi('dashFloor1Deliveries', locale)
               }
               locale={locale}
@@ -871,7 +872,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
             </Pressable>
             <View style={kiosk.field}>
               <Text style={[kiosk.label, { textAlign }]}>
-                {draftUsesBoxUnits ? 'Boxes on truck' : tUi('deliverySetsLabel', locale)}
+                {draftUsesBoxUnits ? tUi('deliveryBoxesOnTruck', locale) : tUi('deliverySetsLabel', locale)}
               </Text>
               <TextInput
                 style={[kiosk.input, inputAlign]}

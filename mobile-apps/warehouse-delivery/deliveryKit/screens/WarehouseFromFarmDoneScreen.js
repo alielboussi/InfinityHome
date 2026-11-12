@@ -37,7 +37,10 @@ export default function WarehouseFromFarmDoneScreen({ route, navigation }) {
         await shareFarmTransferReceipt(whatsappText);
       } catch (e) {
         if (!cancelled) {
-          Alert.alert('مشاركة', e?.message || 'تعذرت المشاركة');
+          Alert.alert(
+            tUi('deliveryFarmShareAlertTitle', locale),
+            e?.message || tUi('deliveryFarmShareFailed', locale),
+          );
         }
       } finally {
         if (!cancelled) setSharing(false);
@@ -51,7 +54,10 @@ export default function WarehouseFromFarmDoneScreen({ route, navigation }) {
     try {
       await shareFarmTransferReceipt(whatsappText);
     } catch (e) {
-      Alert.alert('مشاركة', e?.message || 'تعذرت المشاركة');
+      Alert.alert(
+        tUi('deliveryFarmShareAlertTitle', locale),
+        e?.message || tUi('deliveryFarmShareFailed', locale),
+      );
     } finally {
       setSharing(false);
     }
@@ -60,16 +66,18 @@ export default function WarehouseFromFarmDoneScreen({ route, navigation }) {
   return (
     <KioskSafeScroll contentContainerStyle={styles.wrap}>
       <ProductionKioskTopBar
-        title="تم الإرسال إلى المستودع"
+        title={tUi('deliveryFarmReturnDoneTitle', locale)}
         locale={locale}
         onToggleLocale={toggleLocale}
       />
       <View style={styles.centerBlock}>
         <View style={kiosk.card}>
-          <Text style={[kiosk.title, { textAlign, fontSize: 22 }]}>تم النقل</Text>
+          <Text style={[kiosk.title, { textAlign, fontSize: 22 }]}>
+            {tUi('deliveryFarmReturnDoneHead', locale)}
+          </Text>
           <Text style={[styles.ref, { textAlign }]}>{transferRef}</Text>
           <Text style={[kiosk.metaLine, { textAlign }]}>
-            لا يوجد طباعة A4 — شارك الإيصال عبر واتساب أو أي تطبيق من قائمة المشاركة.
+            {tUi('deliveryFarmReturnDoneHint', locale)}
           </Text>
         </View>
         <Pressable
@@ -78,7 +86,7 @@ export default function WarehouseFromFarmDoneScreen({ route, navigation }) {
           disabled={sharing}
         >
           <Text style={kiosk.btnOutlinePrimaryText}>
-            {sharing ? '…' : 'مشاركة مرة أخرى (واتساب)'}
+            {sharing ? '…' : tUi('deliveryFarmShareAgain', locale)}
           </Text>
         </Pressable>
         <Pressable style={[kiosk.btnPrimaryBlock, styles.btn]} onPress={() => navigation.popToTop()}>

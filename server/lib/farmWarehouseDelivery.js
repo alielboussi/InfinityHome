@@ -6,15 +6,17 @@ import { allocateFarmDeliveryNumber } from './warehouseFarmDeliveryNumber.js';
 import { adjustAssemblyStock, getAssemblyStockQty } from './warehouseReturnStock.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { newUuid } from './uuid.js';
+import { ensureFarmWarehouseLocation } from './ensureFarmWarehouseLocation.js';
 
 export async function resolveFarmWarehouseIds(sb) {
   const { data: locRows, error } = await sb.from('locations').select('id, name');
   if (error) throw new Error(error.message || 'Failed to load locations');
   const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
-  const farmLoc = resolveFarmWarehouse1Location(locRows || []);
+  let farmLoc = resolveFarmWarehouse1Location(locRows || []);
   if (!floor2Loc?.id) throw new Error('Warehouse Floor 2 location is not configured.');
   if (!farmLoc?.id) {
-    throw new Error('Farm Warehouse 1 location is not configured. Run node scripts/ensureFarmWarehouseLocation.js');
+    const created = await ensureFarmWarehouseLocation(sb);
+    farmLoc = { id: created.id, name: created.name };
   }
   return { floor2Id: String(floor2Loc.id), farmId: String(farmLoc.id) };
 }

@@ -25,7 +25,7 @@ function buildAssemblyMapFromCatalog(catalog) {
 }
 
 export default function FarmWarehouse1Page({
-  pageTitle = 'Farm Warehouse 1',
+  pageTitle = 'Farm',
   pageSubtitle = 'Same SKUs and Floor 2 WIP photos as Floor 2 — independent farm on-hand quantities.',
   embedInHub = false,
 } = {}) {

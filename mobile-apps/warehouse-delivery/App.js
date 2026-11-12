@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ProductionAppAuthGate from './deliveryKit/components/ProductionAppAuthGate';
+import { ProductionKioskLocaleProvider } from './deliveryKit/hooks/useProductionKioskLocale';
 import MobileScreenGate from './shared/MobileScreenGate';
 import { useDeliveryAccessGrant } from './hooks/useDeliveryAccessGrant';
 import { useDeliveryPushNotifications } from './hooks/useDeliveryPushNotifications';
@@ -202,14 +203,16 @@ export default function App() {
   const navigationRef = useRef(null);
   return (
     <SafeAreaProvider>
-      <ProductionAppAuthGate
-        titleKey="dashDeliveryAppTitle"
-        signInMethods={__DEV__ ? 'both' : 'google'}
-      >
-        <NavigationContainer ref={navigationRef}>
-          <MainStack navigationRef={navigationRef} />
-        </NavigationContainer>
-      </ProductionAppAuthGate>
+      <ProductionKioskLocaleProvider>
+        <ProductionAppAuthGate
+          titleKey="dashDeliveryAppTitle"
+          signInMethods={__DEV__ ? 'both' : 'google'}
+        >
+          <NavigationContainer ref={navigationRef}>
+            <MainStack navigationRef={navigationRef} />
+          </NavigationContainer>
+        </ProductionAppAuthGate>
+      </ProductionKioskLocaleProvider>
     </SafeAreaProvider>
   );
 }

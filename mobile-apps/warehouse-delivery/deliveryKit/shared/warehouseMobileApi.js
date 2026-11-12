@@ -5,6 +5,17 @@ function resolveApiBase() {
 }
 
 /** API errors may be a string or { message, code } — avoid "[object Object]" in the UI. */
+/** Staff-friendly message when farm location is missing (legacy API text). */
+export function mapFarmWarehouseSetupError(message, locale, tUi) {
+  const msg = String(message || '').trim();
+  if (/farm warehouse 1 location is not configured/i.test(msg)) {
+    return typeof tUi === 'function'
+      ? tUi('deliveryFarmLocationMissing', locale)
+      : 'Farm warehouse is not set up yet. Contact an administrator.';
+  }
+  return msg;
+}
+
 export function formatWarehouseMobileApiError(value, fallback = 'Request failed') {
   if (value == null || value === '') return fallback;
   if (typeof value === 'string') {
