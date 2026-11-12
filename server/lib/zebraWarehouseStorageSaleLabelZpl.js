@@ -37,9 +37,11 @@ const FIELD_LABELS = {
 
 /** Values/QR sit right of this — keeps left headers from overlapping centered values. */
 const STORAGE_VALUE_COL_LEFT_MM = 29;
-const STORAGE_LABEL_QR_SIZE_MM = 6;
-const STORAGE_LABEL_QR_SIZE_COMPACT_MM = 5;
-const STORAGE_QR_AFTER_GAP_MM = 1.2;
+const STORAGE_LABEL_QR_SIZE_MM = 6.3;
+const STORAGE_LABEL_QR_SIZE_COMPACT_MM = 5.25;
+const STORAGE_ROW_GAP_MM = 2;
+const STORAGE_QR_BEFORE_GAP_MM = 2;
+const STORAGE_QR_AFTER_GAP_MM = 2;
 /** Inset values/QR from the inner right border (0 = inner right edge). */
 const STORAGE_VALUE_RIGHT_INSET_MM = 0;
 
@@ -87,33 +89,35 @@ export function computeStorageSaleLabelLayoutMm({
   const valueBoxLeftMm = STORAGE_VALUE_COL_LEFT_MM;
   const valueBoxWidthMm = valueRightMm - valueBoxLeftMm;
   const valueCenterXMm = valueBoxLeftMm + valueBoxWidthMm / 2;
-  const rowStepMm = compact ? 3.35 : ROW_TEXT_MM;
-  const gapMm = compact ? 0.4 : BLOCK_GAP_MM;
+  const rowTextMm = compact ? 3.35 : ROW_TEXT_MM;
+  const rowGapMm = compact ? 1.5 : STORAGE_ROW_GAP_MM;
   const qrSizeMm = compact ? STORAGE_LABEL_QR_SIZE_COMPACT_MM : STORAGE_LABEL_QR_SIZE_MM;
   const nameBlockHeightMm = compact
-    ? rowStepMm * 1.5
+    ? rowTextMm * 1.5
     : NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES;
+  const qrBeforeGap = compact ? 1.5 : STORAGE_QR_BEFORE_GAP_MM;
+  const qrAfterGap = compact ? 1.5 : STORAGE_QR_AFTER_GAP_MM;
 
   const companyTextTopMm = marginMm + BORDER_TOP_INSET_MM;
   const barcodeTopMm = companyTextTopMm + COMPANY_TEXT_HEIGHT_MM + GAP_AFTER_COMPANY_MM;
   let y = barcodeTopMm + BARCODE_HEIGHT_MM + GAP_AFTER_BARCODE_MM;
 
   const skuRowMm = y;
-  y += rowStepMm + gapMm;
+  y += rowTextMm + rowGapMm;
   const nameBlockTopMm = y;
-  y = nameBlockTopMm + nameBlockHeightMm + gapMm;
+  y = nameBlockTopMm + nameBlockHeightMm + qrBeforeGap;
   const qrBlockYMm = y;
   const imageQrLeftMm = valueCenterXMm - qrSizeMm / 2;
-  y += qrSizeMm + STORAGE_QR_AFTER_GAP_MM;
+  y += qrSizeMm + qrAfterGap;
 
   const customerNameRowMm = y;
-  y += rowStepMm + gapMm;
+  y += rowTextMm + rowGapMm;
   const customerPhoneRowMm = y;
-  y += rowStepMm + gapMm;
+  y += rowTextMm + rowGapMm;
   const saleDateRowMm = y;
-  y += rowStepMm + gapMm;
+  y += rowTextMm + rowGapMm;
   const receiptRowMm = includeReceiptRow ? y : null;
-  if (includeReceiptRow) y += rowStepMm + gapMm;
+  if (includeReceiptRow) y += rowTextMm + rowGapMm;
   const setRowMm = includeSetRow ? y : null;
 
   return {
@@ -136,7 +140,8 @@ export function computeStorageSaleLabelLayoutMm({
     saleDateRowMm,
     receiptRowMm,
     setRowMm,
-    rowStepMm,
+    rowTextMm,
+    rowGapMm,
     compact,
   };
 }
