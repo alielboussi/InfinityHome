@@ -39,7 +39,7 @@ const { finalizeExpoConfig } = require('./shared/expoAndroidLightweight');
 /** @type {import('@expo/config').ExpoConfig} */
 module.exports = {
   expo: finalizeExpoConfig({
-    name: 'Factory',
+    name: 'Catalog',
     slug: 'warehouse-catalog',
     scheme: 'warehouse-catalog',
     platforms: ['ios', 'android'],
@@ -76,18 +76,18 @@ module.exports = {
       [
         'expo-camera',
         {
-          cameraPermission: 'Factory needs the camera for product catalog photos.',
+          cameraPermission: 'Catalog needs the camera for product catalog photos.',
         },
       ],
       [
         'expo-image-picker',
         {
-          photosPermission: 'Factory needs access to your photos to import catalog product images.',
+          photosPermission: 'Catalog needs access to your photos to import catalog product images.',
         },
       ],
       [
         'expo-local-authentication',
-        { faceIDPermission: 'Unlock Factory with Face ID.' },
+        { faceIDPermission: 'Unlock Catalog with Face ID.' },
       ],
       [
         '@react-native-google-signin/google-signin',

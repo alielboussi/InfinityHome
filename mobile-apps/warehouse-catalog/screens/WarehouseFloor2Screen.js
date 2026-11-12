@@ -21,7 +21,6 @@ import {
   isCatalogLocationPhotoUploadAllowed,
   isCatalogLocationStockIncreaseAllowed,
   isWarehouseFloor2CreateProductAllowed,
-  isWarehouseFloor2CreateSetAllowed,
 } from '../shared/mobileAccessManifest';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
@@ -76,7 +75,8 @@ function floor2Qty(item) {
 }
 
 function productCardImageUrl(item) {
-  return resolveProductImageUrl(item?.image_url) || '';
+  const wip = String(item?.floor2_image_url || '').trim();
+  return resolveProductImageUrl(wip) || '';
 }
 
 /** One Floor 2 card per product (no family merge or shared cover). */
@@ -104,7 +104,6 @@ export default function WarehouseFloor2Screen() {
   const canIncreaseStock = isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', userEmail);
   const canUploadPhoto = isCatalogLocationPhotoUploadAllowed(grant, 'warehouse_floor_2', userEmail);
   const canCreateFloor2Prod = isWarehouseFloor2CreateProductAllowed(grant, userEmail);
-  const canCreateFloor2Set = isWarehouseFloor2CreateSetAllowed(grant, userEmail);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,17 +117,11 @@ export default function WarehouseFloor2Screen() {
   const [inlayGroupKey, setInlayGroupKey] = useState('');
   const [qtyDraftById, setQtyDraftById] = useState({});
 
-  // Create Product / Create Set modal state ('prod' | 'set' | '')
-  const [createMode, setCreateMode] = useState('');
+  const [createProductOpen, setCreateProductOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
   const [prodNameInput, setProdNameInput] = useState('');
   const [prodQtyInput, setProdQtyInput] = useState('');
   const [prodPhotoUri, setProdPhotoUri] = useState('');
-
-  const [setBaseNameInput, setSetBaseNameInput] = useState('');
-  const [setCompSearch, setSetCompSearch] = useState('');
-  const [setSelectedProducts, setSetSelectedProducts] = useState([]);
-  const [setPhotoUri, setSetPhotoUri] = useState('');
 
   const loadProducts = useCallback(async ({ fromPull = false } = {}) => {
     const hasCached = productsRef.current.length > 0;
@@ -282,73 +275,17 @@ export default function WarehouseFloor2Screen() {
     }
   };
 
-  const openCreateModal = (mode) => {
+  const openCreateProduct = () => {
     if (createBusy) return;
-    if (mode === 'prod') {
-      setProdNameInput('');
-      setProdQtyInput('');
-      setProdPhotoUri('');
-    } else if (mode === 'set') {
-      setSetBaseNameInput('');
-      setSetCompSearch('');
-      setSetSelectedProducts([]);
-      setSetPhotoUri('');
-    }
-    setCreateMode(mode);
+    setProdNameInput('');
+    setProdQtyInput('');
+    setProdPhotoUri('');
+    setCreateProductOpen(true);
   };
 
-  const closeCreateModal = () => {
+  const closeCreateProduct = () => {
     if (createBusy) return;
-    setCreateMode('');
-  };
-
-  const selectedSetProductIdSet = useMemo(
-    () => new Set(setSelectedProducts.map((p) => String(p.assembly_id))),
-    [setSelectedProducts],
-  );
-
-  const searchableSetProducts = useMemo(() => {
-    const q = String(setCompSearch || '').trim().toLowerCase();
-    const list = (products || []).filter((item) => {
-      const aid = String(item.assembly_id || item.id || '');
-      if (!aid || selectedSetProductIdSet.has(aid)) return false;
-      if (!q) return true;
-      const name = String(item.raw_name || item.name || '').toLowerCase();
-      const sku = String(item.family_sku || '').toLowerCase();
-      return name.includes(q) || sku.includes(q);
-    });
-    return list.slice(0, 40);
-  }, [products, setCompSearch, selectedSetProductIdSet]);
-
-  const handleAddProductToSetDraft = (item) => {
-    const aid = String(item.assembly_id || item.id || '').trim();
-    if (!aid) return;
-    setSetSelectedProducts((prev) => {
-      if (prev.some((p) => String(p.assembly_id) === aid)) return prev;
-      return [
-        ...prev,
-        {
-          assembly_id: aid,
-          name: String(item.raw_name || item.name || aid).trim(),
-          family_sku: String(item.family_sku || '').trim(),
-          qtyDraft: String(floor2Qty(item) > 0 ? floor2Qty(item) : ''),
-        },
-      ];
-    });
-    setSetCompSearch('');
-  };
-
-  const handleRemoveProductFromSetDraft = (assemblyId) => {
-    const aid = String(assemblyId || '');
-    setSetSelectedProducts((prev) => prev.filter((p) => String(p.assembly_id) !== aid));
-  };
-
-  const handleSetDraftProductQtyChange = (assemblyId, text) => {
-    const aid = String(assemblyId || '');
-    const cleaned = String(text || '').replace(/[^0-9]/g, '');
-    setSetSelectedProducts((prev) =>
-      prev.map((p) => (String(p.assembly_id) === aid ? { ...p, qtyDraft: cleaned } : p)),
-    );
+    setCreateProductOpen(false);
   };
 
   const handleSubmitCreateProd = async () => {
@@ -369,50 +306,10 @@ export default function WarehouseFloor2Screen() {
         quantity: qty,
         image_base64: imageBase64 || undefined,
       });
-      setCreateMode('');
+      setCreateProductOpen(false);
       await loadProducts();
     } catch (e) {
       Alert.alert('Create product failed', e?.message || 'Could not create product on Floor 2.');
-    } finally {
-      setCreateBusy(false);
-    }
-  };
-
-  const handleSubmitCreateSet = async () => {
-    const baseName = String(setBaseNameInput || '').trim();
-    if (!baseName) {
-      Alert.alert('Set name required', 'Enter the set / family name (e.g. Aria, Monic).');
-      return;
-    }
-    if (!setSelectedProducts.length) {
-      Alert.alert('Select products', 'Search and add at least one created product for this set.');
-      return;
-    }
-    const components = setSelectedProducts.map((item) => {
-      const raw = String(item.qtyDraft ?? '').trim();
-      const quantity = raw === '' ? undefined : Math.max(0, Math.floor(Number(raw) || 0));
-      return {
-        assembly_id: item.assembly_id,
-        name: item.name,
-        quantity,
-      };
-    });
-
-    setCreateBusy(true);
-    try {
-      let imageBase64 = '';
-      if (setPhotoUri) {
-        imageBase64 = await prepareCatalogPhotoForUpload({ uri: setPhotoUri });
-      }
-      await warehouseMobileRequest('catalog-floor2-create-set', {
-        base_name: baseName,
-        components,
-        image_base64: imageBase64 || undefined,
-      });
-      setCreateMode('');
-      await loadProducts();
-    } catch (e) {
-      Alert.alert('Create set failed', e?.message || 'Could not create set on Floor 2.');
     } finally {
       setCreateBusy(false);
     }
@@ -451,44 +348,28 @@ export default function WarehouseFloor2Screen() {
   return (
     <View style={styles.root}>
       <View style={styles.topToolbar}>
-        {canCreateFloor2Prod || canCreateFloor2Set ? (
-          <View style={styles.createBtnRow}>
-            {canCreateFloor2Prod ? (
-              <Pressable
-                style={({ pressed }) => [styles.plusCreateBtn, pressed && styles.plusCreateBtnPressed]}
-                onPress={() => openCreateModal('prod')}
-                accessibilityRole="button"
-                accessibilityLabel="Create product on Floor 2"
-              >
-                <Text style={styles.plusCreateBtnText}>+ Prod</Text>
-              </Pressable>
-            ) : null}
-            {canCreateFloor2Set ? (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.plusCreateBtn,
-                  styles.plusCreateBtnSet,
-                  pressed && styles.plusCreateBtnPressed,
-                ]}
-                onPress={() => openCreateModal('set')}
-                accessibilityRole="button"
-                accessibilityLabel="Create set on Floor 2"
-              >
-                <Text style={styles.plusCreateBtnText}>+ Set</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search Floor 2 product or SKU…"
-          placeholderTextColor={theme.textMuted}
-          value={search}
-          onChangeText={setSearch}
-          autoCorrect={false}
-          autoCapitalize="none"
-          clearButtonMode="while-editing"
-        />
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search Floor 2 product or SKU…"
+            placeholderTextColor={theme.textMuted}
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+          {canCreateFloor2Prod ? (
+            <Pressable
+              style={({ pressed }) => [styles.plusFab, pressed && styles.plusCreateBtnPressed]}
+              onPress={openCreateProduct}
+              accessibilityRole="button"
+              accessibilityLabel="Create Floor 2 product"
+            >
+              <Text style={styles.plusFabText}>+</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {loading && products.length === 0 ? (
@@ -531,7 +412,7 @@ export default function WarehouseFloor2Screen() {
               {(inlayGroup?.items || []).map((item) => {
                 const id = String(item.assembly_id || item.id);
                 const qty = floor2Qty(item);
-                const rowImage = resolveProductImageUrl(item?.image_url);
+                const rowImage = productCardImageUrl(item);
                 const isPhotoBusy = photoBusyId === id;
                 const isStockBusy = busyId === id;
                 const draftVal = qtyDraftById[id] !== undefined ? String(qtyDraftById[id]) : '';
@@ -622,224 +503,73 @@ export default function WarehouseFloor2Screen() {
         </Pressable>
       </Modal>
 
-      {/* Create Product (+ Prod) / Create Set (+ Set) Modal */}
-      <Modal visible={Boolean(createMode)} transparent animationType="fade" onRequestClose={closeCreateModal}>
-        <Pressable style={styles.modalBackdrop} onPress={closeCreateModal}>
+      <Modal visible={createProductOpen} transparent animationType="fade" onRequestClose={closeCreateProduct}>
+        <Pressable style={styles.modalBackdrop} onPress={closeCreateProduct}>
           <Pressable style={styles.inlayCard} onPress={(e) => e.stopPropagation()}>
-            {createMode === 'prod' ? (
-              <ScrollView style={styles.inlayScroll} keyboardShouldPersistTaps="handled">
-                <Text style={styles.modalTitle}>Create Floor 2 Product (+ Prod)</Text>
-                <Text style={styles.modalSub}>
-                  Creates a standalone product on Floor 2. Its photo is used directly as the card cover image.
-                </Text>
+            <ScrollView style={styles.inlayScroll} keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalTitle}>New Floor 2 product</Text>
+              <Text style={styles.modalSub}>
+                Saves to Warehouse Floor 2. Opening qty blank = 0. WIP photo shows on this screen only (not Floor 1 catalog).
+              </Text>
 
-                <Text style={styles.fieldLabel}>Product Name</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="e.g. Dining Table, Buffet, Coffee Table…"
-                  placeholderTextColor={theme.textMuted}
-                  value={prodNameInput}
-                  onChangeText={setProdNameInput}
-                  editable={!createBusy}
-                />
+              <Text style={styles.fieldLabel}>Product Name</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="e.g. Dining Table, Buffet, Coffee Table…"
+                placeholderTextColor={theme.textMuted}
+                value={prodNameInput}
+                onChangeText={setProdNameInput}
+                editable={!createBusy}
+              />
 
-                <Text style={styles.fieldLabel}>Opening Qty (optional)</Text>
-                <TextInput
-                  style={styles.formInput}
-                  keyboardType="number-pad"
-                  placeholder=""
-                  placeholderTextColor={theme.textMuted}
-                  value={prodQtyInput}
-                  onChangeText={(txt) => setProdQtyInput(txt.replace(/[^0-9]/g, ''))}
-                  editable={!createBusy}
-                />
+              <Text style={styles.fieldLabel}>Opening qty</Text>
+              <TextInput
+                style={styles.formInput}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={theme.textMuted}
+                value={prodQtyInput}
+                onChangeText={(txt) => setProdQtyInput(txt.replace(/[^0-9]/g, ''))}
+                editable={!createBusy}
+              />
 
-                {canUploadPhoto ? (
-                  <View style={styles.photoPickerRow}>
-                    <Pressable
-                      style={styles.photoPickBtn}
-                      disabled={createBusy}
-                      onPress={() => pickLocalPhotoUri(setProdPhotoUri)}
-                    >
-                      <MaterialCommunityIcons name="image-plus-outline" size={20} color={theme.primary} />
-                      <Text style={styles.photoPickBtnText}>
-                        {prodPhotoUri ? 'Change Product Photo' : 'Import Product Photo'}
-                      </Text>
-                    </Pressable>
-                    {prodPhotoUri ? (
-                      <Image source={{ uri: prodPhotoUri }} style={styles.photoPreviewThumb} />
-                    ) : null}
-                  </View>
-                ) : null}
-
-                <View style={styles.modalFooterBtns}>
+              {canUploadPhoto ? (
+                <View style={styles.photoPickerRow}>
                   <Pressable
-                    style={[styles.closeBtn, { flex: 1, marginTop: 0 }]}
+                    style={styles.photoPickBtn}
                     disabled={createBusy}
-                    onPress={closeCreateModal}
+                    onPress={() => pickLocalPhotoUri(setProdPhotoUri)}
                   >
-                    <Text style={styles.closeBtnText}>Cancel</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.primarySaveBtn, { flex: 1 }, createBusy && styles.btnDisabled]}
-                    disabled={createBusy}
-                    onPress={handleSubmitCreateProd}
-                  >
-                    <Text style={styles.primarySaveBtnText}>
-                      {createBusy ? 'Saving…' : 'Create Product'}
+                    <MaterialCommunityIcons name="image-plus-outline" size={20} color={theme.primary} />
+                    <Text style={styles.photoPickBtnText}>
+                      {prodPhotoUri ? 'Change WIP photo' : 'Import WIP photo'}
                     </Text>
                   </Pressable>
+                  {prodPhotoUri ? (
+                    <Image source={{ uri: prodPhotoUri }} style={styles.photoPreviewThumb} />
+                  ) : null}
                 </View>
-              </ScrollView>
-            ) : createMode === 'set' ? (
-              <ScrollView style={styles.inlayScroll} keyboardShouldPersistTaps="handled">
-                <Text style={styles.modalTitle}>Create Floor 2 Set (+ Set)</Text>
-                <Text style={styles.modalSub}>
-                  Search and pick created products to group into a set on Floor 2. If a 3 Seater has a photo, it is used as the cover image first.
-                </Text>
+              ) : null}
 
-                <Text style={styles.fieldLabel}>Set / Family Name</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="e.g. Aria, Monic, Berlin…"
-                  placeholderTextColor={theme.textMuted}
-                  value={setBaseNameInput}
-                  onChangeText={setSetBaseNameInput}
-                  editable={!createBusy}
-                />
-
-                {canUploadPhoto ? (
-                  <View style={styles.photoPickerRow}>
-                    <Pressable
-                      style={styles.photoPickBtn}
-                      disabled={createBusy}
-                      onPress={() => pickLocalPhotoUri(setSetPhotoUri)}
-                    >
-                      <MaterialCommunityIcons name="image-plus-outline" size={20} color={theme.primary} />
-                      <Text style={styles.photoPickBtnText}>
-                        {setPhotoUri ? 'Change 3 Seater / Family Photo' : 'Import 3 Seater / Family Photo'}
-                      </Text>
-                    </Pressable>
-                    {setPhotoUri ? (
-                      <Image source={{ uri: setPhotoUri }} style={styles.photoPreviewThumb} />
-                    ) : null}
-                  </View>
-                ) : null}
-
-                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Search Created Products</Text>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="Search created product name or SKU…"
-                  placeholderTextColor={theme.textMuted}
-                  value={setCompSearch}
-                  onChangeText={setSetCompSearch}
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  editable={!createBusy}
-                />
-
-                {setCompSearch.trim() ? (
-                  <View style={[styles.presetList, { marginTop: 6, marginBottom: 8 }]}>
-                    {searchableSetProducts.length === 0 ? (
-                      <Text style={{ color: theme.textMuted, fontSize: 13, paddingVertical: 6 }}>
-                        No matching created products found.
-                      </Text>
-                    ) : (
-                      searchableSetProducts.slice(0, 12).map((item) => {
-                        const aid = String(item.assembly_id || item.id);
-                        return (
-                          <Pressable
-                            key={aid}
-                            style={styles.presetRow}
-                            disabled={createBusy}
-                            onPress={() => handleAddProductToSetDraft(item)}
-                          >
-                            <View style={styles.presetCheckArea}>
-                              <MaterialCommunityIcons
-                                name="plus-circle-outline"
-                                size={22}
-                                color={theme.primary}
-                              />
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.presetRowLabel} numberOfLines={1}>
-                                  {item.raw_name || item.name}
-                                </Text>
-                                {item.family_sku ? (
-                                  <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                                    {item.family_sku} · On hand: {floor2Qty(item)}
-                                  </Text>
-                                ) : null}
-                              </View>
-                            </View>
-                            <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 13 }}>Add</Text>
-                          </Pressable>
-                        );
-                      })
-                    )}
-                  </View>
-                ) : null}
-
-                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>
-                  Selected Products ({setSelectedProducts.length}) &amp; Qty
-                </Text>
-                {setSelectedProducts.length === 0 ? (
-                  <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 8 }}>
-                    Use the search box above to find and add created products to this set.
+              <View style={styles.modalFooterBtns}>
+                <Pressable
+                  style={[styles.closeBtn, { flex: 1, marginTop: 0 }]}
+                  disabled={createBusy}
+                  onPress={closeCreateProduct}
+                >
+                  <Text style={styles.closeBtnText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.primarySaveBtn, { flex: 1 }, createBusy && styles.btnDisabled]}
+                  disabled={createBusy}
+                  onPress={handleSubmitCreateProd}
+                >
+                  <Text style={styles.primarySaveBtnText}>
+                    {createBusy ? 'Saving…' : 'Create'}
                   </Text>
-                ) : (
-                  <View style={styles.presetList}>
-                    {setSelectedProducts.map((comp) => (
-                      <View key={comp.assembly_id} style={[styles.presetRow, styles.presetRowSelected]}>
-                        <View style={styles.presetCheckArea}>
-                          <Pressable
-                            hitSlop={8}
-                            disabled={createBusy}
-                            onPress={() => handleRemoveProductFromSetDraft(comp.assembly_id)}
-                          >
-                            <MaterialCommunityIcons
-                              name="close-circle"
-                              size={22}
-                              color={theme.danger}
-                            />
-                          </Pressable>
-                          <Text style={styles.presetRowLabel} numberOfLines={1}>
-                            {comp.name}
-                          </Text>
-                        </View>
-                        <TextInput
-                          style={styles.presetQtyInput}
-                          keyboardType="number-pad"
-                          placeholder="Qty"
-                          placeholderTextColor={theme.textMuted}
-                          value={String(comp.qtyDraft ?? '')}
-                          onChangeText={(txt) => handleSetDraftProductQtyChange(comp.assembly_id, txt)}
-                          editable={!createBusy}
-                        />
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                <View style={styles.modalFooterBtns}>
-                  <Pressable
-                    style={[styles.closeBtn, { flex: 1, marginTop: 0 }]}
-                    disabled={createBusy}
-                    onPress={closeCreateModal}
-                  >
-                    <Text style={styles.closeBtnText}>Cancel</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.primarySaveBtn, { flex: 1 }, createBusy && styles.btnDisabled]}
-                    disabled={createBusy}
-                    onPress={handleSubmitCreateSet}
-                  >
-                    <Text style={styles.primarySaveBtnText}>
-                      {createBusy ? 'Saving…' : 'Create Set'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </ScrollView>
-            ) : null}
+                </Pressable>
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -858,7 +588,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 10,
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   searchInput: {
+    flex: 1,
     backgroundColor: theme.surface,
     borderColor: theme.border,
     borderWidth: 1,
@@ -868,31 +604,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  createBtnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  plusCreateBtn: {
+  plusFab: {
+    width: 48,
+    height: 48,
+    borderRadius: theme.radiusSm,
     backgroundColor: theme.primary,
-    borderRadius: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    minWidth: 92,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  plusCreateBtnSet: {
-    backgroundColor: '#7c3aed',
+  plusFabText: {
+    color: '#0f172a',
+    fontSize: 28,
+    fontWeight: '300',
+    lineHeight: 30,
   },
   plusCreateBtnPressed: {
     opacity: 0.85,
-  },
-  plusCreateBtnText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
   },
   errorText: {
     color: theme.danger,

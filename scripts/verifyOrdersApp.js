@@ -40,4 +40,10 @@ for (const key of tileOrder) {
 
 assert(fs.existsSync(path.join(root, 'mobile-apps/orders/app.config.js')));
 assert(fs.existsSync(path.join(root, 'mobile-apps/orders/eas.json')));
+const ordersConfig = fs.readFileSync(path.join(root, 'mobile-apps/orders/app.config.js'), 'utf8');
+assert(ordersConfig.includes("expoProjectFullName: '@alielboussi/infinity-orders'"), 'Orders must set Expo Go OAuth project name');
+assert(ordersConfig.includes('googleServicesFile'), 'Orders must wire google-services.json for native Google Sign-In');
+assert(fs.existsSync(path.join(root, 'scripts/setupOrdersGoogleSignIn.mjs')), 'Orders Google setup script must exist');
+const gs = fs.readFileSync(path.join(root, 'mobile-apps/orders/google-services.json'), 'utf8');
+assert(gs.includes('online.infinityhome.orders'), 'orders google-services.json must include Orders package');
 console.log('verifyOrdersApp: ok');

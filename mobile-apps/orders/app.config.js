@@ -2,18 +2,19 @@ const fs = require('fs');
 const path = require('path');
 
 const ORDERS_PACKAGE = 'online.infinityhome.orders';
+const googleServicesPath = path.join(__dirname, 'google-services.json');
 
 function readFromGoogleServices() {
   try {
-    const filePath = path.join(__dirname, 'google-services.json');
-    if (!fs.existsSync(filePath)) return {};
-    const json = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    if (!fs.existsSync(googleServicesPath)) return {};
+    const json = JSON.parse(fs.readFileSync(googleServicesPath, 'utf8'));
     const client = (json.client || []).find(
       (row) => row?.client_info?.android_client_info?.package_name === ORDERS_PACKAGE,
-    ) || (json.client || [])[0];
-    const androidOAuth = (client?.oauth_client || []).find((row) => Number(row.client_type) === 1);
+    );
+    if (!client) return {};
+    const androidOAuth = (client.oauth_client || []).find((row) => Number(row.client_type) === 1);
     return {
-      appId: client?.client_info?.mobilesdk_app_id || null,
+      appId: client.client_info?.mobilesdk_app_id || null,
       androidClientId: androidOAuth?.client_id || null,
     };
   } catch {
@@ -31,7 +32,7 @@ const firebase = {
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '876299148810',
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID
     || fromGoogle.appId
-    || '1:876299148810:android:c709c380f8fdcf669049f3',
+    || '1:876299148810:android:e21bd29123855a219049f3',
 };
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
@@ -61,6 +62,7 @@ module.exports = {
       package: ORDERS_PACKAGE,
       softwareKeyboardLayoutMode: 'resize',
       permissions: ['INTERNET', 'ACCESS_NETWORK_STATE'],
+      ...(fs.existsSync(googleServicesPath) ? { googleServicesFile: './google-services.json' } : {}),
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#0d47a1',

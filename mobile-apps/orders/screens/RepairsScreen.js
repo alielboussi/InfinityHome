@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -62,11 +62,13 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
   const [receiptDetail, setReceiptDetail] = useState(null);
   const [receiptLineState, setReceiptLineState] = useState({});
   const customerReturnMode = Boolean(String(customerId || '').trim());
+  const warmedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!allowed) return;
-    setLoading(true);
-    setError('');
+    const quiet = silent || warmedRef.current;
+    if (!quiet) setLoading(true);
+    if (!quiet) setError('');
     try {
       const [prod, cust, repairs, pos] = await Promise.all([
         fetchOrdersReturnProducts(),
@@ -78,14 +80,15 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
       setCustomers(cust.customers || []);
       setRecent(Array.isArray(repairs.repairs) ? repairs.repairs.slice(0, 20) : []);
       setSales(pos.sales || pos.pos_sales || []);
+      warmedRef.current = true;
     } catch (err) {
-      setError(err?.message || tUi('loadFailed', locale));
+      if (!quiet) setError(err?.message || tUi('loadFailed', locale));
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [allowed, locale]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => { void load({ silent: warmedRef.current }); }, [load]));
 
   useEffect(() => {
     const n = Math.max(1, Math.floor(Number(quantity) || 1));
@@ -282,7 +285,7 @@ export default function RepairsScreen({ navigation, allowed, accessHint, onRefre
       accessHint={accessHint}
       onRefreshAccess={onRefreshAccess}
     >
-      {loading ? <ActivityIndicator color={theme.primary} /> : (
+      {loading && !products.length && !customers.length ? <ActivityIndicator color={theme.primary} /> : (
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
           <Text style={kiosk.hint}>
             Customer return: customer → receipt # → tick products (reason required per unit). Kitwe: leave customer empty, pick a Kitwe product — reasons appear only then.

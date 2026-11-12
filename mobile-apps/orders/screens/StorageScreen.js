@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
-import StorageLabelPreviewModal from '../components/StorageLabelPreviewModal';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
@@ -20,7 +19,6 @@ import {
   fetchOrdersStoragePosDetail,
   fetchOrdersStoragePosSales,
   submitOrdersStorageSend,
-  testOrdersStorageLabel,
 } from '../services/ordersApi';
 
 function lineMaxSendQty(line) {
@@ -49,26 +47,26 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
   const [detail, setDetail] = useState(null);
   const [lineState, setLineState] = useState({});
   const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [labelPreview, setLabelPreview] = useState(null);
-  const [labelBusy, setLabelBusy] = useState(false);
-  const [labelPrintError, setLabelPrintError] = useState('');
-  const [labelPrinted, setLabelPrinted] = useState(false);
+  const salesWarmedRef = useRef(false);
 
   const loadSalesIndex = useCallback(async () => {
     if (!allowed) return;
-    setLoading(true);
+    const silent = salesWarmedRef.current;
+    if (!silent) setLoading(true);
     setError('');
     try {
       const pos = await fetchOrdersStoragePosSales();
       setSales(pos.sales || pos.pos_sales || []);
+      salesWarmedRef.current = true;
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
-      setSales([]);
+      if (!salesWarmedRef.current) setSales([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [allowed, locale]);
 
@@ -91,10 +89,15 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
     if (!saleId) {
       setDetail(null);
       setLineState({});
+      setDetailLoading(false);
       return;
     }
+    let cancelled = false;
+    setDetailLoading(true);
+    setError('');
     fetchOrdersStoragePosDetail(saleId)
       .then((res) => {
+        if (cancelled) return;
         setDetail(res);
         const next = {};
         (res.items || []).forEach((line) => {
@@ -106,7 +109,13 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
         });
         setLineState(next);
       })
-      .catch((err) => setError(err?.message || tUi('loadFailed', locale)));
+      .catch((err) => {
+        if (!cancelled) setError(err?.message || tUi('loadFailed', locale));
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [saleId, locale]);
 
   const selectedLines = (detail?.items || []).filter((line) => lineState[String(line.id)]?.selected);
@@ -136,12 +145,15 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
       );
       setNotice(
         numbers
-          ? `${numbers} → Floor 1. ${labelCount} Zebra label${labelCount === 1 ? '' : 's'} (Code 128, QR, receipt, customer).`
+          ? `${numbers} → Floor 1. ${labelCount} Zebra label${labelCount === 1 ? '' : 's'} printed.`
           : `Sent to Floor 1. ${labelCount} label(s) sent to Zebra.`,
       );
       setSaleId('');
       setReceiptQ('');
       setSaleDate('');
+      setDetail(null);
+      setLineState({});
+      void loadSalesIndex();
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
     } finally {
@@ -149,29 +161,7 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
     }
   };
 
-  const runLabelTest = async (printToZebra) => {
-    setLabelBusy(true);
-    setLabelPrintError('');
-    setLabelPrinted(false);
-    try {
-      const firstSelected = selectedLines[0];
-      const res = await testOrdersStorageLabel({
-        print: printToZebra,
-        sale_id: saleId || undefined,
-        sale_item_id: firstSelected ? String(firstSelected.id) : undefined,
-      });
-      setLabelPreview({
-        png: res.label_preview_png_base64,
-        meta: res.label,
-      });
-      if (res.print_error) setLabelPrintError(res.print_error);
-      if (printToZebra && res.print_result && !res.print_error) setLabelPrinted(true);
-    } catch (err) {
-      Alert.alert('Label test', err?.message || tUi('loadFailed', locale));
-    } finally {
-      setLabelBusy(false);
-    }
-  };
+  const showFullSpinner = loading && !sales.length;
 
   return (
     <OrdersScreenShell
@@ -183,11 +173,10 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
       accessHint={accessHint}
       onRefreshAccess={onRefreshAccess}
     >
-      {loading ? <ActivityIndicator color={theme.primary} /> : (
+      {showFullSpinner ? <ActivityIndicator color={theme.primary} /> : (
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
           <Text style={kiosk.hint}>
-            Kitwe receipt → select lines → Send to Floor 1 moves stock and prints 80×68 mm Zebra labels
-            (Code 128 SKU, product QR, receipt #, customer name and phone, sale date).
+            Kitwe receipt → select lines → Send to Floor 1 moves stock and prints Zebra labels automatically.
           </Text>
           {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
           {notice ? <Text style={[kiosk.hint, { color: '#047857' }]}>{notice}</Text> : null}
@@ -208,6 +197,8 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
                     onChangeText={setReceiptQ}
                     placeholder="Receipt #"
                     placeholderTextColor={theme.textDim}
+                    autoCorrect={false}
+                    autoCapitalize="characters"
                   />
                   <TextInput
                     style={[kiosk.input, { marginTop: 8 }]}
@@ -215,6 +206,7 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
                     onChangeText={setSaleDate}
                     placeholder="Date YYYY-MM-DD (optional)"
                     placeholderTextColor={theme.textDim}
+                    autoCorrect={false}
                   />
                   {!receiptQ.trim() && !saleDate.trim() ? (
                     <Text style={kiosk.hint}>Enter receipt # or date to search.</Text>
@@ -247,6 +239,9 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
                   </Text>
                 ) : null}
               </View>
+            ) : null}
+            {detailLoading ? (
+              <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
             ) : null}
             {(detail?.items || []).map((line) => {
               const st = lineState[String(line.id)] || {};
@@ -310,44 +305,14 @@ export default function StorageScreen({ navigation, allowed, accessHint, onRefre
             <Pressable style={kiosk.btnPrimaryBlock} disabled={busy || !selectedLines.length} onPress={submit}>
               <Text style={kiosk.btnPrimaryBlockText}>{busy ? tUi('saving', locale) : tUi('sendFloor1', locale)}</Text>
             </Pressable>
-            <View style={styles.testRow}>
-              <Pressable
-                style={[kiosk.btn, styles.testBtn]}
-                disabled={labelBusy}
-                onPress={() => void runLabelTest(false)}
-              >
-                <Text style={kiosk.btnText}>{labelBusy ? '…' : 'Preview sample label'}</Text>
-              </Pressable>
-              <Pressable
-                style={[kiosk.btn, styles.testBtn]}
-                disabled={labelBusy}
-                onPress={() => void runLabelTest(true)}
-              >
-                <Text style={kiosk.btnText}>{labelBusy ? '…' : 'Print test label'}</Text>
-              </Pressable>
-            </View>
           </View>
         </ScrollView>
       )}
-      <StorageLabelPreviewModal
-        visible={Boolean(labelPreview)}
-        onClose={() => {
-          setLabelPreview(null);
-          setLabelPrintError('');
-          setLabelPrinted(false);
-        }}
-        pngBase64={labelPreview?.png}
-        labelMeta={labelPreview?.meta}
-        printError={labelPrintError}
-        printed={labelPrinted}
-      />
     </OrdersScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  testRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  testBtn: { flex: 1, alignItems: 'center', paddingVertical: 12 },
   block: {
     borderWidth: 1,
     borderColor: theme.border,

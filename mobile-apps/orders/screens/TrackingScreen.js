@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -27,23 +27,28 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const warmedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!allowed) return;
-    setLoading(true);
-    setError('');
+    const quiet = silent || warmedRef.current;
+    if (!quiet) setLoading(true);
+    if (!quiet) setError('');
     try {
       const res = await fetchOrdersTracking();
       setRows(Array.isArray(res.repairs) ? res.repairs : []);
+      warmedRef.current = true;
     } catch (err) {
-      setError(err?.message || tUi('loadFailed', locale));
-      setRows([]);
+      if (!quiet) {
+        setError(err?.message || tUi('loadFailed', locale));
+        setRows([]);
+      }
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [allowed, locale]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => { void load({ silent: warmedRef.current }); }, [load]));
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -98,7 +103,7 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
         style={[kiosk.input, { marginBottom: 10 }]}
       />
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
-      {loading ? <ActivityIndicator color={theme.primary} /> : (
+      {loading && !rows.length ? <ActivityIndicator color={theme.primary} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
           {REPAIR_DEPARTMENTS.map((dept) => {
             const sectionRows = byDepartment[dept.id] || [];

@@ -40,6 +40,7 @@ The web portal uses Firebase popup auth; Expo Go uses browser OAuth + the **Web 
 |-----|-----------------------------------------------|
 | Carpentry | `https://auth.expo.io/@alielboussi/infinity-carpentry-workshop` |
 | Painting | `https://auth.expo.io/@alielboussi/infinity-painting-workshop` |
+| Orders | `https://auth.expo.io/@alielboussi/infinity-orders` (see `docs/firebase-orders-android.md`) |
 
 Also add **Authorized JavaScript origin** `https://auth.expo.io` on the Web client if the console shows that section.
 

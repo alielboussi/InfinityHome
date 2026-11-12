@@ -620,8 +620,6 @@ async function opCatalogFloor2List(user, { carpentryWorkshop = false, production
   }
   const sb = getService();
   const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
-  const { parseCarpentryMeta } = await import('../../src/utils/carpentryCatalogView.js');
-  const { findUpholsteryFinishedForRawAssembly } = await import('../../src/utils/upholsteryCatalogView.js');
   const { readWarehouseFloor2WipImageUrl } = await import('../../src/utils/warehouseFloor2WipImage.js');
 
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
@@ -640,40 +638,30 @@ async function opCatalogFloor2List(user, { carpentryWorkshop = false, production
     .select('assembly_id, quantity')
     .eq('location_id', floor2Id);
   if (invErr) throw new Error(invErr.message || 'Failed to load Floor 2 stock');
-  const qtyByAssembly = new Map();
-  (invRows || []).forEach((r) => {
-    qtyByAssembly.set(String(r.assembly_id), Math.max(0, Math.floor(Number(r.quantity) || 0)));
-  });
-
   const allRows = assemblies || [];
-  const products = [];
-  for (const row of allRows) {
-    if (!row?.id || row.item_kind === 'set') continue;
-    if (row?.metadata?.storeroom?.is_storeroom_material === true) continue;
-    const aid = String(row.id);
-    const qty = qtyByAssembly.get(aid) || 0;
-    const inCarpentry = parseCarpentryMeta(row).selected;
-    const linkedUpholstery = Boolean(findUpholsteryFinishedForRawAssembly(allRows, aid));
-    const catalogImage = String(row.image_url || '').trim();
-    const hasFloor2WipPhoto = Boolean(readWarehouseFloor2WipImageUrl(row) || catalogImage);
-    if (qty <= 0 && !inCarpentry && !linkedUpholstery && !hasFloor2WipPhoto) continue;
-    const wipImage = readWarehouseFloor2WipImageUrl(row) || catalogImage;
-    const floor2SetName = String(row?.metadata?.floor2_set_name || '').trim();
-    products.push({
+  const { buildCarpentryFinishingCandidates } = await import('../../src/utils/carpentryFinishingView.js');
+  const floor2Inv = (invRows || []).map((row) => ({ ...row, location_id: floor2Id }));
+  const candidates = buildCarpentryFinishingCandidates(allRows, floor2Inv, floor2Id);
+  const asmById = new Map(allRows.map((row) => [String(row.id), row]));
+  const products = candidates.map((row) => {
+    const aid = String(row.assembly_id || row.id);
+    const asm = asmById.get(aid);
+    const wipImage = readWarehouseFloor2WipImageUrl(asm || row);
+    const floor2SetName = String(asm?.metadata?.floor2_set_name || '').trim();
+    return {
       id: aid,
       assembly_id: aid,
       raw_assembly_id: aid,
       name: String(row.name || aid).trim(),
       raw_name: String(row.name || aid).trim(),
       family_sku: String(row.family_sku || '').trim(),
-      quantity: qty,
-      floor2_qty: qty,
+      quantity: row.floor2_qty,
+      floor2_qty: row.floor2_qty,
       image_url: wipImage,
       floor2_image_url: wipImage,
       floor2_set_name: floor2SetName || undefined,
-    });
-  }
-  products.sort((a, b) => a.name.localeCompare(b.name));
+    };
+  });
   return { products, floor2_location_id: floor2Id };
 }
 

@@ -76,25 +76,30 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
   const [openId, setOpenId] = useState('');
   const [acceptBusyId, setAcceptBusyId] = useState('');
   const revertRef = useRef({});
+  const warmedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!allowed) return;
-    setLoading(true);
-    setError('');
+    const quiet = silent || warmedRef.current;
+    if (!quiet) setLoading(true);
+    if (!quiet) setError('');
     try {
       const res = await fetchOrdersDeliveries();
       setSessions(res.sessions || []);
       setEntriesBySession(res.entriesBySession || {});
+      warmedRef.current = true;
     } catch (err) {
-      setError(err?.message || tUi('loadFailed', locale));
-      setSessions([]);
-      setEntriesBySession({});
+      if (!quiet) {
+        setError(err?.message || tUi('loadFailed', locale));
+        setSessions([]);
+        setEntriesBySession({});
+      }
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [allowed, locale]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => { void load({ silent: warmedRef.current }); }, [load]));
 
   const displaySessions = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -151,9 +156,9 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
     optimisticAccept(sessionId);
     try {
       await acceptOrdersDelivery(session.id);
-      await load();
+      await load({ silent: true });
     } catch (err) {
-      await load();
+      await load({ silent: true });
       Alert.alert('Accept failed', err?.message || '');
     } finally {
       setAcceptBusyId('');
@@ -276,7 +281,7 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
         style={[kiosk.input, { marginBottom: 10 }]}
       />
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
-      {loading ? <ActivityIndicator color={theme.primary} /> : (
+      {loading && !sessions.length ? <ActivityIndicator color={theme.primary} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
           {displaySessions.map((session) => {
             const entries = entriesBySession[String(session.id)] || [];
