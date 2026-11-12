@@ -413,6 +413,7 @@ export async function updateMobileAccessGrant({
   uid,
   mobileAccess,
   mobileDisplayName,
+  portalDisplayName,
   actorEmail,
 }) {
   const db = getFirestore();
@@ -448,7 +449,12 @@ export async function updateMobileAccessGrant({
     const trimmed = String(mobileDisplayName || '').trim();
     patch.mobile_display_name = trimmed || null;
   }
-  if (!patch.mobile_access && mobileDisplayName === undefined) {
+  if (portalDisplayName !== undefined) {
+    const trimmed = String(portalDisplayName || '').trim();
+    patch.display_name = trimmed || null;
+    patch.display_name_locked = Boolean(trimmed);
+  }
+  if (!patch.mobile_access && mobileDisplayName === undefined && portalDisplayName === undefined) {
     throw new Error('Nothing to update.');
   }
   await ref.set(patch, { merge: true });

@@ -10,6 +10,42 @@ import {
   updateMobileAccessGrant,
 } from '../lib/loginAccess.js';
 
+function parseLoginAccessBody(req) {
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = {};
+    }
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    body = {};
+  }
+  return body;
+}
+
+function resolveLoginAccessAction(req, body) {
+  return String(
+    req.query?.loginAccessAction
+    || req.query?.login_access_action
+    || body.login_access_action
+    || body.loginAccessAction
+    || body.action
+    || '',
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-');
+}
+
+function coerceBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true' || value === 1 || value === '1') return true;
+  if (value === 'false' || value === 0 || value === '0') return false;
+  return undefined;
+}
+
 async function requireAdmin(req) {
   const { requireBearerUser } = await import('../lib/verifyBearerUser.js');
   const actor = await requireBearerUser(req);
@@ -32,8 +68,8 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const actor = await requireAdmin(req);
-      const body = req.body && typeof req.body === 'object' ? req.body : {};
-      const action = String(body.action || '').trim().toLowerCase();
+      const body = parseLoginAccessBody(req);
+      const action = resolveLoginAccessAction(req, body);
 
       if (action === 'create-user') {
         const user = await createLoginAccessUser({
@@ -85,15 +121,18 @@ export default async function handler(req, res) {
         return;
       }
 
-      const loginEnabled = body.login_enabled ?? body.loginEnabled;
+      const loginEnabled = coerceBoolean(body.login_enabled ?? body.loginEnabled);
       const mobileAccess = body.mobile_access ?? body.mobileAccess;
       const mobileDisplayName = body.mobile_display_name ?? body.mobileDisplayName;
+      const portalDisplayName = body.display_name ?? body.displayName;
       const updatingMobile = mobileAccess && typeof mobileAccess === 'object';
-      const updatingDisplayName = mobileDisplayName !== undefined;
-      const updatingCatalog = updatingMobile || updatingDisplayName;
+      const updatingMobileDisplayName = mobileDisplayName !== undefined;
+      const updatingPortalDisplayName = portalDisplayName !== undefined;
+      const updatingCatalog = updatingMobile || updatingMobileDisplayName;
+
       let user = null;
 
-      if (typeof loginEnabled === 'boolean' && !updatingCatalog) {
+      if (typeof loginEnabled === 'boolean') {
         user = await setLoginAccessEnabled({
           uid,
           loginEnabled,
@@ -105,7 +144,14 @@ export default async function handler(req, res) {
         user = await updateMobileAccessGrant({
           uid,
           mobileAccess: updatingMobile ? mobileAccess : undefined,
-          mobileDisplayName: updatingDisplayName ? mobileDisplayName : undefined,
+          mobileDisplayName: updatingMobileDisplayName ? mobileDisplayName : undefined,
+          portalDisplayName: updatingPortalDisplayName ? portalDisplayName : undefined,
+          actorEmail: actor.email,
+        });
+      } else if (updatingPortalDisplayName) {
+        user = await setLoginAccessDisplayName({
+          uid,
+          displayName: portalDisplayName,
           actorEmail: actor.email,
         });
       }
@@ -119,7 +165,7 @@ export default async function handler(req, res) {
         ok: false,
         error: updatingCatalog
           ? 'Failed to save warehouse catalog access (deploy latest API).'
-          : 'login_enabled or mobile_access is required',
+          : 'login_enabled, mobile_access, or display_name is required',
       });
       return;
     }

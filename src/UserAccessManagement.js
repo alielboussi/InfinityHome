@@ -59,17 +59,23 @@ async function setUserLoginEnabled(uid, loginEnabled) {
   return payload.user;
 }
 
-async function setUserDisplayName(uid, displayName) {
+async function setUserDisplayName(uid, displayName, mobileAccess) {
   const payload = await postLoginAccess({
     uid,
     action: 'set-display-name',
+    login_access_action: 'set-display-name',
     display_name: displayName,
+    ...(mobileAccess && typeof mobileAccess === 'object' ? { mobile_access: mobileAccess } : {}),
   });
   return payload.user;
 }
 
 async function deleteUserAccess(uid) {
-  return postLoginAccess({ uid, action: 'delete-access' });
+  return postLoginAccess({
+    uid,
+    action: 'delete-access',
+    login_access_action: 'delete-access',
+  });
 }
 
 export default function UserAccessManagement() {
@@ -141,7 +147,7 @@ export default function UserAccessManagement() {
     setNameSavingUid(row.id);
     setError('');
     try {
-      const updated = await setUserDisplayName(row.id, nextName);
+      const updated = await setUserDisplayName(row.id, nextName, row.mobile_access);
       setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, ...updated } : item)));
       setNameDrafts((prev) => {
         const next = { ...prev };
