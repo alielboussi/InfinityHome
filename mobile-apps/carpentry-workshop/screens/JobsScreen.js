@@ -142,12 +142,20 @@ function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   );
 }
 
+function resolveCarpentryJobImage(job) {
+  const raw = String(
+    job?.floor2_image_url || job?.product_image_url || job?.image_url || '',
+  ).trim();
+  return raw ? resolveProductImageUrl(raw) : '';
+}
+
 function JobCard({
   job, locale, textAlign, busy, timerLocked, onPause, onPlay, onFinish, onMaterials,
 }) {
   const isCompleted = job.status === 'completed';
   const isRunning = job.status === 'running';
-  const thumb = resolveProductImageUrl(job.floor2_image_url || job.product_image_url || '');
+  const thumb = resolveCarpentryJobImage(job);
+  const showJobPhoto = Boolean(thumb) && !isCompleted;
   const canPlay = job.status === 'ready' || job.status === 'paused';
 
   return (
@@ -157,7 +165,7 @@ function JobCard({
       textAlign={textAlign}
       style={[kiosk.card, styles.jobCard]}
     >
-      {thumb ? (
+      {showJobPhoto ? (
         <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="contain" />
       ) : null}
       <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.product_name || job.raw_name, '—')}</Text>

@@ -10,6 +10,18 @@ export function mergeJobInList(jobs, jobId, patch) {
     if (!patch.manual_material_lines && j.manual_material_lines) {
       next.manual_material_lines = j.manual_material_lines;
     }
+    if (!String(patch.floor2_image_url || '').trim() && String(j.floor2_image_url || '').trim()) {
+      next.floor2_image_url = j.floor2_image_url;
+    }
+    if (!String(patch.image_url || '').trim() && String(j.image_url || '').trim()) {
+      next.image_url = j.image_url;
+    }
+    if (!String(patch.product_image_url || '').trim() && String(j.product_image_url || '').trim()) {
+      next.product_image_url = j.product_image_url;
+    }
+    if (!String(patch.dimensions_display || '').trim() && String(j.dimensions_display || '').trim()) {
+      next.dimensions_display = j.dimensions_display;
+    }
     return next;
   });
 }

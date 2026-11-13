@@ -50,6 +50,43 @@ function computeElapsedMs(job, nowMs = Date.now()) {
   return ms;
 }
 
+async function enrichCarpentryJobsWithAssemblyPhotos(sb, jobs) {
+  const list = Array.isArray(jobs) ? jobs : [jobs];
+  const assemblyIds = [...new Set(
+    list.map((j) => String(j.assembly_id || '').trim()).filter(Boolean),
+  )];
+  if (!assemblyIds.length) return list;
+  const { data: assemblies } = await sb
+    .from(ASSEMBLIES)
+    .select('id, metadata, dim_length, dim_width, dim_height')
+    .in('id', assemblyIds);
+  const byId = new Map((assemblies || []).map((row) => [String(row.id), row]));
+  return list.map((job) => {
+    const asm = byId.get(String(job.assembly_id || ''));
+    const wip = readWarehouseFloor2WipImageUrl(asm);
+    const next = {
+      ...job,
+      floor2_image_url: wip || job.floor2_image_url || '',
+      image_url: wip || job.image_url || '',
+      product_image_url: wip || job.product_image_url || '',
+    };
+    if (asm) {
+      next.dim_length = asm.dim_length ?? job.dim_length ?? null;
+      next.dim_width = asm.dim_width ?? job.dim_width ?? null;
+      next.dim_height = asm.dim_height ?? job.dim_height ?? null;
+      const dims = formatAssemblyDimensions(asm);
+      if (dims) next.dimensions_display = dims;
+    }
+    return next;
+  });
+}
+
+async function serializeCarpentryJobForClient(sb, job) {
+  const base = serializeJob(job);
+  const [enriched] = await enrichCarpentryJobsWithAssemblyPhotos(sb, [base]);
+  return enriched;
+}
+
 function serializeJob(job) {
   if (!job) return null;
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
@@ -158,7 +195,7 @@ export async function startCarpentryProductionJob(sb, {
   if (insErr) throw new Error(insErr.message || 'Failed to create carpentry job');
   if (!inserted?.id) throw new Error('Failed to create carpentry job (no row returned)');
 
-  return { job: serializeJob(inserted) };
+  return { job: await serializeCarpentryJobForClient(sb, inserted) };
 }
 
 /** Carpentry app Manufacture — job only; BOM + Floor 2 WIP on finish (Floor 1 unchanged). */
@@ -204,7 +241,7 @@ export async function startCarpentryCatalogManufactureJob(sb, {
   if (!inserted?.id) throw new Error('Failed to create carpentry manufacture job (no row returned)');
 
   return {
-    job: serializeJob(inserted),
+    job: await serializeCarpentryJobForClient(sb, inserted),
     job_id: inserted.id,
     assembly_id: ctx.productId,
     product_qty: qty,
@@ -241,34 +278,14 @@ export async function listCarpentryProductionJobs(sb, { activeOnly = true, limit
     const base = serializeJob(row);
     jobs.push({ ...base, manual_material_lines: lines });
   }
-  const assemblyIds = [...new Set(jobs.map((j) => String(j.assembly_id || '').trim()).filter(Boolean))];
-  if (assemblyIds.length) {
-    const { data: assemblies } = await sb
-      .from(ASSEMBLIES)
-      .select('id, metadata, dim_length, dim_width, dim_height')
-      .in('id', assemblyIds);
-    const byId = new Map((assemblies || []).map((row) => [String(row.id), row]));
-    for (const job of jobs) {
-      const asm = byId.get(String(job.assembly_id || ''));
-      const wip = readWarehouseFloor2WipImageUrl(asm);
-      job.floor2_image_url = wip;
-      job.image_url = wip;
-      if (asm) {
-        job.dim_length = asm.dim_length ?? null;
-        job.dim_width = asm.dim_width ?? null;
-        job.dim_height = asm.dim_height ?? null;
-        const dims = formatAssemblyDimensions(asm);
-        if (dims) job.dimensions_display = dims;
-      }
-    }
-  }
-  return { jobs };
+  const withPhotos = await enrichCarpentryJobsWithAssemblyPhotos(sb, jobs);
+  return { jobs: withPhotos };
 }
 
 export async function pauseCarpentryProductionJob(sb, { jobId, userId }) {
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
-  if (job.status !== 'running') return { job: serializeJob(job) };
+  if (job.status !== 'running') return { job: await serializeCarpentryJobForClient(sb, job) };
   const now = Date.now();
   const accumulated = computeElapsedMs(job, now);
   const updated = await saveJobPatch(sb, job.id, {
@@ -277,13 +294,13 @@ export async function pauseCarpentryProductionJob(sb, { jobId, userId }) {
     timer_started_at: null,
     paused_at: new Date(now).toISOString(),
   });
-  return { job: serializeJob(updated) };
+  return { job: await serializeCarpentryJobForClient(sb, updated) };
 }
 
 export async function resumeCarpentryProductionJob(sb, { jobId, userId }) {
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
-  if (job.status === 'running') return { job: serializeJob(job) };
+  if (job.status === 'running') return { job: await serializeCarpentryJobForClient(sb, job) };
   if (job.status !== 'paused' && job.status !== 'ready') throw new Error('Job cannot be started');
   const nowIso = new Date().toISOString();
   const updated = await saveJobPatch(sb, job.id, {
@@ -291,7 +308,7 @@ export async function resumeCarpentryProductionJob(sb, { jobId, userId }) {
     timer_started_at: nowIso,
     paused_at: null,
   });
-  return { job: serializeJob(updated) };
+  return { job: await serializeCarpentryJobForClient(sb, updated) };
 }
 
 export async function finishCarpentryProductionJob(sb, {

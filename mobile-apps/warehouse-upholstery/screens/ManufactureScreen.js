@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -359,6 +360,12 @@ export default function ManufactureScreen({
         <Pressable style={styles.modalBackdrop} onPress={() => setQtyModal(null)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>{tUi('manufactureDeductTitle', locale)}</Text>
+            {(() => {
+              const modalImage = qtyModal?.item ? resolveManufactureProductImage(qtyModal.item) : '';
+              return modalImage ? (
+                <Image source={{ uri: modalImage }} style={styles.modalThumb} resizeMode="contain" />
+              ) : null;
+            })()}
             <Text style={styles.modalProductName}>
               {qtyModal?.item?.raw_name || qtyModal?.item?.name || qtyModal?.item?.finished_name || ''}
             </Text>
@@ -460,6 +467,15 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 6, color: theme.text },
+  modalThumb: {
+    width: '100%',
+    height: 140,
+    borderRadius: 10,
+    marginBottom: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
   modalProductName: { fontSize: 17, fontWeight: '700', marginBottom: 6, color: theme.primary },
   modalSub: { fontSize: 14, color: theme.textMuted, marginBottom: 10 },
   modalLabel: { fontSize: 14, fontWeight: '600', color: theme.textSecondary, marginBottom: 8 },

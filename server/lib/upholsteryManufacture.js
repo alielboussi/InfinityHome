@@ -356,19 +356,24 @@ export async function listUpholsteryManufactureCandidates(sb) {
     const rawWip = readWarehouseFloor2WipImageUrl(rawAsm);
     const finishedWip = readWarehouseFloor2WipImageUrl(finishedAsm);
     const familyWip = readWarehouseFloor2WipFamilyImageUrl(finishedAsm);
+    const floor2Image = rawWip || finishedWip || familyWip || '';
     products.push({
       id: rawId,
       raw_assembly_id: rawId,
       raw_name: rawAsm?.name || rawId,
       raw_sku: rawAsm?.family_sku || '',
       image_url: '',
-      floor2_image_url: rawWip || finishedWip || familyWip || '',
+      floor2_image_url: floor2Image,
+      finished_floor2_image_url: finishedWip || familyWip || '',
       finished_assembly_id: finishedAsm.id,
       finished_name: finishedAsm.name,
       finished_sku: finishedAsm.family_sku,
       floor2_qty: rawQty,
       carpentry_qty: rawQty,
       metadata: rawAsm?.metadata && typeof rawAsm.metadata === 'object' ? rawAsm.metadata : {},
+      finished_metadata: finishedAsm?.metadata && typeof finishedAsm.metadata === 'object'
+        ? finishedAsm.metadata
+        : {},
       ...pickAssemblyDimensionFields(finishedAsm, rawAsm),
       dimensions_display: formatAssemblyDimensions(
         pickAssemblyDimensionFields(finishedAsm, rawAsm),

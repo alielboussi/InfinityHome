@@ -46,6 +46,36 @@ function computeElapsedMs(job, nowMs = Date.now()) {
   return ms;
 }
 
+async function enrichPaintingJobsWithAssemblyPhotos(sb, jobs) {
+  const list = Array.isArray(jobs) ? jobs : [jobs];
+  const assemblyIds = [...new Set(
+    list.map((j) => String(j.assembly_id || '').trim()).filter(Boolean),
+  )];
+  if (!assemblyIds.length) return list;
+  const { data: assemblies } = await sb
+    .from(ASSEMBLIES)
+    .select('id, image_url, metadata')
+    .in('id', assemblyIds);
+  const byId = new Map((assemblies || []).map((row) => [String(row.id), row]));
+  return list.map((job) => {
+    const asm = byId.get(String(job.assembly_id || ''));
+    const wip = readWarehouseFloor2WipImageUrl(asm);
+    const fromFloor1 = String(job.inventory_source || '').toLowerCase() === 'floor1';
+    const photo = fromFloor1 ? String(asm?.image_url || '').trim() : wip;
+    return {
+      ...job,
+      floor2_image_url: fromFloor1 ? '' : (wip || job.floor2_image_url || ''),
+      image_url: photo || job.image_url || '',
+    };
+  });
+}
+
+async function serializePaintingJobForClient(sb, job) {
+  const base = serializeJob(job);
+  const [enriched] = await enrichPaintingJobsWithAssemblyPhotos(sb, [base]);
+  return enriched;
+}
+
 function serializeJob(job) {
   if (!job) return null;
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
@@ -177,7 +207,7 @@ export async function sendAssemblyToPaintingDepartment(sb, {
     console.warn('[sendAssemblyToPaintingDepartment] push notify failed:', pushErr?.message || pushErr);
   }
 
-  return { job: serializeJob(inserted) };
+  return { job: await serializePaintingJobForClient(sb, inserted) };
 }
 
 /**
@@ -279,7 +309,7 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
     console.warn('[sendCarpentryQuoteToPaintingDepartment] push notify failed:', pushErr?.message || pushErr);
   }
 
-  return { job: serializeJob(inserted) };
+  return { job: await serializePaintingJobForClient(sb, inserted) };
 }
 
 export async function listPaintingProductionJobs(sb, { activeOnly = false, limit = 200 } = {}) {
@@ -312,30 +342,15 @@ export async function listPaintingProductionJobs(sb, { activeOnly = false, limit
     const base = serializeJob(row);
     jobs.push({ ...base, manual_material_lines: lines });
   }
-  const assemblyIds = [...new Set(jobs.map((j) => String(j.assembly_id || '').trim()).filter(Boolean))];
-  if (assemblyIds.length) {
-    const { data: assemblies } = await sb
-      .from(ASSEMBLIES)
-      .select('id, image_url, metadata')
-      .in('id', assemblyIds);
-    const byId = new Map((assemblies || []).map((row) => [String(row.id), row]));
-    for (const job of jobs) {
-      const asm = byId.get(String(job.assembly_id || ''));
-      const wip = readWarehouseFloor2WipImageUrl(asm);
-      const fromFloor1 = String(job.inventory_source || '').toLowerCase() === 'floor1';
-      const photo = fromFloor1 ? String(asm?.image_url || '').trim() : wip;
-      job.floor2_image_url = fromFloor1 ? '' : wip;
-      job.image_url = photo;
-    }
-  }
-  return { jobs };
+  const withPhotos = await enrichPaintingJobsWithAssemblyPhotos(sb, jobs);
+  return { jobs: withPhotos };
 }
 
 export async function pausePaintingProductionJob(sb, { jobId, userId }) {
   void userId;
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
-  if (job.status !== 'running') return { job: serializeJob(job) };
+  if (job.status !== 'running') return { job: await serializePaintingJobForClient(sb, job) };
   const now = Date.now();
   const accumulated = computeElapsedMs(job, now);
   const updated = await saveJobPatch(sb, job.id, {
@@ -344,14 +359,14 @@ export async function pausePaintingProductionJob(sb, { jobId, userId }) {
     timer_started_at: null,
     paused_at: new Date(now).toISOString(),
   });
-  return { job: serializeJob(updated) };
+  return { job: await serializePaintingJobForClient(sb, updated) };
 }
 
 export async function resumePaintingProductionJob(sb, { jobId, userId }) {
   void userId;
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
-  if (job.status === 'running') return { job: serializeJob(job) };
+  if (job.status === 'running') return { job: await serializePaintingJobForClient(sb, job) };
   if (job.status !== 'paused' && job.status !== 'ready') throw new Error('Job cannot be started');
   const nowIso = new Date().toISOString();
   const updated = await saveJobPatch(sb, job.id, {
@@ -359,7 +374,7 @@ export async function resumePaintingProductionJob(sb, { jobId, userId }) {
     timer_started_at: nowIso,
     paused_at: null,
   });
-  return { job: serializeJob(updated) };
+  return { job: await serializePaintingJobForClient(sb, updated) };
 }
 
 /**

@@ -10,6 +10,12 @@ export function mergeJobInList(jobs, jobId, patch) {
     if (!patch.manual_material_lines && j.manual_material_lines) {
       next.manual_material_lines = j.manual_material_lines;
     }
+    if (!String(patch.floor2_image_url || '').trim() && String(j.floor2_image_url || '').trim()) {
+      next.floor2_image_url = j.floor2_image_url;
+    }
+    if (!String(patch.image_url || '').trim() && String(j.image_url || '').trim()) {
+      next.image_url = j.image_url;
+    }
     return next;
   });
 }

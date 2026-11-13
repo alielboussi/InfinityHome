@@ -45,6 +45,14 @@ import {
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
 
+function resolvePaintingJobImage(job) {
+  const invSource = String(job?.inventory_source || '').trim().toLowerCase();
+  const raw = invSource === 'floor1'
+    ? String(job?.image_url || '').trim()
+    : String(job?.floor2_image_url || job?.image_url || '').trim();
+  return raw ? resolveProductImageUrl(raw) : '';
+}
+
 function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, onFinish, onMaterials }) {
   const isRunning = job.status === 'running';
   const canPlay = job.status === 'ready' || job.status === 'paused';
@@ -56,9 +64,8 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
   if (fromQuote) {
     sourceKey = invSource === 'floor1' ? 'paintingQueueBadgeCarpentryOrderFinished' : 'paintingQueueBadgeCarpentryOrder';
   }
-  const thumb = resolveProductImageUrl(
-    invSource === 'floor1' ? job.image_url : (job.floor2_image_url || ''),
-  );
+  const thumb = resolvePaintingJobImage(job);
+  const showJobPhoto = Boolean(thumb) && !isCompleted;
 
   return (
     <ProductionPressableHint
@@ -67,7 +74,7 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
       textAlign={textAlign}
       style={[kiosk.card, styles.jobCard]}
     >
-      {thumb ? (
+      {showJobPhoto ? (
         <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="contain" />
       ) : null}
       <Text style={[styles.kindChip, { alignSelf: textAlign === 'right' ? 'flex-end' : 'flex-start' }]}>
@@ -378,15 +385,6 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
         locale={locale}
         onToggleLocale={toggleLocale}
       />
-      <View style={styles.toolbar}>
-        <Pressable
-          style={styles.toolbarBtn}
-          onPress={() => navigation.navigate('PushSettings')}
-        >
-          <MaterialCommunityIcons name="bell-cog-outline" size={22} color={KIOSK_ICON_BLUE_ON_DARK} />
-          <Text style={styles.toolbarBtnText}>{tUi('paintingOpenPushSettings', locale)}</Text>
-        </Pressable>
-      </View>
       {loading && listData.length === 0 ? (
         <ActivityIndicator color={KIOSK_ICON_BLUE_ON_DARK} style={{ marginVertical: 16 }} />
       ) : null}
@@ -481,20 +479,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   empty: { marginTop: 24 },
-  toolbar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 4,
-    marginBottom: 4,
-  },
-  toolbarBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
-  toolbarBtnText: { fontSize: 14, fontWeight: '600', color: theme.primary },
   kindChip: {
     fontSize: 11,
     fontWeight: '700',
