@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "materialize": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js",
+    "materialize": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js",
     "icons": "node scripts/ensurePaintingIcons.js",
-    "postinstall": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingIcons.js",
-    "prestart": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingIcons.js",
+    "postinstall": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js && node scripts/ensurePaintingIcons.js",
+    "prestart": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js && node scripts/ensurePaintingIcons.js",
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
     "android": "expo start --android",
-    "eas:build:android": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && eas build --platform android --profile preview --non-interactive"
+    "eas:build:android": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js && eas build --platform android --profile preview --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

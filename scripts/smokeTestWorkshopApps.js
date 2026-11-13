@@ -128,6 +128,10 @@ const apps = [
       if (!jobs.includes("'painting-job-finish'") && !read('mobile-apps/painting-workshop/services/paintingApi.js').includes("'painting-job-finish'")) {
         fail('painting must finish jobs via painting-job-finish');
       }
+      const prodApi = read('mobile-apps/painting-workshop/services/productionApi.js');
+      if (!prodApi.includes('fetchProductionStoreroomMaterials')) {
+        fail('painting services/productionApi.js must re-export storeroom materials');
+      }
     },
   },
   {

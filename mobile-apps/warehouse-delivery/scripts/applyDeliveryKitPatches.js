@@ -239,11 +239,37 @@ function patchDeliveryHubI18n(filePath) {
   fs.writeFileSync(filePath, s);
 }
 
+function patchDeliveryOrderQueue(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  let s = fs.readFileSync(filePath, 'utf8');
+  s = s.replace(
+    /import \{ printGroupsFromQuoteLines \} from '\.\.\/\.\.\/\.\.\/\.\.\/src\/utils\/warehouseDeliveryPrintGroups\.js';/,
+    "import { printGroupsFromQuoteLines } from '../lib/warehouseOrderPrintGroups.js';",
+  );
+  if (!s.includes('../lib/warehouseOrderPrintGroups.js')) {
+    s = s.replace(
+      /import \{ printGroupsFromQuoteLines \} from '[^']+';/,
+      "import { printGroupsFromQuoteLines } from '../lib/warehouseOrderPrintGroups.js';",
+    );
+  }
+  if (!s.includes('production_job_id: row.production_job_id')) {
+    s = s.replace(
+      /quote_number: row\.quote_number \|\| null,\n/,
+      `quote_number: row.quote_number || null,
+    production_job_id: row.production_job_id || null,
+`,
+    );
+  }
+  fs.writeFileSync(filePath, s);
+}
+
 function main() {
+  require('./ensureDeliveryQuotePrintUtils').main?.();
   copyDirMerge(overlaysRoot, kitRoot);
   patchProductionNameClashUi(path.join(kitRoot, 'lib', 'productionNameClashUi.js'));
   patchDeliveryHubI18n(path.join(kitRoot, 'lib', 'productionKioskI18n.js'));
   patchDeliveryWarehouseCatalog(path.join(kitRoot, 'lib', 'deliveryWarehouseCatalog.js'));
+  patchDeliveryOrderQueue(path.join(kitRoot, 'screens', 'DeliveryOrderQueueScreen.js'));
 
   patchSignatureScreen(
     path.join(kitRoot, 'screens', 'KitweSendSignatureScreen.js'),

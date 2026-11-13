@@ -157,6 +157,15 @@ try {
     'utf8',
   );
   assert(orderQueue.includes('delivery-production-queue-list'), 'Order queue must call delivery-production-queue-list');
+  assert(orderQueue.includes('production_job_id'), 'Order queue groups must pin production_job_id for virtual holds');
+  assert(
+    orderQueue.includes('../lib/warehouseOrderPrintGroups.js'),
+    'Order queue must use deliveryKit quote print groups (standalone)',
+  );
+  assert(
+    !orderQueue.includes('src/utils/warehouseDeliveryPrintGroups'),
+    'Order queue must not import monorepo src path',
+  );
   const sentList = fs.readFileSync(
     path.join(appRoot, 'deliveryKit', 'screens', 'KitweSentDeliveriesScreen.js'),
     'utf8',

@@ -8,7 +8,7 @@ import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
-import { printGroupsFromQuoteLines } from '../../../../src/utils/warehouseDeliveryPrintGroups.js';
+import { printGroupsFromQuoteLines } from '../lib/warehouseOrderPrintGroups.js';
 
 async function openStagedDelivery(navigation, row) {
   const session = await warehouseMobileRequest('delivery-session-open', {});
@@ -21,6 +21,7 @@ async function openStagedDelivery(navigation, row) {
     assembly_name: row.assembly_name || row.assembly_id,
     quote_id: row.quote_id || null,
     quote_number: row.quote_number || null,
+    production_job_id: row.production_job_id || null,
     finished_driver_checked: true,
     finished_driver_checked_at: now,
   }];

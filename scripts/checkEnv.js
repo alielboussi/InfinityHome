@@ -253,6 +253,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyDeliveryWorkshopParity.js', {
+    stdio: 'inherit',
+    cwd: path.join(__dirname, '..'),
+  });
+} catch {
+  console.error('[delivery-workshop-parity:fail] verifyDeliveryWorkshopParity.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyProductionFloor1JobPolicy.js', {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),

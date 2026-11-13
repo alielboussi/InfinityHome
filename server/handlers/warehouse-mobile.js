@@ -3857,9 +3857,15 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
       }
       let orderStaging = null;
       if (!isFarmDelivery && !repairStaging) {
-        const groupQuoteId = String(group.quote_id || group.quoteId || '').trim();
-        if (groupQuoteId) {
-          orderStaging = orderRows.find((row) => String(row.quote_id || '') === groupQuoteId) || null;
+        const groupJobId = String(group.production_job_id || group.productionJobId || '').trim();
+        if (groupJobId) {
+          orderStaging = orderRows.find((row) => String(row.production_job_id || '') === groupJobId) || null;
+        }
+        if (!orderStaging) {
+          const groupQuoteId = String(group.quote_id || group.quoteId || '').trim();
+          if (groupQuoteId) {
+            orderStaging = orderRows.find((row) => String(row.quote_id || '') === groupQuoteId) || null;
+          }
         }
         if (!orderStaging) {
           orderStaging = orderFloor2Map.get(assemblyId) || null;
