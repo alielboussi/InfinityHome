@@ -133,6 +133,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyProductionJobFlowStatus.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[production-job-flow:fail] verifyProductionJobFlowStatus.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/embedDeliveryNoteLogo.js', {
     cwd: process.cwd(),
     stdio: 'inherit',

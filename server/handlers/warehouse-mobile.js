@@ -1628,6 +1628,31 @@ async function opUpholsteryJobList(body, user) {
   return listUpholsteryProductionJobs(sb, { activeOnly });
 }
 
+async function opProductionJobsTrackingList(body, user) {
+  let allowed = canManageCatalog(user) || isLoginAccessAdmin(user?.email);
+  if (!allowed) {
+    try {
+      await assertProductionKioskUser(user);
+      allowed = true;
+    } catch (_) {
+      /* fall through */
+    }
+  }
+  if (!allowed) {
+    const grant = await mobileAccessGrantForUser(user);
+    const { evaluateOrdersAppAccess } = await import('../lib/ordersAppMobile.js');
+    if (!evaluateOrdersAppAccess(grant, user?.email)) {
+      throw new Error('You do not have access to production job tracking.');
+    }
+  }
+  const sb = getService();
+  const { listProductionJobsForTracking } = await import('../lib/productionJobsTracking.js');
+  return listProductionJobsForTracking(sb, {
+    department: body.department,
+    limit: body.limit,
+  });
+}
+
 async function opUpholsteryJobPause(body, user) {
   await assertProductionKioskUser(user);
   const jobId = String(body.job_id || body.jobId || '').trim();
@@ -5079,7 +5104,7 @@ export default async function handler(req, res) {
       case 'orders-tracking-list':
         result = await withOrdersApp(user, async (sb) => {
           const { opOrdersTrackingList } = await import('../lib/ordersAppMobile.js');
-          return opOrdersTrackingList(sb);
+          return opOrdersTrackingList(sb, body);
         });
         break;
       case 'orders-storage-list':
@@ -5240,6 +5265,9 @@ export default async function handler(req, res) {
         break;
       case 'catalog-storeroom-photo-upload':
         result = await opCatalogStoreroomPhotoUpload(body, user);
+        break;
+      case 'production-jobs-tracking-list':
+        result = await opProductionJobsTrackingList(body, user);
         break;
       case 'upholstery-job-start':
         result = await opUpholsteryJobStart(body, user);

@@ -5,7 +5,7 @@ import {
 } from '../lib/productionPushNotifications';
 
 /**
- * Register Expo push for painting production alerts.
+ * Register Expo push for upholstery production alerts (quote orders, etc.).
  */
 export function useProductionPushNotifications(navigationRef, { allowed } = {}) {
   const registered = useRef(false);

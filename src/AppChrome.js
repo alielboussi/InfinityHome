@@ -17,7 +17,7 @@ import {
 } from './accessControl';
 import { preloadAppRoute, prefetchNavRoutesOnIdle } from './lazyPages';
 import { performPortalLogout } from './utils/portalLogout';
-import { buildQuotationerOnlyNavGroups } from './mobile/ordersAppDashboardParity.js';
+import { QUOTATIONER_ONLY_NAV_GROUPS } from './mobile/ordersAppDashboardParity.js';
 
 const NAV_STORAGE_KEY = 'ent-nav-open';
 
@@ -63,7 +63,7 @@ const NAV_GROUPS = [
     title: 'Production',
     items: [
       { label: 'Catalogs', route: '/production-catalogs?view=upholstery-catalog', catalogOnly: true },
-      { label: 'Jobs', route: '/production-jobs?view=upholstery-jobs', catalogOnly: true },
+      { label: 'Jobs', route: '/production-jobs', catalogOnly: true },
       { label: 'Production intake', route: '/production-intake', catalogOnly: true },
     ],
   },
@@ -96,8 +96,6 @@ const NAV_GROUPS = [
     ],
   },
 ];
-
-const QUOTATIONER_ONLY_NAV_GROUPS = buildQuotationerOnlyNavGroups();
 
 function dedupeNavGroups(groups) {
   const seenItems = new Set();
@@ -173,7 +171,7 @@ const TITLE_MAP = {
   '/repair-report': 'Repair Report',
   '/warehouse-deliveries': 'Warehouse Deliveries',
   '/warehouse-returns': 'Repairs',
-  '/warehouse-returns-trackage': 'Repairs Trackage',
+  '/warehouse-returns-trackage': 'Production tracking',
   '/warehouse-storage': 'Warehouse Storage',
   '/kitwe-products': 'Kitwe',
   '/warehouse-delivery-drivers': 'Drivers',

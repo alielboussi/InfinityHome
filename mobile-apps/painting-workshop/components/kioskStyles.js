@@ -427,6 +427,8 @@ export const kiosk = StyleSheet.create({
     alignContent: 'flex-start',
   },
   dashTile: {
+    position: 'relative',
+    overflow: 'visible',
     borderRadius: theme.radius,
     borderWidth: 1,
     borderColor: theme.border,

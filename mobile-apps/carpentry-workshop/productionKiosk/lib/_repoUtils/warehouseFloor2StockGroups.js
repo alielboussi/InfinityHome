@@ -48,10 +48,12 @@ export function floor2StockAsFlatGroups(stockRows, assemblyById) {
       if (!aid) return null;
       const asm = assemblyById?.get?.(aid);
       const name = String(asm?.name || aid).trim();
+      const explicitSetName = String(asm?.metadata?.floor2_set_name || '').trim();
+      const displayName = explicitSetName || name;
       const qty = Math.max(0, Number(row.quantity) || 0);
       return {
         key: aid,
-        familyBase: name,
+        familyBase: displayName,
         assemblyIds: [aid],
         rows: [{ ...row, assembly_id: aid }],
         totalQty: qty,

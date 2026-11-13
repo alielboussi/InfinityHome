@@ -1,6 +1,7 @@
 import { normalizeCarpentryUom } from '../_repoConstants/carpentryUom.js';
 import { WAREHOUSE_FACTORY_LOCATION_ID } from '../_repoConstants/warehouseShowroomLocations.js';
 import { resolveWarehouseFloor2Location } from '../_repoConstants/warehouseFloorLocations.js';
+import { resolveFarmWarehouse1Location } from '../_repoConstants/farmWarehouseLocations.js';
 import { loadMaterialUomAllowedSet } from './materialUomMutations.js';
 import { isWarehouseSetAssembly } from './warehouseSetMath.js';
 import { isStoreroomMaterialAssembly } from './warehouseCatalogProductCompleteness.js';
@@ -103,6 +104,75 @@ export async function listCarpentryFloorRuns(sb, { limit = 200 } = {}) {
     floor2_location_id: floor2LocationId || null,
     floor2Stock,
     tableMissing: false,
+  };
+}
+
+/** Mirror Floor 2 WIP onto Warehouse Floor 1 (batch add or auto-list on Floor 2 create). */
+export async function addFloor2ProductToFloor1Local(sb, {
+  assemblyId,
+  productQty = 1,
+  userId = null,
+  ensureInventoryRow = false,
+} = {}) {
+  const productId = String(assemblyId || '').trim();
+  const qtyDelta = Math.max(0, Math.floor(Number(productQty) || 0));
+  if (!productId) throw new Error('assembly_id required');
+
+  const { data: row, error: readErr } = await sb
+    .from(ASSEMBLIES)
+    .select('id, name, family_sku, metadata, item_kind')
+    .eq('id', productId)
+    .maybeSingle();
+  if (readErr) throw new Error(readErr.message || 'Failed to read product');
+  if (!row?.id) throw new Error('Product not found');
+  if (isWarehouseSetAssembly(row)) throw new Error('Sets cannot be added directly — add individual components');
+
+  const floor1Id = String(WAREHOUSE_FACTORY_LOCATION_ID);
+
+  const { data: invRow } = await sb
+    .from(ASSEMBLY_INVENTORY)
+    .select('quantity')
+    .eq('assembly_id', productId)
+    .eq('location_id', floor1Id)
+    .maybeSingle();
+  const current = Math.max(0, Math.floor(Number(invRow?.quantity) || 0));
+  let nextQty = current;
+  if (qtyDelta > 0) {
+    nextQty = current + qtyDelta;
+  } else if (ensureInventoryRow || !invRow) {
+    nextQty = current;
+  }
+
+  const now = new Date().toISOString();
+  await sb.from(ASSEMBLY_INVENTORY).upsert({
+    assembly_id: productId,
+    location_id: floor1Id,
+    quantity: nextQty,
+    updated_at: now,
+  }, { onConflict: 'assembly_id,location_id' });
+
+  if (qtyDelta > 0) {
+    const runId = newUuid();
+    const { error: runErr } = await sb.from(RUNS).insert({
+      id: runId,
+      source: 'manual_floor2',
+      quote_id: null,
+      assembly_id: productId,
+      product_qty: qtyDelta,
+      started_at: now,
+      completed_at: now,
+      accepted_by: userId,
+      metadata: { channel: 'warehouse_floor1_portal', manual_from_floor2: true },
+      created_at: now,
+    });
+    if (runErr) throw new Error(runErr.message || 'Failed to save Floor 1 run');
+  }
+
+  return {
+    assembly_id: productId,
+    product_qty: qtyDelta,
+    floor1_location_id: floor1Id,
+    quantity: nextQty,
   };
 }
 
@@ -231,5 +301,43 @@ export async function setFloor2ProductStockQtyLocal(sb, {
     assembly_id: productId,
     quantity: nextQty,
     floor2_location_id: outputLocationId,
+  };
+}
+
+export async function setFarmProductStockQtyLocal(sb, {
+  assemblyId,
+  quantity,
+}) {
+  const productId = String(assemblyId || '').trim();
+  const nextQty = Math.max(0, Math.floor(Number(quantity) || 0));
+  if (!productId) throw new Error('assembly_id required');
+
+  const [{ data: row, error: readErr }, { data: locRows, error: locErr }] = await Promise.all([
+    sb.from(ASSEMBLIES).select('id, name, family_sku, metadata, item_kind').eq('id', productId).maybeSingle(),
+    sb.from(LOCATIONS).select('id, name'),
+  ]);
+  if (readErr) throw new Error(readErr.message || 'Failed to read product');
+  if (!row?.id) throw new Error('Product not found');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+
+  const farmLoc = resolveFarmWarehouse1Location(locRows || []);
+  if (!farmLoc?.id) {
+    throw new Error('Farm Warehouse 1 location is not configured. Run node scripts/ensureFarmWarehouseLocation.js');
+  }
+  const outputLocationId = String(farmLoc.id);
+
+  const now = new Date().toISOString();
+  const { error: invErr } = await sb.from(ASSEMBLY_INVENTORY).upsert({
+    assembly_id: productId,
+    location_id: outputLocationId,
+    quantity: nextQty,
+    updated_at: now,
+  }, { onConflict: 'assembly_id,location_id' });
+  if (invErr) throw new Error(invErr.message || 'Failed to update Farm warehouse quantity');
+
+  return {
+    assembly_id: productId,
+    quantity: nextQty,
+    farm_location_id: outputLocationId,
   };
 }

@@ -28,8 +28,8 @@ import { emitProductionRefresh } from '../lib/productionRefreshBus';
 import ManufactureProductGridCard from '../shared/components/ManufactureProductGridCard';
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
-import { pickManufactureFloor2ImageUrl } from '../../shared/manufactureFloor2Image';
-import { formatAssemblyDimensions } from '../../shared/utils/warehouseAssemblySpecs';
+import { pickManufactureFloor2ImageUrl } from '../shared/manufactureFloor2Image';
+import { formatAssemblyDimensions } from '../shared/utils/warehouseAssemblySpecs';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,

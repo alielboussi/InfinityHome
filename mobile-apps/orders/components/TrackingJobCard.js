@@ -1,32 +1,33 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { kiosk } from './kioskStyles';
-import RunningRepairElapsed, { computeRepairElapsedMs } from '../shared/components/RunningRepairElapsed';
+import RunningJobElapsed, { computeJobElapsedMs } from '../shared/components/RunningJobElapsed';
 import { formatProductionElapsed } from '../shared/lib/formatProductionElapsed';
-import {
-  deliveryAdminStageLabel,
-  formatDateTime,
-  repairDepartmentLabel,
-  resolveReturnRepairDepartment,
-  returnOrderLifecycleBadge,
-  returnOrderUnitLabel,
-} from '../lib/warehouseReturnUi';
+import { formatDateTime } from '../lib/warehouseReturnUi';
 
-function quoteNumber(row) {
-  const meta = row?.metadata || {};
-  return String(meta.quote_number || meta.quote_id || '').trim();
-}
+const TRACKING_DEPARTMENTS = [
+  { id: 'all', label: 'All' },
+  { id: 'upholstery', label: 'Upholstery' },
+  { id: 'carpentry', label: 'Carpentry' },
+  { id: 'painting', label: 'Painting' },
+];
 
-function startedAt(row) {
-  return row?.work_started_at || row?.accepted_at || null;
-}
+export { TRACKING_DEPARTMENTS };
 
-function endedAt(row) {
-  return row?.work_completed_at || null;
+function timerJobForElapsed(row) {
+  const running = row?.timer_status === 'running';
+  return {
+    ...row,
+    status: row?.timer_status || row?.status,
+    job_id: row?.production_job_id || row?.id,
+    accumulated_ms: row?.accumulated_ms,
+    elapsed_ms: running ? undefined : row?.elapsed_ms,
+    timer_started_at: row?.timer_started_at,
+  };
 }
 
 function staticElapsedLabel(row) {
-  const end = endedAt(row);
-  const start = startedAt(row);
+  const end = row?.completed_at;
+  const start = row?.started_at;
   if (end && start) {
     const a = new Date(start).getTime();
     const b = new Date(end).getTime();
@@ -34,17 +35,10 @@ function staticElapsedLabel(row) {
       return formatProductionElapsed(b - a);
     }
   }
-  const ms = Number(row?.elapsed_ms) || 0;
+  const job = timerJobForElapsed(row);
+  const ms = computeJobElapsedMs(job);
   if (ms > 0) return formatProductionElapsed(ms);
   return '—';
-}
-
-function timerStatusLabel(row) {
-  const s = String(row?.timer_status || '').trim();
-  if (s === 'running') return 'Running';
-  if (s === 'paused') return 'Paused';
-  if (s === 'completed') return 'Completed';
-  return '';
 }
 
 function DetailRow({ label, value, emphasize, always = false }) {
@@ -61,64 +55,39 @@ function DetailRow({ label, value, emphasize, always = false }) {
 }
 
 export default function TrackingJobCard({ row }) {
-  const admin = row?.metadata?.delivery_admin;
-  const stage = admin?.stage ? deliveryAdminStageLabel(admin.stage) : '';
-  const deptId = row.repair_department || resolveReturnRepairDepartment(row);
-  const badge = returnOrderLifecycleBadge(row);
-  const quote = quoteNumber(row);
-  const inProgress = String(row?.status || '') === 'in_progress';
-  const timerNote = timerStatusLabel(row);
-  const liveRunning = inProgress && row?.timer_status === 'running';
+  const liveRunning = row?.timer_status === 'running';
+  const livePaused = row?.timer_status === 'paused';
+  const jobForTimer = timerJobForElapsed(row);
+  const productLine = [
+    row?.product_name,
+    row?.product_sku ? `SKU ${row.product_sku}` : '',
+    row?.product_qty != null ? `Qty ${row.product_qty}` : '',
+  ].filter(Boolean).join(' · ');
 
   return (
     <View style={[kiosk.card, styles.card]}>
       <View style={styles.badgeRow}>
-        <Text style={styles.deptBadge}>{repairDepartmentLabel(deptId)}</Text>
-        {stage ? <Text style={styles.stageBadge}>{stage}</Text> : null}
-        {timerNote && inProgress ? <Text style={styles.timerChip}>{timerNote}</Text> : null}
+        <Text style={styles.deptBadge}>{row?.department_label || row?.department || '—'}</Text>
+        {livePaused ? <Text style={styles.timerChip}>Paused</Text> : null}
+        {liveRunning ? <Text style={styles.timerChip}>Running</Text> : null}
       </View>
 
-      <Text style={styles.jobTitle}>{returnOrderUnitLabel(row)}</Text>
-      <Text style={styles.statusLine}>{String(row?.status || '').replace(/_/g, ' ')}</Text>
+      <Text style={styles.jobTitle}>{row?.product_name || '—'}</Text>
+      <Text style={styles.statusLine}>{row?.flow_status || '—'}</Text>
 
-      <DetailRow always label="Quote #" value={quote} emphasize />
-      <DetailRow
-        always
-        label="Product"
-        value={[
-          row?.assembly_name,
-          row?.assembly_sku ? `SKU ${row.assembly_sku}` : '',
-          row?.quantity != null ? `Qty ${row.quantity}` : '',
-        ].filter(Boolean).join(' · ')}
-      />
-      <DetailRow always label="Customer" value={row?.customer_name} />
-      <DetailRow always label="Phone" value={row?.customer_phone} />
-      <DetailRow always label="Started" value={formatDateTime(startedAt(row))} />
-      <DetailRow always label="Ended" value={formatDateTime(endedAt(row))} />
+      <DetailRow always label="Product" value={productLine} emphasize />
+      <DetailRow always label="Department" value={row?.department_label} />
+      <DetailRow always label="Started" value={formatDateTime(row?.started_at)} />
+      <DetailRow always label="Completed" value={formatDateTime(row?.completed_at)} />
 
       <View style={styles.timerBlock}>
         <Text style={styles.timerLabel}>Time elapsed</Text>
         {liveRunning ? (
-          <RunningRepairElapsed row={row} style={styles.timerValue} />
+          <RunningJobElapsed job={jobForTimer} style={styles.timerValue} />
         ) : (
-          <Text style={styles.timerValue}>
-            {inProgress
-              ? formatProductionElapsed(computeRepairElapsedMs(row))
-              : staticElapsedLabel(row)}
-          </Text>
+          <Text style={styles.timerValue}>{staticElapsedLabel(row)}</Text>
         )}
       </View>
-
-      {row?.reason ? (
-        <Text style={kiosk.hint}>
-          Reason: {row.reason}
-          {row.leather_code ? ` · Leather: ${row.leather_code}` : ''}
-        </Text>
-      ) : null}
-      {row?.outbound_delivery_number ? (
-        <Text style={kiosk.hint}>Delivery note {row.outbound_delivery_number}</Text>
-      ) : null}
-      {badge ? <Text style={styles.lifecycle}>{badge}</Text> : null}
     </View>
   );
 }
@@ -127,69 +96,26 @@ const styles = StyleSheet.create({
   card: { marginBottom: 12 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   deptBadge: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    color: '#1e3a8a',
-    backgroundColor: '#dbeafe',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  stageBadge: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#0369a1',
-    backgroundColor: '#e0f2fe',
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#e2e8f0',
     overflow: 'hidden',
   },
   timerChip: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#92400e',
-    backgroundColor: '#fef3c7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  jobTitle: { fontSize: 17, fontWeight: '800', color: '#0f172a', marginBottom: 2 },
-  statusLine: { fontSize: 13, color: '#64748b', textTransform: 'capitalize', marginBottom: 10 },
-  detailRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 6,
-    alignItems: 'flex-start',
-  },
-  detailLabel: {
-    width: 76,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  detailValue: {
-    flex: 1,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#0f172a',
-    lineHeight: 19,
+    color: '#0369a1',
   },
-  detailEmphasis: { color: '#1d4ed8' },
-  timerBlock: {
-    marginTop: 8,
-    marginBottom: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#eff6ff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  timerLabel: { fontSize: 12, fontWeight: '700', color: '#1e40af', marginBottom: 4 },
-  timerValue: { fontSize: 22, fontWeight: '800', color: '#1d4ed8', fontVariant: ['tabular-nums'] },
-  lifecycle: { marginTop: 6, fontSize: 13, fontWeight: '700', color: '#0369a1' },
+  jobTitle: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
+  statusLine: { fontSize: 15, fontWeight: '600', color: '#0369a1', marginBottom: 10 },
+  detailRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
+  detailLabel: { width: 92, color: '#64748b', fontSize: 13 },
+  detailValue: { flex: 1, fontSize: 13 },
+  detailEmphasis: { fontWeight: '600' },
+  timerBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#cbd5e1' },
+  timerLabel: { fontSize: 12, color: '#64748b', marginBottom: 4 },
+  timerValue: { fontSize: 18, fontWeight: '700', color: '#0369a1' },
 });

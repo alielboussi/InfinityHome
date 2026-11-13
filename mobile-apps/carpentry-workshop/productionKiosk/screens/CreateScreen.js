@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useScreenFocus } from '../../shared/hooks/useScreenFocus';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -172,7 +172,11 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
     };
   }, [locale, activePresets]);
 
-  useScreenFocus(navigation, reloadPresetsFromServer);
+  useFocusEffect(
+    useCallback(() => {
+      reloadPresetsFromServer();
+    }, [reloadPresetsFromServer]),
+  );
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';

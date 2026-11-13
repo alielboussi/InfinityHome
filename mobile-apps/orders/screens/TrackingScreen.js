@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,15 +10,10 @@ import {
   View,
 } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
-import TrackingJobCard from '../components/TrackingJobCard';
+import TrackingJobCard, { TRACKING_DEPARTMENTS } from '../components/TrackingJobCard';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
-import {
-  REPAIR_DEPARTMENTS,
-  repairDepartmentLabel,
-  resolveReturnRepairDepartment,
-} from '../lib/warehouseReturnUi';
 import { theme } from '../shared/theme';
 import { fetchOrdersTracking } from '../services/ordersApi';
 
@@ -27,6 +23,7 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [department, setDepartment] = useState('all');
   const warmedRef = useRef(false);
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -35,8 +32,8 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
     if (!quiet) setLoading(true);
     if (!quiet) setError('');
     try {
-      const res = await fetchOrdersTracking();
-      setRows(Array.isArray(res.repairs) ? res.repairs : []);
+      const res = await fetchOrdersTracking({ department: department === 'all' ? undefined : department });
+      setRows(Array.isArray(res.jobs) ? res.jobs : []);
       warmedRef.current = true;
     } catch (err) {
       if (!quiet) {
@@ -46,41 +43,26 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [allowed, locale]);
+  }, [allowed, locale, department]);
 
   useFocusEffect(useCallback(() => { void load({ silent: warmedRef.current }); }, [load]));
+
+  useEffect(() => {
+    if (warmedRef.current) void load({ silent: false });
+  }, [department]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((row) => {
-      const dept = resolveReturnRepairDepartment(row);
-      const meta = row?.metadata || {};
-      return [
-        row.return_number,
-        row.assembly_name,
-        row.assembly_sku,
-        row.reason,
-        row.customer_name,
-        row.customer_phone,
-        row.status,
-        row.outbound_delivery_number,
-        meta.quote_number,
-        meta.quote_id,
-        repairDepartmentLabel(dept),
-      ].join(' ').toLowerCase().includes(q);
-    });
+    return rows.filter((row) => [
+      row.product_name,
+      row.product_sku,
+      row.department,
+      row.department_label,
+      row.flow_status,
+      row.assembly_id,
+    ].join(' ').toLowerCase().includes(q));
   }, [rows, search]);
-
-  const byDepartment = useMemo(() => {
-    const buckets = Object.fromEntries(REPAIR_DEPARTMENTS.map((d) => [d.id, []]));
-    for (const row of filtered) {
-      const dept = row.repair_department || resolveReturnRepairDepartment(row);
-      if (buckets[dept]) buckets[dept].push(row);
-      else buckets.upholstery.push(row);
-    }
-    return buckets;
-  }, [filtered]);
 
   return (
     <OrdersScreenShell
@@ -93,30 +75,35 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
       onRefreshAccess={onRefreshAccess}
     >
       <Text style={kiosk.hint}>
-        One card per return job (same as workshop repair cards): customer, product, quote #, start/end times, and live or total elapsed timer.
+        Factory jobs across upholstery, carpentry, and painting — product, qty, workshop stage, and live elapsed time.
       </Text>
+      <View style={styles.filterRow}>
+        {TRACKING_DEPARTMENTS.map((dept) => {
+          const active = department === dept.id;
+          return (
+            <Pressable
+              key={dept.id}
+              onPress={() => setDepartment(dept.id)}
+              style={[styles.filterChip, active && styles.filterChipActive]}
+            >
+              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{dept.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
       <TextInput
         value={search}
         onChangeText={setSearch}
-        placeholder="Search quote #, return #, product, customer, phone…"
+        placeholder="Search product, SKU, status…"
         placeholderTextColor={theme.textDim}
         style={[kiosk.input, { marginBottom: 10 }]}
       />
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
       {loading && !rows.length ? <ActivityIndicator color={theme.primary} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-          {REPAIR_DEPARTMENTS.map((dept) => {
-            const sectionRows = byDepartment[dept.id] || [];
-            if (!sectionRows.length) return null;
-            return (
-              <View key={dept.id} style={styles.section}>
-                <Text style={[kiosk.metaLine, styles.sectionTitle]}>{dept.label}</Text>
-                {sectionRows.map((row) => (
-                  <TrackingJobCard key={String(row.id)} row={row} />
-                ))}
-              </View>
-            );
-          })}
+          {filtered.map((row) => (
+            <TrackingJobCard key={`${row.department}:${row.id}`} row={row} />
+          ))}
           {!filtered.length ? <Text style={kiosk.hint}>{tUi('empty', locale)}</Text> : null}
         </ScrollView>
       )}
@@ -125,6 +112,14 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
 }
 
 const styles = StyleSheet.create({
-  section: { marginBottom: 8 },
-  sectionTitle: { marginBottom: 8, fontWeight: '800' },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#1e293b',
+  },
+  filterChipActive: { backgroundColor: theme.primary },
+  filterChipText: { color: '#94a3b8', fontSize: 13, fontWeight: '600' },
+  filterChipTextActive: { color: '#fff' },
 });

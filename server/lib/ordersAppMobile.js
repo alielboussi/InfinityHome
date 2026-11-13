@@ -511,9 +511,16 @@ export async function opOrdersRepairsList(sb) {
   return { repairs: asArray(payload, ['return_orders', 'repairs']) };
 }
 
-export async function opOrdersTrackingList(sb) {
-  const payload = await listWarehouseReturnOrders(sb, { trackageOnly: true, hassanOnly: true, limit: 300 });
-  return { repairs: asArray(payload, ['return_orders', 'repairs']) };
+export async function opOrdersTrackingList(sb, body = {}) {
+  const { listProductionJobsForTracking } = await import('./productionJobsTracking.js');
+  const payload = await listProductionJobsForTracking(sb, {
+    department: body.department,
+    limit: body.limit || 300,
+  });
+  return {
+    jobs: asArray(payload, ['jobs']),
+    departments: payload?.departments || ['upholstery', 'carpentry', 'painting'],
+  };
 }
 
 export async function opOrdersStorageList(sb) {

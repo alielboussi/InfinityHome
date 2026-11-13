@@ -84,8 +84,10 @@ export function createOrdersReturn(body) {
   return warehouseMobileRequest('orders-return-create', body);
 }
 
-export function fetchOrdersTracking() {
-  return warehouseMobileRequest('orders-tracking-list');
+export function fetchOrdersTracking(params = {}) {
+  return warehouseMobileRequest('orders-tracking-list', {
+    department: params.department || undefined,
+  });
 }
 
 export function fetchOrdersStorage() {

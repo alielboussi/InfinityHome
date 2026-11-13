@@ -41,8 +41,8 @@ assert(app.includes('titleKey="dashTitle"'));
 assert(accessUi.includes('<option value="orders">Orders</option>'));
 
 assert(
-  appChrome.includes('buildQuotationerOnlyNavGroups'),
-  'AppChrome must build Hassan sidebar from ordersAppDashboardParity',
+  appChrome.includes('QUOTATIONER_ONLY_NAV_GROUPS'),
+  'AppChrome must import Hassan sidebar nav from ordersAppDashboardParity',
 );
 assert(
   dash.includes('ORDERS_APP_DASHBOARD_PARITY'),
