@@ -48,6 +48,7 @@ const COMPANY_FONT_PX = 11;
 const ROW_FONT_PX = FONT_PT;
 export function buildProductionLabelMeta({
   name, sku, printedAt, color, boxLine, boxUnitsPerCarton, dimensionsLine, dimLength, dimWidth, dimHeight,
+  photoFloor,
 } = {}) {
   const at = printedAt ? new Date(printedAt) : new Date();
   if (Number.isNaN(at.getTime())) {
@@ -69,7 +70,7 @@ export function buildProductionLabelMeta({
     color: cleanColor,
     box_line: cleanBoxLine,
     dimensions_line: cleanDimensions,
-    image_qr_url: buildProductPhotoQrUrl(cleanSku),
+    image_qr_url: buildProductPhotoQrUrl(cleanSku, { photoFloor }),
     printed_at: at.toISOString(),
     print_date: formatBlockDate(at),
     print_time: formatBlockTime(at),
@@ -151,9 +152,11 @@ function rowSvg({
 
 export async function buildWarehouseProductionLabelPngBuffer({
   name, sku, printedAt, color, boxLine, boxUnitsPerCarton, dimensionsLine, dimLength, dimWidth, dimHeight,
+  photoFloor,
 } = {}) {
   const meta = buildProductionLabelMeta({
     name, sku, printedAt, color, boxLine, boxUnitsPerCarton, dimensionsLine, dimLength, dimWidth, dimHeight,
+    photoFloor,
   });
   const layout = computeProductionLabelLayout({
     heightMm: LABEL_HEIGHT_MM,

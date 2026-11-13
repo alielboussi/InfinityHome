@@ -13,16 +13,21 @@ function publicSiteBase() {
   ).replace(/\/+$/, '');
 }
 
+import { LABEL_PHOTO_FLOOR2, normalizeLabelPhotoFloor } from './warehouseLabelPhotoFloor.js';
+import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
+
 /**
- * Stable QR URL printed on every production label (always encoded, even before a photo exists).
- * Scanning opens this link; when a catalog image exists for the same SKU it redirects to the photo.
- * Labels printed earlier keep working — the QR does not change when you add an image later.
+ * Stable QR URL printed on warehouse production labels (always encoded, even before a photo exists).
+ * Scanning opens this link; redirects to Floor 1 catalog image or Floor 2 WIP per `photoFloor`.
  */
-export function buildProductPhotoQrUrl(sku) {
+export function buildProductPhotoQrUrl(sku, { photoFloor } = {}) {
   const clean = String(sku || '').trim();
   const base = publicSiteBase();
-  if (!clean) return `${base}/api/health?action=product-photo`;
-  return `${base}/api/health?action=product-photo&sku=${encodeURIComponent(clean)}`;
+  const floor = normalizeLabelPhotoFloor(photoFloor);
+  const params = new URLSearchParams({ action: 'product-photo' });
+  if (clean) params.set('sku', clean);
+  if (floor === LABEL_PHOTO_FLOOR2) params.set('floor', '2');
+  return `${base}/api/health?${params.toString()}`;
 }
 
 function pickImageUrl(product, imageRows) {
@@ -88,40 +93,39 @@ function skuLookupCandidates(sku) {
   return out;
 }
 
-async function loadWarehouseAssemblyImageByFamilySku(db, sku) {
+async function findWarehouseAssemblyByFamilySku(db, sku) {
   const candidates = skuLookupCandidates(sku);
-  if (!candidates.size) return '';
+  if (!candidates.size) return null;
 
-  let sawAssemblyRow = false;
   for (const candidate of candidates) {
     const { data: rows, error } = await db
       .from('warehouse_assemblies')
-      .select('id, family_sku, image_url, cover_image_url')
+      .select('id, family_sku, image_url, cover_image_url, metadata')
       .eq('family_sku', candidate)
       .limit(1);
     if (!error && Array.isArray(rows) && rows[0]) {
-      sawAssemblyRow = true;
-      const url = assemblyImageUrl(rows[0]);
-      if (url) return url;
+      return rows[0];
     }
   }
-
-  if (sawAssemblyRow) return '';
 
   const targetKey = normalizeWarehouseSkuKey(
     normalizeWarehouseProductSku(sku) || String(sku || '').trim(),
   );
-  if (!targetKey) return '';
+  if (!targetKey) return null;
 
   const { data: assemblies, error: listErr } = await db
     .from('warehouse_assemblies')
-    .select('id, family_sku, image_url, cover_image_url');
-  if (listErr || !Array.isArray(assemblies)) return '';
+    .select('id, family_sku, image_url, cover_image_url, metadata');
+  if (listErr || !Array.isArray(assemblies)) return null;
 
-  const hit = assemblies.find(
+  return assemblies.find(
     (row) => normalizeWarehouseSkuKey(row?.family_sku) === targetKey,
-  );
-  return assemblyImageUrl(hit);
+  ) || null;
+}
+
+async function loadWarehouseAssemblyImageByFamilySku(db, sku) {
+  const assembly = await findWarehouseAssemblyByFamilySku(db, sku);
+  return assemblyImageUrl(assembly);
 }
 
 async function loadAssemblyImageForPacket(db, packet) {
@@ -166,7 +170,21 @@ async function loadWarehousePacketImageBySku(db, sku) {
   return loadAssemblyImageForPacket(db, packet);
 }
 
-export async function resolveProductImageUrlForSku(db, sku) {
+async function loadWarehouseFloor2WipImageByFamilySku(db, sku) {
+  const assembly = await findWarehouseAssemblyByFamilySku(db, sku);
+  if (!assembly) return '';
+  const wip = readWarehouseFloor2WipImageUrl(assembly);
+  if (!wip) return '';
+  return rewriteLegacyProductImageUrl(wip) || wip;
+}
+
+export async function resolveProductImageUrlForSku(db, sku, { photoFloor } = {}) {
+  const floor = normalizeLabelPhotoFloor(photoFloor);
+  if (floor === LABEL_PHOTO_FLOOR2) {
+    const fromWip = await loadWarehouseFloor2WipImageByFamilySku(db, sku);
+    if (fromWip) return fromWip;
+    return '';
+  }
   const fromProduct = await loadProductImageBySku(db, sku);
   if (fromProduct) return fromProduct;
   const fromAssembly = await loadWarehouseAssemblyImageByFamilySku(db, sku);

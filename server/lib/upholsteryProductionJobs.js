@@ -13,7 +13,12 @@ import {
   resolveFinishedOutputAssemblyOnly,
   loadUpholsteryManufactureContext,
   recomputeUpholsteryManufactureLocations,
+  pickAssemblyDimensionFields,
 } from './upholsteryManufacture.js';
+import { formatAssemblyDimensions } from '../../src/utils/warehouseAssemblySpecs.js';
+import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
+
+const ASSEMBLIES = 'warehouse_assemblies';
 
 const JOBS = 'upholstery_production_jobs';
 const RUNS = 'carpentry_production_runs';
@@ -88,6 +93,12 @@ function serializeJob(job, assembliesById = null) {
       ? job.metadata.manual_material_lines
       : [],
     floor2_push: Boolean(job.metadata?.floor2_push),
+    dim_length: job.dim_length ?? null,
+    dim_width: job.dim_width ?? null,
+    dim_height: job.dim_height ?? null,
+    dimensions_display: String(job.dimensions_display || '').trim() || undefined,
+    floor2_image_url: String(job.floor2_image_url || '').trim() || undefined,
+    product_image_url: String(job.product_image_url || job.floor2_image_url || '').trim() || undefined,
   };
 }
 
@@ -184,6 +195,34 @@ export async function listUpholsteryProductionJobs(sb, { activeOnly = true } = {
     }
     const base = serializeJob(row);
     jobs.push({ ...base, manual_material_lines: lines });
+  }
+  const assemblyIds = [
+    ...new Set(
+      jobs.flatMap((j) => [String(j.raw_assembly_id || ''), String(j.finished_assembly_id || '')]).filter(Boolean),
+    ),
+  ];
+  if (assemblyIds.length) {
+    const { data: assemblies } = await sb
+      .from(ASSEMBLIES)
+      .select('id, metadata, dim_length, dim_width, dim_height')
+      .in('id', assemblyIds);
+    const byId = new Map((assemblies || []).map((row) => [String(row.id), row]));
+    for (const job of jobs) {
+      const rawAsm = byId.get(String(job.raw_assembly_id || ''));
+      const finishedAsm = byId.get(String(job.finished_assembly_id || ''));
+      const dims = pickAssemblyDimensionFields(finishedAsm, rawAsm);
+      job.dim_length = dims.dim_length;
+      job.dim_width = dims.dim_width;
+      job.dim_height = dims.dim_height;
+      const display = formatAssemblyDimensions(dims);
+      if (display) job.dimensions_display = display;
+      const wip = readWarehouseFloor2WipImageUrl(rawAsm)
+        || readWarehouseFloor2WipImageUrl(finishedAsm);
+      if (wip) {
+        job.floor2_image_url = wip;
+        job.product_image_url = wip;
+      }
+    }
   }
   return { jobs };
 }

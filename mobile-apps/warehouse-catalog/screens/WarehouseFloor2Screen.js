@@ -237,6 +237,7 @@ export default function WarehouseFloor2Screen() {
       dimWidth: product?.dim_width,
       dimHeight: product?.dim_height,
       dimensionsDisplay,
+      photoFloor: 'floor2',
     });
   }, []);
 

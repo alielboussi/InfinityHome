@@ -12,7 +12,7 @@ function labelDimPayload({ dimLength, dimWidth, dimHeight } = {}) {
 }
 
 export async function fetchWarehouseCatalogLabelPreview({
-  name, sku, printedAt, color, boxUnitsPerCarton, dimLength, dimWidth, dimHeight,
+  name, sku, printedAt, color, boxUnitsPerCarton, dimLength, dimWidth, dimHeight, photoFloor,
 }) {
   return warehouseMobileRequest('production-label-preview', {
     name,
@@ -21,20 +21,22 @@ export async function fetchWarehouseCatalogLabelPreview({
     ...(color ? { color } : {}),
     ...(boxUnitsPerCarton > 0 ? { box_units_per_carton: boxUnitsPerCarton } : {}),
     ...labelDimPayload({ dimLength, dimWidth, dimHeight }),
+    ...(photoFloor ? { photo_floor: photoFloor } : {}),
   });
 }
 
 export async function printWarehouseCatalogLabel({
-  name, sku, copies = 1, color, boxUnitsPerCarton, dimLength, dimWidth, dimHeight,
+  name, sku, copies = 1, color, boxUnitsPerCarton, dimLength, dimWidth, dimHeight, photoFloor,
 }) {
   const payload = await warehouseMobileRequest('production-label-print', {
     name,
     sku,
     qty: copies,
-    client_source: 'warehouse_catalog_mobile',
+    client_source: photoFloor === 'floor2' ? 'warehouse_floor2_mobile' : 'warehouse_catalog_mobile',
     ...(color ? { color } : {}),
     ...(boxUnitsPerCarton > 0 ? { box_units_per_carton: boxUnitsPerCarton } : {}),
     ...labelDimPayload({ dimLength, dimWidth, dimHeight }),
+    ...(photoFloor ? { photo_floor: photoFloor } : {}),
   });
   return {
     labelPrintWarning: payload?.label_print_warning || null,

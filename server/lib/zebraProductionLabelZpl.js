@@ -76,7 +76,9 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
   });
   const dimensionsText = zplEscape(dimensionsRaw);
   const photoQrUrl = String(opts.imageQrUrl || '').trim()
-    || buildProductPhotoQrUrl(String(opts.sku || '').trim());
+    || buildProductPhotoQrUrl(String(opts.sku || '').trim(), {
+      photoFloor: opts.photoFloor ?? opts.photo_floor,
+    });
   const imageQr = qrEscape(photoQrUrl);
   const companyLine = zplEscape(COMPANY_NAME);
 

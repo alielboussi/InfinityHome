@@ -71,6 +71,7 @@ export async function sendWarehouseProductionLabelToZebra({
   dimWidth,
   dimHeight,
   dimensionsLine,
+  photoFloor,
 }) {
   const at = printedAt ? new Date(printedAt) : new Date();
   const cleanSku = String(sku || '').trim();
@@ -86,6 +87,7 @@ export async function sendWarehouseProductionLabelToZebra({
     dimWidth,
     dimHeight,
     dimensionsLine,
+    photoFloor,
   });
   return sendZplToZebraPrinter({ zpl });
 }

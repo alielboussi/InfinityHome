@@ -5,6 +5,7 @@ import { theme } from '../theme';
 export default function ManufactureProductGridCard({
   imageUrl,
   name,
+  dimensions = '',
   qty,
   busy = false,
   onPress,
@@ -39,6 +40,9 @@ export default function ManufactureProductGridCard({
         ) : null}
       </View>
       <Text style={styles.name} numberOfLines={2}>{name || '—'}</Text>
+      {dimensions ? (
+        <Text style={styles.dims} numberOfLines={1}>{dimensions}</Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -87,11 +91,19 @@ const styles = StyleSheet.create({
   },
   name: {
     paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 4,
     fontSize: 14,
     fontWeight: '800',
     color: theme.text,
     lineHeight: 18,
-    minHeight: 46,
+  },
+  dims: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.textMuted,
+    lineHeight: 14,
   },
 });

@@ -17,6 +17,22 @@ import {
   readWarehouseFloor2WipFamilyImageUrl,
   readWarehouseFloor2WipImageUrl,
 } from '../../src/utils/warehouseFloor2WipImage.js';
+import { formatAssemblyDimensions } from '../../src/utils/warehouseAssemblySpecs.js';
+
+export function pickAssemblyDimensionFields(primary, fallback) {
+  const pick = (key) => {
+    const a = primary?.[key];
+    if (a != null && a !== '' && Number.isFinite(Number(a))) return a;
+    const b = fallback?.[key];
+    if (b != null && b !== '' && Number.isFinite(Number(b))) return b;
+    return null;
+  };
+  return {
+    dim_length: pick('dim_length'),
+    dim_width: pick('dim_width'),
+    dim_height: pick('dim_height'),
+  };
+}
 
 const ASSEMBLIES = 'warehouse_assemblies';
 const ASSEMBLY_INVENTORY = 'warehouse_assembly_inventory';
@@ -311,7 +327,7 @@ export async function recomputeUpholsteryManufactureLocations(
  */
 export async function listUpholsteryManufactureCandidates(sb) {
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
-    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata, category_id, image_url'),
+    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata, category_id, image_url, dim_length, dim_width, dim_height'),
     sb.from(LOCATIONS).select('id, name'),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
@@ -353,6 +369,10 @@ export async function listUpholsteryManufactureCandidates(sb) {
       floor2_qty: rawQty,
       carpentry_qty: rawQty,
       metadata: rawAsm?.metadata && typeof rawAsm.metadata === 'object' ? rawAsm.metadata : {},
+      ...pickAssemblyDimensionFields(finishedAsm, rawAsm),
+      dimensions_display: formatAssemblyDimensions(
+        pickAssemblyDimensionFields(finishedAsm, rawAsm),
+      ) || undefined,
     });
   }
 

@@ -165,6 +165,9 @@ function JobCard({
       <Text style={[styles.jobMeta, { textAlign }]}>
         {textForDisplay(job.raw_name || job.finished_sku, '')}
       </Text>
+      {job.dimensions_display ? (
+        <Text style={[styles.jobDims, { textAlign }]}>{job.dimensions_display}</Text>
+      ) : null}
       <View style={styles.timerRow}>
         <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
         <RunningJobElapsed job={job} style={styles.timerValue} />
@@ -556,7 +559,8 @@ const styles = StyleSheet.create({
   jobThumb: { width: '100%', height: 120, borderRadius: 10, marginBottom: 8, backgroundColor: theme.surfaceElevated },
   quoteBadge: { fontSize: 14, fontWeight: '700', color: theme.primary, marginBottom: 4 },
   jobTitle: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 4 },
-  jobMeta: { fontSize: 13, color: theme.muted, marginBottom: 10 },
+  jobMeta: { fontSize: 13, color: theme.muted, marginBottom: 4 },
+  jobDims: { fontSize: 12, color: theme.textMuted, marginBottom: 10, fontWeight: '600' },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
   timerLabel: { fontSize: 13, color: theme.muted },
   timerValue: { fontSize: 22, fontWeight: '800', color: theme.primary },

@@ -92,19 +92,26 @@ async function handleProductPhoto(req, res) {
     res.end('Missing sku');
     return;
   }
+  const floorRaw = String(req.query?.floor || req.query?.photo_floor || '').trim().toLowerCase();
+  const photoFloor = (floorRaw === '2' || floorRaw === 'floor2' || floorRaw === 'floor_2')
+    ? 'floor2'
+    : 'floor1';
   const { getDataClient } = await import('../server/lib/getDataClient.js');
   const { resolveProductImageUrlForSku } = await import('../server/lib/productPhotoBySku.js');
   const db = getDataClient();
-  const imageUrl = await resolveProductImageUrlForSku(db, sku);
+  const imageUrl = await resolveProductImageUrlForSku(db, sku, { photoFloor });
   if (!imageUrl) {
     res.statusCode = 404;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
+    const where = photoFloor === 'floor2'
+      ? 'Floor 2 WIP photo'
+      : 'Floor 1 catalog photo';
     res.end(
       `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Photo not ready</title></head>`
       + `<body style="font-family:sans-serif;padding:1.5rem">`
-      + `<p>No product photo for SKU <strong>${sku.replace(/</g, '&lt;')}</strong> yet.</p>`
-      + `<p>This link is printed on the label; when a catalog image is added for the same SKU, scanning again will open the photo.</p>`
+      + `<p>No ${where} for SKU <strong>${sku.replace(/</g, '&lt;')}</strong> yet.</p>`
+      + `<p>This link is printed on the label; when the matching image is added, scanning again will open the photo.</p>`
       + `</body></html>`,
     );
     return;

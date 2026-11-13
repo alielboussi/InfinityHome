@@ -7,6 +7,7 @@ import {
   sendWarehouseProductionLabelToZebra,
 } from './zebraSendFileToPrinter.js';
 import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
+import { resolveLabelPhotoFloor } from './warehouseLabelPhotoFloor.js';
 import { buildWarehouseProductionLabelZpl } from './zebraProductionLabelZpl.js';
 import { formatProductionLabelBlockDate } from './warehouseProductionLabelCatTime.js';
 
@@ -23,7 +24,8 @@ export async function enqueueWarehouseProductionLabelJob(db, {
   dimWidth,
   dimHeight,
   dimensionsLine,
-}) {
+  photoFloor: photoFloorInput,
+} = {}) {
   const labelName = String(name || '').trim();
   const labelSku = String(sku || '').trim();
   const copies = Math.max(1, Math.floor(Number(qty) || 0));
@@ -34,7 +36,11 @@ export async function enqueueWarehouseProductionLabelJob(db, {
     throw new Error('Invalid printedAt');
   }
   const operator = String(printedBy || '').trim() || 'Production kiosk';
-  const imageQrUrl = buildProductPhotoQrUrl(labelSku);
+  const photoFloor = resolveLabelPhotoFloor({
+    explicit: photoFloorInput,
+    clientSource: source,
+  });
+  const imageQrUrl = buildProductPhotoQrUrl(labelSku, { photoFloor });
 
   const preferCloudOnly = String(process.env.WAREHOUSE_LABEL_CLOUD_ONLY || 'true').trim().toLowerCase() !== 'false';
 
@@ -53,6 +59,7 @@ export async function enqueueWarehouseProductionLabelJob(db, {
         dimWidth,
         dimHeight,
         dimensionsLine,
+        photoFloor,
       });
       return 'zebra-weblink';
     } catch (err) {
@@ -79,6 +86,7 @@ export async function enqueueWarehouseProductionLabelJob(db, {
     dimWidth,
     dimHeight,
     dimensionsLine,
+    photoFloor,
     copies: 1,
   });
 

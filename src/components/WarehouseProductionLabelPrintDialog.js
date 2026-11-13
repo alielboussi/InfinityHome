@@ -21,6 +21,7 @@ export default function WarehouseProductionLabelPrintDialog({
   const sku = String(item?.sku || '').trim();
   const color = String(item?.color || '').trim();
   const boxUnitsPerCarton = Math.max(0, Math.floor(Number(item?.boxUnitsPerCarton) || 0));
+  const photoFloor = String(item?.photoFloor || item?.photo_floor || 'floor1').trim() || 'floor1';
   const dimLength = item?.dimLength ?? item?.dim_length ?? '';
   const dimWidth = item?.dimWidth ?? item?.dim_width ?? '';
   const dimHeight = item?.dimHeight ?? item?.dim_height ?? '';
@@ -68,6 +69,7 @@ export default function WarehouseProductionLabelPrintDialog({
     dimLength,
     dimWidth,
     dimHeight,
+    photoFloor,
   });
 
   const safePdfFilename = () => {

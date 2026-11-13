@@ -116,6 +116,7 @@ import { HASSAN_AWAD } from '../../src/accessControl.js';
 import { generateRandomWarehouseSku16 } from '../../src/utils/warehouseRandomSku.js';
 import { isMattressCatalogProductName } from '../../src/utils/isMattressCatalogProductName.js';
 import { enqueueWarehouseProductionLabelJob } from '../lib/productionLabelPrint.js';
+import { LABEL_PHOTO_FLOOR2, resolveLabelPhotoFloor } from '../lib/warehouseLabelPhotoFloor.js';
 import { findProductionNameClash } from '../lib/productionCatalogNameCheck.js';
 import { runProductionAssemblyPhotoAttach } from '../lib/warehouseProductionPhotoAttach.js';
 import {
@@ -896,6 +897,7 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
         printedBy: labelPrintedBy,
         source: clientSource,
         printedAt,
+        photoFloor: clientSource === 'warehouse_floor_2' ? LABEL_PHOTO_FLOOR2 : undefined,
       });
       if (!labelJobId) {
         labelPrintWarning = 'Item saved but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
@@ -913,6 +915,7 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
       sku: labelSku,
       printedAt,
       skipPng: deferLabels,
+      photoFloor: LABEL_PHOTO_FLOOR2,
     })
     : { label: null, label_preview_png_base64: null };
 
@@ -2705,14 +2708,22 @@ function productionLabelDimArgs(body = {}) {
   };
 }
 
+function productionLabelPhotoFloorArgs(body = {}) {
+  const photoFloor = resolveLabelPhotoFloor({
+    explicit: body.photo_floor ?? body.photoFloor ?? body.label_photo_floor,
+    clientSource: body.client_source || body.clientSource || body.source,
+  });
+  return { photoFloor };
+}
+
 async function buildProductionLabelPreviewPayload({
   name, sku, printedAt, color, boxUnitsPerCarton, skipPng = false,
-  dimLength, dimWidth, dimHeight, dimensionsLine,
+  dimLength, dimWidth, dimHeight, dimensionsLine, photoFloor,
 }) {
   const at = printedAt ? new Date(printedAt) : new Date();
   const label = buildProductionLabelMeta({
     name, sku, printedAt: at, color, boxUnitsPerCarton,
-    dimLength, dimWidth, dimHeight, dimensionsLine,
+    dimLength, dimWidth, dimHeight, dimensionsLine, photoFloor,
   });
   let label_preview_png_base64 = null;
   if (!skipPng) {
@@ -2727,6 +2738,7 @@ async function buildProductionLabelPreviewPayload({
         dimWidth,
         dimHeight,
         dimensionsLine,
+        photoFloor,
       });
     } catch (err) {
       console.warn('[warehouse-mobile] label preview png failed:', err?.message || err);
@@ -2753,6 +2765,7 @@ async function opProductionLabelPreview(body, user) {
   return buildProductionLabelPreviewPayload({
     name, sku, printedAt, color, boxUnitsPerCarton,
     ...productionLabelDimArgs(body),
+    ...productionLabelPhotoFloorArgs(body),
   });
 }
 
@@ -2787,6 +2800,7 @@ async function opProductionLabelPrint(body, user) {
       color,
       boxUnitsPerCarton,
       ...productionLabelDimArgs(body),
+      ...productionLabelPhotoFloorArgs({ ...body, client_source: printSource }),
     });
     if (!labelJobId) {
       labelPrintWarning = 'Labels were not sent to the printer (Zebra Weblink is not configured on the server).';
@@ -2799,6 +2813,7 @@ async function opProductionLabelPrint(body, user) {
   const preview = await buildProductionLabelPreviewPayload({
     name, sku, printedAt, color, boxUnitsPerCarton, skipPng: false,
     ...productionLabelDimArgs(body),
+    ...productionLabelPhotoFloorArgs({ ...body, client_source: printSource }),
   });
   return {
     label_copies: qty,

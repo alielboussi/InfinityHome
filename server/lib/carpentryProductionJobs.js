@@ -6,6 +6,7 @@ import {
   listCarpentryCatalogProducts,
 } from './carpentryCatalog.js';
 import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
+import { formatAssemblyDimensions } from '../../src/utils/warehouseAssemblySpecs.js';
 import {
   adjustAssemblyInventory,
   resolveCarpentryStoreroomLocations,
@@ -72,6 +73,10 @@ function serializeJob(job) {
     floor2_push: Boolean(job.metadata?.floor2_push),
     floor2_image_url: String(job.floor2_image_url || '').trim(),
     image_url: String(job.image_url || job.floor2_image_url || '').trim(),
+    dim_length: job.dim_length ?? null,
+    dim_width: job.dim_width ?? null,
+    dim_height: job.dim_height ?? null,
+    dimensions_display: String(job.dimensions_display || '').trim() || undefined,
   };
 }
 
@@ -240,13 +245,21 @@ export async function listCarpentryProductionJobs(sb, { activeOnly = true, limit
   if (assemblyIds.length) {
     const { data: assemblies } = await sb
       .from(ASSEMBLIES)
-      .select('id, metadata')
+      .select('id, metadata, dim_length, dim_width, dim_height')
       .in('id', assemblyIds);
     const byId = new Map((assemblies || []).map((row) => [String(row.id), row]));
     for (const job of jobs) {
-      const wip = readWarehouseFloor2WipImageUrl(byId.get(String(job.assembly_id || '')));
+      const asm = byId.get(String(job.assembly_id || ''));
+      const wip = readWarehouseFloor2WipImageUrl(asm);
       job.floor2_image_url = wip;
       job.image_url = wip;
+      if (asm) {
+        job.dim_length = asm.dim_length ?? null;
+        job.dim_width = asm.dim_width ?? null;
+        job.dim_height = asm.dim_height ?? null;
+        const dims = formatAssemblyDimensions(asm);
+        if (dims) job.dimensions_display = dims;
+      }
     }
   }
   return { jobs };
@@ -393,7 +406,7 @@ export async function finishCarpentryProductionJob(sb, {
 
 export async function listCarpentryManufactureCandidates(sb) {
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
-    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata, category_id, image_url'),
+    sb.from(ASSEMBLIES).select('id, name, family_sku, item_kind, metadata, category_id, image_url, dim_length, dim_width, dim_height'),
     sb.from(LOCATIONS).select('id, name'),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
@@ -430,6 +443,9 @@ export async function listCarpentryManufactureCandidates(sb) {
       image_url: '',
       floor2_image_url: floor2ImageUrl,
       metadata: raw?.metadata || {},
+      dim_length: raw?.dim_length ?? null,
+      dim_width: raw?.dim_width ?? null,
+      dim_height: raw?.dim_height ?? null,
     };
   });
 

@@ -3,7 +3,9 @@ import { resolveWarehouseLabelPrintPlan } from './warehouseBulkLabelPrint';
 import { formatAssemblyDimensions } from './warehouseAssemblySpecs';
 
 /** Floor 2 / Farm row — same Zebra label plan as /warehouse-products (qty at this location). */
-export function warehouseLabelPrintItemFromRow(assembly, qty, { colorRecords = [], pktList = [] } = {}) {
+export function warehouseLabelPrintItemFromRow(assembly, qty, {
+  colorRecords = [], pktList = [], photoFloor = 'floor1',
+} = {}) {
   const name = String(assembly?.name || '').trim();
   const sku = String(assembly?.family_sku || '').trim();
   if (!name || !sku) return null;
@@ -31,5 +33,6 @@ export function warehouseLabelPrintItemFromRow(assembly, qty, { colorRecords = [
     dimWidth: assembly?.dim_width,
     dimHeight: assembly?.dim_height,
     dimensionsDisplay,
+    photoFloor,
   };
 }

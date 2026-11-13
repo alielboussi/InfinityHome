@@ -72,7 +72,10 @@ export default function WarehouseFloor2Page({
 
   const openRowLabelPrint = useCallback((assembly, qty) => {
     const pktList = packetsByAssembly.get(String(assembly?.id)) || [];
-    const item = warehouseLabelPrintItemFromRow(assembly, qty, { pktList });
+    const item = warehouseLabelPrintItemFromRow(assembly, qty, {
+      pktList,
+      photoFloor: 'floor2',
+    });
     if (!item) {
       setError('Name and SKU are required to print a label.');
       return;

@@ -29,6 +29,7 @@ import ManufactureProductGridCard from '../shared/components/ManufactureProductG
 import { theme } from '../shared/theme';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { pickManufactureFloor2ImageUrl } from '../shared/manufactureFloor2Image';
+import { formatAssemblyDimensions } from '../shared/utils/warehouseAssemblySpecs';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,
@@ -227,6 +228,7 @@ export default function ManufactureScreen({
         <ManufactureProductGridCard
           imageUrl={cardImage || undefined}
           name={item.name}
+          dimensions={formatAssemblyDimensions(item)}
           qty={qty}
           busy={cardBusy}
           disabled={Boolean(busyId)}
