@@ -30,6 +30,7 @@ import {
   resumeCarpentryProductionJob,
 } from '../services/carpentryApi';
 import StoreroomDeductionPromptModal from '../productionKiosk/shared/components/StoreroomDeductionPromptModal';
+import ConfirmTypeOkModal from '../productionKiosk/shared/components/ConfirmTypeOkModal';
 import {
   carpentryFinishNeedsStoreroomPick,
   parseStoreroomsFromMaterialsApi,
@@ -269,6 +270,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [storerooms, setStorerooms] = useState([]);
   const [storeroomFinishJobId, setStoreroomFinishJobId] = useState('');
   const [storeroomPromptVisible, setStoreroomPromptVisible] = useState(false);
+  const [finishConfirmJob, setFinishConfirmJob] = useState(null);
 
   const storeroomCopy = useMemo(() => storeroomDeductionStrings(tUi, locale), [locale]);
 
@@ -386,38 +388,39 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     }
   };
 
-  const onFinish = (job) => {
+  const proceedFinishJob = (job) => {
     const jobId = job.job_id || job.id;
-    const matCount = (job.manual_material_lines || []).length;
-    let body = tUi('upholsteryJobFinishBody', locale).replace('{name}', job.product_name || job.raw_name || '');
-    if (matCount === 0) body = `${body}\n\n${tUi('jobFinishNoMaterialsHint', locale)}`;
     const needsStoreroom = carpentryFinishNeedsStoreroomPick(job);
-    Alert.alert(
-      tUi('upholsteryJobFinishTitle', locale),
-      body,
-      [
-        { text: tUi('cancel', locale), style: 'cancel' },
-        {
-          text: tUi('upholsteryJobFinish', locale),
-          style: 'destructive',
-          onPress: async () => {
-            if (needsStoreroom) {
-              try {
-                const payload = await fetchProductionStoreroomMaterials();
-                setStorerooms(parseStoreroomsFromMaterialsApi(payload));
-              } catch {
-                setStorerooms([]);
-              }
-              setStoreroomFinishJobId(String(jobId));
-              setStoreroomPromptVisible(true);
-              return;
-            }
-            wrapBusy(jobId, () => completeFinishJob(jobId, null));
-          },
-        },
-      ],
-    );
+    if (needsStoreroom) {
+      void (async () => {
+        try {
+          const payload = await fetchProductionStoreroomMaterials();
+          setStorerooms(parseStoreroomsFromMaterialsApi(payload));
+        } catch {
+          setStorerooms([]);
+        }
+        setStoreroomFinishJobId(String(jobId));
+        setStoreroomPromptVisible(true);
+      })();
+      return;
+    }
+    wrapBusy(jobId, () => completeFinishJob(jobId, null));
   };
+
+  const onFinish = (job) => {
+    setFinishConfirmJob(job);
+  };
+
+  const finishConfirmMessage = useMemo(() => {
+    if (!finishConfirmJob) return '';
+    const matCount = (finishConfirmJob.manual_material_lines || []).length;
+    let body = tUi('upholsteryJobFinishBody', locale).replace(
+      '{name}',
+      finishConfirmJob.product_name || finishConfirmJob.raw_name || '',
+    );
+    if (matCount === 0) body = `${body}\n\n${tUi('jobFinishNoMaterialsHint', locale)}`;
+    return body;
+  }, [finishConfirmJob, locale]);
 
   const combinedItems = useMemo(() => {
     const quoteRows = quoteOrders.map((q) => ({ _kind: 'quote', _key: `quote-${q.quote_id}`, quote: q }));
@@ -542,6 +545,21 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         onSaved={() => {
           setMaterialsTarget(null);
           loadJobs();
+        }}
+      />
+      <ConfirmTypeOkModal
+        visible={Boolean(finishConfirmJob)}
+        title={tUi('upholsteryJobFinishTitle', locale)}
+        message={finishConfirmMessage}
+        typeHint={tUi('jobFinishTypeOkHint', locale)}
+        confirmLabel={tUi('upholsteryJobFinish', locale)}
+        cancelLabel={tUi('cancel', locale)}
+        textAlign={textAlign}
+        onCancel={() => setFinishConfirmJob(null)}
+        onConfirm={() => {
+          const job = finishConfirmJob;
+          setFinishConfirmJob(null);
+          if (job) proceedFinishJob(job);
         }}
       />
       <StoreroomDeductionPromptModal

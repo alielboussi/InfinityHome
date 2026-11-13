@@ -84,7 +84,10 @@ const CARPENTRY_ROUTE = 'carpentry';
 
 export async function fetchCarpentryProductionQuotes() {
   try {
-    const payload = await warehouseMobileRequest('production-quotes-list', { route: CARPENTRY_ROUTE });
+    const payload = await warehouseMobileRequest('production-quotes-list', {
+      route: CARPENTRY_ROUTE,
+      limit: 300,
+    });
     return payload?.rows || [];
   } catch (err) {
     if (/unknown op/i.test(String(err?.message || ''))) {

@@ -169,6 +169,7 @@ export async function sendQuoteToProduction(sb, quoteId, userId) {
       customer_phone: customer.phone,
       quote_number: quote.quote_number || null,
       lines: lineSummary,
+      last_workshop_notify_at: now,
     },
   }).eq('quote_id', String(quoteId));
   if (error) throw new Error(error.message || 'Failed to send to production');
@@ -206,6 +207,20 @@ export async function resendQuoteToProduction(sb, quoteId, userId) {
   if (!routing.sent_to_production_at) {
     return sendQuoteToProduction(sb, quoteId, userId);
   }
+  const now = new Date().toISOString();
+  const wasCompleted = Boolean(routing.completed_at);
+  const meta = {
+    ...(routing.metadata || {}),
+    last_workshop_notify_at: now,
+  };
+  const patch = { metadata: meta };
+  if (wasCompleted) {
+    patch.completed_at = null;
+    meta.production_reopened_at = now;
+  }
+  const { error: routeErr } = await sb.from(ROUTING).update(patch).eq('quote_id', String(quoteId));
+  if (routeErr) throw new Error(routeErr.message || 'Failed to update routing for resend');
+
   try {
     await pushProductionQuoteNotification(sb, quoteId, quote, routing);
   } catch (pushErr) {
@@ -215,6 +230,8 @@ export async function resendQuoteToProduction(sb, quoteId, userId) {
     quote_id: quoteId,
     route: routing.route,
     sent_to_production_at: routing.sent_to_production_at,
+    last_workshop_notify_at: now,
+    reopened: wasCompleted,
     resent: true,
   };
 }
@@ -227,19 +244,28 @@ export async function sendOrResendQuoteToProduction(sb, quoteId, userId) {
   return sendQuoteToProduction(sb, quoteId, userId);
 }
 
+function workshopNotifySortKey(row) {
+  const meta = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+  return String(meta.last_workshop_notify_at || row.sent_to_production_at || '');
+}
+
 export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = {}) {
   const normalized = normalizeProductionRoute(route);
   if (!normalized) throw new Error('route required');
 
+  const cap = Math.min(500, Math.max(1, Number(limit) || 100));
   const { data: routes, error } = await sb
     .from(ROUTING)
     .select('*')
     .eq('route', normalized)
+    .not('sent_to_production_at', 'is', null)
     .order('sent_to_production_at', { ascending: false })
-    .limit(Math.min(200, Math.max(1, Number(limit) || 100)));
+    .limit(cap);
   if (error) throw new Error(error.message || 'Failed to list production quotes');
 
-  const sent = (routes || []).filter((r) => r.sent_to_production_at);
+  const sent = [...(routes || [])].sort(
+    (a, b) => workshopNotifySortKey(b).localeCompare(workshopNotifySortKey(a)),
+  );
   const quoteIds = sent.map((r) => r.quote_id).filter(Boolean);
   let quotes = [];
   if (quoteIds.length) {
@@ -298,6 +324,7 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
         ? meta.manual_material_lines
         : [],
       quotation_missing: !q,
+      last_workshop_notify_at: meta.last_workshop_notify_at || r.sent_to_production_at,
     });
   }
   return { rows };
@@ -492,6 +519,75 @@ export async function completeQuoteProductionOrder(sb, {
   }
 
   return { run_id: run.id, completed_at: now, deferred_delivery_queue: Boolean(deferDeliveryQueue) };
+}
+
+/** Undo mistaken workshop complete — returns order to Carpentry/Upholstery Quotes & Jobs. */
+export async function reopenQuoteProductionOrder(sb, {
+  quoteId,
+  userId = null,
+  reason = '',
+} = {}) {
+  void userId;
+  const qid = String(quoteId || '').trim();
+  if (!qid) throw new Error('quote_id required');
+
+  const { routing } = await loadQuoteBundle(sb, qid);
+  if (!routing?.sent_to_production_at) throw new Error('Quote has not been sent to production');
+  if (!routing.completed_at && !routing.metadata?.delivery_admin?.stage) {
+    return { quote_id: qid, already_open: true };
+  }
+
+  const run = await findActiveQuoteRun(sb, qid);
+  if (!run) throw new Error('No production run for this quote');
+
+  const now = new Date().toISOString();
+  const meta = { ...(routing.metadata || {}) };
+  const prevAdmin = meta.delivery_admin;
+  if (prevAdmin && typeof prevAdmin === 'object') {
+    meta.delivery_admin_cancelled = { ...prevAdmin, cancelled_at: now };
+  }
+  meta.delivery_admin = null;
+  meta.production_reopened_at = now;
+  const note = String(reason || '').trim();
+  if (note) meta.production_reopen_reason = note;
+
+  const { error: routeErr } = await sb.from(ROUTING).update({
+    completed_at: null,
+    metadata: meta,
+    updated_at: now,
+  }).eq('quote_id', qid);
+  if (routeErr) throw new Error(routeErr.message || 'Failed to reopen routing');
+
+  const runMeta = quoteRunMeta(run);
+  let accumulated = Math.max(0, Number(runMeta.accumulated_ms) || 0);
+  if (run.completed_at && run.started_at) {
+    const a = new Date(run.started_at).getTime();
+    const b = new Date(run.completed_at).getTime();
+    if (Number.isFinite(a) && Number.isFinite(b) && b >= a) {
+      accumulated = Math.max(accumulated, b - a);
+    }
+  }
+
+  const { error: runErr } = await sb.from(RUNS).update({
+    completed_at: null,
+    metadata: {
+      ...runMeta,
+      timer_status: 'paused',
+      paused_at: now,
+      accumulated_ms: accumulated,
+      production_reopened_at: now,
+    },
+    updated_at: now,
+  }).eq('id', run.id);
+  if (runErr) throw new Error(runErr.message || 'Failed to reopen production run');
+
+  return {
+    quote_id: qid,
+    run_id: run.id,
+    reopened_at: now,
+    accumulated_ms: accumulated,
+    delivery_admin_cleared: Boolean(prevAdmin),
+  };
 }
 
 async function resolveMaterialAssemblyFromScan(sb, scan) {

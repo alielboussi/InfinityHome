@@ -27,6 +27,7 @@ import {
   sendCarpentryQuoteToPainting,
 } from '../services/carpentryApi';
 import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
+import ConfirmTypeOkModal from '../productionKiosk/shared/components/ConfirmTypeOkModal';
 import { theme } from '../shared/theme';
 import {
   QuoteProductionDrawingSection,
@@ -48,6 +49,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
   const [tick, setTick] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [endConfirmVisible, setEndConfirmVisible] = useState(false);
 
   const reloadQuote = useCallback(async () => {
     if (!quoteId) {
@@ -225,7 +227,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
     }
   };
 
-  const onComplete = () => {
+  const showEndDestinationAlert = () => {
     Alert.alert(
       tUi('quoteOrderEndConfirmTitle', locale),
       tUi('quoteOrderEndConfirmBody', locale),
@@ -241,6 +243,10 @@ export default function QuoteDetailScreen({ route, navigation }) {
         },
       ],
     );
+  };
+
+  const onComplete = () => {
+    setEndConfirmVisible(true);
   };
 
   const bottomPad = kioskFooterBottomPad(insets) + 32;
@@ -340,6 +346,20 @@ export default function QuoteDetailScreen({ route, navigation }) {
           arabicMap={arabicMap}
         />
       </ScrollView>
+      <ConfirmTypeOkModal
+        visible={endConfirmVisible}
+        title={tUi('quoteOrderEndConfirmTitle', locale)}
+        message={tUi('quoteOrderEndConfirmBody', locale)}
+        typeHint={tUi('quoteOrderEndTypeOkHint', locale)}
+        confirmLabel={tUi('quoteOrderEnd', locale)}
+        cancelLabel={tUi('cancel', locale)}
+        textAlign={textAlign}
+        onCancel={() => setEndConfirmVisible(false)}
+        onConfirm={() => {
+          setEndConfirmVisible(false);
+          showEndDestinationAlert();
+        }}
+      />
       <ProductionJobMaterialsModal
         visible={materialsOpen}
         locale={locale}

@@ -164,6 +164,10 @@ const UI_STRINGS = {
   quoteOrderEnd: { en: 'End order', ar: 'إنهاء الطلب' },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
+  quoteOrderEndTypeOkHint: {
+    en: 'Type Ok to confirm ending this order.',
+    ar: 'اكتب Ok لتأكيد إنهاء الطلب.',
+  },
   quoteOrderEndSendPainting: { en: 'End + send to painting', ar: 'إنهاء وإرسال للدهان' },
   carpentryQuoteSentToPainting: {
     en: 'Order completed and sent to the Painting app.',
@@ -393,6 +397,10 @@ const UI_STRINGS = {
   upholsteryJobFinishBody: {
     en: 'Send 1 × {name} to Warehouse Floor 1 and close this job?',
     ar: 'إرسال 1 × {name} إلى الطابق 1 وإغلاق المهمة؟',
+  },
+  jobFinishTypeOkHint: {
+    en: 'Type Ok to confirm ending this job.',
+    ar: 'اكتب Ok لتأكيد إنهاء المهمة.',
   },
   upholsteryJobControlsHint: {
     en: 'Play · Pause · Stop (complete → Floor 1)',

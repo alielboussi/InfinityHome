@@ -1920,6 +1920,29 @@ async function opProductionQuoteAccept(body, user) {
   });
 }
 
+async function opProductionQuoteReopen(body, user) {
+  if (!canManageCatalog(user) && !isLoginAccessAdmin(user?.email)) {
+    throw new Error('Not allowed to reopen production orders.');
+  }
+  const quoteId = String(body.quote_id || body.quoteId || body.quote_number || '').trim();
+  if (!quoteId) throw new Error('quote_id required');
+  const sb = getService();
+  const { reopenQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
+  let qid = quoteId;
+  if (/^qt#/i.test(quoteId)) {
+    const num = quoteId.replace(/^qt#\s*/i, '').trim();
+    const normalized = `QT#${num}`;
+    const { data: row } = await sb.from('quotations').select('id').eq('quote_number', normalized).maybeSingle();
+    if (!row?.id) throw new Error(`Quote not found: ${normalized}`);
+    qid = row.id;
+  }
+  return reopenQuoteProductionOrder(sb, {
+    quoteId: qid,
+    userId: user?.id || user?.uid,
+    reason: body.reason || 'mistaken complete',
+  });
+}
+
 async function opProductionQuoteComplete(body, user) {
   const route = await assertQuoteRouteUser(user, body.route);
   const quoteId = String(body.quote_id || body.quoteId || '').trim();
@@ -5354,6 +5377,9 @@ export default async function handler(req, res) {
         break;
       case 'production-quote-accept':
         result = await opProductionQuoteAccept(body, user);
+        break;
+      case 'production-quote-reopen':
+        result = await opProductionQuoteReopen(body, user);
         break;
       case 'production-quote-complete':
         result = await opProductionQuoteComplete(body, user);
