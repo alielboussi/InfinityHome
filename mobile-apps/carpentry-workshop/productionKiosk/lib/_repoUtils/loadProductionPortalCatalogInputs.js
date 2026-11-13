@@ -68,7 +68,7 @@ export async function fetchSharedProductionPortalSnapshot({ forceFresh = false }
       { data: setItems, error: setItemsErr },
       portalInputs,
     ] = await Promise.all([
-      db.from('warehouse_assemblies').select('id, name, family_sku, item_kind, category_id, metadata'),
+      db.from('warehouse_assemblies').select('id, name, family_sku, item_kind, category_id, metadata, dim_length, dim_width, dim_height'),
       db.from('warehouse_set_items').select('set_assembly_id, component_assembly_id, quantity, location_id'),
       loadProductionPortalCatalogInputs(db),
     ]);

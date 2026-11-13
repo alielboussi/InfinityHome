@@ -1,5 +1,12 @@
 /** Display / parse warehouse product specs on list cards. */
 
+/** True when L/W/H exist on the assembly (Floor 1 / warehouse products list). */
+export function assemblyHasDimensions(assembly) {
+  return [assembly?.dim_length, assembly?.dim_width, assembly?.dim_height].some(
+    (v) => v != null && v !== '' && Number.isFinite(Number(v)),
+  );
+}
+
 export function formatAssemblyDimensions(assembly) {
   const l = assembly?.dim_length;
   const w = assembly?.dim_width;

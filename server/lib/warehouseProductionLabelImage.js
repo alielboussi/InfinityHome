@@ -7,6 +7,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { buildProductPhotoQrUrl } from './productPhotoBySku.js';
 import {
+  assertProductionLabelFits,
   BARCODE_HEIGHT_MM,
   BARCODE_WIDTH_MM,
   COMPANY_NAME,
@@ -32,6 +33,11 @@ import {
   productionLabelIncludesBoxRow,
   resolveProductionLabelBoxLine,
 } from './warehouseProductionLabelBox.js';
+import {
+  formatProductionLabelDimensionsLine,
+  productionLabelIncludesDimensionsRow,
+} from './warehouseProductionLabelDimensions.js';
+import { wrapProductionLabelNameLines } from './warehouseProductionLabelName.js';
 
 const PX_PER_MM = 10;
 const W = Math.round(LABEL_WIDTH_MM * PX_PER_MM);
@@ -40,7 +46,9 @@ const BORDER = '#1e3a5f';
 
 const COMPANY_FONT_PX = 11;
 const ROW_FONT_PX = FONT_PT;
-export function buildProductionLabelMeta({ name, sku, printedAt, color, boxLine, boxUnitsPerCarton } = {}) {
+export function buildProductionLabelMeta({
+  name, sku, printedAt, color, boxLine, boxUnitsPerCarton, dimensionsLine, dimLength, dimWidth, dimHeight,
+} = {}) {
   const at = printedAt ? new Date(printedAt) : new Date();
   if (Number.isNaN(at.getTime())) {
     throw new Error('Invalid printedAt');
@@ -49,11 +57,18 @@ export function buildProductionLabelMeta({ name, sku, printedAt, color, boxLine,
   const cleanName = String(name || '').trim();
   const cleanColor = normalizeProductionLabelColor(color);
   const cleanBoxLine = resolveProductionLabelBoxLine({ boxLine, boxUnitsPerCarton });
+  const cleanDimensions = formatProductionLabelDimensionsLine({
+    dimLength,
+    dimWidth,
+    dimHeight,
+    dimensionsLine,
+  });
   return {
     sku: cleanSku,
     name: cleanName,
     color: cleanColor,
     box_line: cleanBoxLine,
+    dimensions_line: cleanDimensions,
     image_qr_url: buildProductPhotoQrUrl(cleanSku),
     printed_at: at.toISOString(),
     print_date: formatBlockDate(at),
@@ -135,17 +150,21 @@ function rowSvg({
 }
 
 export async function buildWarehouseProductionLabelPngBuffer({
-  name, sku, printedAt, color, boxLine, boxUnitsPerCarton,
+  name, sku, printedAt, color, boxLine, boxUnitsPerCarton, dimensionsLine, dimLength, dimWidth, dimHeight,
 } = {}) {
   const meta = buildProductionLabelMeta({
-    name, sku, printedAt, color, boxLine, boxUnitsPerCarton,
+    name, sku, printedAt, color, boxLine, boxUnitsPerCarton, dimensionsLine, dimLength, dimWidth, dimHeight,
   });
   const layout = computeProductionLabelLayout({
     heightMm: LABEL_HEIGHT_MM,
     marginMm: LABEL_MARGIN_MM,
     includeColorRow: productionLabelIncludesColorRow(meta.color),
     includeBoxRow: productionLabelIncludesBoxRow(meta.box_line),
+    includeDimensionsRow: productionLabelIncludesDimensionsRow(meta.dimensions_line),
+    imageQrDataLength: buildProductPhotoQrUrl(meta.sku).length,
   });
+  const nameLines = wrapProductionLabelNameLines(meta.name, layout.nameValueMaxLines);
+  assertProductionLabelFits(layout);
 
   const marginPx = mmToPx(layout.marginMm);
   const mainWidthPx = mmToPx(layout.mainWidthMm);
@@ -159,9 +178,9 @@ export async function buildWarehouseProductionLabelPngBuffer({
   const barcodeLeft = mmToPx(layout.barcodeLeftMm);
 
   const barcodeResized = await makeCode128Png(meta.sku);
-  const qrSizePx = mmToPx(layout.qrSizeMm);
-  const imageQrPng = await makeQrPng(meta.image_qr_url, qrSizePx);
-  const imageQrLeft = mmToPx(layout.imageQrLeftMm);
+  const qrFootprintPx = mmToPx(layout.qrFootprintMm);
+  const imageQrPng = await makeQrPng(meta.image_qr_url, qrFootprintPx);
+  const imageQrLeft = mmToPx(layout.imageQrCenterMm - layout.qrFootprintMm / 2);
   const qrTop = mmToPx(layout.qrBlockYMm);
 
   const textSvg = `
@@ -170,7 +189,14 @@ export async function buildWarehouseProductionLabelPngBuffer({
   <rect x="${marginPx}" y="${marginPx}" width="${mainWidthPx}" height="${H - marginPx * 2}" fill="none" stroke="${BORDER}" stroke-width="3"/>
   <text x="${centerXPx}" y="${companyY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${COMPANY_FONT_PX}" font-weight="700" fill="#1e3a5f">${escapeXml(COMPANY_NAME)}</text>
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.skuRowMm, ROW_TEXT_MM), label: FIELD_LABELS.sku, value: meta.sku })}
-  ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.nameBlockTopMm, NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES), label: FIELD_LABELS.name, value: meta.name })}
+  <text x="${labelXpx}" y="${textBaseline(layout.nameBlockTopMm, NAME_LINE_HEIGHT_MM)}" text-anchor="start" font-family="DejaVu Sans, sans-serif" font-size="${ROW_FONT_PX}" font-weight="700" fill="#111">${escapeXml(FIELD_LABELS.name)}</text>
+  ${nameLines.map((line, idx) => {
+    const lineY = textBaseline(
+      layout.nameBlockTopMm + idx * NAME_LINE_HEIGHT_MM,
+      NAME_LINE_HEIGHT_MM,
+    );
+    return `<text x="${centerXPx}" y="${lineY}" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="${ROW_FONT_PX}" font-weight="600" fill="#000">${escapeXml(line)}</text>`;
+  }).join('')}
   ${meta.color && layout.colorRowMm != null
     ? rowSvg({
       labelXpx,
@@ -187,6 +213,15 @@ export async function buildWarehouseProductionLabelPngBuffer({
       rowYpx: textBaseline(layout.boxRowMm, ROW_TEXT_MM),
       label: FIELD_LABELS.pack,
       value: meta.box_line,
+    })
+    : ''}
+  ${meta.dimensions_line && layout.dimensionsRowMm != null
+    ? rowSvg({
+      labelXpx,
+      centerXpx: centerXPx,
+      rowYpx: textBaseline(layout.dimensionsRowMm, ROW_TEXT_MM),
+      label: FIELD_LABELS.dims,
+      value: meta.dimensions_line,
     })
     : ''}
   ${rowSvg({ labelXpx, centerXpx: centerXPx, rowYpx: textBaseline(layout.dateRowMm, ROW_TEXT_MM), label: FIELD_LABELS.date, value: meta.print_date })}

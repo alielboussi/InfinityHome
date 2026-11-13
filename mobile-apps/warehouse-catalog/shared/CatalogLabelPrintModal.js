@@ -26,6 +26,10 @@ export default function CatalogLabelPrintModal({
   const sku = String(item?.sku || '').trim();
   const color = String(item?.color || '').trim();
   const boxUnitsPerCarton = Math.max(0, Math.floor(Number(item?.boxUnitsPerCarton) || 0));
+  const dimLength = item?.dimLength ?? item?.dim_length ?? '';
+  const dimWidth = item?.dimWidth ?? item?.dim_width ?? '';
+  const dimHeight = item?.dimHeight ?? item?.dim_height ?? '';
+  const dimensionsDisplay = String(item?.dimensionsDisplay || '').trim();
   const [copies, setCopies] = useState(1);
   const [copiesInput, setCopiesInput] = useState('1');
   const [busy, setBusy] = useState(false);
@@ -73,6 +77,9 @@ export default function CatalogLabelPrintModal({
         copies: printCopies,
         color,
         boxUnitsPerCarton,
+        dimLength,
+        dimWidth,
+        dimHeight,
       });
       const warning = String(result?.labelPrintWarning || '').trim();
       setPrintWarning(warning);
@@ -87,6 +94,9 @@ export default function CatalogLabelPrintModal({
             printedAt: label.printed_at,
             color: label.color || color,
             boxUnitsPerCarton,
+            dimLength,
+            dimWidth,
+            dimHeight,
           });
           png = prev?.label_preview_png_base64 || '';
           if (!label && prev?.label) label = prev.label;
@@ -126,6 +136,9 @@ export default function CatalogLabelPrintModal({
             <Text style={styles.sku}>{sku}</Text>
             {color ? (
               <Text style={styles.colorLine}>Color: {color}</Text>
+            ) : null}
+            {dimensionsDisplay ? (
+              <Text style={styles.colorLine}>Dimensions: {dimensionsDisplay}</Text>
             ) : null}
 
             <View style={styles.qtyRow}>

@@ -1,5 +1,6 @@
 import { formatWarehouseProductionLabelColor } from './warehouseProductionLabelColor';
 import { resolveWarehouseLabelPrintPlan } from './warehouseBulkLabelPrint';
+import { formatAssemblyDimensions } from './warehouseAssemblySpecs';
 
 /** Floor 2 / Farm row — same Zebra label plan as /warehouse-products (qty at this location). */
 export function warehouseLabelPrintItemFromRow(assembly, qty, { colorRecords = [], pktList = [] } = {}) {
@@ -18,11 +19,17 @@ export function warehouseLabelPrintItemFromRow(assembly, qty, { colorRecords = [
 
   const defaultCopies = Math.max(1, plan?.copies ?? (locationQty || 1));
 
+  const dimensionsDisplay = formatAssemblyDimensions(assembly);
+
   return {
     name,
     sku,
     defaultCopies,
     color: formatWarehouseProductionLabelColor(assembly, colorRecords),
     boxUnitsPerCarton: Math.max(0, Math.floor(Number(plan?.boxUnitsPerCarton) || 0)),
+    dimLength: assembly?.dim_length,
+    dimWidth: assembly?.dim_width,
+    dimHeight: assembly?.dim_height,
+    dimensionsDisplay,
   };
 }

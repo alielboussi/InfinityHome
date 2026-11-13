@@ -9,7 +9,6 @@ import {
   LABEL_HEIGHT_MM,
   LABEL_MARGIN_MM,
   LABEL_WIDTH_MM,
-  NAME_VALUE_MAX_LINES,
   labelPitchMm,
   mmToDots,
   zebraQrMagnification,
@@ -23,6 +22,10 @@ import {
   productionLabelIncludesBoxRow,
   resolveProductionLabelBoxLine,
 } from './warehouseProductionLabelBox.js';
+import {
+  formatProductionLabelDimensionsLine,
+  productionLabelIncludesDimensionsRow,
+} from './warehouseProductionLabelDimensions.js';
 
 function zplEscape(value) {
   return String(value || '')
@@ -65,6 +68,13 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     boxUnitsPerCarton: opts.boxUnitsPerCarton ?? opts.box_units_per_carton,
   });
   const boxText = zplEscape(boxRaw);
+  const dimensionsRaw = formatProductionLabelDimensionsLine({
+    dimensionsLine: opts.dimensionsLine,
+    dimLength: opts.dimLength ?? opts.dim_length,
+    dimWidth: opts.dimWidth ?? opts.dim_width,
+    dimHeight: opts.dimHeight ?? opts.dim_height,
+  });
+  const dimensionsText = zplEscape(dimensionsRaw);
   const photoQrUrl = String(opts.imageQrUrl || '').trim()
     || buildProductPhotoQrUrl(String(opts.sku || '').trim());
   const imageQr = qrEscape(photoQrUrl);
@@ -77,7 +87,10 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     dpi,
     includeColorRow: productionLabelIncludesColorRow(colorRaw),
     includeBoxRow: productionLabelIncludesBoxRow(boxRaw),
+    includeDimensionsRow: productionLabelIncludesDimensionsRow(dimensionsRaw),
+    imageQrDataLength: imageQr.length,
   });
+  const nameMaxLines = layout.nameValueMaxLines;
   const d = layout.dots;
   const mainX = d.margin;
   const mainW = d.mainWidth;
@@ -108,7 +121,7 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
     labelField(d.skuRowY, FIELD_LABELS.sku),
     valueField(d.skuRowY, skuText),
     labelField(d.nameBlockTop, FIELD_LABELS.name),
-    `^FO0,${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.labelWidth},${NAME_VALUE_MAX_LINES},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
+    `^FO0,${d.nameBlockTop}^A0N,${vf},${vf}^FB${d.labelWidth},${nameMaxLines},${Math.max(1, Math.floor(d.valueFont * 0.9))},C,0^FD${nameText}^FS`,
     ...(imageQr
       ? [`^FO${d.imageQrX},${d.qrBlockY}^BQN,2,${imageMag}^FDLA,${imageQr}^FS`]
       : []),
@@ -122,6 +135,12 @@ export function buildWarehouseProductionLabelZpl(opts = {}) {
       ? [
         labelField(d.boxRowY, FIELD_LABELS.pack),
         valueField(d.boxRowY, boxText),
+      ]
+      : []),
+    ...(dimensionsRaw && d.dimensionsRowY != null
+      ? [
+        labelField(d.dimensionsRowY, FIELD_LABELS.dims),
+        valueField(d.dimensionsRowY, dimensionsText),
       ]
       : []),
     labelField(d.dateRowY, FIELD_LABELS.date),

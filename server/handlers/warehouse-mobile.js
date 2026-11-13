@@ -624,7 +624,7 @@ async function opCatalogFloor2List(user, { carpentryWorkshop = false, production
   const { readWarehouseFloor2WipImageUrl } = await import('../../src/utils/warehouseFloor2WipImage.js');
 
   const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
-    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata, category_id, image_url'),
+    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata, category_id, image_url, dim_length, dim_width, dim_height'),
     sb.from('locations').select('id, name'),
   ]);
   if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
@@ -661,9 +661,67 @@ async function opCatalogFloor2List(user, { carpentryWorkshop = false, production
       image_url: wipImage,
       floor2_image_url: wipImage,
       floor2_set_name: floor2SetName || undefined,
+      dim_length: asm?.dim_length ?? null,
+      dim_width: asm?.dim_width ?? null,
+      dim_height: asm?.dim_height ?? null,
     };
   });
   return { products, floor2_location_id: floor2Id };
+}
+
+function parseCatalogAssemblyDimField(raw, fieldName) {
+  if (raw === '' || raw == null) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    const err = new Error(`Invalid value for ${fieldName}`);
+    err.status = 400;
+    throw err;
+  }
+  return n;
+}
+
+async function opCatalogFloor2UpdateDimensions(body, user) {
+  await assertCatalogScreenViewUser(user, 'warehouse_floor_2');
+  const grant = await mobileAccessGrantForUser(user);
+  if (
+    !isWarehouseProductStockQtyEditAllowed(grant)
+    && !canManageCatalog(user)
+    && !isLoginAccessAdmin(user?.email)
+  ) {
+    const err = new Error('Editing product dimensions is disabled for your account in User Access.');
+    err.status = 403;
+    throw err;
+  }
+  const assemblyId = String(
+    body.assembly_id || body.assemblyId || '',
+  ).trim();
+  if (!assemblyId) throw new Error('assembly_id is required.');
+  const patch = { updated_at: new Date().toISOString() };
+  if (Object.prototype.hasOwnProperty.call(body, 'dim_length') || Object.prototype.hasOwnProperty.call(body, 'dimLength')) {
+    patch.dim_length = parseCatalogAssemblyDimField(body.dim_length ?? body.dimLength, 'dim_length');
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'dim_width') || Object.prototype.hasOwnProperty.call(body, 'dimWidth')) {
+    patch.dim_width = parseCatalogAssemblyDimField(body.dim_width ?? body.dimWidth, 'dim_width');
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'dim_height') || Object.prototype.hasOwnProperty.call(body, 'dimHeight')) {
+    patch.dim_height = parseCatalogAssemblyDimField(body.dim_height ?? body.dimHeight, 'dim_height');
+  }
+  if (Object.keys(patch).length <= 1) throw new Error('At least one dimension (dim_length, dim_width, dim_height) is required.');
+  const sb = getService();
+  const { data, error } = await sb
+    .from('warehouse_assemblies')
+    .update(patch)
+    .eq('id', assemblyId)
+    .select('id, dim_length, dim_width, dim_height')
+    .maybeSingle();
+  if (error) throw new Error(error.message || 'Failed to save dimensions');
+  if (!data?.id) throw new Error('Product not found.');
+  return {
+    assembly_id: String(data.id),
+    dim_length: data.dim_length,
+    dim_width: data.dim_width,
+    dim_height: data.dim_height,
+  };
 }
 
 async function opCatalogFloor2StockIncrease(body, user, { carpentryWorkshop = false } = {}) {
@@ -2638,12 +2696,23 @@ async function opPacketNameCheck(body) {
   };
 }
 
+function productionLabelDimArgs(body = {}) {
+  return {
+    dimLength: body.dim_length ?? body.dimLength,
+    dimWidth: body.dim_width ?? body.dimWidth,
+    dimHeight: body.dim_height ?? body.dimHeight,
+    dimensionsLine: body.dimensions_line ?? body.dimensionsLine ?? '',
+  };
+}
+
 async function buildProductionLabelPreviewPayload({
   name, sku, printedAt, color, boxUnitsPerCarton, skipPng = false,
+  dimLength, dimWidth, dimHeight, dimensionsLine,
 }) {
   const at = printedAt ? new Date(printedAt) : new Date();
   const label = buildProductionLabelMeta({
     name, sku, printedAt: at, color, boxUnitsPerCarton,
+    dimLength, dimWidth, dimHeight, dimensionsLine,
   });
   let label_preview_png_base64 = null;
   if (!skipPng) {
@@ -2654,6 +2723,10 @@ async function buildProductionLabelPreviewPayload({
         printedAt: at,
         color: label.color,
         boxUnitsPerCarton,
+        dimLength,
+        dimWidth,
+        dimHeight,
+        dimensionsLine,
       });
     } catch (err) {
       console.warn('[warehouse-mobile] label preview png failed:', err?.message || err);
@@ -2679,6 +2752,7 @@ async function opProductionLabelPreview(body, user) {
   );
   return buildProductionLabelPreviewPayload({
     name, sku, printedAt, color, boxUnitsPerCarton,
+    ...productionLabelDimArgs(body),
   });
 }
 
@@ -2712,6 +2786,7 @@ async function opProductionLabelPrint(body, user) {
       printedAt,
       color,
       boxUnitsPerCarton,
+      ...productionLabelDimArgs(body),
     });
     if (!labelJobId) {
       labelPrintWarning = 'Labels were not sent to the printer (Zebra Weblink is not configured on the server).';
@@ -2723,6 +2798,7 @@ async function opProductionLabelPrint(body, user) {
   }
   const preview = await buildProductionLabelPreviewPayload({
     name, sku, printedAt, color, boxUnitsPerCarton, skipPng: false,
+    ...productionLabelDimArgs(body),
   });
   return {
     label_copies: qty,
@@ -5076,6 +5152,9 @@ export default async function handler(req, res) {
         break;
       case 'catalog-floor2-stock-increase':
         result = await opCatalogFloor2StockIncrease(body, user);
+        break;
+      case 'catalog-floor2-update-dimensions':
+        result = await opCatalogFloor2UpdateDimensions(body, user);
         break;
       case 'catalog-floor2-create-product':
         result = await opCatalogFloor2CreateProduct(body, user);

@@ -19,6 +19,10 @@ export async function enqueueWarehouseProductionLabelJob(db, {
   printedAt: printedAtInput,
   color,
   boxUnitsPerCarton,
+  dimLength,
+  dimWidth,
+  dimHeight,
+  dimensionsLine,
 }) {
   const labelName = String(name || '').trim();
   const labelSku = String(sku || '').trim();
@@ -45,6 +49,10 @@ export async function enqueueWarehouseProductionLabelJob(db, {
         imageQrUrl,
         color,
         boxUnitsPerCarton,
+        dimLength,
+        dimWidth,
+        dimHeight,
+        dimensionsLine,
       });
       return 'zebra-weblink';
     } catch (err) {
@@ -67,6 +75,10 @@ export async function enqueueWarehouseProductionLabelJob(db, {
     imageQrUrl,
     color,
     boxUnitsPerCarton,
+    dimLength,
+    dimWidth,
+    dimHeight,
+    dimensionsLine,
     copies: 1,
   });
 

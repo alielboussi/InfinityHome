@@ -165,7 +165,7 @@ export default function FarmWarehouse1Page({
       if (ids.length) {
         const { data: photoRows } = await db
           .from('warehouse_assemblies')
-          .select('id, name, family_sku, metadata')
+          .select('id, name, family_sku, metadata, dim_length, dim_width, dim_height')
           .in('id', ids);
         (photoRows || []).forEach((a) => {
           const id = String(a.id);

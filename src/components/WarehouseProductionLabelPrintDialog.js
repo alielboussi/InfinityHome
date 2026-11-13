@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { FaTag } from 'react-icons/fa';
-import { printWarehouseProductionLabel } from '../services/warehouseProductionApi';
+import {
+  fetchProductionLabelPreview,
+  printWarehouseProductionLabel,
+} from '../services/warehouseProductionApi';
+import {
+  downloadWarehouseProductionLabelPdf,
+  openWarehouseProductionLabelPdfPreview,
+} from '../utils/warehouseProductionLabelPdf';
 
 /**
  * @param {{ name: string, sku: string, defaultCopies?: number }} item
@@ -14,6 +21,10 @@ export default function WarehouseProductionLabelPrintDialog({
   const sku = String(item?.sku || '').trim();
   const color = String(item?.color || '').trim();
   const boxUnitsPerCarton = Math.max(0, Math.floor(Number(item?.boxUnitsPerCarton) || 0));
+  const dimLength = item?.dimLength ?? item?.dim_length ?? '';
+  const dimWidth = item?.dimWidth ?? item?.dim_width ?? '';
+  const dimHeight = item?.dimHeight ?? item?.dim_height ?? '';
+  const dimensionsDisplay = String(item?.dimensionsDisplay || '').trim();
   const [copies, setCopies] = useState(1);
   const [copiesInput, setCopiesInput] = useState('1');
   const [busy, setBusy] = useState(false);
@@ -48,6 +59,65 @@ export default function WarehouseProductionLabelPrintDialog({
     onClose();
   };
 
+  const labelPrintParams = (printCopies) => ({
+    name,
+    sku,
+    copies: printCopies,
+    color,
+    boxUnitsPerCarton,
+    dimLength,
+    dimWidth,
+    dimHeight,
+  });
+
+  const safePdfFilename = () => {
+    const slug = sku.replace(/[^\w.-]+/g, '_').slice(0, 40) || 'label';
+    return `warehouse-label-${slug}.pdf`;
+  };
+
+  const onPreviewPdf = async () => {
+    if (!name || !sku || busy) return;
+    const printCopies = commitCopiesInput(copiesInput);
+    setBusy(true);
+    setError('');
+    setWarning('');
+    try {
+      let png = previewPng;
+      if (!png) {
+        const prev = await fetchProductionLabelPreview(labelPrintParams(printCopies));
+        png = prev?.label_preview_png_base64 || '';
+        if (png) setPreviewPng(png);
+      }
+      if (!png) throw new Error('Could not build label preview.');
+      openWarehouseProductionLabelPdfPreview(png, printCopies);
+    } catch (err) {
+      setError(err?.message || 'PDF preview failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDownloadPdf = async () => {
+    if (!name || !sku || busy) return;
+    const printCopies = commitCopiesInput(copiesInput);
+    setBusy(true);
+    setError('');
+    try {
+      let png = previewPng;
+      if (!png) {
+        const prev = await fetchProductionLabelPreview(labelPrintParams(printCopies));
+        png = prev?.label_preview_png_base64 || '';
+        if (png) setPreviewPng(png);
+      }
+      if (!png) throw new Error('Could not build label preview.');
+      downloadWarehouseProductionLabelPdf(png, printCopies, safePdfFilename());
+    } catch (err) {
+      setError(err?.message || 'PDF download failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onPrint = async () => {
     if (!name || !sku || busy) return;
     const printCopies = commitCopiesInput(copiesInput);
@@ -55,9 +125,7 @@ export default function WarehouseProductionLabelPrintDialog({
     setError('');
     setWarning('');
     try {
-      const result = await printWarehouseProductionLabel({
-        name, sku, copies: printCopies, color, boxUnitsPerCarton,
-      });
+      const result = await printWarehouseProductionLabel(labelPrintParams(printCopies));
       setPreviewPng(result.labelPreviewPngBase64 || '');
       setWarning(String(result.labelPrintWarning || '').trim());
       setDone(true);
@@ -94,6 +162,11 @@ export default function WarehouseProductionLabelPrintDialog({
         {boxUnitsPerCarton > 1 ? (
           <p className="warehouse-label-print-modal__color">
             Pack: <strong>1 Box = {boxUnitsPerCarton} Units</strong>
+          </p>
+        ) : null}
+        {dimensionsDisplay ? (
+          <p className="warehouse-label-print-modal__color">
+            Dimensions: <strong>{dimensionsDisplay}</strong>
           </p>
         ) : null}
 
@@ -177,15 +250,46 @@ export default function WarehouseProductionLabelPrintDialog({
 
         <div className="products-adjust-modal__actions warehouse-label-print-modal__actions">
           {!done ? (
-            <button
-              type="button"
-              className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
-              onClick={onPrint}
-              disabled={busy || !name || !sku}
-            >
-              {busy ? 'Printing…' : 'Print labels'}
-            </button>
-          ) : null}
+            <>
+              <button
+                type="button"
+                className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
+                onClick={onPrint}
+                disabled={busy || !name || !sku}
+              >
+                {busy ? 'Working…' : 'Print labels (Zebra)'}
+              </button>
+              <button
+                type="button"
+                className="warehouse-catalog-action-btn"
+                onClick={onPreviewPdf}
+                disabled={busy || !name || !sku}
+              >
+                Open PDF preview
+              </button>
+              <button
+                type="button"
+                className="warehouse-catalog-action-btn"
+                onClick={onDownloadPdf}
+                disabled={busy || !name || !sku}
+              >
+                Download PDF
+              </button>
+            </>
+          ) : (
+            <>
+              {previewPng ? (
+                <button
+                  type="button"
+                  className="warehouse-catalog-action-btn"
+                  onClick={() => openWarehouseProductionLabelPdfPreview(previewPng, copies)}
+                  disabled={busy}
+                >
+                  Open PDF preview
+                </button>
+              ) : null}
+            </>
+          )}
           <button type="button" className="warehouse-card-btn" onClick={close} disabled={busy}>
             {done ? 'Close' : 'Cancel'}
           </button>

@@ -17,11 +17,12 @@ async function main() {
   const { buildWarehouseProductionLabelPngBuffer } = await import('../server/lib/warehouseProductionLabelImage.js');
 
   const pngBuffer = await buildWarehouseProductionLabelPngBuffer({
-    name: 'Vanessa Dining Chair',
-    sku: '3002791082000040',
-    color: 'Walnut',
-    boxUnitsPerCarton: 2,
-    printedAt: new Date('2026-10-31T09:15:00+02:00'),
+    name: 'Wooden Coffee Table',
+    sku: 'WHF2-DEMO-0001',
+    dimLength: 120,
+    dimWidth: 60,
+    dimHeight: 45,
+    printedAt: new Date('2026-11-13T10:49:00+02:00'),
   });
 
   const doc = new jsPDF({

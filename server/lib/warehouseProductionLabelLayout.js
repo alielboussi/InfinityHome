@@ -41,6 +41,7 @@ export const FIELD_LABELS = {
   name: 'Name:',
   color: 'Color:',
   pack: 'Pack:',
+  dims: 'Dims:',
   date: 'Date:',
   time: 'Time:',
 };
@@ -65,12 +66,28 @@ export function rowTextTopMm(rowStartMm, padMm = 0.35) {
   return rowStartMm + padMm;
 }
 
+const DEFAULT_QR_PAYLOAD_LENGTH = 110;
+
+export function labelContentBottomMm(layout) {
+  return Number(layout?.timeRowMm || 0) + ROW_TEXT_MM;
+}
+
+export function assertProductionLabelFits(layout, heightMm = LABEL_HEIGHT_MM, marginMm = LABEL_MARGIN_MM) {
+  const maxY = heightMm - marginMm;
+  const bottom = labelContentBottomMm(layout);
+  if (bottom > maxY + 0.35) {
+  throw new Error(`Label layout overflow: content ends at ${bottom.toFixed(2)}mm but max is ${maxY.toFixed(2)}mm`);
+  }
+}
+
 export function computeProductionLabelLayout({
   heightMm = LABEL_HEIGHT_MM,
   marginMm = LABEL_MARGIN_MM,
   dpi = 203,
   includeColorRow = false,
   includeBoxRow = false,
+  includeDimensionsRow = false,
+  imageQrDataLength = DEFAULT_QR_PAYLOAD_LENGTH,
 } = {}) {
   const mainWidthMm = LABEL_WIDTH_MM - marginMm * 2;
   const centerXMm = LABEL_WIDTH_MM / 2;
@@ -85,34 +102,51 @@ export function computeProductionLabelLayout({
   const skuRowMm = block.rowY;
   y = block.nextY;
 
+  const optionalDetailRows = [includeColorRow, includeBoxRow, includeDimensionsRow].filter(Boolean).length;
+  const nameValueMaxLines = optionalDetailRows >= 2 ? 1 : NAME_VALUE_MAX_LINES;
+  const gapAfterNameMm = optionalDetailRows >= 1 ? Math.min(GAP_AFTER_NAME_BLOCK_MM, 2.4) : GAP_AFTER_NAME_BLOCK_MM;
+  const rowTextMm = optionalDetailRows >= 3 ? 3.85 : ROW_TEXT_MM;
+  const blockGapMm = optionalDetailRows >= 2 ? 0.45 : BLOCK_GAP_MM;
+
   const nameBlockTopMm = y;
-  const nameBlockHeightMm = NAME_LINE_HEIGHT_MM * NAME_VALUE_MAX_LINES;
-  y = nameBlockTopMm + nameBlockHeightMm + GAP_AFTER_NAME_BLOCK_MM;
+  const nameBlockHeightMm = NAME_LINE_HEIGHT_MM * nameValueMaxLines;
+  y = nameBlockTopMm + nameBlockHeightMm + gapAfterNameMm;
 
   const qrBlockYMm = y;
   const imageQrLeftMm = centerXMm - QR_SIZE_MM / 2;
   const imageQrCenterMm = centerXMm;
-  y += QR_SIZE_MM + BLOCK_GAP_MM + 0.4;
+  const qrFootprintMm = Math.max(
+    QR_SIZE_MM,
+    zebraQrPrintedMm(QR_SIZE_MM, Math.max(1, Math.floor(Number(imageQrDataLength) || DEFAULT_QR_PAYLOAD_LENGTH)), dpi),
+  );
+  y = qrBlockYMm + qrFootprintMm + blockGapMm + 0.2;
 
   let colorRowMm = null;
   if (includeColorRow) {
-    block = advanceBlock(y, ROW_TEXT_MM);
+    block = advanceBlock(y, rowTextMm, blockGapMm);
     colorRowMm = block.rowY;
     y = block.nextY;
   }
 
   let boxRowMm = null;
   if (includeBoxRow) {
-    block = advanceBlock(y, ROW_TEXT_MM);
+    block = advanceBlock(y, rowTextMm, blockGapMm);
     boxRowMm = block.rowY;
     y = block.nextY;
   }
 
-  block = advanceBlock(y, ROW_TEXT_MM);
+  let dimensionsRowMm = null;
+  if (includeDimensionsRow) {
+    block = advanceBlock(y, rowTextMm, blockGapMm);
+    dimensionsRowMm = block.rowY;
+    y = block.nextY;
+  }
+
+  block = advanceBlock(y, rowTextMm, blockGapMm);
   const dateRowMm = block.rowY;
   y = block.nextY;
 
-  block = advanceBlock(y, ROW_TEXT_MM);
+  block = advanceBlock(y, rowTextMm, blockGapMm);
   const timeRowMm = block.rowY;
 
   const zplFont = Math.round(FONT_PT * (dpi / 72));
@@ -135,7 +169,9 @@ export function computeProductionLabelLayout({
     skuRowMm,
     nameBlockTopMm,
     nameBlockHeightMm,
+    nameValueMaxLines,
     qrBlockYMm,
+    qrFootprintMm,
     imageQrLeftMm,
     imageQrCenterMm,
     qrSizeMm: QR_SIZE_MM,
@@ -143,6 +179,8 @@ export function computeProductionLabelLayout({
     includeColorRow: Boolean(includeColorRow),
     boxRowMm,
     includeBoxRow: Boolean(includeBoxRow),
+    dimensionsRowMm,
+    includeDimensionsRow: Boolean(includeDimensionsRow),
     dateRowMm,
     timeRowMm,
     fontPt: FONT_PT,
@@ -165,6 +203,7 @@ export function computeProductionLabelLayout({
       qrSize: toDots(QR_SIZE_MM),
       colorRowY: colorRowMm != null ? textTopDots(colorRowMm) : null,
       boxRowY: boxRowMm != null ? textTopDots(boxRowMm) : null,
+      dimensionsRowY: dimensionsRowMm != null ? textTopDots(dimensionsRowMm) : null,
       dateRowY: textTopDots(dateRowMm),
       timeRowY: textTopDots(timeRowMm),
       boxW: toDots(mainWidthMm),

@@ -24,6 +24,7 @@ import { useAuthProfileMobileGrant } from './hooks/useAuthProfileMobileGrant';
 import { isWarehouseCatalogLabelPrintAllowed } from './mobile/mobileAccessManifest';
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
 import { warehouseLabelPrintItemFromRow } from './utils/warehouseRowLabelPrint';
+import { formatAssemblyDimensions } from './utils/warehouseAssemblySpecs';
 
 function buildAssemblyMapFromCatalog(catalog) {
   const map = new Map();
@@ -125,7 +126,7 @@ export default function WarehouseFloor2Page({
       if (floor2AssemblyIds.length) {
         const { data: photoRows } = await db
           .from('warehouse_assemblies')
-          .select('id, name, family_sku, metadata')
+          .select('id, name, family_sku, metadata, dim_length, dim_width, dim_height')
           .in('id', floor2AssemblyIds);
         (photoRows || []).forEach((a) => {
           const id = String(a.id);
@@ -140,7 +141,10 @@ export default function WarehouseFloor2Page({
         ].filter((id) => id && !baseMap.has(String(id)))),
       ];
       if (missingIds.length) {
-        const { data } = await db.from('warehouse_assemblies').select('id, name, family_sku, metadata').in('id', missingIds);
+        const { data } = await db
+          .from('warehouse_assemblies')
+          .select('id, name, family_sku, metadata, dim_length, dim_width, dim_height')
+          .in('id', missingIds);
         (data || []).forEach((a) => {
           baseMap.set(String(a.id), a);
         });
@@ -378,6 +382,7 @@ export default function WarehouseFloor2Page({
               const aid = String(row.assembly_id);
               const asm = assemblyById.get(aid);
               const sku = asm?.family_sku || '—';
+              const dimensionsText = asm ? formatAssemblyDimensions(asm) : '';
               return (
                 <article
                   key={group.key}
@@ -396,6 +401,11 @@ export default function WarehouseFloor2Page({
                   <div className="kitwe-catalog-product-row__sku">{sku}</div>
                   <div className="kitwe-catalog-product-row__name">
                     <strong>{group.familyBase}</strong>
+                    {dimensionsText ? (
+                      <span className="kitwe-catalog-product-row__dims" title="From warehouse catalog (Floor 1)">
+                        {dimensionsText}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="kitwe-catalog-product-row__meta">
                     {renderStockEditor(aid, row.quantity)}

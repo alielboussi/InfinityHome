@@ -259,16 +259,30 @@ export async function resolveProductionScan(scan) {
   return payload;
 }
 
-export async function fetchProductionLabelPreview({ name, sku, printedAt }) {
+function productionLabelDimBody({ dimLength, dimWidth, dimHeight } = {}) {
+  const body = {};
+  if (dimLength != null && dimLength !== '') body.dim_length = dimLength;
+  if (dimWidth != null && dimWidth !== '') body.dim_width = dimWidth;
+  if (dimHeight != null && dimHeight !== '') body.dim_height = dimHeight;
+  return body;
+}
+
+export async function fetchProductionLabelPreview({
+  name, sku, printedAt, color = '', boxUnitsPerCarton = 0, dimLength, dimWidth, dimHeight,
+}) {
+  const per = Math.max(0, Math.floor(Number(boxUnitsPerCarton) || 0));
   return productionOp('production-label-preview', {
     name,
     sku,
     printed_at: printedAt,
+    color: String(color || '').trim() || undefined,
+    box_units_per_carton: per > 1 ? per : undefined,
+    ...productionLabelDimBody({ dimLength, dimWidth, dimHeight }),
   });
 }
 
 export async function printWarehouseProductionLabel({
-  name, sku, copies = 1, color = '', boxUnitsPerCarton = 0,
+  name, sku, copies = 1, color = '', boxUnitsPerCarton = 0, dimLength, dimWidth, dimHeight,
 }) {
   try {
     const per = Math.max(0, Math.floor(Number(boxUnitsPerCarton) || 0));
@@ -279,6 +293,7 @@ export async function printWarehouseProductionLabel({
       color: String(color || '').trim() || undefined,
       box_units_per_carton: per > 1 ? per : undefined,
       client_source: 'warehouse_catalog_portal',
+      ...productionLabelDimBody({ dimLength, dimWidth, dimHeight }),
     });
     return {
       labelPrintWarning: payload?.label_print_warning || null,

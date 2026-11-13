@@ -20,11 +20,15 @@ import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../s
 import {
   isCatalogLocationPhotoUploadAllowed,
   isCatalogLocationStockIncreaseAllowed,
+  isWarehouseCatalogLabelPrintAllowed,
   isWarehouseFloor2CreateProductAllowed,
+  isWarehouseProductStockQtyEditAllowed,
 } from '../shared/mobileAccessManifest';
+import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
+import { assemblyDimsDraftFromItem, formatAssemblyDimensions } from '../shared/warehouseAssemblySpecs';
 import { theme } from '../shared/theme';
 import ProductionProductListRow, { productionProductRowPressableStyle } from '../shared/components/ProductionProductListRow';
 
@@ -98,7 +102,9 @@ function floor2ProductsAsFlatCards(products) {
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
-const Floor2GroupListRow = memo(function Floor2GroupListRow({ group, busyId, photoBusyId, onOpen }) {
+const Floor2GroupListRow = memo(function Floor2GroupListRow({
+  group, busyId, photoBusyId, onOpen, canPrintLabel, onPrintLabel,
+}) {
   const product = group.items?.[0];
   const cardImage = group.imageUrl || productCardImageUrl(product);
   const cardBusy = group.items.some(
@@ -106,23 +112,33 @@ const Floor2GroupListRow = memo(function Floor2GroupListRow({ group, busyId, pho
   );
   const sku = String(product?.family_sku || '').trim();
   return (
-    <Pressable
-      style={({ pressed }) => [
-        productRowPressable.row,
-        pressed && productRowPressable.rowPressed,
-        cardBusy && productRowPressable.rowBusy,
-      ]}
-      disabled={Boolean(busyId || photoBusyId)}
-      onPress={() => onOpen(group)}
-    >
-      <ProductionProductListRow
-        imageUrl={cardImage || undefined}
-        name={group.displayName}
-        sku={sku}
-        subtitle={`On hand: ${group.totalFloor2}`}
-        busy={cardBusy}
-      />
-    </Pressable>
+    <View style={styles.listRowWrap}>
+      <Pressable
+        style={({ pressed }) => [
+          productRowPressable.row,
+          pressed && productRowPressable.rowPressed,
+          cardBusy && productRowPressable.rowBusy,
+        ]}
+        disabled={Boolean(busyId || photoBusyId)}
+        onPress={() => onOpen(group)}
+      >
+        <ProductionProductListRow
+          imageUrl={cardImage || undefined}
+          name={group.displayName}
+          sku={sku}
+          subtitle={`On hand: ${group.totalFloor2}`}
+          busy={cardBusy}
+        />
+      </Pressable>
+      {canPrintLabel && sku ? (
+        <View style={styles.printFab}>
+          <CatalogLabelPrintIconButton
+            onPress={() => onPrintLabel(group)}
+            disabled={Boolean(busyId || photoBusyId)}
+          />
+        </View>
+      ) : null}
+    </View>
   );
 });
 
@@ -132,6 +148,8 @@ export default function WarehouseFloor2Screen() {
   const canIncreaseStock = isCatalogLocationStockIncreaseAllowed(grant, 'warehouse_floor_2', userEmail);
   const canUploadPhoto = isCatalogLocationPhotoUploadAllowed(grant, 'warehouse_floor_2', userEmail);
   const canCreateFloor2Prod = isWarehouseFloor2CreateProductAllowed(grant, userEmail);
+  const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant, userEmail);
+  const canEditDims = isWarehouseProductStockQtyEditAllowed(grant);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -144,6 +162,9 @@ export default function WarehouseFloor2Screen() {
   const [photoBusyId, setPhotoBusyId] = useState('');
   const [inlayGroupKey, setInlayGroupKey] = useState('');
   const [qtyDraftById, setQtyDraftById] = useState({});
+  const [dimsDraftById, setDimsDraftById] = useState({});
+  const [dimBusyId, setDimBusyId] = useState('');
+  const [labelPrintItem, setLabelPrintItem] = useState(null);
 
   const [createProductOpen, setCreateProductOpen] = useState(false);
   const [createBusy, setCreateBusy] = useState(false);
@@ -201,6 +222,112 @@ export default function WarehouseFloor2Screen() {
     if (busyId || photoBusyId) return;
     setInlayGroupKey('');
   }, [busyId, photoBusyId]);
+
+  const openLabelPrint = useCallback((group) => {
+    const product = group?.items?.[0];
+    const labelName = String(group?.displayName || product?.name || '').trim();
+    const labelSku = String(product?.family_sku || '').trim();
+    if (!labelName || !labelSku) return;
+    const dimensionsDisplay = formatAssemblyDimensions(product);
+    setLabelPrintItem({
+      name: labelName,
+      sku: labelSku,
+      defaultCopies: Math.max(1, floor2Qty(product)),
+      dimLength: product?.dim_length,
+      dimWidth: product?.dim_width,
+      dimHeight: product?.dim_height,
+      dimensionsDisplay,
+    });
+  }, []);
+
+  const handleSaveQty = async (item) => {
+    if (!canIncreaseStock || busyId) return;
+    const aid = String(item.assembly_id || item.id || '').trim();
+    if (!aid) return;
+    const rawDraft = String(qtyDraftById[aid] ?? '').trim();
+    if (rawDraft === '') {
+      Alert.alert('Enter quantity', 'Type the on-hand quantity you want to save.');
+      return;
+    }
+    const target = Math.floor(Number(rawDraft) || 0);
+    if (!Number.isFinite(target) || target < 0) {
+      Alert.alert('Invalid quantity', 'Enter a whole number of 0 or more.');
+      return;
+    }
+    const current = floor2Qty(item);
+    const delta = target - current;
+    if (delta === 0) {
+      setQtyDraftById((prev) => {
+        const next = { ...prev };
+        delete next[aid];
+        return next;
+      });
+      return;
+    }
+    setBusyId(aid);
+    setError('');
+    try {
+      const res = await warehouseMobileRequest('catalog-floor2-stock-increase', {
+        assembly_id: aid,
+        delta,
+      });
+      const nextQty = Number(res?.quantity);
+      if (Number.isFinite(nextQty)) {
+        setProducts((prev) =>
+          prev.map((row) => {
+            const rid = String(row.assembly_id || row.id || '');
+            return rid === aid ? { ...row, quantity: nextQty, floor2_qty: nextQty } : row;
+          }),
+        );
+      }
+      setQtyDraftById((prev) => {
+        const next = { ...prev };
+        delete next[aid];
+        return next;
+      });
+      await loadProducts();
+    } catch (e) {
+      Alert.alert('Stock update failed', e?.message || 'Could not update Floor 2 stock.');
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const handleSaveDimensions = async (item) => {
+    if (!canEditDims || dimBusyId) return;
+    const aid = String(item.assembly_id || item.id || '').trim();
+    if (!aid) return;
+    const draft = dimsDraftById[aid] || assemblyDimsDraftFromItem(item);
+    setDimBusyId(aid);
+    try {
+      const res = await warehouseMobileRequest('catalog-floor2-update-dimensions', {
+        assembly_id: aid,
+        dim_length: draft.dim_length === '' ? null : draft.dim_length,
+        dim_width: draft.dim_width === '' ? null : draft.dim_width,
+        dim_height: draft.dim_height === '' ? null : draft.dim_height,
+      });
+      const patch = {
+        dim_length: res?.dim_length ?? null,
+        dim_width: res?.dim_width ?? null,
+        dim_height: res?.dim_height ?? null,
+      };
+      setProducts((prev) =>
+        prev.map((row) => {
+          const rid = String(row.assembly_id || row.id || '');
+          return rid === aid ? { ...row, ...patch } : row;
+        }),
+      );
+      setDimsDraftById((prev) => {
+        const next = { ...prev };
+        delete next[aid];
+        return next;
+      });
+    } catch (e) {
+      Alert.alert('Dimensions not saved', e?.message || 'Could not save dimensions.');
+    } finally {
+      setDimBusyId('');
+    }
+  };
 
   const handleAdjustQty = async (item, direction) => {
     if (!canIncreaseStock || busyId) return;
@@ -290,7 +417,6 @@ export default function WarehouseFloor2Screen() {
         mediaTypes: ['images'],
         quality: 0.9,
         allowsEditing: true,
-        aspect: [1, 1],
       });
       if (picked.canceled || !picked.assets?.[0]?.uri) return;
       setPhotoBusyId(aid);
@@ -327,7 +453,6 @@ export default function WarehouseFloor2Screen() {
         mediaTypes: ['images'],
         quality: 0.9,
         allowsEditing: true,
-        aspect: [1, 1],
       });
       if (picked.canceled || !picked.assets?.[0]?.uri) return;
       onPicked(picked.assets[0].uri);
@@ -383,9 +508,11 @@ export default function WarehouseFloor2Screen() {
         busyId={busyId}
         photoBusyId={photoBusyId}
         onOpen={openInlay}
+        canPrintLabel={canPrintLabel}
+        onPrintLabel={openLabelPrint}
       />
     ),
-    [busyId, photoBusyId, openInlay],
+    [busyId, photoBusyId, openInlay, canPrintLabel, openLabelPrint],
   );
 
   const hasSearch = Boolean(String(search || '').trim());
@@ -450,9 +577,9 @@ export default function WarehouseFloor2Screen() {
             <Text style={styles.modalTitle}>{inlayGroup?.displayName || 'Floor 2 Product'}</Text>
             <Text style={styles.modalSub}>
               {canIncreaseStock && canUploadPhoto
-                ? 'Tap thumbnail to change photo · X removes WIP photo · − / + adjusts stock.'
+                ? 'Tap thumbnail to change photo · − / + step qty · Save sets on-hand · dims sync with web catalog.'
                 : canIncreaseStock
-                  ? 'Use − / + to decrease or add Floor 2 stock.'
+                  ? 'Use − / + or Save to set Floor 2 on-hand qty.'
                   : canUploadPhoto
                     ? 'Tap thumbnail to change photo · X removes WIP photo.'
                     : 'View Floor 2 stock on hand.'}
@@ -465,6 +592,9 @@ export default function WarehouseFloor2Screen() {
                 const isPhotoBusy = photoBusyId === id;
                 const isStockBusy = busyId === id;
                 const draftVal = qtyDraftById[id] !== undefined ? String(qtyDraftById[id]) : '';
+                const dimDraft = dimsDraftById[id] || assemblyDimsDraftFromItem(item);
+                const dimDisplay = formatAssemblyDimensions(item);
+                const isDimBusy = dimBusyId === id;
                 const thumbContent = isPhotoBusy ? (
                   <View style={styles.inlayThumbPlaceholder}>
                     <ActivityIndicator size="small" color={theme.primary} />
@@ -516,9 +646,79 @@ export default function WarehouseFloor2Screen() {
                         {item.family_sku ? (
                           <Text style={styles.inlaySku}>{item.family_sku}</Text>
                         ) : null}
+                        {dimDisplay && !canEditDims ? (
+                          <Text style={styles.inlayDims}>{dimDisplay}</Text>
+                        ) : null}
                       </View>
-                      <Text style={styles.inlayQtyRight}>On hand: {qty}</Text>
+                      <View style={styles.inlayQtyCol}>
+                        {canPrintLabel && item.family_sku ? (
+                          <CatalogLabelPrintIconButton
+                            onPress={() => openLabelPrint({ displayName: item.raw_name || item.name, items: [item] })}
+                            disabled={Boolean(busyId || photoBusyId || isStockBusy || isDimBusy)}
+                          />
+                        ) : null}
+                        <Text style={styles.inlayQtyRight}>On hand: {qty}</Text>
+                      </View>
                     </View>
+                    {canEditDims ? (
+                      <View style={styles.dimEditRow}>
+                        <Text style={styles.dimLabel}>L</Text>
+                        <TextInput
+                          style={styles.dimInput}
+                          keyboardType="decimal-pad"
+                          value={dimDraft.dim_length}
+                          editable={!isDimBusy}
+                          placeholder="—"
+                          placeholderTextColor={theme.textMuted}
+                          onChangeText={(txt) =>
+                            setDimsDraftById((prev) => ({
+                              ...prev,
+                              [id]: { ...dimDraft, dim_length: txt.replace(/[^0-9.]/g, '') },
+                            }))
+                          }
+                        />
+                        <Text style={styles.dimSep}>×</Text>
+                        <Text style={styles.dimLabel}>W</Text>
+                        <TextInput
+                          style={styles.dimInput}
+                          keyboardType="decimal-pad"
+                          value={dimDraft.dim_width}
+                          editable={!isDimBusy}
+                          placeholder="—"
+                          placeholderTextColor={theme.textMuted}
+                          onChangeText={(txt) =>
+                            setDimsDraftById((prev) => ({
+                              ...prev,
+                              [id]: { ...dimDraft, dim_width: txt.replace(/[^0-9.]/g, '') },
+                            }))
+                          }
+                        />
+                        <Text style={styles.dimSep}>×</Text>
+                        <Text style={styles.dimLabel}>H</Text>
+                        <TextInput
+                          style={styles.dimInput}
+                          keyboardType="decimal-pad"
+                          value={dimDraft.dim_height}
+                          editable={!isDimBusy}
+                          placeholder="—"
+                          placeholderTextColor={theme.textMuted}
+                          onChangeText={(txt) =>
+                            setDimsDraftById((prev) => ({
+                              ...prev,
+                              [id]: { ...dimDraft, dim_height: txt.replace(/[^0-9.]/g, '') },
+                            }))
+                          }
+                        />
+                        <Text style={styles.dimUnit}>cm</Text>
+                        <Pressable
+                          style={[styles.dimSaveBtn, isDimBusy && styles.btnDisabled]}
+                          disabled={Boolean(isDimBusy || busyId || photoBusyId)}
+                          onPress={() => handleSaveDimensions(item)}
+                        >
+                          <Text style={styles.dimSaveBtnText}>{isDimBusy ? '…' : 'Save'}</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
                     {canIncreaseStock ? (
                       <View style={styles.stockActionRow}>
                         <Pressable
@@ -537,7 +737,7 @@ export default function WarehouseFloor2Screen() {
                           onChangeText={(txt) =>
                             setQtyDraftById((prev) => ({ ...prev, [id]: txt.replace(/[^0-9]/g, '') }))
                           }
-                          placeholder=""
+                          placeholder={String(qty)}
                           placeholderTextColor={theme.textMuted}
                         />
                         <Pressable
@@ -547,6 +747,13 @@ export default function WarehouseFloor2Screen() {
                           accessibilityLabel={`Increase stock for ${item.name}`}
                         >
                           <Text style={styles.stepBtnPlusText}>+</Text>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.qtySaveBtn, (isStockBusy || draftVal === '') && styles.btnDisabled]}
+                          disabled={Boolean(busyId || photoBusyId || isStockBusy || draftVal === '')}
+                          onPress={() => handleSaveQty(item)}
+                        >
+                          <Text style={styles.qtySaveBtnText}>{isStockBusy ? '…' : 'Save'}</Text>
                         </Pressable>
                       </View>
                     ) : null}
@@ -635,6 +842,12 @@ export default function WarehouseFloor2Screen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <CatalogLabelPrintModal
+        visible={Boolean(labelPrintItem)}
+        item={labelPrintItem}
+        onClose={() => setLabelPrintItem(null)}
+      />
     </View>
   );
 }
@@ -691,6 +904,17 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   gridContent: { paddingBottom: 24, gap: CARD_GAP },
+  listRowWrap: {
+    position: 'relative',
+    width: '100%',
+  },
+  printFab: {
+    position: 'absolute',
+    right: 10,
+    top: '50%',
+    marginTop: -18,
+    zIndex: 3,
+  },
   emptyText: {
     color: theme.textMuted,
     textAlign: 'center',
@@ -847,16 +1071,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  inlayQtyCol: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
   inlayQtyRight: {
     fontSize: 15,
     fontWeight: '700',
     color: theme.primary,
+  },
+  inlayDims: {
+    fontSize: 12,
+    color: theme.textMuted,
+    marginTop: 4,
+  },
+  dimEditRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dimLabel: { fontSize: 12, fontWeight: '700', color: theme.textMuted },
+  dimSep: { fontSize: 14, color: theme.textMuted },
+  dimUnit: { fontSize: 12, color: theme.textMuted, marginRight: 4 },
+  dimInput: {
+    width: 52,
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    borderWidth: 1,
+    borderRadius: 6,
+    color: theme.text,
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  dimSaveBtn: {
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginLeft: 'auto',
+  },
+  dimSaveBtnText: {
+    color: theme.text,
+    fontWeight: '700',
+    fontSize: 14,
   },
   stockActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 10,
+  },
+  qtySaveBtn: {
+    backgroundColor: theme.primary,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    minHeight: 42,
+    justifyContent: 'center',
+  },
+  qtySaveBtnText: {
+    color: '#0f172a',
+    fontWeight: '800',
+    fontSize: 15,
   },
   qtyInput: {
     width: 84,
