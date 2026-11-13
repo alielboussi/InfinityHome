@@ -813,7 +813,11 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
 
   const generated = await opGenerateUniqueSku({});
   const familySku = normalizeWarehouseProductSku(generated.sku);
-  const categoryId = preset ? await ensureCategoryIdForProductionPreset(sb, preset) : null;
+  const bodyCategoryId = String(body.category_id ?? body.categoryId ?? '').trim();
+  let categoryId = bodyCategoryId || null;
+  if (!categoryId && preset) {
+    categoryId = await ensureCategoryIdForProductionPreset(sb, preset);
+  }
 
   const { requireWarehouseFloor2Location } = await import('../lib/productionFloor1StockPolicy.js');
   const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
@@ -879,6 +883,18 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
   if (invErr) throw new Error(invErr.message || 'Failed to save Floor 2 quantity.');
 
   await recomputeWarehouseLocationStockServer(sb, floor2Id);
+
+  try {
+    const { addFloor2ProductToFloor1 } = await import('../lib/carpentryManufacture.js');
+    await addFloor2ProductToFloor1(sb, {
+      assemblyId,
+      productQty: 0,
+      userId: user?.id || user?.uid || null,
+      ensureInventoryRow: true,
+    });
+  } catch (mirrorErr) {
+    console.warn('[catalog-floor2-create-product] Floor 1 mirror failed:', mirrorErr?.message || mirrorErr);
+  }
 
   const clientSource = carpentryWorkshop ? 'carpentry_workshop_app' : 'warehouse_floor_2';
   const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
@@ -1820,10 +1836,12 @@ async function opPaintingJobFinish(body, user) {
     .trim()
     .toLowerCase();
   const destination = destinationRaw === 'floor1' ? 'floor1' : 'delivery';
+  const printedBy = (await productionWhatsappProducerName(user)) || 'Painting workshop';
   return finishPaintingProductionJob(sb, {
     jobId,
     userId: user?.id || user?.uid,
     destination,
+    printedBy,
   });
 }
 

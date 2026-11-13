@@ -64,6 +64,9 @@ import { printWarehouseProductionLabel } from './services/warehouseProductionApi
 import { resolveWarehouseLabelPrintPlan, assemblyUsesWarehouseBoxLabels } from './utils/warehouseBulkLabelPrint';
 import { WarehouseBulkLabelSelectCheckbox } from './components/WarehouseCatalogBulkLabelToolbar';
 import WarehouseCatalogListChrome from './components/WarehouseCatalogListChrome';
+import CategoryRemainingChecklist from './components/CategoryRemainingChecklist';
+import { fetchCarpentryCatalog } from './services/carpentryCatalogApi';
+import { postAddFloor1ProductFromFloor2 } from './services/carpentryCatalogApi';
 import WarehouseCatalogBulkLabelDialog from './components/WarehouseCatalogBulkLabelDialog';
 import { buildWarehouseBulkLabelDialogRows } from './utils/warehouseBulkLabelPrint';
 import WarehouseSalesStoragePanel from './components/WarehouseSalesStoragePanel';
@@ -98,6 +101,10 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [floor1AddBusyId, setFloor1AddBusyId] = useState('');
+  const [carpentryCandidates, setCarpentryCandidates] = useState([]);
+  const [carpentrySetCandidates, setCarpentrySetCandidates] = useState([]);
+  const [carpentryCategories, setCarpentryCategories] = useState([]);
   const [assemblies, setAssemblies] = useState([]);
   const [packets, setPackets] = useState([]);
   const [inventory, setInventory] = useState([]);
@@ -178,6 +185,52 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
     invalidateWarehouseCatalogCache();
     await queryClient.invalidateQueries({ queryKey: WAREHOUSE_CATALOG_QUERY_KEY });
   }, [queryClient]);
+
+  useEffect(() => {
+    if (!embedInHub || isSalesStorageView || (!canManage && !canAddProduct)) return undefined;
+    let alive = true;
+    fetchCarpentryCatalog()
+      .then((catalog) => {
+        if (!alive) return;
+        setCarpentryCandidates(catalog.candidates || []);
+        setCarpentrySetCandidates(catalog.setCandidates || []);
+        setCarpentryCategories(
+          (catalog.categories || [])
+            .map((c) => ({ id: String(c.id), name: String(c.name || '').trim() }))
+            .filter((c) => c.name),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [embedInHub, isSalesStorageView, canManage, canAddProduct]);
+
+  const existingFloor1ProductIds = useMemo(() => {
+    const set = new Set();
+    (assemblyInventory || []).forEach((row) => {
+      if (String(row.location_id) !== String(WAREHOUSE_FACTORY_LOCATION_ID)) return;
+      set.add(String(row.assembly_id));
+    });
+    return set;
+  }, [assemblyInventory]);
+
+  const handleAddFloor1FromFloor2Batch = async (ids) => {
+    const unique = [...new Set((ids || []).map((id) => String(id)).filter(Boolean))]
+      .filter((id) => !existingFloor1ProductIds.has(id));
+    if (!unique.length) return;
+    setFloor1AddBusyId(`cat-${unique[0]}`);
+    setError('');
+    try {
+      await Promise.all(unique.map((id) => postAddFloor1ProductFromFloor2(id, 1)));
+      await refreshCatalog();
+    } catch (err) {
+      setError(err?.message || 'Failed to add selected products to Warehouse Floor 1');
+      throw err;
+    } finally {
+      setFloor1AddBusyId('');
+    }
+  };
 
   const categoryName = useMemo(() => {
     const map = new Map((categories || []).map((c) => [String(c.id), c.name]));
@@ -748,6 +801,21 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
           ))}
         </select>
       </div>
+      {embedInHub && !isSalesStorageView && !isSetsView && (canManage || canAddProduct) ? (
+        <div className="kitwe-catalog-add-toolbar kitwe-catalog-add-toolbar--inline-row" style={{ marginBottom: 12 }}>
+          <CategoryRemainingChecklist
+            toolbarInline
+            categories={carpentryCategories}
+            candidates={carpentryCandidates}
+            setCandidates={carpentrySetCandidates}
+            existingProductIds={existingFloor1ProductIds}
+            busy={Boolean(floor1AddBusyId)}
+            selectPlaceholder="Select category to add from Floor 2…"
+            addButtonLabel="Add selected to Floor 1"
+            onAddSelected={handleAddFloor1FromFloor2Batch}
+          />
+        </div>
+      ) : null}
 
       {loading ? (
         <p>Loading…</p>

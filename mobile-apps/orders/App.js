@@ -4,8 +4,13 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import AppErrorBoundary from './shared/AppErrorBoundary';
 import ProductionAppAuthGate from './components/ProductionAppAuthGate';
 import { useOrdersAccessGrant } from './hooks/useOrdersAccessGrant';
+import {
+  OrdersIdleActivityRoot,
+  useOrdersIdleSession,
+} from './hooks/useOrdersIdleSession';
 import { stackScreenOptions, theme } from './shared/theme';
 import DashboardScreen from './screens/DashboardScreen';
 import CustomersScreen from './screens/CustomersScreen';
@@ -78,13 +83,24 @@ function MainStack() {
   );
 }
 
+function AuthedAppShell() {
+  const bumpActivity = useOrdersIdleSession();
+  return (
+    <OrdersIdleActivityRoot bumpActivity={bumpActivity}>
+      <AppErrorBoundary>
+        <NavigationContainer>
+          <MainStack />
+        </NavigationContainer>
+      </AppErrorBoundary>
+    </OrdersIdleActivityRoot>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <ProductionAppAuthGate titleKey="dashTitle" signInMethods="both">
-        <NavigationContainer>
-          <MainStack />
-        </NavigationContainer>
+        <AuthedAppShell />
       </ProductionAppAuthGate>
     </SafeAreaProvider>
   );

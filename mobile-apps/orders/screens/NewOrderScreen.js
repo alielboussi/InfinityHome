@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -23,6 +23,11 @@ import {
   unitLabel,
 } from '../lib/quoteLineFields';
 import { theme } from '../shared/theme';
+import {
+  clearNewOrderDraft,
+  readNewOrderDraft,
+  writeNewOrderDraft,
+} from '../lib/newOrderDraft';
 import {
   fetchOrdersCustomers,
   fetchOrdersProducts,
@@ -79,13 +84,36 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
   const [currency, setCurrency] = useState('K');
   const [quoteId, setQuoteId] = useState(quoteIdParam || '');
   const [openAccessories, setOpenAccessories] = useState('');
+  const scrollRef = useRef(null);
+  const warmedRef = useRef(false);
+  const quoteHydratedRef = useRef('');
+  const draftReadyRef = useRef(false);
 
   const productionRouteMissing = !routeChoice;
 
-  const load = useCallback(async () => {
+  const mapQuoteItemsToLines = useCallback((items) => (items || []).map((it) => ({
+    key: String(it.id),
+    quote_product_id: it.quote_product_id,
+    name: it.name || it.name_override || '',
+    description: it.description || '',
+    quantity: it.quantity == null ? '1' : String(it.quantity),
+    unit_price: it.unit_price == null ? '0' : String(it.unit_price),
+    unit_id: it.unit_id ? String(it.unit_id) : '',
+    dim_l_cm: it.dim_l_cm || '',
+    dim_w_cm: it.dim_w_cm || '',
+    dim_h_cm: it.dim_h_cm || '',
+    leather_code: it.leather_code || '',
+    foam_type: it.foam_type || '',
+    wood: it.wood || '',
+    color_code: it.color_code || '',
+    accessories: Array.isArray(it.accessories) ? it.accessories : [],
+  })), []);
+
+  const loadCatalog = useCallback(async ({ silent = false } = {}) => {
     if (!allowed) return;
-    setLoading(true);
-    setError('');
+    const quiet = silent || warmedRef.current;
+    if (!quiet) setLoading(true);
+    if (!quiet) setError('');
     try {
       const [c, p, u] = await Promise.all([
         fetchOrdersCustomers(),
@@ -95,40 +123,92 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
       setCustomers(c.customers || []);
       setProducts((p.products || []).filter((row) => row.active !== false));
       setUnits(u.units || []);
-      if (quoteIdParam) {
-        const detail = await fetchOrdersQuote(quoteIdParam);
-        const q = detail.quote || {};
-        setQuoteId(q.id || quoteIdParam);
-        setCustomerId(q.customer_id ? String(q.customer_id) : '');
-        setCurrency(q.currency || 'K');
-        setVatChoice(q.vat_apply ? 'vat16' : 'exclusive');
-        setRouteChoice(String(detail.routing?.route || '').toLowerCase());
-        setLines((detail.items || []).map((it) => ({
-          key: String(it.id),
-          quote_product_id: it.quote_product_id,
-          name: it.name || it.name_override || '',
-          description: it.description || '',
-          quantity: it.quantity == null ? '1' : String(it.quantity),
-          unit_price: it.unit_price == null ? '0' : String(it.unit_price),
-          unit_id: it.unit_id ? String(it.unit_id) : '',
-          dim_l_cm: it.dim_l_cm || '',
-          dim_w_cm: it.dim_w_cm || '',
-          dim_h_cm: it.dim_h_cm || '',
-          leather_code: it.leather_code || '',
-          foam_type: it.foam_type || '',
-          wood: it.wood || '',
-          color_code: it.color_code || '',
-          accessories: Array.isArray(it.accessories) ? it.accessories : [],
-        })));
-      }
+      warmedRef.current = true;
+    } catch (err) {
+      if (!quiet) setError(err?.message || tUi('loadFailed', locale));
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, [allowed, locale]);
+
+  const hydrateQuote = useCallback(async (id) => {
+    if (!allowed || !id) return;
+    setError('');
+    try {
+      const detail = await fetchOrdersQuote(id);
+      const q = detail.quote || {};
+      setQuoteId(q.id || id);
+      setCustomerId(q.customer_id ? String(q.customer_id) : '');
+      setCurrency(q.currency || 'K');
+      setVatChoice(q.vat_apply ? 'vat16' : 'exclusive');
+      setRouteChoice(String(detail.routing?.route || '').toLowerCase());
+      setLines(mapQuoteItemsToLines(detail.items));
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
-    } finally {
-      setLoading(false);
     }
-  }, [allowed, locale, quoteIdParam]);
+  }, [allowed, locale, mapQuoteItemsToLines]);
 
-  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    void loadCatalog({ silent: warmedRef.current });
+  }, [loadCatalog]));
+
+  useEffect(() => {
+    const id = quoteIdParam ? String(quoteIdParam) : '';
+    if (id) {
+      if (quoteHydratedRef.current === id) return;
+      quoteHydratedRef.current = id;
+      draftReadyRef.current = true;
+      void (async () => {
+        setLoading(true);
+        await hydrateQuote(id);
+        setLoading(false);
+      })();
+      return;
+    }
+    quoteHydratedRef.current = '';
+    void (async () => {
+      const draft = await readNewOrderDraft();
+      if (draft && typeof draft === 'object') {
+        if (draft.customerId) setCustomerId(String(draft.customerId));
+        if (draft.custQ) setCustQ(draft.custQ);
+        if (draft.routeChoice) setRouteChoice(draft.routeChoice);
+        if (draft.vatChoice) setVatChoice(draft.vatChoice);
+        if (draft.currency) setCurrency(draft.currency);
+        if (Array.isArray(draft.lines) && draft.lines.length) setLines(draft.lines);
+      }
+      draftReadyRef.current = true;
+    })();
+  }, [quoteIdParam, hydrateQuote]);
+
+  useEffect(() => {
+    if (quoteIdParam || !draftReadyRef.current) return undefined;
+    const timer = setTimeout(() => {
+      void writeNewOrderDraft({
+        customerId,
+        custQ,
+        routeChoice,
+        vatChoice,
+        currency,
+        lines,
+        savedAt: Date.now(),
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [
+    quoteIdParam,
+    customerId,
+    custQ,
+    routeChoice,
+    vatChoice,
+    currency,
+    lines,
+  ]);
+
+  const scrollToQuoteBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
 
   const addProduct = (product) => {
     if (productionRouteMissing) {
@@ -137,6 +217,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
     }
     setLines((prev) => [...prev, emptyLineFromProduct(product)]);
     setProdQ('');
+    scrollToQuoteBottom();
   };
 
   const updateLine = (key, patch) => {
@@ -179,19 +260,15 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
     setBusy(true);
     setError('');
     try {
-      const res = await saveOrdersQuote({
-        id: quoteId || undefined,
-        customer_id: customerId,
-        currency,
-        discount: 0,
-        vat_choice: vatChoice,
-        route: routeChoice,
-        items: lines.map((line) => ({
+      const items = lines.map((line) => {
+        const qty = Number(line.quantity);
+        const price = Number(line.unit_price);
+        return {
           quote_product_id: line.quote_product_id,
-          name: line.name,
-          description: line.description,
-          quantity: line.quantity,
-          unit_price: line.unit_price,
+          name: String(line.name || '').trim(),
+          description: String(line.description || ''),
+          quantity: Number.isFinite(qty) ? qty : 0,
+          unit_price: Number.isFinite(price) ? price : 0,
           unit_id: line.unit_id || null,
           dim_l_cm: line.dim_l_cm,
           dim_w_cm: line.dim_w_cm,
@@ -200,19 +277,31 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
           foam_type: line.foam_type,
           wood: line.wood,
           color_code: line.color_code,
-          accessories: line.accessories,
-        })),
+          accessories: Array.isArray(line.accessories) ? line.accessories : [],
+        };
+      });
+      const res = await saveOrdersQuote({
+        id: quoteId || undefined,
+        customer_id: customerId,
+        currency,
+        discount: 0,
+        vat_choice: vatChoice,
+        route: routeChoice,
+        items,
       });
       const createdId = res.quote_id || res.quote?.id || quoteId;
       const wasNew = !quoteId;
       if (wasNew) {
+        await clearNewOrderDraft();
         navigation.navigate('Dashboard');
       } else {
         setQuoteId(createdId || quoteId);
         navigation.replace('OrderDetail', { quoteId: createdId });
       }
     } catch (err) {
-      setError(err?.message || tUi('loadFailed', locale));
+      const message = err?.message || tUi('loadFailed', locale);
+      setError(message);
+      Alert.alert(tUi('createQuote', locale), message);
     } finally {
       setBusy(false);
     }
@@ -240,8 +329,12 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
       accessHint={accessHint}
       onRefreshAccess={onRefreshAccess}
     >
-      {loading ? <ActivityIndicator color={theme.primary} /> : (
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>
+      {loading && !warmedRef.current ? <ActivityIndicator color={theme.primary} /> : (
+        <ScrollView
+          ref={scrollRef}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 48 }}
+        >
           {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
 
           <View style={[kiosk.card, productionRouteMissing && styles.routeMissing]}>

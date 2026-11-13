@@ -178,6 +178,81 @@ export async function listCarpentryFloorRunsEnriched(sb, { limit = 200 } = {}) {
 }
 
 /**
+ * Mirror a Floor 2 WIP product onto Warehouse Floor 1 (finished catalog row).
+ * Used when creating on Floor 2 and when batch-adding from Floor 2 on the web portal.
+ */
+export async function addFloor2ProductToFloor1(sb, {
+  assemblyId,
+  productQty = 1,
+  userId = null,
+  ensureInventoryRow = false,
+} = {}) {
+  const productId = String(assemblyId || '').trim();
+  const qtyDelta = Math.max(0, Math.floor(Number(productQty) || 0));
+  if (!productId) throw new Error('assembly_id required');
+
+  const { data: assembly, error: aErr } = await sb
+    .from(ASSEMBLIES)
+    .select('id, name, family_sku, metadata, item_kind')
+    .eq('id', productId)
+    .maybeSingle();
+  if (aErr) throw new Error(aErr.message || 'Failed to load product');
+  if (!assembly?.id) throw new Error('Product not found');
+
+  const floor1LocationId = String(WAREHOUSE_FACTORY_LOCATION_ID);
+
+  const { data: invRow, error: invReadErr } = await sb
+    .from('warehouse_assembly_inventory')
+    .select('quantity')
+    .eq('assembly_id', productId)
+    .eq('location_id', floor1LocationId)
+    .maybeSingle();
+  if (invReadErr) throw new Error(invReadErr.message || 'Failed to read Floor 1 stock');
+
+  const current = Math.max(0, Math.floor(Number(invRow?.quantity) || 0));
+  let nextQty = current;
+  if (qtyDelta > 0) {
+    nextQty = current + qtyDelta;
+  } else if (ensureInventoryRow || !invRow) {
+    nextQty = current;
+  }
+
+  const now = new Date().toISOString();
+  await sb.from('warehouse_assembly_inventory').upsert({
+    assembly_id: productId,
+    location_id: floor1LocationId,
+    quantity: nextQty,
+    updated_at: now,
+  }, { onConflict: 'assembly_id,location_id' });
+
+  if (qtyDelta > 0) {
+    const runId = newUuid();
+    const { error: runErr } = await sb.from(RUNS).insert({
+      id: runId,
+      source: 'manual_floor2',
+      quote_id: null,
+      assembly_id: productId,
+      product_qty: qtyDelta,
+      started_at: now,
+      completed_at: now,
+      accepted_by: userId,
+      metadata: { channel: 'warehouse_floor1_portal', manual_from_floor2: true },
+      created_at: now,
+    });
+    if (runErr) throw new Error(runErr.message || 'Failed to save Floor 1 entry');
+  }
+
+  await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
+
+  return {
+    assembly_id: productId,
+    product_qty: qtyDelta,
+    floor1_location_id: floor1LocationId,
+    quantity: nextQty,
+  };
+}
+
+/**
  * Manually add a Warehouse Floor 1 product to Warehouse Floor 2 from the web portal.
  * Ensures the product is enabled on the Carpentry catalog so Finishing & Upholstery can use it.
  */

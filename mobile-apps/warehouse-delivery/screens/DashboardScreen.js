@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../deliveryKit/components/ProductionKioskTopBar';
@@ -57,6 +57,7 @@ export default function DashboardScreen({
   allowed,
   onRefreshAccess,
   accessHint,
+  accessBooting = false,
 }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready } = useProductionKioskLocale();
@@ -191,6 +192,11 @@ export default function DashboardScreen({
         </Text>
       ) : null}
 
+      {accessBooting ? (
+        <View style={styles.booting}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : null}
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
@@ -234,6 +240,7 @@ export default function DashboardScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  booting: { alignItems: 'center', paddingVertical: 12 },
   gridScroll: {
     flexGrow: 1,
     alignItems: 'center',

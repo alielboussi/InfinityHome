@@ -271,6 +271,11 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
     wrapJobBusy(jobId, async () => {
       const result = await finishPaintingProductionJob(jobId, { destination });
       const dest = result?.finish_destination || destination;
+      const warn = String(result?.label_print_warning || '').trim();
+      if (warn) {
+        Alert.alert(tUi('upholsteryJobFinish', locale), warn);
+        return;
+      }
       Alert.alert(
         tUi('upholsteryJobFinish', locale),
         dest === 'floor1'

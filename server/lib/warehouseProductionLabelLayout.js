@@ -35,6 +35,9 @@ export const NAME_LINE_HEIGHT_MM = 3.6;
 export const NAME_VALUE_MAX_LINES = 2;
 export const GAP_AFTER_NAME_BLOCK_MM = 2.8;
 export const BLOCK_GAP_MM = 0.55;
+/** Lift photo QR and add space before Dims row so QR does not crowd dimensions text. */
+export const QR_LIFT_WHEN_DIMS_MM = 0.55;
+export const GAP_AFTER_QR_WHEN_DIMS_MM = 1.05;
 
 export const FIELD_LABELS = {
   sku: 'SKU:',
@@ -112,14 +115,21 @@ export function computeProductionLabelLayout({
   const nameBlockHeightMm = NAME_LINE_HEIGHT_MM * nameValueMaxLines;
   y = nameBlockTopMm + nameBlockHeightMm + gapAfterNameMm;
 
-  const qrBlockYMm = y;
+  let qrBlockYMm = y;
+  if (includeDimensionsRow) {
+    const minQrY = nameBlockTopMm + nameBlockHeightMm + 1.1;
+    qrBlockYMm = Math.max(minQrY, qrBlockYMm - QR_LIFT_WHEN_DIMS_MM);
+  }
   const imageQrLeftMm = centerXMm - QR_SIZE_MM / 2;
   const imageQrCenterMm = centerXMm;
   const qrFootprintMm = Math.max(
     QR_SIZE_MM,
     zebraQrPrintedMm(QR_SIZE_MM, Math.max(1, Math.floor(Number(imageQrDataLength) || DEFAULT_QR_PAYLOAD_LENGTH)), dpi),
   );
-  y = qrBlockYMm + qrFootprintMm + blockGapMm + 0.2;
+  const gapAfterQrMm = includeDimensionsRow
+    ? blockGapMm + GAP_AFTER_QR_WHEN_DIMS_MM
+    : blockGapMm + 0.2;
+  y = qrBlockYMm + qrFootprintMm + gapAfterQrMm;
 
   let colorRowMm = null;
   if (includeColorRow) {

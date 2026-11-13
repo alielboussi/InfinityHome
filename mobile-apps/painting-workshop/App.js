@@ -38,7 +38,7 @@ function MainStack({ navigationRef }) {
   }
 
   return (
-    <Stack.Navigator initialRouteName="Dashboard" screenOptions={stackScreenOptions}>
+    <Stack.Navigator initialRouteName="Jobs" screenOptions={stackScreenOptions}>
       <Stack.Screen name="Jobs" options={{ headerShown: false }}>
         {(props) => (
           <JobsScreen

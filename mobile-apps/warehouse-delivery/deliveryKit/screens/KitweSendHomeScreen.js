@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import DeliveryKioskFormScroll from '../components/DeliveryKioskFormScroll';
 import DeliveryKioskVirtualList from '../components/DeliveryKioskVirtualList';
 import { DeliveryWarehouseGridCard, deliveryWarehouseGridKey } from '../components/DeliveryWarehouseProductGrid';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
@@ -44,6 +43,9 @@ import {
 } from '../shared/warehouseDeliveryBoxUnits';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
+
+/** Invisible FlatList row so Floor 1 send uses one scroll surface (header/footer), not ScrollView + list. */
+const KITWE_SEND_SCROLL_STUB = [{ id: '__kitwe_send_scroll__' }];
 import { tUi } from '../lib/productionKioskI18n';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { buildPacketsByAssembly } from '../shared/warehousePacketGrouping';
@@ -1360,10 +1362,14 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
           ListFooterComponent={kitweListFooter}
         />
       ) : (
-        <DeliveryKioskFormScroll contentContainerStyle={styles.wrap}>
-          {kitweListHeader}
-          {kitweListFooter}
-        </DeliveryKioskFormScroll>
+        <DeliveryKioskVirtualList
+          data={KITWE_SEND_SCROLL_STUB}
+          renderItem={() => <View style={styles.scrollStub} />}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.wrap}
+          ListHeaderComponent={kitweListHeader}
+          ListFooterComponent={kitweListFooter}
+        />
       )}
 
       <ProductionQrScanModal
@@ -1410,6 +1416,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
 
 const styles = StyleSheet.create({
   wrap: { flexGrow: 1 },
+  scrollStub: { height: 0, overflow: 'hidden' },
   changeProduct: { marginBottom: 12 },
   addToCartBtn: { marginTop: 12 },
   cartTitleCol: { flex: 1 },

@@ -1048,6 +1048,36 @@ body.enterprise-theme button.kitwe-catalog-product-row__thumb:hover {
   color: #0f172a;
 }
 
+.kitwe-catalog-product-row__name-btn {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.kitwe-catalog-product-row__name-btn:hover,
+.kitwe-catalog-product-row__name-btn:focus-visible {
+  background: #e0f2fe;
+  color: #0369a1;
+  outline: none;
+}
+
+.kitwe-catalog-inline-name-input {
+  width: 100%;
+  min-width: 16ch;
+  max-width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  border: 1px solid #0284c7;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: #ffffff;
+}
+
 .kitwe-catalog-product-row__meta {
   font-size: 13px;
   color: var(--kitwe-muted, #64748b);
@@ -1062,7 +1092,8 @@ body.enterprise-theme button.kitwe-catalog-product-row__thumb:hover {
 }
 
 .kitwe-catalog-product-row--floor2 {
-  grid-template-columns: 96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(200px, 1fr) minmax(72px, auto);
+  grid-template-columns:
+    96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(100px, 0.55fr) minmax(200px, 1fr) minmax(72px, auto);
 }
 
 .kitwe-catalog-product-row__dims {
@@ -1180,7 +1211,42 @@ body.enterprise-theme .kitwe-catalog-product-row__wip button.warehouse-assembly-
 }
 
 .kitwe-catalog-product-rows__header--floor2 {
-  grid-template-columns: 96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(200px, 1fr) minmax(72px, auto);
+  grid-template-columns:
+    96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(100px, 0.55fr) minmax(200px, 1fr) minmax(72px, auto);
+}
+
+.kitwe-catalog-product-row__category {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.kitwe-catalog-product-row__category-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.35;
+}
+
+.kitwe-catalog-product-row__category-link {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0369a1;
+  text-align: left;
+  cursor: pointer;
+  line-height: 1.35;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.kitwe-catalog-product-row__category-link:hover,
+.kitwe-catalog-product-row__category-link:focus-visible {
+  color: #0c4a6e;
 }
 
 /* Farm warehouse — Floor 2 layout with label print in Actions */
@@ -1220,6 +1286,7 @@ body.enterprise-theme .kitwe-catalog-product-row__wip button.warehouse-assembly-
   }
 
   .kitwe-catalog-product-row__sku,
+  .kitwe-catalog-product-row__category,
   .kitwe-catalog-product-row__meta,
   .kitwe-catalog-product-row__actions {
     grid-column: 2;

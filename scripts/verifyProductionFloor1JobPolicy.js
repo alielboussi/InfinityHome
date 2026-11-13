@@ -59,6 +59,14 @@ if (!/finishPaintingProductionJob[\s\S]*registerProductionJobAwaitingDriver/.tes
   console.error('[verifyProductionFloor1JobPolicy] painting job finish must register delivery admin queue');
   failed += 1;
 }
+if (!/finishPaintingProductionJob[\s\S]*enqueueWarehouseProductionLabelJob/.test(paintingJobs)) {
+  console.error('[verifyProductionFloor1JobPolicy] painting job finish must print warehouse labels');
+  failed += 1;
+}
+if (!/LABEL_PHOTO_FLOOR2/.test(paintingJobs)) {
+  console.error('[verifyProductionFloor1JobPolicy] painting labels must use Floor 2 photo QR');
+  failed += 1;
+}
 if (!/destination = 'delivery'[\s\S]*floor1/.test(paintingJobs)
     && !/dest === 'floor1'/.test(paintingJobs)) {
   console.error('[verifyProductionFloor1JobPolicy] painting finish must support Floor 1 storage destination');

@@ -46,15 +46,10 @@ function MainStack({ navigationRef }) {
 
   useDeliveryPushNotifications(navigationRef, { allowed });
 
-  if (!bootstrapped && loading) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color={theme.primary} />
-      </View>
-    );
-  }
+  const accessBooting = !bootstrapped && loading;
 
   return (
+    <>
     <Stack.Navigator initialRouteName="Dashboard" screenOptions={stackScreenOptions}>
       <Stack.Screen name="Dashboard" options={{ headerShown: false }}>
         {(props) => (
@@ -66,6 +61,7 @@ function MainStack({ navigationRef }) {
             allowed={allowed}
             onRefreshAccess={() => refresh({ background: false })}
             accessHint={accessHint}
+            accessBooting={accessBooting}
           />
         )}
       </Stack.Screen>
@@ -196,6 +192,12 @@ function MainStack({ navigationRef }) {
         )}
       </Stack.Screen>
     </Stack.Navigator>
+    {accessBooting ? (
+      <View style={styles.loadingOverlay} pointerEvents="none">
+        <ActivityIndicator size="large" color={theme.primary} />
+      </View>
+    ) : null}
+    </>
   );
 }
 
@@ -204,19 +206,24 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ProductionKioskLocaleProvider>
-        <NavigationContainer ref={navigationRef}>
-          <ProductionAppAuthGate
-            titleKey="dashDeliveryAppTitle"
-            signInMethods={__DEV__ ? 'both' : 'google'}
-          >
+        <ProductionAppAuthGate
+          titleKey="dashDeliveryAppTitle"
+          signInMethods={__DEV__ ? 'both' : 'google'}
+        >
+          <NavigationContainer ref={navigationRef}>
             <MainStack navigationRef={navigationRef} />
-          </ProductionAppAuthGate>
-        </NavigationContainer>
+          </NavigationContainer>
+        </ProductionAppAuthGate>
       </ProductionKioskLocaleProvider>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.bg },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+  },
 });

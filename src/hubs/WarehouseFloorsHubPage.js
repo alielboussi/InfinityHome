@@ -67,7 +67,14 @@ export default function WarehouseFloorsHubPage() {
             viewValue={floor}
             viewOptions={FLOOR_OPTIONS}
             onViewChange={setFloor}
-          />
+          >
+            <WarehouseCatalogCreateActions
+              canManage={canManage}
+              canAddProduct={canAddProduct}
+              createPortal="warehouse-floor-2"
+              returnTo="/warehouse-floors?floor=2"
+            />
+          </PortalHubBar>
         </div>
         <WarehouseFloor2Page embedInHub />
       </div>

@@ -13,6 +13,7 @@ import {
   saveCarpentryProductSelection,
   listCarpentryFloorRuns,
   addFloor1ProductToFloor2Local,
+  addFloor2ProductToFloor1Local,
   setFloor2ProductStockQtyLocal,
   setFarmProductStockQtyLocal,
 } from '../utils/carpentryCatalogMutations';
@@ -108,6 +109,15 @@ async function postCarpentryCatalogDirect(body) {
       assemblyId: body.assembly_id || body.assemblyId,
       productQty: body.product_qty ?? body.productQty ?? body.quantity ?? 1,
       userId: user?.id || null,
+    });
+    return { ok: true, ...result };
+  }
+  if (op === 'add-floor1-product') {
+    const result = await addFloor2ProductToFloor1Local(db, {
+      assemblyId: body.assembly_id || body.assemblyId,
+      productQty: body.product_qty ?? body.productQty ?? body.quantity ?? 1,
+      userId: user?.id || null,
+      ensureInventoryRow: body.ensure_inventory_row === true,
     });
     return { ok: true, ...result };
   }
@@ -246,6 +256,29 @@ export async function fetchCarpentryFloorRuns() {
     cacheSet(FLOOR_RUNS_CACHE_KEY, payload, 60 * 1000);
     return payload;
   }
+}
+
+export async function postAddFloor1ProductFromFloor2(assemblyId, productQty = 1) {
+  invalidateProductionPortalSnapshotCache();
+  cacheClear(FLOOR_RUNS_CACHE_KEY);
+  try {
+    const user = getCurrentUser();
+    if (canManageCatalog(user)) {
+      const result = await addFloor2ProductToFloor1Local(db, {
+        assemblyId,
+        productQty,
+        userId: user?.id || null,
+      });
+      return { ok: true, ...result };
+    }
+  } catch {
+    /* fallback to API */
+  }
+  return postCarpentryCatalog({
+    op: 'add-floor1-product',
+    assembly_id: assemblyId,
+    product_qty: productQty,
+  });
 }
 
 export async function postAddFloor2Product(assemblyId, productQty = 1) {

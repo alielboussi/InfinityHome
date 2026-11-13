@@ -718,6 +718,25 @@ export async function saveWarehouseAssembly(payload, { id, excludePacketId } = {
     }
   }
 
+  if (!id && !isSet && createPortal === 'warehouse-floor-2') {
+    try {
+      const { addFloor2ProductToFloor1Local, saveCarpentryProductSelection } = await import('../utils/carpentryCatalogMutations');
+      await saveCarpentryProductSelection(db, assemblyId, true);
+      const floor1Qty = Math.max(
+        0,
+        Math.floor(Number(payload?.floor1_qty ?? payload?.floor1_product_qty) || 0),
+      );
+      await addFloor2ProductToFloor1Local(db, {
+        assemblyId,
+        productQty: floor1Qty,
+        userId: null,
+        ensureInventoryRow: true,
+      });
+    } catch (floor1Err) {
+      console.warn('[saveWarehouseAssembly] Floor 1 catalog mirror failed:', floor1Err?.message || floor1Err);
+    }
+  }
+
   invalidateWarehouseCatalogCache();
   return { ...row, id: assemblyId };
 }

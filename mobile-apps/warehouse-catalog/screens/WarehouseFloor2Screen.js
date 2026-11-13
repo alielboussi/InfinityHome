@@ -27,6 +27,12 @@ import {
 import CatalogLabelPrintModal, { CatalogLabelPrintIconButton } from '../shared/CatalogLabelPrintModal';
 import { prepareCatalogPhotoForUpload } from '../shared/prepareCatalogPhotoUpload';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import {
+  fetchWarehouseCatalogCached,
+  getWarehouseCatalogCache,
+  setWarehouseCatalogCache,
+} from '../shared/warehouseCatalogStore';
+import { resolveWarehouseCategoryNameFromList } from '../shared/warehouseCategoryLookup';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import { assemblyDimsDraftFromItem, formatAssemblyDimensions } from '../shared/warehouseAssemblySpecs';
 import { theme } from '../shared/theme';
@@ -111,6 +117,7 @@ const Floor2GroupListRow = memo(function Floor2GroupListRow({
     (row) => busyId === String(row.assembly_id || row.id) || photoBusyId === String(row.assembly_id || row.id),
   );
   const sku = String(product?.family_sku || '').trim();
+  const dimensions = formatAssemblyDimensions(product);
   return (
     <View style={styles.listRowWrap}>
       <Pressable
@@ -126,6 +133,7 @@ const Floor2GroupListRow = memo(function Floor2GroupListRow({
           imageUrl={cardImage || undefined}
           name={group.displayName}
           sku={sku}
+          dimensions={dimensions}
           subtitle={`On hand: ${group.totalFloor2}`}
           busy={cardBusy}
         />
@@ -171,6 +179,24 @@ export default function WarehouseFloor2Screen() {
   const [prodNameInput, setProdNameInput] = useState('');
   const [prodQtyInput, setProdQtyInput] = useState('');
   const [prodPhotoUri, setProdPhotoUri] = useState('');
+  const [prodCategoryId, setProdCategoryId] = useState('');
+  const [catalogCategories, setCatalogCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryAddBusy, setCategoryAddBusy] = useState(false);
+
+  const sortedCategories = useMemo(
+    () => [...catalogCategories].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
+    [catalogCategories],
+  );
+
+  const selectedCategoryLabel = useMemo(() => {
+    if (!prodCategoryId) return 'Select category (optional)';
+    const row = sortedCategories.find((c) => String(c.id) === String(prodCategoryId));
+    if (row?.name) return row.name;
+    return resolveWarehouseCategoryNameFromList(prodCategoryId, catalogCategories) || 'Select category';
+  }, [catalogCategories, prodCategoryId, sortedCategories]);
 
   const loadProducts = useCallback(async ({ fromPull = false } = {}) => {
     const hasCached = productsRef.current.length > 0;
@@ -462,12 +488,51 @@ export default function WarehouseFloor2Screen() {
     }
   };
 
+  const loadCategoryOptions = useCallback(async () => {
+    setCategoriesLoading(true);
+    try {
+      const data = await fetchWarehouseCatalogCached();
+      setCatalogCategories(data?.categories || []);
+    } catch {
+      setCatalogCategories(getWarehouseCatalogCache()?.categories || []);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  }, []);
+
+  const addCategory = async () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed || categoryAddBusy) return;
+    setCategoryAddBusy(true);
+    try {
+      const { category } = await warehouseMobileRequest('category-create', { name: trimmed });
+      const next = [...catalogCategories, category].sort((a, b) =>
+        String(a.name).localeCompare(String(b.name)));
+      setCatalogCategories(next);
+      const cache = getWarehouseCatalogCache();
+      if (cache) {
+        setWarehouseCatalogCache({ ...cache, categories: next });
+      }
+      setProdCategoryId(category.id);
+      setNewCategoryName('');
+      setCategoryPickerOpen(false);
+    } catch (e) {
+      Alert.alert('Add category failed', e?.message || 'Could not add category.');
+    } finally {
+      setCategoryAddBusy(false);
+    }
+  };
+
   const openCreateProduct = () => {
     if (createBusy) return;
     setProdNameInput('');
     setProdQtyInput('');
     setProdPhotoUri('');
+    setProdCategoryId('');
+    setNewCategoryName('');
+    setCategoryPickerOpen(false);
     setCreateProductOpen(true);
+    loadCategoryOptions();
   };
 
   const closeCreateProduct = () => {
@@ -492,6 +557,7 @@ export default function WarehouseFloor2Screen() {
         name,
         quantity: qty,
         image_base64: imageBase64 || undefined,
+        category_id: prodCategoryId || undefined,
       });
       setCreateProductOpen(false);
       await loadProducts();
@@ -792,6 +858,23 @@ export default function WarehouseFloor2Screen() {
                 editable={!createBusy}
               />
 
+              <Text style={styles.fieldLabel}>Category</Text>
+              <Pressable
+                style={[styles.categorySelect, (createBusy || categoriesLoading) && styles.btnDisabled]}
+                disabled={createBusy || categoriesLoading}
+                onPress={() => setCategoryPickerOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Choose category"
+              >
+                <Text style={styles.categorySelectText} numberOfLines={2}>
+                  {categoriesLoading ? 'Loading categories…' : selectedCategoryLabel}
+                </Text>
+                <Text style={styles.categorySelectChevron}>▾</Text>
+              </Pressable>
+              <Text style={styles.fieldHint}>
+                Optional — same categories as Warehouse catalog. Tap to pick or add new.
+              </Text>
+
               <Text style={styles.fieldLabel}>Opening qty</Text>
               <TextInput
                 style={styles.formInput}
@@ -841,6 +924,70 @@ export default function WarehouseFloor2Screen() {
               </View>
             </ScrollView>
           </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={categoryPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCategoryPickerOpen(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setCategoryPickerOpen(false)}>
+          <View style={styles.categoryPickerSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.categoryPickerTitle}>Category (A–Z)</Text>
+            <ScrollView style={styles.categoryPickerList} keyboardShouldPersistTaps="handled">
+              <Pressable
+                style={styles.categoryPickerRow}
+                onPress={() => {
+                  setProdCategoryId('');
+                  setCategoryPickerOpen(false);
+                }}
+              >
+                <Text style={styles.categoryPickerRowText}>— None —</Text>
+              </Pressable>
+              {sortedCategories.map((c) => (
+                <Pressable
+                  key={c.id}
+                  style={[
+                    styles.categoryPickerRow,
+                    String(prodCategoryId) === String(c.id) && styles.categoryPickerRowActive,
+                  ]}
+                  onPress={() => {
+                    setProdCategoryId(c.id);
+                    setCategoryPickerOpen(false);
+                  }}
+                >
+                  <Text style={styles.categoryPickerRowText}>{c.name}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Text style={styles.categoryPickerSectionLabel}>Add new category</Text>
+            <View style={styles.categoryInlineAdd}>
+              <TextInput
+                style={[styles.formInput, { flex: 1 }]}
+                placeholder="Category name"
+                placeholderTextColor={theme.textMuted}
+                value={newCategoryName}
+                onChangeText={setNewCategoryName}
+                onSubmitEditing={addCategory}
+                editable={!categoryAddBusy}
+              />
+              <Pressable
+                style={[styles.categoryAddBtn, categoryAddBusy && styles.btnDisabled]}
+                onPress={addCategory}
+                disabled={categoryAddBusy || !newCategoryName.trim()}
+              >
+                <Text style={styles.categoryAddBtnText}>{categoryAddBusy ? '…' : 'Add'}</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              style={styles.closeBtn}
+              onPress={() => setCategoryPickerOpen(false)}
+            >
+              <Text style={styles.closeBtnText}>Done</Text>
+            </Pressable>
+          </View>
         </Pressable>
       </Modal>
 
@@ -1203,6 +1350,89 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 6,
     marginTop: 8,
+  },
+  fieldHint: {
+    color: theme.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  categorySelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  categorySelectText: {
+    flex: 1,
+    color: theme.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  categorySelectChevron: {
+    color: theme.textMuted,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  categoryPickerSheet: {
+    alignSelf: 'stretch',
+    marginHorizontal: 16,
+    marginVertical: '20%',
+    maxHeight: '70%',
+    backgroundColor: theme.bg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 16,
+  },
+  categoryPickerTitle: {
+    color: theme.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  categoryPickerList: {
+    maxHeight: 280,
+  },
+  categoryPickerRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  categoryPickerRowActive: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+  },
+  categoryPickerRowText: {
+    color: theme.text,
+    fontSize: 15,
+  },
+  categoryPickerSectionLabel: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  categoryInlineAdd: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryAddBtn: {
+    backgroundColor: theme.primary,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  categoryAddBtnText: {
+    color: '#0f172a',
+    fontWeight: '800',
+    fontSize: 14,
   },
   formInput: {
     backgroundColor: theme.surface,

@@ -177,6 +177,18 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (op === 'add-floor1-product') {
+      const { addFloor2ProductToFloor1 } = await import('../lib/carpentryManufacture.js');
+      const result = await addFloor2ProductToFloor1(db, {
+        assemblyId: body.assembly_id || body.assemblyId,
+        productQty: body.product_qty ?? body.productQty ?? body.quantity ?? 1,
+        userId: user?.id || user?.uid || null,
+        ensureInventoryRow: body.ensure_inventory_row === true,
+      });
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
     if (op === 'set-floor2-stock') {
       const { setFloor2ProductStockQty } = await import('../lib/carpentryManufacture.js');
       const result = await setFloor2ProductStockQty(db, {

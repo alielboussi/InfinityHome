@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BackToDashboard from './BackToDashboard';
 import db from './dataClient';
 import './kitwe-catalog-page.css';
@@ -25,6 +25,13 @@ import { isWarehouseCatalogLabelPrintAllowed } from './mobile/mobileAccessManife
 import { buildPacketsByAssembly } from './utils/warehouseAssemblyPacketPool';
 import { warehouseLabelPrintItemFromRow } from './utils/warehouseRowLabelPrint';
 import { formatAssemblyDimensions } from './utils/warehouseAssemblySpecs';
+import WarehouseAssemblyCategoryDialog from './components/WarehouseAssemblyCategoryDialog';
+
+function floor2ProductDisplayName(asm, fallback = '') {
+  const explicitSetName = String(asm?.metadata?.floor2_set_name || '').trim();
+  if (explicitSetName) return explicitSetName;
+  return String(asm?.name || fallback || '').trim();
+}
 
 function buildAssemblyMapFromCatalog(catalog) {
   const map = new Map();
@@ -40,7 +47,7 @@ function buildAssemblyMapFromCatalog(catalog) {
 
 export default function WarehouseFloor2Page({
   pageTitle = 'Warehouse Floor 2',
-  pageSubtitle = 'Unfinished carpentry WIP (after workshop Manufacture or manual add from Floor 1). Finish in the carpentry app → Floor 1; or send to upholstery from Floor 2.',
+  pageSubtitle = 'Unfinished carpentry WIP (after workshop Manufacture, manual add from Floor 1, or create here). New Floor 2 products also list on Floor 1; new Floor 1 products seed Floor 2 WIP automatically.',
   embedInHub = false,
 } = {}) {
   const initialCatalog = useMemo(() => getCachedCarpentryCatalog(), []);
@@ -63,11 +70,34 @@ export default function WarehouseFloor2Page({
   const { grant } = useAuthProfileMobileGrant();
   const canPrintLabels = canManage || isWarehouseCatalogLabelPrintAllowed(grant, sessionUser?.email);
   const [labelPrintItem, setLabelPrintItem] = useState(null);
+  const [categoryDialogAssembly, setCategoryDialogAssembly] = useState(null);
+  const [nameEdit, setNameEdit] = useState(null);
+  const nameInputRef = useRef(null);
+  const nameDraftRef = useRef('');
+  const nameSaveLockRef = useRef(false);
 
   const packetsByAssembly = useMemo(() => {
     const snap = getCachedProductionPortalSnapshot();
     if (!snap?.assemblyPackets || !snap?.packets) return new Map();
     return buildPacketsByAssembly(snap.assemblyPackets, snap.packets);
+  }, []);
+
+  const categoryName = useMemo(() => {
+    const map = new Map((categories || []).map((c) => [String(c.id), c.name]));
+    return (id) => {
+      if (id == null || id === '') return 'Uncategorized';
+      return map.get(String(id)) || 'Uncategorized';
+    };
+  }, [categories]);
+
+  const handleAssemblyFieldsUpdated = useCallback((assemblyId, patch) => {
+    setAssemblyById((prev) => {
+      const next = new Map(prev);
+      const id = String(assemblyId);
+      const existing = next.get(id) || { id };
+      next.set(id, { ...existing, ...patch });
+      return next;
+    });
   }, []);
 
   const openRowLabelPrint = useCallback((assembly, qty) => {
@@ -129,7 +159,7 @@ export default function WarehouseFloor2Page({
       if (floor2AssemblyIds.length) {
         const { data: photoRows } = await db
           .from('warehouse_assemblies')
-          .select('id, name, family_sku, metadata, dim_length, dim_width, dim_height')
+          .select('id, name, family_sku, metadata, category_id, dim_length, dim_width, dim_height')
           .in('id', floor2AssemblyIds);
         (photoRows || []).forEach((a) => {
           const id = String(a.id);
@@ -146,7 +176,7 @@ export default function WarehouseFloor2Page({
       if (missingIds.length) {
         const { data } = await db
           .from('warehouse_assemblies')
-          .select('id, name, family_sku, metadata, dim_length, dim_width, dim_height')
+          .select('id, name, family_sku, metadata, category_id, dim_length, dim_width, dim_height')
           .in('id', missingIds);
         (data || []).forEach((a) => {
           baseMap.set(String(a.id), a);
@@ -223,6 +253,74 @@ export default function WarehouseFloor2Page({
       </div>
     );
   };
+
+  useEffect(() => {
+    const el = nameInputRef.current;
+    const aid = nameEdit?.aid;
+    if (!aid || !el) return;
+    el.focus();
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+  }, [nameEdit?.aid]);
+
+  const cancelNameEdit = useCallback(() => {
+    setNameEdit(null);
+    nameDraftRef.current = '';
+  }, []);
+
+  const startNameEdit = useCallback((aid, currentName) => {
+    if (!canManage) return;
+    const draft = String(currentName || '').trim();
+    nameDraftRef.current = draft;
+    setNameEdit({ aid: String(aid), draft });
+  }, [canManage]);
+
+  const saveFloor2ProductName = useCallback(async (aid, draftValue) => {
+    if (nameSaveLockRef.current) return;
+    const id = String(aid || '').trim();
+    if (!id) return;
+    const trimmed = String(draftValue || '').trim();
+    if (!trimmed) {
+      window.alert('Product name cannot be empty.');
+      return;
+    }
+    const asm = assemblyById.get(id);
+    if (!asm) return;
+    const currentDisplay = floor2ProductDisplayName(asm, id);
+    if (trimmed === currentDisplay) {
+      cancelNameEdit();
+      return;
+    }
+    const hasSetName = Boolean(String(asm?.metadata?.floor2_set_name || '').trim());
+    nameSaveLockRef.current = true;
+    setBusyId(`name-${id}`);
+    setError('');
+    const now = new Date().toISOString();
+    try {
+      const patch = hasSetName
+        ? {
+          metadata: { ...(asm.metadata || {}), floor2_set_name: trimmed },
+          updated_at: now,
+        }
+        : { name: trimmed, updated_at: now };
+      const { error } = await db.from('warehouse_assemblies').update(patch).eq('id', id);
+      if (error) throw error;
+      setAssemblyById((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(id) || { id };
+        next.set(id, hasSetName
+          ? { ...existing, metadata: { ...(existing.metadata || {}), floor2_set_name: trimmed } }
+          : { ...existing, name: trimmed });
+        return next;
+      });
+      cancelNameEdit();
+    } catch (err) {
+      setError(err?.message || 'Failed to save product name');
+    } finally {
+      nameSaveLockRef.current = false;
+      setBusyId('');
+    }
+  }, [assemblyById, cancelNameEdit]);
 
   const handleSaveStockOnHand = async (assemblyId) => {
     const id = String(assemblyId || '').trim();
@@ -376,6 +474,7 @@ export default function WarehouseFloor2Page({
               <span>Photo</span>
               <span>SKU</span>
               <span>Product</span>
+              <span>Category</span>
               <span>Stock on hand</span>
               <span>Actions</span>
             </div>
@@ -386,6 +485,9 @@ export default function WarehouseFloor2Page({
               const asm = assemblyById.get(aid);
               const sku = asm?.family_sku || '—';
               const dimensionsText = asm ? formatAssemblyDimensions(asm) : '';
+              const displayName = floor2ProductDisplayName(asm, group.familyBase);
+              const nameEditing = nameEdit?.aid === aid;
+              const nameSaving = busyId === `name-${aid}`;
               return (
                 <article
                   key={group.key}
@@ -403,12 +505,76 @@ export default function WarehouseFloor2Page({
                   </div>
                   <div className="kitwe-catalog-product-row__sku">{sku}</div>
                   <div className="kitwe-catalog-product-row__name">
-                    <strong>{group.familyBase}</strong>
+                    {nameEditing ? (
+                      <input
+                        ref={nameInputRef}
+                        type="text"
+                        className="kitwe-catalog-inline-name-input"
+                        value={nameEdit.draft}
+                        disabled={nameSaving}
+                        onChange={(e) => {
+                          nameDraftRef.current = e.target.value;
+                          setNameEdit((prev) => (prev ? { ...prev, draft: e.target.value } : prev));
+                        }}
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Escape') {
+                            e.preventDefault();
+                            cancelNameEdit();
+                          } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            await saveFloor2ProductName(aid, nameDraftRef.current);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (nameSaveLockRef.current) return;
+                          if (!nameEdit || nameEdit.aid !== aid) return;
+                          cancelNameEdit();
+                        }}
+                        title="Press Enter to save, Escape to cancel"
+                        aria-label={`Edit name for ${displayName}`}
+                      />
+                    ) : (
+                      <strong
+                        className={canManage ? 'kitwe-catalog-product-row__name-btn' : undefined}
+                        role={canManage ? 'button' : undefined}
+                        tabIndex={canManage ? 0 : undefined}
+                        title={canManage ? 'Click to edit product name' : undefined}
+                        onClick={() => startNameEdit(aid, displayName)}
+                        onKeyDown={(e) => {
+                          if (!canManage) return;
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            startNameEdit(aid, displayName);
+                          }
+                        }}
+                      >
+                        {displayName}
+                      </strong>
+                    )}
                     {dimensionsText ? (
                       <span className="kitwe-catalog-product-row__dims" title="From warehouse catalog (Floor 1)">
                         {dimensionsText}
                       </span>
                     ) : null}
+                  </div>
+                  <div className="kitwe-catalog-product-row__category">
+                    {canManage ? (
+                      <button
+                        type="button"
+                        className="kitwe-catalog-product-row__category-link"
+                        onClick={() => setCategoryDialogAssembly(
+                          asm || { id: aid, name: displayName, category_id: null },
+                        )}
+                        title="Assign category"
+                      >
+                        {categoryName(asm?.category_id)}
+                      </button>
+                    ) : (
+                      <span className="kitwe-catalog-product-row__category-label">
+                        {categoryName(asm?.category_id)}
+                      </span>
+                    )}
                   </div>
                   <div className="kitwe-catalog-product-row__meta">
                     {renderStockEditor(aid, row.quantity)}
@@ -447,6 +613,15 @@ export default function WarehouseFloor2Page({
         open={Boolean(labelPrintItem)}
         item={labelPrintItem}
         onClose={() => setLabelPrintItem(null)}
+      />
+      <WarehouseAssemblyCategoryDialog
+        open={Boolean(categoryDialogAssembly)}
+        assembly={categoryDialogAssembly}
+        categories={categories}
+        onClose={() => setCategoryDialogAssembly(null)}
+        onCategoriesChange={setCategories}
+        onUpdated={handleAssemblyFieldsUpdated}
+        onError={(msg) => setError(msg)}
       />
     </div>
   );

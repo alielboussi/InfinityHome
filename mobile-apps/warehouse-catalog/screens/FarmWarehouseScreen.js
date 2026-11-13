@@ -19,6 +19,7 @@ import { useSharedMobileAccessGrant, useSharedMobileAccessUserEmail } from '../s
 import { isCatalogLocationStockIncreaseAllowed } from '../shared/mobileAccessManifest';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
+import { formatAssemblyDimensions } from '../shared/warehouseAssemblySpecs';
 import { theme } from '../shared/theme';
 import ProductionProductListRow, { productionProductRowPressableStyle } from '../shared/components/ProductionProductListRow';
 
@@ -99,6 +100,7 @@ const FarmGroupListRow = memo(function FarmGroupListRow({ group, busyId, onOpen 
     (row) => busyId === String(row.assembly_id || row.id),
   );
   const sku = String(product?.family_sku || '').trim();
+  const dimensions = formatAssemblyDimensions(product);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -113,6 +115,7 @@ const FarmGroupListRow = memo(function FarmGroupListRow({ group, busyId, onOpen 
         imageUrl={cardImage || undefined}
         name={group.displayName}
         sku={sku}
+        dimensions={dimensions}
         subtitle={`Farm on hand: ${group.totalFarm}`}
         busy={cardBusy}
       />

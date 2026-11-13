@@ -1,13 +1,11 @@
 import { useEffect, useRef } from 'react';
-import * as Notifications from 'expo-notifications';
 import {
-  navigateFromProductionNotification,
   registerProductionPushTokenWithServer,
+  subscribeProductionPushListeners,
 } from '../lib/productionPushNotifications';
-import { emitProductionRefresh } from '../lib/productionRefreshBus';
 
 /**
- * Register Expo push for upholstery production alerts (quote orders, etc.).
+ * Register Expo push for painting production alerts.
  */
 export function useProductionPushNotifications(navigationRef, { allowed } = {}) {
   const registered = useRef(false);
@@ -22,16 +20,10 @@ export function useProductionPushNotifications(navigationRef, { allowed } = {}) 
 
   useEffect(() => {
     if (!allowed) return undefined;
-    const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response?.notification?.request?.content?.data || {};
-      navigateFromProductionNotification(navigationRef, data);
-    });
-    const subReceived = Notifications.addNotificationReceivedListener(() => {
-      emitProductionRefresh('push');
-    });
-    return () => {
-      subResponse.remove();
-      subReceived.remove();
-    };
+    try {
+      return subscribeProductionPushListeners(navigationRef);
+    } catch {
+      return undefined;
+    }
   }, [allowed, navigationRef]);
 }

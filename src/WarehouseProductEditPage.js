@@ -42,6 +42,8 @@ import {
   WAREHOUSE_FACTORY_LOCATION_ID,
   warehouseCatalogAllowsSetCreate,
 } from './constants/warehouseShowroomLocations';
+import { resolveWarehouseFloor2Location } from './constants/warehouseFloorLocations';
+import db from './dataClient';
 import {
   expandWarehouseSetItemsRows,
   setItemsAssemblyLocationKey,
@@ -69,7 +71,12 @@ export default function WarehouseProductEditPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const isNew = !productId;
-  const allowSetCreate = warehouseCatalogAllowsSetCreate('warehouse-products');
+  const createPortal = searchParams.get('portal') === 'warehouse-floor-2'
+    ? 'warehouse-floor-2'
+    : 'warehouse-products';
+  const returnPath = searchParams.get('return')
+    || (createPortal === 'warehouse-floor-2' ? '/warehouse-floors?floor=2' : '/warehouse-products');
+  const allowSetCreate = warehouseCatalogAllowsSetCreate(createPortal);
   const newKind = allowSetCreate && searchParams.get('kind') === 'set' ? 'set' : 'product';
   const canManage = useMemo(() => canManageCatalog(getCurrentUser()), []);
   const { grant, loading: grantLoading } = useAuthProfileMobileGrant();
@@ -135,6 +142,18 @@ export default function WarehouseProductEditPage() {
     try {
       const data = await fetchWarehouseCatalog();
       applyCatalogSnapshot(data);
+      if (isNew && createPortal === 'warehouse-floor-2') {
+        const { data: locRows, error: locErr } = await db.from('locations').select('id, name');
+        if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+        const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+        if (!floor2Loc?.id) {
+          setError('Warehouse Floor 2 location is not configured — run seedWarehouseFloor2Location.js');
+        } else {
+          setWarehouseLocationId(floor2Loc.id);
+          setWarehouseLocationName(floor2Loc.name || 'Warehouse Floor 2');
+          setError('');
+        }
+      }
       if (!isNew) {
         const row = (data.assemblies || []).find((a) => String(a.id) === String(productId));
         if (!row) {
@@ -211,7 +230,7 @@ export default function WarehouseProductEditPage() {
     } finally {
       setLoading(false);
     }
-  }, [applyCatalogSnapshot, isNew, productId, newKind]);
+  }, [applyCatalogSnapshot, createPortal, isNew, productId, newKind]);
 
   const warehouseSetRecipeLocationId = warehouseLocationId || WAREHOUSE_FACTORY_LOCATION_ID;
 
@@ -543,7 +562,7 @@ export default function WarehouseProductEditPage() {
       const saved = await saveWarehouseAssembly(
         {
           ...productPayload,
-          create_portal: 'warehouse-products',
+          create_portal: createPortal,
           location_ids: savingSet ? (productPayload.location_ids || []) : [],
           warehouse_location_id: warehouseLocationId,
         },
@@ -596,7 +615,7 @@ export default function WarehouseProductEditPage() {
           packet: packetBoxPrompt?.packet || null,
         });
       } else {
-        navigate('/warehouse-products');
+        navigate(returnPath);
       }
     } catch (err) {
       setError(err?.message || 'Save failed');
@@ -607,7 +626,7 @@ export default function WarehouseProductEditPage() {
 
   const leaveAfterBoxModal = () => {
     setWarehouseBoxModal(null);
-    navigate('/warehouse-products');
+    navigate(returnPath);
   };
 
   const submitWarehouseBoxModal = async () => {

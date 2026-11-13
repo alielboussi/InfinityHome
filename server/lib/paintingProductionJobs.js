@@ -372,6 +372,7 @@ export async function finishPaintingProductionJob(sb, {
   jobId,
   userId = null,
   destination = 'delivery',
+  printedBy = null,
 }) {
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
@@ -379,6 +380,16 @@ export async function finishPaintingProductionJob(sb, {
   const productId = String(job.assembly_id || '').trim();
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
   const { floor2LocationId } = await resolveFloor2AndFactoryIds(sb);
+
+  let assemblyRow = null;
+  if (productId) {
+    const { data: asm } = await sb
+      .from(ASSEMBLIES)
+      .select('name, family_sku, dim_length, dim_width, dim_height')
+      .eq('id', productId)
+      .maybeSingle();
+    assemblyRow = asm || null;
+  }
 
   const dest = String(destination || 'delivery').trim().toLowerCase() === 'floor1'
     ? 'floor1'
@@ -431,17 +442,49 @@ export async function finishPaintingProductionJob(sb, {
 
   let deliveryAdminAwaiting = false;
   if (dest === 'delivery') {
-    const { data: asm } = await sb.from('warehouse_assemblies').select('name').eq('id', productId).maybeSingle();
     const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
     await registerProductionJobAwaitingDriver(sb, {
       jobsTable: JOBS,
       jobRow: updated,
       assemblyId: productId,
-      assemblyName: asm?.name || productId,
+      assemblyName: assemblyRow?.name || productId,
       qty,
       department: 'painting',
     });
     deliveryAdminAwaiting = true;
+  }
+
+  let labelJobId = null;
+  let labelPrintWarning = null;
+  const labelName = String(assemblyRow?.name || job.product_name || productId).trim();
+  const rawSku = String(assemblyRow?.family_sku || job.product_sku || '').trim();
+  if (labelName && rawSku) {
+    const { normalizeWarehousePacketScan } = await import('../../src/utils/warehouseScanResolver.js');
+    const { enqueueWarehouseProductionLabelJob } = await import('./productionLabelPrint.js');
+    const { LABEL_PHOTO_FLOOR2 } = await import('./warehouseLabelPhotoFloor.js');
+    const labelSku = normalizeWarehousePacketScan(rawSku) || rawSku;
+    const operator = String(printedBy || '').trim() || 'Painting workshop';
+    try {
+      labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+        name: labelName,
+        sku: labelSku,
+        qty,
+        printedBy: operator,
+        source: 'warehouse_floor_2',
+        printedAt: new Date(),
+        photoFloor: LABEL_PHOTO_FLOOR2,
+        dimLength: assemblyRow?.dim_length,
+        dimWidth: assemblyRow?.dim_width,
+        dimHeight: assemblyRow?.dim_height,
+      });
+      if (!labelJobId) {
+        labelPrintWarning = 'Job completed but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
+      }
+    } catch (printErr) {
+      const { formatZebraPrintError } = await import('./formatZebraPrintError.js');
+      labelPrintWarning = formatZebraPrintError(printErr);
+      console.warn('[paintingProductionJobs] label print failed:', printErr?.message || printErr);
+    }
   }
 
   return {
@@ -452,5 +495,8 @@ export async function finishPaintingProductionJob(sb, {
     finish_destination: dest,
     delivery_admin_awaiting_driver: deliveryAdminAwaiting,
     floor1_credited: floor1Credited,
+    label_job_id: labelJobId,
+    label_print_warning: labelPrintWarning,
+    label_copies: qty,
   };
 }
