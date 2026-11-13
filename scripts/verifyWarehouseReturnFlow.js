@@ -82,10 +82,18 @@ assert(
   fs.readFileSync(path.join(root, 'src/WarehouseRepairsAdmin.js'), 'utf8').includes('deptFilter'),
   'repairs admin must filter by carpentry / upholstery',
 );
-assert(chrome.includes('Repairs Trackage'), 'Hassan nav must link Repairs Trackage');
+const parity = read('src/mobile/ordersAppDashboardParity.js');
 assert(
-  read('src/WarehouseReturnsTrackage.js').includes('REPAIR_DEPARTMENTS'),
-  'returns trackage must group by repair department',
+  parity.includes("webRoute: '/warehouse-returns-trackage'"),
+  'Hassan / Orders parity must link production tracking route',
+);
+assert(
+  chrome.includes('/warehouse-returns-trackage'),
+  'AppChrome must title the production tracking route',
+);
+assert(
+  read('src/WarehouseReturnsTrackage.js').includes('ProductionJobsTrackingPanel'),
+  'trackage page must use unified production job tracking',
 );
 assert(
   !read('server/lib/warehouseReturnOrders.js').includes('trackageOnly) {\n    query = query.in'),

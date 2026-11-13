@@ -100,7 +100,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_tracking',
     navGroup: 'warehouse',
-    webLabel: 'Repairs Trackage',
+    webLabel: 'Production tracking',
     webRoute: '/warehouse-returns-trackage',
     webSearch: '',
     mobileStack: 'Tracking',

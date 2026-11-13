@@ -73,12 +73,13 @@ export default function ProductionJobsTrackingPanel({
   title = 'Production jobs',
   description,
   embedInHub = false,
+  initialDepartment = 'all',
 }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [department, setDepartment] = useState('all');
+  const [department, setDepartment] = useState(initialDepartment || 'all');
 
   const load = useCallback(async () => {
     setLoading(true);
