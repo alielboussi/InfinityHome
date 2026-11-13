@@ -52,7 +52,10 @@ export async function startCarpentryProductionJob({ assemblyId, productQty = 1 }
 
 export async function fetchCarpentryProductionJobs({ activeOnly = true } = {}) {
   const payload = await warehouseMobileRequest('carpentry-job-list', { active_only: activeOnly });
-  return payload?.jobs || [];
+  return {
+    jobs: payload?.jobs || [],
+    quoteOrders: payload?.quote_orders || [],
+  };
 }
 
 export async function pauseCarpentryProductionJob(jobId) {

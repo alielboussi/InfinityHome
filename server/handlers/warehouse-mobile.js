@@ -1753,7 +1753,15 @@ async function opCarpentryJobList(body, user) {
   const activeOnly = body.active_only !== false && body.activeOnly !== false;
   const limit = body.limit ?? body.max;
   const { listCarpentryProductionJobs } = await import('../lib/carpentryProductionJobs.js');
-  return listCarpentryProductionJobs(sb, { activeOnly, limit });
+  const { listProductionQuotesForRoute } = await import('../lib/quoteProductionRouting.js');
+  const [result, quoteResult] = await Promise.all([
+    listCarpentryProductionJobs(sb, { activeOnly, limit }),
+    listProductionQuotesForRoute(sb, 'carpentry', { limit: 150 }).catch(() => ({ rows: [] })),
+  ]);
+  return {
+    ...result,
+    quote_orders: quoteResult?.rows || [],
+  };
 }
 
 async function opCarpentryJobPause(body, user) {

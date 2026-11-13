@@ -271,18 +271,19 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
 
   const rows = [];
   for (const r of sent) {
-    const q = quoteById.get(String(r.quote_id));
-    if (!q) continue;
-    const run = runByQuote.get(String(r.quote_id)) || null;
+    const qid = String(r.quote_id);
+    const q = quoteById.get(qid);
+    const run = runByQuote.get(qid) || null;
     const timerFields = quoteRunListFields(run);
+    const meta = r.metadata && typeof r.metadata === 'object' ? r.metadata : {};
     rows.push({
       quote_id: r.quote_id,
       route: r.route,
-      quote_number: q.quote_number || r.metadata?.quote_number,
-      customer_name: r.metadata?.customer_name || '',
-      customer_phone: r.metadata?.customer_phone || '',
-      total: q.total,
-      currency: q.currency,
+      quote_number: q?.quote_number || meta.quote_number || qid,
+      customer_name: meta.customer_name || '',
+      customer_phone: meta.customer_phone || '',
+      total: q?.total ?? null,
+      currency: q?.currency ?? null,
       sent_to_production_at: r.sent_to_production_at,
       sent_to_production: Boolean(r.sent_to_production_at),
       accepted_at: r.accepted_at,
@@ -291,11 +292,12 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
       run_started_at: run?.started_at || null,
       run_completed_at: run?.completed_at || null,
       ...timerFields,
-      lines: itemsByQuoteId.get(String(r.quote_id)) || r.metadata?.lines || [],
-      drawing_url: r.metadata?.drawing_url || null,
-      manual_material_lines: Array.isArray(r.metadata?.manual_material_lines)
-        ? r.metadata.manual_material_lines
+      lines: itemsByQuoteId.get(qid) || meta.lines || [],
+      drawing_url: meta.drawing_url || null,
+      manual_material_lines: Array.isArray(meta.manual_material_lines)
+        ? meta.manual_material_lines
         : [],
+      quotation_missing: !q,
     });
   }
   return { rows };

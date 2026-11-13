@@ -382,6 +382,11 @@ export async function opOrdersQuoteSave(sb, body, user) {
 export async function opOrdersQuoteDelete(sb, body) {
   const quoteId = trim(body.quote_id || body.id);
   if (!quoteId) throw new Error('quote_id is required.');
+  const { getQuoteProductionRouting } = await import('./quoteProductionRouting.js');
+  const routing = await getQuoteProductionRouting(sb, quoteId);
+  if (routing?.sent_to_production_at && !routing?.completed_at) {
+    throw new Error('This order was sent to production and cannot be deleted until workshop completes it.');
+  }
   await sb.from('quotation_items').delete().eq('quotation_id', quoteId);
   const { error } = await sb.from('quotations').delete().eq('id', quoteId);
   if (error) throw new Error(error.message || 'Failed to delete quote.');

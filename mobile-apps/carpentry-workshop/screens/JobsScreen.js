@@ -282,12 +282,23 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     if (showLoading) setLoading(true);
     setError('');
     try {
-      const [list, quotes] = await Promise.all([
+      const [jobPayload, quotes] = await Promise.all([
         fetchCarpentryProductionJobs({ activeOnly: true }),
-        fetchCarpentryProductionQuotes().catch(() => []),
+        fetchCarpentryProductionQuotes().catch((quoteErr) => {
+          if (__DEV__) console.warn('[JobsScreen] production-quotes-list failed', quoteErr?.message);
+          return null;
+        }),
       ]);
+      const list = jobPayload?.jobs || [];
+      const quotesFromJobs = jobPayload?.quoteOrders || [];
+      const quotesFromList = Array.isArray(quotes) ? quotes : [];
+      const mergedQuotesById = new Map();
+      for (const q of [...quotesFromJobs, ...quotesFromList]) {
+        const id = String(q?.quote_id || '').trim();
+        if (id) mergedQuotesById.set(id, q);
+      }
       setJobs(Array.isArray(list) ? list : []);
-      setQuoteOrders((Array.isArray(quotes) ? quotes : []).filter((q) => !q.completed_at));
+      setQuoteOrders([...mergedQuotesById.values()].filter((q) => !q.completed_at));
     } catch (e) {
       const msg = e?.message || tUi('upholsteryJobLoadFailed', locale);
       setError(msg);
