@@ -19,6 +19,8 @@ export const PRODUCTION_CARPENTRY_PRESETS = Object.freeze([
   'Buffet Mirror',
   'Dresser Table',
   'Dresser Mirror',
+  'Consoles',
+  'Console Mirrors',
 ]);
 
 export const PRODUCTION_LEGACY_PRESET_SUFFIXES = Object.freeze([

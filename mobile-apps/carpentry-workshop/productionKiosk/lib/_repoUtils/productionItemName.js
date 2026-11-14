@@ -18,6 +18,8 @@ export const PRODUCTION_CARPENTRY_PRESETS = Object.freeze([
   'Buffet Mirror',
   'Dresser Table',
   'Dresser Mirror',
+  'Consoles',
+  'Console Mirrors',
 ]);
 
 /** Older labels still in the catalog — strip base name only. */

@@ -130,6 +130,10 @@ export const PRODUCTION_PHOTO_PRESET_SUBJECT = Object.freeze({
     'a dresser mirror or vanity mirror (same frame and glass as photographed)',
   'Dresser Table Mirror':
     'a dresser table with mirror (same table and mirror unit as photographed)',
+  Consoles:
+    'a console table or hallway console (same top, legs, and finish as photographed)',
+  'Console Mirrors':
+    'a console mirror (wall mirror for a console setting; same frame and glass as photographed)',
 });
 
 function allPresetSuffixes() {

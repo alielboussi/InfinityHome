@@ -25,6 +25,8 @@ const UI_STRINGS = {
   presetSideTable: { en: 'Side table', ar: 'طاولة جانبية' },
   presetDresserTable: { en: 'Dresser table', ar: 'طاولة تسريحة' },
   presetDresserTableMirror: { en: 'Dresser table mirror', ar: 'مرآة تسريحة' },
+  presetConsoles: { en: 'Consoles', ar: 'كونسولات' },
+  presetConsoleMirrors: { en: 'Console mirrors', ar: 'مرايا كونسول' },
   seaterGroupLabel: { en: 'Upholstery', ar: 'تنجيد' },
   carpentryGroupLabel: { en: 'Carpentry', ar: 'أثاث خشبي' },
   seaterPickerPlaceholder: { en: 'Choose upholstery', ar: 'اختر التنجيد' },
@@ -948,6 +950,8 @@ const PRESET_I18N = {
   'Dresser Table': 'presetDresserTable',
   'Dresser Table Mirror': 'presetDresserTableMirror',
   'Dresser Mirror': 'presetDresserMirror',
+  Consoles: 'presetConsoles',
+  'Console Mirrors': 'presetConsoleMirrors',
 };
 
 const presetAutoArCache = new Map();
