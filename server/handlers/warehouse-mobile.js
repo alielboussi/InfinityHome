@@ -3583,8 +3583,16 @@ async function processSetDeliveryGroup({
     );
   }
 
+  const { setComponentIncludedInDelivery } = await import('../../src/utils/warehouseSetPartialDelivery.js');
+  const includedClient = clientComponents.filter((c) => setComponentIncludedInDelivery(c));
+  if (!includedClient.length) {
+    throw new Error(`Select at least one product to send for set ${setAssembly.name}.`);
+  }
+
   const entries = [];
   let totalCartons = 0;
+  const partialSetDelivery = includedClient.length < clientComponents.length
+    || group.partial_set_delivery === true;
 
   entries.push({
     id: newUuid(),
@@ -3599,13 +3607,14 @@ async function processSetDeliveryGroup({
       set_assembly_id: setId,
       assembly_name: setAssembly.name,
       units,
+      partial_set_delivery: partialSetDelivery,
     }),
   });
 
   for (const recipe of recipeComponents) {
     const comp = clientComponents.find((c) => String(c.assembly_id) === String(recipe.assembly_id));
-    if (!comp) {
-      throw new Error(`Confirm all products for set ${setAssembly.name} (${recipe.assembly_name}).`);
+    if (!comp || !setComponentIncludedInDelivery(comp)) {
+      continue;
     }
     const assemblyId = String(recipe.assembly_id);
     const assembly = assemblyById.get(assemblyId);
@@ -3869,6 +3878,16 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
       });
       entries.push(...setResult.entries);
       totalCartons += setResult.totalCartons;
+      if (!isFarmDelivery) {
+        const { applyFloor1SetDeliveryDismantle } = await import('../lib/warehouseSetPartialDelivery.js');
+        await applyFloor1SetDeliveryDismantle(sb, {
+          group,
+          assemblyById,
+          byAssembly,
+          locationId: stockSourceLocationId,
+          now,
+        });
+      }
       continue;
     }
 

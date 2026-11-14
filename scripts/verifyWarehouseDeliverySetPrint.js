@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import assert from 'assert';
 import { buildDeliveryPrintGroupsFromEntries } from '../src/utils/warehouseDeliveryPrintGroups.js';
+import { buildSetDeliveryPrintGroupFromCart } from '../src/utils/warehouseDeliverySetPrint.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -58,8 +59,39 @@ const productOnlyEntries = [
 const plain = buildDeliveryPrintGroupsFromEntries(productOnlyEntries);
 assert(plain.length === 1 && !plain[0].set_name, 'non-set delivery unchanged shape');
 
+const partialCart = buildSetDeliveryPrintGroupFromCart(
+  {
+    set_name: 'Living Set',
+    units: 1,
+    components: [
+      { assembly_id: 'a3', assembly_name: '3 Seater', product_qty: 1, included_in_delivery: true },
+      { assembly_id: 'a2', assembly_name: '2 Seater', product_qty: 1, included_in_delivery: true },
+      {
+        assembly_id: 'a1',
+        assembly_name: 'Single',
+        product_qty: 2,
+        included_in_delivery: false,
+        finished_driver_checked: true,
+      },
+    ],
+  },
+  new Map(),
+  [],
+);
+assert(
+  partialCart.lines.filter((l) => l.depth === 1).length === 2,
+  'partial set print must omit Floor 1 components',
+);
+assert(
+  !partialCart.lines.some((l) => l.name === 'Single'),
+  'excluded set component must not appear on delivery note',
+);
+
 const mobile = fs.readFileSync(path.join(root, 'server/handlers/warehouse-mobile.js'), 'utf8');
 assert(mobile.includes('processSetDeliveryGroup'), 'delivery submit must process set groups');
+assert(mobile.includes('applyFloor1SetDeliveryDismantle'), 'partial set delivery must dismantle Floor 1 sets');
+assert(fs.existsSync(path.join(root, 'server/lib/warehouseSetPartialDelivery.js')), 'warehouseSetPartialDelivery.js');
+assert(fs.existsSync(path.join(root, 'src/utils/warehouseSetPartialDelivery.js')), 'set partial delivery utils');
 assert(mobile.includes('warehouse_set_items'), 'catalog load must include set items');
 
 const catalogMobile = fs.readFileSync(path.join(root, 'server/lib/warehouseCatalogMobile.js'), 'utf8');

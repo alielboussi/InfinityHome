@@ -30,6 +30,7 @@ export function initSetDraftComponents(setAssemblyId, setUnits, setItems, assemb
       ...row,
       finishedOnly,
       packetRows,
+      included_in_delivery: true,
       checks: finishedOnly
         ? {}
         : buildDeliveryPacketChecks(packetRows, row.product_qty, {}),
@@ -66,8 +67,17 @@ export function buildSetComponentScans(packetRows, productQty, checks) {
   return { ok: true, scans };
 }
 
+function componentOnTruck(comp) {
+  return comp?.included_in_delivery !== false;
+}
+
 export function validateSetDraftForCart(components, setName) {
-  for (const comp of components || []) {
+  const list = components || [];
+  const onTruck = list.filter(componentOnTruck);
+  if (!onTruck.length) {
+    return { ok: false, message: setName, reason: 'no_components_selected' };
+  }
+  for (const comp of onTruck) {
     if (comp.finishedOnly) {
       if (!comp.finished_driver_checked) {
         return { ok: false, message: comp.assembly_name };
@@ -83,7 +93,9 @@ export function validateSetDraftForCart(components, setName) {
 }
 
 export function validateSetGroupInCart(group, assemblies, byAssembly) {
-  for (const comp of group.components || []) {
+  const comps = (group.components || []).filter(componentOnTruck);
+  if (!comps.length) return group.set_name || 'Set';
+  for (const comp of comps) {
     const asm = assemblies.find((a) => String(a.id) === String(comp.assembly_id));
     const rows = byAssembly.get(String(comp.assembly_id)) || [];
     if (asm && isFinishedProductWithoutPacketBom(asm, rows)) {
@@ -105,20 +117,24 @@ export function validateSetGroupInCart(group, assemblies, byAssembly) {
 }
 
 export function serializeSetGroupForSubmit(group) {
+  const components = (group.components || []).map((c) => ({
+    assembly_id: c.assembly_id,
+    assembly_name: c.assembly_name,
+    quantity_per_set: c.quantity_per_set,
+    product_qty: c.product_qty,
+    included_in_delivery: componentOnTruck(c),
+    finished_driver_checked: c.finished_driver_checked,
+    finished_driver_checked_at: c.finished_driver_checked_at,
+    scans: c.scans,
+  }));
+  const onTruck = components.filter((c) => c.included_in_delivery !== false);
   return {
     kind: 'set',
     group_id: group.group_id,
     set_assembly_id: group.set_assembly_id,
     set_name: group.set_name,
     units: group.units,
-    components: (group.components || []).map((c) => ({
-      assembly_id: c.assembly_id,
-      assembly_name: c.assembly_name,
-      quantity_per_set: c.quantity_per_set,
-      product_qty: c.product_qty,
-      finished_driver_checked: c.finished_driver_checked,
-      finished_driver_checked_at: c.finished_driver_checked_at,
-      scans: c.scans,
-    })),
+    partial_set_delivery: onTruck.length > 0 && onTruck.length < components.length,
+    components,
   };
 }

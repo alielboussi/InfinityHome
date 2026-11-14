@@ -47,6 +47,11 @@ export function kioskTextAlign(locale) {
   return locale === 'ar' ? 'right' : 'left';
 }
 
+/** Row flexDirection for locale-aware headers (chip + label). */
+export function kioskRowDirection(locale) {
+  return locale === 'ar' ? 'row-reverse' : 'row';
+}
+
 /** Physical cm → layout dp (160 dp per inch). */
 export function cmToDp(cm) {
   return (Number(cm) / 2.54) * 160;

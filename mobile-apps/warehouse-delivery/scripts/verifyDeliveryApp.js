@@ -106,6 +106,14 @@ try {
   assert(kitweHome.includes('ProductionQrScanModal'), 'Kitwe send must support barcode/QR scan');
   assert(kitweHome.includes('buildDeliveryPacketChecks'), 'Kitwe send must use packet checklist before cart');
   assert(kitweHome.includes('validateCartForSubmit'), 'Kitwe send must validate cart checklist before signature');
+  assert(
+    kitweHome.includes('toggleLocale') && kitweHome.includes('useProductionKioskLocale'),
+    'Kitwe send must support EN/AR locale toggle',
+  );
+  assert(
+    kitweHome.includes('deliverySetPartialHint') && kitweHome.includes('kioskRowDirection'),
+    'Kitwe partial set UI must respect locale row direction and i18n',
+  );
   assert(kitweHome.includes("'delivery-session-open'"), 'Kitwe send must open delivery session');
   assert(
     !/if\s*\(\s*sid0\s*&&\s*dnum0\s*\)\s*return/.test(kitweHome),

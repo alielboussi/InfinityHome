@@ -762,6 +762,20 @@ const UI_STRINGS = {
     ar: 'أكد كل كرتون طرد لـ {name}.',
   },
   deliverySetsLabel: { en: 'Complete sets on truck', ar: 'الأطقم الكاملة على الشاحنة' },
+  deliverySetPartialHint: {
+    en: 'Sets only: tap each line to send on the truck or leave pieces on Floor 1.',
+    ar: 'للأطقم فقط: اختر ما يُرسل على الشاحنة أو ما يبقى في الطابق 1.',
+  },
+  deliverySetOnTruck: { en: 'On truck', ar: 'على الشاحنة' },
+  deliverySetStayFloor1: { en: 'Stay Floor 1', ar: 'يبقى ط1' },
+  deliverySetStayFloor1Detail: {
+    en: 'Stays on Floor 1 as individual stock when delivery is submitted.',
+    ar: 'يبقى في الطابق 1 كمخزون منفصل عند إرسال التسليم.',
+  },
+  deliverySetNeedOneComponent: {
+    en: 'At least one set piece must go on the truck.',
+    ar: 'يجب إرسال قطعة واحدة على الأقل من الطقم.',
+  },
   deliveryPacketsTick: { en: 'Packet cartons (tick each)', ar: 'كراتين الطرود (حدد كل واحد)' },
   deliveryPacketLine: {
     en: '#{num} {name} — {req} carton(s)',

@@ -42,6 +42,7 @@ import {
   formatDeliveryPackSummary,
 } from '../shared/warehouseDeliveryBoxUnits';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
+import { kioskRowDirection } from '../lib/kioskLayout';
 import { getProductionDispatcherLabelSync } from '../lib/productionDispatcherLabel';
 
 /** Invisible FlatList row so Floor 1 send uses one scroll surface (header/footer), not ScrollView + list. */
@@ -634,22 +635,59 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
     }));
   };
 
+  const toggleDraftSetComponentIncluded = (componentAssemblyId) => {
+    setDraftSetComponents((prev) => {
+      const onTruck = prev.filter((c) => c.included_in_delivery !== false);
+      const target = prev.find((c) => String(c.assembly_id) === String(componentAssemblyId));
+      if (target && onTruck.length <= 1 && target.included_in_delivery !== false) {
+        Alert.alert(
+          tUi('deliveryTitle', locale),
+          tUi('deliverySetNeedOneComponent', locale),
+        );
+        return prev;
+      }
+      return prev.map((comp) => {
+        if (String(comp.assembly_id) !== String(componentAssemblyId)) return comp;
+        const next = comp.included_in_delivery === false;
+        return {
+          ...comp,
+          included_in_delivery: next,
+          finished_driver_checked: next ? comp.finished_driver_checked : false,
+          checks: next ? comp.checks : {},
+        };
+      });
+    });
+  };
+
   const addDraftToCart = () => {
     if (draftSetAssembly) {
       const validation = validateSetDraftForCart(draftSetComponents, draftSetAssembly.name);
       if (!validation.ok) {
-        setError(
-          tUi('deliveryCheckAllPackets', locale).replace('{name}', validation.message || draftSetAssembly.name),
-        );
+        const msg = validation.reason === 'no_components_selected'
+          ? tUi('deliverySetNeedOneComponent', locale)
+          : tUi('deliveryCheckAllPackets', locale).replace('{name}', validation.message || draftSetAssembly.name);
+        setError(msg);
         return;
       }
       const components = draftSetComponents.map((comp) => {
+        const included = comp.included_in_delivery !== false;
+        if (!included) {
+          return {
+            assembly_id: comp.assembly_id,
+            assembly_name: comp.assembly_name,
+            quantity_per_set: comp.quantity_per_set,
+            product_qty: comp.product_qty,
+            included_in_delivery: false,
+            scans: [],
+          };
+        }
         if (comp.finishedOnly) {
           return {
             assembly_id: comp.assembly_id,
             assembly_name: comp.assembly_name,
             quantity_per_set: comp.quantity_per_set,
             product_qty: comp.product_qty,
+            included_in_delivery: true,
             finished_driver_checked: true,
             finished_driver_checked_at: new Date().toISOString(),
             scans: [],
@@ -661,9 +699,11 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
           assembly_name: comp.assembly_name,
           quantity_per_set: comp.quantity_per_set,
           product_qty: comp.product_qty,
+          included_in_delivery: true,
           scans: built.scans,
         };
       });
+      const onTruck = components.filter((c) => c.included_in_delivery !== false);
       const groupId = uuid();
       setError('');
       setGroups((prev) => [
@@ -674,6 +714,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
           set_assembly_id: draftSetAssembly.id,
           set_name: draftSetAssembly.name,
           units: unitsNum,
+          partial_set_delivery: onTruck.length < components.length,
           components,
         },
       ]);
@@ -807,6 +848,38 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
         };
       });
       return { ...g, components };
+    }));
+  };
+
+  const toggleCartSetComponentIncluded = (groupId, componentAssemblyId) => {
+    setGroups((prev) => prev.map((g) => {
+      if (String(g.group_id) !== String(groupId)) return g;
+      const list = g.components || [];
+      const onTruck = list.filter((c) => c.included_in_delivery !== false);
+      const target = list.find((c) => String(c.assembly_id) === String(componentAssemblyId));
+      if (target && onTruck.length <= 1 && target.included_in_delivery !== false) {
+        Alert.alert(
+          tUi('deliveryTitle', locale),
+          tUi('deliverySetNeedOneComponent', locale),
+        );
+        return g;
+      }
+      const components = list.map((comp) => {
+        if (String(comp.assembly_id) !== String(componentAssemblyId)) return comp;
+        const nextIncluded = comp.included_in_delivery === false;
+        return {
+          ...comp,
+          included_in_delivery: nextIncluded,
+          finished_driver_checked: nextIncluded ? comp.finished_driver_checked : false,
+          scans: nextIncluded ? comp.scans : [],
+        };
+      });
+      const truckCount = components.filter((c) => c.included_in_delivery !== false).length;
+      return {
+        ...g,
+        components,
+        partial_set_delivery: truckCount > 0 && truckCount < components.length,
+      };
     }));
   };
 
@@ -1051,10 +1124,40 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
                 onChangeText={setUnits}
               />
             </View>
+            {!isFarmFlow && draftSetComponents.length > 1 ? (
+              <Text style={[kiosk.hint, { textAlign, marginBottom: 8 }]}>
+                {tUi('deliverySetPartialHint', locale)}
+              </Text>
+            ) : null}
             {draftSetComponents.map((comp) => (
-              <View key={comp.assembly_id} style={styles.setComponentBlock}>
-                <Text style={[kiosk.label, { textAlign }]}>- {comp.assembly_name}</Text>
-                {comp.finishedOnly ? (
+              <View
+                key={comp.assembly_id}
+                style={[
+                  styles.setComponentBlock,
+                  comp.included_in_delivery === false && styles.setComponentExcluded,
+                ]}
+              >
+                <View style={[styles.setComponentHeader, { flexDirection: kioskRowDirection(locale) }]}>
+                  <Text style={[kiosk.label, { textAlign, flex: 1 }]}>- {comp.assembly_name}</Text>
+                  {!isFarmFlow && draftSetComponents.length > 1 ? (
+                    <Pressable
+                      style={[styles.setChip, comp.included_in_delivery !== false && styles.setChipOn]}
+                      onPress={() => toggleDraftSetComponentIncluded(comp.assembly_id)}
+                    >
+                      <Text style={[styles.setChipText, { textAlign }]}>
+                        {comp.included_in_delivery !== false
+                          ? tUi('deliverySetOnTruck', locale)
+                          : tUi('deliverySetStayFloor1', locale)}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {comp.included_in_delivery === false ? (
+                  <Text style={[kiosk.metaLine, { textAlign }]}>
+                    {tUi('deliverySetStayFloor1Detail', locale)}
+                  </Text>
+                ) : null}
+                {comp.included_in_delivery !== false && comp.finishedOnly ? (
                   <Pressable
                     style={[kiosk.checkRow, comp.finished_driver_checked && kiosk.checkRowOn]}
                     onPress={() => toggleDraftSetFinished(comp.assembly_id)}
@@ -1066,7 +1169,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
                         .replace('{req}', String(comp.product_qty))}
                     </Text>
                   </Pressable>
-                ) : (
+                ) : comp.included_in_delivery !== false ? (
                   (comp.packetRows || []).map((p) => {
                     const req = comp.product_qty * Math.max(1, Number(p.qty_per_unit) || 1);
                     const on = Boolean(comp.checks?.[p.id]?.driver_checked);
@@ -1085,7 +1188,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
                       </Pressable>
                     );
                   })
-                )}
+                ) : null}
               </View>
             ))}
             <Pressable style={[kiosk.btnOutlinePrimary, styles.addToCartBtn]} onPress={addDraftToCart}>
@@ -1215,10 +1318,36 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
                       1,
                       Number(comp.product_qty) || u * Math.max(1, Number(comp.quantity_per_set) || 1),
                     );
+                    const setCompCount = (g.components || []).length;
                     return (
-                      <View key={comp.assembly_id} style={styles.setComponentBlock}>
-                        <Text style={[kiosk.label, { textAlign }]}>- {comp.assembly_name}</Text>
-                        {finishedOnly ? (
+                      <View
+                        key={comp.assembly_id}
+                        style={[
+                          styles.setComponentBlock,
+                          comp.included_in_delivery === false && styles.setComponentExcluded,
+                        ]}
+                      >
+                        <View style={[styles.setComponentHeader, { flexDirection: kioskRowDirection(locale) }]}>
+                          <Text style={[kiosk.label, { textAlign, flex: 1 }]}>- {comp.assembly_name}</Text>
+                          {!isFarmFlow && setCompCount > 1 ? (
+                            <Pressable
+                              style={[styles.setChip, comp.included_in_delivery !== false && styles.setChipOn]}
+                              onPress={() => toggleCartSetComponentIncluded(g.group_id, comp.assembly_id)}
+                            >
+                              <Text style={[styles.setChipText, { textAlign }]}>
+                                {comp.included_in_delivery !== false
+                                  ? tUi('deliverySetOnTruck', locale)
+                                  : tUi('deliverySetStayFloor1', locale)}
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                        </View>
+                        {comp.included_in_delivery === false ? (
+                          <Text style={[kiosk.metaLine, { textAlign }]}>
+                            {tUi('deliverySetStayFloor1Detail', locale)}
+                          </Text>
+                        ) : null}
+                        {comp.included_in_delivery !== false && finishedOnly ? (
                           <Pressable
                             style={[kiosk.checkRow, comp.finished_driver_checked && kiosk.checkRowOn]}
                             onPress={() => toggleCartSetFinished(g.group_id, comp.assembly_id)}
@@ -1230,7 +1359,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
                                 .replace('{req}', String(productQty))}
                             </Text>
                           </Pressable>
-                        ) : (
+                        ) : comp.included_in_delivery !== false ? (
                           rows.map((p) => {
                             const req = productQty * Math.max(1, Number(p.qty_per_unit) || 1);
                             const scan = (comp.scans || []).find((s) => String(s.packet_id) === String(p.id));
@@ -1250,7 +1379,7 @@ export default function KitweSendHomeScreen({ navigation, hubEmbedded = false, d
                               </Pressable>
                             );
                           })
-                        )}
+                        ) : null}
                       </View>
                     );
                   })}
@@ -1425,5 +1554,17 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.5 },
   flowHint: { marginTop: 10, marginBottom: 4, lineHeight: 20, color: theme.muted },
   setComponentBlock: { marginTop: 8 },
+  setComponentExcluded: { opacity: 0.72 },
+  setComponentHeader: { alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  setChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surfaceElevated,
+  },
+  setChipOn: { borderColor: theme.primary, backgroundColor: '#0c4a6e' },
+  setChipText: { fontSize: 12, fontWeight: '600', color: theme.text },
   farmGridRow: { gap: 8, marginBottom: 8, alignItems: 'flex-start' },
 });

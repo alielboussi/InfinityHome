@@ -1,5 +1,6 @@
 import { WAREHOUSE_TO_LOCATION_ID, deliveryEntrySentToCustomer } from './warehouseDelivery.js';
 import { deliveryDisplayNameWithFormatter } from './warehouseDeliveryDisplayName.js';
+import { setComponentIncludedInDelivery } from './warehouseSetPartialDelivery.js';
 
 export {
   resolveSetComponentsForDelivery,
@@ -27,7 +28,8 @@ export function buildSetDeliveryPrintGroupFromCart(group, byAssembly, assemblies
   const setName = String(group.set_name || group.assembly_name || 'Set').trim();
   const units = Math.max(1, Number(group.units) || 1);
   const lines = [];
-  (group.components || []).forEach((comp) => {
+  const shipmentComponents = (group.components || []).filter(setComponentIncludedInDelivery);
+  shipmentComponents.forEach((comp) => {
     const assemblyId = String(comp.assembly_id || '');
     const productName = String(comp.assembly_name || '').trim() || 'Product';
     const productQty = Math.max(
