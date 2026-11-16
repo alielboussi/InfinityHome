@@ -30,6 +30,43 @@ export function resolveFloor2SeedQuantity(body, initialQty = 0) {
 }
 
 /**
+ * After a deferred photo attach, credit Floor 2 WIP if the catalog row is already on /carpentry
+ * but inventory was not seeded (legacy create path selected the product before the photo).
+ */
+export async function creditCarpentryFloor2SeedIfNeeded(sb, assemblyId, seedQty, userId = null) {
+  const id = String(assemblyId || '').trim();
+  const targetQty = Math.max(0, Math.floor(Number(seedQty) || 0));
+  if (!id || targetQty < 1) return { credited: false, quantity: 0 };
+
+  const { requireWarehouseFloor2Location } = await import('./productionFloor1StockPolicy.js');
+  const { data: locRows, error: locErr } = await sb.from('locations').select('id, name');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+  const floor2Id = requireWarehouseFloor2Location(locRows);
+
+  const { data: inv, error: invErr } = await sb
+    .from('warehouse_assembly_inventory')
+    .select('quantity')
+    .eq('assembly_id', id)
+    .eq('location_id', floor2Id)
+    .maybeSingle();
+  if (invErr) throw new Error(invErr.message || 'Failed to read Floor 2 stock');
+
+  const current = Math.max(0, Math.floor(Number(inv?.quantity) || 0));
+  if (current >= targetQty) {
+    return { credited: false, quantity: current, floor2_location_id: floor2Id };
+  }
+
+  const { addFloor1ProductToFloor2 } = await import('./carpentryManufacture.js');
+  const delta = targetQty - current;
+  await addFloor1ProductToFloor2(sb, {
+    assemblyId: id,
+    productQty: delta,
+    userId,
+  });
+  return { credited: true, quantity: targetQty, floor2_location_id: floor2Id, floor2_product_qty: targetQty };
+}
+
+/**
  * When a workshop app creates a new product on Floor 1:
  * - Carpentry app: adds it to /carpentry only (and seeds Floor 2 qty when applicable).
  * - Upholstery app: adds it to /upholstery only, seeds Warehouse Floor 2 WIP, and links finished SKU to raw.
@@ -63,6 +100,19 @@ export async function autoSelectProductionPortalCatalog(sb, assemblyId, {
       floor2_added = true;
     } catch (err) {
       throw new Error(err?.message || 'Failed to save Floor 2 quantity on the web portal.');
+    }
+    if (clientSource === 'carpentry_workshop_app') {
+      try {
+        const { addFloor2ProductToFloor1 } = await import('./carpentryManufacture.js');
+        await addFloor2ProductToFloor1(sb, {
+          assemblyId: id,
+          productQty: qty,
+          userId,
+          ensureInventoryRow: true,
+        });
+      } catch (mirrorErr) {
+        console.warn('[productionPortalAutoSelect] Floor 1 mirror failed:', mirrorErr?.message || mirrorErr);
+      }
     }
     return {
       applied: 'carpentry',

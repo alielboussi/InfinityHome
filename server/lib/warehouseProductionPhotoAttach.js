@@ -119,9 +119,23 @@ async function runPendingPortalSetup(sb, body, user, assembly) {
     ? 'carpentry'
     : (pending.portal_catalog || pending.portalCatalog || 'upholstery');
 
+  const floor2SeedQty = Math.max(0, Math.floor(
+    Number(pending.floor2_product_qty ?? pending.initial_quantity) || 0,
+  ));
+
   if (resolvedPortalCatalog === 'carpentry') {
     const { parseCarpentryMeta } = await import('../../src/utils/carpentryCatalogView.js');
     if (parseCarpentryMeta(freshRow || assembly)?.selected) {
+      if (floor2SeedQty > 0) {
+        const { creditCarpentryFloor2SeedIfNeeded } = await import('./productionPortalAutoSelect.js');
+        const seed = await creditCarpentryFloor2SeedIfNeeded(sb, assemblyId, floor2SeedQty, user?.id || user?.uid || null);
+        return {
+          applied: 'carpentry',
+          skipped: seed.credited ? 'selection_only' : true,
+          floor2_product_qty: seed.quantity ?? floor2SeedQty,
+          floor2_seed: seed,
+        };
+      }
       return { applied: 'carpentry', skipped: true };
     }
   } else {
@@ -135,7 +149,7 @@ async function runPendingPortalSetup(sb, body, user, assembly) {
     pending.warehouse_location_id || pending.warehouseLocationId || '',
   ).trim();
   const initialQty = Math.max(0, Math.floor(Number(pending.initial_quantity) || 0));
-  const floor2SeedQty = Math.max(1, Math.floor(
+  const floor2SeedForPortal = Math.max(1, Math.floor(
     Number(pending.floor2_product_qty ?? pending.initial_quantity) || 0,
   ));
 
@@ -162,8 +176,8 @@ async function runPendingPortalSetup(sb, body, user, assembly) {
       : (pending.client_source || body.client_source || ''),
     portal_catalog: resolvedPortalCatalog,
     auto_portal_catalog: pending.auto_portal_catalog,
-    initialQuantity: floor2SeedQty,
-    floor2_product_qty: floor2SeedQty,
+    initialQuantity: floor2SeedForPortal,
+    floor2_product_qty: floor2SeedForPortal,
     userId: user?.id || user?.uid || null,
   });
 }

@@ -262,6 +262,7 @@ function parseCreateCarpentryFloor2Response(payload) {
     label: payload?.label || null,
     labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
     pendingLabelPrint: payload?.pending_label_print || payload?.pendingLabelPrint || null,
+    pendingPortalSetup: payload?.pending_portal_setup || payload?.pendingPortalSetup || null,
   };
 }
 
@@ -299,6 +300,7 @@ export async function createCarpentryFloor2Product({
   preset,
   quantity,
   imageBase64,
+  deferProductPhoto,
   dimLength,
   dimWidth,
   dimHeight,
@@ -310,6 +312,7 @@ export async function createCarpentryFloor2Product({
     quantity,
     initial_quantity: quantity,
     image_base64: imageBase64,
+    ...(deferProductPhoto ? { defer_product_photo: true } : {}),
     dim_length: dimLength,
     dim_width: dimWidth,
     dim_height: dimHeight,

@@ -840,10 +840,14 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
   const assemblyId = String(assembly.id || '');
   if (!assemblyId) throw new Error('Failed to create product.');
 
-  await saveCarpentryProductSelection(sb, assemblyId, true);
-
   let imageUrl = '';
   const imageBase64 = String(body.image_base64 || body.imageBase64 || '').trim();
+  const deferProductPhoto = body.defer_product_photo === true || body.deferProductPhoto === true;
+  const deferPortalSetup = deferProductPhoto && !imageBase64 && carpentryWorkshop;
+
+  if (!deferPortalSetup) {
+    await saveCarpentryProductSelection(sb, assemblyId, true);
+  }
   if (imageBase64) {
     const { attachProductionAssemblyCatalogPhoto } = await import('../lib/productionPacketCatalogPhoto.js');
     const { data: freshAsm } = await sb
@@ -873,27 +877,29 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
     if (metaErr) throw new Error(metaErr.message || 'Failed to save product photo.');
   }
 
-  const now = new Date().toISOString();
-  const { error: invErr } = await sb.from('warehouse_assembly_inventory').upsert({
-    assembly_id: assemblyId,
-    location_id: floor2Id,
-    quantity: initialQty,
-    updated_at: now,
-  }, { onConflict: 'assembly_id,location_id' });
-  if (invErr) throw new Error(invErr.message || 'Failed to save Floor 2 quantity.');
+  if (!deferPortalSetup) {
+    const now = new Date().toISOString();
+    const { error: invErr } = await sb.from('warehouse_assembly_inventory').upsert({
+      assembly_id: assemblyId,
+      location_id: floor2Id,
+      quantity: initialQty,
+      updated_at: now,
+    }, { onConflict: 'assembly_id,location_id' });
+    if (invErr) throw new Error(invErr.message || 'Failed to save Floor 2 quantity.');
 
-  await recomputeWarehouseLocationStockServer(sb, floor2Id);
+    await recomputeWarehouseLocationStockServer(sb, floor2Id);
 
-  try {
-    const { addFloor2ProductToFloor1 } = await import('../lib/carpentryManufacture.js');
-    await addFloor2ProductToFloor1(sb, {
-      assemblyId,
-      productQty: 0,
-      userId: user?.id || user?.uid || null,
-      ensureInventoryRow: true,
-    });
-  } catch (mirrorErr) {
-    console.warn('[catalog-floor2-create-product] Floor 1 mirror failed:', mirrorErr?.message || mirrorErr);
+    try {
+      const { addFloor2ProductToFloor1 } = await import('../lib/carpentryManufacture.js');
+      await addFloor2ProductToFloor1(sb, {
+        assemblyId,
+        productQty: initialQty,
+        userId: user?.id || user?.uid || null,
+        ensureInventoryRow: true,
+      });
+    } catch (mirrorErr) {
+      console.warn('[catalog-floor2-create-product] Floor 1 mirror failed:', mirrorErr?.message || mirrorErr);
+    }
   }
 
   const clientSource = carpentryWorkshop ? 'carpentry_workshop_app' : 'warehouse_floor_2';
@@ -948,6 +954,14 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
       image_url: imageUrl,
       family_image_url: '',
     },
+    pending_portal_setup: deferPortalSetup
+      ? {
+        portal_catalog: 'carpentry',
+        floor2_product_qty: initialQty,
+        initial_quantity: initialQty,
+        client_source: 'carpentry_workshop_app',
+      }
+      : null,
   ...(carpentryWorkshop
     ? {
       label_copies: labelCopies,

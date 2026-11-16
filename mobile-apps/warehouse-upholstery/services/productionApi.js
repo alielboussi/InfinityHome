@@ -262,6 +262,7 @@ function parseCreateCarpentryFloor2Response(payload) {
     label: payload?.label || null,
     labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
     pendingLabelPrint: payload?.pending_label_print || payload?.pendingLabelPrint || null,
+    pendingPortalSetup: payload?.pending_portal_setup || payload?.pendingPortalSetup || null,
   };
 }
 

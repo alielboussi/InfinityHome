@@ -419,6 +419,7 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             baseName: baseNameEn,
             preset: pending.preset,
             quantity: pending.qtyNum,
+            deferProductPhoto: true,
             dimLength: pending.dimLength,
             dimWidth: pending.dimWidth,
             dimHeight: pending.dimHeight,
@@ -428,6 +429,11 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             ...pending,
             resumeAssemblyId: parsed.assemblyId,
             pendingLabelPrint: parsed.pendingLabelPrint || null,
+            pendingPortalSetup: parsed.pendingPortalSetup || {
+              portal_catalog: 'carpentry',
+              floor2_product_qty: pending.qtyNum,
+              initial_quantity: pending.qtyNum,
+            },
           };
         }
         setAiPhotoStatus(tUi('photoProcessing', locale));
@@ -438,10 +444,13 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             imageBase64: uploadPhoto,
             pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint || parsed.pendingLabelPrint,
             alsoFloor2Wip: true,
-            pendingPortalSetup: {
-              portal_catalog: 'carpentry',
-              floor2_product_qty: pending.qtyNum,
-            },
+            pendingPortalSetup: pendingSaveRef.current?.pendingPortalSetup
+              || parsed.pendingPortalSetup
+              || {
+                portal_catalog: 'carpentry',
+                floor2_product_qty: pending.qtyNum,
+                initial_quantity: pending.qtyNum,
+              },
             preset: pending.preset,
             onAttempt: (attempt, max) => {
               setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));

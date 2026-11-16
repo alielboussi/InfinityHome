@@ -59,6 +59,10 @@ assert(
   'production photo attach must apply deferred portal stock after AI retouch',
 );
 assert(
+  prodAttach.includes('creditCarpentryFloor2SeedIfNeeded'),
+  'carpentry deferred photo must credit Floor 2 qty when catalog was pre-selected',
+);
+assert(
   packetPhoto.includes('directCatalogUpload && requireAiRetouch'),
   'must block direct upload combined with required AI',
 );
