@@ -67,7 +67,7 @@ const factoryLines = factorySetRecipeComponentLines(factorySetId, setItems);
 assert(factoryLines.length === 2, 'factory lines export');
 
 const kitweStock = fs.readFileSync(path.join(root, 'src/utils/kitweSetStock.js'), 'utf8');
-assert(kitweStock.includes('isKitwePortalCreatedSet'), 'Kitwe sets must be portal-created only');
+assert(kitweStock.includes('isKitweCatalogSetAssembly'), 'Kitwe catalog sets must use isKitweCatalogSetAssembly');
 assert(kitweStock.includes('kitwe_portal_set'), 'Kitwe portal set metadata flag required');
 
 const mobile = fs.readFileSync(path.join(root, 'server/handlers/warehouse-mobile.js'), 'utf8');

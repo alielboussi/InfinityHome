@@ -26,6 +26,10 @@ Hassan’s portal sidebar and the **Orders** app dashboard must stay **functiona
 - Mohammad Fahme accounts use the same pooled statement rollup as all layby customers (no frozen totals or payment blocks).
 - Optional reference snapshots for regression: `docs/reference/fahme-acc2/` (`node scripts/verifyFahmeAcc2Statement.js`), `docs/reference/fahme-primary/` (`node scripts/verifyFahmePrimaryStatement.js`).
 
+## Kitwe `/kitwe-products` sets — KITWE_PRODUCTS_SET_DISPLAY_LOCKED
+
+**AI agents:** do not change Kitwe set rows, component hiding, or inlay expand UI unless the user explicitly asks in the current message. Spec: **`docs/kitwe-products-set-display.md`**; rule: **`.cursor/rules/kitwe-products-set-locked.mdc`**. Regression: `node scripts/verifyKitweProductsSetDisplay.js`, `node scripts/verifyKitweProductsSetLockMarkers.js`.
+
 ## Stocktake PDFs (all locations) — STOCKTAKE_PIPELINE_LOCKED
 
 **AI agents: do not edit stocktake / period / count / variance / PDF code unless the user explicitly asks to change that behaviour in the current message.** This lock covers **stock periods**, **stocktake counts**, **every** stocktake PDF at **every** location, period-close inventory, and variance inputs (**POS sales** + **`/transfers`**). No drive-by fixes, refactors, or “improvements”. Full spec: **`docs/stocktake-pdf-pipeline.md`**; file-pattern rule: **`.cursor/rules/stocktake-locked-files.mdc`**.

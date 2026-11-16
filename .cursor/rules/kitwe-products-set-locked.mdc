@@ -1,0 +1,25 @@
+---
+description: Kitwe /kitwe-products set rows, component hiding, POS parity — frozen unless owner asks
+globs:
+  - src/utils/kitweSetStock.js
+  - src/utils/kitweCatalogComponentVisibility.js
+  - src/KitweProductsPage.js
+  - src/utils/posKitweCatalog.js
+  - docs/kitwe-products-set-display.md
+  - scripts/verifyKitweProductsSetDisplay.js
+  - scripts/verifyKitweProductsSetLockMarkers.js
+  - scripts/verifyKitweSetComponentVisibility.js
+---
+
+# KITWE_PRODUCTS_SET_DISPLAY_LOCKED
+
+**AI agents:** Do not edit Kitwe set display / component hiding / inlay UI unless the user **explicitly** asks to change `/kitwe-products` set behaviour in the current message.
+
+Read **`docs/kitwe-products-set-display.md`** before any authorized change.
+
+## Rules
+
+- Sets on `/kitwe-products` must use **`isKitweCatalogSetAssembly`** (portal flag and/or Kitwe `warehouse_set_items` recipe).
+- Set recipe components stay **hidden** from the product table unless `kitwe_catalog_loose`.
+- Set rows must keep **expand/inlay** for components (`kitwe-expand-btn`, `kitwe-set-panel`).
+- Keep lock markers (`KITWE_PRODUCTS_SET_DISPLAY_LOCKED`) in touched files; run verify scripts from the doc.

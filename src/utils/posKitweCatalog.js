@@ -54,7 +54,7 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
 
   (assemblies || []).forEach((a) => {
     if (isWarehouseSetAssembly(a)) {
-      if (!isKitweWarehouseSetAssembly(a)) return;
+      if (!isKitweWarehouseSetAssembly(a, setItems)) return;
       const stock = computeKitweSetBuildableQty(a.id, setItems, qtyByAssembly);
       if (stock <= 0) return;
       const kitweComponents = expandWarehouseSetItemsRows(setItems || [])

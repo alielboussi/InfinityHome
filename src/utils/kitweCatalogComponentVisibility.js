@@ -1,3 +1,4 @@
+/** KITWE_PRODUCTS_SET_DISPLAY_LOCKED — loose components escape set-component hiding. */
 export const KITWE_CATALOG_LOOSE_META = 'kitwe_catalog_loose';
 
 /** Component sold loose from a Kitwe set (POS) — show in catalog despite set recipe. */

@@ -1,8 +1,22 @@
+/**
+ * KITWE_PRODUCTS_SET_DISPLAY_LOCKED — /kitwe-products + Kitwe POS: sets are one expandable row;
+ * recipe components stay hidden unless metadata.kitwe_catalog_loose (see kitweCatalogComponentVisibility.js).
+ */
 import { KITWE_LOCATION_ID } from '../constants/warehouseShowroomLocations.js';
 import { isKitweCatalogLooseAssembly } from './kitweCatalogComponentVisibility.js';
 import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy.js';
 import { isWarehouseSetAssembly, assemblableSetUnits } from './warehouseSetMath.js';
 import { expandWarehouseSetItemsRows } from './warehouseSetItems.js';
+
+/** Kitwe location recipe exists for this set assembly id. */
+export function assemblyHasKitweSetRecipe(assemblyId, setItems) {
+  const id = String(assemblyId || '').trim();
+  if (!id) return false;
+  return expandWarehouseSetItemsRows(setItems || []).some(
+    (row) => String(row.set_assembly_id) === id
+      && String(row.location_id) === KITWE_LOCATION_ID,
+  );
+}
 
 export function kitweQtyByAssembly(assemblyInventory) {
   const map = new Map();
@@ -29,10 +43,12 @@ export function isKitwePortalCreatedSet(assembly) {
   return (assembly?.metadata || {})[KITWE_PORTAL_SET_META] === true;
 }
 
-/** Component ids consumed only in Kitwe portal sets (hidden from product rows unless loose). */
+/** Component ids in any Kitwe set recipe (hidden from product rows unless loose). KITWE_PRODUCTS_SET_DISPLAY_LOCKED */
 export function buildKitweCatalogSetComponentIds(setItems, assemblies) {
   const portalSetIds = new Set(
-    (assemblies || []).filter(isKitwePortalCreatedSet).map((a) => String(a.id)),
+    (assemblies || [])
+      .filter((a) => isKitweCatalogSetAssembly(a, setItems))
+      .map((a) => String(a.id)),
   );
   const ids = new Set();
   expandWarehouseSetItemsRows(setItems || []).forEach((row) => {
@@ -44,14 +60,24 @@ export function buildKitweCatalogSetComponentIds(setItems, assemblies) {
   return ids;
 }
 
-export function isKitweWarehouseSetAssembly(assembly) {
-  return isKitwePortalCreatedSet(assembly);
+/**
+ * Any warehouse set on Kitwe with a portal flag and/or Kitwe recipe (not factory-only mirror).
+ * KITWE_PRODUCTS_SET_DISPLAY_LOCKED
+ */
+export function isKitweCatalogSetAssembly(assembly, setItems) {
+  if (!assembly?.id || !isWarehouseSetAssembly(assembly)) return false;
+  if (isKitwePortalCreatedSet(assembly)) return true;
+  return assemblyHasKitweSetRecipe(assembly.id, setItems);
+}
+
+export function isKitweWarehouseSetAssembly(assembly, setItems) {
+  return isKitweCatalogSetAssembly(assembly, setItems);
 }
 
 export function listKitweWarehouseSets(assemblies, setItems, assemblyInventory) {
   const qtyByAssembly = kitweQtyByAssembly(assemblyInventory);
   return (assemblies || [])
-    .filter((a) => isKitweWarehouseSetAssembly(a))
+    .filter((a) => isKitweCatalogSetAssembly(a, setItems))
     .map((setAsm) => {
       const buildable = computeKitweSetBuildableQty(setAsm.id, setItems, qtyByAssembly);
       const components = expandWarehouseSetItemsRows(setItems || [])

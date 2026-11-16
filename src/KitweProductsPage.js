@@ -29,7 +29,7 @@ import {
   removeFromKitweProductsCatalog,
   setKitwePortalProductStock,
 } from './utils/kitweProductPortal';
-import { isKitwePortalCreatedSet } from './utils/kitweSetStock';
+import { isKitweCatalogSetAssembly } from './utils/kitweSetStock';
 import { generateRandomWarehouseSku16 } from './utils/warehouseRandomSku';
 import { normalizeWarehouseProductSku } from './utils/warehouseScanResolver';
 import { recomputeWarehouseLocationStock } from './services/warehouseTransfer';
@@ -468,7 +468,7 @@ export default function KitweProductsPage() {
   };
 
   const deleteRow = async (row) => {
-    const isPortalSet = isKitwePortalCreatedSet(row);
+    const isPortalSet = isKitweCatalogSetAssembly(row, setItems);
     const label = String(row.name || row.family_sku || 'this item');
     const ok = window.confirm(
       isPortalSet
@@ -548,6 +548,7 @@ export default function KitweProductsPage() {
     }
   };
 
+  /** KITWE_PRODUCTS_SET_DISPLAY_LOCKED — set rows use inlay expand; products hide recipe components. */
   const renderCatalogRow = (row) => {
     const isSet = row.kind === 'set';
     const components = isSet ? (row.components || []) : [];

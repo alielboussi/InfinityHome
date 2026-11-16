@@ -19,8 +19,8 @@ assert(visibility.includes('kitwe_catalog_loose'), 'loose metadata key must exis
 assert(kitwePage.includes('kitwe-set-component-link'), 'Kitwe page must link set components');
 assert(kitwePage.includes('openEditSet'), 'Kitwe page must allow set edit');
 assert(
-  fs.readFileSync(path.join(root, 'src/utils/kitweSetStock.js'), 'utf8').includes('isKitwePortalCreatedSet'),
-  'Kitwe catalog sets must be portal-created',
+  fs.readFileSync(path.join(root, 'src/utils/kitweSetStock.js'), 'utf8').includes('isKitweCatalogSetAssembly'),
+  'Kitwe catalog sets must use isKitweCatalogSetAssembly',
 );
 assert(posCatalog.includes('shouldShowKitweCatalogProductRow'), 'POS Kitwe catalog must hide set components');
 assert(saleDeduction.includes('markKitweCatalogLooseServer'), 'POS restock must mark catalog loose');
