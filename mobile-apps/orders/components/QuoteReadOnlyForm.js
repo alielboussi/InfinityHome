@@ -33,7 +33,11 @@ export default function QuoteReadOnlyForm({ quote, items, units, routing, locale
       <View style={kiosk.card}>
         <Text style={kiosk.metaLine}>{quote?.quote_number || 'Quote'}</Text>
         <Text style={kiosk.hint}>
-          {route === 'carpentry' ? tUi('routeCarpentry', locale) : route === 'upholstery' ? tUi('routeUpholstery', locale) : '—'}
+          {route === 'carpentry'
+            ? tUi('routeCarpentry', locale)
+            : (route === 'aluminum'
+              ? tUi('routeAluminum', locale)
+              : (route === 'upholstery' ? tUi('routeUpholstery', locale) : '—'))}
           {routing?.sent_to_production_at ? ' · sent to production' : ''}
         </Text>
       </View>
@@ -54,6 +58,7 @@ export default function QuoteReadOnlyForm({ quote, items, units, routing, locale
       {(items || []).map((line, index) => {
         const showUph = route === 'upholstery';
         const showCarp = route === 'carpentry';
+        const showAlu = route === 'aluminum';
         const unitMeta = ordersUnitOptions(units, line.unit_id).find((u) => String(u.id) === String(line.unit_id));
         const unitName = unitMeta ? unitLabel(unitMeta) : '';
         const key = line.id || `line-${index}`;
@@ -76,7 +81,7 @@ export default function QuoteReadOnlyForm({ quote, items, units, routing, locale
                 <RoBox label={tUi('price', locale)} value={line.unit_price} />
               </GridCol>
             </View>
-            {(showUph || showCarp) ? (
+            {(showUph || showCarp || showAlu) ? (
               <>
                 <View style={styles.gridRow}>
                   <GridCol>
@@ -113,6 +118,23 @@ export default function QuoteReadOnlyForm({ quote, items, units, routing, locale
                   </View>
                 ) : null}
                 {showCarp && (line.accessories || []).length ? (
+                  <RoBox
+                    label={tUi('accessories', locale)}
+                    value={(line.accessories || []).join(', ')}
+                    multiline
+                  />
+                ) : null}
+                {showAlu ? (
+                  <View style={styles.gridRow}>
+                    <GridCol>
+                      <RoBox label={tUi('aluminumThickness', locale)} value={line.aluminum_thickness_mm} />
+                    </GridCol>
+                    <GridCol>
+                      <RoBox label={tUi('color', locale)} value={line.color_code} />
+                    </GridCol>
+                  </View>
+                ) : null}
+                {showAlu && (line.accessories || []).length ? (
                   <RoBox
                     label={tUi('accessories', locale)}
                     value={(line.accessories || []).join(', ')}

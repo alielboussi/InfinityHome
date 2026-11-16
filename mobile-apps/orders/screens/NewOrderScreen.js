@@ -16,6 +16,8 @@ import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import {
+  ALUMINUM_ACCESSORY_GROUPS,
+  ALUMINUM_THICKNESS_MM_OPTIONS,
   CARPENTRY_ACCESSORY_GROUPS,
   CARPENTRY_WOOD_OPTIONS,
   UPHOLSTERY_FOAM_OPTIONS,
@@ -34,6 +36,7 @@ import {
   fetchOrdersQuote,
   fetchOrdersUnits,
   saveOrdersQuote,
+  suggestAluminumAccessories,
 } from '../services/ordersApi';
 
 function GridCol({ children, style }) {
@@ -62,6 +65,7 @@ function emptyLineFromProduct(product) {
     foam_type: '',
     wood: '',
     color_code: '',
+    aluminum_thickness_mm: '',
     accessories: [],
   };
 }
@@ -84,6 +88,8 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
   const [currency, setCurrency] = useState('K');
   const [quoteId, setQuoteId] = useState(quoteIdParam || '');
   const [openAccessories, setOpenAccessories] = useState('');
+  const [aluminumAiByLine, setAluminumAiByLine] = useState({});
+  const [aluminumSuggestBusy, setAluminumSuggestBusy] = useState('');
   const scrollRef = useRef(null);
   const warmedRef = useRef(false);
   const quoteHydratedRef = useRef('');
@@ -106,8 +112,31 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
     foam_type: it.foam_type || '',
     wood: it.wood || '',
     color_code: it.color_code || '',
+    aluminum_thickness_mm: it.aluminum_thickness_mm || '',
     accessories: Array.isArray(it.accessories) ? it.accessories : [],
   })), []);
+
+  const aluminumGroupsForLine = useCallback((lineKey) => {
+    const aiItems = aluminumAiByLine[lineKey] || [];
+    if (!aiItems.length) return ALUMINUM_ACCESSORY_GROUPS;
+    const staticSet = new Set(ALUMINUM_ACCESSORY_GROUPS.flatMap((g) => g.items).map((s) => s.toLowerCase()));
+    const extra = aiItems.filter((a) => !staticSet.has(String(a).toLowerCase()));
+    if (!extra.length) return ALUMINUM_ACCESSORY_GROUPS;
+    return [{ category: 'Suggested (AI)', items: extra }, ...ALUMINUM_ACCESSORY_GROUPS];
+  }, [aluminumAiByLine]);
+
+  const runAluminumAccessorySuggest = async (lineKey, productName) => {
+    setAluminumSuggestBusy(lineKey);
+    try {
+      const list = await suggestAluminumAccessories(productName);
+      setAluminumAiByLine((prev) => ({ ...prev, [lineKey]: list }));
+      setOpenAccessories(lineKey);
+    } catch (err) {
+      Alert.alert(tUi('accessories', locale), err?.message || 'AI suggest failed');
+    } finally {
+      setAluminumSuggestBusy('');
+    }
+  };
 
   const loadCatalog = useCallback(async ({ silent = false } = {}) => {
     if (!allowed) return;
@@ -277,6 +306,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
           foam_type: line.foam_type,
           wood: line.wood,
           color_code: line.color_code,
+          aluminum_thickness_mm: line.aluminum_thickness_mm,
           accessories: Array.isArray(line.accessories) ? line.accessories : [],
         };
       });
@@ -352,6 +382,12 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                 onPress={() => setRouteChoice('carpentry')}
               >
                 <Text style={kiosk.metaLine}>{tUi('routeCarpentry', locale)}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.routeBtn, routeChoice === 'aluminum' && styles.routeOn]}
+                onPress={() => setRouteChoice('aluminum')}
+              >
+                <Text style={kiosk.metaLine}>{tUi('routeAluminum', locale)}</Text>
               </Pressable>
             </View>
           </View>
@@ -431,6 +467,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
           {lines.map((line) => {
             const showUph = routeChoice === 'upholstery';
             const showCarp = routeChoice === 'carpentry';
+            const showAlu = routeChoice === 'aluminum';
             return (
               <View key={line.key} style={kiosk.card}>
                 <View style={styles.gridRow}>
@@ -491,7 +528,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                     </View>
                   </GridCol>
                 </View>
-                {(showUph || showCarp) ? (
+                {(showUph || showCarp || showAlu) ? (
                   <>
                     <View style={styles.gridRow}>
                       {[['dim_l_cm', 'dimL', 'L'], ['dim_w_cm', 'dimW', 'W'], ['dim_h_cm', 'dimH', 'H']].map(([key, labelKey, ph]) => (
@@ -566,6 +603,30 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                         </GridCol>
                       </View>
                     ) : null}
+                    {showAlu ? (
+                      <View style={styles.gridRow}>
+                        <GridCol>
+                          <DropdownSelect
+                            label={tUi('aluminumThickness', locale)}
+                            value={line.aluminum_thickness_mm}
+                            options={ALUMINUM_THICKNESS_MM_OPTIONS.map((o) => ({ value: o, label: o }))}
+                            onChange={(v) => updateLine(line.key, { aluminum_thickness_mm: v })}
+                          />
+                        </GridCol>
+                        <GridCol>
+                          <View style={kiosk.field}>
+                            <Text style={kiosk.label}>{tUi('color', locale)}</Text>
+                            <TextInput
+                              style={kiosk.input}
+                              placeholder="RAL 9010"
+                              placeholderTextColor={theme.textDim}
+                              value={line.color_code}
+                              onChangeText={(v) => updateLine(line.key, { color_code: v })}
+                            />
+                          </View>
+                        </GridCol>
+                      </View>
+                    ) : null}
                     {showCarp ? (
                       <View style={kiosk.field}>
                         <Text style={kiosk.label}>{tUi('accessories', locale)}</Text>
@@ -578,6 +639,48 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                           <Text key={acc} style={kiosk.hint}>• {acc}</Text>
                         ))}
                         {openAccessories === line.key ? CARPENTRY_ACCESSORY_GROUPS.map((group) => (
+                          <View key={group.category} style={{ marginTop: 8 }}>
+                            <Text style={kiosk.metaLine}>{group.category}</Text>
+                            {group.items.map((acc) => {
+                              const added = (line.accessories || []).some((a) => a.toLowerCase() === acc.toLowerCase());
+                              return (
+                                <Pressable key={acc} style={styles.pickRow} onPress={() => toggleAccessory(line.key, acc)}>
+                                  <Text style={kiosk.hint}>{added ? '✓ ' : '+ '}{acc}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        )) : null}
+                      </View>
+                    ) : null}
+                    {showAlu ? (
+                      <View style={kiosk.field}>
+                        <Text style={kiosk.label}>{tUi('accessories', locale)}</Text>
+                        <View style={styles.row}>
+                          <Pressable
+                            style={[kiosk.btn, { flex: 1 }]}
+                            onPress={() => setOpenAccessories((prev) => (prev === line.key ? '' : line.key))}
+                          >
+                            <Text style={kiosk.btnText}>
+                              {openAccessories === line.key ? 'Hide' : `Select (${(line.accessories || []).length})`}
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            style={[kiosk.btn, { flex: 1 }]}
+                            disabled={aluminumSuggestBusy === line.key}
+                            onPress={() => runAluminumAccessorySuggest(line.key, line.name)}
+                          >
+                            <Text style={kiosk.btnText}>
+                              {aluminumSuggestBusy === line.key
+                                ? '…'
+                                : tUi('suggestAccessoriesAi', locale)}
+                            </Text>
+                          </Pressable>
+                        </View>
+                        {(line.accessories || []).map((acc) => (
+                          <Text key={acc} style={kiosk.hint}>• {acc}</Text>
+                        ))}
+                        {openAccessories === line.key ? aluminumGroupsForLine(line.key).map((group) => (
                           <View key={group.category} style={{ marginTop: 8 }}>
                             <Text style={kiosk.metaLine}>{group.category}</Text>
                             {group.items.map((acc) => {

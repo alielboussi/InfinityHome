@@ -51,7 +51,9 @@ export default function OrderDetailScreen({ navigation, route, allowed, accessHi
       Alert.alert(tUi('workshopRoute', locale), tUi('workshopRequired', locale));
       return;
     }
-    const dept = prodRoute === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale);
+    const dept = prodRoute === 'carpentry'
+      ? tUi('routeCarpentry', locale)
+      : (prodRoute === 'aluminum' ? tUi('routeAluminum', locale) : tUi('routeUpholstery', locale));
     Alert.alert(
       tUi('sendOrder', locale),
       `Send this order to the ${dept} production app?`,

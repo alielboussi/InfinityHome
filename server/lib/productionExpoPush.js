@@ -181,13 +181,16 @@ export async function notifyProductionNewStorageSend(row) {
 
 export async function notifyProductionQuoteOrderSent({ route, quoteNumber, customerName, quoteId } = {}) {
   const r = String(route || '').trim().toLowerCase();
-  const targets = r === 'carpentry' ? ['carpentry'] : ['upholstery'];
-  const label = r === 'carpentry' ? 'Carpentry' : 'Upholstery';
+  const targets = r === 'carpentry' || r === 'aluminum' ? ['carpentry'] : ['upholstery'];
+  const label = r === 'carpentry'
+    ? 'Carpentry'
+    : (r === 'aluminum' ? 'Aluminum' : 'Upholstery');
+  const screen = r === 'carpentry' || r === 'aluminum' ? 'Quotes' : 'UpholsteryQuotes';
   return sendProductionOperatorPush({
     title: `New ${label} order`,
     body: `${quoteNumber || 'Quote'}${customerName ? ` — ${customerName}` : ''}`.trim(),
     data: {
-      screen: r === 'carpentry' ? 'Quotes' : 'UpholsteryQuotes',
+      screen,
       quote_id: String(quoteId || '').trim(),
       event_type: 'quotes',
     },

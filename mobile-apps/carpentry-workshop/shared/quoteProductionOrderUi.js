@@ -44,6 +44,7 @@ export function normalizeProductionQuoteLine(line) {
     dim_w_cm: trim(line.dim_w_cm) || trim(meta.dim_w_cm),
     dim_h_cm: trim(line.dim_h_cm) || trim(meta.dim_h_cm),
     dimensions_lwh: trim(line.dimensions_lwh) || trim(meta.dimensions_lwh),
+    aluminum_thickness_mm: trim(line.aluminum_thickness_mm) || trim(meta.aluminum_thickness_mm),
     accessories: line.accessories ?? meta.accessories,
     description: trim(line.description) || trim(meta.description) || line.description,
   };
@@ -75,6 +76,31 @@ function buildUpholsteryLineExtraTexts(line, tUi, locale, arabicMap = {}) {
   }
   if (line.wood) {
     rows.push(`${tUi('quoteOrderWood', locale)}: ${show(line.wood)}`);
+  }
+  if (line.description) {
+    const desc = show(line.description);
+    rows.push(`${tUi('quoteOrderDescription', locale)}: "${desc}"`);
+  }
+  const accessories = normalizeAccessoriesList(line.accessories);
+  if (accessories.length) {
+    const accShown = accessories.map((a) => show(a)).join('، ');
+    rows.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${accShown}`);
+  }
+  return rows;
+}
+
+function buildAluminumLineExtraTexts(line, tUi, locale, arabicMap = {}) {
+  const show = (v) => displayQuoteFieldValue(locale, v, arabicMap);
+  const rows = [];
+  const dims = formatDimensionsCm(line, locale);
+  if (dims) {
+    rows.push(`${tUi('quoteOrderDimensions', locale)}: ${dims}`);
+  }
+  if (line.aluminum_thickness_mm) {
+    rows.push(`${tUi('quoteOrderAluminumThickness', locale) || 'Thickness'}: ${line.aluminum_thickness_mm}`);
+  }
+  if (line.color_code) {
+    rows.push(`${tUi('quoteOrderColorCode', locale)}: ${line.color_code}`);
   }
   if (line.description) {
     const desc = show(line.description);
@@ -176,6 +202,18 @@ export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale, ar
         bits.push(`${translate('quoteOrderIncludedAccessories', 'Included Accessories')} : ${acc.map((a) => show(a)).join('، ')}`);
       }
     }
+    if (normalized === 'aluminum') {
+      const dims = formatDimensionsCm(row, locale);
+      if (dims) bits.push(`${translate('quoteOrderDimensions', 'L×W×H (cm)')}: ${dims}`);
+      if (row.aluminum_thickness_mm) {
+        bits.push(`${translate('quoteOrderAluminumThickness', 'Thickness')}: ${row.aluminum_thickness_mm}`);
+      }
+      if (row.color_code) bits.push(`${translate('quoteOrderColorCode', 'Color')}: ${row.color_code}`);
+      const acc = normalizeAccessoriesList(row.accessories);
+      if (acc.length) {
+        bits.push(`${translate('quoteOrderIncludedAccessories', 'Included Accessories')} : ${acc.map((a) => show(a)).join('، ')}`);
+      }
+    }
   }
   return bits.join(' · ');
 }
@@ -194,6 +232,9 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale, 
     }
     if (normalized === 'carpentry') {
       extras.push(...buildCarpentryLineExtraTexts(row, tUi, locale, arabicMap));
+    }
+    if (normalized === 'aluminum') {
+      extras.push(...buildAluminumLineExtraTexts(row, tUi, locale, arabicMap));
     }
     const nameShown = displayQuoteFieldValue(locale, row.name, arabicMap);
     const qtyUnit = row.unit_abbr || row.unit_label || row.abbreviation || '';
@@ -260,13 +301,16 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
   const hasDrawing = Boolean(String(quote.drawing_url || '').trim());
   const allLines = Array.isArray(quote.lines) ? quote.lines : [];
 
-  if (normalized === 'carpentry') {
+  if (normalized === 'carpentry' || normalized === 'aluminum') {
     if (!allLines.length && !hasDrawing) return null;
+    const buildExtras = normalized === 'aluminum'
+      ? buildAluminumLineExtraTexts
+      : buildCarpentryLineExtraTexts;
     return (
       <View style={styles.cardExtras}>
         {allLines.map((line, index) => {
           const row = normalizeProductionQuoteLine(line);
-          const extras = buildCarpentryLineExtraTexts(row, tUi, locale, arabicMap);
+          const extras = buildExtras(row, tUi, locale, arabicMap);
           const lineKey = String(row.id || `${row.name}-${index}`);
           const nameShown = displayQuoteFieldValue(locale, row.name, arabicMap);
           return (

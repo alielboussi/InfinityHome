@@ -59,13 +59,13 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
 
   let routing = routingInitial;
   let route = String(routing?.route || fallbackRoute || '').trim().toLowerCase();
-  if (route !== 'carpentry' && route !== 'upholstery') {
+  if (route !== 'carpentry' && route !== 'upholstery' && route !== 'aluminum') {
     const picked = typeof window !== 'undefined'
-      ? window.prompt('Select department for this order: type "carpentry" or "upholstery"', 'carpentry')
+      ? window.prompt('Select department: type "carpentry", "upholstery", or "aluminum"', 'carpentry')
       : '';
     const cleaned = String(picked || '').trim().toLowerCase();
-    if (cleaned !== 'carpentry' && cleaned !== 'upholstery') {
-      throw new Error('Choose Carpentry or Upholstery on the quote before sending the order.');
+    if (cleaned !== 'carpentry' && cleaned !== 'upholstery' && cleaned !== 'aluminum') {
+      throw new Error('Choose Carpentry, Upholstery, or Aluminum on the quote before sending the order.');
     }
     route = cleaned;
     routing = await saveQuoteProductionRoute(qid, route);

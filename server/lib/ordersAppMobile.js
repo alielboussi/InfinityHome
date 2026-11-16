@@ -309,11 +309,11 @@ export async function opOrdersQuoteSave(sb, body, user) {
   if (!cleanItems.length) throw new Error('Add at least one product.');
 
   const route = trim(body.route || body.production_route).toLowerCase();
-  if (route && route !== 'carpentry' && route !== 'upholstery') {
-    throw new Error('Workshop route must be Carpentry or Upholstery.');
+  if (route && route !== 'carpentry' && route !== 'upholstery' && route !== 'aluminum') {
+    throw new Error('Workshop route must be Carpentry, Upholstery, or Aluminum.');
   }
   if (!trim(body.id || body.quote_id) && !route) {
-    throw new Error('Choose Carpentry or Upholstery before saving this quote.');
+    throw new Error('Choose Carpentry, Upholstery, or Aluminum before saving this quote.');
   }
 
   const subtotal = cleanItems.reduce((s, it) => s + (Number(it.quantity || 0) * Number(it.unit_price || 0)), 0);

@@ -44,6 +44,7 @@ export function normalizeQuotationItemRow(row) {
     color_code: row.color_code ?? meta.color_code ?? '',
     wood: row.wood ?? meta.wood ?? '',
     foam_type: row.foam_type ?? meta.foam_type ?? '',
+    aluminum_thickness_mm: row.aluminum_thickness_mm ?? meta.aluminum_thickness_mm ?? '',
     accessories: normalizeQuoteItemAccessories(row.accessories ?? meta.accessories),
   };
 }

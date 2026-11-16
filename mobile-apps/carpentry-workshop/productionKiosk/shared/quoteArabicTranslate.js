@@ -357,5 +357,6 @@ export function displayQuoteFieldValue(locale, value, serverMap = {}) {
 export function factoryOrderDepartmentArabic(route) {
   const r = String(route || '').trim().toLowerCase();
   if (r === 'carpentry') return 'قسم النجارة';
+  if (r === 'aluminum') return 'قسم الألومنيوم';
   return 'قسم التنجيد';
 }

@@ -33,6 +33,84 @@ export function normalizeUpholsteryFoamType(raw) {
   return match || v;
 }
 
+/** Aluminum profile thickness (mm) — quotation line field. */
+export const ALUMINUM_THICKNESS_MM_OPTIONS = Object.freeze(
+  [4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => `${n}mm`),
+);
+
+export function normalizeAluminumThicknessMm(raw) {
+  const v = trimOrNull(raw);
+  if (!v) return null;
+  const digits = String(v).replace(/[^\d.]/g, '');
+  const n = Number(digits);
+  if (!Number.isFinite(n)) return null;
+  const clamped = Math.min(12, Math.max(4, Math.round(n)));
+  const canonical = `${clamped}mm`;
+  return ALUMINUM_THICKNESS_MM_OPTIONS.find((o) => o === canonical) || canonical;
+}
+
+/** Aluminum accessories — static fallback; AI suggest augments the picker. */
+export const ALUMINUM_ACCESSORY_GROUPS = Object.freeze([
+  {
+    category: 'Profiles & Glazing',
+    items: [
+      'Powder Coat Finish',
+      'Anodized Finish',
+      'Glazing Rubber Gasket',
+      'Glazing Bead',
+      'uPVC Glazing Strip',
+      'Structural Silicone',
+      'Glass Clamps',
+      'Double-Glazed Unit',
+    ],
+  },
+  {
+    category: 'Door & Window Hardware',
+    items: [
+      'Multi-Point Lock',
+      'Cylinder Lock Set',
+      'Lever Handle Set',
+      'Pull Handle',
+      'Concealed Hinges',
+      'Friction Stay / Casement Hinge',
+      'Door Closer',
+      'Floor Spring',
+      'Pivot Hinge',
+      'Weather Strip / Draught Seal',
+    ],
+  },
+  {
+    category: 'Shopfront & Partition',
+    items: [
+      'Patch Fitting',
+      'Spider Fitting',
+      'Patch Plate',
+      'Floor Spring Cover',
+      'Automatic Door Operator',
+      'Motion Sensor',
+      'Push Bar / Panic Hardware',
+      'Floor Guide / Track',
+      'Top Track / Rail',
+    ],
+  },
+  {
+    category: 'Fixings & Trim',
+    items: [
+      'Stainless Screws & Plugs',
+      'Corner Cleat / Bracket',
+      'End Cap',
+      'Drainage Slot Cover',
+      'Silicone Sealant (neutral)',
+      'Backer Rod',
+      'Threaded Insert',
+    ],
+  },
+]);
+
+export const ALUMINUM_ACCESSORY_OPTIONS = Object.freeze(
+  [...new Set(ALUMINUM_ACCESSORY_GROUPS.flatMap((g) => g.items))],
+);
+
 /** Carpentry accessories grouped by furniture category for Quotationer selector. */
 export const CARPENTRY_ACCESSORY_GROUPS = Object.freeze([
   {
@@ -259,6 +337,9 @@ export function pickQuoteItemProductionFields(it) {
     color_code: trimOrNull(it?.color_code ?? meta.color_code),
     wood: normalizeCarpentryWoodChoice(it?.wood ?? meta.wood),
     foam_type: normalizeUpholsteryFoamType(it?.foam_type ?? meta.foam_type),
+    aluminum_thickness_mm: normalizeAluminumThicknessMm(
+      it?.aluminum_thickness_mm ?? meta.aluminum_thickness_mm,
+    ),
     accessories,
   };
 }
@@ -275,6 +356,7 @@ export function buildQuoteItemMetadataFromPayload(it) {
   if (fields.color_code) out.color_code = fields.color_code;
   if (fields.wood) out.wood = fields.wood;
   if (fields.foam_type) out.foam_type = fields.foam_type;
+  if (fields.aluminum_thickness_mm) out.aluminum_thickness_mm = fields.aluminum_thickness_mm;
   if (fields.accessories?.length) out.accessories = fields.accessories;
   return Object.keys(out).length ? out : null;
 }
@@ -302,6 +384,9 @@ export function formatQuoteItemProductionPdfLines(it) {
   }
   if (fields.foam_type) {
     lines.push(`-Foam Type: ${fields.foam_type}`);
+  }
+  if (fields.aluminum_thickness_mm) {
+    lines.push(`-Aluminum Thickness: ${fields.aluminum_thickness_mm}`);
   }
   return lines;
 }
@@ -360,6 +445,14 @@ export function summarizeProductionQuoteCardExtras(lines, route) {
       if (dims) bits.push(`L×W×H (cm): ${dims}`);
       if (line.color_code) bits.push(`Color: ${line.color_code}`);
       if (line.wood) bits.push(`Wood: ${line.wood}`);
+      const acc = normalizeQuoteItemAccessories(line.accessories);
+      if (acc.length) bits.push(`Included Accessories: ${acc.join(', ')}`);
+    }
+    if (normalized === 'aluminum') {
+      const dims = formatQuoteDimensionsCm(line);
+      if (dims) bits.push(`L×W×H (cm): ${dims}`);
+      if (line.aluminum_thickness_mm) bits.push(`Thickness: ${line.aluminum_thickness_mm}`);
+      if (line.color_code) bits.push(`Color: ${line.color_code}`);
       const acc = normalizeQuoteItemAccessories(line.accessories);
       if (acc.length) bits.push(`Included Accessories: ${acc.join(', ')}`);
     }

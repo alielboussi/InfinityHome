@@ -21,7 +21,7 @@ const LOCATIONS = 'locations';
 
 export function normalizeProductionRoute(raw) {
   const v = String(raw || '').trim().toLowerCase();
-  if (v === 'carpentry' || v === 'upholstery') return v;
+  if (v === 'carpentry' || v === 'upholstery' || v === 'aluminum') return v;
   return null;
 }
 
@@ -78,7 +78,7 @@ function allocateAcrossWarehouses(needQty, qtyByLocationId, locationOrder) {
 export async function upsertQuoteProductionRoute(sb, quoteId, route, { metadata = {} } = {}) {
   const qid = String(quoteId || '').trim();
   const normalized = normalizeProductionRoute(route);
-  if (!qid || !normalized) throw new Error('quote_id and production route (carpentry|upholstery) required');
+  if (!qid || !normalized) throw new Error('quote_id and production route (carpentry|upholstery|aluminum) required');
 
   const { data: existing } = await sb.from(ROUTING).select('*').eq('quote_id', qid).maybeSingle();
   if (existing?.sent_to_production_at) {
@@ -151,7 +151,7 @@ async function resolvePrimaryAssemblyId(sb, items) {
 
 export async function sendQuoteToProduction(sb, quoteId, userId) {
   const { quote, items, routing } = await loadQuoteBundle(sb, quoteId);
-  if (!routing?.route) throw new Error('Choose Carpentry or Upholstery before sending to production');
+  if (!routing?.route) throw new Error('Choose Carpentry, Upholstery, or Aluminum before sending to production');
   if (routing.sent_to_production_at) throw new Error('Already sent to production');
 
   const primary_assembly_id = await resolvePrimaryAssemblyId(sb, items);
@@ -203,7 +203,7 @@ async function pushProductionQuoteNotification(sb, quoteId, quote, routing) {
 export async function resendQuoteToProduction(sb, quoteId, userId) {
   void userId;
   const { quote, routing } = await loadQuoteBundle(sb, quoteId);
-  if (!routing?.route) throw new Error('Choose Carpentry or Upholstery before sending to production');
+  if (!routing?.route) throw new Error('Choose Carpentry, Upholstery, or Aluminum before sending to production');
   if (!routing.sent_to_production_at) {
     return sendQuoteToProduction(sb, quoteId, userId);
   }
@@ -407,7 +407,12 @@ export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId })
     started_at: now,
     completed_at: null,
     accepted_by: userId || null,
-    metadata: { route: normalized, channel: normalized === 'carpentry' ? 'carpentry_workshop_app' : 'warehouse_production_app' },
+    metadata: {
+      route: normalized,
+      channel: normalized === 'carpentry'
+        ? 'carpentry_workshop_app'
+        : (normalized === 'aluminum' ? 'aluminum_workshop' : 'warehouse_production_app'),
+    },
     created_at: now,
   });
   if (runErr) throw new Error(runErr.message || 'Failed to start production run');

@@ -1,4 +1,35 @@
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { API_BASE, getFirebaseIdToken } from '../shared/firebase';
+
+const QUOTE_PRODUCTION_API = '/api/quote-production';
+
+async function quoteProductionPost(body) {
+  const base = String(process.env.EXPO_PUBLIC_API_BASE || API_BASE || '').replace(/\/+$/, '');
+  if (!base) throw new Error('API base not configured');
+  const token = await getFirebaseIdToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+  const resp = await fetch(`${base}${QUOTE_PRODUCTION_API}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `Request failed (${resp.status})`);
+  }
+  return payload;
+}
+
+export async function suggestAluminumAccessories(productName) {
+  const payload = await quoteProductionPost({
+    op: 'suggest-aluminum-accessories',
+    product_name: String(productName || '').trim(),
+  });
+  return Array.isArray(payload.accessories) ? payload.accessories : [];
+}
 
 export function fetchOrdersAccess() {
   return warehouseMobileRequest('orders-access-self');

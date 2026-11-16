@@ -143,9 +143,12 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
   const serverTranslations = await translateQuoteStringsToArabic(phrasesToTranslate);
 
-  const deptLabel = String(route || '').trim().toLowerCase() === 'carpentry'
+  const routeKey = String(route || '').trim().toLowerCase();
+  const deptLabel = routeKey === 'carpentry'
     ? 'Carpentry / قسم النجارة'
-    : 'Upholstery / قسم التنجيد';
+    : (routeKey === 'aluminum'
+      ? 'Aluminum / قسم الألومنيوم'
+      : 'Upholstery / قسم التنجيد');
   const custName = String(quote?.customer_name || quote?.name || '—').trim();
   const custPhone = String(quote?.customer_phone || quote?.phone || '—').trim();
   const quoteNumber = String(quote?.quote_number || quote?.id || '—').trim();
@@ -208,6 +211,15 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
           <div class="bilingual-row">
             <div class="en-col" dir="ltr">-Foam Type: ${escapeHtml(fields.foam_type)}</div>
             <div class="ar-col" dir="rtl">-نوع الفوم: ${escapeHtml(foamAr)}</div>
+          </div>
+        `);
+      }
+
+      if (fields.aluminum_thickness_mm) {
+        specBlocks.push(`
+          <div class="bilingual-row">
+            <div class="en-col" dir="ltr">-Aluminum Thickness: ${escapeHtml(fields.aluminum_thickness_mm)}</div>
+            <div class="ar-col" dir="rtl">-سماكة الألمنيوم: ${escapeHtml(fields.aluminum_thickness_mm)}</div>
           </div>
         `);
       }

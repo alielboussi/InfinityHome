@@ -32,6 +32,15 @@ export const CARPENTRY_ACCESSORY_GROUPS = [
   { category: 'Office Chairs', items: ['Gas Lift Cylinder', 'Swivel Tilt Mechanism', 'PU / Nylon Castor Wheels', 'Adjustable 3D Armrests', 'Lumbar Support Cushion', 'Adjustable Headrest', 'Chrome / Aluminum 5-Star Base'] },
 ];
 
+export const ALUMINUM_THICKNESS_MM_OPTIONS = ['4mm', '5mm', '6mm', '7mm', '8mm', '9mm', '10mm', '11mm', '12mm'];
+
+export const ALUMINUM_ACCESSORY_GROUPS = [
+  { category: 'Profiles & Glazing', items: ['Powder Coat Finish', 'Anodized Finish', 'Glazing Rubber Gasket', 'Glazing Bead', 'Structural Silicone', 'Glass Clamps'] },
+  { category: 'Door & Window Hardware', items: ['Multi-Point Lock', 'Lever Handle Set', 'Concealed Hinges', 'Friction Stay / Casement Hinge', 'Door Closer', 'Weather Strip / Draught Seal'] },
+  { category: 'Shopfront & Partition', items: ['Patch Fitting', 'Spider Fitting', 'Automatic Door Operator', 'Push Bar / Panic Hardware', 'Floor Guide / Track'] },
+  { category: 'Fixings & Trim', items: ['Stainless Screws & Plugs', 'Corner Cleat / Bracket', 'End Cap', 'Silicone Sealant (neutral)'] },
+];
+
 export function unitLabel(unit) {
   if (!unit) return '';
   const abbr = String(unit.abbreviation || '').trim();

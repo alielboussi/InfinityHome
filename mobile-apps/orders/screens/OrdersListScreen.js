@@ -54,11 +54,13 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
 
   const sendOrder = (row) => {
     const route = String(row.routing?.route || '').toLowerCase();
-    if (route !== 'carpentry' && route !== 'upholstery') {
+    if (route !== 'carpentry' && route !== 'upholstery' && route !== 'aluminum') {
       Alert.alert(tUi('workshopRoute', locale), tUi('workshopRequired', locale));
       return;
     }
-    const dept = route === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale);
+    const dept = route === 'carpentry'
+      ? tUi('routeCarpentry', locale)
+      : (route === 'aluminum' ? tUi('routeAluminum', locale) : tUi('routeUpholstery', locale));
     Alert.alert(
       tUi('sendOrder', locale),
       `Send this order to the ${dept} production app?`,
@@ -145,7 +147,11 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
                   </Text>
                   {item.routing?.route ? (
                     <Text style={kiosk.hint}>
-                      {item.routing.route === 'carpentry' ? tUi('routeCarpentry', locale) : tUi('routeUpholstery', locale)}
+                      {item.routing.route === 'carpentry'
+                        ? tUi('routeCarpentry', locale)
+                        : (item.routing.route === 'aluminum'
+                          ? tUi('routeAluminum', locale)
+                          : tUi('routeUpholstery', locale))}
                       {alreadySent ? ' · sent' : ''}
                     </Text>
                   ) : null}

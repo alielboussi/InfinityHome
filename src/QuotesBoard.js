@@ -300,7 +300,9 @@ export default function QuotesBoard() {
           sent_to_production_at: res.sent_to_production_at,
         },
       }));
-      const deptLabel = res.route === 'carpentry' ? 'Carpentry' : 'Upholstery';
+      const deptLabel = res.route === 'carpentry'
+        ? 'Carpentry'
+        : (res.route === 'aluminum' ? 'Aluminum' : 'Upholstery');
       alert(`Order sent to ${deptLabel} app and Factory New WhatsApp group.`);
     } catch (e) {
       alert('Send Order failed: ' + (e?.message || e));

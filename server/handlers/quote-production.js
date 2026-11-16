@@ -115,6 +115,14 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (op === 'suggest-aluminum-accessories') {
+      const productName = String(body.product_name || body.productName || body.name || '').trim();
+      const { suggestAluminumAccessoriesForProduct } = await import('../lib/quoteAluminumAccessoriesSuggest.js');
+      const accessories = await suggestAluminumAccessoriesForProduct(productName);
+      res.status(200).json({ ok: true, accessories });
+      return;
+    }
+
     if (op === 'list-routings') {
       const rawIds = body.quote_ids || body.quoteIds || '';
       const ids = (Array.isArray(rawIds) ? rawIds : String(rawIds).split(','))

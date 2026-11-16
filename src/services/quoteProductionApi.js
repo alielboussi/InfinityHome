@@ -76,6 +76,19 @@ export async function sendQuoteToWarehouseProduction(quoteId) {
   return readJsonOrThrow(resp, 'Send to production failed');
 }
 
+export async function suggestAluminumAccessories(productName) {
+  const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      op: 'suggest-aluminum-accessories',
+      product_name: String(productName || '').trim(),
+    }),
+  });
+  const payload = await readJsonOrThrow(resp, 'Failed to suggest aluminum accessories');
+  return Array.isArray(payload.accessories) ? payload.accessories : [];
+}
+
 export async function fetchQuoteProductionRoutingsMap(quoteIds = []) {
   const ids = [...new Set((quoteIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
   if (!ids.length) return {};
