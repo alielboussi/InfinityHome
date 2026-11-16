@@ -319,6 +319,15 @@ function main() {
   materializeSharedKioskHelpers();
   materializeShared();
   copyDir(path.join(appRoot, 'shared'), path.join(kioskPath, 'shared'));
+  const confirmModalKiosk = path.join(kioskPath, 'shared', 'components', 'ConfirmTypeOkModal.js');
+  if (fs.existsSync(confirmModalKiosk)) {
+    let confirmBody = fs.readFileSync(confirmModalKiosk, 'utf8');
+    confirmBody = confirmBody.replace(
+      "from '../../productionKiosk/components/kioskStyles'",
+      "from '../../components/kioskStyles'",
+    );
+    safeWriteFileSync(confirmModalKiosk, confirmBody);
+  }
   patchRepoImports(kioskPath);
   vendorRepoUtils(kioskPath);
 
