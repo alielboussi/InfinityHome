@@ -125,13 +125,14 @@ export async function translateQuoteStringsToArabic(texts = []) {
   return {};
 }
 
-export async function sendFactoryOrderWhatsApp({ message, pdfBase64, pdfUrl, pdfFilename } = {}) {
+export async function sendFactoryOrderWhatsApp({ message, pdfBase64, pdfUrl, pdfFilename, route } = {}) {
   const url = String(pdfUrl || '').trim();
   const b64 = String(pdfBase64 || '').replace(/\s+/g, '');
   const payload = {
     op: 'deliver-factory-order',
     message,
     pdfFilename,
+    route: String(route || '').trim().toLowerCase() || undefined,
   };
   if (url) {
     payload.pdfUrl = url;

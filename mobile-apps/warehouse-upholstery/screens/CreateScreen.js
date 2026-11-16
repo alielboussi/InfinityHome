@@ -437,7 +437,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
             assemblyId: parsed.assemblyId,
             imageBase64: uploadPhoto,
             pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint || parsed.pendingLabelPrint,
-            alsoFloor2Wip: true,
             pendingPortalSetup: {
               portal_catalog: 'carpentry',
               floor2_product_qty: pending.qtyNum,
@@ -504,7 +503,6 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
         pendingLabelPrint: pendingSaveRef.current?.pendingLabelPrint || parsed.pendingLabelPrint,
         pendingPortalSetup: pendingSaveRef.current?.pendingPortalSetup || parsed.pendingPortalSetup,
         preset: pending.preset,
-        alsoFloor2Wip: true,
         onAttempt: (attempt, max) => {
           setAiPhotoStatus(tUi('aiPhotoRetry', locale).replace('{n}', String(attempt)).replace('{max}', String(max)));
         },

@@ -1,5 +1,6 @@
 import { isReclinerCatalogProduct } from './isReclinerCatalogProduct.js';
 import { resolveWarehouseCategoryName } from './warehouseCategoryLookup.js';
+import { readFloor1CatalogImageUrl } from './warehouseFloor1CatalogImage.js';
 
 const SEATER_PRODUCT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater', 'Lounge Chair'];
 
@@ -29,8 +30,9 @@ const SEATER_PRESET_SUFFIXES = new Set([
 ]);
 
 export function assemblyImageUrlFromRow(assembly) {
+  const catalog = readFloor1CatalogImageUrl(assembly);
+  if (catalog) return catalog;
   const candidates = [
-    assembly?.image_url,
     assembly?.thumbnail_url,
     assembly?.cover_image_url,
     assembly?.photo_url,

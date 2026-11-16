@@ -102,6 +102,7 @@ export default async function handler(req, res) {
         pdfUrl,
         pdfBase64: pdfUrl ? '' : pdfBase64,
         pdfFilename,
+        route: body.route || body.production_route || body.productionRoute,
       });
       res.status(200).json({ ok: true, ...result });
       return;

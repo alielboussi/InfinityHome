@@ -76,9 +76,10 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
                 await setOrdersQuoteRoute(row.id, route);
               }
               const res = await sendOrdersQuoteProduction(row.id);
+              const waGroup = route === 'aluminum' ? 'Aluminum Production' : 'Factory New';
               const msg = res?.resent
-                ? `Order notification resent to ${dept}.`
-                : `Order sent to ${dept}.`;
+                ? `Order notification resent to ${dept} and ${waGroup} WhatsApp group.`
+                : `Order sent to ${dept} and ${waGroup} WhatsApp group.`;
               Alert.alert(tUi('sendOrder', locale), msg);
               await load();
             } catch (err) {

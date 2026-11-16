@@ -117,6 +117,8 @@ const GROUP_KEYS = {
 
   productionCarpentry: 'WHATSAPP_PRODUCTION_CARPENTRY_GROUP_ID',
 
+  productionAluminum: 'WHATSAPP_PRODUCTION_ALUMINUM_GROUP_ID',
+
   factoryNew: 'WHATSAPP_FACTORY_NEW_GROUP_ID',
 
 };
@@ -134,6 +136,7 @@ const DOCUMENTED_WHATSAPP_GROUP_IDS = {
   warehouseDelivery: '120363410583418058@g.us',
   production: '120363430993260511@g.us',
   productionCarpentry: '120363432968895012@g.us',
+  productionAluminum: '120363281191795439@g.us',
   factoryNew: '120363201559496504@g.us',
 };
 
@@ -282,7 +285,12 @@ function normalizeWasenderKind(kind) {
 
 function parseWasenderKinds() {
   const raw = String(process.env.WHATSAPP_WASENDER_KINDS || '').trim().toLowerCase();
-  if (raw === 'all') return ['sale', 'layby', 'transfer', 'warehouseDelivery', 'labels', 'ledger', 'production', 'productionCarpentry'];
+  if (raw === 'all') {
+    return [
+      'sale', 'layby', 'transfer', 'warehouseDelivery', 'labels', 'ledger',
+      'production', 'productionCarpentry', 'productionAluminum', 'factoryNew',
+    ];
+  }
   if (raw) {
     const kinds = raw.split(/[,;\s]+/).map((part) => part.trim()).filter(Boolean);
     if (kinds.length && !kinds.includes('labels') && kinds.some((kind) => ['sale', 'layby', 'transfer'].includes(kind))) {
@@ -3851,6 +3859,12 @@ export async function deliverWarehouseDeliveryGroupMessage(body) {
   return handleWhatsAppWarehouseDelivery(body);
 }
 
+export function resolveFactoryOrderWhatsAppKind(route) {
+  const r = String(route || '').trim().toLowerCase();
+  if (r === 'aluminum') return 'productionAluminum';
+  return 'factoryNew';
+}
+
 export async function deliverFactoryOrderGroupMessage(body) {
   return handleWhatsAppFactoryOrder(body);
 }
@@ -3870,9 +3884,11 @@ async function handleWhatsAppFactoryOrder(body) {
     throw err;
   }
 
-  const routing = resolveDeliveryTargets('factoryNew', null);
+  const whatsappKind = resolveFactoryOrderWhatsAppKind(body.route || body.production_route || body.productionRoute);
+  const routing = resolveDeliveryTargets(whatsappKind, null);
   if (!routing.targets.length) {
-    const err = new Error('WhatsApp env not configured (WHATSAPP_FACTORY_NEW_GROUP_ID)');
+    const envKey = GROUP_KEYS[whatsappKind] || 'WHATSAPP_FACTORY_NEW_GROUP_ID';
+    const err = new Error(`WhatsApp env not configured (${envKey})`);
     err.status = 500;
     err.stage = 'env';
     throw err;

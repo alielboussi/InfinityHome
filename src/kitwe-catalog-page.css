@@ -176,6 +176,10 @@
   box-sizing: border-box;
 }
 
+.kitwe-catalog-table td.col-product {
+  min-width: 0;
+}
+
 .kitwe-catalog-table thead th {
   font-weight: 700;
   color: var(--kitwe-muted, #64748b);
@@ -472,9 +476,18 @@
 
 .kitwe-product-cell__head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-wrap: nowrap;
+  align-items: flex-start;
   gap: 6px 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kitwe-product-cell__head .kitwe-product-cell__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .kitwe-expand-btn--inline {
@@ -499,6 +512,60 @@
   padding: 0;
   cursor: pointer;
   text-align: left;
+  width: auto !important;
+  max-width: 100%;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  align-self: flex-start;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+body.enterprise-theme .kitwe-catalog-page button.kitwe-expand-btn {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  background: #ffffff !important;
+  border: 1px solid #94a3b8 !important;
+  color: #0f172a !important;
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+}
+
+body.enterprise-theme .kitwe-catalog-page button.kitwe-expand-btn:hover {
+  background: #ffffff !important;
+  border-color: #2563eb !important;
+  color: #2563eb !important;
+}
+
+body.enterprise-theme .kitwe-catalog-page button.kitwe-set-edit-btn,
+body.enterprise-theme .kitwe-catalog-page button.kitwe-set-component-link {
+  display: inline !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  color: var(--kitwe-link, #2563eb) !important;
+  border-radius: 0 !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  white-space: nowrap;
+}
+
+body.enterprise-theme .kitwe-catalog-page button.kitwe-set-edit-btn:hover,
+body.enterprise-theme .kitwe-catalog-page button.kitwe-set-component-link:hover {
+  background: transparent !important;
+  border: none !important;
+  color: #1d4ed8 !important;
+  text-decoration: underline;
 }
 
 .kitwe-set-edit-btn:hover,

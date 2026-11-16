@@ -820,7 +820,6 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
   }
 
   const { requireWarehouseFloor2Location } = await import('../lib/productionFloor1StockPolicy.js');
-  const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
   const { saveCarpentryProductSelection } = await import('../lib/carpentryCatalog.js');
   const { data: locRows, error: locErr } = await sb.from('locations').select('id, name');
   if (locErr) throw new Error(locErr.message || 'Failed to load locations.');
@@ -845,61 +844,37 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
   const deferProductPhoto = body.defer_product_photo === true || body.deferProductPhoto === true;
   const deferPortalSetup = deferProductPhoto && !imageBase64 && carpentryWorkshop;
 
-  if (!deferPortalSetup) {
-    await saveCarpentryProductSelection(sb, assemblyId, true);
-  }
+  await saveCarpentryProductSelection(sb, assemblyId, true);
   if (imageBase64) {
-    const { attachProductionAssemblyCatalogPhoto } = await import('../lib/productionPacketCatalogPhoto.js');
-    const { data: freshAsm } = await sb
-      .from('warehouse_assemblies')
-      .select('id, name, family_sku, metadata, image_url')
-      .eq('id', assemblyId)
-      .maybeSingle();
-    imageUrl = await attachProductionAssemblyCatalogPhoto(sb, {
-      assembly: freshAsm || assembly,
+    const { saveAssemblyFloor2WipPhotoFromBase64 } = await import('../lib/assemblyFloor2WipPhoto.js');
+    const wipResult = await saveAssemblyFloor2WipPhotoFromBase64(sb, {
+      assemblyId,
       imageBase64,
-      productName: finalName,
-      preset,
-      skipAiRetouch: false,
-      requireAiRetouch: carpentryWorkshop,
-      directCatalogUpload: !carpentryWorkshop,
     });
-    const { data: afterPhoto } = await sb
-      .from('warehouse_assemblies')
-      .select('metadata')
-      .eq('id', assemblyId)
-      .maybeSingle();
-    const metadata = mergeWarehouseFloor2WipImageMetadata(afterPhoto?.metadata || freshAsm?.metadata, imageUrl);
-    const { error: metaErr } = await sb
-      .from('warehouse_assemblies')
-      .update({ metadata, updated_at: new Date().toISOString() })
-      .eq('id', assemblyId);
-    if (metaErr) throw new Error(metaErr.message || 'Failed to save product photo.');
+    imageUrl = wipResult.image_url;
   }
 
-  if (!deferPortalSetup) {
-    const now = new Date().toISOString();
-    const { error: invErr } = await sb.from('warehouse_assembly_inventory').upsert({
-      assembly_id: assemblyId,
-      location_id: floor2Id,
-      quantity: initialQty,
-      updated_at: now,
-    }, { onConflict: 'assembly_id,location_id' });
-    if (invErr) throw new Error(invErr.message || 'Failed to save Floor 2 quantity.');
+  const now = new Date().toISOString();
+  const { error: invErr } = await sb.from('warehouse_assembly_inventory').upsert({
+    assembly_id: assemblyId,
+    location_id: floor2Id,
+    quantity: initialQty,
+    updated_at: now,
+  }, { onConflict: 'assembly_id,location_id' });
+  if (invErr) throw new Error(invErr.message || 'Failed to save Floor 2 quantity.');
 
-    await recomputeWarehouseLocationStockServer(sb, floor2Id);
+  await recomputeWarehouseLocationStockServer(sb, floor2Id);
 
-    try {
-      const { addFloor2ProductToFloor1 } = await import('../lib/carpentryManufacture.js');
-      await addFloor2ProductToFloor1(sb, {
-        assemblyId,
-        productQty: initialQty,
-        userId: user?.id || user?.uid || null,
-        ensureInventoryRow: true,
-      });
-    } catch (mirrorErr) {
-      console.warn('[catalog-floor2-create-product] Floor 1 mirror failed:', mirrorErr?.message || mirrorErr);
-    }
+  try {
+    const { addFloor2ProductToFloor1 } = await import('../lib/carpentryManufacture.js');
+    await addFloor2ProductToFloor1(sb, {
+      assemblyId,
+      productQty: initialQty,
+      userId: user?.id || user?.uid || null,
+      ensureInventoryRow: true,
+    });
+  } catch (mirrorErr) {
+    console.warn('[catalog-floor2-create-product] Floor 1 mirror failed:', mirrorErr?.message || mirrorErr);
   }
 
   const clientSource = carpentryWorkshop ? 'carpentry_workshop_app' : 'warehouse_floor_2';
@@ -1218,31 +1193,15 @@ async function opCatalogFloor2PhotoUpload(body, user, { carpentryWorkshop = fals
   if (loadErr) throw new Error(loadErr.message || 'Failed to load product');
   if (!existing) throw new Error('Product not found.');
 
-  const { jpegBufferFromCatalogDirectUpload } = await import('../lib/catalogDirectPhotoUpload.js');
-  const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
-  const jpeg = await jpegBufferFromCatalogDirectUpload(imageBase64);
-  const objectPath = `warehouse-assemblies/${assemblyId}/floor2-wip/main-${Date.now()}.jpg`;
-  await uploadBufferToFirebaseStorage({
-    bucketFolder: 'productimages',
-    objectPath,
-    buffer: jpeg,
-    contentType: 'image/jpeg',
-    cacheControl: '86400',
+  const { saveAssemblyFloor2WipPhotoFromBase64 } = await import('../lib/assemblyFloor2WipPhoto.js');
+  const result = await saveAssemblyFloor2WipPhotoFromBase64(sb, {
+    assemblyId,
+    imageBase64,
+    existingMetadata: existing.metadata,
   });
-  const publicUrl = firebaseStoragePublicUrl('productimages', objectPath);
-  if (!publicUrl) throw new Error('Failed to resolve public image URL.');
-
-  const now = new Date().toISOString();
-  const metadata = mergeWarehouseFloor2WipImageMetadata(existing.metadata, publicUrl);
-  const { error: updErr } = await sb
-    .from('warehouse_assemblies')
-    .update({ metadata, updated_at: now })
-    .eq('id', assemblyId);
-  if (updErr) throw new Error(updErr.message || 'Failed to save Floor 2 photo');
-
   return {
     assembly_id: assemblyId,
-    image_url: publicUrl,
+    image_url: result.image_url,
   };
 }
 

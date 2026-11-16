@@ -270,11 +270,7 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
   const existingUrl = String(assembly.image_url || '').trim();
   if (!forceReupload && existingUrl) {
     const catalogImageUrl = rewriteLegacyProductImageUrl(existingUrl) || existingUrl;
-    const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
-    const { data: fresh } = await sb.from('warehouse_assemblies').select('metadata').eq('id', assemblyId).maybeSingle();
-    const metadata = mergeWarehouseFloor2WipImageMetadata(fresh?.metadata, catalogImageUrl);
     await sb.from('warehouse_assemblies').update({
-      metadata,
       image_url: catalogImageUrl,
       updated_at: new Date().toISOString(),
     }).eq('id', assemblyId);
@@ -308,15 +304,11 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
   });
 
   if (catalogImageUrl) {
-    const { mergeWarehouseFloor2WipImageMetadata } = await import('../../src/utils/warehouseFloor2WipImage.js');
-    const { data: fresh } = await sb.from('warehouse_assemblies').select('metadata').eq('id', assemblyId).maybeSingle();
-    const metadata = mergeWarehouseFloor2WipImageMetadata(fresh?.metadata, catalogImageUrl);
-    const { error: wipErr } = await sb.from('warehouse_assemblies').update({
-      metadata,
+    const { error: saveErr } = await sb.from('warehouse_assemblies').update({
       image_url: catalogImageUrl,
       updated_at: new Date().toISOString(),
     }).eq('id', assemblyId);
-    if (wipErr) throw new Error(wipErr.message || 'Failed to save product photo on the web portal.');
+    if (saveErr) throw new Error(saveErr.message || 'Failed to save product photo on the web portal.');
   }
 
   const [portalResult, labelResult, label_preview_png_base64] = await Promise.all([

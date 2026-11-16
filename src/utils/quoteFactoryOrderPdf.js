@@ -34,7 +34,8 @@ function cleanDescriptionText(val) {
 }
 
 /**
- * Build the WhatsApp text message for the "Factory New" group (`120363201559496504@g.us`):
+ * Build the WhatsApp text message for Factory New (`120363201559496504@g.us`)
+ * or Aluminum Production (`120363281191795439@g.us`) based on `route`:
  *
  * Department : قسم التنجيد / قسم النجارة (Arabic only on this line)
  * Customer Name: ...

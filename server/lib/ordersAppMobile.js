@@ -403,7 +403,14 @@ export async function opOrdersQuoteSetRoute(sb, body) {
 export async function opOrdersQuoteSendProduction(sb, body, user) {
   const quoteId = trim(body.quote_id);
   if (!quoteId) throw new Error('quote_id is required.');
-  return sendOrResendQuoteToProduction(sb, quoteId, user?.id);
+  const result = await sendOrResendQuoteToProduction(sb, quoteId, user?.id);
+  try {
+    const { deliverQuoteFactoryOrderWhatsAppText } = await import('./quoteFactoryOrderWhatsApp.js');
+    await deliverQuoteFactoryOrderWhatsAppText(sb, quoteId);
+  } catch (waErr) {
+    throw new Error(`WhatsApp group: ${waErr?.message || waErr}`);
+  }
+  return result;
 }
 
 const SESSION_SELECT = 'id, delivery_number, from_location, to_location, created_at, transfer_datetime, submitted_at, status, total_qty, created_by_id, created_by_email, created_by_name, accepted_at, applied_at, completed_at, last_edited_at, pdf_url, metadata';

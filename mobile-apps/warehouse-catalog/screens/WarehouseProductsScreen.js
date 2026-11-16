@@ -161,6 +161,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   const canPrintLabel = isWarehouseCatalogLabelPrintAllowed(grant, userEmail);
   const canImportPhoto = isWarehouseCatalogPhotoImportAllowed(grant, userEmail);
   const [search, setSearch] = useState('');
+  /** Default: qty &gt; 0 only. Toggle header icon to show qty ≤ 0 across the catalog. */
+  const [zeroStockOnly, setZeroStockOnly] = useState(false);
   const [categoryFilterOpen, setCategoryFilterOpen] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(() => new Set());
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -348,11 +350,21 @@ export default function WarehouseProductsScreen({ navigation, route }) {
 
     const raw = search.trim();
     let base = rows;
+    if (zeroStockOnly) {
+      base = rows.filter((row) => {
+        if (row.listKind === 'set') {
+          const q = Number(assemblyWarehouseQty[String(row.entry.setAssembly.id)] ?? 0);
+          return q <= 0;
+        }
+        const q = Number(assemblyWarehouseQty[String(row.assembly.id)] ?? 0);
+        return q <= 0;
+      });
+    }
     if (raw) {
       const qLower = raw.toLowerCase();
       const qProductKeys = expandWarehouseSkuMatchKeys(normalizeWarehouseProductSku(raw));
       const qPacketKeys = expandWarehouseSkuMatchKeys(normalizeWarehousePacketScan(raw));
-      base = rows.filter((row) => {
+      base = base.filter((row) => {
         if (row.listKind === 'set') {
           return matchesSetEntrySearch(row.entry, qLower, qProductKeys, qPacketKeys);
         }
@@ -374,6 +386,8 @@ export default function WarehouseProductsScreen({ navigation, route }) {
     selectedCategoryIds,
     matchesProductSearch,
     matchesSetEntrySearch,
+    assemblyWarehouseQty,
+    zeroStockOnly,
   ]);
 
   const toggleExpanded = (id) => {
@@ -806,12 +820,33 @@ export default function WarehouseProductsScreen({ navigation, route }) {
   return (
     <View style={styles.wrap}>
       <View style={styles.listHeader}>
-        <Text style={styles.listHeaderTitle}>
-          {catalogMode === 'incomplete' ? 'Incomplete Products' : 'Products'}
-        </Text>
-        <Text style={styles.listHeaderMeta}>
-          {filtered.length} item{filtered.length === 1 ? '' : 's'}
-        </Text>
+        <View style={styles.listHeaderMain}>
+          <View style={styles.listHeaderText}>
+            <Text style={styles.listHeaderTitle}>
+              {catalogMode === 'incomplete' ? 'Incomplete Products' : 'Products'}
+            </Text>
+            <Text style={styles.listHeaderMeta}>
+              {filtered.length} item{filtered.length === 1 ? '' : 's'}
+              {zeroStockOnly ? ' · zero stock only' : ' · all products'}
+            </Text>
+          </View>
+          <Pressable
+            style={[styles.stockFilterBtn, zeroStockOnly && styles.stockFilterBtnActive]}
+            onPress={() => setZeroStockOnly((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={
+              zeroStockOnly
+                ? 'Showing zero stock only. Tap to show all warehouse products.'
+                : 'Showing all products. Tap to filter zero stock only.'
+            }
+          >
+            <MaterialCommunityIcons
+              name={zeroStockOnly ? 'cube-off-outline' : 'cube-outline'}
+              size={22}
+              color={zeroStockOnly ? '#38bdf8' : '#94a3b8'}
+            />
+          </Pressable>
+        </View>
       </View>
       <View style={styles.toolbar}>
         <TextInput
@@ -887,7 +922,9 @@ export default function WarehouseProductsScreen({ navigation, route }) {
             <Text style={styles.empty}>
               {catalogMode === 'incomplete'
                 ? 'No incomplete products.'
-                : 'No products or sets yet. Tap + to add a product.'}
+                : zeroStockOnly
+                  ? 'No products or sets with zero stock.'
+                  : 'No products or sets yet. Tap + to add a product.'}
             </Text>
           }
           refreshing={refreshing}
@@ -985,8 +1022,29 @@ const styles = StyleSheet.create({
     paddingTop: theme.space.sm,
     paddingBottom: theme.space.xs,
   },
+  listHeaderMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  listHeaderText: { flex: 1, minWidth: 0 },
   listHeaderTitle: { color: theme.text, fontSize: 15, fontWeight: '700' },
   listHeaderMeta: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
+  stockFilterBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: theme.radiusSm,
+    backgroundColor: theme.surfaceElevated,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stockFilterBtnActive: {
+    borderColor: '#38bdf8',
+    backgroundColor: 'rgba(12, 74, 110, 0.45)',
+  },
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',

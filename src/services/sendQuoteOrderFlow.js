@@ -38,7 +38,7 @@ function titleCaseWords(text) {
  * 1. Loads quote, items, units, customer contact, and routing (`upholstery` | `carpentry`).
  * 2. Sends the quote order to the Upholstery or Carpentry mobile app (`sendQuoteToWarehouseProduction`).
  * 3. Builds the bilingual (English + Arabic) no-price A4 PDF and sends it with the template message
- *    to the "Factory New" WhatsApp group (`120363201559496504@g.us`).
+ *    to Factory New (upholstery/carpentry) or Aluminum Production WhatsApp group when route is aluminum.
  */
 export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' } = {}) {
   const quoteId = typeof quoteRowOrId === 'object' ? quoteRowOrId?.id : quoteRowOrId;
@@ -148,6 +148,7 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
       message,
       pdfBase64,
       pdfFilename,
+      route,
     });
   } catch (waErr) {
     throw new Error(`Factory group: ${waErr?.message || waErr}`);

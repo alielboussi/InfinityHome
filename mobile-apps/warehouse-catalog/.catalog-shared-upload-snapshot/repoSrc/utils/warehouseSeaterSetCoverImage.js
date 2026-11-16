@@ -28,9 +28,19 @@ const SEATER_PRESET_SUFFIXES = new Set([
   'Lounge Chair',
 ]);
 
+function readFloor2WipImageUrl(assembly) {
+  const meta = assembly?.metadata && typeof assembly.metadata === 'object' ? assembly.metadata : {};
+  return String(meta.floor2_wip_image_url || '').trim();
+}
+
+/** Floor 1 catalog only — never treat Floor 2 WIP URLs as catalog photos. */
 export function assemblyImageUrlFromRow(assembly) {
+  const catalogUrl = String(assembly?.image_url || '').trim();
+  if (catalogUrl) {
+    const wip = readFloor2WipImageUrl(assembly);
+    if (!wip || wip !== catalogUrl) return catalogUrl;
+  }
   const candidates = [
-    assembly?.image_url,
     assembly?.thumbnail_url,
     assembly?.cover_image_url,
     assembly?.photo_url,

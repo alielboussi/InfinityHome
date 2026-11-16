@@ -303,7 +303,8 @@ export default function QuotesBoard() {
       const deptLabel = res.route === 'carpentry'
         ? 'Carpentry'
         : (res.route === 'aluminum' ? 'Aluminum' : 'Upholstery');
-      alert(`Order sent to ${deptLabel} app and Factory New WhatsApp group.`);
+      const waGroup = res.route === 'aluminum' ? 'Aluminum Production' : 'Factory New';
+      alert(`Order sent to ${deptLabel} app and ${waGroup} WhatsApp group.`);
     } catch (e) {
       alert('Send Order failed: ' + (e?.message || e));
     } finally {

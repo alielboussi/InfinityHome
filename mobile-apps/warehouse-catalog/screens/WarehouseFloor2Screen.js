@@ -165,6 +165,8 @@ export default function WarehouseFloor2Screen() {
   const productsRef = useRef([]);
   productsRef.current = products;
   const [search, setSearch] = useState('');
+  /** Default: Floor 2 qty &gt; 0. Header icon toggles qty ≤ 0 filter. */
+  const [zeroStockOnly, setZeroStockOnly] = useState(false);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [photoBusyId, setPhotoBusyId] = useState('');
@@ -227,17 +229,22 @@ export default function WarehouseFloor2Screen() {
     [allGroups, inlayGroupKey],
   );
 
+  const stockFilteredGroups = useMemo(() => allGroups.filter((group) => {
+    const qty = Math.floor(Number(group.totalFloor2 ?? floor2Qty(group.items?.[0])) || 0);
+    return zeroStockOnly ? qty <= 0 : qty > 0;
+  }), [allGroups, zeroStockOnly]);
+
   const groups = useMemo(() => {
     const q = String(search || '').trim().toLowerCase();
-    if (!q) return allGroups;
-    return allGroups.filter((group) => {
+    if (!q) return stockFilteredGroups;
+    return stockFilteredGroups.filter((group) => {
       if (group.displayName.toLowerCase().includes(q)) return true;
       return group.items.some(
         (item) => String(item.name || '').toLowerCase().includes(q)
           || String(item.family_sku || '').toLowerCase().includes(q),
       );
     });
-  }, [allGroups, search]);
+  }, [stockFilteredGroups, search]);
 
   const openInlay = useCallback((group) => {
     if (busyId || photoBusyId || !group?.items?.length) return;
@@ -547,6 +554,7 @@ export default function WarehouseFloor2Screen() {
       return;
     }
     const qty = prodQtyInput.trim() === '' ? 0 : Math.max(0, Math.floor(Number(prodQtyInput) || 0));
+    const proceedCreate = async () => {
     setCreateBusy(true);
     try {
       let imageBase64 = '';
@@ -566,6 +574,19 @@ export default function WarehouseFloor2Screen() {
     } finally {
       setCreateBusy(false);
     }
+    };
+    if (prodPhotoUri) {
+      Alert.alert(
+        'Floor 2 WIP photo',
+        'This image is saved as Floor 2 WIP only. It will not appear on Warehouse Floor 1 or Kitwe. Add a separate catalog photo from Floor 1 (/warehouse-products) when you need one.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Save WIP photo', onPress: () => { void proceedCreate(); } },
+        ],
+      );
+      return;
+    }
+    void proceedCreate();
   };
 
   const renderGroupCard = useCallback(
@@ -587,6 +608,31 @@ export default function WarehouseFloor2Screen() {
   return (
     <View style={styles.root}>
       <View style={styles.topToolbar}>
+        <View style={styles.listHeaderMain}>
+          <View style={styles.listHeaderText}>
+            <Text style={styles.listHeaderTitle}>Floor 2 products</Text>
+            <Text style={styles.listHeaderMeta}>
+              {groups.length} item{groups.length === 1 ? '' : 's'}
+              {zeroStockOnly ? ' · zero stock' : ' · in stock'}
+            </Text>
+          </View>
+          <Pressable
+            style={[styles.stockFilterBtn, zeroStockOnly && styles.stockFilterBtnActive]}
+            onPress={() => setZeroStockOnly((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={
+              zeroStockOnly
+                ? 'Showing zero Floor 2 stock. Tap to show in-stock only.'
+                : 'Showing in-stock Floor 2 only. Tap to show zero stock.'
+            }
+          >
+            <MaterialCommunityIcons
+              name={zeroStockOnly ? 'cube-off-outline' : 'cube-outline'}
+              size={22}
+              color={zeroStockOnly ? theme.primary : theme.textMuted}
+            />
+          </Pressable>
+        </View>
         <View style={styles.searchRow}>
           <TextInput
             style={styles.searchInput}
@@ -631,7 +677,11 @@ export default function WarehouseFloor2Screen() {
         ListEmptyComponent={
           !loading && !error ? (
             <Text style={styles.emptyText}>
-              {hasSearch ? 'No matching Floor 2 products.' : 'No Floor 2 products found.'}
+              {hasSearch
+                ? 'No matching Floor 2 products.'
+                : zeroStockOnly
+                  ? 'No Floor 2 products with zero stock.'
+                  : 'No in-stock Floor 2 products. Tap the cube icon to view zero stock.'}
             </Text>
           ) : null
         }
@@ -1010,6 +1060,37 @@ const styles = StyleSheet.create({
   topToolbar: {
     marginBottom: 12,
     gap: 10,
+  },
+  listHeaderMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  listHeaderText: { flex: 1, minWidth: 0 },
+  listHeaderTitle: {
+    color: theme.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  listHeaderMeta: {
+    color: theme.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  stockFilterBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: theme.radiusSm,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stockFilterBtnActive: {
+    borderColor: theme.primary,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
   },
   searchRow: {
     flexDirection: 'row',

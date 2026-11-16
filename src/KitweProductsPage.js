@@ -588,16 +588,16 @@ export default function KitweProductsPage() {
                   {row.name}
                   {isSet ? <span className="kitwe-product-cell__badge">Set</span> : null}
                 </strong>
-                {isSet ? (
-                  <button
-                    type="button"
-                    className="kitwe-set-component-link kitwe-set-edit-btn"
-                    onClick={() => openEditSet(row.id)}
-                  >
-                    Edit set
-                  </button>
-                ) : null}
               </div>
+              {isSet ? (
+                <button
+                  type="button"
+                  className="kitwe-set-component-link kitwe-set-edit-btn"
+                  onClick={() => openEditSet(row.id)}
+                >
+                  Edit set
+                </button>
+              ) : null}
             </div>
           </td>
           <td className="col-category">
