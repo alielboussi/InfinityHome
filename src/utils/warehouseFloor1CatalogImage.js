@@ -1,8 +1,8 @@
-import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { rewriteLegacyStorageUrl } from './storageImageUrl.js';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,
-} from './warehouseScanResolver';
+} from './warehouseScanResolver.js';
 import { readWarehouseFloor2WipImageUrl } from './warehouseFloor2WipImage.js';
 
 /** Floor 1 catalog photo only (assembly.image_url). Never Floor 2 WIP metadata or shared URLs. */

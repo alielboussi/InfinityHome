@@ -1,9 +1,9 @@
-import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { rewriteLegacyStorageUrl } from './storageImageUrl.js';
 import {
   buildFloor1CatalogImageLookupBySku,
   readFloor1CatalogImageUrl,
   resolveKitweFloor1CatalogImageUrl,
-} from './warehouseFloor1CatalogImage';
+} from './warehouseFloor1CatalogImage.js';
 
 function rewriteCatalogImageUrl(url) {
   const trimmed = String(url || '').trim();
