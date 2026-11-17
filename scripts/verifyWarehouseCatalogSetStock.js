@@ -160,7 +160,7 @@ if (!setQtyJs.includes('applyWarehouseSetQuantityFromRecipe')) {
   console.error('[verifyWarehouseCatalogSetStock] sets must consume components when qty increases');
   process.exit(1);
 }
-if (!setQtyJs.includes('factorySetCatalogScopeIds')) {
+if (!setQtyJs.includes('setCatalogScopeIdsAtLocation')) {
   console.error('[verifyWarehouseCatalogSetStock] set qty save must scope catalog reads');
   process.exit(1);
 }

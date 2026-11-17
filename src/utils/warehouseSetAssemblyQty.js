@@ -33,10 +33,6 @@ function setRecipeLinesAtLocation(setAssemblyId, setItems, locationId) {
   );
 }
 
-function factorySetRecipeLines(setAssemblyId, setItems) {
-  return setRecipeLinesAtLocation(setAssemblyId, setItems, WAREHOUSE_FACTORY_LOCATION_ID);
-}
-
 /** Assembly + component ids referenced on set recipes at a location (scoped catalog reads). */
 function setCatalogScopeIdsAtLocation(setItems, setAssemblyId, locationId) {
   const locId = String(locationId || WAREHOUSE_FACTORY_LOCATION_ID);
@@ -47,10 +43,6 @@ function setCatalogScopeIdsAtLocation(setItems, setAssemblyId, locationId) {
     if (row.component_assembly_id) ids.add(String(row.component_assembly_id));
   });
   return [...ids];
-}
-
-function factorySetCatalogScopeIds(setItems, setAssemblyId) {
-  return setCatalogScopeIdsAtLocation(setItems, setAssemblyId, WAREHOUSE_FACTORY_LOCATION_ID);
 }
 
 async function loadLocationAssemblyQtyMap(sb, locationId, {
