@@ -17,7 +17,11 @@ import {
   saveKitweAssemblyLocationPrice,
 } from './utils/kitweAssemblyRetailPricing';
 import KitweCatalogBulkLabelDialog from './components/KitweCatalogBulkLabelDialog';
-import { queueKitwePriceLabels } from './utils/kitwePriceLabels';
+import PriceLabelA4BatchHost from './components/PriceLabelA4BatchHost';
+import {
+  findRetailComboForKitweRow,
+  kitweCatalogRowBulkKey,
+} from './utils/kitwePriceLabelResolve';
 import {
   filterKitweCatalogProducts,
   kitweProductAssemblyOptions,
@@ -57,7 +61,6 @@ export default function KitweProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [priceDraft, setPriceDraft] = useState({});
   const [savingId, setSavingId] = useState('');
-  const [labelBusyId, setLabelBusyId] = useState('');
   const [deleteBusyId, setDeleteBusyId] = useState('');
 
   const [setName, setSetName] = useState('');
@@ -73,11 +76,14 @@ export default function KitweProductsPage() {
   const [productKitweQty, setProductKitweQty] = useState('0');
   const [productSaving, setProductSaving] = useState(false);
   const [stockDraft, setStockDraft] = useState({});
-  const [stockSavingId, setStockSavingId] = useState('');
   const [expandedSetIds, setExpandedSetIds] = useState(() => new Set());
   const [bulkSelected, setBulkSelected] = useState(() => new Set());
   const [bulkLabelDialogOpen, setBulkLabelDialogOpen] = useState(false);
   const [bulkLabelBusy, setBulkLabelBusy] = useState(false);
+  const [labelDialogPresetRows, setLabelDialogPresetRows] = useState(null);
+  const [labelBatch, setLabelBatch] = useState(null);
+
+  const KITWE_LABEL_LOCATION_NAME = 'Kitwe';
   const [hassanInbound, setHassanInbound] = useState([]);
   const [hassanInboundError, setHassanInboundError] = useState('');
   const [hassanInboundLoading, setHassanInboundLoading] = useState(true);
@@ -282,7 +288,7 @@ export default function KitweProductsPage() {
     return [...products, ...sets].sort((a, b) => String(a.name).localeCompare(String(b.name)));
   }, [productRows, setRows]);
 
-  const rowBulkKey = (row) => `${row.kind}:${row.id}`;
+  const rowBulkKey = kitweCatalogRowBulkKey;
 
   const allBulkKeys = useMemo(
     () => catalogRows.map((row) => rowBulkKey(row)),
@@ -299,25 +305,29 @@ export default function KitweProductsPage() {
     [allBulkKeys, bulkSelected, bulkAllSelected],
   );
 
+  const catalogRowToLabelDialogRow = useCallback((row) => {
+    const retail = resolveRetailProductForAssembly(row, retailIndex);
+    const defaultQty = row.kind === 'set'
+      ? Math.max(1, Number(row.kitweBuildableQty) || 1)
+      : Math.max(1, Number(row.kitweQty) || 1);
+    return {
+      key: rowBulkKey(row),
+      kind: row.kind,
+      name: row.name,
+      sku: row.family_sku,
+      retailProductId: retail?.id || '',
+      defaultQty,
+      printStandardOnly: false,
+    };
+  }, [retailIndex]);
+
   const bulkLabelDialogRows = useMemo(() => (
     catalogRows
       .filter((row) => bulkSelected.has(rowBulkKey(row)))
-      .map((row) => {
-        const retail = resolveRetailProductForAssembly(row, retailIndex);
-        const defaultQty = row.kind === 'set'
-          ? Math.max(1, Number(row.kitweBuildableQty) || 1)
-          : Math.max(1, Number(row.kitweQty) || 1);
-        return {
-          key: rowBulkKey(row),
-          kind: row.kind,
-          name: row.name,
-          sku: row.family_sku,
-          retailProductId: retail?.id || '',
-          defaultQty,
-          printStandardOnly: false,
-        };
-      })
-  ), [catalogRows, bulkSelected, retailIndex]);
+      .map((row) => catalogRowToLabelDialogRow(row))
+  ), [catalogRows, bulkSelected, catalogRowToLabelDialogRow]);
+
+  const activeLabelDialogRows = labelDialogPresetRows ?? bulkLabelDialogRows;
 
   const handleBulkSelectAll = (checked) => {
     setBulkSelected(checked ? new Set(allBulkKeys) : new Set());
@@ -333,31 +343,57 @@ export default function KitweProductsPage() {
     });
   };
 
-  const handleBulkQueueLabels = async (jobs) => {
+  const resolveKitwePriceLabelItems = useCallback(async (jobs) => {
+    const { data: combos } = await db.from('combos').select('id, combo_name, sku');
+    const items = [];
+    let addedOrder = 1;
+    for (const job of jobs) {
+      const catalogRow = catalogRows.find((r) => rowBulkKey(r) === String(job.key));
+      let productId = String(job.retailProductId || '').trim();
+      if (!productId && catalogRow) {
+        const retail = await ensureRetailProductForKitweAssembly(catalogRow);
+        productId = String(retail?.id || '').trim();
+      }
+      if (!productId) continue;
+
+      let type = 'product';
+      let id = productId;
+      if (catalogRow?.kind === 'set') {
+        const combo = findRetailComboForKitweRow(catalogRow, combos || []);
+        if (combo?.id) {
+          type = 'set';
+          id = combo.id;
+        }
+      }
+
+      items.push({
+        type,
+        id,
+        qty: job.qty,
+        printStandardOnly: job.printStandardOnly,
+        addedOrder: addedOrder++,
+      });
+    }
+    return items;
+  }, [catalogRows]);
+
+  const handleBulkLabelConfirm = async (jobs, action) => {
     setBulkLabelBusy(true);
     setError('');
     try {
-      const items = [];
-      for (const job of jobs) {
-        const catalogRow = catalogRows.find((r) => rowBulkKey(r) === String(job.key));
-        let productId = String(job.retailProductId || '').trim();
-        if (!productId && catalogRow) {
-          const retail = await ensureRetailProductForKitweAssembly(catalogRow);
-          productId = String(retail?.id || '').trim();
-        }
-        if (!productId) continue;
-        items.push({
-          productId,
-          qty: job.qty,
-          printStandardOnly: job.printStandardOnly,
-        });
-      }
+      const items = await resolveKitwePriceLabelItems(jobs);
       if (!items.length) throw new Error('Could not link retail products for labels.');
-      queueKitwePriceLabels({ items, locationId: KITWE_LOCATION_ID });
       setBulkLabelDialogOpen(false);
-      navigate('/price-labels');
+      setLabelDialogPresetRows(null);
+      setLabelBatch({
+        locationId: KITWE_LOCATION_ID,
+        locationName: KITWE_LABEL_LOCATION_NAME,
+        items,
+        action,
+      });
     } catch (err) {
-      setError(err?.message || 'Failed to open labels');
+      setError(err?.message || 'Failed to prepare labels');
+      alert(err?.message || 'Failed to prepare labels');
     } finally {
       setBulkLabelBusy(false);
     }
@@ -377,25 +413,6 @@ export default function KitweProductsPage() {
     const key = draftKey(row.id, 'stock');
     if (stockDraft[key] !== undefined) return stockDraft[key];
     return row.kitweQty ?? 0;
-  };
-
-  const saveStockQty = async (row) => {
-    setStockSavingId(row.id);
-    setError('');
-    try {
-      const qty = Math.max(0, Math.floor(Number(getStockDraft(row)) || 0));
-      await setKitwePortalProductStock(row, qty);
-      setStockDraft((d) => {
-        const next = { ...d };
-        delete next[draftKey(row.id, 'stock')];
-        return next;
-      });
-      await load();
-    } catch (err) {
-      setError(err?.message || 'Failed to save stock quantity');
-    } finally {
-      setStockSavingId('');
-    }
   };
 
   const handleCreateProduct = async (e) => {
@@ -423,7 +440,7 @@ export default function KitweProductsPage() {
     }
   };
 
-  const savePrices = async (row) => {
+  const saveRowEdits = async (row, { isSet = false } = {}) => {
     setSavingId(row.id);
     setError('');
     try {
@@ -431,9 +448,24 @@ export default function KitweProductsPage() {
         price: getDraft(row, 'price'),
         promotionalPrice: getDraft(row, 'promotional_price'),
       });
+      if (!isSet) {
+        const qty = Math.max(0, Math.floor(Number(getStockDraft(row)) || 0));
+        await setKitwePortalProductStock(row, qty);
+      }
+      setStockDraft((d) => {
+        const next = { ...d };
+        delete next[draftKey(row.id, 'stock')];
+        return next;
+      });
+      setPriceDraft((d) => {
+        const next = { ...d };
+        delete next[draftKey(row.id, 'price')];
+        delete next[draftKey(row.id, 'promotional_price')];
+        return next;
+      });
       await load();
     } catch (err) {
-      setError(err?.message || 'Failed to save prices');
+      setError(err?.message || 'Failed to save changes');
     } finally {
       setSavingId('');
     }
@@ -452,19 +484,9 @@ export default function KitweProductsPage() {
     }
   };
 
-  const printLabel = async (row) => {
-    setLabelBusyId(row.id);
-    setError('');
-    try {
-      const retail = await ensureRetailProductForKitweAssembly(row);
-      if (!retail?.id) throw new Error('Could not link a retail product for labels.');
-      queueKitwePriceLabels({ productIds: [retail.id], locationId: KITWE_LOCATION_ID });
-      navigate('/price-labels');
-    } catch (err) {
-      setError(err?.message || 'Failed to open labels');
-    } finally {
-      setLabelBusyId('');
-    }
+  const printLabel = (row) => {
+    setLabelDialogPresetRows([catalogRowToLabelDialogRow(row)]);
+    setBulkLabelDialogOpen(true);
   };
 
   const deleteRow = async (row) => {
@@ -614,27 +636,18 @@ export default function KitweProductsPage() {
           </td>
           <td className="col-qty">
             {!isSet ? (
-              <div className="kitwe-qty-edit">
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="kitwe-cell-input kitwe-cell-input--qty"
-                  value={getStockDraft(row)}
-                  onChange={(e) => setStockDraft((d) => ({
-                    ...d,
-                    [draftKey(row.id, 'stock')]: e.target.value,
-                  }))}
-                />
-                <button
-                  type="button"
-                  className="kitwe-btn-secondary kitwe-btn-compact"
-                  disabled={stockSavingId === row.id}
-                  onClick={() => saveStockQty(row)}
-                >
-                  {stockSavingId === row.id ? '…' : 'Stock'}
-                </button>
-              </div>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                className="kitwe-cell-input kitwe-cell-input--qty"
+                value={getStockDraft(row)}
+                disabled={savingId === row.id}
+                onChange={(e) => setStockDraft((d) => ({
+                  ...d,
+                  [draftKey(row.id, 'stock')]: e.target.value,
+                }))}
+              />
             ) : (
               <span className="kitwe-qty-readonly" title="Buildable from components at Kitwe">
                 {row.kitweBuildableQty ?? 0}
@@ -648,6 +661,7 @@ export default function KitweProductsPage() {
               step="0.01"
               className="kitwe-cell-input"
               value={getDraft(row, 'price')}
+              disabled={savingId === row.id}
               onChange={(e) => setPriceDraft((d) => ({ ...d, [draftKey(row.id, 'price')]: e.target.value }))}
             />
           </td>
@@ -658,6 +672,7 @@ export default function KitweProductsPage() {
               step="0.01"
               className="kitwe-cell-input"
               value={getDraft(row, 'promotional_price')}
+              disabled={savingId === row.id}
               onChange={(e) => setPriceDraft((d) => ({ ...d, [draftKey(row.id, 'promotional_price')]: e.target.value }))}
             />
           </td>
@@ -667,17 +682,16 @@ export default function KitweProductsPage() {
                 type="button"
                 className="kitwe-btn-save kitwe-btn-compact"
                 disabled={savingId === row.id}
-                onClick={() => savePrices(row)}
+                onClick={() => saveRowEdits(row, { isSet })}
               >
                 {savingId === row.id ? '…' : 'Save'}
               </button>
               <button
                 type="button"
                 className="kitwe-btn-secondary kitwe-btn-compact"
-                disabled={labelBusyId === row.id}
                 onClick={() => printLabel(row)}
               >
-                {labelBusyId === row.id ? '…' : 'Label'}
+                Label
               </button>
               <button
                 type="button"
@@ -816,7 +830,10 @@ export default function KitweProductsPage() {
             type="button"
             className="warehouse-catalog-bulk-label-bar__print kitwe-btn-create-set"
             disabled={bulkLabelBusy}
-            onClick={() => setBulkLabelDialogOpen(true)}
+            onClick={() => {
+              setLabelDialogPresetRows(null);
+              setBulkLabelDialogOpen(true);
+            }}
           >
             Bulk labels
           </button>
@@ -986,10 +1003,25 @@ export default function KitweProductsPage() {
 
       <KitweCatalogBulkLabelDialog
         open={bulkLabelDialogOpen}
-        rows={bulkLabelDialogRows}
+        rows={activeLabelDialogRows}
         busy={bulkLabelBusy}
-        onClose={() => setBulkLabelDialogOpen(false)}
-        onQueue={handleBulkQueueLabels}
+        onClose={() => {
+          if (bulkLabelBusy) return;
+          setBulkLabelDialogOpen(false);
+          setLabelDialogPresetRows(null);
+        }}
+        onConfirm={handleBulkLabelConfirm}
+      />
+
+      <PriceLabelA4BatchHost
+        batch={labelBatch}
+        onComplete={() => setLabelBatch(null)}
+        onError={(err) => {
+          const msg = err?.message || String(err || 'Label failed');
+          setError(msg);
+          setLabelBatch(null);
+          alert(msg);
+        }}
       />
     </div>
   );

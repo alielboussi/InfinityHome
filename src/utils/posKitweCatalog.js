@@ -1,13 +1,13 @@
 import db from '../dataClient';
 import { KITWE_LOCATION_ID } from '../constants/warehouseShowroomLocations';
-import { isWarehouseSetAssembly } from './warehouseSetMath';
 import { isKitweCatalogLooseAssembly } from './kitweCatalogComponentVisibility';
+import { isWarehouseSetAssembly } from './warehouseSetMath';
 import {
-  buildKitweCatalogSetComponentIds,
   computeKitweSetBuildableQty,
+  filterKitweCatalogProducts,
   isKitweProductsPortalAssembly,
-  isKitweWarehouseSetAssembly,
   kitweQtyByAssembly,
+  listKitweWarehouseSets,
 } from './kitweSetStock';
 import { expandWarehouseSetItemsRows } from './warehouseSetItems';
 import {
@@ -18,7 +18,7 @@ import {
 import { buildProductLocationPriceMap } from './locationPricing';
 
 /**
- * Warehouse assemblies with Kitwe assembly_inventory — products + sets for POS at Kitwe.
+ * Warehouse assemblies with Kitwe assembly_inventory — same eligibility as /kitwe-products (not Floor 1/2 catalog).
  */
 export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
   const locId = String(locationId || KITWE_LOCATION_ID);
@@ -32,7 +32,7 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
     { data: categories, error: cErr },
   ] = await Promise.all([
     db.from('warehouse_assemblies').select(
-      'id, name, family_sku, image_url, item_kind, category_id, retail_product_id',
+      'id, name, family_sku, image_url, item_kind, category_id, retail_product_id, metadata',
     ),
     db.from('warehouse_assembly_inventory').select('assembly_id, quantity, location_id'),
     db.from('warehouse_set_items').select('*'),
@@ -50,44 +50,11 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
   const sets = [];
 
   const assemblyById = new Map((assemblies || []).map((a) => [String(a.id), a]));
-  const hiddenSetComponents = buildKitweCatalogSetComponentIds(setItems, assemblies);
 
-  (assemblies || []).forEach((a) => {
-    if (isWarehouseSetAssembly(a)) {
-      if (!isKitweWarehouseSetAssembly(a, setItems)) return;
-      const stock = computeKitweSetBuildableQty(a.id, setItems, qtyByAssembly);
-      if (stock <= 0) return;
-      const kitweComponents = expandWarehouseSetItemsRows(setItems || [])
-        .filter(
-          (row) => String(row.set_assembly_id) === String(a.id)
-            && String(row.location_id) === KITWE_LOCATION_ID,
-        )
-        .map((row) => {
-          const comp = assemblyById.get(String(row.component_assembly_id));
-          const retail = comp ? resolveRetailProductForAssembly(comp, retailIndex) : null;
-          return {
-            component_assembly_id: row.component_assembly_id,
-            per_set: Math.max(1, Number(row.quantity) || 1),
-            name: comp?.name || '',
-            sku: comp?.family_sku || '',
-            retail_product_id: retail?.id || comp?.retail_product_id || null,
-          };
-        });
-      sets.push(applyKitweAssemblyPosPricing({
-        assembly: a,
-        stock,
-        locationId: locId,
-        productLocationPriceMap,
-        retailIndex,
-        categoriesById,
-        isSet: true,
-        kitweComponents,
-      }));
-      return;
-    }
-    if (!shouldShowKitweCatalogProductRow(a, qtyByAssembly, hiddenSetComponents)) return;
+  const eligibleProducts = filterKitweCatalogProducts(assemblies, inv, setItems);
+  eligibleProducts.forEach((a) => {
     const stock = qtyByAssembly.get(String(a.id)) || 0;
-    if (stock <= 0 && !a.family_sku) return;
+    if (stock <= 0) return;
     products.push(applyKitweAssemblyPosPricing({
       assembly: a,
       stock,
@@ -99,10 +66,41 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
     }));
   });
 
+  listKitweWarehouseSets(assemblies, setItems, inv).forEach((setAsm) => {
+    const buildable = computeKitweSetBuildableQty(setAsm.id, setItems, qtyByAssembly);
+    if (buildable <= 0) return;
+    const kitweComponents = expandWarehouseSetItemsRows(setItems || [])
+      .filter(
+        (row) => String(row.set_assembly_id) === String(setAsm.id)
+          && String(row.location_id) === KITWE_LOCATION_ID,
+      )
+      .map((row) => {
+        const comp = assemblyById.get(String(row.component_assembly_id));
+        const retail = comp ? resolveRetailProductForAssembly(comp, retailIndex) : null;
+        return {
+          component_assembly_id: row.component_assembly_id,
+          per_set: Math.max(1, Number(row.quantity) || 1),
+          name: comp?.name || '',
+          sku: comp?.family_sku || '',
+          retail_product_id: retail?.id || comp?.retail_product_id || null,
+        };
+      });
+    sets.push(applyKitweAssemblyPosPricing({
+      assembly: setAsm,
+      stock: buildable,
+      locationId: locId,
+      productLocationPriceMap,
+      retailIndex,
+      categoriesById,
+      isSet: true,
+      kitweComponents,
+    }));
+  });
+
   return { products, sets };
 }
 
-/** Kitwe POS product row — hide set recipe components unless marked loose. */
+/** Kitwe POS product row — hide set recipe components unless marked loose (same as /kitwe-products). */
 export function shouldShowKitweCatalogProductRow(assembly, qtyByAssembly, hiddenComponentIds) {
   if (!assembly?.id || isWarehouseSetAssembly(assembly)) return false;
   const id = String(assembly.id);
@@ -123,10 +121,17 @@ export async function fetchKitweWarehousePosProducts(locationId, options) {
  * SKUs are intentionally different between the two during migration; Kitwe warehouse becomes the sole source of truth later.
  */
 export function mergePosCatalogProducts(legacyProducts, kitweWarehouseProducts) {
-  const legacy = (legacyProducts || []).map((p) => ({
-    ...p,
-    posCatalogSource: p.posCatalogSource || 'products_list',
-  }));
+  const kitweRetailIds = new Set(
+    (kitweWarehouseProducts || [])
+      .map((p) => String(p.retail_product_id || '').trim())
+      .filter(Boolean),
+  );
+  const legacy = (legacyProducts || [])
+    .filter((p) => !kitweRetailIds.has(String(p.id)))
+    .map((p) => ({
+      ...p,
+      posCatalogSource: p.posCatalogSource || 'products_list',
+    }));
   const kitwe = (kitweWarehouseProducts || []).map((p) => ({
     ...p,
     posCatalogSource: p.posCatalogSource || 'kitwe_warehouse',

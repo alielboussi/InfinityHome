@@ -163,7 +163,7 @@
 .kitwe-catalog-table col.kitwe-col-sku { width: 118px; }
 .kitwe-catalog-table col.kitwe-col-product { width: 22%; }
 .kitwe-catalog-table col.kitwe-col-category { width: 132px; }
-.kitwe-catalog-table col.kitwe-col-qty { width: 168px; }
+.kitwe-catalog-table col.kitwe-col-qty { width: 72px; }
 .kitwe-catalog-table col.kitwe-col-price { width: 96px; }
 .kitwe-catalog-table col.kitwe-col-actions { width: 148px; }
 
@@ -264,14 +264,6 @@
   overflow: hidden;
 }
 
-.kitwe-qty-edit {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 6px;
-  align-items: center;
-  max-width: 100%;
-}
-
 .kitwe-qty-readonly {
   font-weight: 700;
 }
@@ -296,18 +288,11 @@
 }
 
 .kitwe-catalog-table td.col-qty .kitwe-cell-input--qty {
-  width: 52px;
-  max-width: 52px;
+  width: 100%;
+  max-width: 100%;
   text-align: center;
   padding-left: 4px;
   padding-right: 4px;
-}
-
-.kitwe-catalog-table td.col-qty .kitwe-btn-secondary {
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .kitwe-catalog-table td.col-price .kitwe-cell-input {
@@ -1751,4 +1736,40 @@ body.enterprise-theme .floor2-manufacture-tile__inlay:hover {
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--kitwe-row-border, #e2e8f0);
+}
+
+.kitwe-bulk-label-dialog__actions {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.kitwe-bulk-label-whatsapp-btn {
+  min-height: 42px;
+}
+
+.kitwe-price-label-batch-host {
+  position: fixed;
+  left: -12000px;
+  top: 0;
+  width: 210mm;
+  pointer-events: none;
+  visibility: hidden;
+  z-index: -1;
+}
+
+@media print {
+  body.enterprise-theme .kitwe-catalog-page > *:not(.kitwe-price-label-batch-host),
+  .kitwe-catalog-page > *:not(.kitwe-price-label-batch-host) {
+    display: none !important;
+  }
+
+  .kitwe-catalog-page .kitwe-price-label-batch-host {
+    position: static !important;
+    left: auto !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    z-index: auto !important;
+    display: block !important;
+  }
 }

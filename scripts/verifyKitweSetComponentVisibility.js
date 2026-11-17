@@ -23,6 +23,8 @@ assert(
   'Kitwe catalog sets must use isKitweCatalogSetAssembly',
 );
 assert(posCatalog.includes('shouldShowKitweCatalogProductRow'), 'POS Kitwe catalog must hide set components');
+assert(posCatalog.includes('filterKitweCatalogProducts'), 'POS Kitwe catalog must match /kitwe-products eligibility');
+assert(posCatalog.includes('listKitweWarehouseSets'), 'POS Kitwe sets must match /kitwe-products sets');
 assert(saleDeduction.includes('markKitweCatalogLooseServer'), 'POS restock must mark catalog loose');
 
 console.log('verifyKitweSetComponentVisibility: ok');

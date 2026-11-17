@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { FaWhatsapp } from 'react-icons/fa';
 import { paginateList } from './WarehouseCatalogListPager';
 
 const DIALOG_PAGE_SIZE = 10;
@@ -7,7 +8,7 @@ export default function KitweCatalogBulkLabelDialog({
   open,
   rows,
   onClose,
-  onQueue,
+  onConfirm,
   busy,
 }) {
   const [qtyByKey, setQtyByKey] = useState({});
@@ -51,7 +52,7 @@ export default function KitweCatalogBulkLabelDialog({
     setStdOnlyByKey((prev) => ({ ...prev, [String(key)]: !prev[String(key)] }));
   };
 
-  const handleQueue = async () => {
+  const buildJobs = () => {
     const jobs = (rows || [])
       .map((row) => {
         const key = String(row.key);
@@ -67,10 +68,16 @@ export default function KitweCatalogBulkLabelDialog({
       .filter(Boolean);
     if (!jobs.length) {
       setError('Set at least one row to quantity 1 or more.');
-      return;
+      return null;
     }
     setError('');
-    await onQueue(jobs);
+    return jobs;
+  };
+
+  const handleAction = async (action) => {
+    const jobs = buildJobs();
+    if (!jobs) return;
+    await onConfirm(jobs, action);
   };
 
   return (
@@ -88,7 +95,7 @@ export default function KitweCatalogBulkLabelDialog({
           Bulk price labels
         </h2>
         <p className="warehouse-field-hint" style={{ marginTop: 0 }}>
-          Choose how many labels per item. Tick &quot;Std price&quot; to print standard price only (ignore promo when one exists).
+          Kitwe location pricing only. Choose copies per item; tick &quot;Std price&quot; to ignore promo on the label (same A4 layout as Print Labels).
         </p>
 
         <table className="pos-table warehouse-bulk-label-dialog__table">
@@ -167,14 +174,24 @@ export default function KitweCatalogBulkLabelDialog({
 
         {error ? <p className="warehouse-label-print-modal__error" role="alert">{error}</p> : null}
 
-        <div className="products-adjust-modal__actions warehouse-label-print-modal__actions">
+        <div className="products-adjust-modal__actions warehouse-label-print-modal__actions kitwe-bulk-label-dialog__actions">
           <button
             type="button"
             className="warehouse-catalog-action-btn warehouse-catalog-action-btn--primary"
-            onClick={handleQueue}
+            onClick={() => handleAction('print')}
             disabled={busy || !(rows || []).length}
           >
-            {busy ? 'Opening…' : 'Open price labels'}
+            {busy ? 'Preparing…' : 'Save as PDF'}
+          </button>
+          <button
+            type="button"
+            className="label-whatsapp-btn kitwe-bulk-label-whatsapp-btn"
+            onClick={() => handleAction('whatsapp')}
+            disabled={busy || !(rows || []).length}
+            title="Send to Price Labels WhatsApp group"
+            aria-label="Send to Price Labels WhatsApp group"
+          >
+            <FaWhatsapp />
           </button>
           <button type="button" className="warehouse-card-btn" onClick={close} disabled={busy}>
             Cancel

@@ -40,6 +40,7 @@ import {
 } from './services/locationPricing';
 import { applySaleInventoryDeductionViaApi } from './utils/inventoryApi';
 import { fetchKitweWarehousePosCatalog, isKitwePosCatalogRow, mergePosCatalogProducts } from './utils/posKitweCatalog';
+import { filterProductsListCatalogProducts } from './utils/productsListKitweExclusion';
 import {
   buildKitweSetSaleMoves,
   initKitweSetCartComponents,
@@ -623,6 +624,18 @@ export default function POS({ isMobile = false }) {
             prodRows = Array.isArray(fallbackRows?.products) ? fallbackRows.products : prodRows;
           }
         } catch {}
+      }
+
+      if (String(selectedLocation) === String(KITWE_LOCATION_ID)) {
+        try {
+          const [{ data: whAssemblies }, { data: whInv }] = await Promise.all([
+            db.from('warehouse_assemblies').select('id, retail_product_id, metadata, item_kind, family_sku'),
+            db.from('warehouse_assembly_inventory').select('assembly_id, location_id, quantity'),
+          ]);
+          prodRows = filterProductsListCatalogProducts(prodRows, whAssemblies, whInv);
+        } catch (err) {
+          console.warn('[pos] Kitwe products-list filter skipped', err);
+        }
       }
 
       const productMap = {};
