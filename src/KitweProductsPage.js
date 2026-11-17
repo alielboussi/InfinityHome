@@ -3,11 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 import db from './dataClient';
 import './kitwe-catalog-page.css';
-import { saveWarehouseAssembly, WAREHOUSE_INVENTORY_MODE } from './services/warehouseCatalog';
+import { fetchWarehouseCatalog, saveWarehouseAssembly, WAREHOUSE_INVENTORY_MODE } from './services/warehouseCatalog';
 import { useWarehouseCatalogQuery } from './hooks/useWarehouseCatalogQuery';
 import { KITWE_LOCATION_ID } from './constants/warehouseShowroomLocations';
-import { fetchProductLocationPricesForLocation } from './services/locationPricing';
-import { buildProductLocationPriceMap } from './utils/locationPricing';
+import {
+  fetchComboLocationPricesForLocation,
+  fetchProductLocationPricesForLocation,
+} from './services/locationPricing';
+import { buildComboLocationPriceMap, buildProductLocationPriceMap } from './utils/locationPricing';
 import {
   ensureRetailProductForKitweAssembly,
   indexRetailProducts,
@@ -19,6 +22,7 @@ import {
 import KitweCatalogBulkLabelDialog from './components/KitweCatalogBulkLabelDialog';
 import PriceLabelA4BatchHost from './components/PriceLabelA4BatchHost';
 import {
+  buildCombosByNormalizedName,
   findRetailComboForKitweRow,
   kitweCatalogRowBulkKey,
 } from './utils/kitwePriceLabelResolve';
@@ -55,6 +59,9 @@ export default function KitweProductsPage() {
   const [setItems, setSetItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [priceMap, setPriceMap] = useState(new Map());
+  const [comboPriceMap, setComboPriceMap] = useState(new Map());
+  const [combosByName, setCombosByName] = useState(() => new Map());
+  const [catalogCombos, setCatalogCombos] = useState([]);
   const [retailIndex, setRetailIndex] = useState(() => indexRetailProducts([]));
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 160);
@@ -91,36 +98,49 @@ export default function KitweProductsPage() {
   const retailLoadSeqRef = useRef(0);
   const { data: catalogData, error: catalogError, isLoading: catalogLoading } = useWarehouseCatalogQuery();
 
-  const load = useCallback(async () => {
+  const applyKitweCatalogSnapshot = useCallback(async (data) => {
+    const inv = data?.assemblyInventory || [];
+    const items = data?.setItems || [];
+    const allAssemblies = data?.assemblies || [];
+    const [locPrices, comboLocPrices, combosRes, catRes] = await Promise.all([
+      fetchProductLocationPricesForLocation(db, KITWE_LOCATION_ID),
+      fetchComboLocationPricesForLocation(db, KITWE_LOCATION_ID),
+      db.from('combos').select('id, combo_name, sku, combo_price, standard_price, promotional_price'),
+      db.from('categories').select('id, name').order('name'),
+    ]);
+    const combos = combosRes?.data || [];
+    setAssemblies(allAssemblies);
+    setAssemblyInventory(inv);
+    setWarehouseLocationId(data?.warehouseLocationId || null);
+    setSetItems(items);
+    setCategories(catRes?.data || []);
+    setCatalogCombos(combos);
+    setCombosByName(buildCombosByNormalizedName(combos));
+    setPriceMap(buildProductLocationPriceMap(locPrices || []));
+    setComboPriceMap(buildComboLocationPriceMap(comboLocPrices || []));
+    hasCatalogRef.current = true;
+  }, []);
+
+  const load = useCallback(async ({ freshCatalog = false } = {}) => {
     const background = hasCatalogRef.current;
     if (!background) setLoading(true);
     setError('');
     try {
-      const data = catalogData;
+      let data = catalogData;
+      if (freshCatalog) {
+        data = await fetchWarehouseCatalog();
+      }
       if (!data) {
         if (!catalogLoading) setLoading(false);
         return;
       }
-      const inv = data.assemblyInventory || [];
-      const items = data.setItems || [];
-      const allAssemblies = data.assemblies || [];
-      const [locPrices, catRes] = await Promise.all([
-        fetchProductLocationPricesForLocation(db, KITWE_LOCATION_ID),
-        db.from('categories').select('id, name').order('name'),
-      ]);
-      setAssemblies(allAssemblies);
-      setAssemblyInventory(inv);
-      setWarehouseLocationId(data.warehouseLocationId || null);
-      setSetItems(items);
-      setCategories(catRes?.data || []);
-      setPriceMap(buildProductLocationPriceMap(locPrices || []));
-      hasCatalogRef.current = true;
+      await applyKitweCatalogSnapshot(data);
     } catch (err) {
       setError(err?.message || 'Failed to load Kitwe catalog');
     } finally {
       setLoading(false);
     }
-  }, [catalogData, catalogLoading]);
+  }, [applyKitweCatalogSnapshot, catalogData, catalogLoading]);
 
   const kitweRetailAssemblies = useMemo(() => {
     if (!assemblies.length) return [];
@@ -231,6 +251,11 @@ export default function KitweProductsPage() {
     [categories],
   );
 
+  const kitwePricingOpts = useMemo(
+    () => ({ comboPriceMap, combosByName }),
+    [comboPriceMap, combosByName],
+  );
+
   const componentOptions = useMemo(
     () => kitweProductAssemblyOptions(assemblies, assemblyInventory, setItems),
     [assemblies, assemblyInventory, setItems],
@@ -248,7 +273,9 @@ export default function KitweProductsPage() {
           || cat.toLowerCase().includes(q);
       })
       .map((a) => {
-        const pricing = resolveKitweAssemblyCatalogPricing(a, retailIndex, priceMap, KITWE_LOCATION_ID);
+        const pricing = resolveKitweAssemblyCatalogPricing(
+          a, retailIndex, priceMap, KITWE_LOCATION_ID, kitwePricingOpts,
+        );
         return {
           ...a,
           kitweQty: qtyByAssembly.get(String(a.id)) || 0,
@@ -258,7 +285,7 @@ export default function KitweProductsPage() {
         };
       })
       .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  }, [assemblies, assemblyInventory, setItems, qtyByAssembly, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap]);
+  }, [assemblies, assemblyInventory, setItems, qtyByAssembly, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap, kitwePricingOpts]);
 
   const setRows = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
@@ -272,7 +299,9 @@ export default function KitweProductsPage() {
           || cat.toLowerCase().includes(q);
       })
       .map((row) => {
-        const pricing = resolveKitweAssemblyCatalogPricing(row, retailIndex, priceMap, KITWE_LOCATION_ID);
+        const pricing = resolveKitweAssemblyCatalogPricing(
+          row, retailIndex, priceMap, KITWE_LOCATION_ID, kitwePricingOpts,
+        );
         return {
           ...row,
           categoryName: categoriesById.get(String(row.category_id || '')) || '—',
@@ -280,7 +309,7 @@ export default function KitweProductsPage() {
           promoPrice: pricing.promotional_price,
         };
       });
-  }, [assemblies, setItems, assemblyInventory, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap]);
+  }, [assemblies, setItems, assemblyInventory, debouncedSearch, categoryFilter, categoriesById, retailIndex, priceMap, kitwePricingOpts]);
 
   const catalogRows = useMemo(() => {
     const products = productRows.map((row) => ({ kind: 'product', ...row }));
@@ -445,7 +474,7 @@ export default function KitweProductsPage() {
       await saveKitweAssemblyLocationPrice(row, {
         price: getDraft(row, 'price'),
         promotionalPrice: getDraft(row, 'promotional_price'),
-      });
+      }, { catalogCombos });
       if (!isSet) {
         const qty = Math.max(0, Math.floor(Number(getStockDraft(row)) || 0));
         await setKitwePortalProductStock(row, qty);
@@ -461,7 +490,7 @@ export default function KitweProductsPage() {
         delete next[draftKey(row.id, 'promotional_price')];
         return next;
       });
-      await load();
+      await load({ freshCatalog: true });
     } catch (err) {
       setError(err?.message || 'Failed to save changes');
     } finally {
