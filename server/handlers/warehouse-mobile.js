@@ -3584,6 +3584,23 @@ async function processSetDeliveryGroup({
     }),
   });
 
+  const {
+    computeFloor1SetDeliveryStockPlan,
+    factoryComponentLeftoverFromMap,
+    loadFactoryAssemblyQtyMap,
+  } = await import('../lib/warehouseSetPartialDelivery.js');
+  const stockPlan = await computeFloor1SetDeliveryStockPlan(sb, {
+    setAssemblyId: setId,
+    units,
+    locationId: stockSourceLocationId,
+  });
+  const qtyMap = await loadFactoryAssemblyQtyMap(sb, stockSourceLocationId);
+  if (stockPlan.looseSetUnits === 0 && stockPlan.setOnHand < stockPlan.units) {
+    throw new Error(
+      `Insufficient assembled set stock for ${setAssembly.name} (need ${stockPlan.units}, have ${stockPlan.setOnHand} on Floor 1).`,
+    );
+  }
+
   for (const recipe of recipeComponents) {
     const comp = clientComponents.find((c) => String(c.assembly_id) === String(recipe.assembly_id));
     if (!comp || !setComponentIncludedInDelivery(comp)) {
@@ -3594,6 +3611,9 @@ async function processSetDeliveryGroup({
     if (!assembly) throw new Error(`Unknown product in set ${setAssembly.name}.`);
     const packetRows = byAssembly.get(assemblyId) || [];
     const productQty = recipe.product_qty;
+    const perSet = Math.max(1, Number(recipe.quantity_per_set) || 1);
+    const componentLooseUnits = stockPlan.looseSetUnits * perSet;
+    const skipSourceDeduct = stockPlan.looseSetUnits === 0;
 
     const scanned = new Map();
     (comp.scans || []).forEach((line) => {
@@ -3616,12 +3636,26 @@ async function processSetDeliveryGroup({
         throw new Error(validation.message || `Set product ${assembly.name} not confirmed`);
       }
       const shipment = deliveryShipmentUnits(assembly, packetRows, productQty);
-      await assertAssemblyStockAvailable(
-        sb,
-        assemblyId,
-        stockSourceLocationId,
-        shipment.finishedUnits,
-      );
+      if (!skipSourceDeduct) {
+        const leftover = factoryComponentLeftoverFromMap(
+          assemblyId,
+          qtyMap,
+          setItemsForRecipe,
+          stockSourceLocationId,
+        );
+        if (leftover < componentLooseUnits) {
+          throw new Error(
+            `Insufficient loose Floor 1 stock for ${assembly.name} (need ${componentLooseUnits}, have ${leftover} outside sets).`,
+          );
+        }
+        const deductShipment = deliveryShipmentUnits(assembly, packetRows, componentLooseUnits);
+        await assertAssemblyStockAvailable(
+          sb,
+          assemblyId,
+          stockSourceLocationId,
+          deductShipment.finishedUnits,
+        );
+      }
       totalCartons += shipment.finishedUnits;
       entries.push({
         id: newUuid(),
@@ -3638,6 +3672,15 @@ async function processSetDeliveryGroup({
           finished_unit: true,
           units: shipment.finishedUnits,
           stock_deduct_location_id: stockSourceLocationId,
+          ...(skipSourceDeduct
+            ? { skip_source_stock_deduct: true }
+            : {
+              stock_deduct_qty: deliveryShipmentUnits(
+                assembly,
+                packetRows,
+                componentLooseUnits,
+              ).finishedUnits,
+            }),
           ...deliveryEntryBoxMetadata(shipment),
         }),
       });
@@ -3651,6 +3694,9 @@ async function processSetDeliveryGroup({
 
     const shipment = deliveryShipmentUnits(assembly, packetRows, productQty);
     const truckMultiplier = shipment.unitsPerCarton ? shipment.truckBoxes : productQty;
+    const loosePacketFactor = stockPlan.units > 0
+      ? stockPlan.looseSetUnits / stockPlan.units
+      : 1;
 
     entries.push({
       id: newUuid(),
@@ -3665,28 +3711,34 @@ async function processSetDeliveryGroup({
         assembly_id: assemblyId,
         assembly_name: assembly.name,
         units: productQty,
+        ...(skipSourceDeduct ? { skip_source_stock_deduct: true } : {}),
       }),
     });
 
     for (const packet of packetRows) {
-      const moveQty = truckMultiplier * Math.max(1, Number(packet.qty_per_unit) || 1);
+      const fullMoveQty = truckMultiplier * Math.max(1, Number(packet.qty_per_unit) || 1);
       const scanLine = (comp.scans || []).find((s) => String(s.packet_id) === String(packet.id));
       const have = scanned.get(String(packet.id)) || 0;
-      if (have < moveQty) {
+      if (have < fullMoveQty) {
         throw new Error(`Check all cartons for ${setAssembly.name} → ${assembly.name}.`);
       }
       if (!scanLineDriverChecked(scanLine || {})) {
         throw new Error(`Driver must confirm every packet for ${setAssembly.name} → ${assembly.name}.`);
       }
-      await assertPacketStockAvailable(sb, packet.id, stockSourceLocationId, moveQty);
-      totalCartons += moveQty;
+      const stockDeductQty = skipSourceDeduct
+        ? 0
+        : Math.max(0, Math.ceil(fullMoveQty * loosePacketFactor));
+      if (!skipSourceDeduct) {
+        await assertPacketStockAvailable(sb, packet.id, stockSourceLocationId, stockDeductQty);
+      }
+      totalCartons += fullMoveQty;
       entries.push({
         id: newUuid(),
         session_id: sessionId,
         kind: 'packet',
         name: packet.name,
         sku: packet.sku,
-        quantity: moveQty,
+        quantity: fullMoveQty,
         metadata: stripUndefinedMetadata({
           delivery_set_group_id: groupId,
           set_assembly_id: setId,
@@ -3696,6 +3748,9 @@ async function processSetDeliveryGroup({
           packet_number: packet.packet_number,
           units: shipment.finishedUnits,
           stock_deduct_location_id: stockSourceLocationId,
+          ...(skipSourceDeduct
+            ? { skip_source_stock_deduct: true }
+            : { stock_deduct_qty: stockDeductQty }),
           ...deliveryEntryBoxMetadata(shipment),
           driver_checked_at: scanLine?.driver_checked_at || now,
           receiver_checked_at: null,

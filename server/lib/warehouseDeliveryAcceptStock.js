@@ -60,7 +60,19 @@ export async function deductSourceStockOnDeliverySubmit(sb, entries, {
     const meta = { ...(line.metadata || {}) };
     if (deliverySourceStockDeducted(line)) continue;
 
-    const qty = Math.max(0, Number(line.quantity) || 0);
+    if (meta.skip_source_stock_deduct === true) {
+      line.metadata = {
+        ...meta,
+        source_stock_deducted_at: now,
+        source_stock_deduct_skipped: true,
+      };
+      continue;
+    }
+
+    const qty = Math.max(
+      0,
+      Number(meta.stock_deduct_qty ?? line.quantity) || 0,
+    );
     if (qty < 1) continue;
 
     if (meta.admin_queue_delivery === true) {

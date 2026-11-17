@@ -7,6 +7,12 @@ import {
   isPartialSetDeliveryGroup,
   setComponentIncludedInDelivery,
 } from '../../src/utils/warehouseSetPartialDelivery.js';
+import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../src/constants/warehouseShowroomLocations.js';
+import {
+  computeSetComponentUnitsReserved,
+  computeWarehouseComponentLeftoverQty,
+  computeWarehouseFactorySetBuildableQty,
+} from '../../src/utils/warehouseSetMath.js';
 import { adjustAssemblyStock, getAssemblyStockQty } from './warehouseReturnStock.js';
 import { adjustPacketStock } from './warehouseDeliveryStock.js';
 import { recomputeWarehouseLocationStockServer, recomputeWarehouseStockForPacketTouch } from './warehouseLocationStockRecompute.js';
@@ -73,6 +79,53 @@ async function creditComponentUnitsOnFloor1(sb, {
   await adjustAssemblyStock(sb, assembly.id, loc, add);
 }
 
+export async function loadFactoryAssemblyQtyMap(sb, locationId) {
+  const loc = String(locationId || WAREHOUSE_FROM_LOCATION_ID);
+  const { data, error } = await sb
+    .from('warehouse_assembly_inventory')
+    .select('assembly_id, quantity')
+    .eq('location_id', loc);
+  if (error) throw new Error(error.message || 'Failed to load assembly stock');
+  const map = new Map();
+  (data || []).forEach((row) => {
+    map.set(String(row.assembly_id), Math.max(0, Number(row.quantity) || 0));
+  });
+  return map;
+}
+
+export function factoryComponentLeftoverFromMap(componentId, qtyMap, setItems, locationId) {
+  const loc = String(locationId || WAREHOUSE_FACTORY_LOCATION_ID);
+  const resolveBuildable = (setId) => computeWarehouseFactorySetBuildableQty(
+    setId,
+    setItems,
+    (cid) => qtyMap.get(String(cid)) ?? 0,
+  );
+  const reserved = computeSetComponentUnitsReserved(setItems, resolveBuildable, { locationId: loc });
+  const onHand = qtyMap.get(String(componentId)) ?? 0;
+  return computeWarehouseComponentLeftoverQty(onHand, reserved.get(String(componentId)) ?? 0);
+}
+
+/** Split set shipment: assembled rows on Floor 1 vs loose components (buildable sets). */
+export async function computeFloor1SetDeliveryStockPlan(sb, {
+  setAssemblyId,
+  units,
+  locationId = WAREHOUSE_FROM_LOCATION_ID,
+}) {
+  const setId = String(setAssemblyId || '').trim();
+  const u = Math.max(1, Math.floor(Number(units) || 1));
+  const loc = String(locationId || WAREHOUSE_FROM_LOCATION_ID);
+  const setOnHand = await getAssemblyStockQty(sb, setId, loc);
+  const assembledUnits = Math.min(u, setOnHand);
+  const looseSetUnits = u - assembledUnits;
+  return {
+    locationId: loc,
+    units: u,
+    setOnHand,
+    assembledUnits,
+    looseSetUnits,
+  };
+}
+
 /**
  * After a Floor 1 set shipment: reduce set qty; credit excluded components when partial.
  */
@@ -91,7 +144,11 @@ export async function applyFloor1SetDeliveryDismantle(sb, {
     || group?.partial_set_delivery === true;
   const excluded = excludedSetComponentsForGroup(group);
 
-  await adjustAssemblyStock(sb, setId, locationId, -units);
+  const setOnHand = await getAssemblyStockQty(sb, setId, locationId);
+  const deductSetUnits = Math.min(units, setOnHand);
+  if (deductSetUnits > 0) {
+    await adjustAssemblyStock(sb, setId, locationId, -deductSetUnits);
+  }
 
   if (partial && excluded.length) {
     for (const row of excluded) {
@@ -112,7 +169,7 @@ export async function applyFloor1SetDeliveryDismantle(sb, {
 
   return {
     set_assembly_id: setId,
-    units_deducted: units,
+    units_deducted: deductSetUnits,
     partial,
     credited_components: excluded.map((r) => r.assembly_id),
     dismantled_at: now,
