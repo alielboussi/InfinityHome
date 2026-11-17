@@ -288,10 +288,8 @@ export default function KitweProductsPage() {
     return [...products, ...sets].sort((a, b) => String(a.name).localeCompare(String(b.name)));
   }, [productRows, setRows]);
 
-  const rowBulkKey = kitweCatalogRowBulkKey;
-
   const allBulkKeys = useMemo(
-    () => catalogRows.map((row) => rowBulkKey(row)),
+    () => catalogRows.map((row) => kitweCatalogRowBulkKey(row)),
     [catalogRows],
   );
 
@@ -311,7 +309,7 @@ export default function KitweProductsPage() {
       ? Math.max(1, Number(row.kitweBuildableQty) || 1)
       : Math.max(1, Number(row.kitweQty) || 1);
     return {
-      key: rowBulkKey(row),
+      key: kitweCatalogRowBulkKey(row),
       kind: row.kind,
       name: row.name,
       sku: row.family_sku,
@@ -323,7 +321,7 @@ export default function KitweProductsPage() {
 
   const bulkLabelDialogRows = useMemo(() => (
     catalogRows
-      .filter((row) => bulkSelected.has(rowBulkKey(row)))
+      .filter((row) => bulkSelected.has(kitweCatalogRowBulkKey(row)))
       .map((row) => catalogRowToLabelDialogRow(row))
   ), [catalogRows, bulkSelected, catalogRowToLabelDialogRow]);
 
@@ -334,7 +332,7 @@ export default function KitweProductsPage() {
   };
 
   const handleBulkToggle = (row, checked) => {
-    const key = rowBulkKey(row);
+    const key = kitweCatalogRowBulkKey(row);
     setBulkSelected((prev) => {
       const next = new Set(prev);
       if (checked) next.add(key);
@@ -348,7 +346,7 @@ export default function KitweProductsPage() {
     const items = [];
     let addedOrder = 1;
     for (const job of jobs) {
-      const catalogRow = catalogRows.find((r) => rowBulkKey(r) === String(job.key));
+      const catalogRow = catalogRows.find((r) => kitweCatalogRowBulkKey(r) === String(job.key));
       let productId = String(job.retailProductId || '').trim();
       if (!productId && catalogRow) {
         const retail = await ensureRetailProductForKitweAssembly(catalogRow);
@@ -576,7 +574,7 @@ export default function KitweProductsPage() {
     const components = isSet ? (row.components || []) : [];
     const isOpen = isSet && expandedSetIds.has(String(row.id));
     const canExpandSet = isSet && components.length > 0;
-    const bulkKey = rowBulkKey(row);
+    const bulkKey = kitweCatalogRowBulkKey(row);
 
     return (
       <React.Fragment key={bulkKey}>
