@@ -83,6 +83,7 @@ export async function fetchKitweWarehousePosCatalog(locationId, options = {}) {
           name: comp?.name || '',
           sku: comp?.family_sku || '',
           retail_product_id: retail?.id || comp?.retail_product_id || null,
+          stock: qtyByAssembly.get(String(row.component_assembly_id)) ?? 0,
         };
       });
     sets.push(applyKitweAssemblyPosPricing({

@@ -257,3 +257,112 @@ body.enterprise-theme .pos-container .payments-actions-row .checkout-btn:not(:di
   height: 42px !important;
   font-size: var(--portal-btn-font-size, 12px) !important;
 }
+
+.pos-cart-action-col {
+  min-width: 220px;
+  width: 100%;
+}
+
+.pos-cart-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.pos-cart-action-grid button {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .pos-cart-action-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pos-kitwe-set-components {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pos-kitwe-set-component-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 148px 120px;
+  gap: 10px 12px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  line-height: 1.4;
+}
+
+.pos-kitwe-set-component-row:last-child {
+  border-bottom: none;
+}
+
+.pos-kitwe-set-component-row__label {
+  min-width: 0;
+  font-weight: 600;
+}
+
+.pos-kitwe-set-component-row__meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.pos-kitwe-set-component-row__qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.pos-kitwe-set-component-row__qty-label {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.pos-kitwe-set-component-row__qty-input {
+  width: 52px;
+  min-height: 28px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: inherit;
+  text-align: center;
+  font: inherit;
+}
+
+.pos-kitwe-set-component-row__max {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.pos-kitwe-set-component-row__return {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .pos-kitwe-set-component-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .pos-kitwe-set-component-row__qty {
+    justify-content: flex-start;
+  }
+
+  .pos-kitwe-set-component-row__return {
+    text-align: left;
+  }
+}

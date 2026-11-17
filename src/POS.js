@@ -44,7 +44,10 @@ import { filterProductsListCatalogProducts } from './utils/productsListKitweExcl
 import {
   buildKitweSetSaleMoves,
   initKitweSetCartComponents,
-  setKitweSetComponentIncluded,
+  kitweComponentMaxUnits,
+  rescaleKitweSetComponentsForQty,
+  resolveKitweComponentSellUnits,
+  setKitweSetComponentSellUnits,
   validateKitweSetCartLine,
 } from './utils/posKitweSetCart';
 import {
@@ -808,8 +811,8 @@ export default function POS({ isMobile = false }) {
         color: '',
       };
       if (item.kitweWarehouseSet) {
-        line.kitweSetComponents = initKitweSetCartComponents(item);
-        line.showComponents = true;
+        line.kitweSetComponents = initKitweSetCartComponents(item, line.qty);
+        line.showComponents = false;
       }
       return [...prev, line];
     });
@@ -856,18 +859,29 @@ export default function POS({ isMobile = false }) {
 
   // Update cart item
   const updateCartItem = (idx, changes) => {
-    setCart(prev => prev.map((item, i) => (i === idx ? { ...item, ...changes } : item)));
+    setCart((prev) => prev.map((item, i) => {
+      if (i !== idx) return item;
+      const next = { ...item, ...changes };
+      if (next.kitweWarehouseSet && changes.qty !== undefined) {
+        next.kitweSetComponents = rescaleKitweSetComponentsForQty(
+          next.kitweSetComponents,
+          next.qty,
+        );
+      }
+      return next;
+    }));
   };
 
-  const toggleKitweCartComponent = (cartIdx, componentAssemblyId, included) => {
+  const setKitweCartComponentQty = (cartIdx, componentAssemblyId, sellUnits) => {
     setCart((prev) => prev.map((item, i) => {
       if (i !== cartIdx) return item;
       return {
         ...item,
-        kitweSetComponents: setKitweSetComponentIncluded(
+        kitweSetComponents: setKitweSetComponentSellUnits(
           item.kitweSetComponents,
           componentAssemblyId,
-          included,
+          sellUnits,
+          item.qty,
         ),
       };
     }));
@@ -1579,8 +1593,8 @@ export default function POS({ isMobile = false }) {
         });
         const setQty = Math.max(1, Number(item.qty) || 1);
         for (const c of item.kitweSetComponents || []) {
-          if (!c.included) continue;
-          const compQty = Math.max(1, Number(c.per_set) || 1) * setQty;
+          const compQty = resolveKitweComponentSellUnits(c, setQty);
+          if (compQty <= 0) continue;
           saleItems.push({
             sale_id: saleId,
             product_id: isUuid(c.retail_product_id) ? c.retail_product_id : null,
@@ -2590,8 +2604,8 @@ export default function POS({ isMobile = false }) {
                 />
               </td>
               <td className="num-col" style={{ padding: 4 }}>{Number(item.price).toFixed(2)}</td>
-              <td className="action-col" style={{ padding: 4, minWidth: '220px', width: '100%' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(50mm, 1fr))', gap: 8, alignItems: 'center', width: '100%' }}>
+              <td className="action-col pos-cart-action-col" style={{ padding: 4 }}>
+                <div className="pos-cart-action-grid">
                   <button
                     onClick={() => removeCartItem(idx)}
                     style={{ fontSize: '0.95rem', padding: '6px 10px', height: 32, borderRadius: 6, fontWeight: 600, width: '50mm', maxWidth: '100%' }}
@@ -2607,10 +2621,14 @@ export default function POS({ isMobile = false }) {
                   </button>
                   {item.isSet && (
                     <button
+                      type="button"
+                      className={item.kitweWarehouseSet ? 'pos-kitwe-components-btn' : ''}
                       onClick={() => updateCartItem(idx, { showComponents: !item.showComponents })}
                       style={{ fontSize: '0.95rem', padding: '6px 10px', height: 32, borderRadius: 6, fontWeight: 600 }}
                     >
-                      {item.showComponents ? 'Hide' : 'Components'}
+                      {item.kitweWarehouseSet
+                        ? (item.showComponents ? 'Hide components' : 'Set components')
+                        : (item.showComponents ? 'Hide' : 'Components')}
                     </button>
                   )}
                 </div>
@@ -2621,38 +2639,46 @@ export default function POS({ isMobile = false }) {
                 <td colSpan={6} style={{ background: '#0a0a0a', color: '#cfe8ff', padding: '6px 8px', borderTop: '1px solid #0d2230' }}>
                   <div style={{ fontSize: '0.9em', marginBottom: 4 }}>
                     {item.kitweWarehouseSet
-                      ? 'Kitwe set components — remove lines you are not selling (stock returns to that product SKU):'
+                      ? 'Kitwe set components — lower Sell qty to leave units on stock (per SKU):'
                       : 'Component breakdown (deducted from inventory):'}
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: 18, listStyle: 'none' }}>
+                  <ul className="pos-kitwe-set-components">
                     {item.kitweWarehouseSet ? (
                       (item.kitweSetComponents || []).map((ci) => {
                         const perSet = Number(ci.per_set || 0);
-                        const total = perSet * Number(item.qty || 0);
+                        const setQty = Math.max(1, Number(item.qty) || 1);
+                        const maxUnits = kitweComponentMaxUnits(perSet, setQty);
+                        const sellUnits = resolveKitweComponentSellUnits(ci, setQty);
+                        const returned = maxUnits - sellUnits;
                         const label = ci.name ? `${ci.name}${ci.sku ? ` (${ci.sku})` : ''}` : ci.component_assembly_id;
                         return (
-                          <li key={ci.component_assembly_id} style={{ lineHeight: 1.6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ textDecoration: ci.included ? 'none' : 'line-through', opacity: ci.included ? 1 : 0.65 }}>
-                              {label}: {perSet} per set × {Number(item.qty)} = <b>{total}</b>
-                              {!ci.included ? ' (returned to stock)' : ''}
+                          <li key={ci.component_assembly_id} className="pos-kitwe-set-component-row">
+                            <span className="pos-kitwe-set-component-row__label">
+                              {label}
+                              <span className="pos-kitwe-set-component-row__meta">
+                                {perSet} per set × {setQty}
+                              </span>
                             </span>
-                            {ci.included ? (
-                              <button
-                                type="button"
-                                onClick={() => toggleKitweCartComponent(idx, ci.component_assembly_id, false)}
-                                style={{ fontSize: '0.85rem', padding: '2px 8px', borderRadius: 4 }}
-                              >
-                                Remove from sale
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => toggleKitweCartComponent(idx, ci.component_assembly_id, true)}
-                                style={{ fontSize: '0.85rem', padding: '2px 8px', borderRadius: 4 }}
-                              >
-                                Include again
-                              </button>
-                            )}
+                            <div className="pos-kitwe-set-component-row__qty">
+                              <label className="pos-kitwe-set-component-row__qty-label">Sell</label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={maxUnits}
+                                step={1}
+                                className="pos-kitwe-set-component-row__qty-input"
+                                value={sellUnits}
+                                onChange={(e) => setKitweCartComponentQty(
+                                  idx,
+                                  ci.component_assembly_id,
+                                  e.target.value,
+                                )}
+                              />
+                              <span className="pos-kitwe-set-component-row__max">/ {maxUnits}</span>
+                            </div>
+                            <span className="pos-kitwe-set-component-row__return">
+                              {returned > 0 ? `${returned} back to stock` : ' '}
+                            </span>
                           </li>
                         );
                       })

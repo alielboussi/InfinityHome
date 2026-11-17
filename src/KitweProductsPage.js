@@ -3,8 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import BackToDashboard from './BackToDashboard';
 import db from './dataClient';
 import './kitwe-catalog-page.css';
-import { fetchWarehouseCatalog, saveWarehouseAssembly, WAREHOUSE_INVENTORY_MODE } from './services/warehouseCatalog';
-import { useWarehouseCatalogQuery } from './hooks/useWarehouseCatalogQuery';
+import {
+  fetchWarehouseCatalog,
+  invalidateWarehouseCatalogCache,
+  saveWarehouseAssembly,
+  WAREHOUSE_INVENTORY_MODE,
+} from './services/warehouseCatalog';
+import { useWarehouseCatalogQuery, WAREHOUSE_CATALOG_QUERY_KEY } from './hooks/useWarehouseCatalogQuery';
+import { useQueryClient } from '@tanstack/react-query';
 import { KITWE_LOCATION_ID } from './constants/warehouseShowroomLocations';
 import {
   fetchComboLocationPricesForLocation,
@@ -18,6 +24,7 @@ import {
   resolveKitweAssemblyCatalogPricing,
   resolveRetailProductForAssembly,
   saveKitweAssemblyLocationPrice,
+  saveKitwePortalCatalogName,
 } from './utils/kitweAssemblyRetailPricing';
 import KitweCatalogBulkLabelDialog from './components/KitweCatalogBulkLabelDialog';
 import PriceLabelA4BatchHost from './components/PriceLabelA4BatchHost';
@@ -35,6 +42,7 @@ import {
   createKitwePortalProduct,
   markKitwePortalSet,
   removeFromKitweProductsCatalog,
+  saveKitwePortalSetRecipeQuantities,
   setKitwePortalProductStock,
 } from './utils/kitweProductPortal';
 import { isKitweCatalogSetAssembly } from './utils/kitweSetStock';
@@ -67,6 +75,7 @@ export default function KitweProductsPage() {
   const debouncedSearch = useDebouncedValue(search, 160);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [priceDraft, setPriceDraft] = useState({});
+  const [setRecipeDraft, setSetRecipeDraft] = useState({});
   const [savingId, setSavingId] = useState('');
   const [deleteBusyId, setDeleteBusyId] = useState('');
 
@@ -83,6 +92,7 @@ export default function KitweProductsPage() {
   const [productKitweQty, setProductKitweQty] = useState('0');
   const [productSaving, setProductSaving] = useState(false);
   const [stockDraft, setStockDraft] = useState({});
+  const [nameDraft, setNameDraft] = useState({});
   const [expandedSetIds, setExpandedSetIds] = useState(() => new Set());
   const [bulkSelected, setBulkSelected] = useState(() => new Set());
   const [bulkLabelDialogOpen, setBulkLabelDialogOpen] = useState(false);
@@ -96,6 +106,7 @@ export default function KitweProductsPage() {
   const [hassanInboundLoading, setHassanInboundLoading] = useState(true);
   const hasCatalogRef = useRef(false);
   const retailLoadSeqRef = useRef(0);
+  const queryClient = useQueryClient();
   const { data: catalogData, error: catalogError, isLoading: catalogLoading } = useWarehouseCatalogQuery();
 
   const applyKitweCatalogSnapshot = useCallback(async (data) => {
@@ -141,6 +152,12 @@ export default function KitweProductsPage() {
       setLoading(false);
     }
   }, [applyKitweCatalogSnapshot, catalogData, catalogLoading]);
+
+  const refreshKitweCatalog = useCallback(async () => {
+    invalidateWarehouseCatalogCache();
+    await queryClient.invalidateQueries({ queryKey: WAREHOUSE_CATALOG_QUERY_KEY });
+    await load({ freshCatalog: true });
+  }, [load, queryClient]);
 
   const kitweRetailAssemblies = useMemo(() => {
     if (!assemblies.length) return [];
@@ -428,6 +445,14 @@ export default function KitweProductsPage() {
 
   const draftKey = (assemblyId, field) => `${assemblyId}:${field}`;
 
+  const setComponentRecipeKey = (setId, componentId) => `${setId}:${componentId}`;
+
+  const getSetComponentQtyDraft = (setRow, component) => {
+    const key = setComponentRecipeKey(setRow.id, component.component_assembly_id);
+    if (setRecipeDraft[key] !== undefined) return setRecipeDraft[key];
+    return Math.max(1, Number(component.per_set) || 1);
+  };
+
   const getDraft = (row, field) => {
     const key = draftKey(row.id, field);
     if (priceDraft[key] !== undefined) return priceDraft[key];
@@ -440,6 +465,12 @@ export default function KitweProductsPage() {
     const key = draftKey(row.id, 'stock');
     if (stockDraft[key] !== undefined) return stockDraft[key];
     return row.kitweQty ?? 0;
+  };
+
+  const getNameDraft = (row) => {
+    const key = draftKey(row.id, 'name');
+    if (nameDraft[key] !== undefined) return nameDraft[key];
+    return row.name ?? '';
   };
 
   const handleCreateProduct = async (e) => {
@@ -459,7 +490,7 @@ export default function KitweProductsPage() {
       setProductCategoryId('');
       setProductKitweQty('0');
       setShowCreateProduct(false);
-      await load();
+      await refreshKitweCatalog();
     } catch (err) {
       setError(err?.message || 'Failed to create product');
     } finally {
@@ -471,10 +502,33 @@ export default function KitweProductsPage() {
     setSavingId(row.id);
     setError('');
     try {
-      await saveKitweAssemblyLocationPrice(row, {
+      const trimmedName = String(getNameDraft(row)).trim();
+      if (!trimmedName) throw new Error('Product name is required.');
+      const rowForSave = { ...row, name: trimmedName };
+      if (trimmedName !== String(row.name || '').trim()) {
+        await saveKitwePortalCatalogName(row, trimmedName, { catalogCombos });
+      }
+      await saveKitweAssemblyLocationPrice(rowForSave, {
         price: getDraft(row, 'price'),
         promotionalPrice: getDraft(row, 'promotional_price'),
       }, { catalogCombos });
+      if (isSet && row.components?.length) {
+        await saveKitwePortalSetRecipeQuantities(
+          row.id,
+          row.components.map((c) => ({
+            component_assembly_id: c.component_assembly_id,
+            quantity: getSetComponentQtyDraft(row, c),
+          })),
+        );
+        setSetRecipeDraft((d) => {
+          const next = { ...d };
+          row.components.forEach((c) => {
+            delete next[setComponentRecipeKey(row.id, c.component_assembly_id)];
+          });
+          return next;
+        });
+        await recomputeWarehouseLocationStock(KITWE_LOCATION_ID);
+      }
       if (!isSet) {
         const qty = Math.max(0, Math.floor(Number(getStockDraft(row)) || 0));
         await setKitwePortalProductStock(row, qty);
@@ -490,7 +544,12 @@ export default function KitweProductsPage() {
         delete next[draftKey(row.id, 'promotional_price')];
         return next;
       });
-      await load({ freshCatalog: true });
+      setNameDraft((d) => {
+        const next = { ...d };
+        delete next[draftKey(row.id, 'name')];
+        return next;
+      });
+      await refreshKitweCatalog();
     } catch (err) {
       setError(err?.message || 'Failed to save changes');
     } finally {
@@ -505,7 +564,7 @@ export default function KitweProductsPage() {
         category_id: categoryId || null,
         updated_at: new Date().toISOString(),
       }).eq('id', assemblyId);
-      await load();
+      await refreshKitweCatalog();
     } catch (err) {
       setError(err?.message || 'Failed to update category');
     }
@@ -534,7 +593,7 @@ export default function KitweProductsPage() {
         next.delete(String(row.id));
         return next;
       });
-      await load();
+      await refreshKitweCatalog();
     } catch (err) {
       setError(err?.message || 'Delete failed');
     } finally {
@@ -589,7 +648,7 @@ export default function KitweProductsPage() {
       setSetSku(generateRandomWarehouseSku16());
       setSetLines([emptyLine()]);
       closeCreateSet();
-      await load();
+      await refreshKitweCatalog();
     } catch (err) {
       setError(err?.message || 'Failed to save set');
     } finally {
@@ -633,10 +692,18 @@ export default function KitweProductsPage() {
                     <span className="kitwe-expand-btn__icon" aria-hidden />
                   </button>
                 ) : null}
-                <strong className="kitwe-product-cell__name">
-                  {row.name}
-                  {isSet ? <span className="kitwe-product-cell__badge">Set</span> : null}
-                </strong>
+                <input
+                  type="text"
+                  className="kitwe-cell-input kitwe-cell-input--name kitwe-product-cell__name"
+                  value={getNameDraft(row)}
+                  disabled={savingId === row.id}
+                  aria-label={isSet ? 'Set name' : 'Product name'}
+                  onChange={(e) => setNameDraft((d) => ({
+                    ...d,
+                    [draftKey(row.id, 'name')]: e.target.value,
+                  }))}
+                />
+                {isSet ? <span className="kitwe-product-cell__badge">Set</span> : null}
               </div>
               {isSet ? (
                 <button
@@ -736,10 +803,28 @@ export default function KitweProductsPage() {
             <td colSpan={8}>
               <div className="kitwe-set-panel">
                 <div className="kitwe-set-panel__title">Products in this set</div>
+                <p className="kitwe-set-panel__hint">
+                  Edit qty per set, then click Save on the set row.
+                </p>
                 <ul className="kitwe-set-panel__list">
                   {components.map((c) => (
                     <li key={c.component_assembly_id}>
-                      <span className="kitwe-set-panel__qty">{c.per_set}×</span>
+                      <label className="kitwe-set-panel__qty-field">
+                        <span className="kitwe-set-panel__qty-label">Per set</span>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          className="kitwe-cell-input kitwe-set-panel__qty-input"
+                          value={getSetComponentQtyDraft(row, c)}
+                          disabled={savingId === row.id}
+                          onChange={(e) => setSetRecipeDraft((d) => ({
+                            ...d,
+                            [setComponentRecipeKey(row.id, c.component_assembly_id)]: e.target.value,
+                          }))}
+                        />
+                        <span className="kitwe-set-panel__qty-suffix">×</span>
+                      </label>
                       <button
                         type="button"
                         className="kitwe-set-component-link"

@@ -278,6 +278,46 @@ export async function saveKitweAssemblyLocationPrice(
   return retail;
 }
 
+/** Rename Kitwe portal row — warehouse assembly, linked retail product, and name-matched combo. */
+export async function saveKitwePortalCatalogName(assembly, name, { catalogCombos } = {}) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw new Error('Product name is required.');
+  if (!assembly?.id) throw new Error('Product not found.');
+
+  let combos = catalogCombos;
+  if (!combos) {
+    const { data } = await db.from('combos').select(
+      'id, combo_name, sku, combo_price, standard_price, promotional_price',
+    );
+    combos = data || [];
+  }
+  const combo = findRetailComboForAssembly(assembly, combos);
+  const now = new Date().toISOString();
+
+  const { error: asmErr } = await db.from('warehouse_assemblies').update({
+    name: trimmed,
+    updated_at: now,
+  }).eq('id', assembly.id);
+  if (asmErr) throw new Error(asmErr.message || 'Failed to save name');
+
+  const retail = await ensureRetailProductForKitweAssembly({ ...assembly, name: trimmed });
+  if (retail?.id) {
+    const { error: prodErr } = await db.from('products').update({
+      name: trimmed,
+      updated_at: now,
+    }).eq('id', retail.id);
+    if (prodErr) throw new Error(prodErr.message || 'Failed to update product name');
+  }
+
+  if (combo?.id) {
+    const { error: comboErr } = await db.from('combos').update({
+      combo_name: trimmed,
+      updated_at: now,
+    }).eq('id', combo.id);
+    if (comboErr) throw new Error(comboErr.message || 'Failed to update combo name');
+  }
+}
+
 export function filterKitweSellableAssemblies(assemblies) {
   return (assemblies || []).filter((a) => !isWarehouseSetAssembly(a));
 }

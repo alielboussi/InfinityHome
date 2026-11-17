@@ -197,3 +197,28 @@ export async function createKitwePortalProduct({
   const { data: fresh } = await db.from('warehouse_assemblies').select('*').eq('id', assembly.id).maybeSingle();
   return fresh || assembly;
 }
+
+/** Update per-set component qty on Kitwe recipe (warehouse_set_items at Kitwe). */
+export async function saveKitwePortalSetRecipeQuantities(setAssemblyId, lines = []) {
+  const setId = String(setAssemblyId || '').trim();
+  if (!setId) throw new Error('Set not found.');
+  const now = new Date().toISOString();
+  const rows = (lines || [])
+    .map((line) => {
+      const componentId = String(line?.component_assembly_id || '').trim();
+      if (!componentId) return null;
+      return {
+        location_id: KITWE_LOCATION_ID,
+        set_assembly_id: setId,
+        component_assembly_id: componentId,
+        quantity: Math.max(1, Math.floor(Number(line?.quantity) || 1)),
+        updated_at: now,
+      };
+    })
+    .filter(Boolean);
+  if (!rows.length) throw new Error('Set has no components to save.');
+  const { error } = await db.from('warehouse_set_items').upsert(rows, {
+    onConflict: 'location_id,set_assembly_id,component_assembly_id',
+  });
+  if (error) throw new Error(error.message || 'Failed to save set recipe quantities');
+}

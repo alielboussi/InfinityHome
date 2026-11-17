@@ -475,6 +475,11 @@
   word-break: break-word;
 }
 
+.kitwe-cell-input--name {
+  font-weight: 700;
+  line-height: 1.3;
+}
+
 .kitwe-expand-btn--inline {
   flex-shrink: 0;
 }
@@ -585,9 +590,35 @@ body.enterprise-theme .kitwe-catalog-page button.kitwe-set-component-link:hover 
   padding: 3px 0;
 }
 
-.kitwe-set-panel__qty {
+.kitwe-set-panel__hint {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--kitwe-muted, #64748b);
+}
+
+.kitwe-set-panel__qty-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.kitwe-set-panel__qty-label {
+  font-size: 0.75rem;
   font-weight: 600;
-  min-width: 2rem;
+  color: var(--kitwe-muted, #64748b);
+}
+
+.kitwe-set-panel__qty-input {
+  width: 52px;
+  min-height: 28px;
+  text-align: center;
+  padding: 2px 4px;
+}
+
+.kitwe-set-panel__qty-suffix {
+  font-weight: 600;
+  min-width: 1rem;
 }
 
 .kitwe-set-panel__stock {

@@ -1,28 +1,78 @@
 /**
- * Kitwe warehouse sets in POS: sell full set or drop components (return stock to loose SKUs).
+ * Kitwe warehouse sets in POS: sell full set or drop partial component qty (return stock to loose SKUs).
  */
 
-export function initKitweSetCartComponents(setProduct) {
-  const list = setProduct?.kitweComponents || [];
-  return list.map((c) => ({
-    component_assembly_id: c.component_assembly_id,
-    per_set: Math.max(1, Number(c.per_set) || 1),
-    name: c.name || '',
-    sku: c.sku || '',
-    retail_product_id: c.retail_product_id || null,
-    included: true,
-  }));
+export function kitweComponentMaxUnits(perSet, setQty) {
+  return Math.max(
+    0,
+    Math.floor(Number(perSet) || 1) * Math.max(1, Math.floor(Number(setQty) || 1)),
+  );
 }
 
-export function setKitweSetComponentIncluded(components, componentAssemblyId, included) {
+export function resolveKitweComponentSellUnits(component, setQty) {
+  const max = kitweComponentMaxUnits(component?.per_set, setQty);
+  if (component?.sellUnits != null && component?.sellUnits !== '') {
+    return Math.min(max, Math.max(0, Math.floor(Number(component.sellUnits) || 0)));
+  }
+  if (component?.included === false) return 0;
+  return max;
+}
+
+export function initKitweSetCartComponents(setProduct, setQty = 1) {
+  const list = setProduct?.kitweComponents || [];
+  const sq = Math.max(1, Math.floor(Number(setQty) || 1));
+  return list.map((c) => {
+    const perSet = Math.max(1, Number(c.per_set) || 1);
+    const sellUnits = kitweComponentMaxUnits(perSet, sq);
+    return {
+      component_assembly_id: c.component_assembly_id,
+      per_set: perSet,
+      name: c.name || '',
+      sku: c.sku || '',
+      retail_product_id: c.retail_product_id || null,
+      stock: Math.max(0, Number(c.stock) || 0),
+      sellUnits,
+      included: sellUnits > 0,
+    };
+  });
+}
+
+export function rescaleKitweSetComponentsForQty(components, setQty) {
+  const sq = Math.max(1, Math.floor(Number(setQty) || 1));
+  return (components || []).map((c) => {
+    const max = kitweComponentMaxUnits(c.per_set, sq);
+    const prevSell = resolveKitweComponentSellUnits(c, sq);
+    const sellUnits = Math.min(max, prevSell);
+    return { ...c, sellUnits, included: sellUnits > 0 };
+  });
+}
+
+export function setKitweSetComponentSellUnits(components, componentAssemblyId, sellUnits, setQty) {
   const id = String(componentAssemblyId || '');
-  return (components || []).map((c) => (
-    String(c.component_assembly_id) === id ? { ...c, included: Boolean(included) } : c
-  ));
+  const sq = Math.max(1, Math.floor(Number(setQty) || 1));
+  return (components || []).map((c) => {
+    if (String(c.component_assembly_id) !== id) return c;
+    const max = kitweComponentMaxUnits(c.per_set, sq);
+    const sell = Math.min(max, Math.max(0, Math.floor(Number(sellUnits) || 0)));
+    return { ...c, sellUnits: sell, included: sell > 0 };
+  });
+}
+
+/** @deprecated use setKitweSetComponentSellUnits(sellUnits 0|max) */
+export function setKitweSetComponentIncluded(components, componentAssemblyId, included) {
+  const row = (components || []).find(
+    (c) => String(c.component_assembly_id) === String(componentAssemblyId),
+  );
+  const max = kitweComponentMaxUnits(row?.per_set, 1);
+  const sellUnits = included ? max : 0;
+  return setKitweSetComponentSellUnits(components, componentAssemblyId, sellUnits, 1);
 }
 
 export function kitweSetHasIncludedComponents(cartLine) {
-  return (cartLine?.kitweSetComponents || []).some((c) => c.included);
+  const setQty = Math.max(1, Number(cartLine?.qty) || 1);
+  return (cartLine?.kitweSetComponents || []).some(
+    (c) => resolveKitweComponentSellUnits(c, setQty) > 0,
+  );
 }
 
 export function buildKitweSetSaleMoves(cartLine) {
@@ -31,14 +81,25 @@ export function buildKitweSetSaleMoves(cartLine) {
   for (const c of cartLine?.kitweSetComponents || []) {
     const aid = String(c?.component_assembly_id || '').trim();
     if (!aid) continue;
-    const units = Math.max(1, Number(c.per_set) || 1) * setQty;
-    if (c.included) {
-      moves.push({ assembly_id: aid, quantity: units, kind: 'product' });
-    } else {
-      moves.push({ assembly_id: aid, quantity: units, kind: 'restock' });
+    const max = kitweComponentMaxUnits(c.per_set, setQty);
+    const sell = resolveKitweComponentSellUnits(c, setQty);
+    if (sell > 0) {
+      moves.push({ assembly_id: aid, quantity: sell, kind: 'product' });
+    }
+    const restock = max - sell;
+    if (restock > 0) {
+      moves.push({ assembly_id: aid, quantity: restock, kind: 'restock' });
     }
   }
   return moves;
+}
+
+export function resolveKitweComponentAvailableStock(component, products) {
+  const onLine = component?.stock;
+  if (onLine != null && onLine !== '' && Number.isFinite(Number(onLine))) {
+    return Math.max(0, Math.floor(Number(onLine)));
+  }
+  return kitweAssemblyStockFromPosProducts(component?.component_assembly_id, products);
 }
 
 export function kitweAssemblyStockFromPosProducts(assemblyId, products) {
@@ -59,11 +120,11 @@ export function validateKitweSetCartLine(cartLine, products) {
   }
   const setQty = Math.max(1, Number(cartLine.qty) || 1);
   for (const c of cartLine.kitweSetComponents || []) {
-    if (!c.included) continue;
-    const need = Math.max(1, Number(c.per_set) || 1) * setQty;
-    const available = kitweAssemblyStockFromPosProducts(c.component_assembly_id, products);
-    if (need > available) {
-      return `Not enough stock for ${c.name || c.sku || 'component'} (need ${need}, have ${available}).`;
+    const sell = resolveKitweComponentSellUnits(c, setQty);
+    if (sell <= 0) continue;
+    const available = resolveKitweComponentAvailableStock(c, products);
+    if (sell > available) {
+      return `Not enough stock for ${c.name || c.sku || 'component'} (need ${sell}, have ${available}).`;
     }
   }
   return null;
