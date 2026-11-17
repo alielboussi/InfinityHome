@@ -25,22 +25,32 @@ const SET_ITEMS = 'warehouse_set_items';
 const ASSEMBLY_QTY_COLUMNS = 'id, name, family_sku, packet_count, inventory_mode, units_per_carton, item_kind';
 const PACKET_COLUMNS = 'id, sku, name, packet_number, qty_per_unit, assembly_id';
 
-function factorySetRecipeLines(setAssemblyId, setItems) {
+function setRecipeLinesAtLocation(setAssemblyId, setItems, locationId) {
+  const locId = String(locationId || WAREHOUSE_FACTORY_LOCATION_ID);
   return expandWarehouseSetItemsRows(setItems || []).filter(
     (row) => String(row.set_assembly_id) === String(setAssemblyId)
-      && String(row.location_id) === String(WAREHOUSE_FACTORY_LOCATION_ID),
+      && String(row.location_id) === locId,
   );
 }
 
-/** Assembly + component ids referenced on Floor 1 set recipes (for scoped catalog reads). */
-function factorySetCatalogScopeIds(setItems, setAssemblyId) {
+function factorySetRecipeLines(setAssemblyId, setItems) {
+  return setRecipeLinesAtLocation(setAssemblyId, setItems, WAREHOUSE_FACTORY_LOCATION_ID);
+}
+
+/** Assembly + component ids referenced on set recipes at a location (scoped catalog reads). */
+function setCatalogScopeIdsAtLocation(setItems, setAssemblyId, locationId) {
+  const locId = String(locationId || WAREHOUSE_FACTORY_LOCATION_ID);
   const ids = new Set([String(setAssemblyId)]);
   expandWarehouseSetItemsRows(setItems || []).forEach((row) => {
-    if (String(row.location_id) !== String(WAREHOUSE_FACTORY_LOCATION_ID)) return;
+    if (String(row.location_id) !== locId) return;
     if (row.set_assembly_id) ids.add(String(row.set_assembly_id));
     if (row.component_assembly_id) ids.add(String(row.component_assembly_id));
   });
   return [...ids];
+}
+
+function factorySetCatalogScopeIds(setItems, setAssemblyId) {
+  return setCatalogScopeIdsAtLocation(setItems, setAssemblyId, WAREHOUSE_FACTORY_LOCATION_ID);
 }
 
 async function loadLocationAssemblyQtyMap(sb, locationId, {
@@ -170,7 +180,7 @@ export async function applyWarehouseSetQuantityFromRecipe(
     throw new Error('Set not found');
   }
 
-  const scopeIds = factorySetCatalogScopeIds(setItems, setId);
+  const scopeIds = setCatalogScopeIdsAtLocation(setItems, setId, locId);
   const [
     { data: assemblies, error: asmErr },
     { data: assemblyInvRows, error: aiErr },
@@ -209,9 +219,9 @@ export async function applyWarehouseSetQuantityFromRecipe(
     packetInvRows = data || [];
   }
 
-  const recipe = factorySetRecipeLines(setId, setItems);
+  const recipe = setRecipeLinesAtLocation(setId, setItems, locId);
   if (!recipe.length) {
-    throw new Error('This set has no Floor 1 recipe — add products to the set first.');
+    throw new Error('This set has no recipe at this location — add products to the set first.');
   }
 
   const current = Math.max(0, Math.floor(Number(setInvRow?.quantity) || 0));
@@ -236,6 +246,7 @@ export async function applyWarehouseSetQuantityFromRecipe(
     qtyRecord,
     setItems || [],
     assemblies || [],
+    { locationId: locId },
   );
 
   const packetsByAssembly = buildPacketsByAssembly(assemblyPacketRows || [], allPackets || []);

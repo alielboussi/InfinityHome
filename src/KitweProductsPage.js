@@ -43,6 +43,7 @@ import {
   markKitwePortalSet,
   removeFromKitweProductsCatalog,
   saveKitwePortalSetRecipeQuantities,
+  saveKitwePortalSetStock,
   setKitwePortalProductStock,
 } from './utils/kitweProductPortal';
 import { isKitweCatalogSetAssembly } from './utils/kitweSetStock';
@@ -464,6 +465,7 @@ export default function KitweProductsPage() {
   const getStockDraft = (row) => {
     const key = draftKey(row.id, 'stock');
     if (stockDraft[key] !== undefined) return stockDraft[key];
+    if (row.kind === 'set') return row.kitweListedQty ?? row.kitweBuildableQty ?? 0;
     return row.kitweQty ?? 0;
   };
 
@@ -529,8 +531,10 @@ export default function KitweProductsPage() {
         });
         await recomputeWarehouseLocationStock(KITWE_LOCATION_ID);
       }
-      if (!isSet) {
-        const qty = Math.max(0, Math.floor(Number(getStockDraft(row)) || 0));
+      const qty = Math.max(0, Math.floor(Number(getStockDraft(row)) || 0));
+      if (isSet) {
+        await saveKitwePortalSetStock(row, qty);
+      } else {
         await setKitwePortalProductStock(row, qty);
       }
       setStockDraft((d) => {
@@ -729,24 +733,26 @@ export default function KitweProductsPage() {
             </select>
           </td>
           <td className="col-qty">
-            {!isSet ? (
-              <input
-                type="number"
-                min={0}
-                step={1}
-                className="kitwe-cell-input kitwe-cell-input--qty"
-                value={getStockDraft(row)}
-                disabled={savingId === row.id}
-                onChange={(e) => setStockDraft((d) => ({
-                  ...d,
-                  [draftKey(row.id, 'stock')]: e.target.value,
-                }))}
-              />
-            ) : (
-              <span className="kitwe-qty-readonly" title="Buildable from components at Kitwe">
-                {row.kitweBuildableQty ?? 0}
+            <input
+              type="number"
+              min={0}
+              step={1}
+              className="kitwe-cell-input kitwe-cell-input--qty"
+              value={getStockDraft(row)}
+              disabled={savingId === row.id}
+              title={isSet
+                ? `Buildable from components at Kitwe: ${row.kitweBuildableQty ?? 0}. Increasing set qty consumes components per recipe.`
+                : undefined}
+              onChange={(e) => setStockDraft((d) => ({
+                ...d,
+                [draftKey(row.id, 'stock')]: e.target.value,
+              }))}
+            />
+            {isSet ? (
+              <span className="kitwe-qty-buildable-hint" title="Max from loose components">
+                max {row.kitweBuildableQty ?? 0}
               </span>
-            )}
+            ) : null}
           </td>
           <td className="col-price">
             <input
