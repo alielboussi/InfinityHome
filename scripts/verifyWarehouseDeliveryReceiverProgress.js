@@ -42,6 +42,29 @@ async function main() {
   const ticks = mod.warehouseDeliveryReceiverTickRows(entries);
   assert.strictEqual(ticks.length, 3, 'finished set-components and loose product must be tick rows');
 
+  const parentComboOnly = [
+    { id: 'p', kind: 'set-parent', name: 'Relax Set', combo_id: 'relax-1' },
+    {
+      id: 'sofa',
+      kind: 'set-component',
+      parent_combo_id: 'relax-1',
+      name: 'Sofa',
+      quantity: 1,
+      metadata: { finished_unit: true },
+    },
+    {
+      id: 'ottoman',
+      kind: 'set-component',
+      parent_combo_id: 'relax-1',
+      name: 'Ottoman',
+      quantity: 1,
+      metadata: { finished_unit: true },
+    },
+  ];
+  const grouped = mod.groupWarehouseDisplayLines(parentComboOnly).map((l) => l.id);
+  assert.deepStrictEqual(grouped, ['p', 'sofa', 'ottoman'], 'parent_combo_id must link set components');
+  assert.strictEqual(mod.warehouseDeliveryReceiverTickRows(parentComboOnly).length, 2);
+
   const progress = mod.deliveryEntryReceiverProgress(entries);
   assert.strictEqual(progress.total, 3);
   assert.strictEqual(progress.confirmed, 1);

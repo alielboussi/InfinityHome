@@ -91,6 +91,19 @@ function groupWarehousePacketLinesByAssembly(packetEntries) {
   return out;
 }
 
+function deliverySetGroupKey(line) {
+  const meta = line?.metadata && typeof line.metadata === 'object' ? line.metadata : {};
+  return String(
+    line?.combo_id || line?.parent_combo_id || meta.delivery_set_group_id || '',
+  ).trim();
+}
+
+function setComponentMatchesParent(component, parent) {
+  const parentKey = deliverySetGroupKey(parent);
+  const componentKey = deliverySetGroupKey(component);
+  return Boolean(parentKey && componentKey && parentKey === componentKey);
+}
+
 export function groupWarehouseDisplayLines(entries) {
   const parents = (entries || []).filter((e) => e.kind === 'set-parent');
   const components = (entries || []).filter((e) => e.kind === 'set-component');
@@ -99,9 +112,18 @@ export function groupWarehouseDisplayLines(entries) {
     (e) => e.kind !== 'set-parent' && e.kind !== 'set-component' && e.kind !== 'packet',
   );
   const output = [];
+  const matchedComponentIds = new Set();
   parents.forEach((parent) => {
     output.push(parent);
-    output.push(...components.filter((c) => String(c.combo_id) === String(parent.combo_id)));
+    const children = components.filter((c) => setComponentMatchesParent(c, parent));
+    children.forEach((c) => {
+      if (c?.id != null) matchedComponentIds.add(String(c.id));
+      output.push(c);
+    });
+  });
+  components.forEach((c) => {
+    if (c?.id != null && matchedComponentIds.has(String(c.id))) return;
+    output.push(c);
   });
   output.push(...groupWarehousePacketLinesByAssembly(packets));
   output.push(...products);
