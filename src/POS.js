@@ -1714,16 +1714,32 @@ export default function POS({ isMobile = false }) {
       usageMap[si.product_id] = (usageMap[si.product_id] || 0) + Number(si.quantity || 0);
     }
     const usedProducts = Object.keys(usageMap);
-    if (usedProducts.length > 0) {
+    const needsKitweDeduction = kitweDeductions.length > 0;
+    if (usedProducts.length > 0 || needsKitweDeduction) {
       try {
         const usageSnapshot = { ...usageMap };
-        setProducts(prev => {
+        const kitweDeltaByAsm = new Map();
+        kitweDeductions.forEach((line) => {
+          const aid = String(line?.assembly_id || '');
+          if (!aid) return;
+          const q = Number(line?.quantity) || 0;
+          const delta = line?.kind === 'restock' ? q : -q;
+          kitweDeltaByAsm.set(aid, (kitweDeltaByAsm.get(aid) || 0) + delta);
+        });
+        setProducts((prev) => {
           if (!Array.isArray(prev) || !prev.length) return prev;
-          return prev.map(p => {
+          return prev.map((p) => {
             const used = usageSnapshot[p.id];
-            if (!used) return p;
-            const newStock = (Number(p.stock) || 0) - Number(used || 0);
-            return { ...p, stock: newStock };
+            let stock = Number(p.stock) || 0;
+            if (used) {
+              stock -= Number(used || 0);
+            }
+            const aid = String(p.warehouseAssemblyId || '');
+            if (aid && kitweDeltaByAsm.has(aid)) {
+              stock += kitweDeltaByAsm.get(aid);
+            }
+            if (!used && !kitweDeltaByAsm.has(aid)) return p;
+            return { ...p, stock: Math.max(0, stock) };
           });
         });
         setSets(prev => Array.isArray(prev) ? prev.map(s => ({ ...s })) : prev);
@@ -1731,7 +1747,7 @@ export default function POS({ isMobile = false }) {
         console.warn('Optimistic inventory update failed (non-fatal):', optimisticErr);
       }
       forceCatalogRefresh();
-      if (inventoryAlreadyApplied) {
+      if (inventoryAlreadyApplied && usedProducts.length > 0) {
         setInventoryDeductedMsg(`Inventory updated for ${usedProducts.length} item(s).`);
       }
     }
@@ -1837,19 +1853,20 @@ export default function POS({ isMobile = false }) {
         setCheckoutSuccess(`Sale completed. WhatsApp alert failed: ${whatsappWarning}`);
       }
 
-      if (!inventoryAlreadyApplied && usedProducts.length > 0) {
+      const needsRetailDeduction = !inventoryAlreadyApplied && usedProducts.length > 0;
+      if (needsKitweDeduction || needsRetailDeduction) {
         try {
-          const adjustedProducts = await applySaleInventoryDeductionViaApi({
-            items: saleItems,
-            kitweDeductions,
+          const adjustedCount = await applySaleInventoryDeductionViaApi({
+            items: needsRetailDeduction ? saleItems : [],
+            kitweDeductions: needsKitweDeduction ? kitweDeductions : [],
             locationId: ctx.selectedLocation,
             saleId,
             receiptNumber: storedReceiptNumber,
             userUid: saleActor.user_uid,
             userId: saleActor.user_id,
           });
-          if (adjustedProducts > 0) {
-            setInventoryDeductedMsg(`Inventory updated for ${adjustedProducts} item(s).`);
+          if (adjustedCount > 0) {
+            setInventoryDeductedMsg(`Inventory updated for ${adjustedCount} item(s).`);
           }
         } catch (invErr) {
           console.error('Inventory deduction failed (sale still recorded)', invErr);

@@ -308,10 +308,11 @@ export async function checkout(payload) {
       paymentsInserted = mapped.length;
     }
 
+    const usageMap = buildInventoryUsage(items);
     let inventoryApplied = false;
-    if (saleId != null && sale?.location_id && items.length > 0) {
+    if (saleId != null && sale?.location_id && usageMap.size > 0) {
       try {
-        await applySaleInventoryDeductionViaApi({
+        const adjusted = await applySaleInventoryDeductionViaApi({
           items,
           locationId: sale.location_id,
           saleId,
@@ -319,9 +320,9 @@ export async function checkout(payload) {
           userUid: sale?.user_uid || null,
           userId: sale?.user_id || null,
         });
-        inventoryApplied = true;
+        inventoryApplied = Number(adjusted) > 0;
       } catch (apiInvErr) {
-        await applyInventoryDeduction(scopedDb, {
+        const adjusted = await applyInventoryDeduction(scopedDb, {
           items,
           locationId: sale.location_id,
           saleId,
@@ -329,7 +330,7 @@ export async function checkout(payload) {
           userUid: sale?.user_uid || null,
           userId: sale?.user_id || null,
         });
-        inventoryApplied = true;
+        inventoryApplied = Number(adjusted) > 0;
       }
     }
 
