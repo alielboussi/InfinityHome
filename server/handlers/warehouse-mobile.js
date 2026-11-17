@@ -3586,7 +3586,6 @@ async function processSetDeliveryGroup({
 
   const {
     computeFloor1SetDeliveryStockPlan,
-    factoryComponentLeftoverFromMap,
     loadFactoryAssemblyQtyMap,
   } = await import('../lib/warehouseSetPartialDelivery.js');
   const stockPlan = await computeFloor1SetDeliveryStockPlan(sb, {
@@ -3637,15 +3636,10 @@ async function processSetDeliveryGroup({
       }
       const shipment = deliveryShipmentUnits(assembly, packetRows, productQty);
       if (!skipSourceDeduct) {
-        const leftover = factoryComponentLeftoverFromMap(
-          assemblyId,
-          qtyMap,
-          setItemsForRecipe,
-          stockSourceLocationId,
-        );
-        if (leftover < componentLooseUnits) {
+        const onHand = qtyMap.get(assemblyId) ?? 0;
+        if (onHand < componentLooseUnits) {
           throw new Error(
-            `Insufficient loose Floor 1 stock for ${assembly.name} (need ${componentLooseUnits}, have ${leftover} outside sets).`,
+            `Insufficient Floor 1 stock for ${assembly.name} (need ${componentLooseUnits}, have ${onHand}).`,
           );
         }
         const deductShipment = deliveryShipmentUnits(assembly, packetRows, componentLooseUnits);
