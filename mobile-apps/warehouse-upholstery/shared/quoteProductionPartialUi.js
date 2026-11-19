@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Image,
+  InteractionManager,
   Modal,
   Pressable,
   ScrollView,
@@ -22,13 +23,31 @@ function lineImageUrl(row) {
   return String(row?.line_image_url || meta.line_image_url || '').trim();
 }
 
+/** Indents line body (image, progress) to align with title beside the ready checkbox. */
+function lineBodyAlignStyle(textAlign) {
+  const rtl = textAlign === 'right';
+  return {
+    alignSelf: rtl ? 'flex-end' : 'flex-start',
+    marginLeft: rtl ? 0 : 34,
+    marginRight: rtl ? 0 : 0,
+  };
+}
+
+function lineTextIndentStyle(textAlign) {
+  const rtl = textAlign === 'right';
+  return rtl ? { marginRight: 34, marginLeft: 0 } : { marginLeft: 34, marginRight: 0 };
+}
+
 export function QuoteLineReferenceImage({ line, textAlign, tUi, locale }) {
   const [open, setOpen] = useState(false);
   const url = lineImageUrl(normalizeProductionQuoteLine(line));
   if (!url) return null;
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} style={styles.thumbWrap}>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={[styles.thumbWrap, lineBodyAlignStyle(textAlign)]}
+      >
         <Image source={{ uri: url }} style={styles.thumb} resizeMode="cover" />
         <Text style={[styles.thumbHint, { textAlign }]}>{tUi('quoteLineImageEnlarge', locale)}</Text>
       </Pressable>
@@ -61,7 +80,9 @@ export function QuoteProductionWorkshopLineRows({
   arabicMap = {},
   orderOpen = false,
   allowPaintingHandoff = false,
+  allowFloor1Handoff = false,
   onMarkReady,
+  onHandoffWillStart,
   onHandoff,
 }) {
   const list = Array.isArray(lines) ? lines : [];
@@ -75,23 +96,40 @@ export function QuoteProductionWorkshopLineRows({
     const buttons = [
       { text: tUi('cancel', locale), style: 'cancel' },
     ];
+    const runHandoff = (target) => {
+      onHandoffWillStart?.(line, target, qty);
+      Promise.resolve(onHandoff?.(line, target, qty)).catch((err) => {
+        Alert.alert(tUi('quoteOrderFailed', locale), err?.message || String(err));
+      });
+    };
     if (allowPaintingHandoff) {
       buttons.push({
         text: tUi('quoteLineHandoffPainting', locale),
-        onPress: () => onHandoff?.(line, 'painting', qty),
+        onPress: () => runHandoff('painting'),
+      });
+    }
+    if (allowFloor1Handoff) {
+      buttons.push({
+        text: tUi('quoteLineHandoffFloor1', locale),
+        onPress: () => runHandoff('floor1'),
       });
     }
     buttons.push({
       text: tUi('quoteLineHandoffDelivery', locale),
-      onPress: () => onHandoff?.(line, 'delivery', qty),
+      onPress: () => runHandoff('delivery'),
     });
-    Alert.alert(tUi('quoteLineHandoffTitle', locale), '', buttons);
+    const message = allowFloor1Handoff
+      ? tUi('quoteOrderDispositionPrompt', locale)
+      : '';
+    Alert.alert(tUi('quoteLineHandoffTitle', locale), message, buttons);
   };
 
   const submitReady = async (line, qty) => {
     try {
       await onMarkReady?.(line, qty);
-      runHandoffPrompt(line, qty);
+      InteractionManager.runAfterInteractions(() => {
+        runHandoffPrompt(line, qty);
+      });
     } catch (err) {
       Alert.alert(tUi('quoteOrderFailed', locale), err?.message || String(err));
     }
@@ -134,12 +172,12 @@ export function QuoteProductionWorkshopLineRows({
               <Text style={[styles.lineMain, { textAlign, flex: 1 }]}>{title}</Text>
             </View>
             {completed > 0 ? (
-              <Text style={[styles.progress, { textAlign }]}>
+              <Text style={[styles.progress, lineTextIndentStyle(textAlign), { textAlign }]}>
                 {completed} / {ordered} {tUi('quoteLineProgress', locale)}
               </Text>
             ) : null}
             {remaining > 0 && completed > 0 ? (
-              <Text style={[styles.remaining, { textAlign }]}>
+              <Text style={[styles.remaining, lineTextIndentStyle(textAlign), { textAlign }]}>
                 {tUi('quoteLineRemaining', locale)}: {remaining}
               </Text>
             ) : null}
@@ -217,8 +255,8 @@ const styles = StyleSheet.create({
   lineBlock: { marginBottom: 14 },
   lineTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   lineMain: { color: theme.textSecondary, fontSize: 15, fontWeight: '600' },
-  progress: { color: theme.primary, fontSize: 13, fontWeight: '700', marginTop: 4, marginLeft: 34 },
-  remaining: { color: theme.textMuted, fontSize: 12, marginTop: 2, marginLeft: 34 },
+  progress: { color: theme.primary, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  remaining: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
   checkBox: {
     width: 22,
     height: 22,
@@ -228,7 +266,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   checkBoxSpacer: { width: 22 },
-  thumbWrap: { marginTop: 8, marginLeft: 34, alignSelf: 'flex-start' },
+  thumbWrap: { marginTop: 8 },
   thumb: { width: 72, height: 72, borderRadius: 8, backgroundColor: '#1e293b' },
   thumbHint: { color: theme.textMuted, fontSize: 11, marginTop: 4 },
   modalBackdrop: {

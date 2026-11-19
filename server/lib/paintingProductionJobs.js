@@ -621,3 +621,83 @@ export async function finishPaintingProductionJob(sb, {
     label_copies: qty,
   };
 }
+
+/**
+ * Cancel an active painting job and restore Floor 2 / Floor 1 stock when it was deducted on send.
+ */
+export async function cancelPaintingProductionJob(sb, {
+  jobId,
+  userId = null,
+  reason = '',
+} = {}) {
+  const job = await loadJob(sb, jobId);
+  const status = normalizeJobStatus(job.status);
+  if (!ACTIVE_STATUSES.has(status)) {
+    throw new Error('Only active painting jobs can be cancelled');
+  }
+
+  const meta = job.metadata && typeof job.metadata === 'object' ? { ...job.metadata } : {};
+  const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const assemblyId = String(job.assembly_id || '').trim();
+  const src = String(meta.inventory_source || 'floor2').toLowerCase();
+
+  let stockRestored = null;
+  if (assemblyId && src !== 'virtual_hold') {
+    const { floor2LocationId, floor1LocationId } = await resolveFloor2AndFactoryIds(sb);
+    if (src === 'floor1') {
+      const restoreQty = Math.max(0, Math.floor(Number(meta.factory_deducted_qty) || qty));
+      if (restoreQty > 0) {
+        await adjustAssemblyInventory(sb, assemblyId, floor1LocationId, restoreQty);
+        await recomputeWarehouseLocationStockServer(sb, floor1LocationId);
+        stockRestored = { location: 'floor1', location_id: floor1LocationId, qty: restoreQty, assembly_id: assemblyId };
+      }
+    } else {
+      const restoreQty = Math.max(0, Math.floor(Number(meta.floor2_deducted_qty) || qty));
+      if (restoreQty > 0) {
+        await adjustAssemblyInventory(sb, assemblyId, floor2LocationId, restoreQty);
+        await recomputeWarehouseLocationStockServer(sb, floor2LocationId);
+        stockRestored = { location: 'floor2', location_id: floor2LocationId, qty: restoreQty, assembly_id: assemblyId };
+      }
+    }
+  }
+
+  const now = new Date().toISOString();
+  const updated = await saveJobPatch(sb, job.id, {
+    status: 'cancelled',
+    timer_started_at: null,
+    paused_at: null,
+    accumulated_ms: computeElapsedMs(job),
+    metadata: {
+      ...meta,
+      cancelled_at: now,
+      cancelled_by: userId || null,
+      cancel_reason: String(reason || '').trim() || null,
+      stock_restore: stockRestored,
+    },
+  });
+
+  return {
+    job: await serializePaintingJobForClient(sb, updated),
+    stock_restored: stockRestored,
+    virtual_hold: src === 'virtual_hold',
+  };
+}
+
+/** Find active painting jobs by product name (contains) or SKU (exact). */
+export async function findActivePaintingJobsByProduct(sb, { name = '', sku = '' } = {}) {
+  const nameNeedle = String(name || '').trim().toLowerCase();
+  const skuNeedle = String(sku || '').trim().toLowerCase();
+  if (!nameNeedle && !skuNeedle) throw new Error('name or sku required');
+
+  const { data, error } = await sb.from(JOBS).select('*');
+  if (error) throw new Error(error.message || 'Failed to list painting jobs');
+
+  return (data || []).filter((row) => {
+    if (!ACTIVE_STATUSES.has(normalizeJobStatus(row.status))) return false;
+    const rowName = String(row.product_name || '').toLowerCase();
+    const rowSku = String(row.product_sku || '').toLowerCase();
+    if (skuNeedle && rowSku === skuNeedle) return true;
+    if (nameNeedle && rowName.includes(nameNeedle)) return true;
+    return false;
+  });
+}

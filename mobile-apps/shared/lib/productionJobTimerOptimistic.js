@@ -39,3 +39,42 @@ export function serverJobPatchFromResponse(payload) {
   if (!j || !(j.job_id || j.id)) return null;
   return j;
 }
+
+function buildOptimisticUnitsPatch(job, checked_unit_indexes, nowMs = Date.now()) {
+  const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const sorted = [...checked_unit_indexes].sort((a, b) => a - b);
+  const patch = {
+    checked_unit_indexes: sorted,
+    units_checked: sorted.length,
+    all_units_checked: sorted.length >= qty,
+  };
+  const wasReady = job.status === 'ready';
+  const firstCheck = sorted.length > 0 && wasReady;
+  if (firstCheck) {
+    return {
+      ...patch,
+      status: 'running',
+      timer_started_at: new Date(nowMs).toISOString(),
+      accumulated_ms: Math.max(0, Number(job.accumulated_ms) || 0),
+    };
+  }
+  if (sorted.length === 0 && (job.status === 'running' || job.status === 'ready')) {
+    const accumulated_ms = computeJobElapsedMs(job, nowMs);
+    return {
+      ...patch,
+      status: 'ready',
+      accumulated_ms,
+      elapsed_ms: accumulated_ms,
+      timer_started_at: null,
+    };
+  }
+  return patch;
+}
+
+/** Set completed unit count (0..qty) — mirrors server completed_count on upholstery-job-check-unit. */
+export function optimisticSetUnitsCompletedPatch(job, completedCount, nowMs = Date.now()) {
+  const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const count = Math.max(0, Math.min(qty, Math.floor(Number(completedCount) || 0)));
+  const checked_unit_indexes = count === 0 ? [] : Array.from({ length: count }, (_, i) => i + 1);
+  return buildOptimisticUnitsPatch(job, checked_unit_indexes, nowMs);
+}

@@ -34,6 +34,10 @@ import { theme } from '../shared/theme';
 import { useProductionQuoteArabicMap } from '../shared/quoteProductionOrderUi';
 import { QuoteProductionWorkshopLineRows } from '../shared/quoteProductionPartialUi';
 import { displayQuoteFieldValue } from '../shared/quoteArabicTranslate';
+import {
+  applyQuoteOrderTimerFrozenPatch,
+  isQuoteOrderFullyCompleteLines,
+} from '../shared/lib/quoteOrderTimerFreeze';
 
 export default function QuoteDetailScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
@@ -50,12 +54,12 @@ export default function QuoteDetailScreen({ route, navigation }) {
   const [materialsOpen, setMaterialsOpen] = useState(false);
   const [endConfirmVisible, setEndConfirmVisible] = useState(false);
 
-  const reloadQuote = useCallback(async () => {
+  const reloadQuote = useCallback(async ({ quiet = false } = {}) => {
     if (!quoteId) {
       setLoadingOrder(false);
       return;
     }
-    setLoadingOrder(true);
+    if (!quiet) setLoadingOrder(true);
     try {
       const list = await fetchCarpentryProductionQuotes();
       const found = (Array.isArray(list) ? list : []).find(
@@ -95,7 +99,11 @@ export default function QuoteDetailScreen({ route, navigation }) {
   }, [accepted, completed, startedAt, isPaused]);
 
   const elapsedLabel = useMemo(() => {
-    if (!accepted || completed) return '—';
+    if (!accepted) return '—';
+    if (completed) {
+      const frozen = Math.max(0, Number(quote.accumulated_ms) || accumulatedMs);
+      return frozen > 0 ? formatElapsed(frozen) : '—';
+    }
     if (isPaused) return formatElapsed(accumulatedMs);
     if (!startedAt) return '—';
     const runningMs = Math.max(0, tick - new Date(startedAt).getTime());
@@ -204,11 +212,21 @@ export default function QuoteDetailScreen({ route, navigation }) {
     }
   };
 
-  const finishQuote = async (sendToPainting) => {
+  const freezeTimerIfOrderComplete = useCallback(() => {
+    if (!isQuoteOrderFullyCompleteLines(lines)) return;
+    setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
+    setCompleted(true);
+  }, [lines, tick]);
+
+  const finishQuote = async ({ sendToPainting = false, destination = 'delivery' } = {}) => {
+    setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
+    setCompleted(true);
     setBusy(true);
     try {
-      await completeCarpentryQuote(quoteId, { deferDeliveryQueue: Boolean(sendToPainting) });
-      setCompleted(true);
+      await completeCarpentryQuote(quoteId, {
+        deferDeliveryQueue: Boolean(sendToPainting),
+        destination: sendToPainting ? 'delivery' : destination,
+      });
       if (sendToPainting) {
         try {
           await sendCarpentryQuoteToPainting(quoteId);
@@ -233,17 +251,21 @@ export default function QuoteDetailScreen({ route, navigation }) {
 
   const showEndDestinationAlert = () => {
     Alert.alert(
-      tUi('quoteOrderEndConfirmTitle', locale),
-      tUi('quoteOrderEndConfirmBody', locale),
+      tUi('quoteOrderDispositionTitle', locale),
+      tUi('quoteOrderDispositionPrompt', locale),
       [
         { text: tUi('cancel', locale), style: 'cancel' },
         {
-          text: tUi('quoteOrderEnd', locale),
-          onPress: () => finishQuote(false),
+          text: tUi('quoteLineHandoffFloor1', locale),
+          onPress: () => finishQuote({ destination: 'floor1' }),
+        },
+        {
+          text: tUi('quoteLineHandoffDelivery', locale),
+          onPress: () => finishQuote({ destination: 'delivery' }),
         },
         {
           text: tUi('quoteOrderEndSendPainting', locale),
-          onPress: () => finishQuote(true),
+          onPress: () => finishQuote({ sendToPainting: true }),
         },
       ],
     );
@@ -344,13 +366,42 @@ export default function QuoteDetailScreen({ route, navigation }) {
           arabicMap={arabicMap}
           orderOpen={accepted && !completed}
           allowPaintingHandoff
+          allowFloor1Handoff
           onMarkReady={async (line, qty) => {
             await markCarpentryQuoteLineReady(quoteId, line.id, qty);
-            await reloadQuote();
+            const add = Math.max(1, Math.floor(Number(qty) || 0));
+            setQuote((prev) => {
+              const nextLines = (Array.isArray(prev.lines) ? prev.lines : []).map((row) => {
+                if (String(row.id) !== String(line.id)) return row;
+                const ordered = Math.max(
+                  Number(row.ordered_qty) || Number(row.quantity) || 1,
+                  1,
+                );
+                const done = Math.max(Number(row.production_completed_qty) || 0, 0) + add;
+                return {
+                  ...row,
+                  production_completed_qty: done,
+                  production_remaining_qty: Math.max(0, ordered - done),
+                };
+              });
+              return { ...prev, lines: nextLines };
+            });
+            void reloadQuote({ quiet: true });
           }}
+          onHandoffWillStart={freezeTimerIfOrderComplete}
           onHandoff={async (line, target, qty) => {
-            await handoffCarpentryQuoteLine(quoteId, line.id, target, qty);
-            await reloadQuote();
+            const result = await handoffCarpentryQuoteLine(quoteId, line.id, target, qty);
+            if (result?.order_completed) {
+              navigation.goBack();
+              return;
+            }
+            if (isQuoteOrderFullyCompleteLines(lines) && target === 'painting') {
+              await completeCarpentryQuote(quoteId, { deferDeliveryQueue: true, destination: 'delivery' });
+              await sendCarpentryQuoteToPainting(quoteId);
+              navigation.goBack();
+              return;
+            }
+            void reloadQuote({ quiet: true });
           }}
         />
       </ScrollView>

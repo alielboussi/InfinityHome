@@ -77,6 +77,38 @@ function copyFile(src, dest) {
   throw lastErr;
 }
 
+function writeTextFileWithRetry(dest, body) {
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const tmp = `${dest}.materialize-${process.pid}-${Date.now()}.tmp`;
+  const attempt = () => {
+    fs.writeFileSync(tmp, body);
+    if (fs.existsSync(dest)) {
+      try {
+        fs.unlinkSync(dest);
+      } catch {
+        fs.rmSync(dest, { force: true });
+      }
+    }
+    fs.renameSync(tmp, dest);
+  };
+  let lastErr;
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      attempt();
+      return;
+    } catch (err) {
+      lastErr = err;
+      try {
+        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+      } catch { /* ignore */ }
+      const code = String(err?.code || '').toUpperCase();
+      if (!RETRYABLE_COPY_CODES.has(code) || i >= 5) break;
+      sleep(80 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
 /** production/lib uses ../../../src; deliveryKit/lib needs ../../../../src (one extra app folder). */
 function patchDeliveryKitRepoImports(kitRoot) {
   const repoRoot = path.resolve(appRoot, '..', '..');
@@ -86,7 +118,7 @@ function patchDeliveryKitRepoImports(kitRoot) {
     fs.mkdirSync(path.dirname(zambiaDest), { recursive: true });
     const body = fs.readFileSync(zambiaSrc, 'utf8');
     const header = '/** Standalone copy for warehouse-delivery (do not re-export via production paths). */\n';
-    fs.writeFileSync(zambiaDest, header + body);
+    writeTextFileWithRetry(zambiaDest, header + body);
   } else if (fs.existsSync(path.join(kitRoot, 'lib', 'zambiaDateTime.js'))) {
     // keep copy from upholstery if repo src/utils is unavailable
   } else {
@@ -161,7 +193,7 @@ function materializeSharedIntoApp() {
     return;
   }
   copyDir(mobileSharedRoot, appShared);
-  fs.writeFileSync(
+  writeTextFileWithRetry(
     path.join(appShared, '.standalone-shared'),
     `Materialized for warehouse-delivery at ${new Date().toISOString()}\nNot a junction to mobile-apps/shared.\n`,
   );
@@ -258,7 +290,7 @@ function main() {
     process.exit(1);
   }
 
-  fs.writeFileSync(
+  writeTextFileWithRetry(
     path.join(kitPath, '.standalone-materialized'),
     `Materialized from warehouse-upholstery at ${new Date().toISOString()}\nDo not junction to Upholstery app.\n`,
   );

@@ -123,7 +123,7 @@ module.exports = {
         'expo-notifications',
         {
           color: '#38bdf8',
-          defaultChannel: 'upholstery-alerts',
+          defaultChannel: 'production-alerts',
         },
       ],
     ],

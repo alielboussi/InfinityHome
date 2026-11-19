@@ -315,7 +315,11 @@ export async function finishCarpentryProductionJob(sb, {
   jobId,
   userId = null,
   preferredStoreroomLocationId = null,
+  destination = 'delivery',
 }) {
+  const dest = String(destination || 'delivery').trim().toLowerCase() === 'floor1'
+    ? 'floor1'
+    : 'delivery';
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
 
@@ -389,6 +393,23 @@ export async function finishCarpentryProductionJob(sb, {
   const now = new Date().toISOString();
   const finalElapsed = computeElapsedMs(job);
 
+  let floor1Credited = false;
+  let deliveryQueued = false;
+
+  if (productId && dest === 'floor1') {
+    const { addFloor2ProductToFloor1 } = await import('./carpentryManufacture.js');
+    await addFloor2ProductToFloor1(sb, {
+      assemblyId: productId,
+      productQty: qty,
+      userId,
+    });
+    if (meta.catalog_manufacture && outputLocationId) {
+      await adjustAssemblyInventory(sb, productId, outputLocationId, -qty);
+      await recomputeWarehouseLocationStockServer(sb, outputLocationId);
+    }
+    floor1Credited = true;
+  }
+
   const updated = await saveJobPatch(sb, job.id, {
     status: 'completed',
     completed_at: now,
@@ -397,10 +418,12 @@ export async function finishCarpentryProductionJob(sb, {
     metadata: {
       ...meta,
       production_run_id: runId || null,
+      finish_destination: dest,
+      floor1_credited: floor1Credited,
     },
   });
 
-  if (productId && !meta.catalog_manufacture) {
+  if (productId && dest === 'delivery') {
     const { data: asm } = await sb.from('warehouse_assemblies').select('name').eq('id', productId).maybeSingle();
     const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
     await registerProductionJobAwaitingDriver(sb, {
@@ -411,12 +434,16 @@ export async function finishCarpentryProductionJob(sb, {
       qty,
       department: 'carpentry',
     });
+    deliveryQueued = true;
   }
 
   return {
     job: serializeJob(updated),
     run_id: runId || null,
     assembly_id: productId,
+    finish_destination: dest,
+    floor1_credited: floor1Credited,
+    delivery_admin_awaiting_driver: deliveryQueued,
     ...(manufactureResult ? { product_qty: manufactureResult.product_qty } : {}),
   };
 }

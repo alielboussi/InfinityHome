@@ -44,6 +44,7 @@ import {
   optimisticResumeJobPatch,
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
+import { alertProductionFinishDisposition } from '../shared/lib/productionFinishDispositionAlert';
 
 function resolvePaintingJobImage(job) {
   const invSource = String(job?.inventory_source || '').trim().toLowerCase();
@@ -307,12 +308,16 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
       [
         { text: tUi('cancel', locale), style: 'cancel' },
         {
-          text: tUi('paintingFinishToDelivery', locale),
-          onPress: () => completePaintingFinish(jobId, 'delivery'),
-        },
-        {
-          text: tUi('paintingFinishToFloor1', locale),
-          onPress: () => completePaintingFinish(jobId, 'floor1'),
+          text: tUi('upholsteryJobFinish', locale),
+          style: 'destructive',
+          onPress: () => {
+            alertProductionFinishDisposition({
+              tUi,
+              locale,
+              onFloor1: () => completePaintingFinish(jobId, 'floor1'),
+              onDelivery: () => completePaintingFinish(jobId, 'delivery'),
+            });
+          },
         },
       ],
     );

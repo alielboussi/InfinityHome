@@ -7,10 +7,9 @@ const crypto = require('crypto');
 
 const appRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(appRoot, '..', '..');
-const srcQuote = path.join(repoRoot, 'src', 'utils', 'quoteProductionItemFields.js');
-const targets = [
-  path.join(appRoot, 'deliveryKit', 'lib', 'quoteProductionItemFields.js'),
-  path.join(appRoot, 'delivery-overlays', 'lib', 'quoteProductionItemFields.js'),
+const COPY_PAIRS = [
+  ['quoteProductionItemFields.js', 'quoteProductionItemFields.js'],
+  ['quoteProductionLineProgress.js', 'quoteProductionLineProgress.js'],
 ];
 
 function sha(filePath) {
@@ -19,17 +18,30 @@ function sha(filePath) {
 }
 
 function main() {
-  if (!fs.existsSync(srcQuote)) {
-    console.warn('[ensureDeliveryQuotePrintUtils] skip — repo src util missing');
-    return;
-  }
-  const hash = sha(srcQuote);
   let copied = 0;
-  for (const dest of targets) {
-    if (sha(dest) === hash) continue;
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(srcQuote, dest);
-    copied += 1;
+  let missing = false;
+  for (const [srcName, destName] of COPY_PAIRS) {
+    const srcQuote = path.join(repoRoot, 'src', 'utils', srcName);
+    if (!fs.existsSync(srcQuote)) {
+      console.warn('[ensureDeliveryQuotePrintUtils] missing', srcQuote);
+      missing = true;
+      continue;
+    }
+    const hash = sha(srcQuote);
+    const targets = [
+      path.join(appRoot, 'deliveryKit', 'lib', destName),
+      path.join(appRoot, 'delivery-overlays', 'lib', destName),
+    ];
+    for (const dest of targets) {
+      if (sha(dest) === hash) continue;
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(srcQuote, dest);
+      copied += 1;
+    }
+  }
+  if (missing) {
+    console.warn('[ensureDeliveryQuotePrintUtils] incomplete — some src utils missing');
+    return;
   }
   console.log(copied ? '[ensureDeliveryQuotePrintUtils] ok' : '[ensureDeliveryQuotePrintUtils] skip — up to date');
 }

@@ -11,10 +11,12 @@ import {
 import {
   consumeUpholsteryRawAndMaterials,
   resolveFinishedOutputAssemblyOnly,
+  creditUpholsteryFinishedOutput,
   loadUpholsteryManufactureContext,
   recomputeUpholsteryManufactureLocations,
   pickAssemblyDimensionFields,
 } from './upholsteryManufacture.js';
+import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { formatAssemblyDimensions } from '../../src/utils/warehouseAssemblySpecs.js';
 import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
 
@@ -263,6 +265,36 @@ export async function resumeUpholsteryProductionJob(sb, { jobId, userId }) {
   return { job: serializeJob(updated) };
 }
 
+function buildUpholsteryJobUnitCheckPatch(job, nextChecked) {
+  const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const sorted = [...new Set(
+    (nextChecked || []).map((n) => Math.floor(Number(n))).filter((n) => n >= 1 && n <= qty),
+  )].sort((a, b) => a - b);
+  const meta = { ...(job.metadata || {}), checked_unit_indexes: sorted };
+
+  let patch = { metadata: meta };
+  const wasReady = job.status === 'ready';
+  const firstCheck = sorted.length > 0 && wasReady;
+  if (firstCheck) {
+    patch = {
+      ...patch,
+      status: 'running',
+      timer_started_at: new Date().toISOString(),
+      accumulated_ms: Math.max(0, Number(job.accumulated_ms) || 0),
+    };
+  }
+  if (sorted.length === 0 && (job.status === 'running' || job.status === 'ready')) {
+    const accumulated = computeElapsedMs(job);
+    patch = {
+      ...patch,
+      status: 'ready',
+      accumulated_ms: accumulated,
+      timer_started_at: null,
+    };
+  }
+  return { patch, sorted };
+}
+
 export async function toggleUpholsteryProductionJobUnit(sb, {
   jobId,
   unitIndex,
@@ -282,28 +314,26 @@ export async function toggleUpholsteryProductionJobUnit(sb, {
     set.add(unit);
   }
   const nextChecked = [...set].sort((a, b) => a - b);
-  const meta = { ...(job.metadata || {}), checked_unit_indexes: nextChecked };
+  const { patch } = buildUpholsteryJobUnitCheckPatch(job, nextChecked);
+  const updated = await saveJobPatch(sb, job.id, patch);
+  return { job: serializeJob(updated) };
+}
 
-  let patch = { metadata: meta };
-  const wasReady = job.status === 'ready';
-  const firstCheck = nextChecked.length > 0 && wasReady;
-  if (firstCheck) {
-    patch = {
-      ...patch,
-      status: 'running',
-      timer_started_at: new Date().toISOString(),
-    };
+/** Set how many units are complete (1..qty) — kiosk enters count + confirm. */
+export async function setUpholsteryProductionJobUnitsCompleted(sb, {
+  jobId,
+  completedCount,
+  userId,
+}) {
+  const job = await loadJob(sb, jobId);
+  if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
+  const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
+  const count = Math.floor(Number(completedCount));
+  if (!Number.isFinite(count) || count < 0 || count > qty) {
+    throw new Error(`completed_count must be 0..${qty}`);
   }
-  if (nextChecked.length === 0 && (job.status === 'running' || job.status === 'ready')) {
-    const accumulated = computeElapsedMs(job);
-    patch = {
-      ...patch,
-      status: 'ready',
-      accumulated_ms: accumulated,
-      timer_started_at: null,
-    };
-  }
-
+  const nextChecked = count === 0 ? [] : Array.from({ length: count }, (_, i) => i + 1);
+  const { patch } = buildUpholsteryJobUnitCheckPatch(job, nextChecked);
   const updated = await saveJobPatch(sb, job.id, patch);
   return { job: serializeJob(updated) };
 }
@@ -313,7 +343,11 @@ export async function finishUpholsteryProductionJob(sb, {
   userId = null,
   user = null,
   labelPrintedBy = 'Upholstery production',
+  destination = 'delivery',
 }) {
+  const dest = String(destination || 'delivery').trim().toLowerCase() === 'floor1'
+    ? 'floor1'
+    : 'delivery';
   const job = await loadJob(sb, jobId);
   if (!ACTIVE_STATUSES.has(normalizeJobStatus(job.status))) throw new Error('Job is not active');
   const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
@@ -396,18 +430,38 @@ export async function finishUpholsteryProductionJob(sb, {
     labelPrintWarning = printErr?.message || 'Label print failed';
   }
 
-  await logWarehouseProductionStockIncrease({
-    user,
-    assembly: output.outputAssembly,
-    delta: qty,
-    qtyBefore: 0,
-    qtyAfter: qty,
-    warehouseLocationId: 'warehouse_floor_2_staging',
-    source: 'warehouse_production_app_delivery_queue',
-  });
-
+  let floor1Credited = false;
+  let deliveryQueued = false;
   const storeroomLocs = [...storeroomIds.map((id) => ({ id })), ...storeroomLocsForRecompute];
-  await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocs);
+
+  if (dest === 'floor1') {
+    const credited = await creditUpholsteryFinishedOutput(sb, ctx, qty);
+    output.qty_before = credited.qty_before;
+    output.qty_after = credited.qty_after;
+    await logWarehouseProductionStockIncrease({
+      user,
+      assembly: credited.outputAssembly || output.outputAssembly,
+      delta: qty,
+      qtyBefore: credited.qty_before,
+      qtyAfter: credited.qty_after,
+      warehouseLocationId: WAREHOUSE_FACTORY_LOCATION_ID,
+      source: 'warehouse_production_app_floor1',
+    });
+    floor1Credited = true;
+    await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocs, { includeFactory: true });
+    await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FACTORY_LOCATION_ID);
+  } else {
+    await logWarehouseProductionStockIncrease({
+      user,
+      assembly: output.outputAssembly,
+      delta: qty,
+      qtyBefore: 0,
+      qtyAfter: qty,
+      warehouseLocationId: 'warehouse_floor_2_staging',
+      source: 'warehouse_production_app_delivery_queue',
+    });
+    await recomputeUpholsteryManufactureLocations(sb, ctx, storeroomLocs);
+  }
 
   const updated = await saveJobPatch(sb, job.id, {
     status: 'completed',
@@ -420,18 +474,23 @@ export async function finishUpholsteryProductionJob(sb, {
       label_job_id: labelJobId ?? null,
       label_print_warning: labelPrintWarning ?? null,
       floor2_raw_deducted: alreadyDeducted || deductRawOnFinish || meta.floor2_raw_deducted === true,
+      finish_destination: dest,
+      floor1_credited: floor1Credited,
     }),
   });
 
-  const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
-  await registerProductionJobAwaitingDriver(sb, {
-    jobsTable: 'upholstery_production_jobs',
-    jobRow: updated,
-    assemblyId: output.output_assembly_id,
-    assemblyName: output.name,
-    qty,
-    department: 'upholstery',
-  });
+  if (dest === 'delivery') {
+    const { registerProductionJobAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
+    await registerProductionJobAwaitingDriver(sb, {
+      jobsTable: 'upholstery_production_jobs',
+      jobRow: updated,
+      assemblyId: output.output_assembly_id,
+      assemblyName: output.name,
+      qty,
+      department: 'upholstery',
+    });
+    deliveryQueued = true;
+  }
 
   return {
     job: serializeJob(updated),
@@ -440,5 +499,8 @@ export async function finishUpholsteryProductionJob(sb, {
     output_name: output.name,
     label_job_id: labelJobId,
     label_print_warning: labelPrintWarning,
+    finish_destination: dest,
+    floor1_credited: floor1Credited,
+    delivery_admin_awaiting_driver: deliveryQueued,
   };
 }

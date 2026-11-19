@@ -32,6 +32,10 @@ import { theme } from '../shared/theme';
 import { useProductionQuoteArabicMap } from '../shared/quoteProductionOrderUi';
 import { QuoteProductionWorkshopLineRows } from '../shared/quoteProductionPartialUi';
 import { displayQuoteFieldValue } from '../shared/quoteArabicTranslate';
+import {
+  applyQuoteOrderTimerFrozenPatch,
+  isQuoteOrderFullyCompleteLines,
+} from '../shared/lib/quoteOrderTimerFreeze';
 
 
 
@@ -49,12 +53,12 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const [busy, setBusy] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
 
-  const reloadQuote = useCallback(async () => {
+  const reloadQuote = useCallback(async ({ quiet = false } = {}) => {
     if (!quoteId) {
       setLoadingOrder(false);
       return;
     }
-    setLoadingOrder(true);
+    if (!quiet) setLoadingOrder(true);
     try {
       const list = await fetchUpholsteryProductionQuotes();
       const found = (Array.isArray(list) ? list : []).find(
@@ -94,8 +98,12 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   }, [accepted, completed, startedAt, isPaused]);
 
   const elapsedLabel = useMemo(() => {
-    if (!accepted || completed) return '—';
-    if (isPaused) return formatElapsed(accumulatedMs);
+    if (!accepted) return '—';
+    if (completed) {
+      const frozen = Math.max(0, Number(quote.accumulated_ms) || accumulatedMs);
+      return frozen > 0 ? formatElapsed(frozen) : '—';
+    }
+    if (isPaused) return formatElapsed(Math.max(0, Number(quote.accumulated_ms) || accumulatedMs));
     if (!startedAt) return '—';
     const runningMs = Math.max(0, tick - new Date(startedAt).getTime());
     return formatElapsed(accumulatedMs + runningMs);
@@ -203,6 +211,45 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     }
   };
 
+  const freezeTimerIfOrderComplete = useCallback(() => {
+    if (!isQuoteOrderFullyCompleteLines(lines)) return;
+    setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
+  }, [lines, tick]);
+
+  const finishQuoteWithDestination = async (destination) => {
+    const snapshot = quote;
+    setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
+    setBusy(true);
+    try {
+      await completeUpholsteryQuote(quoteId, { destination });
+      setCompleted(true);
+      navigation.goBack();
+    } catch (e) {
+      setQuote(snapshot);
+      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const promptFinishDisposition = () => {
+    Alert.alert(
+      tUi('quoteOrderDispositionTitle', locale),
+      tUi('quoteOrderDispositionPrompt', locale),
+      [
+        { text: tUi('cancel', locale), style: 'cancel' },
+        {
+          text: tUi('quoteLineHandoffFloor1', locale),
+          onPress: () => finishQuoteWithDestination('floor1'),
+        },
+        {
+          text: tUi('quoteLineHandoffDelivery', locale),
+          onPress: () => finishQuoteWithDestination('delivery'),
+        },
+      ],
+    );
+  };
+
   const onComplete = () => {
     Alert.alert(
       tUi('quoteOrderEndConfirmTitle', locale),
@@ -211,18 +258,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         { text: tUi('cancel', locale), style: 'cancel' },
         {
           text: tUi('quoteOrderEnd', locale),
-          onPress: async () => {
-            setBusy(true);
-            try {
-              await completeUpholsteryQuote(quoteId);
-              setCompleted(true);
-              navigation.goBack();
-            } catch (e) {
-              Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
-            } finally {
-              setBusy(false);
-            }
-          },
+          onPress: promptFinishDisposition,
         },
       ],
     );
@@ -318,13 +354,44 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         locale={locale}
         arabicMap={arabicMap}
         orderOpen={accepted && !completed}
+        allowFloor1Handoff
         onMarkReady={async (line, qty) => {
           await markUpholsteryQuoteLineReady(quoteId, line.id, qty);
-          await reloadQuote();
+          const add = Math.max(1, Math.floor(Number(qty) || 0));
+          setQuote((prev) => {
+            const nextLines = (Array.isArray(prev.lines) ? prev.lines : []).map((row) => {
+              if (String(row.id) !== String(line.id)) return row;
+              const ordered = Math.max(
+                Number(row.ordered_qty) || Number(row.quantity) || 1,
+                1,
+              );
+              const done = Math.max(Number(row.production_completed_qty) || 0, 0) + add;
+              return {
+                ...row,
+                production_completed_qty: done,
+                production_remaining_qty: Math.max(0, ordered - done),
+              };
+            });
+            return { ...prev, lines: nextLines };
+          });
+          void reloadQuote({ quiet: true });
         }}
+        onHandoffWillStart={freezeTimerIfOrderComplete}
         onHandoff={async (line, target, qty) => {
-          await handoffUpholsteryQuoteLine(quoteId, line.id, target, qty);
-          await reloadQuote();
+          const snapshot = quote;
+          const orderDone = isQuoteOrderFullyCompleteLines(lines);
+          try {
+            const result = await handoffUpholsteryQuoteLine(quoteId, line.id, target, qty);
+            if (result?.order_completed || orderDone) {
+              setCompleted(true);
+              navigation.goBack();
+              return;
+            }
+            void reloadQuote({ quiet: true });
+          } catch (e) {
+            if (orderDone) setQuote(snapshot);
+            throw e;
+          }
         }}
       />
     </ScrollView>

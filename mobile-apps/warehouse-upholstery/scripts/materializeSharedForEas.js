@@ -48,13 +48,47 @@ function restoreProductionOnlyShared(backup) {
   backup.forEach((data, rel) => {
     const dest = path.join(sharedPath, rel);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, data);
+    writeFileWithRetry(dest, data);
   });
+}
+
+function sleep(ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { /* postinstall / verify only */ }
+}
+
+function writeFileWithRetry(dest, data) {
+  let lastErr;
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      fs.writeFileSync(dest, data);
+      return;
+    } catch (err) {
+      lastErr = err;
+      sleep(80 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
+function cpSyncWithRetry(src, dest) {
+  let lastErr;
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      fs.mkdirSync(dest, { recursive: true });
+      fs.cpSync(src, dest, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      lastErr = err;
+      sleep(120 * (i + 1));
+    }
+  }
+  throw lastErr;
 }
 
 const prodOnlyBackup = backupProductionOnlyShared();
 fs.mkdirSync(sharedPath, { recursive: true });
-fs.cpSync(sharedSource, sharedPath, { recursive: true, force: true });
+cpSyncWithRetry(sharedSource, sharedPath);
 restoreProductionOnlyShared(prodOnlyBackup);
 
 console.log('[materializeSharedForEas] merged', sharedSource, '->', sharedPath);

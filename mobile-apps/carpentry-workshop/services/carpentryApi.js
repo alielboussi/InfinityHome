@@ -66,10 +66,12 @@ export async function resumeCarpentryProductionJob(jobId) {
   return warehouseMobileRequest('carpentry-job-resume', { job_id: jobId });
 }
 
-export async function finishCarpentryProductionJob(jobId, { preferredStoreroomLocationId } = {}) {
+export async function finishCarpentryProductionJob(jobId, { preferredStoreroomLocationId, destination = 'delivery' } = {}) {
+  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
   return warehouseMobileRequest('carpentry-job-finish', {
     job_id: jobId,
     preferred_storeroom_location_id: preferredStoreroomLocationId || undefined,
+    destination: dest,
   });
 }
 
@@ -110,11 +112,13 @@ export async function acceptCarpentryQuote(quoteId) {
   return warehouseMobileRequest('production-quote-accept', { route: CARPENTRY_ROUTE, quote_id: quoteId });
 }
 
-export async function completeCarpentryQuote(quoteId, { deferDeliveryQueue = false } = {}) {
+export async function completeCarpentryQuote(quoteId, { deferDeliveryQueue = false, destination = 'delivery' } = {}) {
+  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
   return warehouseMobileRequest('production-quote-complete', {
     route: CARPENTRY_ROUTE,
     quote_id: quoteId,
     defer_delivery_queue: Boolean(deferDeliveryQueue),
+    destination: deferDeliveryQueue ? 'delivery' : dest,
   });
 }
 

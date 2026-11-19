@@ -50,6 +50,7 @@ import {
   optimisticResumeJobPatch,
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
+import { alertProductionFinishDisposition } from '../shared/lib/productionFinishDispositionAlert';
 
 function normalizeSearchDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -378,14 +379,28 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     void runOptimisticTimerOp(jobId, 'pause');
   };
 
-  const completeFinishJob = async (jobId, preferredStoreroomLocationId) => {
-    const result = await finishCarpentryProductionJob(jobId, { preferredStoreroomLocationId });
+  const completeFinishJob = async (jobId, preferredStoreroomLocationId, destination) => {
+    const result = await finishCarpentryProductionJob(jobId, {
+      preferredStoreroomLocationId,
+      destination,
+    });
+    const dest = result?.finish_destination || destination;
     const warn = String(result?.label_print_warning || '').trim();
     if (warn) {
       Alert.alert(tUi('upholsteryJobFinish', locale), warn);
-    } else {
-      Alert.alert(tUi('upholsteryJobFinish', locale), tUi('upholsteryJobFinishDone', locale));
+      return;
     }
+    const doneKey = dest === 'floor1' ? 'paintingJobFinishDoneFloor1' : 'paintingJobFinishDoneDelivery';
+    Alert.alert(tUi('upholsteryJobFinish', locale), tUi(doneKey, locale));
+  };
+
+  const promptJobFinishDisposition = (jobId, preferredStoreroomLocationId) => {
+    alertProductionFinishDisposition({
+      tUi,
+      locale,
+      onFloor1: () => wrapBusy(jobId, () => completeFinishJob(jobId, preferredStoreroomLocationId, 'floor1')),
+      onDelivery: () => wrapBusy(jobId, () => completeFinishJob(jobId, preferredStoreroomLocationId, 'delivery')),
+    });
   };
 
   const proceedFinishJob = (job) => {
@@ -404,7 +419,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
       })();
       return;
     }
-    wrapBusy(jobId, () => completeFinishJob(jobId, null));
+    promptJobFinishDisposition(jobId, null);
   };
 
   const onFinish = (job) => {
@@ -576,7 +591,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
           const jobId = storeroomFinishJobId;
           setStoreroomPromptVisible(false);
           setStoreroomFinishJobId('');
-          if (jobId) wrapBusy(jobId, () => completeFinishJob(jobId, preferredId));
+          if (jobId) promptJobFinishDisposition(jobId, preferredId);
         }}
       />
     </View>

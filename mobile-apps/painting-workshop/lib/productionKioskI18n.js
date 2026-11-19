@@ -408,6 +408,13 @@ const UI_STRINGS = {
   },
   repairDispositionFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
   repairDispositionDelivery: { en: 'Send delivery', ar: 'إرسال تسليم' },
+  quoteLineHandoffDelivery: { en: 'Send to delivery', ar: 'إرسال للتسليم' },
+  quoteLineHandoffFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
+  quoteOrderDispositionPrompt: {
+    en: 'Store on Floor 1, or send to the Delivery app orders queue?',
+    ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
+  },
+  quoteOrderDispositionTitle: { en: 'Finished order', ar: 'الطلب المكتمل' },
   repairTimerStatus_ready: { en: 'Ready', ar: 'جاهز' },
   repairTimerStatus_running: { en: 'Running', ar: 'قيد التشغيل' },
   repairTimerStatus_paused: { en: 'Paused', ar: 'متوقف مؤقتاً' },

@@ -146,8 +146,17 @@ export async function toggleUpholsteryProductionJobUnit(jobId, unitIndex) {
   return payload?.job || payload;
 }
 
-export async function finishUpholsteryProductionJob(jobId) {
-  return productionOp('upholstery-job-finish', { job_id: jobId });
+export async function setUpholsteryProductionJobUnitsCompleted(jobId, completedCount) {
+  const payload = await productionOp('upholstery-job-check-unit', {
+    job_id: jobId,
+    completed_count: Math.floor(Number(completedCount) || 0),
+  });
+  return payload?.job || payload;
+}
+
+export async function finishUpholsteryProductionJob(jobId, { destination = 'delivery' } = {}) {
+  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
+  return productionOp('upholstery-job-finish', { job_id: jobId, destination: dest });
 }
 
 /** Lightweight preset refresh — same data as portal /warehouse-production-presets. */
@@ -572,10 +581,12 @@ export async function acceptUpholsteryQuote(quoteId) {
   });
 }
 
-export async function completeUpholsteryQuote(quoteId) {
+export async function completeUpholsteryQuote(quoteId, { destination = 'delivery' } = {}) {
+  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
   return productionOp('production-quote-complete', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
+    destination: dest,
   });
 }
 

@@ -285,6 +285,21 @@ try {
     !fs.readFileSync(path.join(appRoot, 'screens', 'DashboardScreen.js'), 'utf8').includes('forceArabic'),
     'Delivery dashboard must allow locale toggle (not forceArabic)',
   );
+  const overlayComponents = [
+    'DeliveryFarmQtyAddModal.js',
+    'DeliveryWarehouseProductGrid.js',
+    'DeliveryKioskVirtualList.js',
+  ];
+  for (const file of overlayComponents) {
+    assert(
+      fs.existsSync(path.join(appRoot, 'delivery-overlays', 'components', file)),
+      `delivery-overlays/components/${file} required`,
+    );
+  }
+  assert(
+    fs.existsSync(path.join(appRoot, 'delivery-overlays', 'lib', 'shareFarmTransferReceipt.js')),
+    'delivery-overlays/lib/shareFarmTransferReceipt.js required',
+  );
 
   if (!process.exitCode) console.log('verifyDeliveryApp: ok');
 } catch (e) {

@@ -183,6 +183,12 @@ const UI_STRINGS = {
   quoteLineHandoffTitle: { en: 'Send ready items', ar: 'إرسال الجاهز' },
   quoteLineHandoffPainting: { en: 'Send to painting', ar: 'إرسال للدهان' },
   quoteLineHandoffDelivery: { en: 'Send to delivery', ar: 'إرسال للتسليم' },
+  quoteLineHandoffFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
+  quoteOrderDispositionPrompt: {
+    en: 'Store on Floor 1, or send to the Delivery app orders queue?',
+    ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
+  },
+  quoteOrderDispositionTitle: { en: 'Finished order', ar: 'الطلب المكتمل' },
   quoteLineProgress: { en: 'Completed', ar: 'مكتمل' },
   quoteLineRemaining: { en: 'Remaining on order', ar: 'المتبقي على الطلب' },
   quoteLineReferenceImage: { en: 'Product reference', ar: 'صورة مرجعية للمنتج' },
@@ -411,6 +417,18 @@ const UI_STRINGS = {
     en: 'Units checked',
     ar: 'الوحدات المفعّلة',
   },
+  upholsteryCompletedItemsLabel: {
+    en: 'Completed items',
+    ar: 'البنود المكتملة',
+  },
+  upholsteryCompletedItemsHint: {
+    en: 'Enter how many pieces are ready, then tap ✓ to save.',
+    ar: 'أدخل عدد القطع الجاهزة ثم اضغط ✓ للحفظ.',
+  },
+  upholsteryCompletedItemsApply: {
+    en: 'Apply completed count',
+    ar: 'تأكيد العدد المكتمل',
+  },
   upholsteryUnitTapHint: {
     en: 'Tap each unit when that piece is ready (Floor 2 batch jobs).',
     ar: 'اضغط كل وحدة عند جهوزية القطعة (دفعات الطابق 2).',
@@ -418,6 +436,14 @@ const UI_STRINGS = {
   upholsteryJobFinishDone: {
     en: 'Done — Floor 1 updated and labels queued.',
     ar: 'تم — حُدّث الطابق 1 وأُرسلت الملصقات.',
+  },
+  paintingJobFinishDoneDelivery: {
+    en: 'Done — in the Delivery app queue (virtual hold, not on floor stock).',
+    ar: 'تم — في قائمة تطبيق التسليم (حجز افتراضي، ليس على مخزون الطوابق).',
+  },
+  paintingJobFinishDoneFloor1: {
+    en: 'Done — finished stock credited on Warehouse Floor 1.',
+    ar: 'تم — أُضيف المخزون الجاهز إلى الطابق 1.',
   },
   upholsteryJobFinishHint: {
     en: 'Check every unit before finish.',

@@ -481,20 +481,33 @@ export async function resumeQuoteProductionOrder(sb, { quoteId, route, userId })
   return { run_id: run.id, resumed_at: resumedAt, accumulated_ms: accumulated };
 }
 
+/** Credit finished quote units to Warehouse Floor 1 (/warehouse-products). */
+export async function creditQuoteAssemblyUnitsToFloor1(sb, { assemblyId, qty } = {}) {
+  const aid = String(assemblyId || '').trim();
+  const n = Math.max(1, Math.floor(Number(qty) || 1));
+  if (!aid) throw new Error('assembly_id required for Floor 1 stock');
+  await adjustAssemblyInventory(sb, aid, WAREHOUSE_FACTORY_LOCATION_ID, n);
+  await recomputeWarehouseLocationStockServer(sb, WAREHOUSE_FACTORY_LOCATION_ID);
+  return { assembly_id: aid, qty: n, floor1_location_id: WAREHOUSE_FACTORY_LOCATION_ID };
+}
+
 export async function completeQuoteProductionOrder(sb, {
   quoteId,
   userId,
   deferDeliveryQueue = false,
-}) {
+  destination = 'delivery',
+} = {}) {
   void userId;
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('quote_id required');
+  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
+  const skipDeliveryQueue = Boolean(deferDeliveryQueue) || dest === 'floor1';
   const { assertQuoteReadyForFullComplete } = await import('./quoteProductionPartialComplete.js');
   await assertQuoteReadyForFullComplete(sb, qid);
   const run = await findActiveQuoteRun(sb, qid);
   if (!run) throw new Error('No active production run for this quote');
   if (run.completed_at) {
-    if (!deferDeliveryQueue) {
+    if (!skipDeliveryQueue) {
       const { data: quoteRow } = await sb.from('quotations').select('id, quote_number').eq('id', qid).maybeSingle();
       const { data: routingRow } = await sb.from(ROUTING).select('route, metadata').eq('quote_id', qid).maybeSingle();
       const alreadyQueued = routingRow?.metadata?.delivery_admin?.stage;
@@ -519,20 +532,42 @@ export async function completeQuoteProductionOrder(sb, {
   await sb.from(ROUTING).update({ completed_at: now }).eq('quote_id', qid);
 
   const { data: quoteRow } = await sb.from('quotations').select('id, quote_number').eq('id', qid).maybeSingle();
-  const { data: routingRow } = await sb.from(ROUTING).select('route').eq('quote_id', qid).maybeSingle();
-  if (!deferDeliveryQueue) {
+  const { data: routingRow } = await sb.from(ROUTING).select('route, metadata').eq('quote_id', qid).maybeSingle();
+  let floor1Credited = false;
+  const finishQty = Math.max(1, Number(run.product_qty) || 1);
+  if (dest === 'floor1' && run.assembly_id) {
+    await creditQuoteAssemblyUnitsToFloor1(sb, { assemblyId: run.assembly_id, qty: finishQty });
+    floor1Credited = true;
+    const prevMeta = routingRow?.metadata && typeof routingRow.metadata === 'object' ? routingRow.metadata : {};
+    await sb.from(ROUTING).update({
+      metadata: {
+        ...prevMeta,
+        finish_destination: 'floor1',
+        factory_stock_added_at: now,
+        floor1_awaiting_hassan: false,
+      },
+      updated_at: now,
+    }).eq('quote_id', qid);
+  }
+  if (!skipDeliveryQueue) {
     const { registerQuoteOrderAwaitingDriver } = await import('./warehouseDeliveryAdminQueue.js');
     await registerQuoteOrderAwaitingDriver(sb, {
       quoteId: qid,
       assemblyId: run.assembly_id,
-      qty: Math.max(1, Number(run.product_qty) || 1),
+      qty: finishQty,
       route: routingRow?.route || run.metadata?.route || 'upholstery',
       quoteNumber: quoteRow?.quote_number || null,
       now,
     });
   }
 
-  return { run_id: run.id, completed_at: now, deferred_delivery_queue: Boolean(deferDeliveryQueue) };
+  return {
+    run_id: run.id,
+    completed_at: now,
+    deferred_delivery_queue: skipDeliveryQueue,
+    finish_destination: dest,
+    floor1_credited: floor1Credited,
+  };
 }
 
 /** Undo mistaken workshop complete — returns order to Carpentry/Upholstery Quotes & Jobs. */

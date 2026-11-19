@@ -27,7 +27,7 @@ import {
   finishUpholsteryProductionJob,
   pauseUpholsteryProductionJob,
   resumeUpholsteryProductionJob,
-  toggleUpholsteryProductionJobUnit,
+  setUpholsteryProductionJobUnitsCompleted,
 } from '../services/productionApi';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
@@ -35,11 +35,13 @@ import { theme } from '../shared/theme';
 import RunningJobElapsed from '../components/RunningJobElapsed';
 import JobMaterialsInlineList from '../shared/components/JobMaterialsInlineList';
 import { subscribeProductionRefresh } from '../lib/productionRefreshBus';
+import { alertProductionFinishDisposition } from '../shared/lib/productionFinishDispositionAlert';
 import { resolveProductImageUrl } from '../shared/lusakaStock/formatPrice';
 import {
   mergeJobInList,
   optimisticPauseJobPatch,
   optimisticResumeJobPatch,
+  optimisticSetUnitsCompletedPatch,
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
 
@@ -132,6 +134,73 @@ function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   );
 }
 
+function JobCompletedUnitsRow({
+  jobId,
+  productQty,
+  savedCount,
+  locale,
+  textAlign,
+  disabled,
+  onApply,
+}) {
+  const [draft, setDraft] = useState(String(savedCount));
+  useEffect(() => {
+    setDraft(String(savedCount));
+  }, [savedCount, jobId]);
+
+  const clamp = (n) => Math.max(0, Math.min(productQty, n));
+  const parsed = () => clamp(Math.floor(Number(String(draft).replace(/\D/g, '')) || 0));
+
+  return (
+    <View style={styles.unitBlock}>
+      <Text style={[styles.unitHeader, { textAlign }]}>
+        {tUi('upholsteryCompletedItemsLabel', locale)}
+        <Text style={styles.unitHeaderMuted}>
+          {` (${savedCount} / ${productQty})`}
+        </Text>
+      </Text>
+      <Text style={[kiosk.hint, { textAlign, marginBottom: 8 }]}>
+        {tUi('upholsteryCompletedItemsHint', locale)}
+      </Text>
+      <View style={styles.unitEntryRow}>
+        <Pressable
+          style={styles.unitStepBtn}
+          disabled={disabled}
+          onPress={() => setDraft(String(clamp(parsed() - 1)))}
+          accessibilityLabel="-"
+        >
+          <MaterialCommunityIcons name="minus" size={28} color={KIOSK_ICON_BLUE_ON_DARK} />
+        </Pressable>
+        <TextInput
+          style={styles.unitCountInput}
+          value={draft}
+          onChangeText={setDraft}
+          keyboardType="number-pad"
+          editable={!disabled}
+          selectTextOnFocus
+          maxLength={4}
+        />
+        <Pressable
+          style={styles.unitStepBtn}
+          disabled={disabled}
+          onPress={() => setDraft(String(clamp(parsed() + 1)))}
+          accessibilityLabel="+"
+        >
+          <MaterialCommunityIcons name="plus" size={28} color={KIOSK_ICON_BLUE_ON_DARK} />
+        </Pressable>
+        <Pressable
+          style={[styles.unitConfirmBtn, disabled && styles.unitConfirmBtnDisabled]}
+          disabled={disabled}
+          onPress={() => onApply?.(jobId, parsed())}
+          accessibilityLabel={tUi('upholsteryCompletedItemsApply', locale)}
+        >
+          <MaterialCommunityIcons name="check-circle" size={46} color="#22c55e" />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 function JobCard({
   job,
   locale,
@@ -143,18 +212,20 @@ function JobCard({
   onPlay,
   onFinish,
   onMaterials,
-  onToggleUnit,
+  onSetUnitsCompleted,
 }) {
   const isRunning = job.status === 'running';
   const thumb = resolveProductImageUrl(job.floor2_image_url || job.product_image_url || job.image_url);
   const canPlay = job.status === 'ready' || job.status === 'paused';
   const isCompleted = job.status === 'completed';
   const productQty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
-  const showUnitChecks = productQty > 1;
-  const checkedSet = useMemo(() => {
+  const showCompletedItems = !isCompleted;
+  const savedCount = useMemo(() => {
     const raw = job.checked_unit_indexes || [];
-    return new Set((Array.isArray(raw) ? raw : []).map((n) => Math.floor(Number(n))).filter((n) => n >= 1));
+    const arr = (Array.isArray(raw) ? raw : []).map((n) => Math.floor(Number(n))).filter((n) => n >= 1);
+    return arr.length;
   }, [job.checked_unit_indexes]);
+  const jobId = String(job.job_id || job.id);
 
   return (
     <View style={[kiosk.card, styles.jobCard]}>
@@ -178,37 +249,16 @@ function JobCard({
         </Text>
       </View>
 
-      {showUnitChecks ? (
-        <View style={styles.unitBlock}>
-          <Text style={[styles.unitLabel, { textAlign }]}>
-            {tUi('upholsteryUnitsCheckedLabel', locale)}
-            {': '}
-            {checkedSet.size}
-            {' / '}
-            {productQty}
-          </Text>
-          {!isCompleted ? (
-            <Text style={[kiosk.hint, { textAlign, marginBottom: 6 }]}>
-              {tUi('upholsteryUnitTapHint', locale)}
-            </Text>
-          ) : null}
-          <View style={styles.unitChipRow}>
-            {Array.from({ length: productQty }, (_, i) => i + 1).map((unitN) => {
-              const on = checkedSet.has(unitN);
-              const jobId = String(job.job_id || job.id);
-              return (
-                <Pressable
-                  key={unitN}
-                  style={[styles.unitChip, on && styles.unitChipOn]}
-                  disabled={isCompleted || unitBusy || busy}
-                  onPress={() => onToggleUnit?.(jobId, unitN)}
-                >
-                  <Text style={[styles.unitChipText, on && styles.unitChipTextOn]}>{unitN}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+      {showCompletedItems ? (
+        <JobCompletedUnitsRow
+          jobId={jobId}
+          productQty={productQty}
+          savedCount={savedCount}
+          locale={locale}
+          textAlign={textAlign}
+          disabled={Boolean(unitBusy || busy)}
+          onApply={onSetUnitsCompleted}
+        />
       ) : null}
 
       <View style={styles.iconRow}>
@@ -279,8 +329,10 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   const [unitBusyId, setUnitBusyId] = useState('');
   const [materialsTarget, setMaterialsTarget] = useState(null);
   const [search, setSearch] = useState('');
+  const [pullRefreshing, setPullRefreshing] = useState(false);
   const timerOpsRef = useRef(new Set());
   const jobsSnapshotRef = useRef([]);
+  const hasListDataRef = useRef(false);
 
   const loadJobs = useCallback(async ({ showLoading = true } = {}) => {
     if (!allowed) {
@@ -296,8 +348,11 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         fetchUpholsteryProductionJobs({ activeOnly: true }),
         fetchUpholsteryProductionQuotes().catch(() => []),
       ]);
-      setJobs(Array.isArray(list) ? list : []);
-      setQuoteOrders((Array.isArray(quotes) ? quotes : []).filter((q) => !q.completed_at));
+      const nextJobs = Array.isArray(list) ? list : [];
+      const nextQuotes = (Array.isArray(quotes) ? quotes : []).filter((q) => !q.completed_at);
+      setJobs(nextJobs);
+      setQuoteOrders(nextQuotes);
+      hasListDataRef.current = nextJobs.length > 0 || nextQuotes.length > 0;
     } catch (e) {
       const msg = e?.message || tUi('upholsteryJobLoadFailed', locale);
       setError(msg);
@@ -314,9 +369,8 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
 
   useFocusEffect(
     useCallback(() => {
-      const hasCached = jobs.length > 0 || quoteOrders.length > 0;
-      loadJobs({ showLoading: !hasCached });
-    }, [loadJobs, jobs.length, quoteOrders.length]),
+      loadJobs({ showLoading: !hasListDataRef.current });
+    }, [loadJobs]),
   );
 
   useEffect(() => subscribeProductionRefresh(() => loadJobs({ showLoading: false })), [loadJobs]);
@@ -325,7 +379,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     setBusyId(jobId);
     try {
       await fn();
-      await loadJobs();
+      await loadJobs({ showLoading: false });
     } catch (e) {
       Alert.alert(tUi('manufactureFailed', locale), e?.message || '');
     } finally {
@@ -375,22 +429,46 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     void runOptimisticTimerOp(jobId, 'pause');
   };
 
-  const onToggleUnit = useCallback(async (jobId, unitIndex) => {
+  const onSetUnitsCompleted = useCallback(async (jobId, completedCount) => {
     const id = String(jobId || '').trim();
     if (!id) return;
+    let snapshot = null;
+    setJobs((prev) => {
+      const job = prev.find((j) => String(j.job_id || j.id) === id);
+      if (!job) return prev;
+      snapshot = prev;
+      const patch = optimisticSetUnitsCompletedPatch(job, completedCount);
+      if (!patch) return prev;
+      return mergeJobInList(prev, id, patch);
+    });
     setUnitBusyId(id);
     try {
-      const result = await toggleUpholsteryProductionJobUnit(id, unitIndex);
+      const result = await setUpholsteryProductionJobUnitsCompleted(id, completedCount);
       const patch = serverJobPatchFromResponse(result);
       if (patch) {
         setJobs((prev) => mergeJobInList(prev, id, patch));
       }
     } catch (e) {
+      if (snapshot) setJobs(snapshot);
       Alert.alert(tUi('manufactureFailed', locale), e?.message || '');
     } finally {
       setUnitBusyId('');
     }
   }, [locale]);
+
+  const completeJobFinish = (jobId, destination) => {
+    wrapBusy(jobId, async () => {
+      const result = await finishUpholsteryProductionJob(jobId, { destination });
+      const dest = result?.finish_destination || destination;
+      const warn = String(result?.label_print_warning || '').trim();
+      if (warn) {
+        Alert.alert(tUi('upholsteryJobFinish', locale), warn);
+        return;
+      }
+      const doneKey = dest === 'floor1' ? 'paintingJobFinishDoneFloor1' : 'paintingJobFinishDoneDelivery';
+      Alert.alert(tUi('upholsteryJobFinish', locale), tUi(doneKey, locale));
+    });
+  };
 
   const onFinish = (job) => {
     const jobId = job.job_id || job.id;
@@ -405,15 +483,14 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         {
           text: tUi('upholsteryJobFinish', locale),
           style: 'destructive',
-          onPress: () => wrapBusy(jobId, async () => {
-            const result = await finishUpholsteryProductionJob(jobId);
-            const warn = String(result?.label_print_warning || '').trim();
-            if (warn) {
-              Alert.alert(tUi('upholsteryJobFinish', locale), warn);
-            } else {
-              Alert.alert(tUi('upholsteryJobFinish', locale), tUi('upholsteryJobFinishDone', locale));
-            }
-          }),
+          onPress: () => {
+            alertProductionFinishDisposition({
+              tUi,
+              locale,
+              onFloor1: () => completeJobFinish(jobId, 'floor1'),
+              onDelivery: () => completeJobFinish(jobId, 'delivery'),
+            });
+          },
         },
       ],
     );
@@ -482,8 +559,15 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         data={combinedItems}
         keyExtractor={(item) => item._key}
         keyboardShouldPersistTaps="handled"
-        refreshing={loading}
-        onRefresh={() => loadJobs({ showLoading: true })}
+        refreshing={pullRefreshing}
+        onRefresh={async () => {
+          setPullRefreshing(true);
+          try {
+            await loadJobs({ showLoading: false });
+          } finally {
+            setPullRefreshing(false);
+          }
+        }}
         contentContainerStyle={combinedItems.length === 0 ? styles.listEmpty : { paddingBottom: 24 }}
         renderItem={({ item }) => (
           item._kind === 'quote' ? (
@@ -509,7 +593,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
               unitBusy={unitBusyId === String(item.job.job_id || item.job.id)}
               onPlay={onPlay}
               onPause={onPause}
-              onToggleUnit={onToggleUnit}
+              onSetUnitsCompleted={onSetUnitsCompleted}
                 onFinish={onFinish}
                 onMaterials={(jobRow) => setMaterialsTarget({
                   jobKind: 'upholstery',
@@ -542,7 +626,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         onClose={() => setMaterialsTarget(null)}
         onSaved={() => {
           setMaterialsTarget(null);
-          loadJobs();
+          loadJobs({ showLoading: false });
         }}
       />
     </View>
@@ -584,19 +668,37 @@ const styles = StyleSheet.create({
   },
   iconBtn: { padding: 4 },
   unitBlock: { marginBottom: 12 },
-  unitLabel: { fontSize: 14, fontWeight: '700', color: theme.text, marginBottom: 4 },
-  unitChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  unitChip: {
-    minWidth: 40,
-    height: 40,
-    borderRadius: 8,
+  unitHeader: { fontSize: 15, fontWeight: '800', color: theme.text, marginBottom: 4 },
+  unitHeaderMuted: { fontSize: 14, fontWeight: '600', color: theme.textMuted },
+  unitEntryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  unitStepBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: theme.border,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.surfaceElevated,
   },
-  unitChipOn: { borderColor: theme.primary, backgroundColor: theme.primaryBg },
-  unitChipText: { fontSize: 16, fontWeight: '700', color: theme.muted },
-  unitChipTextOn: { color: theme.primary },
+  unitCountInput: {
+    flex: 1,
+    minWidth: 56,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surfaceElevated,
+    color: theme.text,
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingHorizontal: 8,
+  },
+  unitConfirmBtn: { padding: 2 },
+  unitConfirmBtnDisabled: { opacity: 0.45 },
 });

@@ -1650,6 +1650,15 @@ async function opUpholsteryJobCheckUnit(body, user) {
   const unitIndex = body.unit_index ?? body.unitIndex;
   if (!jobId) throw new Error('job_id required');
   const sb = getService();
+  const completedRaw = body.completed_count ?? body.completedCount;
+  if (completedRaw != null && completedRaw !== '') {
+    const { setUpholsteryProductionJobUnitsCompleted } = await import('../lib/upholsteryProductionJobs.js');
+    return setUpholsteryProductionJobUnitsCompleted(sb, {
+      jobId,
+      completedCount: completedRaw,
+      userId: user?.id || user?.uid,
+    });
+  }
   const { toggleUpholsteryProductionJobUnit } = await import('../lib/upholsteryProductionJobs.js');
   return toggleUpholsteryProductionJobUnit(sb, {
     jobId,
@@ -1664,12 +1673,17 @@ async function opUpholsteryJobFinish(body, user) {
   if (!jobId) throw new Error('job_id required');
   const sb = getService();
   const printedBy = (await productionWhatsappProducerName(user)) || 'Upholstery production';
+  const destRaw = String(body.destination || body.finish_destination || body.finishDestination || 'delivery')
+    .trim()
+    .toLowerCase();
+  const destination = destRaw === 'floor1' ? 'floor1' : 'delivery';
   const { finishUpholsteryProductionJob } = await import('../lib/upholsteryProductionJobs.js');
   return finishUpholsteryProductionJob(sb, {
     jobId,
     userId: user?.id || user?.uid,
     user,
     labelPrintedBy: printedBy,
+    destination,
   });
 }
 
@@ -1764,10 +1778,15 @@ async function opCarpentryJobFinish(body, user) {
   const preferredStoreroomLocationId = String(
     body.preferred_storeroom_location_id || body.preferredStoreroomLocationId || '',
   ).trim() || null;
+  const destRaw = String(body.destination || body.finish_destination || body.finishDestination || 'delivery')
+    .trim()
+    .toLowerCase();
+  const destination = destRaw === 'floor1' ? 'floor1' : 'delivery';
   return finishCarpentryProductionJob(sb, {
     jobId,
     userId: user?.id || user?.uid,
     preferredStoreroomLocationId,
+    destination,
   });
 }
 
@@ -1851,6 +1870,20 @@ async function opPaintingJobFinish(body, user) {
   });
 }
 
+async function opPaintingJobCancel(body, user) {
+  await assertPaintingWorkshopUser(user);
+  const jobId = String(body.job_id || body.jobId || '').trim();
+  if (!jobId) throw new Error('job_id required');
+  const sb = createFirestoreServerClient();
+  const { cancelPaintingProductionJob } = await import('../lib/paintingProductionJobs.js');
+  const reason = String(body.reason || body.cancel_reason || '').trim();
+  return cancelPaintingProductionJob(sb, {
+    jobId,
+    userId: user?.id || user?.uid,
+    reason,
+  });
+}
+
 async function assertQuoteRouteUser(user, route) {
   const normalized = String(route || '').trim().toLowerCase();
   if (normalized === 'carpentry') {
@@ -1922,7 +1955,10 @@ async function opProductionQuoteComplete(body, user) {
   if (!quoteId) throw new Error('quote_id required');
   const sb = getService();
   const { completeQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
-  const deferDeliveryQueue = body.defer_delivery_queue === true
+  const destRaw = String(body.destination || body.finish_destination || body.finishDestination || '').trim().toLowerCase();
+  const destination = destRaw === 'floor1' ? 'floor1' : 'delivery';
+  const deferDeliveryQueue = destination === 'floor1'
+    || body.defer_delivery_queue === true
     || body.deferDeliveryQueue === true
     || body.send_to_painting === true
     || body.sendToPainting === true;
@@ -1931,6 +1967,7 @@ async function opProductionQuoteComplete(body, user) {
     route,
     userId: user?.id || user?.uid,
     deferDeliveryQueue,
+    destination,
   });
 }
 
@@ -2045,8 +2082,8 @@ async function opProductionQuoteLineHandoff(body, user) {
   const target = String(body.handoff || body.target || '').trim().toLowerCase();
   const qty = body.qty ?? body.quantity ?? null;
   if (!quoteId || !itemId) throw new Error('quote_id and item_id required');
-  if (target !== 'painting' && target !== 'delivery') {
-    throw new Error('handoff must be painting or delivery');
+  if (!['floor1', 'painting', 'delivery'].includes(target)) {
+    throw new Error('handoff must be floor1, painting, or delivery');
   }
   if (target === 'painting' && String(route || '').toLowerCase() !== 'carpentry') {
     throw new Error('Only carpentry orders can send ready units to painting');
@@ -2055,7 +2092,17 @@ async function opProductionQuoteLineHandoff(body, user) {
   const {
     handoffQuoteLinePartialToDelivery,
     handoffQuoteLinePartialToPainting,
+    handoffQuoteLinePartialToFloor1,
   } = await import('../lib/quoteProductionPartialComplete.js');
+  if (target === 'floor1') {
+    return handoffQuoteLinePartialToFloor1(sb, {
+      quoteId,
+      route,
+      itemId,
+      qty,
+      userId: user?.id || user?.uid,
+    });
+  }
   if (target === 'painting') {
     return handoffQuoteLinePartialToPainting(sb, {
       quoteId,
@@ -5502,6 +5549,9 @@ export default async function handler(req, res) {
         break;
       case 'painting-job-finish':
         result = await opPaintingJobFinish(body, user);
+        break;
+      case 'painting-job-cancel':
+        result = await opPaintingJobCancel(body, user);
         break;
       case 'production-quotes-list':
         result = await opProductionQuotesList(body, user);

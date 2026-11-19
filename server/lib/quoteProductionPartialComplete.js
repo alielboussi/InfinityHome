@@ -113,6 +113,114 @@ function appendPartialDeliveryHold(meta, patch) {
   return { ...meta, partial_delivery_holds: list };
 }
 
+async function completeQuoteOrderIfAllLinesDone(sb, {
+  quoteId,
+  userId,
+  destination,
+  metadata,
+}) {
+  const items = await loadQuoteItems(sb, quoteId);
+  const lines = items.map((it) => buildProductionLineSummaryRow(it, metadata));
+  if (!allQuoteLinesFullyCompleted(lines, metadata)) {
+    return null;
+  }
+  const { completeQuoteProductionOrder } = await import('./quoteProductionRouting.js');
+  return completeQuoteProductionOrder(sb, {
+    quoteId,
+    userId,
+    destination: destination === 'floor1' ? 'floor1' : 'delivery',
+  });
+}
+
+function tagLastLineSliceDisposition(meta, itemId, disposition) {
+  const id = String(itemId || '').trim();
+  const next = meta && typeof meta === 'object' ? { ...meta } : {};
+  const map = { ...(next.line_progress || {}) };
+  const entry = map[id] && typeof map[id] === 'object' ? { ...map[id] } : null;
+  if (!entry) return next;
+  const slices = Array.isArray(entry.slices) ? [...entry.slices] : [];
+  if (!slices.length) return next;
+  const now = new Date().toISOString();
+  slices[slices.length - 1] = {
+    ...slices[slices.length - 1],
+    disposition: String(disposition || '').trim(),
+    handoff_at: now,
+  };
+  map[id] = { ...entry, slices, updated_at: now };
+  return { ...next, line_progress: map };
+}
+
+/** User chose Floor 1 storage for a slice already recorded in line_progress. */
+export async function handoffQuoteLinePartialToFloor1(sb, {
+  quoteId,
+  route,
+  itemId,
+  qty = null,
+  userId = null,
+} = {}) {
+  const qid = String(quoteId || '').trim();
+  const routing = await getQuoteProductionRouting(sb, qid);
+  if (!routing) throw new Error('Quote routing not found');
+
+  const meta = routing.metadata && typeof routing.metadata === 'object' ? { ...routing.metadata } : {};
+  const entry = meta.line_progress?.[String(itemId)];
+  if (!entry) throw new Error('No completed qty on this line yet');
+
+  const sliceQty = qty != null
+    ? Math.max(1, Math.floor(Number(qty)))
+    : Math.max(1, Number(entry.slices?.[entry.slices.length - 1]?.qty) || 0);
+
+  const nextMeta = tagLastLineSliceDisposition(meta, itemId, 'floor1');
+  const now = new Date().toISOString();
+
+  const orderComplete = await completeQuoteOrderIfAllLinesDone(sb, {
+    quoteId: qid,
+    userId,
+    destination: 'floor1',
+    metadata: nextMeta,
+  });
+  if (orderComplete) {
+    const { error } = await sb.from(ROUTING).update({
+      metadata: nextMeta,
+      updated_at: now,
+    }).eq('quote_id', qid);
+    if (error) throw new Error(error.message || 'Failed to save Floor 1 handoff');
+    return {
+      metadata: nextMeta,
+      order_completed: true,
+      ...orderComplete,
+    };
+  }
+
+  const run = await findActiveQuoteRun(sb, qid);
+  const assemblyId = run?.assembly_id || meta.primary_assembly_id || null;
+  if (!assemblyId) throw new Error('No assembly linked for Floor 1 stock');
+
+  const { creditQuoteAssemblyUnitsToFloor1 } = await import('./quoteProductionRouting.js');
+  await creditQuoteAssemblyUnitsToFloor1(sb, { assemblyId, qty: sliceQty });
+
+  const receipts = Array.isArray(nextMeta.partial_floor1_receipts) ? [...nextMeta.partial_floor1_receipts] : [];
+  receipts.push({
+    id: newUuid(),
+    quote_id: qid,
+    item_id: String(itemId),
+    quantity: sliceQty,
+    assembly_id: String(assemblyId),
+    registered_at: now,
+    by: userId || null,
+    department: String(route || routing.route || 'upholstery').toLowerCase(),
+  });
+  nextMeta.partial_floor1_receipts = receipts;
+
+  const { error } = await sb.from(ROUTING).update({
+    metadata: nextMeta,
+    updated_at: now,
+  }).eq('quote_id', qid);
+  if (error) throw new Error(error.message || 'Failed to save Floor 1 handoff');
+
+  return { metadata: nextMeta, floor1_credited: true, quantity: sliceQty, order_completed: false };
+}
+
 /** User chose delivery for a slice already recorded in line_progress. */
 export async function handoffQuoteLinePartialToDelivery(sb, {
   quoteId,
@@ -138,12 +246,33 @@ export async function handoffQuoteLinePartialToDelivery(sb, {
   const name = String(raw?.name_override || raw?.name || 'Product').trim();
   const { data: quoteRow } = await sb.from('quotations').select('quote_number').eq('id', qid).maybeSingle();
 
+  const nextMetaTagged = tagLastLineSliceDisposition(meta, itemId, 'delivery');
+  const now = new Date().toISOString();
+
+  const orderComplete = await completeQuoteOrderIfAllLinesDone(sb, {
+    quoteId: qid,
+    userId,
+    destination: 'delivery',
+    metadata: nextMetaTagged,
+  });
+  if (orderComplete) {
+    const { error } = await sb.from(ROUTING).update({
+      metadata: nextMetaTagged,
+      updated_at: now,
+    }).eq('quote_id', qid);
+    if (error) throw new Error(error.message || 'Failed to save delivery handoff');
+    return {
+      metadata: nextMetaTagged,
+      order_completed: true,
+      ...orderComplete,
+    };
+  }
+
   const run = await findActiveQuoteRun(sb, qid);
   const assemblyId = run?.assembly_id || meta.primary_assembly_id || null;
   if (!assemblyId) throw new Error('No assembly linked for delivery handoff');
 
   const holdId = newUuid();
-  const now = new Date().toISOString();
   const hold = {
     id: holdId,
     quote_id: qid,
@@ -160,7 +289,7 @@ export async function handoffQuoteLinePartialToDelivery(sb, {
     by: userId || null,
   };
 
-  const nextMeta = appendPartialDeliveryHold(meta, hold);
+  const nextMeta = appendPartialDeliveryHold(nextMetaTagged, hold);
   const { error } = await sb.from(ROUTING).update({
     metadata: nextMeta,
     updated_at: now,
@@ -180,7 +309,7 @@ export async function handoffQuoteLinePartialToDelivery(sb, {
     // optional push
   }
 
-  return { hold, metadata: nextMeta };
+  return { hold, metadata: nextMeta, order_completed: false };
 }
 
 export async function handoffQuoteLinePartialToPainting(sb, {
