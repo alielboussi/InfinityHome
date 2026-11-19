@@ -34,6 +34,7 @@ import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
 import { enrichQuotationListTotals } from './services/quotationListTotals';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
+import { resolveFirebaseStorageImageForDisplay } from './utils/storageImageUrl';
 import {
   applyQuotationTotalsFromItems,
   computeQuotationDisplayTotal,
@@ -72,6 +73,33 @@ const QUOTE_PRODUCT_CATALOG_CACHE_KEY = 'quotationer:quote-products:v1';
 const QUOTE_UNIT_CATALOG_CACHE_KEY = 'quotationer:quote-units:v1';
 const QUOTATION_CACHE_TTL_MS = 10 * 60 * 1000;
 const CANONICAL_APP_ORIGIN = (process.env.REACT_APP_CANONICAL_ORIGIN || 'https://www.infinity-home.online').replace(/\/+$/, '');
+
+function QuoteLineImageThumb({ url }) {
+  const [src, setSrc] = React.useState('');
+  React.useEffect(() => {
+    let cancelled = false;
+    setSrc('');
+    resolveFirebaseStorageImageForDisplay(url).then((resolved) => {
+      if (!cancelled) setSrc(resolved || url);
+    });
+    return () => { cancelled = true; };
+  }, [url]);
+  if (!src) {
+    return (
+      <span
+        style={{ width: 56, height: 56, display: 'inline-block', background: '#f0f0f0', borderRadius: 6 }}
+        aria-hidden
+      />
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }}
+    />
+  );
+}
 
 async function uploadQuoteProductionDrawing(quoteId, file) {
   const safeName = String(file.name || 'drawing.jpg').replace(/[^\w.-]+/g, '_');
@@ -1759,7 +1787,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                                 />
                               </label>
                               {it.line_image_url ? (
-                                <img src={it.line_image_url} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }} />
+                                <QuoteLineImageThumb url={it.line_image_url} />
                               ) : null}
                             </div>
                           ) : null}

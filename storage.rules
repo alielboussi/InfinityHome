@@ -40,6 +40,15 @@ service firebase.storage {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
     }
+    // Legacy quote line refs + Hassan client drawing uploads (new uploads use productimages/quotations/…)
+    match /Quotations/quote-line-images/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /Quotations/production-drawings/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
     match /labels/{fileName} {
       allow read: if isSignedIn();
       allow write: if isSignedIn();

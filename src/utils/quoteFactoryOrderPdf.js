@@ -259,7 +259,11 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
       const lineImgRaw = quoteItemLineImageUrl(it);
       const lineImg = lineImgRaw
-        ? rewriteLegacyStorageUrl(lineImgRaw, { bucket: 'Quotations' })
+        ? (
+          /productimages%2Fquotations|%2Fproductimages%2F|quotations\/quote-line-images/i.test(lineImgRaw)
+            ? rewriteLegacyStorageUrl(lineImgRaw)
+            : rewriteLegacyStorageUrl(lineImgRaw, { bucket: 'Quotations' })
+        )
         : '';
       const photoCell = lineImg
         ? `<div class="prod-photo-col"><img class="prod-line-photo" src="${escapeHtml(lineImg)}" crossorigin="anonymous" alt="" /></div>`

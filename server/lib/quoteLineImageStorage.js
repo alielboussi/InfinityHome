@@ -3,7 +3,10 @@ import {
   uploadBufferToFirebaseStorage,
 } from './firebaseStorage.js';
 
-const FOLDER = 'Quotations';
+/** productimages allows public ?alt=media read (workshop apps + Quotationer thumbnails + factory PDF). */
+const FOLDER = 'productimages';
+const LINE_IMAGE_PREFIX = 'quotations/quote-line-images';
+const DRAWING_PREFIX = 'quotations/production-drawings';
 
 export function normalizeQuoteLineImageUrl(raw) {
   const url = String(raw ?? '').trim();
@@ -24,7 +27,7 @@ export async function uploadQuoteLineImageBuffer({
   const iid = String(itemId || 'draft').trim() || 'draft';
   if (!buffer?.length) throw new Error('Image data required');
   const safeExt = String(ext || 'jpg').replace(/[^\w]+/g, '') || 'jpg';
-  const objectPath = `quote-line-images/${qid}/${iid}/${Date.now()}.${safeExt}`;
+  const objectPath = `${LINE_IMAGE_PREFIX}/${qid}/${iid}/${Date.now()}.${safeExt}`;
   await uploadBufferToFirebaseStorage({
     bucketFolder: FOLDER,
     objectPath,
@@ -45,7 +48,7 @@ export async function uploadQuoteProductionDrawingBuffer({
   if (!qid) throw new Error('quote_id required');
   if (!buffer?.length) throw new Error('Image data required');
   const safeExt = String(ext || 'jpg').replace(/[^\w]+/g, '') || 'jpg';
-  const objectPath = `production-drawings/${qid}/${Date.now()}.${safeExt}`;
+  const objectPath = `${DRAWING_PREFIX}/${qid}/${Date.now()}.${safeExt}`;
   await uploadBufferToFirebaseStorage({
     bucketFolder: FOLDER,
     objectPath,
