@@ -2,7 +2,7 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import db from '../dataClient';
 import { pickQuoteItemProductionFields, quoteItemLineImageUrl } from './quoteProductionItemFields';
-import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { resolveFirebaseStorageImageForDisplay, rewriteLegacyStorageUrl } from './storageImageUrl';
 import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime';
 import { translateQuoteStringsToArabic } from '../services/quoteProductionApi';
 import {
@@ -11,6 +11,7 @@ import {
   toArabicIndicDigits,
   translateTermToArabic,
   translateQtyUnitLabel,
+  collectProductionQuoteArabicPhrases,
 } from './quoteArabicTranslate';
 
 export { ARABIC_TERMS, translateTermToArabic };
@@ -21,6 +22,33 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function resolveQuoteLineImagePublicUrl(rawUrl) {
+  const lineImgRaw = String(rawUrl || '').trim();
+  if (!lineImgRaw) return '';
+  if (/productimages%2Fquotations|%2Fproductimages%2F|quotations\/quote-line-images/i.test(lineImgRaw)) {
+    return rewriteLegacyStorageUrl(lineImgRaw) || lineImgRaw;
+  }
+  return rewriteLegacyStorageUrl(lineImgRaw, { bucket: 'Quotations' }) || lineImgRaw;
+}
+
+async function fetchImageDataUrlForPdf(url) {
+  const resolved = await resolveFirebaseStorageImageForDisplay(url);
+  if (!resolved) return '';
+  try {
+    const resp = await fetch(resolved, { mode: 'cors', credentials: 'omit' });
+    if (!resp.ok) return resolved;
+    const blob = await resp.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || resolved));
+      reader.onerror = () => resolve(resolved);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return resolved;
+  }
 }
 
 function cleanDescriptionText(val) {
@@ -129,20 +157,26 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
   const company = await getCompanySettings();
   const logoUrl = getLogoUrl(company);
 
-  const phrasesToTranslate = [];
+  const phraseSet = new Set(collectProductionQuoteArabicPhrases(items));
   for (const it of items || []) {
-    const name = String(it.name_override || it.name || it.product_name || it.quote_product_name || '').trim();
-    if (name) phrasesToTranslate.push(name);
     const desc = cleanDescriptionText(it.description);
-    if (desc) phrasesToTranslate.push(desc);
-    const fields = pickQuoteItemProductionFields(it);
-    if (fields.wood) phrasesToTranslate.push(fields.wood);
-    for (const acc of fields.accessories || []) {
-      phrasesToTranslate.push(acc);
-    }
+    if (desc) phraseSet.add(desc);
+    const descRaw = String(it.description || '').trim();
+    if (descRaw) phraseSet.add(descRaw);
   }
+  const serverTranslations = await translateQuoteStringsToArabic([...phraseSet]);
 
-  const serverTranslations = await translateQuoteStringsToArabic(phrasesToTranslate);
+  const lineImageDataByKey = new Map();
+  await Promise.all(
+    (items || []).map(async (it) => {
+      const lineImgRaw = quoteItemLineImageUrl(it);
+      if (!lineImgRaw) return;
+      const key = String(it.id || lineImgRaw);
+      const publicUrl = resolveQuoteLineImagePublicUrl(lineImgRaw);
+      const dataUrl = await fetchImageDataUrlForPdf(publicUrl || lineImgRaw);
+      if (dataUrl) lineImageDataByKey.set(key, dataUrl);
+    }),
+  );
 
   const routeKey = String(route || '').trim().toLowerCase();
   const deptLabel = routeKey === 'carpentry'
@@ -227,7 +261,9 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
       const desc = cleanDescriptionText(it.description);
       if (desc) {
-        const descAr = translateTermToArabic(desc, serverTranslations);
+        const descRaw = String(it.description || '').trim();
+        const descAr = translateTermToArabic(descRaw, serverTranslations)
+          || translateTermToArabic(desc, serverTranslations);
         specBlocks.push(`
           <div class="bilingual-row desc-pair">
             <div class="en-col" dir="ltr">Description: "${escapeHtml(desc)}"</div>
@@ -257,16 +293,10 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         ? `${qty} ${unitAbbr} / ${qtyArDigits} ${unitAr || unitAbbr}`
         : `${qty} / ${qtyArDigits}`;
 
-      const lineImgRaw = quoteItemLineImageUrl(it);
-      const lineImg = lineImgRaw
-        ? (
-          /productimages%2Fquotations|%2Fproductimages%2F|quotations\/quote-line-images/i.test(lineImgRaw)
-            ? rewriteLegacyStorageUrl(lineImgRaw)
-            : rewriteLegacyStorageUrl(lineImgRaw, { bucket: 'Quotations' })
-        )
-        : '';
+      const lineKey = String(it.id || quoteItemLineImageUrl(it) || '');
+      const lineImg = lineImageDataByKey.get(lineKey) || '';
       const photoCell = lineImg
-        ? `<div class="prod-photo-col"><img class="prod-line-photo" src="${escapeHtml(lineImg)}" crossorigin="anonymous" alt="" /></div>`
+        ? `<div class="prod-photo-col"><img class="prod-line-photo" src="${escapeHtml(lineImg)}" alt="" /></div>`
         : '<div class="prod-photo-col prod-photo-col--empty"></div>';
 
       return `

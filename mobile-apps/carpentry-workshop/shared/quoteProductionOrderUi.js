@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   collectProductionQuoteArabicPhrases,
   displayQuoteFieldValue,
+  expandArabicPhraseVariants,
   formatQuoteDimensionsCmDisplay,
   formatQuoteLineQtyLabel,
 } from './quoteArabicTranslate';
@@ -144,16 +145,22 @@ function buildCarpentryLineExtraTexts(line, tUi, locale, arabicMap = {}) {
 }
 
 /** Server-backed Arabic map when locale is `ar` (falls back to local dictionary). */
-export function useProductionQuoteArabicMap(lines, locale, fetchTranslations) {
+export function useProductionQuoteArabicMap(lines, locale, fetchTranslations, extraPhrases = []) {
   const [map, setMap] = useState({});
-  const phraseKey = useMemo(() => collectProductionQuoteArabicPhrases(lines).join('\0'), [lines]);
+  const phraseKey = useMemo(() => {
+    const extras = Array.isArray(extraPhrases) ? extraPhrases : [];
+    const merged = [...collectProductionQuoteArabicPhrases(lines), ...extras];
+    return expandArabicPhraseVariants(merged).join('\0');
+  }, [lines, extraPhrases]);
 
   useEffect(() => {
     if (locale !== 'ar') {
       setMap({});
       return undefined;
     }
-    const phrases = phraseKey ? phraseKey.split('\0').filter(Boolean) : [];
+    const phrases = expandArabicPhraseVariants(
+      phraseKey ? phraseKey.split('\0').filter(Boolean) : [],
+    );
     if (!phrases.length) {
       setMap({});
       return undefined;

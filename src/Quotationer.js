@@ -51,7 +51,6 @@ import {
   ALUMINUM_THICKNESS_MM_OPTIONS,
   CARPENTRY_ACCESSORY_GROUPS,
   CARPENTRY_WOOD_OPTIONS,
-  UPHOLSTERY_FOAM_OPTIONS,
   normalizeQuoteItemAccessories,
 } from './utils/quoteProductionItemFields';
 import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
@@ -1831,47 +1830,6 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                                   placeholder="H"
                                   aria-label="Height cm optional"
                                 />
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">Leather</span>
-                                <input
-                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                  value={it.leather_code || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { leather_code: e.target.value })}
-                                  placeholder="Code"
-                                  aria-label="Leather code optional"
-                                />
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">Foam type</span>
-                                <select
-                                  className="quotes-select quotes-select--slim quotes-line-meta-control"
-                                  value={it.foam_type || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { foam_type: e.target.value })}
-                                  aria-label="Foam type optional"
-                                >
-                                  <option value="">—</option>
-                                  {UPHOLSTERY_FOAM_OPTIONS.map((opt) => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">Wood</span>
-                                <select
-                                  className="quotes-select quotes-select--slim quotes-line-meta-control"
-                                  value={it.wood || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { wood: e.target.value })}
-                                  aria-label="Wood type optional"
-                                >
-                                  <option value="">—</option>
-                                  {CARPENTRY_WOOD_OPTIONS.map((opt) => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                  ))}
-                                </select>
                               </label>
                             </div>
                           ) : null}

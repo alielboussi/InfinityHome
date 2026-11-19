@@ -103,10 +103,15 @@ export default function QuoteDetailScreen({ route, navigation }) {
   }, [startedAt, accepted, completed, tick, isPaused, accumulatedMs]);
 
   const lines = Array.isArray(quote.lines) ? quote.lines : [];
+  const arabicExtraPhrases = useMemo(
+    () => [quote.customer_name, quote.customer_phone].map((s) => String(s || '').trim()).filter(Boolean),
+    [quote.customer_name, quote.customer_phone],
+  );
   const arabicMap = useProductionQuoteArabicMap(
     lines,
     locale,
     fetchProductionQuoteArabicTranslations,
+    arabicExtraPhrases,
   );
   const customerName = displayQuoteFieldValue(locale, quote.customer_name, arabicMap) || '—';
 
