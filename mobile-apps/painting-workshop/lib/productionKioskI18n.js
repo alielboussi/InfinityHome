@@ -165,6 +165,14 @@ const UI_STRINGS = {
   quoteOrderEnd: { en: 'End', ar: 'إنهاء' },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
+  quoteOrderEndTypeOkHint: {
+    en: 'Type Ok to confirm ending production.',
+    ar: 'اكتب Ok للتأكيد على إنهاء الإنتاج.',
+  },
+  jobFinishTypeOkHint: {
+    en: 'Type Ok to confirm finishing this job.',
+    ar: 'اكتب Ok لتأكيد إنهاء المهمة.',
+  },
   quoteOrderCompleteDone: { en: 'Production ended.', ar: 'انتهى الإنتاج.' },
   quoteOrderMaterials: { en: 'Materials', ar: 'المواد' },
   materialsSearch: { en: 'Search material', ar: 'ابحث عن مادة' },

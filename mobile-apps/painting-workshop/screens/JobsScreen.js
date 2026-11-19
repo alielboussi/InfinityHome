@@ -45,6 +45,7 @@ import {
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
 import { alertProductionFinishDisposition } from '../shared/lib/productionFinishDispositionAlert';
+import ConfirmTypeOkModal from '../shared/components/ConfirmTypeOkModal';
 
 function resolvePaintingJobImage(job) {
   const invSource = String(job?.inventory_source || '').trim().toLowerCase();
@@ -184,6 +185,7 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
   const jobsSnapshotRef = useRef([]);
   const [materialsJob, setMaterialsJob] = useState(null);
   const [repairMaterials, setRepairMaterials] = useState(null);
+  const [finishConfirmJob, setFinishConfirmJob] = useState(null);
 
   const listData = useMemo(() => mergeQueueRows(jobs, returns), [jobs, returns]);
 
@@ -293,34 +295,30 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
     });
   };
 
-  const onFinish = (job) => {
-    const jobId = job.job_id || job.id;
-    const qty = Math.max(1, Math.floor(Number(job.product_qty) || 1));
-    const name = job.product_name || 'product';
-    const matCount = (job.manual_material_lines || []).length;
+  const finishConfirmMessage = useMemo(() => {
+    if (!finishConfirmJob) return '';
+    const qty = Math.max(1, Math.floor(Number(finishConfirmJob.product_qty) || 1));
+    const name = finishConfirmJob.product_name || 'product';
+    const matCount = (finishConfirmJob.manual_material_lines || []).length;
     let body = tUi('paintingJobFinishBody', locale)
       .replace('{name}', name)
       .replace('{qty}', String(qty));
     if (matCount === 0) body = `${body}\n\n${tUi('jobFinishNoMaterialsHint', locale)}`;
-    Alert.alert(
-      tUi('upholsteryJobFinishTitle', locale),
-      body,
-      [
-        { text: tUi('cancel', locale), style: 'cancel' },
-        {
-          text: tUi('upholsteryJobFinish', locale),
-          style: 'destructive',
-          onPress: () => {
-            alertProductionFinishDisposition({
-              tUi,
-              locale,
-              onFloor1: () => completePaintingFinish(jobId, 'floor1'),
-              onDelivery: () => completePaintingFinish(jobId, 'delivery'),
-            });
-          },
-        },
-      ],
-    );
+    return body;
+  }, [finishConfirmJob, locale]);
+
+  const proceedFinishJob = (job) => {
+    const jobId = job.job_id || job.id;
+    alertProductionFinishDisposition({
+      tUi,
+      locale,
+      onFloor1: () => completePaintingFinish(jobId, 'floor1'),
+      onDelivery: () => completePaintingFinish(jobId, 'delivery'),
+    });
+  };
+
+  const onFinish = (job) => {
+    setFinishConfirmJob(job);
   };
 
   const runReturnOp = async (row, op, body, { timerAction } = {}) => {
@@ -474,6 +472,21 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
         onSaved={() => {
           setRepairMaterials(null);
           loadQueue();
+        }}
+      />
+      <ConfirmTypeOkModal
+        visible={Boolean(finishConfirmJob)}
+        title={tUi('upholsteryJobFinishTitle', locale)}
+        message={finishConfirmMessage}
+        typeHint={tUi('jobFinishTypeOkHint', locale)}
+        confirmLabel={tUi('upholsteryJobFinish', locale)}
+        cancelLabel={tUi('cancel', locale)}
+        textAlign={textAlign}
+        onCancel={() => setFinishConfirmJob(null)}
+        onConfirm={() => {
+          const job = finishConfirmJob;
+          setFinishConfirmJob(null);
+          if (job) proceedFinishJob(job);
         }}
       />
     </View>

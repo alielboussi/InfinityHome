@@ -128,6 +128,13 @@ export const ARABIC_TERMS = Object.freeze({
 export const WORD_FALLBACKS = [
   [/\bfoam\s+and\s+fabric\s+material\s*\(\s*seat\s+and\s+back\s*\)/gi, 'فوم وقماش (مقعد وظهر)'],
   [/\bsofa\s+cushions?\b/gi, 'وسائد كنبة'],
+  [/\b(filling|filing)\s+cabinet\s+sliding\s+door\s*\(\s*with\s+v[ei]neer\s*\)/gi, 'خزانة ملفات بباب سحاب (بتشطيب قشرة خشب)'],
+  [/\b(filling|filing)\s+cabinet\s+sliding\s+door/gi, 'خزانة ملفات بباب سحاب'],
+  [/\bsliding\s+door(s)?\b/gi, 'باب سحاب'],
+  [/\bwith\s+v[ei]neer\b/gi, 'بتشطيب قشرة خشب'],
+  [/\bv[ei]neer\b/gi, 'قشرة خشب'],
+  [/\b(filling|filing)\s+cabinet(s)?\b/gi, 'خزانة ملفات'],
+  [/\bsliding\b/gi, 'سحاب'],
   [/\bkitchen\s+cabinet(s)?\b/gi, 'خزانة مطبخ'],
   [/\bkitchen\s+unit(s)?\b/gi, 'وحدة مطبخ'],
   [/\bkitchen\b/gi, 'مطبخ'],
@@ -263,17 +270,48 @@ export function formatNumeralsForLocale(value, locale) {
   return toArabicIndicDigits(s);
 }
 
-export function translateTermToArabic(term, serverMap = {}) {
-  const s = String(term ?? '').trim();
-  if (!s) return '';
-  if (serverMap[s]) return serverMap[s];
+const ALLOWED_LATIN_IN_ARABIC = /\b(RAL|MDF|HD|PU|USB|LED|HDMI|CPU|cm|CAT)\b/gi;
+
+/** Normalize common quote typos / variants before Arabic lookup (PDF + workshop apps). */
+export function normalizeQuoteEnglishPhrase(value) {
+  return String(value ?? '')
+    .replace(/\bv[ei]neer\b/gi, 'veneer')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** False when Arabic line still contains stray English words (partial word-by-word fallback). */
+export function phraseStillHasEnglishWords(text) {
+  const stripped = String(text ?? '').replace(ALLOWED_LATIN_IN_ARABIC, ' ');
+  return /[A-Za-z]{2,}/.test(stripped);
+}
+
+function lookupServerTranslation(s, serverMap = {}) {
+  if (serverMap[s]) return String(serverMap[s]).trim();
   const lower = s.toLowerCase();
   for (const [key, val] of Object.entries(serverMap)) {
-    if (String(key).toLowerCase() === lower && val) return val;
+    if (String(key).toLowerCase() === lower && val) return String(val).trim();
   }
+  const titled = s.charAt(0).toUpperCase() + s.slice(1);
+  if (serverMap[titled]) return String(serverMap[titled]).trim();
+  return '';
+}
+
+export function translateTermToArabic(term, serverMap = {}) {
+  const raw = String(term ?? '').trim();
+  if (!raw) return '';
+  const s = normalizeQuoteEnglishPhrase(raw);
+  const fromServer =
+    lookupServerTranslation(s, serverMap) || (s !== raw ? lookupServerTranslation(raw, serverMap) : '');
+  if (fromServer && !phraseStillHasEnglishWords(fromServer)) return fromServer;
   const direct = lookupStaticArabic(s);
   if (direct) return direct;
-  return fallbackTranslatePhraseToArabic(s);
+  const titled = s.charAt(0).toUpperCase() + s.slice(1);
+  const directTitled = titled !== s ? lookupStaticArabic(titled) : '';
+  if (directTitled) return directTitled;
+  const fb = fallbackTranslatePhraseToArabic(s);
+  if (!phraseStillHasEnglishWords(fb)) return fb;
+  return '';
 }
 
 const UNIT_AR = new Map([
@@ -335,8 +373,14 @@ function addPhraseWithVariants(set, value) {
   const s = String(value ?? '').trim();
   if (!s) return;
   set.add(s);
+  const norm = normalizeQuoteEnglishPhrase(s);
+  if (norm && norm !== s) set.add(norm);
   const titled = s.charAt(0).toUpperCase() + s.slice(1);
   if (titled !== s) set.add(titled);
+  if (norm && norm !== s) {
+    const titledNorm = norm.charAt(0).toUpperCase() + norm.slice(1);
+    if (titledNorm !== norm) set.add(titledNorm);
+  }
 }
 
 /** Expand phrases for Gemini (raw + title-case) — same keys PDF / workshop apps resolve. */
@@ -372,11 +416,13 @@ export function displayQuoteFieldValue(locale, value, serverMap = {}) {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
   if (locale !== 'ar') return raw;
-  const titled = raw.charAt(0).toUpperCase() + raw.slice(1);
+  const norm = normalizeQuoteEnglishPhrase(raw);
+  const titled = norm.charAt(0).toUpperCase() + norm.slice(1);
   return (
-    translateTermToArabic(raw, serverMap)
-    || (titled !== raw ? translateTermToArabic(titled, serverMap) : '')
+    translateTermToArabic(norm, serverMap)
+    || (titled !== norm ? translateTermToArabic(titled, serverMap) : '')
     || translateTermToArabic(raw, serverMap)
+    || raw
   );
 }
 
