@@ -1,7 +1,7 @@
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import db from '../dataClient';
-import { pickQuoteItemProductionFields } from './quoteProductionItemFields';
+import { pickQuoteItemProductionFields, quoteItemLineImageUrl } from './quoteProductionItemFields';
 import { rewriteLegacyStorageUrl } from './storageImageUrl';
 import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime';
 import { translateQuoteStringsToArabic } from '../services/quoteProductionApi';
@@ -257,11 +257,20 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         ? `${qty} ${unitAbbr} / ${qtyArDigits} ${unitAr || unitAbbr}`
         : `${qty} / ${qtyArDigits}`;
 
+      const lineImgRaw = quoteItemLineImageUrl(it);
+      const lineImg = lineImgRaw
+        ? rewriteLegacyStorageUrl(lineImgRaw, { bucket: 'Quotations' })
+        : '';
+      const photoCell = lineImg
+        ? `<div class="prod-photo-col"><img class="prod-line-photo" src="${escapeHtml(lineImg)}" crossorigin="anonymous" alt="" /></div>`
+        : '<div class="prod-photo-col prod-photo-col--empty"></div>';
+
       return `
         <tr>
           <td class="col-product">
-            <div class="bilingual-row prod-title-row">
+            <div class="bilingual-row prod-title-row prod-title-with-photo">
               <div class="prod-name-en" dir="ltr">${escapeHtml(nameEn)}</div>
+              ${photoCell}
               <div class="prod-name-ar" dir="rtl">${escapeHtml(nameAr)}</div>
             </div>
             ${specBlocks.join('')}
@@ -386,6 +395,30 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     .prod-title-row {
       margin-top: 0;
       margin-bottom: 3px;
+    }
+    .prod-title-with-photo {
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+    }
+    .prod-photo-col {
+      flex-shrink: 0;
+      width: 112px;
+      text-align: center;
+    }
+    .prod-photo-col--empty {
+      width: 0;
+      min-width: 0;
+      padding: 0;
+    }
+    .prod-line-photo {
+      max-width: 112px;
+      max-height: 84px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
     }
     .prod-name-en {
       font-weight: 800;

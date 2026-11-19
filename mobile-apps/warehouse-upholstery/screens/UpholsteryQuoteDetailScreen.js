@@ -22,16 +22,15 @@ import {
   completeUpholsteryQuote,
   fetchProductionQuoteArabicTranslations,
   fetchUpholsteryProductionQuotes,
+  handoffUpholsteryQuoteLine,
+  markUpholsteryQuoteLineReady,
   pauseUpholsteryQuote,
   resumeUpholsteryQuote,
 } from '../services/productionApi';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import { theme } from '../shared/theme';
-import {
-  QuoteProductionDrawingSection,
-  QuoteProductionLineRows,
-  useProductionQuoteArabicMap,
-} from '../shared/quoteProductionOrderUi';
+import { useProductionQuoteArabicMap } from '../shared/quoteProductionOrderUi';
+import { QuoteProductionWorkshopLineRows } from '../shared/quoteProductionPartialUi';
 import { displayQuoteFieldValue } from '../shared/quoteArabicTranslate';
 
 
@@ -250,12 +249,6 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
       <Text style={[styles.name, { textAlign }]}>{customerName}</Text>
       <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
-      <QuoteProductionDrawingSection
-        drawingUrl={quote.drawing_url}
-        textAlign={textAlign}
-        tUi={tUi}
-        locale={locale}
-      />
       <View style={styles.timerBox}>
         <Text style={[styles.timerLabel, { textAlign }]}>{tUi('quoteOrderTimer', locale)}</Text>
         <Text style={styles.timer}>{elapsedLabel}</Text>
@@ -312,13 +305,22 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         </Text>
       ) : null}
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
-      <QuoteProductionLineRows
+      <QuoteProductionWorkshopLineRows
         lines={lines}
         route="upholstery"
         textAlign={textAlign}
         tUi={tUi}
         locale={locale}
         arabicMap={arabicMap}
+        orderOpen={accepted && !completed}
+        onMarkReady={async (line, qty) => {
+          await markUpholsteryQuoteLineReady(quoteId, line.id, qty);
+          await reloadQuote();
+        }}
+        onHandoff={async (line, target, qty) => {
+          await handoffUpholsteryQuoteLine(quoteId, line.id, target, qty);
+          await reloadQuote();
+        }}
       />
     </ScrollView>
     <ProductionJobMaterialsModal

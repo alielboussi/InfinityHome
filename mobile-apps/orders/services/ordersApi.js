@@ -71,6 +71,14 @@ export function saveOrdersQuote(body) {
   return warehouseMobileRequest('orders-quote-save', body);
 }
 
+export function uploadOrdersQuoteLineImage(quoteId, itemId, imageBase64) {
+  return warehouseMobileRequest('orders-quote-line-image', {
+    quote_id: quoteId,
+    item_id: itemId,
+    image_base64: imageBase64,
+  });
+}
+
 export function deleteOrdersQuote(quoteId) {
   return warehouseMobileRequest('orders-quote-delete', { quote_id: quoteId });
 }

@@ -139,6 +139,25 @@ export async function sendCarpentryQuoteToPainting(quoteId, { productQty = 1 } =
   });
 }
 
+export async function markCarpentryQuoteLineReady(quoteId, itemId, readyQty) {
+  return warehouseMobileRequest('production-quote-line-ready', {
+    route: CARPENTRY_ROUTE,
+    quote_id: quoteId,
+    item_id: itemId,
+    ready_qty: readyQty,
+  });
+}
+
+export async function handoffCarpentryQuoteLine(quoteId, itemId, handoff, qty) {
+  return warehouseMobileRequest('production-quote-line-handoff', {
+    route: CARPENTRY_ROUTE,
+    quote_id: quoteId,
+    item_id: itemId,
+    handoff,
+    qty,
+  });
+}
+
 export async function scanCarpentryQuoteMaterial(quoteId, scan, quantity = 1) {
   return warehouseMobileRequest('production-quote-material-scan', {
     route: CARPENTRY_ROUTE,

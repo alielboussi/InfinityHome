@@ -46,6 +46,7 @@ export function normalizeQuotationItemRow(row) {
     foam_type: row.foam_type ?? meta.foam_type ?? '',
     aluminum_thickness_mm: row.aluminum_thickness_mm ?? meta.aluminum_thickness_mm ?? '',
     accessories: normalizeQuoteItemAccessories(row.accessories ?? meta.accessories),
+    line_image_url: row.line_image_url ?? meta.line_image_url ?? '',
   };
 }
 

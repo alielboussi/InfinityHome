@@ -3897,9 +3897,14 @@ async function handleWhatsAppFactoryOrder(body) {
   const message = rawMessage.slice(0, WHATSAPP_TEXT_LIMIT);
   const filename = String(body.pdfFilename || body.pdf_filename || 'Factory_Order.pdf').trim() || 'Factory_Order.pdf';
 
+  let deliveries = [];
+  const illustrationUrl = String(
+    body.illustrationImageUrl || body.illustration_image_url || body.drawing_url || '',
+  ).trim();
+
   if (documentLink) {
     const caption = message || 'Factory Order';
-    const deliveries = await deliverDocument(
+    deliveries = await deliverDocument(
       routing.targets,
       documentLink,
       filename,
@@ -3907,19 +3912,43 @@ async function handleWhatsAppFactoryOrder(body) {
       routing.provider,
       caption.slice(0, WHATSAPP_CAPTION_LIMIT),
     );
+    let illustrationDeliveries = [];
+    if (illustrationUrl) {
+      illustrationDeliveries = await deliverProductionAlert(
+        routing.targets,
+        '',
+        illustrationUrl,
+        routing.mode,
+        routing.provider,
+      );
+    }
     return {
       ok: true,
       deliveries,
+      illustration_deliveries: illustrationDeliveries,
       truncated: rawMessage.length > WHATSAPP_TEXT_LIMIT,
       document: true,
+      illustration: Boolean(illustrationUrl),
     };
   }
 
-  const deliveries = await deliverText(routing.targets, message, routing.mode, routing.provider);
+  deliveries = await deliverText(routing.targets, message, routing.mode, routing.provider);
+  let illustrationDeliveries = [];
+  if (illustrationUrl) {
+    illustrationDeliveries = await deliverProductionAlert(
+      routing.targets,
+      '',
+      illustrationUrl,
+      routing.mode,
+      routing.provider,
+    );
+  }
   return {
     ok: true,
     deliveries,
+    illustration_deliveries: illustrationDeliveries,
     truncated: rawMessage.length > WHATSAPP_TEXT_LIMIT,
+    illustration: Boolean(illustrationUrl),
   };
 }
 

@@ -1989,6 +1989,90 @@ async function opProductionQuoteTranslateArabic(body, user) {
   return { translations };
 }
 
+function decodeBase64ImagePayload(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return { buffer: null, contentType: 'image/jpeg', ext: 'jpg' };
+  const dataUrl = text.match(/^data:(image\/[\w+.-]+);base64,(.+)$/i);
+  if (dataUrl) {
+    const contentType = dataUrl[1];
+    const ext = contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg');
+    return { buffer: Buffer.from(dataUrl[2], 'base64'), contentType, ext };
+  }
+  return { buffer: Buffer.from(text.replace(/\s+/g, ''), 'base64'), contentType: 'image/jpeg', ext: 'jpg' };
+}
+
+async function opProductionQuoteLineImageUpload(body, user) {
+  await assertProductionKioskUser(user);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  const itemId = String(body.item_id || body.itemId || 'draft').trim();
+  if (!quoteId) throw new Error('quote_id required');
+  const { buffer, contentType, ext } = decodeBase64ImagePayload(
+    body.image_base64 || body.imageBase64 || body.base64,
+  );
+  if (!buffer?.length) throw new Error('image_base64 required');
+  const { uploadQuoteLineImageBuffer } = await import('../lib/quoteLineImageStorage.js');
+  const line_image_url = await uploadQuoteLineImageBuffer({
+    quoteId,
+    itemId,
+    buffer,
+    contentType,
+    ext,
+  });
+  return { line_image_url };
+}
+
+async function opProductionQuoteLineReady(body, user) {
+  const route = await assertQuoteRouteUser(user, body.route);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  const itemId = String(body.item_id || body.itemId || '').trim();
+  const readyQty = body.ready_qty ?? body.readyQty ?? body.quantity;
+  if (!quoteId || !itemId) throw new Error('quote_id and item_id required');
+  const sb = getService();
+  const { markQuoteLinePartialReady } = await import('../lib/quoteProductionPartialComplete.js');
+  return markQuoteLinePartialReady(sb, {
+    quoteId,
+    route,
+    itemId,
+    readyQty,
+    userId: user?.id || user?.uid,
+  });
+}
+
+async function opProductionQuoteLineHandoff(body, user) {
+  const route = await assertQuoteRouteUser(user, body.route);
+  const quoteId = String(body.quote_id || body.quoteId || '').trim();
+  const itemId = String(body.item_id || body.itemId || '').trim();
+  const target = String(body.handoff || body.target || '').trim().toLowerCase();
+  const qty = body.qty ?? body.quantity ?? null;
+  if (!quoteId || !itemId) throw new Error('quote_id and item_id required');
+  if (target !== 'painting' && target !== 'delivery') {
+    throw new Error('handoff must be painting or delivery');
+  }
+  if (target === 'painting' && String(route || '').toLowerCase() !== 'carpentry') {
+    throw new Error('Only carpentry orders can send ready units to painting');
+  }
+  const sb = getService();
+  const {
+    handoffQuoteLinePartialToDelivery,
+    handoffQuoteLinePartialToPainting,
+  } = await import('../lib/quoteProductionPartialComplete.js');
+  if (target === 'painting') {
+    return handoffQuoteLinePartialToPainting(sb, {
+      quoteId,
+      itemId,
+      qty,
+      userId: user?.id || user?.uid,
+    });
+  }
+  return handoffQuoteLinePartialToDelivery(sb, {
+    quoteId,
+    route,
+    itemId,
+    qty,
+    userId: user?.id || user?.uid,
+  });
+}
+
 async function opProductionFloor2List(user) {
   await assertProductionKioskUser(user);
   return opCatalogFloor2List(user, { productionKiosk: true });
@@ -5143,6 +5227,12 @@ export default async function handler(req, res) {
           return opOrdersQuotePdf(sb, body);
         });
         break;
+      case 'orders-quote-line-image':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersQuoteLineImageUpload } = await import('../lib/ordersAppMobile.js');
+          return opOrdersQuoteLineImageUpload(sb, body, user);
+        });
+        break;
       case 'orders-quote-save':
         result = await withOrdersApp(user, async (sb) => {
           const { opOrdersQuoteSave } = await import('../lib/ordersAppMobile.js');
@@ -5436,6 +5526,15 @@ export default async function handler(req, res) {
         break;
       case 'production-quote-translate-arabic':
         result = await opProductionQuoteTranslateArabic(body, user);
+        break;
+      case 'production-quote-line-ready':
+        result = await opProductionQuoteLineReady(body, user);
+        break;
+      case 'production-quote-line-handoff':
+        result = await opProductionQuoteLineHandoff(body, user);
+        break;
+      case 'production-quote-line-image-upload':
+        result = await opProductionQuoteLineImageUpload(body, user);
         break;
       case 'production-floor2-list':
         result = await opProductionFloor2List(user);

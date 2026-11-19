@@ -70,6 +70,7 @@ const UI_STRINGS = {
     en: 'Select Upholstery, Carpentry, or Aluminum before adding products or saving.',
     ar: 'اختر التنجيد أو النجارة أو الألمنيوم قبل إضافة المنتجات أو الحفظ.',
   },
+  quoteLineReferenceImage: { en: 'Product reference image', ar: 'صورة مرجعية للمنتج' },
   vat: { en: 'VAT', ar: 'الضريبة' },
   vat0: { en: '0%', ar: '0%' },
   vat16: { en: '16%', ar: '16%' },

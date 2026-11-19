@@ -26,6 +26,7 @@ import {
   fetchQuoteProductionRoutingsMap,
   saveQuoteProductionRoute,
   suggestAluminumAccessories,
+  uploadQuoteLineReferenceImageViaApi,
 } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 import LaybyDashboardStats from './LaybyDashboardStats';
@@ -1703,8 +1704,65 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                             value={it.description || ''}
                             disabled={locked}
                             onChange={e => updateItem(it.id, { description: normalizeDescription(e.target.value) })}
-                            placeholder="Description"
+                            placeholder={
+                              showCarpentryMeta || showUpholsteryMeta
+                                ? 'Description — paste a copied image here to attach line reference'
+                                : 'Description'
+                            }
+                            onPaste={async (e) => {
+                              if (locked || !(showCarpentryMeta || showUpholsteryMeta)) return;
+                              const clip = e.clipboardData;
+                              if (!clip) return;
+                              for (const part of clip.items || []) {
+                                if (!part.type?.startsWith('image/')) continue;
+                                e.preventDefault();
+                                const file = part.getAsFile();
+                                if (!file) return;
+                                try {
+                                  const url = await uploadQuoteLineReferenceImageViaApi(
+                                    currentQuoteId || 'draft',
+                                    it.id,
+                                    file,
+                                  );
+                                  updateItem(it.id, { line_image_url: url });
+                                } catch (err) {
+                                  alert(err?.message || 'Paste image failed');
+                                }
+                                return;
+                              }
+                            }}
                           />
+                          {(showCarpentryMeta || showUpholsteryMeta) ? (
+                            <div className="quotes-line-image-row" style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <label className={`action-button ${ENT_BTN_SECONDARY}`} style={{ cursor: locked ? 'not-allowed' : 'pointer' }}>
+                                Line image
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  disabled={locked}
+                                  style={{ display: 'none' }}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    e.target.value = '';
+                                    if (!file || locked) return;
+                                    try {
+                                      const url = await uploadQuoteLineReferenceImageViaApi(
+                                        currentQuoteId || 'draft',
+                                        it.id,
+                                        file,
+                                      );
+                                      updateItem(it.id, { line_image_url: url });
+                                    } catch (err) {
+                                      alert(err?.message || 'Line image upload failed');
+                                    }
+                                  }}
+                                />
+                              </label>
+                              {it.line_image_url ? (
+                                <img src={it.line_image_url} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6 }} />
+                              ) : null}
+                            </div>
+                          ) : null}
                           {showUpholsteryMeta ? (
                             <div className="quotes-line-meta-grid quotes-line-meta-grid--upholstery">
                               <label className="quotes-line-meta-field">

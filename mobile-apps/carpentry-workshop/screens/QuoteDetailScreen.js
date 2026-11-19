@@ -22,6 +22,8 @@ import {
   completeCarpentryQuote,
   fetchCarpentryProductionQuotes,
   fetchProductionQuoteArabicTranslations,
+  handoffCarpentryQuoteLine,
+  markCarpentryQuoteLineReady,
   pauseCarpentryQuote,
   resumeCarpentryQuote,
   sendCarpentryQuoteToPainting,
@@ -29,11 +31,8 @@ import {
 import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
 import ConfirmTypeOkModal from '../productionKiosk/shared/components/ConfirmTypeOkModal';
 import { theme } from '../shared/theme';
-import {
-  QuoteProductionDrawingSection,
-  QuoteProductionLineRows,
-  useProductionQuoteArabicMap,
-} from '../shared/quoteProductionOrderUi';
+import { useProductionQuoteArabicMap } from '../shared/quoteProductionOrderUi';
+import { QuoteProductionWorkshopLineRows } from '../shared/quoteProductionPartialUi';
 import { displayQuoteFieldValue } from '../shared/quoteArabicTranslate';
 
 export default function QuoteDetailScreen({ route, navigation }) {
@@ -275,12 +274,6 @@ export default function QuoteDetailScreen({ route, navigation }) {
         <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
         <Text style={[styles.name, { textAlign }]}>{customerName}</Text>
         <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
-        <QuoteProductionDrawingSection
-          drawingUrl={quote.drawing_url}
-          textAlign={textAlign}
-          tUi={tUi}
-          locale={locale}
-        />
         <View style={styles.timerBox}>
           <Text style={[styles.timerLabel, { textAlign }]}>{tUi('quoteOrderTimer', locale)}</Text>
           <Text style={styles.timer}>{elapsedLabel}</Text>
@@ -337,13 +330,23 @@ export default function QuoteDetailScreen({ route, navigation }) {
           </Text>
         ) : null}
         <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
-        <QuoteProductionLineRows
+        <QuoteProductionWorkshopLineRows
           lines={lines}
           route="carpentry"
           textAlign={textAlign}
           tUi={tUi}
           locale={locale}
           arabicMap={arabicMap}
+          orderOpen={accepted && !completed}
+          allowPaintingHandoff
+          onMarkReady={async (line, qty) => {
+            await markCarpentryQuoteLineReady(quoteId, line.id, qty);
+            await reloadQuote();
+          }}
+          onHandoff={async (line, target, qty) => {
+            await handoffCarpentryQuoteLine(quoteId, line.id, target, qty);
+            await reloadQuote();
+          }}
         />
       </ScrollView>
       <ConfirmTypeOkModal

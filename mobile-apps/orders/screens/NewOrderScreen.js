@@ -3,6 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +11,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import OrdersScreenShell from '../components/OrdersScreenShell';
 import DropdownSelect from '../components/DropdownSelect';
 import { kiosk } from '../components/kioskStyles';
@@ -37,6 +40,7 @@ import {
   fetchOrdersUnits,
   saveOrdersQuote,
   suggestAluminumAccessories,
+  uploadOrdersQuoteLineImage,
 } from '../services/ordersApi';
 
 function GridCol({ children, style }) {
@@ -253,6 +257,35 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
     setLines((prev) => prev.map((line) => (line.key === key ? { ...line, ...patch } : line)));
   };
 
+  const attachLinePhoto = async (line) => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Photos', 'Allow photo access to attach a product image.');
+      return;
+    }
+    const pick = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+      base64: true,
+    });
+    if (pick.canceled || !pick.assets?.[0]) return;
+    const asset = pick.assets[0];
+    try {
+      let imageBase64 = asset.base64
+        ? `data:image/jpeg;base64,${asset.base64}`
+        : '';
+      if (!imageBase64 && asset.uri) {
+        imageBase64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+        imageBase64 = `data:image/jpeg;base64,${imageBase64}`;
+      }
+      const qid = quoteId || 'draft';
+      const up = await uploadOrdersQuoteLineImage(qid, line.key, imageBase64);
+      updateLine(line.key, { line_image_url: up.line_image_url || '' });
+    } catch (err) {
+      Alert.alert('Image', err?.message || 'Upload failed');
+    }
+  };
+
   const toggleAccessory = (key, acc) => {
     setLines((prev) => prev.map((line) => {
       if (line.key !== key) return line;
@@ -308,6 +341,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
           color_code: line.color_code,
           aluminum_thickness_mm: line.aluminum_thickness_mm,
           accessories: Array.isArray(line.accessories) ? line.accessories : [],
+          line_image_url: line.line_image_url || '',
         };
       });
       const res = await saveOrdersQuote({
@@ -504,6 +538,16 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                     onChangeText={(v) => updateLine(line.key, { description: v })}
                   />
                 </View>
+                {(showUph || showCarp) ? (
+                  <View style={[styles.linePhotoRow, { flexDirection: locale === 'ar' ? 'row-reverse' : 'row' }]}>
+                    <Pressable style={kiosk.btn} onPress={() => attachLinePhoto(line)}>
+                      <Text style={kiosk.btnText}>{tUi('quoteLineReferenceImage', locale)}</Text>
+                    </Pressable>
+                    {line.line_image_url ? (
+                      <Image source={{ uri: line.line_image_url }} style={styles.linePhotoThumb} />
+                    ) : null}
+                  </View>
+                ) : null}
                 <View style={styles.gridRow}>
                   <GridCol>
                     <DropdownSelect
@@ -726,6 +770,8 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
 }
 
 const styles = StyleSheet.create({
+  linePhotoRow: { alignItems: 'center', gap: 10, marginBottom: 8 },
+  linePhotoThumb: { width: 56, height: 56, borderRadius: 8, backgroundColor: '#1e293b' },
   gridRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 4 },
   gridCol: { flex: 1, minWidth: 0 },
   row: { flexDirection: 'row', gap: 8, marginTop: 8 },

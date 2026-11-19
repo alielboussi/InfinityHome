@@ -96,6 +96,15 @@ export default async function handler(req, res) {
         });
       }
 
+      const illustrationImageUrl = String(
+        body.illustrationImageUrl || body.illustration_image_url || body.drawing_url || '',
+      ).trim();
+      let resolvedIllustration = illustrationImageUrl;
+      if (!resolvedIllustration && body.quote_id) {
+        const routing = await getQuoteProductionRouting(db, body.quote_id);
+        const meta = routing?.metadata && typeof routing.metadata === 'object' ? routing.metadata : {};
+        resolvedIllustration = String(meta.drawing_url || '').trim();
+      }
       const { deliverFactoryOrderGroupMessage } = await import('../../api/notify.js');
       const result = await deliverFactoryOrderGroupMessage({
         message: body.message,
@@ -103,6 +112,7 @@ export default async function handler(req, res) {
         pdfBase64: pdfUrl ? '' : pdfBase64,
         pdfFilename,
         route: body.route || body.production_route || body.productionRoute,
+        illustrationImageUrl: resolvedIllustration,
       });
       res.status(200).json({ ok: true, ...result });
       return;
@@ -121,6 +131,32 @@ export default async function handler(req, res) {
       const { suggestAluminumAccessoriesForProduct } = await import('../lib/quoteAluminumAccessoriesSuggest.js');
       const accessories = await suggestAluminumAccessoriesForProduct(productName);
       res.status(200).json({ ok: true, accessories });
+      return;
+    }
+
+    if (op === 'quote-line-image-upload') {
+      const quoteId = String(body.quote_id || body.quoteId || 'draft').trim();
+      const itemId = String(body.item_id || body.itemId || 'line').trim();
+      const raw = String(body.image_base64 || body.imageBase64 || '').trim();
+      if (!raw) {
+        res.status(400).json({ ok: false, error: 'image_base64 required' });
+        return;
+      }
+      const dataUrl = raw.match(/^data:(image\/[\w+.-]+);base64,(.+)$/i);
+      const buffer = dataUrl
+        ? Buffer.from(dataUrl[2], 'base64')
+        : Buffer.from(raw.replace(/\s+/g, ''), 'base64');
+      const contentType = dataUrl ? dataUrl[1] : 'image/jpeg';
+      const ext = contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg');
+      const { uploadQuoteLineImageBuffer } = await import('../lib/quoteLineImageStorage.js');
+      const line_image_url = await uploadQuoteLineImageBuffer({
+        quoteId,
+        itemId,
+        buffer,
+        contentType,
+        ext,
+      });
+      res.status(200).json({ ok: true, line_image_url });
       return;
     }
 

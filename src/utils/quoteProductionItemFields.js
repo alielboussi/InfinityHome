@@ -1,3 +1,5 @@
+import { enrichProductionLineWithProgress } from './quoteProductionLineProgress.js';
+
 function trimOrNull(v) {
   const s = String(v ?? '').trim();
   return s || null;
@@ -346,6 +348,7 @@ export function pickQuoteItemProductionFields(it) {
 
 /** JSON metadata column payload for quotation_items (omit when empty). */
 export function buildQuoteItemMetadataFromPayload(it) {
+  const meta = it?.metadata && typeof it.metadata === 'object' ? it.metadata : {};
   const fields = pickQuoteItemProductionFields(it);
   const out = {};
   if (fields.leather_code) out.leather_code = fields.leather_code;
@@ -358,6 +361,8 @@ export function buildQuoteItemMetadataFromPayload(it) {
   if (fields.foam_type) out.foam_type = fields.foam_type;
   if (fields.aluminum_thickness_mm) out.aluminum_thickness_mm = fields.aluminum_thickness_mm;
   if (fields.accessories?.length) out.accessories = fields.accessories;
+  const lineImage = trimOrNull(it?.line_image_url ?? it?.lineImageUrl ?? meta.line_image_url);
+  if (lineImage) out.line_image_url = lineImage;
   return Object.keys(out).length ? out : null;
 }
 
@@ -417,14 +422,34 @@ export function formatQuoteItemAccessoriesPdfLine(it) {
 }
 
 /** Line row stored on quote_production_routing.metadata.lines and returned to workshop apps. */
-export function buildProductionLineSummaryRow(it) {
-  return {
+export function quoteItemLineImageUrl(it) {
+  const meta = it?.metadata && typeof it.metadata === 'object' ? it.metadata : {};
+  return trimOrNull(it?.line_image_url ?? it?.lineImageUrl ?? meta.line_image_url);
+}
+
+export function buildProductionLineSummaryRow(it, routingMeta = null) {
+  const meta = it?.metadata && typeof it.metadata === 'object' ? it.metadata : {};
+  const base = {
     id: it.id,
     name: it.name_override || it.name || '',
     description: trimOrNull(it.description),
     quantity: Number(it.quantity) || 0,
     unit_price: Number(it.unit_price) || 0,
+  };
+  if (routingMeta?.line_progress && it?.id) {
+    return enrichProductionLineWithProgress(
+      {
+        ...base,
+        ...pickQuoteItemProductionFields(it),
+        line_image_url: quoteItemLineImageUrl(it),
+      },
+      routingMeta,
+    );
+  }
+  return {
+    ...base,
     ...pickQuoteItemProductionFields(it),
+    line_image_url: quoteItemLineImageUrl(it),
   };
 }
 

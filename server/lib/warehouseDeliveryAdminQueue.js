@@ -253,6 +253,42 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
   return out;
 }
 
+async function listPartialQuoteDeliveryHolds(sb) {
+  const { data, error } = await sb
+    .from(QUOTE_ROUTING)
+    .select('quote_id, route, metadata')
+    .is('completed_at', null)
+    .limit(500);
+  if (error) return [];
+  const out = [];
+  for (const row of data || []) {
+    const meta = parseRowMetadata(row?.metadata);
+    const holds = Array.isArray(meta.partial_delivery_holds) ? meta.partial_delivery_holds : [];
+    const metaName = String(meta.customer_name || '').trim() || null;
+    const metaPhone = String(meta.customer_phone || '').trim() || null;
+    for (const hold of holds) {
+      if (String(hold.stage || '').toLowerCase() !== DELIVERY_ADMIN_STAGE.AWAITING_DRIVER) continue;
+      if (hold.collected_at) continue;
+      const asmId = String(hold.assembly_id || '').trim();
+      if (!asmId) continue;
+      out.push({
+        quote_id: String(row.quote_id),
+        assembly_id: asmId,
+        assembly_name: `${hold.line_name || 'Order'} × ${hold.quantity || 1}`,
+        quantity: Math.max(1, Number(hold.quantity) || 1),
+        quote_number: hold.quote_number || meta.quote_number || null,
+        customer_name: metaName,
+        customer_phone: metaPhone,
+        department: hold.department || row.route || 'upholstery',
+        lines: [{ id: hold.item_id, name: hold.line_name, quantity: hold.quantity }],
+        delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
+        partial_quote_hold_id: hold.id,
+      });
+    }
+  }
+  return out;
+}
+
 async function listQuoteOrdersAwaitingDriver(sb) {
   const { data, error } = await sb
     .from(QUOTE_ROUTING)
@@ -284,7 +320,8 @@ async function listQuoteOrdersAwaitingDriver(sb) {
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
     });
   }
-  return out;
+  const partial = await listPartialQuoteDeliveryHolds(sb);
+  return [...out, ...partial];
 }
 
 /** Repairs / production orders in Delivery app queue — held on delivery_admin, not warehouse floors. */

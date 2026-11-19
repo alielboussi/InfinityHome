@@ -47,6 +47,10 @@ export function normalizeProductionQuoteLine(line) {
     aluminum_thickness_mm: trim(line.aluminum_thickness_mm) || trim(meta.aluminum_thickness_mm),
     accessories: line.accessories ?? meta.accessories,
     description: trim(line.description) || trim(meta.description) || line.description,
+    line_image_url: trim(line.line_image_url) || trim(meta.line_image_url),
+    production_completed_qty: line.production_completed_qty,
+    production_remaining_qty: line.production_remaining_qty,
+    ordered_qty: line.ordered_qty,
   };
 }
 
@@ -218,6 +222,25 @@ export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale, ar
   return bits.join(' · ');
 }
 
+export function QuoteProductionLineExtras({ line, route, textAlign, tUi, locale, arabicMap = {} }) {
+  const normalized = String(route || '').toLowerCase();
+  const row = normalizeProductionQuoteLine(line);
+  let extras = [];
+  if (normalized === 'upholstery') {
+    extras = buildUpholsteryLineExtraTexts(row, tUi, locale, arabicMap);
+  } else if (normalized === 'carpentry') {
+    extras = buildCarpentryLineExtraTexts(row, tUi, locale, arabicMap);
+  } else if (normalized === 'aluminum') {
+    extras = buildAluminumLineExtraTexts(row, tUi, locale, arabicMap);
+  }
+  if (!extras.length) return null;
+  return extras.map((extra) => (
+    <Text key={extra} style={[styles.lineExtra, { textAlign }]}>
+      {extra}
+    </Text>
+  ));
+}
+
 export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale, arabicMap = {} }) {
   const normalized = String(route || '').toLowerCase();
   const list = Array.isArray(lines) ? lines : [];
@@ -328,25 +351,15 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
             </View>
           );
         })}
-        {hasDrawing ? (
-          <Text style={[styles.cardDrawingTag, { textAlign }]}>
-            {tUi('quoteOrderDrawingAttached', locale)}
-          </Text>
-        ) : null}
       </View>
     );
   }
 
   const extras = summarizeProductionQuoteCardExtras(allLines, route, tUi, locale, arabicMap);
-  if (!extras && !hasDrawing) return null;
+  if (!extras) return null;
   return (
     <View style={styles.cardExtras}>
       {extras ? <Text style={[styles.cardExtraText, { textAlign }]}>{extras}</Text> : null}
-      {hasDrawing ? (
-        <Text style={[styles.cardDrawingTag, { textAlign }]}>
-          {tUi('quoteOrderDrawingAttached', locale)}
-        </Text>
-      ) : null}
     </View>
   );
 }

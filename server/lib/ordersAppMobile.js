@@ -628,6 +628,31 @@ export async function opOrdersStorageLabelTest(sb, body, user) {
   };
 }
 
+export async function opOrdersQuoteLineImageUpload(sb, body, user) {
+  void sb;
+  void user;
+  const quoteId = trim(body.quote_id || body.quoteId);
+  const itemId = trim(body.item_id || body.itemId) || 'draft';
+  const raw = String(body.image_base64 || body.imageBase64 || '').trim();
+  if (!quoteId) throw new Error('quote_id is required');
+  if (!raw) throw new Error('image_base64 is required');
+  const dataUrl = raw.match(/^data:(image\/[\w+.-]+);base64,(.+)$/i);
+  const buffer = dataUrl
+    ? Buffer.from(dataUrl[2], 'base64')
+    : Buffer.from(raw.replace(/\s+/g, ''), 'base64');
+  const contentType = dataUrl ? dataUrl[1] : 'image/jpeg';
+  const ext = contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg');
+  const { uploadQuoteLineImageBuffer } = await import('./quoteLineImageStorage.js');
+  const line_image_url = await uploadQuoteLineImageBuffer({
+    quoteId,
+    itemId,
+    buffer,
+    contentType,
+    ext,
+  });
+  return { line_image_url };
+}
+
 /** Kitwe stock from Hassan Awad quote orders — received factory deliveries awaiting customer release. */
 export async function opOrdersKitweHassanInbound(sb) {
   const { data: entries, error } = await sb

@@ -25,6 +25,7 @@
     "expo-crypto": "~58.0.7",
     "expo-file-system": "~58.0.7",
     "expo-font": "~58.0.11",
+    "expo-image-picker": "~16.1.4",
     "expo-status-bar": "~58.0.4",
     "expo-web-browser": "~58.0.7",
     "firebase": "^11.10.0",

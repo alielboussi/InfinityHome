@@ -593,6 +593,25 @@ export async function resumeUpholsteryQuote(quoteId) {
   });
 }
 
+export async function markUpholsteryQuoteLineReady(quoteId, itemId, readyQty) {
+  return productionOp('production-quote-line-ready', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+    item_id: itemId,
+    ready_qty: readyQty,
+  });
+}
+
+export async function handoffUpholsteryQuoteLine(quoteId, itemId, handoff, qty) {
+  return productionOp('production-quote-line-handoff', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+    item_id: itemId,
+    handoff,
+    qty,
+  });
+}
+
 export async function scanUpholsteryQuoteMaterial(quoteId, scan, quantity = 1) {
   return productionOp('production-quote-material-scan', {
     route: UPHOLSTERY_ROUTE,

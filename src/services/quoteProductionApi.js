@@ -76,6 +76,32 @@ export async function sendQuoteToWarehouseProduction(quoteId) {
   return readJsonOrThrow(resp, 'Send to production failed');
 }
 
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Failed to read image'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Hassan quote line reference — server upload (Firebase Admin), not client storage rules. */
+export async function uploadQuoteLineReferenceImageViaApi(quoteId, itemId, file) {
+  const image_base64 = await readFileAsDataUrl(file);
+  const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      op: 'quote-line-image-upload',
+      quote_id: String(quoteId || 'draft').trim(),
+      item_id: String(itemId || 'line').trim(),
+      image_base64,
+    }),
+  });
+  const payload = await readJsonOrThrow(resp, 'Line image upload failed');
+  return String(payload.line_image_url || '').trim();
+}
+
 export async function suggestAluminumAccessories(productName) {
   const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
     method: 'POST',
@@ -125,7 +151,16 @@ export async function translateQuoteStringsToArabic(texts = []) {
   return {};
 }
 
-export async function sendFactoryOrderWhatsApp({ message, pdfBase64, pdfUrl, pdfFilename, route } = {}) {
+export async function sendFactoryOrderWhatsApp({
+  message,
+  pdfBase64,
+  pdfUrl,
+  pdfFilename,
+  route,
+  quote_id: quoteId,
+  illustrationImageUrl,
+  drawing_url: drawingUrl,
+} = {}) {
   const url = String(pdfUrl || '').trim();
   const b64 = String(pdfBase64 || '').replace(/\s+/g, '');
   const payload = {
@@ -133,6 +168,9 @@ export async function sendFactoryOrderWhatsApp({ message, pdfBase64, pdfUrl, pdf
     message,
     pdfFilename,
     route: String(route || '').trim().toLowerCase() || undefined,
+    quote_id: quoteId,
+    illustrationImageUrl: illustrationImageUrl || drawingUrl,
+    drawing_url: drawingUrl || illustrationImageUrl,
   };
   if (url) {
     payload.pdfUrl = url;

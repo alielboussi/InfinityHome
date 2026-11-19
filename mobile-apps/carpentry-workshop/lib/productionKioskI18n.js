@@ -25,8 +25,9 @@ const UI_STRINGS = {
   presetSideTable: { en: 'Side table', ar: 'طاولة جانبية' },
   presetDresserTable: { en: 'Dresser table', ar: 'طاولة تسريحة' },
   presetDresserTableMirror: { en: 'Dresser table mirror', ar: 'مرآة تسريحة' },
-  presetConsoles: { en: 'Consoles', ar: 'كونسولات' },
-  presetConsoleMirrors: { en: 'Console mirrors', ar: 'مرايا كونسول' },
+  presetConsoles: { en: 'Consoles', ar: 'كنسل' },
+  presetConsoleMirrors: { en: 'Console mirrors', ar: 'مرايا كنسل' },
+  presetBunkbeds: { en: 'Bunkbeds', ar: 'سرير بطابقين' },
   seaterGroupLabel: { en: 'Upholstery', ar: 'تنجيد' },
   carpentryGroupLabel: { en: 'Carpentry', ar: 'أثاث خشبي' },
   seaterPickerPlaceholder: { en: 'Choose upholstery', ar: 'اختر التنجيد' },
@@ -166,10 +167,6 @@ const UI_STRINGS = {
   quoteOrderEnd: { en: 'End order', ar: 'إنهاء الطلب' },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
-  quoteOrderEndTypeOkHint: {
-    en: 'Type Ok to confirm ending this order.',
-    ar: 'اكتب Ok لتأكيد إنهاء الطلب.',
-  },
   quoteOrderEndSendPainting: { en: 'End + send to painting', ar: 'إنهاء وإرسال للدهان' },
   carpentryQuoteSentToPainting: {
     en: 'Order completed and sent to the Painting app.',
@@ -184,6 +181,17 @@ const UI_STRINGS = {
   quoteOrderScanPlaceholder: { en: 'Scan or type SKU / barcode', ar: 'امسح أو اكتب الرمز أو الباركود' },
   quoteOrderDeductScan: { en: 'Deduct scan', ar: 'خصم المسح' },
   quoteOrderLines: { en: 'Lines', ar: 'البنود' },
+  quoteLineMarkReady: { en: 'Mark ready', ar: 'تعليم كجاهز' },
+  quoteLineReadyQtyTitle: { en: 'How many are ready?', ar: 'كم قطعة جاهزة؟' },
+  quoteLineReadyQtyConfirm: { en: 'Confirm quantity', ar: 'تأكيد الكمية' },
+  quoteLineReadyConfirmBody: { en: 'Mark this many as ready now?', ar: 'تعليم هذا العدد كجاهز الآن؟' },
+  quoteLineHandoffTitle: { en: 'Send ready items', ar: 'إرسال الجاهز' },
+  quoteLineHandoffPainting: { en: 'Send to painting', ar: 'إرسال للدهان' },
+  quoteLineHandoffDelivery: { en: 'Send to delivery', ar: 'إرسال للتسليم' },
+  quoteLineProgress: { en: 'Completed', ar: 'مكتمل' },
+  quoteLineRemaining: { en: 'Remaining on order', ar: 'المتبقي على الطلب' },
+  quoteLineReferenceImage: { en: 'Product reference', ar: 'صورة مرجعية للمنتج' },
+  quoteLineImageEnlarge: { en: 'Tap to enlarge', ar: 'اضغط للتكبير' },
   quoteOrderLeatherCode: { en: 'Leather code', ar: 'رمز الجلد' },
   quoteOrderDimensions: { en: 'L×W×H (cm)', ar: 'ط×ع×ار (سم)' },
   quoteOrderColorCode: { en: 'Color code', ar: 'رمز اللون' },
@@ -399,10 +407,6 @@ const UI_STRINGS = {
   upholsteryJobFinishBody: {
     en: 'Send 1 × {name} to Warehouse Floor 1 and close this job?',
     ar: 'إرسال 1 × {name} إلى الطابق 1 وإغلاق المهمة؟',
-  },
-  jobFinishTypeOkHint: {
-    en: 'Type Ok to confirm ending this job.',
-    ar: 'اكتب Ok لتأكيد إنهاء المهمة.',
   },
   upholsteryJobControlsHint: {
     en: 'Play · Pause · Stop (complete → Floor 1)',
@@ -952,6 +956,7 @@ const PRESET_I18N = {
   'Dresser Mirror': 'presetDresserMirror',
   Consoles: 'presetConsoles',
   'Console Mirrors': 'presetConsoleMirrors',
+  Bunkbeds: 'presetBunkbeds',
 };
 
 const presetAutoArCache = new Map();

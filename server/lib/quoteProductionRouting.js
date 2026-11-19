@@ -274,6 +274,12 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
     quotes = data || [];
   }
   const quoteById = new Map(quotes.map((q) => [String(q.id), q]));
+  const routingMetaByQuoteId = new Map(
+    sent.map((r) => [
+      String(r.quote_id),
+      r.metadata && typeof r.metadata === 'object' ? r.metadata : {},
+    ]),
+  );
 
   const itemsByQuoteId = new Map();
   if (quoteIds.length) {
@@ -286,7 +292,8 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
     for (const it of allItems || []) {
       const qid = String(it.quotation_id);
       if (!itemsByQuoteId.has(qid)) itemsByQuoteId.set(qid, []);
-      itemsByQuoteId.get(qid).push(buildProductionLineSummaryRow(it));
+      const routeMeta = routingMetaByQuoteId.get(qid) || {};
+      itemsByQuoteId.get(qid).push(buildProductionLineSummaryRow(it, routeMeta));
     }
   }
 
@@ -482,6 +489,8 @@ export async function completeQuoteProductionOrder(sb, {
   void userId;
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('quote_id required');
+  const { assertQuoteReadyForFullComplete } = await import('./quoteProductionPartialComplete.js');
+  await assertQuoteReadyForFullComplete(sb, qid);
   const run = await findActiveQuoteRun(sb, qid);
   if (!run) throw new Error('No active production run for this quote');
   if (run.completed_at) {
