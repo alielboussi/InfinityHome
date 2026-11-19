@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  View,
 } from 'react-native';
 import { kiosk } from '../../productionKiosk/components/kioskStyles';
 import { theme } from '../theme';
@@ -12,12 +13,8 @@ import { theme } from '../theme';
 const REQUIRED_OK = 'Ok';
 
 function inputMatchesOk(value) {
-  return String(value || '').trim() === REQUIRED_OK;
+  return String(value || '').trim().toLowerCase() === 'ok';
 }
-
-/**
- * Finish / end job guard — user must type Ok (capital O, lowercase k).
- */
 export default function ConfirmTypeOkModal({
   visible,
   title,

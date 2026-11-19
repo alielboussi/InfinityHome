@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -20,6 +20,7 @@ import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
 
 export default function UpholsteryQuotesScreen({
   navigation,
+  route,
   allowed,
   accessHint,
   onRefreshAccess,
@@ -29,6 +30,7 @@ export default function UpholsteryQuotesScreen({
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState('');
+  const [finishNotice, setFinishNotice] = useState('');
 
   const load = useCallback(async () => {
     if (!allowed) {
@@ -51,9 +53,20 @@ export default function UpholsteryQuotesScreen({
 
   useFocusEffect(
     useCallback(() => {
+      const msg = route.params?.finishNotice;
+      if (msg) {
+        setFinishNotice(String(msg));
+        navigation.setParams({ finishNotice: undefined });
+      }
       load();
-    }, [load]),
+    }, [load, navigation, route.params?.finishNotice]),
   );
+
+  useEffect(() => {
+    if (!finishNotice) return undefined;
+    const id = setTimeout(() => setFinishNotice(''), 3500);
+    return () => clearTimeout(id);
+  }, [finishNotice]);
 
   if (!allowed) {
     return (
@@ -89,6 +102,11 @@ export default function UpholsteryQuotesScreen({
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
+      {finishNotice ? (
+        <View style={styles.finishBanner}>
+          <Text style={[styles.finishBannerText, { textAlign }]}>{finishNotice}</Text>
+        </View>
+      ) : null}
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('upholsteryQuotesIntro', locale)}</Text>
       {loading && openQuotes.length === 0 ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
@@ -138,6 +156,15 @@ export default function UpholsteryQuotesScreen({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   intro: { marginBottom: 12 },
+  finishBanner: {
+    backgroundColor: '#14532d',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#22c55e',
+  },
+  finishBannerText: { color: '#dcfce7', fontSize: 14, fontWeight: '600' },
   list: { flex: 1 },
   listEmpty: { flexGrow: 1, justifyContent: 'center' },
   row: { marginBottom: 10 },

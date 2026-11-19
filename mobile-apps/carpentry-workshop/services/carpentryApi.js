@@ -112,13 +112,20 @@ export async function acceptCarpentryQuote(quoteId) {
   return warehouseMobileRequest('production-quote-accept', { route: CARPENTRY_ROUTE, quote_id: quoteId });
 }
 
-export async function completeCarpentryQuote(quoteId, { deferDeliveryQueue = false, destination = 'delivery' } = {}) {
+export async function completeCarpentryQuote(quoteId, {
+  deferDeliveryQueue = false,
+  destination = 'delivery',
+  sendToPainting = false,
+  productQty = 1,
+} = {}) {
   const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
   return warehouseMobileRequest('production-quote-complete', {
     route: CARPENTRY_ROUTE,
     quote_id: quoteId,
-    defer_delivery_queue: Boolean(deferDeliveryQueue),
-    destination: deferDeliveryQueue ? 'delivery' : dest,
+    defer_delivery_queue: Boolean(deferDeliveryQueue) || Boolean(sendToPainting),
+    destination: deferDeliveryQueue || sendToPainting ? 'delivery' : dest,
+    send_to_painting: Boolean(sendToPainting),
+    product_qty: Math.max(1, Math.floor(Number(productQty) || 1)),
   });
 }
 
@@ -171,18 +178,24 @@ export async function scanCarpentryQuoteMaterial(quoteId, scan, quantity = 1) {
   });
 }
 
-let floor2ListCache = { at: 0, rows: [] };
+let floor2ListCache = { at: 0, rows: [], floor2LocationId: '' };
 const FLOOR2_LIST_TTL_MS = 90_000;
 
-export async function fetchProductionFloor2Products({ forceRefresh = false } = {}) {
+export async function fetchProductionFloor2CatalogMeta({ forceRefresh = false } = {}) {
   const now = Date.now();
   if (!forceRefresh && floor2ListCache.rows.length && now - floor2ListCache.at < FLOOR2_LIST_TTL_MS) {
-    return floor2ListCache.rows;
+    return { products: floor2ListCache.rows, floor2LocationId: floor2ListCache.floor2LocationId };
   }
   const payload = await warehouseMobileRequest('production-floor2-list', {});
   const rows = payload?.products || [];
-  floor2ListCache = { at: now, rows };
-  return rows;
+  const floor2LocationId = String(payload?.floor2_location_id || '').trim();
+  floor2ListCache = { at: now, rows, floor2LocationId };
+  return { products: rows, floor2LocationId };
+}
+
+export async function fetchProductionFloor2Products({ forceRefresh = false } = {}) {
+  const { products } = await fetchProductionFloor2CatalogMeta({ forceRefresh });
+  return products;
 }
 
 export async function pushProductionFloor2Manufacture({ assemblyId, productQty = 1, channel = 'carpentry' } = {}) {

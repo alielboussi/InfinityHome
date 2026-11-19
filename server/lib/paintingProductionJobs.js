@@ -217,7 +217,8 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
   quoteId,
   productQty = 1,
   userId = null,
-}) {
+  skipClientEnrichment = false,
+} = {}) {
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('quote_id required');
 
@@ -230,11 +231,12 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
     throw new Error('Complete the carpentry order before sending to painting');
   }
 
-  const { data: activeRows, error: dupErr } = await sb.from(JOBS).select('id, status, metadata');
-  if (!dupErr && (activeRows || []).some((r) => (
-    ACTIVE_STATUSES.has(normalizeJobStatus(r.status))
-    && String(r.metadata?.carpentry_quote_id || '') === qid
-  ))) {
+  const { data: dupRows, error: dupErr } = await sb
+    .from(JOBS)
+    .select('id, status, metadata')
+    .contains('metadata', { carpentry_quote_id: qid })
+    .limit(8);
+  if (!dupErr && (dupRows || []).some((r) => ACTIVE_STATUSES.has(normalizeJobStatus(r.status)))) {
     throw new Error('This order is already on the painting queue');
   }
 
@@ -302,13 +304,15 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
   if (insErr) throw new Error(insErr.message || 'Failed to create painting job');
   if (!inserted?.id) throw new Error('Failed to create painting job (no row returned)');
 
-  try {
-    const { notifyPaintingNewJob } = await import('./productionExpoPush.js');
-    await notifyPaintingNewJob(serializeJob(inserted));
-  } catch (pushErr) {
-    console.warn('[sendCarpentryQuoteToPaintingDepartment] push notify failed:', pushErr?.message || pushErr);
-  }
+  import('./productionExpoPush.js')
+    .then(({ notifyPaintingNewJob }) => notifyPaintingNewJob(serializeJob(inserted)))
+    .catch((pushErr) => {
+      console.warn('[sendCarpentryQuoteToPaintingDepartment] push notify failed:', pushErr?.message || pushErr);
+    });
 
+  if (skipClientEnrichment) {
+    return { job: serializeJob(inserted) };
+  }
   return { job: await serializePaintingJobForClient(sb, inserted) };
 }
 

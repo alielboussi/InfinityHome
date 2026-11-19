@@ -1,6 +1,5 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import * as Device from 'expo-device';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { getFirebaseAuth } from '../shared/firebase';
 import { loadProductionPushPrefs } from './productionPushPrefs';
@@ -11,6 +10,16 @@ import {
 } from '../shared/lib/dashboardNotificationBadges';
 
 let notificationHandlerConfigured = false;
+
+function isPhysicalDevice() {
+  try {
+    const mod = require('expo-device');
+    const Device = mod?.default ?? mod;
+    return Device?.isDevice !== false;
+  } catch {
+    return true;
+  }
+}
 
 function loadExpoNotifications() {
   try {
@@ -28,6 +37,8 @@ function ensureNotificationHandler() {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
       }),
@@ -55,7 +66,7 @@ export async function registerProductionPushTokenWithServer({ pushPrefs: pushPre
   if (!Notifications) {
     return { ok: false, skipped: true, reason: 'notifications_unavailable' };
   }
-  if (!Device.isDevice) return { ok: false, skipped: true, reason: 'simulator' };
+  if (!isPhysicalDevice()) return { ok: false, skipped: true, reason: 'simulator' };
   const authUser = getFirebaseAuth()?.currentUser;
   if (!authUser) return { ok: false, skipped: true, reason: 'auth' };
   try {

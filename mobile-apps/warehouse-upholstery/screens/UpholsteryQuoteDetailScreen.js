@@ -28,9 +28,13 @@ import {
   resumeUpholsteryQuote,
 } from '../services/productionApi';
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
+import ConfirmTypeOkModal from '../shared/components/ConfirmTypeOkModal';
 import { theme } from '../shared/theme';
 import { useProductionQuoteArabicMap } from '../shared/quoteProductionOrderUi';
-import { QuoteProductionWorkshopLineRows } from '../shared/quoteProductionPartialUi';
+import {
+  QuoteProductionDispositionModal,
+  QuoteProductionWorkshopLineRows,
+} from '../shared/quoteProductionPartialUi';
 import { displayQuoteFieldValue } from '../shared/quoteArabicTranslate';
 import {
   applyQuoteOrderTimerFrozenPatch,
@@ -52,6 +56,8 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const [tick, setTick] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [endConfirmVisible, setEndConfirmVisible] = useState(false);
+  const [endDestVisible, setEndDestVisible] = useState(false);
 
   const reloadQuote = useCallback(async ({ quiet = false } = {}) => {
     if (!quoteId) {
@@ -217,51 +223,26 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   }, [lines, tick]);
 
   const finishQuoteWithDestination = async (destination) => {
-    const snapshot = quote;
     setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
+    setCompleted(true);
     setBusy(true);
+    const finishNotice = tUi('quoteOrderCompleteDone', locale);
     try {
       await completeUpholsteryQuote(quoteId, { destination });
-      setCompleted(true);
-      navigation.goBack();
-    } catch (e) {
-      setQuote(snapshot);
-      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
-    } finally {
       setBusy(false);
+      navigation.navigate({
+        name: 'UpholsteryQuotes',
+        params: { finishNotice },
+        merge: true,
+      });
+    } catch (e) {
+      setBusy(false);
+      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
     }
   };
 
-  const promptFinishDisposition = () => {
-    Alert.alert(
-      tUi('quoteOrderDispositionTitle', locale),
-      tUi('quoteOrderDispositionPrompt', locale),
-      [
-        { text: tUi('cancel', locale), style: 'cancel' },
-        {
-          text: tUi('quoteLineHandoffFloor1', locale),
-          onPress: () => finishQuoteWithDestination('floor1'),
-        },
-        {
-          text: tUi('quoteLineHandoffDelivery', locale),
-          onPress: () => finishQuoteWithDestination('delivery'),
-        },
-      ],
-    );
-  };
-
   const onComplete = () => {
-    Alert.alert(
-      tUi('quoteOrderEndConfirmTitle', locale),
-      tUi('quoteOrderEndConfirmBody', locale),
-      [
-        { text: tUi('cancel', locale), style: 'cancel' },
-        {
-          text: tUi('quoteOrderEnd', locale),
-          onPress: promptFinishDisposition,
-        },
-      ],
-    );
+    setEndConfirmVisible(true);
   };
 
   const bottomPad = kioskFooterBottomPad(insets) + 32;
@@ -342,7 +323,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       ) : null}
       {!completed && quote.sent_to_production_at ? (
         <Text style={[styles.materialsHint, { textAlign }]}>
-          {tUi('quoteOrderMaterialsHint', locale)}
+          {tUi('quoteOrderMaterialsFloor2Hint', locale)}
         </Text>
       ) : null}
       <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
@@ -378,23 +359,70 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         }}
         onHandoffWillStart={freezeTimerIfOrderComplete}
         onHandoff={async (line, target, qty) => {
-          const snapshot = quote;
-          const orderDone = isQuoteOrderFullyCompleteLines(lines);
           try {
             const result = await handoffUpholsteryQuoteLine(quoteId, line.id, target, qty);
-            if (result?.order_completed || orderDone) {
+            if (result?.order_completed) {
+              navigation.navigate({
+                name: 'UpholsteryQuotes',
+                params: { finishNotice: tUi('quoteOrderCompleteDone', locale) },
+                merge: true,
+              });
+              return;
+            }
+            const list = await fetchUpholsteryProductionQuotes();
+            const found = (Array.isArray(list) ? list : []).find(
+              (q) => String(q.quote_id) === quoteId,
+            );
+            const nextLines = Array.isArray(found?.lines) ? found.lines : [];
+            if (found) {
+              setQuote(found);
+              setAccepted(Boolean(found.accepted_at));
+              setCompleted(Boolean(found.completed_at));
+            }
+            if (isQuoteOrderFullyCompleteLines(nextLines) && !found?.completed_at) {
+              setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
               setCompleted(true);
-              navigation.goBack();
+              setEndDestVisible(true);
               return;
             }
             void reloadQuote({ quiet: true });
           } catch (e) {
-            if (orderDone) setQuote(snapshot);
             throw e;
           }
         }}
       />
     </ScrollView>
+    <ConfirmTypeOkModal
+      visible={endConfirmVisible}
+      title={tUi('quoteOrderEndConfirmTitle', locale)}
+      message={tUi('quoteOrderEndConfirmBody', locale)}
+      typeHint={tUi('quoteOrderEndTypeOkHint', locale)}
+      confirmLabel={tUi('quoteOrderEnd', locale)}
+      cancelLabel={tUi('cancel', locale)}
+      textAlign={textAlign}
+      onCancel={() => setEndConfirmVisible(false)}
+      onConfirm={() => {
+        setEndConfirmVisible(false);
+        setEndDestVisible(true);
+      }}
+    />
+    <QuoteProductionDispositionModal
+      visible={endDestVisible}
+      title={tUi('quoteOrderDispositionTitle', locale)}
+      message={tUi('quoteOrderDispositionPrompt', locale)}
+      textAlign={textAlign}
+      tUi={tUi}
+      locale={locale}
+      choices={[
+        { key: 'floor1', label: tUi('quoteLineHandoffFloor1', locale) },
+        { key: 'delivery', label: tUi('quoteLineHandoffDelivery', locale) },
+      ]}
+      onPick={(key) => {
+        setEndDestVisible(false);
+        void finishQuoteWithDestination(key === 'floor1' ? 'floor1' : 'delivery');
+      }}
+      onCancel={() => setEndDestVisible(false)}
+    />
     <ProductionJobMaterialsModal
       visible={materialsOpen}
       locale={locale}

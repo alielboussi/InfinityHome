@@ -282,6 +282,44 @@ function main() {
       /manufactureIntro: \{[\s\S]*?\n  \},/,
       `manufactureIntro: {\n    en: '${carpentryManufactureIntro.en.replace(/'/g, "\\'")}',\n    ar: '${carpentryManufactureIntro.ar.replace(/'/g, "\\'")}',\n  },`,
     );
+  i18n = i18n.replace(
+    /dashPaintingTitle: \{ en: 'Painting', ar: 'دهان' \},\s*dashPainting: \{ en: 'Painting', ar: 'دهان' \},\s*paintingTitle: \{ en: 'Painting', ar: 'دهان' \},/,
+    `dashPaintingTitle: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
+  dashPainting: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
+  paintingTitle: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },`,
+  );
+  i18n = i18n.replace(
+    "quoteLineHandoffPainting: { en: 'Send to painting', ar: 'إرسال للدهان' },",
+    `quoteLineHandoffPainting: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },`,
+  );
+  if (!i18n.includes('quoteOrderCarpentryDispositionPrompt:')) {
+    i18n = i18n.replace(
+      `quoteOrderDispositionPrompt: {
+    en: 'Store on Floor 1, or send to the Delivery app orders queue?',
+    ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
+  },`,
+      `quoteOrderDispositionPrompt: {
+    en: 'Store on Floor 1, or send to the Delivery app orders queue?',
+    ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
+  },
+  quoteOrderCarpentryDispositionPrompt: {
+    en: 'Credit Floor 1 stock, or send WIP from Floor 2 to the Painting department?',
+    ar: 'إضافة مخزون الطابق 1، أم إرسال WIP من الطابق الثاني إلى قسم الدهانات؟',
+  },`,
+    );
+  }
     safeWriteFileSync(i18nPath, i18n);
   }
 

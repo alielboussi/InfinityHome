@@ -48,13 +48,13 @@ try {
     'evaluateCarpentryWorkshopAppAccess',
   ], 'mobile access manifest');
 
-  includesAll(read('src/App.js'), ['/carpentry', 'WarehouseFloor2Page'], 'web routes');
+  includesAll(read('src/App.js'), ['/carpentry', 'WarehouseFloorsHubPage'], 'web routes');
   includesAll(read('api/admin.js'), ["'upholstery-catalog'", "'carpentry-catalog'"], 'admin dispatcher');
 
-  includesAll(read('server/lib/firestoreServerClient.js'), [
+  includesAll(read('server/lib/carpentryProductionJobs.js'), [
     'carpentry_production_runs',
     'carpentry_production_material_usage',
-  ], 'firestore tables');
+  ], 'carpentry production tables');
 
   assert(fs.existsSync(path.join(root, 'scripts/seedCarpentryWarehouseLocations.js')), 'seed script missing');
   assert(fs.existsSync(path.join(root, 'scripts/applyCarpentryProductionSchema.js')), 'apply schema script missing');

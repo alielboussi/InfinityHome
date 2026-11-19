@@ -36,7 +36,7 @@ function importPathsFromApp(appJs, appDir) {
   while ((m = re.exec(appJs))) {
     const spec = m[1];
     if (!/Screen|Gate|Auth/.test(spec) && !spec.includes('screens/')) continue;
-    const abs = path.join(root, appDir, spec);
+    const abs = path.resolve(path.join(root, appDir), spec.replace(/^\.\//, ''));
     const candidates = ['', '.js', '.jsx'].map((ext) => abs.endsWith('.js') || abs.endsWith('.jsx') ? abs : abs + ext);
     out.push({ spec, ok: candidates.some((p) => fs.existsSync(p)) });
   }

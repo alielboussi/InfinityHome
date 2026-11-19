@@ -25,8 +25,9 @@ const UI_STRINGS = {
   presetSideTable: { en: 'Side table', ar: 'طاولة جانبية' },
   presetDresserTable: { en: 'Dresser table', ar: 'طاولة تسريحة' },
   presetDresserTableMirror: { en: 'Dresser table mirror', ar: 'مرآة تسريحة' },
-  presetConsoles: { en: 'Consoles', ar: 'كونسولات' },
-  presetConsoleMirrors: { en: 'Console mirrors', ar: 'مرايا كونسول' },
+  presetConsoles: { en: 'Consoles', ar: 'كنسل' },
+  presetConsoleMirrors: { en: 'Console mirrors', ar: 'مرايا كنسل' },
+  presetBunkbeds: { en: 'Bunkbeds', ar: 'سرير بطابقين' },
   seaterGroupLabel: { en: 'Upholstery', ar: 'تنجيد' },
   carpentryGroupLabel: { en: 'Carpentry', ar: 'أثاث خشبي' },
   seaterPickerPlaceholder: { en: 'Choose upholstery', ar: 'اختر التنجيد' },
@@ -166,17 +167,25 @@ const UI_STRINGS = {
   quoteOrderEnd: { en: 'End order', ar: 'إنهاء الطلب' },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
-  quoteOrderEndTypeOkHint: {
-    en: 'Type Ok to confirm ending this order.',
-    ar: 'اكتب Ok لتأكيد إنهاء الطلب.',
-  },
   quoteOrderEndSendPainting: { en: 'End + send to painting', ar: 'إنهاء وإرسال للدهان' },
   carpentryQuoteSentToPainting: {
     en: 'Order completed and sent to the Painting app.',
     ar: 'اكتمل الطلب وأُرسل إلى تطبيق الدهان.',
   },
+  quoteOrderEndTypeOkHint: {
+    en: 'Type Ok to confirm ending production.',
+    ar: 'اكتب Ok للتأكيد على إنهاء الإنتاج.',
+  },
+  jobFinishTypeOkHint: {
+    en: 'Type Ok to confirm finishing this job.',
+    ar: 'اكتب Ok لتأكيد إنهاء المهمة.',
+  },
   quoteOrderCompleteDone: { en: 'Production ended — Delivery app virtual hold.', ar: 'انتهى الإنتاج — حجز افتراضي في تطبيق التسليم.' },
   quoteOrderMaterials: { en: 'Materials', ar: 'المواد' },
+  quoteOrderMaterialsFloor2Hint: {
+    en: 'Storeroom materials plus in-stock Floor 2 raw WIP (scan SKU or search).',
+    ar: 'مواد المستودع بالإضافة إلى خام WIP المتوفّر في الطابق 2 (امسح SKU أو ابحث).',
+  },
   quoteOrderMaterialsHint: {
     en: 'Open Materials to pick items, type a barcode, or scan — storeroom is deducted when you save.',
     ar: 'افتح المواد لاختيار الأصناف أو إدخال/مسح الباركود — يُخصم من المخزن عند الحفظ.',
@@ -184,6 +193,30 @@ const UI_STRINGS = {
   quoteOrderScanPlaceholder: { en: 'Scan or type SKU / barcode', ar: 'امسح أو اكتب الرمز أو الباركود' },
   quoteOrderDeductScan: { en: 'Deduct scan', ar: 'خصم المسح' },
   quoteOrderLines: { en: 'Lines', ar: 'البنود' },
+  quoteLineMarkReady: { en: 'Mark ready', ar: 'تعليم كجاهز' },
+  quoteLineReadyQtyTitle: { en: 'How many are ready?', ar: 'كم قطعة جاهزة؟' },
+  quoteLineReadyQtyConfirm: { en: 'Confirm quantity', ar: 'تأكيد الكمية' },
+  quoteLineReadyConfirmBody: { en: 'Mark this many as ready now?', ar: 'تعليم هذا العدد كجاهز الآن؟' },
+  quoteLineHandoffTitle: { en: 'Send ready items', ar: 'إرسال الجاهز' },
+  quoteLineHandoffPainting: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
+  quoteLineHandoffDelivery: { en: 'Send to delivery', ar: 'إرسال للتسليم' },
+  quoteLineHandoffFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
+  quoteOrderDispositionPrompt: {
+    en: 'Store on Floor 1, or send to the Delivery app orders queue?',
+    ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
+  },
+  quoteOrderCarpentryDispositionPrompt: {
+    en: 'Credit Floor 1 stock, or send WIP from Floor 2 to the Painting department?',
+    ar: 'إضافة مخزون الطابق 1، أم إرسال WIP من الطابق الثاني إلى قسم الدهانات؟',
+  },
+  quoteOrderDispositionTitle: { en: 'Finished order', ar: 'الطلب المكتمل' },
+  quoteLineProgress: { en: 'Completed', ar: 'مكتمل' },
+  quoteLineRemaining: { en: 'Remaining on order', ar: 'المتبقي على الطلب' },
+  quoteLineReferenceImage: { en: 'Product reference', ar: 'صورة مرجعية للمنتج' },
+  quoteLineImageEnlarge: { en: 'Tap to enlarge', ar: 'اضغط للتكبير' },
   quoteOrderLeatherCode: { en: 'Leather code', ar: 'رمز الجلد' },
   quoteOrderDimensions: { en: 'L×W×H (cm)', ar: 'ط×ع×ار (سم)' },
   quoteOrderColorCode: { en: 'Color code', ar: 'رمز اللون' },
@@ -400,10 +433,6 @@ const UI_STRINGS = {
     en: 'Send 1 × {name} to Warehouse Floor 1 and close this job?',
     ar: 'إرسال 1 × {name} إلى الطابق 1 وإغلاق المهمة؟',
   },
-  jobFinishTypeOkHint: {
-    en: 'Type Ok to confirm ending this job.',
-    ar: 'اكتب Ok لتأكيد إنهاء المهمة.',
-  },
   upholsteryJobControlsHint: {
     en: 'Play · Pause · Stop (complete → Floor 1)',
     ar: 'تشغيل · إيقاف مؤقت · إيقاف (إنهاء → الطابق 1)',
@@ -412,6 +441,18 @@ const UI_STRINGS = {
     en: 'Units checked',
     ar: 'الوحدات المفعّلة',
   },
+  upholsteryCompletedItemsLabel: {
+    en: 'Completed items',
+    ar: 'البنود المكتملة',
+  },
+  upholsteryCompletedItemsHint: {
+    en: 'Enter how many pieces are ready, then tap ✓ to save.',
+    ar: 'أدخل عدد القطع الجاهزة ثم اضغط ✓ للحفظ.',
+  },
+  upholsteryCompletedItemsApply: {
+    en: 'Apply completed count',
+    ar: 'تأكيد العدد المكتمل',
+  },
   upholsteryUnitTapHint: {
     en: 'Tap each unit when that piece is ready (Floor 2 batch jobs).',
     ar: 'اضغط كل وحدة عند جهوزية القطعة (دفعات الطابق 2).',
@@ -419,6 +460,14 @@ const UI_STRINGS = {
   upholsteryJobFinishDone: {
     en: 'Done — Floor 1 updated and labels queued.',
     ar: 'تم — حُدّث الطابق 1 وأُرسلت الملصقات.',
+  },
+  paintingJobFinishDoneDelivery: {
+    en: 'Done — in the Delivery app queue (virtual hold, not on floor stock).',
+    ar: 'تم — في قائمة تطبيق التسليم (حجز افتراضي، ليس على مخزون الطوابق).',
+  },
+  paintingJobFinishDoneFloor1: {
+    en: 'Done — finished stock credited on Warehouse Floor 1.',
+    ar: 'تم — أُضيف المخزون الجاهز إلى الطابق 1.',
   },
   upholsteryJobFinishHint: {
     en: 'Check every unit before finish.',
@@ -432,9 +481,18 @@ const UI_STRINGS = {
     en: 'Completed (Awaiting Delivery)',
     ar: 'مكتمل (بانتظار التسليم)',
   },
-  dashPaintingTitle: { en: 'Painting', ar: 'دهان' },
-  dashPainting: { en: 'Painting', ar: 'دهان' },
-  paintingTitle: { en: 'Painting', ar: 'دهان' },
+  dashPaintingTitle: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
+  dashPainting: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
+  paintingTitle: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
   paintingIntro: {
     en: 'Floor 2 products. Tap a product to enter the quantity to send to Painting.',
     ar: 'منتجات الطابق 2. اضغط على المنتج لإدخال الكمية المراد إرسالها للدهان.',
@@ -952,6 +1010,7 @@ const PRESET_I18N = {
   'Dresser Mirror': 'presetDresserMirror',
   Consoles: 'presetConsoles',
   'Console Mirrors': 'presetConsoleMirrors',
+  Bunkbeds: 'presetBunkbeds',
 };
 
 const presetAutoArCache = new Map();

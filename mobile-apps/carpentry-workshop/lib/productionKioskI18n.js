@@ -172,8 +172,20 @@ const UI_STRINGS = {
     en: 'Order completed and sent to the Painting app.',
     ar: 'اكتمل الطلب وأُرسل إلى تطبيق الدهان.',
   },
+  quoteOrderEndTypeOkHint: {
+    en: 'Type Ok to confirm ending production.',
+    ar: 'اكتب Ok للتأكيد على إنهاء الإنتاج.',
+  },
+  jobFinishTypeOkHint: {
+    en: 'Type Ok to confirm finishing this job.',
+    ar: 'اكتب Ok لتأكيد إنهاء المهمة.',
+  },
   quoteOrderCompleteDone: { en: 'Production ended — Delivery app virtual hold.', ar: 'انتهى الإنتاج — حجز افتراضي في تطبيق التسليم.' },
   quoteOrderMaterials: { en: 'Materials', ar: 'المواد' },
+  quoteOrderMaterialsFloor2Hint: {
+    en: 'Storeroom materials plus in-stock Floor 2 raw WIP (scan SKU or search).',
+    ar: 'مواد المستودع بالإضافة إلى خام WIP المتوفّر في الطابق 2 (امسح SKU أو ابحث).',
+  },
   quoteOrderMaterialsHint: {
     en: 'Open Materials to pick items, type a barcode, or scan — storeroom is deducted when you save.',
     ar: 'افتح المواد لاختيار الأصناف أو إدخال/مسح الباركود — يُخصم من المخزن عند الحفظ.',
@@ -186,12 +198,19 @@ const UI_STRINGS = {
   quoteLineReadyQtyConfirm: { en: 'Confirm quantity', ar: 'تأكيد الكمية' },
   quoteLineReadyConfirmBody: { en: 'Mark this many as ready now?', ar: 'تعليم هذا العدد كجاهز الآن؟' },
   quoteLineHandoffTitle: { en: 'Send ready items', ar: 'إرسال الجاهز' },
-  quoteLineHandoffPainting: { en: 'Send to painting', ar: 'إرسال للدهان' },
+  quoteLineHandoffPainting: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
   quoteLineHandoffDelivery: { en: 'Send to delivery', ar: 'إرسال للتسليم' },
   quoteLineHandoffFloor1: { en: 'Floor 1 stock', ar: 'مخزون الطابق 1' },
   quoteOrderDispositionPrompt: {
     en: 'Store on Floor 1, or send to the Delivery app orders queue?',
     ar: 'تخزين في الطابق 1، أم إرسال إلى قائمة التسليم في تطبيق التوصيل؟',
+  },
+  quoteOrderCarpentryDispositionPrompt: {
+    en: 'Credit Floor 1 stock, or send WIP from Floor 2 to the Painting department?',
+    ar: 'إضافة مخزون الطابق 1، أم إرسال WIP من الطابق الثاني إلى قسم الدهانات؟',
   },
   quoteOrderDispositionTitle: { en: 'Finished order', ar: 'الطلب المكتمل' },
   quoteLineProgress: { en: 'Completed', ar: 'مكتمل' },
@@ -462,9 +481,18 @@ const UI_STRINGS = {
     en: 'Completed (Awaiting Delivery)',
     ar: 'مكتمل (بانتظار التسليم)',
   },
-  dashPaintingTitle: { en: 'Painting', ar: 'دهان' },
-  dashPainting: { en: 'Painting', ar: 'دهان' },
-  paintingTitle: { en: 'Painting', ar: 'دهان' },
+  dashPaintingTitle: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
+  dashPainting: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
+  paintingTitle: {
+    en: 'Floor 2 to Painting',
+    ar: 'الطابق الثاني إلى قسم الدهانات',
+  },
   paintingIntro: {
     en: 'Floor 2 products. Tap a product to enter the quantity to send to Painting.',
     ar: 'منتجات الطابق 2. اضغط على المنتج لإدخال الكمية المراد إرسالها للدهان.',

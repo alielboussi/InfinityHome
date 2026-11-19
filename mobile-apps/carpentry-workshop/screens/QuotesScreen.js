@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -18,12 +18,13 @@ import { fetchCarpentryProductionQuotes } from '../services/carpentryApi';
 import { theme } from '../shared/theme';
 import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
 
-export default function QuotesScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
+export default function QuotesScreen({ navigation, route, allowed, accessHint, onRefreshAccess }) {
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, textAlign } = useProductionKioskLocale();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState('');
+  const [finishNotice, setFinishNotice] = useState('');
 
   const load = useCallback(async () => {
     if (!allowed) {
@@ -46,9 +47,20 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
 
   useFocusEffect(
     useCallback(() => {
+      const msg = route.params?.finishNotice;
+      if (msg) {
+        setFinishNotice(String(msg));
+        navigation.setParams({ finishNotice: undefined });
+      }
       load();
-    }, [load]),
+    }, [load, navigation, route.params?.finishNotice]),
   );
+
+  useEffect(() => {
+    if (!finishNotice) return undefined;
+    const id = setTimeout(() => setFinishNotice(''), 3500);
+    return () => clearTimeout(id);
+  }, [finishNotice]);
 
   if (!allowed) {
     return (
@@ -84,6 +96,11 @@ export default function QuotesScreen({ navigation, allowed, accessHint, onRefres
       <Pressable style={kiosk.backBtn} onPress={() => navigation.goBack()}>
         <Text style={kiosk.backText}>{tUi('back', locale)}</Text>
       </Pressable>
+      {finishNotice ? (
+        <View style={styles.finishBanner}>
+          <Text style={[styles.finishBannerText, { textAlign }]}>{finishNotice}</Text>
+        </View>
+      ) : null}
       <Text style={[kiosk.hint, styles.intro, { textAlign }]}>{tUi('carpentryQuotesIntro', locale)}</Text>
       {loading && openQuotes.length === 0 ? (
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
@@ -147,4 +164,14 @@ const styles = StyleSheet.create({
   phone: { color: theme.textMuted, fontSize: 13, marginTop: 4 },
   meta: { color: theme.textSecondary, fontSize: 12, marginTop: 8 },
   empty: { marginTop: 24 },
+  finishBanner: {
+    backgroundColor: '#14532d',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#22c55e',
+  },
+  finishBannerText: { color: '#ecfdf5', fontSize: 14, fontWeight: '600', lineHeight: 20 },
 });

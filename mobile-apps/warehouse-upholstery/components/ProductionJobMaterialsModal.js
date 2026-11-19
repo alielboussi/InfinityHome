@@ -17,6 +17,7 @@ import { kiosk } from './kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import {
+  fetchProductionFloor2CatalogMeta,
   fetchProductionStoreroomMaterials,
   saveProductionJobMaterials,
 } from '../services/productionApi';
@@ -34,6 +35,7 @@ import {
   materialLinesNeedStoreroomPick,
   warehouseLocationIdFromStoredRow,
   mergeCatalogByFamilySku,
+  mergeFloor2WipIntoMaterialCatalog,
   parseStoreroomsFromMaterialsApi,
   storeroomDeductionStrings,
   storeroomsForCatalogMaterial,
@@ -118,6 +120,9 @@ export default function ProductionJobMaterialsModal({
     setError('');
   }, [visible, initialLines]);
 
+  const isHassanQuoteMaterials = jobKind === 'quote'
+    && ['carpentry', 'upholstery'].includes(String(productionRoute || '').toLowerCase());
+
   const loadCatalog = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -125,8 +130,19 @@ export default function ProductionJobMaterialsModal({
       const payload = await fetchProductionStoreroomMaterials();
       const raw = Array.isArray(payload) ? payload : (payload?.materials || []);
       const uomMap = buildUomLabelMap(Array.isArray(payload) ? {} : payload);
+      let merged = mergeCatalogByFamilySku(raw);
+      if (isHassanQuoteMaterials) {
+        try {
+          const { products, floor2LocationId } = await fetchProductionFloor2CatalogMeta();
+          if (floor2LocationId && (products || []).length) {
+            merged = mergeFloor2WipIntoMaterialCatalog(merged, products, floor2LocationId);
+          }
+        } catch {
+          /* Floor 2 catalog optional */
+        }
+      }
       const list = enrichCatalogMaterialUom(
-        filterInStockCatalogMaterials(mergeCatalogByFamilySku(raw)),
+        filterInStockCatalogMaterials(merged),
         uomMap,
       );
       setCatalog(list);
@@ -137,7 +153,7 @@ export default function ProductionJobMaterialsModal({
     } finally {
       setLoading(false);
     }
-  }, [locale]);
+  }, [isHassanQuoteMaterials, locale]);
 
   useEffect(() => {
     if (visible) loadCatalog();
@@ -402,6 +418,11 @@ export default function ProductionJobMaterialsModal({
         </View>
         {loading ? <ActivityIndicator color={theme.primary} style={{ marginVertical: 8 }} /> : null}
         {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
+        {isHassanQuoteMaterials ? (
+          <Text style={[kiosk.hint, styles.floor2Hint, { textAlign }]}>
+            {tUi('quoteOrderMaterialsFloor2Hint', locale)}
+          </Text>
+        ) : null}
         {search.trim() && filteredSearch.length > 0 ? (
           <View style={styles.searchHits}>
             {filteredSearch.map((row) => (
@@ -554,6 +575,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.surface, padding: 16, paddingTop: 48 },
   title: { fontSize: 20, fontWeight: '800', color: theme.text, marginBottom: 12 },
   lineUomMuted: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
+  floor2Hint: { marginBottom: 8 },
   searchRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 },
   searchInput: { flex: 1, marginBottom: 0 },
   scanBtn: {

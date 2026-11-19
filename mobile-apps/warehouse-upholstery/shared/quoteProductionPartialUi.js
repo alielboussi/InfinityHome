@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   Alert,
   Image,
-  InteractionManager,
   Modal,
   Pressable,
   ScrollView,
@@ -16,11 +15,20 @@ import {
   QuoteProductionLineExtras,
   normalizeProductionQuoteLine,
 } from './quoteProductionOrderUi';
-import { displayQuoteFieldValue } from './quoteArabicTranslate';
+import { displayQuoteFieldValue, formatQuoteLineQtyLabel } from './quoteArabicTranslate';
 
 function lineImageUrl(row) {
   const meta = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
   return String(row?.line_image_url || meta.line_image_url || '').trim();
+}
+
+/** RN 0.88+ — InteractionManager removed; defer second Alert after qty modal / animations. */
+function deferAfterUiIdle(fn) {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => fn(), { timeout: 400 });
+    return;
+  }
+  setTimeout(fn, 0);
 }
 
 /** Indents line body (image, progress) to align with title beside the ready checkbox. */
@@ -71,6 +79,46 @@ export function QuoteLineReferenceImage({ line, textAlign, tUi, locale }) {
   );
 }
 
+/** Android Alert supports at most 3 buttons — use this for carpentry / multi-destination handoff. */
+export function QuoteProductionDispositionModal({
+  visible,
+  title,
+  message,
+  textAlign,
+  tUi,
+  locale,
+  choices = [],
+  onPick,
+  onCancel,
+}) {
+  if (!visible) return null;
+  const list = Array.isArray(choices) ? choices.filter((c) => c?.key && c?.label) : [];
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <Text style={[styles.modalTitle, { textAlign }]}>{title}</Text>
+          {message ? (
+            <Text style={[styles.dispositionMessage, { textAlign }]}>{message}</Text>
+          ) : null}
+          {list.map((choice) => (
+            <Pressable
+              key={choice.key}
+              style={styles.dispositionChoiceBtn}
+              onPress={() => onPick?.(choice.key)}
+            >
+              <Text style={styles.dispositionChoiceText}>{choice.label}</Text>
+            </Pressable>
+          ))}
+          <Pressable style={[styles.modalBtnSecondary, styles.dispositionCancelBtn]} onPress={onCancel}>
+            <Text style={styles.modalBtnText}>{tUi('cancel', locale)}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export function QuoteProductionWorkshopLineRows({
   lines,
   route,
@@ -81,53 +129,82 @@ export function QuoteProductionWorkshopLineRows({
   orderOpen = false,
   allowPaintingHandoff = false,
   allowFloor1Handoff = false,
+  allowDeliveryHandoff = String(route || '').toLowerCase() !== 'carpentry',
+  dispositionMessage,
   onMarkReady,
   onHandoffWillStart,
   onHandoff,
 }) {
   const list = Array.isArray(lines) ? lines : [];
-  if (!list.length) return null;
 
   const [qtyModal, setQtyModal] = useState(null);
   const [qtyDraft, setQtyDraft] = useState('');
   const [confirmQty, setConfirmQty] = useState(null);
+  const [handoffPick, setHandoffPick] = useState(null);
+
+  if (!list.length) return null;
+
+  const resolvedDispositionMessage =
+    dispositionMessage
+    ?? (allowPaintingHandoff
+      ? tUi('quoteOrderCarpentryDispositionPrompt', locale)
+      : (allowFloor1Handoff ? tUi('quoteOrderDispositionPrompt', locale) : ''));
+
+  const invokeHandoff = (line, target, qty) => {
+    onHandoffWillStart?.(line, target, qty);
+    Promise.resolve(onHandoff?.(line, target, qty)).catch((err) => {
+      Alert.alert(tUi('quoteOrderFailed', locale), err?.message || String(err));
+    });
+  };
 
   const runHandoffPrompt = (line, qty) => {
-    const buttons = [
-      { text: tUi('cancel', locale), style: 'cancel' },
-    ];
-    const runHandoff = (target) => {
-      onHandoffWillStart?.(line, target, qty);
-      Promise.resolve(onHandoff?.(line, target, qty)).catch((err) => {
-        Alert.alert(tUi('quoteOrderFailed', locale), err?.message || String(err));
-      });
-    };
-    if (allowPaintingHandoff) {
-      buttons.push({
-        text: tUi('quoteLineHandoffPainting', locale),
-        onPress: () => runHandoff('painting'),
-      });
+    const useModal = Boolean(allowPaintingHandoff);
+    if (useModal) {
+      setHandoffPick({ line, qty });
+      return;
     }
+    const buttons = [{ text: tUi('cancel', locale), style: 'cancel' }];
+    const runHandoff = (target) => invokeHandoff(line, target, qty);
     if (allowFloor1Handoff) {
       buttons.push({
         text: tUi('quoteLineHandoffFloor1', locale),
         onPress: () => runHandoff('floor1'),
       });
     }
-    buttons.push({
-      text: tUi('quoteLineHandoffDelivery', locale),
-      onPress: () => runHandoff('delivery'),
-    });
-    const message = allowFloor1Handoff
-      ? tUi('quoteOrderDispositionPrompt', locale)
-      : '';
+    if (allowDeliveryHandoff) {
+      buttons.push({
+        text: tUi('quoteLineHandoffDelivery', locale),
+        onPress: () => runHandoff('delivery'),
+      });
+    }
+    const message = resolvedDispositionMessage;
     Alert.alert(tUi('quoteLineHandoffTitle', locale), message, buttons);
   };
+
+  const handoffChoices = [];
+  if (allowPaintingHandoff) {
+    handoffChoices.push({
+      key: 'painting',
+      label: tUi('quoteLineHandoffPainting', locale),
+    });
+  }
+  if (allowFloor1Handoff) {
+    handoffChoices.push({
+      key: 'floor1',
+      label: tUi('quoteLineHandoffFloor1', locale),
+    });
+  }
+  if (allowDeliveryHandoff) {
+    handoffChoices.push({
+      key: 'delivery',
+      label: tUi('quoteLineHandoffDelivery', locale),
+    });
+  }
 
   const submitReady = async (line, qty) => {
     try {
       await onMarkReady?.(line, qty);
-      InteractionManager.runAfterInteractions(() => {
+      deferAfterUiIdle(() => {
         runHandoffPrompt(line, qty);
       });
     } catch (err) {
@@ -151,8 +228,13 @@ export function QuoteProductionWorkshopLineRows({
           Number(row.production_remaining_qty ?? (ordered - completed)),
         );
         const displayQty = remaining > 0 ? remaining : ordered;
+        const qtyUnit = String(row.unit_abbr || row.unit || '').trim();
         const nameShown = displayQuoteFieldValue(locale, row.name, arabicMap);
-        const title = `${displayQty} × ${nameShown}`;
+        const qtyLead =
+          locale === 'ar'
+            ? formatQuoteLineQtyLabel(displayQty, qtyUnit, locale, arabicMap) || String(displayQty)
+            : String(displayQty);
+        const title = `${qtyLead} × ${nameShown}`;
         const canMark = orderOpen && remaining > 0 && row.id;
 
         return (
@@ -247,6 +329,22 @@ export function QuoteProductionWorkshopLineRows({
           </View>
         </View>
       </Modal>
+
+      <QuoteProductionDispositionModal
+        visible={Boolean(handoffPick)}
+        title={tUi('quoteLineHandoffTitle', locale)}
+        message={resolvedDispositionMessage}
+        textAlign={textAlign}
+        tUi={tUi}
+        locale={locale}
+        choices={handoffChoices}
+        onPick={(target) => {
+          const payload = handoffPick;
+          setHandoffPick(null);
+          if (payload?.line) invokeHandoff(payload.line, target, payload.qty);
+        }}
+        onCancel={() => setHandoffPick(null)}
+      />
     </>
   );
 }
@@ -304,6 +402,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modalBtnText: { color: '#fff', fontWeight: '600', textAlign: 'center' },
+  dispositionMessage: { color: theme.textSecondary, fontSize: 14, marginBottom: 14, lineHeight: 20 },
+  dispositionChoiceBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: theme.primary,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  dispositionChoiceText: { color: '#fff', fontWeight: '600', textAlign: 'center', fontSize: 15 },
+  dispositionCancelBtn: { marginTop: 4 },
   zoomScroll: { flex: 1 },
   zoomContent: { flexGrow: 1, justifyContent: 'center' },
   zoomImage: { width: '100%', height: 420 },

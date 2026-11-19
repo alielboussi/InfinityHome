@@ -13,12 +13,8 @@ import { theme } from '../theme';
 const REQUIRED_OK = 'Ok';
 
 function inputMatchesOk(value) {
-  return String(value || '').trim() === REQUIRED_OK;
+  return String(value || '').trim().toLowerCase() === 'ok';
 }
-
-/**
- * Finish / end job guard — user must type Ok (capital O, lowercase k).
- */
 export default function ConfirmTypeOkModal({
   visible,
   title,
@@ -67,7 +63,7 @@ export default function ConfirmTypeOkModal({
             placeholderTextColor={theme.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
-            style={[kiosk.input, styles.input, { textAlign: textAlign === 'right' ? 'right' : 'left' }]}
+            style={[kiosk.input, styles.input, { textAlign: localeTextAlign(textAlign) }]}
           />
           <View style={styles.actions}>
             <Pressable style={[kiosk.btn, styles.btnSecondary]} onPress={close}>
@@ -85,6 +81,10 @@ export default function ConfirmTypeOkModal({
       </Pressable>
     </Modal>
   );
+}
+
+function localeTextAlign(textAlign) {
+  return textAlign === 'right' ? 'right' : 'left';
 }
 
 const styles = StyleSheet.create({

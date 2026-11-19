@@ -167,8 +167,20 @@ const UI_STRINGS = {
   quoteOrderEnd: { en: 'End order', ar: 'إنهاء الطلب' },
   quoteOrderEndConfirmTitle: { en: 'End production', ar: 'إنهاء الإنتاج' },
   quoteOrderEndConfirmBody: { en: 'Complete this order?', ar: 'إكمال هذا الطلب؟' },
+  quoteOrderEndTypeOkHint: {
+    en: 'Type Ok to confirm ending production.',
+    ar: 'اكتب Ok للتأكيد على إنهاء الإنتاج.',
+  },
+  jobFinishTypeOkHint: {
+    en: 'Type Ok to confirm finishing this job.',
+    ar: 'اكتب Ok لتأكيد إنهاء المهمة.',
+  },
   quoteOrderCompleteDone: { en: 'Production ended.', ar: 'انتهى الإنتاج.' },
   quoteOrderMaterials: { en: 'Materials', ar: 'المواد' },
+  quoteOrderMaterialsFloor2Hint: {
+    en: 'Storeroom materials plus in-stock Floor 2 raw WIP (scan SKU or search).',
+    ar: 'مواد المستودع بالإضافة إلى خام WIP المتوفّر في الطابق 2 (امسح SKU أو ابحث).',
+  },
   quoteOrderMaterialsHint: {
     en: 'Open Materials to pick items, type a barcode, or scan — storeroom is deducted when you save.',
     ar: 'افتح المواد لاختيار الأصناف أو إدخال/مسح الباركود — يُخصم من المخزن عند الحفظ.',

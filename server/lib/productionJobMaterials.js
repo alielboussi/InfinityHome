@@ -448,6 +448,16 @@ export async function saveProductionJobMaterials(sb, {
   preferredStoreroomLocationId = null,
 }) {
   const kind = String(jobKind || '').trim().toLowerCase();
+  const quoteRoute = kind === 'quote' ? normalizeProductionRoute(productionRoute) : '';
+  let floor2LocationId = '';
+  if (quoteRoute === 'carpentry' || quoteRoute === 'upholstery') {
+    const { data: locRows, error: locErr } = await sb.from('locations').select('id, name');
+    if (!locErr) {
+      const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
+      const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+      floor2LocationId = floor2Loc?.id ? String(floor2Loc.id) : '';
+    }
+  }
   const storeroomLocs = await resolveCarpentryStoreroomLocations(sb);
   if (!storeroomLocs.length) {
     throw new Error('Storerooms not configured — run seedCarpentryWarehouseLocations.js');
@@ -504,6 +514,25 @@ export async function saveProductionJobMaterials(sb, {
       lineMeta?.warehouse_location_id || storeroomLocFromLineKey(key) || '',
     ).trim() || null;
     if (delta > 0) {
+      const isFloor2Line = floor2LocationId && lineLoc === floor2LocationId;
+      if (isFloor2Line) {
+        const have = await loadAssemblyInventoryQty(sb, aid, floor2LocationId);
+        if (have + 0.000001 < delta) {
+          throw new Error('Insufficient Floor 2 WIP stock for this material');
+        }
+        await adjustAssemblyInventory(sb, aid, floor2LocationId, -delta);
+        usageRows.push({
+          material_assembly_id: aid,
+          warehouse_location_id: floor2LocationId,
+          quantity: delta,
+          uom: lineMeta?.uom || 'ea',
+          name: String(lineMeta?.name || '').trim(),
+          family_sku: String(lineMeta?.family_sku || '').trim(),
+          uom_label: String(lineMeta?.uom_label || '').trim(),
+          storeroom_label: String(lineMeta?.storeroom_label || '').trim() || 'Warehouse Floor 2',
+        });
+        continue;
+      }
       let onHandTotal = 0;
       for (const loc of storeroomLocs) {
         onHandTotal += await loadAssemblyInventoryQty(sb, aid, loc.id);
@@ -597,6 +626,9 @@ export async function saveProductionJobMaterials(sb, {
 
   for (const loc of storeroomLocs) {
     await recomputeWarehouseLocationStockServer(sb, loc.id);
+  }
+  if (floor2LocationId) {
+    await recomputeWarehouseLocationStockServer(sb, floor2LocationId);
   }
 
   return {

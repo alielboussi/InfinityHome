@@ -32,7 +32,10 @@ import ProductionJobMaterialsModal from '../productionKiosk/components/Productio
 import ConfirmTypeOkModal from '../productionKiosk/shared/components/ConfirmTypeOkModal';
 import { theme } from '../shared/theme';
 import { useProductionQuoteArabicMap } from '../shared/quoteProductionOrderUi';
-import { QuoteProductionWorkshopLineRows } from '../shared/quoteProductionPartialUi';
+import {
+  QuoteProductionDispositionModal,
+  QuoteProductionWorkshopLineRows,
+} from '../productionKiosk/shared/quoteProductionPartialUi';
 import { displayQuoteFieldValue } from '../shared/quoteArabicTranslate';
 import {
   applyQuoteOrderTimerFrozenPatch,
@@ -53,6 +56,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
   const [busy, setBusy] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
   const [endConfirmVisible, setEndConfirmVisible] = useState(false);
+  const [endDestVisible, setEndDestVisible] = useState(false);
 
   const reloadQuote = useCallback(async ({ quiet = false } = {}) => {
     if (!quoteId) {
@@ -222,53 +226,32 @@ export default function QuoteDetailScreen({ route, navigation }) {
     setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
     setCompleted(true);
     setBusy(true);
+    const finishNotice = sendToPainting
+      ? tUi('carpentryQuoteSentToPainting', locale)
+      : tUi('quoteOrderCompleteDone', locale);
     try {
-      await completeCarpentryQuote(quoteId, {
+      const result = await completeCarpentryQuote(quoteId, {
         deferDeliveryQueue: Boolean(sendToPainting),
         destination: sendToPainting ? 'delivery' : destination,
+        sendToPainting: Boolean(sendToPainting),
       });
-      if (sendToPainting) {
-        try {
-          await sendCarpentryQuoteToPainting(quoteId);
-          Alert.alert(
-            tUi('quoteOrderEndConfirmTitle', locale),
-            tUi('carpentryQuoteSentToPainting', locale),
-          );
-        } catch (paintErr) {
-          await completeCarpentryQuote(quoteId, { deferDeliveryQueue: false });
-          throw paintErr;
-        }
-      } else {
-        Alert.alert(tUi('quoteOrderEndConfirmTitle', locale), tUi('quoteOrderCompleteDone', locale));
+      if (sendToPainting && !result?.sent_to_painting) {
+        await sendCarpentryQuoteToPainting(quoteId);
       }
-      navigation.goBack();
-    } catch (e) {
-      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
-    } finally {
       setBusy(false);
+      navigation.navigate({
+        name: 'Quotes',
+        params: { finishNotice },
+        merge: true,
+      });
+    } catch (e) {
+      setBusy(false);
+      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
     }
   };
 
   const showEndDestinationAlert = () => {
-    Alert.alert(
-      tUi('quoteOrderDispositionTitle', locale),
-      tUi('quoteOrderDispositionPrompt', locale),
-      [
-        { text: tUi('cancel', locale), style: 'cancel' },
-        {
-          text: tUi('quoteLineHandoffFloor1', locale),
-          onPress: () => finishQuote({ destination: 'floor1' }),
-        },
-        {
-          text: tUi('quoteLineHandoffDelivery', locale),
-          onPress: () => finishQuote({ destination: 'delivery' }),
-        },
-        {
-          text: tUi('quoteOrderEndSendPainting', locale),
-          onPress: () => finishQuote({ sendToPainting: true }),
-        },
-      ],
-    );
+    setEndDestVisible(true);
   };
 
   const onComplete = () => {
@@ -353,7 +336,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
         ) : null}
         {!completed && quote.sent_to_production_at ? (
           <Text style={[styles.materialsHint, { textAlign }]}>
-            {tUi('quoteOrderMaterialsHint', locale)}
+            {tUi('quoteOrderMaterialsFloor2Hint', locale)}
           </Text>
         ) : null}
         <Text style={[kiosk.label, styles.section, { textAlign }]}>{tUi('quoteOrderLines', locale)}</Text>
@@ -367,6 +350,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
           orderOpen={accepted && !completed}
           allowPaintingHandoff
           allowFloor1Handoff
+          allowDeliveryHandoff={false}
           onMarkReady={async (line, qty) => {
             await markCarpentryQuoteLineReady(quoteId, line.id, qty);
             const add = Math.max(1, Math.floor(Number(qty) || 0));
@@ -395,10 +379,20 @@ export default function QuoteDetailScreen({ route, navigation }) {
               navigation.goBack();
               return;
             }
-            if (isQuoteOrderFullyCompleteLines(lines) && target === 'painting') {
-              await completeCarpentryQuote(quoteId, { deferDeliveryQueue: true, destination: 'delivery' });
-              await sendCarpentryQuoteToPainting(quoteId);
-              navigation.goBack();
+            const list = await fetchCarpentryProductionQuotes();
+            const found = (Array.isArray(list) ? list : []).find(
+              (q) => String(q.quote_id) === quoteId,
+            );
+            const nextLines = Array.isArray(found?.lines) ? found.lines : [];
+            if (found) {
+              setQuote(found);
+              setAccepted(Boolean(found.accepted_at));
+              setCompleted(Boolean(found.completed_at));
+            }
+            if (isQuoteOrderFullyCompleteLines(nextLines) && !found?.completed_at) {
+              setQuote((prev) => applyQuoteOrderTimerFrozenPatch(prev, { tick }));
+              setCompleted(true);
+              setEndDestVisible(true);
               return;
             }
             void reloadQuote({ quiet: true });
@@ -418,6 +412,24 @@ export default function QuoteDetailScreen({ route, navigation }) {
           setEndConfirmVisible(false);
           showEndDestinationAlert();
         }}
+      />
+      <QuoteProductionDispositionModal
+        visible={endDestVisible}
+        title={tUi('quoteOrderDispositionTitle', locale)}
+        message={tUi('quoteOrderCarpentryDispositionPrompt', locale)}
+        textAlign={textAlign}
+        tUi={tUi}
+        locale={locale}
+        choices={[
+          { key: 'floor1', label: tUi('quoteLineHandoffFloor1', locale) },
+          { key: 'painting', label: tUi('quoteLineHandoffPainting', locale) },
+        ]}
+        onPick={(key) => {
+          setEndDestVisible(false);
+          if (key === 'painting') void finishQuote({ sendToPainting: true });
+          else void finishQuote({ destination: 'floor1' });
+        }}
+        onCancel={() => setEndDestVisible(false)}
       />
       <ProductionJobMaterialsModal
         visible={materialsOpen}
