@@ -428,7 +428,6 @@ export function quoteItemLineImageUrl(it) {
 }
 
 export function buildProductionLineSummaryRow(it, routingMeta = null) {
-  const meta = it?.metadata && typeof it.metadata === 'object' ? it.metadata : {};
   const base = {
     id: it.id,
     name: it.name_override || it.name || '',
