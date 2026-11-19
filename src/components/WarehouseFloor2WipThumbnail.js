@@ -54,11 +54,14 @@ export default function WarehouseFloor2WipThumbnail({
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState(null);
   const isFamily = imageKind === 'family';
+  const previewOnly = !canEdit;
   const rawUrl = isFamily
     ? readWarehouseFloor2WipFamilyImageUrl(assembly)
     : readWarehouseFloor2WipImageUrl(assembly);
-  const displayUrl = rawUrl
-    ? rewriteLegacyStorageUrl(rawUrl, { bucket: 'productimages' })
+  const catalogFallback = previewOnly ? String(assembly?.image_url || '').trim() : '';
+  const resolvedUrl = rawUrl || catalogFallback;
+  const displayUrl = resolvedUrl
+    ? rewriteLegacyStorageUrl(resolvedUrl, { bucket: 'productimages' })
     : '';
 
   const siblingIds = (familyAssemblyIds && familyAssemblyIds.length
@@ -120,7 +123,7 @@ export default function WarehouseFloor2WipThumbnail({
     ? (displayUrl
       ? (isFamily ? 'Change family WIP photo' : 'Change variant WIP photo')
       : (isFamily ? 'Add family WIP photo' : 'Add variant WIP photo'))
-    : (displayUrl ? 'WIP photo' : 'No WIP photo');
+    : (displayUrl ? 'WIP photo — hover to enlarge' : 'No WIP photo');
 
   const showZoom = useCallback(() => {
     if (!displayUrl || !wrapRef.current) return;
@@ -137,34 +140,57 @@ export default function WarehouseFloor2WipThumbnail({
     <>
       <div
         ref={wrapRef}
-        className={`warehouse-assembly-thumb-wrap${displayUrl ? ' has-image' : ''}`}
+        className={`warehouse-assembly-thumb-wrap${displayUrl ? ' has-image' : ''}${previewOnly ? ' warehouse-assembly-thumb-wrap--preview' : ''}`}
         onMouseEnter={displayUrl ? showZoom : undefined}
         onMouseLeave={displayUrl ? hideZoom : undefined}
         onFocus={displayUrl ? showZoom : undefined}
         onBlur={displayUrl ? hideZoom : undefined}
       >
-        <button
-          type="button"
-          className={`warehouse-assembly-thumb${displayUrl ? ' has-image' : ''}${busy ? ' is-busy' : ''}`}
-          onClick={openPicker}
-          disabled={!canEdit || busy}
-          aria-label={label}
-          title={canEdit ? label : undefined}
-        >
-          {displayUrl ? (
-            <img
-              src={displayUrl}
-              alt=""
-              className="warehouse-assembly-thumb__img"
-            />
-          ) : (
-            <span className="warehouse-assembly-thumb__placeholder">
-              <span className="warehouse-assembly-thumb__placeholder-icon" aria-hidden>▦</span>
-              <span>{canEdit ? placeholder : '—'}</span>
-            </span>
-          )}
-          {busy ? <span className="warehouse-assembly-thumb__busy" aria-hidden>…</span> : null}
-        </button>
+        {previewOnly ? (
+          <div
+            className={`warehouse-assembly-thumb warehouse-assembly-thumb--preview${displayUrl ? ' has-image' : ''}`}
+            role="img"
+            aria-label={label}
+            title={displayUrl ? label : undefined}
+            tabIndex={displayUrl ? 0 : undefined}
+          >
+            {displayUrl ? (
+              <img
+                src={displayUrl}
+                alt=""
+                className="warehouse-assembly-thumb__img"
+              />
+            ) : (
+              <span className="warehouse-assembly-thumb__placeholder">
+                <span className="warehouse-assembly-thumb__placeholder-icon" aria-hidden>▦</span>
+                <span>—</span>
+              </span>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={`warehouse-assembly-thumb${displayUrl ? ' has-image' : ''}${busy ? ' is-busy' : ''}`}
+            onClick={openPicker}
+            disabled={busy}
+            aria-label={label}
+            title={label}
+          >
+            {displayUrl ? (
+              <img
+                src={displayUrl}
+                alt=""
+                className="warehouse-assembly-thumb__img"
+              />
+            ) : (
+              <span className="warehouse-assembly-thumb__placeholder">
+                <span className="warehouse-assembly-thumb__placeholder-icon" aria-hidden>▦</span>
+                <span>{placeholder}</span>
+              </span>
+            )}
+            {busy ? <span className="warehouse-assembly-thumb__busy" aria-hidden>…</span> : null}
+          </button>
+        )}
         {canEdit && displayUrl ? (
           <button
             type="button"

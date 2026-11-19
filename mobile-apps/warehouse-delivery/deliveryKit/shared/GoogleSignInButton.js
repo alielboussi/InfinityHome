@@ -169,6 +169,7 @@ async function resolveGoogleIdToken(response, GoogleSignin) {
 
 function NativeGoogleSignInButton({
   webClientId,
+  androidClientId,
   onError,
   onSuccess,
   disabled,
@@ -188,6 +189,7 @@ function NativeGoogleSignInButton({
 
       GoogleSignin.configure({
         webClientId,
+        ...(Platform.OS === 'android' && androidClientId ? { androidClientId } : {}),
         offlineAccess: false,
         scopes: ['email', 'profile'],
       });
@@ -285,6 +287,7 @@ export function GoogleSignInButton({
     return (
       <NativeGoogleSignInButton
         webClientId={oauth.webClientId}
+        androidClientId={oauth.androidClientId}
         onError={onError}
         onSuccess={onSuccess}
         disabled={disabled}

@@ -9,6 +9,7 @@ import {
   deleteWarehouseAssembly,
   saveWarehouseAssembly,
   setWarehouseAssemblyQuantity,
+  setWarehouseSetQuantityFromRecipe,
   WAREHOUSE_INVENTORY_MODE,
 } from '../services/warehouseCatalog';
 import { ensureRetailProductForKitweAssembly } from './kitweAssemblyRetailPricing';
@@ -196,4 +197,50 @@ export async function createKitwePortalProduct({
   await markAssemblyKitwePortalListed(assembly.id);
   const { data: fresh } = await db.from('warehouse_assemblies').select('*').eq('id', assembly.id).maybeSingle();
   return fresh || assembly;
+}
+
+/**
+ * Build or reduce Kitwe set rows per Kitwe recipe (consumes component stock when increasing).
+ * Decreasing set qty is not supported — adjust component stock on the portal instead.
+ */
+export async function saveKitwePortalSetStock(setAssembly, targetUnits) {
+  const target = Math.max(0, Math.floor(Number(targetUnits) || 0));
+  if (!setAssembly?.id) throw new Error('Set not found.');
+  await setWarehouseSetQuantityFromRecipe(setAssembly.id, KITWE_LOCATION_ID, target, {
+    incrementOnly: false,
+  });
+  const { data: inv } = await db
+    .from('warehouse_assembly_inventory')
+    .select('quantity')
+    .eq('assembly_id', setAssembly.id)
+    .eq('location_id', KITWE_LOCATION_ID)
+    .maybeSingle();
+  const qty = Math.max(0, Math.floor(Number(inv?.quantity) || 0));
+  await setKitwePortalProductStock(setAssembly, qty);
+  return qty;
+}
+
+/** Update per-set component qty on Kitwe recipe (warehouse_set_items at Kitwe). */
+export async function saveKitwePortalSetRecipeQuantities(setAssemblyId, lines = []) {
+  const setId = String(setAssemblyId || '').trim();
+  if (!setId) throw new Error('Set not found.');
+  const now = new Date().toISOString();
+  const rows = (lines || [])
+    .map((line) => {
+      const componentId = String(line?.component_assembly_id || '').trim();
+      if (!componentId) return null;
+      return {
+        location_id: KITWE_LOCATION_ID,
+        set_assembly_id: setId,
+        component_assembly_id: componentId,
+        quantity: Math.max(1, Math.floor(Number(line?.quantity) || 1)),
+        updated_at: now,
+      };
+    })
+    .filter(Boolean);
+  if (!rows.length) throw new Error('Set has no components to save.');
+  const { error } = await db.from('warehouse_set_items').upsert(rows, {
+    onConflict: 'location_id,set_assembly_id,component_assembly_id',
+  });
+  if (error) throw new Error(error.message || 'Failed to save set recipe quantities');
 }

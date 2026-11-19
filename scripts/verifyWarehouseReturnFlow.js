@@ -95,6 +95,15 @@ assert(
   read('src/WarehouseReturnsTrackage.js').includes('ProductionJobsTrackingPanel'),
   'trackage page must use unified production job tracking',
 );
+const trackingPanel = read('src/components/ProductionJobsTrackingPanel.js');
+assert(
+  trackingPanel.includes('partitionProductionTrackingJobs'),
+  'trackage panel must sort in-progress above completed',
+);
+assert(
+  trackingPanel.includes('ProductionTrackingFunnelFilter'),
+  'trackage panel must expose funnel filter control',
+);
 assert(
   !read('server/lib/warehouseReturnOrders.js').includes('trackageOnly) {\n    query = query.in'),
   'trackage must not filter to completed-only statuses',

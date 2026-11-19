@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   collectProductionQuoteArabicPhrases,
   displayQuoteFieldValue,
+  expandArabicPhraseVariants,
   formatQuoteDimensionsCmDisplay,
   formatQuoteLineQtyLabel,
 } from './quoteArabicTranslate';
@@ -15,6 +16,12 @@ import {
   View,
 } from 'react-native';
 import { theme } from './theme';
+import {
+  isProductionQuoteCustomerOrder,
+  isProductionQuoteShowroomOrder,
+  firstProductionQuoteLineImageUrl,
+  productionQuoteListTitle,
+} from './quoteShowroomOrder';
 
 function formatDimensionsCm(line, locale = 'en') {
   return formatQuoteDimensionsCmDisplay(line, locale);
@@ -43,9 +50,17 @@ export function normalizeProductionQuoteLine(line) {
     dim_l_cm: trim(line.dim_l_cm) || trim(meta.dim_l_cm),
     dim_w_cm: trim(line.dim_w_cm) || trim(meta.dim_w_cm),
     dim_h_cm: trim(line.dim_h_cm) || trim(meta.dim_h_cm),
+    dimension_sets: Array.isArray(line.dimension_sets)
+      ? line.dimension_sets
+      : (Array.isArray(meta.dimension_sets) ? meta.dimension_sets : undefined),
     dimensions_lwh: trim(line.dimensions_lwh) || trim(meta.dimensions_lwh),
+    aluminum_thickness_mm: trim(line.aluminum_thickness_mm) || trim(meta.aluminum_thickness_mm),
     accessories: line.accessories ?? meta.accessories,
     description: trim(line.description) || trim(meta.description) || line.description,
+    line_image_url: trim(line.line_image_url) || trim(meta.line_image_url) || trim(meta.floor2_image_url),
+    production_completed_qty: line.production_completed_qty,
+    production_remaining_qty: line.production_remaining_qty,
+    ordered_qty: line.ordered_qty,
   };
 }
 
@@ -88,6 +103,31 @@ function buildUpholsteryLineExtraTexts(line, tUi, locale, arabicMap = {}) {
   return rows;
 }
 
+function buildAluminumLineExtraTexts(line, tUi, locale, arabicMap = {}) {
+  const show = (v) => displayQuoteFieldValue(locale, v, arabicMap);
+  const rows = [];
+  const dims = formatDimensionsCm(line, locale);
+  if (dims) {
+    rows.push(`${tUi('quoteOrderDimensions', locale)}: ${dims}`);
+  }
+  if (line.aluminum_thickness_mm) {
+    rows.push(`${tUi('quoteOrderAluminumThickness', locale) || 'Thickness'}: ${line.aluminum_thickness_mm}`);
+  }
+  if (line.color_code) {
+    rows.push(`${tUi('quoteOrderColorCode', locale)}: ${line.color_code}`);
+  }
+  if (line.description) {
+    const desc = show(line.description);
+    rows.push(`${tUi('quoteOrderDescription', locale)}: "${desc}"`);
+  }
+  const accessories = normalizeAccessoriesList(line.accessories);
+  if (accessories.length) {
+    const accShown = accessories.map((a) => show(a)).join('، ');
+    rows.push(`${tUi('quoteOrderIncludedAccessories', locale)} : ${accShown}`);
+  }
+  return rows;
+}
+
 function buildCarpentryLineExtraTexts(line, tUi, locale, arabicMap = {}) {
   const show = (v) => displayQuoteFieldValue(locale, v, arabicMap);
   const rows = [];
@@ -114,16 +154,22 @@ function buildCarpentryLineExtraTexts(line, tUi, locale, arabicMap = {}) {
 }
 
 /** Server-backed Arabic map when locale is `ar` (falls back to local dictionary). */
-export function useProductionQuoteArabicMap(lines, locale, fetchTranslations) {
+export function useProductionQuoteArabicMap(lines, locale, fetchTranslations, extraPhrases = []) {
   const [map, setMap] = useState({});
-  const phraseKey = useMemo(() => collectProductionQuoteArabicPhrases(lines).join('\0'), [lines]);
+  const phraseKey = useMemo(() => {
+    const extras = Array.isArray(extraPhrases) ? extraPhrases : [];
+    const merged = [...collectProductionQuoteArabicPhrases(lines), ...extras];
+    return expandArabicPhraseVariants(merged).join('\0');
+  }, [lines, extraPhrases]);
 
   useEffect(() => {
     if (locale !== 'ar') {
       setMap({});
       return undefined;
     }
-    const phrases = phraseKey ? phraseKey.split('\0').filter(Boolean) : [];
+    const phrases = expandArabicPhraseVariants(
+      phraseKey ? phraseKey.split('\0').filter(Boolean) : [],
+    );
     if (!phrases.length) {
       setMap({});
       return undefined;
@@ -176,8 +222,39 @@ export function summarizeProductionQuoteCardExtras(lines, route, tUi, locale, ar
         bits.push(`${translate('quoteOrderIncludedAccessories', 'Included Accessories')} : ${acc.map((a) => show(a)).join('، ')}`);
       }
     }
+    if (normalized === 'aluminum') {
+      const dims = formatDimensionsCm(row, locale);
+      if (dims) bits.push(`${translate('quoteOrderDimensions', 'L×W×H (cm)')}: ${dims}`);
+      if (row.aluminum_thickness_mm) {
+        bits.push(`${translate('quoteOrderAluminumThickness', 'Thickness')}: ${row.aluminum_thickness_mm}`);
+      }
+      if (row.color_code) bits.push(`${translate('quoteOrderColorCode', 'Color')}: ${row.color_code}`);
+      const acc = normalizeAccessoriesList(row.accessories);
+      if (acc.length) {
+        bits.push(`${translate('quoteOrderIncludedAccessories', 'Included Accessories')} : ${acc.map((a) => show(a)).join('، ')}`);
+      }
+    }
   }
   return bits.join(' · ');
+}
+
+export function QuoteProductionLineExtras({ line, route, textAlign, tUi, locale, arabicMap = {} }) {
+  const normalized = String(route || '').toLowerCase();
+  const row = normalizeProductionQuoteLine(line);
+  let extras = [];
+  if (normalized === 'upholstery') {
+    extras = buildUpholsteryLineExtraTexts(row, tUi, locale, arabicMap);
+  } else if (normalized === 'carpentry') {
+    extras = buildCarpentryLineExtraTexts(row, tUi, locale, arabicMap);
+  } else if (normalized === 'aluminum') {
+    extras = buildAluminumLineExtraTexts(row, tUi, locale, arabicMap);
+  }
+  if (!extras.length) return null;
+  return extras.map((extra) => (
+    <Text key={extra} style={[styles.lineExtra, { textAlign }]}>
+      {extra}
+    </Text>
+  ));
 }
 
 export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale, arabicMap = {} }) {
@@ -194,6 +271,9 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale, 
     }
     if (normalized === 'carpentry') {
       extras.push(...buildCarpentryLineExtraTexts(row, tUi, locale, arabicMap));
+    }
+    if (normalized === 'aluminum') {
+      extras.push(...buildAluminumLineExtraTexts(row, tUi, locale, arabicMap));
     }
     const nameShown = displayQuoteFieldValue(locale, row.name, arabicMap);
     const qtyUnit = row.unit_abbr || row.unit_label || row.abbreviation || '';
@@ -219,6 +299,73 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale, 
       </View>
     );
   });
+}
+
+export function QuoteProductionOrderBadges({ quote, textAlign, tUi, locale }) {
+  const showroom = isProductionQuoteShowroomOrder(quote);
+  const customer = isProductionQuoteCustomerOrder(quote);
+  if (!showroom && !customer) return null;
+  return (
+    <View style={[styles.badgeRow, { justifyContent: textAlign === 'right' ? 'flex-end' : 'flex-start' }]}>
+      {showroom ? (
+        <Text style={[styles.badge, styles.badgeShowroom]}>{tUi('badgeShowroomOrder', locale)}</Text>
+      ) : null}
+      {customer ? (
+        <Text style={[styles.badge, styles.badgeCustomer]}>{tUi('badgeCustomerOrder', locale)}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** Delivery app queue / sent list rows → same customer vs showroom badges as workshop quotes. */
+export function deliveryDestinationBadgeQuote(row) {
+  if (!row || typeof row !== 'object') {
+    return { showroom_order: false, customer_order: false };
+  }
+  if (row.showroom_order === true) {
+    return { showroom_order: true, customer_order: false };
+  }
+  const customer = row.customer_order === true
+    || row.has_customer === true
+    || Boolean(String(row.customer_name || '').trim());
+  return { showroom_order: false, customer_order: customer };
+}
+
+export function DeliveryDestinationBadges({ row, textAlign, tUi, locale }) {
+  return (
+    <QuoteProductionOrderBadges
+      quote={deliveryDestinationBadgeQuote(row)}
+      textAlign={textAlign}
+      tUi={tUi}
+      locale={locale}
+    />
+  );
+}
+
+/** Floor 2 / line reference thumb on quote list cards (showroom orders). */
+export function QuoteProductionListThumb({ quote, textAlign }) {
+  const url = firstProductionQuoteLineImageUrl(quote);
+  if (!url) return null;
+  return (
+    <Image
+      source={{ uri: url }}
+      style={[
+        styles.listThumb,
+        textAlign === 'right' ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' },
+      ]}
+      resizeMode="cover"
+    />
+  );
+}
+
+export { productionQuoteListTitle, isProductionQuoteShowroomOrder, isProductionQuoteCustomerOrder };
+
+export function productionQuoteDetailCustomerLabel(quote, tUi, locale, arabicMap, displayQuoteFieldValue) {
+  if (isProductionQuoteShowroomOrder(quote)) {
+    return tUi('showroomOrderDetailLabel', locale);
+  }
+  const name = displayQuoteFieldValue(locale, quote.customer_name, arabicMap);
+  return name || '—';
 }
 
 export function QuoteProductionDrawingSection({ drawingUrl, textAlign, tUi, locale }) {
@@ -260,13 +407,16 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
   const hasDrawing = Boolean(String(quote.drawing_url || '').trim());
   const allLines = Array.isArray(quote.lines) ? quote.lines : [];
 
-  if (normalized === 'carpentry') {
+  if (normalized === 'carpentry' || normalized === 'aluminum') {
     if (!allLines.length && !hasDrawing) return null;
+    const buildExtras = normalized === 'aluminum'
+      ? buildAluminumLineExtraTexts
+      : buildCarpentryLineExtraTexts;
     return (
       <View style={styles.cardExtras}>
         {allLines.map((line, index) => {
           const row = normalizeProductionQuoteLine(line);
-          const extras = buildCarpentryLineExtraTexts(row, tUi, locale, arabicMap);
+          const extras = buildExtras(row, tUi, locale, arabicMap);
           const lineKey = String(row.id || `${row.name}-${index}`);
           const nameShown = displayQuoteFieldValue(locale, row.name, arabicMap);
           return (
@@ -284,25 +434,15 @@ export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale
             </View>
           );
         })}
-        {hasDrawing ? (
-          <Text style={[styles.cardDrawingTag, { textAlign }]}>
-            {tUi('quoteOrderDrawingAttached', locale)}
-          </Text>
-        ) : null}
       </View>
     );
   }
 
   const extras = summarizeProductionQuoteCardExtras(allLines, route, tUi, locale, arabicMap);
-  if (!extras && !hasDrawing) return null;
+  if (!extras) return null;
   return (
     <View style={styles.cardExtras}>
       {extras ? <Text style={[styles.cardExtraText, { textAlign }]}>{extras}</Text> : null}
-      {hasDrawing ? (
-        <Text style={[styles.cardDrawingTag, { textAlign }]}>
-          {tUi('quoteOrderDrawingAttached', locale)}
-        </Text>
-      ) : null}
     </View>
   );
 }
@@ -351,4 +491,22 @@ const styles = StyleSheet.create({
   cardLineTitle: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', marginBottom: 2 },
   cardExtraText: { color: theme.textMuted, fontSize: 12, lineHeight: 17 },
   cardDrawingTag: { color: theme.primary, fontSize: 12, marginTop: 4, fontWeight: '600' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, marginBottom: 2 },
+  badge: {
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  badgeCustomer: { backgroundColor: '#dbeafe', color: '#1e40af' },
+  badgeShowroom: { backgroundColor: '#e0e7ff', color: '#3730a3' },
+  listThumb: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#e2e8f0',
+  },
 });

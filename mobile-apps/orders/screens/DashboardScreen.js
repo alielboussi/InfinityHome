@@ -10,7 +10,7 @@ import { isWorkshopOrDeliveryScreenAllowed } from '../shared/mobileAccessManifes
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import ProductionPressableHint from '../lib/ProductionPressableHint';
-import { ORDERS_APP_DASHBOARD_PARITY } from '../shared/ordersAppDashboardParity';
+import { ORDERS_APP_HOME_TILES } from '../shared/ordersAppDashboardParity';
 
 function DashboardTile({
   icon, title, width, height, onPress, locale, textAlign,
@@ -59,7 +59,7 @@ export default function DashboardScreen({
   const insets = useSafeAreaInsets();
   const { locale, toggleLocale, ready, textAlign } = useProductionKioskLocale();
 
-  const allTiles = ORDERS_APP_DASHBOARD_PARITY.map((row) => ({
+  const allTiles = ORDERS_APP_HOME_TILES.map((row) => ({
     key: row.screenId.replace(/^orders_/, ''),
     screenId: row.screenId,
     icon: row.mciIcon,

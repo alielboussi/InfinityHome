@@ -159,6 +159,8 @@ const UI_STRINGS = {
   loginPassword: { en: 'Password', ar: 'كلمة المرور' },
   loginButton: { en: 'Sign in', ar: 'دخول' },
   loginSigningIn: { en: 'Signing in…', ar: 'جاري تسجيل الدخول…' },
+  badgeCustomerOrder: { en: 'Customer Order', ar: 'طلب عميل' },
+  badgeShowroomOrder: { en: 'Showroom Order', ar: 'طلب صالة' },
   quoteOrderScreenTitle: { en: 'Order', ar: 'طلب' },
   quoteOrderTimer: { en: 'Production timer', ar: 'مؤقت الإنتاج' },
   quoteOrderAcceptStart: { en: 'Accept & start', ar: 'قبول وبدء' },

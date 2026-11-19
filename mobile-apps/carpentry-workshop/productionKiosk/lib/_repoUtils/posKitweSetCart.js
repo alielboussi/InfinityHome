@@ -94,20 +94,21 @@ export function buildKitweSetSaleMoves(cartLine) {
   return moves;
 }
 
-export function resolveKitweComponentAvailableStock(component, products) {
-  const onLine = component?.stock;
-  if (onLine != null && onLine !== '' && Number.isFinite(Number(onLine))) {
-    return Math.max(0, Math.floor(Number(onLine)));
-  }
-  return kitweAssemblyStockFromPosProducts(component?.component_assembly_id, products);
-}
-
 export function kitweAssemblyStockFromPosProducts(assemblyId, products) {
   const aid = String(assemblyId || '');
   const row = (products || []).find(
     (p) => String(p.warehouseAssemblyId) === aid || String(p.id) === `kitwe-wh-${aid}`,
   );
   return Math.max(0, Number(row?.stock) || 0);
+}
+
+/** Set recipe components are often hidden from the POS grid — use Kitwe qty captured on the cart line. */
+export function resolveKitweComponentAvailableStock(component, products) {
+  const onLine = component?.stock;
+  if (onLine != null && onLine !== '' && Number.isFinite(Number(onLine))) {
+    return Math.max(0, Math.floor(Number(onLine)));
+  }
+  return kitweAssemblyStockFromPosProducts(component?.component_assembly_id, products);
 }
 
 /**

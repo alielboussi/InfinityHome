@@ -2,9 +2,13 @@ import db from '../dataClient';
 import { KITWE_LOCATION_ID } from '../_repoConstants/warehouseShowroomLocations';
 import {
   applyProductLocationPricing,
+  buildComboLocationPriceUpsert,
   buildProductLocationPriceUpsert,
+  resolveComboLocationPricing,
   resolveProductLocationPricing,
 } from './locationPricing';
+import { normalizeCatalogNameForLabel } from './priceLabelFormatters';
+import { findRetailComboForAssembly } from './kitwePriceLabelResolve';
 import { normalizeWarehouseProductSku } from './warehouseScanResolver';
 import { isWarehouseSetAssembly } from './warehouseSetMath';
 import { resolveProductRecordImageUrl } from './productImageUrl';
@@ -69,15 +73,31 @@ async function fetchProductsByIds(ids) {
   return rows;
 }
 
-/** Kitwe catalog price cells — uses location overrides even before full retail row is loaded. */
-export function resolveKitweAssemblyCatalogPricing(assembly, retailIndex, priceMap, locationId) {
+/** Kitwe catalog price cells — Kitwe sets prefer matching Products List combo location prices. */
+export function resolveKitweAssemblyCatalogPricing(
+  assembly,
+  retailIndex,
+  productPriceMap,
+  locationId,
+  { comboPriceMap, combosByName } = {},
+) {
+  if (isWarehouseSetAssembly(assembly)) {
+    const combo = combosByName?.get?.(normalizeCatalogNameForLabel(assembly.name));
+    if (combo?.id && comboPriceMap) {
+      const resolved = resolveComboLocationPricing(combo, locationId, comboPriceMap);
+      return {
+        price: resolved.combo_price ?? resolved.standard_price ?? null,
+        promotional_price: resolved.promotional_price ?? null,
+      };
+    }
+  }
   const retail = resolveRetailProductForAssembly(assembly, retailIndex);
   const pricingProduct = retail
     || (assembly?.retail_product_id ? { id: assembly.retail_product_id } : null);
   if (!pricingProduct?.id) {
     return { price: null, promotional_price: null };
   }
-  return resolveProductLocationPricing(pricingProduct, locationId, priceMap);
+  return resolveProductLocationPricing(pricingProduct, locationId, productPriceMap);
 }
 
 /**
@@ -219,17 +239,83 @@ export async function ensureRetailProductForKitweAssembly(assembly) {
   return created;
 }
 
-export async function saveKitweAssemblyLocationPrice(assembly, { price, promotionalPrice }) {
+export async function saveKitweAssemblyLocationPrice(
+  assembly,
+  { price, promotionalPrice },
+  { catalogCombos } = {},
+) {
+  const std = price === '' || price == null ? null : Number(price);
+  const promo = promotionalPrice === '' || promotionalPrice == null ? null : Number(promotionalPrice);
+
   const retail = await ensureRetailProductForKitweAssembly(assembly);
-  const row = buildProductLocationPriceUpsert({
+  const productRow = buildProductLocationPriceUpsert({
     productId: retail.id,
     locationId: KITWE_LOCATION_ID,
-    price: price === '' || price == null ? null : Number(price),
-    promotionalPrice: promotionalPrice === '' || promotionalPrice == null ? null : Number(promotionalPrice),
+    price: std,
+    promotionalPrice: promo,
   });
-  const { upsertProductLocationPrices } = await import('../services/locationPricing');
-  await upsertProductLocationPrices(db, [row]);
+  const { upsertProductLocationPrices, upsertComboLocationPrices } = await import('../services/locationPricing');
+  await upsertProductLocationPrices(db, [productRow]);
+
+  let combos = catalogCombos;
+  if (!combos) {
+    const { data } = await db.from('combos').select(
+      'id, combo_name, sku, combo_price, standard_price, promotional_price',
+    );
+    combos = data || [];
+  }
+  const combo = findRetailComboForAssembly(assembly, combos);
+  if (combo?.id) {
+    const comboRow = buildComboLocationPriceUpsert({
+      comboId: combo.id,
+      locationId: KITWE_LOCATION_ID,
+      comboPrice: std,
+      promotionalPrice: promo,
+    });
+    await upsertComboLocationPrices(db, [comboRow]);
+  }
+
   return retail;
+}
+
+/** Rename Kitwe portal row — warehouse assembly, linked retail product, and name-matched combo. */
+export async function saveKitwePortalCatalogName(assembly, name, { catalogCombos } = {}) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) throw new Error('Product name is required.');
+  if (!assembly?.id) throw new Error('Product not found.');
+
+  let combos = catalogCombos;
+  if (!combos) {
+    const { data } = await db.from('combos').select(
+      'id, combo_name, sku, combo_price, standard_price, promotional_price',
+    );
+    combos = data || [];
+  }
+  const combo = findRetailComboForAssembly(assembly, combos);
+  const now = new Date().toISOString();
+
+  const { error: asmErr } = await db.from('warehouse_assemblies').update({
+    name: trimmed,
+    updated_at: now,
+  }).eq('id', assembly.id);
+  if (asmErr) throw new Error(asmErr.message || 'Failed to save name');
+
+  const retail = await ensureRetailProductForKitweAssembly({ ...assembly, name: trimmed });
+  if (retail?.id) {
+    const { error: prodErr } = await db.from('products').update({
+      name: trimmed,
+      updated_at: now,
+    }).eq('id', retail.id);
+    if (prodErr) throw new Error(prodErr.message || 'Failed to update product name');
+  }
+
+  if (combo?.id) {
+    const { error: comboErr } = await db.from('combos').update({
+      combo_name: trimmed,
+      updated_at: now,
+    }).eq('id', combo.id);
+    if (comboErr) throw new Error(comboErr.message || 'Failed to update combo name');
+  }
 }
 
 export function filterKitweSellableAssemblies(assemblies) {

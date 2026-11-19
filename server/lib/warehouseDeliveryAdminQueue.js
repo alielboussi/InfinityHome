@@ -60,15 +60,25 @@ export async function markRepairWorkCompleteAwaitingDriver(sb, row, { now = new 
 
 async function resolveQuoteOrderCustomer(sb, quoteId) {
   const qid = String(quoteId || '').trim();
-  if (!qid) return { customer_name: null, customer_phone: null, customer_order: false, quote_number: null };
+  if (!qid) {
+    return {
+      customer_name: null,
+      customer_phone: null,
+      customer_order: false,
+      showroom_order: false,
+      quote_number: null,
+    };
+  }
   const { data: routing } = await sb.from(QUOTE_ROUTING).select('metadata').eq('quote_id', qid).maybeSingle();
   const routingMeta = routing?.metadata || {};
+  const showroom_order = routingMeta.showroom_order === true;
   const customer_name = String(routingMeta.customer_name || '').trim() || null;
   const customer_phone = String(routingMeta.customer_phone || '').trim() || null;
   return {
     customer_name,
     customer_phone,
-    customer_order: Boolean(customer_name),
+    customer_order: !showroom_order && Boolean(customer_name),
+    showroom_order,
     quote_number: routingMeta.quote_number || null,
   };
 }
@@ -90,9 +100,16 @@ export async function registerProductionJobAwaitingDriver(sb, {
   ).trim() || null;
   const customerFields = resolvedQuoteId
     ? await resolveQuoteOrderCustomer(sb, resolvedQuoteId)
-    : { customer_name: null, customer_phone: null, customer_order: false, quote_number: null };
+    : {
+      customer_name: null,
+      customer_phone: null,
+      customer_order: false,
+      showroom_order: false,
+      quote_number: null,
+    };
   const patch = {
     ...meta,
+    ...(customerFields.showroom_order ? { showroom_order: true } : {}),
     ...(customerFields.customer_order ? { customer_order: true } : {}),
     ...(customerFields.customer_name ? {
       customer_name: customerFields.customer_name,
@@ -186,6 +203,10 @@ export async function registerQuoteOrderAwaitingDriver(sb, {
         assembly_name: assemblyName,
         quantity,
         department: String(route || 'upholstery').toLowerCase(),
+        ...(prev.showroom_order === true ? { showroom_order: true, customer_order: false } : {}),
+        ...(prev.customer_order === true && prev.showroom_order !== true
+          ? { customer_order: true }
+          : {}),
       }),
     },
     updated_at: now,
@@ -237,15 +258,20 @@ export async function listRepairDeliveriesForMobile(sb) {
     .filter((row) => repairEligibleForMobileDeliveryQueue(row))
     .map((row) => {
       const meta = parseRowMetadata(row.metadata);
+      const hasCustomer = Boolean(String(row.customer_name || '').trim());
+      const showroom_order = meta.showroom_order === true;
+      const customer_order = !showroom_order && (meta.customer_order === true || hasCustomer);
       return {
         return_order_id: String(row.id),
         return_number: row.return_number,
         assembly_id: String(row.assembly_id),
         assembly_name: row.assembly_name,
         quantity: Math.max(1, Number(row.quantity) || 1),
-        has_customer: Boolean(String(row.customer_name || '').trim()),
+        has_customer: hasCustomer,
         customer_name: String(row.customer_name || '').trim() || null,
         customer_phone: String(row.customer_phone || '').trim() || null,
+        showroom_order,
+        customer_order,
         status: String(row.status || 'completed'),
         delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
         ready_for_delivery_app: true,
@@ -270,7 +296,13 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
     const asmId = String(admin.assembly_id || job.assembly_id || '').trim();
     if (!asmId) continue;
     const { data: asm } = await sb.from(ASSEMBLIES).select('name, family_sku').eq('id', asmId).maybeSingle();
+    const showroom_order = admin.showroom_order === true || meta.showroom_order === true;
     const customer_name = String(admin.customer_name || meta.customer_name || '').trim() || null;
+    const customer_order = !showroom_order && (
+      admin.customer_order === true
+      || meta.customer_order === true
+      || Boolean(customer_name)
+    );
     out.push({
       production_job_id: String(job.id),
       assembly_id: asmId,
@@ -281,7 +313,8 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
       quote_number: admin.quote_number || null,
       customer_name,
       customer_phone: String(admin.customer_phone || meta.customer_phone || '').trim() || null,
-      customer_order: admin.customer_order === true || Boolean(customer_name),
+      showroom_order,
+      customer_order,
       department: admin.department || department,
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
     });
@@ -302,6 +335,8 @@ async function listPartialQuoteDeliveryHolds(sb) {
     const holds = Array.isArray(meta.partial_delivery_holds) ? meta.partial_delivery_holds : [];
     const metaName = String(meta.customer_name || '').trim() || null;
     const metaPhone = String(meta.customer_phone || '').trim() || null;
+    const showroom_order = meta.showroom_order === true;
+    const customer_order = !showroom_order && (meta.customer_order === true || Boolean(metaName));
     for (const hold of holds) {
       if (String(hold.stage || '').toLowerCase() !== DELIVERY_ADMIN_STAGE.AWAITING_DRIVER) continue;
       if (hold.collected_at) continue;
@@ -315,6 +350,8 @@ async function listPartialQuoteDeliveryHolds(sb) {
         quote_number: hold.quote_number || meta.quote_number || null,
         customer_name: metaName,
         customer_phone: metaPhone,
+        showroom_order,
+        customer_order,
         department: hold.department || row.route || 'upholstery',
         lines: [{ id: hold.item_id, name: hold.line_name, quantity: hold.quantity }],
         delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
@@ -342,7 +379,9 @@ async function listQuoteOrdersAwaitingDriver(sb) {
     if (!asmId) continue;
     const { data: asm } = await sb.from(ASSEMBLIES).select('name, family_sku').eq('id', asmId).maybeSingle();
     const lines = quoteRoutingLineItems(meta);
+    const showroom_order = meta.showroom_order === true;
     const customer_name = String(meta.customer_name || '').trim() || null;
+    const customer_order = !showroom_order && (meta.customer_order === true || Boolean(customer_name));
     out.push({
       quote_id: String(row.quote_id),
       assembly_id: asmId,
@@ -352,7 +391,8 @@ async function listQuoteOrdersAwaitingDriver(sb) {
       quote_number: admin.quote_number || meta.quote_number || null,
       customer_name,
       customer_phone: String(meta.customer_phone || '').trim() || null,
-      customer_order: meta.customer_order === true || Boolean(customer_name),
+      customer_order,
+      showroom_order,
       department: admin.department || row.route || 'upholstery',
       lines,
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,

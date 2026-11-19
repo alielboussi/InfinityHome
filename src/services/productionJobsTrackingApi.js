@@ -34,7 +34,7 @@ async function fetchProductionJobsTrackingFallback({ department, limit } = {}) {
   };
 }
 
-export async function fetchProductionJobsTracking({ department, limit } = {}) {
+export async function fetchProductionJobsTracking({ department, track_kind, limit } = {}) {
   const token = await firebaseGetAccessToken();
   if (!token) throw new Error('Authentication required');
   const response = await fetch(apiUrl('/api/warehouse-mobile'), {
@@ -47,6 +47,7 @@ export async function fetchProductionJobsTracking({ department, limit } = {}) {
     body: JSON.stringify({
       op: 'production-jobs-tracking-list',
       department: department || undefined,
+      track_kind: track_kind || undefined,
       limit: limit || undefined,
     }),
   });

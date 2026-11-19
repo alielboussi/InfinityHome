@@ -17,6 +17,7 @@ export function isQuoteCustomerOrder(quoteRow, customerName = '') {
 
 export function isDeliveryCustomerOrderSession(session) {
   const meta = session?.metadata || {};
+  if (meta.showroom_order === true) return false;
   if (meta.customer_order === true) return true;
   const name = String(meta.customer_name || '').trim();
   if (!name) return false;
@@ -29,6 +30,7 @@ export function isDeliveryCustomerOrderSession(session) {
 export function deliveryEntrySkipKitweRetailCatalog(entry, session = null) {
   const meta = entry?.metadata || {};
   const sessionMeta = session?.metadata || {};
+  if (meta.showroom_order === true || sessionMeta.showroom_order === true) return false;
   if (meta.customer_order === true || sessionMeta.customer_order === true) return true;
   const customer = String(meta.customer_name || sessionMeta.customer_name || '').trim();
   if (!customer) return false;

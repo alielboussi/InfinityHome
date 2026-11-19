@@ -152,9 +152,17 @@ export default function UpholsteryTimerPage() {
                 <tr key={`quote-${order.quote_id}`}>
                   <td>
                     <strong>{order.quote_number || order.quote_id}</strong>
+                    {order.showroom_order ? (
+                      <span className="quotation-customer-order-badge" style={{ marginLeft: 8 }}>Showroom Order</span>
+                    ) : null}
+                    {order.customer_order ? (
+                      <span className="quotation-customer-order-badge" style={{ marginLeft: 8 }}>Customer Order</span>
+                    ) : null}
                     {order.customer_name ? (
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{order.customer_name}</div>
-                    ) : null}
+                    ) : (order.showroom_order && lines[0]?.name ? (
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{lines[0].name}</div>
+                    ) : null)}
                     {order.customer_phone ? (
                       <div style={{ fontSize: 12, color: 'var(--kitwe-muted, #64748b)' }}>{order.customer_phone}</div>
                     ) : null}
@@ -166,6 +174,13 @@ export default function UpholsteryTimerPage() {
                           const extra = formatLineExtra(line);
                           return (
                             <div key={line.id || idx} style={{ fontSize: 13 }}>
+                              {line.line_image_url ? (
+                                <img
+                                  src={line.line_image_url}
+                                  alt=""
+                                  style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, marginBottom: 4 }}
+                                />
+                              ) : null}
                               <strong>{line.name || 'Item'}</strong> × {line.quantity || 1}
                               {extra ? (
                                 <div style={{ fontSize: 12, color: 'var(--kitwe-muted, #64748b)' }}>

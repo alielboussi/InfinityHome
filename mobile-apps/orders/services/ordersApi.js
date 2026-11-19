@@ -59,6 +59,15 @@ export function fetchOrdersQuotes() {
   return warehouseMobileRequest('orders-quotes-list');
 }
 
+export async function fetchOrdersShowroomFloor2() {
+  const payload = await warehouseMobileRequest('orders-showroom-floor2-list');
+  return payload?.products || [];
+}
+
+export function createOrdersShowroomQuote(lines) {
+  return warehouseMobileRequest('orders-showroom-create', { lines });
+}
+
 export function fetchOrdersQuote(quoteId) {
   return warehouseMobileRequest('orders-quote-get', { quote_id: quoteId });
 }
@@ -126,6 +135,7 @@ export function createOrdersReturn(body) {
 export function fetchOrdersTracking(params = {}) {
   return warehouseMobileRequest('orders-tracking-list', {
     department: params.department || undefined,
+    track_kind: params.track_kind || undefined,
   });
 }
 

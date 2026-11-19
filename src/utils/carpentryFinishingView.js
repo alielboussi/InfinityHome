@@ -21,11 +21,12 @@ export function buildCarpentryFinishingCandidates(assemblies, inventoryRows, flo
     if (row?.metadata?.storeroom?.is_storeroom_material === true) continue;
     const aid = String(row.id);
     const qty = qtyByAssembly.get(aid) || 0;
+    const hasFloor2InventoryRow = qtyByAssembly.has(aid);
     const carpentryMeta = parseCarpentryMeta(row);
     const inCarpentry = carpentryMeta.selected;
     const linkedUpholstery = Boolean(findUpholsteryFinishedForRawAssembly(allRows, aid));
     const hasFloor2WipPhoto = Boolean(readWarehouseFloor2WipImageUrl(row));
-    if (qty <= 0 && !inCarpentry && !linkedUpholstery && !hasFloor2WipPhoto) continue;
+    if (qty <= 0 && !inCarpentry && !linkedUpholstery && !hasFloor2WipPhoto && !hasFloor2InventoryRow) continue;
     const wipImage = readWarehouseFloor2WipImageUrl(row);
     results.push({
       id: aid,

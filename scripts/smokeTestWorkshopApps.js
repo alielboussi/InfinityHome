@@ -132,6 +132,13 @@ const apps = [
       if (!prodApi.includes('fetchProductionStoreroomMaterials')) {
         fail('painting services/productionApi.js must re-export storeroom materials');
       }
+      if (!jobs.includes('allowFloor2WipDeduction={false}')) {
+        fail('painting JobsScreen must disable Floor 2 material deduction');
+      }
+      const modal = read('mobile-apps/painting-workshop/components/ProductionJobMaterialsModal.js');
+      if (!modal.includes('storeroomDeductionOnly')) {
+        fail('painting materials modal must support storeroom-only deduction');
+      }
     },
   },
   {

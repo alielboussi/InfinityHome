@@ -17,6 +17,8 @@ export const PRODUCTION_PRESET_WAREHOUSE_CATEGORY_BY_PRESET = Object.freeze({
   'Buffet Mirror': 'Buffet Mirrors',
   'Dresser Table': 'Dresser Tables',
   'Dresser Mirror': 'Dresser Table Mirrors',
+  Consoles: 'Consoles',
+  'Console Mirrors': 'Console Mirrors',
 });
 
 const PRESET_CATEGORY_BY_LOWER = Object.freeze(

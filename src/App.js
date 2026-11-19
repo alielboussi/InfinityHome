@@ -27,6 +27,9 @@ import {
   ProductsListPage,
   Quotationer,
   QuotesBoard,
+  ShowroomOrdersBoard,
+  ShowroomOrderCreate,
+  HassanFloor2Page,
   Reversal,
   SalesReportMobile,
   Sets,
@@ -365,7 +368,10 @@ function App() {
           <Route path="/quotation-create" element={<Navigate to="/quotationer" replace />} />
           <Route path="/quotations-list" element={<Navigate to="/quotes-board" replace />} />
           <Route path="/quotes-board" element={<QuotesBoardAdminRoute />} />
-          <Route path="/factory-orders" element={<QuotesBoard />} />
+          <Route path="/factory-orders" element={<QuotesBoard boardMode="factory" />} />
+          <Route path="/showroom-orders" element={<ShowroomOrdersBoard />} />
+          <Route path="/showroom-orders/create" element={<ShowroomOrderCreate />} />
+          <Route path="/hassan-floor-2" element={<HassanFloor2Page />} />
           <Route path="/QuotationsList" element={<Navigate to="/quotes-board" replace />} />
           <Route path="/layby-management" element={<LaybyManagement />} />
           <Route path="/layby-management-mobile" element={<LaybyManagementMobile />} />

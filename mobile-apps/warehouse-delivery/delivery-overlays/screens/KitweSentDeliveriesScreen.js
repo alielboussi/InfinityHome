@@ -15,6 +15,7 @@ import { fetchDeliverySentList } from '../lib/deliverySentApi';
 import { formatZambiaDate, formatZambiaTime } from '../lib/zambiaDateTime';
 import { tUi } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
+import { DeliveryDestinationBadges } from '../shared/quoteProductionOrderUi';
 
 function statusLabel(status, locale) {
   const s = String(status || '').toLowerCase();
@@ -189,6 +190,7 @@ export default function KitweSentDeliveriesScreen({ navigation }) {
             onPress={() => navigation.navigate('KitweSentDeliveryDetail', { sessionId: row.session_id })}
           >
             <Text style={[kiosk.heroNumber, { textAlign }]}>{hero}</Text>
+            <DeliveryDestinationBadges row={row} textAlign={textAlign} tUi={tUi} locale={locale} />
             {kind ? (
               <Text style={[kiosk.metaLine, { textAlign, marginBottom: 2 }]}>{kind}</Text>
             ) : null}

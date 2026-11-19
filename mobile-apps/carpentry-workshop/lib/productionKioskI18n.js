@@ -297,6 +297,9 @@ const UI_STRINGS = {
     ar: 'مسار النجارة — مرسلة من طلبات المصنع',
   },
   carpentryQuotesTitle: { en: 'Hassan Awad quote orders', ar: 'طلبات عروض حسن عوض' },
+  badgeCustomerOrder: { en: 'Customer Order', ar: 'طلب عميل' },
+  badgeShowroomOrder: { en: 'Showroom Order', ar: 'طلب صالة' },
+  showroomOrderDetailLabel: { en: 'Showroom order', ar: 'طلب صالة' },
   carpentryQuotesIntro: {
     en: 'Quotes Hassan sends to production with route Carpentry. Accept, scan materials, then end when finished.',
     ar: 'عروض يرسلها حسن للإنتاج بمسار النجارة. قبول، مسح المواد، ثم إنهاء عند الانتهاء.',

@@ -19,7 +19,9 @@ import { displayQuoteFieldValue, formatQuoteLineQtyLabel } from './quoteArabicTr
 
 function lineImageUrl(row) {
   const meta = row?.metadata && typeof row.metadata === 'object' ? row.metadata : {};
-  return String(row?.line_image_url || meta.line_image_url || '').trim();
+  return String(
+    row?.line_image_url || meta.line_image_url || meta.floor2_image_url || '',
+  ).trim();
 }
 
 /** RN 0.88+ — InteractionManager removed; defer second Alert after qty modal / animations. */

@@ -105,3 +105,37 @@ export function rewriteLegacyStorageUrl(rawUrl, options = {}) {
 export function rewriteLegacyProductImageUrl(rawUrl, options = {}) {
   return rewriteLegacyStorageUrl(rawUrl, { ...options, bucket: PRODUCT_IMAGE_BUCKET });
 }
+
+const PUBLIC_READ_PREFIXES = ['productimages/', 'shopimages/', 'companylogos/'];
+
+function firebaseObjectPathFromUrl(rawUrl) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw || !/firebasestorage\.googleapis\.com/i.test(raw)) return null;
+  try {
+    const u = new URL(raw);
+    const m = u.pathname.match(/\/o\/(.+)$/i);
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Signed-in Firebase download URL for protected buckets (e.g. legacy Quotations/*).
+ * Public buckets return the stored URL unchanged.
+ */
+export async function resolveFirebaseStorageImageForDisplay(rawUrl) {
+  const raw = String(rawUrl || '').trim();
+  if (!raw) return '';
+  const fullPath = firebaseObjectPathFromUrl(raw);
+  if (!fullPath) return raw;
+  const lower = fullPath.toLowerCase();
+  if (PUBLIC_READ_PREFIXES.some((p) => lower.startsWith(p))) return raw;
+  try {
+    const { getDownloadURL, ref } = await import('firebase/storage');
+    const { firebaseStorage } = await import('../firebase.js');
+    return await getDownloadURL(ref(firebaseStorage, fullPath));
+  } catch {
+    return raw;
+  }
+}

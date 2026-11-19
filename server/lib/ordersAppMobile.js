@@ -527,6 +527,7 @@ export async function opOrdersTrackingList(sb, body = {}) {
   const { listProductionJobsForTracking } = await import('./productionJobsTracking.js');
   const payload = await listProductionJobsForTracking(sb, {
     department: body.department,
+    track_kind: body.track_kind,
     limit: body.limit || 300,
   });
   return {
@@ -687,4 +688,56 @@ export async function opOrdersKitweHassanInbound(sb) {
       || String(a.product_name).localeCompare(String(b.product_name))
   ));
   return { lines };
+}
+
+/** Floor 2 WIP stock for Hassan Orders app (showroom picker + read-only Floor 2 page). */
+export async function opOrdersShowroomFloor2List(sb) {
+  const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
+  const { readWarehouseFloor2WipImageUrl } = await import('../../src/utils/warehouseFloor2WipImage.js');
+  const { parseUpholsteryMeta } = await import('../../src/utils/upholsteryCatalogView.js');
+  const { buildCarpentryFinishingCandidates } = await import('../../src/utils/carpentryFinishingView.js');
+
+  const [{ data: assemblies, error: aErr }, { data: locRows, error: locErr }] = await Promise.all([
+    sb.from('warehouse_assemblies').select('id, name, family_sku, item_kind, metadata, category_id, image_url'),
+    sb.from('locations').select('id, name'),
+  ]);
+  if (aErr) throw new Error(aErr.message || 'Failed to load catalog');
+  if (locErr) throw new Error(locErr.message || 'Failed to load locations');
+  const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+  if (!floor2Loc?.id) {
+    return { products: [], floor2Missing: true };
+  }
+  const floor2Id = String(floor2Loc.id);
+  const { data: invRows, error: invErr } = await sb
+    .from('warehouse_assembly_inventory')
+    .select('assembly_id, quantity')
+    .eq('location_id', floor2Id);
+  if (invErr) throw new Error(invErr.message || 'Failed to load Floor 2 stock');
+  const allRows = assemblies || [];
+  const floor2Inv = (invRows || []).map((row) => ({ ...row, location_id: floor2Id }));
+  const candidates = buildCarpentryFinishingCandidates(allRows, floor2Inv, floor2Id);
+  const asmById = new Map(allRows.map((row) => [String(row.id), row]));
+  const products = candidates.map((row) => {
+    const aid = String(row.assembly_id || row.id);
+    const asm = asmById.get(aid);
+    const wipImage = readWarehouseFloor2WipImageUrl(asm || row);
+    const floor2SetName = String(asm?.metadata?.floor2_set_name || '').trim();
+    const workshop_route = parseUpholsteryMeta(asm || {}).selected ? 'upholstery' : 'carpentry';
+    return {
+      assembly_id: aid,
+      name: String(row.name || aid).trim(),
+      family_sku: String(row.family_sku || asm?.family_sku || '').trim(),
+      quantity: Math.max(0, Number(row.floor2_qty) || 0),
+      image_url: wipImage || String(asm?.image_url || '').trim(),
+      floor2_image_url: wipImage,
+      floor2_set_name: floor2SetName || undefined,
+      workshop_route,
+    };
+  });
+  return { products, floor2_location_id: floor2Id };
+}
+
+export async function opOrdersShowroomCreate(sb, body, user) {
+  const { createShowroomQuoteAndSend } = await import('./showroomQuoteOrder.js');
+  return createShowroomQuoteAndSend(sb, body, user);
 }

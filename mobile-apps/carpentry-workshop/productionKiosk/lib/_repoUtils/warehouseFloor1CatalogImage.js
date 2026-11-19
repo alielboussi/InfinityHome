@@ -1,10 +1,11 @@
-import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { rewriteLegacyStorageUrl } from './storageImageUrl.js';
 import {
   expandWarehouseSkuMatchKeys,
   normalizeWarehouseProductSku,
-} from './warehouseScanResolver';
-import { readWarehouseFloor2WipImageUrl } from './warehouseFloor2WipImage';
+} from './warehouseScanResolver.js';
+import { readWarehouseFloor2WipImageUrl } from './warehouseFloor2WipImage.js';
 
+/** Floor 1 catalog photo only (assembly.image_url). Never Floor 2 WIP metadata or shared URLs. */
 export function readFloor1CatalogImageUrl(assembly) {
   const url = String(assembly?.image_url || '').trim();
   if (!url) return '';
@@ -31,6 +32,7 @@ export function buildFloor1CatalogImageLookupBySku(assemblies = []) {
   return bySku;
 }
 
+/** Kitwe / retail display — same SKU uses Floor 1 catalog image when the row has no image_url. */
 export function resolveKitweFloor1CatalogImageUrl(row, floor1BySku = null) {
   const direct = readFloor1CatalogImageUrl(row);
   if (direct) return direct;

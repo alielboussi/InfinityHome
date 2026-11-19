@@ -132,7 +132,14 @@ async function resolveCustomerContact(sb, customerId) {
   return { name: qc?.name || '', phone: qc?.phone || '' };
 }
 
-async function resolvePrimaryAssemblyId(sb, items) {
+async function resolvePrimaryAssemblyId(sb, items, routingMeta = null) {
+  const fromRouting = String(routingMeta?.primary_assembly_id || '').trim();
+  if (fromRouting) return fromRouting;
+  for (const line of items || []) {
+    const meta = line?.metadata && typeof line.metadata === 'object' ? line.metadata : {};
+    const floor2Id = String(meta.floor2_assembly_id || '').trim();
+    if (floor2Id) return floor2Id;
+  }
   const { data: assemblies, error } = await sb
     .from(ASSEMBLIES)
     .select('id, name, family_sku, metadata, item_kind');
@@ -162,10 +169,11 @@ export async function sendQuoteToProduction(sb, quoteId, userId) {
   if (!routing?.route) throw new Error('Choose Carpentry, Upholstery, or Aluminum before sending to production');
   if (routing.sent_to_production_at) throw new Error('Already sent to production');
 
-  const primary_assembly_id = await resolvePrimaryAssemblyId(sb, items);
+  const primary_assembly_id = await resolvePrimaryAssemblyId(sb, items, routing.metadata);
   const customer = await resolveCustomerContact(sb, quote.customer_id);
   const now = new Date().toISOString();
   const lineSummary = (items || []).map((it) => buildProductionLineSummaryRow(it));
+  const isShowroom = routing.metadata?.showroom_order === true;
 
   const { error } = await sb.from(ROUTING).update({
     sent_to_production_at: now,
@@ -173,9 +181,10 @@ export async function sendQuoteToProduction(sb, quoteId, userId) {
     metadata: {
       ...(routing.metadata || {}),
       primary_assembly_id,
-      customer_name: customer.name,
-      customer_phone: customer.phone,
-      customer_order: Boolean(String(customer.name || '').trim()),
+      customer_name: isShowroom ? '' : customer.name,
+      customer_phone: isShowroom ? '' : customer.phone,
+      customer_order: Boolean(String(customer.name || '').trim()) && !isShowroom,
+      showroom_order: isShowroom,
       quote_number: quote.quote_number || null,
       lines: lineSummary,
       last_workshop_notify_at: now,
@@ -324,6 +333,8 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
       quote_number: q?.quote_number || meta.quote_number || qid,
       customer_name: meta.customer_name || '',
       customer_phone: meta.customer_phone || '',
+      customer_order: meta.customer_order === true,
+      showroom_order: meta.showroom_order === true,
       total: q?.total ?? null,
       currency: q?.currency ?? null,
       sent_to_production_at: r.sent_to_production_at,

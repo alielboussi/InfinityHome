@@ -3,8 +3,54 @@
  * ORDERS_APP_DASHBOARD_PARITY_LOCKED (scripts/verifyOrdersApp.js)
  *
  * Web: AppChrome QUOTATIONER_ONLY_NAV_GROUPS (Hassan / quotationer-only UX).
- * App: mobile-apps/orders DashboardScreen tiles + stack routes (same APIs as web routes).
+ * App: mobile-apps/orders DashboardScreen — `ORDERS_APP_HOME_TILES`; stack still exposes all parity routes.
  */
+
+/** Orders APK home dashboard. Web Hassan sidebar stays full `ORDERS_APP_DASHBOARD_PARITY`. */
+export const ORDERS_APP_HOME_TILES = Object.freeze([
+  {
+    screenId: 'orders_new_order',
+    mobileStack: 'NewOrder',
+    i18nKey: 'tileNewOrder',
+    mciIcon: 'plus-box-outline',
+  },
+  {
+    screenId: 'orders_list',
+    mobileStack: 'Orders',
+    i18nKey: 'tileFactoryOrders',
+    mciIcon: 'clipboard-text-outline',
+  },
+  {
+    screenId: 'orders_showroom_new',
+    mobileStack: 'ShowroomOrderCreate',
+    i18nKey: 'tileNewShowroomOrder',
+    mciIcon: 'store-plus',
+  },
+  {
+    screenId: 'orders_showroom_list',
+    mobileStack: 'ShowroomOrders',
+    i18nKey: 'tileShowroomOrders',
+    mciIcon: 'store-outline',
+  },
+  {
+    screenId: 'orders_floor2',
+    mobileStack: 'Floor2',
+    i18nKey: 'tileFloor2',
+    mciIcon: 'floor-plan',
+  },
+  {
+    screenId: 'orders_deliveries',
+    mobileStack: 'Deliveries',
+    i18nKey: 'tileWarehouseDeliveries',
+    mciIcon: 'truck-delivery-outline',
+  },
+  {
+    screenId: 'orders_tracking',
+    mobileStack: 'Tracking',
+    i18nKey: 'tileProductionTracking',
+    mciIcon: 'map-marker-path',
+  },
+]);
 
 /** Web-only Hassan landing; Orders APK uses the tile dashboard instead. */
 export const HASSAN_WEB_DASHBOARD_HOME = Object.freeze({
@@ -50,7 +96,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_new_order',
     navGroup: 'quotationer',
-    webLabel: 'New Quote',
+    webLabel: 'Create Factory Order',
     webRoute: '/quotationer',
     webSearch: '?view=create',
     mobileStack: 'NewOrder',
@@ -64,8 +110,38 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
     webRoute: '/factory-orders',
     webSearch: '',
     mobileStack: 'Orders',
-    i18nKey: 'tileOrders',
+    i18nKey: 'tileFactoryOrders',
     mciIcon: 'clipboard-text-outline',
+  },
+  {
+    screenId: 'orders_showroom_new',
+    navGroup: 'quotationer',
+    webLabel: 'Create Showroom Order',
+    webRoute: '/showroom-orders/create',
+    webSearch: '',
+    mobileStack: 'ShowroomOrderCreate',
+    i18nKey: 'tileNewShowroomOrder',
+    mciIcon: 'store-plus',
+  },
+  {
+    screenId: 'orders_showroom_list',
+    navGroup: 'quotationer',
+    webLabel: 'Showroom Orders',
+    webRoute: '/showroom-orders',
+    webSearch: '',
+    mobileStack: 'ShowroomOrders',
+    i18nKey: 'tileShowroomOrders',
+    mciIcon: 'store-outline',
+  },
+  {
+    screenId: 'orders_floor2',
+    navGroup: 'quotationer',
+    webLabel: 'Floor 2 Products',
+    webRoute: '/hassan-floor-2',
+    webSearch: '',
+    mobileStack: 'Floor2',
+    i18nKey: 'tileFloor2',
+    mciIcon: 'floor-plan',
   },
   {
     screenId: 'orders_deliveries',

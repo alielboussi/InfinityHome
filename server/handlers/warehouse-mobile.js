@@ -1622,6 +1622,7 @@ async function opProductionJobsTrackingList(body, user) {
   const { listProductionJobsForTracking } = await import('../lib/productionJobsTracking.js');
   return listProductionJobsForTracking(sb, {
     department: body.department,
+    track_kind: body.track_kind,
     limit: body.limit,
   });
 }
@@ -4164,8 +4165,10 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
             quote_number: orderStaging?.quote_number || null,
             customer_name: orderStaging?.customer_name || null,
             customer_phone: orderStaging?.customer_phone || null,
-            customer_order: orderStaging?.customer_order === true
-              || Boolean(String(orderStaging?.customer_name || '').trim()),
+            showroom_order: orderStaging?.showroom_order === true,
+            customer_order: !orderStaging?.showroom_order
+              && (orderStaging?.customer_order === true
+                || Boolean(String(orderStaging?.customer_name || '').trim())),
           } : {}),
         }),
       });
@@ -4265,7 +4268,9 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
       quote_number: orderEntry.metadata?.quote_number || null,
       customer_name: orderEntry.metadata?.customer_name || null,
       customer_phone: orderEntry.metadata?.customer_phone || null,
-      ...(orderHasCustomer ? { customer_order: true } : {}),
+      ...(orderEntry?.metadata?.showroom_order === true
+        ? { showroom_order: true, customer_order: false }
+        : (orderHasCustomer ? { customer_order: true } : {})),
     }
     : (clientDocumentKind === 'order_delivery' ? { document_kind: 'order_delivery' } : {});
 
@@ -4446,6 +4451,11 @@ function mapSentDeliveryListRow(row) {
     dispatched_by_name: meta.dispatched_by_name || row.created_by_name || '',
     customer_name: String(meta.customer_name || '').trim(),
     customer_phone: String(meta.customer_phone || '').trim(),
+    showroom_order: meta.showroom_order === true,
+    customer_order: meta.showroom_order !== true && (
+      meta.customer_order === true
+      || Boolean(String(meta.customer_name || '').trim())
+    ),
     total_qty: row.total_qty,
     storage_send_id: String(meta.storage_send_id || '').trim() || null,
   };
@@ -5349,6 +5359,18 @@ export default async function handler(req, res) {
         result = await withOrdersApp(user, async (sb) => {
           const { opOrdersQuoteDelete } = await import('../lib/ordersAppMobile.js');
           return opOrdersQuoteDelete(sb, body);
+        });
+        break;
+      case 'orders-showroom-floor2-list':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersShowroomFloor2List } = await import('../lib/ordersAppMobile.js');
+          return opOrdersShowroomFloor2List(sb);
+        });
+        break;
+      case 'orders-showroom-create':
+        result = await withOrdersApp(user, async (sb) => {
+          const { opOrdersShowroomCreate } = await import('../lib/ordersAppMobile.js');
+          return opOrdersShowroomCreate(sb, body, user);
         });
         break;
       case 'orders-delivery-get':

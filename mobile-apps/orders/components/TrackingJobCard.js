@@ -3,6 +3,14 @@ import { kiosk } from './kioskStyles';
 import RunningJobElapsed, { computeJobElapsedMs } from '../shared/components/RunningJobElapsed';
 import { formatProductionElapsed } from '../shared/lib/formatProductionElapsed';
 import { formatDateTime } from '../lib/warehouseReturnUi';
+import {
+  QuoteProductionOrderBadges,
+  orderBadgeTextStyle,
+} from '../shared/quoteProductionOrderUi';
+import {
+  isProductionQuoteCustomerOrder,
+  isProductionQuoteShowroomOrder,
+} from '../shared/quoteShowroomOrder';
 
 const TRACKING_DEPARTMENTS = [
   { id: 'all', label: 'All' },
@@ -11,7 +19,37 @@ const TRACKING_DEPARTMENTS = [
   { id: 'painting', label: 'Painting' },
 ];
 
-export { TRACKING_DEPARTMENTS };
+const TRACKING_KINDS = [
+  { id: 'all', label: 'All types' },
+  { id: 'factory', label: 'Factory job' },
+  { id: 'quote', label: 'Quote order' },
+  { id: 'showroom', label: 'Showroom' },
+  { id: 'repair', label: 'Repair' },
+];
+
+export { TRACKING_DEPARTMENTS, TRACKING_KINDS };
+
+function trackingRowAsQuote(row) {
+  const quote = {
+    showroom_order: row?.showroom_order === true || row?.track_kind === 'showroom_order',
+    customer_order: row?.customer_order === true,
+    track_kind: row?.track_kind,
+  };
+  if (quote.showroom_order) {
+    quote.customer_order = false;
+  } else if (row?.track_kind === 'quote_order' || row?.track_kind === 'quote') {
+    quote.customer_order = true;
+  }
+  return quote;
+}
+
+function trackingKindLabel(row, tUi, locale) {
+  const k = String(row?.track_kind || 'factory').toLowerCase();
+  if (k === 'showroom_order' || k === 'showroom') return tUi('badgeShowroomOrder', locale);
+  if (k === 'quote_order' || k === 'quote') return tUi('trackingKindQuoteOrder', locale);
+  if (k === 'repair') return tUi('trackingKindRepair', locale);
+  return tUi('trackingKindFactoryJob', locale);
+}
 
 function timerJobForElapsed(row) {
   const running = row?.timer_status === 'running';
@@ -47,14 +85,19 @@ function DetailRow({ label, value, emphasize, always = false }) {
   return (
     <View style={styles.detailRow}>
       <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={[styles.detailValue, emphasize && styles.detailEmphasis]} numberOfLines={3}>
+      <Text style={[styles.detailValue, emphasize && styles.detailEmphasis]} numberOfLines={4}>
         {display}
       </Text>
     </View>
   );
 }
 
-export default function TrackingJobCard({ row }) {
+export default function TrackingJobCard({
+  row,
+  locale = 'en',
+  tUi = (key) => key,
+  textAlign = 'left',
+}) {
   const liveRunning = row?.timer_status === 'running';
   const livePaused = row?.timer_status === 'paused';
   const jobForTimer = timerJobForElapsed(row);
@@ -64,9 +107,29 @@ export default function TrackingJobCard({ row }) {
     row?.product_qty != null ? `Qty ${row.product_qty}` : '',
   ].filter(Boolean).join(' · ');
 
+  const refLine = row?.quote_number
+    ? `Quote ${row.quote_number}`
+    : (row?.return_number ? `Return ${row.return_number}` : null);
+
+  const quoteShape = trackingRowAsQuote(row);
+  const showCustomerShowroomBadges = isProductionQuoteShowroomOrder(quoteShape)
+    || isProductionQuoteCustomerOrder(quoteShape);
+
   return (
     <View style={[kiosk.card, styles.card]}>
       <View style={styles.badgeRow}>
+        {showCustomerShowroomBadges ? (
+          <QuoteProductionOrderBadges
+            quote={quoteShape}
+            textAlign={textAlign}
+            tUi={tUi}
+            locale={locale}
+          />
+        ) : (
+          <Text style={[styles.kindBadge, orderBadgeTextStyle(locale)]}>
+            {trackingKindLabel(row, tUi, locale)}
+          </Text>
+        )}
         <Text style={styles.deptBadge}>{row?.department_label || row?.department || '—'}</Text>
         {livePaused ? <Text style={styles.timerChip}>Paused</Text> : null}
         {liveRunning ? <Text style={styles.timerChip}>Running</Text> : null}
@@ -75,7 +138,9 @@ export default function TrackingJobCard({ row }) {
       <Text style={styles.jobTitle}>{row?.product_name || '—'}</Text>
       <Text style={styles.statusLine}>{row?.flow_status || '—'}</Text>
 
+      {refLine ? <DetailRow always label="Reference" value={refLine} emphasize /> : null}
       <DetailRow always label="Product" value={productLine} emphasize />
+      {row?.customer_name ? <DetailRow label="Customer" value={row.customer_name} /> : null}
       <DetailRow always label="Department" value={row?.department_label} />
       <DetailRow always label="Started" value={formatDateTime(row?.started_at)} />
       <DetailRow always label="Completed" value={formatDateTime(row?.completed_at)} />
@@ -95,27 +160,37 @@ export default function TrackingJobCard({ row }) {
 const styles = StyleSheet.create({
   card: { marginBottom: 12 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  kindBadge: {
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#e0e7ff',
+    color: '#3730a3',
+    overflow: 'hidden',
+  },
   deptBadge: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
-    backgroundColor: '#e2e8f0',
-    overflow: 'hidden',
+    backgroundColor: '#f1f5f9',
+    color: '#475569',
   },
   timerChip: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#0369a1',
   },
-  jobTitle: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
-  statusLine: { fontSize: 15, fontWeight: '600', color: '#0369a1', marginBottom: 10 },
-  detailRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
-  detailLabel: { width: 92, color: '#64748b', fontSize: 13 },
-  detailValue: { flex: 1, fontSize: 13 },
-  detailEmphasis: { fontWeight: '600' },
-  timerBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#cbd5e1' },
-  timerLabel: { fontSize: 12, color: '#64748b', marginBottom: 4 },
-  timerValue: { fontSize: 18, fontWeight: '700', color: '#0369a1' },
+  jobTitle: { fontSize: 17, fontWeight: '800', color: '#f8fafc', marginBottom: 4 },
+  statusLine: { fontSize: 14, fontWeight: '700', color: '#38bdf8', marginBottom: 8 },
+  detailRow: { marginBottom: 6 },
+  detailLabel: { fontSize: 12, color: '#94a3b8', fontWeight: '600' },
+  detailValue: { fontSize: 14, color: '#e2e8f0' },
+  detailEmphasis: { fontWeight: '700' },
+  timerBlock: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#334155' },
+  timerLabel: { fontSize: 12, color: '#94a3b8', marginBottom: 4 },
+  timerValue: { fontSize: 18, fontWeight: '800', color: '#38bdf8', fontVariant: ['tabular-nums'] },
 });

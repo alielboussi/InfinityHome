@@ -22,6 +22,9 @@ export const HASSAN_AWAD = Object.freeze({
   allowedRoutes: Object.freeze([
     '/quotationer',
     HASSAN_FACTORY_ORDERS_PATH,
+    '/showroom-orders',
+    '/showroom-orders/create',
+    '/hassan-floor-2',
     '/warehouse-deliveries',
     '/warehouse-returns',
     '/warehouse-returns-trackage',

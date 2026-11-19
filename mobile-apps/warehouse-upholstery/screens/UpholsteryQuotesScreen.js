@@ -16,7 +16,13 @@ import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import { fetchUpholsteryProductionQuotes } from '../services/productionApi';
 import { theme } from '../shared/theme';
-import { QuoteProductionCardExtras } from '../shared/quoteProductionOrderUi';
+import {
+  QuoteProductionCardExtras,
+  QuoteProductionListThumb,
+  QuoteProductionOrderBadges,
+  productionQuoteListTitle,
+} from '../shared/quoteProductionOrderUi';
+import { isProductionQuoteShowroomOrder } from '../shared/quoteShowroomOrder';
 
 export default function UpholsteryQuotesScreen({
   navigation,
@@ -124,9 +130,13 @@ export default function UpholsteryQuotesScreen({
             style={({ pressed }) => [kiosk.card, styles.row, pressed && styles.rowPressed]}
             onPress={() => navigation.navigate('UpholsteryQuoteDetail', { quote: item })}
           >
+            <QuoteProductionListThumb quote={item} textAlign={textAlign} />
+            <QuoteProductionOrderBadges quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
             <Text style={styles.quoteNum}>{item.quote_number || item.quote_id}</Text>
-            <Text style={styles.name}>{item.customer_name || tUi('returnCustomer', locale)}</Text>
-            <Text style={styles.phone}>{item.customer_phone || '—'}</Text>
+            <Text style={styles.name}>{productionQuoteListTitle(item, tUi, locale)}</Text>
+            <Text style={styles.phone}>
+              {isProductionQuoteShowroomOrder(item) ? '—' : (item.customer_phone || '—')}
+            </Text>
             <Text style={styles.meta}>
               {item.accepted_at
                 ? tUi('carpentryQuoteInProduction', locale)

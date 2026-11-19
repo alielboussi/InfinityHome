@@ -100,7 +100,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_tracking',
     navGroup: 'warehouse',
-    webLabel: 'Repairs Trackage',
+    webLabel: 'Production tracking',
     webRoute: '/warehouse-returns-trackage',
     webSearch: '',
     mobileStack: 'Tracking',
@@ -138,6 +138,9 @@ export function buildQuotationerOnlyNavGroups() {
     },
   ];
 }
+
+/** Pre-built nav groups for `AppChrome` (quotationer-only sidebar). */
+export const QUOTATIONER_ONLY_NAV_GROUPS = buildQuotationerOnlyNavGroups();
 
 export function hassanParityWebPaths() {
   const paths = new Set(['/quotationer']);

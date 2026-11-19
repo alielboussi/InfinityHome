@@ -270,6 +270,9 @@ const UI_STRINGS = {
     ar: 'مسار التنجيد — مرسلة من طلبات المصنع',
   },
   upholsteryQuotesTitle: { en: 'Orders', ar: 'الطلبات' },
+  badgeCustomerOrder: { en: 'Customer Order', ar: 'طلب عميل' },
+  badgeShowroomOrder: { en: 'Showroom Order', ar: 'طلب صالة' },
+  showroomOrderDetailLabel: { en: 'Showroom order', ar: 'طلب صالة' },
   upholsteryQuotesIntro: {
     en: 'Factory orders routed to Upholstery. Accept, scan materials, then end when finished.',
     ar: 'طلبات المصنع الموجهة للتنجيد. اقبل، امسح المواد، ثم أنهِ عند الانتهاء.',

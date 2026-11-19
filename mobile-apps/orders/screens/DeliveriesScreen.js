@@ -32,6 +32,7 @@ import {
   warehousePacketDisplayLabel,
 } from '../lib/deliveryReceive.js';
 import { theme } from '../shared/theme';
+import { orderBadgeTextStyle } from '../shared/quoteProductionOrderUi';
 import {
   acceptOrdersDelivery,
   fetchOrdersDeliveries,
@@ -262,7 +263,7 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
 
   return (
     <OrdersScreenShell
-      title={tUi('tileDeliveries', locale)}
+      title={tUi('tileWarehouseDeliveries', locale)}
       locale={locale}
       onToggleLocale={toggleLocale}
       navigation={navigation}
@@ -270,9 +271,7 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
       accessHint={accessHint}
       onRefreshAccess={onRefreshAccess}
     >
-      <Text style={kiosk.hint}>
-        Factory → Kitwe deliveries. Tick each product and packet, then approve the delivery.
-      </Text>
+      <Text style={kiosk.hint}>{tUi('warehouseDeliveriesIntro', locale)}</Text>
       <TextInput
         value={search}
         onChangeText={setSearch}
@@ -289,7 +288,10 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
             const tickRows = warehouseDeliveryReceiverTickRows(entries);
             const receivedCount = tickRows.filter((e) => deliveryEntryReceived(e)).length;
             const completed = isWarehouseCompleted(session.status);
-            const driver = session?.metadata?.driver_name;
+            const meta = session?.metadata || {};
+            const showroomOrder = meta.showroom_order === true;
+            const customerOrder = !showroomOrder && (meta.customer_order === true || Boolean(meta.customer_name));
+            const driver = meta.driver_name;
             const progressLabel = completed
               ? `Items received: ${receivedCount}/${total}`
               : `Packets confirmed: ${confirmed}/${total}`;
@@ -305,6 +307,18 @@ export default function DeliveriesScreen({ navigation, allowed, accessHint, onRe
                   <View style={styles.head}>
                     <Text style={kiosk.metaLine}>{session.delivery_number || session.id}</Text>
                     {completed ? <Text style={styles.done}>{tUi('completed', locale)}</Text> : null}
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+                    {showroomOrder ? (
+                      <Text style={[styles.badgeShowroom, orderBadgeTextStyle(locale)]}>
+                        {tUi('badgeShowroomOrder', locale)}
+                      </Text>
+                    ) : null}
+                    {customerOrder ? (
+                      <Text style={[styles.badgeCustomer, orderBadgeTextStyle(locale)]}>
+                        {tUi('badgeCustomerOrder', locale)}
+                      </Text>
+                    ) : null}
                   </View>
                   <Text style={kiosk.hint}>{warehouseDeliverySessionRouteLabel(session)}</Text>
                   <Text style={kiosk.hint}>Sent: {formatDateTime(session.submitted_at || session.created_at)}</Text>
@@ -383,4 +397,24 @@ const styles = StyleSheet.create({
   checkMark: { color: '#fff', fontWeight: '900' },
   tickLabel: { flex: 1, color: theme.text, fontWeight: '600', lineHeight: 20 },
   tickReceived: { opacity: 0.75 },
+  badgeShowroom: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#3730a3',
+    backgroundColor: '#e0e7ff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  badgeCustomer: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1e40af',
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
 });

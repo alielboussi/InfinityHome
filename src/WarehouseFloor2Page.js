@@ -49,6 +49,8 @@ export default function WarehouseFloor2Page({
   pageTitle = 'Warehouse Floor 2',
   pageSubtitle = 'Unfinished carpentry WIP (after workshop Manufacture, manual add from Floor 1, or create here). New Floor 2 products also list on Floor 1; new Floor 1 products seed Floor 2 WIP automatically.',
   embedInHub = false,
+  readOnly = false,
+  loadFreshOnMount = false,
 } = {}) {
   const initialCatalog = useMemo(() => getCachedCarpentryCatalog(), []);
   const initialRuns = useMemo(() => getCachedCarpentryFloorRuns(), []);
@@ -66,7 +68,10 @@ export default function WarehouseFloor2Page({
   const [stockEditById, setStockEditById] = useState({});
   const [busyId, setBusyId] = useState('');
   const sessionUser = useMemo(() => getCurrentUser(), []);
-  const canManage = useMemo(() => canManageCatalog(sessionUser), [sessionUser]);
+  const canManage = useMemo(
+    () => !readOnly && canManageCatalog(sessionUser),
+    [sessionUser, readOnly],
+  );
   const { grant } = useAuthProfileMobileGrant();
   const canPrintLabels = canManage || isWarehouseCatalogLabelPrintAllowed(grant, sessionUser?.email);
   const [labelPrintItem, setLabelPrintItem] = useState(null);
@@ -133,7 +138,7 @@ export default function WarehouseFloor2Page({
     setError('');
     try {
       const [payload, catalog] = await Promise.all([
-        fetchCarpentryFloorRuns(),
+        fetchCarpentryFloorRuns({ forceFresh: forceFresh || loadFreshOnMount }),
         fetchCarpentryCatalog({ forceFresh }).catch(() => ({ candidates: [], setCandidates: [], categories: [] })),
       ]);
       const runRows = payload.rows || [];
@@ -188,11 +193,11 @@ export default function WarehouseFloor2Page({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadFreshOnMount]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    load({ forceFresh: loadFreshOnMount });
+  }, [load, loadFreshOnMount]);
 
   const floor2QtyByAssembly = useMemo(() => {
     const map = new Map();
@@ -428,17 +433,19 @@ export default function WarehouseFloor2Page({
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <CategoryRemainingChecklist
-          toolbarInline
-          categories={categories}
-          candidates={candidates}
-          setCandidates={warehouseSetCandidates}
-          existingProductIds={existingFloor2ProductIds}
-          busy={Boolean(busyId)}
-          selectPlaceholder="Select category to add remaining…"
-          addButtonLabel="Add selected to Floor 2"
-          onAddSelected={handleAddFloor2Batch}
-        />
+        {!readOnly ? (
+          <CategoryRemainingChecklist
+            toolbarInline
+            categories={categories}
+            candidates={candidates}
+            setCandidates={warehouseSetCandidates}
+            existingProductIds={existingFloor2ProductIds}
+            busy={Boolean(busyId)}
+            selectPlaceholder="Select category to add remaining…"
+            addButtonLabel="Add selected to Floor 2"
+            onAddSelected={handleAddFloor2Batch}
+          />
+        ) : null}
       </div>
 
       {loading ? <p>Loading…</p> : null}
@@ -468,7 +475,7 @@ export default function WarehouseFloor2Page({
           </h2>
           <div className="kitwe-catalog-product-rows" role="list">
             <div
-              className="kitwe-catalog-product-rows__header kitwe-catalog-product-rows__header--floor2"
+              className={`kitwe-catalog-product-rows__header kitwe-catalog-product-rows__header--floor2${readOnly ? ' kitwe-catalog-product-rows__header--floor2-readonly' : ''}`}
               aria-hidden
             >
               <span>Photo</span>
@@ -476,7 +483,7 @@ export default function WarehouseFloor2Page({
               <span>Product</span>
               <span>Category</span>
               <span>Stock on hand</span>
-              <span>Actions</span>
+              {!readOnly ? <span>Actions</span> : null}
             </div>
             {filteredStockFamilyGroups.map((group) => {
               const row = (group.rows || [])[0];
@@ -491,7 +498,7 @@ export default function WarehouseFloor2Page({
               return (
                 <article
                   key={group.key}
-                  className="kitwe-catalog-product-row kitwe-catalog-product-row--floor2"
+                  className={`kitwe-catalog-product-row kitwe-catalog-product-row--floor2${readOnly ? ' kitwe-catalog-product-row--floor2-readonly' : ''}`}
                   role="listitem"
                 >
                   <div className="kitwe-catalog-product-row__wip">
@@ -576,33 +583,41 @@ export default function WarehouseFloor2Page({
                       </span>
                     )}
                   </div>
-                  <div className="kitwe-catalog-product-row__meta">
-                    {renderStockEditor(aid, row.quantity)}
+                  <div className="kitwe-catalog-product-row__meta kitwe-catalog-product-row__stock-qty">
+                    {readOnly ? (
+                      <span className="kitwe-catalog-product-row__stock-readonly">
+                        {Math.max(0, Number(row.quantity) || 0)}
+                      </span>
+                    ) : (
+                      renderStockEditor(aid, row.quantity)
+                    )}
                   </div>
-                  <div className="kitwe-catalog-product-row__actions">
-                    <div className="kitwe-catalog-product-row__actions-inner">
-                      {canPrintLabels && asm ? (
-                        <WarehouseLabelPrintIconButton
-                          title="Print warehouse label"
-                          onClick={() => openRowLabelPrint(asm, row.quantity)}
-                        />
-                      ) : null}
-                      {canManage ? (
-                        <button
-                          type="button"
-                          className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
-                          disabled={busyId === `del-${aid}`}
-                          onClick={() => handleDeleteFloor2Product(aid)}
-                        >
-                          {busyId === `del-${aid}` ? '…' : 'Delete'}
-                        </button>
-                      ) : !canPrintLabels ? (
-                        <span style={{ fontSize: 13, color: 'var(--kitwe-muted, #64748b)' }}>
-                          Qty: {Math.max(0, Number(row.quantity) || 0)}
-                        </span>
-                      ) : null}
+                  {!readOnly ? (
+                    <div className="kitwe-catalog-product-row__actions">
+                      <div className="kitwe-catalog-product-row__actions-inner">
+                        {canPrintLabels && asm ? (
+                          <WarehouseLabelPrintIconButton
+                            title="Print warehouse label"
+                            onClick={() => openRowLabelPrint(asm, row.quantity)}
+                          />
+                        ) : null}
+                        {canManage ? (
+                          <button
+                            type="button"
+                            className="kitwe-btn-secondary kitwe-btn-compact kitwe-btn-danger"
+                            disabled={busyId === `del-${aid}`}
+                            onClick={() => handleDeleteFloor2Product(aid)}
+                          >
+                            {busyId === `del-${aid}` ? '…' : 'Delete'}
+                          </button>
+                        ) : !canPrintLabels ? (
+                          <span style={{ fontSize: 13, color: 'var(--kitwe-muted, #64748b)' }}>
+                            Qty: {Math.max(0, Number(row.quantity) || 0)}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </article>
               );
             })}

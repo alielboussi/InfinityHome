@@ -39,3 +39,22 @@ export async function printProductionLabel({ name, sku, copies = 1 }) {
     labelJobId: payload?.label_job_id || null,
   };
 }
+
+let floor2ListCache = { at: 0, rows: [], floor2LocationId: '' };
+const FLOOR2_LIST_TTL_MS = 90_000;
+
+export async function fetchProductionFloor2CatalogMeta({ forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (
+    !forceRefresh
+    && floor2ListCache.rows.length
+    && now - floor2ListCache.at < FLOOR2_LIST_TTL_MS
+  ) {
+    return { products: floor2ListCache.rows, floor2LocationId: floor2ListCache.floor2LocationId };
+  }
+  const payload = await productionOp('production-floor2-list', {});
+  const rows = payload?.products || [];
+  const floor2LocationId = String(payload?.floor2_location_id || '').trim();
+  floor2ListCache = { at: now, rows, floor2LocationId };
+  return { products: rows, floor2LocationId };
+}

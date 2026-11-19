@@ -1,6 +1,6 @@
 /**
- * Factory order + production kiosk Arabic for quote line text (Metro bundle — no repo src imports).
- * Keep in sync with src/utils/quoteArabicTranslate.js
+ * Factory order + production kiosk Arabic for quote line text.
+ * Used by web PDF and server translate-arabic. Mobile copy: mobile-apps/shared/quoteArabicTranslate.js (keep in sync).
  */
 
 export const ARABIC_TERMS = Object.freeze({
@@ -128,6 +128,13 @@ export const ARABIC_TERMS = Object.freeze({
 export const WORD_FALLBACKS = [
   [/\bfoam\s+and\s+fabric\s+material\s*\(\s*seat\s+and\s+back\s*\)/gi, 'فوم وقماش (مقعد وظهر)'],
   [/\bsofa\s+cushions?\b/gi, 'وسائد كنبة'],
+  [/\b(filling|filing)\s+cabinet\s+sliding\s+door\s*\(\s*with\s+v[ei]neer\s*\)/gi, 'خزانة ملفات بباب سحاب (بتشطيب قشرة خشب)'],
+  [/\b(filling|filing)\s+cabinet\s+sliding\s+door/gi, 'خزانة ملفات بباب سحاب'],
+  [/\bsliding\s+door(s)?\b/gi, 'باب سحاب'],
+  [/\bwith\s+v[ei]neer\b/gi, 'بتشطيب قشرة خشب'],
+  [/\bv[ei]neer\b/gi, 'قشرة خشب'],
+  [/\b(filling|filing)\s+cabinet(s)?\b/gi, 'خزانة ملفات'],
+  [/\bsliding\b/gi, 'سحاب'],
   [/\bkitchen\s+cabinet(s)?\b/gi, 'خزانة مطبخ'],
   [/\bkitchen\s+unit(s)?\b/gi, 'وحدة مطبخ'],
   [/\bkitchen\b/gi, 'مطبخ'],
@@ -174,9 +181,14 @@ export const WORD_FALLBACKS = [
   [/\blow\s+density\b/gi, 'كثافة منخفضة'],
   [/\bmemory\s+foam\b/gi, 'فوم ميموري'],
   [/\bspring\s+foam\b/gi, 'فوم زنبركي'],
+  [/\bonly\s+changing\s+fabric\s+material\b/gi, 'تغيير قماش المواد فقط'],
+  [/\bonly\s+changing\b/gi, 'تغيير فقط'],
+  [/\bchanging\b/gi, 'تغيير'],
+  [/\bonly\b/gi, 'فقط'],
   [/\bfabric\b/gi, 'قماش'],
   [/\bfoam\b/gi, 'فوم'],
   [/\bmaterial(s)?\b/gi, 'مواد'],
+  [/\bset\b/gi, 'طقم'],
   [/\bleather\b/gi, 'جلد'],
   [/\bseat\b/gi, 'مقعد'],
   [/\bback\b/gi, 'ظهر'],
@@ -258,13 +270,48 @@ export function formatNumeralsForLocale(value, locale) {
   return toArabicIndicDigits(s);
 }
 
+const ALLOWED_LATIN_IN_ARABIC = /\b(RAL|MDF|HD|PU|USB|LED|HDMI|CPU|cm|CAT)\b/gi;
+
+/** Normalize common quote typos / variants before Arabic lookup (PDF + workshop apps). */
+export function normalizeQuoteEnglishPhrase(value) {
+  return String(value ?? '')
+    .replace(/\bv[ei]neer\b/gi, 'veneer')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** False when Arabic line still contains stray English words (partial word-by-word fallback). */
+export function phraseStillHasEnglishWords(text) {
+  const stripped = String(text ?? '').replace(ALLOWED_LATIN_IN_ARABIC, ' ');
+  return /[A-Za-z]{2,}/.test(stripped);
+}
+
+function lookupServerTranslation(s, serverMap = {}) {
+  if (serverMap[s]) return String(serverMap[s]).trim();
+  const lower = s.toLowerCase();
+  for (const [key, val] of Object.entries(serverMap)) {
+    if (String(key).toLowerCase() === lower && val) return String(val).trim();
+  }
+  const titled = s.charAt(0).toUpperCase() + s.slice(1);
+  if (serverMap[titled]) return String(serverMap[titled]).trim();
+  return '';
+}
+
 export function translateTermToArabic(term, serverMap = {}) {
-  const s = String(term ?? '').trim();
-  if (!s) return '';
-  if (serverMap[s]) return serverMap[s];
+  const raw = String(term ?? '').trim();
+  if (!raw) return '';
+  const s = normalizeQuoteEnglishPhrase(raw);
+  const fromServer =
+    lookupServerTranslation(s, serverMap) || (s !== raw ? lookupServerTranslation(raw, serverMap) : '');
+  if (fromServer && !phraseStillHasEnglishWords(fromServer)) return fromServer;
   const direct = lookupStaticArabic(s);
   if (direct) return direct;
-  return fallbackTranslatePhraseToArabic(s);
+  const titled = s.charAt(0).toUpperCase() + s.slice(1);
+  const directTitled = titled !== s ? lookupStaticArabic(titled) : '';
+  if (directTitled) return directTitled;
+  const fb = fallbackTranslatePhraseToArabic(s);
+  if (!phraseStillHasEnglishWords(fb)) return fb;
+  return '';
 }
 
 const UNIT_AR = new Map([
@@ -296,8 +343,28 @@ export function formatQuoteLineQtyLabel(qty, unitAbbr, locale, serverMap = {}) {
   return q;
 }
 
-/** L × W × H (cm) with Arabic-Indic digits when `locale === 'ar'`. */
+/** L × W × H (cm) with Arabic-Indic digits when `locale === 'ar'`. Supports per-piece `dimension_sets`. */
 export function formatQuoteDimensionsCmDisplay(line, locale = 'en') {
+  const sets = line?.dimension_sets;
+  if (Array.isArray(sets) && sets.length) {
+    const parts = sets.map((set, i) => {
+      const trim = (v) => (v != null ? String(v).trim() : '');
+      const l = trim(set?.dim_l_cm);
+      const w = trim(set?.dim_w_cm);
+      const h = trim(set?.dim_h_cm);
+      const joined = (l && w && h)
+        ? `${l} × ${w} × ${h}`
+        : [l, w, h].filter(Boolean).join(' × ');
+      if (!joined) return '';
+      const prefix = sets.length > 1
+        ? (locale === 'ar' ? `قطعة ${i + 1}: ` : `Piece ${i + 1}: `)
+        : '';
+      return `${prefix}${joined}`;
+    }).filter(Boolean);
+    if (parts.length) {
+      return formatNumeralsForLocale(parts.join(' · '), locale);
+    }
+  }
   const trim = (v) => (v != null ? String(v).trim() : '');
   const l = trim(line?.dim_l_cm);
   const w = trim(line?.dim_w_cm);
@@ -322,25 +389,44 @@ function normalizeAccessoriesList(raw) {
   return arr.map((s) => String(s ?? '').trim()).filter(Boolean);
 }
 
+function addPhraseWithVariants(set, value) {
+  const s = String(value ?? '').trim();
+  if (!s) return;
+  set.add(s);
+  const norm = normalizeQuoteEnglishPhrase(s);
+  if (norm && norm !== s) set.add(norm);
+  const titled = s.charAt(0).toUpperCase() + s.slice(1);
+  if (titled !== s) set.add(titled);
+  if (norm && norm !== s) {
+    const titledNorm = norm.charAt(0).toUpperCase() + norm.slice(1);
+    if (titledNorm !== norm) set.add(titledNorm);
+  }
+}
+
+/** Expand phrases for Gemini (raw + title-case) — same keys PDF / workshop apps resolve. */
+export function expandArabicPhraseVariants(phrases = []) {
+  const set = new Set();
+  for (const p of phrases || []) addPhraseWithVariants(set, p);
+  return [...set];
+}
+
 /**
  * Collect English phrases from quote lines for batch server translation.
  */
 export function collectProductionQuoteArabicPhrases(lines = []) {
   const set = new Set();
-  const add = (v) => {
-    const s = String(v ?? '').trim();
-    if (s) set.add(s);
-  };
   for (const line of lines || []) {
     const meta = line?.metadata && typeof line.metadata === 'object' ? line.metadata : {};
-    add(line?.name || line?.product_name || line?.quote_product_name);
-    add(line?.description || meta.description);
-    add(line?.wood || meta.wood);
-    add(line?.foam_type || meta.foam_type);
-    add(line?.color_code || meta.color_code);
-    add(line?.leather_code || meta.leather_code);
+    addPhraseWithVariants(set, line?.name_override);
+    addPhraseWithVariants(set, line?.name || line?.product_name || line?.quote_product_name);
+    addPhraseWithVariants(set, line?.description || meta.description);
+    addPhraseWithVariants(set, line?.wood || meta.wood);
+    addPhraseWithVariants(set, line?.foam_type || meta.foam_type);
+    addPhraseWithVariants(set, line?.color_code || meta.color_code);
+    addPhraseWithVariants(set, line?.leather_code || meta.leather_code);
+    addPhraseWithVariants(set, line?.aluminum_thickness_mm || meta.aluminum_thickness_mm);
     for (const acc of normalizeAccessoriesList(line?.accessories ?? meta.accessories)) {
-      add(acc);
+      addPhraseWithVariants(set, acc);
     }
   }
   return [...set];
@@ -350,12 +436,60 @@ export function displayQuoteFieldValue(locale, value, serverMap = {}) {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
   if (locale !== 'ar') return raw;
-  return translateTermToArabic(raw, serverMap);
+  const norm = normalizeQuoteEnglishPhrase(raw);
+  const titled = norm.charAt(0).toUpperCase() + norm.slice(1);
+  return (
+    translateTermToArabic(norm, serverMap)
+    || (titled !== norm ? translateTermToArabic(titled, serverMap) : '')
+    || translateTermToArabic(raw, serverMap)
+    || raw
+  );
 }
 
 /** Factory order WhatsApp — department line is always Arabic. */
 export function factoryOrderDepartmentArabic(route) {
   const r = String(route || '').trim().toLowerCase();
   if (r === 'carpentry') return 'قسم النجارة';
+  if (r === 'aluminum') return 'قسم الألومنيوم';
   return 'قسم التنجيد';
+}
+
+function phraseNeedsCompleteArabic(phrase, map = {}) {
+  const raw = String(phrase || '').trim();
+  if (!raw) return false;
+  const ar = translateTermToArabic(raw, map);
+  return !ar || phraseStillHasEnglishWords(ar);
+}
+
+export function assertArabicTranslationsForPhrases(phrases, serverMap = {}) {
+  const failures = [];
+  for (const p of phrases || []) {
+    const raw = String(p || '').trim();
+    if (!raw) continue;
+    if (phraseNeedsCompleteArabic(raw, serverMap)) failures.push(raw);
+  }
+  if (failures.length) {
+    const err = new Error(
+      `Arabic translation is not ready yet (${failures.length} phrase(s)). Wait a few seconds and send the order again.`,
+    );
+    err.code = 'arabic_incomplete';
+    err.phrases = failures.slice(0, 8);
+    throw err;
+  }
+}
+
+export function collectFactoryOrderArabicCheckPhrases(items = []) {
+  const set = new Set(collectProductionQuoteArabicPhrases(items));
+  for (const it of items || []) {
+    const rawName = String(
+      it?.name_override || it?.name || it?.product_name || it?.quote_product_name || it?.description || '',
+    ).trim();
+    if (rawName) {
+      set.add(rawName);
+      set.add(rawName.charAt(0).toUpperCase() + rawName.slice(1));
+    }
+    const desc = String(it?.description || '').trim();
+    if (desc) set.add(desc);
+  }
+  return [...set];
 }

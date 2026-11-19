@@ -1,20 +1,9 @@
 import { useEffect, useState } from 'react';
-import {
-  Keyboard,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { kiosk } from './kioskStyles';
-import { theme } from '../shared/theme';
 import { tUi } from '../lib/productionKioskI18n';
+import { theme } from '../shared/theme';
 
-/**
- * Scan / pick → product summary + qty → add to cart (farm transfer flows).
- */
 export default function DeliveryFarmQtyAddModal({
   visible,
   locale,
@@ -22,60 +11,56 @@ export default function DeliveryFarmQtyAddModal({
   productName = '',
   productSku = '',
   maxQty = 0,
-  onConfirm,
   onClose,
+  onConfirm,
 }) {
   const [qty, setQty] = useState('1');
 
   useEffect(() => {
     if (visible) setQty('1');
-  }, [visible, productName, productSku]);
+  }, [visible, productSku, productName]);
 
-  if (!visible) return null;
-
-  const maxLine = maxQty > 0
-    ? tUi('deliveryFarmQtyMax', locale).replace('{n}', String(maxQty))
-    : '';
-
-  const submit = () => {
-    Keyboard.dismiss();
-    onConfirm?.(qty);
+  const handleConfirm = () => {
+    const n = Math.max(1, Math.floor(Number(qty) || 0));
+    const max = Math.max(0, Math.floor(Number(maxQty) || 0));
+    if (max > 0 && n > max) {
+      Alert.alert(
+        tUi('deliveryFarmAlertInsufficient', locale),
+        tUi('deliveryFarmAlertAvailable', locale).replace('{n}', String(max)),
+      );
+      return;
+    }
+    if (typeof onConfirm === 'function') onConfirm(n);
   };
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={[styles.title, { textAlign }]}>
-            {tUi('deliveryFarmScanAddTitle', locale)}
-          </Text>
-          <Text style={[styles.name, { textAlign }]} numberOfLines={3}>
-            {productName || '—'}
-          </Text>
+          <Text style={[styles.title, { textAlign }]}>{tUi('deliveryFarmScanTitle', locale)}</Text>
+          {productName ? (
+            <Text style={[styles.product, { textAlign }]}>{productName}</Text>
+          ) : null}
           {productSku ? (
-            <Text style={[styles.sku, { textAlign }]} numberOfLines={1}>
-              {productSku}
-            </Text>
+            <Text style={[styles.sku, { textAlign }]}>{productSku}</Text>
           ) : null}
-          {maxLine ? (
-            <Text style={[styles.maxLine, { textAlign }]}>{maxLine}</Text>
-          ) : null}
-          <Text style={[kiosk.label, { textAlign, marginTop: 14 }]}>
+          <Text style={[kiosk.label, { textAlign, marginTop: 12 }]}>
             {tUi('deliveryFarmQtyLabel', locale)}
           </Text>
           <TextInput
-            style={[kiosk.input, { textAlign, marginTop: 6 }]}
+            style={[kiosk.input, { textAlign }]}
             keyboardType="number-pad"
             value={qty}
             onChangeText={setQty}
             selectTextOnFocus
           />
-          <Pressable style={[kiosk.btnPrimaryBlock, { marginTop: 16 }]} onPress={submit}>
-            <Text style={kiosk.btnPrimaryBlockText}>
-              {tUi('deliveryFarmAddToCart', locale)}
-            </Text>
+          <Text style={[kiosk.metaLine, { textAlign }]}>
+            {tUi('deliveryFarmQtyMax', locale).replace('{n}', String(Math.max(0, Math.floor(Number(maxQty) || 0))))}
+          </Text>
+          <Pressable style={[kiosk.btnPrimaryBlock, styles.confirmBtn]} onPress={handleConfirm}>
+            <Text style={kiosk.btnPrimaryBlockText}>{tUi('deliveryFarmAddToCart', locale)}</Text>
           </Pressable>
-          <Pressable style={[kiosk.btnOutlinePrimary, { marginTop: 10 }]} onPress={onClose}>
+          <Pressable style={[kiosk.btnOutlinePrimary, styles.closeBtn]} onPress={onClose}>
             <Text style={kiosk.btnOutlinePrimaryText}>{tUi('presetPickerClose', locale)}</Text>
           </Pressable>
         </View>
@@ -99,7 +84,8 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   title: { fontSize: 18, fontWeight: '800', color: theme.text },
-  name: { fontSize: 17, fontWeight: '700', color: theme.text, marginTop: 10 },
-  sku: { fontSize: 13, fontWeight: '600', color: theme.textMuted, marginTop: 4 },
-  maxLine: { fontSize: 13, color: theme.primary, marginTop: 8, fontWeight: '600' },
+  product: { color: theme.text, marginTop: 10, fontWeight: '700', fontSize: 16 },
+  sku: { color: theme.muted, marginTop: 4, fontSize: 13 },
+  confirmBtn: { marginTop: 14 },
+  closeBtn: { marginTop: 10 },
 });

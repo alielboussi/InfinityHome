@@ -17,6 +17,7 @@ import { kiosk } from './kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import {
+  fetchProductionFloor2CatalogMeta,
   fetchProductionStoreroomMaterials,
   saveProductionJobMaterials,
 } from '../services/productionApi';
@@ -34,6 +35,9 @@ import {
   materialLinesNeedStoreroomPick,
   warehouseLocationIdFromStoredRow,
   mergeCatalogByFamilySku,
+  mergeFloor2WipIntoMaterialCatalog,
+  catalogForStoreroomDeductionOnly,
+  filterStoreroomPickerOptions,
   parseStoreroomsFromMaterialsApi,
   storeroomDeductionStrings,
   storeroomsForCatalogMaterial,
@@ -81,6 +85,8 @@ export default function ProductionJobMaterialsModal({
   productionRoute = '',
   initialLines = [],
   onSaved,
+  /** When false (painting workshop), never merge Floor 2 WIP or deduct from Floor 2. */
+  allowFloor2WipDeduction = true,
 }) {
   const { locale: localeHook, textAlign: textAlignHook, toggleLocale } = useProductionKioskLocale();
   const locale = localeProp || localeHook;
@@ -118,6 +124,11 @@ export default function ProductionJobMaterialsModal({
     setError('');
   }, [visible, initialLines]);
 
+  const storeroomDeductionOnly = jobKind === 'painting' || !allowFloor2WipDeduction;
+  const isHassanQuoteMaterials = !storeroomDeductionOnly
+    && jobKind === 'quote'
+    && ['carpentry', 'upholstery'].includes(String(productionRoute || '').toLowerCase());
+
   const loadCatalog = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -125,19 +136,33 @@ export default function ProductionJobMaterialsModal({
       const payload = await fetchProductionStoreroomMaterials();
       const raw = Array.isArray(payload) ? payload : (payload?.materials || []);
       const uomMap = buildUomLabelMap(Array.isArray(payload) ? {} : payload);
-      const list = enrichCatalogMaterialUom(
-        filterInStockCatalogMaterials(mergeCatalogByFamilySku(raw)),
+      let merged = mergeCatalogByFamilySku(raw);
+      if (isHassanQuoteMaterials) {
+        try {
+          const { products, floor2LocationId } = await fetchProductionFloor2CatalogMeta();
+          if (floor2LocationId && (products || []).length) {
+            merged = mergeFloor2WipIntoMaterialCatalog(merged, products, floor2LocationId);
+          }
+        } catch {
+          /* Floor 2 catalog optional */
+        }
+      }
+      let list = enrichCatalogMaterialUom(
+        filterInStockCatalogMaterials(merged),
         uomMap,
       );
+      if (storeroomDeductionOnly) {
+        list = catalogForStoreroomDeductionOnly(list);
+      }
       setCatalog(list);
       const storeroomPayload = Array.isArray(payload) ? { materials: list } : { ...payload, materials: list };
-      setStorerooms(parseStoreroomsFromMaterialsApi(storeroomPayload));
+      setStorerooms(filterStoreroomPickerOptions(parseStoreroomsFromMaterialsApi(storeroomPayload)));
     } catch (e) {
       setError(e?.message || tUi('materialsLoadFailed', locale));
     } finally {
       setLoading(false);
     }
-  }, [locale]);
+  }, [isHassanQuoteMaterials, locale, storeroomDeductionOnly]);
 
   useEffect(() => {
     if (visible) loadCatalog();
@@ -150,18 +175,17 @@ export default function ProductionJobMaterialsModal({
   }, [catalog]);
 
   const promptStorerooms = useMemo(() => {
+    let picks = storerooms;
     if (pendingAddRow) {
-      return storeroomsForCatalogMaterial(pendingAddRow, storerooms);
-    }
-    if (pendingStoreroomLineChange) {
+      picks = storeroomsForCatalogMaterial(pendingAddRow, storerooms);
+    } else if (pendingStoreroomLineChange) {
       const stock = catalogById.get(materialKey(pendingStoreroomLineChange));
-      return stock ? storeroomsForCatalogMaterial(stock, storerooms) : storerooms;
+      picks = stock ? storeroomsForCatalogMaterial(stock, storerooms) : storerooms;
+    } else if (pendingSavePayload?.length) {
+      picks = storeroomsForJobMaterialDeduction(pendingSavePayload, catalog, storerooms);
     }
-    if (pendingSavePayload?.length) {
-      return storeroomsForJobMaterialDeduction(pendingSavePayload, catalog, storerooms);
-    }
-    return storerooms;
-  }, [pendingAddRow, pendingSavePayload, pendingStoreroomLineChange, catalog, catalogById, storerooms]);
+    return storeroomDeductionOnly ? filterStoreroomPickerOptions(picks) : picks;
+  }, [pendingAddRow, pendingSavePayload, pendingStoreroomLineChange, catalog, catalogById, storerooms, storeroomDeductionOnly]);
 
   const storeroomLabelForId = (id) => {
     const row = (storerooms || []).find((s) => String(s.id) === String(id));
@@ -402,6 +426,11 @@ export default function ProductionJobMaterialsModal({
         </View>
         {loading ? <ActivityIndicator color={theme.primary} style={{ marginVertical: 8 }} /> : null}
         {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
+        {isHassanQuoteMaterials ? (
+          <Text style={[kiosk.hint, styles.floor2Hint, { textAlign }]}>
+            {tUi('quoteOrderMaterialsFloor2Hint', locale)}
+          </Text>
+        ) : null}
         {search.trim() && filteredSearch.length > 0 ? (
           <View style={styles.searchHits}>
             {filteredSearch.map((row) => (
@@ -554,6 +583,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.surface, padding: 16, paddingTop: 48 },
   title: { fontSize: 20, fontWeight: '800', color: theme.text, marginBottom: 12 },
   lineUomMuted: { color: theme.textMuted, fontSize: 12, marginTop: 2 },
+  floor2Hint: { marginBottom: 8 },
   searchRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 },
   searchInput: { flex: 1, marginBottom: 0 },
   scanBtn: {

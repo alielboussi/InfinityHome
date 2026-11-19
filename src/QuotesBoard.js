@@ -21,6 +21,7 @@ import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import WarehouseSkuWhereabouts from './components/WarehouseSkuWhereabouts';
 import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
+import { isQuoteShowroomOrderFromRouting } from './utils/quoteShowroomOrder';
 
 const readLocalUser = () => {
   try {
@@ -73,7 +74,15 @@ async function fetchQuotationRead(action, params = {}) {
   throw new Error(lastError || 'quotation-read failed');
 }
 
-export default function QuotesBoard() {
+function resolveQuotesBoardMode(pathname, boardModeProp) {
+  if (boardModeProp) return boardModeProp;
+  const p = String(pathname || '').split('?')[0];
+  if (p === '/showroom-orders' || p.startsWith('/showroom-orders/')) return 'showroom';
+  if (p === '/factory-orders' || p.startsWith('/factory-orders/')) return 'factory';
+  return 'all';
+}
+
+export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
   const [quotes, setQuotes] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
@@ -83,6 +92,7 @@ export default function QuotesBoard() {
   const [sendBusyId, setSendBusyId] = React.useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const boardMode = resolveQuotesBoardMode(location.pathname, boardModeProp);
   const user = React.useMemo(() => readLocalUser(), []);
   const isQuotationerOnly = isQuotationerOnlyExperience(user, location.pathname, location.search);
   const canDelete = canDeleteQuotationData(user);
@@ -213,14 +223,30 @@ export default function QuotesBoard() {
     return canEditQuotation(user, q, { hasOutstandingDue });
   }, [user, salePaidBySaleId]);
 
-  const filtered = quotes.filter(q => {
+  const quotesForBoard = React.useMemo(() => {
+    return quotes.filter((q) => {
+      const routing = routingsMap[String(q.id)];
+      const showroom = isQuoteShowroomOrderFromRouting(routing);
+      if (boardMode === 'showroom') return showroom;
+      if (boardMode === 'factory') return !showroom;
+      return true;
+    });
+  }, [quotes, routingsMap, boardMode]);
+
+  const filtered = quotesForBoard.filter((q) => {
     const s = search.trim().toLowerCase();
     if (!s) return true;
+    const routing = routingsMap[String(q.id)];
     const byNum = (q.quote_number || `Q-${String(q.id).slice(0, 8)}`).toLowerCase().includes(s);
     const custName = (customerMap[String(q.customer_id)] || '').toLowerCase();
     const byCust = custName.includes(s);
     const byAmt = String(computeQuotationDisplayTotal(q).toFixed(2)).toLowerCase().includes(s) || String(q.total || '').toLowerCase().includes(s);
-    return byNum || byCust || byAmt;
+    const byDate = new Date(q.created_at).toLocaleString().toLowerCase().includes(s);
+    const route = String(routing?.route || '').toLowerCase();
+    const byRoute = route.includes(s) || (s.includes('uphol') && route === 'upholstery') || (s.includes('carp') && route === 'carpentry');
+    const lineBlob = JSON.stringify(routing?.metadata?.lines || []).toLowerCase();
+    const byProduct = lineBlob.includes(s);
+    return byNum || byCust || byAmt || byDate || byRoute || byProduct;
   });
 
   async function handleConvert(q) {
@@ -344,17 +370,34 @@ export default function QuotesBoard() {
             Back to Dashboard
           </button>
         )}
-        <h2 className="quotes-title" style={{ margin: 0 }}>Orders</h2>
+        <h2 className="quotes-title" style={{ margin: 0 }}>
+          {boardMode === 'showroom' ? 'Showroom Orders' : (boardMode === 'factory' ? 'Factory Orders' : 'Orders')}
+        </h2>
       </div>
 
-      {isHassanAwadUser(user) ? <WarehouseSkuWhereabouts /> : null}
+      {isHassanAwadUser(user) && boardMode !== 'showroom' ? <WarehouseSkuWhereabouts /> : null}
+
+      {boardMode === 'showroom' ? (
+        <button
+          type="button"
+          className="action-button"
+          style={{ marginBottom: 10, background: '#1565c0', color: '#fff', fontWeight: 700 }}
+          onClick={() => navigate('/showroom-orders/create')}
+        >
+          Create Showroom Order
+        </button>
+      ) : null}
 
       <input
         className="quotes-input"
-        style={{ width: 340 }}
+        style={{ width: boardMode === 'showroom' ? 420 : 340 }}
         value={search}
         onChange={e => setSearch(e.target.value)}
-        placeholder="Search by number, customer, or amount"
+        placeholder={
+          boardMode === 'showroom'
+            ? 'Search date, workshop (upholstery/carpentry), product, or quote #'
+            : 'Search by number, customer, or amount'
+        }
       />
 
       {loading ? <div style={{ color: '#8ab' }}>Loading...</div> : (
@@ -375,17 +418,27 @@ export default function QuotesBoard() {
                 const isSending = sendBusyId === String(q.id);
                 const routing = routingsMap[String(q.id)];
                 const alreadySent = Boolean(routing?.sent_to_production_at);
+                const showroomOrder = isQuoteShowroomOrderFromRouting(routing);
+                const hideSendOrder = boardMode === 'showroom' || showroomOrder;
                 return (
                   <tr key={q.id}>
                     <td>{q.quote_number || `Q-${String(q.id).slice(0, 8)}`}</td>
-                    <td>{customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-')}</td>
+                    <td>
+                      {showroomOrder
+                        ? 'Showroom'
+                        : (customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-'))}
+                    </td>
                     <td>{new Date(q.created_at).toLocaleString()}</td>
-                    <td>{(q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote'}</td>
+                    <td>
+                      {showroomOrder ? (
+                        <span className="quotation-customer-order-badge">Showroom Order</span>
+                      ) : ((q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote')}
+                    </td>
                     <td style={{ textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>
                     <td style={{ minWidth: 120 }}>
                       <QuoteRowActionsDropdown
                         items={[
-                          quoteIsEditable(q) ? {
+                          quoteIsEditable(q) && !showroomOrder ? {
                             key: 'edit',
                             label: 'Edit Quote',
                             onClick: () => handleEditQuote(q),
@@ -396,7 +449,7 @@ export default function QuotesBoard() {
                             tone: 'pdf',
                             onClick: () => handleDownloadPdf(q),
                           },
-                          canSendOrder ? {
+                          canSendOrder && !hideSendOrder ? {
                             key: 'send',
                             label: isSending ? 'Sending…' : (alreadySent ? 'Send Order (Resend)' : 'Send Order'),
                             disabled: Boolean(sendBusyId),

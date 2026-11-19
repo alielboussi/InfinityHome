@@ -5,13 +5,11 @@ import { productionDepartmentLabel } from '../utils/productionJobFlowStatus';
 import RunningProductionJobElapsed from './RunningProductionJobElapsed';
 import { formatProductionElapsed } from '../utils/formatProductionElapsed';
 import { computeTrackingJobElapsedMs } from './RunningProductionJobElapsed';
-
-const DEPARTMENT_FILTERS = [
-  { value: 'all', label: 'All departments' },
-  { value: 'upholstery', label: 'Upholstery' },
-  { value: 'carpentry', label: 'Carpentry' },
-  { value: 'painting', label: 'Painting' },
-];
+import ProductionTrackingFunnelFilter from './ProductionTrackingFunnelFilter';
+import {
+  applyProductionTrackingFilters,
+  partitionProductionTrackingJobs,
+} from '../utils/productionTrackingListUi';
 
 function ProductionTrackingCard({ row }) {
   const live = row.timer_status === 'running' || row.timer_status === 'paused';
@@ -69,6 +67,22 @@ function ProductionTrackingCard({ row }) {
   );
 }
 
+function SectionHeading({ children }) {
+  return (
+    <h2 style={{
+      margin: '20px 0 10px',
+      fontSize: 15,
+      fontWeight: 800,
+      color: 'var(--dash-muted, #64748b)',
+      textTransform: 'uppercase',
+      letterSpacing: '0.04em',
+    }}
+    >
+      {children}
+    </h2>
+  );
+}
+
 export default function ProductionJobsTrackingPanel({
   title = 'Production jobs',
   description,
@@ -80,6 +94,8 @@ export default function ProductionJobsTrackingPanel({
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState(initialDepartment || 'all');
+  const [trackKind, setTrackKind] = useState('all');
+  const [progress, setProgress] = useState('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,6 +103,7 @@ export default function ProductionJobsTrackingPanel({
     try {
       const res = await fetchProductionJobsTracking({
         department: department === 'all' ? undefined : department,
+        track_kind: trackKind === 'all' ? undefined : trackKind,
       });
       setRows(Array.isArray(res.jobs) ? res.jobs : []);
     } catch (err) {
@@ -95,26 +112,33 @@ export default function ProductionJobsTrackingPanel({
     } finally {
       setLoading(false);
     }
-  }, [department]);
+  }, [department, trackKind]);
 
   useEffect(() => { void load(); }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => [
-      row.product_name,
-      row.product_sku,
-      row.department,
-      row.department_label,
-      row.flow_status,
-      row.assembly_id,
-    ].join(' ').toLowerCase().includes(q));
-  }, [rows, search]);
+  const filtered = useMemo(() => applyProductionTrackingFilters(rows, {
+    search,
+    department,
+    trackKind,
+    progress,
+  }), [rows, search, department, trackKind, progress]);
+
+  const { inProgress, completed } = useMemo(
+    () => partitionProductionTrackingJobs(filtered),
+    [filtered],
+  );
+
+  const showProgressSections = progress === 'all' && inProgress.length > 0 && completed.length > 0;
 
   const shellStyle = embedInHub
     ? {}
     : { minHeight: '100vh', background: 'var(--dash-bg)', color: 'var(--dash-text)', padding: 24 };
+
+  const clearFilters = () => {
+    setDepartment('all');
+    setTrackKind('all');
+    setProgress('all');
+  };
 
   return (
     <div style={shellStyle}>
@@ -123,25 +147,14 @@ export default function ProductionJobsTrackingPanel({
         <p style={{ color: 'var(--dash-muted)', marginBottom: 16, lineHeight: 1.5 }}>{description}</p>
       ) : null}
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'center' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: 'var(--dash-muted)', fontSize: 14 }}>Department</span>
-          <select
-            value={department}
-            onChange={(e) => setDepartment(e.target.value)}
-            style={{
-              padding: '8px 10px',
-              borderRadius: 8,
-              border: '1px solid var(--dash-border)',
-              background: 'var(--dash-surface-2)',
-              color: 'var(--dash-text)',
-            }}
-          >
-            {DEPARTMENT_FILTERS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </label>
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 12,
+        marginBottom: 16,
+        alignItems: 'center',
+      }}
+      >
         <input
           type="search"
           placeholder="Search product, SKU, status…"
@@ -157,6 +170,15 @@ export default function ProductionJobsTrackingPanel({
             color: 'var(--dash-text)',
           }}
         />
+        <ProductionTrackingFunnelFilter
+          department={department}
+          trackKind={trackKind}
+          progress={progress}
+          onDepartmentChange={setDepartment}
+          onTrackKindChange={setTrackKind}
+          onProgressChange={setProgress}
+          onClear={clearFilters}
+        />
       </div>
 
       {loading && <div>Loading jobs…</div>}
@@ -166,7 +188,16 @@ export default function ProductionJobsTrackingPanel({
       )}
 
       <div style={{ display: 'grid', gap: 12 }}>
-        {filtered.map((row) => (
+        {showProgressSections && inProgress.length ? (
+          <SectionHeading>In progress</SectionHeading>
+        ) : null}
+        {inProgress.map((row) => (
+          <ProductionTrackingCard key={`${row.department}:${row.id}`} row={row} />
+        ))}
+        {showProgressSections && completed.length ? (
+          <SectionHeading>Completed</SectionHeading>
+        ) : null}
+        {completed.map((row) => (
           <ProductionTrackingCard key={`${row.department}:${row.id}`} row={row} />
         ))}
       </div>

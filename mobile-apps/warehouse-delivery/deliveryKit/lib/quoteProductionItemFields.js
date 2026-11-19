@@ -538,7 +538,12 @@ export function formatQuoteItemAccessoriesPdfLine(it) {
 /** Line row stored on quote_production_routing.metadata.lines and returned to workshop apps. */
 export function quoteItemLineImageUrl(it) {
   const meta = it?.metadata && typeof it.metadata === 'object' ? it.metadata : {};
-  return trimOrNull(it?.line_image_url ?? it?.lineImageUrl ?? meta.line_image_url);
+  return trimOrNull(
+    it?.line_image_url
+    ?? it?.lineImageUrl
+    ?? meta.line_image_url
+    ?? meta.floor2_image_url,
+  );
 }
 
 export function buildProductionLineSummaryRow(it, routingMeta = null) {

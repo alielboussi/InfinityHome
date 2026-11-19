@@ -41,7 +41,8 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
     setError('');
     try {
       const res = await fetchOrdersQuotes();
-      setRows(res.quotes || []);
+      const all = res.quotes || [];
+      setRows(all.filter((row) => row?.routing?.metadata?.showroom_order !== true));
     } catch (err) {
       setError(err?.message || tUi('loadFailed', locale));
       setRows([]);
@@ -105,7 +106,7 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
 
   return (
     <OrdersScreenShell
-      title={tUi('tileOrders', locale)}
+      title={tUi('tileFactoryOrders', locale)}
       locale={locale}
       onToggleLocale={toggleLocale}
       navigation={navigation}
@@ -113,6 +114,12 @@ export default function OrdersListScreen({ navigation, allowed, accessHint, onRe
       accessHint={accessHint}
       onRefreshAccess={onRefreshAccess}
     >
+      <Pressable
+        style={[kiosk.btn, { marginBottom: 12, backgroundColor: '#0f7fff' }]}
+        onPress={() => navigation.navigate('NewOrder')}
+      >
+        <Text style={kiosk.btnText}>{tUi('tileNewOrder', locale)}</Text>
+      </Pressable>
       <TextInput
         value={q}
         onChangeText={setQ}

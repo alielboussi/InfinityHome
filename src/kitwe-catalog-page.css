@@ -1306,6 +1306,28 @@ body.enterprise-theme .kitwe-catalog-product-row__wip button.warehouse-assembly-
     96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(100px, 0.55fr) minmax(200px, 1fr) minmax(72px, auto);
 }
 
+.kitwe-catalog-product-rows__header--floor2-readonly,
+.kitwe-catalog-product-row--floor2-readonly {
+  grid-template-columns:
+    96px minmax(88px, 0.7fr) minmax(140px, 1.2fr) minmax(100px, 0.55fr) minmax(72px, 0.4fr);
+}
+
+.kitwe-catalog-product-row__stock-readonly {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.kitwe-catalog-product-row__wip .warehouse-assembly-thumb--preview {
+  cursor: zoom-in;
+}
+
+.kitwe-catalog-product-row__wip .warehouse-assembly-thumb-wrap--preview .warehouse-assembly-thumb--preview.has-image {
+  opacity: 1;
+  filter: none;
+}
+
 .kitwe-catalog-product-row__category {
   display: flex;
   align-items: flex-start;

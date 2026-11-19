@@ -30,6 +30,7 @@ import {
 } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 import { isQuoteCustomerOrder } from './utils/quoteCustomerOrder';
+import { isQuoteShowroomOrderFromRouting } from './utils/quoteShowroomOrder';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
@@ -631,7 +632,7 @@ function QuotationerHome({ onNewQuote, onList, onCustomers, onProducts }) {
       </div>
       <div className="quotationer-home-card">
         <div className="quotationer-home-card-title">Create Quote</div>
-        <button type="button" className={`quotationer-home-card-btn ${ENT_BTN_PRIMARY}`} onClick={onNewQuote}>New Quote</button>
+        <button type="button" className={`quotationer-home-card-btn ${ENT_BTN_PRIMARY}`} onClick={onNewQuote}>Create Factory Order</button>
       </div>
       <div className="quotationer-home-card">
         <div className="quotationer-home-card-title">View Quotes</div>
@@ -853,11 +854,15 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
                 const routing = routingsMap[String(q.id)];
                 const alreadySent = Boolean(routing?.sent_to_production_at);
                 const custLabel = customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-');
-                const showCustomerOrderBadge = isQuoteCustomerOrder(q, custLabel !== '-' ? custLabel : '');
+                const showroomOrder = isQuoteShowroomOrderFromRouting(routing);
+                const showCustomerOrderBadge = !showroomOrder && isQuoteCustomerOrder(q, custLabel !== '-' ? custLabel : '');
                 return (
                   <tr key={q.id}>
                     <td style={tableCellStyle}>
                       <span>{q.quote_number || `Q-${String(q.id).slice(0,8)}`}</span>
+                      {showroomOrder ? (
+                        <span className="quotation-customer-order-badge" style={{ marginLeft: 8 }}>Showroom Order</span>
+                      ) : null}
                       {showCustomerOrderBadge ? (
                         <span className="quotation-customer-order-badge" style={{ marginLeft: 8 }}>Customer Order</span>
                       ) : null}
@@ -880,7 +885,7 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
                             tone: 'pdf',
                             onClick: () => handleDownloadPdf(q),
                           },
-                          canSendOrder ? {
+                          canSendOrder && !showroomOrder ? {
                             key: 'send',
                             label: isSending ? 'Sending…' : (alreadySent ? 'Send Order (Resend)' : 'Send Order'),
                             disabled: Boolean(sendBusyId),

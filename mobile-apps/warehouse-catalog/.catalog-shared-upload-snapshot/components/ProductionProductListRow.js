@@ -47,6 +47,7 @@ export const productionProductRowStyles = StyleSheet.create({
   body: { flex: 1, minWidth: 0, gap: 2 },
   name: { fontSize: 17, fontWeight: '800', color: theme.text, lineHeight: 22 },
   sku: { fontSize: 13, fontWeight: '600', color: theme.textMuted },
+  dimensions: { fontSize: 13, fontWeight: '500', color: theme.textMuted, marginTop: 2 },
   subtitle: { fontSize: 14, fontWeight: '700', color: theme.primary, marginTop: 4 },
   spinner: { position: 'absolute', right: 36 },
 });
@@ -56,6 +57,7 @@ export default function ProductionProductListRow({
   imageUrl,
   name,
   sku = '',
+  dimensions = '',
   subtitle = '',
   busy = false,
   showChevron = true,
@@ -91,6 +93,9 @@ export default function ProductionProductListRow({
         <Text style={productionProductRowStyles.name} numberOfLines={2}>{name || '—'}</Text>
         {String(sku || '').trim() ? (
           <Text style={productionProductRowStyles.sku} numberOfLines={1}>{sku}</Text>
+        ) : null}
+        {String(dimensions || '').trim() ? (
+          <Text style={productionProductRowStyles.dimensions} numberOfLines={1}>{dimensions}</Text>
         ) : null}
         {subtitle ? (
           <Text style={productionProductRowStyles.subtitle}>{subtitle}</Text>

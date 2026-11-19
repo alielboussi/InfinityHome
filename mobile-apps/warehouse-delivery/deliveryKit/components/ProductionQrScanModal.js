@@ -33,7 +33,6 @@ export default function ProductionQrScanModal({
   locale,
   onClose,
   onScan,
-  title,
 }) {
   const [permission, setPermission] = useState(null);
   const [permissionBusy, setPermissionBusy] = useState(false);
@@ -74,7 +73,7 @@ export default function ProductionQrScanModal({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.wrap}>
         <View style={styles.header}>
-          <Text style={styles.title}>{title || tUi('stockQrTitle', locale)}</Text>
+          <Text style={styles.title}>{tUi('stockQrTitle', locale)}</Text>
           <Pressable style={styles.closeBtn} onPress={onClose} accessibilityLabel={tUi('closeQrScanner', locale)}>
             <Text style={styles.closeText}>✕</Text>
           </Pressable>

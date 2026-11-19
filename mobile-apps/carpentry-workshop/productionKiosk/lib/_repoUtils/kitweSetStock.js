@@ -8,6 +8,7 @@ import { isWarehouseProductAssembly } from './warehouseCatalogHierarchy.js';
 import { isWarehouseSetAssembly, assemblableSetUnits } from './warehouseSetMath.js';
 import { expandWarehouseSetItemsRows } from './warehouseSetItems.js';
 
+/** Kitwe location recipe exists for this set assembly id. */
 export function assemblyHasKitweSetRecipe(assemblyId, setItems) {
   const id = String(assemblyId || '').trim();
   if (!id) return false;
@@ -59,6 +60,10 @@ export function buildKitweCatalogSetComponentIds(setItems, assemblies) {
   return ids;
 }
 
+/**
+ * Any warehouse set on Kitwe with a portal flag and/or Kitwe recipe (not factory-only mirror).
+ * KITWE_PRODUCTS_SET_DISPLAY_LOCKED
+ */
 export function isKitweCatalogSetAssembly(assembly, setItems) {
   if (!assembly?.id || !isWarehouseSetAssembly(assembly)) return false;
   if (isKitwePortalCreatedSet(assembly)) return true;

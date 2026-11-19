@@ -458,6 +458,15 @@ export async function saveProductionJobMaterials(sb, {
       floor2LocationId = floor2Loc?.id ? String(floor2Loc.id) : '';
     }
   }
+  let paintingFloor2BlockId = '';
+  if (kind === 'painting') {
+    const { data: locRows, error: locErr } = await sb.from('locations').select('id, name');
+    if (!locErr) {
+      const { resolveWarehouseFloor2Location } = await import('../../src/constants/warehouseFloorLocations.js');
+      const floor2Loc = resolveWarehouseFloor2Location(locRows || []);
+      paintingFloor2BlockId = floor2Loc?.id ? String(floor2Loc.id) : '';
+    }
+  }
   const storeroomLocs = await resolveCarpentryStoreroomLocations(sb);
   if (!storeroomLocs.length) {
     throw new Error('Storerooms not configured — run seedCarpentryWarehouseLocations.js');
@@ -514,6 +523,9 @@ export async function saveProductionJobMaterials(sb, {
       lineMeta?.warehouse_location_id || storeroomLocFromLineKey(key) || '',
     ).trim() || null;
     if (delta > 0) {
+      if (kind === 'painting' && paintingFloor2BlockId && lineLoc === paintingFloor2BlockId) {
+        throw new Error('Painting jobs can only deduct materials from carpentry storerooms, not Warehouse Floor 2.');
+      }
       const isFloor2Line = floor2LocationId && lineLoc === floor2LocationId;
       if (isFloor2Line) {
         const have = await loadAssemblyInventoryQty(sb, aid, floor2LocationId);

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,11 +9,19 @@ import {
   View,
 } from 'react-native';
 import OrdersScreenShell from '../components/OrdersScreenShell';
-import TrackingJobCard, { TRACKING_DEPARTMENTS } from '../components/TrackingJobCard';
+import TrackingJobCard from '../components/TrackingJobCard';
+import ProductionTrackingFilterModal, {
+  ProductionTrackingFilterButton,
+} from '../components/ProductionTrackingFilterModal';
 import { kiosk } from '../components/kioskStyles';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { tUi } from '../lib/productionKioskI18n';
 import { theme } from '../shared/theme';
+import {
+  applyProductionTrackingFilters,
+  isProductionTrackingFilterActive,
+  partitionProductionTrackingJobs,
+} from '../shared/productionTrackingListUi';
 import { fetchOrdersTracking } from '../services/ordersApi';
 
 export default function TrackingScreen({ navigation, allowed, accessHint, onRefreshAccess }) {
@@ -24,6 +31,9 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('all');
+  const [trackKind, setTrackKind] = useState('all');
+  const [progress, setProgress] = useState('all');
+  const [filterOpen, setFilterOpen] = useState(false);
   const warmedRef = useRef(false);
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -32,7 +42,10 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
     if (!quiet) setLoading(true);
     if (!quiet) setError('');
     try {
-      const res = await fetchOrdersTracking({ department: department === 'all' ? undefined : department });
+      const res = await fetchOrdersTracking({
+        department: department === 'all' ? undefined : department,
+        track_kind: trackKind === 'all' ? undefined : trackKind,
+      });
       setRows(Array.isArray(res.jobs) ? res.jobs : []);
       warmedRef.current = true;
     } catch (err) {
@@ -43,30 +56,38 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [allowed, locale, department]);
+  }, [allowed, locale, department, trackKind]);
 
   useFocusEffect(useCallback(() => { void load({ silent: warmedRef.current }); }, [load]));
 
   useEffect(() => {
     if (warmedRef.current) void load({ silent: false });
-  }, [department]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [department, trackKind]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => [
-      row.product_name,
-      row.product_sku,
-      row.department,
-      row.department_label,
-      row.flow_status,
-      row.assembly_id,
-    ].join(' ').toLowerCase().includes(q));
-  }, [rows, search]);
+  const filtered = useMemo(() => applyProductionTrackingFilters(rows, {
+    search,
+    department,
+    trackKind,
+    progress,
+  }), [rows, search, department, trackKind, progress]);
+
+  const { inProgress, completed } = useMemo(
+    () => partitionProductionTrackingJobs(filtered),
+    [filtered],
+  );
+
+  const filterActive = isProductionTrackingFilterActive({ department, trackKind, progress });
+  const showProgressSections = progress === 'all' && inProgress.length > 0 && completed.length > 0;
+
+  const clearFilters = () => {
+    setDepartment('all');
+    setTrackKind('all');
+    setProgress('all');
+  };
 
   return (
     <OrdersScreenShell
-      title={tUi('tileTracking', locale)}
+      title={tUi('tileProductionTracking', locale)}
       locale={locale}
       onToggleLocale={toggleLocale}
       navigation={navigation}
@@ -74,52 +95,84 @@ export default function TrackingScreen({ navigation, allowed, accessHint, onRefr
       accessHint={accessHint}
       onRefreshAccess={onRefreshAccess}
     >
-      <Text style={kiosk.hint}>
-        Factory jobs across upholstery, carpentry, and painting — product, qty, workshop stage, and live elapsed time.
-      </Text>
-      <View style={styles.filterRow}>
-        {TRACKING_DEPARTMENTS.map((dept) => {
-          const active = department === dept.id;
-          return (
-            <Pressable
-              key={dept.id}
-              onPress={() => setDepartment(dept.id)}
-              style={[styles.filterChip, active && styles.filterChipActive]}
-            >
-              <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{dept.label}</Text>
-            </Pressable>
-          );
-        })}
+      <Text style={kiosk.hint}>{tUi('productionTrackingIntro', locale)}</Text>
+      <View style={styles.toolbar}>
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search product, SKU, status…"
+          placeholderTextColor={theme.textDim}
+          style={[kiosk.input, styles.search]}
+        />
+        <ProductionTrackingFilterButton
+          active={filterActive}
+          locale={locale}
+          tUi={tUi}
+          onPress={() => setFilterOpen(true)}
+        />
       </View>
-      <TextInput
-        value={search}
-        onChangeText={setSearch}
-        placeholder="Search product, SKU, status…"
-        placeholderTextColor={theme.textDim}
-        style={[kiosk.input, { marginBottom: 10 }]}
-      />
       {error ? <Text style={kiosk.noticeErr}>{error}</Text> : null}
       {loading && !rows.length ? <ActivityIndicator color={theme.primary} /> : (
         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-          {filtered.map((row) => (
-            <TrackingJobCard key={`${row.department}:${row.id}`} row={row} />
+          {showProgressSections ? (
+            <Text style={styles.sectionHeading}>{tUi('trackingSectionInProgress', locale)}</Text>
+          ) : null}
+          {inProgress.map((row) => (
+            <TrackingJobCard
+              key={`${row.department}:${row.id}`}
+              row={row}
+              locale={locale}
+              tUi={tUi}
+              textAlign={textAlign}
+            />
+          ))}
+          {showProgressSections ? (
+            <Text style={styles.sectionHeading}>{tUi('trackingSectionCompleted', locale)}</Text>
+          ) : null}
+          {completed.map((row) => (
+            <TrackingJobCard
+              key={`${row.department}:${row.id}`}
+              row={row}
+              locale={locale}
+              tUi={tUi}
+              textAlign={textAlign}
+            />
           ))}
           {!filtered.length ? <Text style={kiosk.hint}>{tUi('empty', locale)}</Text> : null}
         </ScrollView>
       )}
+      <ProductionTrackingFilterModal
+        visible={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        locale={locale}
+        tUi={tUi}
+        department={department}
+        trackKind={trackKind}
+        progress={progress}
+        onDepartmentChange={setDepartment}
+        onTrackKindChange={setTrackKind}
+        onProgressChange={setProgress}
+        onClear={clearFilters}
+      />
     </OrdersScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#1e293b',
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
   },
-  filterChipActive: { backgroundColor: theme.primary },
-  filterChipText: { color: '#94a3b8', fontSize: 13, fontWeight: '600' },
-  filterChipTextActive: { color: '#fff' },
+  search: { flex: 1, marginBottom: 0 },
+  sectionHeading: {
+    marginTop: 8,
+    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: '800',
+    color: theme.textDim,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 });

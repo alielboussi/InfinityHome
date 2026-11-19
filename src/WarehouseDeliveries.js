@@ -25,6 +25,7 @@ import {
   warehousePacketDisplayLabel,
   warehouseDeliveryReceiverLineKind,
   isDeliveryCustomerOrderSession,
+  isDeliveryShowroomOrderSession,
 } from './utils/warehouseDelivery';
 import { buildKitweDeliveryWhatsAppText } from './utils/kitweDeliveryWhatsAppAdmin';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
@@ -756,7 +757,8 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
                 ? '#f59e0b'
                 : '#fbbf24';
             const routeLabel = warehouseDeliverySessionRouteLabel(session, { fromName, toName });
-            const customerOrder = isDeliveryCustomerOrderSession(session);
+            const showroomOrder = isDeliveryShowroomOrderSession(session);
+            const customerOrder = !showroomOrder && isDeliveryCustomerOrderSession(session);
             const orderQuote = String(session?.metadata?.quote_number || '').trim();
             return (
               <button
@@ -781,6 +783,9 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
                     {customerOrder && orderQuote ? orderQuote : (session.delivery_number || session.id)}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {showroomOrder ? (
+                      <span className="warehouse-send-customer-badge">Showroom Order</span>
+                    ) : null}
                     {customerOrder ? (
                       <span className="warehouse-send-customer-badge">Customer Order</span>
                     ) : null}

@@ -8,6 +8,7 @@ import { kioskFooterBottomPad, kioskScreenEdgesSafe, KIOSK_SCROLL_EXTRA_BOTTOM }
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import { DeliveryDestinationBadges } from '../shared/quoteProductionOrderUi';
 
 function openStagedDelivery(navigation, row) {
   const qty = Math.max(1, Number(row.quantity) || 1);
@@ -106,6 +107,7 @@ export default function DeliveryRepairQueueScreen({ navigation }) {
             const customerPhone = String(item.customer_phone || '').trim();
             return (
             <View style={kiosk.card}>
+              <DeliveryDestinationBadges row={item} textAlign={textAlign} tUi={tUi} locale={locale} />
               <Text style={[styles.kindChip, { textAlign }]}>{tUi('deliveryRepairKindLabel', locale)}</Text>
               <Text style={kiosk.heroNumber}>{textForDisplay(item.return_number || '—', '—')}</Text>
               <Text style={[kiosk.metaLine, { textAlign }]}>

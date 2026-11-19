@@ -30,7 +30,11 @@ import {
 import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsModal';
 import ConfirmTypeOkModal from '../shared/components/ConfirmTypeOkModal';
 import { theme } from '../shared/theme';
-import { useProductionQuoteArabicMap } from '../shared/quoteProductionOrderUi';
+import {
+  QuoteProductionOrderBadges,
+  productionQuoteDetailCustomerLabel,
+  useProductionQuoteArabicMap,
+} from '../shared/quoteProductionOrderUi';
 import {
   QuoteProductionDispositionModal,
   QuoteProductionWorkshopLineRows,
@@ -126,7 +130,13 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     fetchProductionQuoteArabicTranslations,
     arabicExtraPhrases,
   );
-  const customerName = displayQuoteFieldValue(locale, quote.customer_name, arabicMap) || '—';
+  const customerName = productionQuoteDetailCustomerLabel(
+    quote,
+    tUi,
+    locale,
+    arabicMap,
+    displayQuoteFieldValue,
+  );
 
   const onAccept = async () => {
     const snapshot = quote;
@@ -269,6 +279,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
       ) : null}
       <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
+      <QuoteProductionOrderBadges quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
       <Text style={[styles.name, { textAlign }]}>{customerName}</Text>
       <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
       <View style={styles.timerBox}>

@@ -146,8 +146,17 @@ export async function toggleUpholsteryProductionJobUnit(jobId, unitIndex) {
   return payload?.job || payload;
 }
 
-export async function finishUpholsteryProductionJob(jobId) {
-  return productionOp('upholstery-job-finish', { job_id: jobId });
+export async function setUpholsteryProductionJobUnitsCompleted(jobId, completedCount) {
+  const payload = await productionOp('upholstery-job-check-unit', {
+    job_id: jobId,
+    completed_count: Math.floor(Number(completedCount) || 0),
+  });
+  return payload?.job || payload;
+}
+
+export async function finishUpholsteryProductionJob(jobId, { destination = 'delivery' } = {}) {
+  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
+  return productionOp('upholstery-job-finish', { job_id: jobId, destination: dest });
 }
 
 /** Lightweight preset refresh — same data as portal /warehouse-production-presets. */
@@ -572,10 +581,12 @@ export async function acceptUpholsteryQuote(quoteId) {
   });
 }
 
-export async function completeUpholsteryQuote(quoteId) {
+export async function completeUpholsteryQuote(quoteId, { destination = 'delivery' } = {}) {
+  const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
   return productionOp('production-quote-complete', {
     route: UPHOLSTERY_ROUTE,
     quote_id: quoteId,
+    destination: dest,
   });
 }
 
@@ -593,6 +604,25 @@ export async function resumeUpholsteryQuote(quoteId) {
   });
 }
 
+export async function markUpholsteryQuoteLineReady(quoteId, itemId, readyQty) {
+  return productionOp('production-quote-line-ready', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+    item_id: itemId,
+    ready_qty: readyQty,
+  });
+}
+
+export async function handoffUpholsteryQuoteLine(quoteId, itemId, handoff, qty) {
+  return productionOp('production-quote-line-handoff', {
+    route: UPHOLSTERY_ROUTE,
+    quote_id: quoteId,
+    item_id: itemId,
+    handoff,
+    qty,
+  });
+}
+
 export async function scanUpholsteryQuoteMaterial(quoteId, scan, quantity = 1) {
   return productionOp('production-quote-material-scan', {
     route: UPHOLSTERY_ROUTE,
@@ -602,22 +632,28 @@ export async function scanUpholsteryQuoteMaterial(quoteId, scan, quantity = 1) {
   });
 }
 
-let floor2ListCache = { at: 0, rows: [] };
+let floor2ListCache = { at: 0, rows: [], floor2LocationId: '' };
 const FLOOR2_LIST_TTL_MS = 90_000;
 
-export async function fetchProductionFloor2Products({ forceRefresh = false } = {}) {
+export async function fetchProductionFloor2CatalogMeta({ forceRefresh = false } = {}) {
   const now = Date.now();
   if (
     !forceRefresh
     && floor2ListCache.rows.length
     && now - floor2ListCache.at < FLOOR2_LIST_TTL_MS
   ) {
-    return floor2ListCache.rows;
+    return { products: floor2ListCache.rows, floor2LocationId: floor2ListCache.floor2LocationId };
   }
   const payload = await productionOp('production-floor2-list', {});
   const rows = payload?.products || [];
-  floor2ListCache = { at: now, rows };
-  return rows;
+  const floor2LocationId = String(payload?.floor2_location_id || '').trim();
+  floor2ListCache = { at: now, rows, floor2LocationId };
+  return { products: rows, floor2LocationId };
+}
+
+export async function fetchProductionFloor2Products({ forceRefresh = false } = {}) {
+  const { products } = await fetchProductionFloor2CatalogMeta({ forceRefresh });
+  return products;
 }
 
 export async function pushProductionFloor2Manufacture({

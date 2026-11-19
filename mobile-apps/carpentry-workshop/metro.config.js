@@ -54,6 +54,7 @@ applySingletonPackageMetro(config);
 config.resolver.nodeModulesPaths = [appNodeModules];
 
 const expoCryptoSafeShim = path.join(projectRoot, 'shared', 'expoCryptoSafeShim.js');
+const expoApplicationSafeShim = path.join(projectRoot, 'shared', 'expoApplicationSafeShim.js');
 const priorResolve = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
@@ -62,6 +63,12 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 
   if (moduleName === 'expo-crypto' && fs.existsSync(expoCryptoSafeShim)) {
     return finishResolve({ type: 'sourceFile', filePath: expoCryptoSafeShim });
+  }
+  if (
+    (moduleName === 'expo-application' || String(moduleName).startsWith('expo-application/'))
+    && fs.existsSync(expoApplicationSafeShim)
+  ) {
+    return finishResolve({ type: 'sourceFile', filePath: expoApplicationSafeShim });
   }
 
   const isBare = !moduleName.startsWith('.') && !moduleName.startsWith('\0');

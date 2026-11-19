@@ -1,6 +1,6 @@
 import { isReclinerCatalogProduct } from './isReclinerCatalogProduct.js';
 import { resolveWarehouseCategoryName } from './warehouseCategoryLookup.js';
-import { readFloor1CatalogImageUrl } from './warehouseFloor1CatalogImage';
+import { readFloor1CatalogImageUrl } from './warehouseFloor1CatalogImage.js';
 
 const SEATER_PRODUCT_PRESETS = ['3 Seater', '2 Seater', 'Single Seater', 'Lounge Chair'];
 

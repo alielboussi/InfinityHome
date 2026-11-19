@@ -22,6 +22,9 @@ import DeliveriesScreen from './screens/DeliveriesScreen';
 import RepairsScreen from './screens/RepairsScreen';
 import StorageScreen from './screens/StorageScreen';
 import TrackingScreen from './screens/TrackingScreen';
+import ShowroomOrderCreateScreen from './screens/ShowroomOrderCreateScreen';
+import ShowroomOrdersScreen from './screens/ShowroomOrdersScreen';
+import Floor2Screen from './screens/Floor2Screen';
 
 const Stack = createNativeStackNavigator();
 
@@ -74,6 +77,9 @@ function MainStack() {
       <Stack.Screen name="Products" options={{ headerShown: false }} component={page(ProductsScreen)} />
       <Stack.Screen name="NewOrder" options={{ headerShown: false }} component={page(NewOrderScreen)} />
       <Stack.Screen name="Orders" options={{ headerShown: false }} component={page(OrdersListScreen)} />
+      <Stack.Screen name="ShowroomOrderCreate" options={{ headerShown: false }} component={page(ShowroomOrderCreateScreen)} />
+      <Stack.Screen name="ShowroomOrders" options={{ headerShown: false }} component={page(ShowroomOrdersScreen)} />
+      <Stack.Screen name="Floor2" options={{ headerShown: false }} component={page(Floor2Screen)} />
       <Stack.Screen name="OrderDetail" options={{ headerShown: false }} component={page(OrderDetailScreen)} />
       <Stack.Screen name="Deliveries" options={{ headerShown: false }} component={page(DeliveriesScreen)} />
       <Stack.Screen name="Repairs" options={{ headerShown: false }} component={page(RepairsScreen)} />

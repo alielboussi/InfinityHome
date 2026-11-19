@@ -75,6 +75,13 @@ export default async function handler(req, res) {
       return;
     }
 
+    if (op === 'create-showroom-order') {
+      const { createShowroomQuoteAndSend } = await import('../lib/showroomQuoteOrder.js');
+      const result = await createShowroomQuoteAndSend(db, body, user);
+      res.status(200).json({ ok: true, ...result });
+      return;
+    }
+
     if (op === 'deliver-factory-order' || op === 'factory-order-deliver') {
       const pdfFilename = String(body.pdfFilename || body.pdf_filename || 'Factory_Order.pdf').trim()
         || 'Factory_Order.pdf';

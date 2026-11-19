@@ -44,6 +44,9 @@ export function normalizeProductionQuoteLine(line) {
     dim_l_cm: trim(line.dim_l_cm) || trim(meta.dim_l_cm),
     dim_w_cm: trim(line.dim_w_cm) || trim(meta.dim_w_cm),
     dim_h_cm: trim(line.dim_h_cm) || trim(meta.dim_h_cm),
+    dimension_sets: Array.isArray(line.dimension_sets)
+      ? line.dimension_sets
+      : (Array.isArray(meta.dimension_sets) ? meta.dimension_sets : undefined),
     dimensions_lwh: trim(line.dimensions_lwh) || trim(meta.dimensions_lwh),
     aluminum_thickness_mm: trim(line.aluminum_thickness_mm) || trim(meta.aluminum_thickness_mm),
     accessories: line.accessories ?? meta.accessories,

@@ -16,6 +16,12 @@ import {
   View,
 } from 'react-native';
 import { theme } from './theme';
+import {
+  isProductionQuoteCustomerOrder,
+  isProductionQuoteShowroomOrder,
+  firstProductionQuoteLineImageUrl,
+  productionQuoteListTitle,
+} from './quoteShowroomOrder';
 
 function formatDimensionsCm(line, locale = 'en') {
   return formatQuoteDimensionsCmDisplay(line, locale);
@@ -44,11 +50,14 @@ export function normalizeProductionQuoteLine(line) {
     dim_l_cm: trim(line.dim_l_cm) || trim(meta.dim_l_cm),
     dim_w_cm: trim(line.dim_w_cm) || trim(meta.dim_w_cm),
     dim_h_cm: trim(line.dim_h_cm) || trim(meta.dim_h_cm),
+    dimension_sets: Array.isArray(line.dimension_sets)
+      ? line.dimension_sets
+      : (Array.isArray(meta.dimension_sets) ? meta.dimension_sets : undefined),
     dimensions_lwh: trim(line.dimensions_lwh) || trim(meta.dimensions_lwh),
     aluminum_thickness_mm: trim(line.aluminum_thickness_mm) || trim(meta.aluminum_thickness_mm),
     accessories: line.accessories ?? meta.accessories,
     description: trim(line.description) || trim(meta.description) || line.description,
-    line_image_url: trim(line.line_image_url) || trim(meta.line_image_url),
+    line_image_url: trim(line.line_image_url) || trim(meta.line_image_url) || trim(meta.floor2_image_url),
     production_completed_qty: line.production_completed_qty,
     production_remaining_qty: line.production_remaining_qty,
     ordered_qty: line.ordered_qty,
@@ -292,6 +301,48 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale, 
   });
 }
 
+export function QuoteProductionOrderBadges({ quote, textAlign, tUi, locale }) {
+  const showroom = isProductionQuoteShowroomOrder(quote);
+  const customer = isProductionQuoteCustomerOrder(quote);
+  if (!showroom && !customer) return null;
+  return (
+    <View style={[styles.badgeRow, { justifyContent: textAlign === 'right' ? 'flex-end' : 'flex-start' }]}>
+      {showroom ? (
+        <Text style={[styles.badge, styles.badgeShowroom]}>{tUi('badgeShowroomOrder', locale)}</Text>
+      ) : null}
+      {customer ? (
+        <Text style={[styles.badge, styles.badgeCustomer]}>{tUi('badgeCustomerOrder', locale)}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** Floor 2 / line reference thumb on quote list cards (showroom orders). */
+export function QuoteProductionListThumb({ quote, textAlign }) {
+  const url = firstProductionQuoteLineImageUrl(quote);
+  if (!url) return null;
+  return (
+    <Image
+      source={{ uri: url }}
+      style={[
+        styles.listThumb,
+        textAlign === 'right' ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' },
+      ]}
+      resizeMode="cover"
+    />
+  );
+}
+
+export { productionQuoteListTitle, isProductionQuoteShowroomOrder, isProductionQuoteCustomerOrder };
+
+export function productionQuoteDetailCustomerLabel(quote, tUi, locale, arabicMap, displayQuoteFieldValue) {
+  if (isProductionQuoteShowroomOrder(quote)) {
+    return tUi('showroomOrderDetailLabel', locale);
+  }
+  const name = displayQuoteFieldValue(locale, quote.customer_name, arabicMap);
+  return name || '—';
+}
+
 export function QuoteProductionDrawingSection({ drawingUrl, textAlign, tUi, locale }) {
   const [open, setOpen] = useState(false);
   const url = String(drawingUrl || '').trim();
@@ -415,4 +466,22 @@ const styles = StyleSheet.create({
   cardLineTitle: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', marginBottom: 2 },
   cardExtraText: { color: theme.textMuted, fontSize: 12, lineHeight: 17 },
   cardDrawingTag: { color: theme.primary, fontSize: 12, marginTop: 4, fontWeight: '600' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, marginBottom: 2 },
+  badge: {
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  badgeCustomer: { backgroundColor: '#dbeafe', color: '#1e40af' },
+  badgeShowroom: { backgroundColor: '#e0e7ff', color: '#3730a3' },
+  listThumb: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#e2e8f0',
+  },
 });

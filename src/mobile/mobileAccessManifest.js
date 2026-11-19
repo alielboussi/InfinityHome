@@ -468,13 +468,28 @@ export const ORDERS_APP_SCREENS = Object.freeze([
   },
   {
     id: 'orders_new_order',
-    label: 'New Order',
+    label: 'Create Factory Order',
     description: 'Create a quotation / factory order',
   },
   {
     id: 'orders_list',
-    label: 'Orders',
+    label: 'Factory Orders',
     description: 'Factory orders and quotations',
+  },
+  {
+    id: 'orders_showroom_new',
+    label: 'Create Showroom Order',
+    description: 'Create showroom order from Floor 2 WIP',
+  },
+  {
+    id: 'orders_showroom_list',
+    label: 'Showroom Orders',
+    description: 'Showroom quotes sent to workshop',
+  },
+  {
+    id: 'orders_floor2',
+    label: 'Floor 2 Products',
+    description: 'Floor 2 WIP stock (read-only)',
   },
   {
     id: 'orders_deliveries',

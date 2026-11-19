@@ -245,7 +245,10 @@ export async function fetchPaintingProductionJobs({ activeOnly = false, limit = 
   }
 }
 
-export async function fetchCarpentryFloorRuns() {
+export async function fetchCarpentryFloorRuns({ forceFresh = false } = {}) {
+  if (forceFresh) {
+    cacheClear(FLOOR_RUNS_CACHE_KEY);
+  }
   try {
     const result = await listCarpentryFloorRuns(db, { limit: 200 });
     const payload = { ok: true, ...result };

@@ -7,6 +7,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {
   ORDERS_APP_DASHBOARD_PARITY,
+  ORDERS_APP_HOME_TILES,
   buildQuotationerOnlyNavGroups,
   hassanParityWebPaths,
 } from '../src/mobile/ordersAppDashboardParity.js';
@@ -45,9 +46,31 @@ assert(
   'AppChrome must import Hassan sidebar nav from ordersAppDashboardParity',
 );
 assert(
-  dash.includes('ORDERS_APP_DASHBOARD_PARITY'),
-  'DashboardScreen must build tiles from ordersAppDashboardParity',
+  dash.includes('ORDERS_APP_HOME_TILES'),
+  'DashboardScreen must build tiles from ORDERS_APP_HOME_TILES',
 );
+assert.equal(ORDERS_APP_HOME_TILES.length, 7, 'Orders home dashboard is 7 tiles (create/list/showroom/floor2 + deliveries + tracking)');
+const homeIds = ORDERS_APP_HOME_TILES.map((t) => t.screenId).join(',');
+assert.equal(
+  homeIds,
+  'orders_new_order,orders_list,orders_showroom_new,orders_showroom_list,orders_floor2,orders_deliveries,orders_tracking',
+  'Orders home tile sequence',
+);
+assert(
+  fs.readFileSync(path.join(root, 'mobile-apps/orders/screens/TrackingScreen.js'), 'utf8').includes('ProductionTrackingFilterButton'),
+  'TrackingScreen must use funnel filter button',
+);
+assert(
+  fs.readFileSync(path.join(root, 'mobile-apps/shared/productionTrackingListUi.js'), 'utf8')
+    === fs.readFileSync(path.join(root, 'src/utils/productionTrackingListUi.js'), 'utf8'),
+  'mobile-apps/shared/productionTrackingListUi.js must match src/utils (copy after edits)',
+);
+for (const tile of ORDERS_APP_HOME_TILES) {
+  assert(
+    app.includes(`name="${tile.mobileStack}"`),
+    `orders App.js missing Stack.Screen ${tile.mobileStack} for home tile ${tile.screenId}`,
+  );
+}
 
 const parityScreenIds = ORDERS_APP_DASHBOARD_PARITY.map((r) => r.screenId);
 const manifestScreenIds = ORDERS_APP_SCREENS.map((r) => r.id);

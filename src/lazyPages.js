@@ -118,6 +118,9 @@ export const AllSales = lazyRoute(() => import('./AllSales'));
 export const Reversal = lazyRoute(() => import('./Reversal'));
 export const IncompleteMobileLocked = lazyRoute(() => import('./IncompleteMobileLocked'));
 export const QuotesBoard = lazyRoute(() => import('./QuotesBoard.js'));
+export const ShowroomOrdersBoard = lazyRoute(() => import('./ShowroomOrdersBoard.js'));
+export const ShowroomOrderCreate = lazyRoute(() => import('./ShowroomOrderCreate.js'));
+export const HassanFloor2Page = lazyRoute(() => import('./HassanFloor2Page.js'));
 export const UserActivityLog = lazyRoute(() => import('./UserActivityLog'));
 export const UserAccessManagement = lazyRoute(() => import('./UserAccessManagement'));
 /** Nav route → dynamic import (for prefetch on drawer hover). Uses each page's lazy preload for one shared chunk promise. */
@@ -158,6 +161,9 @@ export const routePreloadByPath = {
   '/layby-management': () => LaybyManagement.preload(),
   '/quotes-board': () => QuotesBoard.preload(),
   '/factory-orders': () => QuotesBoard.preload(),
+  '/showroom-orders': () => ShowroomOrdersBoard.preload(),
+  '/showroom-orders/create': () => ShowroomOrderCreate.preload(),
+  '/hassan-floor-2': () => HassanFloor2Page.preload(),
   '/ledger-mobile': () => LedgerMobile.preload(),
   '/products-list': () => ProductsListPage.preload(),
   '/stock-history': () => StockHistoryPage.preload(),

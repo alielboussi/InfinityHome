@@ -157,15 +157,23 @@ export default function FirebaseAuthGate({
             <TextInput
               style={styles.input}
               placeholder={signInEmailPlaceholder}
+              placeholderTextColor="#64748b"
               autoCapitalize="none"
               keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
               value={email}
               onChangeText={setEmail}
             />
             <TextInput
               style={styles.input}
               placeholder={signInPasswordPlaceholder}
+              placeholderTextColor="#64748b"
               secureTextEntry
+              autoCapitalize="none"
+              autoComplete="password"
+              textContentType="password"
+              importantForAutofill="yes"
               value={password}
               onChangeText={setPassword}
             />
@@ -237,6 +245,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 10,
+    color: '#0f172a',
+    fontSize: 16,
   },
   error: { color: '#b91c1c', marginBottom: 10, textAlign: 'center', alignSelf: 'stretch' },
   button: {

@@ -466,6 +466,7 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
         locale={locale}
         textAlign={textAlign}
         jobKind="painting"
+        allowFloor2WipDeduction={false}
         jobId={materialsJob?.job_id || materialsJob?.id || ''}
         initialLines={materialsJob?.manual_material_lines || []}
         onClose={() => setMaterialsJob(null)}
@@ -479,6 +480,7 @@ export default function JobsScreen({ navigation, route, allowed, accessHint, onR
         locale={locale}
         textAlign={textAlign}
         jobKind="repair"
+        allowFloor2WipDeduction={false}
         jobId={repairMaterials?.id || ''}
         returnOrderId={repairMaterials?.id || ''}
         initialLines={repairMaterials?.manual_material_lines

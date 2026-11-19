@@ -233,6 +233,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyQuoteShowroomOrder.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[quote-showroom-order:fail] verifyQuoteShowroomOrder.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseReturnRepairDepartment.js', {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),

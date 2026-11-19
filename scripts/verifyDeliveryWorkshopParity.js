@@ -51,6 +51,9 @@ assert(!orderQueue.includes('/src/utils/warehouseDeliveryPrintGroups'), 'order q
 
 assert(repairQueue.includes('delivery-production-queue-list'), 'repair queue must load API');
 assert(repairQueue.includes("queueKind: 'repair'"), 'repair deliver must tag repair queue');
+assert(orderQueue.includes('DeliveryDestinationBadges'), 'order queue must show customer/showroom badges');
+assert(repairQueue.includes('DeliveryDestinationBadges'), 'repair queue must show customer/showroom badges');
+assert(queue.includes('showroom_order'), 'delivery queue API must expose showroom_order');
 
 assert(floor1Catalog.includes('filterAssembliesForDeliveryFloor1Only'), 'Floor 1 catalog filter required');
 assert(kitweHome.includes('filterAssembliesForDeliveryFloor1Only'), 'Kitwe send must use Floor 1-only catalog');

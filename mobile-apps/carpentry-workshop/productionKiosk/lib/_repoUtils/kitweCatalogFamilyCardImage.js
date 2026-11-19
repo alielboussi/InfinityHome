@@ -1,9 +1,9 @@
-import { rewriteLegacyStorageUrl } from './storageImageUrl';
+import { rewriteLegacyStorageUrl } from './storageImageUrl.js';
 import {
   buildFloor1CatalogImageLookupBySku,
   readFloor1CatalogImageUrl,
   resolveKitweFloor1CatalogImageUrl,
-} from './warehouseFloor1CatalogImage';
+} from './warehouseFloor1CatalogImage.js';
 
 function rewriteCatalogImageUrl(url) {
   const trimmed = String(url || '').trim();
@@ -17,6 +17,9 @@ export function kitweCatalogRowImageUrl(row) {
   return readFloor1CatalogImageUrl(row);
 }
 
+/**
+ * Index Floor 1 catalog images from /carpentry and /upholstery by assembly id and family SKU.
+ */
 export function buildKitweCrossPortalImageLookup(carpentryProducts = [], upholsteryProducts = []) {
   const byId = new Map();
   const all = [...(carpentryProducts || []), ...(upholsteryProducts || [])];
@@ -34,6 +37,7 @@ export function buildKitweCrossPortalImageLookup(carpentryProducts = [], upholst
   return { byId, bySku };
 }
 
+/** Cover for one catalog product card — Floor 1 catalog only; SKU fallback when linked rows share SKU. */
 export function pickKitweCatalogProductImageUrl(row, lookup = null) {
   const fromRow = kitweCatalogRowImageUrl(row);
   if (fromRow) return rewriteCatalogImageUrl(fromRow);
@@ -49,6 +53,7 @@ export function pickKitweCatalogProductImageUrl(row, lookup = null) {
   return '';
 }
 
+/** Grid helper (one product per card). */
 export function pickKitweCatalogFamilyImageUrl(items, lookup = null) {
   const row = (items || [])[0];
   return pickKitweCatalogProductImageUrl(row, lookup);

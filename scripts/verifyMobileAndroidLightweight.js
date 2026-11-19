@@ -16,6 +16,13 @@ const apps = [
   'orders',
 ];
 
+const EXPO_APPLICATION_METRO_APPS = new Set([
+  'warehouse-upholstery',
+  'warehouse-delivery',
+  'carpentry-workshop',
+  'painting-workshop',
+]);
+
 let failed = false;
 
 const sharedHelper = path.join(root, 'mobile-apps', 'shared', 'expoAndroidLightweight.js');
@@ -68,6 +75,21 @@ for (const slug of apps) {
     if (!appJsBody.includes('lightweightRuntime')) {
       console.error(`[${slug}] App.js should import ./shared/lightweightRuntime.js`);
       failed = true;
+    }
+  }
+
+  if (EXPO_APPLICATION_METRO_APPS.has(slug)) {
+    const metroPath = path.join(appRoot, 'metro.config.js');
+    const shimPath = path.join(appRoot, 'shared', 'expoApplicationSafeShim.js');
+    if (!fs.existsSync(shimPath)) {
+      console.error(`[${slug}] missing shared/expoApplicationSafeShim.js`);
+      failed = true;
+    } else if (fs.existsSync(metroPath)) {
+      const metro = fs.readFileSync(metroPath, 'utf8');
+      if (!metro.includes('expoApplicationSafeShim') || !metro.includes('expo-application')) {
+        console.error(`[${slug}] metro.config.js must alias expo-application to expoApplicationSafeShim`);
+        failed = true;
+      }
     }
   }
 }

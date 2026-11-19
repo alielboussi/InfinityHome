@@ -4,11 +4,12 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProductionKioskTopBar from '../components/ProductionKioskTopBar';
 import { kiosk } from '../components/kioskStyles';
-import { kioskFooterBottomPad, kioskScreenEdgesSafe, KIOSK_SCROLL_EXTRA_BOTTOM } from '../lib/kioskLayout';
+import { kioskScreenEdgesSafe } from '../lib/kioskLayout';
 import { tUi, textForDisplay } from '../lib/productionKioskI18n';
 import { useProductionKioskLocale } from '../hooks/useProductionKioskLocale';
 import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
 import { printGroupsFromQuoteLines } from '../lib/warehouseOrderPrintGroups.js';
+import { DeliveryDestinationBadges } from '../shared/quoteProductionOrderUi';
 
 async function openStagedDelivery(navigation, row) {
   const session = await warehouseMobileRequest('delivery-session-open', {});
@@ -100,14 +101,11 @@ export default function DeliveryOrderQueueScreen({ navigation }) {
         <FlatList
           data={rows}
           keyExtractor={rowKey}
-          style={{ flex: 1 }}
-          contentContainerStyle={[
-            styles.list,
-            { paddingBottom: kioskFooterBottomPad(insets) + KIOSK_SCROLL_EXTRA_BOTTOM },
-          ]}
+          contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={[kiosk.hint, { textAlign }]}>{tUi('deliveryOrderQueueEmpty', locale)}</Text>}
           renderItem={({ item }) => (
             <View style={kiosk.card}>
+              <DeliveryDestinationBadges row={item} textAlign={textAlign} tUi={tUi} locale={locale} />
               <Text style={[styles.awaitingChip, { textAlign }]}>{tUi('deliveryStatus_completedAwaiting', locale)}</Text>
               {Array.isArray(item.lines) && item.lines.length ? (
                 item.lines.map((line, idx) => (

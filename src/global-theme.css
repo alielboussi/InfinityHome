@@ -180,6 +180,39 @@
   min-width: 160px;
   max-width: 220px;
 }
+.production-tracking-funnel {
+  display: inline-flex;
+  align-items: center;
+}
+.production-tracking-funnel__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--dash-border, #cbd5e1);
+  background: var(--dash-surface-2, #f1f5f9);
+  color: #64748b;
+  cursor: pointer;
+}
+.production-tracking-funnel__btn--active {
+  border-color: #0369a1;
+  color: #0369a1;
+  background: #e0f2fe;
+}
+.production-tracking-funnel__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  min-width: 260px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--dash-border, #cbd5e1);
+  background: var(--dash-surface, #fff);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
 .warehouse-assembly-card-list {
   display: flex;
   flex-direction: column;

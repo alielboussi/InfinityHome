@@ -36,6 +36,8 @@ import {
   warehouseLocationIdFromStoredRow,
   mergeCatalogByFamilySku,
   mergeFloor2WipIntoMaterialCatalog,
+  catalogForStoreroomDeductionOnly,
+  filterStoreroomPickerOptions,
   parseStoreroomsFromMaterialsApi,
   storeroomDeductionStrings,
   storeroomsForCatalogMaterial,
@@ -83,6 +85,8 @@ export default function ProductionJobMaterialsModal({
   productionRoute = '',
   initialLines = [],
   onSaved,
+  /** When false (painting workshop), never merge Floor 2 WIP or deduct from Floor 2. */
+  allowFloor2WipDeduction = true,
 }) {
   const { locale: localeHook, textAlign: textAlignHook, toggleLocale } = useProductionKioskLocale();
   const locale = localeProp || localeHook;
@@ -120,7 +124,9 @@ export default function ProductionJobMaterialsModal({
     setError('');
   }, [visible, initialLines]);
 
-  const isHassanQuoteMaterials = jobKind === 'quote'
+  const storeroomDeductionOnly = jobKind === 'painting' || !allowFloor2WipDeduction;
+  const isHassanQuoteMaterials = !storeroomDeductionOnly
+    && jobKind === 'quote'
     && ['carpentry', 'upholstery'].includes(String(productionRoute || '').toLowerCase());
 
   const loadCatalog = useCallback(async () => {
@@ -141,19 +147,22 @@ export default function ProductionJobMaterialsModal({
           /* Floor 2 catalog optional */
         }
       }
-      const list = enrichCatalogMaterialUom(
+      let list = enrichCatalogMaterialUom(
         filterInStockCatalogMaterials(merged),
         uomMap,
       );
+      if (storeroomDeductionOnly) {
+        list = catalogForStoreroomDeductionOnly(list);
+      }
       setCatalog(list);
       const storeroomPayload = Array.isArray(payload) ? { materials: list } : { ...payload, materials: list };
-      setStorerooms(parseStoreroomsFromMaterialsApi(storeroomPayload));
+      setStorerooms(filterStoreroomPickerOptions(parseStoreroomsFromMaterialsApi(storeroomPayload)));
     } catch (e) {
       setError(e?.message || tUi('materialsLoadFailed', locale));
     } finally {
       setLoading(false);
     }
-  }, [isHassanQuoteMaterials, locale]);
+  }, [isHassanQuoteMaterials, locale, storeroomDeductionOnly]);
 
   useEffect(() => {
     if (visible) loadCatalog();
@@ -166,18 +175,17 @@ export default function ProductionJobMaterialsModal({
   }, [catalog]);
 
   const promptStorerooms = useMemo(() => {
+    let picks = storerooms;
     if (pendingAddRow) {
-      return storeroomsForCatalogMaterial(pendingAddRow, storerooms);
-    }
-    if (pendingStoreroomLineChange) {
+      picks = storeroomsForCatalogMaterial(pendingAddRow, storerooms);
+    } else if (pendingStoreroomLineChange) {
       const stock = catalogById.get(materialKey(pendingStoreroomLineChange));
-      return stock ? storeroomsForCatalogMaterial(stock, storerooms) : storerooms;
+      picks = stock ? storeroomsForCatalogMaterial(stock, storerooms) : storerooms;
+    } else if (pendingSavePayload?.length) {
+      picks = storeroomsForJobMaterialDeduction(pendingSavePayload, catalog, storerooms);
     }
-    if (pendingSavePayload?.length) {
-      return storeroomsForJobMaterialDeduction(pendingSavePayload, catalog, storerooms);
-    }
-    return storerooms;
-  }, [pendingAddRow, pendingSavePayload, pendingStoreroomLineChange, catalog, catalogById, storerooms]);
+    return storeroomDeductionOnly ? filterStoreroomPickerOptions(picks) : picks;
+  }, [pendingAddRow, pendingSavePayload, pendingStoreroomLineChange, catalog, catalogById, storerooms, storeroomDeductionOnly]);
 
   const storeroomLabelForId = (id) => {
     const row = (storerooms || []).find((s) => String(s.id) === String(id));

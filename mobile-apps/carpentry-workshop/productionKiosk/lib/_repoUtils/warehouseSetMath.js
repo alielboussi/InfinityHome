@@ -80,12 +80,18 @@ export function computeWarehouseComponentLeftoverQty(onHand, unitsReserved) {
   return Math.max(0, hand - reserved);
 }
 
-/** Per finished product: on-hand minus units allocated to buildable sets at Warehouse. */
-export function buildWarehouseAssemblyLeftoverQtyMap(assemblyWarehouseQty, setItems, assemblies) {
+/** Per finished product: on-hand minus units allocated to buildable sets at a location. */
+export function buildWarehouseAssemblyLeftoverQtyMap(
+  assemblyWarehouseQty,
+  setItems,
+  assemblies,
+  { locationId = WAREHOUSE_FACTORY_LOCATION_ID } = {},
+) {
   const qtyMap = assemblyWarehouseQty || {};
   const reserved = computeSetComponentUnitsReserved(
     setItems,
     (setId) => qtyMap[String(setId)] ?? 0,
+    { locationId },
   );
   const out = {};
   (assemblies || []).forEach((assembly) => {
