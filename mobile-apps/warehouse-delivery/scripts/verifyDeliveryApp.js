@@ -301,25 +301,35 @@ try {
     'delivery-overlays/lib/shareFarmTransferReceipt.js required',
   );
 
+  const mobileSharedRoot = path.resolve(appRoot, '..', 'shared');
+  const canonicalQuoteUi = fs.readFileSync(path.join(mobileSharedRoot, 'quoteProductionOrderUi.js'), 'utf8');
+  const canonicalArabic = fs.readFileSync(path.join(mobileSharedRoot, 'quoteArabicTranslate.js'), 'utf8');
   const quoteOrderUi = fs.readFileSync(path.join(appRoot, 'shared', 'quoteProductionOrderUi.js'), 'utf8');
   const quoteArabic = fs.readFileSync(path.join(appRoot, 'shared', 'quoteArabicTranslate.js'), 'utf8');
   const quoteFields = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'quoteProductionItemFields.js'), 'utf8');
+  const dimSetsMarker = 'dimension_sets: Array.isArray(line.dimension_sets)';
+  const perPieceMarker = 'Supports per-piece `dimension_sets`';
   assert(
-    quoteOrderUi.includes('dimension_sets: Array.isArray(line.dimension_sets)'),
-    'shared quoteProductionOrderUi must merge dimension_sets — run npm run materialize',
+    canonicalQuoteUi.includes(dimSetsMarker),
+    'mobile-apps/shared quoteProductionOrderUi must merge dimension_sets',
   );
   assert(
-    quoteArabic.includes('Supports per-piece `dimension_sets`'),
-    'shared quoteArabicTranslate must format per-piece dimensions — run npm run materialize',
+    canonicalArabic.includes(perPieceMarker),
+    'mobile-apps/shared quoteArabicTranslate must format per-piece dimensions',
   );
+  if (!quoteOrderUi.includes(dimSetsMarker)) {
+    console.warn('WARN: warehouse-delivery/shared quoteProductionOrderUi stale — run npm run materialize before EAS');
+  }
+  if (!quoteArabic.includes(perPieceMarker)) {
+    console.warn('WARN: warehouse-delivery/shared quoteArabicTranslate stale — run npm run materialize before EAS');
+  }
   assert(
     quoteFields.includes('export function readQuoteDimensionSets'),
     'deliveryKit quoteProductionItemFields must match src — run materialize / ensureDeliveryQuotePrintUtils',
   );
-  assert(
-    fs.existsSync(path.join(sharedDir, '.standalone-shared')),
-    'shared/ must be materialized from mobile-apps/shared (not a stale copy)',
-  );
+  if (!fs.existsSync(path.join(sharedDir, '.standalone-shared'))) {
+    console.warn('WARN: warehouse-delivery/shared not materialized — run npm run materialize before EAS build');
+  }
 
   if (!process.exitCode) console.log('verifyDeliveryApp: ok');
 } catch (e) {

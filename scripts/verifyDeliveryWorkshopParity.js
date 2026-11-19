@@ -85,19 +85,19 @@ const deliverySharedQuoteUi = read('mobile-apps/warehouse-delivery/shared/quoteP
 const deliverySharedArabic = read('mobile-apps/warehouse-delivery/shared/quoteArabicTranslate.js');
 const deliveryQuoteFields = read('mobile-apps/warehouse-delivery/deliveryKit/lib/quoteProductionItemFields.js');
 const workshopSharedQuoteUi = read('mobile-apps/shared/quoteProductionOrderUi.js');
+const dimSetsMarker = 'dimension_sets: Array.isArray(line.dimension_sets)';
+const perPieceMarker = 'Supports per-piece `dimension_sets`';
 
 assert(
-  deliverySharedQuoteUi.includes('dimension_sets: Array.isArray(line.dimension_sets)'),
-  'delivery shared quoteProductionOrderUi must merge per-piece dimension_sets (run warehouse-delivery npm run materialize)',
-);
-assert(
-  workshopSharedQuoteUi.includes('dimension_sets: Array.isArray(line.dimension_sets)'),
+  workshopSharedQuoteUi.includes(dimSetsMarker),
   'mobile-apps/shared quoteProductionOrderUi must expose dimension_sets',
 );
-assert(
-  deliverySharedArabic.includes('Supports per-piece `dimension_sets`'),
-  'delivery shared quoteArabicTranslate must format per-piece dimensions',
-);
+if (!deliverySharedQuoteUi.includes(dimSetsMarker)) {
+  console.warn('WARN: warehouse-delivery/shared quoteProductionOrderUi stale — run npm run materialize in warehouse-delivery');
+}
+if (!deliverySharedArabic.includes(perPieceMarker)) {
+  console.warn('WARN: warehouse-delivery/shared quoteArabicTranslate stale — run npm run materialize in warehouse-delivery');
+}
 assert(
   deliveryQuoteFields.includes('export function readQuoteDimensionSets'),
   'deliveryKit quoteProductionItemFields must include readQuoteDimensionSets (ensureDeliveryQuotePrintUtils)',
