@@ -322,13 +322,13 @@ export function translateSlashDimensionDescriptionToArabic(text, serverMap = {})
   const s = normalizeQuoteEnglishPhrase(String(text ?? '').trim());
   if (!s) return '';
   const triple = s.match(
-    /\blength\s*(\d+)\s*cm?\s*[\/\s,]+\s*height\s*(\d+)\s*cm?\s*[\/\s,]+\s*depth\s*(\d+)\s*cm?/i,
+    /\blength\s*(\d+)\s*cm?\s*[/\s,]+\s*height\s*(\d+)\s*cm?\s*[/\s,]+\s*depth\s*(\d+)\s*cm?/i,
   );
   if (triple) {
     return `الطول ${toArabicIndicDigits(triple[1])} سم / الارتفاع ${toArabicIndicDigits(triple[2])} سم / العمق ${toArabicIndicDigits(triple[3])} سم`;
   }
   const lwh = s.match(
-    /\blength\s*(\d+)\s*cm?\s*[\/\s,]+\s*height\s*(\d+)\s*cm?\s*[\/\s,]+\s*width\s*(\d+)\s*cm?/i,
+    /\blength\s*(\d+)\s*cm?\s*[/\s,]+\s*height\s*(\d+)\s*cm?\s*[/\s,]+\s*width\s*(\d+)\s*cm?/i,
   );
   if (lwh) {
     return `الطول ${toArabicIndicDigits(lwh[1])} سم / الارتفاع ${toArabicIndicDigits(lwh[2])} سم / العرض ${toArabicIndicDigits(lwh[3])} سم`;
