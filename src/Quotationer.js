@@ -29,6 +29,7 @@ import {
   uploadQuoteLineReferenceImageViaApi,
 } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
+import { isQuoteCustomerOrder } from './utils/quoteCustomerOrder';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
@@ -851,10 +852,17 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
                 const isSending = sendBusyId === String(q.id);
                 const routing = routingsMap[String(q.id)];
                 const alreadySent = Boolean(routing?.sent_to_production_at);
+                const custLabel = customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-');
+                const showCustomerOrderBadge = isQuoteCustomerOrder(q, custLabel !== '-' ? custLabel : '');
                 return (
                   <tr key={q.id}>
-                    <td style={tableCellStyle}>{q.quote_number || `Q-${String(q.id).slice(0,8)}`}</td>
-                    <td style={{ ...tableCellStyle, minWidth: 220 }}>{customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-')}</td>
+                    <td style={tableCellStyle}>
+                      <span>{q.quote_number || `Q-${String(q.id).slice(0,8)}`}</span>
+                      {showCustomerOrderBadge ? (
+                        <span className="quotation-customer-order-badge" style={{ marginLeft: 8 }}>Customer Order</span>
+                      ) : null}
+                    </td>
+                    <td style={{ ...tableCellStyle, minWidth: 220 }}>{custLabel}</td>
                     <td style={tableCellStyle}>{new Date(q.created_at).toLocaleString()}</td>
                     <td style={tableCellStyle}>{(q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote'}</td>
                     <td style={{ ...tableCellStyle, textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>

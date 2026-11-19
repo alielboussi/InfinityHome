@@ -81,4 +81,26 @@ assert(
   'quoteProductionItemFields.js must exist in deliveryKit',
 );
 
+const deliverySharedQuoteUi = read('mobile-apps/warehouse-delivery/shared/quoteProductionOrderUi.js');
+const deliverySharedArabic = read('mobile-apps/warehouse-delivery/shared/quoteArabicTranslate.js');
+const deliveryQuoteFields = read('mobile-apps/warehouse-delivery/deliveryKit/lib/quoteProductionItemFields.js');
+const workshopSharedQuoteUi = read('mobile-apps/shared/quoteProductionOrderUi.js');
+
+assert(
+  deliverySharedQuoteUi.includes('dimension_sets: Array.isArray(line.dimension_sets)'),
+  'delivery shared quoteProductionOrderUi must merge per-piece dimension_sets (run warehouse-delivery npm run materialize)',
+);
+assert(
+  workshopSharedQuoteUi.includes('dimension_sets: Array.isArray(line.dimension_sets)'),
+  'mobile-apps/shared quoteProductionOrderUi must expose dimension_sets',
+);
+assert(
+  deliverySharedArabic.includes('Supports per-piece `dimension_sets`'),
+  'delivery shared quoteArabicTranslate must format per-piece dimensions',
+);
+assert(
+  deliveryQuoteFields.includes('export function readQuoteDimensionSets'),
+  'deliveryKit quoteProductionItemFields must include readQuoteDimensionSets (ensureDeliveryQuotePrintUtils)',
+);
+
 if (!process.exitCode) console.log('verifyDeliveryWorkshopParity: ok');

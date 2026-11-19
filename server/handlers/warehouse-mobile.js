@@ -4164,6 +4164,8 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
             quote_number: orderStaging?.quote_number || null,
             customer_name: orderStaging?.customer_name || null,
             customer_phone: orderStaging?.customer_phone || null,
+            customer_order: orderStaging?.customer_order === true
+              || Boolean(String(orderStaging?.customer_name || '').trim()),
           } : {}),
         }),
       });
@@ -4254,6 +4256,7 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
       && !e?.metadata?.return_order_id
       && (e.metadata?.production_job_id || e.metadata?.quote_id),
   );
+  const orderHasCustomer = Boolean(String(orderEntry?.metadata?.customer_name || '').trim());
   const orderSessionMeta = orderEntry
     ? {
       document_kind: 'order_delivery',
@@ -4262,6 +4265,7 @@ async function opDeliverySubmit(body, user, { skipAccessCheck = false } = {}) {
       quote_number: orderEntry.metadata?.quote_number || null,
       customer_name: orderEntry.metadata?.customer_name || null,
       customer_phone: orderEntry.metadata?.customer_phone || null,
+      ...(orderHasCustomer ? { customer_order: true } : {}),
     }
     : (clientDocumentKind === 'order_delivery' ? { document_kind: 'order_delivery' } : {});
 

@@ -1,5 +1,9 @@
 import { normalizeWarehouseProductSku } from '../../src/utils/warehouseScanResolver.js';
-import { WAREHOUSE_TO_LOCATION_ID, deliveryEntrySentToCustomer } from '../../src/utils/warehouseDelivery.js';
+import {
+  WAREHOUSE_TO_LOCATION_ID,
+  deliveryEntrySentToCustomer,
+  deliveryEntrySkipKitweRetailCatalog,
+} from '../../src/utils/warehouseDelivery.js';
 import {
   deliveryFinishedUnitsFromEntryMetadata,
   deliveryTruckBoxesToFinishedUnits,
@@ -8,6 +12,10 @@ import { newUuid } from './uuid.js';
 
 function entryReceived(entry) {
   return Boolean(entry?.metadata?.received_at);
+}
+
+function lineEligibleForKitweRetailCatalog(line) {
+  return !deliveryEntrySentToCustomer(line) && !deliveryEntrySkipKitweRetailCatalog(line);
 }
 
 export function entryPacketId(entry) {
@@ -206,7 +214,7 @@ export function assemblyUnitsFullyReceived(sessionLines) {
   }
   for (const [aid, asmLines] of finishedByAssembly.entries()) {
     if (!asmLines.every(entryReceived)) continue;
-    const kitweLines = asmLines.filter((line) => !deliveryEntrySentToCustomer(line));
+    const kitweLines = asmLines.filter(lineEligibleForKitweRetailCatalog);
     if (!kitweLines.length) continue;
     const qty = kitweLines.reduce(
       (sum, line) => sum + deliveryFinishedUnitsFromEntryMetadata(line, [], null),
@@ -217,7 +225,7 @@ export function assemblyUnitsFullyReceived(sessionLines) {
   for (const [aid, asmLines] of byAssembly.entries()) {
     if (units.has(aid)) continue;
     if (!asmLines.every(entryReceived)) continue;
-    const kitweLines = asmLines.filter((line) => !deliveryEntrySentToCustomer(line));
+    const kitweLines = asmLines.filter(lineEligibleForKitweRetailCatalog);
     if (!kitweLines.length) continue;
     const metaUnits = Math.max(0, Number(kitweLines[0]?.metadata?.units) || 0);
     if (metaUnits > 0) {
@@ -247,7 +255,7 @@ export function assemblyUnitsReadyForKitweCatalog(sessionLines, movedAssemblyIds
       (line) => String(line.metadata?.assembly_id || '') === String(aid) && entryPacketId(line),
     );
     if (!asmLines.length || !asmLines.every(entryReceived)) continue;
-    const kitweLines = asmLines.filter((line) => !deliveryEntrySentToCustomer(line));
+    const kitweLines = asmLines.filter(lineEligibleForKitweRetailCatalog);
     if (!kitweLines.length) continue;
     units.set(
       String(aid),

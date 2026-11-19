@@ -24,6 +24,7 @@ import {
   deliverySessionNeedsTickRowFinalize,
   warehousePacketDisplayLabel,
   warehouseDeliveryReceiverLineKind,
+  isDeliveryCustomerOrderSession,
 } from './utils/warehouseDelivery';
 import { buildKitweDeliveryWhatsAppText } from './utils/kitweDeliveryWhatsAppAdmin';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
@@ -755,6 +756,8 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
                 ? '#f59e0b'
                 : '#fbbf24';
             const routeLabel = warehouseDeliverySessionRouteLabel(session, { fromName, toName });
+            const customerOrder = isDeliveryCustomerOrderSession(session);
+            const orderQuote = String(session?.metadata?.quote_number || '').trim();
             return (
               <button
                 key={session.id}
@@ -775,14 +778,25 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                   <div style={{ fontWeight: 800, fontSize: 18, color: PAGE_THEME.text }}>
-                    {session.delivery_number || session.id}
+                    {customerOrder && orderQuote ? orderQuote : (session.delivery_number || session.id)}
                   </div>
-                  {completed ? (
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: 999 }}>
-                      Completed
-                    </span>
-                  ) : null}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {customerOrder ? (
+                      <span className="warehouse-send-customer-badge">Customer Order</span>
+                    ) : null}
+                    {completed ? (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: 999 }}>
+                        Completed
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
+                {customerOrder ? (
+                  <div style={{ color: PAGE_THEME.muted, marginTop: 4 }}>
+                    Customer: {session?.metadata?.customer_name || '—'}
+                    {session?.metadata?.customer_phone ? ` · ${session.metadata.customer_phone}` : ''}
+                  </div>
+                ) : null}
                 <div style={{ color: PAGE_THEME.muted, marginTop: 6 }}>
                   {routeLabel}
                 </div>

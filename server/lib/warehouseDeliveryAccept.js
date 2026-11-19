@@ -15,6 +15,7 @@ import {
 import {
   warehouseDeliveryReceiverTickRows,
   deliveryEntrySentToCustomer,
+  deliveryEntrySkipKitweRetailCatalog,
 } from '../../src/utils/warehouseDelivery.js';
 import { newUuid } from './uuid.js';
 
@@ -110,6 +111,7 @@ export async function finalizeWarehouseDeliverySession(sb, session, {
     lines
       .filter(entryReceived)
       .filter((line) => !deliveryEntrySentToCustomer(line))
+      .filter((line) => !deliveryEntrySkipKitweRetailCatalog(line, session))
       .map((line) => String(line.metadata?.assembly_id || '').trim())
       .filter(Boolean),
   )];

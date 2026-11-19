@@ -175,6 +175,7 @@ export async function sendQuoteToProduction(sb, quoteId, userId) {
       primary_assembly_id,
       customer_name: customer.name,
       customer_phone: customer.phone,
+      customer_order: Boolean(String(customer.name || '').trim()),
       quote_number: quote.quote_number || null,
       lines: lineSummary,
       last_workshop_notify_at: now,

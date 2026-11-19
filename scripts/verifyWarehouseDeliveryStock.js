@@ -37,6 +37,7 @@ assert(kitweSync.includes('assemblyUnitsReadyForKitweCatalog'), 'accept must det
 assert(kitweSync.includes('assemblyUnitsFullyReceived'), 'POS mirror only when full BOM received for assembly');
 assert(acceptStock.includes('deliveryEntrySentToCustomer'), 'accept stock must skip Kitwe add for Hassan send-to-customer lines');
 assert(kitweSync.includes('deliveryEntrySentToCustomer'), 'Kitwe catalog must exclude send-to-customer units');
+assert(kitweSync.includes('deliveryEntrySkipKitweRetailCatalog'), 'Kitwe catalog must exclude named customer orders');
 assert(
   fs.readFileSync(path.join(root, 'server/lib/warehouseDeliveryAdminQueue.js'), 'utf8')
     .includes('deliveryEntrySentToCustomer'),

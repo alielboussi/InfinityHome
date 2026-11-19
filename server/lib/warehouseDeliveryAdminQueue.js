@@ -9,6 +9,7 @@ import {
   WAREHOUSE_FROM_LOCATION_ID,
   WAREHOUSE_TO_LOCATION_ID,
   deliveryEntrySentToCustomer,
+  deliveryEntrySkipKitweRetailCatalog,
 } from '../../src/utils/warehouseDelivery.js';
 
 async function returnStockMutations() {
@@ -57,6 +58,21 @@ export async function markRepairWorkCompleteAwaitingDriver(sb, row, { now = new 
   };
 }
 
+async function resolveQuoteOrderCustomer(sb, quoteId) {
+  const qid = String(quoteId || '').trim();
+  if (!qid) return { customer_name: null, customer_phone: null, customer_order: false, quote_number: null };
+  const { data: routing } = await sb.from(QUOTE_ROUTING).select('metadata').eq('quote_id', qid).maybeSingle();
+  const routingMeta = routing?.metadata || {};
+  const customer_name = String(routingMeta.customer_name || '').trim() || null;
+  const customer_phone = String(routingMeta.customer_phone || '').trim() || null;
+  return {
+    customer_name,
+    customer_phone,
+    customer_order: Boolean(customer_name),
+    quote_number: routingMeta.quote_number || null,
+  };
+}
+
 export async function registerProductionJobAwaitingDriver(sb, {
   jobsTable,
   jobRow,
@@ -69,8 +85,19 @@ export async function registerProductionJobAwaitingDriver(sb, {
   now = new Date().toISOString(),
 }) {
   const meta = jobRow?.metadata || {};
+  const resolvedQuoteId = String(
+    quoteId || meta.quote_id || meta.carpentry_quote_id || '',
+  ).trim() || null;
+  const customerFields = resolvedQuoteId
+    ? await resolveQuoteOrderCustomer(sb, resolvedQuoteId)
+    : { customer_name: null, customer_phone: null, customer_order: false, quote_number: null };
   const patch = {
     ...meta,
+    ...(customerFields.customer_order ? { customer_order: true } : {}),
+    ...(customerFields.customer_name ? {
+      customer_name: customerFields.customer_name,
+      customer_phone: customerFields.customer_phone,
+    } : {}),
     ...buildAdminPatch(DELIVERY_ADMIN_KIND.ORDER, DELIVERY_ADMIN_STAGE.AWAITING_DRIVER, {
       registered_at: now,
       production_job_id: String(jobRow.id),
@@ -78,8 +105,13 @@ export async function registerProductionJobAwaitingDriver(sb, {
       assembly_name: assemblyName || assemblyId,
       quantity: Math.max(1, Math.floor(Number(qty) || 1)),
       department,
-      quote_id: quoteId,
-      quote_number: quoteNumber,
+      quote_id: resolvedQuoteId,
+      quote_number: quoteNumber || customerFields.quote_number,
+      ...(customerFields.customer_name ? {
+        customer_name: customerFields.customer_name,
+        customer_phone: customerFields.customer_phone,
+        customer_order: true,
+      } : {}),
     }),
   };
   await sb.from(jobsTable).update({
@@ -238,6 +270,7 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
     const asmId = String(admin.assembly_id || job.assembly_id || '').trim();
     if (!asmId) continue;
     const { data: asm } = await sb.from(ASSEMBLIES).select('name, family_sku').eq('id', asmId).maybeSingle();
+    const customer_name = String(admin.customer_name || meta.customer_name || '').trim() || null;
     out.push({
       production_job_id: String(job.id),
       assembly_id: asmId,
@@ -246,6 +279,9 @@ async function listCompletedJobsAwaitingDriver(sb, table, department) {
       quantity: Math.max(1, Number(admin.quantity || job.product_qty) || 1),
       quote_id: admin.quote_id || null,
       quote_number: admin.quote_number || null,
+      customer_name,
+      customer_phone: String(admin.customer_phone || meta.customer_phone || '').trim() || null,
+      customer_order: admin.customer_order === true || Boolean(customer_name),
       department: admin.department || department,
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
     });
@@ -306,6 +342,7 @@ async function listQuoteOrdersAwaitingDriver(sb) {
     if (!asmId) continue;
     const { data: asm } = await sb.from(ASSEMBLIES).select('name, family_sku').eq('id', asmId).maybeSingle();
     const lines = quoteRoutingLineItems(meta);
+    const customer_name = String(meta.customer_name || '').trim() || null;
     out.push({
       quote_id: String(row.quote_id),
       assembly_id: asmId,
@@ -313,8 +350,9 @@ async function listQuoteOrdersAwaitingDriver(sb) {
       family_sku: asm?.family_sku || '',
       quantity: quoteLinesTotalQty(lines, admin.quantity),
       quote_number: admin.quote_number || meta.quote_number || null,
-      customer_name: String(meta.customer_name || '').trim() || null,
+      customer_name,
       customer_phone: String(meta.customer_phone || '').trim() || null,
+      customer_order: meta.customer_order === true || Boolean(customer_name),
       department: admin.department || row.route || 'upholstery',
       lines,
       delivery_admin_stage: DELIVERY_ADMIN_STAGE.AWAITING_DRIVER,
@@ -508,7 +546,7 @@ export async function moveAdminQueueLineToKitwe(sb, line) {
   const qty = Math.max(1, Number(line.quantity) || 1);
   if (!aid || qty < 1) return null;
   const customerRepair = line.metadata?.return_has_customer === true;
-  if (customerRepair || deliveryEntrySentToCustomer(line)) {
+  if (customerRepair || deliveryEntrySentToCustomer(line) || deliveryEntrySkipKitweRetailCatalog(line)) {
     return { assemblyId: aid, qty, kitweAdded: 0 };
   }
   const virtualHold = line.metadata?.delivery_admin_hold === true;

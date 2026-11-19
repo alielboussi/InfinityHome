@@ -786,6 +786,8 @@ export async function finishPaintingProductionJob(sb, {
       assemblyName: assemblyRow?.name || productId,
       qty,
       department: 'painting',
+      quoteId: job.metadata?.quote_id || job.metadata?.carpentry_quote_id || null,
+      quoteNumber: job.metadata?.quote_number || null,
     });
     deliveryAdminAwaiting = true;
   }

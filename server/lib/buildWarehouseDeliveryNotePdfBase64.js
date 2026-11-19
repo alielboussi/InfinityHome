@@ -70,6 +70,7 @@ function pdfNoteTitle(documentKind) {
   if (kind === 'return_customer_delivery') return 'Return Delivery Note';
   if (kind === 'repair_delivery') return 'Repair Delivery Note';
   if (kind === 'sold_delivery') return 'Sold Delivery Note';
+  if (kind === 'order_delivery') return 'Customer Order Delivery Note';
   return 'Delivery Note';
 }
 
@@ -79,6 +80,7 @@ function pdfNoteNumberLabel(documentKind) {
   if (kind === 'return_customer_delivery') return 'Return Delivery No.';
   if (kind === 'repair_delivery') return 'Repair Delivery No.';
   if (kind === 'sold_delivery') return 'Sold Delivery No.';
+  if (kind === 'order_delivery') return 'Customer Order No.';
   return 'Delivery #';
 }
 
@@ -106,9 +108,12 @@ export function buildWarehouseDeliveryNotePdfBase64({
       : sanitizeDeliveryNotePrintGroups(buildDeliveryPrintGroupsFromEntries(entries || [], formatter)));
   const copyCount = Math.max(1, Math.min(3, Number(copies) || 1));
   const kind = String(documentKind || meta.document_kind || 'delivery').trim();
+  const quoteNo = String(meta.quote_number || '').trim();
   const dn = kind === 'repair_delivery'
     ? String(meta.return_number || session?.delivery_number || session?.id || '').trim() || 'Delivery'
-    : String(session?.delivery_number || session?.id || '').trim() || 'Delivery';
+    : (kind === 'order_delivery' && quoteNo
+      ? quoteNo
+      : String(session?.delivery_number || session?.id || '').trim() || 'Delivery');
   const at = submittedAtOverride || session?.submitted_at || session?.created_at || new Date().toISOString();
   const driverName = String(
     driverNameOverride || meta.driver_name || meta.customer_driver_name || '',

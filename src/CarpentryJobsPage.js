@@ -151,6 +151,9 @@ export default function CarpentryJobsPage() {
                   <td>
                     <strong>{order.quote_number || order.quote_id}</strong>
                     {order.customer_name ? (
+                      <span className="quotation-customer-order-badge" style={{ marginLeft: 8 }}>Customer Order</span>
+                    ) : null}
+                    {order.customer_name ? (
                       <div style={{ fontSize: 13, fontWeight: 600 }}>{order.customer_name}</div>
                     ) : null}
                     {order.customer_phone ? (

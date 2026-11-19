@@ -301,6 +301,26 @@ try {
     'delivery-overlays/lib/shareFarmTransferReceipt.js required',
   );
 
+  const quoteOrderUi = fs.readFileSync(path.join(appRoot, 'shared', 'quoteProductionOrderUi.js'), 'utf8');
+  const quoteArabic = fs.readFileSync(path.join(appRoot, 'shared', 'quoteArabicTranslate.js'), 'utf8');
+  const quoteFields = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'quoteProductionItemFields.js'), 'utf8');
+  assert(
+    quoteOrderUi.includes('dimension_sets: Array.isArray(line.dimension_sets)'),
+    'shared quoteProductionOrderUi must merge dimension_sets — run npm run materialize',
+  );
+  assert(
+    quoteArabic.includes('Supports per-piece `dimension_sets`'),
+    'shared quoteArabicTranslate must format per-piece dimensions — run npm run materialize',
+  );
+  assert(
+    quoteFields.includes('export function readQuoteDimensionSets'),
+    'deliveryKit quoteProductionItemFields must match src — run materialize / ensureDeliveryQuotePrintUtils',
+  );
+  assert(
+    fs.existsSync(path.join(sharedDir, '.standalone-shared')),
+    'shared/ must be materialized from mobile-apps/shared (not a stale copy)',
+  );
+
   if (!process.exitCode) console.log('verifyDeliveryApp: ok');
 } catch (e) {
   if (!process.exitCode) process.exitCode = 1;
