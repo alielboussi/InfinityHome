@@ -343,8 +343,28 @@ export function formatQuoteLineQtyLabel(qty, unitAbbr, locale, serverMap = {}) {
   return q;
 }
 
-/** L × W × H (cm) with Arabic-Indic digits when `locale === 'ar'`. */
+/** L × W × H (cm) with Arabic-Indic digits when `locale === 'ar'`. Supports per-piece `dimension_sets`. */
 export function formatQuoteDimensionsCmDisplay(line, locale = 'en') {
+  const sets = line?.dimension_sets;
+  if (Array.isArray(sets) && sets.length) {
+    const parts = sets.map((set, i) => {
+      const trim = (v) => (v != null ? String(v).trim() : '');
+      const l = trim(set?.dim_l_cm);
+      const w = trim(set?.dim_w_cm);
+      const h = trim(set?.dim_h_cm);
+      const joined = (l && w && h)
+        ? `${l} × ${w} × ${h}`
+        : [l, w, h].filter(Boolean).join(' × ');
+      if (!joined) return '';
+      const prefix = sets.length > 1
+        ? (locale === 'ar' ? `قطعة ${i + 1}: ` : `Piece ${i + 1}: `)
+        : '';
+      return `${prefix}${joined}`;
+    }).filter(Boolean);
+    if (parts.length) {
+      return formatNumeralsForLocale(parts.join(' · '), locale);
+    }
+  }
   const trim = (v) => (v != null ? String(v).trim() : '');
   const l = trim(line?.dim_l_cm);
   const w = trim(line?.dim_w_cm);
@@ -432,4 +452,44 @@ export function factoryOrderDepartmentArabic(route) {
   if (r === 'carpentry') return 'قسم النجارة';
   if (r === 'aluminum') return 'قسم الألومنيوم';
   return 'قسم التنجيد';
+}
+
+function phraseNeedsCompleteArabic(phrase, map = {}) {
+  const raw = String(phrase || '').trim();
+  if (!raw) return false;
+  const ar = translateTermToArabic(raw, map);
+  return !ar || phraseStillHasEnglishWords(ar);
+}
+
+export function assertArabicTranslationsForPhrases(phrases, serverMap = {}) {
+  const failures = [];
+  for (const p of phrases || []) {
+    const raw = String(p || '').trim();
+    if (!raw) continue;
+    if (phraseNeedsCompleteArabic(raw, serverMap)) failures.push(raw);
+  }
+  if (failures.length) {
+    const err = new Error(
+      `Arabic translation is not ready yet (${failures.length} phrase(s)). Wait a few seconds and send the order again.`,
+    );
+    err.code = 'arabic_incomplete';
+    err.phrases = failures.slice(0, 8);
+    throw err;
+  }
+}
+
+export function collectFactoryOrderArabicCheckPhrases(items = []) {
+  const set = new Set(collectProductionQuoteArabicPhrases(items));
+  for (const it of items || []) {
+    const rawName = String(
+      it?.name_override || it?.name || it?.product_name || it?.quote_product_name || it?.description || '',
+    ).trim();
+    if (rawName) {
+      set.add(rawName);
+      set.add(rawName.charAt(0).toUpperCase() + rawName.slice(1));
+    }
+    const desc = String(it?.description || '').trim();
+    if (desc) set.add(desc);
+  }
+  return [...set];
 }

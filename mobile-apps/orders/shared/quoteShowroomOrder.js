@@ -1,5 +1,12 @@
-export function isOrdersAppShowroomQuote(row) {
-  return row?.routing?.metadata?.showroom_order === true;
+/** Workshop / delivery flags — keep aligned with src/utils/quoteShowroomOrder.js (API fields). */
+
+export function isProductionQuoteShowroomOrder(quote) {
+  return quote?.showroom_order === true;
+}
+
+export function isProductionQuoteCustomerOrder(quote) {
+  if (isProductionQuoteShowroomOrder(quote)) return false;
+  return quote?.customer_order === true;
 }
 
 export function firstProductionQuoteLineImageUrl(quote) {
@@ -14,15 +21,13 @@ export function firstProductionQuoteLineImageUrl(quote) {
   return '';
 }
 
-export function showroomQuoteListSearchBlob(row) {
-  const meta = row?.routing?.metadata || {};
-  const route = String(row?.routing?.route || '').toLowerCase();
-  const lines = Array.isArray(meta.lines) ? meta.lines : [];
-  const products = lines.map((l) => String(l.name || '')).join(' ');
-  return [
-    row.quote_number,
-    row.created_at,
-    route,
-    products,
-  ].join(' ').toLowerCase();
+export function productionQuoteListTitle(quote, tUi, locale) {
+  if (isProductionQuoteShowroomOrder(quote)) {
+    const lines = Array.isArray(quote?.lines) ? quote.lines : [];
+    const firstName = String(lines[0]?.name || '').trim();
+    return firstName || tUi('badgeShowroomOrder', locale);
+  }
+  const name = String(quote?.customer_name || '').trim();
+  if (name) return name;
+  return tUi('returnCustomer', locale);
 }

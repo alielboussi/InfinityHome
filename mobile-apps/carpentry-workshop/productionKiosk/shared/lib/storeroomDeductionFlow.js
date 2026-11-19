@@ -320,6 +320,33 @@ export function mergeFloor2WipIntoMaterialCatalog(storeroomMaterials, floor2Prod
   return mergeCatalogByFamilySku([...(storeroomMaterials || []), ...floorRows]);
 }
 
+export function isWarehouseFloor2StoreroomOption(opt) {
+  const name = String(opt?.name || opt?.label || '').trim();
+  return /warehouse\s*floor\s*2/i.test(name) || /^floor\s*2$/i.test(name);
+}
+
+/** Storeroom picker options only (excludes Warehouse Floor 2 WIP). */
+export function filterStoreroomPickerOptions(options) {
+  return (options || []).filter((o) => !isWarehouseFloor2StoreroomOption(o));
+}
+
+/** Materials catalog rows for painting / storeroom-only jobs — no Floor 2 WIP skus or locations. */
+export function catalogForStoreroomDeductionOnly(rows) {
+  return (rows || [])
+    .filter((r) => !r.floor2_wip)
+    .map((row) => {
+      const locations = (row.locations || []).filter(
+        (loc) => !/warehouse\s*floor\s*2/i.test(String(loc.location_name || '')),
+      );
+      const quantity = locations.reduce(
+        (sum, loc) => sum + Math.max(0, Number(loc.quantity) || 0),
+        0,
+      );
+      return { ...row, locations, quantity };
+    })
+    .filter((r) => isStoreroomMaterialSelectable(r));
+}
+
 export function storeroomDeductionStrings(tUi, locale) {
   const safe = (key, fallback) => {
     try {

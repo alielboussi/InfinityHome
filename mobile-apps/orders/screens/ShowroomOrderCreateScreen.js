@@ -58,7 +58,7 @@ export default function ShowroomOrderCreateScreen({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return products;
+    if (!q) return [];
     return products.filter((p) => {
       const name = String(p.name || '').toLowerCase();
       const sku = String(p.family_sku || '').toLowerCase();
@@ -71,8 +71,7 @@ export default function ShowroomOrderCreateScreen({
   const addLine = (product) => {
     const aid = String(product.assembly_id || '').trim();
     if (!aid) return;
-    const maxQty = Math.max(0, Number(product.quantity) || 0);
-    if (maxQty < 1) return;
+    const stockQty = Math.max(0, Number(product.quantity) || 0);
     const route = String(product.workshop_route || 'carpentry').toLowerCase();
     if (cart.length && cartRoute && cartRoute !== route) {
       Alert.alert(
@@ -86,7 +85,7 @@ export default function ShowroomOrderCreateScreen({
       assembly_id: aid,
       name: product.name,
       route,
-      maxQty,
+      stockQty,
       quantity: 1,
       image_url: productImage(product),
     }]);
@@ -95,7 +94,7 @@ export default function ShowroomOrderCreateScreen({
   const setLineQty = (aid, text) => {
     const n = Math.max(1, Math.floor(Number(text) || 1));
     setCart((prev) => prev.map((l) => (
-      l.assembly_id === aid ? { ...l, quantity: Math.min(n, l.maxQty) } : l
+      l.assembly_id === aid ? { ...l, quantity: n } : l
     )));
   };
 
@@ -155,24 +154,28 @@ export default function ShowroomOrderCreateScreen({
           style={{ flex: 1, maxHeight: 280 }}
           data={filtered}
           keyExtractor={(item) => String(item.assembly_id)}
-          ListEmptyComponent={<Text style={kiosk.hint}>{tUi('showroomFloor2Empty', locale)}</Text>}
+          ListEmptyComponent={(
+            <Text style={kiosk.hint}>
+              {search.trim() ? tUi('showroomFloor2Empty', locale) : tUi('showroomFloor2SearchHint', locale)}
+            </Text>
+          )}
           renderItem={({ item }) => {
             const inCart = cart.some((c) => c.assembly_id === item.assembly_id);
-            const maxQty = Math.max(0, Number(item.quantity) || 0);
+            const stockQty = Math.max(0, Number(item.quantity) || 0);
             const img = productImage(item);
             const route = item.workshop_route === 'upholstery'
               ? tUi('routeUpholstery', locale)
               : tUi('routeCarpentry', locale);
             return (
               <Pressable
-                style={[kiosk.card, styles.pickRow, (maxQty < 1 || inCart) && styles.pickDisabled]}
-                disabled={maxQty < 1 || inCart}
+                style={[kiosk.card, styles.pickRow, inCart && styles.pickDisabled]}
+                disabled={inCart}
                 onPress={() => addLine(item)}
               >
                 {img ? <Image source={{ uri: img }} style={styles.thumb} resizeMode="cover" /> : null}
                 <Text style={styles.pickName}>{item.name}</Text>
                 <Text style={kiosk.hint}>
-                  {tUi('showroomStockLabel', locale)}: {maxQty} · {route}
+                  {tUi('showroomStockLabel', locale)}: {stockQty} · {route}
                 </Text>
               </Pressable>
             );
@@ -198,7 +201,9 @@ export default function ShowroomOrderCreateScreen({
                 onChangeText={(t) => setLineQty(line.assembly_id, t)}
                 style={[kiosk.input, styles.qtyInput]}
               />
-              <Text style={kiosk.hint}>max {line.maxQty}</Text>
+              <Text style={kiosk.hint}>
+                {tUi('showroomStockLabel', locale)}: {line.stockQty ?? 0}
+              </Text>
             </View>
             <Pressable onPress={() => removeLine(line.assembly_id)}>
               <Text style={{ color: theme.primary, fontWeight: '700' }}>{tUi('remove', locale)}</Text>

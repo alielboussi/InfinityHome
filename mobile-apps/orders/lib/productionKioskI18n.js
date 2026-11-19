@@ -122,11 +122,15 @@ const UI_STRINGS = {
   showroomOrdersEmpty: { en: 'No showroom orders yet.', ar: 'لا توجد طلبات صالة بعد.' },
   showroomSentWorkshop: { en: 'sent to workshop', ar: 'أُرسل للورشة' },
   showroomCreateIntro: {
-    en: 'Pick Floor 2 WIP products (names, photos, and stock are read-only).',
-    ar: 'اختر منتجات الطابق 2 (الأسماء والصور والمخزون للعرض فقط).',
+    en: 'Search Floor 2 WIP; you can order at stock 0. Manufacture to Floor 2 before the workshop starts the job.',
+    ar: 'ابحث عن منتجات الطابق 2؛ يمكن الطلب عند مخزون 0. صنّع إلى الطابق 2 قبل بدء الورشة.',
   },
   showroomFloor2Search: { en: 'Search Floor 2 product or SKU', ar: 'بحث منتج أو رمز الطابق 2' },
   showroomFloor2Empty: { en: 'No Floor 2 stock found.', ar: 'لا مخزون في الطابق 2.' },
+  showroomFloor2SearchHint: {
+    en: 'Search by product name or SKU — nothing is listed until you type.',
+    ar: 'ابحث بالاسم أو الرمز — لا تظهر المنتجات حتى تكتب.',
+  },
   showroomStockLabel: { en: 'Stock', ar: 'المخزون' },
   showroomCartTitle: { en: 'Order lines', ar: 'بنود الطلب' },
   showroomCartEmpty: { en: 'Tap products above to add lines.', ar: 'اضغط المنتجات أعلاه لإضافة بنود.' },

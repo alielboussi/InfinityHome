@@ -320,6 +320,7 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
     : { data: [] };
   const runByQuote = new Map((runs || []).map((r) => [String(r.quote_id), r]));
 
+  const { computeFloor2ShortfallForQuoteLines } = await import('./showroomQuoteOrder.js');
   const rows = [];
   for (const r of sent) {
     const qid = String(r.quote_id);
@@ -327,6 +328,8 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
     const run = runByQuote.get(qid) || null;
     const timerFields = quoteRunListFields(run);
     const meta = r.metadata && typeof r.metadata === 'object' ? r.metadata : {};
+    const rawItems = itemsByQuoteId.get(qid) || [];
+    const floor2Gate = await computeFloor2ShortfallForQuoteLines(sb, rawItems);
     rows.push({
       quote_id: r.quote_id,
       route: r.route,
@@ -345,7 +348,10 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
       run_started_at: run?.started_at || null,
       run_completed_at: run?.completed_at || null,
       ...timerFields,
-      lines: itemsByQuoteId.get(qid) || meta.lines || [],
+      lines: rawItems.length ? rawItems : (meta.lines || []),
+      floor2_wip_required: floor2Gate.floor2_wip_required,
+      floor2_ready: floor2Gate.floor2_ready,
+      floor2_shortfalls: floor2Gate.floor2_shortfalls,
       drawing_url: meta.drawing_url || null,
       manual_material_lines: Array.isArray(meta.manual_material_lines)
         ? meta.manual_material_lines
@@ -412,6 +418,10 @@ export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId })
   if (!routing?.sent_to_production_at) throw new Error('Quote has not been sent to production yet');
   if (routing.route !== normalized) throw new Error('Quote route mismatch');
   if (routing.completed_at) throw new Error('Quote production already completed');
+
+  const { items } = await loadQuoteBundle(sb, qid);
+  const { assertFloor2StockForQuoteItems } = await import('./showroomQuoteOrder.js');
+  await assertFloor2StockForQuoteItems(sb, items);
 
   const existingRun = await findActiveQuoteRun(sb, qid);
   if (existingRun && !existingRun.completed_at) {

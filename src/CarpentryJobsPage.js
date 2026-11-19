@@ -164,6 +164,25 @@ export default function CarpentryJobsPage() {
                     {order.customer_phone ? (
                       <div style={{ fontSize: 12, color: 'var(--kitwe-muted, #64748b)' }}>{order.customer_phone}</div>
                     ) : null}
+                    {!order.accepted_at && order.floor2_ready === false && Array.isArray(order.floor2_shortfalls) && order.floor2_shortfalls.length ? (
+                      <div style={{
+                        marginTop: 8,
+                        padding: '8px 10px',
+                        borderRadius: 8,
+                        background: '#fef3c7',
+                        border: '1px solid #f59e0b',
+                        fontSize: 12,
+                        color: '#92400e',
+                      }}
+                      >
+                        <strong>Floor 2 WIP short</strong>
+                        {order.floor2_shortfalls.map((gap) => (
+                          <div key={gap.assembly_id}>
+                            {gap.name}: need {gap.need}, have {gap.have} — manufacture to Floor 2 before Accept.
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </td>
                   <td>
                     {lines.length ? (

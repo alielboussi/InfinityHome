@@ -30,7 +30,14 @@ import {
 } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 import { isQuoteCustomerOrder } from './utils/quoteCustomerOrder';
-import { isQuoteShowroomOrderFromRouting } from './utils/quoteShowroomOrder';
+import {
+  buildHassanCustomerQuoteRoutingMetadata,
+  inferShowroomWorkshopRoute,
+  isQuoteShowroomOrderFromRouting,
+} from './utils/quoteShowroomOrder';
+import { floor2StockAsFlatGroups } from './utils/warehouseFloor2StockGroups';
+import { fetchCarpentryCatalog, fetchCarpentryFloorRuns } from './services/carpentryCatalogApi';
+import { readWarehouseFloor2WipImageUrl } from './utils/warehouseFloor2WipImage';
 import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
@@ -923,6 +930,9 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   const [custPhone, setCustPhone] = React.useState('');
   const [custPrefix, setCustPrefix] = React.useState('+260');
   const [addSearch, setAddSearch] = React.useState('');
+  const [floor2Search, setFloor2Search] = React.useState('');
+  const [floor2Stock, setFloor2Stock] = React.useState([]);
+  const [floor2AssemblyById, setFloor2AssemblyById] = React.useState(new Map());
   const [currentQuoteId, setCurrentQuoteId] = React.useState(quoteId || '');
   const [productionRoute, setProductionRoute] = React.useState('');
   const [productionRoutingLocked, setProductionRoutingLocked] = React.useState(false);
@@ -1081,6 +1091,50 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
   }, [canManageProductionRouting, currentQuoteId]);
 
   React.useEffect(() => {
+    if (!canManageProductionRouting) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [catalog, runs] = await Promise.all([
+          fetchCarpentryCatalog({ forceFresh: false }),
+          fetchCarpentryFloorRuns({ forceFresh: false }),
+        ]);
+        if (cancelled) return;
+        const map = new Map();
+        (catalog?.candidates || []).forEach((a) => { if (a?.id) map.set(String(a.id), a); });
+        (runs?.floor2Stock || []).forEach((row) => {
+          const aid = String(row.assembly_id || '');
+          if (aid && !map.has(aid)) map.set(aid, { id: aid, name: row.assembly_name || aid });
+        });
+        setFloor2AssemblyById(map);
+        setFloor2Stock(runs?.floor2Stock || []);
+      } catch {
+        if (!cancelled) {
+          setFloor2Stock([]);
+          setFloor2AssemblyById(new Map());
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [canManageProductionRouting]);
+
+  const floor2Groups = React.useMemo(
+    () => floor2StockAsFlatGroups(floor2Stock, floor2AssemblyById),
+    [floor2Stock, floor2AssemblyById],
+  );
+
+  const floor2SearchResults = React.useMemo(() => {
+    const q = floor2Search.trim().toLowerCase();
+    if (!q) return [];
+    return floor2Groups.filter((g) => {
+      const asm = floor2AssemblyById.get(String(g.assemblyIds?.[0] || ''));
+      const sku = String(asm?.family_sku || '').toLowerCase();
+      const name = String(g.familyBase || '').toLowerCase();
+      return name.includes(q) || sku.includes(q);
+    }).slice(0, 24);
+  }, [floor2Groups, floor2Search, floor2AssemblyById]);
+
+  React.useEffect(() => {
     if (!quote.customer_id) return;
     const cust = (quoteCustomers || []).find(c => String(c.id) === String(quote.customer_id));
     if (cust && cust.currency && cust.currency !== quote.currency) {
@@ -1120,6 +1174,56 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
     }]);
     setAddSearch('');
   };
+
+  const addItemFromFloor2 = (group) => {
+    if (locked) return;
+    if (productionRouteMissing) {
+      alert('Select Upholstery, Carpentry, or Aluminum before adding products.');
+      return;
+    }
+    const aid = String(group.assemblyIds?.[0] || '').trim();
+    if (!aid) return;
+    const asm = floor2AssemblyById.get(aid);
+    const route = inferShowroomWorkshopRoute(asm);
+    if (productionRoute === 'aluminum') {
+      alert('Floor 2 WIP templates are carpentry or upholstery only — choose Carpentry or Upholstery.');
+      return;
+    }
+    if (productionRoute && productionRoute !== route) {
+      alert(`This Floor 2 product routes to ${route}; this quote is set to ${productionRoute}.`);
+      return;
+    }
+    const img = readWarehouseFloor2WipImageUrl(asm) || asm?.image_url || '';
+    const stockQty = Math.max(0, Number(group.totalQty) || 0);
+    setItems((prev) => [...prev, {
+      id: `local-${Math.random().toString(36).slice(2)}`,
+      quote_product_id: null,
+      name: group.familyBase,
+      description: '',
+      unit_id: null,
+      quantity: 1,
+      unit_price: '',
+      image_url: img,
+      line_image_url: img,
+      floor2_assembly_id: aid,
+      floor2_image_url: img,
+      floor2_wip_line: true,
+      metadata: {
+        floor2_assembly_id: aid,
+        floor2_image_url: img,
+        floor2_wip_line: true,
+        floor2_stock_hint: stockQty,
+      },
+      ...applyQuoteDimensionSetsToLineFields([{ dim_l_cm: '', dim_w_cm: '', dim_h_cm: '' }]),
+    }]);
+    setFloor2Search('');
+  };
+
+  const quoteRoutingMetadata = React.useCallback(
+    () => buildHassanCustomerQuoteRoutingMetadata(quote, getNormalizedItems()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [quote, items],
+  );
 
   const updateItem = (id, patch) => setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
   const addAccessoryToItem = (lineId, accName) => {
@@ -1195,7 +1299,9 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
     setProductionDrawingUploadBusy(true);
     try {
       const url = await uploadQuoteProductionDrawing(currentQuoteId, file);
-      await saveQuoteProductionRoute(currentQuoteId, productionRoute, { drawing_url: url });
+      await saveQuoteProductionRoute(currentQuoteId, productionRoute, {
+        metadata: { ...quoteRoutingMetadata(), drawing_url: url },
+      });
       setProductionDrawingUrl(url);
       setProductionDrawingPendingFile(null);
     } catch (err) {
@@ -1248,10 +1354,13 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
 
       if (canManageProductionRouting && productionRoute) {
         try {
-          await saveQuoteProductionRoute(createdQuoteId, productionRoute);
+          const routeMeta = quoteRoutingMetadata();
+          await saveQuoteProductionRoute(createdQuoteId, productionRoute, { metadata: routeMeta });
           if (productionDrawingPendingFile) {
             const drawingUrl = await uploadQuoteProductionDrawing(createdQuoteId, productionDrawingPendingFile);
-            await saveQuoteProductionRoute(createdQuoteId, productionRoute, { drawing_url: drawingUrl });
+            await saveQuoteProductionRoute(createdQuoteId, productionRoute, {
+              metadata: { ...routeMeta, drawing_url: drawingUrl },
+            });
             setProductionDrawingUrl(drawingUrl);
             setProductionDrawingPendingFile(null);
           }
@@ -1705,6 +1814,57 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
               </div>
             )}
           </div>
+
+          {canManageProductionRouting && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Floor 2 WIP templates</div>
+              <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>
+                Same catalog as Floor 2 Products — search only. Stock can be 0; workshop must manufacture to Floor 2 before starting the order.
+              </p>
+              <input
+                className="quotes-input"
+                placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search Floor 2 product or SKU'}
+                value={floor2Search}
+                onChange={(e) => setFloor2Search(e.target.value)}
+                disabled={locked || productionRouteMissing}
+                style={{ width: '100%', maxWidth: 480, opacity: productionRouteMissing ? 0.65 : 1 }}
+              />
+              {floor2Search.trim() && (
+                <div className="quotes-create-product-results">
+                  {floor2SearchResults.map((g) => {
+                    const aid = String(g.assemblyIds?.[0] || '');
+                    const asm = floor2AssemblyById.get(aid);
+                    const img = readWarehouseFloor2WipImageUrl(asm) || asm?.image_url || '';
+                    const route = inferShowroomWorkshopRoute(asm);
+                    return (
+                      <div key={aid} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                        {img ? (
+                          <img src={img} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4 }} />
+                        ) : null}
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontWeight: 600 }}>{g.familyBase}</span>
+                          <span style={{ color: '#8ab', marginLeft: 8 }}>
+                            Floor 2: {g.totalQty} · {route}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className={`action-button ${ENT_BTN_PRIMARY}`}
+                          disabled={locked || productionRouteMissing}
+                          onClick={() => addItemFromFloor2(g)}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {!floor2SearchResults.length && (
+                    <div style={{ color: '#8ab' }}>No matching Floor 2 products</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="quotes-table-wrap" style={tableWrapperStyle}>
             <table className="table quotes-table quotes-table--create-lines" style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed', minWidth: isIpadProLayout ? 960 : 880 }}>

@@ -31,7 +31,9 @@ import {
 import ProductionJobMaterialsModal from '../productionKiosk/components/ProductionJobMaterialsModal';
 import ConfirmTypeOkModal from '../productionKiosk/shared/components/ConfirmTypeOkModal';
 import { theme } from '../shared/theme';
+import { isFloor2ManufactureBlockError } from '../shared/floor2QuoteShortfall';
 import {
+  QuoteProductionFloor2ShortfallBanner,
   QuoteProductionOrderBadges,
   productionQuoteDetailCustomerLabel,
   useProductionQuoteArabicMap,
@@ -155,7 +157,19 @@ export default function QuoteDetailScreen({ route, navigation }) {
     } catch (e) {
       setAccepted(Boolean(snapshot.accepted_at));
       setQuote(snapshot);
-      Alert.alert(tUi('quoteOrderFailed', locale), e?.message || '');
+      const msg = e?.message || '';
+      if (isFloor2ManufactureBlockError(msg)) {
+        Alert.alert(
+          tUi('quoteOrderFailed', locale),
+          msg,
+          [
+            { text: tUi('quoteOpenManufacture', locale), onPress: () => navigation.navigate('Manufacture') },
+            { text: tUi('close', locale), style: 'cancel' },
+          ],
+        );
+      } else {
+        Alert.alert(tUi('quoteOrderFailed', locale), msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -293,6 +307,7 @@ export default function QuoteDetailScreen({ route, navigation }) {
         ) : null}
         <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
         <QuoteProductionOrderBadges quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
+        <QuoteProductionFloor2ShortfallBanner quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
         <Text style={[styles.name, { textAlign }]}>{customerName}</Text>
         <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
         <View style={styles.timerBox}>

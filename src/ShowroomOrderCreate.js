@@ -61,7 +61,7 @@ export default function ShowroomOrderCreate() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return groups;
+    if (!q) return [];
     return groups.filter((g) => {
       const asm = assemblyById.get(String(g.assemblyIds?.[0] || ''));
       const sku = String(asm?.family_sku || '').toLowerCase();
@@ -74,8 +74,7 @@ export default function ShowroomOrderCreate() {
     const aid = String(group.assemblyIds?.[0] || '').trim();
     if (!aid) return;
     const asm = assemblyById.get(aid);
-    const maxQty = Math.max(0, Number(group.totalQty) || 0);
-    if (maxQty < 1) return;
+    const stockQty = Math.max(0, Number(group.totalQty) || 0);
     setCart((prev) => {
       const existing = prev.find((l) => l.assembly_id === aid);
       if (existing) return prev;
@@ -83,7 +82,7 @@ export default function ShowroomOrderCreate() {
         assembly_id: aid,
         name: group.familyBase,
         route: inferShowroomWorkshopRoute(asm),
-        maxQty,
+        stockQty,
         quantity: 1,
         image_url: readWarehouseFloor2WipImageUrl(asm) || asm?.image_url || '',
       }];
@@ -93,7 +92,7 @@ export default function ShowroomOrderCreate() {
   const updateQty = (aid, qty) => {
     const n = Math.max(1, Math.floor(Number(qty) || 1));
     setCart((prev) => prev.map((l) => (
-      l.assembly_id === aid ? { ...l, quantity: Math.min(n, l.maxQty) } : l
+      l.assembly_id === aid ? { ...l, quantity: n } : l
     )));
   };
 
@@ -128,7 +127,7 @@ export default function ShowroomOrderCreate() {
         <h2 className="quotes-title" style={{ margin: 0 }}>Create Showroom Order</h2>
       </div>
       <p style={{ color: 'var(--dash-muted, #64748b)', marginTop: 0 }}>
-        Pick Floor 2 WIP products (read-only names, images, and stock). Choose qty and create — the order is sent to the workshop automatically.
+        Search Floor 2 WIP by name or SKU (nothing is listed until you search). You can add lines even at stock 0 — carpentry or upholstery must manufacture to Floor 2 before the workshop can start the order.
       </p>
       {error ? <div className="report-error" style={{ marginBottom: 12 }}>{error}</div> : null}
 
@@ -141,6 +140,9 @@ export default function ShowroomOrderCreate() {
       />
 
       {loading ? <div className="quotes-muted-text">Loading Floor 2…</div> : null}
+      {!loading && !search.trim() ? (
+        <p className="quotes-muted-text" style={{ marginBottom: 16 }}>Type in the search box to find Floor 2 products.</p>
+      ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
         {filtered.map((g) => {
@@ -151,16 +153,15 @@ export default function ShowroomOrderCreate() {
             <button
               key={aid}
               type="button"
-              disabled={g.totalQty < 1 || inCart}
+              disabled={inCart}
               onClick={() => addLine(g)}
               style={{
                 textAlign: 'left',
                 border: '1px solid #d5dbe2',
                 borderRadius: 10,
                 padding: 10,
-                background: '#fff',
-                opacity: g.totalQty < 1 ? 0.5 : 1,
-                cursor: g.totalQty < 1 || inCart ? 'default' : 'pointer',
+                background: inCart ? '#f1f5f9' : '#fff',
+                cursor: inCart ? 'default' : 'pointer',
               }}
             >
               <WarehouseFloor2WipThumbnail assembly={asm} style={{ width: '100%', height: 100, marginBottom: 8 }} />
@@ -195,12 +196,13 @@ export default function ShowroomOrderCreate() {
                   <input
                     type="number"
                     min={1}
-                    max={line.maxQty}
                     value={line.quantity}
                     onChange={(e) => updateQty(line.assembly_id, e.target.value)}
                     style={{ width: 72 }}
                   />
-                  <span style={{ fontSize: 12, color: '#64748b', marginLeft: 6 }}>max {line.maxQty}</span>
+                  <span style={{ fontSize: 12, color: '#64748b', marginLeft: 6 }}>
+                    Floor 2 stock: {line.stockQty ?? 0}
+                  </span>
                 </td>
                 <td>
                   <button type="button" className="action-button" onClick={() => removeLine(line.assembly_id)}>Remove</button>

@@ -274,8 +274,8 @@ const UI_STRINGS = {
   badgeShowroomOrder: { en: 'Showroom Order', ar: 'طلب صالة' },
   showroomOrderDetailLabel: { en: 'Showroom order', ar: 'طلب صالة' },
   upholsteryQuotesIntro: {
-    en: 'Factory orders routed to Upholstery. Accept, scan materials, then end when finished.',
-    ar: 'طلبات المصنع الموجهة للتنجيد. اقبل، امسح المواد، ثم أنهِ عند الانتهاء.',
+    en: 'Orders can start at Floor 2 stock 0. Manufacture to Floor 2, then Accept to start the timer.',
+    ar: 'يمكن الطلب عند مخزون 0. صنّع إلى Floor 2 ثم اضغط قبول لبدء المؤقت.',
   },
   upholsteryQuotesEmpty: {
     en: 'No upholstery quote orders in the queue.',
@@ -288,6 +288,13 @@ const UI_STRINGS = {
     ar: 'مسار النجارة — مرسلة من طلبات المصنع',
   },
   carpentryQuotesTitle: { en: 'Hassan Awad quote orders', ar: 'طلبات عروض حسن عوض' },
+  quoteFloor2ShortfallTitle: { en: 'Floor 2 WIP short', ar: 'نقص مخزون Floor 2' },
+  quoteFloor2NeedHave: { en: 'Need / have on Floor 2', ar: 'مطلوب / متوفر' },
+  quoteFloor2ManufactureBeforeStart: {
+    en: 'Manufacture to Floor 2, then Accept to start.',
+    ar: 'صنّع إلى Floor 2 ثم اضغط قبول.',
+  },
+  quoteOpenManufacture: { en: 'Open Manufacture', ar: 'فتح التصنيع' },
   carpentryQuotesIntro: {
     en: 'Quotes Hassan sends to production with route Carpentry. Accept, scan materials, then end when finished.',
     ar: 'عروض يرسلها حسن للإنتاج بمسار النجارة. قبول، مسح المواد، ثم إنهاء عند الانتهاء.',

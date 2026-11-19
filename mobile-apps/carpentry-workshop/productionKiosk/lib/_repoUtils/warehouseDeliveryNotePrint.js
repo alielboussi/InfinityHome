@@ -1,7 +1,10 @@
 import { buildDeliveryNotePrintHtml } from './buildDeliveryNotePrintHtml';
 import { getDeliveryNoteCompanyLogoDataUriWeb } from './deliveryNoteCompanyLogo';
-import { buildDeliveryPrintGroupsFromEntries } from './warehouseDeliveryPrintGroups';
-import { deliverySenderName } from './warehouseDelivery';
+import {
+  buildDeliveryPrintGroupsFromEntries,
+  sanitizeDeliveryNotePrintGroups,
+} from './warehouseDeliveryPrintGroups';
+import { deliverySenderName, isDeliveryCustomerOrderSession } from './warehouseDelivery';
 import { createWarehouseDeliveryNameFormatter } from './warehouseDeliveryDisplayName';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -23,19 +26,34 @@ export async function buildWarehouseDeliveryNoteHtml({
   const formatter = assemblyColorContext
     ? createWarehouseDeliveryNameFormatter(assemblyColorContext)
     : null;
-  const printGroups = buildDeliveryPrintGroupsFromEntries(entries, formatter);
+  const savedGroups = sanitizeDeliveryNotePrintGroups(meta.print_groups);
+  const isOrder = isDeliveryCustomerOrderSession(session);
+  const documentKind = isOrder
+    ? 'order_delivery'
+    : (String(meta.document_kind || 'delivery').trim() || 'delivery');
+  const printGroups = savedGroups.length
+    ? savedGroups
+    : buildDeliveryPrintGroupsFromEntries(entries, formatter);
   const companyLogoSrc = await getDeliveryNoteCompanyLogoDataUriWeb().catch(() => '');
   const resolvedSignature = driverSignatureSrc
     || await resolveDeliverySignatureSrc(session, fetchAuthenticated);
+  const quoteNo = String(meta.quote_number || '').trim();
+  const deliveryNumber = isOrder && quoteNo
+    ? quoteNo
+  : (session?.delivery_number || session?.id || '');
   return buildDeliveryNotePrintHtml({
-    deliveryNumber: session?.delivery_number || session?.id || '',
-    driverName: meta.driver_name || '',
+    deliveryNumber,
+    driverName: meta.driver_name || meta.customer_driver_name || '',
+    driverPhone: meta.customer_driver_phone || '',
     dispatchedBy: deliverySenderName(session),
     driverSignatureSrc: resolvedSignature,
     companyLogoSrc,
     submittedAt: session?.submitted_at || session?.created_at || new Date().toISOString(),
     printGroups,
     copies,
+    documentKind,
+    customerName: meta.customer_name || '',
+    customerPhone: meta.customer_phone || '',
   });
 }
 

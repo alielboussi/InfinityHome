@@ -28,6 +28,22 @@ export function inferShowroomWorkshopRoute(assembly) {
   return 'carpentry';
 }
 
+export function quoteLineHasFloor2Assembly(line) {
+  const meta = line?.metadata && typeof line.metadata === 'object' ? line.metadata : {};
+  return Boolean(String(meta.floor2_assembly_id || line?.floor2_assembly_id || '').trim());
+}
+
+/** Hassan customer quotes (incl. mixed Floor 2 + catalog lines) always use the customer badge — not showroom. */
+export function buildHassanCustomerQuoteRoutingMetadata(quote, items = []) {
+  const hasCustomer = Boolean(String(quote?.customer_id || '').trim());
+  const hasFloor2 = (items || []).some(quoteLineHasFloor2Assembly);
+  return {
+    showroom_order: false,
+    customer_order: hasCustomer,
+    floor2_customer_lines: hasFloor2,
+  };
+}
+
 export function assertSingleShowroomRoute(routes) {
   const set = new Set((routes || []).map((r) => String(r || '').toLowerCase()).filter(Boolean));
   if (set.size > 1) {

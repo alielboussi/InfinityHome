@@ -18,6 +18,7 @@ import { fetchCarpentryProductionQuotes } from '../services/carpentryApi';
 import { theme } from '../shared/theme';
 import {
   QuoteProductionCardExtras,
+  QuoteProductionFloor2ShortfallBanner,
   QuoteProductionListThumb,
   QuoteProductionOrderBadges,
   productionQuoteListTitle,
@@ -131,6 +132,7 @@ export default function QuotesScreen({ navigation, route, allowed, accessHint, o
           >
             <QuoteProductionListThumb quote={item} textAlign={textAlign} />
             <QuoteProductionOrderBadges quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
+            <QuoteProductionFloor2ShortfallBanner quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
             <Text style={styles.quoteNum}>{item.quote_number || item.quote_id}</Text>
             <Text style={styles.name}>{productionQuoteListTitle(item, tUi, locale)}</Text>
             <Text style={styles.phone}>

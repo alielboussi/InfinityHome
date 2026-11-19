@@ -444,6 +444,8 @@ export function pickQuoteItemProductionFields(it) {
       it?.aluminum_thickness_mm ?? meta.aluminum_thickness_mm,
     ),
     accessories,
+    floor2_assembly_id: trimOrNull(meta.floor2_assembly_id ?? it?.floor2_assembly_id),
+    floor2_wip_line: meta.floor2_wip_line === true || it?.floor2_wip_line === true,
   };
 }
 
@@ -472,6 +474,11 @@ export function buildQuoteItemMetadataFromPayload(it) {
   if (fields.accessories?.length) out.accessories = fields.accessories;
   const lineImage = trimOrNull(it?.line_image_url ?? it?.lineImageUrl ?? meta.line_image_url);
   if (lineImage) out.line_image_url = lineImage;
+  const floor2Aid = trimOrNull(meta.floor2_assembly_id ?? it?.floor2_assembly_id);
+  if (floor2Aid) out.floor2_assembly_id = floor2Aid;
+  const floor2Img = trimOrNull(meta.floor2_image_url ?? it?.floor2_image_url);
+  if (floor2Img) out.floor2_image_url = floor2Img;
+  if (meta.floor2_wip_line === true || it?.floor2_wip_line === true) out.floor2_wip_line = true;
   return Object.keys(out).length ? out : null;
 }
 

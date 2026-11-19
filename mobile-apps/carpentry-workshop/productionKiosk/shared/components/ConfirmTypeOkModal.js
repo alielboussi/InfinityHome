@@ -7,7 +7,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { kiosk } from '../../components/kioskStyles';
 import { theme } from '../theme';
 
 const REQUIRED_OK = 'Ok';
@@ -15,6 +14,7 @@ const REQUIRED_OK = 'Ok';
 function inputMatchesOk(value) {
   return String(value || '').trim().toLowerCase() === 'ok';
 }
+
 export default function ConfirmTypeOkModal({
   visible,
   title,
@@ -63,28 +63,24 @@ export default function ConfirmTypeOkModal({
             placeholderTextColor={theme.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
-            style={[kiosk.input, styles.input, { textAlign: localeTextAlign(textAlign) }]}
+            style={[styles.input, { textAlign: textAlign === 'right' ? 'right' : 'left' }]}
           />
           <View style={styles.actions}>
-            <Pressable style={[kiosk.btn, styles.btnSecondary]} onPress={close}>
-              <Text style={kiosk.btnText}>{cancelLabel}</Text>
+            <Pressable style={[styles.btn, styles.btnSecondary]} onPress={close}>
+              <Text style={styles.btnText}>{cancelLabel}</Text>
             </Pressable>
             <Pressable
-              style={[kiosk.btn, styles.btnDanger, !canConfirm && styles.btnDisabled]}
+              style={[styles.btn, styles.btnDanger, !canConfirm && styles.btnDisabled]}
               onPress={confirm}
               disabled={!canConfirm}
             >
-              <Text style={[kiosk.btnText, !canConfirm && styles.btnTextDisabled]}>{confirmLabel}</Text>
+              <Text style={[styles.btnText, !canConfirm && styles.btnTextDisabled]}>{confirmLabel}</Text>
             </Pressable>
           </View>
         </Pressable>
       </Pressable>
     </Modal>
   );
-}
-
-function localeTextAlign(textAlign) {
-  return textAlign === 'right' ? 'right' : 'left';
 }
 
 const styles = StyleSheet.create({
@@ -104,10 +100,26 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', color: theme.text, marginBottom: 10 },
   message: { fontSize: 15, color: theme.textSecondary, marginBottom: 12, lineHeight: 22 },
   hint: { fontSize: 14, color: theme.muted, marginBottom: 8 },
-  input: { marginBottom: 16 },
+  input: {
+    backgroundColor: theme.surfaceElevated || '#0f172a',
+    borderWidth: 1,
+    borderColor: theme.border || '#334155',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: theme.text,
+    marginBottom: 16,
+  },
   actions: { flexDirection: 'row', gap: 12, justifyContent: 'flex-end' },
-  btnSecondary: { backgroundColor: theme.surfaceElevated || '#334155', flex: 1 },
-  btnDanger: { backgroundColor: theme.danger || '#dc2626', flex: 1 },
+  btn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  btnSecondary: { backgroundColor: theme.surfaceElevated || '#334155' },
+  btnDanger: { backgroundColor: theme.danger || '#dc2626' },
+  btnText: { color: '#fff', fontWeight: '600' },
   btnDisabled: { opacity: 0.45 },
   btnTextDisabled: { opacity: 0.8 },
 });

@@ -24,7 +24,7 @@ async function nextQuoteNumber(sb) {
   return `QT#${maxNum + 1}`;
 }
 
-async function loadFloor2QtyMap(sb, assemblyIds) {
+export async function loadFloor2QtyMap(sb, assemblyIds) {
   const ids = [...new Set((assemblyIds || []).map((id) => String(id || '').trim()).filter(Boolean))];
   if (!ids.length) return new Map();
   const { data, error } = await sb
@@ -71,12 +71,6 @@ export async function createShowroomQuoteAndSend(sb, body, user) {
 
   const workshopRoute = assertSingleShowroomRoute(routes);
   const qtyMap = await loadFloor2QtyMap(sb, assemblyIds);
-  for (const line of normalizedLines) {
-    const onHand = qtyMap.get(line.assembly_id) ?? 0;
-    if (line.quantity > onHand) {
-      throw new Error(`Insufficient Floor 2 stock for ${line.assembly.name} (have ${onHand}, need ${line.quantity}).`);
-    }
-  }
 
   const nowIso = new Date().toISOString();
   const quote_number = await nextQuoteNumber(sb);
@@ -117,6 +111,7 @@ export async function createShowroomQuoteAndSend(sb, body, user) {
         floor2_assembly_id: line.assembly_id,
         floor2_image_url: line.assembly.metadata?.floor2_image_url || line.assembly.image_url || null,
         production_route: line.route,
+        floor2_stock_at_order: qtyMap.get(line.assembly_id) ?? 0,
       },
     };
   });
@@ -159,4 +154,62 @@ export async function createShowroomQuoteAndSend(sb, body, user) {
     showroom_order: true,
     factory_location: WAREHOUSE_FACTORY_LOCATION_ID,
   };
+}
+
+function collectFloor2NeedsFromItems(items = []) {
+  const needs = new Map();
+  for (const line of items || []) {
+    const meta = line?.metadata && typeof line.metadata === 'object' ? line.metadata : {};
+    const aid = String(meta.floor2_assembly_id || line?.floor2_assembly_id || '').trim();
+    if (!aid) continue;
+    const qty = Math.max(1, Math.floor(Number(line.quantity) || 0));
+    needs.set(aid, (needs.get(aid) || 0) + qty);
+  }
+  return needs;
+}
+
+/**
+ * Shortfall snapshot for workshop quote list cards (no throw).
+ */
+export async function computeFloor2ShortfallForQuoteLines(sb, lines = []) {
+  const needs = collectFloor2NeedsFromItems(lines);
+  if (!needs.size) {
+    return { floor2_wip_required: false, floor2_ready: true, floor2_shortfalls: [] };
+  }
+  const qtyMap = await loadFloor2QtyMap(sb, [...needs.keys()]);
+  const { data: assemblies } = await sb
+    .from('warehouse_assemblies')
+    .select('id, name')
+    .in('id', [...needs.keys()]);
+  const nameById = new Map((assemblies || []).map((a) => [String(a.id), String(a.name || a.id)]));
+  const shortfalls = [];
+  for (const [aid, need] of needs.entries()) {
+    const have = qtyMap.get(aid) ?? 0;
+    if (have < need) {
+      shortfalls.push({
+        assembly_id: aid,
+        name: nameById.get(aid) || aid,
+        need,
+        have,
+        shortfall: need - have,
+      });
+    }
+  }
+  return {
+    floor2_wip_required: true,
+    floor2_ready: shortfalls.length === 0,
+    floor2_shortfalls: shortfalls,
+  };
+}
+
+/**
+ * Block starting workshop production until Floor 2 WIP covers Floor 2-linked quote lines.
+ */
+export async function assertFloor2StockForQuoteItems(sb, items = []) {
+  const { floor2_wip_required, floor2_shortfalls } = await computeFloor2ShortfallForQuoteLines(sb, items);
+  if (!floor2_wip_required || !floor2_shortfalls.length) return;
+  const first = floor2_shortfalls[0];
+  throw new Error(
+    `Manufacture "${first.name}" to Floor 2 before starting this order (need ${first.need} on Floor 2, have ${first.have}).`,
+  );
 }

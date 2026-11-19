@@ -406,6 +406,35 @@ export function QuoteProductionDrawingSection({ drawingUrl, textAlign, tUi, loca
   );
 }
 
+export function QuoteProductionFloor2ShortfallBanner({ quote, textAlign, tUi, locale }) {
+  if (quote?.accepted_at || quote?.floor2_ready !== false) return null;
+  if (!quote?.floor2_wip_required) return null;
+  const gaps = Array.isArray(quote.floor2_shortfalls) ? quote.floor2_shortfalls : [];
+  if (!gaps.length) return null;
+  const first = gaps[0];
+  const more = gaps.length > 1 ? ` (+${gaps.length - 1} more)` : '';
+  return (
+    <View style={styles.floor2ShortfallBanner}>
+      <Text style={[styles.floor2ShortfallTitle, { textAlign }]}>
+        {tUi('quoteFloor2ShortfallTitle', locale)}
+      </Text>
+      <Text style={[styles.floor2ShortfallBody, { textAlign }]}>
+        {(first.name || first.assembly_id)}
+        {' — '}
+        {tUi('quoteFloor2NeedHave', locale)}
+        {': '}
+        {first.need}
+        {' / '}
+        {first.have}
+        {more}
+      </Text>
+      <Text style={[styles.floor2ShortfallHint, { textAlign }]}>
+        {tUi('quoteFloor2ManufactureBeforeStart', locale)}
+      </Text>
+    </View>
+  );
+}
+
 export function QuoteProductionCardExtras({ quote, route, textAlign, tUi, locale, arabicMap = {} }) {
   const normalized = String(route || '').toLowerCase();
   const hasDrawing = Boolean(String(quote.drawing_url || '').trim());
@@ -506,6 +535,18 @@ const styles = StyleSheet.create({
   },
   badgeCustomer: { backgroundColor: '#dbeafe', color: '#1e40af' },
   badgeShowroom: { backgroundColor: '#e0e7ff', color: '#3730a3' },
+  floor2ShortfallBanner: {
+    marginTop: 8,
+    marginBottom: 4,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+  },
+  floor2ShortfallTitle: { color: '#92400e', fontWeight: '800', fontSize: 12, marginBottom: 4 },
+  floor2ShortfallBody: { color: '#78350f', fontSize: 12, fontWeight: '600' },
+  floor2ShortfallHint: { color: '#92400e', fontSize: 11, marginTop: 4 },
   listThumb: {
     width: '100%',
     height: 120,

@@ -16,6 +16,13 @@ import {
   View,
 } from 'react-native';
 import { theme } from './theme';
+import {
+  isProductionQuoteCustomerOrder,
+  isProductionQuoteShowroomOrder,
+  firstProductionQuoteLineImageUrl,
+  productionQuoteListTitle,
+} from './quoteShowroomOrder';
+import { orderBadgeTextStyle } from './orderBadgeI18n';
 
 function formatDimensionsCm(line, locale = 'en') {
   return formatQuoteDimensionsCmDisplay(line, locale);
@@ -51,7 +58,7 @@ export function normalizeProductionQuoteLine(line) {
     aluminum_thickness_mm: trim(line.aluminum_thickness_mm) || trim(meta.aluminum_thickness_mm),
     accessories: line.accessories ?? meta.accessories,
     description: trim(line.description) || trim(meta.description) || line.description,
-    line_image_url: trim(line.line_image_url) || trim(meta.line_image_url),
+    line_image_url: trim(line.line_image_url) || trim(meta.line_image_url) || trim(meta.floor2_image_url),
     production_completed_qty: line.production_completed_qty,
     production_remaining_qty: line.production_remaining_qty,
     ordered_qty: line.ordered_qty,
@@ -295,6 +302,76 @@ export function QuoteProductionLineRows({ lines, route, textAlign, tUi, locale, 
   });
 }
 
+export function QuoteProductionOrderBadges({ quote, textAlign, tUi, locale }) {
+  const showroom = isProductionQuoteShowroomOrder(quote);
+  const customer = isProductionQuoteCustomerOrder(quote);
+  if (!showroom && !customer) return null;
+  const badgeTextExtra = orderBadgeTextStyle(locale);
+  const rowAlign = locale === 'ar' || textAlign === 'right' ? 'flex-end' : 'flex-start';
+  return (
+    <View style={[styles.badgeRow, { justifyContent: rowAlign }]}>
+      {showroom ? (
+        <Text style={[styles.badge, styles.badgeShowroom, badgeTextExtra]}>{tUi('badgeShowroomOrder', locale)}</Text>
+      ) : null}
+      {customer ? (
+        <Text style={[styles.badge, styles.badgeCustomer, badgeTextExtra]}>{tUi('badgeCustomerOrder', locale)}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** Delivery app queue / sent list rows → same customer vs showroom badges as workshop quotes. */
+export function deliveryDestinationBadgeQuote(row) {
+  if (!row || typeof row !== 'object') {
+    return { showroom_order: false, customer_order: false };
+  }
+  if (row.showroom_order === true) {
+    return { showroom_order: true, customer_order: false };
+  }
+  const customer = row.customer_order === true
+    || row.has_customer === true
+    || Boolean(String(row.customer_name || '').trim());
+  return { showroom_order: false, customer_order: customer };
+}
+
+export function DeliveryDestinationBadges({ row, textAlign, tUi, locale }) {
+  return (
+    <QuoteProductionOrderBadges
+      quote={deliveryDestinationBadgeQuote(row)}
+      textAlign={textAlign}
+      tUi={tUi}
+      locale={locale}
+    />
+  );
+}
+
+/** Floor 2 / line reference thumb on quote list cards (showroom orders). */
+export function QuoteProductionListThumb({ quote, textAlign }) {
+  const url = firstProductionQuoteLineImageUrl(quote);
+  if (!url) return null;
+  return (
+    <Image
+      source={{ uri: url }}
+      style={[
+        styles.listThumb,
+        textAlign === 'right' ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' },
+      ]}
+      resizeMode="cover"
+    />
+  );
+}
+
+export { productionQuoteListTitle, isProductionQuoteShowroomOrder, isProductionQuoteCustomerOrder };
+export { orderBadgeTextStyle } from './orderBadgeI18n';
+
+export function productionQuoteDetailCustomerLabel(quote, tUi, locale, arabicMap, displayQuoteFieldValue) {
+  if (isProductionQuoteShowroomOrder(quote)) {
+    return tUi('showroomOrderDetailLabel', locale);
+  }
+  const name = displayQuoteFieldValue(locale, quote.customer_name, arabicMap);
+  return name || '—';
+}
+
 export function QuoteProductionDrawingSection({ drawingUrl, textAlign, tUi, locale }) {
   const [open, setOpen] = useState(false);
   const url = String(drawingUrl || '').trim();
@@ -326,6 +403,35 @@ export function QuoteProductionDrawingSection({ drawingUrl, textAlign, tUi, loca
         </View>
       </Modal>
     </>
+  );
+}
+
+export function QuoteProductionFloor2ShortfallBanner({ quote, textAlign, tUi, locale }) {
+  if (quote?.accepted_at || quote?.floor2_ready !== false) return null;
+  if (!quote?.floor2_wip_required) return null;
+  const gaps = Array.isArray(quote.floor2_shortfalls) ? quote.floor2_shortfalls : [];
+  if (!gaps.length) return null;
+  const first = gaps[0];
+  const more = gaps.length > 1 ? ` (+${gaps.length - 1} more)` : '';
+  return (
+    <View style={styles.floor2ShortfallBanner}>
+      <Text style={[styles.floor2ShortfallTitle, { textAlign }]}>
+        {tUi('quoteFloor2ShortfallTitle', locale)}
+      </Text>
+      <Text style={[styles.floor2ShortfallBody, { textAlign }]}>
+        {(first.name || first.assembly_id)}
+        {' — '}
+        {tUi('quoteFloor2NeedHave', locale)}
+        {': '}
+        {first.need}
+        {' / '}
+        {first.have}
+        {more}
+      </Text>
+      <Text style={[styles.floor2ShortfallHint, { textAlign }]}>
+        {tUi('quoteFloor2ManufactureBeforeStart', locale)}
+      </Text>
+    </View>
   );
 }
 
@@ -418,4 +524,34 @@ const styles = StyleSheet.create({
   cardLineTitle: { color: theme.textSecondary, fontSize: 13, fontWeight: '700', marginBottom: 2 },
   cardExtraText: { color: theme.textMuted, fontSize: 12, lineHeight: 17 },
   cardDrawingTag: { color: theme.primary, fontSize: 12, marginTop: 4, fontWeight: '600' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, marginBottom: 2 },
+  badge: {
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  badgeCustomer: { backgroundColor: '#dbeafe', color: '#1e40af' },
+  badgeShowroom: { backgroundColor: '#e0e7ff', color: '#3730a3' },
+  floor2ShortfallBanner: {
+    marginTop: 8,
+    marginBottom: 4,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#f59e0b',
+  },
+  floor2ShortfallTitle: { color: '#92400e', fontWeight: '800', fontSize: 12, marginBottom: 4 },
+  floor2ShortfallBody: { color: '#78350f', fontSize: 12, fontWeight: '600' },
+  floor2ShortfallHint: { color: '#92400e', fontSize: 11, marginTop: 4 },
+  listThumb: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#e2e8f0',
+  },
 });

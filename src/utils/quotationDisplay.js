@@ -55,7 +55,11 @@ export function normalizeQuotationItemRow(row) {
     foam_type: row.foam_type ?? meta.foam_type ?? '',
     aluminum_thickness_mm: row.aluminum_thickness_mm ?? meta.aluminum_thickness_mm ?? '',
     accessories: normalizeQuoteItemAccessories(row.accessories ?? meta.accessories),
-    line_image_url: row.line_image_url ?? meta.line_image_url ?? '',
+    line_image_url: row.line_image_url ?? meta.line_image_url ?? meta.floor2_image_url ?? '',
+    floor2_assembly_id: row.floor2_assembly_id ?? meta.floor2_assembly_id ?? '',
+    floor2_image_url: row.floor2_image_url ?? meta.floor2_image_url ?? '',
+    floor2_wip_line: row.floor2_wip_line === true || meta.floor2_wip_line === true,
+    metadata: meta,
   };
 }
 

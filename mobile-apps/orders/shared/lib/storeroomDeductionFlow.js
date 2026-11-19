@@ -4,6 +4,7 @@ const WAREHOUSE_NAME_TO_STOREROOM_LABEL = {
   'Carpentry Warehouse 1': 'Storeroom 1',
   'Carpentry Warehouse 2': 'Storeroom 2',
   'Carpentry Warehouse 3': 'Storeroom 3',
+  'Warehouse Floor 2': 'Floor 2',
 };
 
 const UOM_CODE_ALIASES = {
@@ -283,6 +284,67 @@ export function catalogQtyAtStoreroom(catalogRow, warehouseLocationId) {
 export function carpentryFinishNeedsStoreroomPick(job) {
   const meta = job?.metadata || {};
   return meta.catalog_manufacture === true;
+}
+
+const FLOOR2_WIP_LOCATION_NAME = 'Warehouse Floor 2';
+
+/** Map production-floor2-list row into materials-catalog shape (carpentry quote orders). */
+export function mapFloor2WipProductToMaterialRow(product, floor2LocationId) {
+  const aid = String(product?.assembly_id || product?.id || '').trim();
+  const locId = String(floor2LocationId || '').trim();
+  if (!aid || !locId) return null;
+  const qty = Math.max(0, Number(product?.floor2_qty ?? product?.quantity) || 0);
+  return {
+    id: aid,
+    assembly_id: aid,
+    name: String(product?.name || product?.raw_name || '').trim(),
+    family_sku: String(product?.family_sku || '').trim(),
+    uom: 'ea',
+    uom_label: 'ea',
+    quantity: qty,
+    floor2_wip: true,
+    locations: qty > 0
+      ? [{
+        location_id: locId,
+        location_name: FLOOR2_WIP_LOCATION_NAME,
+        quantity: qty,
+      }]
+      : [],
+  };
+}
+
+export function mergeFloor2WipIntoMaterialCatalog(storeroomMaterials, floor2Products, floor2LocationId) {
+  const floorRows = (floor2Products || [])
+    .map((p) => mapFloor2WipProductToMaterialRow(p, floor2LocationId))
+    .filter(Boolean);
+  return mergeCatalogByFamilySku([...(storeroomMaterials || []), ...floorRows]);
+}
+
+export function isWarehouseFloor2StoreroomOption(opt) {
+  const name = String(opt?.name || opt?.label || '').trim();
+  return /warehouse\s*floor\s*2/i.test(name) || /^floor\s*2$/i.test(name);
+}
+
+/** Storeroom picker options only (excludes Warehouse Floor 2 WIP). */
+export function filterStoreroomPickerOptions(options) {
+  return (options || []).filter((o) => !isWarehouseFloor2StoreroomOption(o));
+}
+
+/** Materials catalog rows for painting / storeroom-only jobs — no Floor 2 WIP skus or locations. */
+export function catalogForStoreroomDeductionOnly(rows) {
+  return (rows || [])
+    .filter((r) => !r.floor2_wip)
+    .map((row) => {
+      const locations = (row.locations || []).filter(
+        (loc) => !/warehouse\s*floor\s*2/i.test(String(loc.location_name || '')),
+      );
+      const quantity = locations.reduce(
+        (sum, loc) => sum + Math.max(0, Number(loc.quantity) || 0),
+        0,
+      );
+      return { ...row, locations, quantity };
+    })
+    .filter((r) => isStoreroomMaterialSelectable(r));
 }
 
 export function storeroomDeductionStrings(tUi, locale) {

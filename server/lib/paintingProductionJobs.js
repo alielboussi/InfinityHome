@@ -423,11 +423,16 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
   const qty = Math.max(1, Math.floor(Number(productQty) || Number(run.product_qty) || 1));
   const { floor2LocationId, floor1LocationId } = await resolveFloor2AndFactoryIds(sb);
 
+  const isShowroom = routing.metadata?.showroom_order === true;
   let inventory_source = 'floor2';
   const floor2Have = await loadAssemblyInventoryQty(sb, assemblyId, floor2LocationId);
   if (floor2Have >= qty) {
     await adjustAssemblyInventory(sb, assemblyId, floor2LocationId, -qty);
     await recomputeWarehouseLocationStockServer(sb, floor2LocationId);
+  } else if (isShowroom) {
+    throw new Error(
+      `Showroom order requires Floor 2 WIP before painting (need ${qty}, have ${floor2Have}). Manufacture to Floor 2 first.`,
+    );
   } else {
     const floor1Have = await loadAssemblyInventoryQty(sb, assemblyId, floor1LocationId);
     if (floor1Have >= qty) {

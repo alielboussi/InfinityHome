@@ -243,6 +243,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWorkshopCrossAppSmoke.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[workshop-cross-app:fail] verifyWorkshopCrossAppSmoke.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseReturnRepairDepartment.js', {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),

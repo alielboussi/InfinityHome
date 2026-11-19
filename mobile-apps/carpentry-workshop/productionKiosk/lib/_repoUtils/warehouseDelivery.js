@@ -76,6 +76,14 @@ export function deliveryEntryReceived(entry) {
   return Boolean(entry?.metadata?.received_at);
 }
 
+export {
+  deliveryEntrySkipKitweRetailCatalog,
+  isDeliveryCustomerOrderSession,
+  isQuoteCustomerOrder,
+} from './quoteCustomerOrder.js';
+
+export { isDeliveryShowroomOrderSession } from './quoteShowroomOrder.js';
+
 /** Hassan marked this line to go to the customer instead of Kitwe stock. */
 export function deliveryEntrySentToCustomer(entry) {
   const meta = entry?.metadata && typeof entry.metadata === 'object' ? entry.metadata : {};
