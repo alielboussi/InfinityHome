@@ -12,6 +12,8 @@ import {
   manualMaterialLinesNeedMetadataRepair,
 } from './productionJobMaterials.js';
 import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
+import { resolveWarehouseMobileDisplayName } from '../../src/utils/warehouseMobileDisplayName.js';
+import { getLoginAccessRecord } from './loginAccess.js';
 
 const JOBS = 'painting_production_jobs';
 const RUNS = 'carpentry_production_runs';
@@ -19,6 +21,34 @@ const ASSEMBLIES = 'warehouse_assemblies';
 const LOCATIONS = 'locations';
 
 const ACTIVE_STATUSES = new Set(['ready', 'running', 'paused']);
+
+async function paintingSenderNameForUserId(userId) {
+  const uid = String(userId || '').trim();
+  if (!uid) return null;
+  const record = await getLoginAccessRecord(uid);
+  const name = resolveWarehouseMobileDisplayName({ id: uid }, record);
+  return name || null;
+}
+
+async function attachPaintingSenderAliases(jobs) {
+  const list = Array.isArray(jobs) ? jobs : [];
+  const missing = list.filter(
+    (j) => !String(j.sent_by_alias || '').trim() && String(j.accepted_by || '').trim(),
+  );
+  const ids = [...new Set(missing.map((j) => String(j.accepted_by).trim()))];
+  const byId = new Map();
+  await Promise.all(ids.map(async (uid) => {
+    const record = await getLoginAccessRecord(uid);
+    byId.set(uid, resolveWarehouseMobileDisplayName({ id: uid }, record) || uid);
+  }));
+  return list.map((j) => {
+    const stored = String(j.sent_by_alias || '').trim();
+    if (stored) return j;
+    const uid = String(j.accepted_by || '').trim();
+    if (!uid) return j;
+    return { ...j, sent_by_alias: byId.get(uid) || null };
+  });
+}
 
 function stripUndefinedDeep(value) {
   if (value === undefined) return undefined;
@@ -73,7 +103,8 @@ async function enrichPaintingJobsWithAssemblyPhotos(sb, jobs) {
 async function serializePaintingJobForClient(sb, job) {
   const base = serializeJob(job);
   const [enriched] = await enrichPaintingJobsWithAssemblyPhotos(sb, [base]);
-  return enriched;
+  const [withSender] = await attachPaintingSenderAliases([enriched]);
+  return withSender;
 }
 
 function serializeJob(job) {
@@ -93,6 +124,8 @@ function serializeJob(job) {
     started_at: job.started_at || null,
     completed_at: job.completed_at || null,
     accepted_by: job.accepted_by || null,
+    sent_by_alias:
+      String(job.metadata?.sent_by_name || job.metadata?.sent_by_alias || '').trim() || null,
     manual_material_lines: Array.isArray(job.metadata?.manual_material_lines)
       ? job.metadata.manual_material_lines
       : [],
@@ -173,6 +206,7 @@ export async function sendAssemblyToPaintingDepartment(sb, {
   await recomputeWarehouseLocationStockServer(sb, floor2LocationId);
 
   const now = new Date().toISOString();
+  const sentByName = await paintingSenderNameForUserId(userId);
   const jobId = newUuid();
   const row = stripUndefinedDeep({
     id: jobId,
@@ -191,6 +225,7 @@ export async function sendAssemblyToPaintingDepartment(sb, {
       inventory_source: 'floor2',
       floor2_deducted_qty: qty,
       floor2_location_id: floor2LocationId,
+      sent_by_name: sentByName,
     },
     created_at: now,
     updated_at: now,
@@ -273,6 +308,7 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
 
   const ctx = await loadPaintingProductContext(sb, assemblyId);
   const now = new Date().toISOString();
+  const sentByName = await paintingSenderNameForUserId(userId);
   const jobId = newUuid();
   const row = stripUndefinedDeep({
     id: jobId,
@@ -295,6 +331,7 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
       factory_deducted_qty: inventory_source === 'floor1' ? qty : 0,
       virtual_hold: inventory_source === 'virtual_hold',
       floor2_location_id: floor2LocationId,
+      sent_by_name: sentByName,
     },
     created_at: now,
     updated_at: now,
@@ -379,6 +416,7 @@ export async function sendPartialCarpentryQuoteLineToPainting(sb, {
 
   const ctx = await loadPaintingProductContext(sb, assemblyId);
   const now = new Date().toISOString();
+  const sentByName = await paintingSenderNameForUserId(userId);
   const jobId = newUuid();
   const row = stripUndefinedDeep({
     id: jobId,
@@ -403,6 +441,7 @@ export async function sendPartialCarpentryQuoteLineToPainting(sb, {
       factory_deducted_qty: inventory_source === 'floor1' ? qty : 0,
       virtual_hold: inventory_source === 'virtual_hold',
       floor2_location_id: floor2LocationId,
+      sent_by_name: sentByName,
     },
     created_at: now,
     updated_at: now,
@@ -453,7 +492,8 @@ export async function listPaintingProductionJobs(sb, { activeOnly = false, limit
     jobs.push({ ...base, manual_material_lines: lines });
   }
   const withPhotos = await enrichPaintingJobsWithAssemblyPhotos(sb, jobs);
-  return { jobs: withPhotos };
+  const withSenders = await attachPaintingSenderAliases(withPhotos);
+  return { jobs: withSenders };
 }
 
 export async function pausePaintingProductionJob(sb, { jobId, userId }) {

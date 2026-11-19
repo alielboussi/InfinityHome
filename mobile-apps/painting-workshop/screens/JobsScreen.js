@@ -68,6 +68,7 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
   }
   const thumb = resolvePaintingJobImage(job);
   const showJobPhoto = Boolean(thumb) && !isCompleted;
+  const sentBy = String(job.sent_by_alias || job.metadata?.sent_by_name || '').trim();
 
   return (
     <ProductionPressableHint
@@ -87,6 +88,11 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
         {textForDisplay(job.product_sku || '', '')}
         {qty > 1 ? ` · ×${qty}` : ''}
       </Text>
+      {sentBy ? (
+        <Text style={[styles.jobMeta, { textAlign }]}>
+          {tUi('paintingJobSentBy', locale)}: {textForDisplay(sentBy, '—')}
+        </Text>
+      ) : null}
       <View style={styles.timerRow}>
         <Text style={styles.timerLabel}>{tUi('quoteOrderTimer', locale)}</Text>
         <RunningJobElapsed job={job} style={styles.timerValue} />

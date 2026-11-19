@@ -1,5 +1,6 @@
 /**
  * Copy shared UI from warehouse-upholstery into painting-workshop (Painting-only app).
+ * Metro/babel stay app-owned in git — do not overwrite on postinstall (Windows file locks + app-specific).
  */
 const fs = require('fs');
 const path = require('path');
@@ -8,7 +9,21 @@ const appRoot = path.resolve(__dirname, '..');
 const upholsteryRoot = path.resolve(appRoot, '..', 'warehouse-upholstery');
 
 const COPY_DIRS = ['components', 'hooks'];
-const COPY_FILES = ['babel.config.js', 'metro.config.js'];
+
+function copyFile(src, dest) {
+  const buf = fs.readFileSync(src);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  try {
+    fs.writeFileSync(dest, buf);
+  } catch {
+    try {
+      if (fs.existsSync(dest)) fs.unlinkSync(dest);
+    } catch {
+      /* ignore */
+    }
+    fs.writeFileSync(dest, buf);
+  }
+}
 
 function copyDir(src, dest) {
   if (!fs.existsSync(src)) return;
@@ -18,10 +33,7 @@ function copyDir(src, dest) {
     const s = path.join(src, name);
     const d = path.join(dest, name);
     if (fs.statSync(s).isDirectory()) copyDir(s, d);
-    else {
-      fs.mkdirSync(path.dirname(d), { recursive: true });
-      fs.copyFileSync(s, d);
-    }
+    else copyFile(s, d);
   }
 }
 
@@ -32,12 +44,6 @@ function main() {
   }
   for (const dir of COPY_DIRS) {
     copyDir(path.join(upholsteryRoot, dir), path.join(appRoot, dir));
-  }
-  for (const file of COPY_FILES) {
-    const src = path.join(upholsteryRoot, file);
-    if (fs.existsSync(src)) {
-      fs.copyFileSync(src, path.join(appRoot, file));
-    }
   }
   console.log('[materializePaintingUi] ok');
 }

@@ -457,6 +457,7 @@ const UI_STRINGS = {
   paintingQueueBadgeCarpentryOrder: { en: 'Carpentry order (Floor 2)', ar: 'طلب نجارة (طابق 2)' },
   paintingQueueBadgeCarpentryOrderFinished: { en: 'Carpentry order (finished)', ar: 'طلب نجارة (جاهز)' },
   paintingQueueBadgeFloor2: { en: 'Floor 2 WIP', ar: 'WIP طابق 2' },
+  paintingJobSentBy: { en: 'Sent by', ar: 'أرسله' },
   paintingOpenPushSettings: { en: 'Alerts', ar: 'التنبيهات' },
   paintingJobControlsHint: {
     en: 'Play · Pause · Stop (Delivery queue or Floor 1)',
