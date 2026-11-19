@@ -4,7 +4,7 @@ import db from '../dataClient';
 import { pickQuoteItemProductionFields, quoteItemLineImageUrl } from './quoteProductionItemFields';
 import { resolveFirebaseStorageImageForDisplay, rewriteLegacyStorageUrl } from './storageImageUrl';
 import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime';
-import { translateQuoteStringsToArabic } from '../services/quoteProductionApi';
+import { translateQuoteStringsToArabicComplete } from '../services/quoteProductionApi';
 import {
   ARABIC_TERMS,
   factoryOrderDepartmentArabic,
@@ -12,6 +12,11 @@ import {
   translateTermToArabic,
   translateQtyUnitLabel,
   collectProductionQuoteArabicPhrases,
+  expandArabicPhraseVariants,
+  assertArabicTranslationsForPhrases,
+  collectFactoryOrderArabicCheckPhrases,
+  translateProductLineNameToArabic,
+  translateSlashDimensionDescriptionToArabic,
 } from './quoteArabicTranslate';
 
 export { ARABIC_TERMS, translateTermToArabic };
@@ -159,12 +164,25 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
 
   const phraseSet = new Set(collectProductionQuoteArabicPhrases(items));
   for (const it of items || []) {
+    const rawName = String(
+      it.name_override || it.name || it.product_name || it.quote_product_name || it.description || '',
+    ).trim();
+    if (rawName) phraseSet.add(rawName);
+    if (rawName) {
+      const titled = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      phraseSet.add(titled);
+    }
     const desc = cleanDescriptionText(it.description);
     if (desc) phraseSet.add(desc);
     const descRaw = String(it.description || '').trim();
     if (descRaw) phraseSet.add(descRaw);
   }
-  const serverTranslations = await translateQuoteStringsToArabic([...phraseSet]);
+  const phraseList = expandArabicPhraseVariants([...phraseSet]);
+  const serverTranslations = await translateQuoteStringsToArabicComplete(phraseList, {
+    requireComplete: true,
+    maxRounds: 4,
+  });
+  assertArabicTranslationsForPhrases(collectFactoryOrderArabicCheckPhrases(items), serverTranslations);
 
   const lineImageDataByKey = new Map();
   await Promise.all(
@@ -197,7 +215,11 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         it.name_override || it.name || it.product_name || it.quote_product_name || it.description || '-',
       ).trim();
       const nameEn = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-      const nameAr = translateTermToArabic(nameEn, serverTranslations);
+      const nameAr = translateProductLineNameToArabic(nameEn, serverTranslations)
+        || translateTermToArabic(nameEn, serverTranslations);
+      if (!nameAr) {
+        throw new Error(`Arabic product name missing for: ${nameEn}`);
+      }
 
       const fields = pickQuoteItemProductionFields(it);
       const specBlocks = [];
@@ -262,8 +284,13 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
       const desc = cleanDescriptionText(it.description);
       if (desc) {
         const descRaw = String(it.description || '').trim();
-        const descAr = translateTermToArabic(descRaw, serverTranslations)
+        const descAr = translateSlashDimensionDescriptionToArabic(descRaw, serverTranslations)
+          || translateSlashDimensionDescriptionToArabic(desc, serverTranslations)
+          || translateTermToArabic(descRaw, serverTranslations)
           || translateTermToArabic(desc, serverTranslations);
+        if (!descAr) {
+          throw new Error(`Arabic description missing for: ${desc}`);
+        }
         specBlocks.push(`
           <div class="bilingual-row desc-pair">
             <div class="en-col" dir="ltr">Description: "${escapeHtml(desc)}"</div>

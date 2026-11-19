@@ -42,6 +42,12 @@ import {
   suggestAluminumAccessories,
   uploadOrdersQuoteLineImage,
 } from '../services/ordersApi';
+import QuoteLineDimensionSets, { patchQuoteLineQuantityWithDimensions } from '../../shared/QuoteLineDimensionSets';
+import {
+  applyQuoteDimensionSetsToLineFields,
+  readQuoteDimensionSets,
+} from '../../shared/quoteLineDimensions';
+import { resolveQuoteLineQuantity } from '../../shared/quoteLineQuantity';
 
 function GridCol({ children, style }) {
   return <View style={[styles.gridCol, style]}>{children}</View>;
@@ -62,9 +68,7 @@ function emptyLineFromProduct(product) {
     quantity: '1',
     unit_price: String(Number(product.price) || 0),
     unit_id: product.unit_id ? String(product.unit_id) : '',
-    dim_l_cm: '',
-    dim_w_cm: '',
-    dim_h_cm: '',
+    ...applyQuoteDimensionSetsToLineFields([{ dim_l_cm: '', dim_w_cm: '', dim_h_cm: '' }]),
     leather_code: '',
     foam_type: '',
     wood: '',
@@ -101,24 +105,31 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
 
   const productionRouteMissing = !routeChoice;
 
-  const mapQuoteItemsToLines = useCallback((items) => (items || []).map((it) => ({
-    key: String(it.id),
-    quote_product_id: it.quote_product_id,
-    name: it.name || it.name_override || '',
-    description: it.description || '',
-    quantity: it.quantity == null ? '1' : String(it.quantity),
-    unit_price: it.unit_price == null ? '0' : String(it.unit_price),
-    unit_id: it.unit_id ? String(it.unit_id) : '',
-    dim_l_cm: it.dim_l_cm || '',
-    dim_w_cm: it.dim_w_cm || '',
-    dim_h_cm: it.dim_h_cm || '',
-    leather_code: it.leather_code || '',
-    foam_type: it.foam_type || '',
-    wood: it.wood || '',
-    color_code: it.color_code || '',
-    aluminum_thickness_mm: it.aluminum_thickness_mm || '',
-    accessories: Array.isArray(it.accessories) ? it.accessories : [],
-  })), []);
+  const mapQuoteItemsToLines = useCallback((items) => (items || []).map((it) => {
+    const meta = it.metadata && typeof it.metadata === 'object' ? it.metadata : {};
+    const quantity = it.quantity == null ? '1' : String(it.quantity);
+    const unit_price = it.unit_price == null ? '0' : String(it.unit_price);
+    const dims = applyQuoteDimensionSetsToLineFields(
+      readQuoteDimensionSets({ ...it, metadata: meta }, resolveQuoteLineQuantity(quantity, unit_price)),
+    );
+    return {
+      key: String(it.id),
+      quote_product_id: it.quote_product_id,
+      name: it.name || it.name_override || '',
+      description: it.description || '',
+      quantity,
+      unit_price,
+      unit_id: it.unit_id ? String(it.unit_id) : '',
+      ...dims,
+      leather_code: it.leather_code || meta.leather_code || '',
+      foam_type: it.foam_type || meta.foam_type || '',
+      wood: it.wood || meta.wood || '',
+      color_code: it.color_code || meta.color_code || '',
+      aluminum_thickness_mm: it.aluminum_thickness_mm || meta.aluminum_thickness_mm || '',
+      accessories: Array.isArray(it.accessories) ? it.accessories : (Array.isArray(meta.accessories) ? meta.accessories : []),
+      line_image_url: it.line_image_url || meta.line_image_url || '',
+    };
+  }), []);
 
   const aluminumGroupsForLine = useCallback((lineKey) => {
     const aiItems = aluminumAiByLine[lineKey] || [];
@@ -335,6 +346,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
           dim_l_cm: line.dim_l_cm,
           dim_w_cm: line.dim_w_cm,
           dim_h_cm: line.dim_h_cm,
+          dimension_sets: line.dimension_sets,
           leather_code: line.leather_code,
           foam_type: line.foam_type,
           wood: line.wood,
@@ -522,7 +534,7 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                         style={kiosk.input}
                         keyboardType="decimal-pad"
                         value={String(line.quantity)}
-                        onChangeText={(v) => updateLine(line.key, { quantity: v })}
+                        onChangeText={(v) => updateLine(line.key, patchQuoteLineQuantityWithDimensions(line, v))}
                       />
                     </View>
                   </GridCol>
@@ -574,23 +586,12 @@ export default function NewOrderScreen({ navigation, route, allowed, accessHint,
                 </View>
                 {(showUph || showCarp || showAlu) ? (
                   <>
-                    <View style={styles.gridRow}>
-                      {[['dim_l_cm', 'dimL', 'L'], ['dim_w_cm', 'dimW', 'W'], ['dim_h_cm', 'dimH', 'H']].map(([key, labelKey, ph]) => (
-                        <GridCol key={key}>
-                          <View style={kiosk.field}>
-                            <Text style={kiosk.label}>{tUi(labelKey, locale)}</Text>
-                            <TextInput
-                              style={kiosk.input}
-                              keyboardType="decimal-pad"
-                              placeholder={ph}
-                              placeholderTextColor={theme.textDim}
-                              value={line[key]}
-                              onChangeText={(v) => updateLine(line.key, { [key]: v })}
-                            />
-                          </View>
-                        </GridCol>
-                      ))}
-                    </View>
+                    <QuoteLineDimensionSets
+                      line={line}
+                      locale={locale}
+                      labelFor={(key) => tUi(key, locale)}
+                      onPatch={(patch) => updateLine(line.key, patch)}
+                    />
                     {showUph ? (
                       <>
                         <View style={styles.gridRow}>

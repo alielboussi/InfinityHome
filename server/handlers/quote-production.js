@@ -82,6 +82,17 @@ export default async function handler(req, res) {
       const pdfBase64 = String(body.pdfBase64 || body.pdf_base64 || '')
         .replace(/^data:application\/pdf(?:;[^,]*)?;base64,/i, '')
         .replace(/\s+/g, '');
+      const hasPdf = Boolean(pdfUrl || pdfBase64);
+      const quoteIdForWa = String(body.quote_id || body.quoteId || '').trim();
+
+      if (hasPdf) {
+        if (!quoteIdForWa) {
+          res.status(400).json({ ok: false, error: 'quote_id is required when sending a factory order PDF to WhatsApp.' });
+          return;
+        }
+        const { assertQuoteArabicReadyForFactoryPdfWhatsApp } = await import('../lib/quoteFactoryOrderArabicGate.js');
+        await assertQuoteArabicReadyForFactoryPdfWhatsApp(db, quoteIdForWa);
+      }
 
       if (!pdfUrl && pdfBase64) {
         const { uploadPdfAndGetUrl } = await import('../lib/firebaseStorage.js');
@@ -111,6 +122,7 @@ export default async function handler(req, res) {
         pdfUrl,
         pdfBase64: pdfUrl ? '' : pdfBase64,
         pdfFilename,
+        quote_id: quoteIdForWa || undefined,
         route: body.route || body.production_route || body.productionRoute,
         illustrationImageUrl: resolvedIllustration,
       });
@@ -121,7 +133,7 @@ export default async function handler(req, res) {
     if (op === 'translate-arabic') {
       const { translateStringsToArabicServer } = await import('../lib/quoteArabicTranslate.js');
       const texts = Array.isArray(body.texts) ? body.texts : [];
-      const translations = await translateStringsToArabicServer(texts);
+      const translations = await translateStringsToArabicServer(texts, { sb: db, maxGeminiRounds: 3 });
       res.status(200).json({ ok: true, translations });
       return;
     }

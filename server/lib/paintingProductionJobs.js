@@ -13,6 +13,7 @@ import {
 } from './productionJobMaterials.js';
 import { readWarehouseFloor2WipImageUrl } from '../../src/utils/warehouseFloor2WipImage.js';
 import { resolveWarehouseMobileDisplayName } from '../../src/utils/warehouseMobileDisplayName.js';
+import { quoteItemLineImageUrl } from '../../src/utils/quoteProductionItemFields.js';
 import { getLoginAccessRecord } from './loginAccess.js';
 
 const JOBS = 'painting_production_jobs';
@@ -28,6 +29,135 @@ async function paintingSenderNameForUserId(userId) {
   const record = await getLoginAccessRecord(uid);
   const name = resolveWarehouseMobileDisplayName({ id: uid }, record);
   return name || null;
+}
+
+function quoteLineDisplayName(it, productById = null) {
+  const fromProduct = productById && it?.quote_product_id
+    ? String(productById.get(String(it.quote_product_id))?.name || '').trim()
+    : '';
+  return String(it?.name_override || it?.name || fromProduct || '').trim();
+}
+
+function formatCarpentryQuoteProductTitle(items, { quoteNumber = '' } = {}) {
+  const parts = (items || [])
+    .map((it) => {
+      const name = quoteLineDisplayName(it, null);
+      if (!name) return '';
+      const lineQty = Math.max(1, Math.floor(Number(it.quantity) || 1));
+      return lineQty > 1 ? `${name} ×${lineQty}` : name;
+    })
+    .filter(Boolean);
+  if (parts.length === 1) return parts[0];
+  if (parts.length > 1) return parts.join(' · ');
+  const num = String(quoteNumber || '').trim();
+  return num || '';
+}
+
+function firstQuoteLineImageUrl(items) {
+  for (const it of items || []) {
+    const url = quoteItemLineImageUrl(it);
+    if (url) return url;
+  }
+  return '';
+}
+
+async function loadCarpentryQuoteDisplayBundle(sb, quoteId) {
+  const qid = String(quoteId || '').trim();
+  if (!qid) return null;
+  const [{ data: quote }, { data: items }] = await Promise.all([
+    sb.from('quotations').select('id, quote_number').eq('id', qid).maybeSingle(),
+    sb.from('quotation_items').select('*').eq('quotation_id', qid).order('sort_order'),
+  ]);
+  if (!quote?.id) return null;
+  const rawItems = items || [];
+  const qpIds = [...new Set(rawItems.map((it) => it?.quote_product_id).filter(Boolean).map(String))];
+  let productById = new Map();
+  if (qpIds.length) {
+    const { data: qps } = await sb
+      .from('quotation_products')
+      .select('id, name, description')
+      .in('id', qpIds);
+    productById = new Map((qps || []).map((p) => [String(p.id), p]));
+  }
+  const list = rawItems.map((it) => ({
+    ...it,
+    name: quoteLineDisplayName(it, productById),
+    description: String(it?.description || productById.get(String(it?.quote_product_id))?.description || '').trim() || it?.description,
+  }));
+  return {
+    quote_number: quote.quote_number || null,
+    product_title: formatCarpentryQuoteProductTitle(list, { quoteNumber: quote.quote_number }),
+    line_image_url: firstQuoteLineImageUrl(list),
+  };
+}
+
+async function attachCarpentryQuoteIdsFromProductionRuns(sb, jobs) {
+  const list = Array.isArray(jobs) ? jobs : [];
+  const missing = list.filter((j) => {
+    const qid = String(j.carpentry_quote_id || j.quote_id || '').trim();
+    const asm = String(j.assembly_id || '').trim();
+    return !qid && asm;
+  });
+  if (!missing.length) return list;
+  const asmIds = [...new Set(missing.map((j) => String(j.assembly_id).trim()))];
+  const { data: runs, error } = await sb
+    .from(RUNS)
+    .select('quote_id, assembly_id, completed_at')
+    .in('assembly_id', asmIds)
+    .not('quote_id', 'is', null)
+    .not('completed_at', 'is', null)
+    .order('completed_at', { ascending: false })
+    .limit(400);
+  if (error) return list;
+  const quoteByAssembly = new Map();
+  for (const row of runs || []) {
+    const aid = String(row.assembly_id || '').trim();
+    const qid = String(row.quote_id || '').trim();
+    if (!aid || !qid || quoteByAssembly.has(aid)) continue;
+    quoteByAssembly.set(aid, qid);
+  }
+  return list.map((j) => {
+    const qid = String(j.carpentry_quote_id || j.quote_id || '').trim();
+    if (qid) return j;
+    const fromRun = quoteByAssembly.get(String(j.assembly_id || '').trim());
+    if (!fromRun) return j;
+    return { ...j, carpentry_quote_id: fromRun, quote_id: fromRun };
+  });
+}
+
+async function enrichPaintingJobsFromCarpentryQuotes(sb, jobs) {
+  const list = await attachCarpentryQuoteIdsFromProductionRuns(sb, Array.isArray(jobs) ? jobs : []);
+  const quoteIds = [
+    ...new Set(
+      list
+        .map((j) => String(j.carpentry_quote_id || j.quote_id || '').trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!quoteIds.length) return list;
+  const bundles = new Map();
+  await Promise.all(quoteIds.map(async (qid) => {
+    const bundle = await loadCarpentryQuoteDisplayBundle(sb, qid);
+    if (bundle) bundles.set(qid, bundle);
+  }));
+  return list.map((job) => {
+    const qid = String(job.carpentry_quote_id || job.quote_id || '').trim();
+    if (!qid) return job;
+    const bundle = bundles.get(qid);
+    if (!bundle) return job;
+    const storedTitle = String(job.product_name || '').trim();
+    const title = bundle.product_title || storedTitle;
+    const quoteImg = String(bundle.line_image_url || job.quote_line_image_url || '').trim();
+    const photo = quoteImg || job.image_url || job.floor2_image_url || '';
+    return {
+      ...job,
+      product_name: title || storedTitle,
+      quote_number: bundle.quote_number || job.quote_number || null,
+      quote_line_image_url: quoteImg || null,
+      image_url: quoteImg ? quoteImg : job.image_url,
+      floor2_image_url: quoteImg ? quoteImg : job.floor2_image_url,
+    };
+  });
 }
 
 async function attachPaintingSenderAliases(jobs) {
@@ -103,7 +233,8 @@ async function enrichPaintingJobsWithAssemblyPhotos(sb, jobs) {
 async function serializePaintingJobForClient(sb, job) {
   const base = serializeJob(job);
   const [enriched] = await enrichPaintingJobsWithAssemblyPhotos(sb, [base]);
-  const [withSender] = await attachPaintingSenderAliases([enriched]);
+  const [fromQuote] = await enrichPaintingJobsFromCarpentryQuotes(sb, [enriched]);
+  const [withSender] = await attachPaintingSenderAliases([fromQuote]);
   return withSender;
 }
 
@@ -131,6 +262,8 @@ function serializeJob(job) {
       : [],
     carpentry_quote_id: String(job.metadata?.carpentry_quote_id || '').trim() || null,
     quote_id: String(job.metadata?.carpentry_quote_id || job.metadata?.quote_id || '').trim() || null,
+    quote_number: String(job.metadata?.quote_number || '').trim() || null,
+    quote_line_image_url: String(job.metadata?.quote_line_image_url || '').trim() || null,
     inventory_source: job.metadata?.inventory_source || null,
     floor2_image_url: String(job.floor2_image_url || '').trim(),
     image_url: String(job.image_url || job.floor2_image_url || '').trim(),
@@ -307,13 +440,15 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
   }
 
   const ctx = await loadPaintingProductContext(sb, assemblyId);
+  const quoteDisplay = await loadCarpentryQuoteDisplayBundle(sb, qid);
   const now = new Date().toISOString();
   const sentByName = await paintingSenderNameForUserId(userId);
   const jobId = newUuid();
   const row = stripUndefinedDeep({
     id: jobId,
     assembly_id: ctx.productId,
-    product_name: String(ctx.assembly.name || '').trim(),
+    product_name:
+      quoteDisplay?.product_title || String(ctx.assembly.name || '').trim(),
     product_sku: String(ctx.assembly.family_sku || '').trim(),
     product_qty: qty,
     status: 'ready',
@@ -326,6 +461,8 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
       channel: 'carpentry_workshop_app',
       carpentry_quote_id: qid,
       quote_id: qid,
+      quote_number: quoteDisplay?.quote_number || null,
+      quote_line_image_url: quoteDisplay?.line_image_url || null,
       inventory_source,
       floor2_deducted_qty: inventory_source === 'floor2' ? qty : 0,
       factory_deducted_qty: inventory_source === 'floor1' ? qty : 0,
@@ -392,8 +529,18 @@ export async function sendPartialCarpentryQuoteLineToPainting(sb, {
   const run = (runs || [])[0];
   if (!run?.assembly_id) throw new Error('No active production run for this quote');
 
-  const { data: lineRow } = await sb.from('quotation_items').select('name_override, name').eq('id', iid).maybeSingle();
-  const lineName = String(lineRow?.name_override || lineRow?.name || '').trim();
+  const { data: lineRow } = await sb.from('quotation_items').select('name_override, name, quote_product_id').eq('id', iid).maybeSingle();
+  let lineName = '';
+  if (lineRow?.quote_product_id) {
+    const { data: qp } = await sb
+      .from('quotation_products')
+      .select('name')
+      .eq('id', lineRow.quote_product_id)
+      .maybeSingle();
+    lineName = String(lineRow?.name_override || lineRow?.name || qp?.name || '').trim();
+  } else {
+    lineName = String(lineRow?.name_override || lineRow?.name || '').trim();
+  }
 
   const assemblyId = String(run.assembly_id);
   const qty = sliceQty;
@@ -492,7 +639,31 @@ export async function listPaintingProductionJobs(sb, { activeOnly = false, limit
     jobs.push({ ...base, manual_material_lines: lines });
   }
   const withPhotos = await enrichPaintingJobsWithAssemblyPhotos(sb, jobs);
-  const withSenders = await attachPaintingSenderAliases(withPhotos);
+  const withQuoteDisplay = await enrichPaintingJobsFromCarpentryQuotes(sb, withPhotos);
+
+  await Promise.all(withQuoteDisplay.map(async (job) => {
+    const qid = String(job.carpentry_quote_id || job.quote_id || '').trim();
+    if (!qid) return;
+    const corrected = String(job.product_name || '').trim();
+    const row = rows.find((r) => String(r.id) === String(job.job_id || job.id));
+    if (!row || !corrected) return;
+    const oldName = String(row.product_name || '').trim();
+    if (corrected === oldName) return;
+    const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+    await sb.from(JOBS).update({
+      product_name: corrected,
+      metadata: {
+        ...meta,
+        carpentry_quote_id: qid,
+        quote_id: qid,
+        quote_number: job.quote_number || meta.quote_number || null,
+        quote_line_image_url: job.quote_line_image_url || meta.quote_line_image_url || null,
+      },
+      updated_at: now,
+    }).eq('id', row.id);
+  }));
+
+  const withSenders = await attachPaintingSenderAliases(withQuoteDisplay);
   return { jobs: withSenders };
 }
 

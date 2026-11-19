@@ -48,6 +48,10 @@ import { alertProductionFinishDisposition } from '../shared/lib/productionFinish
 import ConfirmTypeOkModal from '../shared/components/ConfirmTypeOkModal';
 
 function resolvePaintingJobImage(job) {
+  const fromQuote = Boolean(String(job?.carpentry_quote_id || job?.quote_id || '').trim());
+  const quoteImg = String(job?.quote_line_image_url || job?.metadata?.quote_line_image_url || '').trim();
+  if (fromQuote && quoteImg) return resolveProductImageUrl(quoteImg);
+  if (fromQuote && !quoteImg) return '';
   const invSource = String(job?.inventory_source || '').trim().toLowerCase();
   const raw = invSource === 'floor1'
     ? String(job?.image_url || '').trim()
@@ -85,8 +89,14 @@ function JobCard({ job, locale, textAlign, busy, timerLocked, onPause, onPlay, o
       </Text>
       <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.product_name, '—')}</Text>
       <Text style={[styles.jobMeta, { textAlign }]}>
-        {textForDisplay(job.product_sku || '', '')}
-        {qty > 1 ? ` · ×${qty}` : ''}
+        {[
+          fromQuote && String(job.quote_number || '').trim()
+            ? String(job.quote_number).trim()
+            : textForDisplay(job.product_sku || '', ''),
+          qty > 1 ? `×${qty}` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       </Text>
       {sentBy ? (
         <Text style={[styles.jobMeta, { textAlign }]}>

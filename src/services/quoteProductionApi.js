@@ -1,5 +1,6 @@
 import db from '../dataClient';
 import { apiUrl, getApiBase, isLocalDev, withApiHeaders } from '../utils/apiUrl';
+import { phraseStillHasEnglishWords, translateTermToArabic } from '../utils/quoteArabicTranslate';
 
 const QUOTE_PRODUCTION_API = '/api/quote-production';
 
@@ -133,22 +134,56 @@ export async function fetchQuoteProductionRoutingsMap(quoteIds = []) {
 }
 
 export async function translateQuoteStringsToArabic(texts = []) {
-  const list = [...new Set((texts || []).map((t) => String(t ?? '').trim()).filter(Boolean))];
+  const map = await translateQuoteStringsToArabicComplete(texts, { requireComplete: false });
+  return map;
+}
+
+/**
+ * Fetch Arabic map from server (static + Gemini). When requireComplete, throws if any phrase is still English.
+ */
+export async function translateQuoteStringsToArabicComplete(texts = [], { requireComplete = true, maxRounds = 3 } = {}) {
+  const list = [...new Set((texts || []).map((t) => String(t ?? '').trim()).filter(Boolean))].slice(0, 200);
   if (!list.length) return {};
+
+  let map = {};
+  let lastErr = null;
+
+  const needsArabic = (phrase) => {
+    const ar = translateTermToArabic(phrase, map);
+    return !ar || phraseStillHasEnglishWords(ar);
+  };
+
+  for (let round = 0; round < maxRounds; round += 1) {
+    const missing = list.filter(needsArabic);
+    if (!missing.length) break;
   try {
-    const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ op: 'translate-arabic', texts: list }),
-    }, { requireAuth: false });
-    const payload = await resp.json().catch(() => ({}));
-    if (resp.ok && payload?.ok && payload.translations) {
-      return payload.translations;
+      const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'translate-arabic', texts: missing }),
+      }, { requireAuth: true, apiLabel: 'Arabic translation API' });
+      const payload = await readJsonOrThrow(resp, 'Arabic translation failed');
+      if (payload.translations && typeof payload.translations === 'object') {
+        map = { ...map, ...payload.translations };
+      }
+    } catch (err) {
+      lastErr = err;
+      break;
     }
-  } catch {
-    // ignore and return empty map so local fallback handles it
   }
-  return {};
+
+  const stillMissing = list.filter(needsArabic);
+  if (requireComplete && stillMissing.length) {
+    const err = new Error(
+      lastErr?.message
+        || `Arabic translation is not ready yet (${stillMissing.length} phrase(s)). Wait a few seconds and send the order again.`,
+    );
+    err.code = 'arabic_incomplete';
+    err.phrases = stillMissing.slice(0, 8);
+    throw err;
+  }
+
+  return map;
 }
 
 export async function sendFactoryOrderWhatsApp({

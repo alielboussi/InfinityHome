@@ -1,5 +1,7 @@
 import {
+  applyQuoteDimensionSetsToLineFields,
   normalizeQuoteItemAccessories,
+  readQuoteDimensionSets,
   parseLegacyDimensionsLwh,
 } from './quoteProductionItemFields.js';
 
@@ -30,6 +32,12 @@ export function normalizeQuotationItemRow(row) {
     dim_w_cm = parsed.dim_w_cm || '';
     dim_h_cm = parsed.dim_h_cm || '';
   }
+  const hydratedDims = applyQuoteDimensionSetsToLineFields(
+    readQuoteDimensionSets(
+      { ...row, metadata: meta, dim_l_cm, dim_w_cm, dim_h_cm, dimensions_lwh: legacyLwh },
+      resolveQuoteLineQuantity(quantity, unit_price),
+    ),
+  );
   return {
     ...row,
     name: row.name_override || row.name || row.product_name || '',
@@ -37,14 +45,17 @@ export function normalizeQuotationItemRow(row) {
     quantity,
     unit_price,
     leather_code: row.leather_code ?? meta.leather_code ?? '',
-    dim_l_cm,
-    dim_w_cm,
-    dim_h_cm,
-    dimensions_lwh: legacyLwh,
+    dim_l_cm: hydratedDims.dim_l_cm,
+    dim_w_cm: hydratedDims.dim_w_cm,
+    dim_h_cm: hydratedDims.dim_h_cm,
+    dimension_sets: hydratedDims.dimension_sets,
+    dimensions_lwh: hydratedDims.dimensions_lwh || legacyLwh,
     color_code: row.color_code ?? meta.color_code ?? '',
     wood: row.wood ?? meta.wood ?? '',
     foam_type: row.foam_type ?? meta.foam_type ?? '',
+    aluminum_thickness_mm: row.aluminum_thickness_mm ?? meta.aluminum_thickness_mm ?? '',
     accessories: normalizeQuoteItemAccessories(row.accessories ?? meta.accessories),
+    line_image_url: row.line_image_url ?? meta.line_image_url ?? '',
   };
 }
 

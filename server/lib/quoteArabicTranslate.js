@@ -200,6 +200,12 @@ export const WORD_FALLBACKS = [
   [/\bmattress(es)?\b/gi, 'مرتبة سرير'],
   [/\btv\s+stand(s)?\b/gi, 'طاولة تلفزيون'],
   [/\bshoe\s+rack(s)?\b/gi, 'جزامة'],
+  [/\bbook\s*shelf(es)?\b/gi, 'رف كتب'],
+  [/\bbookshelf(es)?\b/gi, 'رف كتب'],
+  [/\blength\s*(\d+)\s*cm?\b/gi, 'الطول $1 سم'],
+  [/\bheight\s*(\d+)\s*cm?\b/gi, 'الارتفاع $1 سم'],
+  [/\bdepth\s*(\d+)\s*cm?\b/gi, 'العمق $1 سم'],
+  [/\bwidth\s*(\d+)\s*cm?\b/gi, 'العرض $1 سم'],
   [/\bincluded\s+accessories\b/gi, 'الإكسسوارات المرفقة'],
   [/\bcolor\s+code\b/gi, 'رمز اللون'],
   [/\bleather\s+code\b/gi, 'رمز الجلد'],
@@ -295,6 +301,54 @@ function lookupServerTranslation(s, serverMap = {}) {
   const titled = s.charAt(0).toUpperCase() + s.slice(1);
   if (serverMap[titled]) return String(serverMap[titled]).trim();
   return '';
+}
+
+export function translateProductLineNameToArabic(nameEn, serverMap = {}) {
+  const raw = String(nameEn ?? '').trim();
+  if (!raw) return '';
+  const direct = translateTermToArabic(raw, serverMap);
+  if (direct) return direct;
+  const m = raw.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (!m) return '';
+  const base = String(m[1] || '').trim();
+  const inner = String(m[2] || '').trim();
+  const baseAr = translateTermToArabic(base, serverMap);
+  const innerAr = translateTermToArabic(inner, serverMap);
+  if (baseAr && innerAr) return `${baseAr} (${innerAr})`;
+  return '';
+}
+
+export function translateSlashDimensionDescriptionToArabic(text, serverMap = {}) {
+  const s = normalizeQuoteEnglishPhrase(String(text ?? '').trim());
+  if (!s) return '';
+  const triple = s.match(
+    /\blength\s*(\d+)\s*cm?\s*[\/\s,]+\s*height\s*(\d+)\s*cm?\s*[\/\s,]+\s*depth\s*(\d+)\s*cm?/i,
+  );
+  if (triple) {
+    return `الطول ${toArabicIndicDigits(triple[1])} سم / الارتفاع ${toArabicIndicDigits(triple[2])} سم / العمق ${toArabicIndicDigits(triple[3])} سم`;
+  }
+  const lwh = s.match(
+    /\blength\s*(\d+)\s*cm?\s*[\/\s,]+\s*height\s*(\d+)\s*cm?\s*[\/\s,]+\s*width\s*(\d+)\s*cm?/i,
+  );
+  if (lwh) {
+    return `الطول ${toArabicIndicDigits(lwh[1])} سم / الارتفاع ${toArabicIndicDigits(lwh[2])} سم / العرض ${toArabicIndicDigits(lwh[3])} سم`;
+  }
+  return translateTermToArabic(s, serverMap);
+}
+
+function resolveFactoryOrderArabicPhrase(phrase, map = {}) {
+  const raw = String(phrase || '').trim();
+  if (!raw) return '';
+  if (/\blength\s*\d+/i.test(raw) && /\bheight\s*\d+/i.test(raw)) {
+    const dimAr = translateSlashDimensionDescriptionToArabic(raw, map);
+    if (dimAr && !phraseStillHasEnglishWords(dimAr)) return dimAr;
+  }
+  if (raw.includes('(') && raw.includes(')')) {
+    const nameAr = translateProductLineNameToArabic(raw, map);
+    if (nameAr && !phraseStillHasEnglishWords(nameAr)) return nameAr;
+  }
+  const ar = translateTermToArabic(raw, map);
+  return ar && !phraseStillHasEnglishWords(ar) ? ar : '';
 }
 
 export function translateTermToArabic(term, serverMap = {}) {
@@ -432,4 +486,158 @@ export function factoryOrderDepartmentArabic(route) {
   if (r === 'carpentry') return 'قسم النجارة';
   if (r === 'aluminum') return 'قسم الألومنيوم';
   return 'قسم التنجيد';
+}
+
+const GEMINI_TRANSLATE_MODEL = 'gemini-2.0-flash';
+const ARABIC_BATCH_SIZE = 28;
+
+function phraseNeedsServerArabic(phrase, map = {}) {
+  const raw = String(phrase || '').trim();
+  if (!raw) return false;
+  return !resolveFactoryOrderArabicPhrase(raw, map);
+}
+
+function seedArabicMapFromLocal(phrases, map = {}) {
+  const out = { ...map };
+  for (const p of phrases || []) {
+    if (!phraseNeedsServerArabic(p, out)) continue;
+    const ar = resolveFactoryOrderArabicPhrase(p, out);
+    if (ar) out[p] = ar;
+  }
+  return out;
+}
+
+function parseGeminiTranslationJson(raw) {
+  if (!raw) return {};
+  const cleaned = String(raw).replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === 'object' && parsed.translations && typeof parsed.translations === 'object') {
+      return parsed.translations;
+    }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+async function geminiTranslatePhrasesToArabic(phrases) {
+  const list = [...new Set((phrases || []).map((p) => String(p || '').trim()).filter(Boolean))];
+  if (!list.length) return {};
+
+  const { getGeminiApiKey } = await import('./geminiImageEmbedding.js');
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) return {};
+
+  const out = {};
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    for (let i = 0; i < list.length; i += ARABIC_BATCH_SIZE) {
+      const batch = list.slice(i, i + ARABIC_BATCH_SIZE);
+      const prompt = [
+        'Translate each English furniture / workshop production phrase into natural Arabic for factory staff.',
+        'Return ONLY JSON: { "translations": { "<exact English input>": "<Arabic output>" } }',
+        'Use the English strings below as JSON keys exactly (case and punctuation).',
+        'Arabic values must be fully Arabic — no leftover English words except: RAL, MDF, HD, USB, LED, HDMI, CPU, cm.',
+        'Keep numbers, color codes, and leather codes as in the original when they are codes.',
+        JSON.stringify(batch),
+      ].join('\n');
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TRANSLATE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+          }),
+          signal: controller.signal,
+        },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `Gemini translate failed (${res.status})`);
+      }
+      const payload = await res.json().catch(() => ({}));
+      const rawText = payload?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const chunk = parseGeminiTranslationJson(rawText);
+      for (const [key, val] of Object.entries(chunk)) {
+        const k = String(key || '').trim();
+        const v = String(val || '').trim();
+        if (k && v && !phraseStillHasEnglishWords(v)) out[k] = v;
+      }
+    }
+    return out;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Batch Arabic for factory PDF + workshop (server only). Seeds static/fallback map, then Gemini for gaps.
+ */
+export async function translateStringsToArabicServer(texts = [], {
+  maxGeminiRounds = 2,
+  sb = null,
+  skipCatalogMerge = false,
+} = {}) {
+  const list = [...new Set((texts || []).map((t) => String(t ?? '').trim()).filter(Boolean))].slice(0, 400);
+  let map = {};
+  if (sb && !skipCatalogMerge) {
+    try {
+      const { getQuotationProductArabicMap } = await import('./quoteQuotationProductArabicCatalog.js');
+      map = await getQuotationProductArabicMap(sb);
+    } catch (err) {
+      console.warn('[translateStringsToArabicServer] quotation product catalog:', err?.message || err);
+    }
+  }
+  map = seedArabicMapFromLocal(list, map);
+
+  for (let round = 0; round < maxGeminiRounds; round += 1) {
+    const missing = list.filter((p) => phraseNeedsServerArabic(p, map));
+    if (!missing.length) break;
+    const geminiMap = await geminiTranslatePhrasesToArabic(missing);
+    map = { ...map, ...geminiMap };
+    map = seedArabicMapFromLocal(missing, map);
+  }
+
+  return map;
+}
+
+/** Throw before factory WhatsApp/PDF when any required phrase lacks full Arabic. */
+export function assertArabicTranslationsForPhrases(phrases, serverMap = {}) {
+  const failures = [];
+  for (const p of phrases || []) {
+    const raw = String(p || '').trim();
+    if (!raw) continue;
+    if (phraseNeedsServerArabic(raw, serverMap)) failures.push(raw);
+  }
+  if (failures.length) {
+    const err = new Error(
+      `Arabic translation is not ready yet (${failures.length} phrase(s)). Wait a few seconds and send the order again.`,
+    );
+    err.code = 'arabic_incomplete';
+    err.phrases = failures.slice(0, 8);
+    throw err;
+  }
+}
+
+/** English phrases that must have Arabic in the factory order PDF (product rows). */
+export function collectFactoryOrderArabicCheckPhrases(items = []) {
+  const set = new Set(collectProductionQuoteArabicPhrases(items));
+  for (const it of items || []) {
+    const rawName = String(
+      it?.name_override || it?.name || it?.product_name || it?.quote_product_name || it?.description || '',
+    ).trim();
+    if (rawName) {
+      set.add(rawName);
+      set.add(rawName.charAt(0).toUpperCase() + rawName.slice(1));
+    }
+    const desc = String(it?.description || '').trim();
+    if (desc) set.add(desc);
+  }
+  return [...set];
 }

@@ -143,7 +143,15 @@ async function resolvePrimaryAssemblyId(sb, items) {
     const name = String(line.name_override || line.name || '').trim().toLowerCase();
     if (name && catalogByName.has(name)) return catalogByName.get(name);
   }
-  if (catalog[0]?.id) return catalog[0].id;
+  for (const line of items || []) {
+    const lineName = String(line.name_override || line.name || '').trim().toLowerCase();
+    if (lineName.length < 4) continue;
+    for (const product of catalog) {
+      const pn = String(product.name || '').trim().toLowerCase();
+      if (pn.length < 4) continue;
+      if (lineName.includes(pn) || pn.includes(lineName)) return product.id;
+    }
+  }
   const firstProduct = (assemblies || []).find((a) => String(a.item_kind || '') !== 'set');
   if (firstProduct?.id) return firstProduct.id;
   throw new Error('Could not resolve a warehouse product for this quote order');

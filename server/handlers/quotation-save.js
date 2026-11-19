@@ -219,6 +219,13 @@ export default async function handler(req, res) {
         return;
       }
 
+      try {
+        const { invalidateQuotationProductArabicCache } = await import('../lib/quoteQuotationProductArabicCatalog.js');
+        invalidateQuotationProductArabicCache();
+      } catch {
+        /* optional */
+      }
+
       res.status(200).json({ ok: true, row: data });
       return;
     }
@@ -263,6 +270,13 @@ export default async function handler(req, res) {
       if (error) {
         res.status(500).json({ ok: false, error: error.message });
         return;
+      }
+
+      try {
+        const { invalidateQuotationProductArabicCache } = await import('../lib/quoteQuotationProductArabicCatalog.js');
+        invalidateQuotationProductArabicCache();
+      } catch {
+        /* optional */
       }
 
       res.status(200).json({ ok: true, row: data });

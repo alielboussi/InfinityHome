@@ -49,10 +49,11 @@ import {
 import {
   ALUMINUM_ACCESSORY_GROUPS,
   ALUMINUM_THICKNESS_MM_OPTIONS,
-  CARPENTRY_ACCESSORY_GROUPS,
-  CARPENTRY_WOOD_OPTIONS,
+  applyQuoteDimensionSetsToLineFields,
   normalizeQuoteItemAccessories,
+  readQuoteDimensionSets,
 } from './utils/quoteProductionItemFields';
+import QuoteLineDimensionSets from './components/QuoteLineDimensionSets';
 import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
 
 function htmlToPlainPreview(html) {
@@ -1102,6 +1103,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       unit_price: Number(qp.price || 0),
       image_url: qp.image_url,
       qr_code_url: qp.qr_code_url,
+      ...applyQuoteDimensionSetsToLineFields([{ dim_l_cm: '', dim_w_cm: '', dim_h_cm: '' }]),
     }]);
     setAddSearch('');
   };
@@ -1790,253 +1792,16 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                               ) : null}
                             </div>
                           ) : null}
-                          {showUpholsteryMeta ? (
-                            <div className="quotes-line-meta-grid quotes-line-meta-grid--upholstery">
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">L (cm)</span>
-                                <input
-                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={it.dim_l_cm || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { dim_l_cm: e.target.value, dimensions_lwh: '' })}
-                                  placeholder="L"
-                                  aria-label="Length cm optional"
-                                />
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">W (cm)</span>
-                                <input
-                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={it.dim_w_cm || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { dim_w_cm: e.target.value, dimensions_lwh: '' })}
-                                  placeholder="W"
-                                  aria-label="Width cm optional"
-                                />
-                              </label>
-                              <label className="quotes-line-meta-field">
-                                <span className="quotes-line-meta-label">H (cm)</span>
-                                <input
-                                  className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={it.dim_h_cm || ''}
-                                  disabled={locked}
-                                  onChange={e => updateItem(it.id, { dim_h_cm: e.target.value, dimensions_lwh: '' })}
-                                  placeholder="H"
-                                  aria-label="Height cm optional"
-                                />
-                              </label>
-                            </div>
-                          ) : null}
-                          {showCarpentryMeta ? (
-                            <>
-                              <div className="quotes-line-meta-grid quotes-line-meta-grid--carpentry">
-                                <label className="quotes-line-meta-field">
-                                  <span className="quotes-line-meta-label">L (cm)</span>
-                                  <input
-                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={it.dim_l_cm || ''}
-                                    disabled={locked}
-                                    onChange={e => updateItem(it.id, { dim_l_cm: e.target.value, dimensions_lwh: '' })}
-                                    placeholder="L"
-                                    aria-label="Length cm optional"
-                                  />
-                                </label>
-                                <label className="quotes-line-meta-field">
-                                  <span className="quotes-line-meta-label">W (cm)</span>
-                                  <input
-                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={it.dim_w_cm || ''}
-                                    disabled={locked}
-                                    onChange={e => updateItem(it.id, { dim_w_cm: e.target.value, dimensions_lwh: '' })}
-                                    placeholder="W"
-                                    aria-label="Width cm optional"
-                                  />
-                                </label>
-                                <label className="quotes-line-meta-field">
-                                  <span className="quotes-line-meta-label">H (cm)</span>
-                                  <input
-                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={it.dim_h_cm || ''}
-                                    disabled={locked}
-                                    onChange={e => updateItem(it.id, { dim_h_cm: e.target.value, dimensions_lwh: '' })}
-                                    placeholder="H"
-                                    aria-label="Height cm optional"
-                                  />
-                                </label>
-                                <label className="quotes-line-meta-field">
-                                  <span className="quotes-line-meta-label">Color</span>
-                                  <input
-                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                    value={it.color_code || ''}
-                                    disabled={locked}
-                                    onChange={e => updateItem(it.id, { color_code: e.target.value })}
-                                    placeholder="RAL 9010"
-                                    aria-label="Color code optional"
-                                  />
-                                </label>
-                                <label className="quotes-line-meta-field">
-                                  <span className="quotes-line-meta-label">Wood</span>
-                                  <select
-                                    className="quotes-select quotes-select--slim quotes-line-meta-control"
-                                    value={it.wood || ''}
-                                    disabled={locked}
-                                    onChange={e => updateItem(it.id, { wood: e.target.value })}
-                                    aria-label="Wood type optional"
-                                  >
-                                    <option value="">—</option>
-                                    {CARPENTRY_WOOD_OPTIONS.map((opt) => (
-                                      <option key={opt} value={opt}>{opt}</option>
-                                    ))}
-                                  </select>
-                                </label>
-                              </div>
-                              <div className="quotes-line-accessories-block">
-                                <div className="quotes-line-accessories-head">
-                                  <span className="quotes-line-meta-label">Accessories</span>
-                                  <button
-                                    type="button"
-                                    className={`quotes-accessories-toggle-btn${openAccessoryLineId === it.id ? ' active' : ''}`}
-                                    disabled={locked}
-                                    onClick={() => setOpenAccessoryLineId(prev => prev === it.id ? '' : it.id)}
-                                  >
-                                    {openAccessoryLineId === it.id
-                                      ? 'Hide Accessories ▲'
-                                      : `Select Accessories (${normalizeQuoteItemAccessories(it.accessories).length}) ▼`}
-                                  </button>
-                                </div>
-                                {normalizeQuoteItemAccessories(it.accessories).length > 0 ? (
-                                  <div className="quotes-accessories-chips">
-                                    {normalizeQuoteItemAccessories(it.accessories).map((acc) => (
-                                      <span key={acc} className="quotes-accessory-chip">
-                                        <span>{acc}</span>
-                                        {!locked ? (
-                                          <button
-                                            type="button"
-                                            className="quotes-accessory-chip-remove"
-                                            onClick={() => removeAccessoryFromItem(it.id, acc)}
-                                            aria-label={`Remove ${acc}`}
-                                            title={`Remove ${acc}`}
-                                          >
-                                            ×
-                                          </button>
-                                        ) : null}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : null}
-                                {openAccessoryLineId === it.id && !locked ? (
-                                  <div className="quotes-accessories-dropdown-panel">
-                                    <input
-                                      type="text"
-                                      className="quotes-input quotes-input--slim quotes-accessories-search"
-                                      placeholder="Search accessories (e.g. Granite, Sink, Mixer, Lock, LED)…"
-                                      value={accessorySearchByLine[it.id] || ''}
-                                      onChange={(e) => setAccessorySearchByLine(prev => ({ ...prev, [it.id]: e.target.value }))}
-                                    />
-                                    <div className="quotes-accessories-groups">
-                                      {CARPENTRY_ACCESSORY_GROUPS.map((group) => {
-                                        const q = String(accessorySearchByLine[it.id] || '').trim().toLowerCase();
-                                        const selectedSet = new Set(
-                                          normalizeQuoteItemAccessories(it.accessories).map(a => a.toLowerCase()),
-                                        );
-                                        const visibleItems = group.items.filter((item) =>
-                                          !q
-                                          || item.toLowerCase().includes(q)
-                                          || group.category.toLowerCase().includes(q),
-                                        );
-                                        if (!visibleItems.length) return null;
-                                        return (
-                                          <div key={group.category} className="quotes-accessories-group">
-                                            <div className="quotes-accessories-group-title">{group.category}</div>
-                                            <div className="quotes-accessories-group-list">
-                                              {visibleItems.map((acc) => {
-                                                const isAdded = selectedSet.has(acc.toLowerCase());
-                                                return (
-                                                  <div
-                                                    key={acc}
-                                                    className={`quotes-accessory-option${isAdded ? ' is-added' : ''}`}
-                                                  >
-                                                    <span className="quotes-accessory-option-name">{acc}</span>
-                                                    <button
-                                                      type="button"
-                                                      className={`quotes-accessory-add-btn${isAdded ? ' added' : ''}`}
-                                                      onClick={() => (
-                                                        isAdded
-                                                          ? removeAccessoryFromItem(it.id, acc)
-                                                          : addAccessoryToItem(it.id, acc)
-                                                      )}
-                                                      title={isAdded ? `Remove ${acc}` : `Include ${acc}`}
-                                                      aria-label={isAdded ? `Remove ${acc}` : `Include ${acc}`}
-                                                    >
-                                                      {isAdded ? '✓' : '+'}
-                                                    </button>
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </div>
-                            </>
+                          {(showUpholsteryMeta || showCarpentryMeta || showAluminumMeta) ? (
+                            <QuoteLineDimensionSets
+                              item={it}
+                              locked={locked}
+                              onPatch={(patch) => updateItem(it.id, patch)}
+                            />
                           ) : null}
                           {showAluminumMeta ? (
                             <>
                               <div className="quotes-line-meta-grid quotes-line-meta-grid--carpentry">
-                                <label className="quotes-line-meta-field">
-                                  <span className="quotes-line-meta-label">L (cm)</span>
-                                  <input
-                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={it.dim_l_cm || ''}
-                                    disabled={locked}
-                                    onChange={e => updateItem(it.id, { dim_l_cm: e.target.value, dimensions_lwh: '' })}
-                                    placeholder="L"
-                                    aria-label="Length cm optional"
-                                  />
-                                </label>
-                                <label className="quotes-line-meta-field">
-                                  <span className="quotes-line-meta-label">W (cm)</span>
-                                  <input
-                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={it.dim_w_cm || ''}
-                                    disabled={locked}
-                                    onChange={e => updateItem(it.id, { dim_w_cm: e.target.value, dimensions_lwh: '' })}
-                                    placeholder="W"
-                                    aria-label="Width cm optional"
-                                  />
-                                </label>
-                                <label className="quotes-line-meta-field">
-                                  <span className="quotes-line-meta-label">H (cm)</span>
-                                  <input
-                                    className="quotes-input quotes-input--slim quotes-line-meta-control"
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={it.dim_h_cm || ''}
-                                    disabled={locked}
-                                    onChange={e => updateItem(it.id, { dim_h_cm: e.target.value, dimensions_lwh: '' })}
-                                    placeholder="H"
-                                    aria-label="Height cm optional"
-                                  />
-                                </label>
                                 <label className="quotes-line-meta-field">
                                   <span className="quotes-line-meta-label">Thickness</span>
                                   <select
@@ -2175,7 +1940,15 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
                           pattern="[0-9]*"
                           value={qtyValue}
                           disabled={locked}
-                          onChange={e => updateItem(it.id, { quantity: e.target.value })}
+                          onChange={e => {
+                            const quantity = e.target.value;
+                            const nextQty = resolveQuoteLineQuantity(quantity, it.unit_price);
+                            const resized = readQuoteDimensionSets(it, nextQty);
+                            updateItem(it.id, {
+                              quantity,
+                              ...applyQuoteDimensionSetsToLineFields(resized),
+                            });
+                          }}
                           onWheel={e => e.preventDefault()}
                           onWheelCapture={e => e.preventDefault()}
                           placeholder="0"

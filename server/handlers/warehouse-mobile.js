@@ -1957,18 +1957,30 @@ async function opProductionQuoteComplete(body, user) {
   const { completeQuoteProductionOrder } = await import('../lib/quoteProductionRouting.js');
   const destRaw = String(body.destination || body.finish_destination || body.finishDestination || '').trim().toLowerCase();
   const destination = destRaw === 'floor1' ? 'floor1' : 'delivery';
+  const sendToPainting = body.send_to_painting === true || body.sendToPainting === true;
   const deferDeliveryQueue = destination === 'floor1'
     || body.defer_delivery_queue === true
     || body.deferDeliveryQueue === true
-    || body.send_to_painting === true
-    || body.sendToPainting === true;
-  return completeQuoteProductionOrder(sb, {
+    || sendToPainting;
+  const result = await completeQuoteProductionOrder(sb, {
     quoteId,
     route,
     userId: user?.id || user?.uid,
     deferDeliveryQueue,
     destination,
   });
+  if (sendToPainting && String(route || '').toLowerCase() === 'carpentry') {
+    const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty ?? body.quantity) || 1));
+    const { sendCarpentryQuoteToPaintingDepartment } = await import('../lib/paintingProductionJobs.js');
+    const painting = await sendCarpentryQuoteToPaintingDepartment(sb, {
+      quoteId,
+      productQty,
+      userId: user?.id || user?.uid,
+      skipClientEnrichment: true,
+    });
+    return { ...result, sent_to_painting: true, painting };
+  }
+  return result;
 }
 
 async function opProductionQuotePause(body, user) {
@@ -2022,7 +2034,8 @@ async function opProductionQuoteTranslateArabic(body, user) {
     .filter(Boolean)
     .slice(0, 120);
   const { translateStringsToArabicServer } = await import('../lib/quoteArabicTranslate.js');
-  const translations = await translateStringsToArabicServer(list);
+  const sb = getService();
+  const translations = await translateStringsToArabicServer(list, { sb, maxGeminiRounds: 3 });
   return { translations };
 }
 
