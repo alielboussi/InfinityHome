@@ -138,7 +138,7 @@ function patchDeliveryKitRepoImports(kitRoot) {
       if (filePath === zambiaDest) continue;
       let text = fs.readFileSync(filePath, 'utf8');
       const next = text.replace(/(['"])(\.\.\/){3}src\//g, '$1../../../../src/');
-      if (next !== text) fs.writeFileSync(filePath, next);
+      if (next !== text) writeTextFileWithRetry(filePath, next);
     }
   }
 }

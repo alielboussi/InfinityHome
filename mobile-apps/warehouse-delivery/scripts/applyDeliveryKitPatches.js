@@ -9,6 +9,49 @@ const appRoot = path.resolve(__dirname, '..');
 const kitRoot = path.join(appRoot, 'deliveryKit');
 const overlaysRoot = path.join(appRoot, 'delivery-overlays');
 
+const RETRYABLE_COPY_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'UNKNOWN']);
+
+function sleep(ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { /* postinstall / verify only */ }
+}
+
+/** Windows-safe copy (AV/indexer locks break copyFileSync). */
+function copyFileRobust(src, dest) {
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  if (fs.existsSync(dest)) {
+    try {
+      const a = fs.statSync(src);
+      const b = fs.statSync(dest);
+      if (a.size === b.size) {
+        const srcBuf = fs.readFileSync(src);
+        const destBuf = fs.readFileSync(dest);
+        if (srcBuf.equals(destBuf)) return;
+      }
+    } catch { /* overwrite */ }
+  }
+  const body = fs.readFileSync(src);
+  const tmp = `${dest}.patch-${process.pid}-${Date.now()}.tmp`;
+  let lastErr;
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      fs.writeFileSync(tmp, body);
+      if (fs.existsSync(dest)) {
+        try { fs.unlinkSync(dest); } catch { fs.rmSync(dest, { force: true }); }
+      }
+      fs.renameSync(tmp, dest);
+      return;
+    } catch (err) {
+      lastErr = err;
+      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* ignore */ }
+      const code = String(err?.code || '').toUpperCase();
+      if (!RETRYABLE_COPY_CODES.has(code) || i >= 5) break;
+      sleep(80 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
 function copyDirMerge(srcDir, destDir) {
   if (!fs.existsSync(srcDir)) return;
   for (const name of fs.readdirSync(srcDir)) {
@@ -19,8 +62,7 @@ function copyDirMerge(srcDir, destDir) {
       fs.mkdirSync(dest, { recursive: true });
       copyDirMerge(src, dest);
     } else {
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.copyFileSync(src, dest);
+      copyFileRobust(src, dest);
     }
   }
 }

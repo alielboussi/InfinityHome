@@ -267,6 +267,24 @@ assert(
   'Hassan deliveries page must accept received lines',
 );
 assert(
+  deliveries.includes('resolveDeliverySessionOrderBadges'),
+  'warehouse deliveries cards must resolve customer/showroom badges from session + lines',
+);
+assert(
+  deliveries.includes('warehouse-delivery-card__type-badge--showroom')
+    && deliveries.includes('warehouse-delivery-card__type-badge--customer'),
+  'warehouse deliveries cards must show Customer / Showroom header badges',
+);
+assert(
+  deliveries.includes('warehouse-delivery-card__banner')
+    && deliveries.includes('warehouse-delivery-card__type-badge'),
+  'warehouse deliveries cards must center Showroom/Customer header badges',
+);
+assert(
+  deliveries.includes('warehouse-deliveries-grid'),
+  'warehouse deliveries cards must use uniform grid card layout',
+);
+assert(
   readKitweSendHomeScreenSource().includes('filterAssembliesForDeliveryWarehouse'),
   'Kitwe send must filter to warehouse-products catalog scope',
 );

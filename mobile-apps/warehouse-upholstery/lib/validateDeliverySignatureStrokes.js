@@ -88,7 +88,11 @@ export function validateDeliverySignatureStrokes(strokes, layout = {}) {
     for (let i = 1; i < pts.length; i += 1) {
       const dx = pts[i].x - pts[i - 1].x;
       const dy = pts[i].y - pts[i - 1].y;
-      totalLength += Math.hypot(dx, dy);
+      const seg = Math.hypot(dx, dy);
+      if (seg > 200) {
+        return { ok: false, code: 'jump' };
+      }
+      totalLength += seg;
     }
     for (const p of pts) {
       minX = Math.min(minX, p.x);

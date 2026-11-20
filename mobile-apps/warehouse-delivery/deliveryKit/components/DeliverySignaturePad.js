@@ -143,8 +143,17 @@ const DeliverySignaturePad = forwardRef(function DeliverySignaturePad(
         collapsable={false}
         onLayout={(evt) => {
           const { width, height } = evt.nativeEvent.layout;
+          const prev = padLayoutRef.current;
+          const sizeChanged = prev.width > 0
+            && (Math.abs(prev.width - width) > 2 || Math.abs(prev.height - height) > 2);
           padLayoutRef.current = { width, height };
           setPadLayout({ width, height });
+          if (sizeChanged) {
+            activeStrokeRef.current = null;
+            strokesRef.current = [];
+            setStrokes([]);
+            return;
+          }
           setStrokes((prev) => sanitizeDeliverySignatureStrokes(prev, { width, height }));
         }}
         {...panResponder.panHandlers}

@@ -468,7 +468,7 @@ export const ORDERS_APP_SCREENS = Object.freeze([
   },
   {
     id: 'orders_new_order',
-    label: 'Create Factory Order',
+    label: 'Factory Orders',
     description: 'Create a quotation / factory order',
   },
   {
@@ -478,7 +478,7 @@ export const ORDERS_APP_SCREENS = Object.freeze([
   },
   {
     id: 'orders_showroom_new',
-    label: 'Create Showroom Order',
+    label: 'Showroom Orders',
     description: 'Create showroom order from Floor 2 WIP',
   },
   {
@@ -488,7 +488,7 @@ export const ORDERS_APP_SCREENS = Object.freeze([
   },
   {
     id: 'orders_floor2',
-    label: 'Floor 2 Products',
+    label: 'Floor 2',
     description: 'Floor 2 WIP stock (read-only)',
   },
   {

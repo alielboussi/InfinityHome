@@ -57,7 +57,10 @@ for (const rel of i18nPaths) {
   assert(body.includes('badgeShowroomOrder') && body.includes('badgeCustomerOrder'), `${rel} missing order badge i18n`);
 }
 
-assert(read('src/ShowroomOrderCreate.js').includes("if (!q) return []"), 'web showroom create search-only');
+const showroomForm = ['src/components/HassanShowroomOrderForm.js', 'src/ShowroomOrderCreate.js']
+  .map((rel) => ({ rel, body: read(rel) }))
+  .find((f) => f.body.includes("if (!q) return []"));
+assert(showroomForm, 'showroom create must stay search-only (HassanShowroomOrderForm or ShowroomOrderCreate)');
 assert(read('src/Quotationer.js').includes('addItemFromFloor2'), 'web quotationer Floor 2 picker');
 assert(read('server/lib/quoteProductionRouting.js').includes('floor2_shortfalls'), 'API must expose Floor 2 shortfalls on quote list');
 assert(read('server/lib/showroomQuoteOrder.js').includes('computeFloor2ShortfallForQuoteLines'), 'showroomQuoteOrder shortfall helper');

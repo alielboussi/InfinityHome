@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { FaWhatsapp } from 'react-icons/fa';
+import { FaCheck, FaWhatsapp } from 'react-icons/fa';
 import { useLocation } from 'react-router-dom';
 import db from './dataClient';
 import BackToDashboard from './BackToDashboard';
@@ -24,8 +24,8 @@ import {
   deliverySessionNeedsTickRowFinalize,
   warehousePacketDisplayLabel,
   warehouseDeliveryReceiverLineKind,
-  isDeliveryCustomerOrderSession,
-  isDeliveryShowroomOrderSession,
+  deliverySessionQuoteId,
+  resolveDeliverySessionOrderBadges,
 } from './utils/warehouseDelivery';
 import { buildKitweDeliveryWhatsAppText } from './utils/kitweDeliveryWhatsAppAdmin';
 import { buildWarehouseDeliveryPdf, openPdfBlob } from './utils/warehouseDeliveryPdf';
@@ -92,6 +92,7 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
   const receiverPath = adminMode ? '/warehouse-deliveries-admin' : location.pathname;
   const [sessions, setSessions] = useState([]);
   const [entriesBySession, setEntriesBySession] = useState({});
+  const [routingsByQuoteId, setRoutingsByQuoteId] = useState(() => new Map());
   const [editQtyMap, setEditQtyMap] = useState({});
   const [destStockByProduct, setDestStockByProduct] = useState(new Map());
   const [loading, setLoading] = useState(true);
@@ -254,9 +255,34 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
         if (row.product_id && row.kind !== 'set-parent') productIds.add(String(row.product_id));
       });
       setEntriesBySession(grouped);
+
+      const quoteIds = new Set();
+      sessionsList.forEach((session) => {
+        const sid = String(session.id || '');
+        const qid = deliverySessionQuoteId(session, grouped[sid] || []);
+        if (qid) quoteIds.add(qid);
+      });
+      let routingMap = new Map();
+      if (quoteIds.size) {
+        const { data: routingRows, error: routingErr } = await db
+          .from('quote_production_routing')
+          .select('quote_id, metadata')
+          .in('quote_id', [...quoteIds]);
+        if (routingErr) throw routingErr;
+        (routingRows || []).forEach((row) => {
+          const qid = String(row.quote_id || '').trim();
+          if (qid) routingMap.set(qid, row.metadata || {});
+        });
+      }
+      setRoutingsByQuoteId(routingMap);
+
       cacheSet(
         adminMode ? 'warehouse:deliveries:admin:v1' : 'warehouse:deliveries:receiver:v1',
-        { sessions: sessionsList, entriesBySession: grouped },
+        {
+          sessions: sessionsList,
+          entriesBySession: grouped,
+          routingsByQuoteId: Object.fromEntries(routingMap),
+        },
         PORTAL_SWR_TTL_MS,
       );
       if (adminMode) setEditQtyMap(nextEdit);
@@ -352,6 +378,9 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
       if (Array.isArray(snap?.sessions)) setSessions(snap.sessions);
       if (snap?.entriesBySession && typeof snap.entriesBySession === 'object') {
         setEntriesBySession(snap.entriesBySession);
+      }
+      if (snap?.routingsByQuoteId && typeof snap.routingsByQuoteId === 'object') {
+        setRoutingsByQuoteId(new Map(Object.entries(snap.routingsByQuoteId)));
       }
     }, setLoading);
     loadDeliveries({ silent: had });
@@ -730,13 +759,7 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
           </div>
         )}
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: 14,
-          marginBottom: 20,
-        }}
-        >
+        <div className="warehouse-deliveries-grid">
           {displaySessions.map((session) => {
             const entries = entriesBySession[String(session.id)] || [];
             const { total, confirmed } = deliveryEntryReceiverProgress(entries);
@@ -751,71 +774,83 @@ export default function WarehouseDeliveries({ adminMode = false } = {}) {
               : allTicksReceived
                 ? `${progressItemLabel} received: ${receivedCount}/${total} (accept to complete)`
                 : `${progressItemLabel} confirmed: ${confirmed}/${total}`;
-            const progressColor = completed
-              ? '#4ade80'
-              : allTicksReceived
-                ? '#f59e0b'
-                : '#fbbf24';
             const routeLabel = warehouseDeliverySessionRouteLabel(session, { fromName, toName });
-            const showroomOrder = isDeliveryShowroomOrderSession(session);
-            const customerOrder = !showroomOrder && isDeliveryCustomerOrderSession(session);
-            const orderQuote = String(session?.metadata?.quote_number || '').trim();
+            const orderQuoteId = deliverySessionQuoteId(session, entries);
+            const quoteRoutingMeta = orderQuoteId ? routingsByQuoteId.get(orderQuoteId) : null;
+            const {
+              showroomOrder,
+              customerOrder,
+              quoteNumber: orderQuote,
+              customerName: orderCustomerName,
+            } = resolveDeliverySessionOrderBadges(session, entries, quoteRoutingMeta);
+            const cardTitle = (customerOrder || showroomOrder) && orderQuote
+              ? orderQuote
+              : (session.delivery_number || session.id);
+            const customerPhone = String(session?.metadata?.customer_phone || '').trim();
+            const hasCustomerDisplay = Boolean(orderCustomerName || customerPhone);
+            const showCustomerBadge = customerOrder && !showroomOrder;
+            const acceptedAt = session.completed_at || session.accepted_at;
             return (
               <button
                 key={session.id}
                 type="button"
+                className={[
+                  'warehouse-delivery-card',
+                  openSessionId === String(session.id) ? 'warehouse-delivery-card--open' : '',
+                  completed ? 'warehouse-delivery-card--completed' : '',
+                ].filter(Boolean).join(' ')}
                 onClick={() => setOpenSessionId(String(session.id))}
-                style={{
-                  textAlign: 'left',
-                  border: openSessionId === String(session.id)
-                    ? `2px solid ${PAGE_THEME.accent}`
-                    : `1px solid ${completed ? '#4ade8055' : PAGE_THEME.borderSoft}`,
-                  borderRadius: 12,
-                  padding: 16,
-                  background: PAGE_THEME.surfaceAlt,
-                  color: PAGE_THEME.text,
-                  cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
-                }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                  <div style={{ fontWeight: 800, fontSize: 18, color: PAGE_THEME.text }}>
-                    {customerOrder && orderQuote ? orderQuote : (session.delivery_number || session.id)}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {showroomOrder ? (
-                      <span className="warehouse-send-customer-badge">Showroom Order</span>
-                    ) : null}
-                    {customerOrder ? (
-                      <span className="warehouse-send-customer-badge">Customer Order</span>
-                    ) : null}
-                    {completed ? (
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: 999 }}>
-                        Completed
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-                {customerOrder ? (
-                  <div style={{ color: PAGE_THEME.muted, marginTop: 4 }}>
-                    Customer: {session?.metadata?.customer_name || '—'}
-                    {session?.metadata?.customer_phone ? ` · ${session.metadata.customer_phone}` : ''}
-                  </div>
-                ) : null}
-                <div style={{ color: PAGE_THEME.muted, marginTop: 6 }}>
-                  {routeLabel}
-                </div>
-                <div style={{ color: PAGE_THEME.muted, marginTop: 4 }}>
-                  Sent: {formatDateTime(session.submitted_at || session.created_at)}
-                </div>
                 {completed ? (
-                  <div style={{ color: PAGE_THEME.muted }}>
-                    Accepted: {formatDateTime(session.completed_at || session.accepted_at)}
-                  </div>
+                  <span className="warehouse-delivery-card__status-badge" title="Completed" aria-label="Completed">
+                    <FaCheck aria-hidden />
+                  </span>
                 ) : null}
-                <div style={{ color: PAGE_THEME.muted }}>By: {deliverySenderName(session, usersById)}</div>
-                {driver ? <div style={{ color: PAGE_THEME.text, marginTop: 4 }}>Driver: {driver}</div> : null}
-                <div style={{ marginTop: 10, fontWeight: 700, color: progressColor }}>
+                <div
+                  className={[
+                    'warehouse-delivery-card__banner',
+                    !showroomOrder && !showCustomerBadge ? 'warehouse-delivery-card__banner--spacer' : '',
+                  ].filter(Boolean).join(' ')}
+                >
+                  {showroomOrder ? (
+                    <span className="warehouse-delivery-card__type-badge warehouse-delivery-card__type-badge--showroom">
+                      Showroom
+                    </span>
+                  ) : null}
+                  {showCustomerBadge ? (
+                    <span className="warehouse-delivery-card__type-badge warehouse-delivery-card__type-badge--customer">
+                      Customer
+                    </span>
+                  ) : null}
+                </div>
+                <div className="warehouse-delivery-card__title">{cardTitle}</div>
+                <div className="warehouse-delivery-card__body">
+                  <div
+                    className={[
+                      'warehouse-delivery-card__line',
+                      'warehouse-delivery-card__line--customer',
+                      hasCustomerDisplay ? '' : 'warehouse-delivery-card__line--empty',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    {hasCustomerDisplay
+                      ? `Customer: ${orderCustomerName || '—'}${customerPhone ? ` · ${customerPhone}` : ''}`
+                      : '\u00a0'}
+                  </div>
+                  <div className="warehouse-delivery-card__line">{routeLabel}</div>
+                  <div className="warehouse-delivery-card__line">
+                    Sent: {formatDateTime(session.submitted_at || session.created_at)}
+                  </div>
+                  <div className="warehouse-delivery-card__line">
+                    Accepted: {completed && acceptedAt ? formatDateTime(acceptedAt) : '—'}
+                  </div>
+                  <div className="warehouse-delivery-card__line">
+                    By: {deliverySenderName(session, usersById)}
+                  </div>
+                  <div className="warehouse-delivery-card__line warehouse-delivery-card__line--driver">
+                    Driver: {driver || '—'}
+                  </div>
+                </div>
+                <div className="warehouse-delivery-card__progress">
                   {progressLabel}
                 </div>
               </button>

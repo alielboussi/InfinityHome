@@ -5,8 +5,8 @@
   "scripts": {
     "materialize": "node scripts/materializeSharedStandalone.js && node scripts/materializeOrdersUi.js",
     "icons": "node scripts/ensureOrdersIcons.js",
-    "postinstall": "node scripts/materializeSharedStandalone.js && node scripts/materializeOrdersUi.js && node scripts/ensureOrdersIcons.js",
-    "prestart": "node scripts/materializeSharedStandalone.js && node scripts/materializeOrdersUi.js && node scripts/ensureOrdersIcons.js",
+    "postinstall": "node scripts/materializeSharedStandalone.js && node scripts/materializeOrdersUi.js && node scripts/ensureOrdersIcons.js && node scripts/assertSharedStandalone.js",
+    "prestart": "node scripts/materializeSharedStandalone.js && node scripts/materializeOrdersUi.js && node scripts/ensureOrdersIcons.js && node scripts/assertSharedStandalone.js",
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
     "android": "expo start --android",

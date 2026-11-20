@@ -59,11 +59,26 @@ export const HASSAN_WEB_DASHBOARD_HOME = Object.freeze({
   exact: true,
 });
 
+/** List screens merged into Hassan web sidebar `Orders`. */
+export const HASSAN_WEB_ORDERS_SIDEBAR_SCREEN_IDS = Object.freeze([
+  'orders_list',
+  'orders_showroom_list',
+]);
+
+/** Create screens merged into Hassan web sidebar `New Orders`. */
+export const HASSAN_WEB_ORDER_CREATE_SIDEBAR_SCREEN_IDS = Object.freeze([
+  'orders_new_order',
+  'orders_showroom_new',
+]);
+
+export const HASSAN_WEB_ORDERS_PATH = '/orders';
+export const HASSAN_WEB_ORDER_CREATE_PATH = '/orders/create';
+
 /**
  * @typedef {Object} OrdersDashboardParityRow
  * @property {string} screenId — ORDERS_APP_SCREENS id (`orders_*`)
  * @property {'quotationer'|'warehouse'} navGroup — AppChrome group id
- * @property {string} webLabel — Sidebar label on Hassan web portal
+ * @property {string} webLabel — Sidebar label on Hassan web portal (when listed)
  * @property {string} webRoute — React Router path (must be under HASSAN_AWAD.allowedRoutes)
  * @property {string} [webSearch] — e.g. `?view=customers`
  * @property {string} mobileStack — React Navigation screen name in orders App.js
@@ -76,7 +91,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_customers',
     navGroup: 'quotationer',
-    webLabel: 'Manage Customers',
+    webLabel: 'Customers',
     webRoute: '/quotationer',
     webSearch: '?view=customers',
     mobileStack: 'Customers',
@@ -86,7 +101,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_products',
     navGroup: 'quotationer',
-    webLabel: 'Manage Products',
+    webLabel: 'Products',
     webRoute: '/quotationer',
     webSearch: '?view=products',
     mobileStack: 'Products',
@@ -96,9 +111,9 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_new_order',
     navGroup: 'quotationer',
-    webLabel: 'Create Factory Order',
-    webRoute: '/quotationer',
-    webSearch: '?view=create',
+    webLabel: 'New Orders',
+    webRoute: HASSAN_WEB_ORDER_CREATE_PATH,
+    webSearch: '',
     mobileStack: 'NewOrder',
     i18nKey: 'tileNewOrder',
     mciIcon: 'plus-box-outline',
@@ -116,7 +131,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_showroom_new',
     navGroup: 'quotationer',
-    webLabel: 'Create Showroom Order',
+    webLabel: 'New Orders',
     webRoute: '/showroom-orders/create',
     webSearch: '',
     mobileStack: 'ShowroomOrderCreate',
@@ -135,8 +150,8 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   },
   {
     screenId: 'orders_floor2',
-    navGroup: 'quotationer',
-    webLabel: 'Floor 2 Products',
+    navGroup: 'warehouse',
+    webLabel: 'Floor 2',
     webRoute: '/hassan-floor-2',
     webSearch: '',
     mobileStack: 'Floor2',
@@ -146,7 +161,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_deliveries',
     navGroup: 'warehouse',
-    webLabel: 'Warehouse Deliveries',
+    webLabel: 'Deliveries',
     webRoute: '/warehouse-deliveries',
     webSearch: '',
     mobileStack: 'Deliveries',
@@ -166,7 +181,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_storage',
     navGroup: 'warehouse',
-    webLabel: 'Warehouse Storage',
+    webLabel: 'Storage',
     webRoute: '/warehouse-storage',
     webSearch: '',
     mobileStack: 'Storage',
@@ -176,7 +191,7 @@ export const ORDERS_APP_DASHBOARD_PARITY = Object.freeze([
   {
     screenId: 'orders_tracking',
     navGroup: 'warehouse',
-    webLabel: 'Production tracking',
+    webLabel: 'Tracking',
     webRoute: '/warehouse-returns-trackage',
     webSearch: '',
     mobileStack: 'Tracking',
@@ -193,7 +208,28 @@ export function buildQuotationerOnlyNavGroups() {
     ...(row.webRoute === '/quotationer' && !row.webSearch ? { exact: true } : {}),
   });
 
-  const quotationerItems = ORDERS_APP_DASHBOARD_PARITY.filter((r) => r.navGroup === 'quotationer').map(mapItem);
+  const ordersListSidebarIds = new Set(HASSAN_WEB_ORDERS_SIDEBAR_SCREEN_IDS);
+  const ordersCreateSidebarIds = new Set(HASSAN_WEB_ORDER_CREATE_SIDEBAR_SCREEN_IDS);
+  const quotationerItems = [];
+  let ordersNavAdded = false;
+  let orderCreateNavAdded = false;
+  for (const row of ORDERS_APP_DASHBOARD_PARITY.filter((r) => r.navGroup === 'quotationer')) {
+    if (ordersCreateSidebarIds.has(row.screenId)) {
+      if (!orderCreateNavAdded) {
+        quotationerItems.push({ label: 'New Orders', route: HASSAN_WEB_ORDER_CREATE_PATH });
+        orderCreateNavAdded = true;
+      }
+      continue;
+    }
+    if (ordersListSidebarIds.has(row.screenId)) {
+      if (!ordersNavAdded) {
+        quotationerItems.push({ label: 'Orders', route: HASSAN_WEB_ORDERS_PATH });
+        ordersNavAdded = true;
+      }
+      continue;
+    }
+    quotationerItems.push(mapItem(row));
+  }
   const warehouseItems = ORDERS_APP_DASHBOARD_PARITY.filter((r) => r.navGroup === 'warehouse').map(mapItem);
 
   return [
@@ -219,7 +255,7 @@ export function buildQuotationerOnlyNavGroups() {
 export const QUOTATIONER_ONLY_NAV_GROUPS = buildQuotationerOnlyNavGroups();
 
 export function hassanParityWebPaths() {
-  const paths = new Set(['/quotationer']);
+  const paths = new Set(['/quotationer', HASSAN_WEB_ORDERS_PATH, HASSAN_WEB_ORDER_CREATE_PATH]);
   for (const row of ORDERS_APP_DASHBOARD_PARITY) {
     paths.add(row.webRoute);
   }

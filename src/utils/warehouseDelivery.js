@@ -78,8 +78,11 @@ export function deliveryEntryReceived(entry) {
 
 export {
   deliveryEntrySkipKitweRetailCatalog,
+  deliverySessionQuoteId,
   isDeliveryCustomerOrderSession,
+  isHassanOrderDeliverySession,
   isQuoteCustomerOrder,
+  resolveDeliverySessionOrderBadges,
 } from './quoteCustomerOrder.js';
 
 export { isDeliveryShowroomOrderSession } from './quoteShowroomOrder.js';

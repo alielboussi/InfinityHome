@@ -1151,6 +1151,22 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
     }).slice(0, 24);
   }, [floor2Groups, floor2Search, floor2AssemblyById]);
 
+  const hassanCustomerOptions = React.useMemo(() => {
+    const list = quoteCustomers || [];
+    const q = custSearch.trim().toLowerCase();
+    const filtered = q
+      ? list.filter((c) => {
+        const name = String(c.name || '').toLowerCase();
+        const phone = String(c.phone || '').toLowerCase();
+        return name.includes(q) || phone.includes(q);
+      })
+      : list;
+    const selId = quote.customer_id != null && quote.customer_id !== '' ? String(quote.customer_id) : '';
+    if (!selId || filtered.some((c) => String(c.id) === selId)) return filtered;
+    const selected = list.find((c) => String(c.id) === selId);
+    return selected ? [selected, ...filtered] : filtered;
+  }, [quoteCustomers, custSearch, quote.customer_id]);
+
   React.useEffect(() => {
     if (!quote.customer_id) return;
     const cust = (quoteCustomers || []).find(c => String(c.id) === String(quote.customer_id));
@@ -1562,74 +1578,53 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
     return 'This quotation is read-only.';
   }, [locked, quote]);
 
-  const workshopSelect = canManageProductionRouting ? (
-    <div className="quotes-create-field">
-      <span className="quotes-create-label">Workshop route <span className="quotes-production-required">Required</span></span>
-      <select
-        className={`quotes-select quotes-select-workshop${productionRouteMissing ? ' quotes-select--missing' : ''}`}
-        value={productionRoute || ''}
-        disabled={locked || productionRoutingLocked}
-        onChange={(e) => setProductionRoute(e.target.value || '')}
-        aria-label="Workshop route"
-      >
-        <option value="">Select workshop…</option>
-        <option value="upholstery">Upholstery</option>
-        <option value="carpentry">Carpentry</option>
-        <option value="aluminum">Aluminum</option>
-      </select>
-      {productionRouteMissing ? (
-        <p className="quotes-production-hint" role="status">Choose a workshop to continue.</p>
-      ) : null}
-      {!productionRoutingLocked && productionRoute ? (
-        <div className="quotes-production-drawing">
-          <div className="quotes-production-drawing-label">Production drawing (optional)</div>
-          <div className="quotes-production-drawing-actions">
-            <input
-              ref={productionDrawingInputRef}
-              type="file"
-              accept="image/*"
-              className="quotes-production-drawing-input"
-              disabled={locked || productionDrawingUploadBusy}
-              onChange={onProductionDrawingSelected}
-            />
-            <button
-              type="button"
-              className={`action-button quotes-production-drawing-btn ${ENT_BTN_SECONDARY}`}
-              disabled={locked || productionDrawingUploadBusy}
-              onClick={() => productionDrawingInputRef.current?.click()}
-            >
-              {productionDrawingUploadBusy ? 'Uploading…' : 'Attach drawing'}
-            </button>
-            {productionDrawingUrl ? (
-              <a
-                className="quotes-production-drawing-link"
-                href={productionDrawingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View attached drawing
-              </a>
-            ) : productionDrawingPendingFile ? (
-              <span className="quotes-production-drawing-pending">
-                {productionDrawingPendingFile.name} — saves with quote
-              </span>
-            ) : null}
-          </div>
+  const vatCurrencyControls = (
+    <>
+      <div className="quotes-create-vat-wrap hassan-quote-meta__vat">
+        <span className="quotes-create-label">VAT</span>
+        <div
+          className="pos-currency-switch quotes-currency-switch quotes-vat-switch"
+          role="group"
+          aria-label="VAT rate"
+        >
+          <button
+            type="button"
+            className={vatChoice === 'exclusive' ? 'active' : ''}
+            onClick={() => setVatChoice('exclusive')}
+            aria-pressed={vatChoice === 'exclusive'}
+          >
+            <span className="pos-currency-symbol">0%</span>
+          </button>
+          <button
+            type="button"
+            className={vatChoice === 'vat16' ? 'active' : ''}
+            onClick={() => setVatChoice('vat16')}
+            aria-pressed={vatChoice === 'vat16'}
+          >
+            <span className="pos-currency-symbol">16%</span>
+          </button>
         </div>
-      ) : null}
-      {productionRoutingLocked ? (
-        <p className="quotes-production-locked-note">
-          Already sent to production — route is locked.
-          {productionDrawingUrl ? (
-            <>
-              {' '}
-              <a href={productionDrawingUrl} target="_blank" rel="noopener noreferrer">View drawing</a>
-            </>
-          ) : null}
-        </p>
-      ) : null}
-    </div>
-  ) : null;
+      </div>
+      <div className="pos-currency-switch quotes-currency-switch hassan-quote-meta__currency" role="group" aria-label="Currency">
+        <button
+          type="button"
+          className={quote.currency === 'K' ? 'active' : ''}
+          onClick={() => setQuote(q => ({ ...q, currency: 'K' }))}
+          aria-pressed={quote.currency === 'K'}
+        >
+          <span className="pos-currency-symbol">K</span>
+        </button>
+        <button
+          type="button"
+          className={quote.currency === '$' ? 'active' : ''}
+          onClick={() => setQuote(q => ({ ...q, currency: '$' }))}
+          aria-pressed={quote.currency === '$'}
+        >
+          <span className="pos-currency-symbol">$</span>
+        </button>
+      </div>
+    </>
+  );
 
   const customerRow = (
     <div className="quotes-create-panel-row">
@@ -1650,6 +1645,26 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
     </div>
   );
 
+  const hassanWorkshopField = canManageProductionRouting ? (
+    <div className="quotes-create-field hassan-workshop-field">
+      <span className="quotes-create-label">
+        Workshop route <span className="quotes-production-required">Required</span>
+      </span>
+      <select
+        className={`quotes-select quotes-select-workshop${productionRouteMissing ? ' quotes-select--missing' : ''}`}
+        value={productionRoute || ''}
+        disabled={locked || productionRoutingLocked}
+        onChange={(e) => setProductionRoute(e.target.value || '')}
+        aria-label="Workshop route"
+      >
+        <option value="">Select workshop…</option>
+        <option value="upholstery">Upholstery</option>
+        <option value="carpentry">Carpentry</option>
+        <option value="aluminum">Aluminum</option>
+      </select>
+    </div>
+  ) : null;
+
   return (
     <div
       className={`quotes-create-page${hassanOrderCreateLayout ? ' hassan-quote-create-layout' : ' content quotes-page'}`}
@@ -1662,7 +1677,7 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
         </div>
       )}
 
-      <div className="quotes-create-panel">
+      <div className={`quotes-create-panel${hassanOrderCreateLayout ? ' quotes-create-panel--hassan-compact' : ''}`}>
         {!hassanOrderCreateLayout && canManageProductionRouting ? (
           <div
             className={`quotes-production-panel quotes-production-panel--top${productionRouteMissing ? ' quotes-production-panel--missing' : ''}`}
@@ -1758,65 +1773,76 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
           </div>
         ) : null}
 
-        <div className={`quotes-create-panel-grid${hassanOrderCreateLayout ? ' quotes-create-panel-grid--hassan' : ''}`}>
-          {hassanOrderCreateLayout ? (
-            <>
-              {customerRow}
-              {workshopSelect}
-            </>
-          ) : (
-            customerRow
-          )}
-
-          <div className="quotes-create-panel-row">
-            <div className="quotes-create-vat-wrap">
-              <span className="quotes-create-label">VAT</span>
-              <div
-                className="pos-currency-switch quotes-currency-switch quotes-vat-switch"
-                role="group"
-                aria-label="VAT rate"
+        {hassanOrderCreateLayout ? (
+          <div className="hassan-quote-create-toolbar">
+            <div className="hassan-customer-pair" role="group" aria-label="Customer search and selection">
+              <span className="quotes-create-label hassan-customer-pair__label-search">Search</span>
+              <span className="quotes-create-label hassan-customer-pair__label-customer">Customer</span>
+              <input
+                className="quotes-input hassan-customer-search hassan-customer-pair__search"
+                placeholder="Search customers"
+                value={custSearch}
+                onChange={(e) => setCustSearch(e.target.value)}
+                aria-label="Search customers"
+              />
+              <select
+                className="quotes-select quotes-select-customer hassan-customer-pair__select"
+                value={quote.customer_id != null && quote.customer_id !== '' ? String(quote.customer_id) : ''}
+                onChange={e => setQuote(q => ({ ...q, customer_id: e.target.value || null }))}
+                aria-label="Customer"
               >
-                <button
-                  type="button"
-                  className={vatChoice === 'exclusive' ? 'active' : ''}
-                  onClick={() => setVatChoice('exclusive')}
-                  aria-pressed={vatChoice === 'exclusive'}
-                >
-                  <span className="pos-currency-symbol">0%</span>
-                </button>
-                <button
-                  type="button"
-                  className={vatChoice === 'vat16' ? 'active' : ''}
-                  onClick={() => setVatChoice('vat16')}
-                  aria-pressed={vatChoice === 'vat16'}
-                >
-                  <span className="pos-currency-symbol">16%</span>
-                </button>
-              </div>
+                <option value="">{custSearch.trim() ? 'No matches — clear search' : 'Select customer…'}</option>
+                {hassanCustomerOptions.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              </select>
             </div>
-            <div className="pos-currency-switch quotes-currency-switch" role="group" aria-label="Currency">
-              <button
-                type="button"
-                className={quote.currency === 'K' ? 'active' : ''}
-                onClick={() => setQuote(q => ({ ...q, currency: 'K' }))}
-                aria-pressed={quote.currency === 'K'}
-              >
-                <span className="pos-currency-symbol">K</span>
-              </button>
-              <button
-                type="button"
-                className={quote.currency === '$' ? 'active' : ''}
-                onClick={() => setQuote(q => ({ ...q, currency: '$' }))}
-                aria-pressed={quote.currency === '$'}
-              >
-                <span className="pos-currency-symbol">$</span>
-              </button>
+            <div className="hassan-quote-create-toolbar__row hassan-quote-create-toolbar__row--workshop">
+              {hassanWorkshopField}
+            </div>
+            {productionRouteMissing ? (
+              <p className="quotes-production-hint" role="status">Choose a workshop to continue.</p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="quotes-create-panel-grid">
+            {customerRow}
+            <div className="quotes-create-panel-row">
+              {vatCurrencyControls}
             </div>
           </div>
-        </div>
+        )}
+        {hassanOrderCreateLayout && canManageProductionRouting && !productionRoutingLocked && productionRoute ? (
+          <div className="quotes-production-drawing hassan-quote-drawing-row">
+            <div className="quotes-production-drawing-label">Production drawing (optional)</div>
+            <div className="quotes-production-drawing-actions">
+              <input
+                ref={productionDrawingInputRef}
+                type="file"
+                accept="image/*"
+                className="quotes-production-drawing-input"
+                disabled={locked || productionDrawingUploadBusy}
+                onChange={onProductionDrawingSelected}
+              />
+              <button
+                type="button"
+                className={`action-button quotes-production-drawing-btn ${ENT_BTN_SECONDARY}`}
+                disabled={locked || productionDrawingUploadBusy}
+                onClick={() => productionDrawingInputRef.current?.click()}
+              >
+                {productionDrawingUploadBusy ? 'Uploading…' : 'Attach drawing'}
+              </button>
+              {productionDrawingUrl ? (
+                <a className="quotes-production-drawing-link" href={productionDrawingUrl} target="_blank" rel="noopener noreferrer">
+                  View attached drawing
+                </a>
+              ) : productionDrawingPendingFile ? (
+                <span className="quotes-production-drawing-pending">{productionDrawingPendingFile.name} — saves with quote</span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-          {showCustomerManager && (
+          {showCustomerManager && !hassanOrderCreateLayout && (
             <div className="quotes-create-subpanel">
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Customers</div>
               <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
@@ -1876,16 +1902,85 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
-            <input
-              className="quotes-input"
-              placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search products to add (name/description)'}
-              value={addSearch}
-              onChange={e => setAddSearch(e.target.value)}
-              aria-label="Search products to add"
-              disabled={locked || productionRouteMissing}
-              style={{ width: '100%', maxWidth: 480, opacity: productionRouteMissing ? 0.65 : 1 }}
-            />
+          <div
+            className={hassanOrderCreateLayout ? 'hassan-quote-create-product-block' : ''}
+            style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}
+          >
+            {hassanOrderCreateLayout ? (
+              <div className="hassan-quote-create-product-row">
+                <input
+                  className="quotes-input hassan-product-search"
+                  placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search products to add (name/description)'}
+                  value={addSearch}
+                  onChange={e => setAddSearch(e.target.value)}
+                  aria-label="Search products to add"
+                  disabled={locked || productionRouteMissing}
+                  style={{ opacity: productionRouteMissing ? 0.65 : 1 }}
+                />
+                <div className="hassan-quote-create-product-row__vat" aria-label="Quote VAT and currency">
+                  <div className="quotes-create-vat-wrap hassan-quote-meta__vat hassan-quote-toggle-field">
+                    <span className="quotes-create-label">VAT</span>
+                    <div
+                      className="pos-currency-switch quotes-currency-switch quotes-vat-switch"
+                      role="group"
+                      aria-label="VAT rate"
+                    >
+                      <button
+                        type="button"
+                        className={vatChoice === 'exclusive' ? 'active' : ''}
+                        onClick={() => setVatChoice('exclusive')}
+                        aria-pressed={vatChoice === 'exclusive'}
+                      >
+                        <span className="pos-currency-symbol">0%</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={vatChoice === 'vat16' ? 'active' : ''}
+                        onClick={() => setVatChoice('vat16')}
+                        aria-pressed={vatChoice === 'vat16'}
+                      >
+                        <span className="pos-currency-symbol">16%</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="quotes-create-field hassan-quote-toggle-field hassan-quote-toggle-field--currency">
+                    <span className="quotes-create-label hassan-toolbar-label-spacer" aria-hidden="true">VAT</span>
+                    <div
+                      className="pos-currency-switch quotes-currency-switch hassan-quote-meta__currency"
+                      role="group"
+                      aria-label="Currency"
+                    >
+                      <button
+                        type="button"
+                        className={quote.currency === 'K' ? 'active' : ''}
+                        onClick={() => setQuote(q => ({ ...q, currency: 'K' }))}
+                        aria-pressed={quote.currency === 'K'}
+                      >
+                        <span className="pos-currency-symbol">K</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={quote.currency === '$' ? 'active' : ''}
+                        onClick={() => setQuote(q => ({ ...q, currency: '$' }))}
+                        aria-pressed={quote.currency === '$'}
+                      >
+                        <span className="pos-currency-symbol">$</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <input
+                className="quotes-input"
+                placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search products to add (name/description)'}
+                value={addSearch}
+                onChange={e => setAddSearch(e.target.value)}
+                aria-label="Search products to add"
+                disabled={locked || productionRouteMissing}
+                style={{ width: '100%', maxWidth: 480, opacity: productionRouteMissing ? 0.65 : 1 }}
+              />
+            )}
             {addSearch.trim() && (
               <div className="quotes-create-product-results">
                 {(quoteProducts||[])

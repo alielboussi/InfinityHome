@@ -42,12 +42,12 @@ import {
   suggestAluminumAccessories,
   uploadOrdersQuoteLineImage,
 } from '../services/ordersApi';
-import QuoteLineDimensionSets, { patchQuoteLineQuantityWithDimensions } from '../../shared/QuoteLineDimensionSets';
+import QuoteLineDimensionSets, { patchQuoteLineQuantityWithDimensions } from '../shared/QuoteLineDimensionSets';
 import {
   applyQuoteDimensionSetsToLineFields,
   readQuoteDimensionSets,
-} from '../../shared/quoteLineDimensions';
-import { resolveQuoteLineQuantity } from '../../shared/quoteLineQuantity';
+} from '../shared/quoteLineDimensions';
+import { resolveQuoteLineQuantity } from '../shared/quoteLineQuantity';
 
 function GridCol({ children, style }) {
   return <View style={[styles.gridCol, style]}>{children}</View>;

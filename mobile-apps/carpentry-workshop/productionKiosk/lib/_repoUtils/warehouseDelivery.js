@@ -80,6 +80,7 @@ export {
   deliveryEntrySkipKitweRetailCatalog,
   isDeliveryCustomerOrderSession,
   isQuoteCustomerOrder,
+  resolveDeliverySessionOrderBadges,
 } from './quoteCustomerOrder.js';
 
 export { isDeliveryShowroomOrderSession } from './quoteShowroomOrder.js';
