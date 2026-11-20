@@ -151,8 +151,10 @@ try {
   const dashboard = fs.readFileSync(path.join(appRoot, 'screens', 'DashboardScreen.js'), 'utf8');
   assert(dashboard.includes('dashFloor1Deliveries'), 'Dashboard must label Floor 1 Deliveries');
   assert(dashboard.includes("navigate('KitweSendHome')"), 'Floor 1 tile must open KitweSendHome');
-  assert(dashboard.includes("navigate('DeliveryRepairQueue')"), 'Dashboard must open Repairs queue');
-  assert(dashboard.includes("navigate('DeliveryOrderQueue')"), 'Dashboard must open Orders queue');
+  assert(
+    dashboard.includes("navigate('DeliveryUnifiedQueue')"),
+    'Dashboard must open unified production Orders queue (repairs + factory orders)',
+  );
   const hubI18n = fs.readFileSync(path.join(appRoot, 'deliveryKit', 'lib', 'productionKioskI18n.js'), 'utf8');
   assert(hubI18n.includes('dashFloor1Deliveries'), 'Delivery i18n must label Floor 1 Deliveries tile');
   const repairQueue = fs.readFileSync(
