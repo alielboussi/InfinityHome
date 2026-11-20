@@ -40,15 +40,7 @@ export default function HassanOrderCreatePage() {
   return (
     <div className="content quotes-page hassan-order-create-page" style={{ padding: 12, maxWidth: 1200, margin: '0 auto' }}>
       <div className="quotes-header page-header-row" style={{ marginBottom: 12 }}>
-        <button
-          type="button"
-          className="action-button"
-          style={{ padding: '8px 12px', fontSize: 13 }}
-          onClick={() => navigate(HASSAN_WEB_ORDERS_PATH)}
-        >
-          Back to Orders
-        </button>
-        <h2 className="quotes-title" style={{ margin: 0, flex: 1 }}>
+        <h2 className="quotes-title" style={{ margin: 0 }}>
           {quoteId ? 'Edit order' : 'New Orders'}
         </h2>
       </div>

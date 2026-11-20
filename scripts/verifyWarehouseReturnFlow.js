@@ -105,6 +105,30 @@ assert(
   'trackage panel must expose funnel filter control',
 );
 assert(
+  trackingPanel.includes('production-tracking-grid'),
+  'trackage panel must use responsive card grid',
+);
+assert(
+  read('src/utils/productionTrackingListUi.js').includes('collapseProductionTrackingDisplayRows'),
+  'tracking list must collapse duplicate factory rows per product',
+);
+assert(
+  read('server/lib/productionJobsTracking.js').includes('collapseProductionTrackingDisplayRows'),
+  'tracking API must collapse rows before returning',
+);
+assert(
+  read('src/global-theme.css').includes('.production-tracking-grid'),
+  'trackage card grid styles must live in global-theme.css',
+);
+assert(
+  read('src/WarehouseReturnsTrackage.js').includes('production-tracking-page'),
+  'trackage page must use production-tracking-page layout',
+);
+assert(
+  read('src/WarehouseReturnsTrackage.js').includes('inProgressOnly'),
+  'trackage page must hide completed jobs',
+);
+assert(
   !read('server/lib/warehouseReturnOrders.js').includes('trackageOnly) {\n    query = query.in'),
   'trackage must not filter to completed-only statuses',
 );

@@ -42,6 +42,11 @@ import LaybyDashboardStats from './LaybyDashboardStats';
 import { logUserActivity } from './utils/userActivityLog';
 import { notifyLaybyWhatsApp } from './services/whatsappNotify';
 import { enrichQuotationListTotals } from './services/quotationListTotals';
+import {
+  filterHassanQuoteUnits,
+  hassanQuoteUnitDisplayLabel,
+  missingHassanQuoteUnitSpecs,
+} from './utils/hassanQuoteUnits';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import { resolveFirebaseStorageImageForDisplay } from './utils/storageImageUrl';
 import {
@@ -329,6 +334,27 @@ async function fallbackListUnits() {
   return data || [];
 }
 
+async function loadHassanQuoteUnitCatalog() {
+  const listUnits = async () => {
+    try {
+      return await fetchQuotationRead('list-units');
+    } catch {
+      return fallbackListUnits();
+    }
+  };
+  let rows = await listUnits();
+  const missing = missingHassanQuoteUnitSpecs(rows || []);
+  for (const spec of missing) {
+    try {
+      await fetchQuotationWrite('create-unit', { name: spec.name, abbreviation: spec.abbreviation });
+    } catch (err) {
+      console.warn('[quotationer] ensure quote unit failed:', spec.name, err?.message || err);
+    }
+  }
+  if (missing.length) rows = await listUnits();
+  return filterHassanQuoteUnits(rows || []);
+}
+
 async function fallbackListCustomers() {
   const { data, error } = await db
     .from('quote_customers')
@@ -553,13 +579,6 @@ export default function Quotationer() {
           <h2 className="quotes-title products-title" style={{ margin: 0 }}>
             {view === 'home' ? homeLabel : 'Quotationer'}
           </h2>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {view !== 'home' && (
-              <button type="button" className={ENT_BTN_SECONDARY} onClick={goHome}>
-                Back to {homeLabel}
-              </button>
-            )}
-          </div>
         </div>
       )}
 
@@ -1009,24 +1028,24 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
         if (!cancelled) {
           if (Array.isArray(cachedCustomers)) setQuoteCustomers(cachedCustomers);
           if (Array.isArray(cachedProducts)) setQuoteProducts(cachedProducts.filter(isActiveQuoteProduct));
-          if (Array.isArray(cachedUnits)) setUnits(cachedUnits);
+          if (Array.isArray(cachedUnits)) setUnits(filterHassanQuoteUnits(cachedUnits));
         }
       } catch {}
       let qcs = [];
       let qp = [];
       let qu = [];
       try {
-        [qcs, qp, qu] = await Promise.all([
+        [qcs, qp] = await Promise.all([
           fetchQuotationRead('list-customers'),
           fetchQuotationRead('list-products', { limit: '500' }),
-          fetchQuotationRead('list-units')
         ]);
+        qu = await loadHassanQuoteUnitCatalog();
       } catch {
-        [qcs, qp, qu] = await Promise.all([
+        [qcs, qp] = await Promise.all([
           fallbackListCustomers(),
           fallbackListProducts('', 500),
-          fallbackListUnits()
         ]);
+        qu = await loadHassanQuoteUnitCatalog();
       }
       if (!cancelled) {
         const nextCustomers = (qcs || []).map(c => ({ ...c, name: titleCaseWords(c.name) }));
@@ -2335,7 +2354,7 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
                         >
                           <option value="">Unit</option>
                           {units.map(u => (
-                            <option key={u.id} value={u.id}>{normalizeUnitAbbreviation(u.abbreviation, u.name)}</option>
+                            <option key={u.id} value={u.id}>{hassanQuoteUnitDisplayLabel(u)}</option>
                           ))}
                         </select>
                       </td>
@@ -2733,8 +2752,6 @@ function QuoteProductsView({ onBackHome }) {
   const [editingId, setEditingId] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [tableSearch, setTableSearch] = React.useState('');
-  const [unitName, setUnitName] = React.useState('');
-  const [unitAbbr, setUnitAbbr] = React.useState('');
   const [descDialogOpen, setDescDialogOpen] = React.useState(false);
   const descriptionPreview = htmlToPlainPreview(form.description);
 
@@ -2745,20 +2762,14 @@ function QuoteProductsView({ onBackHome }) {
         const cachedUnits = cacheGet(QUOTE_UNIT_CATALOG_CACHE_KEY);
         const cachedProducts = cacheGet(QUOTE_PRODUCT_CATALOG_CACHE_KEY);
         const hasCachedProducts = Array.isArray(cachedProducts);
-        if (Array.isArray(cachedUnits)) setUnits(cachedUnits);
+        if (Array.isArray(cachedUnits)) setUnits(filterHassanQuoteUnits(cachedUnits));
         if (hasCachedProducts) setProducts(cachedProducts);
         setLoading(!hasCachedProducts);
       } catch {
         setLoading(true);
       }
-      let u = [];
-      try {
-        u = await fetchQuotationRead('list-units');
-      } catch {
-        u = await fallbackListUnits();
-      }
       if (!cancelled) {
-        const nextUnits = u || [];
+        const nextUnits = await loadHassanQuoteUnitCatalog();
         setUnits(nextUnits);
         try { cacheSet(QUOTE_UNIT_CATALOG_CACHE_KEY, nextUnits, QUOTATION_CACHE_TTL_MS); } catch {}
       }
@@ -2809,32 +2820,6 @@ function QuoteProductsView({ onBackHome }) {
       }
     } finally { if (!cancelled) setLoading(false); }
   }
-
-  const addUnit = async (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    if (!unitName.trim()) return;
-    try {
-      await fetchQuotationWrite('create-unit', { name: unitName.trim(), abbreviation: unitAbbr || null });
-      setUnitName(''); setUnitAbbr('');
-      let nextUnits = [];
-      try {
-        nextUnits = await fetchQuotationRead('list-units');
-      } catch {
-        nextUnits = await fallbackListUnits();
-      }
-      setUnits(nextUnits || []);
-      try { cacheSet(QUOTE_UNIT_CATALOG_CACHE_KEY, nextUnits || [], QUOTATION_CACHE_TTL_MS); } catch {}
-    } catch (e2) {
-      alert('Add unit failed: ' + (e2.message || e2));
-    }
-  };
-
-  const removeUnit = async (id) => {
-    if (!window.confirm('Delete this unit?')) return;
-    await db.from('quotation_units').delete().eq('id', id);
-    const { data } = await db.from('quotation_units').select('*').order('name');
-    setUnits(data || []);
-  };
 
   const save = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -2915,39 +2900,6 @@ function QuoteProductsView({ onBackHome }) {
         <h2 className="quotes-title" style={{ margin: 0 }}>Quote Products</h2>
       </div>
 
-      <div className="quotes-products-units-panel">
-        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-          <h4 style={{ margin: 0 }}>Manage Units</h4>
-          <input className="quotes-input" placeholder="Unit name" value={unitName} onChange={e => setUnitName(e.target.value)} style={{ width: 180, maxWidth: '100%' }} />
-          <input className="quotes-input" placeholder="Abbreviation (optional)" value={unitAbbr} onChange={e => setUnitAbbr(e.target.value)} style={{ width: 180, maxWidth: '100%' }} />
-          <button className={`action-button ${ENT_BTN_PRIMARY}`} type="button" onClick={addUnit}>Add Unit</button>
-        </div>
-        <div className="table-container quotes-table-wrap" style={{ marginTop: 8 }}>
-          <table className="table quotes-table" style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>
-                <th style={{ ...tableCellStyle, minWidth: 180 }}>Name</th>
-                <th style={tableCellStyle}>Abbr</th>
-                <th style={{ ...tableCellStyle, width: '5.5cm', textAlign: 'center' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {units.map(u => (
-                <tr key={u.id}>
-                  <td style={{ ...tableCellStyle, minWidth: 180 }}>{u.name}</td>
-                  <td style={tableCellStyle}>{normalizeUnitAbbreviation(u.abbreviation, u.name) || '-'}</td>
-                  <td style={{ ...tableCellStyle, width: '5.5cm', textAlign: 'center' }}>
-                    {canDelete && (
-                      <button type="button" className="portal-btn-delete quotes-action-btn-5cm" onClick={() => removeUnit(u.id)}>Delete</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       <form className="quotes-products-form-row" onSubmit={save}>
         <input
           className="quotes-field-5cm"
@@ -2972,7 +2924,11 @@ function QuoteProductsView({ onBackHome }) {
           value={form.price}
           onChange={e => setForm({ ...form, price: e.target.value })}
         />
-        <div className="pos-currency-switch quotes-currency-switch" role="group" aria-label="Currency">
+        <div
+          className="pos-currency-switch quotes-currency-switch hassan-quote-meta__currency quotes-products-form-row__currency"
+          role="group"
+          aria-label="Currency"
+        >
           <button
             type="button"
             className={form.currency === 'K' ? 'active' : ''}
@@ -2994,11 +2950,12 @@ function QuoteProductsView({ onBackHome }) {
           className="quotes-field-5cm quotes-field-5cm--select"
           value={form.unit_id}
           onChange={e => setForm({ ...form, unit_id: e.target.value })}
+          aria-label="Unit of measure"
         >
           <option value="">No Unit</option>
           {units.map(u => (
             <option key={u.id} value={u.id}>
-              {u.name}{normalizeUnitAbbreviation(u.abbreviation, u.name) ? ` (${normalizeUnitAbbreviation(u.abbreviation, u.name)})` : ''}
+              {hassanQuoteUnitDisplayLabel(u)}
             </option>
           ))}
         </select>
@@ -3049,7 +3006,7 @@ function QuoteProductsView({ onBackHome }) {
               {filteredProducts.map(p => (
                   <tr key={p.id}>
                     <td style={tableCellStyle}>{p.name}</td>
-                    <td style={tableCellStyle}>{(units.find(u => u.id === p.unit_id)?.name) || '-'}</td>
+                    <td style={tableCellStyle}>{hassanQuoteUnitDisplayLabel(units.find(u => u.id === p.unit_id)) || '-'}</td>
                     <td style={{ ...tableCellStyle, textAlign: 'right' }}>{Number(p.price || 0).toFixed(2)}</td>
                     <td style={tableCellStyle}>{htmlToPlainPreview(p.description) || '-'}</td>
                     <td style={tableCellStyle}>{p.active ? 'Yes' : 'No'}</td>

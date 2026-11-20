@@ -4,6 +4,7 @@ import {
   productTitleForTrackingJob,
   productionDepartmentLabel,
 } from './productionJobFlowStatus';
+import { collapseProductionTrackingDisplayRows } from './productionTrackingListUi';
 
 function assemblyKey(department, job) {
   if (department === 'upholstery') {
@@ -23,9 +24,14 @@ export function jobToTrackingRow(department, job) {
   const meta = job?.metadata && typeof job.metadata === 'object' ? job.metadata : {};
   const status = String(job?.status || '').trim().toLowerCase();
   const qty = Math.max(1, Math.floor(Number(job?.product_qty) || 1));
+  const quoteId = String(meta.carpentry_quote_id || meta.quote_id || '').trim() || null;
+  const quoteLineId = String(meta.quote_line_id || '').trim() || null;
   return {
     id: String(job.job_id || job.id || ''),
+    track_kind: 'factory',
     production_job_id: String(job.job_id || job.id || ''),
+    quote_id: quoteId,
+    quote_line_id: quoteLineId,
     department,
     department_label: productionDepartmentLabel(department),
     assembly_id: assemblyKey(department, job),
@@ -83,9 +89,9 @@ export function mergeProductionJobsTrackingClient({
     }
   }
 
-  merged.sort((a, b) => String(b.started_at || '').localeCompare(String(a.started_at || '')));
+  const jobs = collapseProductionTrackingDisplayRows(merged);
   return {
-    jobs: merged,
+    jobs,
     departments: ['upholstery', 'carpentry', 'painting'],
   };
 }

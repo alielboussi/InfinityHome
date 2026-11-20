@@ -4,7 +4,10 @@ import {
   productTitleForTrackingJob,
   productionDepartmentLabel,
 } from '../../src/utils/productionJobFlowStatus.js';
-import { sortProductionTrackingJobs } from '../../src/utils/productionTrackingListUi.js';
+import {
+  collapseProductionTrackingDisplayRows,
+  sortProductionTrackingJobs,
+} from '../../src/utils/productionTrackingListUi.js';
 
 const TABLES = Object.freeze({
   upholstery: 'upholstery_production_jobs',
@@ -62,10 +65,14 @@ function toTrackingRow(department, row) {
   const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
   const qty = Math.max(1, Math.floor(Number(row.product_qty) || 1));
   const flowStatus = computeProductionFlowStatus(department, row);
+  const quoteId = String(meta.carpentry_quote_id || meta.quote_id || '').trim() || null;
+  const quoteLineId = String(meta.quote_line_id || '').trim() || null;
   return {
     id: String(row.id),
     track_kind: 'factory',
     production_job_id: String(row.id),
+    quote_id: quoteId,
+    quote_line_id: quoteLineId,
     department,
     department_label: productionDepartmentLabel(department),
     assembly_id: assemblyKeyForRow(department, row),
@@ -254,7 +261,7 @@ export async function listProductionJobsForTracking(sb, {
     merged.push(row);
   }
 
-  const sorted = sortProductionTrackingJobs(merged);
+  const sorted = collapseProductionTrackingDisplayRows(sortProductionTrackingJobs(merged));
 
   return {
     jobs: sorted.slice(0, cap),

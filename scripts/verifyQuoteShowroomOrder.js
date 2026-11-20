@@ -63,6 +63,8 @@ assert(read('mobile-apps/orders/screens/ShowroomOrderCreateScreen.js').includes(
 const hassanF2 = read('src/HassanFloor2Page.js');
 const floor2Page = read('src/WarehouseFloor2Page.js');
 assert(hassanF2.includes('loadFreshOnMount'), 'Hassan Floor 2 must refresh catalog on open');
+assert(hassanF2.includes('floor2StockPhysicalOnly'), 'Hassan Floor 2 must show physical Floor 2 stock only');
+assert(floor2Page.includes('floor2StockPhysicalOnly'), 'Warehouse Floor 2 page must support physical-stock filter');
 assert(floor2Page.includes('kitwe-catalog-product-row--floor2-readonly'), 'Hassan Floor 2 read-only table layout');
 assert(read('src/utils/carpentryFinishingView.js').includes('hasFloor2InventoryRow'), 'Floor 2 list must include inventoried products');
 assert(!fs.existsSync(path.join(root, 'mobile-apps/orders/screens/OrdersWebOnlyScreen.js')), 'remove Orders web-only placeholder');

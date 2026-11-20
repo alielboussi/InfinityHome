@@ -27,12 +27,32 @@ assert(read('server/lib/quoteProductionRouting.js').includes('customer_order:'),
 assert(read('src/utils/buildDeliveryNotePrintHtml.js').includes('Customer Order Delivery Note'), 'A4 HTML must title customer order deliveries');
 assert(read('src/utils/warehouseDeliveryNotePrint.js').includes('order_delivery'), 'Hassan delivery note builder must pass order_delivery metadata');
 assert(read('src/Quotationer.js').includes('quotation-customer-order-badge'), 'Quotationer list must show Customer Order badge');
+assert(read('src/utils/hassanQuoteUnits.js').includes("label: 'm²'"), 'Hassan quote UOM catalog must include m² label');
+assert(read('src/utils/hassanQuoteUnits.js').includes("label: 'Pc(s)'"), 'Hassan quote UOM catalog must include Pc(s) label');
+assert(!read('src/Quotationer.js').includes('Manage Units'), 'Quote Products must not expose unit admin UI');
+assert(read('src/Quotationer.js').includes('filterHassanQuoteUnits'), 'Quotationer must filter units to hardcoded Hassan UOMs');
+assert(read('src/Quotationer.js').includes('loadHassanQuoteUnitCatalog'), 'Quotationer must ensure m² and Pc(s) units exist');
+assert(read('src/utils/hassanQuoteUnits.js').includes('hassanQuoteUnitMatchesSpec'), 'Hassan quote units must fuzzy-match MetersSquared');
 assert(read('src/utils/quoteCustomerOrder.js').includes('resolveDeliverySessionOrderBadges'), 'delivery badges must merge session + entry metadata');
 assert(read('src/utils/quoteCustomerOrder.js').includes('isHassanOrderDeliverySession'), 'delivery badges must distinguish Hassan orders from catalog WHD');
 assert(read('src/WarehouseDeliveries.js').includes('quote_production_routing'), 'warehouse deliveries must load quote routing for order badges');
 assert(read('src/WarehouseDeliveries.js').includes('orderBadgesFromQuoteRoutingMetadata')
   || read('src/WarehouseDeliveries.js').includes('resolveDeliverySessionOrderBadges(session, entries, quoteRoutingMeta)'),
   'warehouse deliveries must pass quote routing into badge resolver');
+
+const {
+  filterHassanQuoteUnits,
+  hassanQuoteUnitDisplayLabel,
+} = require(path.join(root, 'src/utils/hassanQuoteUnits.js'));
+const sqUnits = filterHassanQuoteUnits([
+  { id: '1', name: 'Meters Squared', abbreviation: 'm²' },
+  { id: '2', name: 'Pieces', abbreviation: 'Pc(s)' },
+]);
+assert(sqUnits.length === 2, 'filter must match spaced Meters Squared and Pieces');
+assert(hassanQuoteUnitDisplayLabel(sqUnits[0]) === 'Pc(s)', 'pieces unit must list before m²');
+assert(hassanQuoteUnitDisplayLabel(sqUnits[1]) === 'm²', 'area unit must display as m²');
+assert(read('src/BackToDashboard.js').includes('enterprise-theme'), 'BackToDashboard must hide on portal chrome');
+assert(!read('src/AppChrome.js').includes('ent-back-btn'), 'AppChrome must not show banner back button');
 
 const { resolveDeliverySessionOrderBadges } = require(path.join(root, 'src/utils/quoteCustomerOrder.js'));
 const catalog = resolveDeliverySessionOrderBadges(

@@ -6,8 +6,9 @@ export default function HassanFloor2Page() {
     <WarehouseFloor2Page
       readOnly
       loadFreshOnMount
+      floor2StockPhysicalOnly
       pageTitle="Floor 2"
-      pageSubtitle="Photo, SKU, product, and stock on hand (same Floor 2 WIP as Warehouses → Floor 2 — read-only)."
+      pageSubtitle="Unfinished WIP with stock on Warehouse Floor 2 (or a Floor 2 photo) — not the Floor 1 product catalog."
     />
   );
 }

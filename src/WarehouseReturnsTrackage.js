@@ -4,13 +4,14 @@ import ProductionJobsTrackingPanel from './components/ProductionJobsTrackingPane
 
 export default function WarehouseReturnsTrackage() {
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--dash-bg)', color: 'var(--dash-text)', padding: 24 }}>
+    <div className="dashboard-container production-tracking-page">
       <div className="page-header-row">
         <BackToDashboard />
       </div>
       <ProductionJobsTrackingPanel
+        inProgressOnly
         title="Production tracking"
-        description="Live view of factory jobs (upholstery, carpentry, painting) with the same flow statuses as the Orders app Tracking screen."
+        description="Active factory jobs only (upholstery, carpentry, painting). Completed work is hidden here — use the Jobs hub or workshop apps for history."
       />
     </div>
   );

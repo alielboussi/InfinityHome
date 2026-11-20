@@ -14,6 +14,16 @@ export function isQuoteShowroomOrder(quoteRow, routing) {
   return quoteRow?.showroom_order === true;
 }
 
+/** Production tracking row / quote list (align with mobile-apps/shared/quoteShowroomOrder.js). */
+export function isProductionQuoteShowroomOrder(quote) {
+  return quote?.showroom_order === true;
+}
+
+export function isProductionQuoteCustomerOrder(quote) {
+  if (isProductionQuoteShowroomOrder(quote)) return false;
+  return quote?.customer_order === true;
+}
+
 export function isDeliveryShowroomOrderSession(session) {
   const meta = session?.metadata || {};
   if (meta.showroom_order === true) return true;

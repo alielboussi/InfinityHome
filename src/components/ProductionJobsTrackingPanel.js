@@ -8,78 +8,122 @@ import { computeTrackingJobElapsedMs } from './RunningProductionJobElapsed';
 import ProductionTrackingFunnelFilter from './ProductionTrackingFunnelFilter';
 import {
   applyProductionTrackingFilters,
+  isProductionTrackingJobCompleted,
   partitionProductionTrackingJobs,
 } from '../utils/productionTrackingListUi';
+import {
+  isProductionQuoteCustomerOrder,
+  isProductionQuoteShowroomOrder,
+} from '../utils/quoteShowroomOrder';
 
-function ProductionTrackingCard({ row }) {
-  const live = row.timer_status === 'running' || row.timer_status === 'paused';
+function trackingRowAsQuote(row) {
+  const quote = {
+    showroom_order: row?.showroom_order === true || row?.track_kind === 'showroom_order',
+    customer_order: row?.customer_order === true,
+    track_kind: row?.track_kind,
+  };
+  if (quote.showroom_order) quote.customer_order = false;
+  else if (row?.track_kind === 'quote_order' || row?.track_kind === 'quote') {
+    quote.customer_order = true;
+  }
+  return quote;
+}
+
+function trackingKindLabel(row) {
+  const k = String(row?.track_kind || 'factory').toLowerCase();
+  if (k === 'showroom_order' || k === 'showroom') return 'Showroom order';
+  if (k === 'quote_order' || k === 'quote') return 'Quote order';
+  if (k === 'repair') return 'Repair';
+  return 'Factory job';
+}
+
+function TrackingDetailLine({ label, value, always = false }) {
+  const display = value != null && String(value).trim() ? String(value).trim() : '';
+  if (!always && !display) return null;
   return (
-    <article
-      style={{
-        border: '1px solid var(--dash-border-soft, #ddd)',
-        borderRadius: 10,
-        padding: 14,
-        background: 'var(--dash-surface, #fff)',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontWeight: 700 }}>{row.product_name || '—'}</div>
-          <div style={{ color: 'var(--dash-muted, #666)', fontSize: 14, marginTop: 4 }}>
-            {row.product_sku ? `SKU ${row.product_sku} · ` : ''}
-            Qty {row.product_qty ?? 1}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{
-            display: 'inline-block',
-            fontSize: 12,
-            fontWeight: 700,
-            padding: '2px 8px',
-            borderRadius: 6,
-            background: 'var(--dash-surface-2, #f1f5f9)',
-            marginBottom: 6,
-          }}
-          >
-            {row.department_label || productionDepartmentLabel(row.department)}
-          </div>
-          <div style={{ fontWeight: 700, color: '#0369a1' }}>{row.flow_status || '—'}</div>
-          {live ? (
-            <div style={{ color: '#0369a1', fontWeight: 700, marginTop: 4 }}>
-              ⏱{' '}
-              <RunningProductionJobElapsed job={row} />
-              {row.timer_status === 'paused' ? ' (paused)' : row.timer_status === 'running' ? ' (running)' : ''}
-            </div>
-          ) : (
-            <div style={{ color: '#0369a1', fontWeight: 700, marginTop: 4 }}>
-              Elapsed: {formatProductionElapsed(computeTrackingJobElapsedMs(row))}
-            </div>
-          )}
-        </div>
-      </div>
-      {row.started_at ? (
-        <div style={{ color: 'var(--dash-muted, #888)', fontSize: 13, marginTop: 8 }}>
-          Started {formatWarehouseAdminDateTime(row.started_at)}
-          {row.completed_at ? ` · Completed ${formatWarehouseAdminDateTime(row.completed_at)}` : ''}
-        </div>
-      ) : null}
-    </article>
+    <div className="production-tracking-card__line">
+      <span className="production-tracking-card__line-label">{label}</span>
+      <span className="production-tracking-card__line-value">{display || '—'}</span>
+    </div>
   );
 }
 
-function SectionHeading({ children }) {
+function ProductionTrackingCard({ row }) {
+  const completed = isProductionTrackingJobCompleted(row);
+  const live = row.timer_status === 'running' || row.timer_status === 'paused';
+  const quoteShape = trackingRowAsQuote(row);
+  const showCustomerShowroom = isProductionQuoteShowroomOrder(quoteShape)
+    || isProductionQuoteCustomerOrder(quoteShape);
+  const productLine = [
+    row?.product_sku ? `SKU ${row.product_sku}` : '',
+    row?.product_qty != null ? `Qty ${row.product_qty}` : '',
+  ].filter(Boolean).join(' · ');
+  const refLine = row?.quote_number
+    ? `Quote ${row.quote_number}`
+    : (row?.return_number ? `Return ${row.return_number}` : '');
+
   return (
-    <h2 style={{
-      margin: '20px 0 10px',
-      fontSize: 15,
-      fontWeight: 800,
-      color: 'var(--dash-muted, #64748b)',
-      textTransform: 'uppercase',
-      letterSpacing: '0.04em',
-    }}
+    <article
+      className={`production-tracking-card${completed ? ' production-tracking-card--completed' : ''}`}
     >
-      {children}
-    </h2>
+      <div className="production-tracking-card__badges">
+        {showCustomerShowroom ? (
+          isProductionQuoteShowroomOrder(quoteShape) ? (
+            <span className="production-tracking-card__type-badge production-tracking-card__type-badge--showroom quotation-customer-order-badge">
+              Showroom order
+            </span>
+          ) : (
+            <span className="production-tracking-card__type-badge production-tracking-card__type-badge--customer quotation-customer-order-badge">
+              Customer order
+            </span>
+          )
+        ) : (
+          <span className="production-tracking-card__kind">{trackingKindLabel(row)}</span>
+        )}
+        <span className="production-tracking-card__dept">
+          {row.department_label || productionDepartmentLabel(row.department)}
+        </span>
+        {row.timer_status === 'paused' ? (
+          <span className="production-tracking-card__timer-chip">Paused</span>
+        ) : null}
+        {row.timer_status === 'running' ? (
+          <span className="production-tracking-card__timer-chip">Running</span>
+        ) : null}
+      </div>
+
+      <div className="production-tracking-card__title">{row.product_name || '—'}</div>
+      <div className="production-tracking-card__status">{row.flow_status || '—'}</div>
+
+      <div className="production-tracking-card__lines">
+        {refLine ? <TrackingDetailLine label="Reference" value={refLine} always /> : null}
+        {productLine ? <TrackingDetailLine label="Product" value={productLine} always /> : null}
+        {row.customer_name ? <TrackingDetailLine label="Customer" value={row.customer_name} /> : null}
+        <TrackingDetailLine
+          label="Started"
+          value={row.started_at ? formatWarehouseAdminDateTime(row.started_at) : ''}
+          always
+        />
+        <TrackingDetailLine
+          label="Completed"
+          value={row.completed_at ? formatWarehouseAdminDateTime(row.completed_at) : ''}
+          always
+        />
+      </div>
+
+      <div className="production-tracking-card__timer">
+        <div className="production-tracking-card__timer-label">Time elapsed</div>
+        <div className="production-tracking-card__timer-value">
+          {live ? (
+            <>
+              <RunningProductionJobElapsed job={row} />
+              {row.timer_status === 'paused' ? ' (paused)' : ''}
+            </>
+          ) : (
+            formatProductionElapsed(computeTrackingJobElapsedMs(row))
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -88,14 +132,17 @@ export default function ProductionJobsTrackingPanel({
   description,
   embedInHub = false,
   initialDepartment = 'all',
+  defaultProgress = 'all',
+  inProgressOnly = false,
 }) {
+  const resolvedDefaultProgress = inProgressOnly ? 'in_progress' : defaultProgress;
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState(initialDepartment || 'all');
   const [trackKind, setTrackKind] = useState('all');
-  const [progress, setProgress] = useState('all');
+  const [progress, setProgress] = useState(resolvedDefaultProgress);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,50 +177,32 @@ export default function ProductionJobsTrackingPanel({
 
   const showProgressSections = progress === 'all' && inProgress.length > 0 && completed.length > 0;
 
-  const shellStyle = embedInHub
-    ? {}
-    : { minHeight: '100vh', background: 'var(--dash-bg)', color: 'var(--dash-text)', padding: 24 };
-
   const clearFilters = () => {
     setDepartment('all');
     setTrackKind('all');
-    setProgress('all');
+    setProgress(resolvedDefaultProgress);
   };
 
   return (
-    <div style={shellStyle}>
-      {!embedInHub && title ? <h1 style={{ margin: '0 0 8px' }}>{title}</h1> : null}
+    <div className="production-tracking-panel">
+      {!embedInHub && title ? <h1 className="production-tracking-panel__title">{title}</h1> : null}
       {description ? (
-        <p style={{ color: 'var(--dash-muted)', marginBottom: 16, lineHeight: 1.5 }}>{description}</p>
+        <p className="production-tracking-panel__desc">{description}</p>
       ) : null}
 
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 12,
-        marginBottom: 16,
-        alignItems: 'center',
-      }}
-      >
+      <div className="production-tracking-toolbar">
         <input
           type="search"
+          className="production-tracking-toolbar__search"
           placeholder="Search product, SKU, status…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{
-            flex: '1 1 240px',
-            minWidth: 200,
-            padding: '8px 10px',
-            borderRadius: 8,
-            border: '1px solid var(--dash-border)',
-            background: 'var(--dash-surface-2)',
-            color: 'var(--dash-text)',
-          }}
         />
         <ProductionTrackingFunnelFilter
           department={department}
           trackKind={trackKind}
           progress={progress}
+          hideProgressFilter={inProgressOnly}
           onDepartmentChange={setDepartment}
           onTrackKindChange={setTrackKind}
           onProgressChange={setProgress}
@@ -187,15 +216,15 @@ export default function ProductionJobsTrackingPanel({
         <div style={{ color: 'var(--dash-muted)' }}>No production jobs found.</div>
       )}
 
-      <div style={{ display: 'grid', gap: 12 }}>
+      <div className="production-tracking-grid">
         {showProgressSections && inProgress.length ? (
-          <SectionHeading>In progress</SectionHeading>
+          <h2 className="production-tracking-section-heading">In progress</h2>
         ) : null}
         {inProgress.map((row) => (
           <ProductionTrackingCard key={`${row.department}:${row.id}`} row={row} />
         ))}
         {showProgressSections && completed.length ? (
-          <SectionHeading>Completed</SectionHeading>
+          <h2 className="production-tracking-section-heading">Completed</h2>
         ) : null}
         {completed.map((row) => (
           <ProductionTrackingCard key={`${row.department}:${row.id}`} row={row} />

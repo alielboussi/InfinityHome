@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FaArrowLeft, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import {
   getCurrentUser,
   getHomeDashboardPath,
@@ -192,16 +192,6 @@ const TITLE_MAP = {
   '/user-access': 'User Login Access',
 };
 
-function backTargetForPath(path, homePath) {
-  const p = String(path || '');
-  const keys = Object.keys(TITLE_MAP).sort((a, b) => b.length - a.length);
-  for (const key of keys) {
-    if (p === key) return homePath;
-    if (p.startsWith(`${key}/`)) return key;
-  }
-  return homePath;
-}
-
 function titleForPath(path, user, search = '') {
   if (!path) return 'Infinity Home';
   if (isQuotationerOnlyExperience(user, path, search) && path === '/quotationer') {
@@ -320,9 +310,6 @@ export default function AppChrome() {
     && !quotationerParams.get('id');
   const isDashboard = path === homePath || (quotationerOnly && isQuotationerHome);
   const title = titleForPath(path, user, location.search);
-  const backTarget = backTargetForPath(path, homePath);
-  const backIsHome = backTarget === homePath;
-
   const go = (route, search = '') => {
     if (search) navigate({ pathname: route, search });
     else navigate(route);
@@ -368,17 +355,6 @@ export default function AppChrome() {
         </button>
       ) : null}
       <header className="ent-banner">
-        {!isDashboard && (
-          <button
-            type="button"
-            className="ent-back-btn"
-            onClick={() => navigate(backTarget)}
-            aria-label={backIsHome ? 'Back to Dashboard' : 'Back'}
-            title={backIsHome ? 'Back to Dashboard' : `Back to ${TITLE_MAP[backTarget] || 'previous page'}`}
-          >
-            <FaArrowLeft />
-          </button>
-        )}
         <h1 className="ent-banner-title">{title}</h1>
         <span className="ent-banner-spacer" aria-hidden="true" />
         <div className="ent-banner-actions">

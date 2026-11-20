@@ -11,6 +11,10 @@ export default function BackToDashboard({ to, title = 'Back to Dashboard', ariaL
   const target = to || homePath;
   const label = ariaLabel || title;
 
+  if (typeof document !== 'undefined' && document.body?.classList?.contains('enterprise-theme')) {
+    return null;
+  }
+
   if (!to && (path === '/' || path === homePath || path === '/dashboard' || /^\/login(\b|\/|\?|#)/i.test(path))) {
     return null;
   }

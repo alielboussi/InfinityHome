@@ -213,6 +213,188 @@
   background: var(--dash-surface, #fff);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
 }
+
+.production-tracking-page {
+  color: var(--dash-text, #1f2733);
+}
+
+.production-tracking-panel__title {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--dash-text, #1f2733);
+}
+
+.production-tracking-panel__desc {
+  color: var(--dash-muted, #5b6675);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.production-tracking-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.production-tracking-toolbar__search {
+  flex: 1 1 240px;
+  min-width: 200px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dash-border, #cbd5e1);
+  background: var(--dash-surface-2, #f1f5f9);
+  color: var(--dash-text, #1f2733);
+  box-sizing: border-box;
+}
+
+.production-tracking-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.production-tracking-section-heading {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--dash-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.production-tracking-card {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 1px solid var(--dash-border-soft, #d5dbe2);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--dash-surface, #fff);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  min-height: 220px;
+  height: 100%;
+}
+
+.production-tracking-card--completed {
+  opacity: 0.92;
+  border-color: #86efac88;
+}
+
+.production-tracking-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.production-tracking-card__kind {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.production-tracking-card__dept {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--dash-surface-2, #f1f5f9);
+  color: #475569;
+}
+
+.production-tracking-card__timer-chip {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0369a1;
+}
+
+.production-tracking-card__title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.3;
+  margin-bottom: 6px;
+  color: var(--dash-text, #1f2733);
+}
+
+.production-tracking-card__status {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0369a1;
+  margin-bottom: 10px;
+}
+
+.production-tracking-card__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.production-tracking-card__line {
+  display: grid;
+  grid-template-columns: minmax(72px, 92px) minmax(0, 1fr);
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.production-tracking-card__line-label {
+  color: var(--dash-muted, #64748b);
+  font-weight: 600;
+}
+
+.production-tracking-card__line-value {
+  color: var(--dash-text, #1f2733);
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.production-tracking-card__timer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dash-border-soft, #e2e8f0);
+}
+
+.production-tracking-card__timer-label {
+  font-size: 12px;
+  color: var(--dash-muted, #64748b);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.production-tracking-card__timer-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0369a1;
+  font-variant-numeric: tabular-nums;
+}
+
+body.enterprise-theme .production-tracking-page .production-tracking-card__type-badge {
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+body.enterprise-theme .production-tracking-page .production-tracking-card__type-badge--showroom {
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+}
+
+body.enterprise-theme .production-tracking-page .production-tracking-card__type-badge--customer {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+}
+
 .warehouse-assembly-card-list {
   display: flex;
   flex-direction: column;
@@ -13311,12 +13493,32 @@ body.enterprise-theme .quotes-table--create-lines .quotes-line-unit {
   margin-bottom: 12px;
 }
 .quotes-products-form-row {
+  --quotes-products-field-h: var(--br-field-h, 40px);
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  align-items: center;
+  align-items: flex-end;
   margin-bottom: 12px;
   max-width: 100%;
+}
+.quotes-products-page .quotes-products-form-row > .quotes-field-5cm,
+.quotes-products-page .quotes-products-form-row > .quotes-field-5cm--description,
+.quotes-products-page .quotes-products-form-row > .quotes-products-form-row__currency,
+.quotes-products-page .quotes-products-form-row > .quotes-submit-5cm,
+.quotes-products-page .quotes-products-form-row > .danger-button.quotes-submit-5cm {
+  height: var(--quotes-products-field-h) !important;
+  min-height: var(--quotes-products-field-h) !important;
+  max-height: var(--quotes-products-field-h) !important;
+  margin: 0;
+  box-sizing: border-box;
+}
+.quotes-products-page .quotes-products-form-row__currency {
+  width: 3cm !important;
+  min-width: 3cm !important;
+  max-width: 3cm !important;
+  flex: 0 0 3cm !important;
+  align-self: flex-end;
+  padding: 2px !important;
 }
 .quotes-field-5cm {
   width: 5cm;
@@ -13381,20 +13583,38 @@ body.enterprise-theme .quotes-table--create-lines .quotes-line-unit {
   gap: 6px;
   align-items: center;
 }
-.quotes-products-page .quotes-currency-switch {
-  width: 3cm !important;
-  height: 36px !important;
-  min-height: 36px !important;
-  max-height: 36px !important;
-  flex: 0 0 3cm;
-  padding: 2px;
-  box-sizing: border-box;
-  align-self: center;
-  margin-top: 0;
+body.enterprise-theme .quotes-products-page .quotes-products-form-row > .quotes-products-form-row__currency {
+  display: inline-flex !important;
+  border: 1px solid var(--brand-primary-hover) !important;
+  border-radius: 8px !important;
+  background: var(--brand-primary-soft) !important;
+  box-shadow: none !important;
+  gap: 0 !important;
+  overflow: hidden;
 }
-.quotes-products-page .quotes-currency-switch button {
-  height: 100% !important;
+body.enterprise-theme .quotes-products-page .quotes-products-form-row > .quotes-products-form-row__currency button {
   min-height: 0 !important;
+  height: 100% !important;
+  max-height: none !important;
+  background: transparent !important;
+  color: var(--brand-on-primary) !important;
+  font-weight: var(--portal-btn-font-weight, 400) !important;
+  border-radius: 6px !important;
+}
+body.enterprise-theme .quotes-products-page .quotes-products-form-row > .quotes-products-form-row__currency button.active {
+  background: var(--brand-primary) !important;
+  color: var(--brand-on-primary) !important;
+  box-shadow: none !important;
+}
+body.enterprise-theme .quotes-products-page .quotes-products-form-row > .quotes-field-5cm--select {
+  line-height: 1.2;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+body.enterprise-theme .quotes-products-page .quotes-products-form-row > .quotes-field-5cm--description {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: flex-start;
 }
 .quotes-products-page .quotes-submit-5cm {
   width: 5cm;
@@ -13798,29 +14018,6 @@ body.enterprise-theme .quotes-create-page .quotes-vat-switch {
 body.enterprise-theme .quotes-create-page .quotes-vat-switch {
   width: 3.4cm !important;
 }
-body.enterprise-theme .quotes-products-page .quotes-currency-switch button {
-  min-width: 0 !important;
-  flex: 1;
-  height: 30px !important;
-  padding: 0 !important;
-  border-radius: 0 !important;
-  background: #ffffff !important;
-  color: #0d6efd !important;
-  font-weight: 800 !important;
-  border: 0 !important;
-  box-shadow: none !important;
-}
-body.enterprise-theme .quotes-products-page .quotes-currency-switch button.active {
-  background: #0d6efd !important;
-  color: #ffffff !important;
-}
-body.enterprise-theme .quotes-products-page .quotes-currency-switch button:first-child {
-  border-radius: 5px 0 0 5px;
-}
-body.enterprise-theme .quotes-products-page .quotes-currency-switch button:last-child {
-  border-radius: 0 5px 5px 0;
-}
-
 @media (max-width: 900px) {
   .quotes-products-form-row {
     justify-content: flex-start;

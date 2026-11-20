@@ -11,6 +11,7 @@ export default function ProductionTrackingFunnelFilter({
   department,
   trackKind,
   progress,
+  hideProgressFilter = false,
   onDepartmentChange,
   onTrackKindChange,
   onProgressChange,
@@ -18,7 +19,11 @@ export default function ProductionTrackingFunnelFilter({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
-  const active = isProductionTrackingFilterActive({ department, trackKind, progress });
+  const active = isProductionTrackingFilterActive({
+    department,
+    trackKind,
+    progress: hideProgressFilter ? 'all' : progress,
+  });
 
   useEffect(() => {
     if (!open) return undefined;
@@ -76,18 +81,20 @@ export default function ProductionTrackingFunnelFilter({
               ))}
             </select>
           </label>
-          <label style={{ display: 'block', fontSize: 13, color: 'var(--dash-muted)', marginTop: 12 }}>
-            Status
-            <select
-              value={progress}
-              onChange={(e) => onProgressChange(e.target.value)}
-              style={selectStyle}
-            >
-              {PRODUCTION_TRACKING_PROGRESS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </label>
+          {!hideProgressFilter ? (
+            <label style={{ display: 'block', fontSize: 13, color: 'var(--dash-muted)', marginTop: 12 }}>
+              Status
+              <select
+                value={progress}
+                onChange={(e) => onProgressChange(e.target.value)}
+                style={selectStyle}
+              >
+                {PRODUCTION_TRACKING_PROGRESS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
             {active ? (
               <button

@@ -6,7 +6,6 @@ import { openOrCreateQuotationPdf } from './QuotationerPdfService';
 import { convertQuoteToLayby } from './services/quoteConversion';
 import { cacheClear, cachePeek, cacheSet, applyPortalSnapshot, PORTAL_SWR_TTL_MS } from './utils/staleCache';
 import { LAYBY_ROWS_CACHE_KEY } from './utils/laybyRollup';
-import BackToDashboard from './BackToDashboard';
 import {
   canDeleteQuotationData,
   canEditQuotation,
@@ -372,17 +371,6 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
   return (
     <div className={`content quotes-page${boardMode === 'all' ? ' quotes-orders-board' : ''}`} style={{ padding: 12 }}>
       <div className="quotes-header page-header-row" style={{ marginBottom: 12 }}>
-        {!isQuotationerOnly && <BackToDashboard />}
-        {isQuotationerOnly && (
-          <button
-            type="button"
-            className="action-button"
-            style={{ padding: '8px 12px', fontSize: 13, background: '#0f7fff', color: '#fff', border: '1px solid #0c6ed8', borderRadius: 6 }}
-            onClick={() => navigate('/quotationer')}
-          >
-            Back to Dashboard
-          </button>
-        )}
         <h2 className="quotes-title" style={{ margin: 0 }}>
           {boardMode === 'showroom' ? 'Showroom Orders' : (boardMode === 'factory' ? 'Factory Orders' : 'Orders')}
         </h2>

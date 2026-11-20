@@ -4,7 +4,7 @@ import db from './dataClient';
 import './kitwe-catalog-page.css';
 import { canManageCatalog, getCurrentUser } from './accessControl';
 import { deleteWarehouseAssembly } from './services/warehouseCatalog';
-import { mergeWarehouseFloor2WipImageMetadata } from './utils/warehouseFloor2WipImage';
+import { mergeWarehouseFloor2WipImageMetadata, readWarehouseFloor2WipImageUrl } from './utils/warehouseFloor2WipImage';
 import { floor2StockAsFlatGroups } from './utils/warehouseFloor2StockGroups';
 import WarehouseFloor2WipThumbnail from './components/WarehouseFloor2WipThumbnail';
 import {
@@ -51,6 +51,7 @@ export default function WarehouseFloor2Page({
   embedInHub = false,
   readOnly = false,
   loadFreshOnMount = false,
+  floor2StockPhysicalOnly = false,
 } = {}) {
   const initialCatalog = useMemo(() => getCachedCarpentryCatalog(), []);
   const initialRuns = useMemo(() => getCachedCarpentryFloorRuns(), []);
@@ -207,9 +208,19 @@ export default function WarehouseFloor2Page({
     return map;
   }, [floor2Stock]);
 
+  const displayFloor2Stock = useMemo(() => {
+    if (!floor2StockPhysicalOnly) return floor2Stock;
+    return (floor2Stock || []).filter((row) => {
+      const qty = Math.max(0, Number(row.quantity) || 0);
+      if (qty > 0) return true;
+      const asm = assemblyById.get(String(row.assembly_id || ''));
+      return Boolean(readWarehouseFloor2WipImageUrl(asm));
+    });
+  }, [floor2Stock, assemblyById, floor2StockPhysicalOnly]);
+
   const stockFamilyGroups = useMemo(
-    () => floor2StockAsFlatGroups(floor2Stock, assemblyById),
-    [floor2Stock, assemblyById],
+    () => floor2StockAsFlatGroups(displayFloor2Stock, assemblyById),
+    [displayFloor2Stock, assemblyById],
   );
 
   const filteredStockFamilyGroups = useMemo(() => {
