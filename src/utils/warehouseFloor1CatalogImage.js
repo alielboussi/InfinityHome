@@ -4,13 +4,16 @@ import {
   normalizeWarehouseProductSku,
 } from './warehouseScanResolver.js';
 import { readWarehouseFloor2WipImageUrl } from './warehouseFloor2WipImage.js';
+import { parseCarpentryMeta } from './carpentryCatalogView.js';
 
 /** Floor 1 catalog photo only (assembly.image_url). Never Floor 2 WIP metadata or shared URLs. */
 export function readFloor1CatalogImageUrl(assembly) {
   const url = String(assembly?.image_url || '').trim();
   if (!url) return '';
   const wip = readWarehouseFloor2WipImageUrl(assembly);
-  if (wip && String(wip).trim() === url) return '';
+  if (wip && String(wip).trim() === url && !parseCarpentryMeta(assembly)?.selected) {
+    return '';
+  }
   return rewriteLegacyStorageUrl(url, { bucket: 'productimages' }) || url;
 }
 

@@ -63,6 +63,10 @@ assert(
   'carpentry deferred photo must credit Floor 2 qty when catalog was pre-selected',
 );
 assert(
+  prodAttach.includes('pendingProductionNotifyQty'),
+  'deferred photo WhatsApp qty must use portal setup when labels are deferred',
+);
+assert(
   packetPhoto.includes('directCatalogUpload && requireAiRetouch'),
   'must block direct upload combined with required AI',
 );

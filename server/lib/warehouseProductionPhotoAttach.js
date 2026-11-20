@@ -17,6 +17,7 @@ import { buildProductionWhatsAppNotifyPayload } from './warehouseProductionPrese
 import { upsertFinishedAssemblyInventoryQuantity } from './warehouseCatalogMobile.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { parseUpholsteryMeta } from '../../src/utils/upholsteryCatalogView.js';
+import { mirrorCarpentryProductionCatalogToFloor2Wip } from './mirrorCarpentryProductionCatalogToFloor2Wip.js';
 
 async function productionWhatsappProducerName(user) {
   const record = await getLoginAccessRecord(user?.id);
@@ -26,6 +27,21 @@ async function productionWhatsappProducerName(user) {
 function pendingLabelQty(body) {
   const pending = body.pending_label_print || body.pendingLabelPrint;
   const qty = Math.floor(Number(pending?.qty) || 0);
+  return qty > 0 ? qty : 0;
+}
+
+/** Carpentry defers labels until painting — WhatsApp qty comes from pending_portal_setup instead. */
+function pendingProductionNotifyQty(body) {
+  const fromLabels = pendingLabelQty(body);
+  if (fromLabels > 0) return fromLabels;
+  const portal = pendingPortalSetup(body);
+  if (!portal) return 0;
+  const qty = Math.floor(Number(
+    portal.initial_quantity
+    ?? portal.floor2_product_qty
+    ?? portal.initialQuantity
+    ?? portal.floor2ProductQty
+  ) || 0);
   return qty > 0 ? qty : 0;
 }
 
@@ -278,6 +294,12 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
       updated_at: new Date().toISOString(),
     }).eq('id', assemblyId);
     const portalResult = await runPendingPortalSetup(sb, body, user, assembly);
+    await mirrorCarpentryProductionCatalogToFloor2Wip(sb, assemblyId, catalogImageUrl, {
+      body,
+      portalResult,
+    }).catch((err) => {
+      console.warn('[warehouse-production-photo] Floor 2 WIP mirror failed:', err?.message || err);
+    });
     const labelResult = await runPendingLabelPrint(sb, body, user, assembly);
     const label_preview_png_base64 = await buildLabelPreviewForAssembly(assembly);
     return {
@@ -320,10 +342,17 @@ export async function runProductionAssemblyPhotoAttach(body, user) {
     buildLabelPreviewForAssembly(assembly),
   ]);
 
+  await mirrorCarpentryProductionCatalogToFloor2Wip(sb, assemblyId, catalogImageUrl, {
+    body,
+    portalResult,
+  }).catch((err) => {
+    console.warn('[warehouse-production-photo] Floor 2 WIP mirror failed:', err?.message || err);
+  });
+
   void notifyNewProductionProductWhatsApp({
     user,
     assembly,
-    qtyAdded: pendingLabelQty(body),
+    qtyAdded: pendingProductionNotifyQty(body),
     imageUrl: catalogImageUrl,
     preset: body.preset || body.product_preset,
   }).catch((err) => {

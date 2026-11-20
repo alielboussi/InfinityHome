@@ -58,7 +58,7 @@ export default function WarehouseFloor2WipThumbnail({
   const rawUrl = isFamily
     ? readWarehouseFloor2WipFamilyImageUrl(assembly)
     : readWarehouseFloor2WipImageUrl(assembly);
-  const catalogFallback = previewOnly ? String(assembly?.image_url || '').trim() : '';
+  const catalogFallback = String(assembly?.image_url || '').trim();
   const resolvedUrl = rawUrl || catalogFallback;
   const displayUrl = resolvedUrl
     ? rewriteLegacyStorageUrl(resolvedUrl, { bucket: 'productimages' })

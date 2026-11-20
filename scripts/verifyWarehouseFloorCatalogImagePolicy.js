@@ -24,6 +24,9 @@ if (!kitweImg.includes('readFloor1CatalogImageUrl')) {
 if (prodAttach.includes('mergeWarehouseFloor2WipImageMetadata')) {
   errors.push('warehouseProductionPhotoAttach must not copy catalog photos to Floor 2 WIP');
 }
+if (!prodAttach.includes('mirrorCarpentryProductionCatalogToFloor2Wip')) {
+  errors.push('warehouseProductionPhotoAttach must mirror carpentry catalog photos via mirrorCarpentryProductionCatalogToFloor2Wip');
+}
 const seater = read('src/utils/warehouseSeaterSetCoverImage.js');
 if (!seater.includes('readFloor1CatalogImageUrl')) {
   errors.push('warehouseSeaterSetCoverImage must use readFloor1CatalogImageUrl for Floor 1');
