@@ -36,6 +36,11 @@ async function main() {
 
   const quoteProd = fs.readFileSync(path.join(root, 'server/handlers/quote-production.js'), 'utf8');
   assert(quoteProd.includes('maxGeminiRounds: 1'), 'translate-arabic must not stack Gemini rounds per HTTP call');
+  assert(
+    !serverArabic.includes('gemini-2.0-flash-lite'),
+    'Arabic translate fallbacks must not use retired gemini-2.0-flash-lite',
+  );
+  assert(serverArabic.includes('gemini-3.5-flash-lite'), 'Arabic translate fallbacks must include gemini-3.5-flash-lite');
 
   const i18n = fs.readFileSync(
     path.join(root, 'mobile-apps/carpentry-workshop/lib/productionKioskI18n.js'),

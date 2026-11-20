@@ -504,7 +504,13 @@ function geminiTranslateModelOrder() {
   if (forced) return [forced];
   const csv = parseGeminiTranslateModelsCsv(process.env.GEMINI_TRANSLATE_MODELS);
   if (csv.length) return csv;
-  return ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-2.0-flash-lite'];
+  return ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+}
+
+function isGeminiModelUnavailableError(message, status) {
+  const m = String(message || '').toLowerCase();
+  if (status === 404) return true;
+  return /no longer available|not found|has been deprecated|is not supported for generatecontent/.test(m);
 }
 
 function isGeminiTranslateTransientError(message, status) {
@@ -517,6 +523,9 @@ function humanizeGeminiTranslateError(message) {
   const raw = String(message || '').trim();
   if (/high demand|try again later/i.test(raw)) {
     return 'Google Arabic translation is busy (high demand). Wait about 30 seconds and tap Send Order again.';
+  }
+  if (/no longer available|gemini-2\.0/i.test(raw)) {
+    return 'Google Arabic translation model was updated. Deploy the latest API build and try Send Order again.';
   }
   return raw;
 }
@@ -622,6 +631,9 @@ async function geminiTranslatePhrasesToArabic(phrases) {
             break;
           } catch (err) {
             batchErr = err;
+            if (isGeminiModelUnavailableError(err?.message, err?.status)) {
+              break;
+            }
             if (isGeminiTranslateTransientError(err?.message, err?.status) && attempt < 1) {
               await sleepMs(700 * (attempt + 1));
               continue;

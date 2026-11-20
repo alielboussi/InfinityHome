@@ -1,6 +1,6 @@
 import { getGeminiApiKey } from './geminiImageEmbedding.js';
 
-const MODEL = 'gemini-2.0-flash';
+const MODEL = 'gemini-2.5-flash';
 
 function parseJsonArray(raw) {
   if (!raw) return [];
