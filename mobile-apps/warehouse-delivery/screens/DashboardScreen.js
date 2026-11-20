@@ -14,6 +14,11 @@ import {
 import { theme } from '../shared/theme';
 import { useDashboardNotificationBadges } from '../shared/hooks/useDashboardNotificationBadges';
 import DashboardTileBadge from '../shared/components/DashboardTileBadge';
+import {
+  DELIVERY_ORDERS_HUB_SCREEN_IDS,
+  isWorkshopOrdersHubAllowed,
+  sumDashboardBadgeCounts,
+} from '../shared/lib/workshopOrdersHubAccess';
 
 function DashboardTile({
   icon, title, width, height, onPress, badgeCount = 0,
@@ -86,20 +91,16 @@ export default function DashboardScreen({
       onPress: () => navigation.navigate('WarehouseFromFarmHome'),
     },
     {
-      key: 'repairs',
-      screenId: 'delivery_send_kitwe',
-      icon: 'tools',
-      title: tUi('dashDeliveryRepairs', locale),
-      badgeKey: 'delivery_repairs',
-      onPress: () => navigation.navigate('DeliveryRepairQueue'),
-    },
-    {
       key: 'orders',
-      screenId: 'delivery_send_kitwe',
+      screenId: 'delivery_production_orders',
+      hubScreenIds: DELIVERY_ORDERS_HUB_SCREEN_IDS,
       icon: 'clipboard-list-outline',
-      title: tUi('dashDeliveryOrders', locale),
-      badgeKey: 'delivery_orders',
-      onPress: () => navigation.navigate('DeliveryOrderQueue'),
+      title: tUi('dashUnifiedOrders', locale),
+      badgeKeys: ['delivery_orders', 'delivery_repairs'],
+      onPress: () => {
+        ['delivery_orders', 'delivery_repairs'].forEach((k) => clearBadge(k));
+        navigation.navigate('DeliveryUnifiedQueue');
+      },
     },
     {
       key: 'sent',
@@ -118,7 +119,11 @@ export default function DashboardScreen({
   ];
 
   let tiles = grant
-    ? allTiles.filter((t) => isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'warehouse_delivery_app'))
+    ? allTiles.filter((t) => (
+      t.hubScreenIds
+        ? isWorkshopOrdersHubAllowed(grant, 'warehouse_delivery_app', t.hubScreenIds)
+        : isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'warehouse_delivery_app')
+    ))
     : allTiles;
   if (allowed && tiles.length === 0) {
     const anyDelivery = DELIVERY_APP_SCREENS.some((s) => (
@@ -225,11 +230,10 @@ export default function DashboardScreen({
               title={tile.title}
               width={tileWidth}
               height={tileHeight}
-              badgeCount={tile.badgeKey ? counts[tile.badgeKey] || 0 : 0}
-              onPress={() => {
-                if (tile.badgeKey) clearBadge(tile.badgeKey);
-                tile.onPress();
-              }}
+              badgeCount={tile.badgeKeys
+                ? sumDashboardBadgeCounts(counts, tile.badgeKeys)
+                : (tile.badgeKey ? counts[tile.badgeKey] || 0 : 0)}
+              onPress={tile.onPress}
             />
           ))}
         </View>

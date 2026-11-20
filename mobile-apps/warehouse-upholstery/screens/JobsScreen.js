@@ -44,6 +44,16 @@ import {
   optimisticSetUnitsCompletedPatch,
   serverJobPatchFromResponse,
 } from '../shared/lib/productionJobTimerOptimistic';
+import { warehouseMobileRequest } from '../shared/warehouseMobileApi';
+import {
+  mergeReturnOrderRow,
+  optimisticReturnTimerRow,
+} from '../shared/lib/repairReturnQueueUi';
+import WorkshopRepairInboxCard from '../shared/components/WorkshopRepairInboxCard';
+import { WorkshopJobInboxBadges } from '../shared/components/WorkshopInboxKindBadges';
+import { QuoteProductionOrderBadges } from '../shared/quoteProductionOrderUi';
+import { repairSearchBlob } from '../shared/lib/productionInboxKinds';
+import RunningRepairElapsed from '../components/RunningRepairElapsed';
 
 function normalizeSearchDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -57,6 +67,9 @@ function normalizeQuoteKey(value) {
 }
 
 function jobsSearchBlob(item) {
+  if (item?._kind === 'repair') {
+    return repairSearchBlob(item.repair);
+  }
   if (item?._kind === 'quote') {
     const quote = item.quote || {};
     return {
@@ -95,11 +108,12 @@ function QuoteOrderJobCard({ quote, locale, textAlign, onPress, onMaterials }) {
   return (
     <View style={[kiosk.card, styles.jobCard]}>
       <Pressable style={({ pressed }) => [pressed && { opacity: 0.92 }]} onPress={onPress}>
+      <QuoteProductionOrderBadges quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
       <Text style={[styles.quoteBadge, { textAlign }]}>
         {quote.quote_number || quote.quote_id}
       </Text>
       <Text style={[styles.jobTitle, { textAlign }]}>
-        {textForDisplay(quote.customer_name || tUi('dashUpholsteryQuoteOrders', locale), '—')}
+        {textForDisplay(quote.customer_name || tUi('showroomOrderDetailLabel', locale), '—')}
       </Text>
       {quote.customer_phone ? (
         <Text style={[styles.jobMeta, { textAlign }]}>{quote.customer_phone}</Text>
@@ -232,6 +246,7 @@ function JobCard({
       {thumb ? (
         <Image source={{ uri: thumb }} style={styles.jobThumb} resizeMode="contain" resizeMethod="resize" fadeDuration={0} />
       ) : null}
+      <WorkshopJobInboxBadges job={job} locale={locale} textAlign={textAlign} tUi={tUi} />
       <Text style={[styles.jobTitle, { textAlign }]}>{textForDisplay(job.finished_name || job.raw_name, '—')}</Text>
       <Text style={[styles.jobMeta, { textAlign }]}>
         {textForDisplay(job.raw_name || job.finished_sku, '')}
@@ -323,6 +338,9 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     return seed?.job_id || seed?.id ? [seed] : [];
   });
   const [quoteOrders, setQuoteOrders] = useState([]);
+  const [repairs, setRepairs] = useState([]);
+  const [repairBusyId, setRepairBusyId] = useState('');
+  const [repairMaterials, setRepairMaterials] = useState(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [timerBusyId, setTimerBusyId] = useState('');
@@ -338,21 +356,31 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     if (!allowed) {
       setJobs([]);
       setQuoteOrders([]);
+      setRepairs([]);
       setLoading(false);
       return;
     }
     if (showLoading) setLoading(true);
     setError('');
     try {
-      const [list, quotes] = await Promise.all([
+      const [list, quotes, repairPayload] = await Promise.all([
         fetchUpholsteryProductionJobs({ activeOnly: true }),
         fetchUpholsteryProductionQuotes().catch(() => []),
+        warehouseMobileRequest('return-order-list', {
+          for_production: true,
+          repair_department: 'upholstery',
+        }).catch(() => null),
       ]);
       const nextJobs = Array.isArray(list) ? list : [];
       const nextQuotes = (Array.isArray(quotes) ? quotes : []).filter((q) => !q.completed_at);
+      const repairRows = repairPayload?.return_orders || [];
+      const nextRepairs = Array.isArray(repairRows)
+        ? repairRows.filter((r) => r.status !== 'completed' && r.status !== 'cancelled')
+        : [];
       setJobs(nextJobs);
       setQuoteOrders(nextQuotes);
-      hasListDataRef.current = nextJobs.length > 0 || nextQuotes.length > 0;
+      setRepairs(nextRepairs);
+      hasListDataRef.current = nextJobs.length > 0 || nextQuotes.length > 0 || nextRepairs.length > 0;
     } catch (e) {
       const msg = e?.message || tUi('upholsteryJobLoadFailed', locale);
       setError(msg);
@@ -496,18 +524,61 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
     );
   };
 
+  const runRepairOp = async (row, op, body, { timerAction } = {}) => {
+    const optimistic = timerAction ? optimisticReturnTimerRow(row, timerAction) : null;
+    if (optimistic) mergeReturnOrderRow(setRepairs, optimistic);
+    setRepairBusyId(row.id);
+    try {
+      const res = await warehouseMobileRequest(op, { return_order_id: row.id, ...body });
+      if (res?.return_order) mergeReturnOrderRow(setRepairs, res.return_order);
+      void loadJobs({ showLoading: false });
+    } catch (e) {
+      Alert.alert(tUi('manufactureFailed', locale), e?.message || '');
+      void loadJobs({ showLoading: false });
+    } finally {
+      setRepairBusyId('');
+    }
+  };
+
+  const onRepairPlay = (row) => {
+    if (row.status === 'submitted') {
+      void runRepairOp(row, 'return-order-accept', {}, { timerAction: 'accept' });
+      return;
+    }
+    void runRepairOp(row, 'return-order-resume', {}, { timerAction: 'resume' });
+  };
+
+  const onRepairPause = (row) => {
+    void runRepairOp(row, 'return-order-pause', {}, { timerAction: 'pause' });
+  };
+
+  const onRepairStop = (row) => {
+    Alert.alert(
+      tUi('repairCompleteConfirm', locale),
+      tUi('repairCompleteFloor2Hint', locale),
+      [
+        { text: tUi('cancel', locale), style: 'cancel' },
+        {
+          text: tUi('repairCompleteConfirmBtn', locale),
+          onPress: () => runRepairOp(row, 'return-order-complete'),
+        },
+      ],
+    );
+  };
+
   const combinedItems = useMemo(() => {
     const quoteRows = quoteOrders.map((q) => ({ _kind: 'quote', _key: `quote-${q.quote_id}`, quote: q }));
     const jobRows = jobs.map((j) => ({ _kind: 'job', _key: `job-${j.job_id || j.id}`, job: j }));
-    const all = [...quoteRows, ...jobRows];
+    const repairRows = repairs.map((r) => ({ _kind: 'repair', _key: `repair-${r.id}`, repair: r }));
+    const all = [...quoteRows, ...jobRows, ...repairRows];
     return all.filter((row) => matchesJobsSearch(row, search));
-  }, [quoteOrders, jobs, search]);
+  }, [quoteOrders, jobs, repairs, search]);
 
   if (!allowed) {
     return (
       <View style={[kiosk.screen, kioskScreenEdgesSafe(insets, 32), styles.flex]}>
         <ProductionKioskTopBar
-          title={tUi('upholsteryJobsTitle', locale)}
+          title={tUi('dashUnifiedOrders', locale)}
           locale={locale}
           onToggleLocale={toggleLocale}
         />
@@ -528,7 +599,7 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
   return (
     <View style={[kiosk.screen, styles.flex, kioskScreenEdgesSafe(insets, 16)]}>
       <ProductionKioskTopBar
-        title={tUi('upholsteryJobsTitle', locale)}
+        title={tUi('dashUnifiedOrders', locale)}
         locale={locale}
         onToggleLocale={toggleLocale}
       />
@@ -570,7 +641,21 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
         }}
         contentContainerStyle={combinedItems.length === 0 ? styles.listEmpty : { paddingBottom: 24 }}
         renderItem={({ item }) => (
-          item._kind === 'quote' ? (
+          item._kind === 'repair' ? (
+            <WorkshopRepairInboxCard
+              row={item.repair}
+              locale={locale}
+              textAlign={textAlign}
+              busy={repairBusyId === item.repair.id}
+              onPlay={onRepairPlay}
+              onPause={onRepairPause}
+              onStop={onRepairStop}
+              onMaterials={(row) => setRepairMaterials(row)}
+              tUi={tUi}
+              textForDisplay={textForDisplay}
+              RunningRepairElapsed={RunningRepairElapsed}
+            />
+          ) : item._kind === 'quote' ? (
             <QuoteOrderJobCard
               quote={item.quote}
               locale={locale}
@@ -614,6 +699,22 @@ export default function JobsScreen({ route, navigation, allowed, accessHint, onR
             </Text>
           ) : null
         }
+      />
+      <ProductionJobMaterialsModal
+        visible={Boolean(repairMaterials)}
+        locale={locale}
+        textAlign={textAlign}
+        jobKind="repair"
+        jobId={repairMaterials?.id || ''}
+        returnOrderId={repairMaterials?.id || ''}
+        initialLines={repairMaterials?.manual_material_lines
+          || repairMaterials?.metadata?.manual_material_lines
+          || []}
+        onClose={() => setRepairMaterials(null)}
+        onSaved={() => {
+          setRepairMaterials(null);
+          loadJobs({ showLoading: false });
+        }}
       />
       <ProductionJobMaterialsModal
         visible={Boolean(materialsTarget)}

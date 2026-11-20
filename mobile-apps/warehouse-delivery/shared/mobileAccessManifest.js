@@ -1,6 +1,6 @@
 /**
- * Warehouse Catalog mobile app — screens and permission axes (web /user-access).
- * When a new screen ships in the APK, register it here AND copy to mobile-apps/shared/mobileAccessManifest.js.
+ * Warehouse Catalog mobile app — screens and permission axes.
+ * Keep in sync with src/mobile/mobileAccessManifest.js (web /user-access + CI).
  *
  * Permission values: 'allow' | 'deny' (default deny until admin enables).
  */
@@ -365,6 +365,25 @@ export function getMobilePermissionMatrixScreens(_userEmail) {
   return MOBILE_SCREENS.filter((screen) => screen.permissionMatrix);
 }
 
+/** Legacy workshop inbox screens — kept in grants; synced with canonical *_orders on save. */
+export const UPHOLSTERY_ORDERS_LEGACY_SCREEN_IDS = Object.freeze([
+  'upholstery_jobs',
+  'upholstery_quotes',
+  'upholstery_repairs',
+]);
+export const CARPENTRY_ORDERS_LEGACY_SCREEN_IDS = Object.freeze([
+  'carpentry_jobs',
+  'carpentry_quotes',
+  'carpentry_repairs',
+]);
+export const UPHOLSTERY_ORDERS_CANONICAL_SCREEN_ID = 'upholstery_orders';
+export const CARPENTRY_ORDERS_CANONICAL_SCREEN_ID = 'carpentry_orders';
+export const DELIVERY_ORDERS_QUEUE_SCREEN_IDS = Object.freeze([
+  'delivery_production_orders',
+  'delivery_send_kitwe',
+  'kitwe_send_delivery',
+]);
+
 /** Per-app screens shown in /user-access for Upholstery, Carpentry, Painting, and Delivery. */
 export const UPHOLSTERY_APP_SCREENS = Object.freeze([
   {
@@ -378,19 +397,9 @@ export const UPHOLSTERY_APP_SCREENS = Object.freeze([
     description: 'Start upholstery manufacture and variant inlay',
   },
   {
-    id: 'upholstery_jobs',
-    label: 'Jobs',
-    description: 'Active upholstery production jobs',
-  },
-  {
-    id: 'upholstery_quotes',
-    label: 'Quote Orders',
-    description: 'Hassan quotation orders routed to upholstery',
-  },
-  {
-    id: 'upholstery_repairs',
-    label: 'Repairs',
-    description: 'Upholstery return & repair queue',
+    id: 'upholstery_orders',
+    label: 'Orders',
+    description: 'Unified queue: Hassan quote orders, manufacture jobs, and repairs (badges on each row)',
   },
   {
     id: 'upholstery_push_settings',
@@ -411,24 +420,14 @@ export const CARPENTRY_APP_SCREENS = Object.freeze([
     description: 'Floor manufacture and BOM deduction',
   },
   {
-    id: 'carpentry_jobs',
-    label: 'Jobs',
-    description: 'Active carpentry production jobs',
+    id: 'carpentry_orders',
+    label: 'Orders',
+    description: 'Unified queue: Hassan quote orders, manufacture jobs, and repairs (badges on each row)',
   },
   {
     id: 'carpentry_painting',
     label: 'Send to Painting',
     description: 'Send finished carpentry units to painting',
-  },
-  {
-    id: 'carpentry_quotes',
-    label: 'Quote Orders',
-    description: 'Hassan quotation orders routed to carpentry',
-  },
-  {
-    id: 'carpentry_repairs',
-    label: 'Repairs',
-    description: 'Carpentry return & repair queue',
   },
   {
     id: 'carpentry_push_settings',
@@ -515,9 +514,14 @@ export const ORDERS_APP_SCREENS = Object.freeze([
 
 export const DELIVERY_APP_SCREENS = Object.freeze([
   {
+    id: 'delivery_production_orders',
+    label: 'Orders',
+    description: 'Customer orders and repairs awaiting Floor 1 delivery (unified queue)',
+  },
+  {
     id: 'delivery_send_kitwe',
     label: 'Send Delivery',
-    description: 'Scan products, driver signature, and send truck delivery to Kitwe',
+    description: 'Scan Floor 1 stock, driver signature, and send truck delivery to Kitwe',
   },
   {
     id: 'delivery_send_farm',
@@ -549,8 +553,40 @@ const WORKSHOP_AND_DELIVERY_SCREEN_GROUPS = Object.freeze([
   { flag: 'orders_app', screens: ORDERS_APP_SCREENS },
 ]);
 
+function workshopOrdersHubScreenIds(screenId) {
+  if (screenId === CARPENTRY_ORDERS_CANONICAL_SCREEN_ID) return [...CARPENTRY_ORDERS_LEGACY_SCREEN_IDS, CARPENTRY_ORDERS_CANONICAL_SCREEN_ID];
+  if (screenId === UPHOLSTERY_ORDERS_CANONICAL_SCREEN_ID) return [...UPHOLSTERY_ORDERS_LEGACY_SCREEN_IDS, UPHOLSTERY_ORDERS_CANONICAL_SCREEN_ID];
+  if (screenId === 'delivery_production_orders') return [...DELIVERY_ORDERS_QUEUE_SCREEN_IDS];
+  if (CARPENTRY_ORDERS_LEGACY_SCREEN_IDS.includes(screenId)) {
+    return [...CARPENTRY_ORDERS_LEGACY_SCREEN_IDS, CARPENTRY_ORDERS_CANONICAL_SCREEN_ID];
+  }
+  if (UPHOLSTERY_ORDERS_LEGACY_SCREEN_IDS.includes(screenId)) {
+    return [...UPHOLSTERY_ORDERS_LEGACY_SCREEN_IDS, UPHOLSTERY_ORDERS_CANONICAL_SCREEN_ID];
+  }
+  return null;
+}
+
+function syncWorkshopOrdersGrantScreens(merged, canonicalId, legacyIds) {
+  const allIds = [canonicalId, ...legacyIds];
+  const allowed = allIds.some((id) => merged.screens?.[id]?.view === 'allow');
+  allIds.forEach((id) => {
+    merged.screens[id] = buildMobileScreenAccessRow(allowed);
+  });
+}
+
 export function isWorkshopOrDeliveryScreenAllowed(grant, screenId, appFlag) {
   if (!grant) return false;
+  const hubIds = workshopOrdersHubScreenIds(screenId);
+  if (hubIds) {
+    for (const id of hubIds) {
+      const row = grant.screens?.[id];
+      if (row && (row.view === 'allow' || row.view === 'deny')) {
+        if (row.view === 'allow') return true;
+        return false;
+      }
+    }
+    return Boolean(appFlag && grant[appFlag] === 'allow');
+  }
   const ids = screenId === 'delivery_send_kitwe'
     ? ['delivery_send_kitwe', 'kitwe_send_delivery']
     : screenId === 'kitwe_send_delivery'
@@ -913,6 +949,24 @@ export function sanitizeMobileAccessGrantForUser(grant, _userEmail) {
     'warehouse_delivery_app',
   );
   merged.screens.warehouse_send_farm = buildMobileScreenAccessRow(warehouseFromFarmAllowed);
+
+  syncWorkshopOrdersGrantScreens(
+    merged,
+    UPHOLSTERY_ORDERS_CANONICAL_SCREEN_ID,
+    UPHOLSTERY_ORDERS_LEGACY_SCREEN_IDS,
+  );
+  syncWorkshopOrdersGrantScreens(
+    merged,
+    CARPENTRY_ORDERS_CANONICAL_SCREEN_ID,
+    CARPENTRY_ORDERS_LEGACY_SCREEN_IDS,
+  );
+
+  const deliveryOrdersQueueAllowed = DELIVERY_ORDERS_QUEUE_SCREEN_IDS.some(
+    (id) => merged.screens?.[id]?.view === 'allow',
+  ) || deliverySendAllowed;
+  DELIVERY_ORDERS_QUEUE_SCREEN_IDS.forEach((id) => {
+    merged.screens[id] = buildMobileScreenAccessRow(deliveryOrdersQueueAllowed);
+  });
 
   return merged;
 }

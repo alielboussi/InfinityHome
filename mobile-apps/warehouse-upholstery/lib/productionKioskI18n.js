@@ -319,6 +319,9 @@ const UI_STRINGS = {
     en: 'Same warehouse catalog as web /warehouse-products — factory stock including carpentry output.',
     ar: 'نفس كتالوج المستودع كصفحة warehouse-products — مخزون المصنع بما فيه إنتاج النجارة.',
   },
+  dashUnifiedOrders: { en: 'Orders', ar: 'الطلبات' },
+  badgeManufacture: { en: 'Manufacture', ar: 'تصنيع' },
+  badgeRepair: { en: 'Repair', ar: 'إصلاح' },
   dashManufacture: { en: 'Manufacture', ar: 'تصنيع' },
   dashManufactureSub: {
     en: 'Tap catalog product → deduct materials',

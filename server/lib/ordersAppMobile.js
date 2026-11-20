@@ -380,7 +380,13 @@ export async function opOrdersQuoteSave(sb, body, user) {
 }
 
 export async function opOrdersQuoteDelete(sb, body) {
-  const quoteId = trim(body.quote_id || body.id);
+  let quoteId = trim(body.quote_id || body.id);
+  const quoteNumber = trim(body.quote_number || body.quoteNumber);
+  if (!quoteId && quoteNumber) {
+    const { data: row } = await sb.from('quotations').select('id').eq('quote_number', quoteNumber).maybeSingle();
+    if (!row?.id) throw new Error(`Quote ${quoteNumber} not found.`);
+    quoteId = row.id;
+  }
   if (!quoteId) throw new Error('quote_id is required.');
   const { getQuoteProductionRouting } = await import('./quoteProductionRouting.js');
   const routing = await getQuoteProductionRouting(sb, quoteId);
@@ -388,6 +394,7 @@ export async function opOrdersQuoteDelete(sb, body) {
     throw new Error('This order was sent to production and cannot be deleted until workshop completes it.');
   }
   await sb.from('quotation_items').delete().eq('quotation_id', quoteId);
+  await sb.from('quote_production_routing').delete().eq('quote_id', quoteId);
   const { error } = await sb.from('quotations').delete().eq('id', quoteId);
   if (error) throw new Error(error.message || 'Failed to delete quote.');
   return { ok: true };

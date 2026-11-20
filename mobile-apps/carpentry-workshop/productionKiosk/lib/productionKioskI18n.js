@@ -300,6 +300,13 @@ const UI_STRINGS = {
     ar: 'مسار النجارة — مرسلة من طلبات المصنع',
   },
   carpentryQuotesTitle: { en: 'Hassan Awad quote orders', ar: 'طلبات عروض حسن عوض' },
+  quoteCardFloor2Wip: { en: 'Floor 2 WIP products', ar: 'منتجات Floor 2 WIP' },
+  quoteCardQuoteProducts: { en: 'Quote products', ar: 'منتجات العرض' },
+  quoteFloor2QtyCappedTitle: { en: 'Floor 2 stock limit', ar: 'حد مخزون Floor 2' },
+  quoteFloor2QtyCappedBody: {
+    en: 'You entered {requested} but only {started} could start — Floor 2 had that many on hand. {short} left on this line: use the checkbox again after more stock is on Floor 2.',
+    ar: 'أدخلت {requested} لكن بدأنا {started} فقط — هذا المتاح على Floor 2. متبقي {short} على السطر: اضغط مربع الاختيار مرة أخرى بعد إضافة مخزون على Floor 2.',
+  },
   quoteFloor2ShortfallTitle: { en: 'Floor 2 WIP short', ar: 'نقص مخزون Floor 2' },
   quoteFloor2NeedHave: { en: 'Need / have on Floor 2', ar: 'مطلوب / متوفر' },
   quoteFloor2ManufactureBeforeStart: {
@@ -324,6 +331,16 @@ const UI_STRINGS = {
     en: 'Same warehouse catalog as web /warehouse-products — factory stock including carpentry output.',
     ar: 'نفس كتالوج المستودع كصفحة warehouse-products — مخزون المصنع بما فيه إنتاج النجارة.',
   },
+  dashUnifiedOrders: {
+    en: 'Orders',
+    ar: 'الطلبات',
+  },
+  dashTileHint_orders: {
+    en: 'Customer orders, manufacture jobs, and repairs in one queue — badges show the type.',
+    ar: 'طلبات العملاء ومهام التصنيع والإصلاح في قائمة واحدة — الشارات توضح النوع.',
+  },
+  badgeManufacture: { en: 'Manufacture', ar: 'تصنيع' },
+  badgeRepair: { en: 'Repair', ar: 'إصلاح' },
   dashManufacture: { en: 'Manufacture', ar: 'تصنيع' },
   dashManufactureSub: {
     en: 'Tap catalog product → deduct materials',

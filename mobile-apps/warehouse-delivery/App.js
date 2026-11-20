@@ -19,6 +19,7 @@ import WarehouseFromFarmSignatureScreen from './deliveryKit/screens/WarehouseFro
 import WarehouseFromFarmDoneScreen from './deliveryKit/screens/WarehouseFromFarmDoneScreen';
 import DeliveryRepairQueueScreen from './deliveryKit/screens/DeliveryRepairQueueScreen';
 import DeliveryOrderQueueScreen from './deliveryKit/screens/DeliveryOrderQueueScreen';
+import DeliveryUnifiedQueueScreen from './deliveryKit/screens/DeliveryUnifiedQueueScreen';
 import KitweSendSignatureScreen from './deliveryKit/screens/KitweSendSignatureScreen';
 import KitweSendDoneScreen from './deliveryKit/screens/KitweSendDoneScreen';
 import KitweSendProductScreen from './deliveryKit/screens/KitweSendProductScreen';
@@ -132,6 +133,13 @@ function MainStack({ navigationRef }) {
         {(props) => (
           <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
             <DeliveryOrderQueueScreen {...props} />
+          </MobileScreenGate>
+        )}
+      </Stack.Screen>
+      <Stack.Screen name="DeliveryUnifiedQueue" options={{ headerShown: false }}>
+        {(props) => (
+          <MobileScreenGate screenId="kitwe_send_delivery" grant={grant} navigation={props.navigation}>
+            <DeliveryUnifiedQueueScreen {...props} />
           </MobileScreenGate>
         )}
       </Stack.Screen>

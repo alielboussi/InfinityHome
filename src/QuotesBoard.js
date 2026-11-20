@@ -363,6 +363,7 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
     if (!ok) return;
     try {
       await db.from('quotation_items').delete().eq('quotation_id', q.id);
+      await db.from('quote_production_routing').delete().eq('quote_id', q.id);
       const { error } = await db.from('quotations').delete().eq('id', q.id);
       if (error) throw error;
       setQuotes(prev => prev.filter(row => row.id !== q.id));

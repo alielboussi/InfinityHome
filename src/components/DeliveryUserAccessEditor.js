@@ -5,6 +5,7 @@ import {
   buildMobileScreenAccessRow,
   defaultMobileAccessGrant,
   DELIVERY_APP_SCREENS,
+  DELIVERY_ORDERS_QUEUE_SCREEN_IDS,
   isWorkshopOrDeliveryScreenAllowed,
   sanitizeMobileAccessGrantForUser,
 } from '../mobile/mobileAccessManifest';
@@ -95,6 +96,11 @@ export default function DeliveryUserAccessEditor({ userRow, onClose, onSaved }) 
         ...(prev.screens || {}),
         [screenId]: buildMobileScreenAccessRow(allowed),
       };
+      if (screenId === 'delivery_production_orders' || screenId === 'delivery_send_kitwe') {
+        DELIVERY_ORDERS_QUEUE_SCREEN_IDS.forEach((id) => {
+          nextScreens[id] = buildMobileScreenAccessRow(allowed);
+        });
+      }
       const anyAllowed = DELIVERY_APP_SCREENS.some((s) => nextScreens[s.id]?.view === 'allow');
       return {
         ...prev,

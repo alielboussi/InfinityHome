@@ -69,10 +69,6 @@ const UI_STRINGS = {
   save: { en: 'Save production item', ar: 'حفظ عنصر الإنتاج' },
   saving: { en: 'Saving…', ar: 'جاري الحفظ…' },
   translateToggle: { en: 'عربي', ar: 'English' },
-  savedFloor2WipNoLabels: {
-    en: 'Saved to Floor 2 WIP. Labels print after Painting finishes (Floor 1 or delivery).',
-    ar: 'تم الحفظ في Floor 2 WIP. تُطبع الملصقات بعد انتهاء الدهان (الطابق 1 أو التسليم).',
-  },
   savedWithLabels: {
     en: 'Saved — photo catalogued and labels sent to the printer.',
     ar: 'تم الحفظ — صُوّرت المنتج وأُرسلت الملصقات إلى الطابعة.',
@@ -335,6 +331,13 @@ const UI_STRINGS = {
     en: 'Same warehouse catalog as web /warehouse-products — factory stock including carpentry output.',
     ar: 'نفس كتالوج المستودع كصفحة warehouse-products — مخزون المصنع بما فيه إنتاج النجارة.',
   },
+  dashUnifiedOrders: { en: 'Orders', ar: 'الطلبات' },
+  dashTileHint_orders: {
+    en: 'Customer orders, manufacture jobs, and repairs in one queue — badges show the type.',
+    ar: 'طلبات العملاء ومهام التصنيع والإصلاح في قائمة واحدة — الشارات توضح النوع.',
+  },
+  badgeManufacture: { en: 'Manufacture', ar: 'تصنيع' },
+  badgeRepair: { en: 'Repair', ar: 'إصلاح' },
   dashManufacture: { en: 'Manufacture', ar: 'تصنيع' },
   dashManufactureSub: {
     en: 'Tap catalog product → deduct materials',

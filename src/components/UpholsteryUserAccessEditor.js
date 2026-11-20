@@ -4,12 +4,16 @@ import { apiUrl, withApiHeaders } from '../utils/apiUrl';
 import {
   buildMobileScreenAccessRow,
   CARPENTRY_APP_SCREENS,
+  CARPENTRY_ORDERS_CANONICAL_SCREEN_ID,
+  CARPENTRY_ORDERS_LEGACY_SCREEN_IDS,
   defaultMobileAccessGrant,
   isWorkshopOrDeliveryScreenAllowed,
   ORDERS_APP_SCREENS,
   PAINTING_APP_SCREENS,
   sanitizeMobileAccessGrantForUser,
   UPHOLSTERY_APP_SCREENS,
+  UPHOLSTERY_ORDERS_CANONICAL_SCREEN_ID,
+  UPHOLSTERY_ORDERS_LEGACY_SCREEN_IDS,
 } from '../mobile/mobileAccessManifest';
 
 const APP_CONFIG = Object.freeze({
@@ -113,6 +117,16 @@ export default function UpholsteryUserAccessEditor({ userRow, focusApp = 'uphols
         ...(prev.screens || {}),
         [screenId]: buildMobileScreenAccessRow(allowed),
       };
+      if (screenId === UPHOLSTERY_ORDERS_CANONICAL_SCREEN_ID) {
+        UPHOLSTERY_ORDERS_LEGACY_SCREEN_IDS.forEach((id) => {
+          nextScreens[id] = buildMobileScreenAccessRow(allowed);
+        });
+      }
+      if (screenId === CARPENTRY_ORDERS_CANONICAL_SCREEN_ID) {
+        CARPENTRY_ORDERS_LEGACY_SCREEN_IDS.forEach((id) => {
+          nextScreens[id] = buildMobileScreenAccessRow(allowed);
+        });
+      }
       const anyAllowed = cfg.screens.some((s) => nextScreens[s.id]?.view === 'allow');
       return {
         ...prev,

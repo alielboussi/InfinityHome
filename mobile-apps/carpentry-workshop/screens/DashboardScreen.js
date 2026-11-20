@@ -12,6 +12,11 @@ import { tUi } from '../productionKiosk/lib/productionKioskI18n';
 import ProductionPressableHint from '../productionKiosk/lib/ProductionPressableHint';
 import { useDashboardNotificationBadges } from '../shared/hooks/useDashboardNotificationBadges';
 import DashboardTileBadge from '../shared/components/DashboardTileBadge';
+import {
+  CARPENTRY_ORDERS_HUB_SCREEN_IDS,
+  isWorkshopOrdersHubAllowed,
+  sumDashboardBadgeCounts,
+} from '../shared/lib/workshopOrdersHubAccess';
 
 function DashboardTile({
   icon, title, width, height, onPress, hintKey, locale, textAlign, badgeCount = 0,
@@ -80,13 +85,17 @@ export default function DashboardScreen({
       onPress: () => navigation.navigate('Manufacture'),
     },
     {
-      key: 'jobs',
-      screenId: 'carpentry_jobs',
-      icon: 'progress-clock',
-      title: tUi('carpentryJobsTitle', locale),
-      hintKey: 'dashTileHint_jobs',
-      badgeKey: 'jobs',
-      onPress: () => navigation.navigate('Jobs'),
+      key: 'orders',
+      screenId: 'carpentry_orders',
+      hubScreenIds: CARPENTRY_ORDERS_HUB_SCREEN_IDS,
+      icon: 'clipboard-list-outline',
+      title: tUi('dashUnifiedOrders', locale),
+      hintKey: 'dashTileHint_orders',
+      badgeKeys: ['jobs', 'quotes', 'repairs'],
+      onPress: () => {
+        ['jobs', 'quotes', 'repairs'].forEach((k) => clearBadge(k));
+        navigation.navigate('Jobs');
+      },
     },
     {
       key: 'painting',
@@ -97,28 +106,14 @@ export default function DashboardScreen({
       badgeKey: 'painting',
       onPress: () => navigation.navigate('Painting'),
     },
-    {
-      key: 'quotes',
-      screenId: 'carpentry_quotes',
-      icon: 'clipboard-text-outline',
-      title: tUi('dashCarpentryQuoteOrders', locale),
-      hintKey: 'dashTileHint_quotes',
-      badgeKey: 'quotes',
-      onPress: () => navigation.navigate('Quotes'),
-    },
-    {
-      key: 'repairs',
-      screenId: 'carpentry_repairs',
-      icon: 'wrench-clock',
-      title: tUi('dashRepairs', locale),
-      hintKey: 'dashTileHint_repairs',
-      badgeKey: 'repairs',
-      onPress: () => navigation.navigate('Repairs'),
-    },
   ];
 
   const tiles = grant
-    ? allTiles.filter((t) => isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'carpentry_workshop_app'))
+    ? allTiles.filter((t) => (
+      t.hubScreenIds
+        ? isWorkshopOrdersHubAllowed(grant, 'carpentry_workshop_app', t.hubScreenIds)
+        : isWorkshopOrDeliveryScreenAllowed(grant, t.screenId, 'carpentry_workshop_app')
+    ))
     : allTiles;
   const tileCount = Math.max(1, tiles.length);
   const {
@@ -209,11 +204,10 @@ export default function DashboardScreen({
               textAlign={textAlign}
               width={tileWidth}
               height={tileHeight}
-              badgeCount={tile.badgeKey ? counts[tile.badgeKey] || 0 : 0}
-              onPress={() => {
-                if (tile.badgeKey) clearBadge(tile.badgeKey);
-                tile.onPress();
-              }}
+              badgeCount={tile.badgeKeys
+                ? sumDashboardBadgeCounts(counts, tile.badgeKeys)
+                : (tile.badgeKey ? counts[tile.badgeKey] || 0 : 0)}
+              onPress={tile.onPress}
             />
           ))}
         </View>
