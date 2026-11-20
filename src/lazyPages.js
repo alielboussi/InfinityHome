@@ -121,6 +121,7 @@ export const QuotesBoard = lazyRoute(() => import('./QuotesBoard.js'));
 export const ShowroomOrdersBoard = lazyRoute(() => import('./ShowroomOrdersBoard.js'));
 export const ShowroomOrderCreate = lazyRoute(() => import('./ShowroomOrderCreate.js'));
 export const HassanFloor2Page = lazyRoute(() => import('./HassanFloor2Page.js'));
+export const HassanOrderCreatePage = lazyRoute(() => import('./HassanOrderCreatePage.js'));
 export const UserActivityLog = lazyRoute(() => import('./UserActivityLog'));
 export const UserAccessManagement = lazyRoute(() => import('./UserAccessManagement'));
 /** Nav route → dynamic import (for prefetch on drawer hover). Uses each page's lazy preload for one shared chunk promise. */
@@ -160,6 +161,8 @@ export const routePreloadByPath = {
   '/pos': () => POS.preload(),
   '/layby-management': () => LaybyManagement.preload(),
   '/quotes-board': () => QuotesBoard.preload(),
+  '/orders': () => QuotesBoard.preload(),
+  '/orders/create': () => HassanOrderCreatePage.preload(),
   '/factory-orders': () => QuotesBoard.preload(),
   '/showroom-orders': () => ShowroomOrdersBoard.preload(),
   '/showroom-orders/create': () => ShowroomOrderCreate.preload(),

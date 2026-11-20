@@ -8,6 +8,10 @@ import assert from 'node:assert/strict';
 import {
   ORDERS_APP_DASHBOARD_PARITY,
   ORDERS_APP_HOME_TILES,
+  HASSAN_WEB_ORDERS_PATH,
+  HASSAN_WEB_ORDERS_SIDEBAR_SCREEN_IDS,
+  HASSAN_WEB_ORDER_CREATE_PATH,
+  HASSAN_WEB_ORDER_CREATE_SIDEBAR_SCREEN_IDS,
   buildQuotationerOnlyNavGroups,
   hassanParityWebPaths,
 } from '../src/mobile/ordersAppDashboardParity.js';
@@ -94,15 +98,33 @@ for (const row of ORDERS_APP_DASHBOARD_PARITY) {
 
 const navGroups = buildQuotationerOnlyNavGroups();
 const navItems = navGroups.flatMap((g) => g.items || []);
-assert.equal(navItems.length, ORDERS_APP_DASHBOARD_PARITY.length + 1, 'web nav = parity rows + Layby Dashboard home');
+const ordersListSidebarSkip = new Set(HASSAN_WEB_ORDERS_SIDEBAR_SCREEN_IDS);
+const ordersCreateSidebarSkip = new Set(HASSAN_WEB_ORDER_CREATE_SIDEBAR_SCREEN_IDS);
+const expectedNavCount = ORDERS_APP_DASHBOARD_PARITY.length + 1
+  - (ordersListSidebarSkip.size - 1)
+  - (ordersCreateSidebarSkip.size - 1);
+assert.equal(navItems.length, expectedNavCount, 'web nav = parity rows + Layby home − merged order links');
+
+assert(
+  navItems.some((item) => item.label === 'Orders' && item.route === HASSAN_WEB_ORDERS_PATH),
+  'Hassan sidebar must include combined Orders nav',
+);
+assert(
+  navItems.some((item) => item.label === 'New Orders' && item.route === HASSAN_WEB_ORDER_CREATE_PATH),
+  'Hassan sidebar must include combined New Orders nav',
+);
 
 for (const row of ORDERS_APP_DASHBOARD_PARITY) {
+  if (ordersListSidebarSkip.has(row.screenId) || ordersCreateSidebarSkip.has(row.screenId)) continue;
   const match = navItems.find(
     (item) => item.label === row.webLabel && item.route === row.webRoute
       && (item.search || '') === (row.webSearch || ''),
   );
   assert(match, `AppChrome nav missing ${row.webLabel} → ${row.webRoute}${row.webSearch || ''}`);
 }
+
+const floor2Row = ORDERS_APP_DASHBOARD_PARITY.find((r) => r.screenId === 'orders_floor2');
+assert(floor2Row?.navGroup === 'warehouse' && floor2Row?.webLabel === 'Floor 2', 'Floor 2 belongs in Warehouse nav');
 
 for (const allowed of HASSAN_AWAD.allowedRoutes) {
   assert(

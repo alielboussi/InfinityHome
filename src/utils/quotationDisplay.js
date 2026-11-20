@@ -1,9 +1,4 @@
-import {
-  applyQuoteDimensionSetsToLineFields,
-  normalizeQuoteItemAccessories,
-  readQuoteDimensionSets,
-  parseLegacyDimensionsLwh,
-} from './quoteProductionItemFields.js';
+import { pickQuoteItemProductionFields } from './quoteProductionItemFields.js';
 
 /** Qty for line math: blank defaults to 1; explicit 0 stays 0 unless price is set (legacy saves). */
 export function resolveQuoteLineQuantity(quantity, unitPrice = 0) {
@@ -22,43 +17,33 @@ export function normalizeQuotationItemRow(row) {
     quantity = 1;
   }
   const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
-  let dim_l_cm = row.dim_l_cm ?? meta.dim_l_cm ?? '';
-  let dim_w_cm = row.dim_w_cm ?? meta.dim_w_cm ?? '';
-  let dim_h_cm = row.dim_h_cm ?? meta.dim_h_cm ?? '';
-  const legacyLwh = row.dimensions_lwh ?? meta.dimensions_lwh ?? '';
-  if (!dim_l_cm && !dim_w_cm && !dim_h_cm && legacyLwh) {
-    const parsed = parseLegacyDimensionsLwh(legacyLwh);
-    dim_l_cm = parsed.dim_l_cm || '';
-    dim_w_cm = parsed.dim_w_cm || '';
-    dim_h_cm = parsed.dim_h_cm || '';
-  }
-  const hydratedDims = applyQuoteDimensionSetsToLineFields(
-    readQuoteDimensionSets(
-      { ...row, metadata: meta, dim_l_cm, dim_w_cm, dim_h_cm, dimensions_lwh: legacyLwh },
-      resolveQuoteLineQuantity(quantity, unit_price),
-    ),
-  );
+  const fields = pickQuoteItemProductionFields({
+    ...row,
+    quantity,
+    unit_price,
+    metadata: meta,
+  });
   return {
     ...row,
     name: row.name_override || row.name || row.product_name || '',
     description: row.description || '',
     quantity,
     unit_price,
-    leather_code: row.leather_code ?? meta.leather_code ?? '',
-    dim_l_cm: hydratedDims.dim_l_cm,
-    dim_w_cm: hydratedDims.dim_w_cm,
-    dim_h_cm: hydratedDims.dim_h_cm,
-    dimension_sets: hydratedDims.dimension_sets,
-    dimensions_lwh: hydratedDims.dimensions_lwh || legacyLwh,
-    color_code: row.color_code ?? meta.color_code ?? '',
-    wood: row.wood ?? meta.wood ?? '',
-    foam_type: row.foam_type ?? meta.foam_type ?? '',
-    aluminum_thickness_mm: row.aluminum_thickness_mm ?? meta.aluminum_thickness_mm ?? '',
-    accessories: normalizeQuoteItemAccessories(row.accessories ?? meta.accessories),
+    leather_code: fields.leather_code ?? '',
+    dim_l_cm: fields.dim_l_cm ?? '',
+    dim_w_cm: fields.dim_w_cm ?? '',
+    dim_h_cm: fields.dim_h_cm ?? '',
+    dimension_sets: fields.dimension_sets,
+    dimensions_lwh: fields.dimensions_lwh ?? '',
+    color_code: fields.color_code ?? '',
+    wood: fields.wood ?? '',
+    foam_type: fields.foam_type ?? '',
+    aluminum_thickness_mm: fields.aluminum_thickness_mm ?? '',
+    accessories: fields.accessories ?? [],
     line_image_url: row.line_image_url ?? meta.line_image_url ?? meta.floor2_image_url ?? '',
-    floor2_assembly_id: row.floor2_assembly_id ?? meta.floor2_assembly_id ?? '',
+    floor2_assembly_id: row.floor2_assembly_id ?? meta.floor2_assembly_id ?? fields.floor2_assembly_id ?? '',
     floor2_image_url: row.floor2_image_url ?? meta.floor2_image_url ?? '',
-    floor2_wip_line: row.floor2_wip_line === true || meta.floor2_wip_line === true,
+    floor2_wip_line: fields.floor2_wip_line === true || row.floor2_wip_line === true || meta.floor2_wip_line === true,
     metadata: meta,
   };
 }

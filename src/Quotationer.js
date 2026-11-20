@@ -457,11 +457,23 @@ export default function Quotationer() {
     evaluateSession(readLocalUser());
   }, [evaluateSession, location.key]);
 
+  const localUserForRedirect = readLocalUser();
+  const quotationerOnlyRedirect = isQuotationerOnlyExperience(
+    localUserForRedirect,
+    '/quotationer',
+    location.search,
+  );
+
   // Respond to query params for deep links: ?quoteId=.. or ?view=list
   React.useEffect(() => {
     const params = new URLSearchParams(location.search || '');
     const quoteParam = params.get('quoteId') || params.get('id');
     const viewParam = params.get('view');
+    if (quotationerOnlyRedirect && (quoteParam || viewParam === 'create')) {
+      const q = quoteParam ? `?quoteId=${encodeURIComponent(quoteParam)}` : '';
+      navigate(`/orders/create${q}`, { replace: true });
+      return;
+    }
     if (quoteParam) {
       setEditQuoteId(quoteParam);
       setView('create');
@@ -473,7 +485,7 @@ export default function Quotationer() {
       setView(v);
       if (v !== 'create') setEditQuoteId('');
     }
-  }, [location.search]);
+  }, [location.search, navigate, quotationerOnlyRedirect]);
 
   const setViewAndUrl = React.useCallback((nextView, opts = {}) => {
     const params = new URLSearchParams();
@@ -494,8 +506,13 @@ export default function Quotationer() {
   const goHome = React.useCallback(() => setViewAndUrl('home'), [setViewAndUrl]);
 
   const handleOpenQuote = React.useCallback((id) => {
+    if (isQuotationerOnlyExperience(readLocalUser(), '/quotationer', location.search)) {
+      const q = id ? `?quoteId=${encodeURIComponent(id)}` : '';
+      navigate(`/orders/create${q}`);
+      return;
+    }
     setViewAndUrl('create', { quoteId: id || '' });
-  }, [setViewAndUrl]);
+  }, [setViewAndUrl, navigate, location.search]);
 
   const handleSaved = React.useCallback(() => {
     setListRefreshTick(t => t + 1);
@@ -639,7 +656,7 @@ function QuotationerHome({ onNewQuote, onList, onCustomers, onProducts }) {
       </div>
       <div className="quotationer-home-card">
         <div className="quotationer-home-card-title">Create Quote</div>
-        <button type="button" className={`quotationer-home-card-btn ${ENT_BTN_PRIMARY}`} onClick={onNewQuote}>Create Factory Order</button>
+        <button type="button" className={`quotationer-home-card-btn ${ENT_BTN_PRIMARY}`} onClick={onNewQuote}>New order</button>
       </div>
       <div className="quotationer-home-card">
         <div className="quotationer-home-card-title">View Quotes</div>
@@ -912,7 +929,7 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
   );
 }
 
-function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
+export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderCreateLayout = false }) {
   const tableCellStyle = { border: '1px solid #c9d3df', padding: '8px 10px', verticalAlign: 'top' };
   const navigate = useNavigate();
   const location = useLocation();
@@ -1509,7 +1526,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
         return;
       }
       if (isQuotationerOnlyExperience(quoteUser, location.pathname || '/quotationer', location.search)) {
-        navigate(HASSAN_AWAD.factoryOrdersPath);
+        navigate(HASSAN_AWAD.factoryOrdersPath || '/orders');
         return;
       }
       // After successful save: if editing, return to quotes list; otherwise reset for new quote
@@ -1545,9 +1562,100 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
     return 'This quotation is read-only.';
   }, [locked, quote]);
 
+  const workshopSelect = canManageProductionRouting ? (
+    <div className="quotes-create-field">
+      <span className="quotes-create-label">Workshop route <span className="quotes-production-required">Required</span></span>
+      <select
+        className={`quotes-select quotes-select-workshop${productionRouteMissing ? ' quotes-select--missing' : ''}`}
+        value={productionRoute || ''}
+        disabled={locked || productionRoutingLocked}
+        onChange={(e) => setProductionRoute(e.target.value || '')}
+        aria-label="Workshop route"
+      >
+        <option value="">Select workshop…</option>
+        <option value="upholstery">Upholstery</option>
+        <option value="carpentry">Carpentry</option>
+        <option value="aluminum">Aluminum</option>
+      </select>
+      {productionRouteMissing ? (
+        <p className="quotes-production-hint" role="status">Choose a workshop to continue.</p>
+      ) : null}
+      {!productionRoutingLocked && productionRoute ? (
+        <div className="quotes-production-drawing">
+          <div className="quotes-production-drawing-label">Production drawing (optional)</div>
+          <div className="quotes-production-drawing-actions">
+            <input
+              ref={productionDrawingInputRef}
+              type="file"
+              accept="image/*"
+              className="quotes-production-drawing-input"
+              disabled={locked || productionDrawingUploadBusy}
+              onChange={onProductionDrawingSelected}
+            />
+            <button
+              type="button"
+              className={`action-button quotes-production-drawing-btn ${ENT_BTN_SECONDARY}`}
+              disabled={locked || productionDrawingUploadBusy}
+              onClick={() => productionDrawingInputRef.current?.click()}
+            >
+              {productionDrawingUploadBusy ? 'Uploading…' : 'Attach drawing'}
+            </button>
+            {productionDrawingUrl ? (
+              <a
+                className="quotes-production-drawing-link"
+                href={productionDrawingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View attached drawing
+              </a>
+            ) : productionDrawingPendingFile ? (
+              <span className="quotes-production-drawing-pending">
+                {productionDrawingPendingFile.name} — saves with quote
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {productionRoutingLocked ? (
+        <p className="quotes-production-locked-note">
+          Already sent to production — route is locked.
+          {productionDrawingUrl ? (
+            <>
+              {' '}
+              <a href={productionDrawingUrl} target="_blank" rel="noopener noreferrer">View drawing</a>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
+  ) : null;
+
+  const customerRow = (
+    <div className="quotes-create-panel-row">
+      <div className="quotes-create-field quotes-create-field--customer">
+        <span className="quotes-create-label">Customer</span>
+        <select
+          className="quotes-select quotes-select-customer"
+          value={quote.customer_id != null && quote.customer_id !== '' ? String(quote.customer_id) : ''}
+          onChange={e => setQuote(q => ({ ...q, customer_id: e.target.value || null }))}
+        >
+          <option value="">Select customer…</option>
+          {(quoteCustomers || []).map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+        </select>
+      </div>
+      <button className={`action-button ${ENT_BTN_PRIMARY}`} type="button" onClick={() => setShowCustomerManager(v => !v)}>
+        {showCustomerManager ? 'Hide Customers' : 'Manage Customers'}
+      </button>
+    </div>
+  );
+
   return (
-    <div className="content quotes-page quotes-create-page" style={pageStyle}>
-      <h2 className="quotes-title" style={{ margin: 0 }}>Create Quotation</h2>
+    <div
+      className={`quotes-create-page${hassanOrderCreateLayout ? ' hassan-quote-create-layout' : ' content quotes-page'}`}
+      style={hassanOrderCreateLayout ? undefined : pageStyle}
+    >
+      {!hassanOrderCreateLayout ? <h2 className="quotes-title" style={{ margin: 0 }}>Create Quotation</h2> : null}
       {locked && lockMessage && (
         <div className="quotes-lock-notice">
           {lockMessage}
@@ -1555,7 +1663,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
       )}
 
       <div className="quotes-create-panel">
-        {canManageProductionRouting ? (
+        {!hassanOrderCreateLayout && canManageProductionRouting ? (
           <div
             className={`quotes-production-panel quotes-production-panel--top${productionRouteMissing ? ' quotes-production-panel--missing' : ''}`}
           >
@@ -1650,21 +1758,15 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
           </div>
         ) : null}
 
-        <div className="quotes-create-panel-grid">
-          <div className="quotes-create-panel-row">
-            <select
-              className="quotes-select quotes-select-customer"
-              value={quote.customer_id != null && quote.customer_id !== '' ? String(quote.customer_id) : ''}
-              onChange={e => setQuote(q => ({ ...q, customer_id: e.target.value || null }))}
-              style={{ minWidth: 220 }}
-            >
-              <option value="">Select Customer</option>
-              {(quoteCustomers||[]).map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-            </select>
-            <button className={`action-button ${ENT_BTN_PRIMARY}`} type="button" onClick={() => setShowCustomerManager(v => !v)}>
-              {showCustomerManager ? 'Hide Customers' : 'Manage Customers'}
-            </button>
-          </div>
+        <div className={`quotes-create-panel-grid${hassanOrderCreateLayout ? ' quotes-create-panel-grid--hassan' : ''}`}>
+          {hassanOrderCreateLayout ? (
+            <>
+              {customerRow}
+              {workshopSelect}
+            </>
+          ) : (
+            customerRow
+          )}
 
           <div className="quotes-create-panel-row">
             <div className="quotes-create-vat-wrap">
@@ -1815,7 +1917,7 @@ function QuotationCreateView({ quoteId, onBackHome, onSaved }) {
             )}
           </div>
 
-          {canManageProductionRouting && (
+          {canManageProductionRouting && !hassanOrderCreateLayout && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
               <div style={{ fontWeight: 700, fontSize: 14 }}>Floor 2 WIP templates</div>
               <p style={{ margin: 0, color: '#64748b', fontSize: 13 }}>

@@ -1,9 +1,17 @@
 const fs = require('fs');
 const path = require('path');
+const { assertCriticalSharedFiles } = require('../../shared/materializeCriticalShared');
 
-const marker = path.join(__dirname, '..', 'shared', '.standalone-shared');
+const appShared = path.join(__dirname, '..', 'shared');
+const marker = path.join(appShared, '.standalone-shared');
 if (!fs.existsSync(marker)) {
   console.error('FAIL: Run npm run materialize');
+  process.exit(1);
+}
+try {
+  assertCriticalSharedFiles(appShared, 'carpentry-workshop');
+} catch (e) {
+  console.error(e.message || e);
   process.exit(1);
 }
 console.log('[assertCarpentrySharedStandalone] ok');

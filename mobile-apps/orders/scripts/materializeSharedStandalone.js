@@ -4,6 +4,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const { ensureCriticalSharedFiles } = require('../../shared/materializeCriticalShared');
+
 const appRoot = path.resolve(__dirname, '..');
 const appShared = path.join(appRoot, 'shared');
 const templateRoot = path.resolve(appRoot, '..', 'shared');
@@ -32,6 +34,7 @@ function main() {
   fs.mkdirSync(appShared, { recursive: true });
   copyDir(templateRoot, appShared);
   fs.writeFileSync(path.join(appShared, '.standalone-shared'), 'orders\n');
+  ensureCriticalSharedFiles(appShared, templateRoot);
   console.log('[materializeSharedStandalone] ok');
 }
 

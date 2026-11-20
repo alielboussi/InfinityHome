@@ -9,6 +9,7 @@ const repoRoot = path.resolve(appRoot, '..', '..');
 const upholsteryRoot = path.resolve(appRoot, '..', 'warehouse-upholstery');
 const kioskPath = path.join(appRoot, 'productionKiosk');
 const templateShared = path.resolve(appRoot, '..', 'shared');
+const { ensureCriticalSharedFiles } = require('../../shared/materializeCriticalShared');
 
 const KIOSK_SCREENS = new Set(['CreateScreen.js', 'ManufactureScreen.js']);
 const COPY_DIRS = ['components', 'hooks', 'lib', 'services'];
@@ -218,6 +219,7 @@ function materializeShared() {
     return;
   }
   copyDir(templateShared, appShared);
+  ensureCriticalSharedFiles(appShared, templateShared);
   safeWriteFileSync(
     path.join(appShared, '.standalone-shared'),
     `Materialized for carpentry-workshop at ${new Date().toISOString()}\n`,

@@ -66,6 +66,15 @@ assert(read('server/lib/paintingProductionJobs.js').includes('Showroom order req
 assert(read('mobile-apps/carpentry-workshop/screens/QuotesScreen.js').includes('QuoteProductionFloor2ShortfallBanner'), 'carpentry quotes list shortfall');
 assert(read('mobile-apps/warehouse-upholstery/screens/UpholsteryQuotesScreen.js').includes('QuoteProductionFloor2ShortfallBanner'), 'upholstery quotes list shortfall');
 assert(read('mobile-apps/carpentry-workshop/screens/QuoteDetailScreen.js').includes('quoteOpenManufacture'), 'carpentry accept → manufacture');
+
+const pushApps = [
+  'mobile-apps/carpentry-workshop/shared/screens/ProductionPushSettingsScreen.js',
+  'mobile-apps/warehouse-upholstery/shared/screens/ProductionPushSettingsScreen.js',
+  'mobile-apps/painting-workshop/shared/screens/ProductionPushSettingsScreen.js',
+];
+for (const rel of pushApps) {
+  assert(fs.existsSync(path.join(root, rel)), `${rel} required — run npm run materialize in that app`);
+}
 assert(read('mobile-apps/warehouse-upholstery/screens/UpholsteryQuoteDetailScreen.js').includes('quoteOpenManufacture'), 'upholstery accept → manufacture');
 
 const fields = read('src/utils/quoteProductionItemFields.js');

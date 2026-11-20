@@ -18195,6 +18195,7 @@ body.enterprise-theme .warehouse-deliveries-page .warehouse-send-customer-badge 
   white-space: nowrap;
 }
 
+.quotes-orders-board .quotation-customer-order-badge,
 body.enterprise-theme .quotation-customer-order-badge,
 body.enterprise-theme .warehouse-deliveries-page .warehouse-send-customer-badge {
   display: inline-block;
@@ -18207,6 +18208,196 @@ body.enterprise-theme .warehouse-deliveries-page .warehouse-send-customer-badge 
   padding: 2px 10px;
   vertical-align: middle;
   white-space: nowrap;
+  width: auto;
+  max-width: max-content;
+  box-sizing: border-box;
+}
+
+.hassan-order-kind-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 16px;
+  background: #f1f5f9;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+}
+
+.hassan-order-kind-switch__btn {
+  border: none;
+  background: transparent;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.hassan-order-kind-switch__btn.active {
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.quotes-create-panel-grid--hassan {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 520px;
+}
+
+.quotes-create-panel-grid--hassan .quotes-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.quotes-create-panel-grid--hassan .quotes-select-customer,
+.quotes-create-panel-grid--hassan .quotes-select-workshop {
+  width: 100%;
+  max-width: 480px;
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.hassan-showroom-order-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.hassan-showroom-order-form__pick {
+  text-align: left;
+  border: 1px solid #d5dbe2;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.hassan-showroom-order-form__pick:disabled {
+  background: #f1f5f9;
+  cursor: default;
+}
+
+.quotes-orders-type-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: inherit;
+}
+
+.quotes-orders-type-funnel {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.quotes-orders-type-funnel__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.quotes-orders-type-funnel__btn:hover {
+  background: rgba(15, 127, 255, 0.08);
+  color: #0f7fff;
+}
+
+.quotes-orders-type-funnel__btn--active {
+  color: #0f7fff;
+  background: rgba(15, 127, 255, 0.12);
+  border-color: rgba(15, 127, 255, 0.25);
+}
+
+.quotes-orders-type-funnel__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 160px;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.quotes-orders-type-funnel__option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.quotes-orders-type-funnel__option:hover {
+  background: #f1f5f9;
+}
+
+.quotes-orders-type-funnel__option.is-selected {
+  background: #eff6ff;
+  color: #0f7fff;
+}
+
+.quotes-orders-type-pill {
+  cursor: pointer;
+}
+
+.quotes-orders-type-pill--filtered {
+  box-shadow: 0 0 0 2px #0f7fff;
+}
+
+.quotes-orders-board .quotation-showroom-order-badge,
+body.enterprise-theme .quotation-showroom-order-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e40af;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  padding: 2px 10px;
+  vertical-align: middle;
+  white-space: nowrap;
+  width: auto;
+  max-width: max-content;
+  box-sizing: border-box;
+}
+
+.quotes-orders-board .quotes-table thead .quotes-orders-type-col {
+  text-align: left;
+  vertical-align: middle;
+}
+
+.quotes-orders-board .quotes-table tbody .quotes-orders-type-col {
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: middle;
+  text-align: center !important;
+}
+
+.quotes-orders-board .quotes-table .quotes-orders-type-col .quotation-customer-order-badge,
+.quotes-orders-board .quotes-table .quotes-orders-type-col .quotation-showroom-order-badge {
+  margin: 0 auto;
 }
 
 /* Warehouse portal — production preset drag reorder */

@@ -5,6 +5,8 @@
 const fs = require('fs');
 const path = require('path');
 
+const { ensureCriticalSharedFiles } = require('../../shared/materializeCriticalShared');
+
 const appRoot = path.resolve(__dirname, '..');
 const appShared = path.join(appRoot, 'shared');
 const templateRoot = path.resolve(appRoot, '..', 'shared');
@@ -96,6 +98,7 @@ function main() {
     `Materialized for warehouse-upholstery at ${new Date().toISOString()}\n`,
   );
 
+  ensureCriticalSharedFiles(appShared, templateRoot);
   console.log('[materializeSharedStandalone] ok');
 }
 

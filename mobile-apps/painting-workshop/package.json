@@ -5,8 +5,8 @@
   "scripts": {
     "materialize": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js",
     "icons": "node scripts/ensurePaintingIcons.js",
-    "postinstall": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js && node scripts/ensurePaintingIcons.js",
-    "prestart": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js && node scripts/ensurePaintingIcons.js",
+    "postinstall": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js && node scripts/ensurePaintingIcons.js && node scripts/assertSharedStandalone.js",
+    "prestart": "node scripts/materializeSharedStandalone.js && node scripts/materializePaintingUi.js && node scripts/ensurePaintingProductionApi.js && node scripts/ensurePaintingIcons.js && node scripts/assertSharedStandalone.js",
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
     "android": "expo start --android",

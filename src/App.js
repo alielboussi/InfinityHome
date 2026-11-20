@@ -27,9 +27,9 @@ import {
   ProductsListPage,
   Quotationer,
   QuotesBoard,
-  ShowroomOrdersBoard,
   ShowroomOrderCreate,
   HassanFloor2Page,
+  HassanOrderCreatePage,
   Reversal,
   SalesReportMobile,
   Sets,
@@ -239,7 +239,16 @@ function QuotesBoardAdminRoute() {
   if (isHassanAwadUser(user)) {
     return <Navigate to={HASSAN_FACTORY_ORDERS_PATH} replace />;
   }
-  return <QuotesBoard />;
+  return <QuotesBoard boardMode="all" />;
+}
+
+/** Legacy showroom list URL → unified Orders board (admin catalog). */
+function ShowroomOrdersListRedirect() {
+  const user = getCurrentUser();
+  if (isHassanAwadUser(user)) {
+    return <Navigate to="/orders" replace />;
+  }
+  return <Navigate to="/quotes-board" replace />;
 }
 
 // Enforce per-user route access (e.g., Hassan quotationer routes; some users mobile-only layby)
@@ -368,8 +377,10 @@ function App() {
           <Route path="/quotation-create" element={<Navigate to="/quotationer" replace />} />
           <Route path="/quotations-list" element={<Navigate to="/quotes-board" replace />} />
           <Route path="/quotes-board" element={<QuotesBoardAdminRoute />} />
+          <Route path="/orders" element={<QuotesBoard boardMode="all" />} />
+          <Route path="/orders/create" element={<HassanOrderCreatePage />} />
           <Route path="/factory-orders" element={<QuotesBoard boardMode="factory" />} />
-          <Route path="/showroom-orders" element={<ShowroomOrdersBoard />} />
+          <Route path="/showroom-orders" element={<ShowroomOrdersListRedirect />} />
           <Route path="/showroom-orders/create" element={<ShowroomOrderCreate />} />
           <Route path="/hassan-floor-2" element={<HassanFloor2Page />} />
           <Route path="/QuotationsList" element={<Navigate to="/quotes-board" replace />} />

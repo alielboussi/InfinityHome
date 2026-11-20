@@ -21,6 +21,7 @@ import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import WarehouseSkuWhereabouts from './components/WarehouseSkuWhereabouts';
 import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
+import OrdersTypeFunnelFilter from './components/OrdersTypeFunnelFilter';
 import { isQuoteShowroomOrderFromRouting } from './utils/quoteShowroomOrder';
 
 const readLocalUser = () => {
@@ -79,6 +80,7 @@ function resolveQuotesBoardMode(pathname, boardModeProp) {
   const p = String(pathname || '').split('?')[0];
   if (p === '/showroom-orders' || p.startsWith('/showroom-orders/')) return 'showroom';
   if (p === '/factory-orders' || p.startsWith('/factory-orders/')) return 'factory';
+  if (p === '/orders' || p.startsWith('/orders/')) return 'all';
   return 'all';
 }
 
@@ -90,6 +92,7 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
   const [salePaidBySaleId, setSalePaidBySaleId] = React.useState(() => new Map());
   const [routingsMap, setRoutingsMap] = React.useState({});
   const [sendBusyId, setSendBusyId] = React.useState('');
+  const [orderTypeFilter, setOrderTypeFilter] = React.useState('all');
   const navigate = useNavigate();
   const location = useLocation();
   const boardMode = resolveQuotesBoardMode(location.pathname, boardModeProp);
@@ -229,9 +232,15 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
       const showroom = isQuoteShowroomOrderFromRouting(routing);
       if (boardMode === 'showroom') return showroom;
       if (boardMode === 'factory') return !showroom;
+      if (boardMode === 'all' && orderTypeFilter === 'customer') return !showroom;
+      if (boardMode === 'all' && orderTypeFilter === 'showroom') return showroom;
       return true;
     });
-  }, [quotes, routingsMap, boardMode]);
+  }, [quotes, routingsMap, boardMode, orderTypeFilter]);
+
+  const applyOrderTypeFilter = React.useCallback((next) => {
+    setOrderTypeFilter((prev) => (prev === next ? 'all' : next));
+  }, []);
 
   const filtered = quotesForBoard.filter((q) => {
     const s = search.trim().toLowerCase();
@@ -353,11 +362,15 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
   }
 
   function handleEditQuote(q) {
+    if (isQuotationerOnly) {
+      navigate(`/orders/create?quoteId=${encodeURIComponent(q.id)}`);
+      return;
+    }
     navigate(`/quotationer?quoteId=${q.id}`);
   }
 
   return (
-    <div className="content quotes-page" style={{ padding: 12 }}>
+    <div className={`content quotes-page${boardMode === 'all' ? ' quotes-orders-board' : ''}`} style={{ padding: 12 }}>
       <div className="quotes-header page-header-row" style={{ marginBottom: 12 }}>
         {!isQuotationerOnly && <BackToDashboard />}
         {isQuotationerOnly && (
@@ -384,17 +397,17 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
           style={{ marginBottom: 10, background: '#1565c0', color: '#fff', fontWeight: 700 }}
           onClick={() => navigate('/showroom-orders/create')}
         >
-          Create Showroom Order
+          Showroom Orders
         </button>
       ) : null}
 
       <input
         className="quotes-input"
-        style={{ width: boardMode === 'showroom' ? 420 : 340 }}
+        style={{ width: boardMode === 'showroom' || boardMode === 'all' ? 420 : 340 }}
         value={search}
         onChange={e => setSearch(e.target.value)}
         placeholder={
-          boardMode === 'showroom'
+          boardMode === 'showroom' || boardMode === 'all'
             ? 'Search date, workshop (upholstery/carpentry), product, or quote #'
             : 'Search by number, customer, or amount'
         }
@@ -406,6 +419,17 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
             <thead>
               <tr>
                 <th>Quote #</th>
+                {boardMode === 'all' ? (
+                  <th className="quotes-orders-type-col">
+                    <span className="quotes-orders-type-head">
+                      Type
+                      <OrdersTypeFunnelFilter
+                        value={orderTypeFilter}
+                        onChange={setOrderTypeFilter}
+                      />
+                    </span>
+                  </th>
+                ) : null}
                 <th>Customer</th>
                 <th>Date</th>
                 <th>Status</th>
@@ -423,15 +447,42 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
                 return (
                   <tr key={q.id}>
                     <td>{q.quote_number || `Q-${String(q.id).slice(0, 8)}`}</td>
+                    {boardMode === 'all' ? (
+                      <td className="quotes-orders-type-col">
+                        {showroomOrder ? (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className={`quotation-showroom-order-badge quotes-orders-type-pill${orderTypeFilter === 'showroom' ? ' quotes-orders-type-pill--filtered' : ''}`}
+                            onClick={() => applyOrderTypeFilter('showroom')}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyOrderTypeFilter('showroom'); } }}
+                            title="Filter by Showroom orders"
+                          >
+                            Showroom
+                          </span>
+                        ) : (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className={`quotation-customer-order-badge quotes-orders-type-pill${orderTypeFilter === 'customer' ? ' quotes-orders-type-pill--filtered' : ''}`}
+                            onClick={() => applyOrderTypeFilter('customer')}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyOrderTypeFilter('customer'); } }}
+                            title="Filter by Customer orders"
+                          >
+                            Customer
+                          </span>
+                        )}
+                      </td>
+                    ) : null}
                     <td>
-                      {showroomOrder
+                      {showroomOrder && boardMode !== 'all'
                         ? 'Showroom'
                         : (customerMap[String(q.customer_id)] || titleCaseWords(q.customer_name || q.customer || '') || (q.customer_id ? `#${String(q.customer_id).slice(0,8)}` : '-'))}
                     </td>
                     <td>{new Date(q.created_at).toLocaleString()}</td>
                     <td>
-                      {showroomOrder ? (
-                        <span className="quotation-customer-order-badge">Showroom Order</span>
+                      {showroomOrder && boardMode !== 'all' ? (
+                        <span className="quotation-showroom-order-badge">Showroom</span>
                       ) : ((q.status === 'converted' || q.status === 'invoice') ? 'Invoice' : 'Quote')}
                     </td>
                     <td style={{ textAlign: 'right' }}>{computeQuotationDisplayTotal(q).toFixed(2)}</td>
@@ -455,12 +506,12 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
                             disabled: Boolean(sendBusyId),
                             onClick: () => handleSendOrder(q),
                           } : null,
-                          !isQuotationerOnly && q.status !== 'converted' ? {
+                          !isQuotationerOnly && !showroomOrder && q.status !== 'converted' ? {
                             key: 'convert',
                             label: 'Convert to Layby',
                             onClick: () => handleConvert(q),
                           } : null,
-                          !isQuotationerOnly && q.status === 'converted' && q.sale_id ? {
+                          !isQuotationerOnly && !showroomOrder && q.status === 'converted' && q.sale_id ? {
                             key: 'layby',
                             label: 'Go to Layby',
                             onClick: () => navigate(`/layby-management?laybyId=${encodeURIComponent(q.layby_id || '')}&saleId=${encodeURIComponent(q.sale_id)}`),

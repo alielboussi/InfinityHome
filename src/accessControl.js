@@ -10,7 +10,7 @@ import {
 const USER_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Hassan Awad — quotationer-only: quotes and warehouse delivery flows (no layby desk). */
-export const HASSAN_FACTORY_ORDERS_PATH = '/factory-orders';
+export const HASSAN_FACTORY_ORDERS_PATH = '/orders';
 
 /** Hassan Awad — quotationer-only: quotes and warehouse delivery flows (no layby desk). */
 export const HASSAN_AWAD = Object.freeze({
@@ -22,6 +22,8 @@ export const HASSAN_AWAD = Object.freeze({
   allowedRoutes: Object.freeze([
     '/quotationer',
     HASSAN_FACTORY_ORDERS_PATH,
+    '/orders/create',
+    '/factory-orders',
     '/showroom-orders',
     '/showroom-orders/create',
     '/hassan-floor-2',
