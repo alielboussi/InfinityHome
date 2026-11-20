@@ -22,8 +22,12 @@ assert(fs.existsSync(path.join(root, 'server/lib/showroomQuoteOrder.js')), 'show
 assert(read('server/handlers/quote-production.js').includes('create-showroom-order'), 'quote-production must expose create-showroom-order');
 assert(read('src/utils/quoteCustomerOrder.js').includes('showroom_order'), 'Kitwe skip must allow showroom orders');
 assert(read('src/QuotesBoard.js').includes('boardMode'), 'QuotesBoard must filter factory vs showroom');
-assert(read('src/ShowroomOrderCreate.js').includes('createShowroomQuoteAndSend'), 'Showroom create page must call API');
-assert(read('src/ShowroomOrderCreate.js').includes('if (!q) return []'), 'Showroom create must hide products until search');
+const showroomCreateSrc = [
+  read('src/components/HassanShowroomOrderForm.js'),
+  read('src/ShowroomOrderCreate.js'),
+].join('\n');
+assert(showroomCreateSrc.includes('createShowroomQuoteAndSend'), 'Showroom create must call API');
+assert(showroomCreateSrc.includes('if (!q) return []'), 'Showroom create must hide products until search');
 assert(!read('server/lib/showroomQuoteOrder.js').includes('Insufficient Floor 2 stock for'), 'Showroom create must allow Floor 2 qty 0 at order time');
 assert(read('server/lib/showroomQuoteOrder.js').includes('assertFloor2StockForQuoteItems'), 'Floor 2 stock gate required before workshop start');
 assert(read('server/lib/showroomQuoteOrder.js').includes('computeFloor2ShortfallForQuoteLines'), 'quote list must compute Floor 2 shortfall');
@@ -31,7 +35,11 @@ assert(read('server/lib/paintingProductionJobs.js').includes('Showroom order req
 assert(read('mobile-apps/shared/quoteProductionOrderUi.js').includes('QuoteProductionFloor2ShortfallBanner'), 'workshop cards must show Floor 2 shortfall');
 assert(read('src/Quotationer.js').includes('addItemFromFloor2'), 'Quotationer must add Floor 2 WIP lines');
 assert(read('src/utils/quoteShowroomOrder.js').includes('buildHassanCustomerQuoteRoutingMetadata'), 'Mixed customer + Floor 2 uses customer badge metadata');
-assert(read('src/mobile/ordersAppDashboardParity.js').includes('Showroom Orders'), 'Hassan nav must list Showroom Orders');
+assert(
+  read('src/mobile/ordersAppDashboardParity.js').includes('orders_showroom_new')
+    && read('src/mobile/ordersAppDashboardParity.js').includes('ShowroomOrderCreate'),
+  'Hassan parity must include showroom create stack',
+);
 assert(read('mobile-apps/shared/quoteProductionOrderUi.js').includes('QuoteProductionOrderBadges'), 'workshop shared UI must expose order badges');
 assert(read('mobile-apps/shared/quoteProductionOrderUi.js').includes('orderBadgeTextStyle'), 'badge UI must support Arabic layout');
 const badgeApps = [
