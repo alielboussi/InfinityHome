@@ -6,7 +6,7 @@ const {
   isIncompletePacketBomProduct,
   isStoreroomMaterialAssembly,
   WAREHOUSE_INVENTORY_MODE,
-} = require(path.join(__dirname, '../mobile-apps/shared/warehouseCatalogProductCompleteness.js'));
+} = require(path.join(__dirname, '../src/utils/warehouseCatalogProductCompleteness.js'));
 
 const finishedOnly = {
   id: '1',

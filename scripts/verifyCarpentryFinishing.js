@@ -17,8 +17,9 @@ const products = buildCarpentryFinishingCandidates(
   floor2,
 );
 
-assert.equal(products.length, 1, 'only carpentry-selected catalog rows with Floor 2 qty');
-assert.equal(products[0].id, 'a1');
-assert.equal(products[0].floor2_qty, 3);
+assert.equal(products.length, 2, 'carpentry catalog + any assembly with a Floor 2 inventory row (qty may be 0)');
+const byId = Object.fromEntries(products.map((p) => [p.id, p]));
+assert.equal(byId.a1?.floor2_qty, 3);
+assert.equal(byId.a2?.floor2_qty, 0);
 
 console.log('verifyCarpentryFinishing: ok');

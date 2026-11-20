@@ -253,6 +253,16 @@ try {
 }
 
 try {
+  require('child_process').execSync('node scripts/verifyWorkshopUnifiedOrdersHub.js', {
+    cwd: process.cwd(),
+    stdio: 'inherit',
+  });
+} catch (e) {
+  console.error('[workshop-unified-orders:fail] verifyWorkshopUnifiedOrdersHub.js failed.');
+  process.exit(1);
+}
+
+try {
   require('child_process').execSync('node scripts/verifyWarehouseReturnRepairDepartment.js', {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),
