@@ -1,8 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { assertCriticalSharedFiles } = require('../../shared/materializeCriticalShared');
+const { assertEasignore } = require('../../shared/assertEasignore');
 
-const sharedPath = path.join(__dirname, '..', 'shared');
+const appRoot = path.join(__dirname, '..');
+const sharedPath = path.join(appRoot, 'shared');
 const marker = path.join(sharedPath, '.standalone-shared');
 
 if (!fs.existsSync(marker)) {
@@ -17,6 +19,7 @@ try {
   /* not a symlink — good */
 }
 try {
+  assertEasignore(appRoot, 'warehouse-upholstery');
   assertCriticalSharedFiles(sharedPath, 'warehouse-upholstery');
 } catch (e) {
   console.error(e.message || e);

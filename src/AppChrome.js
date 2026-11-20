@@ -303,12 +303,6 @@ export default function AppChrome() {
 
   if (isLogin || isPublicCount || isKioskStock || !user) return null;
 
-  const quotationerParams = new URLSearchParams(location.search || '');
-  const isQuotationerHome = path === '/quotationer'
-    && !quotationerParams.get('view')
-    && !quotationerParams.get('quoteId')
-    && !quotationerParams.get('id');
-  const isDashboard = path === homePath || (quotationerOnly && isQuotationerHome);
   const title = titleForPath(path, user, location.search);
   const go = (route, search = '') => {
     if (search) navigate({ pathname: route, search });

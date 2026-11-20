@@ -10,7 +10,7 @@
     "start": "expo start --go",
     "start:offline": "expo start --offline --go",
     "android": "expo start --android",
-    "eas:build:android": "node scripts/materializeSharedStandalone.js && node scripts/materializeOrdersUi.js && eas build --platform android --profile preview --non-interactive"
+    "eas:build:android": "node ../scripts/ensureEasignoreFor.js orders && node scripts/materializeSharedStandalone.js && node scripts/materializeOrdersUi.js && eas build --platform android --profile preview --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

@@ -52,6 +52,48 @@ function copyFileRobust(src, dest) {
   throw lastErr;
 }
 
+function writeTextFileWithRetry(dest, body) {
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const tmp = `${dest}.patch-${process.pid}-${Date.now()}.tmp`;
+  const attempt = () => {
+    fs.writeFileSync(tmp, body, 'utf8');
+    if (fs.existsSync(dest)) {
+      try {
+        fs.unlinkSync(dest);
+      } catch {
+        fs.rmSync(dest, { force: true });
+      }
+    }
+    fs.renameSync(tmp, dest);
+  };
+  let lastErr;
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      attempt();
+      return;
+    } catch (err) {
+      lastErr = err;
+      try {
+        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+      } catch { /* ignore */ }
+      const code = String(err?.code || '').toUpperCase();
+      if (!RETRYABLE_COPY_CODES.has(code) || i >= 5) break;
+      sleep(80 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
+function writePatchFile(filePath, body) {
+  if (fs.existsSync(filePath)) {
+    try {
+      const cur = fs.readFileSync(filePath, 'utf8');
+      if (cur === body) return;
+    } catch { /* overwrite */ }
+  }
+  writeTextFileWithRetry(filePath, body);
+}
+
 function copyDirMerge(srcDir, destDir) {
   if (!fs.existsSync(srcDir)) return;
   for (const name of fs.readdirSync(srcDir)) {
@@ -100,7 +142,7 @@ function patchSignatureScreen(filePath, screenKey) {
   if (!s.includes('useDeliveryDrivers')) {
     console.warn(`[applyDeliveryKitPatches] ${screenKey}: signature patch did not apply`);
   }
-  fs.writeFileSync(filePath, s);
+  writePatchFile(filePath, s);
 }
 
 function patchKitweSendHome(filePath) {
@@ -144,7 +186,7 @@ function patchKitweSendHome(filePath) {
   } else {
     console.warn('[applyDeliveryKitPatches] KitweSendHome: catalog useEffect patch did not apply');
   }
-  fs.writeFileSync(filePath, s);
+  writePatchFile(filePath, s);
 }
 
 function patchProductionNameClashUi(filePath) {
@@ -157,7 +199,7 @@ function patchProductionNameClashUi(filePath) {
     return;
   }
   const header = '/** Standalone for warehouse-delivery (no ../../../../src). */\n';
-  fs.writeFileSync(filePath, header + fs.readFileSync(repoUtil, 'utf8'));
+  writePatchFile(filePath, header + fs.readFileSync(repoUtil, 'utf8'));
 }
 
 function patchDeliveryWarehouseCatalog(filePath) {
@@ -170,12 +212,13 @@ export function filterAssembliesForDeliveryFloor1Only(catalog) {
   return filterAssembliesForDeliveryWarehouse(catalog);
 }
 `;
-  fs.writeFileSync(filePath, `${s.trimEnd()}\n${tail}`);
+  writePatchFile(filePath, `${s.trimEnd()}\n${tail}`);
 }
 
 function patchDeliveryHubI18n(filePath) {
   if (!fs.existsSync(filePath)) return;
-  let s = fs.readFileSync(filePath, 'utf8');
+  const original = fs.readFileSync(filePath, 'utf8');
+  let s = original;
   if (!s.includes('sentDeliveriesSearchPlaceholder') && s.includes('sentDeliveriesTitle:')) {
     s = s.replace(
       "  sentDeliveriesTitle: { en: 'Sent deliveries', ar: 'التسليمات المرسلة' },",
@@ -190,19 +233,19 @@ function patchDeliveryHubI18n(filePath) {
   sentDeliveryKindOrder: { en: 'Order', ar: 'طلب' },
   sentDeliveryKindSold: { en: 'Sold', ar: 'مباع' },`,
     );
-    fs.writeFileSync(filePath, s);
+    writePatchFile(filePath, s);
   }
   if (!s.includes('deliveryCustomerAddBtn') && s.includes('deliveryCustomerDriver:')) {
     s = s.replace(
       "  deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },",
       "  deliveryCustomerDriver: { en: 'Customer driver', ar: 'سائق العميل' },\n  deliveryCustomerAddBtn: { en: 'Add customer driver', ar: 'إضافة سائق العميل' },",
     );
-    fs.writeFileSync(filePath, s);
+    writePatchFile(filePath, s);
   }
   const repairKindLine = "  deliveryRepairKindLabel: { en: 'Repair', ar: 'إصلاح' },";
   if (!s.includes('deliveryRepairKindLabel') && s.includes('deliveryRepairDeliverBtn:')) {
     s = s.replace('  deliveryRepairDeliverBtn:', `${repairKindLine}\n  deliveryRepairDeliverBtn:`);
-    fs.writeFileSync(filePath, s);
+    writePatchFile(filePath, s);
   }
   const block = `  deliveryHubTitle: { en: 'Delivery', ar: 'التسليم' },
   deliveryHubTab_floor1: { en: 'Floor 1', ar: 'الطابق 1' },
@@ -252,11 +295,11 @@ function patchDeliveryHubI18n(filePath) {
   },`;
   if (s.includes('deliveryHubTab_repairs') && s.includes(ordersLine) && !s.includes('deliveryRepairQueueEmpty')) {
     s = s.replace(ordersLine, `${ordersLine}${queueExtra}`);
-    fs.writeFileSync(filePath, s);
+    writePatchFile(filePath, s);
     return;
   }
   if (s.includes('deliveryHubTab_repairs')) {
-    fs.writeFileSync(filePath, s);
+    if (s !== original) writePatchFile(filePath, s);
     return;
   }
   const dashLine = "  dashDelivery: { en: 'Send Delivery', ar: 'إرسال التسليم' },";
@@ -278,7 +321,7 @@ function patchDeliveryHubI18n(filePath) {
     console.warn('[applyDeliveryKitPatches] delivery hub i18n: no anchor found');
     return;
   }
-  fs.writeFileSync(filePath, s);
+  writePatchFile(filePath, s);
 }
 
 function patchDeliveryOrderQueue(filePath) {
@@ -302,7 +345,7 @@ function patchDeliveryOrderQueue(filePath) {
 `,
     );
   }
-  fs.writeFileSync(filePath, s);
+  writePatchFile(filePath, s);
 }
 
 function main() {

@@ -8,6 +8,13 @@ const path = require('path');
 
 const appRoot = path.join(__dirname, '..');
 const outDir = path.join(appRoot, '.expo-bundle-verify');
+const { assertEasignore } = require('../../shared/assertEasignore');
+try {
+  assertEasignore(appRoot, 'carpentry-workshop');
+} catch (e) {
+  console.error('verifyExpoBundle:', e.message || e);
+  process.exit(1);
+}
 
 execSync('node scripts/materializeCarpentryStandalone.js', { cwd: appRoot, stdio: 'inherit' });
 execSync('node scripts/assertCarpentryKioskStandalone.js', { cwd: appRoot, stdio: 'inherit' });

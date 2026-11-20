@@ -67,6 +67,23 @@ for (const slug of apps) {
       console.error(`[${slug}] eas.json missing preview-legacy ORG_GRADLE_PROJECT_reactNativeArchitectures`);
       failed = true;
     }
+    const easIgnore = path.join(appRoot, '.easignore');
+    if (!fs.existsSync(easIgnore)) {
+      console.error(`[${slug}] missing .easignore — run node mobile-apps/scripts/syncEasignore.js`);
+      failed = true;
+    } else {
+      const ignoreBody = fs.readFileSync(easIgnore, 'utf8');
+      if (!ignoreBody.includes('**/node_modules/') || !ignoreBody.includes('/src/')) {
+        console.error(`[${slug}] .easignore must exclude monorepo src/ and **/node_modules/`);
+        failed = true;
+      }
+      const { renderMonorepoEasignore } = require(path.join(root, 'mobile-apps', 'shared', 'renderEasignoreContent.js'));
+      const canonical = renderMonorepoEasignore(slug);
+      if (ignoreBody !== canonical) {
+        console.error(`[${slug}] .easignore out of date — run node mobile-apps/scripts/syncEasignore.js`);
+        failed = true;
+      }
+    }
   }
 
   const appJs = path.join(appRoot, 'App.js');

@@ -12,7 +12,7 @@
     "start:offline": "expo start --offline --go",
     "android": "expo start --android",
     "verify:bundle": "node scripts/verifyExpoBundle.js",
-    "eas:build:android": "node scripts/verifyExpoBundle.js && eas build --platform android --profile preview --non-interactive"
+    "eas:build:android": "node ../scripts/ensureEasignoreFor.js carpentry-workshop && node scripts/verifyExpoBundle.js && eas build --platform android --profile preview --non-interactive"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { assertEasignore } = require('../../shared/assertEasignore');
 
 const appRoot = path.join(__dirname, '..');
 const sharedPath = path.join(appRoot, 'shared');
@@ -29,6 +30,13 @@ try {
   }
 } catch (e) {
   console.error('FAIL: shared/ missing', e.message);
+  process.exit(1);
+}
+
+try {
+  assertEasignore(appRoot, 'warehouse-delivery');
+} catch (e) {
+  console.error('FAIL:', e.message || e);
   process.exit(1);
 }
 
