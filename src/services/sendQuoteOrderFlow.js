@@ -143,9 +143,6 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
   }
   if (!pdfBase64) throw new Error('PDF: empty factory order document');
 
-  const routingFresh = await fetchQuoteProductionRouting(qid).catch(() => routing);
-  const drawingUrl = String(routingFresh?.metadata?.drawing_url || routing?.metadata?.drawing_url || '').trim();
-
   try {
     await sendFactoryOrderWhatsApp({
       message,
@@ -153,8 +150,6 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
       pdfFilename,
       route,
       quote_id: qid,
-      illustrationImageUrl: drawingUrl,
-      drawing_url: drawingUrl,
     });
   } catch (waErr) {
     throw new Error(`Factory group: ${waErr?.message || waErr}`);

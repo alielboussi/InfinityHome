@@ -1,8 +1,8 @@
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import db from '../dataClient';
-import { pickQuoteItemProductionFields, quoteItemLineImageUrl } from './quoteProductionItemFields';
-import { resolveFirebaseStorageImageForDisplay, rewriteLegacyStorageUrl } from './storageImageUrl';
+import { pickQuoteItemProductionFields } from './quoteProductionItemFields';
+import { rewriteLegacyStorageUrl } from './storageImageUrl';
 import { formatZambiaDate, formatZambiaTime } from './zambiaDateTime';
 import { translateQuoteStringsToArabicComplete } from '../services/quoteProductionApi';
 import {
@@ -27,33 +27,6 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-function resolveQuoteLineImagePublicUrl(rawUrl) {
-  const lineImgRaw = String(rawUrl || '').trim();
-  if (!lineImgRaw) return '';
-  if (/productimages%2Fquotations|%2Fproductimages%2F|quotations\/quote-line-images/i.test(lineImgRaw)) {
-    return rewriteLegacyStorageUrl(lineImgRaw) || lineImgRaw;
-  }
-  return rewriteLegacyStorageUrl(lineImgRaw, { bucket: 'Quotations' }) || lineImgRaw;
-}
-
-async function fetchImageDataUrlForPdf(url) {
-  const resolved = await resolveFirebaseStorageImageForDisplay(url);
-  if (!resolved) return '';
-  try {
-    const resp = await fetch(resolved, { mode: 'cors', credentials: 'omit' });
-    if (!resp.ok) return resolved;
-    const blob = await resp.blob();
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || resolved));
-      reader.onerror = () => resolve(resolved);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return resolved;
-  }
 }
 
 function cleanDescriptionText(val) {
@@ -184,18 +157,6 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
   });
   assertArabicTranslationsForPhrases(collectFactoryOrderArabicCheckPhrases(items), serverTranslations);
 
-  const lineImageDataByKey = new Map();
-  await Promise.all(
-    (items || []).map(async (it) => {
-      const lineImgRaw = quoteItemLineImageUrl(it);
-      if (!lineImgRaw) return;
-      const key = String(it.id || lineImgRaw);
-      const publicUrl = resolveQuoteLineImagePublicUrl(lineImgRaw);
-      const dataUrl = await fetchImageDataUrlForPdf(publicUrl || lineImgRaw);
-      if (dataUrl) lineImageDataByKey.set(key, dataUrl);
-    }),
-  );
-
   const routeKey = String(route || '').trim().toLowerCase();
   const deptLabel = routeKey === 'carpentry'
     ? 'Carpentry / قسم النجارة'
@@ -320,18 +281,11 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         ? `${qty} ${unitAbbr} / ${qtyArDigits} ${unitAr || unitAbbr}`
         : `${qty} / ${qtyArDigits}`;
 
-      const lineKey = String(it.id || quoteItemLineImageUrl(it) || '');
-      const lineImg = lineImageDataByKey.get(lineKey) || '';
-      const photoCell = lineImg
-        ? `<div class="prod-photo-col"><img class="prod-line-photo" src="${escapeHtml(lineImg)}" alt="" /></div>`
-        : '<div class="prod-photo-col prod-photo-col--empty"></div>';
-
       return `
         <tr>
           <td class="col-product">
-            <div class="bilingual-row prod-title-row prod-title-with-photo">
+            <div class="bilingual-row prod-title-row">
               <div class="prod-name-en" dir="ltr">${escapeHtml(nameEn)}</div>
-              ${photoCell}
               <div class="prod-name-ar" dir="rtl">${escapeHtml(nameAr)}</div>
             </div>
             ${specBlocks.join('')}
@@ -456,30 +410,6 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
     .prod-title-row {
       margin-top: 0;
       margin-bottom: 3px;
-    }
-    .prod-title-with-photo {
-      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-      align-items: center;
-      gap: 8px;
-    }
-    .prod-photo-col {
-      flex-shrink: 0;
-      width: 112px;
-      text-align: center;
-    }
-    .prod-photo-col--empty {
-      width: 0;
-      min-width: 0;
-      padding: 0;
-    }
-    .prod-line-photo {
-      max-width: 112px;
-      max-height: 84px;
-      width: auto;
-      height: auto;
-      object-fit: contain;
-      display: block;
-      margin: 0 auto;
     }
     .prod-name-en {
       font-weight: 800;

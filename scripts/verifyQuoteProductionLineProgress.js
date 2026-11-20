@@ -1,5 +1,5 @@
 /**
- * Partial quote line progress + factory PDF line photo title row.
+ * Partial quote line progress + factory PDF title row (text only, no line photos).
  * Run: node scripts/verifyQuoteProductionLineProgress.js
  */
 const assert = require('assert');
@@ -23,9 +23,9 @@ async function main() {
   assert.strictEqual(line.quantity, 3);
 
   const pdfSrc = fs.readFileSync(path.join(root, 'src/utils/quoteFactoryOrderPdf.js'), 'utf8');
-  assert(pdfSrc.includes('prod-title-with-photo'), 'factory PDF must use title-row photo layout');
-  assert(pdfSrc.includes('prod-line-photo'), 'factory PDF must render line product photo');
-  assert(!pdfSrc.includes('row-span'), 'line photo must not span spec rows');
+  assert(pdfSrc.includes('prod-title-row'), 'factory PDF must use bilingual title row');
+  assert(!pdfSrc.includes('prod-line-photo'), 'factory PDF must not embed line product photos');
+  assert(!pdfSrc.includes('lineImageDataByKey'), 'factory PDF must not preload line images');
 
   const i18n = fs.readFileSync(
     path.join(root, 'mobile-apps/carpentry-workshop/lib/productionKioskI18n.js'),

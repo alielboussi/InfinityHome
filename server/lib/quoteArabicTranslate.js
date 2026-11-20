@@ -488,7 +488,7 @@ export function factoryOrderDepartmentArabic(route) {
   return 'قسم التنجيد';
 }
 
-const GEMINI_TRANSLATE_MODEL = 'gemini-2.0-flash';
+const GEMINI_TRANSLATE_MODEL = 'gemini-3.8-flash';
 const ARABIC_BATCH_SIZE = 28;
 
 function phraseNeedsServerArabic(phrase, map = {}) {
