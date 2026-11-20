@@ -190,8 +190,11 @@ export async function translateQuoteStringsToArabic(texts = []) {
 /**
  * Fetch Arabic map from server (static + Gemini). When requireComplete, throws if any phrase is still English.
  */
+const ARABIC_TRANSLATE_CHUNK = 36;
+const ARABIC_TRANSLATE_MAX_REQUESTS = 16;
+
 export async function translateQuoteStringsToArabicComplete(texts = [], { requireComplete = true, maxRounds = 3 } = {}) {
-  const list = [...new Set((texts || []).map((t) => String(t ?? '').trim()).filter(Boolean))].slice(0, 200);
+  const list = [...new Set((texts || []).map((t) => String(t ?? '').trim()).filter(Boolean))].slice(0, 120);
   if (!list.length) return {};
 
   let map = {};
@@ -202,20 +205,24 @@ export async function translateQuoteStringsToArabicComplete(texts = [], { requir
     return !ar || phraseStillHasEnglishWords(ar);
   };
 
-  for (let round = 0; round < maxRounds; round += 1) {
+  const maxRequests = Math.max(1, Math.floor(Number(maxRounds) || 3) * 6);
+  let requests = 0;
+  while (requests < ARABIC_TRANSLATE_MAX_REQUESTS && requests < maxRequests) {
     const missing = list.filter(needsArabic);
     if (!missing.length) break;
+    const chunk = missing.slice(0, ARABIC_TRANSLATE_CHUNK);
     const keysBefore = Object.keys(map).length;
     try {
       const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ op: 'translate-arabic', texts: missing }),
-      }, { requireAuth: true, apiLabel: 'Arabic translation API', timeoutMs: 120000 });
+        body: JSON.stringify({ op: 'translate-arabic', texts: chunk }),
+      }, { requireAuth: true, apiLabel: 'Arabic translation API', timeoutMs: 70000 });
       const payload = await readJsonOrThrow(resp, 'Arabic translation failed');
       if (payload.translations && typeof payload.translations === 'object') {
         map = { ...map, ...payload.translations };
       }
+      requests += 1;
       if (Object.keys(map).length === keysBefore) {
         break;
       }

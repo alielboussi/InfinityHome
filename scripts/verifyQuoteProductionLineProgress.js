@@ -26,6 +26,16 @@ async function main() {
   assert(pdfSrc.includes('prod-title-row'), 'factory PDF must use bilingual title row');
   assert(!pdfSrc.includes('prod-line-photo'), 'factory PDF must not embed line product photos');
   assert(!pdfSrc.includes('lineImageDataByKey'), 'factory PDF must not preload line images');
+  assert(pdfSrc.includes('collectFactoryOrderArabicCheckPhrases(items)'), 'factory PDF must use minimal Arabic phrase set');
+
+  const apiSrc = fs.readFileSync(path.join(root, 'src/services/quoteProductionApi.js'), 'utf8');
+  assert(apiSrc.includes('ARABIC_TRANSLATE_CHUNK'), 'Arabic API must chunk translate requests');
+
+  const serverArabic = fs.readFileSync(path.join(root, 'server/lib/quoteArabicTranslate.js'), 'utf8');
+  assert(serverArabic.includes('maxGeminiPhrases'), 'server Arabic must cap Gemini phrases per call');
+
+  const quoteProd = fs.readFileSync(path.join(root, 'server/handlers/quote-production.js'), 'utf8');
+  assert(quoteProd.includes('maxGeminiRounds: 1'), 'translate-arabic must not stack Gemini rounds per HTTP call');
 
   const i18n = fs.readFileSync(
     path.join(root, 'mobile-apps/carpentry-workshop/lib/productionKioskI18n.js'),

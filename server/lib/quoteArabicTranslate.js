@@ -488,7 +488,8 @@ export function factoryOrderDepartmentArabic(route) {
   return 'قسم التنجيد';
 }
 
-const ARABIC_BATCH_SIZE = 28;
+const ARABIC_BATCH_SIZE = 20;
+const GEMINI_TRANSLATE_MAX_MS = 52000;
 
 function parseGeminiTranslateModelsCsv(raw) {
   return String(raw || '')
@@ -597,17 +598,18 @@ async function geminiTranslatePhrasesToArabic(phrases) {
   const apiKey = getGeminiApiKey();
   if (!apiKey) return {};
 
+  const cappedList = list.slice(0, 56);
   const models = geminiTranslateModelOrder();
   const out = {};
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TRANSLATE_MAX_MS);
   try {
-    for (let i = 0; i < list.length; i += ARABIC_BATCH_SIZE) {
-      const batch = list.slice(i, i + ARABIC_BATCH_SIZE);
+    for (let i = 0; i < cappedList.length; i += ARABIC_BATCH_SIZE) {
+      const batch = cappedList.slice(i, i + ARABIC_BATCH_SIZE);
       let batchErr = null;
       let batchDone = false;
       for (const model of models) {
-        for (let attempt = 0; attempt < 3; attempt += 1) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
           try {
             const chunk = await geminiTranslateBatchWithModel(apiKey, model, batch, controller.signal);
             for (const [key, val] of Object.entries(chunk)) {
@@ -620,7 +622,7 @@ async function geminiTranslatePhrasesToArabic(phrases) {
             break;
           } catch (err) {
             batchErr = err;
-            if (isGeminiTranslateTransientError(err?.message, err?.status) && attempt < 2) {
+            if (isGeminiTranslateTransientError(err?.message, err?.status) && attempt < 1) {
               await sleepMs(700 * (attempt + 1));
               continue;
             }
@@ -643,11 +645,12 @@ async function geminiTranslatePhrasesToArabic(phrases) {
  * Batch Arabic for factory PDF + workshop (server only). Seeds static/fallback map, then Gemini for gaps.
  */
 export async function translateStringsToArabicServer(texts = [], {
-  maxGeminiRounds = 2,
+  maxGeminiRounds = 1,
+  maxGeminiPhrases = 40,
   sb = null,
   skipCatalogMerge = false,
 } = {}) {
-  const list = [...new Set((texts || []).map((t) => String(t ?? '').trim()).filter(Boolean))].slice(0, 400);
+  const list = [...new Set((texts || []).map((t) => String(t ?? '').trim()).filter(Boolean))].slice(0, 80);
   let map = {};
   if (sb && !skipCatalogMerge) {
     try {
@@ -659,10 +662,11 @@ export async function translateStringsToArabicServer(texts = [], {
   }
   map = seedArabicMapFromLocal(list, map);
 
+  const geminiCap = Math.max(1, Math.floor(Number(maxGeminiPhrases) || 40));
   for (let round = 0; round < maxGeminiRounds; round += 1) {
     const missing = list.filter((p) => phraseNeedsServerArabic(p, map));
     if (!missing.length) break;
-    const geminiMap = await geminiTranslatePhrasesToArabic(missing);
+    const geminiMap = await geminiTranslatePhrasesToArabic(missing.slice(0, geminiCap));
     map = { ...map, ...geminiMap };
     map = seedArabicMapFromLocal(missing, map);
   }

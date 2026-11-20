@@ -11,7 +11,6 @@ import {
   toArabicIndicDigits,
   translateTermToArabic,
   translateQtyUnitLabel,
-  collectProductionQuoteArabicPhrases,
   expandArabicPhraseVariants,
   assertArabicTranslationsForPhrases,
   collectFactoryOrderArabicCheckPhrases,
@@ -135,25 +134,10 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
   const company = await getCompanySettings();
   const logoUrl = getLogoUrl(company);
 
-  const phraseSet = new Set(collectProductionQuoteArabicPhrases(items));
-  for (const it of items || []) {
-    const rawName = String(
-      it.name_override || it.name || it.product_name || it.quote_product_name || it.description || '',
-    ).trim();
-    if (rawName) phraseSet.add(rawName);
-    if (rawName) {
-      const titled = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-      phraseSet.add(titled);
-    }
-    const desc = cleanDescriptionText(it.description);
-    if (desc) phraseSet.add(desc);
-    const descRaw = String(it.description || '').trim();
-    if (descRaw) phraseSet.add(descRaw);
-  }
-  const phraseList = expandArabicPhraseVariants([...phraseSet]);
+  const phraseList = expandArabicPhraseVariants(collectFactoryOrderArabicCheckPhrases(items));
   const serverTranslations = await translateQuoteStringsToArabicComplete(phraseList, {
     requireComplete: true,
-    maxRounds: 2,
+    maxRounds: 8,
   });
   assertArabicTranslationsForPhrases(collectFactoryOrderArabicCheckPhrases(items), serverTranslations);
 

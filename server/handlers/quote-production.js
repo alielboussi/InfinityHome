@@ -143,7 +143,15 @@ export default async function handler(req, res) {
     if (op === 'translate-arabic') {
       const { translateStringsToArabicServer } = await import('../lib/quoteArabicTranslate.js');
       const texts = Array.isArray(body.texts) ? body.texts : [];
-      const translations = await translateStringsToArabicServer(texts, { sb: db, maxGeminiRounds: 3 });
+      const capped = texts
+        .map((t) => String(t ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 40);
+      const translations = await translateStringsToArabicServer(capped, {
+        sb: db,
+        maxGeminiRounds: 1,
+        maxGeminiPhrases: 40,
+      });
       res.status(200).json({ ok: true, translations });
       return;
     }

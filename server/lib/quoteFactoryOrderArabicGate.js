@@ -53,6 +53,6 @@ export async function assertQuoteArabicReadyForFactoryPdfWhatsApp(sb, quoteId) {
   const phraseSet = new Set(collectProductionQuoteArabicPhrases(rows));
   enrichPhraseSetFromItems(phraseSet, rows);
   const phrases = expandArabicPhraseVariants([...phraseSet]);
-  const map = await translateStringsToArabicServer(phrases, { sb, maxGeminiRounds: 3 });
+  const map = await translateStringsToArabicServer(phrases, { sb, maxGeminiRounds: 2, maxGeminiPhrases: 40 });
   assertArabicTranslationsForPhrases(collectFactoryOrderArabicCheckPhrases(rows), map);
 }
