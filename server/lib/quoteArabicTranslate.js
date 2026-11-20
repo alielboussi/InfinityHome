@@ -488,8 +488,41 @@ export function factoryOrderDepartmentArabic(route) {
   return 'قسم التنجيد';
 }
 
-const GEMINI_TRANSLATE_MODEL = 'gemini-3.8-flash';
 const ARABIC_BATCH_SIZE = 28;
+
+function parseGeminiTranslateModelsCsv(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Prefer stable flash models; override with GEMINI_TRANSLATE_MODEL or GEMINI_TRANSLATE_MODELS. */
+function geminiTranslateModelOrder() {
+  const forced = String(process.env.GEMINI_TRANSLATE_MODEL || '').trim();
+  if (forced) return [forced];
+  const csv = parseGeminiTranslateModelsCsv(process.env.GEMINI_TRANSLATE_MODELS);
+  if (csv.length) return csv;
+  return ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-2.0-flash-lite'];
+}
+
+function isGeminiTranslateTransientError(message, status) {
+  const m = String(message || '').toLowerCase();
+  if (status === 429 || status === 503) return true;
+  return /high demand|overloaded|resource exhausted|try again later|temporarily unavailable|rate limit|quota exceeded|unavailable/.test(m);
+}
+
+function humanizeGeminiTranslateError(message) {
+  const raw = String(message || '').trim();
+  if (/high demand|try again later/i.test(raw)) {
+    return 'Google Arabic translation is busy (high demand). Wait about 30 seconds and tap Send Order again.';
+  }
+  return raw;
+}
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function phraseNeedsServerArabic(phrase, map = {}) {
   const raw = String(phrase || '').trim();
@@ -522,6 +555,40 @@ function parseGeminiTranslationJson(raw) {
   return {};
 }
 
+async function geminiTranslateBatchWithModel(apiKey, model, batch, signal) {
+  const prompt = [
+    'Translate each English furniture / workshop production phrase into natural Arabic for factory staff.',
+    'Return ONLY JSON: { "translations": { "<exact English input>": "<Arabic output>" } }',
+    'Use the English strings below as JSON keys exactly (case and punctuation).',
+    'Arabic values must be fully Arabic — no leftover English words except: RAL, MDF, HD, USB, LED, HDMI, CPU, cm.',
+    'Keep numbers, color codes, and leather codes as in the original when they are codes.',
+    JSON.stringify(batch),
+  ].join('\n');
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+      }),
+      signal,
+    },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const message = err?.error?.message || `Gemini translate failed (${res.status})`;
+    const e = new Error(message);
+    e.status = res.status;
+    throw e;
+  }
+  const payload = await res.json().catch(() => ({}));
+  const rawText = payload?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  return parseGeminiTranslationJson(rawText);
+}
+
 async function geminiTranslatePhrasesToArabic(phrases) {
   const list = [...new Set((phrases || []).map((p) => String(p || '').trim()).filter(Boolean))];
   if (!list.length) return {};
@@ -530,44 +597,40 @@ async function geminiTranslatePhrasesToArabic(phrases) {
   const apiKey = getGeminiApiKey();
   if (!apiKey) return {};
 
+  const models = geminiTranslateModelOrder();
   const out = {};
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
+  const timeout = setTimeout(() => controller.abort(), 90000);
   try {
     for (let i = 0; i < list.length; i += ARABIC_BATCH_SIZE) {
       const batch = list.slice(i, i + ARABIC_BATCH_SIZE);
-      const prompt = [
-        'Translate each English furniture / workshop production phrase into natural Arabic for factory staff.',
-        'Return ONLY JSON: { "translations": { "<exact English input>": "<Arabic output>" } }',
-        'Use the English strings below as JSON keys exactly (case and punctuation).',
-        'Arabic values must be fully Arabic — no leftover English words except: RAL, MDF, HD, USB, LED, HDMI, CPU, cm.',
-        'Keep numbers, color codes, and leather codes as in the original when they are codes.',
-        JSON.stringify(batch),
-      ].join('\n');
-
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TRANSLATE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
-          }),
-          signal: controller.signal,
-        },
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `Gemini translate failed (${res.status})`);
+      let batchErr = null;
+      let batchDone = false;
+      for (const model of models) {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const chunk = await geminiTranslateBatchWithModel(apiKey, model, batch, controller.signal);
+            for (const [key, val] of Object.entries(chunk)) {
+              const k = String(key || '').trim();
+              const v = String(val || '').trim();
+              if (k && v && !phraseStillHasEnglishWords(v)) out[k] = v;
+            }
+            batchDone = true;
+            batchErr = null;
+            break;
+          } catch (err) {
+            batchErr = err;
+            if (isGeminiTranslateTransientError(err?.message, err?.status) && attempt < 2) {
+              await sleepMs(700 * (attempt + 1));
+              continue;
+            }
+            break;
+          }
+        }
+        if (batchDone) break;
       }
-      const payload = await res.json().catch(() => ({}));
-      const rawText = payload?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const chunk = parseGeminiTranslationJson(rawText);
-      for (const [key, val] of Object.entries(chunk)) {
-        const k = String(key || '').trim();
-        const v = String(val || '').trim();
-        if (k && v && !phraseStillHasEnglishWords(v)) out[k] = v;
+      if (!batchDone && batchErr) {
+        throw new Error(humanizeGeminiTranslateError(batchErr?.message || batchErr));
       }
     }
     return out;

@@ -174,8 +174,12 @@ export async function translateQuoteStringsToArabicComplete(texts = [], { requir
 
   const stillMissing = list.filter(needsArabic);
   if (requireComplete && stillMissing.length) {
+    const rawMsg = String(lastErr?.message || '').trim();
+    const friendly = /high demand|try again later/i.test(rawMsg)
+      ? 'Google Arabic translation is busy (high demand). Wait about 30 seconds and tap Send Order again.'
+      : rawMsg;
     const err = new Error(
-      lastErr?.message
+      friendly
         || `Arabic translation is not ready yet (${stillMissing.length} phrase(s)). Wait a few seconds and send the order again.`,
     );
     err.code = 'arabic_incomplete';
