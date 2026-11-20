@@ -38,6 +38,18 @@ assert(
   read('src/Quotationer.js').includes('addItemFromFloor2(g)'),
   'Hassan customer create must add Floor 2 lines from unified search',
 );
+assert(
+  read('src/services/sendQuoteOrderFlow.js').includes('assertQuoteReadyForSendOrder'),
+  'Send Order must block quotes with no product lines',
+);
+assert(
+  read('server/handlers/quote-production.js').includes('sendOrResendQuoteToProduction'),
+  'web send-to-production must allow resend notify',
+);
+assert(
+  !read('server/lib/quoteProductionRouting.js').includes('firstProduct?.id) return firstProduct.id'),
+  'send to production must not attach random warehouse assembly when lines missing',
+);
 assert(read('src/Quotationer.js').includes('filterHassanQuoteUnits'), 'Quotationer must filter units to hardcoded Hassan UOMs');
 assert(read('src/Quotationer.js').includes('loadHassanQuoteUnitCatalog'), 'Quotationer must ensure m² and Pc(s) units exist');
 assert(read('src/utils/hassanQuoteUnits.js').includes('hassanQuoteUnitMatchesSpec'), 'Hassan quote units must fuzzy-match MetersSquared');

@@ -10,6 +10,7 @@ import {
   sendFactoryOrderWhatsApp,
   sendQuoteToWarehouseProduction,
 } from './quoteProductionApi';
+import { assertQuoteReadyForSendOrder } from '../utils/quoteSendOrderValidate';
 
 const VALID_ROUTES = new Set(['carpentry', 'upholstery', 'aluminum']);
 
@@ -89,6 +90,8 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', 
     (qps || []).forEach((p) => productMap.set(p.id, p));
   }
 
+  assertQuoteReadyForSendOrder(rawItems || []);
+
   const enrichedItems = (rawItems || []).map((raw) => {
     const norm = normalizeQuotationItemRow(raw);
     const qp = productMap.get(raw.quote_product_id || '');
@@ -103,12 +106,10 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', 
     };
   });
 
-  if (!routing?.sent_to_production_at) {
-    try {
-      await sendQuoteToWarehouseProduction(qid);
-    } catch (prodErr) {
-      throw new Error(`Production app: ${prodErr?.message || prodErr}`);
-    }
+  try {
+    await sendQuoteToWarehouseProduction(qid);
+  } catch (prodErr) {
+    throw new Error(`Production app: ${prodErr?.message || prodErr}`);
   }
 
   const message = buildFactoryOrderWhatsAppMessage({

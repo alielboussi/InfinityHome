@@ -23,6 +23,9 @@ REACT_APP_VERCEL_BYPASS=your-bypass-token
 ```env
 # Force server APIs even when REACT_APP_API_BASE is unset (not recommended)
 REACT_APP_FORCE_API=1
+
+# Vercel production only — Gemini Arabic for factory-order PDF (Send Order)
+GEMINI_TRANSLATE_MODELS=gemini-2.5-flash,gemini-3.8-flash,gemini-3.5-flash-lite
 ```
 
 ## Production

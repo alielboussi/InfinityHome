@@ -3,7 +3,7 @@ import { getDataClient } from '../lib/getDataClient.js';
 import { isHassanAwadUser, canManageCatalog } from '../../src/accessControl.js';
 import {
   getQuoteProductionRouting,
-  sendQuoteToProduction,
+  sendOrResendQuoteToProduction,
   upsertQuoteProductionRoute,
 } from '../lib/quoteProductionRouting.js';
 
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
         res.status(400).json({ ok: false, error: 'quote_id required' });
         return;
       }
-      const result = await sendQuoteToProduction(db, quoteId, user.id);
+      const result = await sendOrResendQuoteToProduction(db, quoteId, user.id);
       res.status(200).json({ ok: true, ...result });
       return;
     }

@@ -167,15 +167,26 @@ async function resolvePrimaryAssemblyId(sb, items, routingMeta = null) {
       if (lineName.includes(pn) || pn.includes(lineName)) return product.id;
     }
   }
-  const firstProduct = (assemblies || []).find((a) => String(a.item_kind || '') !== 'set');
-  if (firstProduct?.id) return firstProduct.id;
-  throw new Error('Could not resolve a warehouse product for this quote order');
+  throw new Error(
+    'Could not resolve a warehouse product for this quote. Add a catalog product line or a Floor 2 WIP line, then save the quote.',
+  );
+}
+
+function assertQuoteItemsForProductionSend(items = []) {
+  const named = (items || []).filter((line) => {
+    const name = String(line?.name_override || line?.name || line?.product_name || '').trim();
+    return name.length > 0;
+  });
+  if (!named.length) {
+    throw new Error('Add at least one product line before sending to production.');
+  }
 }
 
 export async function sendQuoteToProduction(sb, quoteId, userId) {
   const { quote, items, routing } = await loadQuoteBundle(sb, quoteId);
   if (!routing?.route) throw new Error('Choose Carpentry, Upholstery, or Aluminum before sending to production');
   if (routing.sent_to_production_at) throw new Error('Already sent to production');
+  assertQuoteItemsForProductionSend(items);
 
   const primary_assembly_id = await resolvePrimaryAssemblyId(sb, items, routing.metadata);
   const customer = await resolveCustomerContact(sb, quote.customer_id);
