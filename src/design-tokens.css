@@ -69,10 +69,15 @@
 
 /* Light enterprise content (tables / long shifts) */
 body.enterprise-theme {
+  /* Admin + Hassan Awad portal UI — Calibri (regular weight) */
+  --portal-ui-font-family: Calibri, "Segoe UI", Arial, sans-serif;
+  --portal-ui-font-weight: 400;
+  --brand-font: var(--portal-ui-font-family);
+  --brand-display-font: var(--portal-ui-font-family);
   /* Icons inside action buttons (text + icon, or icon-only) */
-  --portal-btn-font-family: Arial, Helvetica, sans-serif;
+  --portal-btn-font-family: var(--portal-ui-font-family);
   --portal-btn-font-size: 12px;
-  --portal-btn-font-weight: 700;
+  --portal-btn-font-weight: var(--portal-ui-font-weight);
   --portal-btn-icon-size: 1.25rem;
   --portal-icon-btn-size: 42px;
   --portal-icon-btn-svg: 22px;

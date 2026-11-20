@@ -310,6 +310,14 @@ body:not(.dashboard-theme) table {
   font-family: var(--brand-font);
 }
 
+body.enterprise-theme:not(.dashboard-theme) .table,
+body.enterprise-theme:not(.dashboard-theme) table,
+body.enterprise-theme:not(.dashboard-theme) table th,
+body.enterprise-theme:not(.dashboard-theme) table td {
+  font-family: var(--portal-ui-font-family, var(--brand-font)) !important;
+  font-weight: var(--portal-ui-font-weight, 400) !important;
+}
+
 html, body {
 	height: 100%;
 	margin: 0;
@@ -18394,6 +18402,18 @@ body.enterprise-theme .warehouse-deliveries-page .warehouse-send-customer-badge 
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
 
+.hassan-order-kind-prompt {
+  margin: 8px 0 0;
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #475569;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
 .quotes-create-panel--hassan-compact {
   padding: 12px 14px;
   max-width: 920px;
@@ -18860,3 +18880,4 @@ body.enterprise-theme .quotation-showroom-order-badge {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+

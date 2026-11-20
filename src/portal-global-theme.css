@@ -261,3 +261,50 @@ body.enterprise-theme .portal-actions-dropdown__menu .portal-actions-dropdown__i
   border-color: var(--brand-primary-dark) !important;
   color: var(--brand-on-primary) !important;
 }
+
+/* —— Global typography: Calibri on admin + Hassan Awad shells —— */
+body.enterprise-theme,
+body.enterprise-theme .app-route-shell,
+body.enterprise-theme.quotationer-route #root,
+body.enterprise-theme.quotationer-route .App {
+  font-family: var(--portal-ui-font-family, Calibri, "Segoe UI", Arial, sans-serif);
+  font-weight: var(--portal-ui-font-weight, 400);
+}
+
+body.enterprise-theme .ent-banner,
+body.enterprise-theme .ent-drawer,
+body.enterprise-theme .ent-drawer-link {
+  font-family: var(--portal-ui-font-family, Calibri, "Segoe UI", Arial, sans-serif) !important;
+  font-weight: var(--portal-ui-font-weight, 400) !important;
+}
+
+body.enterprise-theme .app-route-shell :where(
+  h1, h2, h3, h4, h5, h6,
+  p, li, dt, dd, small, strong, em, label, legend, caption,
+  th, td, thead, tbody, tfoot,
+  a:not(.fa):not([class*="fa-"]),
+  input, select, textarea, button, option,
+  .pos-toggle, .pos-toggle-label,
+  .dash-currency-toggle, .dash-currency-toggle button,
+  .warehouse-catalog-view-toggle, .warehouse-catalog-view-toggle__option,
+  .hassan-order-kind-switch, .hassan-order-kind-switch__btn,
+  .sr-discounts-toggle, .sr-discounts-toggle label,
+  .warehouse-variant-colors-toggle,
+  .quotationer-home-card-title,
+  .quotes-title,
+  .portal-actions-dropdown__item
+):not(.fa):not(.svg-inline--fa):not(code):not(pre):not(kbd):not(samp) {
+  font-family: var(--portal-ui-font-family, Calibri, "Segoe UI", Arial, sans-serif) !important;
+  font-weight: var(--portal-ui-font-weight, 400) !important;
+}
+
+body.enterprise-theme .dashboard-container {
+  font-family: var(--portal-ui-font-family, Calibri, "Segoe UI", Arial, sans-serif) !important;
+  font-weight: var(--portal-ui-font-weight, 400) !important;
+}
+
+body.enterprise-theme .dashboard-container h1,
+body.enterprise-theme .dashboard-container h2 {
+  font-family: var(--portal-ui-font-family, Calibri, "Segoe UI", Arial, sans-serif) !important;
+  font-weight: var(--portal-ui-font-weight, 400) !important;
+}

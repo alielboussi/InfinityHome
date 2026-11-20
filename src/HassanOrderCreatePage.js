@@ -22,12 +22,17 @@ export default function HassanOrderCreatePage() {
   const isQuotationerOnly = isQuotationerOnlyExperience(user, '/orders/create', searchParams.toString());
   const kind = quoteId
     ? 'customer'
-    : (searchParams.get('kind') === 'showroom' ? 'showroom' : 'customer');
+    : (() => {
+      const raw = String(searchParams.get('kind') || '').toLowerCase();
+      if (raw === 'showroom') return 'showroom';
+      if (raw === 'customer') return 'customer';
+      return null;
+    })();
 
   const setKind = (next) => {
     if (quoteId) return;
     const nextParams = new URLSearchParams(searchParams);
-    if (next === 'showroom') nextParams.set('kind', 'showroom');
+    if (next === 'showroom' || next === 'customer') nextParams.set('kind', next);
     else nextParams.delete('kind');
     setSearchParams(nextParams, { replace: true });
   };
@@ -73,7 +78,8 @@ export default function HassanOrderCreatePage() {
 
       {kind === 'showroom' && !quoteId ? (
         <HassanShowroomOrderForm onDonePath={HASSAN_WEB_ORDERS_PATH} />
-      ) : (
+      ) : null}
+      {kind === 'customer' ? (
         <QuotationCreateView
           key={`create-${quoteId || 'new'}`}
           quoteId={quoteId}
@@ -81,7 +87,12 @@ export default function HassanOrderCreatePage() {
           onBackHome={() => navigate(HASSAN_WEB_ORDERS_PATH)}
           onSaved={() => navigate(HASSAN_WEB_ORDERS_PATH)}
         />
-      )}
+      ) : null}
+      {!quoteId && !kind ? (
+        <div className="hassan-order-kind-prompt" role="status">
+          Choose <strong>Customer order</strong> or <strong>Showroom order</strong> to continue.
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -403,11 +403,6 @@ export default function AppChrome() {
           </button>
         </div>
       </header>
-      {hassanPreviewBanner ? (
-        <p className="ent-hassan-preview-note" role="status">
-          Previewing Hassan Awad&apos;s dashboard while signed in as you.
-        </p>
-      ) : null}
 
       <div
         className={`ent-drawer-overlay${navOpen ? ' open' : ''}`}
