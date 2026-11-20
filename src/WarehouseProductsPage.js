@@ -696,6 +696,18 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
     const raw = stockQtyDraftById[id];
     const displayQty = Math.max(0, Math.floor(Number(raw) || 0));
     const finishedUnits = boxEntry ? finishedUnitsFromBoxCount(displayQty, upb) : displayQty;
+    const currentRow = (assemblyInventory || []).find(
+      (row) => String(row.assembly_id) === id && String(row.location_id) === String(warehouseLocationId),
+    );
+    const currentUnits = Math.max(0, Math.floor(Number(currentRow?.quantity) || 0));
+    const decreasing = !isWarehouseSetAssembly(assembly) && finishedUnits < currentUnits;
+    if (decreasing) {
+      const ok = window.confirm(
+        `Lower finished stock for “${assembly.name}” from ${currentUnits} to ${finishedUnits}? `
+        + 'Use transfers or deliveries for normal outbound stock; confirm only for corrections.',
+      );
+      if (!ok) return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -703,7 +715,9 @@ export default function WarehouseProductsPage({ embedInHub = false } = {}) {
         const result = await setWarehouseSetQuantityFromRecipe(id, warehouseLocationId, finishedUnits);
         patchAfterSetRecipeSave(id, result);
       } else {
-        await setWarehouseAssemblyProductQuantity(id, warehouseLocationId, finishedUnits);
+        await setWarehouseAssemblyProductQuantity(id, warehouseLocationId, finishedUnits, {
+          portalStockCorrection: decreasing,
+        });
         patchAssemblyInventoryQty(id, finishedUnits);
       }
       setStockEditAssemblyId('');

@@ -1159,8 +1159,8 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
     [floor2Stock, floor2AssemblyById],
   );
 
-  const floor2SearchResults = React.useMemo(() => {
-    const q = floor2Search.trim().toLowerCase();
+  const filterFloor2GroupsByQuery = React.useCallback((rawQuery) => {
+    const q = String(rawQuery || '').trim().toLowerCase();
     if (!q) return [];
     return floor2Groups.filter((g) => {
       const asm = floor2AssemblyById.get(String(g.assemblyIds?.[0] || ''));
@@ -1168,7 +1168,17 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
       const name = String(g.familyBase || '').toLowerCase();
       return name.includes(q) || sku.includes(q);
     }).slice(0, 24);
-  }, [floor2Groups, floor2Search, floor2AssemblyById]);
+  }, [floor2Groups, floor2AssemblyById]);
+
+  const floor2SearchResults = React.useMemo(
+    () => filterFloor2GroupsByQuery(floor2Search),
+    [floor2Search, filterFloor2GroupsByQuery],
+  );
+
+  const hassanAddSearchFloor2Results = React.useMemo(
+    () => (hassanOrderCreateLayout ? filterFloor2GroupsByQuery(addSearch) : []),
+    [hassanOrderCreateLayout, addSearch, filterFloor2GroupsByQuery],
+  );
 
   const hassanCustomerOptions = React.useMemo(() => {
     const list = quoteCustomers || [];
@@ -1929,10 +1939,10 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
               <div className="hassan-quote-create-product-row">
                 <input
                   className="quotes-input hassan-product-search"
-                  placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search products to add (name/description)'}
+                  placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search quote products or Floor 2 WIP (name / SKU)'}
                   value={addSearch}
                   onChange={e => setAddSearch(e.target.value)}
-                  aria-label="Search products to add"
+                  aria-label="Search quote products or Floor 2 WIP"
                   disabled={locked || productionRouteMissing}
                   style={{ opacity: productionRouteMissing ? 0.65 : 1 }}
                 />
@@ -2014,18 +2024,49 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
                       <div style={{ flex:1, display:'flex', alignItems:'center', gap:8 }}>
                         {p.image_url && <img src={p.image_url} alt="img" style={{ width:24, height:24, objectFit:'cover', borderRadius:4 }} />}
                         <span style={{ fontWeight: 600 }}>{p.name}</span>
+                        {hassanOrderCreateLayout ? (
+                          <span className="quotes-create-product-tag">Quote product</span>
+                        ) : null}
                         <span style={{ color:'#8ab' }}>{p.unit_id ? normalizeUnitAbbreviation(units.find(u => u.id === p.unit_id)?.abbreviation, units.find(u => u.id === p.unit_id)?.name) : ''}</span>
                       </div>
                       <div style={{ color:'#8ab', minWidth:80, textAlign:'right' }}>{Number(p.price||0).toFixed(2)}</div>
                       <button className={`action-button ${ENT_BTN_PRIMARY}`} disabled={locked || productionRouteMissing} onClick={() => addItemFromQuoteProduct(p)}>Add</button>
                     </div>
                   ))}
+                {hassanOrderCreateLayout && canManageProductionRouting && hassanAddSearchFloor2Results.map((g) => {
+                  const aid = String(g.assemblyIds?.[0] || '');
+                  const asm = floor2AssemblyById.get(aid);
+                  const img = readWarehouseFloor2WipImageUrl(asm) || asm?.image_url || '';
+                  const route = inferShowroomWorkshopRoute(asm);
+                  return (
+                    <div key={`f2-${aid}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                      {img ? (
+                        <img src={img} alt="" style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 4 }} />
+                      ) : null}
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontWeight: 600 }}>{g.familyBase}</span>
+                        <span className="quotes-create-product-tag">Floor 2 WIP</span>
+                        <span style={{ color: '#8ab', marginLeft: 8 }}>
+                          on hand {g.totalQty} · {route}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className={`action-button ${ENT_BTN_PRIMARY}`}
+                        disabled={locked || productionRouteMissing}
+                        onClick={() => addItemFromFloor2(g)}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  );
+                })}
                 {!((quoteProducts||[]).some(p => {
                   if (!isActiveQuoteProduct(p)) return false;
                   const s = addSearch.trim().toLowerCase();
                   return s && ((p.name||'').toLowerCase().includes(s) || (p.description||'').toLowerCase().includes(s));
-                })) && (
-                  <div style={{ color:'#8ab' }}>No matching products</div>
+                })) && !(hassanOrderCreateLayout && hassanAddSearchFloor2Results.length) && (
+                  <div style={{ color:'#8ab' }}>No matching quote products or Floor 2 WIP</div>
                 )}
               </div>
             )}

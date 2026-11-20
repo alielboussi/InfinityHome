@@ -280,12 +280,19 @@ export default function CreateScreen({ navigation, presetGroup = 'upholstery', i
   const applyCreateResult = async (pending, result) => {
     pendingSaveRef.current = null;
     await load();
-    const labelCount = result.labelCopies > 0 ? result.labelCopies : pending.qtyNum;
     const printWarning = String(result.labelPrintWarning || '').trim();
+    const suppressLabels = floor2Create
+      || result.labelsSuppressedUntilPainting === true
+      || result.labels_suppressed_until_painting === true;
+    const labelCount = suppressLabels
+      ? 0
+      : (result.labelCopies > 0 ? result.labelCopies : pending.qtyNum);
     setLabelPrintNote(printWarning);
     if (printWarning) {
       setSuccess(tUi('savedItemOnly', locale));
       setError(printWarning);
+    } else if (suppressLabels) {
+      setSuccess(tUi('savedFloor2WipNoLabels', locale));
     } else if (labelCount < 1) {
       setSuccess(tUi('savedNoLabelsQty', locale));
     } else if (isMattressCatalogProductName(pending.name)) {

@@ -254,6 +254,7 @@ function parseCreateCarpentryFloor2Response(payload) {
   const labelCopies = Number(payload?.label_copies);
   const assemblyId = String(product?.assembly_id || product?.id || '').trim();
   const qtyFallback = Math.max(0, Math.floor(Number(product?.quantity) || 0));
+  const labelsSuppressedUntilPainting = payload?.labels_suppressed_until_painting === true;
   return {
     product,
     assemblyId,
@@ -265,13 +266,18 @@ function parseCreateCarpentryFloor2Response(payload) {
         name: product.name || '',
       }
       : null,
-    labelCopies: Number.isFinite(labelCopies) ? labelCopies : qtyFallback,
+    labelCopies: labelsSuppressedUntilPainting
+      ? 0
+      : (Number.isFinite(labelCopies) ? labelCopies : qtyFallback),
     labelJobId: payload?.label_job_id || null,
     labelPrintWarning: payload?.label_print_warning || null,
     label: payload?.label || null,
     labelPreviewPngBase64: payload?.label_preview_png_base64 || '',
-    pendingLabelPrint: payload?.pending_label_print || payload?.pendingLabelPrint || null,
+    pendingLabelPrint: labelsSuppressedUntilPainting
+      ? null
+      : (payload?.pending_label_print || payload?.pendingLabelPrint || null),
     pendingPortalSetup: payload?.pending_portal_setup || payload?.pendingPortalSetup || null,
+    labelsSuppressedUntilPainting,
   };
 }
 

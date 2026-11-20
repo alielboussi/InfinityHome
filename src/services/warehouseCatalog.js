@@ -767,14 +767,16 @@ export async function setWarehouseAssemblyQuantity(assemblyId, locationId, quant
 }
 
 /**
- * Set warehouse finished product qty (increments only). For packet-BOM products,
- * sets each linked packet to qty_per_product × target units.
+ * Set warehouse finished product qty (increments only by default).
+ * Decreases are allowed only from the web Warehouse catalog after confirm
+ * (`portalStockCorrection: true` — not exposed on warehouse-mobile or workshop apps).
+ * For packet-BOM products, sets each linked packet to qty_per_product × target units.
  */
 export async function setWarehouseAssemblyProductQuantity(
   assemblyId,
   locationId,
   targetUnits,
-  { incrementOnly = true } = {},
+  { portalStockCorrection = false } = {},
 ) {
   const aid = String(assemblyId || '');
   const locId = String(locationId || '');
@@ -832,7 +834,7 @@ export async function setWarehouseAssemblyProductQuantity(
     assemblyInventoryByLoc,
     poolOpts,
   });
-  if (incrementOnly) assertWarehouseProductQtyIncrementOnly(current, target);
+  if (!portalStockCorrection) assertWarehouseProductQtyIncrementOnly(current, target);
 
   const packetUpdates = packetUpdatesForAssemblyTargetUnits(assembly, pktList, target);
   if (packetUpdates?.length) {

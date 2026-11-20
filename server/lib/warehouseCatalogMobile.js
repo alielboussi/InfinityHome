@@ -860,6 +860,7 @@ export async function savePacketForMobile(sb, body) {
   return { packet: { ...existing, ...row, id: packetId } };
 }
 
+/** Workshop / warehouse-catalog apps — finished qty increments only (decreases: web portal catalog). */
 export async function setAssemblyProductQuantityForMobile(sb, body) {
   const assemblyId = String(body.assembly_id || '');
   const locationId = String(body.warehouse_location_id || body.location_id || '');

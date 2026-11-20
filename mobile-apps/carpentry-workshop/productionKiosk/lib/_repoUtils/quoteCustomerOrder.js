@@ -46,22 +46,70 @@ function deliveryEntriesAdminOrderMeta(entries) {
   return { showroom, customer, quoteNumber, customerName };
 }
 
+export function deliverySessionQuoteId(session, entries = []) {
+  const meta = session?.metadata || {};
+  const fromSession = String(meta.quote_id || '').trim();
+  if (fromSession) return fromSession;
+  const list = Array.isArray(entries) ? entries : [];
+  for (const entry of list) {
+    const qid = String(entry?.metadata?.quote_id || '').trim();
+    if (qid) return qid;
+  }
+  return '';
+}
+
+/** Hassan quotation → production → driver (not Floor 1 catalog replenishment). */
+export function isHassanOrderDeliverySession(session, entries = []) {
+  const meta = session?.metadata || {};
+  const kind = String(meta.document_kind || '').toLowerCase();
+  if (kind === 'order_delivery') return true;
+  if (meta.showroom_order === true || meta.customer_order === true) return true;
+  if (String(meta.quote_id || meta.production_job_id || meta.quote_number || '').trim()) return true;
+  const fromEntries = deliveryEntriesAdminOrderMeta(entries);
+  return fromEntries.showroom || fromEntries.customer || Boolean(fromEntries.quoteNumber);
+}
+
+/** Same rules as Quotes board / send-to-production metadata (quote_production_routing.metadata). */
+export function orderBadgesFromQuoteRoutingMetadata(routingMeta = null) {
+  const meta = routingMeta && typeof routingMeta === 'object' ? routingMeta : {};
+  if (meta.showroom_order === true) {
+    return { showroomOrder: true, customerOrder: false };
+  }
+  const named = Boolean(String(meta.customer_name || '').trim());
+  const customerOrder = meta.customer_order === true || named;
+  return { showroomOrder: false, customerOrder };
+}
+
 /**
- * Hassan `/warehouse-deliveries` cards — session row metadata may be sparse; merge session + admin-queue lines.
+ * Hassan `/warehouse-deliveries` cards — session row metadata may be sparse; merge session + admin-queue lines
+ * and optional quote_production_routing.metadata (source of truth for Hassan customer vs showroom orders).
  * @returns {{ showroomOrder: boolean, customerOrder: boolean, quoteNumber: string, customerName: string }}
  */
-export function resolveDeliverySessionOrderBadges(session, entries = []) {
+export function resolveDeliverySessionOrderBadges(session, entries = [], quoteRoutingMeta = null) {
   const meta = session?.metadata || {};
   const fromEntries = deliveryEntriesAdminOrderMeta(entries);
-  const showroomOrder = meta.showroom_order === true || fromEntries.showroom;
-
+  const hassanOrder = isHassanOrderDeliverySession(session, entries);
+  let showroomOrder = meta.showroom_order === true || fromEntries.showroom;
   let customerOrder = false;
-  if (!showroomOrder) {
+
+  if (quoteRoutingMeta && hassanOrder) {
+    const fromRouting = orderBadgesFromQuoteRoutingMetadata(quoteRoutingMeta);
+    if (fromRouting.showroomOrder) {
+      showroomOrder = true;
+      customerOrder = false;
+    } else if (fromRouting.customerOrder) {
+      customerOrder = true;
+    } else if (!showroomOrder) {
+      customerOrder = true;
+    }
+  }
+
+  const kind = String(meta.document_kind || '').toLowerCase();
+  if (!showroomOrder && !customerOrder) {
     customerOrder = meta.customer_order === true
-      || isDeliveryCustomerOrderSession(session)
-      || fromEntries.customer;
-    if (!customerOrder) {
-      const kind = String(meta.document_kind || '').toLowerCase();
+      || (hassanOrder && isDeliveryCustomerOrderSession(session))
+      || (hassanOrder && fromEntries.customer);
+    if (!customerOrder && hassanOrder) {
       const hasOrderRef = Boolean(
         String(meta.quote_id || meta.quote_number || meta.production_job_id || '').trim()
         || fromEntries.quoteNumber
@@ -69,16 +117,33 @@ export function resolveDeliverySessionOrderBadges(session, entries = []) {
       );
       if (kind === 'order_delivery' && hasOrderRef) customerOrder = true;
       else if (
-        (meta.quote_id || meta.quote_number || meta.production_job_id)
-        && String(meta.customer_name || fromEntries.customerName || '').trim()
+        hassanOrder
+        && (meta.quote_id || meta.quote_number || meta.production_job_id)
+        && String(meta.customer_name || fromEntries.customerName || quoteRoutingMeta?.customer_name || '').trim()
       ) {
+        customerOrder = true;
+      } else if (hassanOrder && (meta.production_job_id || fromEntries.customer)) {
+        customerOrder = true;
+      } else if (hassanOrder && quoteRoutingMeta && quoteRoutingMeta.showroom_order !== true) {
         customerOrder = true;
       }
     }
   }
 
-  const quoteNumber = String(meta.quote_number || fromEntries.quoteNumber || '').trim();
-  const customerName = String(meta.customer_name || fromEntries.customerName || '').trim();
+  if (showroomOrder) customerOrder = false;
+
+  const quoteNumber = String(
+    meta.quote_number
+    || fromEntries.quoteNumber
+    || quoteRoutingMeta?.quote_number
+    || '',
+  ).trim();
+  const customerName = String(
+    meta.customer_name
+    || fromEntries.customerName
+    || quoteRoutingMeta?.customer_name
+    || '',
+  ).trim();
   return { showroomOrder, customerOrder, quoteNumber, customerName };
 }
 

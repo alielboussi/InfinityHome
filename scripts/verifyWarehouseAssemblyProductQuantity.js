@@ -1,5 +1,15 @@
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
+
+const root = path.join(__dirname, '..');
+const catalog = fs.readFileSync(path.join(root, 'src/services/warehouseCatalog.js'), 'utf8');
+const mobile = fs.readFileSync(path.join(root, 'server/lib/warehouseCatalogMobile.js'), 'utf8');
+const portalPage = fs.readFileSync(path.join(root, 'src/WarehouseProductsPage.js'), 'utf8');
+assert(catalog.includes('portalStockCorrection'), 'web catalog must gate decreases with portalStockCorrection');
+assert(!portalPage.includes('incrementOnly'), 'portal uses portalStockCorrection not raw incrementOnly');
+assert(portalPage.includes('portalStockCorrection'), 'WarehouseProductsPage must pass portalStockCorrection');
+assert(mobile.includes('assertWarehouseProductQtyIncrementOnly(current, target)'), 'mobile API must stay increment-only');
 
 const {
   assertWarehouseProductQtyIncrementOnly,

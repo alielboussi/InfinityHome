@@ -13,6 +13,8 @@ const upholsteryJobs = read('server/lib/upholsteryProductionJobs.js');
 const carpentryManufacture = read('server/lib/carpentryManufacture.js');
 const carpentryJobs = read('server/lib/carpentryProductionJobs.js');
 const paintingJobs = read('server/lib/paintingProductionJobs.js');
+const warehouseMobile = read('server/handlers/warehouse-mobile.js');
+const photoAttach = read('server/lib/warehouseProductionPhotoAttach.js');
 
 let failed = 0;
 
@@ -70,6 +72,25 @@ if (!/LABEL_PHOTO_FLOOR2/.test(paintingJobs)) {
 if (!/destination = 'delivery'[\s\S]*floor1/.test(paintingJobs)
     && !/dest === 'floor1'/.test(paintingJobs)) {
   console.error('[verifyProductionFloor1JobPolicy] painting finish must support Floor 1 storage destination');
+  failed += 1;
+}
+
+const floor2CreateBlock = warehouseMobile.split('async function opCatalogFloor2CreateProduct')[1]
+  ?.split('async function opCatalogFloor2CreateSet')[0] || '';
+if (!/labels_suppressed_until_painting/.test(floor2CreateBlock)) {
+  console.error('[verifyProductionFloor1JobPolicy] carpentry Floor 2 create must flag labels suppressed until painting');
+  failed += 1;
+}
+if (!/Labels print only after Painting[\s\S]*labelCopies = 0/.test(floor2CreateBlock)) {
+  console.error('[verifyProductionFloor1JobPolicy] carpentry Floor 2 create must zero label copies until painting');
+  failed += 1;
+}
+if (/Labels print only after Painting[\s\S]{0,120}enqueueWarehouseProductionLabelJob/.test(floor2CreateBlock)) {
+  console.error('[verifyProductionFloor1JobPolicy] carpentry Floor 2 create must not enqueue Zebra labels');
+  failed += 1;
+}
+if (!/clientSource === 'carpentry_workshop_app'[\s\S]*return \{ label_job_id: null/.test(photoAttach)) {
+  console.error('[verifyProductionFloor1JobPolicy] deferred carpentry photo attach must not print labels');
   failed += 1;
 }
 

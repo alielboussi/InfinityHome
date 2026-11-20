@@ -205,9 +205,13 @@ export function QuoteProductionWorkshopLineRows({
 
   const submitReady = async (line, qty) => {
     try {
-      await onMarkReady?.(line, qty);
+      const markResult = await onMarkReady?.(line, qty);
+      const readyQty = Math.max(
+        1,
+        Math.floor(Number(markResult?.ready_qty ?? qty) || 0),
+      );
       deferAfterUiIdle(() => {
-        runHandoffPrompt(line, qty);
+        runHandoffPrompt(line, readyQty);
       });
     } catch (err) {
       Alert.alert(tUi('quoteOrderFailed', locale), err?.message || String(err));
@@ -247,7 +251,7 @@ export function QuoteProductionWorkshopLineRows({
                   style={styles.checkBox}
                   onPress={() => {
                     setQtyModal(row);
-                    setQtyDraft(String(remaining));
+                    setQtyDraft('');
                   }}
                 />
               ) : (
@@ -295,7 +299,11 @@ export function QuoteProductionWorkshopLineRows({
               <Pressable
                 style={styles.modalBtn}
                 onPress={() => {
-                  const n = Math.max(1, Math.floor(Number(qtyDraft) || 0));
+                  const n = Math.floor(Number(qtyDraft) || 0);
+                  if (!Number.isFinite(n) || n < 1) {
+                    Alert.alert(tUi('quoteLineReadyQtyTitle', locale), tUi('needQty', locale));
+                    return;
+                  }
                   setQtyModal(null);
                   setConfirmQty({ line: qtyModal, qty: n });
                 }}

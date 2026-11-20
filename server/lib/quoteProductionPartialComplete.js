@@ -7,6 +7,10 @@ import {
 } from '../../src/utils/quoteProductionLineProgress.js';
 import { buildProductionLineSummaryRow } from '../../src/utils/quoteProductionItemFields.js';
 import {
+  filterLinesForProductionLineSet,
+  normalizeProductionLineSet,
+} from '../../src/utils/quoteProductionLineSet.js';
+import {
   DELIVERY_ADMIN_KIND,
   DELIVERY_ADMIN_STAGE,
 } from '../../src/utils/warehouseDeliveryAdminQueue.js';
@@ -30,17 +34,9 @@ function findQuoteLine(items, itemId) {
   return (items || []).find((it) => String(it.id) === id) || null;
 }
 
-async function findActiveQuoteRun(sb, quoteId) {
-  const { data, error } = await sb
-    .from(RUNS)
-    .select('*')
-    .eq('quote_id', String(quoteId))
-    .eq('source', 'quote_order')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(error.message || 'Failed to load production run');
-  return data || null;
+async function findActiveQuoteRun(sb, quoteId, productionLineSet = null) {
+  const { findActiveQuoteRun: findRun } = await import('./quoteProductionRouting.js');
+  return findRun(sb, quoteId, productionLineSet);
 }
 
 /** Mark qty ready on one line; does not end order timer or routing.completed_at. */
@@ -50,6 +46,7 @@ export async function markQuoteLinePartialReady(sb, {
   itemId,
   readyQty,
   userId = null,
+  productionLineSet = null,
 } = {}) {
   const qid = String(quoteId || '').trim();
   const normalizedRoute = String(route || '').trim().toLowerCase();
@@ -60,7 +57,7 @@ export async function markQuoteLinePartialReady(sb, {
   if (routing.route !== normalizedRoute) throw new Error('Quote route mismatch');
   if (routing.completed_at) throw new Error('Quote production already completed');
 
-  const run = await findActiveQuoteRun(sb, qid);
+  const run = await findActiveQuoteRun(sb, qid, productionLineSet);
   if (!run || run.completed_at) throw new Error('No active production run for this quote');
 
   const items = await loadQuoteItems(sb, qid);
@@ -70,10 +67,16 @@ export async function markQuoteLinePartialReady(sb, {
   const meta = routing.metadata && typeof routing.metadata === 'object' ? { ...routing.metadata } : {};
   const summary = buildProductionLineSummaryRow(raw, meta);
   const remaining = lineRemainingQty(summary, meta);
-  const add = Math.max(1, Math.floor(Number(readyQty) || 0));
+  let add = Math.max(1, Math.floor(Number(readyQty) || 0));
   if (add > remaining) {
     throw new Error(`Only ${remaining} remaining on this line.`);
   }
+
+  const requestedReadyQty = add;
+  const { deductFloor2ForQuoteLineReady } = await import('./quoteProductionFloor2LineDeduct.js');
+  const floor2 = await deductFloor2ForQuoteLineReady(sb, summary, add);
+  const floor2QtyCapped = floor2.deducted > 0 && floor2.ready_qty < requestedReadyQty;
+  if (floor2.ready_qty < add) add = floor2.ready_qty;
 
   if (!meta.line_progress?.[String(itemId)]?.ordered_qty) {
     const seeded = meta.line_progress && typeof meta.line_progress === 'object'
@@ -102,6 +105,9 @@ export async function markQuoteLinePartialReady(sb, {
     quote_id: qid,
     item_id: String(itemId),
     ready_qty: add,
+    requested_ready_qty: requestedReadyQty,
+    floor2_qty_capped: floor2QtyCapped,
+    floor2_deducted: Math.max(0, Number(floor2.deducted) || 0),
     lines,
     line_progress: progressPatch.line_progress,
   };
@@ -328,7 +334,7 @@ export async function handoffQuoteLinePartialToPainting(sb, {
   });
 }
 
-export async function assertQuoteReadyForFullComplete(sb, quoteId) {
+export async function assertQuoteReadyForFullComplete(sb, quoteId, { productionLineSet = null } = {}) {
   const routing = await getQuoteProductionRouting(sb, quoteId);
   const meta = routing?.metadata || {};
   const progress = meta.line_progress && typeof meta.line_progress === 'object' ? meta.line_progress : {};
@@ -336,7 +342,10 @@ export async function assertQuoteReadyForFullComplete(sb, quoteId) {
     return;
   }
   const items = await loadQuoteItems(sb, quoteId);
-  const lines = items.map((it) => buildProductionLineSummaryRow(it, meta));
+  let lines = items.map((it) => buildProductionLineSummaryRow(it, meta));
+  const lineSet = normalizeProductionLineSet(productionLineSet);
+  if (lineSet) lines = filterLinesForProductionLineSet(lines, lineSet);
+  if (!lines.length) return;
   if (!allQuoteLinesFullyCompleted(lines, meta)) {
     const pending = lines
       .filter((l) => lineRemainingQty(l, meta) > 0)

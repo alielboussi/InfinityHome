@@ -30,6 +30,14 @@ assert(read('src/Quotationer.js').includes('quotation-customer-order-badge'), 'Q
 assert(read('src/utils/hassanQuoteUnits.js').includes("label: 'm²'"), 'Hassan quote UOM catalog must include m² label');
 assert(read('src/utils/hassanQuoteUnits.js').includes("label: 'Pc(s)'"), 'Hassan quote UOM catalog must include Pc(s) label');
 assert(!read('src/Quotationer.js').includes('Manage Units'), 'Quote Products must not expose unit admin UI');
+assert(
+  read('src/Quotationer.js').includes('hassanAddSearchFloor2Results'),
+  'Hassan customer create must search Floor 2 WIP alongside quote products',
+);
+assert(
+  read('src/Quotationer.js').includes('addItemFromFloor2(g)'),
+  'Hassan customer create must add Floor 2 lines from unified search',
+);
 assert(read('src/Quotationer.js').includes('filterHassanQuoteUnits'), 'Quotationer must filter units to hardcoded Hassan UOMs');
 assert(read('src/Quotationer.js').includes('loadHassanQuoteUnitCatalog'), 'Quotationer must ensure m² and Pc(s) units exist');
 assert(read('src/utils/hassanQuoteUnits.js').includes('hassanQuoteUnitMatchesSpec'), 'Hassan quote units must fuzzy-match MetersSquared');

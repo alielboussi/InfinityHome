@@ -19,6 +19,7 @@ import { theme } from '../shared/theme';
 import {
   QuoteProductionCardExtras,
   QuoteProductionFloor2ShortfallBanner,
+  QuoteProductionLineSetBadge,
   QuoteProductionListThumb,
   QuoteProductionOrderBadges,
   productionQuoteListTitle,
@@ -122,7 +123,7 @@ export default function UpholsteryQuotesScreen({
       <FlatList
         style={styles.list}
         data={openQuotes}
-        keyExtractor={(item) => String(item.quote_id)}
+        keyExtractor={(item) => String(item.production_card_id || item.quote_id)}
         refreshing={loading}
         onRefresh={load}
         contentContainerStyle={openQuotes.length === 0 ? styles.listEmpty : undefined}
@@ -133,6 +134,7 @@ export default function UpholsteryQuotesScreen({
           >
             <QuoteProductionListThumb quote={item} textAlign={textAlign} />
             <QuoteProductionOrderBadges quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
+            <QuoteProductionLineSetBadge quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
             <QuoteProductionFloor2ShortfallBanner quote={item} textAlign={textAlign} tUi={tUi} locale={locale} />
             <Text style={styles.quoteNum}>{item.quote_number || item.quote_id}</Text>
             <Text style={styles.name}>{productionQuoteListTitle(item, tUi, locale)}</Text>

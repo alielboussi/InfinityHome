@@ -406,6 +406,20 @@ export function QuoteProductionDrawingSection({ drawingUrl, textAlign, tUi, loca
   );
 }
 
+export function QuoteProductionLineSetBadge({ quote, textAlign, tUi, locale }) {
+  const key = String(quote?.production_line_set || '').trim();
+  if (!key) return null;
+  const labelKey = key === 'floor2_wip'
+    ? 'quoteCardFloor2Wip'
+    : (key === 'quote_catalog' ? 'quoteCardQuoteProducts' : '');
+  if (!labelKey) return null;
+  return (
+    <Text style={[styles.lineSetBadge, { textAlign }]}>
+      {tUi(labelKey, locale)}
+    </Text>
+  );
+}
+
 export function QuoteProductionFloor2ShortfallBanner({ quote, textAlign, tUi, locale }) {
   if (quote?.accepted_at || quote?.floor2_ready !== false) return null;
   if (!quote?.floor2_wip_required) return null;
@@ -535,6 +549,13 @@ const styles = StyleSheet.create({
   },
   badgeCustomer: { backgroundColor: '#dbeafe', color: '#1e40af' },
   badgeShowroom: { backgroundColor: '#e0e7ff', color: '#3730a3' },
+  lineSetBadge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f766e',
+    marginTop: 4,
+    marginBottom: 2,
+  },
   floor2ShortfallBanner: {
     marginTop: 8,
     marginBottom: 4,

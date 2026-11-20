@@ -527,6 +527,9 @@ export async function saveProductionJobMaterials(sb, {
         throw new Error('Painting jobs can only deduct materials from carpentry storerooms, not Warehouse Floor 2.');
       }
       const isFloor2Line = floor2LocationId && lineLoc === floor2LocationId;
+      if (kind === 'quote' && isFloor2Line) {
+        throw new Error('Floor 2 WIP cannot be deducted as job materials. Start production on the Floor 2 card and mark line qty ready.');
+      }
       if (isFloor2Line) {
         const have = await loadAssemblyInventoryQty(sb, aid, floor2LocationId);
         if (have + 0.000001 < delta) {

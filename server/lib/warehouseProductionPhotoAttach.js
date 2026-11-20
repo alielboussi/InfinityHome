@@ -194,6 +194,9 @@ async function runPendingLabelPrint(sb, body, user, assembly) {
   const labelCopies = Math.max(0, Math.floor(Number(pending.qty) || 0));
   const clientSource = String(pending.client_source || body.client_source || '').trim()
     || 'warehouse_production_app';
+  if (clientSource === 'carpentry_workshop_app') {
+    return { label_job_id: null, label_print_warning: null };
+  }
   const printedAt = new Date();
   const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Production kiosk';
 

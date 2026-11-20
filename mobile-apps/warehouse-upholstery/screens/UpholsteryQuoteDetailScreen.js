@@ -31,8 +31,10 @@ import ProductionJobMaterialsModal from '../components/ProductionJobMaterialsMod
 import ConfirmTypeOkModal from '../shared/components/ConfirmTypeOkModal';
 import { theme } from '../shared/theme';
 import { isFloor2ManufactureBlockError } from '../shared/floor2QuoteShortfall';
+import { alertQuoteFloor2QtyCappedIfNeeded } from '../shared/quoteFloor2QtyCapAlert';
 import {
   QuoteProductionFloor2ShortfallBanner,
+  QuoteProductionLineSetBadge,
   QuoteProductionOrderBadges,
   productionQuoteDetailCustomerLabel,
   useProductionQuoteArabicMap,
@@ -56,6 +58,8 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
   const [quote, setQuote] = useState(initialQuote);
   const [loadingOrder, setLoadingOrder] = useState(true);
   const quoteId = String(quote.quote_id || initialQuote.quote_id || '');
+  const productionLineSet = quote.production_line_set || initialQuote.production_line_set || null;
+  const cardListId = String(quote.production_card_id || initialQuote.production_card_id || quoteId);
   const startedAt = quote.run_started_at || quote.accepted_at;
   const [accepted, setAccepted] = useState(Boolean(quote.accepted_at));
   const [completed, setCompleted] = useState(Boolean(quote.completed_at));
@@ -74,7 +78,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     try {
       const list = await fetchUpholsteryProductionQuotes();
       const found = (Array.isArray(list) ? list : []).find(
-        (q) => String(q.quote_id) === quoteId,
+        (q) => String(q.production_card_id || q.quote_id) === cardListId,
       );
       if (found) {
         setQuote(found);
@@ -86,7 +90,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     } finally {
       setLoadingOrder(false);
     }
-  }, [quoteId]);
+  }, [quoteId, cardListId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -154,7 +158,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     }));
     setBusy(true);
     try {
-      await acceptUpholsteryQuote(quoteId);
+      await acceptUpholsteryQuote(quoteId, { productionLineSet });
     } catch (e) {
       setAccepted(Boolean(snapshot.accepted_at));
       setQuote(snapshot);
@@ -187,7 +191,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     }));
     setBusy(true);
     try {
-      const result = await pauseUpholsteryQuote(quoteId);
+      const result = await pauseUpholsteryQuote(quoteId, { productionLineSet });
       const acc = Math.max(0, Number(result?.accumulated_ms) || accumulatedMs);
       setQuote((prev) => ({
         ...prev,
@@ -220,7 +224,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     setTick(Date.now());
     setBusy(true);
     try {
-      const result = await resumeUpholsteryQuote(quoteId);
+      const result = await resumeUpholsteryQuote(quoteId, { productionLineSet });
       const acc = Math.max(0, Number(result?.accumulated_ms) || accumulatedMs);
       setQuote((prev) => ({
         ...prev,
@@ -252,7 +256,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
     setBusy(true);
     const finishNotice = tUi('quoteOrderCompleteDone', locale);
     try {
-      await completeUpholsteryQuote(quoteId, { destination });
+      await completeUpholsteryQuote(quoteId, { destination, productionLineSet });
       setBusy(false);
       navigation.navigate({
         name: 'UpholsteryQuotes',
@@ -294,6 +298,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       ) : null}
       <Text style={[styles.quoteNum, { textAlign }]}>{quote.quote_number || quoteId}</Text>
       <QuoteProductionOrderBadges quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
+      <QuoteProductionLineSetBadge quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
       <QuoteProductionFloor2ShortfallBanner quote={quote} textAlign={textAlign} tUi={tUi} locale={locale} />
       <Text style={[styles.name, { textAlign }]}>{customerName}</Text>
       <Text style={[styles.phone, { textAlign }]}>{quote.customer_phone || '—'}</Text>
@@ -347,7 +352,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
           </Text>
         </Pressable>
       ) : null}
-      {!completed && quote.sent_to_production_at ? (
+      {!completed && quote.sent_to_production_at && productionLineSet !== 'floor2_wip' ? (
         <Text style={[styles.materialsHint, { textAlign }]}>
           {tUi('quoteOrderMaterialsFloor2Hint', locale)}
         </Text>
@@ -363,8 +368,12 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
         orderOpen={accepted && !completed}
         allowFloor1Handoff
         onMarkReady={async (line, qty) => {
-          await markUpholsteryQuoteLineReady(quoteId, line.id, qty);
-          const add = Math.max(1, Math.floor(Number(qty) || 0));
+          const markResult = await markUpholsteryQuoteLineReady(quoteId, line.id, qty, { productionLineSet });
+          alertQuoteFloor2QtyCappedIfNeeded(markResult, { tUi, locale });
+          const add = Math.max(
+            1,
+            Math.floor(Number(markResult?.ready_qty ?? qty) || 0),
+          );
           setQuote((prev) => {
             const nextLines = (Array.isArray(prev.lines) ? prev.lines : []).map((row) => {
               if (String(row.id) !== String(line.id)) return row;
@@ -382,6 +391,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
             return { ...prev, lines: nextLines };
           });
           void reloadQuote({ quiet: true });
+          return markResult;
         }}
         onHandoffWillStart={freezeTimerIfOrderComplete}
         onHandoff={async (line, target, qty) => {
@@ -457,6 +467,7 @@ export default function UpholsteryQuoteDetailScreen({ route, navigation }) {
       jobId={quoteId}
       productionRoute="upholstery"
       initialLines={quote.manual_material_lines || []}
+      allowFloor2WipDeduction={false}
       onClose={() => setMaterialsOpen(false)}
       onSaved={async () => {
         setMaterialsOpen(false);

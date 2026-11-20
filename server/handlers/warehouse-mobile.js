@@ -879,42 +879,49 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
 
   const clientSource = carpentryWorkshop ? 'carpentry_workshop_app' : 'warehouse_floor_2';
   const labelSku = normalizeWarehousePacketScan(familySku) || familySku;
-  const labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
-  const deferLabels = Boolean(carpentryWorkshop && !imageBase64 && labelCopies > 0);
-  const printedAt = new Date();
-  const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Carpentry workshop';
+  let labelCopies = Math.max(0, Math.floor(Number(initialQty) || 0));
   let labelJobId = null;
   let labelPrintWarning = null;
-  if (carpentryWorkshop && labelCopies > 0 && !deferLabels) {
-    try {
-      labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+  let deferLabels = false;
+  let preview = { label: null, label_preview_png_base64: null };
+
+  if (carpentryWorkshop) {
+    // Labels print only after Painting finishes (Floor 1 or delivery).
+    labelCopies = 0;
+  } else {
+    deferLabels = Boolean(deferProductPhoto && labelCopies > 0);
+    const printedAt = new Date();
+    const labelPrintedBy = (await productionWhatsappProducerName(user)) || 'Production kiosk';
+    if (labelCopies > 0 && !deferLabels) {
+      try {
+        labelJobId = await enqueueWarehouseProductionLabelJob(sb, {
+          name: finalName,
+          sku: labelSku,
+          qty: labelCopies,
+          printedBy: labelPrintedBy,
+          source: clientSource,
+          printedAt,
+          photoFloor: LABEL_PHOTO_FLOOR2,
+        });
+        if (!labelJobId) {
+          labelPrintWarning = 'Item saved but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
+        }
+      } catch (printErr) {
+        const { formatZebraPrintError } = await import('../lib/formatZebraPrintError.js');
+        labelPrintWarning = formatZebraPrintError(printErr);
+        console.warn('[warehouse-mobile] floor2 catalog label print failed:', printErr?.message || printErr);
+      }
+    }
+    preview = labelCopies > 0
+      ? await buildProductionLabelPreviewPayload({
         name: finalName,
         sku: labelSku,
-        qty: labelCopies,
-        printedBy: labelPrintedBy,
-        source: clientSource,
         printedAt,
-        photoFloor: clientSource === 'warehouse_floor_2' ? LABEL_PHOTO_FLOOR2 : undefined,
-      });
-      if (!labelJobId) {
-        labelPrintWarning = 'Item saved but labels were not sent to the printer (Zebra Weblink is not configured on the server).';
-      }
-    } catch (printErr) {
-      const { formatZebraPrintError } = await import('../lib/formatZebraPrintError.js');
-      labelPrintWarning = formatZebraPrintError(printErr);
-      console.warn('[warehouse-mobile] carpentry floor2 label print failed:', printErr?.message || printErr);
-    }
+        skipPng: deferLabels,
+        photoFloor: LABEL_PHOTO_FLOOR2,
+      })
+      : { label: null, label_preview_png_base64: null };
   }
-
-  const preview = carpentryWorkshop && labelCopies > 0
-    ? await buildProductionLabelPreviewPayload({
-      name: finalName,
-      sku: labelSku,
-      printedAt,
-      skipPng: deferLabels,
-      photoFloor: LABEL_PHOTO_FLOOR2,
-    })
-    : { label: null, label_preview_png_base64: null };
 
   return {
     product: {
@@ -939,6 +946,15 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
       : null,
   ...(carpentryWorkshop
     ? {
+      label_copies: 0,
+      label_job_id: null,
+      label_print_warning: null,
+      pending_label_print: null,
+      labels_suppressed_until_painting: true,
+      label: null,
+      label_preview_png_base64: null,
+    }
+    : {
       label_copies: labelCopies,
       label_job_id: labelJobId,
       label_print_warning: labelPrintWarning,
@@ -952,8 +968,7 @@ async function opCatalogFloor2CreateProduct(body, user, { carpentryWorkshop = fa
         : null,
       label: preview.label,
       label_preview_png_base64: preview.label_preview_png_base64,
-    }
-    : {}),
+    }),
   };
 }
 
@@ -1924,6 +1939,7 @@ async function opProductionQuoteAccept(body, user) {
     quoteId,
     route,
     userId: user?.id || user?.uid,
+    productionLineSet: body.production_line_set ?? body.productionLineSet ?? null,
   });
 }
 
@@ -1969,6 +1985,7 @@ async function opProductionQuoteComplete(body, user) {
     userId: user?.id || user?.uid,
     deferDeliveryQueue,
     destination,
+    productionLineSet: body.production_line_set ?? body.productionLineSet ?? null,
   });
   if (sendToPainting && String(route || '').toLowerCase() === 'carpentry') {
     const productQty = Math.max(1, Math.floor(Number(body.product_qty ?? body.productQty ?? body.quantity) || 1));
@@ -1994,6 +2011,7 @@ async function opProductionQuotePause(body, user) {
     quoteId,
     route,
     userId: user?.id || user?.uid,
+    productionLineSet: body.production_line_set ?? body.productionLineSet ?? null,
   });
 }
 
@@ -2007,6 +2025,7 @@ async function opProductionQuoteResume(body, user) {
     quoteId,
     route,
     userId: user?.id || user?.uid,
+    productionLineSet: body.production_line_set ?? body.productionLineSet ?? null,
   });
 }
 
@@ -2086,6 +2105,7 @@ async function opProductionQuoteLineReady(body, user) {
     itemId,
     readyQty,
     userId: user?.id || user?.uid,
+    productionLineSet: body.production_line_set ?? body.productionLineSet ?? null,
   });
 }
 

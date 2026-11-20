@@ -11,6 +11,14 @@ import {
 } from '../../src/utils/warehouseScanResolver.js';
 import { productionScanResolveCandidates } from '../../src/utils/productionLabelQrScan.js';
 import { buildProductionLineSummaryRow } from '../../src/utils/quoteProductionItemFields.js';
+import {
+  QUOTE_LINE_SET_CATALOG,
+  QUOTE_LINE_SET_FLOOR2,
+  customerQuoteNeedsSplitCards,
+  filterLinesForProductionLineSet,
+  normalizeProductionLineSet,
+  productionCardListKey,
+} from '../../src/utils/quoteProductionLineSet.js';
 
 const ROUTING = 'quote_production_routing';
 const RUNS = 'carpentry_production_runs';
@@ -318,62 +326,113 @@ export async function listProductionQuotesForRoute(sb, route, { limit = 100 } = 
   const { data: runs } = quoteIds.length
     ? await sb.from(RUNS).select('*').in('quote_id', quoteIds).eq('source', 'quote_order')
     : { data: [] };
-  const runByQuote = new Map((runs || []).map((r) => [String(r.quote_id), r]));
+  const runsByQuoteId = new Map();
+  for (const r of runs || []) {
+    const qid = String(r.quote_id);
+    if (!runsByQuoteId.has(qid)) runsByQuoteId.set(qid, []);
+    runsByQuoteId.get(qid).push(r);
+  }
 
   const { computeFloor2ShortfallForQuoteLines } = await import('./showroomQuoteOrder.js');
   const rows = [];
+  const pickRunForLineSet = (quoteRuns, lineSet) => {
+    const list = Array.isArray(quoteRuns) ? quoteRuns : [];
+  const active = list.filter((row) => !row.completed_at);
+    if (!lineSet) return active[0] || list[0] || null;
+    const match = active.find((row) => runMatchesProductionLineSet(row, lineSet));
+    return match || null;
+  };
+
+  const segmentCompletedAt = (cardMeta, lineSet) => {
+    const cards = cardMeta?.segment_cards && typeof cardMeta.segment_cards === 'object'
+      ? cardMeta.segment_cards
+      : {};
+    const row = cards[lineSet];
+    return row?.completed_at || null;
+  };
+
+  const pushListRow = (base) => {
+    rows.push(base);
+  };
+
   for (const r of sent) {
     const qid = String(r.quote_id);
     const q = quoteById.get(qid);
-    const run = runByQuote.get(qid) || null;
-    const timerFields = quoteRunListFields(run);
     const meta = r.metadata && typeof r.metadata === 'object' ? r.metadata : {};
     const rawItems = itemsByQuoteId.get(qid) || [];
-    const floor2Gate = await computeFloor2ShortfallForQuoteLines(sb, rawItems);
-    rows.push({
-      quote_id: r.quote_id,
-      route: r.route,
-      quote_number: q?.quote_number || meta.quote_number || qid,
-      customer_name: meta.customer_name || '',
-      customer_phone: meta.customer_phone || '',
-      customer_order: meta.customer_order === true,
-      showroom_order: meta.showroom_order === true,
-      total: q?.total ?? null,
-      currency: q?.currency ?? null,
-      sent_to_production_at: r.sent_to_production_at,
-      sent_to_production: Boolean(r.sent_to_production_at),
-      accepted_at: r.accepted_at,
-      completed_at: r.completed_at,
-      run_id: run?.id || null,
-      run_started_at: run?.started_at || null,
-      run_completed_at: run?.completed_at || null,
-      ...timerFields,
-      lines: rawItems.length ? rawItems : (meta.lines || []),
-      floor2_wip_required: floor2Gate.floor2_wip_required,
-      floor2_ready: floor2Gate.floor2_ready,
-      floor2_shortfalls: floor2Gate.floor2_shortfalls,
-      drawing_url: meta.drawing_url || null,
-      manual_material_lines: Array.isArray(meta.manual_material_lines)
-        ? meta.manual_material_lines
-        : [],
-      quotation_missing: !q,
-      last_workshop_notify_at: meta.last_workshop_notify_at || r.sent_to_production_at,
-    });
+    const quoteRuns = runsByQuoteId.get(qid) || [];
+    const split = meta.customer_order === true && customerQuoteNeedsSplitCards(rawItems);
+    const sets = split ? [QUOTE_LINE_SET_FLOOR2, QUOTE_LINE_SET_CATALOG] : [null];
+
+    for (const lineSet of sets) {
+      const cardLines = lineSet ? filterLinesForProductionLineSet(rawItems, lineSet) : rawItems;
+      const run = pickRunForLineSet(quoteRuns, lineSet);
+      const timerFields = quoteRunListFields(run);
+      const floor2Gate = lineSet === QUOTE_LINE_SET_CATALOG
+        ? { floor2_wip_required: false, floor2_ready: true, floor2_shortfalls: [] }
+        : await computeFloor2ShortfallForQuoteLines(sb, cardLines);
+      const segmentDone = lineSet ? segmentCompletedAt(meta, lineSet) : null;
+      const completedAt = segmentDone || (!split && r.completed_at) || null;
+      const acceptedAt = run?.started_at || (!split ? r.accepted_at : null) || null;
+      pushListRow({
+        quote_id: r.quote_id,
+        production_line_set: lineSet || null,
+        production_card_id: productionCardListKey(qid, lineSet || ''),
+        route: r.route,
+        quote_number: q?.quote_number || meta.quote_number || qid,
+        customer_name: meta.customer_name || '',
+        customer_phone: meta.customer_phone || '',
+        customer_order: meta.customer_order === true,
+        showroom_order: meta.showroom_order === true,
+        split_production_card: Boolean(lineSet),
+        total: q?.total ?? null,
+        currency: q?.currency ?? null,
+        sent_to_production_at: r.sent_to_production_at,
+        sent_to_production: Boolean(r.sent_to_production_at),
+        accepted_at: acceptedAt,
+        completed_at: completedAt,
+        run_id: run?.id || null,
+        run_started_at: run?.started_at || null,
+        run_completed_at: run?.completed_at || null,
+        ...timerFields,
+        lines: cardLines.length ? cardLines : (lineSet ? [] : (meta.lines || [])),
+        floor2_wip_required: floor2Gate.floor2_wip_required,
+        floor2_ready: floor2Gate.floor2_ready,
+        floor2_shortfalls: floor2Gate.floor2_shortfalls,
+        drawing_url: meta.drawing_url || null,
+        manual_material_lines: Array.isArray(meta.manual_material_lines)
+          ? meta.manual_material_lines
+          : [],
+        quotation_missing: !q,
+        last_workshop_notify_at: meta.last_workshop_notify_at || r.sent_to_production_at,
+      });
+    }
   }
   return { rows };
 }
 
-async function findActiveQuoteRun(sb, quoteId) {
+function runMatchesProductionLineSet(run, lineSet) {
+  const normalized = normalizeProductionLineSet(lineSet);
+  if (!normalized) return true;
+  const meta = quoteRunMeta(run);
+  const onRun = normalizeProductionLineSet(meta.production_line_set);
+  if (!onRun) return normalized === QUOTE_LINE_SET_CATALOG;
+  return onRun === normalized;
+}
+
+export async function findActiveQuoteRun(sb, quoteId, productionLineSet = null) {
+  const lineSet = normalizeProductionLineSet(productionLineSet);
   const { data, error } = await sb
     .from(RUNS)
     .select('*')
     .eq('quote_id', String(quoteId))
     .eq('source', 'quote_order')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .is('completed_at', null)
+    .order('created_at', { ascending: false });
   if (error) throw new Error(error.message || 'Failed to load production run');
-  return data || null;
+  const runs = data || [];
+  if (!lineSet) return runs[0] || null;
+  return runs.find((row) => runMatchesProductionLineSet(row, lineSet)) || null;
 }
 
 function quoteRunMeta(run) {
@@ -409,30 +468,54 @@ function quoteRunListFields(run) {
   };
 }
 
-export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId }) {
+export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId, productionLineSet = null } = {}) {
   const normalized = normalizeProductionRoute(route);
   const qid = String(quoteId || '').trim();
+  const lineSet = normalizeProductionLineSet(productionLineSet);
   if (!qid || !normalized) throw new Error('quote_id and route required');
 
-  const { routing } = await loadQuoteBundle(sb, qid);
+  const { routing, items } = await loadQuoteBundle(sb, qid);
   if (!routing?.sent_to_production_at) throw new Error('Quote has not been sent to production yet');
   if (routing.route !== normalized) throw new Error('Quote route mismatch');
-  if (routing.completed_at) throw new Error('Quote production already completed');
 
-  const { items } = await loadQuoteBundle(sb, qid);
-  const { assertFloor2StockForQuoteItems } = await import('./showroomQuoteOrder.js');
-  await assertFloor2StockForQuoteItems(sb, items);
+  const meta = routing.metadata && typeof routing.metadata === 'object' ? routing.metadata : {};
+  const summaryLines = (items || []).map((it) => buildProductionLineSummaryRow(it, meta));
+  const split = meta.customer_order === true && customerQuoteNeedsSplitCards(summaryLines);
+  const scopedLines = lineSet ? filterLinesForProductionLineSet(summaryLines, lineSet) : summaryLines;
+  if (lineSet && !scopedLines.length) throw new Error('This production card has no lines.');
 
-  const existingRun = await findActiveQuoteRun(sb, qid);
+  if (split && lineSet) {
+    const done = meta.segment_cards?.[lineSet]?.completed_at;
+    if (done) throw new Error('This production card is already completed.');
+  } else if (routing.completed_at) {
+    throw new Error('Quote production already completed');
+  }
+
+  const isFloor2Card = lineSet === QUOTE_LINE_SET_FLOOR2 || (
+    !split && scopedLines.every((l) => {
+      const m = l?.metadata && typeof l.metadata === 'object' ? l.metadata : {};
+      return m.floor2_wip_line || l.floor2_wip_line || m.floor2_assembly_id || l.floor2_assembly_id;
+    })
+  );
+
+  if (isFloor2Card) {
+    const { assertFloor2CardCanStartTimer } = await import('./quoteProductionFloor2LineDeduct.js');
+    await assertFloor2CardCanStartTimer(sb, scopedLines);
+  } else if (!split) {
+    const { assertFloor2StockForQuoteItems } = await import('./showroomQuoteOrder.js');
+    await assertFloor2StockForQuoteItems(sb, items);
+  }
+
+  const existingRun = await findActiveQuoteRun(sb, qid, lineSet);
   if (existingRun && !existingRun.completed_at) {
-    if (!routing.accepted_at) {
+    if (!split && !routing.accepted_at) {
       await sb.from(ROUTING).update({ accepted_at: existingRun.started_at || new Date().toISOString() }).eq('quote_id', qid);
     }
-    return { run_id: existingRun.id, already_active: true };
+    return { run_id: existingRun.id, already_active: true, production_line_set: lineSet || null };
   }
 
   const primaryAssemblyId = routing.metadata?.primary_assembly_id
-    || await resolvePrimaryAssemblyId(sb, (await loadQuoteBundle(sb, qid)).items);
+    || await resolvePrimaryAssemblyId(sb, items);
   const now = new Date().toISOString();
   const runId = newUuid();
   const { error: runErr } = await sb.from(RUNS).insert({
@@ -446,6 +529,7 @@ export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId })
     accepted_by: userId || null,
     metadata: {
       route: normalized,
+      production_line_set: lineSet || null,
       channel: normalized === 'carpentry'
         ? 'carpentry_workshop_app'
         : (normalized === 'aluminum' ? 'aluminum_workshop' : 'warehouse_production_app'),
@@ -454,18 +538,24 @@ export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId })
   });
   if (runErr) throw new Error(runErr.message || 'Failed to start production run');
 
-  const { error: routeErr } = await sb.from(ROUTING).update({ accepted_at: now }).eq('quote_id', qid);
+  const routePatch = { updated_at: now };
+  if (!split) {
+    routePatch.accepted_at = now;
+  } else if (!routing.accepted_at) {
+    routePatch.accepted_at = now;
+  }
+  const { error: routeErr } = await sb.from(ROUTING).update(routePatch).eq('quote_id', qid);
   if (routeErr) throw new Error(routeErr.message || 'Failed to update routing');
 
-  return { run_id: runId, started_at: now };
+  return { run_id: runId, started_at: now, production_line_set: lineSet || null };
 }
 
-export async function pauseQuoteProductionOrder(sb, { quoteId, route, userId }) {
+export async function pauseQuoteProductionOrder(sb, { quoteId, route, userId, productionLineSet = null } = {}) {
   void userId;
   void route;
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('quote_id required');
-  const run = await findActiveQuoteRun(sb, qid);
+  const run = await findActiveQuoteRun(sb, qid, productionLineSet);
   if (!run || run.completed_at) throw new Error('No active production run for this quote');
   const meta = { ...quoteRunMeta(run) };
   if (String(meta.timer_status || '').toLowerCase() === 'paused') {
@@ -485,12 +575,12 @@ export async function pauseQuoteProductionOrder(sb, { quoteId, route, userId }) 
   return { run_id: run.id, paused_at: pausedAt, accumulated_ms: accumulated };
 }
 
-export async function resumeQuoteProductionOrder(sb, { quoteId, route, userId }) {
+export async function resumeQuoteProductionOrder(sb, { quoteId, route, userId, productionLineSet = null } = {}) {
   void userId;
   void route;
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('quote_id required');
-  const run = await findActiveQuoteRun(sb, qid);
+  const run = await findActiveQuoteRun(sb, qid, productionLineSet);
   if (!run || run.completed_at) throw new Error('No active production run for this quote');
   const meta = { ...quoteRunMeta(run) };
   if (String(meta.timer_status || '').toLowerCase() !== 'paused') {
@@ -526,15 +616,17 @@ export async function completeQuoteProductionOrder(sb, {
   userId,
   deferDeliveryQueue = false,
   destination = 'delivery',
+  productionLineSet = null,
 } = {}) {
   void userId;
   const qid = String(quoteId || '').trim();
+  const lineSet = normalizeProductionLineSet(productionLineSet);
   if (!qid) throw new Error('quote_id required');
   const dest = String(destination || 'delivery').toLowerCase() === 'floor1' ? 'floor1' : 'delivery';
   const skipDeliveryQueue = Boolean(deferDeliveryQueue) || dest === 'floor1';
   const { assertQuoteReadyForFullComplete } = await import('./quoteProductionPartialComplete.js');
-  await assertQuoteReadyForFullComplete(sb, qid);
-  const run = await findActiveQuoteRun(sb, qid);
+  await assertQuoteReadyForFullComplete(sb, qid, { productionLineSet: lineSet });
+  const run = await findActiveQuoteRun(sb, qid, lineSet);
   if (!run) throw new Error('No active production run for this quote');
   if (run.completed_at) {
     if (!skipDeliveryQueue) {
@@ -559,10 +651,31 @@ export async function completeQuoteProductionOrder(sb, {
   const { error: runErr } = await sb.from(RUNS).update({ completed_at: now }).eq('id', run.id);
   if (runErr) throw new Error(runErr.message || 'Failed to complete run');
 
-  await sb.from(ROUTING).update({ completed_at: now }).eq('quote_id', qid);
-
   const { data: quoteRow } = await sb.from('quotations').select('id, quote_number').eq('id', qid).maybeSingle();
-  const { data: routingRow } = await sb.from(ROUTING).select('route, metadata').eq('quote_id', qid).maybeSingle();
+  const { data: routingRow } = await sb.from(ROUTING).select('route, metadata, quote_id').eq('quote_id', qid).maybeSingle();
+  const routeMeta = routingRow?.metadata && typeof routingRow.metadata === 'object'
+    ? { ...routingRow.metadata }
+    : {};
+  const { items: completeItems } = await loadQuoteBundle(sb, qid);
+  const summaryLines = (completeItems || []).map((it) => buildProductionLineSummaryRow(it, routeMeta));
+  const split = routeMeta.customer_order === true && customerQuoteNeedsSplitCards(summaryLines);
+  const routePatch = { updated_at: now };
+  if (split && lineSet) {
+    const segment_cards = {
+      ...(routeMeta.segment_cards && typeof routeMeta.segment_cards === 'object' ? routeMeta.segment_cards : {}),
+      [lineSet]: { completed_at: now },
+    };
+    routePatch.metadata = { ...routeMeta, segment_cards };
+    const otherSet = lineSet === QUOTE_LINE_SET_FLOOR2 ? QUOTE_LINE_SET_CATALOG : QUOTE_LINE_SET_FLOOR2;
+    if (segment_cards[otherSet]?.completed_at) {
+      routePatch.completed_at = now;
+    }
+  } else {
+    routePatch.completed_at = now;
+    routePatch.metadata = routeMeta;
+  }
+  const { error: routeDoneErr } = await sb.from(ROUTING).update(routePatch).eq('quote_id', qid);
+  if (routeDoneErr) throw new Error(routeDoneErr.message || 'Failed to update routing completion');
   let floor1Credited = false;
   const finishQty = Math.max(1, Number(run.product_qty) || 1);
   if (dest === 'floor1' && run.assembly_id) {
