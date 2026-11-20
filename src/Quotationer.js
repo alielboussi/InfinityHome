@@ -29,6 +29,7 @@ import {
   uploadQuoteLineReferenceImageViaApi,
 } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
+import { pickQuoteProductionRouteForSend } from './services/quoteProductionApi';
 import { isQuoteCustomerOrder } from './utils/quoteCustomerOrder';
 import {
   buildHassanCustomerQuoteRoutingMetadata,
@@ -839,10 +840,21 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
 
   async function handleSendOrder(q) {
     if (!q?.id || sendBusyId) return;
-    setSendBusyId(String(q.id));
+    let route = '';
     try {
       const existingRouting = routingsMap[String(q.id)];
-      const res = await executeSendQuoteOrder(q, { fallbackRoute: existingRouting?.route || '' });
+      ({ route } = await pickQuoteProductionRouteForSend(q.id, {
+        fallbackRoute: existingRouting?.route || '',
+      }));
+    } catch (e) {
+      if (String(e?.message || '') !== 'Send Order cancelled.') {
+        alert(String(e?.message || e));
+      }
+      return;
+    }
+    setSendBusyId(String(q.id));
+    try {
+      const res = await executeSendQuoteOrder(q, { fallbackRoute: route, route });
       setRoutingsMap((prev) => ({
         ...prev,
         [String(q.id)]: {

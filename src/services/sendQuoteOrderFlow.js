@@ -11,6 +11,8 @@ import {
   sendQuoteToWarehouseProduction,
 } from './quoteProductionApi';
 
+const VALID_ROUTES = new Set(['carpentry', 'upholstery', 'aluminum']);
+
 async function blobToBase64(blob) {
   if (!blob) return '';
   return new Promise((resolve, reject) => {
@@ -40,7 +42,7 @@ function titleCaseWords(text) {
  * 3. Builds the bilingual (English + Arabic) no-price A4 PDF and sends it with the template message
  *    to Factory New (upholstery/carpentry) or Aluminum Production WhatsApp group when route is aluminum.
  */
-export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' } = {}) {
+export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '', route: presetRoute = '' } = {}) {
   const quoteId = typeof quoteRowOrId === 'object' ? quoteRowOrId?.id : quoteRowOrId;
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('Quote ID is required.');
@@ -58,16 +60,11 @@ export async function executeSendQuoteOrder(quoteRowOrId, { fallbackRoute = '' }
   if (!quoteRow) throw new Error('Quote not found.');
 
   let routing = routingInitial;
-  let route = String(routing?.route || fallbackRoute || '').trim().toLowerCase();
-  if (route !== 'carpentry' && route !== 'upholstery' && route !== 'aluminum') {
-    const picked = typeof window !== 'undefined'
-      ? window.prompt('Select department: type "carpentry", "upholstery", or "aluminum"', 'carpentry')
-      : '';
-    const cleaned = String(picked || '').trim().toLowerCase();
-    if (cleaned !== 'carpentry' && cleaned !== 'upholstery' && cleaned !== 'aluminum') {
-      throw new Error('Choose Carpentry, Upholstery, or Aluminum on the quote before sending the order.');
-    }
-    route = cleaned;
+  let route = String(presetRoute || routing?.route || fallbackRoute || '').trim().toLowerCase();
+  if (!VALID_ROUTES.has(route)) {
+    throw new Error('Choose Carpentry, Upholstery, or Aluminum on the quote before sending the order.');
+  }
+  if (!routing?.route || String(routing.route).toLowerCase() !== route) {
     routing = await saveQuoteProductionRoute(qid, route);
   }
 

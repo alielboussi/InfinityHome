@@ -153,7 +153,7 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
   const phraseList = expandArabicPhraseVariants([...phraseSet]);
   const serverTranslations = await translateQuoteStringsToArabicComplete(phraseList, {
     requireComplete: true,
-    maxRounds: 4,
+    maxRounds: 2,
   });
   assertArabicTranslationsForPhrases(collectFactoryOrderArabicCheckPhrases(items), serverTranslations);
 
@@ -592,18 +592,23 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
         target.offsetHeight || 0,
         120,
       );
-      const canvas = await html2canvas(target, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        width: captureWidth,
-        height: captureHeight,
-        windowWidth: captureWidth,
-        windowHeight: Math.max(captureHeight, FACTORY_ORDER_A4_HEIGHT_PX),
-        scrollX: 0,
-        scrollY: 0,
-      });
+      const canvas = await Promise.race([
+        html2canvas(target, {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          width: captureWidth,
+          height: captureHeight,
+          windowWidth: captureWidth,
+          windowHeight: Math.max(captureHeight, FACTORY_ORDER_A4_HEIGHT_PX),
+          scrollX: 0,
+          scrollY: 0,
+        }),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('PDF render timed out (page capture). Try again.')), 45000);
+        }),
+      ]);
       const imgWidthMm = pageWidthMm;
       let contentHeightMm = Math.max(40, (canvas.height * imgWidthMm) / canvas.width);
       if (contentHeightMm > 297) {

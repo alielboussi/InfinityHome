@@ -20,23 +20,72 @@ function localApiHint() {
   return ' Add REACT_APP_API_BASE in .env.local (see docs/local-development.md) and restart npm start.';
 }
 
-async function quoteProductionFetch(url, init = {}, { requireAuth = true, apiLabel = 'order API' } = {}) {
+function isValidProductionRoute(route) {
+  const r = String(route || '').trim().toLowerCase();
+  return r === 'carpentry' || r === 'upholstery' || r === 'aluminum';
+}
+
+/** Pick workshop route before Send Order spinner — avoids blocking on `prompt()` while UI shows Sending…. */
+export async function pickQuoteProductionRouteForSend(quoteId, { fallbackRoute = '' } = {}) {
+  const qid = String(quoteId || '').trim();
+  if (!qid) throw new Error('Quote ID is required.');
+  let routing = await fetchQuoteProductionRouting(qid).catch(() => null);
+  let route = String(routing?.route || fallbackRoute || '').trim().toLowerCase();
+  if (isValidProductionRoute(route)) {
+    return { quote_id: qid, route, routing };
+  }
+  if (typeof window === 'undefined') {
+    throw new Error('Choose Carpentry, Upholstery, or Aluminum on the quote before sending the order.');
+  }
+  const picked = window.prompt('Select department: type "carpentry", "upholstery", or "aluminum"', 'carpentry');
+  if (picked == null) {
+    throw new Error('Send Order cancelled.');
+  }
+  const cleaned = String(picked || '').trim().toLowerCase();
+  if (!isValidProductionRoute(cleaned)) {
+    throw new Error('Choose Carpentry, Upholstery, or Aluminum on the quote before sending the order.');
+  }
+  route = cleaned;
+  routing = await saveQuoteProductionRoute(qid, route);
+  return { quote_id: qid, route, routing };
+}
+
+async function quoteProductionFetch(url, init = {}, {
+  requireAuth = true,
+  apiLabel = 'order API',
+  timeoutMs = 120000,
+} = {}) {
   const auth = await authHeaders();
   if (requireAuth && !auth.Authorization) {
     throw new Error('Sign in again — your session may have expired.');
   }
   const headers = withApiHeaders({ ...auth, ...(init.headers || {}) });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = timeoutMs > 0 && controller
+    ? setTimeout(() => controller.abort(), timeoutMs)
+  : null;
   let resp;
   try {
-    resp = await fetch(apiUrl(url), { ...init, headers });
+    resp = await fetch(apiUrl(url), {
+      ...init,
+      headers,
+      signal: controller?.signal,
+    });
   } catch (err) {
     const msg = String(err?.message || err || 'Network error');
+    if (err?.name === 'AbortError' || /aborted/i.test(msg)) {
+      throw new Error(
+        `${apiLabel} timed out after ${Math.round(timeoutMs / 1000)}s. Check your connection or try again in a minute.`,
+      );
+    }
     if (msg === 'Failed to fetch' || err instanceof TypeError) {
       throw new Error(
         `Cannot reach the ${apiLabel} (${msg}).${localApiHint()} Check your internet connection, disable ad blockers for this site, and reload.`,
       );
     }
     throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   return resp;
 }
@@ -156,15 +205,19 @@ export async function translateQuoteStringsToArabicComplete(texts = [], { requir
   for (let round = 0; round < maxRounds; round += 1) {
     const missing = list.filter(needsArabic);
     if (!missing.length) break;
-  try {
+    const keysBefore = Object.keys(map).length;
+    try {
       const resp = await quoteProductionFetch(QUOTE_PRODUCTION_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ op: 'translate-arabic', texts: missing }),
-      }, { requireAuth: true, apiLabel: 'Arabic translation API' });
+      }, { requireAuth: true, apiLabel: 'Arabic translation API', timeoutMs: 120000 });
       const payload = await readJsonOrThrow(resp, 'Arabic translation failed');
       if (payload.translations && typeof payload.translations === 'object') {
         map = { ...map, ...payload.translations };
+      }
+      if (Object.keys(map).length === keysBefore) {
+        break;
       }
     } catch (err) {
       lastErr = err;
@@ -208,6 +261,7 @@ export async function sendFactoryOrderWhatsApp({
     pdfFilename,
     route: String(route || '').trim().toLowerCase() || undefined,
     quote_id: quoteId,
+    factory_order_pdf_built: true,
     illustrationImageUrl: illustrationImageUrl || drawingUrl,
     drawing_url: drawingUrl || illustrationImageUrl,
   };
@@ -222,6 +276,6 @@ export async function sendFactoryOrderWhatsApp({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  }, { apiLabel: 'factory message API' });
+  }, { apiLabel: 'factory message API', timeoutMs: 180000 });
   return readJsonOrThrow(resp, 'Factory group message failed');
 }
