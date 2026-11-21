@@ -38,9 +38,22 @@ export function inferShowroomWorkshopRoute(assembly) {
   return 'carpentry';
 }
 
+export function readQuoteItemFloor2AssemblyId(line) {
+  if (!line) return '';
+  let meta = line.metadata;
+  if (typeof meta === 'string') {
+    try {
+      meta = JSON.parse(meta);
+    } catch {
+      meta = null;
+    }
+  }
+  if (!meta || typeof meta !== 'object') meta = {};
+  return String(meta.floor2_assembly_id || line.floor2_assembly_id || '').trim();
+}
+
 export function quoteLineHasFloor2Assembly(line) {
-  const meta = line?.metadata && typeof line.metadata === 'object' ? line.metadata : {};
-  return Boolean(String(meta.floor2_assembly_id || line?.floor2_assembly_id || '').trim());
+  return Boolean(readQuoteItemFloor2AssemblyId(line));
 }
 
 /** Hassan customer quotes (incl. mixed Floor 2 + catalog lines) always use the customer badge — not showroom. */

@@ -17,7 +17,7 @@ import { computeQuotationDisplayTotal, quotationHasOutstandingDue, sortQuotation
 import { enrichQuotationListTotals } from './services/quotationListTotals';
 import { fetchQuoteProductionRoutingsMap } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
-import { pickQuoteProductionRouteForSend } from './services/quoteProductionApi';
+import { isValidProductionRoute, pickQuoteProductionRouteForSend } from './services/quoteProductionApi';
 import { apiUrl, withApiHeaders } from './utils/apiUrl';
 import WarehouseSkuWhereabouts from './components/WarehouseSkuWhereabouts';
 import QuoteRowActionsDropdown from './components/QuoteRowActionsDropdown';
@@ -329,8 +329,9 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
         fallbackRoute: existingRouting?.route || '',
       }));
     } catch (e) {
-      if (String(e?.message || '') !== 'Send Order cancelled.') {
-        alert(String(e?.message || e));
+      alert(String(e?.message || e));
+      if (e?.code === 'send_order_missing_route') {
+        handleEditQuote(q);
       }
       return;
     }
@@ -504,7 +505,7 @@ export default function QuotesBoard({ boardMode: boardModeProp } = {}) {
                           canSendOrder && !hideSendOrder ? {
                             key: 'send',
                             label: isSending ? 'Sending…' : (alreadySent ? 'Send Order (Resend)' : 'Send Order'),
-                            disabled: Boolean(sendBusyId),
+                            disabled: Boolean(sendBusyId) || !isValidProductionRoute(routing?.route),
                             onClick: () => handleSendOrder(q),
                           } : null,
                           !isQuotationerOnly && !showroomOrder && q.status !== 'converted' ? {

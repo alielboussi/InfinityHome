@@ -43,6 +43,27 @@ assert(
   'Send Order must block quotes with no product lines',
 );
 assert(
+  !read('src/utils/quoteSendOrderValidate.js').includes('send_order_no_warehouse_link'),
+  'Send Order must allow quote-product-only lines (Floor 2 not required on every order)',
+);
+const quoteProdRouting = read('server/lib/quoteProductionRouting.js');
+assert(
+  quoteProdRouting.includes('catalog_only_quote_lines') && quoteProdRouting.includes('anyFloor2Link'),
+  'quote send must support catalog-only customer orders without warehouse primary assembly',
+);
+assert(
+  read('src/utils/quoteShowroomOrder.js').includes('readQuoteItemFloor2AssemblyId'),
+  'quote items must parse Floor 2 assembly id from metadata JSON',
+);
+assert(
+  !read('src/services/quoteProductionApi.js').includes('window.prompt'),
+  'Send Order must not prompt for workshop route — route is set on the quote first',
+);
+assert(
+  read('src/services/quoteProductionApi.js').includes('send_order_missing_route'),
+  'missing route send must use send_order_missing_route error code',
+);
+assert(
   read('server/handlers/quote-production.js').includes('sendOrResendQuoteToProduction'),
   'web send-to-production must allow resend notify',
 );

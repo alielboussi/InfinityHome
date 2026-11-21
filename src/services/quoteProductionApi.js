@@ -20,34 +20,26 @@ function localApiHint() {
   return ' Add REACT_APP_API_BASE in .env.local (see docs/local-development.md) and restart npm start.';
 }
 
-function isValidProductionRoute(route) {
+export function isValidProductionRoute(route) {
   const r = String(route || '').trim().toLowerCase();
   return r === 'carpentry' || r === 'upholstery' || r === 'aluminum';
 }
 
-/** Pick workshop route before Send Order spinner — avoids blocking on `prompt()` while UI shows Sending…. */
+const MISSING_ROUTE_MSG =
+  'Set the workshop route on this quote first (Upholstery, Carpentry, or Aluminum), save, then Send Order.';
+
+/** Use saved quote routing only — Hassan picks the route on the quote page, not at send time. */
 export async function pickQuoteProductionRouteForSend(quoteId, { fallbackRoute = '' } = {}) {
   const qid = String(quoteId || '').trim();
   if (!qid) throw new Error('Quote ID is required.');
-  let routing = await fetchQuoteProductionRouting(qid).catch(() => null);
-  let route = String(routing?.route || fallbackRoute || '').trim().toLowerCase();
+  const routing = await fetchQuoteProductionRouting(qid).catch(() => null);
+  const route = String(routing?.route || fallbackRoute || '').trim().toLowerCase();
   if (isValidProductionRoute(route)) {
     return { quote_id: qid, route, routing };
   }
-  if (typeof window === 'undefined') {
-    throw new Error('Choose Carpentry, Upholstery, or Aluminum on the quote before sending the order.');
-  }
-  const picked = window.prompt('Select department: type "carpentry", "upholstery", or "aluminum"', 'carpentry');
-  if (picked == null) {
-    throw new Error('Send Order cancelled.');
-  }
-  const cleaned = String(picked || '').trim().toLowerCase();
-  if (!isValidProductionRoute(cleaned)) {
-    throw new Error('Choose Carpentry, Upholstery, or Aluminum on the quote before sending the order.');
-  }
-  route = cleaned;
-  routing = await saveQuoteProductionRoute(qid, route);
-  return { quote_id: qid, route, routing };
+  const err = new Error(MISSING_ROUTE_MSG);
+  err.code = 'send_order_missing_route';
+  throw err;
 }
 
 async function quoteProductionFetch(url, init = {}, {

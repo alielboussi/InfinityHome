@@ -1,5 +1,7 @@
 /** Guards before Hassan Send Order (web board + factory PDF). */
 
+import { readQuoteItemFloor2AssemblyId } from './quoteShowroomOrder.js';
+
 export function factoryOrderNamedLines(items = []) {
   return (items || []).filter((line) => {
     const name = String(
@@ -7,6 +9,10 @@ export function factoryOrderNamedLines(items = []) {
     ).trim();
     return name.length > 0 && name !== '-';
   });
+}
+
+export function quoteLineHasFloor2Link(line) {
+  return Boolean(readQuoteItemFloor2AssemblyId(line));
 }
 
 export function assertQuoteReadyForSendOrder(items = []) {

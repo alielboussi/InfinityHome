@@ -2,6 +2,7 @@ import { WAREHOUSE_FACTORY_LOCATION_ID } from '../../src/constants/warehouseShow
 import { CARPENTRY_WAREHOUSE_NAMES } from '../../src/constants/carpentryWarehouses.js';
 import { normalizeCarpentryUom } from '../../src/constants/carpentryUom.js';
 import { listCarpentryCatalogProducts } from './carpentryCatalog.js';
+import { listUpholsteryCatalogProducts } from './upholsteryCatalog.js';
 import { recomputeWarehouseLocationStockServer } from './warehouseLocationStockRecompute.js';
 import { newUuid } from './uuid.js';
 import {
@@ -19,6 +20,7 @@ import {
   normalizeProductionLineSet,
   productionCardListKey,
 } from '../../src/utils/quoteProductionLineSet.js';
+import { readQuoteItemFloor2AssemblyId } from '../../src/utils/quoteShowroomOrder.js';
 
 const ROUTING = 'quote_production_routing';
 const RUNS = 'carpentry_production_runs';
@@ -144,15 +146,31 @@ async function resolvePrimaryAssemblyId(sb, items, routingMeta = null) {
   const fromRouting = String(routingMeta?.primary_assembly_id || '').trim();
   if (fromRouting) return fromRouting;
   for (const line of items || []) {
-    const meta = line?.metadata && typeof line.metadata === 'object' ? line.metadata : {};
-    const floor2Id = String(meta.floor2_assembly_id || '').trim();
+    const floor2Id = readQuoteItemFloor2AssemblyId(line);
     if (floor2Id) return floor2Id;
   }
   const { data: assemblies, error } = await sb
     .from(ASSEMBLIES)
     .select('id, name, family_sku, metadata, item_kind');
   if (error) throw new Error(error.message || 'Failed to load assemblies');
-  const catalog = listCarpentryCatalogProducts(assemblies || []);
+  const route = normalizeProductionRoute(routingMeta?.route);
+  const carpentry = listCarpentryCatalogProducts(assemblies || []);
+  const upholstery = listUpholsteryCatalogProducts(assemblies || []);
+  const seenIds = new Set();
+  const catalog = [];
+  const addProduct = (p) => {
+    const id = String(p?.id || '').trim();
+    if (!id || seenIds.has(id)) return;
+    seenIds.add(id);
+    catalog.push(p);
+  };
+  if (route === 'upholstery') {
+    upholstery.forEach(addProduct);
+    carpentry.forEach(addProduct);
+  } else {
+    carpentry.forEach(addProduct);
+    upholstery.forEach(addProduct);
+  }
   const catalogByName = new Map(catalog.map((p) => [String(p.name || '').trim().toLowerCase(), p.id]));
   for (const line of items || []) {
     const name = String(line.name_override || line.name || '').trim().toLowerCase();
@@ -167,8 +185,12 @@ async function resolvePrimaryAssemblyId(sb, items, routingMeta = null) {
       if (lineName.includes(pn) || pn.includes(lineName)) return product.id;
     }
   }
+  const anyFloor2Link = (items || []).some((line) => readQuoteItemFloor2AssemblyId(line));
+  if (!anyFloor2Link) {
+    return null;
+  }
   throw new Error(
-    'Could not resolve a warehouse product for this quote. Add a catalog product line or a Floor 2 WIP line, then save the quote.',
+    'Could not resolve a warehouse product for Floor 2 lines on this quote. Re-save after adding Floor 2 WIP from search, or fix the line link.',
   );
 }
 
@@ -188,7 +210,10 @@ export async function sendQuoteToProduction(sb, quoteId, userId) {
   if (routing.sent_to_production_at) throw new Error('Already sent to production');
   assertQuoteItemsForProductionSend(items);
 
-  const primary_assembly_id = await resolvePrimaryAssemblyId(sb, items, routing.metadata);
+  const primary_assembly_id = await resolvePrimaryAssemblyId(sb, items, {
+    ...(routing.metadata || {}),
+    route: routing.route,
+  }) || null;
   const customer = await resolveCustomerContact(sb, quote.customer_id);
   const now = new Date().toISOString();
   const lineSummary = (items || []).map((it) => buildProductionLineSummaryRow(it));
@@ -526,14 +551,17 @@ export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId, p
   }
 
   const primaryAssemblyId = routing.metadata?.primary_assembly_id
-    || await resolvePrimaryAssemblyId(sb, items);
+    || await resolvePrimaryAssemblyId(sb, items, {
+      ...(routing.metadata || {}),
+      route: routing.route,
+    })
+    || null;
   const now = new Date().toISOString();
   const runId = newUuid();
-  const { error: runErr } = await sb.from(RUNS).insert({
+  const runRow = {
     id: runId,
     source: 'quote_order',
     quote_id: qid,
-    assembly_id: primaryAssemblyId,
     product_qty: 1,
     started_at: now,
     completed_at: null,
@@ -544,9 +572,12 @@ export async function acceptQuoteProductionOrder(sb, { quoteId, route, userId, p
       channel: normalized === 'carpentry'
         ? 'carpentry_workshop_app'
         : (normalized === 'aluminum' ? 'aluminum_workshop' : 'warehouse_production_app'),
+      ...(primaryAssemblyId ? {} : { catalog_only_quote_lines: true }),
     },
     created_at: now,
-  });
+  };
+  if (primaryAssemblyId) runRow.assembly_id = primaryAssemblyId;
+  const { error: runErr } = await sb.from(RUNS).insert(runRow);
   if (runErr) throw new Error(runErr.message || 'Failed to start production run');
 
   const routePatch = { updated_at: now };

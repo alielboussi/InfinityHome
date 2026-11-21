@@ -29,10 +29,11 @@ import {
   uploadQuoteLineReferenceImageViaApi,
 } from './services/quoteProductionApi';
 import { executeSendQuoteOrder } from './services/sendQuoteOrderFlow';
-import { pickQuoteProductionRouteForSend } from './services/quoteProductionApi';
+import { isValidProductionRoute, pickQuoteProductionRouteForSend } from './services/quoteProductionApi';
 import { isQuoteCustomerOrder } from './utils/quoteCustomerOrder';
 import {
   buildHassanCustomerQuoteRoutingMetadata,
+  readQuoteItemFloor2AssemblyId,
   inferShowroomWorkshopRoute,
   isQuoteShowroomOrderFromRouting,
 } from './utils/quoteShowroomOrder';
@@ -847,8 +848,9 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
         fallbackRoute: existingRouting?.route || '',
       }));
     } catch (e) {
-      if (String(e?.message || '') !== 'Send Order cancelled.') {
-        alert(String(e?.message || e));
+      alert(String(e?.message || e));
+      if (e?.code === 'send_order_missing_route') {
+        onOpenQuote(q.id);
       }
       return;
     }
@@ -943,7 +945,7 @@ function QuotationListView({ onBackHome, onOpenQuote, refreshKey, userId }) {
                           canSendOrder && !showroomOrder ? {
                             key: 'send',
                             label: isSending ? 'Sending…' : (alreadySent ? 'Send Order (Resend)' : 'Send Order'),
-                            disabled: Boolean(sendBusyId),
+                            disabled: Boolean(sendBusyId) || !isValidProductionRoute(routing?.route),
                             onClick: () => handleSendOrder(q),
                           } : null,
                         ].filter(Boolean)}
@@ -1414,7 +1416,7 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
       return;
     }
     if (canManageProductionRouting && !productionRoute) {
-      alert('Choose Carpentry or Upholstery before saving this quote.');
+      alert('Choose Upholstery, Carpentry, or Aluminum before saving this quote.');
       return;
     }
     if (locked) return;
@@ -1429,6 +1431,8 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
       if (canManageProductionRouting && productionRoute) {
         try {
           const routeMeta = quoteRoutingMetadata();
+          const primaryAssemblyId = getNormalizedItems().map(readQuoteItemFloor2AssemblyId).find(Boolean);
+          if (primaryAssemblyId) routeMeta.primary_assembly_id = primaryAssemblyId;
           await saveQuoteProductionRoute(createdQuoteId, productionRoute, { metadata: routeMeta });
           if (productionDrawingPendingFile) {
             const drawingUrl = await uploadQuoteProductionDrawing(createdQuoteId, productionDrawingPendingFile);
@@ -1816,32 +1820,38 @@ export function QuotationCreateView({ quoteId, onBackHome, onSaved, hassanOrderC
 
         {hassanOrderCreateLayout ? (
           <div className="hassan-quote-create-toolbar">
-            <div className="hassan-customer-pair" role="group" aria-label="Customer search and selection">
-              <span className="quotes-create-label hassan-customer-pair__label-search">Search</span>
-              <span className="quotes-create-label hassan-customer-pair__label-customer">Customer</span>
-              <input
-                className="quotes-input hassan-customer-search hassan-customer-pair__search"
-                placeholder="Search customers"
-                value={custSearch}
-                onChange={(e) => setCustSearch(e.target.value)}
-                aria-label="Search customers"
-              />
-              <select
-                className="quotes-select quotes-select-customer hassan-customer-pair__select"
-                value={quote.customer_id != null && quote.customer_id !== '' ? String(quote.customer_id) : ''}
-                onChange={e => setQuote(q => ({ ...q, customer_id: e.target.value || null }))}
-                aria-label="Customer"
-              >
-                <option value="">{custSearch.trim() ? 'No matches — clear search' : 'Select customer…'}</option>
-                {hassanCustomerOptions.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-              </select>
-            </div>
             <div className="hassan-quote-create-toolbar__row hassan-quote-create-toolbar__row--workshop">
               {hassanWorkshopField}
             </div>
             {productionRouteMissing ? (
               <p className="quotes-production-hint" role="status">Choose a workshop to continue.</p>
             ) : null}
+            <div
+              className={`hassan-customer-pair${productionRouteMissing ? ' hassan-customer-pair--gated' : ''}`}
+              role="group"
+              aria-label="Customer search and selection"
+            >
+              <span className="quotes-create-label hassan-customer-pair__label-search">Search</span>
+              <span className="quotes-create-label hassan-customer-pair__label-customer">Customer</span>
+              <input
+                className="quotes-input hassan-customer-search hassan-customer-pair__search"
+                placeholder={productionRouteMissing ? 'Select workshop route first' : 'Search customers'}
+                value={custSearch}
+                onChange={(e) => setCustSearch(e.target.value)}
+                aria-label="Search customers"
+                disabled={productionRouteMissing}
+              />
+              <select
+                className="quotes-select quotes-select-customer hassan-customer-pair__select"
+                value={quote.customer_id != null && quote.customer_id !== '' ? String(quote.customer_id) : ''}
+                onChange={e => setQuote(q => ({ ...q, customer_id: e.target.value || null }))}
+                aria-label="Customer"
+                disabled={productionRouteMissing}
+              >
+                <option value="">{productionRouteMissing ? 'Select workshop first…' : (custSearch.trim() ? 'No matches — clear search' : 'Select customer…')}</option>
+                {hassanCustomerOptions.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              </select>
+            </div>
           </div>
         ) : (
           <div className="quotes-create-panel-grid">
