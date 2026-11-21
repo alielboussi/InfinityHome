@@ -87,6 +87,28 @@ try {
     'FinishingScreen should be removed — WIP moves to Floor 1 via Painting or Upholstery only',
   );
 
+  const localeLib = read('mobile-apps/carpentry-workshop/productionKiosk/lib/productionKioskLocale.js');
+  assert(localeLib.includes('subscribeProductionKioskLocale'), 'carpentry locale must broadcast changes app-wide');
+
+  const localeScreens = [
+    'DashboardScreen.js',
+    'ManufactureScreen.js',
+    'JobsScreen.js',
+    'PaintingScreen.js',
+    'QuotesScreen.js',
+    'QuoteDetailScreen.js',
+    'WarehouseRepairsScreen.js',
+    'ProductionPushSettingsScreen.js',
+  ];
+  for (const name of localeScreens) {
+    const body = read(`mobile-apps/carpentry-workshop/screens/${name}`);
+    assert(body.includes('onToggleLocale={toggleLocale}'), `${name} must expose AR/EN toggle in top bar`);
+  }
+  assert(
+    read('mobile-apps/carpentry-workshop/productionKiosk/screens/CreateScreen.js').includes('onToggleLocale={toggleLocale}'),
+    'CreateScreen must expose AR/EN toggle',
+  );
+
   console.log('verifyCarpentryPhase12: ok');
 } catch (e) {
   if (!process.exitCode) process.exitCode = 1;

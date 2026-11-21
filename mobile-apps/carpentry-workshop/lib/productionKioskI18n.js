@@ -332,10 +332,6 @@ const UI_STRINGS = {
     ar: 'نفس كتالوج المستودع كصفحة warehouse-products — مخزون المصنع بما فيه إنتاج النجارة.',
   },
   dashUnifiedOrders: { en: 'Orders', ar: 'الطلبات' },
-  dashTileHint_orders: {
-    en: 'Customer orders, manufacture jobs, and repairs in one queue — badges show the type.',
-    ar: 'طلبات العملاء ومهام التصنيع والإصلاح في قائمة واحدة — الشارات توضح النوع.',
-  },
   badgeManufacture: { en: 'Manufacture', ar: 'تصنيع' },
   badgeRepair: { en: 'Repair', ar: 'إصلاح' },
   dashManufacture: { en: 'Manufacture', ar: 'تصنيع' },
