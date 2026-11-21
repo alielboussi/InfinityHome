@@ -518,6 +518,27 @@ function phraseNeedsCompleteArabic(phrase, map = {}) {
   return !resolveFactoryOrderArabicPhrase(raw, map);
 }
 
+/** After Gemini + static map, fill remaining gaps with word fallbacks (never block Send Order). */
+export function fillFactoryOrderArabicMapGaps(phrases, serverMap = {}) {
+  const out = { ...serverMap };
+  for (const p of phrases || []) {
+    const raw = String(p || '').trim();
+    if (!raw) continue;
+    if (resolveFactoryOrderArabicPhrase(raw, out)) {
+      if (!out[raw]) out[raw] = resolveFactoryOrderArabicPhrase(raw, out);
+      continue;
+    }
+    const ar = translateTermToArabic(raw, out);
+    if (ar) {
+      out[raw] = ar;
+      continue;
+    }
+    const fb = fallbackTranslatePhraseToArabic(raw);
+    if (fb) out[raw] = fb;
+  }
+  return out;
+}
+
 /** Block factory PDF / WhatsApp until every required phrase has full Arabic. */
 export function assertArabicTranslationsForPhrases(phrases, serverMap = {}) {
   const failures = [];

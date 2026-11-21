@@ -209,7 +209,7 @@ export async function translateQuoteStringsToArabicComplete(texts = [], { requir
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ op: 'translate-arabic', texts: chunk }),
-      }, { requireAuth: true, apiLabel: 'Arabic translation API', timeoutMs: 70000 });
+      }, { requireAuth: true, apiLabel: 'Arabic translation API', timeoutMs: 35000 });
       const payload = await readJsonOrThrow(resp, 'Arabic translation failed');
       if (payload.translations && typeof payload.translations === 'object') {
         map = { ...map, ...payload.translations };

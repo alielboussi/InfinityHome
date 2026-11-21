@@ -488,8 +488,8 @@ export function factoryOrderDepartmentArabic(route) {
   return 'قسم التنجيد';
 }
 
-const ARABIC_BATCH_SIZE = 20;
-const GEMINI_TRANSLATE_MAX_MS = 52000;
+const ARABIC_BATCH_SIZE = 32;
+const GEMINI_TRANSLATE_MAX_MS = 28000;
 
 function parseGeminiTranslateModelsCsv(raw) {
   return String(raw || '')
@@ -504,7 +504,7 @@ function geminiTranslateModelOrder() {
   if (forced) return [forced];
   const csv = parseGeminiTranslateModelsCsv(process.env.GEMINI_TRANSLATE_MODELS);
   if (csv.length) return csv;
-  return ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+  return ['gemini-3.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.8-flash'];
 }
 
 function isGeminiModelUnavailableError(message, status) {
@@ -684,6 +684,27 @@ export async function translateStringsToArabicServer(texts = [], {
   }
 
   return map;
+}
+
+/** After Gemini + static map, fill remaining gaps with word fallbacks (do not block Send Order). */
+export function fillFactoryOrderArabicMapGaps(phrases, serverMap = {}) {
+  const out = { ...serverMap };
+  for (const p of phrases || []) {
+    const raw = String(p || '').trim();
+    if (!raw) continue;
+    if (resolveFactoryOrderArabicPhrase(raw, out)) {
+      if (!out[raw]) out[raw] = resolveFactoryOrderArabicPhrase(raw, out);
+      continue;
+    }
+    const ar = translateTermToArabic(raw, out);
+    if (ar) {
+      out[raw] = ar;
+      continue;
+    }
+    const fb = fallbackTranslatePhraseToArabic(raw);
+    if (fb) out[raw] = fb;
+  }
+  return out;
 }
 
 /** Throw before factory WhatsApp/PDF when any required phrase lacks full Arabic. */

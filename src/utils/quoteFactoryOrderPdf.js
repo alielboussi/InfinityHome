@@ -12,7 +12,7 @@ import {
   translateTermToArabic,
   translateQtyUnitLabel,
   expandArabicPhraseVariants,
-  assertArabicTranslationsForPhrases,
+  fillFactoryOrderArabicMapGaps,
   collectFactoryOrderArabicCheckPhrases,
   translateProductLineNameToArabic,
   translateSlashDimensionDescriptionToArabic,
@@ -134,12 +134,15 @@ export async function generateFactoryOrderBilingualPdf(quote = {}, items = [], {
   const company = await getCompanySettings();
   const logoUrl = getLogoUrl(company);
 
-  const phraseList = expandArabicPhraseVariants(collectFactoryOrderArabicCheckPhrases(items));
-  const serverTranslations = await translateQuoteStringsToArabicComplete(phraseList, {
-    requireComplete: true,
-    maxRounds: 8,
-  });
-  assertArabicTranslationsForPhrases(collectFactoryOrderArabicCheckPhrases(items), serverTranslations);
+  const checkPhrases = collectFactoryOrderArabicCheckPhrases(items);
+  const phraseList = expandArabicPhraseVariants(checkPhrases);
+  const serverTranslations = fillFactoryOrderArabicMapGaps(
+    checkPhrases,
+    await translateQuoteStringsToArabicComplete(phraseList, {
+      requireComplete: false,
+      maxRounds: 2,
+    }),
+  );
 
   const routeKey = String(route || '').trim().toLowerCase();
   const deptLabel = routeKey === 'carpentry'

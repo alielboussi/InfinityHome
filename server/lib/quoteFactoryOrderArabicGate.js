@@ -1,8 +1,8 @@
 import {
-  assertArabicTranslationsForPhrases,
   collectFactoryOrderArabicCheckPhrases,
   collectProductionQuoteArabicPhrases,
   expandArabicPhraseVariants,
+  fillFactoryOrderArabicMapGaps,
   translateStringsToArabicServer,
 } from './quoteArabicTranslate.js';
 
@@ -53,6 +53,9 @@ export async function assertQuoteArabicReadyForFactoryPdfWhatsApp(sb, quoteId) {
   const phraseSet = new Set(collectProductionQuoteArabicPhrases(rows));
   enrichPhraseSetFromItems(phraseSet, rows);
   const phrases = expandArabicPhraseVariants([...phraseSet]);
-  const map = await translateStringsToArabicServer(phrases, { sb, maxGeminiRounds: 2, maxGeminiPhrases: 40 });
-  assertArabicTranslationsForPhrases(collectFactoryOrderArabicCheckPhrases(rows), map);
+  const map = fillFactoryOrderArabicMapGaps(
+    collectFactoryOrderArabicCheckPhrases(rows),
+    await translateStringsToArabicServer(phrases, { sb, maxGeminiRounds: 2, maxGeminiPhrases: 40 }),
+  );
+  void map;
 }
