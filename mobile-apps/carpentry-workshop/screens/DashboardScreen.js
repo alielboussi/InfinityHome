@@ -181,6 +181,7 @@ export default function DashboardScreen({
         contentContainerStyle={styles.gridScroll}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        bounces={false}
       >
         <View
           style={[
@@ -190,7 +191,6 @@ export default function DashboardScreen({
               gap,
               width: contentWidth,
               paddingHorizontal: 0,
-              marginTop: 12,
             },
           ]}
         >
@@ -221,13 +221,14 @@ const styles = StyleSheet.create({
   gridScroll: {
     flexGrow: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 20,
+    paddingTop: 4,
   },
   gridArea: {
     justifyContent: 'flex-start',
     alignContent: 'flex-start',
   },
-  user: { color: theme.textMuted, marginBottom: 4, fontSize: 15, fontWeight: '500' },
+  user: { color: theme.textMuted, marginBottom: 2, fontSize: 15, fontWeight: '500' },
   hint: { color: theme.textMuted, marginTop: 10, fontSize: 13, lineHeight: 18 },
 });

@@ -16,6 +16,7 @@ function assert(cond, msg) {
 }
 
 assert(read('mobile-apps/carpentry-workshop/screens/DashboardScreen.js').includes('dashUnifiedOrders'), 'Carpentry dashboard must expose unified Orders tile');
+assert(read('mobile-apps/carpentry-workshop/screens/DashboardScreen.js').includes("justifyContent: 'flex-start'"), 'Carpentry dashboard tiles must anchor to top (not vertically centered)');
 assert(!read('mobile-apps/carpentry-workshop/screens/DashboardScreen.js').includes("navigate('Quotes')"), 'Carpentry dashboard must not link separate Quotes tile');
 assert(read('mobile-apps/carpentry-workshop/screens/JobsScreen.js').includes("item._kind === 'repair'"), 'Carpentry Jobs screen must list repairs in unified inbox');
 assert(read('mobile-apps/warehouse-upholstery/screens/DashboardScreen.js').includes('dashUnifiedOrders'), 'Upholstery dashboard must expose unified Orders tile');
