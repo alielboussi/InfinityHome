@@ -93,6 +93,14 @@ if (!/clientSource === 'carpentry_workshop_app'[\s\S]*return \{ label_job_id: nu
   console.error('[verifyProductionFloor1JobPolicy] deferred carpentry photo attach must not print labels');
   failed += 1;
 }
+if (paintingJobs.includes(".contains('metadata'")) {
+  console.error('[verifyProductionFloor1JobPolicy] painting jobs must not use Supabase .contains (Firestore sb)');
+  failed += 1;
+}
+if (!paintingJobs.includes('listActivePaintingJobsForCarpentryQuote')) {
+  console.error('[verifyProductionFloor1JobPolicy] painting send must dedupe via listActivePaintingJobsForCarpentryQuote');
+  failed += 1;
+}
 
 if (failed) {
   process.exit(1);

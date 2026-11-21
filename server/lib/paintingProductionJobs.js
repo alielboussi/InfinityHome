@@ -193,6 +193,23 @@ function stripUndefinedDeep(value) {
   return out;
 }
 
+function paintingJobQuoteId(job) {
+  const meta = job?.metadata && typeof job.metadata === 'object' ? job.metadata : {};
+  return String(meta.carpentry_quote_id || meta.quote_id || '').trim();
+}
+
+/** Firestore sb has no Supabase-style `.contains` on JSON metadata — filter in memory. */
+async function listActivePaintingJobsForCarpentryQuote(sb, quoteId) {
+  const qid = String(quoteId || '').trim();
+  if (!qid) return [];
+  const { data: rows, error } = await sb.from(JOBS).select('id, status, metadata');
+  if (error) throw new Error(error.message || 'Failed to load painting jobs');
+  return (rows || []).filter((row) => {
+    if (paintingJobQuoteId(row) !== qid) return false;
+    return ACTIVE_STATUSES.has(normalizeJobStatus(row.status));
+  });
+}
+
 function normalizeJobStatus(status) {
   return String(status || '').trim().toLowerCase();
 }
@@ -399,12 +416,8 @@ export async function sendCarpentryQuoteToPaintingDepartment(sb, {
     throw new Error('Complete the carpentry order before sending to painting');
   }
 
-  const { data: dupRows, error: dupErr } = await sb
-    .from(JOBS)
-    .select('id, status, metadata')
-    .contains('metadata', { carpentry_quote_id: qid })
-    .limit(8);
-  if (!dupErr && (dupRows || []).some((r) => ACTIVE_STATUSES.has(normalizeJobStatus(r.status)))) {
+  const activeDupes = await listActivePaintingJobsForCarpentryQuote(sb, qid);
+  if (activeDupes.length > 0) {
     throw new Error('This order is already on the painting queue');
   }
 
