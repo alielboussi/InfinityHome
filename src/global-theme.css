@@ -326,11 +326,38 @@
 
 .production-tracking-card__dept {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   padding: 3px 8px;
   border-radius: 6px;
   background: var(--dash-surface-2, #f1f5f9);
   color: #475569;
+}
+
+.production-tracking-card__dept--carpentry {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.production-tracking-card__dept--upholstery {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.production-tracking-card__dept--painting {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.production-tracking-section-heading--carpentry {
+  color: #9a3412;
+}
+
+.production-tracking-section-heading--upholstery {
+  color: #0f766e;
+}
+
+.production-tracking-section-heading--painting {
+  color: #6d28d9;
 }
 
 .production-tracking-card__timer-chip {

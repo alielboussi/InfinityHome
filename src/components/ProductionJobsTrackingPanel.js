@@ -8,6 +8,7 @@ import { computeTrackingJobElapsedMs } from './RunningProductionJobElapsed';
 import ProductionTrackingFunnelFilter from './ProductionTrackingFunnelFilter';
 import {
   applyProductionTrackingFilters,
+  groupProductionTrackingJobsByDepartment,
   isProductionTrackingJobCompleted,
   partitionProductionTrackingJobs,
 } from '../utils/productionTrackingListUi';
@@ -85,7 +86,7 @@ function ProductionTrackingCard({ row, onApproveFloor1, approveBusyId }) {
         ) : (
           <span className="production-tracking-card__kind">{trackingKindLabel(row)}</span>
         )}
-        <span className="production-tracking-card__dept">
+        <span className={`production-tracking-card__dept production-tracking-card__dept--${String(row.department || '').trim().toLowerCase()}`}>
           {row.department_label || productionDepartmentLabel(row.department)}
         </span>
         {row.timer_status === 'paused' ? (
@@ -218,12 +219,10 @@ export default function ProductionJobsTrackingPanel({
     return partitionProductionTrackingJobs(all).completed.length;
   }, [rows, search, department, trackKind]);
 
-  const { inProgress, completed } = useMemo(
-    () => partitionProductionTrackingJobs(filtered),
+  const departmentGroups = useMemo(
+    () => groupProductionTrackingJobsByDepartment(filtered),
     [filtered],
   );
-
-  const showProgressSections = showCompleted && inProgress.length > 0 && completed.length > 0;
 
   const clearFilters = () => {
     setDepartment('all');
@@ -274,27 +273,20 @@ export default function ProductionJobsTrackingPanel({
       )}
 
       <div className="production-tracking-grid">
-        {showProgressSections && inProgress.length ? (
-          <h2 className="production-tracking-section-heading">In progress</h2>
-        ) : null}
-        {inProgress.map((row) => (
-          <ProductionTrackingCard
-            key={`${row.department}:${row.id}`}
-            row={row}
-            onApproveFloor1={onApproveFloor1}
-            approveBusyId={approveBusyId}
-          />
-        ))}
-        {showProgressSections && completed.length ? (
-          <h2 className="production-tracking-section-heading">Completed</h2>
-        ) : null}
-        {completed.map((row) => (
-          <ProductionTrackingCard
-            key={`${row.department}:${row.id}`}
-            row={row}
-            onApproveFloor1={onApproveFloor1}
-            approveBusyId={approveBusyId}
-          />
+        {departmentGroups.map((group) => (
+          <React.Fragment key={group.department}>
+            <h2 className={`production-tracking-section-heading production-tracking-section-heading--${group.department}`}>
+              {group.label}
+            </h2>
+            {group.rows.map((row) => (
+              <ProductionTrackingCard
+                key={`${row.department}:${row.id}`}
+                row={row}
+                onApproveFloor1={onApproveFloor1}
+                approveBusyId={approveBusyId}
+              />
+            ))}
+          </React.Fragment>
         ))}
       </div>
     </div>

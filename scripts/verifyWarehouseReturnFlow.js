@@ -97,8 +97,8 @@ assert(
 );
 const trackingPanel = read('src/components/ProductionJobsTrackingPanel.js');
 assert(
-  trackingPanel.includes('partitionProductionTrackingJobs'),
-  'trackage panel must sort in-progress above completed',
+  trackingPanel.includes('groupProductionTrackingJobsByDepartment'),
+  'trackage panel must arrange jobs by department',
 );
 assert(
   trackingPanel.includes('ProductionTrackingFunnelFilter'),

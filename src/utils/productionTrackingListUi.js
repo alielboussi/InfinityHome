@@ -2,9 +2,15 @@
 
 export const PRODUCTION_TRACKING_DEPARTMENTS = Object.freeze([
   { value: 'all', label: 'All departments' },
-  { value: 'upholstery', label: 'Upholstery' },
   { value: 'carpentry', label: 'Carpentry' },
+  { value: 'upholstery', label: 'Upholstery' },
   { value: 'painting', label: 'Painting' },
+]);
+
+export const PRODUCTION_TRACKING_DEPARTMENT_ORDER = Object.freeze([
+  'carpentry',
+  'upholstery',
+  'painting',
 ]);
 
 export const PRODUCTION_TRACKING_KINDS = Object.freeze([
@@ -204,6 +210,31 @@ export function applyProductionTrackingFilters(rows, {
     list = list.filter((row) => isProductionTrackingJobCompleted(row));
   }
   return collapseProductionTrackingDisplayRows(sortProductionTrackingJobs(list));
+}
+
+/** Group cards by workshop department (carpentry → upholstery → painting). */
+export function groupProductionTrackingJobsByDepartment(rows) {
+  const groups = new Map();
+  for (const row of rows || []) {
+    const key = String(row?.department || '').trim().toLowerCase() || 'other';
+    const bucket = groups.get(key) || [];
+    bucket.push(row);
+    groups.set(key, bucket);
+  }
+  const known = PRODUCTION_TRACKING_DEPARTMENT_ORDER.filter((key) => groups.has(key));
+  const extra = [...groups.keys()]
+    .filter((key) => !PRODUCTION_TRACKING_DEPARTMENT_ORDER.includes(key))
+    .sort();
+  return [...known, ...extra].map((key) => {
+    const meta = PRODUCTION_TRACKING_DEPARTMENTS.find((d) => d.value === key);
+    const label = meta?.label
+      || (key === 'other' ? 'Other' : (key.charAt(0).toUpperCase() + key.slice(1)));
+    return {
+      department: key,
+      label,
+      rows: sortProductionTrackingJobs(groups.get(key) || []),
+    };
+  });
 }
 
 /** In-progress rows first, then completed (each group sorted by started_at desc). */
